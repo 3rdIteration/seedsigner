@@ -470,7 +470,7 @@ class ToolsAddressExplorerSelectSourceView(View):
         # Most of the options require us to go through a side flow(s) before we can
         # continue to the address explorer. Set the Controller-level flow so that it
         # knows to re-route us once the side flow is complete.        
-        # self.controller.resume_main_flow = Controller.FLOW__ADDRESS_EXPLORER
+        self.controller.resume_main_flow = Controller.FLOW__ADDRESS_EXPLORER
 
         if len(seeds) > 0 and selected_menu_num < len(seeds):
             # User selected one of the n seeds
@@ -876,7 +876,7 @@ class ToolsSatochipImportSeedView(View):
         # Most of the options require us to go through a side flow(s) before we can
         # continue to the address explorer. Set the Controller-level flow so that it
         # knows to re-route us once the side flow is complete.        
-        self.controller.resume_main_flow = Controller.FLOW__SATOCHIP_IMPORT_SEED
+        # self.controller.resume_main_flow = Controller.FLOW__SATOCHIP_IMPORT_SEED
 
         print(seeds[selected_menu_num])
 
@@ -941,7 +941,7 @@ class ToolsSatochipEnable2FAView(View):
                 show_back_button=False,
             )
             from seedsigner.gui.screens.screen import QRDisplayScreen
-            qr_encoder = EncodeQR(qr_type=QRType.HEX_STRING, hex_string=binascii.hexlify(key).decode())
+            qr_encoder = EncodeQR(qr_type=QRType.GENERIC_STRING, generic_string=binascii.hexlify(key).decode())
             self.run_screen(
                 QRDisplayScreen,
                 qr_encoder=qr_encoder,
@@ -952,7 +952,7 @@ class ToolsSatochipEnable2FAView(View):
                 LargeIconStatusScreen,
                 title="Success",
                 status_headline=None,
-                text=f"Seed Imported",
+                text=f"2FA Enabled",
                 show_back_button=False,
             )
         except Exception as e:

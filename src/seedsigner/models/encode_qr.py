@@ -398,11 +398,11 @@ class UrPsbtQrEncoder(BaseFountainQrEncoder):
         qr_ur_bytes = UR("crypto-psbt", UR_PSBT(self.psbt.serialize()).to_cbor())
         self.ur2_encode = UREncoder(ur=qr_ur_bytes, max_fragment_len=self.qr_max_fragment_size)
 
-class HexKeyEncoder(BaseStaticQrEncoder):
-    def __init__(self, hex_string: str):
+class GenericStringEncoder(BaseStaticQrEncoder):
+    def __init__(self, generic_string: str):
         super().__init__()
-        self.hex_string = hex_string
+        self.generic_string = generic_string
 
 
     def next_part(self):
-        return self.hex_string
+        return self.generic_string
