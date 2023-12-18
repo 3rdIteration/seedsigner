@@ -41,10 +41,10 @@ class BaseQrEncoder:
 
     def next_part(self) -> str:
         raise Exception("Not implemented in child class")
-    
+
     def cur_part(self) -> str:
         raise Exception("Not implemented in child class")
-    
+
     def restart(self):
         # only used by animated QR encoders
         pass
@@ -71,7 +71,7 @@ class BaseQrEncoder:
 class BaseStaticQrEncoder(BaseQrEncoder):
     def seq_len(self):
         return 1
-    
+
     def cur_part(self) -> str:
         """ static QRs only have a single part, which `next_part` always returns """
         return self.next_part()
@@ -97,7 +97,7 @@ class SeedQrEncoder(BaseStaticQrEncoder):
         for word in self.mnemonic:
             index = self.wordlist.index(word)
             self.data += str("%04d" % index)
-    
+
 
     def next_part(self):
         return self.data
@@ -319,7 +319,7 @@ class BaseFountainQrEncoder(BaseQrEncoder):
 
     def cur_part(self) -> str:
         return self.ur2_encode.current_part().upper()
-    
+
 
     def restart(self):
         self.ur2_encode.fountain_encoder.restart()
@@ -331,7 +331,7 @@ class UrXpubQrEncoder(BaseFountainQrEncoder, BaseXpubQrEncoder):
     def __post_init__(self):
         super().__post_init__()
         self.prep_xpub()
-        
+
         def derivation_to_keypath(path: str) -> list:
             arr = path.split("/")
             if arr[0] == "m":
@@ -397,3 +397,12 @@ class UrPsbtQrEncoder(BaseFountainQrEncoder):
         super().__post_init__()
         qr_ur_bytes = UR("crypto-psbt", UR_PSBT(self.psbt.serialize()).to_cbor())
         self.ur2_encode = UREncoder(ur=qr_ur_bytes, max_fragment_len=self.qr_max_fragment_size)
+
+class HexKeyEncoder(BaseStaticQrEncoder):
+    def __init__(self, hex_string: str):
+        super().__init__()
+        self.hex_string = hex_string
+
+
+    def next_part(self):
+        return self.hex_string
