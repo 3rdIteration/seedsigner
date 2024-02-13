@@ -1228,10 +1228,10 @@ class ToolsMicroSDFlashView(View):
             inNum = 1
             outNum = 0
             for errorLine in data_stderr_split:
-                if "Records In" in errorLine:
+                if "records in" in errorLine:
                     inNum = errorLine.split("+")[0]
                     continue
-                elif "Records Out" in errorLine:
+                elif "records out" in errorLine:
                     outNum = errorLine.split("+")[0]
                     continue
 
@@ -1309,9 +1309,9 @@ class ToolsMicroSDWipeZeroView(View):
         )
 
         if platform.uname()[1] == "seedsigner-os":
-            cmd = "dd if=/dev/zero of=/dev/mmcblk0 bs=1M count=1024"
+            cmd = "dd if=/dev/zero of=/dev/mmcblk0 bs=10M count=50"
         else:
-            cmd = "sudo dd if=/dev/zero of=/dev/mmcblk0 bs=1M count=1024"
+            cmd = "sudo dd if=/dev/zero of=/dev/mmcblk0 bs=10M count=50"
 
         data = run(cmd, capture_output=True, shell=True, text=True)
 
@@ -1322,10 +1322,10 @@ class ToolsMicroSDWipeZeroView(View):
         inNum = 1
         outNum = 0
         for errorLine in data_stderr_split:
-            if "Records In" in errorLine:
+            if "records in" in errorLine:
                 inNum = errorLine.split("+")[0]
                 continue
-            elif "Records Out" in errorLine:
+            elif "records out" in errorLine:
                 outNum = errorLine.split("+")[0]
                 continue
 
@@ -1365,9 +1365,9 @@ class ToolsMicroSDWipeRandomView(View):
         )
 
         if platform.uname()[1] == "seedsigner-os":
-            cmd = "dd if=/dev/urandom of=/dev/mmcblk0 bs=1M count=1024"
+            cmd = "dd if=/dev/urandom of=/dev/mmcblk0 bs=10M count=50"
         else:
-            cmd = "sudo dd if=/dev/urandom of=/dev/mmcblk0 bs=1M count=1024"
+            cmd = "sudo dd if=/dev/urandom of=/dev/mmcblk0 bs=10M count=50"
 
         data = run(cmd, capture_output=True, shell=True, text=True)
 
@@ -1378,10 +1378,11 @@ class ToolsMicroSDWipeRandomView(View):
         inNum = 1
         outNum = 0
         for errorLine in data_stderr_split:
-            if "Records In" in errorLine:
+            if "records in" in errorLine:
                 inNum = errorLine.split("+")[0]
                 continue
-            elif "Records Out" in errorLine:
+
+            if "records out" in errorLine:
                 outNum = errorLine.split("+")[0]
                 continue
 
