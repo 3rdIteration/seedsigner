@@ -1215,6 +1215,7 @@ class ToolsMicroSDFlashView(View):
                 status_headline=None,
                 text="Insert MicroSD to be Flashed",
                 show_back_button=False,
+                button_data="Continue"
             )
 
             self.loading_screen = LoadingScreenThread(text="Flashing MicroSD\n\n\n\n\n\n")
@@ -1243,6 +1244,7 @@ class ToolsMicroSDFlashView(View):
                     status_headline=None,
                     text=data.stderr,
                     show_back_button=False,
+                    button_data="Continue"
                 )
             else:
                 self.run_screen(
@@ -1251,6 +1253,7 @@ class ToolsMicroSDFlashView(View):
                     status_headline=None,
                     text=f"MicroSD Flashed",
                     show_back_button=False,
+                    button_data="Continue"
                 )
 
         else:
@@ -1289,6 +1292,7 @@ class ToolsMicroSDVerifyView(View):
             status_headline=None,
             text=formatted_checksum,
             show_back_button=False,
+            button_data="Continue"
         )
 
         return Destination(MainMenuView)
@@ -1304,6 +1308,7 @@ class ToolsMicroSDWipeZeroView(View):
             status_headline=None,
             text="Insert MicroSD to be Wiped",
             show_back_button=False,
+            button_data="Continue"
         )
 
         self.loading_screen = LoadingScreenThread(text="Wiping MicroSD\n\n\n\n\n\n(This takes a while)")
@@ -1337,6 +1342,7 @@ class ToolsMicroSDWipeZeroView(View):
                 status_headline=None,
                 text=data.stderr,
                 show_back_button=False,
+                button_data="Continue"
             )
         else:
             self.run_screen(
@@ -1345,6 +1351,7 @@ class ToolsMicroSDWipeZeroView(View):
                 status_headline=None,
                 text=f"MicroSD Wiped",
                 show_back_button=False,
+                button_data="Continue"
             )
 
         return Destination(MainMenuView)
@@ -1360,6 +1367,7 @@ class ToolsMicroSDWipeRandomView(View):
             status_headline=None,
             text="Insert MicroSD to be Wiped",
             show_back_button=False,
+            button_data="Continue"
         )
 
         self.loading_screen = LoadingScreenThread(text="Wiping MicroSD\n\n\n\n\n\n(This takes a while)")
@@ -1394,6 +1402,7 @@ class ToolsMicroSDWipeRandomView(View):
                 status_headline=None,
                 text=data.stderr,
                 show_back_button=False,
+                button_data="Continue"
             )
         else:
             self.run_screen(
@@ -1402,6 +1411,7 @@ class ToolsMicroSDWipeRandomView(View):
                 status_headline=None,
                 text=f"MicroSD Wiped",
                 show_back_button=False,
+                button_data="Continue"
             )
 
         return Destination(MainMenuView)
