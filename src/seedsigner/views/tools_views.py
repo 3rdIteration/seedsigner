@@ -5,6 +5,7 @@ import time
 import platform
 
 from embit.descriptor import Descriptor
+from embit.descriptor.checksum import checksum
 from PIL import Image
 from PIL.ImageOps import autocontrast
 
@@ -37,9 +38,10 @@ class ToolsMenuView(View):
     ADDRESS = "Verify address"
     SMARTCARD = ("Smartcard Tools", FontAwesomeIconConstants.LOCK)
     MICROSD = "MicroSD Tools"
+    CLEAR_DESCRIPTOR = "Clear Multisig Descriptor"
 
     def run(self):
-        button_data = [self.IMAGE, self.DICE, self.KEYBOARD, self.EXPLORER, self.ADDRESS, self.SMARTCARD, self.MICROSD]
+        button_data = [self.IMAGE, self.DICE, self.KEYBOARD, self.EXPLORER, self.ADDRESS, self.SMARTCARD, self.MICROSD, self.CLEAR_DESCRIPTOR]
 
         selected_menu_num = self.run_screen(
             ButtonListScreen,
@@ -72,6 +74,17 @@ class ToolsMenuView(View):
         
         elif button_data[selected_menu_num] == self.MICROSD:
             return Destination(ToolsMicroSDMenuView)
+
+        elif button_data[selected_menu_num] == self.CLEAR_DESCRIPTOR:
+            self.controller.multisig_wallet_descriptor = None
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Success",
+                status_headline=None,
+                text=f"Multisig Descriptor Cleared",
+                show_back_button=False,
+            )
+            return Destination(BackStackView)
 
 
 
@@ -454,6 +467,7 @@ class ToolsAddressExplorerSelectSourceView(View):
     SCAN_DESCRIPTOR = ("Scan wallet descriptor", SeedSignerIconConstants.QRCODE)
     TYPE_12WORD = ("Enter 12-word seed", FontAwesomeIconConstants.KEYBOARD)
     TYPE_24WORD = ("Enter 24-word seed", FontAwesomeIconConstants.KEYBOARD)
+    LOADED_DESCRIPTOR = "Loaded Multisig Descriptor"
 
 
     def run(self):
@@ -462,6 +476,10 @@ class ToolsAddressExplorerSelectSourceView(View):
         for seed in seeds:
             button_str = seed.get_fingerprint(self.settings.get_value(SettingsConstants.SETTING__NETWORK))
             button_data.append((button_str, SeedSignerIconConstants.FINGERPRINT))
+
+        if self.controller.multisig_wallet_descriptor:
+            button_data.append(self.LOADED_DESCRIPTOR)
+
         button_data = button_data + [self.SCAN_SEED, self.SCAN_DESCRIPTOR, self.TYPE_12WORD, self.TYPE_24WORD]
         
         selected_menu_num = self.run_screen(
@@ -489,6 +507,10 @@ class ToolsAddressExplorerSelectSourceView(View):
                     sig_type=SettingsConstants.SINGLE_SIG,
                 )
             )
+        
+        
+        elif button_data[selected_menu_num] == self.LOADED_DESCRIPTOR:
+            return Destination(ToolsAddressExplorerAddressTypeView)
 
         elif button_data[selected_menu_num] == self.SCAN_SEED:
             from seedsigner.views.scan_views import ScanSeedQRView
@@ -1088,6 +1110,8 @@ class ToolsSeedkeeperLoadDescriptorView(View):
                     secret_template = secret_template.replace(xpub_secret_label, secret_dict['secret'])
             
             self.controller.multisig_wallet_descriptor = Descriptor.from_string(secret_template)
+            
+            print(checksum(Descriptor.to_string(self.controller.multisig_wallet_descriptor)))
 
             return Destination(MultisigWalletDescriptorView, skip_current_view=True)
             
@@ -1195,7 +1219,7 @@ class ToolsSeedkeeperSaveDescriptorView(View):
                 LargeIconStatusScreen,
                 title="Success",
                 status_headline=None,
-                text="Multisig Descriptor Imported." + "\nImported:" + str(secrets_imported) + "\nSkipped:" + str(secrets_skipped),
+                text="Multisig Descriptor Exported." + "\nExported:" + str(secrets_imported) + "\nSkipped:" + str(secrets_skipped),
                 show_back_button=False,
             )
 
@@ -1236,7 +1260,6 @@ class ToolsSatochipView(View):
         
 class ToolsSatochipImportSeedView(View):
     SCAN_SEED = ("Scan a seed", SeedSignerIconConstants.QRCODE)
-    SCAN_DESCRIPTOR = ("Scan wallet descriptor", SeedSignerIconConstants.QRCODE)
     TYPE_12WORD = ("Enter 12-word seed", FontAwesomeIconConstants.KEYBOARD)
     TYPE_24WORD = ("Enter 24-word seed", FontAwesomeIconConstants.KEYBOARD)
 
@@ -1252,7 +1275,8 @@ class ToolsSatochipImportSeedView(View):
         for seed in seeds:
             button_str = seed.get_fingerprint(self.settings.get_value(SettingsConstants.SETTING__NETWORK))
             button_data.append((button_str, SeedSignerIconConstants.FINGERPRINT))
-        button_data = button_data + [self.SCAN_SEED, self.SCAN_DESCRIPTOR, self.TYPE_12WORD, self.TYPE_24WORD]
+        
+        button_data = button_data + [self.SCAN_SEED, self.TYPE_12WORD, self.TYPE_24WORD]
         
         selected_menu_num = self.run_screen(
             ButtonListScreen,
@@ -1297,10 +1321,6 @@ class ToolsSatochipImportSeedView(View):
         elif button_data[selected_menu_num] == self.SCAN_SEED:
             from seedsigner.views.scan_views import ScanSeedQRView
             return Destination(ScanSeedQRView)
-
-        elif button_data[selected_menu_num] == self.SCAN_DESCRIPTOR:
-            from seedsigner.views.scan_views import ScanWalletDescriptorView
-            return Destination(ScanWalletDescriptorView)
 
         elif button_data[selected_menu_num] in [self.TYPE_12WORD, self.TYPE_24WORD]:
             from seedsigner.views.seed_views import SeedMnemonicEntryView
