@@ -2018,22 +2018,26 @@ class AddressVerificationSuccessView(View):
 class LoadMultisigWalletDescriptorView(View):
     def run(self):
         SCAN = ("Scan Descriptor", SeedSignerIconConstants.QRCODE)
-        CANCEL = "Cancel"
-        button_data = [SCAN, CANCEL]
+        FROM_SEEDKEEPER = ("Load SeedKeeper", FontAwesomeIconConstants.LOCK)
+        button_data = [SCAN, FROM_SEEDKEEPER]
         selected_menu_num = seed_screens.LoadMultisigWalletDescriptorScreen(
             button_data=button_data,
-            show_back_button=False,
+            show_back_button=True,
         ).display()
 
-        if button_data[selected_menu_num] == SCAN:
-            from seedsigner.views.scan_views import ScanWalletDescriptorView
-            return Destination(ScanWalletDescriptorView)
-
-        elif button_data[selected_menu_num] == CANCEL:
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
             if self.controller.resume_main_flow == Controller.FLOW__PSBT:
                 return Destination(BackStackView)
             else:
                 return Destination(MainMenuView)
+
+        elif button_data[selected_menu_num] == SCAN:
+            from seedsigner.views.scan_views import ScanWalletDescriptorView
+            return Destination(ScanWalletDescriptorView)
+
+        elif button_data[selected_menu_num] == FROM_SEEDKEEPER:
+            from seedsigner.views.tools_views import ToolsSeedkeeperLoadDescriptorView
+            return Destination(ToolsSeedkeeperLoadDescriptorView)
 
 
 
