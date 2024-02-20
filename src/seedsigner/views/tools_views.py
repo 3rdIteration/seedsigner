@@ -854,8 +854,8 @@ class ToolsSatochipChangeLabelView(View):
         return Destination(MainMenuView)
 
 class ToolsSeedkeeperView(View):
-    VIEW_SECRETS = ("View Secrets")
-    IMPORT_PASSWORD = ("Import Password")
+    VIEW_SECRETS = "View Secrets on Card"
+    IMPORT_PASSWORD = "Save Password to Card"
     LOAD_DESCRIPTOR = "Load MultiSig Descriptor"
     SAVE_DESCRIPTOR = "Save MultiSig Descriptor"
 
@@ -1039,12 +1039,16 @@ class ToolsSeedkeeperImportPasswordView(View):
 
 class ToolsSeedkeeperLoadDescriptorView(View):
     def run(self):
+        from seedsigner.gui.screens.screen import LoadingScreenThread
         from seedsigner.views.seed_views import MultisigWalletDescriptorView
         try:
             Satochip_Connector = seedkeeper_utils.init_satochip(self)
             
             if not Satochip_Connector:
                 return Destination(BackStackView)
+
+            self.loading_screen = LoadingScreenThread(text="Retrieving List of Secrets\n\n\n\n\n\n")
+            self.loading_screen.start()
 
             headers = Satochip_Connector.seedkeeper_list_secret_headers()
 
@@ -1075,6 +1079,8 @@ class ToolsSeedkeeperLoadDescriptorView(View):
             print("Multisig Descriptor Secrets:", multisig_descriptor_secrets)
             print("Xpub Secrets:",xpub_secrets)
 
+            self.loading_screen.stop()
+
             if len(multisig_descriptor_secrets) < 1:
                 self.run_screen(
                 WarningScreen,
@@ -1095,6 +1101,9 @@ class ToolsSeedkeeperLoadDescriptorView(View):
 
             if selected_menu_num == RET_CODE__BACK_BUTTON:
                 return Destination(BackStackView)
+            
+            self.loading_screen = LoadingScreenThread(text="Loading Descriptor\n\n\n\n\n\n")
+            self.loading_screen.start()
 
             secret_dict = Satochip_Connector.seedkeeper_export_secret(multisig_descriptor_secrets[selected_menu_num][0], None)
 
@@ -1113,10 +1122,13 @@ class ToolsSeedkeeperLoadDescriptorView(View):
             
             print(checksum(Descriptor.to_string(self.controller.multisig_wallet_descriptor)))
 
+            self.loading_screen.stop()
+
             return Destination(MultisigWalletDescriptorView, skip_current_view=True)
             
 
         except Exception as e:
+            self.loading_screen.stop()
             print(e)
             self.run_screen(
                 WarningScreen,
@@ -1130,9 +1142,24 @@ class ToolsSeedkeeperLoadDescriptorView(View):
 
 class ToolsSeedkeeperSaveDescriptorView(View):
     def run(self):
+        from seedsigner.gui.screens.screen import LoadingScreenThread
         try:
+            # Load
             descriptor = self.controller.multisig_wallet_descriptor
 
+            if descriptor == None:
+                # No descriptor loaded, can't proceed further
+                self.run_screen(
+                    WarningScreen,
+                    title="Error",
+                    status_headline="No Multisig Descriptor Loaded",
+                    text="Nothing to save...",
+                    show_back_button=True,
+                )
+        
+                return Destination(BackStackView)
+
+            # Break up the descriptor for efficient storage on SeedKeeper Cards
             descriptor_string = descriptor.to_string()
 
             print(descriptor_string)
@@ -1145,19 +1172,23 @@ class ToolsSeedkeeperSaveDescriptorView(View):
                 
                 descriptor_string = descriptor_string.replace(key_string, key_name)
                 key_strings.append((key_name, key_string))
-
+            
             ret = seed_screens.SeedAddPassphraseScreen(title="Descriptor Label").display()
 
             if ret == RET_CODE__BACK_BUTTON:
                 return Destination(BackStackView)
+
+            self.loading_screen = LoadingScreenThread(text="Saving Secrets\n\n\n\n\n\n")
+            self.loading_screen.start()
             
             key_strings.append(("msig_desc_" + ret, descriptor_string))
-
+            
+            # Set up our connection to the card
             Satochip_Connector = seedkeeper_utils.init_satochip(self)
 
             if not Satochip_Connector:
                 return Destination(BackStackView)
-            
+
             # Check for existing secrest on the Seedkeeper (Related to this descriptor)
             headers = Satochip_Connector.seedkeeper_list_secret_headers()
 
@@ -1215,6 +1246,8 @@ class ToolsSeedkeeperSaveDescriptorView(View):
                 print("Imported - SID:", sid, " Fingerprint:", fingerprint)
                 secrets_imported += 1
 
+            self.loading_screen.stop()
+
             self.run_screen(
                 LargeIconStatusScreen,
                 title="Success",
@@ -1224,6 +1257,7 @@ class ToolsSeedkeeperSaveDescriptorView(View):
             )
 
         except Exception as e:
+            self.loading_screen.stop()
             print(e)
             self.run_screen(
                 WarningScreen,
@@ -1573,7 +1607,7 @@ class ToolsMicroSDMenuView(View):
             return Destination(ToolsMicroSDFlashView)
         
         elif button_data[selected_menu_num] == self.VERIFY_IMAGE:
-            return Destination(ToolsMicroSDVerifyView)
+            return Destination(ToolsMicroSDVerifyWarningView)
 
         elif button_data[selected_menu_num] == self.WIPE_ZERO:
             return Destination(ToolsMicroSDWipeZeroView)
@@ -1616,14 +1650,17 @@ class ToolsMicroSDFlashView(View):
                 )
                 return Destination(MainMenuView)
 
-            self.run_screen(
+            ret = self.run_screen(
                 WarningScreen,
                 title="Notice",
                 status_headline=None,
                 text="Insert MicroSD to be Flashed",
-                show_back_button=False,
+                show_back_button=True,
                 button_data=["Continue"]
             )
+
+            if ret == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
 
             self.loading_screen = LoadingScreenThread(text="Flashing MicroSD\n\n\n\n\n\n")
             self.loading_screen.start()
@@ -1654,14 +1691,19 @@ class ToolsMicroSDFlashView(View):
                     button_data=["Continue"]
                 )
             else:
-                self.run_screen(
+                ret = self.run_screen(
                     LargeIconStatusScreen,
                     title="Success",
                     status_headline=None,
                     text=f"MicroSD Flashed",
                     show_back_button=False,
-                    button_data=["Continue"]
+                    button_data=["Verify","Skip Verification"]
                 )
+
+                if ret == 0:
+                    return Destination(ToolsMicroSDVerifyView) 
+                else:
+                    return Destination(MainMenuView)
 
         else:
             os.system("cp /boot/microsd-images/" + microsd_image + " /tmp/img.img")
@@ -1669,7 +1711,30 @@ class ToolsMicroSDFlashView(View):
 
         return Destination(MainMenuView)
 
+class ToolsMicroSDVerifyWarningView(View):
+    def run(self):
+        ret = self.run_screen(
+            WarningScreen,
+            title="Checksum Note",
+            status_headline=None,
+            text="Verification test will\nonly pass for freshly\nflashed (or Read Only)\nMicroSD Cards.",
+            show_back_button=True,
+            button_data=["Continue"]
+        )
+
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        else:
+            return Destination(ToolsMicroSDVerifyView)
+        
+
 class ToolsMicroSDVerifyView(View):
+    known_checksums = {'5809d4ec68138c737b1b000db4c6ec60983e94544efd893bdfa40ebf19af60f4':'Zero Wiped (First 26MB)',
+                       'a380cb93eb852254863718a9c000be9ec30cee14a78fc0ec90708308c17c1b8a':'seedsigner_os.0.7.0.pi0',
+                       'fe0601e6da97c7711093b67a7102f8108f2bfb8a2478fd94fa9d3edea5adfb64':'seedsigner_os.0.7.0.pi02w',
+                       '65be9209527ba03efe8093099dae8ec65725c90a758bc98678b9da31639637d7':'seedsigner_os.0.7.0.pi2',
+                       'd574c1326d07e18b550e2f65e36a4678b05db882adb5cb8f8732ff8d75d59809':'seedsigner_os.0.7.0.pi4'}
+
     def run(self):
         from subprocess import run
         import os
@@ -1691,42 +1756,84 @@ class ToolsMicroSDVerifyView(View):
 
         checksum = data.stdout[:64]
 
-        formatted_checksum = data.stdout[:16] + "\n" + data.stdout[16:32] + "\n" + data.stdout[32:48] + "\n" + data.stdout[48:64]
+        try:
+            image_name = self.known_checksums[checksum]
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Success",
+                status_headline="Matched Checksum",
+                text=image_name,
+                show_back_button=False,
+                button_data=["Continue"]
+            )
 
-        self.run_screen(
-            WarningScreen,
-            title="Unfamilliar Checksum",
-            status_headline=None,
-            text=formatted_checksum,
-            show_back_button=False,
-            button_data=["Continue"]
-        )
+        except KeyError:
+            formatted_checksum = data.stdout[:16] + "\n" + data.stdout[16:32] + "\n" + data.stdout[32:48] + "\n" + data.stdout[48:64]
+
+            self.run_screen(
+                WarningScreen,
+                title="Unfamilliar Checksum",
+                status_headline=None,
+                text=formatted_checksum,
+                show_back_button=False,
+                button_data=["Continue"]
+            )
 
         return Destination(MainMenuView)
     
 class ToolsMicroSDWipeZeroView(View):
+    WIPE_64MB = "64MB"
+    WIPE_256MB = "256MB"
+    WIPE_ALL = "All"
+
     def run(self):
         from subprocess import run
         from seedsigner.gui.screens.screen import LoadingScreenThread
 
-        self.run_screen(
+        button_data=[self.WIPE_64MB, self.WIPE_256MB, self.WIPE_ALL]
+
+        wipe_selection = self.run_screen(
+                LargeIconStatusScreen,
+                title="Wipe MicroSD",
+                status_headline=None,
+                text = "Select amount to wipe (Larger takes longer)",
+                status_icon_size=0,
+                show_back_button=True,
+                button_data=button_data,
+            )
+        
+        if wipe_selection == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        
+        wipesize_cmd_string = "" # Default to wiping the whole card
+        if button_data[wipe_selection] == self.WIPE_64MB:
+            wipesize_cmd_string = " count=64"
+        elif button_data[wipe_selection] == self.WIPE_256MB:
+            wipesize_cmd_string = " count=256"
+
+        ret = self.run_screen(
             WarningScreen,
             title="Notice",
             status_headline=None,
             text="Insert MicroSD to be Wiped",
-            show_back_button=False,
+            show_back_button=True,
             button_data=["Continue"]
         )
+
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
 
         self.loading_screen = LoadingScreenThread(text="Wiping MicroSD\n\n\n\n\n\n(This takes a while)")
         self.loading_screen.start()
 
         if platform.uname()[1] == "seedsigner-os":
-            cmd = "dd if=/dev/zero of=/dev/mmcblk0 bs=10M count=50"
+            cmd = "dd if=/dev/zero of=/dev/mmcblk0 bs=1M" + wipesize_cmd_string
         else:
-            cmd = "sudo dd if=/dev/zero of=/dev/mmcblk0 bs=10M count=50"
+            cmd = "sudo dd if=/dev/zero of=/dev/mmcblk0 bs=1M" + wipesize_cmd_string
 
         data = run(cmd, capture_output=True, shell=True, text=True)
+
+        print(data)
 
         self.loading_screen.stop()
 
@@ -1741,6 +1848,10 @@ class ToolsMicroSDWipeZeroView(View):
             elif "records out" in errorLine:
                 outNum = errorLine.split("+")[0]
                 continue
+
+        # The number of in/out records won't match we just keep writing until the disk is full...
+        if "No space left on device" in data.stderr:
+            outNum = inNum
 
         if inNum != outNum:
             self.run_screen(
@@ -1764,28 +1875,58 @@ class ToolsMicroSDWipeZeroView(View):
         return Destination(MainMenuView)
 
 class ToolsMicroSDWipeRandomView(View):
+    WIPE_64MB = "64MB"
+    WIPE_256MB = "256MB"
+    WIPE_ALL = "All"
+
     def run(self):
         from subprocess import run
         from seedsigner.gui.screens.screen import LoadingScreenThread
 
-        self.run_screen(
+        button_data=[self.WIPE_64MB, self.WIPE_256MB, self.WIPE_ALL]
+
+        wipe_selection = self.run_screen(
+                LargeIconStatusScreen,
+                title="Wipe MicroSD",
+                status_headline=None,
+                text = "Select amount to wipe (Larger takes longer)",
+                status_icon_size=0,
+                show_back_button=True,
+                button_data=button_data,
+            )
+        
+        if wipe_selection == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        
+        wipesize_cmd_string = "" # Default to wiping the whole card
+        if button_data[wipe_selection] == self.WIPE_64MB:
+            wipesize_cmd_string = " count=64"
+        elif button_data[wipe_selection] == self.WIPE_256MB:
+            wipesize_cmd_string = " count=256"
+
+        ret = self.run_screen(
             WarningScreen,
             title="Notice",
             status_headline=None,
             text="Insert MicroSD to be Wiped",
-            show_back_button=False,
+            show_back_button=True,
             button_data=["Continue"]
         )
+
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
 
         self.loading_screen = LoadingScreenThread(text="Wiping MicroSD\n\n\n\n\n\n(This takes a while)")
         self.loading_screen.start()
 
         if platform.uname()[1] == "seedsigner-os":
-            cmd = "dd if=/dev/urandom of=/dev/mmcblk0 bs=10M count=50"
+            cmd = "dd if=/dev/urandom of=/dev/mmcblk0 bs=1M" + wipesize_cmd_string
         else:
-            cmd = "sudo dd if=/dev/urandom of=/dev/mmcblk0 bs=10M count=50"
+            cmd = "sudo dd if=/dev/urandom of=/dev/mmcblk0 bs=1M" + wipesize_cmd_string
 
         data = run(cmd, capture_output=True, shell=True, text=True)
+
+        print(data)
 
         self.loading_screen.stop()
 
@@ -1801,6 +1942,10 @@ class ToolsMicroSDWipeRandomView(View):
             if "records out" in errorLine:
                 outNum = errorLine.split("+")[0]
                 continue
+
+        # The number of in/out records won't match we just keep writing until the disk is full...
+        if "No space left on device" in data.stderr:
+            outNum = inNum
 
         if inNum != outNum:
             self.run_screen(
