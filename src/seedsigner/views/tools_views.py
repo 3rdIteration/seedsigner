@@ -886,13 +886,19 @@ class ToolsSeedkeeperView(View):
 
 class ToolsSeedkeeperViewSecretsView(View):
     def run(self):
+        from seedsigner.gui.screens.screen import LoadingScreenThread
         try:
             Satochip_Connector = seedkeeper_utils.init_satochip(self)
             
             if not Satochip_Connector:
                 return Destination(BackStackView)
 
+            self.loading_screen = LoadingScreenThread(text="Listing Secrets\n\n\n\n\n\n")
+            self.loading_screen.start()
+
             headers = Satochip_Connector.seedkeeper_list_secret_headers()
+
+            self.loading_screen.stop()
 
             headers_parsed = []
             button_data = []
@@ -941,7 +947,12 @@ class ToolsSeedkeeperViewSecretsView(View):
             if selected_menu_num == RET_CODE__BACK_BUTTON:
                 return Destination(BackStackView)
 
+            self.loading_screen = LoadingScreenThread(text="Loading Secret\n\n\n\n\n\n")
+            self.loading_screen.start()
+
             secret_dict = Satochip_Connector.seedkeeper_export_secret(headers_parsed[selected_menu_num][0], None)
+
+            self.loading_screen.stop()
 
             stype = SEEDKEEPER_DIC_TYPE.get(secret_dict['type'], hex(secret_dict['type']))  # hex(header['type'])
 
@@ -986,6 +997,7 @@ class ToolsSeedkeeperViewSecretsView(View):
             
         except Exception as e:
             print(e)
+            self.loading_screen.stop()
             self.run_screen(
                 WarningScreen,
                 title="Error",
@@ -999,6 +1011,8 @@ class ToolsSeedkeeperViewSecretsView(View):
 
 class ToolsSeedkeeperImportPasswordView(View):
     def run(self):
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+
         secret_label = seed_screens.SeedAddPassphraseScreen(title="Secret Label").display()
         if secret_label == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
@@ -1016,7 +1030,13 @@ class ToolsSeedkeeperImportPasswordView(View):
         secret_list = [len(secret_text_list)] + secret_text_list
         secret_dic = {'header': header, 'secret_list': secret_list}
         try:
+            self.loading_screen = LoadingScreenThread(text="Saving Secret\n\n\n\n\n\n")
+            self.loading_screen.start()
+
             (sid, fingerprint) = Satochip_Connector.seedkeeper_import_secret(secret_dic)
+
+            self.loading_screen.stop()
+
             print("Imported - SID:", sid, " Fingerprint:", fingerprint)
             self.run_screen(
                 LargeIconStatusScreen,
@@ -1027,6 +1047,7 @@ class ToolsSeedkeeperImportPasswordView(View):
             )
         except Exception as e:
             print(e)
+            self.loading_screen.stop()
             self.run_screen(
                 WarningScreen,
                 title="Failed",
@@ -1177,9 +1198,6 @@ class ToolsSeedkeeperSaveDescriptorView(View):
 
             if ret == RET_CODE__BACK_BUTTON:
                 return Destination(BackStackView)
-
-            self.loading_screen = LoadingScreenThread(text="Saving Secrets\n\n\n\n\n\n")
-            self.loading_screen.start()
             
             key_strings.append(("msig_desc_" + ret, descriptor_string))
             
@@ -1188,6 +1206,9 @@ class ToolsSeedkeeperSaveDescriptorView(View):
 
             if not Satochip_Connector:
                 return Destination(BackStackView)
+
+            self.loading_screen = LoadingScreenThread(text="Saving Secrets\n\n\n\n\n\n")
+            self.loading_screen.start()
 
             # Check for existing secrest on the Seedkeeper (Related to this descriptor)
             headers = Satochip_Connector.seedkeeper_list_secret_headers()

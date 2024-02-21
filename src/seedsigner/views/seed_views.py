@@ -205,13 +205,19 @@ class LoadSeedView(View):
     
 class SeedKeeperSelectView(View):
     def run(self):
+        from seedsigner.gui.screens.screen import LoadingScreenThread
         try:
             Satochip_Connector = seedkeeper_utils.init_satochip(self)
             
             if not Satochip_Connector:
                 return Destination(BackStackView)
 
+            self.loading_screen = LoadingScreenThread(text="Listing Seeds\n\n\n\n\n\n")
+            self.loading_screen.start()
+
             headers = Satochip_Connector.seedkeeper_list_secret_headers()
+
+            self.loading_screen.stop()
 
             headers_parsed = []
             button_data = []
@@ -254,7 +260,12 @@ class SeedKeeperSelectView(View):
             if selected_menu_num == RET_CODE__BACK_BUTTON:
                 return Destination(BackStackView)
 
+            self.loading_screen = LoadingScreenThread(text="Loading Seed\n\n\n\n\n\n")
+            self.loading_screen.start()
+
             secret_dict = Satochip_Connector.seedkeeper_export_secret(headers_parsed[selected_menu_num][0], None)
+
+            self.loading_screen.stop()
 
             secret_dict['secret'] = unhexlify(secret_dict['secret'])[1:].decode().rstrip("\x00")
 
@@ -267,6 +278,7 @@ class SeedKeeperSelectView(View):
 
         except Exception as e:
             print(e)
+            self.loading_screen.stop()
             self.run_screen(
                 WarningScreen,
                 title="Error",
@@ -441,13 +453,19 @@ class SeedLoadSeedKeeperPassphraseView(View):
         self.seed = self.controller.storage.get_pending_seed()
 
     def run(self):
+        from seedsigner.gui.screens.screen import LoadingScreenThread
         try:
             Satochip_Connector = seedkeeper_utils.init_satochip(self)
             
             if not Satochip_Connector:
                 return Destination(BackStackView)
 
+            self.loading_screen = LoadingScreenThread(text="Listing Secrets\n\n\n\n\n\n")
+            self.loading_screen.start()
+
             headers = Satochip_Connector.seedkeeper_list_secret_headers()
+
+            self.loading_screen.stop()
 
             headers_parsed = []
             button_data = []
@@ -490,7 +508,12 @@ class SeedLoadSeedKeeperPassphraseView(View):
             if selected_menu_num == RET_CODE__BACK_BUTTON:
                 return Destination(BackStackView)
 
+            self.loading_screen = LoadingScreenThread(text="Loading Secret\n\n\n\n\n\n")
+            self.loading_screen.start()
+
             secret_dict = Satochip_Connector.seedkeeper_export_secret(headers_parsed[selected_menu_num][0], None)
+
+            self.loading_screen.stop()
 
             secret_dict['secret'] = unhexlify(secret_dict['secret'])[1:].decode().rstrip("\x00")
 
@@ -503,6 +526,7 @@ class SeedLoadSeedKeeperPassphraseView(View):
 
         except Exception as e:
             print(e)
+            self.loading_screen.stop()
             self.run_screen(
                 WarningScreen,
                 title="Error",
@@ -2279,6 +2303,7 @@ class SaveToSeedkeeperView(View):
         self.bip85_data = bip85_data
 
     def run(self):
+        from seedsigner.gui.screens.screen import LoadingScreenThread
         try:
             Satochip_Connector = seedkeeper_utils.init_satochip(self)
 
@@ -2301,8 +2326,14 @@ class SaveToSeedkeeperView(View):
             bip39_passphrase_list = list(bytes(bip39_passphrase, 'utf-8'))
             secret_list = [len(bip39_mnemonic_list)] + bip39_mnemonic_list + [len(bip39_passphrase_list)] + bip39_passphrase_list
             secret_dic = {'header': header, 'secret_list': secret_list}
+
+            self.loading_screen = LoadingScreenThread(text="Saving Seed\n\n\n\n\n\n")
+            self.loading_screen.start()
+
             (sid, fingerprint) = Satochip_Connector.seedkeeper_import_secret(secret_dic)
             print("Imported - SID:", sid, " Fingerprint:", fingerprint)
+
+            self.loading_screen.stop()
 
             self.run_screen(
                 LargeIconStatusScreen,
@@ -2315,4 +2346,12 @@ class SaveToSeedkeeperView(View):
 
         except Exception as e:
             print(e)
+            self.loading_screen.stop()
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text=str(e),
+                show_back_button=True,
+            )
             return Destination(BackStackView)
