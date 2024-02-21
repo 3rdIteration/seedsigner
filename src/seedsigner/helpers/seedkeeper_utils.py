@@ -64,8 +64,14 @@ def init_satochip(parentObject):
         Satochip_Connector.set_pin(0, list(bytes(card_pin, "utf-8")))
 
         try:
+            parentObject.loading_screen = LoadingScreenThread(text="Verifying PIN")
+            parentObject.loading_screen.start()
+
             print("Verifying PIN")
             (response, sw1, sw2) = Satochip_Connector.card_verify_PIN()
+
+            parentObject.loading_screen.stop()
+
             if sw1 == 0x90 and sw2 == 0x00:
                 print("Pin Correct")
                 pass #Pin is correct
@@ -82,6 +88,7 @@ def init_satochip(parentObject):
         except RuntimeError as e: #Incorrect PIN
             print("RunTimeError")
             print(e) #
+            parentObject.loading_screen.stop()
             status = Satochip_Connector.card_get_status()
             pin_tries_left = status[3]['PIN0_remaining_tries']
             if pin_tries_left == 0:
@@ -103,6 +110,7 @@ def init_satochip(parentObject):
             return None
         
         except Exception as e:
+            parentObject.loading_screen.stop()
             parentObject.run_screen(
                 WarningScreen,
                 title="Failed",
