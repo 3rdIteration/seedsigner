@@ -285,7 +285,7 @@ class Controller(Singleton):
                 next_destination = Destination(MainMenuView)
             
             # Set up our one-time toast notification tip to remove the SD card
-            # self.activate_toast(RemoveSDCardToastManagerThread()) TODO ADD THIS BACK FOR ANY PROPER MERGE
+            self.activate_toast(RemoveSDCardToastManagerThread())
 
             while True:
                 # Destination(None) is a special case; render the Home screen
