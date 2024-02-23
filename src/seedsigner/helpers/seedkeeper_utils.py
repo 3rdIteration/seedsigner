@@ -13,15 +13,30 @@ import platform
 def init_satochip(parentObject):
     from seedsigner.models.settings import Settings, SettingsConstants, SettingsDefinition
 
-    parentObject.loading_screen = LoadingScreenThread(text="Searching for Card")
-    parentObject.loading_screen.start()
-
     # Spam connecting for 5 seconds to give the user time to insert the card
     status = None
     time_end = time.time() + 5
+
+    parentObject.loading_screen = LoadingScreenThread(text="Searching for Card")
+    parentObject.loading_screen.start()
+
     while time.time() < time_end:
         try:
-            Satochip_Connector = CardConnector()
+
+            if parentObject.controller.Satochip_Connector is not None:
+                print("Checking existing card connector...")
+                try:
+                    parentObject.controller.Satochip_Connector.card_get_label()
+                    # If the card connector is still good, we will get to this line :)
+                    parentObject.loading_screen.stop()
+                    return parentObject.controller.Satochip_Connector
+                except:
+                    parentObject.controller.Satochip_Connector = None
+
+            if parentObject.controller.Satochip_Connector is None:
+                print("No Working CardConnector, Connecting")
+                Satochip_Connector = CardConnector()
+                
             time.sleep(1)  # give some time to initialize reader...
             status = Satochip_Connector.card_get_status()
 
@@ -35,6 +50,7 @@ def init_satochip(parentObject):
 
             if len(status[3]) > 0: #Sometimes it's possible to end up with an invalid of zero length here...
                 break
+
         except Exception as e:
             print(e)
             time.sleep(0.1) # Sleep for 100ms
@@ -174,7 +190,9 @@ def init_satochip(parentObject):
                 show_back_button=False,
             )
 
-    return Satochip_Connector
+    parentObject.controller.Satochip_Connector = Satochip_Connector
+
+    return parentObject.controller.Satochip_Connector
 
 def run_globalplatform(parentObject, command, loadingText = "Loading", successtext = "Success"):
     from subprocess import run
