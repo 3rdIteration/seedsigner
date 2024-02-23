@@ -124,6 +124,8 @@ class Controller(Singleton):
     sign_message_data: dict = None
     # TODO: end refactor section
 
+    Satochip_Connector = None
+
     # Destination placeholder for when we need to jump out to a side flow but intend to
     # return navigation to the main flow (e.g. PSBT flow, load multisig descriptor,
     # then resume PSBT flow).
