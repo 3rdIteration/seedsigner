@@ -52,7 +52,7 @@ def init_satochip(parentObject):
                 break
 
         except Exception as e:
-            print(e)
+            print("CardConnector Init Failed:" + str(e))
             time.sleep(0.1) # Sleep for 100ms
         
         status = None # Reset this every loop...
@@ -60,7 +60,6 @@ def init_satochip(parentObject):
     parentObject.loading_screen.stop()
 
     if not status:
-
         parentObject.run_screen(
             WarningScreen,
             title="Unable to Connect",
@@ -69,8 +68,6 @@ def init_satochip(parentObject):
             show_back_button=True,
         )
         return None
-
-    status = Satochip_Connector.card_get_status()
 
     if status[3]['setup_done']:
         card_pin = seed_screens.SeedAddPassphraseScreen(title="Card PIN").display()
@@ -102,36 +99,47 @@ def init_satochip(parentObject):
                 return None
 
         except RuntimeError as e: #Incorrect PIN
-            print("RunTimeError")
-            print(e) #
+            print("Pin Check Runtime Error:" + str(e))
             parentObject.loading_screen.stop()
-            status = Satochip_Connector.card_get_status()
-            pin_tries_left = status[3]['PIN0_remaining_tries']
-            if pin_tries_left == 0:
+            if "No card found!" in str(e):
                 parentObject.run_screen(
-                    WarningScreen,
-                    title="Card Blocked",
-                    status_headline=None,
-                    text=f"Incorrect-PIN entered too many times, card locked...",
-                    show_back_button=True,
-                )
+                        WarningScreen,
+                        title="Disconnected",
+                        status_headline=None,
+                        text=f"Lost connection to card...",
+                        show_back_button=True,
+                    )
             else:
-                parentObject.run_screen(
-                    WarningScreen,
-                    title="Incorrect PIN",
-                    status_headline=None,
-                    text=f"Unable to unlock Card, Incorrect PIN " + str(pin_tries_left) + " tries remain before card locks...",
-                    show_back_button=True,
-                )
+                status = Satochip_Connector.card_get_status()
+                pin_tries_left = status[3]['PIN0_remaining_tries']
+                if pin_tries_left == 0:
+                    parentObject.run_screen(
+                        WarningScreen,
+                        title="Card Blocked",
+                        status_headline=None,
+                        text=f"Incorrect-PIN entered too many times, card locked...",
+                        show_back_button=True,
+                    )
+                else:
+                    parentObject.run_screen(
+                        WarningScreen,
+                        title="Incorrect PIN",
+                        status_headline=None,
+                        text=f"Unable to unlock Card, Incorrect PIN " + str(pin_tries_left) + " tries remain before card locks...",
+                        show_back_button=True,
+                    )
             return None
         
         except Exception as e:
             parentObject.loading_screen.stop()
+            time.sleep(0.1) # Sleep for 100ms
+            print("Pin Check General Exception:" + str(e))
+
             parentObject.run_screen(
                 WarningScreen,
                 title="Failed",
                 status_headline=None,
-                text=str(e),
+                text=str(e)[:100],
                 show_back_button=True,
             )
             return None
