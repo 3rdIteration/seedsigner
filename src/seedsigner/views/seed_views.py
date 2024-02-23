@@ -277,8 +277,9 @@ class SeedKeeperSelectView(View):
             secret_passphrase = bip39_secret[secret_size+1:]
 
         except Exception as e:
-            print(e)
+            print("General Exception Loading Seed:", str(e))
             self.loading_screen.stop()
+            time.sleep(0.1) # Sleep for 100ms
             self.run_screen(
                 WarningScreen,
                 title="Error",
@@ -527,6 +528,7 @@ class SeedLoadSeedKeeperPassphraseView(View):
         except Exception as e:
             print(e)
             self.loading_screen.stop()
+            time.sleep(0.1) # Sleep for 100ms
             self.run_screen(
                 WarningScreen,
                 title="Error",
@@ -2334,7 +2336,7 @@ class SaveToSeedkeeperView(View):
             print("Imported - SID:", sid, " Fingerprint:", fingerprint)
 
             self.loading_screen.stop()
-
+            time.sleep(0.1) # Sleep for 100ms
             self.run_screen(
                 LargeIconStatusScreen,
                 title="Secret Saved",
@@ -2347,6 +2349,7 @@ class SaveToSeedkeeperView(View):
         except Exception as e:
             print(e)
             self.loading_screen.stop()
+            time.sleep(0.1) # Sleep for 100ms
             self.run_screen(
                 WarningScreen,
                 title="Error",
