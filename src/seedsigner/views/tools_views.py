@@ -849,7 +849,15 @@ class ToolsSatochipChangeLabelView(View):
                     show_back_button=False,
                 )
         except Exception as e:
-            print(e)
+            self.loading_screen.stop()
+            print("Set Label Failed:", str(e))
+            self.run_screen(
+                WarningScreen,
+                title="Failed",
+                status_headline=None,
+                text=str(e)[:100],
+                show_back_button=True,
+            )
 
         return Destination(MainMenuView)
 
@@ -1319,7 +1327,7 @@ class ToolsSatochipImportSeedView(View):
     TYPE_24WORD = ("Enter 24-word seed", FontAwesomeIconConstants.KEYBOARD)
 
     def run(self):
-        
+        from seedsigner.gui.screens.screen import LoadingScreenThread
         Satochip_Connector = seedkeeper_utils.init_satochip(self)
 
         if not Satochip_Connector:
@@ -1354,7 +1362,13 @@ class ToolsSatochipImportSeedView(View):
         if len(seeds) > 0 and selected_menu_num < len(seeds):
             # User selected one of the n seeds
             try:
+                self.loading_screen = LoadingScreenThread(text="Importing Secret\n\n\n\n\n\n")
+                self.loading_screen.start()
+
                 Satochip_Connector.card_bip32_import_seed(seeds[selected_menu_num].seed_bytes)
+
+                self.loading_screen.stop()
+
                 print("Seed Successfully Imported")
                 self.run_screen(
                     LargeIconStatusScreen,
@@ -1364,7 +1378,8 @@ class ToolsSatochipImportSeedView(View):
                     show_back_button=False,
                 )
             except Exception as e:
-                print(e)
+                self.loading_screen.stop()
+                print("Satochip Import Failed:",str(e))
                 self.run_screen(
                     WarningScreen,
                     title="Failed",
@@ -1391,6 +1406,7 @@ class ToolsSatochipEnable2FAView(View):
     def run(self):
         from os import urandom
         import binascii
+        from seedsigner.gui.screens.screen import LoadingScreenThread
         key = urandom(20)
         print("2FA Key:", binascii.hexlify(key))
 
@@ -1413,7 +1429,14 @@ class ToolsSatochipEnable2FAView(View):
                 QRDisplayScreen,
                 qr_encoder=qr_encoder,
             )
+
+            self.loading_screen = LoadingScreenThread(text="Enabling 2FA\n\n\n\n\n\n")
+            self.loading_screen.start()
+
             Satochip_Connector.card_set_2FA_key(key, 0)
+
+            self.loading_screen.stop()
+
             print("Success: 2FA Key Imported and Enabled")
             self.run_screen(
                 LargeIconStatusScreen,
@@ -1423,7 +1446,8 @@ class ToolsSatochipEnable2FAView(View):
                 show_back_button=False,
             )
         except Exception as e:
-            print(e)
+            self.loading_screen.stop()
+            print("Enable 2fa failed:", str(e))
             self.run_screen(
                 WarningScreen,
                 title="Failed",
@@ -1559,6 +1583,17 @@ class ToolsDIYUninstallAppletView(View):
         from subprocess import run
         import os
         from seedsigner.gui.screens.screen import LoadingScreenThread
+
+        ret = self.run_screen(
+            WarningScreen,
+            title="Warning",
+            status_headline=None,
+            text="Uninstalling an applet will wipe ALL data associated with it. (This cannot be undone)",
+            show_back_button=True,
+        )
+
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
 
         installed_applets = seedkeeper_utils.run_globalplatform(self,"-l -v", "Checking Installed Applets", None)
 
