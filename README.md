@@ -1,3 +1,42 @@
+# SeedSigner + Satochip
+The question of how to store your private keys in a way that is both secure and resistant to loss or damage is a challenge.
+
+There are a number of different approaches that different hardware and software wallets use and one that has been gaining popularity, particularly with stateless wallets, is SeedQR… The thing is that while SeedQR is much quicker and easier than a standard seed phrase, storing and loading private keys via SeedQR all the time has it’s own issues relating to security, robustness and privacy… 
+
+That said, I think that saving secrets to a PIN protected Javacard addresses all of these issues in a really affordable and accessible way… I have been doing to integrate the Seedkeeper from Satochip with Seedsigner… Basically as a proof of concept… This is now at a point where it can be considered Beta software, in that it is mostly feature complete. (Though will still likely have other bugs and tweaks to come)
+
+All releases are now running SeedSigner-OS and are built via BuildRoot just like official builds, meaning that the MicroSD card can be removed for normal operation. (Though the MicroSD needs to be left in while building and flashing Java applets or flashing SeedSigner images to MicroSD) This also means that installation images are much smaller and are also reproducible. 
+
+## Difference from Stock SeedSigner
+* Multiple Smartcard interface options… 
+   - Standard USB CCID/PCSC readers
+   - PN532 NFC Reader Connected via I2C
+   - USB Phoenix Type "Sim Reader" supported via OpenCT 
+* Saving and Loading Seeds & Passphrases
+   - Supports loading of Seed, Seed+Passphrase in one go, or loading passphrase independently. (Potentially from a different SeedKeeper)
+* Saving and Loading Multisig Descriptors 
+   - Also changed default behavior to keep Descriptor loaded until manually cleared. (Including descriptor appearing in the Address Explorer when loaded)
+   - Descriptors are split up into a template and xpubs before being saved to SeedKeeper.
+* Saving and loading generic secrets to a Seedkeeper card
+   - These secrets can be either viewed as text or displayed as a generic text QR code.
+* Initialising Satochip Cards with SeedSigner
+  - Load any Seed from the SeedSigner on to the Satochip Card
+  - Enable 2FA on the Satochip Card
+* Flashing Satochip Applets to blank Javacards
+   - Firmware comes bundled with applets for SeedSigner, Satochip and Satodime (Releases from Satochip Github)
+   - Firmware is also bundled with the source code for all three projects, along with a modified varient for THD-89 based Javacards. (This can be built from source on-device at run-time)
+* MicroSD Card Tools
+   - Flashing MicroSD Cards with official SeedSigner Images (Bundled)
+   - Verification of freshly flashed MicroSD cards against known images
+   - Secure Wipe (Both with zeros and random data)
+ 
+## Future Features & Improvements
+* Add ability to lock/unlock/manage Javacards
+* Add ability to view additional sttings/information for the Satochip cards
+* Tidy up code and reduce re-use
+
+# -----------------Original Readme Continues Below-----------------
+
 # Build an offline, airgapped Bitcoin signing device for less than $50!
 
 ![Image of SeedSigners in Mini Pill Enclosures](docs/img/Mini_Pill_Main_Photo.jpg)
