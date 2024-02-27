@@ -13,6 +13,8 @@ Demo 2: PiZero 1.3 + NFC + USB Sim Reader (Phoenix) - https://youtu.be/uG44Fw3rO
 ### USB Smart Card Readers 
 Any USB smart card reader that is compatible with will work, either hard-wired (Contact) or NFC (Contactless).
 
+![](img/smartcard_usb_readers.png)
+
 If you are running SeedSigner on a system image that is derived from a standard Raspberry Pi OS image, USB devices should be plug and play once PC/SC services are installed.
 
 **Compatibility Notes**
@@ -20,11 +22,20 @@ If you are running SeedSigner on a system image that is derived from a standard 
 The **ACS ACR 122U reader** is unreliable for flashing applets and may brick your card. (Though works fine for normal operation after they have been flashed)
 
 ### GPIO Connected Smart Card Readers
-The PN352 NFC V3 module is low cost ($5 on Aliexpress) can be connected via available IO pins and is well supported by LibNFC.
+The PN32 NFC V3 module is low cost ($5 on Aliexpress) can be connected via available IO pins and is well supported by LibNFC.
 
-Instructions on how to physically connect it can be found here: https://blog.stigok.com/2017/10/12/setting-up-a-pn532-nfc-module-on-a-raspberry-pi-using-i2c.html (Stop when you get to the section on LibNFC, as that part is not relevant)
+There are a number of ways to connect to the I2C pins, either by adding some 90 degree PIN headers to the top or bottom of the board, or by way of a GPIO splitter.
+
+You can see examples of how each in the image below, with wire colours being consistent across the three images for clarity. 
+
+![](img/smartcard_pn532_headerconnection.jpg)
 
 ## Software Installation
+### Flashing Pre-Built Image
+You can simply download any of the releases from this repository and flash them to a MicroSD card with Balina Etcher.
+
+### Manual Build
+Alternatively, if you want to do a manual build...
 
 The following guide assumes that you have completed the [Manual Installation guide...](./manual_installation.md)
 
