@@ -1608,25 +1608,36 @@ class ToolsDIYUninstallAppletView(View):
                     package_info = line.split()
                     print(package_info)
                     # Ignore system packages
-                    if package_info[1] in ['A0000001515350', 'A00000016443446F634C697465', 'A0000000620204', 'A0000000620202', 'D27600012401']:
+                    if package_info[1] in ['A0000001515350', 'A00000016443446F634C697465', 'A0000000620204', 'A0000000620202', 'D27600012401','D00000000002','4B4D313031']:
                         continue
                     
                     installed_applets_list.append(package_info[3][2:-2])
                     installed_applets_aids.append(package_info[1])
 
-            selected_applet_num = self.run_screen(
-                ButtonListScreen,
-                title="Select Applet",
-                is_button_text_centered=False,
-                button_data=installed_applets_list
-            )
+            if len(installed_applets_list) > 0:
+                selected_applet_num = self.run_screen(
+                    ButtonListScreen,
+                    title="Select Applet",
+                    is_button_text_centered=False,
+                    button_data=installed_applets_list
+                )
 
-            if selected_applet_num == RET_CODE__BACK_BUTTON:
-                return Destination(BackStackView)
+                if selected_applet_num == RET_CODE__BACK_BUTTON:
+                    return Destination(BackStackView)
 
-            applet_aid = installed_applets_aids[selected_applet_num]
+                applet_aid = installed_applets_aids[selected_applet_num]
 
-            seedkeeper_utils.run_globalplatform(self,"--delete " + applet_aid + " -force", "Uninstalling Applet", "Applet Uninstalled")
+                seedkeeper_utils.run_globalplatform(self,"--delete " + applet_aid + " -force", "Uninstalling Applet", "Applet Uninstalled")
+
+            else:
+                self.run_screen(
+                    WarningScreen,
+                    title="Notice",
+                    status_headline=None,
+                    text="No Applets to Uninstall",
+                    show_back_button=False,
+                    button_data=["Continue"]
+                )
 
                 # This process often kills IFD-NFC, so restart it if required
         scinterface = self.settings.get_value(SettingsConstants.SETTING__SMARTCARD_INTERFACES)
