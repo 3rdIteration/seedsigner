@@ -216,7 +216,7 @@ def run_globalplatform(parentObject, command, loadingText = "Loading", successte
 
     data = run(commandString, capture_output=True, shell=True, text=True)
 
-            # This process often kills IFD-NFC, so restart it if required
+    # This process often kills IFD-NFC, so restart it if required
     scinterface = parentObject.settings.get_value(SettingsConstants.SETTING__SMARTCARD_INTERFACES)
     if "pn532" in scinterface:
         os.system("ifdnfc-activate no")
@@ -248,6 +248,8 @@ def run_globalplatform(parentObject, command, loadingText = "Loading", successte
     errors_cleaned = " ".join(errors_cleaned)
 
     if len(errors_cleaned) > 1:
+        uninstall_required = False
+
         # If it fails, report the error back (And make it more human readable for common errors)
         failureText = errors_cleaned
         if "is not present on card" in errors_cleaned:
@@ -267,6 +269,7 @@ def run_globalplatform(parentObject, command, loadingText = "Loading", successte
 
         if "0x6444" in errors_cleaned or "0x6F00" in errors_cleaned:
             failureText = "Incompatible Javacard..."
+            uninstall_required=True
 
         if "Not enough memory space" in errors_cleaned:
             failureText = "Not enough space on Javacard for Applet..."
@@ -274,14 +277,34 @@ def run_globalplatform(parentObject, command, loadingText = "Loading", successte
         if "SCARD_E_NO_SMARTCARD" in errors_cleaned:
             failureText = "Unable to detect Card and/or Reader..."
 
+        if "SCARD_E_NOT_TRANSACTED" in errors_cleaned:
+            failureText = "Applet installation failed, perhaps try with a different Smartcard Interface..."
+            uninstall_required=True
+
+        if "Failed to open secure channel" in errors_cleaned or "SCARD_W_RESET_CARD" in errors_cleaned:
+            failureText = "Unable to complete secure connection... (App or reader may need restart)"
+
+        
+
         parentObject.run_screen(
             WarningScreen,
             title="Failed",
             status_headline=None,
-            text=failureText,
+            text=failureText[:100],
             show_back_button=False,
         )
 
+        if uninstall_required:
+            command = command.replace("--install", "--uninstall")
+            data = run_globalplatform(parentObject, command, loadingText = "Uninstalling", successtext = "Mis-Installed Applet Uninstalled")
+            if data is None:
+                parentObject.run_screen(
+                    WarningScreen,
+                    title="Failed",
+                    status_headline=None,
+                    text="Mis-Installed Applet Uninstalled, try uninstalling it again...",
+                    show_back_button=False,
+                )
         return None
 
     else:
