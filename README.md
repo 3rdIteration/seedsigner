@@ -7,6 +7,8 @@ That said, I think that saving secrets to a PIN protected Javacard addresses all
 
 All releases are now running SeedSigner-OS and are built via BuildRoot just like official builds, meaning that the MicroSD card can be removed for normal operation. (Though the MicroSD needs to be left in while building and flashing Java applets or flashing SeedSigner images to MicroSD) This also means that installation images are much smaller and are also reproducible. 
 
+[I have a video on my YouTube channel which covers the functionality below and also talks about the physical build side.](https://youtu.be/Rhs9z5uL7qg)
+
 ## Difference from Stock SeedSigner
 * Multiple Smartcard interface options… 
    - Standard USB CCID/PCSC readers
