@@ -185,14 +185,16 @@ class Settings(Singleton):
                 self.loading_screen = LoadingScreenThread(text="Disabling USB Ports")
                 self.loading_screen.start()
                 print("Disabling USB")
-                os.system(self.SU_COMMAND_PREFIX + "uhubctl -a 0")
+                for uhubindex in range(5): # Enough hubs for raspberry pi 4 with a spare 
+                    os.system(self.SU_COMMAND_PREFIX + "uhubctl -a 0 -l " + str(uhubindex))
                 self.loading_screen.stop()
 
             if "usb" in value and "usb" not in self._data[attr_name]:
                 self.loading_screen = LoadingScreenThread(text="Enabling USB Ports")
                 self.loading_screen.start()
                 print("Enabling USB")
-                os.system(self.SU_COMMAND_PREFIX + "uhubctl -a 1")
+                for uhubindex in range(5): # Enough hubs for raspberry pi 4 with a spare 
+                    os.system(self.SU_COMMAND_PREFIX + "uhubctl -a 1 -l " + str(uhubindex))
 
                 time.sleep(1)
                 if self.HOSTNAME == self.SEEDSIGNER_OS:
