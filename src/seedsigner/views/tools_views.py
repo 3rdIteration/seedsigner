@@ -760,7 +760,7 @@ class ToolsSmartcardMenuView(View):
         )
 
         if selected_menu_num == RET_CODE__BACK_BUTTON:
-            return Destination(BackStackView)
+            return Destination(MainMenuView)
 
         elif button_data[selected_menu_num] == self.CHANGE_PIN:
             return Destination(ToolsSatochipChangePinView)
@@ -878,7 +878,7 @@ class ToolsSeedkeeperView(View):
         )
 
         if selected_menu_num == RET_CODE__BACK_BUTTON:
-            return Destination(BackStackView)
+            return Destination(ToolsSmartcardMenuView)
 
         elif button_data[selected_menu_num] == self.VIEW_SECRETS:
             return Destination(ToolsSeedkeeperViewSecretsView)
@@ -1313,7 +1313,7 @@ class ToolsSatochipView(View):
         )
 
         if selected_menu_num == RET_CODE__BACK_BUTTON:
-            return Destination(BackStackView)
+            return Destination(ToolsSmartcardMenuView)
 
         elif button_data[selected_menu_num] == self.IMPORT_SEED:
             return Destination(ToolsSatochipImportSeedView)
