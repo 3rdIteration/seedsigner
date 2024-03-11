@@ -207,7 +207,7 @@ class SeedKeeperSelectView(View):
     def run(self):
         from seedsigner.gui.screens.screen import LoadingScreenThread
         try:
-            Satochip_Connector = seedkeeper_utils.init_satochip(self)
+            Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["seedkeeper"])
             
             if not Satochip_Connector:
                 return Destination(BackStackView)
@@ -456,7 +456,7 @@ class SeedLoadSeedKeeperPassphraseView(View):
     def run(self):
         from seedsigner.gui.screens.screen import LoadingScreenThread
         try:
-            Satochip_Connector = seedkeeper_utils.init_satochip(self)
+            Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["seedkeeper"])
             
             if not Satochip_Connector:
                 return Destination(BackStackView)
@@ -2308,7 +2308,7 @@ class SaveToSeedkeeperView(View):
     def run(self):
         from seedsigner.gui.screens.screen import LoadingScreenThread
         try:
-            Satochip_Connector = seedkeeper_utils.init_satochip(self)
+            Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["seedkeeper"])
 
             if not Satochip_Connector:
                 return Destination(BackStackView)
