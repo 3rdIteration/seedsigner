@@ -4,6 +4,8 @@ import platform
 
 from typing import List
 
+import RPi.GPIO as GPIO
+
 from seedsigner.models.settings_definition import SettingsConstants, SettingsDefinition
 from seedsigner.models.singleton import Singleton
 
@@ -185,16 +187,42 @@ class Settings(Singleton):
                 self.loading_screen = LoadingScreenThread(text="Disabling USB Ports")
                 self.loading_screen.start()
                 print("Disabling USB")
-                for uhubindex in range(5): # Enough hubs for raspberry pi 4 with a spare 
-                    os.system(self.SU_COMMAND_PREFIX + "uhubctl -a 0 -l " + str(uhubindex))
+ 
+                # Different Raspberry Pi models have different port config, see
+                # https://github.com/mvp/uhubctl?tab=readme-ov-file#raspberry-pi-b2b3b
+                if "Zero" in GPIO.RPI_INFO['TYPE']: # For RPi0, 02w
+                    os.system(self.SU_COMMAND_PREFIX + "uhubctl -l 1 -a 0")
+                    
+                elif "Pi 4" in GPIO.RPI_INFO['TYPE']: # For RPi4 
+                    os.system(self.SU_COMMAND_PREFIX + "uhubctl -l 2 -a 0")
+                    os.system(self.SU_COMMAND_PREFIX + "uhubctl -l 3 -a 0")
+                    os.system(self.SU_COMMAND_PREFIX + "uhubctl -l 1-1 -a 0")
+                
+                else:
+                    # For Raspberry Pi B+,2B,3B, 3B+
+                    os.system(self.SU_COMMAND_PREFIX + "uhubctl -l 1-1 -p 2 -a 0")
+                
                 self.loading_screen.stop()
 
             if "usb" in value and "usb" not in self._data[attr_name]:
                 self.loading_screen = LoadingScreenThread(text="Enabling USB Ports")
                 self.loading_screen.start()
                 print("Enabling USB")
-                for uhubindex in range(5): # Enough hubs for raspberry pi 4 with a spare 
-                    os.system(self.SU_COMMAND_PREFIX + "uhubctl -a 1 -l " + str(uhubindex))
+
+                # Different Raspberry Pi models have different port config, see
+                # https://github.com/mvp/uhubctl?tab=readme-ov-file#raspberry-pi-b2b3b
+                 
+                if "Zero" in GPIO.RPI_INFO['TYPE']: # For RPi0, 02w
+                    os.system(self.SU_COMMAND_PREFIX + "uhubctl -l 1 -a 1")
+                    
+                elif "Pi 4" in GPIO.RPI_INFO['TYPE']: # For RPi4 
+                    os.system(self.SU_COMMAND_PREFIX + "uhubctl -l 2 -a 1")
+                    os.system(self.SU_COMMAND_PREFIX + "uhubctl -l 3 -a 1")
+                    os.system(self.SU_COMMAND_PREFIX + "uhubctl -l 1-1 -a 1")
+                
+                else:
+                    # For Raspberry Pi B+,2B,3B, 3B+
+                    os.system(self.SU_COMMAND_PREFIX + "uhubctl -l 1-1 -p 2 -a 1")
 
                 time.sleep(1)
                 if self.HOSTNAME == self.SEEDSIGNER_OS:
