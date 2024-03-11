@@ -781,7 +781,7 @@ class ToolsSmartcardMenuView(View):
 class ToolsSatochipChangePinView(View):
     def run(self):
         
-        Satochip_Connector = seedkeeper_utils.init_satochip(self)
+        Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satochip", "seedkeeper"])
 
         if not Satochip_Connector:
             return Destination(BackStackView)
@@ -817,7 +817,7 @@ class ToolsSatochipChangePinView(View):
 class ToolsSatochipChangeLabelView(View):
     def run(self):
         
-        Satochip_Connector = seedkeeper_utils.init_satochip(self)
+        Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satochip", "seedkeeper"])
 
         if not Satochip_Connector:
             return Destination(BackStackView)
@@ -896,7 +896,7 @@ class ToolsSeedkeeperViewSecretsView(View):
     def run(self):
         from seedsigner.gui.screens.screen import LoadingScreenThread
         try:
-            Satochip_Connector = seedkeeper_utils.init_satochip(self)
+            Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["seedkeeper"])
             
             if not Satochip_Connector:
                 return Destination(BackStackView)
@@ -1029,7 +1029,7 @@ class ToolsSeedkeeperImportPasswordView(View):
         if secret_text == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
 
-        Satochip_Connector = seedkeeper_utils.init_satochip(self)
+        Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["seedkeeper"])
         if not Satochip_Connector:
             return Destination(BackStackView)
         
@@ -1071,7 +1071,7 @@ class ToolsSeedkeeperLoadDescriptorView(View):
         from seedsigner.gui.screens.screen import LoadingScreenThread
         from seedsigner.views.seed_views import MultisigWalletDescriptorView
         try:
-            Satochip_Connector = seedkeeper_utils.init_satochip(self)
+            Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["seedkeeper"])
             
             if not Satochip_Connector:
                 return Destination(BackStackView)
@@ -1210,7 +1210,7 @@ class ToolsSeedkeeperSaveDescriptorView(View):
             key_strings.append(("msig_desc_" + ret, descriptor_string))
             
             # Set up our connection to the card
-            Satochip_Connector = seedkeeper_utils.init_satochip(self)
+            Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["seedkeeper"])
 
             if not Satochip_Connector:
                 return Destination(BackStackView)
@@ -1328,7 +1328,7 @@ class ToolsSatochipImportSeedView(View):
 
     def run(self):
         from seedsigner.gui.screens.screen import LoadingScreenThread
-        Satochip_Connector = seedkeeper_utils.init_satochip(self)
+        Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satochip"])
 
         if not Satochip_Connector:
             return Destination(BackStackView)
@@ -1410,7 +1410,7 @@ class ToolsSatochipEnable2FAView(View):
         key = urandom(20)
         print("2FA Key:", binascii.hexlify(key))
 
-        Satochip_Connector = seedkeeper_utils.init_satochip(self)
+        Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satochip"])
 
         if not Satochip_Connector:
             return Destination(BackStackView)

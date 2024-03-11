@@ -10,7 +10,7 @@ import time
 from os import urandom
 import platform
 
-def init_satochip(parentObject):
+def init_satochip(parentObject, init_card_filter=None):
     from seedsigner.models.settings import Settings, SettingsConstants, SettingsDefinition
 
     # Spam connecting for 5 seconds to give the user time to insert the card
@@ -35,7 +35,8 @@ def init_satochip(parentObject):
 
             if parentObject.controller.Satochip_Connector is None:
                 print("No Working CardConnector, Connecting")
-                Satochip_Connector = CardConnector()
+                print("Card Filter:",init_card_filter)
+                Satochip_Connector = CardConnector(card_filter=init_card_filter)
                 
             time.sleep(1)  # give some time to initialize reader...
             status = Satochip_Connector.card_get_status()

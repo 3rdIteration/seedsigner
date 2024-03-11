@@ -178,7 +178,7 @@ class Settings(Singleton):
          # Special handling for enabling Smartcard readers
         if attr_name == SettingsConstants.SETTING__SMARTCARD_INTERFACES:
             import time
-            from seedsigner.gui.screens.screen import LoadingScreenThread
+            from seedsigner.gui.screens.screen import LoadingScreenThread, WarningScreen
             
             print("Smartcard Interface Changed")
 
@@ -235,6 +235,25 @@ class Settings(Singleton):
                     os.system("sudo service pcscd start")
 
                 self.loading_screen.stop()
+
+                if "Zero" in GPIO.RPI_INFO['TYPE'] or "Model A" in GPIO.RPI_INFO['TYPE']: # For RPi0, 02w or model A devices
+                    screen = WarningScreen(
+                        title="Notice",
+                        status_headline=None,
+                        text="Enabling USB ports on this device requires a device restart (Full power cycle)",
+                        show_back_button=False
+                    )
+                    screen.display()
+
+                if "Unknown" in GPIO.RPI_INFO['TYPE']: # For unknown RPi devices
+                    screen = WarningScreen(
+                        title="Notice",
+                        status_headline="Unable to detect RPi Model",
+                        text="Enabling USB ports on this device likely requires a restart (Full power cycle)",
+                        show_back_button=False
+                    )
+                    screen.display()
+
 
             # Execution order matters here if swithing from Phoenix to PN352, basically we want to disable phoenix first and then enable PN532
             if "phoenix" in value and "phoenix" not in self._data[attr_name]:
