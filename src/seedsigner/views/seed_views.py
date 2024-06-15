@@ -79,6 +79,7 @@ class SeedSelectSeedView(View):
     """
     SCAN_SEED = ("Scan a seed", SeedSignerIconConstants.QRCODE)
     TYPE_12WORD = ("Enter 12-word seed", FontAwesomeIconConstants.KEYBOARD)
+    TYPE_18WORD = ("Enter 18-word seed", FontAwesomeIconConstants.KEYBOARD)
     TYPE_24WORD = ("Enter 24-word seed", FontAwesomeIconConstants.KEYBOARD)
 
     def __init__(self, flow: str = Controller.FLOW__VERIFY_SINGLESIG_ADDR):
@@ -117,6 +118,7 @@ class SeedSelectSeedView(View):
         
         button_data.append(self.SCAN_SEED)
         button_data.append(self.TYPE_12WORD)
+        button_data.append(self.TYPE_18WORD)
         button_data.append(self.TYPE_24WORD)
 
         selected_menu_num = self.run_screen(
@@ -150,6 +152,8 @@ class SeedSelectSeedView(View):
             from seedsigner.views.seed_views import SeedMnemonicEntryView
             if button_data[selected_menu_num] == self.TYPE_12WORD:
                 self.controller.storage.init_pending_mnemonic(num_words=12)
+            elif button_data[selected_menu_num] == self.TYPE_18WORD:
+                self.controller.storage.init_pending_mnemonic(num_words=18)
             else:
                 self.controller.storage.init_pending_mnemonic(num_words=24)
             return Destination(SeedMnemonicEntryView)
@@ -162,6 +166,7 @@ class SeedSelectSeedView(View):
 class LoadSeedView(View):
     SEED_QR = (" Scan a SeedQR", SeedSignerIconConstants.QRCODE)
     TYPE_12WORD = ("Enter 12-word seed", FontAwesomeIconConstants.KEYBOARD)
+    TYPE_18WORD = ("Enter 18-word seed", FontAwesomeIconConstants.KEYBOARD)
     TYPE_24WORD = ("Enter 24-word seed", FontAwesomeIconConstants.KEYBOARD)
     IMPORT_SEEDKEEPER = ("From SeedKeeper", FontAwesomeIconConstants.LOCK)
     CREATE = (" Create a seed", SeedSignerIconConstants.PLUS)
@@ -170,6 +175,7 @@ class LoadSeedView(View):
         button_data = [
             self.SEED_QR,
             self.TYPE_12WORD,
+            self.TYPE_18WORD,
             self.TYPE_24WORD,
             self.IMPORT_SEEDKEEPER,
             self.CREATE,
@@ -190,6 +196,10 @@ class LoadSeedView(View):
 
         elif button_data[selected_menu_num] == self.TYPE_12WORD:
             self.controller.storage.init_pending_mnemonic(num_words=12)
+            return Destination(SeedMnemonicEntryView)
+        
+        elif button_data[selected_menu_num] == self.TYPE_18WORD:
+            self.controller.storage.init_pending_mnemonic(num_words=18)
             return Destination(SeedMnemonicEntryView)
 
         elif button_data[selected_menu_num] == self.TYPE_24WORD:
@@ -1234,9 +1244,10 @@ class SeedBIP85ApplicationModeView(View):
     def run(self):
         # TODO: Future enhancement to display WIF (HD-SEED) and XPRV (Bip32)?
         WORDS_12 = "12 Words"
+        WORDS_18 = "18 Words"
         WORDS_24 = "24 Words"
 
-        button_data = [WORDS_12, WORDS_24]
+        button_data = [WORDS_12, WORDS_18, WORDS_24]
 
         selected_menu_num = ButtonListScreen(
             title="BIP-85 Num Words",
@@ -1248,6 +1259,8 @@ class SeedBIP85ApplicationModeView(View):
 
         if button_data[selected_menu_num] == WORDS_12:
             self.num_words = 12
+        elif button_data[selected_menu_num] == WORDS_18:
+            self.num_words = 18
         elif button_data[selected_menu_num] == WORDS_24:
             self.num_words = 24
 
