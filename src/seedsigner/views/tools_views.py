@@ -466,6 +466,7 @@ class ToolsAddressExplorerSelectSourceView(View):
     SCAN_SEED = ("Scan a seed", SeedSignerIconConstants.QRCODE)
     SCAN_DESCRIPTOR = ("Scan wallet descriptor", SeedSignerIconConstants.QRCODE)
     TYPE_12WORD = ("Enter 12-word seed", FontAwesomeIconConstants.KEYBOARD)
+    TYPE_18WORD = ("Enter 18-word seed", FontAwesomeIconConstants.KEYBOARD)
     TYPE_24WORD = ("Enter 24-word seed", FontAwesomeIconConstants.KEYBOARD)
     LOADED_DESCRIPTOR = "Loaded Multisig Descriptor"
 
@@ -480,7 +481,7 @@ class ToolsAddressExplorerSelectSourceView(View):
         if self.controller.multisig_wallet_descriptor:
             button_data.append(self.LOADED_DESCRIPTOR)
 
-        button_data = button_data + [self.SCAN_SEED, self.SCAN_DESCRIPTOR, self.TYPE_12WORD, self.TYPE_24WORD]
+        button_data = button_data + [self.SCAN_SEED, self.SCAN_DESCRIPTOR, self.TYPE_12WORD, self.TYPE_18WORD, self.TYPE_24WORD]
         
         selected_menu_num = self.run_screen(
             ButtonListScreen,
@@ -520,10 +521,12 @@ class ToolsAddressExplorerSelectSourceView(View):
             from seedsigner.views.scan_views import ScanWalletDescriptorView
             return Destination(ScanWalletDescriptorView)
 
-        elif button_data[selected_menu_num] in [self.TYPE_12WORD, self.TYPE_24WORD]:
+        elif button_data[selected_menu_num] in [self.TYPE_12WORD, self.TYPE_18WORD, self.TYPE_24WORD]:
             from seedsigner.views.seed_views import SeedMnemonicEntryView
             if button_data[selected_menu_num] == self.TYPE_12WORD:
                 self.controller.storage.init_pending_mnemonic(num_words=12)
+            elif button_data[selected_menu_num] == self.TYPE_18WORD:
+                self.controller.storage.init_pending_mnemonic(num_words=18)
             else:
                 self.controller.storage.init_pending_mnemonic(num_words=24)
             return Destination(SeedMnemonicEntryView)

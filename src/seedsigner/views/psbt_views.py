@@ -144,6 +144,8 @@ class PSBTOverviewView(View):
             self.controller.psbt_seed = None
             return Destination(BackStackView)
 
+        print(psbt_parser)
+
         # expecting p2sh (legacy multisig) and p2pkh to have no policy set
         # skip change warning and psbt math view
         if psbt_parser.policy == None:
