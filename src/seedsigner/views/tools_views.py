@@ -667,14 +667,12 @@ class ToolsAddressExplorerAddressListView(View):
                 
                 elif "wallet_descriptor" in data:
                     descriptor: Descriptor = data["wallet_descriptor"]
-                    if descriptor.is_basic_multisig:
+                    if True:
                         for i in range(self.start_index, self.start_index + addrs_per_screen):
                             address = embit_utils.get_multisig_address(descriptor=descriptor, index=i, is_change=self.is_change, embit_network=data["embit_network"])
                             addresses.append(address)
                             data[addr_storage_key].append(address)
 
-                    else:
-                        raise Exception("Single sig descriptors not yet supported")
             finally:
                 # Everything is set. Stop the loading screen
                 self.loading_screen.stop()
