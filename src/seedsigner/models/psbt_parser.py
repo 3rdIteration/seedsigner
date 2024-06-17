@@ -45,6 +45,7 @@ class PSBTParser():
 
     @property
     def is_multisig(self):
+        print(self.policy)
         """
             Multisig psbts will have "m" and "n" defined in policy
         """
@@ -114,6 +115,7 @@ class PSBTParser():
         self.destination_amounts = []
         for i, out in enumerate(self.psbt.outputs):
             out_policy = PSBTParser._get_policy(out, self.psbt.tx.vout[i].script_pubkey, self.psbt.xpubs)
+            print(out_policy)
             is_change = False
 
             # if policy is the same - probably change
@@ -127,6 +129,9 @@ class PSBTParser():
 
                 # empty script by default
                 sc = script.Script(b"")
+                # if older multisig, just use existing script
+                if self.policy["type"] == "p2sh":
+                    sc = script.p2sh(out.redeem_script)
                 # multisig, we know witness script
                 if self.policy["type"] == "p2wsh":
                     sc = script.p2wsh(out.witness_script)
@@ -140,6 +145,8 @@ class PSBTParser():
                     if len(out.bip32_derivations.values()) > 0:
                         der = list(out.bip32_derivations.values())[0].derivation
                         my_pubkey = self.root.derive(der)
+                    if self.policy["type"] == "p2pkh" and my_pubkey is not None:
+                        sc = script.p2pkh(my_pubkey)
                     if self.policy["type"] == "p2wpkh" and my_pubkey is not None:
                         sc = script.p2wpkh(my_pubkey)
                     elif self.policy["type"] == "p2sh-p2wpkh" and my_pubkey is not None:
@@ -245,8 +252,18 @@ class PSBTParser():
             ):
                 script_type = "p2sh-p2wpkh"
         policy = {"type": script_type}
+        
         # expected multisig
-        if "p2wsh" in script_type and scope.witness_script is not None:
+        if "p2sh" in script_type:
+            m, n, pubkeys = PSBTParser._parse_multisig(scope.redeem_script)
+            # check pubkeys are derived from cosigners
+            try:
+                cosigners = PSBTParser._get_cosigners(pubkeys, scope.bip32_derivations, xpubs)
+                policy.update({"m": m, "n": n, "cosigners": cosigners})
+            except:
+                policy.update({"m": m, "n": n})
+
+        elif "p2wsh" in script_type and scope.witness_script is not None:
             m, n, pubkeys = PSBTParser._parse_multisig(scope.witness_script)
             # check pubkeys are derived from cosigners
             try:
