@@ -42,10 +42,12 @@ def get_standard_derivation_path(network: str = SettingsConstants.MAINNET, walle
             raise Exception("Unexpected script type")
 
     elif wallet_type == SettingsConstants.MULTISIG:
-        if script_type == SettingsConstants.NATIVE_SEGWIT:
-            return f"m/48'/{network_path}/0'/2'"
+        if script_type == SettingsConstants.LEGACY_P2PKH:
+            return f"m/45'" #BIP45
         elif script_type == SettingsConstants.NESTED_SEGWIT:
             return f"m/48'/{network_path}/0'/1'"
+        elif script_type == SettingsConstants.NATIVE_SEGWIT:
+            return f"m/48'/{network_path}/0'/2'"
         elif script_type == SettingsConstants.TAPROOT:
             raise Exception("Taproot multisig/musig not yet supported")
         else:

@@ -341,6 +341,7 @@ class PSBTChangeDetailsView(View):
 
         is_change_addr_verified = False
         if psbt_parser.is_multisig:
+            print("isMultisig")
             # if the known-good multisig descriptor is already onboard:
             if self.controller.multisig_wallet_descriptor:
                 is_change_addr_verified = psbt_parser.verify_multisig_output(self.controller.multisig_wallet_descriptor, change_num=self.change_address_num)
@@ -352,6 +353,7 @@ class PSBTChangeDetailsView(View):
 
         else:
             # Single sig
+            print("isSinglesig")
             try:
                 if is_change_derivation_path:
                     loading_screen_text = "Verifying Change..."

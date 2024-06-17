@@ -129,9 +129,9 @@ class SettingsConstants:
     TAPROOT = "tr"
     CUSTOM_DERIVATION = "cus"
     ALL_SCRIPT_TYPES = [
-        (LEGACY_P2PKH, "Legacy P2PKH"),
         (NATIVE_SEGWIT, "Native Segwit"),
         (NESTED_SEGWIT, "Nested Segwit (legacy)"),
+        (LEGACY_P2PKH, "Legacy P2PKH"),
         (TAPROOT, "Taproot"),
         (CUSTOM_DERIVATION, "Custom Derivation"),
     ]
