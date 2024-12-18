@@ -1,0 +1,36 @@
+{
+    "language": "en",
+    "wordlist_language": "en",
+    "persistent_settings": "E",
+    "coordinators": [
+        "bw",
+        "nun",
+        "spa",
+        "spd"
+    ],
+    "denomination": "thr",
+    "network": "M",
+    "qr_density": "M",
+    "xpub_export": "E",
+    "sig_types": [
+        "ms",
+        "ss"
+    ],
+    "script_types": [
+        "nat",
+        "nes",
+        "tr"
+    ],
+    "xpub_details": "E",
+    "passphrase": "E",
+    "camera_rotation": 270,
+    "compact_seedqr": "E",
+    "bip85_child_seeds": "D",
+    "electrum_seeds": "D",
+    "message_signing": "D",
+    "privacy_warnings": "E",
+    "dire_warnings": "E",
+    "qr_brightness_tips": "E",
+    "partner_logos": "E",
+    "qr_background_color": 62
+}

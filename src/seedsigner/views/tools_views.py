@@ -83,7 +83,7 @@ class ToolsImageEntropyFinalImageView(View):
             from seedsigner.hardware.camera import Camera
             # Take the final full-res image
             camera = Camera.get_instance()
-            camera.start_single_frame_mode(resolution=(720, 480))
+            camera.start_single_frame_mode(resolution=(2304,1296))
             time.sleep(0.25)
             self.controller.image_entropy_final_image = camera.capture_frame()
             camera.stop_single_frame_mode()
@@ -94,8 +94,6 @@ class ToolsImageEntropyFinalImageView(View):
         display_version = autocontrast(
             self.controller.image_entropy_final_image,
             cutoff=2
-        ).crop(
-            (120, 0, 600, 480)
         ).resize(
             (self.canvas_width, self.canvas_height), Image.Resampling.BICUBIC
         )

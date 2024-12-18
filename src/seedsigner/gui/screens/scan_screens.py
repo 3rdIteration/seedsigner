@@ -42,8 +42,8 @@ class ScanScreen(BaseScreen):
     """
     decoder: DecodeQR = None
     instructions_text: str = None
-    resolution: tuple[int,int] = (480, 480)
-    framerate: int = 6  # TODO: alternate optimization for Pi Zero 2W?
+    resolution: tuple[int,int] = (240, 240)
+    framerate: int = 2  # TODO: alternate optimization for Pi Zero 2W?
     render_rect: tuple[int,int,int,int] = None
 
     FRAME__ADDED_PART = 1
@@ -288,4 +288,3 @@ class ScanScreen(BaseScreen):
                 if self.hw_inputs.check_for_low(HardwareButtonsConstants.KEY_RIGHT) or self.hw_inputs.check_for_low(HardwareButtonsConstants.KEY_LEFT):
                     self.camera.stop_video_stream_mode()
                     break
-
