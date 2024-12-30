@@ -7,7 +7,7 @@
 * [Project Summary](#project-summary)
 * [Shopping List](#shopping-list)
 * [Software Installation](#software-installation)
-  * [Verifying the Software](#verifying-the-software)
+  * [Verifying your download](#verifying-your-download)
 * [Enclosure Designs](#enclosure-designs)
 * [SeedQR Printable Templates](#seedqr-printable-templates)
 * [Build from Source](#build-from-source)
@@ -21,7 +21,7 @@
 [![CI](https://github.com/SeedSigner/seedsigner/actions/workflows/tests.yml/badge.svg)](https://github.com/SeedSigner/seedsigner/actions/workflows/tests.yml)
 [![Build](https://github.com/SeedSigner/seedsigner/actions/workflows/build.yml/badge.svg)](https://github.com/SeedSigner/seedsigner/actions/workflows/build.yml)
 
-The goal of SeedSigner is to lower the cost and complexity of Bitcoin multi-signature wallet use. To accomplish this goal, SeedSigner offers anyone the opportunity to build a verifiably air-gapped, stateless Bitcoin signing device using inexpensive, publicly available hardware components (usually < $50). SeedSigner helps users save with Bitcoin by assisting with trustless private key generation and multisignature (aka "multisig") wallet setup, and helps users transact with Bitcoin via a secure, air-gapped QR-exchange signing model.
+The goal of SeedSigner is to lower the cost and complexity of Bitcoin multisignature wallet use. To accomplish this goal, SeedSigner offers anyone the opportunity to build a verifiably air-gapped, stateless Bitcoin signing device using inexpensive, publicly available hardware components (usually < $50). SeedSigner helps users save with Bitcoin by assisting with trustless private key generation and multisignature (aka "multisig") wallet setup, and helps users transact with Bitcoin via a secure, air-gapped QR-exchange signing model.
 
 Additional information about the project can be found at [SeedSigner.com](https://seedsigner.com).
 
@@ -30,40 +30,55 @@ You can follow [@SeedSigner](https://twitter.com/SeedSigner) on Twitter for the 
 If you have specific questions about the project, our [Telegram Group](https://t.me/joinchat/GHNuc_nhNQjLPWsS) is a great place to ask them.
 
 ### Feature Highlights:
-* Calculate the final word (aka checksum) of a 12- or 24-word BIP39 seed phrase
-* Create a 24-word BIP39 seed phrase with 99 dice rolls or a 12-word with 50 rolls [(Verifying dice seed generation)](docs/dice_verification.md)
-* Create a 12- or 24-word BIP39 seed phrase via image entropy from the onboard camera 
-* Temporarily stores seeds in memory while the device is powered; all memory is wiped when power is removed
-* SD card removable after boot to ensure no secret data can be written to it
-* Guided interface to manually transcribe a seed to the SeedQR format for instant seed loading [(demo video here)](https://youtu.be/c1-PqTNx1vc)
-* BIP39 passphrase (aka "word 25") support
-* Native Segwit Multisig XPUB generation
-* PSBT-compliant; scan and parse transaction data from animated QR codes
-* Sign transactions & transfer XPUB data using animated QR codes [(demo video here)](https://youtu.be/LPqvdQ2gSzs)
-* Live preview during image entropy seed generation and QR scanning UX
-* Optimized seed word entry interface
-* Support for Bitcoin Mainnet & Testnet
-* Support for custom user-defined derivation paths
-* Support for loading Electrum Segwit seed phrases with feature limitations: [Electrum support info](docs/electrum.md)
-* On-demand receive address verification
-* Address Explorer for single sig and multisig wallets
-* User-configurable QR code display density
-* Responsive, event-driven user interface
+* Stateless, air-gapped operation:
+  * Temporarily stores seeds in memory while the device is powered; all memory is wiped when power is removed.
+  * SD card removable after boot to ensure no secret data can be written to it.
+  * No wifi or Bluetooth hardware onboard.
+  * Can only receive data via reading QR codes with its camera.
+  * Can only send data by displaying QR codes on its screen.
 
-### Considerations:
-* Built for compatibility with Specter Desktop, Sparrow, and BlueWallet Vaults
-* Device takes up to 60 seconds to boot before menu appears (be patient!)
-* Always test your setup before transferring larger amounts of bitcoin (try Testnet first!)
-* Taproot not quite yet supported
-* Slightly rotating the screen clockwise or counter-clockwise should resolve lighting/glare issues
-* If you think SeedSigner adds value to the Bitcoin ecosystem, please help us spread the word! (tweets, pics, videos, etc.)
+* Trustless, auditable:
+  * Completely FOSS code, MIT license
+  * Reproducible builds
+  * Created and maintained by volunteers. There is no corporation. No profit motive.
 
-### Planned Upcoming Improvements / Functionality:
-* Multi-language support
-* Significantly faster boot time
-* Reproducible builds
-* Port to MicroPython to broaden the range of compatible hardware to include low-cost microcontrollers
-* Other optimizations based on user feedback!
+* Creating and handling seeds:
+  * Create a seed phrase by picking BIP39 words, calculates the final word (aka checksum).
+  * Create a seed phrase [via dice rolls](docs/dice_verification.md).
+  * Create a seed phrase via image entropy from the onboard camera.
+  * Guided interface to manually transcribe a seed to the SeedQR format for instant seed loading [(video)](https://youtu.be/c1-PqTNx1vc).
+  * BIP39 passphrase (aka 13th or 25th word) support.
+  * Import any existing seed phrase via an optimized seed word entry interface.
+  * Partial support for Electrum Segwit seed phrases [(info)](docs/electrum.md).
+
+* Wallet setup and transaction signing
+  * Script types: Taproot, native segwit, nested segwit, legacy (p2pkh).
+  * Single sig and multisig xpub export.
+  * Support for user-defined custom derivation paths.
+  * In-depth transaction (aka PSBT) review flow before signing.
+  * Verify the PSBT's single sig or multisig change outputs or self-transfer outputs.
+  * Mainnet, testnet, and regtest.
+
+* Additional utilities
+  * [SettingsQR](https://github.com/SeedSigner/seedsigner-settings-generator) to instantly reconfigure a SeedSigner for beginners, advanced users, or tailored to your preferences.
+  * Scan a software wallet's receive or change address to verify that it's correct.
+  * Address Explorer for single sig and multisig wallets.
+  * Message signing to prove address ownership.
+  * BIP85 child seed generation.
+
+* Compatible with:
+  * Sparrow
+  * Nunchuk
+  * Keeper
+  * BlueWallet
+  * Specter Desktop
+  * Any bitcoin wallet software that supports QR codes
+
+* Supported languages:
+  * English
+  * Español
+  * Many more coming soon!
+
 
 ---------------
 
@@ -71,14 +86,17 @@ If you have specific questions about the project, our [Telegram Group](https://t
 
 To build a SeedSigner, you will need:
 
-* Raspberry Pi Zero (preferably version 1.3 with no WiFi/Bluetooth capability, but any Raspberry Pi 2/3/4 or Zero model will work, Raspberry Pi 1 devices will require a hardware modification to the Waveshare LCD Hat, as per the [instructions here](./docs/legacy_hardware.md))
-* Waveshare 1.3" 240x240 pxl LCD (correct pixel count is important, more info at https://www.waveshare.com/wiki/1.3inch_LCD_HAT)
-* Pi Zero-compatible camera (tested to work with the Aokin / AuviPal 5MP 1080p with OV5647 Sensor)
+* Raspberry Pi Zero
+  * Preferably version 1.3 which has no WiFi/Bluetooth capability, but any Raspberry Pi 2/3/4 or Zero "W"/"2W" model will work.
+* Waveshare 1.3" 240x240 LCD (MUST be the 240x240 version!) https://www.waveshare.com/wiki/1.3inch_LCD_HAT.
+* Pi Zero-compatible camera (tested to work with the Aokin / AuviPal 5MP 1080p with OV5647 Sensor).
 
 Notes:
-* You will need to solder the 40 GPIO pins (20 pins per row) to the Raspberry Pi Zero board. If you don't want to solder, purchase "GPIO Hammer Headers" for a solderless experience.
-* Other cameras with the above sensor module should work, but may not fit in the Orange Pill enclosure
-* Choose the Waveshare screen carefully; make sure to purchase the model that has a resolution of 240x240 pixels
+* You may need to solder the 40 GPIO pins (20 pins per row) to the Raspberry Pi Zero board. If you don't want to solder, most stores offer the board "with headers" already soldered on.
+* The Pi Zero "W" or "2W" is often easier to find but has wifi/Bluetooth hardware. You can still use these boards and can optionally [disable the wifi/Bluetooth hardware](https://github.com/DesobedienteTecnologico/rpi_disable_wifi_and_bt_by_hardware).
+* Other cameras with the above sensor module should work, but may not fit in the Orange Pill enclosure.
+* Choose the Waveshare screen carefully; they make a number of different boards that look very similar but ARE NOT COMPATIBLE! Make sure you purchase the model that has a resolution of 240x240 pixels.
+* Raspberry Pi 1 is also compatible, but will require a [hardware modification to the Waveshare LCD Hat](./docs/legacy_hardware.md).
 
 ---------------
 
@@ -119,13 +137,13 @@ Once the files have all finished downloading, follow the steps below to verify t
 [Our previous software versions are available here](https://github.com/SeedSigner/seedsigner/releases). Choose a specific version and then expand the *Assets* sub-heading to display the .img file binary and also the 2 associated signature files. **Note:** The prior version files will have lower numbers than the scripts and examples provided in this document, but the naming format will be the same, so you can edit them as required for signature verification etc.   
 
 
-## Verifying that the downloaded files are authentic (optional but highly recommended!)
+## Verifying your download
 
-You can quickly verify that the software you just downloaded is both authentic and unaltered, by following these instructions.
-We assume you are running the commands from a computer where both [GPG](https://gnupg.org/download/index.html) and [shasum](https://command-not-found.com/shasum) are already installed, and that you also know [how to navigate on a terminal](https://terminalcheatsheet.com/guides/navigate-terminal). 
+You can quickly verify that the software you just downloaded is both authentic and unaltered by following these instructions.
+We assume you are running the commands from a computer where both [GPG](https://gnupg.org/download/index.html) and [shasum](https://command-not-found.com/shasum) are already installed and that you also know [how to navigate on a terminal](https://terminalcheatsheet.com/guides/navigate-terminal). 
 
 > You must run the following verification before opening or mounting the .img file.
-> Some operating systems modify the file on mount causing verification to fail.
+> Some operating systems modify the file on mount, causing verification to fail.
 
 ### Step 1. Verify that the signature (.sig) file is genuine:
 

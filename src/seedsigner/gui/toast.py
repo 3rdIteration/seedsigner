@@ -1,6 +1,8 @@
 import logging
 import time
 from dataclasses import dataclass
+from gettext import gettext as _
+
 from seedsigner.gui.components import BaseComponent, GUIConstants, Icon, SeedSignerIconConstants, TextArea
 from seedsigner.models.threads import BaseThread
 
@@ -187,21 +189,26 @@ class BaseToastOverlayManagerThread(BaseThread):
 
 
 class RemoveSDCardToastManagerThread(BaseToastOverlayManagerThread):
-    def __init__(self, activation_delay=3):
-        # Note: activation_delay is configurable so the screenshot generator can get the
-        # toast to immediately render.
+    def __init__(self, activation_delay: int = 3, duration: int = 1e6):
+        """
+            * activation_delay: configurable so the screenshot generator can get the
+                toast to immediately render.
+            * duration: default value is essentially forever. Overrideable for the
+                screenshot generator.
+        """
         super().__init__(
-            activation_delay=activation_delay,  # seconds
-            duration=1e6,                       # seconds ("forever")
+            activation_delay=activation_delay,
+            duration=duration,
         )
 
 
     def instantiate_toast(self) -> ToastOverlay:
+        body_font_size = GUIConstants.get_body_font_size()
         return ToastOverlay(
             icon_name=SeedSignerIconConstants.MICROSD,
-            label_text="You can remove\nthe SD card now",
-            font_size=GUIConstants.BODY_FONT_SIZE,
-            height=GUIConstants.BODY_FONT_SIZE * 2 + GUIConstants.BODY_LINE_SPACING + GUIConstants.EDGE_PADDING,
+            label_text=_("You can remove\nthe SD card now"),
+            font_size=body_font_size,
+            height=body_font_size * 2 + GUIConstants.BODY_LINE_SPACING + GUIConstants.EDGE_PADDING,
         )
 
 
@@ -219,7 +226,7 @@ class SDCardStateChangeToastManagerThread(BaseToastOverlayManagerThread):
         from seedsigner.hardware.microsd import MicroSD
         if action not in [MicroSD.ACTION__INSERTED, MicroSD.ACTION__REMOVED]:
             raise Exception(f"Invalid MicroSD action: {action}")
-        self.message = "SD card removed" if action == MicroSD.ACTION__REMOVED else "SD card inserted"
+        self.message = _("SD card removed") if action == MicroSD.ACTION__REMOVED else _("SD card inserted")
 
         super().__init__(*args, **kwargs)
 
