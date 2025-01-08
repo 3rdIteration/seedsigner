@@ -1024,23 +1024,14 @@ class ToolsSeedkeeperViewSecretsView(View):
 
                 entropy_bytes = secret_raw_bytes[offset:(offset+entropy_size)]
                 offset+=entropy_size
-                try:
-                    bip39_mnemonic = self.entropy_to_mnemonic(entropy_bytes, wordlist)
 
-                except Exception as ex:
-                    print(f"Error during entropy conversion: {ex}")
-                    bip39_mnemonic = f"failed to convert entropy: {entropy_bytes.hex()}"
-
+                bip39_mnemonic = self.entropy_to_mnemonic(entropy_bytes, wordlist)
                 passphrase_size= secret_raw_bytes[offset]
                 offset+=1
 
                 passphrase_bytes= secret_raw_bytes[offset: (offset+passphrase_size)]
                 offset+=passphrase_size
-                try:
-                    passphrase = passphrase_bytes.decode("utf-8")
-                except Exception as ex:
-                    print(f"Error during passphrase decoding: {ex}")
-                    passphrase = f"failed to decode passphrase bytes: {passphrase_bytes.hex()}"
+                passphrase = passphrase_bytes.decode("utf-8")
 
                 secret_dict['secret']= f'BIP39 mnemonic: "{bip39_mnemonic}" \nPassphrase: "{passphrase}"'  
 
