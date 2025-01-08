@@ -3,6 +3,7 @@ import hashlib
 import os
 import time
 import platform
+import binascii
 
 from embit.descriptor import Descriptor
 from embit.descriptor.checksum import checksum
@@ -27,7 +28,7 @@ from seedsigner.helpers import seedkeeper_utils
 from seedsigner.gui.screens import (RET_CODE__BACK_BUTTON, ButtonListScreen,
     WarningScreen, DireWarningScreen, seed_screens, LargeIconStatusScreen)
 
-from pysatochip.JCconstants import SEEDKEEPER_DIC_TYPE, SEEDKEEPER_DIC_ORIGIN, SEEDKEEPER_DIC_EXPORT_RIGHTS
+from pysatochip.JCconstants import SEEDKEEPER_DIC_TYPE, SEEDKEEPER_DIC_ORIGIN, SEEDKEEPER_DIC_EXPORT_RIGHTS, BIP39_WORDLIST_DIC
 from binascii import unhexlify, hexlify
 
 class ToolsMenuView(View):
@@ -893,6 +894,16 @@ class ToolsSeedkeeperView(View):
             return Destination(ToolsSeedkeeperSaveDescriptorView)
 
 class ToolsSeedkeeperViewSecretsView(View):
+
+    def entropy_to_mnemonic(self, entropy_bytes, wordlist):
+        from mnemonic import Mnemonic
+        print(f"Worldlist: {wordlist}")
+
+        mnemonic_obj = Mnemonic(wordlist)
+        mnemonic = mnemonic_obj.to_mnemonic(entropy_bytes)
+
+        return mnemonic # str
+
     def run(self):
         from seedsigner.gui.screens.screen import LoadingScreenThread
         try:
@@ -913,13 +924,22 @@ class ToolsSeedkeeperViewSecretsView(View):
             for header in headers:
                 sid = header['id']
                 stype = SEEDKEEPER_DIC_TYPE.get(header['type'], hex(header['type']))  # hex(header['type'])
+                subtype = header['subtype']
                 label = stype
                 if stype == "Password":
                     label = "Pass:" + header['label']
-                elif stype == "BIP39 mnemonic":
+                elif stype == "BIP39 mnemonic": # Older Seedkeeper v1 BIP39 seeds
+                    label = "Seed:" + header['label']
+                elif stype == 'Masterseed' and subtype==0x01: # Newer SeedKeeper V2 Seeds
                     label = "Seed:" + header['label']
                 elif stype == "2FA secret":
                     label = "2FA:" + header['label']
+                elif stype == "Descriptor":
+                    label = "Descriptor:" + header['label']
+                elif stype == "Data":
+                    label = "Data:" + header['label']
+                else: 
+                    label = header['label']
                 origin = SEEDKEEPER_DIC_ORIGIN.get(header['origin'], hex(header['origin']))  # hex(header['origin'])
                 export_rights = SEEDKEEPER_DIC_EXPORT_RIGHTS.get(header['export_rights'],
                                                                  hex(header[
@@ -975,8 +995,86 @@ class ToolsSeedkeeperViewSecretsView(View):
 
                 secret_dict['secret'] = "Mnemonic:" + secret_mnemonic + " Passphrase:" + secret_passphrase
 
+            #elif stype == 'BIP39 mnemonic v2':
+            elif stype == 'Masterseed' and subtype==0x01:
+
+                # this format is backward compatible with Masterseed (BIP39 info appended after Masterseed)
+                # mnemonic in compressed format using entropy (16-32 bytes)
+                secret_raw_hex = secret_dict['secret']
+                print(f"secret_raw_hex: {secret_raw_hex}")
+                secret_raw_bytes = bytes.fromhex(secret_raw_hex)
+                
+                offset = 0
+                masterseed_size = secret_raw_bytes[offset]
+                offset+=1
+
+                masterseed_bytes= secret_raw_bytes[offset: (offset+masterseed_size)]
+                offset+=masterseed_size
+                masterseed_hex= masterseed_bytes.hex()
+
+                wordlist_byte = secret_raw_bytes[offset]
+                offset+=1
+                wordlist = BIP39_WORDLIST_DIC.get(wordlist_byte)
+                if wordlist == None:
+                    print(f"Error: wordlist byte {wordlist_byte} unsupported!")
+                    exit()
+                
+                entropy_size = secret_raw_bytes[offset]
+                offset+=1
+
+                entropy_bytes = secret_raw_bytes[offset:(offset+entropy_size)]
+                offset+=entropy_size
+                try:
+                    bip39_mnemonic = self.entropy_to_mnemonic(entropy_bytes, wordlist)
+
+                except Exception as ex:
+                    print(f"Error during entropy conversion: {ex}")
+                    bip39_mnemonic = f"failed to convert entropy: {entropy_bytes.hex()}"
+
+                passphrase_size= secret_raw_bytes[offset]
+                offset+=1
+
+                passphrase_bytes= secret_raw_bytes[offset: (offset+passphrase_size)]
+                offset+=passphrase_size
+                try:
+                    passphrase = passphrase_bytes.decode("utf-8")
+                except Exception as ex:
+                    print(f"Error during passphrase decoding: {ex}")
+                    passphrase = f"failed to decode passphrase bytes: {passphrase_bytes.hex()}"
+
+                secret_dict['secret']= f'BIP39 mnemonic: "{bip39_mnemonic}" \nPassphrase: "{passphrase}"'  
+
             elif stype == 'Password':
-                secret_dict['secret'] = unhexlify(secret_dict['secret'])[1:].decode()
+                
+                password_length = secret_dict['secret_list'][0]
+                try:
+                    login_length = secret_dict['secret_list'][password_length + 1]
+                    url_length = secret_dict['secret_list'][password_length + login_length + 2]
+                except IndexError: # Older Seedkeeper software didn't include these optional fields
+                    login_length = 0
+                    url_length = 0
+
+                secret_string = ""
+
+                # Password is always present, so no need to test for this
+                password_text = binascii.unhexlify(secret_dict['secret'])[1:password_length+1].decode()
+                secret_string += "\nPassword:" + "\"" + password_text + "\""
+
+                if login_length > 0:
+                    login_text = binascii.unhexlify(secret_dict['secret'])[
+                                    password_length + 2: password_length + login_length + 2].decode()
+                    secret_string += "\nLogin:" + "\"" + login_text + "\""
+
+                if url_length > 0:
+                    url_text = binascii.unhexlify(secret_dict['secret'])[-url_length:].decode()
+                    secret_string += "\nURL:" + "\"" + url_text + "\""
+
+                secret_dict['secret'] = secret_string
+
+
+            elif stype in ('Descriptor', 'Data'):
+                secret_dict['secret'] = unhexlify(secret_dict['secret'])[2:].decode()
+                
             else:
                 secret_dict['secret'] =  secret_dict['secret'][2:]
 

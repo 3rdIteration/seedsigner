@@ -1,6 +1,7 @@
 import embit
 import random
 import time
+import binascii
 
 from binascii import hexlify
 from embit import bip39
@@ -25,7 +26,7 @@ from seedsigner.models.settings_definition import SettingsDefinition
 from seedsigner.models.threads import BaseThread, ThreadsafeCounter
 from seedsigner.views.view import NotYetImplementedView, OptionDisabledView, View, Destination, BackStackView, MainMenuView
 
-from pysatochip.JCconstants import SEEDKEEPER_DIC_TYPE, SEEDKEEPER_DIC_ORIGIN, SEEDKEEPER_DIC_EXPORT_RIGHTS
+from pysatochip.JCconstants import SEEDKEEPER_DIC_TYPE, SEEDKEEPER_DIC_ORIGIN, SEEDKEEPER_DIC_EXPORT_RIGHTS, BIP39_WORDLIST_DIC
 from seedsigner.helpers import seedkeeper_utils
 from binascii import unhexlify
 
@@ -214,6 +215,15 @@ class LoadSeedView(View):
             return Destination(ToolsMenuView)
     
 class SeedKeeperSelectView(View):
+    def entropy_to_mnemonic(self, entropy_bytes, wordlist):
+        from mnemonic import Mnemonic
+        print(f"Worldlist: {wordlist}")
+
+        mnemonic_obj = Mnemonic(wordlist)
+        mnemonic = mnemonic_obj.to_mnemonic(entropy_bytes)
+
+        return mnemonic # str
+
     def run(self):
         from seedsigner.gui.screens.screen import LoadingScreenThread
         try:
@@ -235,6 +245,7 @@ class SeedKeeperSelectView(View):
                 sid = header['id']
                 label = header['label']
                 stype = SEEDKEEPER_DIC_TYPE.get(header['type'], hex(header['type']))  # hex(header['type'])
+                subtype = header['subtype']
                 origin = SEEDKEEPER_DIC_ORIGIN.get(header['origin'], hex(header['origin']))  # hex(header['origin'])
                 export_rights = SEEDKEEPER_DIC_EXPORT_RIGHTS.get(header['export_rights'],
                                                                  hex(header[
@@ -244,9 +255,10 @@ class SeedKeeperSelectView(View):
                 export_nbcounter = str(header['export_counter']) if header['type'] == 0x70 else 'N/A'
                 fingerprint = header['fingerprint']
 
-                if stype == "BIP39 mnemonic" and export_rights == 'Plaintext export allowed':
+                if (stype == "BIP39 mnemonic" and export_rights == 'Plaintext export allowed' or stype == 'Masterseed' and subtype==0x01):
                     headers_parsed.append((sid, label))
                     button_data.append(label)
+
 
             print(headers_parsed)
             if len(headers_parsed) < 1:
@@ -277,14 +289,67 @@ class SeedKeeperSelectView(View):
 
             self.loading_screen.stop()
 
-            secret_dict['secret'] = unhexlify(secret_dict['secret'])[1:].decode().rstrip("\x00")
+            stype = SEEDKEEPER_DIC_TYPE.get(secret_dict['type'], hex(secret_dict['type']))  # hex(header['type'])
 
-            bip39_secret = secret_dict['secret']
+            if stype == 'BIP39 mnemonic': # Seedkeeper V1 style mnemonic
 
-            secret_size = secret_dict['secret_list'][0]
+                secret_dict['secret'] = unhexlify(secret_dict['secret'])[1:].decode().rstrip("\x00")
 
-            secret_mnemonic = bip39_secret[:secret_size]
-            secret_passphrase = bip39_secret[secret_size+1:]
+                bip39_secret = secret_dict['secret']
+
+                secret_size = secret_dict['secret_list'][0]
+
+                secret_mnemonic = bip39_secret[:secret_size]
+                secret_passphrase = bip39_secret[secret_size+1:]
+
+            elif stype == 'Masterseed' and subtype==0x01: # Seedkeeper V2 style mnemonic
+
+                # this format is backward compatible with Masterseed (BIP39 info appended after Masterseed)
+                # mnemonic in compressed format using entropy (16-32 bytes)
+                secret_raw_hex = secret_dict['secret']
+                print(f"secret_raw_hex: {secret_raw_hex}")
+                secret_raw_bytes = bytes.fromhex(secret_raw_hex)
+                
+                offset = 0
+                masterseed_size = secret_raw_bytes[offset]
+                offset+=1
+
+                masterseed_bytes= secret_raw_bytes[offset: (offset+masterseed_size)]
+                offset+=masterseed_size
+                masterseed_hex= masterseed_bytes.hex()
+
+                wordlist_byte = secret_raw_bytes[offset]
+                offset+=1
+                wordlist = BIP39_WORDLIST_DIC.get(wordlist_byte)
+                if wordlist == None:
+                    print(f"Error: wordlist byte {wordlist_byte} unsupported!")
+                    exit()
+                
+                entropy_size = secret_raw_bytes[offset]
+                offset+=1
+
+                entropy_bytes = secret_raw_bytes[offset:(offset+entropy_size)]
+                offset+=entropy_size
+                try:
+                    bip39_mnemonic = self.entropy_to_mnemonic(entropy_bytes, wordlist)
+
+                except Exception as ex:
+                    print(f"Error during entropy conversion: {ex}")
+                    bip39_mnemonic = f"failed to convert entropy: {entropy_bytes.hex()}"
+
+                passphrase_size= secret_raw_bytes[offset]
+                offset+=1
+
+                passphrase_bytes= secret_raw_bytes[offset: (offset+passphrase_size)]
+                offset+=passphrase_size
+                try:
+                    passphrase = passphrase_bytes.decode("utf-8")
+                except Exception as ex:
+                    print(f"Error during passphrase decoding: {ex}")
+                    passphrase = f"failed to decode passphrase bytes: {passphrase_bytes.hex()}"
+
+                secret_mnemonic = bip39_mnemonic
+                secret_passphrase = passphrase 
 
         except Exception as e:
             print("General Exception Loading Seed:", str(e))
@@ -526,14 +591,10 @@ class SeedLoadSeedKeeperPassphraseView(View):
 
             self.loading_screen.stop()
 
-            secret_dict['secret'] = unhexlify(secret_dict['secret'])[1:].decode().rstrip("\x00")
+            # Parse the Password (Ignore the other elements like login and url)
+            password_length = secret_dict['secret_list'][0]
 
-            secret = secret_dict['secret']
-
-            secret_size = secret_dict['secret_list'][0]
-
-            secret_passphrase = secret[:secret_size]
-            
+            secret_passphrase = binascii.unhexlify(secret_dict['secret'])[1:password_length+1].decode()
 
         except Exception as e:
             print(e)
@@ -549,7 +610,7 @@ class SeedLoadSeedKeeperPassphraseView(View):
             return Destination(BackStackView)
         
         # The new passphrase will be the return value; it might be empty.
-        self.seed.set_passphrase(secret)
+        self.seed.set_passphrase(secret_passphrase)
         if len(self.seed.passphrase) > 0:
             return Destination(SeedReviewPassphraseView)
         else:
