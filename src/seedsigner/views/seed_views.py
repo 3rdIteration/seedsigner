@@ -27,6 +27,7 @@ from seedsigner.models.threads import BaseThread, ThreadsafeCounter
 from seedsigner.views.view import NotYetImplementedView, OptionDisabledView, View, Destination, BackStackView, MainMenuView
 
 from pysatochip.JCconstants import SEEDKEEPER_DIC_TYPE, SEEDKEEPER_DIC_ORIGIN, SEEDKEEPER_DIC_EXPORT_RIGHTS, BIP39_WORDLIST_DIC
+from pysatochip.util import dict_swap_keys_values
 from seedsigner.helpers import seedkeeper_utils
 from binascii import unhexlify
 
@@ -321,32 +322,20 @@ class SeedKeeperSelectView(View):
                 wordlist_byte = secret_raw_bytes[offset]
                 offset+=1
                 wordlist = BIP39_WORDLIST_DIC.get(wordlist_byte)
-                if wordlist == None:
-                    print(f"Error: wordlist byte {wordlist_byte} unsupported!")
-                    exit()
                 
                 entropy_size = secret_raw_bytes[offset]
                 offset+=1
 
                 entropy_bytes = secret_raw_bytes[offset:(offset+entropy_size)]
                 offset+=entropy_size
-                try:
-                    bip39_mnemonic = self.entropy_to_mnemonic(entropy_bytes, wordlist)
-
-                except Exception as ex:
-                    print(f"Error during entropy conversion: {ex}")
-                    bip39_mnemonic = f"failed to convert entropy: {entropy_bytes.hex()}"
+                bip39_mnemonic = self.entropy_to_mnemonic(entropy_bytes, wordlist)
 
                 passphrase_size= secret_raw_bytes[offset]
                 offset+=1
 
                 passphrase_bytes= secret_raw_bytes[offset: (offset+passphrase_size)]
                 offset+=passphrase_size
-                try:
-                    passphrase = passphrase_bytes.decode("utf-8")
-                except Exception as ex:
-                    print(f"Error during passphrase decoding: {ex}")
-                    passphrase = f"failed to decode passphrase bytes: {passphrase_bytes.hex()}"
+                passphrase = passphrase_bytes.decode("utf-8")
 
                 secret_mnemonic = bip39_mnemonic
                 secret_passphrase = passphrase 
@@ -2374,6 +2363,14 @@ class SeedSignMessageSignedMessageQRView(View):
     Save to SeedKeeper Workflow
 ****************************************************************************"""
 class SaveToSeedkeeperView(View):
+    def mnemonic_to_entropy(self, bip39_mnemonic, wordlist):
+        from mnemonic import Mnemonic
+        print(f"Worldlist: {wordlist}")
+
+        mnemonic_obj = Mnemonic(wordlist)
+        entropy = mnemonic_obj.to_entropy(bip39_mnemonic)
+
+        return entropy  # bytearray
     def __init__(self, seed_num: int, bip85_data: dict = None):
         super().__init__()
         self.seed_num = seed_num
@@ -2392,21 +2389,52 @@ class SaveToSeedkeeperView(View):
             if ret == RET_CODE__BACK_BUTTON:
                 return Destination(BackStackView)
 
-            label = ret
-            export_rights = "Plaintext export allowed"
-            type = "BIP39 mnemonic"
-            header = Satochip_Connector.make_header(type, export_rights, label)
+            status = Satochip_Connector.card_get_status()
+
             seed = self.controller.get_seed(self.seed_num)
-            bip39_mnemonic = seed.mnemonic_str
-            bip39_mnemonic_list = list(bytes(bip39_mnemonic, 'utf-8'))
-            bip39_passphrase = seed.passphrase
-            bip39_passphrase_list = list(bytes(bip39_passphrase, 'utf-8'))
-            secret_list = [len(bip39_mnemonic_list)] + bip39_mnemonic_list + [len(bip39_passphrase_list)] + bip39_passphrase_list
-            secret_dic = {'header': header, 'secret_list': secret_list}
+
+            if status['protocol_minor_version'] == 1: # Format needed for Seedkeeper v1 cards
+                label = ret
+                export_rights = "Plaintext export allowed"
+                type = "BIP39 mnemonic"
+                subtype = 0
+                bip39_mnemonic = seed.mnemonic_str
+                bip39_mnemonic_list = list(bytes(bip39_mnemonic, 'utf-8'))
+                bip39_passphrase = seed.passphrase
+                bip39_passphrase_list = list(bytes(bip39_passphrase, 'utf-8'))
+                secret_list = [len(bip39_mnemonic_list)] + bip39_mnemonic_list + [len(bip39_passphrase_list)] + bip39_passphrase_list
+
+            else: # Seedkeeper V2 Format (Masterseed with BIP39 info)
+                label = ret
+                export_rights = "Plaintext export allowed"
+                type = "Masterseed"
+                subtype = 0x01
+
+                # Seedisgner currently only supports English, so just hardcode
+                wordlist_byte = dict_swap_keys_values(BIP39_WORDLIST_DIC).get("english")
+                bip39_entropy_bytes = self.mnemonic_to_entropy(seed.mnemonic_str, "english")
+                bip39_entropy_list = list(bip39_entropy_bytes)
+                bip39_passphrase_list = list(bytes(seed.passphrase, 'utf-8'))
+
+                masterseed_bytes = seed.seed_bytes
+                masterseed_list = list(masterseed_bytes)
+
+                # this format is backward compatible with Masterseed, this facilitates encrypted export to satochip
+                secret_list = ([len(masterseed_list)] +
+                               masterseed_list +
+                               [wordlist_byte] +
+                               [len(bip39_entropy_list)] +
+                               bip39_entropy_list +
+                               [len(bip39_passphrase_list)] +
+                               bip39_passphrase_list
+                               )
 
             self.loading_screen = LoadingScreenThread(text="Saving Seed\n\n\n\n\n\n")
             self.loading_screen.start()
 
+            header = Satochip_Connector.make_header(type, export_rights, label, subtype= subtype)
+
+            secret_dic = {'header': header, 'secret_list': secret_list}
             (sid, fingerprint) = Satochip_Connector.seedkeeper_import_secret(secret_dic)
             print("Imported - SID:", sid, " Fingerprint:", fingerprint)
 

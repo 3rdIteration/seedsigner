@@ -1015,9 +1015,6 @@ class ToolsSeedkeeperViewSecretsView(View):
                 wordlist_byte = secret_raw_bytes[offset]
                 offset+=1
                 wordlist = BIP39_WORDLIST_DIC.get(wordlist_byte)
-                if wordlist == None:
-                    print(f"Error: wordlist byte {wordlist_byte} unsupported!")
-                    exit()
                 
                 entropy_size = secret_raw_bytes[offset]
                 offset+=1
