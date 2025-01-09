@@ -2389,11 +2389,14 @@ class SaveToSeedkeeperView(View):
             if ret == RET_CODE__BACK_BUTTON:
                 return Destination(BackStackView)
 
-            status = Satochip_Connector.card_get_status()
+            status = Satochip_Connector.card_get_status()[3]
+
+            print(status)
 
             seed = self.controller.get_seed(self.seed_num)
 
             if status['protocol_minor_version'] == 1: # Format needed for Seedkeeper v1 cards
+                print("Saving to SeedKeeper V1")
                 label = ret
                 export_rights = "Plaintext export allowed"
                 type = "BIP39 mnemonic"
@@ -2405,6 +2408,7 @@ class SaveToSeedkeeperView(View):
                 secret_list = [len(bip39_mnemonic_list)] + bip39_mnemonic_list + [len(bip39_passphrase_list)] + bip39_passphrase_list
 
             else: # Seedkeeper V2 Format (Masterseed with BIP39 info)
+                print("Saving to SeedKeeper V2")
                 label = ret
                 export_rights = "Plaintext export allowed"
                 type = "Masterseed"

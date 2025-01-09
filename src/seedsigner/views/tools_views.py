@@ -865,11 +865,12 @@ class ToolsSatochipChangeLabelView(View):
 class ToolsSeedkeeperView(View):
     VIEW_SECRETS = "View Secrets on Card"
     IMPORT_PASSWORD = "Save Password to Card"
+    DELETE_SECRET = "Delete Secret from Card"
     LOAD_DESCRIPTOR = "Load MultiSig Descriptor"
     SAVE_DESCRIPTOR = "Save MultiSig Descriptor"
 
     def run(self):
-        button_data = [self.VIEW_SECRETS, self.IMPORT_PASSWORD, self.LOAD_DESCRIPTOR, self.SAVE_DESCRIPTOR]
+        button_data = [self.VIEW_SECRETS, self.IMPORT_PASSWORD, self.DELETE_SECRET, self.LOAD_DESCRIPTOR, self.SAVE_DESCRIPTOR]
 
         selected_menu_num = self.run_screen(
             ButtonListScreen,
@@ -886,6 +887,9 @@ class ToolsSeedkeeperView(View):
 
         elif button_data[selected_menu_num] == self.IMPORT_PASSWORD:
             return Destination(ToolsSeedkeeperImportPasswordView)
+
+        elif button_data[selected_menu_num] == self.DELETE_SECRET:
+            return Destination(ToolsSeedkeeperDeleteSecretView)
 
         elif button_data[selected_menu_num] == self.LOAD_DESCRIPTOR:
             return Destination(ToolsSeedkeeperLoadDescriptorView)
@@ -1015,20 +1019,32 @@ class ToolsSeedkeeperViewSecretsView(View):
                 wordlist_byte = secret_raw_bytes[offset]
                 offset+=1
                 wordlist = BIP39_WORDLIST_DIC.get(wordlist_byte)
+                if wordlist == None:
+                    print(f"Error: wordlist byte {wordlist_byte} unsupported!")
+                    exit()
                 
                 entropy_size = secret_raw_bytes[offset]
                 offset+=1
 
                 entropy_bytes = secret_raw_bytes[offset:(offset+entropy_size)]
                 offset+=entropy_size
+                try:
+                    bip39_mnemonic = self.entropy_to_mnemonic(entropy_bytes, wordlist)
 
-                bip39_mnemonic = self.entropy_to_mnemonic(entropy_bytes, wordlist)
+                except Exception as ex:
+                    print(f"Error during entropy conversion: {ex}")
+                    bip39_mnemonic = f"failed to convert entropy: {entropy_bytes.hex()}"
+
                 passphrase_size= secret_raw_bytes[offset]
                 offset+=1
 
                 passphrase_bytes= secret_raw_bytes[offset: (offset+passphrase_size)]
                 offset+=passphrase_size
-                passphrase = passphrase_bytes.decode("utf-8")
+                try:
+                    passphrase = passphrase_bytes.decode("utf-8")
+                except Exception as ex:
+                    print(f"Error during passphrase decoding: {ex}")
+                    passphrase = f"failed to decode passphrase bytes: {passphrase_bytes.hex()}"
 
                 secret_dict['secret']= f'BIP39 mnemonic: "{bip39_mnemonic}" \nPassphrase: "{passphrase}"'  
 
@@ -1152,6 +1168,117 @@ class ToolsSeedkeeperImportPasswordView(View):
         
         return Destination(BackStackView)
 
+class ToolsSeedkeeperDeleteSecretView(View):
+
+    def run(self):
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+        try:
+            Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["seedkeeper"])
+            
+            if not Satochip_Connector:
+                return Destination(BackStackView)
+
+            # for v1, secret deletion is not supported
+            status = Satochip_Connector.card_get_status()[3]
+            if status['protocol_minor_version'] == 1:
+                raise ValueError("Secret deletion is not supported on Seedkeeper v1")
+
+            self.loading_screen = LoadingScreenThread(text="Listing Secrets\n\n\n\n\n\n")
+            self.loading_screen.start()
+
+            headers = Satochip_Connector.seedkeeper_list_secret_headers()
+
+            self.loading_screen.stop()
+
+            headers_parsed = []
+            button_data = []
+            for header in headers:
+                sid = header['id']
+                stype = SEEDKEEPER_DIC_TYPE.get(header['type'], hex(header['type']))  # hex(header['type'])
+                subtype = header['subtype']
+                label = stype
+                if stype == "Password":
+                    label = "Pass:" + header['label']
+                elif stype == "BIP39 mnemonic": # Older Seedkeeper v1 BIP39 seeds
+                    label = "Seed:" + header['label']
+                elif stype == 'Masterseed' and subtype==0x01: # Newer SeedKeeper V2 Seeds
+                    label = "Seed:" + header['label']
+                elif stype == "2FA secret":
+                    label = "2FA:" + header['label']
+                elif stype == "Descriptor":
+                    label = "Descriptor:" + header['label']
+                elif stype == "Data":
+                    label = "Data:" + header['label']
+                else: 
+                    label = header['label']
+                origin = SEEDKEEPER_DIC_ORIGIN.get(header['origin'], hex(header['origin']))  # hex(header['origin'])
+                export_rights = SEEDKEEPER_DIC_EXPORT_RIGHTS.get(header['export_rights'],
+                                                                 hex(header[
+                                                                         'export_rights']))  # str(header['export_rights'])
+                export_nbplain = str(header['export_nbplain'])
+                export_nbsecure = str(header['export_nbsecure'])
+                export_nbcounter = str(header['export_counter']) if header['type'] == 0x70 else 'N/A'
+                fingerprint = header['fingerprint']
+
+                if export_rights == 'Plaintext export allowed':
+                    headers_parsed.append((sid, label))
+                    button_data.append(label)
+
+            print(headers_parsed)
+            if len(headers_parsed) < 1:
+                self.run_screen(
+                WarningScreen,
+                title="No Secrets to Load",
+                status_headline=None,
+                text=f"No Secrets to Load from Seedkeeper",
+                show_back_button=False,
+                )   
+                return Destination(BackStackView)
+
+            selected_menu_num = self.run_screen(
+                ButtonListScreen,
+                title="Select Secret",
+                is_button_text_centered=False,
+                button_data=button_data,
+                show_back_button=True,
+            )
+
+            if selected_menu_num == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+
+            warning_screen_num = DireWarningScreen(
+                status_headline="Delete Confirmation",
+                text="This will delete this secret, this cannot be un-done",
+            ).display()
+
+            if warning_screen_num == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+
+            self.loading_screen = LoadingScreenThread(text="Deleting Secret\n\n\n\n\n\n")
+            self.loading_screen.start()
+
+            result = Satochip_Connector.seedkeeper_reset_secret(headers_parsed[selected_menu_num][0])
+
+            self.loading_screen.stop()
+
+            LargeIconStatusScreen(
+                text="Secret Deleted",
+            ).display()
+
+            return Destination(BackStackView)
+            
+        except Exception as e:
+            print(e)
+            self.loading_screen.stop()
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text=str(e),
+                show_back_button=True,
+            )
+            return Destination(BackStackView)
+
 class ToolsSeedkeeperLoadDescriptorView(View):
     def run(self):
         from seedsigner.gui.screens.screen import LoadingScreenThread
@@ -1173,6 +1300,7 @@ class ToolsSeedkeeperLoadDescriptorView(View):
             for header in headers:
                 sid = header['id']
                 stype = SEEDKEEPER_DIC_TYPE.get(header['type'], hex(header['type']))  # hex(header['type'])
+                subtype = header['subtype']
                 label = header['label']
                 origin = SEEDKEEPER_DIC_ORIGIN.get(header['origin'], hex(header['origin']))  # hex(header['origin'])
                 export_rights = SEEDKEEPER_DIC_EXPORT_RIGHTS.get(header['export_rights'],
@@ -1184,12 +1312,18 @@ class ToolsSeedkeeperLoadDescriptorView(View):
                 fingerprint = header['fingerprint']
 
                 if export_rights == 'Plaintext export allowed':
+                    # Check for Seedkeeper V1 style Descriptors
                     if "msig_desc_" in label:
                         multisig_descriptor_secrets.append((sid, label.replace("msig_desc_", "")))
                         button_data.append(label.replace("msig_desc_", ""))
 
                     if "xpub_" in label:
                         xpub_secrets.append((sid, label))
+
+                    # Check for Seedkeeper V2 Style Descriptors
+                    if stype == "Descriptor": 
+                        multisig_descriptor_secrets.append((sid, label))
+                        button_data.append(label)
 
             print("Multisig Descriptor Secrets:", multisig_descriptor_secrets)
             print("Xpub Secrets:",xpub_secrets)
@@ -1222,17 +1356,21 @@ class ToolsSeedkeeperLoadDescriptorView(View):
 
             secret_dict = Satochip_Connector.seedkeeper_export_secret(multisig_descriptor_secrets[selected_menu_num][0], None)
 
-            secret_dict['secret'] = unhexlify(secret_dict['secret'])[1:].decode()
+            stype = SEEDKEEPER_DIC_TYPE.get(secret_dict['type'], hex(secret_dict['type']))  # hex(header['type'])
 
-            secret_template = secret_dict['secret']
+            if stype == "Descriptor": # Seedkeeper V2 
+                secret_template = unhexlify(secret_dict['secret'])[2:].decode()
+            else:
+                secret_dict['secret'] = unhexlify(secret_dict['secret'])[1:].decode()
+                secret_template = secret_dict['secret']
 
-            for xpub_secret_id, xpub_secret_label in xpub_secrets: 
-                if xpub_secret_label in secret_template:
-                    print("Matched on:", xpub_secret_label)
-                    secret_dict = Satochip_Connector.seedkeeper_export_secret(xpub_secret_id, None)
-                    secret_dict['secret'] = unhexlify(secret_dict['secret'])[1:].decode()
-                    secret_template = secret_template.replace(xpub_secret_label, secret_dict['secret'])
-            
+                for xpub_secret_id, xpub_secret_label in xpub_secrets: 
+                    if xpub_secret_label in secret_template:
+                        print("Matched on:", xpub_secret_label)
+                        secret_dict = Satochip_Connector.seedkeeper_export_secret(xpub_secret_id, None)
+                        secret_dict['secret'] = unhexlify(secret_dict['secret'])[1:].decode()
+                        secret_template = secret_template.replace(xpub_secret_label, secret_dict['secret'])
+                
             self.controller.multisig_wallet_descriptor = Descriptor.from_string(secret_template)
             
             print(checksum(Descriptor.to_string(self.controller.multisig_wallet_descriptor)))
@@ -1279,32 +1417,44 @@ class ToolsSeedkeeperSaveDescriptorView(View):
 
             print(descriptor_string)
 
-            key_strings = []
-
-            for key in descriptor.keys:
-                key_string = key.to_string()
-                key_name = "xpub_" + hexlify(key.fingerprint).decode()
-                
-                descriptor_string = descriptor_string.replace(key_string, key_name)
-                key_strings.append((key_name, key_string))
-            
+            # Prompt for Descriptor Name
             ret = seed_screens.SeedAddPassphraseScreen(title="Descriptor Label").display()
 
             if ret == RET_CODE__BACK_BUTTON:
                 return Destination(BackStackView)
-            
-            key_strings.append(("msig_desc_" + ret, descriptor_string))
-            
+
             # Set up our connection to the card
             Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["seedkeeper"])
 
             if not Satochip_Connector:
                 return Destination(BackStackView)
-
+            
             self.loading_screen = LoadingScreenThread(text="Saving Secrets\n\n\n\n\n\n")
             self.loading_screen.start()
 
-            # Check for existing secrest on the Seedkeeper (Related to this descriptor)
+            status = Satochip_Connector.card_get_status()[3]
+            secrets_imported = 0
+            secrets_skipped = 0
+
+            key_strings = []
+
+            if status['protocol_minor_version'] == 1: # Format needed for Seedkeeper v1 cards
+                secret_type = "Password"
+                # Split up the descriptor into smaller strings (needed for SeedKeeper v1)
+                for key in descriptor.keys:
+                    key_string = key.to_string()
+                    key_name = "xpub_" + hexlify(key.fingerprint).decode()
+                    
+                    descriptor_string = descriptor_string.replace(key_string, key_name)
+                    key_strings.append((key_name, key_string))
+
+                key_strings.append(("msig_desc_" + ret, descriptor_string))
+            
+            else: # For Seedkeeper V2, we can just store the whole descriptor as-is
+                secret_type = "Descriptor"
+                key_strings.append((ret, descriptor_string))
+
+            # Check for existing secrets on the Seedkeeper (Related to this descriptor)
             headers = Satochip_Connector.seedkeeper_list_secret_headers()
 
             multisig_descriptor_secrets = []
@@ -1331,6 +1481,10 @@ class ToolsSeedkeeperSaveDescriptorView(View):
                     if "xpub_" in label:
                         xpub_labels.append(label)
 
+                    # Check for Seedkeeper V2 Style Descriptors
+                    if stype == "Descriptor": 
+                        multisig_descriptor_secrets.append((sid, label))
+
             print("Multisig Descriptor Secrets:", multisig_descriptor_secrets)
             print("Xpub Secrets:",xpub_labels)
 
@@ -1345,22 +1499,27 @@ class ToolsSeedkeeperSaveDescriptorView(View):
 
             print(multisig_descriptor_templates)
 
-            secrets_imported = 0
-            secrets_skipped = 0
+            print("Key Strings:", key_strings)
+
             # Add required secrets to seedkeeper
             for secret_label, secret_text in key_strings:
                 if secret_text in multisig_descriptor_templates or secret_label in xpub_labels:
                     print("Mached Existing Secret, skipping:", secret_label)
                     secrets_skipped += 1
                     continue
-                header = Satochip_Connector.make_header("Password", "Plaintext export allowed", secret_label)
-                secret_text_list = list(bytes(secret_text, 'utf-8'))
-                secret_list = [len(secret_text_list)] + secret_text_list
+                header = Satochip_Connector.make_header(secret_type, "Plaintext export allowed", secret_label)
+                print("Secret Text:", secret_text)
+                if secret_type == "Password":
+                    secret_text_list = list(bytes(secret_text, 'utf-8'))
+                    secret_list = [len(secret_text_list)] + secret_text_list
+                else:
+                    secret_text_list = list(bytes(secret_text, 'utf-8'))
+                    secret_list = list(len(secret_text_list).to_bytes(2,"big")) + secret_text_list
                 secret_dic = {'header': header, 'secret_list': secret_list}
                 (sid, fingerprint) = Satochip_Connector.seedkeeper_import_secret(secret_dic)
                 print("Imported - SID:", sid, " Fingerprint:", fingerprint)
                 secrets_imported += 1
-
+                
             self.loading_screen.stop()
 
             self.run_screen(
