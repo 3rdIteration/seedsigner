@@ -99,7 +99,7 @@ class Controller(Singleton):
         rather than at the top in order avoid circular imports.
     """
 
-    VERSION = "0.7.0+Satochip-BETA2"
+    VERSION = "0.8.5-rc1++Satochip-BETA3"
 
     # Declare class member vars with type hints to enable richer IDE support throughout
     # the code.
@@ -149,20 +149,20 @@ class Controller(Singleton):
         else:
             # Instantiate the one and only Controller instance
             return cls.configure_instance()
+    
+
+    @classmethod
+    def reset_instance(cls):
+        """
+            Currently used by the screenshot generator, but could potentially be used to
+            wipe and reset the state of the device.
+        """
+        cls._instance = None
+        cls.configure_instance()
 
 
     @classmethod
-    def configure_instance(cls, disable_hardware=False):
-        """
-            - `disable_hardware` is only meant to be used by the test suite so that it
-            can keep re-initializing a Controller in however many tests it needs to. But
-            this is only possible if the hardware isn't already being reserved. Without
-            this you get:
-
-            RuntimeError: Conflicting edge detection already enabled for this GPIO channel
-
-            each time you try to re-initialize a Controller.
-        """
+    def configure_instance(cls):
         from seedsigner.gui.renderer import Renderer
         from seedsigner.hardware.microsd import MicroSD
 
@@ -250,10 +250,10 @@ class Controller(Singleton):
             used. Only used by the test suite.
         """
         from seedsigner.views import MainMenuView, BackStackView
-        from seedsigner.views.screensaver import OpeningSplashScreen
+        from seedsigner.views.screensaver import OpeningSplashView
         from seedsigner.gui.toast import RemoveSDCardToastManagerThread
 
-        OpeningSplashScreen().start()
+        OpeningSplashView().run()
 
         """ Class references can be stored as variables in python!
 
@@ -266,7 +266,7 @@ class Controller(Singleton):
             Example:
                 class MyView(View)
                     def run(self, some_arg, other_arg):
-                        print(other_arg)
+                        logger.info(other_arg)
 
                 class OtherView(View):
                     def run(self):
@@ -307,11 +307,11 @@ class Controller(Singleton):
                     self.psbt_parser = None
                     self.psbt_seed = None
                 
-                print(f"back_stack: {self.back_stack}")
+                logger.info(f"\nback_stack: {self.back_stack}")
 
                 try:
                     # Instantiate the View class and run it
-                    print(f"Executing {next_destination}")
+                    logger.info(f"Executing {next_destination}")
                     next_destination = next_destination.run()
 
                 except StopFlowBasedTest:
@@ -339,7 +339,7 @@ class Controller(Singleton):
                     # Remove the current View from history; it's forwarding us straight
                     # to the next View so it should be as if this View never happened.
                     current_view = self.back_stack.pop()
-                    print(f"Skipping current view: {current_view}")
+                    logger.info(f"Skipping current view: {current_view}")
 
                 # Hang on to this reference...
                 clear_history = next_destination.clear_history
@@ -357,12 +357,10 @@ class Controller(Singleton):
                 # Do not push a "new" destination if it is the same as the current one on
                 # the top of the stack.
                 if len(self.back_stack) == 0 or self.back_stack[-1] != next_destination:
-                    print(f"Appending next destination: {next_destination}")
+                    logger.info(f"Appending next destination: {next_destination}")
                     self.back_stack.append(next_destination)
                 else:
-                    print(f"NOT appending {next_destination}")
-                
-                print("-" * 30)
+                    logger.info(f"NOT appending {next_destination}")
 
         finally:
             from seedsigner.gui.renderer import Renderer
@@ -373,7 +371,7 @@ class Controller(Singleton):
                 self.toast_notification_thread.stop()
 
             # Clear the screen when exiting
-            print("Clearing screen, exiting")
+            logger.info("Clearing screen, exiting")
             Renderer.get_instance().display_blank_screen()
 
 
@@ -387,10 +385,10 @@ class Controller(Singleton):
         # block until the screensaver is done, at which point the toast can re-acquire
         # the Renderer.lock and resume where it left off.
         if self.toast_notification_thread and self.toast_notification_thread.is_alive():
-            print(f"Controller: settings toggle_render_lock for {self.toast_notification_thread.__class__.__name__}")
+            logger.info(f"Controller: settings toggle_render_lock for {self.toast_notification_thread.__class__.__name__}")
             self.toast_notification_thread.toggle_renderer_lock()
 
-        print("Controller: Starting screensaver")
+        logger.info("Controller: Starting screensaver")
         if not self.screensaver:
             # Do a lazy/late import and instantiation to reduce Controller initial startup time
             from seedsigner.views.screensaver import ScreensaverScreen
@@ -399,7 +397,7 @@ class Controller(Singleton):
         
         # Start the screensaver, but it will block until it can acquire the Renderer.lock.
         self.screensaver.start()
-        print("Controller: Screensaver started")
+        logger.info("Controller: Screensaver started")
     
 
     def reset_screensaver_timeout(self):
@@ -418,16 +416,16 @@ class Controller(Singleton):
         """
         if self.is_screensaver_running:
             # New toast notifications break out of the Screensaver
-            print("Controller: stopping screensaver")
+            logger.info("Controller: stopping screensaver")
             self.screensaver.stop()
 
         if self.toast_notification_thread and self.toast_notification_thread.is_alive():
             # Can only run one toast at a time
-            print(f"Controller: stopping {self.toast_notification_thread.__class__.__name__}")
+            logger.info(f"Controller: stopping {self.toast_notification_thread.__class__.__name__}")
             self.toast_notification_thread.stop()
         
         self.toast_notification_thread = toast_manager_thread
-        print(f"Controller: starting {self.toast_notification_thread.__class__.__name__}")
+        logger.info(f"Controller: starting {self.toast_notification_thread.__class__.__name__}")
         self.toast_notification_thread.start()
 
 

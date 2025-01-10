@@ -1,5 +1,8 @@
+import gettext
+import logging
 import json
 import os
+import pathlib
 import platform
 
 from typing import List
@@ -8,6 +11,8 @@ import RPi.GPIO as GPIO
 
 from seedsigner.models.settings_definition import SettingsConstants, SettingsDefinition
 from seedsigner.models.singleton import Singleton
+
+logger = logging.getLogger(__name__)
 
 
 class InvalidSettingsQRData(Exception):
@@ -35,6 +40,19 @@ class Settings(Singleton):
             if os.path.exists(Settings.SETTINGS_FILENAME):
                 with open(Settings.SETTINGS_FILENAME) as settings_file:
                     settings.update(json.load(settings_file))
+
+            # Setup multilanguage support
+            path = os.path.join(
+                pathlib.Path(__file__).parent.resolve().parent.resolve(),
+                "resources",
+                "seedsigner-translations",
+                "l10n"
+            )
+            gettext.bindtextdomain('messages', localedir=path)
+            gettext.textdomain('messages')
+
+            # Load default/persistent locale setting
+            settings.load_locale()
 
         return cls._instance
 
@@ -80,7 +98,7 @@ class Settings(Singleton):
             # Replace abbreviated name with full attr_name
             settings_entry = SettingsDefinition.get_settings_entry_by_abbreviated_name(abbreviated_name)
             if not settings_entry:
-                print(f"Ignoring unrecognized attribute: {abbreviated_name}")
+                logger.info(f"Ignoring unrecognized attribute: {abbreviated_name}")
                 continue
 
             # Validate value(s) against SettingsDefinition's valid options
@@ -145,13 +163,9 @@ class Settings(Singleton):
                         # Break comma-separated SettingsQR input into List
                         new_settings[entry.attr_name] = new_settings[entry.attr_name].split(",")
 
-        # Can't just merge the _data dict; have to replace keys they have in common
-        #   (otherwise list values will be merged instead of replaced).
-        # Do this by running set_value
         for key, value in new_settings.items():
-            #self._data.pop(key, None)
-            #self._data[key] = value
-            self.set_value(key,value)
+            self.set_value(key, value)
+
 
 
     def set_value(self, attr_name: str, value: any):
@@ -161,7 +175,9 @@ class Settings(Singleton):
             Note that for multiselect, the value must be a List.
         """
         if attr_name not in self._data:
-            raise Exception(f"Setting for {attr_name} not found")
+            # Outdated settings
+            print(f"Setting {attr_name} not recognized. Ignoring.")
+            return
 
         if SettingsDefinition.get_settings_entry(attr_name).type == SettingsConstants.TYPE__MULTISELECT:
             if type(value) != list:
@@ -171,9 +187,9 @@ class Settings(Singleton):
         if attr_name == SettingsConstants.SETTING__PERSISTENT_SETTINGS and value == SettingsConstants.OPTION__DISABLED:
             try:
                 os.remove(self.SETTINGS_FILENAME)
-                print(f"Removed {self.SETTINGS_FILENAME}")
+                logger.info(f"Removed {self.SETTINGS_FILENAME}")
             except:
-                print(f"{self.SETTINGS_FILENAME} not found to be removed")
+                logger.info(f"{self.SETTINGS_FILENAME} not found to be removed")
 
          # Special handling for enabling Smartcard readers
         if attr_name == SettingsConstants.SETTING__SMARTCARD_INTERFACES:
@@ -310,6 +326,9 @@ class Settings(Singleton):
         self._data[attr_name] = value
         self.save()
 
+        # Special handling for localization
+        if attr_name == SettingsConstants.SETTING__LOCALE:
+            self.load_locale()
 
     def get_value(self, attr_name: str):
         """
@@ -360,13 +379,22 @@ class Settings(Singleton):
         return display_names
 
 
+    def load_locale(self):
+        locale = self.get_value(SettingsConstants.SETTING__LOCALE)
+        os.environ['LANGUAGE'] = locale
+
+        # Re-initialize with the new locale
+        print(f"Set LANGUAGE locale to {os.environ['LANGUAGE']}")
+
+
+
     """
         Intentionally keeping the properties very limited to avoid an expectation of
         boilerplate property code for every SettingsEntry.
 
         It's more cumbersome, but instead use:
 
-        settings.get_value(SettingsConstants.SETTING__MY_SETTING_ATTR)
+        Settings.get_instance().get_value(SettingsConstants.SETTING__MY_SETTING_ATTR)
     """
     @property
     def debug(self) -> bool:

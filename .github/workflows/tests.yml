@@ -21,10 +21,15 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.10"]
+        # 3.10: currently used by Seedsigner
+        # 3.12: latest stable Python as upper test bound
+        python-version: ["3.10", "3.12"]
 
     steps:
       - uses: actions/checkout@v3
+        with:
+          # Needs to also pull the seedsigner-translations repo
+          submodules: recursive
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v4
         with:
@@ -34,7 +39,7 @@ jobs:
           sudo apt-get install libzbar0
           python -m pip install --upgrade pip
           pip install -r requirements.txt -r tests/requirements.txt
-          python setup.py install
+          pip install .
       - name: Test with pytest
         run: |
           mkdir artifacts
@@ -43,16 +48,20 @@ jobs:
             --cov=seedsigner \
             --cov-append \
             --cov-branch \
-            --cov-report term \
-            --cov-report html \
-            --cov-report html:./artifacts/cov_html \
-            --cov-report xml \
             --durations 5 \
             -vv
       - name: Generate screenshots
         run: |
-          python -m pytest tests/screenshot_generator/generator.py
+          python -m pytest tests/screenshot_generator/generator.py \
+            --color=yes \
+            --cov=seedsigner \
+            --cov-append \
+            --cov-branch \
+            --cov-report html:./artifacts/cov_html \
+            -vv
           cp -r ./seedsigner-screenshots ./artifacts/
+      - name: Coverage report
+        run: coverage report
       - name: Archive CI Artifacts
         uses: actions/upload-artifact@v3
         with:

@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from PIL import Image, ImageDraw, ImageFont
 from typing import Tuple
+from gettext import gettext as _
 
 from seedsigner.gui.components import Fonts, GUIConstants
 from seedsigner.hardware.buttons import HardwareButtonsConstants
@@ -8,6 +9,10 @@ from seedsigner.hardware.buttons import HardwareButtonsConstants
 
 
 class Keyboard:
+    """
+    Note that it is up to the calling Screen to manage the Renderer.lock. The Keyboard
+    and its child Keys should NOT attempt to manage the lock.
+    """
     WRAP_TOP = "wrap_top"
     WRAP_BOTTOM = "wrap_bottom"
     WRAP_LEFT = "wrap_left"
@@ -27,39 +32,43 @@ class Keyboard:
     REGULAR_KEY_FONT = "regular"
     COMPACT_KEY_FONT = "compact"
 
+    # TRANSLATOR_NOTE: The abbreviated label for the special key <del> on a standard keyboard.
+    del_label = _("del")
     KEY_BACKSPACE = {
         "code": "DEL",
-        "letter": "del",
+        "letter": del_label,
         "font": COMPACT_KEY_FONT,
         "size": 2,
     }
+    # TRANSLATOR_NOTE: The abbreviated label for the special key <space> on a standard keyboard.
+    space_label = _("space")
     KEY_SPACE = {
         "code": "SPACE",
-        "letter": "space",
+        "letter": space_label,
         "font": COMPACT_KEY_FONT,
         "size": 1,
     }
     KEY_SPACE_2 = {
         "code": "SPACE",
-        "letter": "space",
+        "letter": space_label,
         "font": COMPACT_KEY_FONT,
         "size": 2,
     }
     KEY_SPACE_3 = {
         "code": "SPACE",
-        "letter": "space",
+        "letter": space_label,
         "font": COMPACT_KEY_FONT,
         "size": 3,
     }
     KEY_SPACE_4 = {
         "code": "SPACE",
-        "letter": "space",
+        "letter": space_label,
         "font": COMPACT_KEY_FONT,
         "size": 4,
     }
     KEY_SPACE_5 = {
         "code": "SPACE",
-        "letter": "space",
+        "letter": space_label,
         "font": COMPACT_KEY_FONT,
         "size": 5,
     }
@@ -158,7 +167,7 @@ class Keyboard:
                     self.screen_x + int(self.keyboard.key_width * self.size / 2),
                     self.screen_y + self.keyboard.key_height - int((self.keyboard.key_height - text_height)/2)
                 ),
-                self.letter,
+                _(self.letter),
                 fill=font_color,
                 font=font,
                 anchor="ms"
@@ -208,6 +217,7 @@ class Keyboard:
 
         # Set up the rendering and state params
         self.active_keys = list(self.charset)
+
         self.additonal_key_compact_font = Fonts.get_font("RobotoCondensed-Bold", 18)
         self.x_start = rect[0]
         self.y_start = rect[1]

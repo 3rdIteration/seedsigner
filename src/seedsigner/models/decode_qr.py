@@ -382,7 +382,7 @@ class DecodeQR:
                 return QRType.BITCOIN_ADDRESS
 
             # message signing
-            elif DecodeQR.is_sign_message(s):
+            elif s.startswith("signmessage"):
                 return QRType.SIGN_MESSAGE
 
             # config data
@@ -504,11 +504,6 @@ class DecodeQR:
             return True
         else:
             return False
-
-
-    @staticmethod
-    def is_sign_message(s):
-        return type(s) == str and s.startswith("signmessage")
 
 
     @staticmethod
@@ -912,7 +907,7 @@ class SignMessageQrDecoder(BaseSingleFrameQrDecoder):
 
         # TODO: support formats other than ascii?
         if fmt != "ascii":
-            print(f"Sign message: Unsupported format: {fmt}")
+            logger.info(f"Sign message: Unsupported format: {fmt}")
             return DecodeQRStatus.INVALID
 
         self.complete = True
@@ -958,11 +953,12 @@ class BitcoinAddressQrDecoder(BaseSingleFrameQrDecoder):
                     self.address_type = (SettingsConstants.LEGACY_P2PKH, SettingsConstants.TESTNET)
 
                 elif r == "3":
-                    # Nested Segwit Single Sig (P2WPKH in P2SH) or Multisig (P2WSH in P2SH); mainnet
+                    # Nested segwit single sig (p2sh-p2wpkh), nested segwit multisig (p2sh-p2wsh), or legacy multisig (p2sh); mainnet
+                    # TODO: Would be more correct to use a P2SH constant
                     self.address_type = (SettingsConstants.NESTED_SEGWIT, SettingsConstants.MAINNET)
 
                 elif r == "2":
-                    # Nested Segwit Single Sig (P2WPKH in P2SH) or Multisig (P2WSH in P2SH); testnet
+                    # Nested segwit single sig (p2sh-p2wpkh), nested segwit multisig (p2sh-p2wsh), or legacy multisig (p2sh); testnet / regtest
                     self.address_type = (SettingsConstants.NESTED_SEGWIT, SettingsConstants.TESTNET)
 
                 elif r == "bc1q":
@@ -1082,7 +1078,7 @@ class GenericWalletQrDecoder(BaseSingleFrameQrDecoder):
             self.complete = True
             return DecodeQRStatus.COMPLETE
         except Exception as e:
-            print(repr(e))
+            logger.info(repr(e), exc_info=True)
         return DecodeQRStatus.INVALID
     
 
