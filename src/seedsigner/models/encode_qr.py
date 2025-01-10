@@ -15,7 +15,7 @@ from seedsigner.models.seed import Seed
 from seedsigner.models.settings import SettingsConstants
 
 from urtypes.crypto import PSBT as UR_PSBT
-from urtypes.crypto import Account, HDKey, Output, Keypath, PathComponent, SCRIPT_EXPRESSION_TAG_MAP
+from urtypes.crypto import Account, HDKey, Output, Keypath, PathComponent, SCRIPT_EXPRESSION_TAG_MAP, CoinInfo
 
 
 
@@ -88,6 +88,7 @@ class SeedQrEncoder(BaseStaticQrEncoder):
     mnemonic: List[str] = None
     wordlist_language_code: str = SettingsConstants.WORDLIST_LANGUAGE__ENGLISH
 
+
     def __post_init__(self):
         self.wordlist = Seed.get_wordlist(self.wordlist_language_code)
         super().__post_init__()
@@ -149,22 +150,14 @@ class BaseXpubQrEncoder(BaseQrEncoder):
     """
     Base Xpub QrEncoder for static and animated formats
     """
-    mnemonic: list = None
-    passphrase: str = None
+    seed: Seed = None
     derivation: str = None
     network: str = SettingsConstants.MAINNET
-    wordlist_language_code: str = SettingsConstants.WORDLIST_LANGUAGE__ENGLISH
+    sig_type : str = None
 
     def prep_xpub(self):
-        self.wordlist = Seed.get_wordlist(self.wordlist_language_code)
-
-        if self.wordlist == None:
-            raise Exception('Wordlist Required')
             
-        version = bip32.detect_version(self.derivation, default="xpub", network=NETWORKS[SettingsConstants.map_network_to_embit(self.network)])
-        self.seed = Seed(mnemonic=self.mnemonic,
-                         passphrase=self.passphrase,
-                         wordlist_language_code=self.wordlist_language_code)
+        version = self.seed.detect_version(self.derivation, self.network, self.sig_type)
         self.root = bip32.HDKey.from_seed(self.seed.seed_bytes, version=NETWORKS[SettingsConstants.map_network_to_embit(self.network)]["xprv"])
         self.fingerprint = self.root.child(0).fingerprint
         self.xprv = self.root.derive(self.derivation)
@@ -351,11 +344,13 @@ class UrXpubQrEncoder(BaseFountainQrEncoder, BaseXpubQrEncoder):
             return Keypath(arr, self.root.my_fingerprint, len(arr))
             
         origin = derivation_to_keypath(self.derivation)
+        self.use_info = None if self.network == SettingsConstants.MAINNET else CoinInfo(type=None, network=1)
         
         self.ur_hdkey = HDKey({ 'key': self.xpub.key.serialize(),
         'chain_code': self.xpub.chain_code,
         'origin': origin,
-        'parent_fingerprint': self.xpub.fingerprint})
+        'parent_fingerprint': self.xpub.fingerprint,
+        'use_info': self.use_info })
 
         ur_outputs = []
 
@@ -372,6 +367,10 @@ class UrXpubQrEncoder(BaseFountainQrEncoder, BaseXpubQrEncoder):
                         ur_outputs.append(Output([SCRIPT_EXPRESSION_TAG_MAP[400], SCRIPT_EXPRESSION_TAG_MAP[401]],self.ur_hdkey))
             elif origin.components[0].index == 86: # P2TR
                 ur_outputs.append(Output([SCRIPT_EXPRESSION_TAG_MAP[409]],self.ur_hdkey))
+            elif origin.components[0].index == 44: # P2PKH
+                ur_outputs.append(Output([SCRIPT_EXPRESSION_TAG_MAP[403]],self.ur_hdkey))
+            elif origin.components[0].index == 45: # P2SH 
+                ur_outputs.append(Output([SCRIPT_EXPRESSION_TAG_MAP[400]],self.ur_hdkey))
         
         # If empty, add all script types
         if len(ur_outputs) == 0:
@@ -380,6 +379,7 @@ class UrXpubQrEncoder(BaseFountainQrEncoder, BaseXpubQrEncoder):
             ur_outputs.append(Output([SCRIPT_EXPRESSION_TAG_MAP[401]],self.ur_hdkey))
             ur_outputs.append(Output([SCRIPT_EXPRESSION_TAG_MAP[400], SCRIPT_EXPRESSION_TAG_MAP[401]],self.ur_hdkey))
             ur_outputs.append(Output([SCRIPT_EXPRESSION_TAG_MAP[403]],self.ur_hdkey))
+            ur_outputs.append(Output([SCRIPT_EXPRESSION_TAG_MAP[400]],self.ur_hdkey))
         
         ur_account = Account(self.root.my_fingerprint, ur_outputs)
 

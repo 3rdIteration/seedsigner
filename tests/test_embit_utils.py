@@ -27,6 +27,10 @@ def test_get_standard_derivation_path():
         (SC.TESTNET, SC.SINGLE_SIG, SC.TAPROOT): "m/86'/1'/0'",
         (SC.REGTEST, SC.SINGLE_SIG, SC.TAPROOT): "m/86'/1'/0'",
 
+        (SC.MAINNET, SC.SINGLE_SIG, SC.LEGACY_P2PKH): "m/44'/0'/0'",
+        (SC.TESTNET, SC.SINGLE_SIG, SC.LEGACY_P2PKH): "m/44'/1'/0'",
+        (SC.REGTEST, SC.SINGLE_SIG, SC.LEGACY_P2PKH): "m/44'/1'/0'",
+
 
         # multi sig
         (SC.MAINNET, SC.MULTISIG, SC.NATIVE_SEGWIT): "m/48'/0'/0'/2'",
@@ -40,6 +44,8 @@ def test_get_standard_derivation_path():
         (SC.MAINNET, SC.MULTISIG, SC.TAPROOT): Exception,
         (SC.TESTNET, SC.MULTISIG, SC.TAPROOT): Exception,
         (SC.REGTEST, SC.MULTISIG, SC.TAPROOT): Exception,
+
+        (SC.MAINNET, SC.MULTISIG, SC.LEGACY_P2PKH): "m/45'",
 
         # intentionally fall into exceptions
         (SC.MAINNET, SC.SINGLE_SIG, 'invalid'): Exception,
@@ -155,6 +161,10 @@ def test_get_xpub():
         (vector_seeds[4], "m/49'/1'/0'", "test"): 
              bip32.HDKey.from_string("upub5EFU65HtV5TeiSHmZZm7FUffBGy8UKeqp7vw43jYbvZPpoVsgU93oac7Wk3u6moKegAEWtGNF8DehrnHtv21XXEMYRUocHqguyjknFHYfgY").to_base58(version=b'\x04\x35\x87\xcf'),
 
+        # https://github.com/satoshilabs/slips/blob/master/slip-0132.md#bitcoin-test-vectors
+        (vector_seeds[4], "m/44'/0'/0'", "main"): 
+             bip32.HDKey.from_string("xpub6BosfCnifzxcFwrSzQiqu2DBVTshkCXacvNsWGYJVVhhawA7d4R5WSWGFNbi8Aw6ZRc1brxMyWMzG3DSSSSoekkudhUd9yLb6qx39T9nMdj").to_base58(version=b'\x04\x88\xb2\x1e'),
+
         # https://github.com/bitcoin/bips/blob/master/bip-0086.mediawiki#test-vectors
         (vector_seeds[4], "m/86'/0'/0'", "main"): "xpub6BgBgsespWvERF3LHQu6CnqdvfEvtMcQjYrcRzx53QJjSxarj2afYWcLteoGVky7D3UKDP9QyrLprQ3VCECoY49yfdDEHGCtMMj92pReUsQ",
 
@@ -234,6 +244,14 @@ def test_get_single_sig_address():
         (HDKey.from_string("tpubDC5FSnBiZDMmhiuCmWAYsLwgLYrrT9rAqvTySfuCCrgsWz8wxMXUS9Tb9iVMvcRbvFcAHGkMD5Kx8koh4GquNGNTfohfk7pgjhaPCdXpoba"), "leg", 0, True, "test"):
             "mi8nhzZgGZQthq6DQHbru9crMDerUdTKva",
 
+        # https://github.com/satoshilabs/slips/blob/master/slip-0132.md#bitcoin-test-vectors (first payment address p2pkh on mainnet)
+        (HDKey.from_string("xpub6BosfCnifzxcFwrSzQiqu2DBVTshkCXacvNsWGYJVVhhawA7d4R5WSWGFNbi8Aw6ZRc1brxMyWMzG3DSSSSoekkudhUd9yLb6qx39T9nMdj"), "leg", 0, False, "main"):
+            "1LqBGSKuX5yYUonjxT5qGfpUsXKYYWeabA",
+
+        # 3rdIteration: derived via electrum m/44'/0'/0 (first change address p2pkh on mainnet)
+        (HDKey.from_string("xpub6BosfCnifzxcFwrSzQiqu2DBVTshkCXacvNsWGYJVVhhawA7d4R5WSWGFNbi8Aw6ZRc1brxMyWMzG3DSSSSoekkudhUd9yLb6qx39T9nMdj"), "leg", 0, True, "main"):
+            "1J3J6EvPrv8q6AC3VCjWV45Uf3nssNMRtH",
+
         # jdlcdl: nonsense script_type falls off end of function returning None.  TODO: Would it be preferred to "else: raise ValueError"?
         (HDKey.from_string("tpubDC5FSnBiZDMmhiuCmWAYsLwgLYrrT9rAqvTySfuCCrgsWz8wxMXUS9Tb9iVMvcRbvFcAHGkMD5Kx8koh4GquNGNTfohfk7pgjhaPCdXpoba"), "NONSENSE", 0, True, "test"):
             "None",
@@ -266,9 +284,9 @@ def test_get_multisig_address():
     from embit.descriptor import Descriptor
 
     # jdlcdl: these vectors created with electrum & sparrow as a 2 of 3 multisig based on bip39-bip32-standard-path wallets
-    #    keystore1 = 0x00*16 = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about'
-    #    keystore2 = 0x11*16 = 'baby mass dust captain baby mass dust captain baby mass dust casino'
-    #    keystore3 = 0x22*16 = 'captain baby mass dust captain baby mass dust captain baby mass dutch'
+    #    keystore1 = 0x00*16 = 73c5da0a = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about'
+    #    keystore2 = 0x11*16 = 0be174ee = 'baby mass dust captain baby mass dust captain baby mass dust casino'
+    #    keystore3 = 0x22*16 = 8d55ff0d = 'captain baby mass dust captain baby mass dust captain baby mass dutch'
 
     vector_args_expected = { 
         # multisig native segwit on testnet, first payment and change addresses
@@ -279,8 +297,9 @@ def test_get_multisig_address():
         ("sh(wsh(sortedmulti(2,[73c5da0a/48h/1h/1h/0h/1h]tpubDFH9dgzveyD8yHQb8VrpG8FYAuwcLMHMje2CCcbBo1FpaGzYVtJeYYxcYgRqSTta5utUFts8nPPHs9C2bqoxrey5jia6Dwf9mpwrPq7YvcJ/{0,1}/*,[0be174ee/48h/1h/0h/1h]tpubDEsePyLPkbxbnj6XuKvWwdERHaKkikZxaGJ9sJqmM7okbZXgkNSFiGU6GX6qEes6kD8f9Z9FosYB9UEnBSgBEyEwwJhj4uUcFE1WE8VtKoh/{0,1}/*,[8d55ff0d/48h/1h/0h/1h]tpubDDxNVWk924RTT3vyGLHdSDoZ2JUVX7jUsPcwCQ9MrKHAtJrW5zECTF9rFHCvqu526E4PjHp61hBknts2c5aGexvX7hvCZ8TGPvQFdzxxy59/{0,1}/*)))#2ujlfp73", 0, False, "test"): "2MtgJH28mZWNWU7VRU4ba6ciFbRRGYWZDt3",
         ("sh(wsh(sortedmulti(2,[73c5da0a/48h/1h/1h/0h/1h]tpubDFH9dgzveyD8yHQb8VrpG8FYAuwcLMHMje2CCcbBo1FpaGzYVtJeYYxcYgRqSTta5utUFts8nPPHs9C2bqoxrey5jia6Dwf9mpwrPq7YvcJ/{0,1}/*,[0be174ee/48h/1h/0h/1h]tpubDEsePyLPkbxbnj6XuKvWwdERHaKkikZxaGJ9sJqmM7okbZXgkNSFiGU6GX6qEes6kD8f9Z9FosYB9UEnBSgBEyEwwJhj4uUcFE1WE8VtKoh/{0,1}/*,[8d55ff0d/48h/1h/0h/1h]tpubDDxNVWk924RTT3vyGLHdSDoZ2JUVX7jUsPcwCQ9MrKHAtJrW5zECTF9rFHCvqu526E4PjHp61hBknts2c5aGexvX7hvCZ8TGPvQFdzxxy59/{0,1}/*)))#2ujlfp73", 0, True, "test"): "2NAjjwUQqwD9XRGLeQ6TitSUyMHUz3cLiWm",
 
-        # legacy multisig p2sh on testnet, not supported
-        ("sh(sortedmulti(2,[8d55ff0d/45h]tpubDANogJ2yfnizHwX7fSi5kUVzybyuPXDhgHB2TR9TUvkSLZFW73cRq4STKFDpx7qjJJiisyq82tbu4CeiYtmKEmT1xoCq9P8BPvXV31HUh6d/{0,1}/*,[0be174ee/45h]tpubDBkeVF2tDNT1Pz7L47iJeBB6RokU12LX6x4E6Ph8T89hmjQfB77q1AMyGwL8qpREVGq9sCJEbWwmnemwNTxnpxGn1di7BGy8jx9wEi5Vahu/{0,1}/*,[73c5da0a/45h]tpubDBKsGC1UqBDNvx9aivFmxZNgeZTUnmsCFGhWrqkLzucUCDePvbWWm3n8tAaAwMmxBG2ihdKCG9fzBdUnMxKx5PrkiqSZFi6Vkv6msUs9ddN/{0,1}/*))#p5t8sa8c", 0, False, "test"): Exception,
+        # legacy multisig p2sh on testnet, first payment and change addresses
+        ("sh(sortedmulti(2,[8d55ff0d/45h]tpubDANogJ2yfnizHwX7fSi5kUVzybyuPXDhgHB2TR9TUvkSLZFW73cRq4STKFDpx7qjJJiisyq82tbu4CeiYtmKEmT1xoCq9P8BPvXV31HUh6d/{0,1}/*,[0be174ee/45h]tpubDBkeVF2tDNT1Pz7L47iJeBB6RokU12LX6x4E6Ph8T89hmjQfB77q1AMyGwL8qpREVGq9sCJEbWwmnemwNTxnpxGn1di7BGy8jx9wEi5Vahu/{0,1}/*,[73c5da0a/45h]tpubDBKsGC1UqBDNvx9aivFmxZNgeZTUnmsCFGhWrqkLzucUCDePvbWWm3n8tAaAwMmxBG2ihdKCG9fzBdUnMxKx5PrkiqSZFi6Vkv6msUs9ddN/{0,1}/*))#p5t8sa8c", 0, False, "test"): "2NBXci43Y2fagvrFYTg3QmXj2LCPU2oaRFH",
+        ("sh(sortedmulti(2,[8d55ff0d/45h]tpubDANogJ2yfnizHwX7fSi5kUVzybyuPXDhgHB2TR9TUvkSLZFW73cRq4STKFDpx7qjJJiisyq82tbu4CeiYtmKEmT1xoCq9P8BPvXV31HUh6d/{0,1}/*,[0be174ee/45h]tpubDBkeVF2tDNT1Pz7L47iJeBB6RokU12LX6x4E6Ph8T89hmjQfB77q1AMyGwL8qpREVGq9sCJEbWwmnemwNTxnpxGn1di7BGy8jx9wEi5Vahu/{0,1}/*,[73c5da0a/45h]tpubDBKsGC1UqBDNvx9aivFmxZNgeZTUnmsCFGhWrqkLzucUCDePvbWWm3n8tAaAwMmxBG2ihdKCG9fzBdUnMxKx5PrkiqSZFi6Vkv6msUs9ddN/{0,1}/*))#p5t8sa8c", 0, True, "test"): "2MuWQTq7hUGiX1HpXuPRnf7YTM42H5zoEwj",
 
         # multisig taproot on testnet, not supported
         # TODO: find what a multisig-taproot descriptor would look like and add a test so we can fall into the last condition exception.
@@ -360,6 +379,13 @@ def test_parse_derivation_path():
         (SC.MAINNET, SC.TAPROOT, True): "m/86'/0'/0'/1/5",
         (SC.TESTNET, SC.TAPROOT, True): "m/86'/1'/0'/1/5",
         (SC.REGTEST, SC.TAPROOT, True): "m/86'/1'/0'/1/5",
+
+        (SC.MAINNET, SC.LEGACY_P2PKH, False): "m/44'/0'/0'/0/5",
+        (SC.TESTNET, SC.LEGACY_P2PKH, False): "m/44'/1'/0'/0/5",
+        (SC.REGTEST, SC.LEGACY_P2PKH, False): "m/44'/1'/0'/0/5",
+        (SC.MAINNET, SC.LEGACY_P2PKH, True): "m/44'/0'/0'/1/5",
+        (SC.TESTNET, SC.LEGACY_P2PKH, True): "m/44'/1'/0'/1/5",
+        (SC.REGTEST, SC.LEGACY_P2PKH, True): "m/44'/1'/0'/1/5",
 
         # Try a typical custom derivation path (Unchained vault keys)
         (SC.MAINNET, SC.CUSTOM_DERIVATION, False): "m/45'/0'/0'/0/5",
