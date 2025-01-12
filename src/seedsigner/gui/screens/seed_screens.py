@@ -668,7 +668,9 @@ class SeedAddPassphraseScreen(BaseTopNavScreen):
 
 
     def __post_init__(self):
-        self.title = _("BIP-39 Passphrase")
+        if not self.title:
+            self.title = _("BIP-39 Passphrase")
+            
         super().__post_init__()
 
         keys_lower = "abcdefghijklmnopqrstuvwxyz"

@@ -33,14 +33,14 @@ class ToolsMenuView(View):
     IMAGE = ButtonOption(" New seed", FontAwesomeIconConstants.CAMERA)
     DICE = ButtonOption("New seed", FontAwesomeIconConstants.DICE)
     KEYBOARD = ButtonOption("Calc 12th/24th word", FontAwesomeIconConstants.KEYBOARD)
-    EXPLORER = ButtonOption("Address Explorer")
-    ADDRESS = ButtonOption("Verify address")
+    ADDRESS_EXPLORER = ButtonOption("Address Explorer")
+    VERIFY_ADDRESS = ButtonOption("Verify address")
     SMARTCARD = ButtonOption("Smartcard Tools", FontAwesomeIconConstants.LOCK)
     MICROSD = ButtonOption("MicroSD Tools")
     CLEAR_DESCRIPTOR = ButtonOption("Clear Multisig Descriptor")
 
     def run(self):
-        button_data = [self.IMAGE, self.DICE, self.KEYBOARD, self.EXPLORER, self.ADDRESS, self.SMARTCARD, self.MICROSD, self.CLEAR_DESCRIPTOR]
+        button_data = [self.IMAGE, self.DICE, self.KEYBOARD, self.ADDRESS_EXPLORER, self.VERIFY_ADDRESS, self.SMARTCARD, self.MICROSD, self.CLEAR_DESCRIPTOR]
 
         selected_menu_num = self.run_screen(
             ButtonListScreen,
@@ -487,6 +487,7 @@ class ToolsAddressExplorerSelectSourceView(View):
     TYPE_18WORD = ButtonOption("Enter 18-word seed", FontAwesomeIconConstants.KEYBOARD)
     TYPE_24WORD = ButtonOption("Enter 24-word seed", FontAwesomeIconConstants.KEYBOARD)
     LOADED_DESCRIPTOR = ButtonOption("Loaded Multisig Descriptor")
+    TYPE_ELECTRUM = ButtonOption("Electrum Seed", FontAwesomeIconConstants.KEYBOARD)
 
     def run(self):
         from seedsigner.controller import Controller
@@ -782,11 +783,11 @@ class ToolsAddressExplorerAddressView(View):
     Smartcard Views
 ****************************************************************************"""
 class ToolsSmartcardMenuView(View):
-    CHANGE_PIN = ("Change PIN")
-    CHANGE_LABEL = ("Change Label")
-    SATOCHIP = ("Satochip Functions")
-    SEEDKEEPER = ("SeedKeeper Functions")
-    Satochip_DIY = ("DIY Tools")
+    CHANGE_PIN = ButtonOption("Change PIN")
+    CHANGE_LABEL = ButtonOption("Change Label")
+    SATOCHIP = ButtonOption("Satochip Functions")
+    SEEDKEEPER = ButtonOption("SeedKeeper Functions")
+    Satochip_DIY = ButtonOption("DIY Tools")
 
     def run(self):
         button_data = [self.CHANGE_PIN, self.CHANGE_LABEL, self.SEEDKEEPER, self.SATOCHIP, self.Satochip_DIY]
@@ -830,10 +831,10 @@ class ToolsSatochipChangePinView(View):
         if NewPin == RET_CODE__BACK_BUTTON:
             return Destination(ToolsSmartcardMenuView)
         
-        new_pin = list(NewPin.encode('utf8'))
+        new_pin = list(NewPin['passphrase'].encode('utf8'))
         response, sw1, sw2 = Satochip_Connector.card_change_PIN(0, Satochip_Connector.pin, new_pin)
         if sw1 == 0x90 and sw2 == 0x00:
-            print("Success: Pin Changed")
+            logger.info("Success: Pin Changed")
             self.run_screen(
                 LargeIconStatusScreen,
                 title="Success",
@@ -842,7 +843,7 @@ class ToolsSatochipChangePinView(View):
                 show_back_button=False,
             )
         else:
-            print("Failure: Pin Change Failed")
+            logger.info("Failure: Pin Change Failed")
             self.run_screen(
                 WarningScreen,
                 title="Invalid PIN",
@@ -868,9 +869,9 @@ class ToolsSatochipChangeLabelView(View):
 
         """Sets a plain text label for the card (Optional)"""
         try:
-            (response, sw1, sw2) = Satochip_Connector.card_set_label(NewLabel)
+            (response, sw1, sw2) = Satochip_Connector.card_set_label(NewLabel['passphrase'])
             if sw1 != 0x90 or sw2 != 0x00:
-                print("ERROR: Set Label Failed")
+                logger.info("ERROR: Set Label Failed")
                 self.run_screen(
                     WarningScreen,
                     title="Failed",
@@ -879,7 +880,7 @@ class ToolsSatochipChangeLabelView(View):
                     show_back_button=True,
                 )
             else:
-                print("Device Label Updated")
+                logger.info("Device Label Updated")
                 self.run_screen(
                     LargeIconStatusScreen,
                     title="Success",
@@ -889,7 +890,7 @@ class ToolsSatochipChangeLabelView(View):
                 )
         except Exception as e:
             self.loading_screen.stop()
-            print("Set Label Failed:", str(e))
+            logger.info("Set Label Failed:", str(e))
             self.run_screen(
                 WarningScreen,
                 title="Failed",
@@ -901,11 +902,11 @@ class ToolsSatochipChangeLabelView(View):
         return Destination(MainMenuView)
 
 class ToolsSeedkeeperView(View):
-    VIEW_SECRETS = "View Secrets on Card"
-    IMPORT_PASSWORD = "Save Password to Card"
-    DELETE_SECRET = "Delete Secret from Card"
-    LOAD_DESCRIPTOR = "Load MultiSig Descriptor"
-    SAVE_DESCRIPTOR = "Save MultiSig Descriptor"
+    VIEW_SECRETS = ButtonOption("View Secrets on Card")
+    IMPORT_PASSWORD = ButtonOption("Save Password to Card")
+    DELETE_SECRET = ButtonOption("Delete Secret from Card")
+    LOAD_DESCRIPTOR = ButtonOption("Load MultiSig Descriptor")
+    SAVE_DESCRIPTOR = ButtonOption("Save MultiSig Descriptor")
 
     def run(self):
         button_data = [self.VIEW_SECRETS, self.IMPORT_PASSWORD, self.DELETE_SECRET, self.LOAD_DESCRIPTOR, self.SAVE_DESCRIPTOR]
@@ -939,7 +940,7 @@ class ToolsSeedkeeperViewSecretsView(View):
 
     def entropy_to_mnemonic(self, entropy_bytes, wordlist):
         from mnemonic import Mnemonic
-        print(f"Worldlist: {wordlist}")
+        logger.info(f"Worldlist: {wordlist}")
 
         mnemonic_obj = Mnemonic(wordlist)
         mnemonic = mnemonic_obj.to_mnemonic(entropy_bytes)
@@ -993,9 +994,9 @@ class ToolsSeedkeeperViewSecretsView(View):
 
                 if export_rights == 'Plaintext export allowed':
                     headers_parsed.append((sid, label))
-                    button_data.append(label)
+                    button_data.append(ButtonOption(label))
 
-            print(headers_parsed)
+            logger.info(headers_parsed)
             if len(headers_parsed) < 1:
                 self.run_screen(
                 WarningScreen,
@@ -1043,7 +1044,6 @@ class ToolsSeedkeeperViewSecretsView(View):
                 # this format is backward compatible with Masterseed (BIP39 info appended after Masterseed)
                 # mnemonic in compressed format using entropy (16-32 bytes)
                 secret_raw_hex = secret_dict['secret']
-                print(f"secret_raw_hex: {secret_raw_hex}")
                 secret_raw_bytes = bytes.fromhex(secret_raw_hex)
                 
                 offset = 0
@@ -1058,7 +1058,7 @@ class ToolsSeedkeeperViewSecretsView(View):
                 offset+=1
                 wordlist = BIP39_WORDLIST_DIC.get(wordlist_byte)
                 if wordlist == None:
-                    print(f"Error: wordlist byte {wordlist_byte} unsupported!")
+                    logger.info(f"Error: wordlist byte {wordlist_byte} unsupported!")
                     exit()
                 
                 entropy_size = secret_raw_bytes[offset]
@@ -1070,7 +1070,7 @@ class ToolsSeedkeeperViewSecretsView(View):
                     bip39_mnemonic = self.entropy_to_mnemonic(entropy_bytes, wordlist)
 
                 except Exception as ex:
-                    print(f"Error during entropy conversion: {ex}")
+                    logger.info(f"Error during entropy conversion: {ex}")
                     bip39_mnemonic = f"failed to convert entropy: {entropy_bytes.hex()}"
 
                 passphrase_size= secret_raw_bytes[offset]
@@ -1081,7 +1081,7 @@ class ToolsSeedkeeperViewSecretsView(View):
                 try:
                     passphrase = passphrase_bytes.decode("utf-8")
                 except Exception as ex:
-                    print(f"Error during passphrase decoding: {ex}")
+                    logger.info(f"Error during passphrase decoding: {ex}")
                     passphrase = f"failed to decode passphrase bytes: {passphrase_bytes.hex()}"
 
                 secret_dict['secret']= f'BIP39 mnemonic: "{bip39_mnemonic}" \nPassphrase: "{passphrase}"'  
@@ -1128,7 +1128,7 @@ class ToolsSeedkeeperViewSecretsView(View):
                 status_icon_size=0,
                 show_back_button=True,
                 allow_text_overflow=True,
-                button_data=["Show as QR"],
+                button_data=[ButtonOption("Show as QR")],
             )
 
             if selected_menu_num == RET_CODE__BACK_BUTTON:
@@ -1144,7 +1144,7 @@ class ToolsSeedkeeperViewSecretsView(View):
             return Destination(BackStackView)
             
         except Exception as e:
-            print(e)
+            logger.info(e)
             self.loading_screen.stop()
             self.run_screen(
                 WarningScreen,
@@ -1173,8 +1173,8 @@ class ToolsSeedkeeperImportPasswordView(View):
         if not Satochip_Connector:
             return Destination(BackStackView)
         
-        header = Satochip_Connector.make_header("Password", "Plaintext export allowed", secret_label)
-        secret_text_list = list(bytes(secret_text, 'utf-8'))
+        header = Satochip_Connector.make_header("Password", "Plaintext export allowed", secret_label['passphrase'])
+        secret_text_list = list(bytes(secret_text['passphrase'], 'utf-8'))
         secret_list = [len(secret_text_list)] + secret_text_list
         secret_dic = {'header': header, 'secret_list': secret_list}
         try:
@@ -1185,7 +1185,7 @@ class ToolsSeedkeeperImportPasswordView(View):
 
             self.loading_screen.stop()
 
-            print("Imported - SID:", sid, " Fingerprint:", fingerprint)
+            logger.info("Imported - SID:", sid, " Fingerprint:", fingerprint)
             self.run_screen(
                 LargeIconStatusScreen,
                 title="Success",
@@ -1194,7 +1194,7 @@ class ToolsSeedkeeperImportPasswordView(View):
                 show_back_button=False,
             )
         except Exception as e:
-            print(e)
+            logger.info(e)
             self.loading_screen.stop()
             self.run_screen(
                 WarningScreen,
@@ -1260,9 +1260,9 @@ class ToolsSeedkeeperDeleteSecretView(View):
 
                 if export_rights == 'Plaintext export allowed':
                     headers_parsed.append((sid, label))
-                    button_data.append(label)
+                    button_data.append(ButtonOption(label))
 
-            print(headers_parsed)
+            logger.info(headers_parsed)
             if len(headers_parsed) < 1:
                 self.run_screen(
                 WarningScreen,
@@ -1306,7 +1306,7 @@ class ToolsSeedkeeperDeleteSecretView(View):
             return Destination(BackStackView)
             
         except Exception as e:
-            print(e)
+            logger.info(e)
             self.loading_screen.stop()
             self.run_screen(
                 WarningScreen,
@@ -1353,7 +1353,7 @@ class ToolsSeedkeeperLoadDescriptorView(View):
                     # Check for Seedkeeper V1 style Descriptors
                     if "msig_desc_" in label:
                         multisig_descriptor_secrets.append((sid, label.replace("msig_desc_", "")))
-                        button_data.append(label.replace("msig_desc_", ""))
+                        button_data.append(ButtonOption(label.replace("msig_desc_", "")))
 
                     if "xpub_" in label:
                         xpub_secrets.append((sid, label))
@@ -1361,10 +1361,10 @@ class ToolsSeedkeeperLoadDescriptorView(View):
                     # Check for Seedkeeper V2 Style Descriptors
                     if stype == "Descriptor": 
                         multisig_descriptor_secrets.append((sid, label))
-                        button_data.append(label)
+                        button_data.append(ButtonOption(label))
 
-            print("Multisig Descriptor Secrets:", multisig_descriptor_secrets)
-            print("Xpub Secrets:",xpub_secrets)
+            logger.info("Multisig Descriptor Secrets:", multisig_descriptor_secrets)
+            logger.info("Xpub Secrets:",xpub_secrets)
 
             self.loading_screen.stop()
 
@@ -1404,14 +1404,14 @@ class ToolsSeedkeeperLoadDescriptorView(View):
 
                 for xpub_secret_id, xpub_secret_label in xpub_secrets: 
                     if xpub_secret_label in secret_template:
-                        print("Matched on:", xpub_secret_label)
+                        logger.info("Matched on:", xpub_secret_label)
                         secret_dict = Satochip_Connector.seedkeeper_export_secret(xpub_secret_id, None)
                         secret_dict['secret'] = unhexlify(secret_dict['secret'])[1:].decode()
                         secret_template = secret_template.replace(xpub_secret_label, secret_dict['secret'])
                 
             self.controller.multisig_wallet_descriptor = Descriptor.from_string(secret_template)
             
-            print(checksum(Descriptor.to_string(self.controller.multisig_wallet_descriptor)))
+            logger.info(checksum(Descriptor.to_string(self.controller.multisig_wallet_descriptor)))
 
             self.loading_screen.stop()
 
@@ -1420,7 +1420,7 @@ class ToolsSeedkeeperLoadDescriptorView(View):
 
         except Exception as e:
             self.loading_screen.stop()
-            print(e)
+            logger.info(e)
             self.run_screen(
                 WarningScreen,
                 title="Error",
@@ -1453,7 +1453,7 @@ class ToolsSeedkeeperSaveDescriptorView(View):
             # Break up the descriptor for efficient storage on SeedKeeper Cards
             descriptor_string = descriptor.to_string()
 
-            print(descriptor_string)
+            logger.info(descriptor_string)
 
             # Prompt for Descriptor Name
             ret = seed_screens.SeedAddPassphraseScreen(title="Descriptor Label").display()
@@ -1486,11 +1486,11 @@ class ToolsSeedkeeperSaveDescriptorView(View):
                     descriptor_string = descriptor_string.replace(key_string, key_name)
                     key_strings.append((key_name, key_string))
 
-                key_strings.append(("msig_desc_" + ret, descriptor_string))
+                key_strings.append(("msig_desc_" + ret['passphrase'], descriptor_string))
             
             else: # For Seedkeeper V2, we can just store the whole descriptor as-is
                 secret_type = "Descriptor"
-                key_strings.append((ret, descriptor_string))
+                key_strings.append((ret['passphrase'], descriptor_string))
 
             # Check for existing secrets on the Seedkeeper (Related to this descriptor)
             headers = Satochip_Connector.seedkeeper_list_secret_headers()
@@ -1514,17 +1514,17 @@ class ToolsSeedkeeperSaveDescriptorView(View):
                 if export_rights == 'Plaintext export allowed':
                     if "msig_desc_" in label:
                         multisig_descriptor_secrets.append((sid, label.replace("msig_desc_", "")))
-                        button_data.append(label.replace("msig_desc_", ""))
+                        button_data.append(ButtonOption(label.replace("msig_desc_", "")))
 
                     if "xpub_" in label:
-                        xpub_labels.append(label)
+                        xpub_labels.append(ButtonOption(label))
 
                     # Check for Seedkeeper V2 Style Descriptors
                     if stype == "Descriptor": 
                         multisig_descriptor_secrets.append((sid, label))
 
-            print("Multisig Descriptor Secrets:", multisig_descriptor_secrets)
-            print("Xpub Secrets:",xpub_labels)
+            logger.info("Multisig Descriptor Secrets:", multisig_descriptor_secrets)
+            logger.info("Xpub Secrets:",xpub_labels)
 
             multisig_descriptor_templates = []
 
@@ -1535,18 +1535,17 @@ class ToolsSeedkeeperSaveDescriptorView(View):
 
                 multisig_descriptor_templates.append(secret_dict['secret'])
 
-            print(multisig_descriptor_templates)
+            logger.info(multisig_descriptor_templates)
 
-            print("Key Strings:", key_strings)
+            logger.info("Key Strings:", key_strings)
 
             # Add required secrets to seedkeeper
             for secret_label, secret_text in key_strings:
                 if secret_text in multisig_descriptor_templates or secret_label in xpub_labels:
-                    print("Mached Existing Secret, skipping:", secret_label)
+                    logger.info("Mached Existing Secret, skipping:", secret_label)
                     secrets_skipped += 1
                     continue
                 header = Satochip_Connector.make_header(secret_type, "Plaintext export allowed", secret_label)
-                print("Secret Text:", secret_text)
                 if secret_type == "Password":
                     secret_text_list = list(bytes(secret_text, 'utf-8'))
                     secret_list = [len(secret_text_list)] + secret_text_list
@@ -1555,7 +1554,7 @@ class ToolsSeedkeeperSaveDescriptorView(View):
                     secret_list = list(len(secret_text_list).to_bytes(2,"big")) + secret_text_list
                 secret_dic = {'header': header, 'secret_list': secret_list}
                 (sid, fingerprint) = Satochip_Connector.seedkeeper_import_secret(secret_dic)
-                print("Imported - SID:", sid, " Fingerprint:", fingerprint)
+                logger.info("Imported - SID:", sid, " Fingerprint:", fingerprint)
                 secrets_imported += 1
                 
             self.loading_screen.stop()
@@ -1570,7 +1569,7 @@ class ToolsSeedkeeperSaveDescriptorView(View):
 
         except Exception as e:
             self.loading_screen.stop()
-            print(e)
+            logger.info(e)
             self.run_screen(
                 WarningScreen,
                 title="Error",
@@ -1582,8 +1581,8 @@ class ToolsSeedkeeperSaveDescriptorView(View):
         return Destination(BackStackView)
 
 class ToolsSatochipView(View):
-    IMPORT_SEED = ("Import Seed")
-    ENABLE_2FA = ("Enable 2FA")
+    IMPORT_SEED = ButtonOption("Import Seed")
+    ENABLE_2FA = ButtonOption("Enable 2FA")
 
     def run(self):
         button_data = [self.IMPORT_SEED, self.ENABLE_2FA]
@@ -1620,7 +1619,7 @@ class ToolsSatochipImportSeedView(View):
         button_data = []
         for seed in seeds:
             button_str = seed.get_fingerprint(self.settings.get_value(SettingsConstants.SETTING__NETWORK))
-            button_data.append((button_str, SeedSignerIconConstants.FINGERPRINT))
+            button_data.append(ButtonOption(button_str, SeedSignerIconConstants.FINGERPRINT))
         
         button_data = button_data + [self.SCAN_SEED, self.TYPE_12WORD, self.TYPE_24WORD]
         
@@ -1640,8 +1639,6 @@ class ToolsSatochipImportSeedView(View):
         # knows to re-route us once the side flow is complete.        
         # self.controller.resume_main_flow = Controller.FLOW__SATOCHIP_IMPORT_SEED
 
-        print(seeds[selected_menu_num])
-
         if len(seeds) > 0 and selected_menu_num < len(seeds):
             # User selected one of the n seeds
             try:
@@ -1652,7 +1649,7 @@ class ToolsSatochipImportSeedView(View):
 
                 self.loading_screen.stop()
 
-                print("Seed Successfully Imported")
+                logger.info("Seed Successfully Imported")
                 self.run_screen(
                     LargeIconStatusScreen,
                     title="Success",
@@ -1662,7 +1659,7 @@ class ToolsSatochipImportSeedView(View):
                 )
             except Exception as e:
                 self.loading_screen.stop()
-                print("Satochip Import Failed:",str(e))
+                logger.info("Satochip Import Failed:",str(e))
                 self.run_screen(
                     WarningScreen,
                     title="Failed",
@@ -1691,7 +1688,7 @@ class ToolsSatochipEnable2FAView(View):
         import binascii
         from seedsigner.gui.screens.screen import LoadingScreenThread
         key = urandom(20)
-        print("2FA Key:", binascii.hexlify(key))
+        logger.info("2FA Key:", binascii.hexlify(key))
 
         Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satochip"])
 
@@ -1720,7 +1717,7 @@ class ToolsSatochipEnable2FAView(View):
 
             self.loading_screen.stop()
 
-            print("Success: 2FA Key Imported and Enabled")
+            logger.info("Success: 2FA Key Imported and Enabled")
             self.run_screen(
                 LargeIconStatusScreen,
                 title="Success",
@@ -1730,7 +1727,7 @@ class ToolsSatochipEnable2FAView(View):
             )
         except Exception as e:
             self.loading_screen.stop()
-            print("Enable 2fa failed:", str(e))
+            logger.info("Enable 2fa failed:", str(e))
             self.run_screen(
                 WarningScreen,
                 title="Failed",
@@ -1742,9 +1739,9 @@ class ToolsSatochipEnable2FAView(View):
         return Destination(MainMenuView)
 
 class ToolsSatochipDIYView(View):
-    BUILD_APPLETS = ("Build Applets")
-    INSTALL_APPLET = ("Install Applet")
-    UNINSTALL_APPLET = ("Uninstall Applet")
+    BUILD_APPLETS = ButtonOption("Build Applets")
+    INSTALL_APPLET = ButtonOption("Install Applet")
+    UNINSTALL_APPLET = ButtonOption("Uninstall Applet")
 
     def run(self):
         button_data = [self.BUILD_APPLETS, self.INSTALL_APPLET, self.UNINSTALL_APPLET]
@@ -1798,7 +1795,7 @@ class ToolsDIYBuildAppletsView(View):
 
         data = run(commandString, capture_output=True, shell=True, text=True)
 
-        print(data)
+        logger.info(data)
 
         self.loading_screen.stop()
 
@@ -1833,18 +1830,22 @@ class ToolsDIYInstallAppletView(View):
         else:
             cap_files = os.listdir('/boot/javacard-cap/')
 
+        cap_file_buttons = []
+        for file in cap_files:
+            cap_file_buttons.append(ButtonOption(file))
+
         selected_file_num = self.run_screen(
             ButtonListScreen,
             title="Select Applet",
             is_button_text_centered=False,
-            button_data=cap_files
+            button_data=cap_file_buttons
         )
 
         if selected_file_num == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
 
         applet_file = cap_files[selected_file_num]
-        print("Selected:", applet_file)
+        logger.info("Selected:", applet_file)
 
         if platform.uname()[1] == "seedsigner-os":
             installed_applets = seedkeeper_utils.run_globalplatform(self,
@@ -1889,12 +1890,12 @@ class ToolsDIYUninstallAppletView(View):
             for line in installed_applets:
                 if "PKG: " in line:
                     package_info = line.split()
-                    print(package_info)
+                    logger.info(package_info)
                     # Ignore system packages
                     if package_info[1] in ['A0000001515350', 'A00000016443446F634C697465', 'A0000000620204', 'A0000000620202', 'D27600012401','D00000000002','4B4D313031']:
                         continue
                     
-                    installed_applets_list.append(package_info[3][2:-2])
+                    installed_applets_list.append(ButtonOption(package_info[3][2:-2]))
                     installed_applets_aids.append(package_info[1])
 
             if len(installed_applets_list) > 0:
@@ -1919,7 +1920,7 @@ class ToolsDIYUninstallAppletView(View):
                     status_headline=None,
                     text="No Applets to Uninstall",
                     show_back_button=False,
-                    button_data=["Continue"]
+                    button_data=[ButtonOption("Continue")]
                 )
 
                 # This process often kills IFD-NFC, so restart it if required
@@ -1935,10 +1936,10 @@ class ToolsDIYUninstallAppletView(View):
     MicroSD Views
 ****************************************************************************"""
 class ToolsMicroSDMenuView(View):
-    FLASH_IMAGE = ("Flash Image")
-    VERIFY_IMAGE = ("Verify MicroSD")
-    WIPE_ZERO = ("Wipe (Zero)")
-    WIPE_RANDOM = ("Wipe (Random)")
+    FLASH_IMAGE = ButtonOption("Flash Image")
+    VERIFY_IMAGE = ButtonOption("Verify MicroSD")
+    WIPE_ZERO = ButtonOption("Wipe (Zero)")
+    WIPE_RANDOM = ButtonOption("Wipe (Random)")
 
     def run(self):
         button_data = [self.FLASH_IMAGE, self.VERIFY_IMAGE, self.WIPE_ZERO, self.WIPE_RANDOM]
@@ -1975,18 +1976,22 @@ class ToolsMicroSDFlashView(View):
         else:
             microsd_images = os.listdir('/boot/microsd-images/')
 
+        microsd_images_buttons = []
+        for file in microsd_images:
+            microsd_images_buttons.append(ButtonOption(file))
+
         selected_file_num = self.run_screen(
             ButtonListScreen,
             title="Select Image",
             is_button_text_centered=False,
-            button_data=microsd_images
+            button_data=microsd_images_buttons
         )
 
         if selected_file_num == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
 
         microsd_image = microsd_images[selected_file_num]
-        print("Selected:", microsd_image)
+        logger.info("Selected:", microsd_image)
 
         if platform.uname()[1] == "seedsigner-os":
             data = run("cp /mnt/microsd/microsd-images/" + microsd_image + " /tmp/img.img", capture_output=True, shell=True, text=True)
@@ -2006,7 +2011,7 @@ class ToolsMicroSDFlashView(View):
                 status_headline=None,
                 text="Insert MicroSD to be Flashed",
                 show_back_button=True,
-                button_data=["Continue"]
+                button_data=[ButtonOption("Continue")]
             )
 
             if ret == RET_CODE__BACK_BUTTON:
@@ -2038,7 +2043,7 @@ class ToolsMicroSDFlashView(View):
                     status_headline=None,
                     text=data.stderr,
                     show_back_button=False,
-                    button_data=["Continue"]
+                    button_data=[ButtonOption("Continue")]
                 )
             else:
                 ret = self.run_screen(
@@ -2047,7 +2052,7 @@ class ToolsMicroSDFlashView(View):
                     status_headline=None,
                     text=f"MicroSD Flashed",
                     show_back_button=False,
-                    button_data=["Verify","Skip Verification"]
+                    button_data=[ButtonOption("Verify"),ButtonOption("Skip Verification")]
                 )
 
                 if ret == 0:
@@ -2069,7 +2074,7 @@ class ToolsMicroSDVerifyWarningView(View):
             status_headline=None,
             text="Verification test will\nonly pass for freshly\nflashed (or Read Only)\nMicroSD Cards.",
             show_back_button=True,
-            button_data=["Continue"]
+            button_data=[ButtonOption("Continue")]
         )
 
         if ret == RET_CODE__BACK_BUTTON:
@@ -2100,7 +2105,7 @@ class ToolsMicroSDVerifyView(View):
 
         data = run("sha256sum /tmp/img.img", capture_output=True, shell=True, text=True)
 
-        print(data)
+        logger.info(data)
 
         self.loading_screen.stop()
 
@@ -2114,7 +2119,7 @@ class ToolsMicroSDVerifyView(View):
                 status_headline="Matched Checksum",
                 text=image_name,
                 show_back_button=False,
-                button_data=["Continue"]
+                button_data=[ButtonOption("Continue")]
             )
 
         except KeyError:
@@ -2126,15 +2131,15 @@ class ToolsMicroSDVerifyView(View):
                 status_headline=None,
                 text=formatted_checksum,
                 show_back_button=False,
-                button_data=["Continue"]
+                button_data=[ButtonOption("Continue")]
             )
 
         return Destination(MainMenuView)
     
 class ToolsMicroSDWipeZeroView(View):
-    WIPE_64MB = "64MB"
-    WIPE_256MB = "256MB"
-    WIPE_ALL = "All"
+    WIPE_64MB = ButtonOption("64MB")
+    WIPE_256MB = ButtonOption("256MB")
+    WIPE_ALL = ButtonOption("All")
 
     def run(self):
         from subprocess import run
@@ -2167,7 +2172,7 @@ class ToolsMicroSDWipeZeroView(View):
             status_headline=None,
             text="Insert MicroSD to be Wiped",
             show_back_button=True,
-            button_data=["Continue"]
+            button_data=[ButtonOption("Continue")]
         )
 
         if ret == RET_CODE__BACK_BUTTON:
@@ -2183,7 +2188,7 @@ class ToolsMicroSDWipeZeroView(View):
 
         data = run(cmd, capture_output=True, shell=True, text=True)
 
-        print(data)
+        logger.info(data)
 
         self.loading_screen.stop()
 
@@ -2210,7 +2215,7 @@ class ToolsMicroSDWipeZeroView(View):
                 status_headline=None,
                 text=data.stderr,
                 show_back_button=False,
-                button_data=["Continue"]
+                button_data=[ButtonOption("Continue")]
             )
         else:
             self.run_screen(
@@ -2219,15 +2224,15 @@ class ToolsMicroSDWipeZeroView(View):
                 status_headline=None,
                 text=f"MicroSD Wiped",
                 show_back_button=False,
-                button_data=["Continue"]
+                button_data=[ButtonOption("Continue")]
             )
 
         return Destination(MainMenuView)
 
 class ToolsMicroSDWipeRandomView(View):
-    WIPE_64MB = "64MB"
-    WIPE_256MB = "256MB"
-    WIPE_ALL = "All"
+    WIPE_64MB = ButtonOption("64MB")
+    WIPE_256MB = ButtonOption("256MB")
+    WIPE_ALL = ButtonOption("All")
 
     def run(self):
         from subprocess import run
@@ -2260,7 +2265,7 @@ class ToolsMicroSDWipeRandomView(View):
             status_headline=None,
             text="Insert MicroSD to be Wiped",
             show_back_button=True,
-            button_data=["Continue"]
+            button_data=[ButtonOption("Continue")]
         )
 
         if ret == RET_CODE__BACK_BUTTON:
@@ -2276,7 +2281,7 @@ class ToolsMicroSDWipeRandomView(View):
 
         data = run(cmd, capture_output=True, shell=True, text=True)
 
-        print(data)
+        logger.info(data)
 
         self.loading_screen.stop()
 
@@ -2304,7 +2309,7 @@ class ToolsMicroSDWipeRandomView(View):
                 status_headline=None,
                 text=data.stderr,
                 show_back_button=False,
-                button_data=["Continue"]
+                button_data=[ButtonOption("Continue")]
             )
         else:
             self.run_screen(
@@ -2313,7 +2318,7 @@ class ToolsMicroSDWipeRandomView(View):
                 status_headline=None,
                 text=f"MicroSD Wiped",
                 show_back_button=False,
-                button_data=["Continue"]
+                button_data=[ButtonOption("Continue")]
             )
 
         return Destination(MainMenuView)

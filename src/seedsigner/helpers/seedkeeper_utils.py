@@ -1,7 +1,7 @@
 from pysatochip.CardConnector import CardConnector
 from pysatochip.JCconstants import SEEDKEEPER_DIC_TYPE, SEEDKEEPER_DIC_ORIGIN, SEEDKEEPER_DIC_EXPORT_RIGHTS
 from seedsigner.gui.screens import (RET_CODE__BACK_BUTTON, ButtonListScreen,
-    WarningScreen, DireWarningScreen, seed_screens, LargeIconStatusScreen)
+    WarningScreen, DireWarningScreen, seed_screens, LargeIconStatusScreen, KeyboardScreen)
 from seedsigner.gui.screens.screen import LoadingScreenThread
 
 
@@ -9,6 +9,9 @@ import os
 import time
 from os import urandom
 import platform
+import logging
+
+logger = logging.getLogger(__name__)
 
 def init_satochip(parentObject, init_card_filter=None):
     from seedsigner.models.settings import Settings, SettingsConstants, SettingsDefinition
@@ -75,7 +78,9 @@ def init_satochip(parentObject, init_card_filter=None):
         if card_pin == RET_CODE__BACK_BUTTON:
             return None
         
-        Satochip_Connector.set_pin(0, list(bytes(card_pin, "utf-8")))
+        logger.info(card_pin)
+        logger.info(type(card_pin))
+        Satochip_Connector.set_pin(0, list(bytes(card_pin['passphrase'], "utf-8")))
 
         try:
             parentObject.loading_screen = LoadingScreenThread(text="Verifying PIN")
@@ -160,7 +165,7 @@ def init_satochip(parentObject, init_card_filter=None):
             return None
     
         """Run the initial card setup process"""
-        pin_0 = list(ret.encode('utf8'))
+        pin_0 = list(ret['passphrase'].encode('utf8'))
         # Just stick with the defaults from SeedKeeper tool
         pin_tries_0 = 0x05
         ublk_tries_0 = 0x01

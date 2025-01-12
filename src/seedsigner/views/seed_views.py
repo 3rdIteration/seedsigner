@@ -10,7 +10,7 @@ from embit.descriptor import Descriptor
 
 from seedsigner.gui.components import FontAwesomeIconConstants, SeedSignerIconConstants
 from seedsigner.gui.screens import (RET_CODE__BACK_BUTTON, ButtonListScreen,
-    WarningScreen, DireWarningScreen, seed_screens)
+    WarningScreen, DireWarningScreen, seed_screens, LargeIconStatusScreen)
 from seedsigner.gui.screens.screen import ButtonOption
 from seedsigner.models.encode_qr import CompactSeedQrEncoder, GenericStaticQrEncoder, SeedQrEncoder, SpecterXPubQrEncoder, StaticXpubQrEncoder, UrXpubQrEncoder
 from seedsigner.models.qr_type import QRType
@@ -76,10 +76,10 @@ class SeedSelectSeedView(View):
     * `flow`: indicates which user flow is in progress during seed selection (e.g.
                 verify single sig addr or sign message).
     """
-    SCAN_SEED = ("Scan a seed", SeedSignerIconConstants.QRCODE)
-    TYPE_12WORD = ("Enter 12-word seed", FontAwesomeIconConstants.KEYBOARD)
-    TYPE_18WORD = ("Enter 18-word seed", FontAwesomeIconConstants.KEYBOARD)
-    TYPE_24WORD = ("Enter 24-word seed", FontAwesomeIconConstants.KEYBOARD)
+    SCAN_SEED = ButtonOption("Scan a seed", SeedSignerIconConstants.QRCODE)
+    TYPE_12WORD = ButtonOption("Enter 12-word seed", FontAwesomeIconConstants.KEYBOARD)
+    TYPE_18WORD = ButtonOption("Enter 18-word seed", FontAwesomeIconConstants.KEYBOARD)
+    TYPE_24WORD = ButtonOption("Enter 24-word seed", FontAwesomeIconConstants.KEYBOARD)
     TYPE_ELECTRUM = ButtonOption("Enter Electrum seed", FontAwesomeIconConstants.KEYBOARD)
 
     def __init__(self, flow: str):
@@ -268,7 +268,7 @@ class SeedKeeperSelectView(View):
 
                 if (stype == "BIP39 mnemonic" and export_rights == 'Plaintext export allowed' or stype == 'Masterseed' and subtype==0x01):
                     headers_parsed.append((sid, label))
-                    button_data.append(label)
+                    button_data.append(ButtonOption(label))
 
 
             print(headers_parsed)
@@ -472,7 +472,7 @@ class SeedMnemonicInvalidView(View):
 class SeedFinalizeView(View):
     FINALIZE = ButtonOption("Done")
     PASSPHRASE = ButtonOption("BIP-39 Passphrase")
-    LOAD_SEEDKEEPER = "Load BIP39 Passphrase"
+    LOAD_SEEDKEEPER = ButtonOption("Load BIP39 Passphrase")
 
     def __init__(self):
         super().__init__()
@@ -623,7 +623,7 @@ class SeedLoadSeedKeeperPassphraseView(View):
 
                 if stype == "Password" and export_rights == 'Plaintext export allowed':
                     headers_parsed.append((sid, label))
-                    button_data.append(label)
+                    button_data.append(ButtonOption(label))
 
             print(headers_parsed)
             if len(headers_parsed) < 1:
@@ -906,7 +906,7 @@ class SeedOptionsView(View):
 class SeedBackupView(View):
     VIEW_WORDS = ButtonOption("View Seed Words")
     EXPORT_SEEDQR = ButtonOption("Export as SeedQR")
-    TO_SEEDKEEPER = "To SeedKeeper"
+    TO_SEEDKEEPER = ButtonOption("To SeedKeeper")
 
 
     def __init__(self, seed_num):
@@ -2592,7 +2592,7 @@ class SaveToSeedkeeperView(View):
 
             if status['protocol_minor_version'] == 1: # Format needed for Seedkeeper v1 cards
                 print("Saving to SeedKeeper V1")
-                label = ret
+                label = ret['passphrase']
                 export_rights = "Plaintext export allowed"
                 type = "BIP39 mnemonic"
                 subtype = 0
@@ -2604,7 +2604,7 @@ class SaveToSeedkeeperView(View):
 
             else: # Seedkeeper V2 Format (Masterseed with BIP39 info)
                 print("Saving to SeedKeeper V2")
-                label = ret
+                label = ret['passphrase']
                 export_rights = "Plaintext export allowed"
                 type = "Masterseed"
                 subtype = 0x01
