@@ -104,6 +104,8 @@ class ScanView(View):
                 from embit.descriptor import Descriptor
                 from seedsigner.views.seed_views import MultisigWalletDescriptorView
 
+                descriptor_str = self.decoder.get_wallet_descriptor()
+
                 try:
                     # We need to replace `/0/*` wildcards with `/{0,1}/*` in order to use
                     # the Descriptor to verify change, too.
