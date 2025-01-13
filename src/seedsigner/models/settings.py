@@ -164,6 +164,7 @@ class Settings(Singleton):
                         new_settings[entry.attr_name] = new_settings[entry.attr_name].split(",")
 
         for key, value in new_settings.items():
+            print("Setting:", key, value)
             self.set_value(key, value)
 
 
@@ -194,15 +195,19 @@ class Settings(Singleton):
          # Special handling for enabling Smartcard readers
         if attr_name == SettingsConstants.SETTING__SMARTCARD_INTERFACES:
             import time
-            from seedsigner.gui.screens.screen import LoadingScreenThread, WarningScreen
+            import seedsigner
+            #from seedsigner.gui.screens.screen import LoadingScreenThread, WarningScreen
             
             print("Smartcard Interface Changed")
 
             # Basically just check through a a bunch of possible USB hubs and ports and enable/disable them all (Should cover all RPi models, RPi4 has lots of USB ports...)
             if "usb" not in value and "usb" in self._data[attr_name]:
-                self.loading_screen = LoadingScreenThread(text="Disabling USB Ports")
-                self.loading_screen.start()
                 print("Disabling USB")
+                try:
+                    self.loading_screen = seedsigner.gui.screens.screen.LoadingScreenThread(text="Disabling USB Ports")
+                    self.loading_screen.start()
+                except:
+                    pass
  
                 # Different Raspberry Pi models have different port config, see
                 # https://github.com/mvp/uhubctl?tab=readme-ov-file#raspberry-pi-b2b3b
@@ -218,12 +223,18 @@ class Settings(Singleton):
                     # For Raspberry Pi B+,2B,3B, 3B+
                     os.system(self.SU_COMMAND_PREFIX + "uhubctl -l 1-1 -p 2 -a 0")
                 
-                self.loading_screen.stop()
+                try:
+                    self.loading_screen.stop()
+                except:
+                    pass
 
             if "usb" in value and "usb" not in self._data[attr_name]:
-                self.loading_screen = LoadingScreenThread(text="Enabling USB Ports")
-                self.loading_screen.start()
                 print("Enabling USB")
+                try:
+                    self.loading_screen = seedsigner.gui.screens.screen.LoadingScreenThread(text="Enabling USB Ports")
+                    self.loading_screen.start()
+                except:
+                    pass
 
                 # Different Raspberry Pi models have different port config, see
                 # https://github.com/mvp/uhubctl?tab=readme-ov-file#raspberry-pi-b2b3b
@@ -250,32 +261,39 @@ class Settings(Singleton):
                     time.sleep(1)
                     os.system("sudo service pcscd start")
 
-                self.loading_screen.stop()
+                try:
+                    self.loading_screen.stop()
 
-                if "Zero" in GPIO.RPI_INFO['TYPE'] or "Model A" in GPIO.RPI_INFO['TYPE']: # For RPi0, 02w or model A devices
-                    screen = WarningScreen(
-                        title="Notice",
-                        status_headline=None,
-                        text="Enabling USB ports on this device requires a device restart (Full power cycle)",
-                        show_back_button=False
-                    )
-                    screen.display()
+                    if "Zero" in GPIO.RPI_INFO['TYPE'] or "Model A" in GPIO.RPI_INFO['TYPE']: # For RPi0, 02w or model A devices
+                        screen = seedsigner.gui.screens.screen.WarningScreen(
+                            title="Notice",
+                            status_headline=None,
+                            text="Enabling USB ports on this device requires a device restart (Full power cycle)",
+                            show_back_button=False
+                        )
+                        screen.display()
 
-                if "Unknown" in GPIO.RPI_INFO['TYPE']: # For unknown RPi devices
-                    screen = WarningScreen(
-                        title="Notice",
-                        status_headline="Unable to detect RPi Model",
-                        text="Enabling USB ports on this device likely requires a restart (Full power cycle)",
-                        show_back_button=False
-                    )
-                    screen.display()
+                    if "Unknown" in GPIO.RPI_INFO['TYPE']: # For unknown RPi devices
+                        screen = seedsigner.gui.screens.screen.WarningScreen(
+                            title="Notice",
+                            status_headline="Unable to detect RPi Model",
+                            text="Enabling USB ports on this device likely requires a restart (Full power cycle)",
+                            show_back_button=False
+                        )
+                        screen.display()
+
+                except:
+                    pass
 
 
             # Execution order matters here if swithing from Phoenix to PN352, basically we want to disable phoenix first and then enable PN532
             if "phoenix" in value and "phoenix" not in self._data[attr_name]:
-                self.loading_screen = LoadingScreenThread(text="Starting OpenCT")
-                self.loading_screen.start()
                 print("Phoenix Enabled")
+                try:
+                    self.loading_screen = seedsigner.gui.screens.screen.LoadingScreenThread(text="Starting OpenCT")
+                    self.loading_screen.start()
+                except:
+                    pass
 
                 os.system(self.SU_COMMAND_PREFIX + "openct-control init") # OpenCT needs a bit of time to get going before restarting PCSCD (At least two seconds) to work reliabily
                 time.sleep(3)
@@ -289,12 +307,19 @@ class Settings(Singleton):
                     time.sleep(1)
                     os.system("sudo service pcscd start")
 
-                self.loading_screen.stop()
+                try:
+                    self.loading_screen.stop()
+                except:
+                    pass
 
             if "phoenix" not in value and "phoenix" in self._data[attr_name]:
-                self.loading_screen = LoadingScreenThread(text="Stopping OpenCT")
-                self.loading_screen.start()
                 print("Phoenix Disabled")
+                try:
+                    self.loading_screen = seedsigner.gui.screens.screen.LoadingScreenThread(text="Stopping OpenCT")
+                    self.loading_screen.start()
+                except:
+                    pass
+                
                 os.system(self.SU_COMMAND_PREFIX + "openct-control shutdown")
                 time.sleep(3)
 
@@ -307,21 +332,36 @@ class Settings(Singleton):
                     time.sleep(1)
                     os.system("sudo service pcscd start")
 
-                self.loading_screen.stop()
+                try:
+                    self.loading_screen.stop()
+                except:
+                    pass
 
             if "pn532" in value and "pn532" not in self._data[attr_name]:
-                self.loading_screen = LoadingScreenThread(text="Enabling PN532")
-                self.loading_screen.start()
+                try:
+                    self.loading_screen = seedsigner.gui.screens.screen.LoadingScreenThread(text="Enabling PN532")
+                    self.loading_screen.start()
+                except:
+                    pass
                 print("PN532 Enabled")
                 os.system("ifdnfc-activate yes")
-                self.loading_screen.stop()
+                try:
+                    self.loading_screen.stop()
+                except:
+                    pass
 
             if "pn532" not in value and "pn532" in self._data[attr_name]:
-                self.loading_screen = LoadingScreenThread(text="Disabling PN532")
-                self.loading_screen.start()
+                try:
+                    self.loading_screen = seedsigner.gui.screens.screen.LoadingScreenThread(text="Disabling PN532")
+                    self.loading_screen.start()
+                except:
+                    pass
                 print("PN532 Disabled")
                 os.system("ifdnfc-activate no")
-                self.loading_screen.stop()
+                try:
+                    self.loading_screen.stop()
+                except:
+                    pass
 
         self._data[attr_name] = value
         self.save()
