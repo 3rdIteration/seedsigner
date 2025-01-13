@@ -828,7 +828,7 @@ class ToolsSatochipChangePinView(View):
 
         NewPin = seed_screens.SeedAddPassphraseScreen(title="New PIN").display()
 
-        if NewPin == RET_CODE__BACK_BUTTON:
+        if "is_back_button" in NewPin:
             return Destination(ToolsSmartcardMenuView)
         
         new_pin = list(NewPin['passphrase'].encode('utf8'))
@@ -864,7 +864,7 @@ class ToolsSatochipChangeLabelView(View):
 
         NewLabel = seed_screens.SeedAddPassphraseScreen(title="New Label").display()
 
-        if NewLabel == RET_CODE__BACK_BUTTON:
+        if "is_back_button" in NewLabel:
             return Destination(ToolsSmartcardMenuView)
 
         """Sets a plain text label for the card (Optional)"""
@@ -993,6 +993,7 @@ class ToolsSeedkeeperViewSecretsView(View):
                 fingerprint = header['fingerprint']
 
                 if export_rights == 'Plaintext export allowed':
+                    if len(label) == 0: label = "Unnamed Secret"
                     headers_parsed.append((sid, label))
                     button_data.append(ButtonOption(label))
 
@@ -1162,11 +1163,11 @@ class ToolsSeedkeeperImportPasswordView(View):
         from seedsigner.gui.screens.screen import LoadingScreenThread
 
         secret_label = seed_screens.SeedAddPassphraseScreen(title="Secret Label").display()
-        if secret_label == RET_CODE__BACK_BUTTON:
+        if "is_back_button" in secret_label:
             return Destination(BackStackView)
 
         secret_text = seed_screens.SeedAddPassphraseScreen(title="Secret Text").display()
-        if secret_text == RET_CODE__BACK_BUTTON:
+        if "is_back_button" in secret_text:
             return Destination(BackStackView)
 
         Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["seedkeeper"])
@@ -1259,6 +1260,7 @@ class ToolsSeedkeeperDeleteSecretView(View):
                 fingerprint = header['fingerprint']
 
                 if export_rights == 'Plaintext export allowed':
+                    if len(label) == 0: label = "Unnamed Secret"
                     headers_parsed.append((sid, label))
                     button_data.append(ButtonOption(label))
 
@@ -1409,10 +1411,11 @@ class ToolsSeedkeeperLoadDescriptorView(View):
                         secret_dict['secret'] = unhexlify(secret_dict['secret'])[1:].decode()
                         secret_template = secret_template.replace(xpub_secret_label, secret_dict['secret'])
                 
+            # Depending on where the descriptor came from whem imported into the SeedKeeper, it may need some characters swapped to work with Embit
+            secret_template = secret_template.replace("<","{").replace(">","}").replace(";",",")
+
             self.controller.multisig_wallet_descriptor = Descriptor.from_string(secret_template)
             
-            logger.info(checksum(Descriptor.to_string(self.controller.multisig_wallet_descriptor)))
-
             self.loading_screen.stop()
 
             return Destination(MultisigWalletDescriptorView, skip_current_view=True)
@@ -1458,7 +1461,7 @@ class ToolsSeedkeeperSaveDescriptorView(View):
             # Prompt for Descriptor Name
             ret = seed_screens.SeedAddPassphraseScreen(title="Descriptor Label").display()
 
-            if ret == RET_CODE__BACK_BUTTON:
+            if "is_back_button" in ret:
                 return Destination(BackStackView)
 
             # Set up our connection to the card

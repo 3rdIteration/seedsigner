@@ -186,8 +186,6 @@ class LoadSeedView(View):
 
         if self.settings.get_value(SettingsConstants.SETTING__ELECTRUM_SEEDS) == SettingsConstants.OPTION__ENABLED:
             button_data.append(self.TYPE_ELECTRUM)
-        
-        button_data.append(self.CREATE)
 
         selected_menu_num = self.run_screen(
             ButtonListScreen,
@@ -267,6 +265,7 @@ class SeedKeeperSelectView(View):
                 fingerprint = header['fingerprint']
 
                 if (stype == "BIP39 mnemonic" and export_rights == 'Plaintext export allowed' or stype == 'Masterseed' and subtype==0x01):
+                    if len(label) == 0: label = "Unnamed Secret"
                     headers_parsed.append((sid, label))
                     button_data.append(ButtonOption(label))
 
@@ -2293,7 +2292,7 @@ class SeedAddressVerificationSuccessView(View):
 
 class LoadMultisigWalletDescriptorView(View):
     SCAN = ButtonOption("Scan Descriptor", SeedSignerIconConstants.QRCODE)
-    FROM_SEEDKEEPER = ("Load SeedKeeper", FontAwesomeIconConstants.LOCK)
+    FROM_SEEDKEEPER = ButtonOption("Load SeedKeeper", FontAwesomeIconConstants.LOCK)
     CANCEL = ButtonOption("Cancel")
 
     def run(self):
@@ -2581,7 +2580,7 @@ class SaveToSeedkeeperView(View):
 
             ret = seed_screens.SeedAddPassphraseScreen(title="Seed Label").display()
 
-            if ret == RET_CODE__BACK_BUTTON:
+            if "is_back_button" in ret:
                 return Destination(BackStackView)
 
             status = Satochip_Connector.card_get_status()[3]

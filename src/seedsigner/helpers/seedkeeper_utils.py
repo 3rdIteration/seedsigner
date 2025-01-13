@@ -75,7 +75,7 @@ def init_satochip(parentObject, init_card_filter=None):
 
     if status[3]['setup_done']:
         card_pin = seed_screens.SeedAddPassphraseScreen(title="Card PIN").display()
-        if card_pin == RET_CODE__BACK_BUTTON:
+        if "is_back_button" in card_pin:
             return None
         
         logger.info(card_pin)
@@ -161,7 +161,7 @@ def init_satochip(parentObject, init_card_filter=None):
 
         ret = seed_screens.SeedAddPassphraseScreen(title="Card PIN").display()
 
-        if ret == RET_CODE__BACK_BUTTON:
+        if "is_back_button" in ret:
             return None
     
         """Run the initial card setup process"""
