@@ -1155,7 +1155,21 @@ class ToolsSeedkeeperViewSecretsView(View):
                 status_headline=None,
                 text=str(e),
                 show_back_button=True,
+                button_data=[ButtonOption("Show as QR")],
             )
+
+            if selected_menu_num == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+            else:
+                from seedsigner.gui.screens.screen import QRDisplayScreen
+                from seedsigner.models.encode_qr import GenericStaticQrEncoder
+
+                qr_encoder = GenericStaticQrEncoder(data=secret_dict['secret'])
+                self.run_screen(
+                    QRDisplayScreen,
+                    qr_encoder=qr_encoder,
+                )
+
             return Destination(BackStackView)
 
 
