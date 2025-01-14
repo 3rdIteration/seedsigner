@@ -164,7 +164,6 @@ class Settings(Singleton):
                         new_settings[entry.attr_name] = new_settings[entry.attr_name].split(",")
 
         for key, value in new_settings.items():
-            print("Setting:", key, value)
             self.set_value(key, value)
 
 

@@ -1101,16 +1101,16 @@ class ToolsSeedkeeperViewSecretsView(View):
 
                 # Password is always present, so no need to test for this
                 password_text = binascii.unhexlify(secret_dict['secret'])[1:password_length+1].decode()
-                secret_string += "\nPassword:" + "\"" + password_text + "\""
+                secret_string += " Password:" + "\"" + password_text + "\""
 
                 if login_length > 0:
                     login_text = binascii.unhexlify(secret_dict['secret'])[
                                     password_length + 2: password_length + login_length + 2].decode()
-                    secret_string += "\nLogin:" + "\"" + login_text + "\""
+                    secret_string += " Login:" + "\"" + login_text + "\""
 
                 if url_length > 0:
                     url_text = binascii.unhexlify(secret_dict['secret'])[-url_length:].decode()
-                    secret_string += "\nURL:" + "\"" + url_text + "\""
+                    secret_string += " URL:" + "\"" + url_text + "\""
 
                 secret_dict['secret'] = secret_string
 
@@ -1136,7 +1136,9 @@ class ToolsSeedkeeperViewSecretsView(View):
                 return Destination(BackStackView)
             else:
                 from seedsigner.gui.screens.screen import QRDisplayScreen
-                qr_encoder = EncodeQR(qr_type=QRType.GENERIC_STRING, generic_string=secret_dict['secret'])
+                from seedsigner.models.encode_qr import GenericStaticQrEncoder
+
+                qr_encoder = GenericStaticQrEncoder(data=secret_dict['secret'])
                 self.run_screen(
                     QRDisplayScreen,
                     qr_encoder=qr_encoder,
@@ -1707,7 +1709,10 @@ class ToolsSatochipEnable2FAView(View):
                 show_back_button=False,
             )
             from seedsigner.gui.screens.screen import QRDisplayScreen
-            qr_encoder = EncodeQR(qr_type=QRType.GENERIC_STRING, generic_string=binascii.hexlify(key).decode())
+            from seedsigner.models.encode_qr import GenericStaticQrEncoder
+
+            qr_encoder = GenericStaticQrEncoder(data=binascii.hexlify(key).decode())
+
             self.run_screen(
                 QRDisplayScreen,
                 qr_encoder=qr_encoder,
