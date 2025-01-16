@@ -194,7 +194,7 @@ def init_satochip(parentObject, init_card_filter=None):
             )
             return None
         else:
-            Satochip_Connector.set_pin(0, list(bytes(ret, "utf-8")))
+            Satochip_Connector.set_pin(0, list(bytes(ret['passphrase'], "utf-8")))
             print("Setup Succeeded")
             parentObject.run_screen(
                 LargeIconStatusScreen,
