@@ -414,8 +414,8 @@ class DecodeQR:
             pass
 
         # Is it byte data?
-        # 32 bytes for 24-word CompactSeedQR; 16 bytes for 12-word CompactSeedQR
-        if len(s) == 32 or len(s) == 16:
+        # 32 bytes for 24-word CompactSeedQR; 24 bytes for 18 word, 16 bytes for 12-word CompactSeedQR
+        if len(s) == 32 or len(s) == 24 or len(s) == 16:
             try:
                 bitstream = ""
                 for b in s:
@@ -779,7 +779,7 @@ class SeedQrDecoder(BaseSingleFrameQrDecoder):
                     word = self.wordlist[index]
                     self.seed_phrase.append(word)
                 if len(self.seed_phrase) > 0:
-                    if self.is_12_or_24_word_phrase() == False:
+                    if self.is_12_or_18_or_24_word_phrase() == False:
                         return DecodeQRStatus.INVALID
                     self.complete = True
                     self.collected_segments = 1
@@ -790,6 +790,7 @@ class SeedQrDecoder(BaseSingleFrameQrDecoder):
                 return DecodeQRStatus.INVALID
 
         if qr_type == QRType.SEED__COMPACTSEEDQR:
+            logging.info("Trying CompactSeedQR")
             try:
                 self.seed_phrase = bip39.mnemonic_from_bytes(segment).split()
                 self.complete = True
@@ -809,7 +810,7 @@ class SeedQrDecoder(BaseSingleFrameQrDecoder):
                     # seed is not valid, return invalid
                     return DecodeQRStatus.INVALID
                 self.seed_phrase = seed_phrase_list
-                if self.is_12_or_24_word_phrase() == False:
+                if self.is_12_or_18_or_24_word_phrase() == False:
                         return DecodeQRStatus.INVALID
                 self.complete = True
                 self.collected_segments = 1
@@ -832,7 +833,7 @@ class SeedQrDecoder(BaseSingleFrameQrDecoder):
                     # seed is not valid, return invalid
                     return DecodeQRStatus.INVALID
                 self.seed_phrase = words
-                if self.is_12_or_24_word_phrase() == False:
+                if self.is_12_or_18_or_24_word_phrase() == False:
                         return DecodeQRStatus.INVALID
                 self.complete = True
                 self.collected_segments = 1
@@ -850,8 +851,8 @@ class SeedQrDecoder(BaseSingleFrameQrDecoder):
         return []
 
 
-    def is_12_or_24_word_phrase(self):
-        if len(self.seed_phrase) in (12, 24):
+    def is_12_or_18_or_24_word_phrase(self):
+        if len(self.seed_phrase) in (12, 18, 24):
             return True
         return False
 
