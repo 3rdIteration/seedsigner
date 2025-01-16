@@ -1623,9 +1623,9 @@ class ToolsSatochipView(View):
             return Destination(ToolsSatochipEnable2FAView)
         
 class ToolsSatochipImportSeedView(View):
-    SCAN_SEED = ("Scan a seed", SeedSignerIconConstants.QRCODE)
-    TYPE_12WORD = ("Enter 12-word seed", FontAwesomeIconConstants.KEYBOARD)
-    TYPE_24WORD = ("Enter 24-word seed", FontAwesomeIconConstants.KEYBOARD)
+    SCAN_SEED = ButtonOption("Scan a seed", SeedSignerIconConstants.QRCODE)
+    TYPE_12WORD = ButtonOption("Enter 12-word seed", FontAwesomeIconConstants.KEYBOARD)
+    TYPE_24WORD = ButtonOption("Enter 24-word seed", FontAwesomeIconConstants.KEYBOARD)
 
     def run(self):
         from seedsigner.gui.screens.screen import LoadingScreenThread
