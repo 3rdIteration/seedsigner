@@ -159,7 +159,7 @@ The result should confirm that 1 key was *either* imported or updated. *Ignore* 
 
 Next, you will run the *verify* command on the signature (.sig) file. (*Verify* must be run from inside the same folder that you downloaded the files into earlier. The `*`'s in this command will auto-fill the version from your current folder, so it should be copied and pasted as-is.)   
 ```
-gpg --verify seedsigner.0.7.*.sha256.txt.sig
+gpg --verify seedsigner.0.8.*.sha256.txt.sig
 ```
 
 When the verify command completes successfully, it should display output like this:
