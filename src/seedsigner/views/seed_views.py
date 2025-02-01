@@ -850,7 +850,6 @@ class SeedExportXpubCoordinatorView(View):
 
 
 
-
 class SeedExportXpubWarningView(View):
     def __init__(self, seed_num: int, sig_type: str, script_type: str, coordinator: str, custom_derivation: str):
         super().__init__()
@@ -1196,6 +1195,7 @@ class SeedBIP85SelectChildIndexView(View):
         )
 
 
+
 class SeedBIP85InvalidChildIndexView(View):
     def __init__(self, seed_num: int, num_words: int):
         super().__init__()
@@ -1419,6 +1419,14 @@ class SeedWordsBackupTestSuccessView(View):
     Export as SeedQR
 ****************************************************************************"""
 class SeedTranscribeSeedQRFormatView(View):
+    # SeedQR dims for 12-word seeds
+    STANDARD_12 = ButtonOption("Standard: 25x25", return_data=25)
+    COMPACT_12 = ButtonOption("Compact: 21x21", return_data=21)
+
+    # SeedQR dims for 24-word seeds
+    STANDARD_24 = ButtonOption("Standard: 29x29", return_data=29)
+    COMPACT_24 = ButtonOption("Compact: 25x25", return_data=25)
+
     def __init__(self, seed_num: int):
         super().__init__()
         self.seed_num = seed_num
@@ -1426,12 +1434,6 @@ class SeedTranscribeSeedQRFormatView(View):
 
     def run(self):
         seed = self.controller.get_seed(self.seed_num)
-        if len(seed.mnemonic_list) == 12:
-            STANDARD = ButtonOption("Standard: 25x25", return_data=25)
-            COMPACT = ButtonOption("Compact: 21x21", return_data=21)
-        else:
-            STANDARD = ButtonOption("Standard: 29x29", return_data=29)
-            COMPACT = ButtonOption("Compact: 25x25", return_data=25)
 
         if self.settings.get_value(SettingsConstants.SETTING__COMPACT_SEEDQR) != SettingsConstants.OPTION__ENABLED:
             # Only configured for standard SeedQR
@@ -1440,22 +1442,26 @@ class SeedTranscribeSeedQRFormatView(View):
                 view_args={
                     "seed_num": self.seed_num,
                     "seedqr_format": QRType.SEED__SEEDQR,
-                    "num_modules": STANDARD.return_data,
+                    "num_modules": self.STANDARD_12.return_data,
                 },
                 skip_current_view=True,
             )
 
-        button_data = [STANDARD, COMPACT]
+        if len(seed.mnemonic_list) == 12:
+            button_data = [self.STANDARD_12, self.COMPACT_12]
+        else:
+            button_data = [self.STANDARD_24, self.COMPACT_24]
 
-        selected_menu_num = seed_screens.SeedTranscribeSeedQRFormatScreen(
+        selected_menu_num = self.run_screen(
+            seed_screens.SeedTranscribeSeedQRFormatScreen,
             title=_("SeedQR Format"),
             button_data=button_data,
-        ).display()
+        )
 
         if selected_menu_num == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
         
-        if button_data[selected_menu_num] == STANDARD:
+        if button_data[selected_menu_num] in [self.STANDARD_12, self.STANDARD_24]:
             seedqr_format = QRType.SEED__SEEDQR
         else:
             seedqr_format = QRType.SEED__COMPACTSEEDQR
@@ -1496,10 +1502,11 @@ class SeedTranscribeSeedQRWarningView(View):
             # Forward straight to transcribing the SeedQR
             return destination
 
-        selected_menu_num = DireWarningScreen(
+        selected_menu_num = self.run_screen(
+            DireWarningScreen,
             status_headline=_("SeedQR is your private key!"),
             text=_("Never photograph or scan it into a device that connects to the internet."),
-        ).display()
+        )
 
         if selected_menu_num == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
@@ -1529,10 +1536,11 @@ class SeedTranscribeSeedQRWholeQRView(View):
 
         data = e.next_part()
 
-        ret = seed_screens.SeedTranscribeSeedQRWholeQRScreen(
+        ret = self.run_screen(
+            seed_screens.SeedTranscribeSeedQRWholeQRScreen,
             qr_data=data,
             num_modules=self.num_modules,
-        ).display()
+        )
 
         if ret == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
@@ -1607,10 +1615,11 @@ class SeedTranscribeSeedQRConfirmQRPromptView(View):
     def run(self):
         button_data = [self.SCAN, self.DONE]
 
-        selected_menu_option = seed_screens.SeedTranscribeSeedQRConfirmQRPromptScreen(
+        selected_menu_option = self.run_screen(
+            seed_screens.SeedTranscribeSeedQRConfirmQRPromptScreen,
             title=_("Confirm SeedQR?"),
             button_data=button_data,
-        ).display()
+        )
 
         if selected_menu_option == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
@@ -1625,61 +1634,100 @@ class SeedTranscribeSeedQRConfirmQRPromptView(View):
 
 class SeedTranscribeSeedQRConfirmScanView(View):
     def __init__(self, seed_num: int):
+        from seedsigner.models.decode_qr import DecodeQR
         super().__init__()
         self.seed_num = seed_num
         self.seed = self.controller.get_seed(seed_num)
+        wordlist_language_code = self.settings.get_value(SettingsConstants.SETTING__WORDLIST_LANGUAGE)
+        self.decoder = DecodeQR(wordlist_language_code=wordlist_language_code)
 
     def run(self):
         from seedsigner.gui.screens.scan_screens import ScanScreen
-        from seedsigner.models.decode_qr import DecodeQR
 
         # Run the live preview and QR code capture process
         # TODO: Does this belong in its own BaseThread?
-        wordlist_language_code = self.settings.get_value(SettingsConstants.SETTING__WORDLIST_LANGUAGE)
-        self.decoder = DecodeQR(wordlist_language_code=wordlist_language_code)
-        ScanScreen(
+        self.run_screen(
+            ScanScreen,
             decoder=self.decoder,
             instructions_text=_("Scan your SeedQR")
-        ).display()
+        )
 
         if self.decoder.is_complete:
             if self.decoder.is_seed:
                 seed_mnemonic = self.decoder.get_seed_phrase()
                 # Found a valid mnemonic seed! But does it match?
                 if seed_mnemonic != self.seed.mnemonic_list:
-                    DireWarningScreen(
-                        title=_("Confirm SeedQR"),
-                        status_headline=_("Error!"),
-                        text=_("Your transcribed SeedQR does not match your original seed!"),
-                        show_back_button=False,
-                        button_data=[_("Review SeedQR")],
-                    ).display()
-
-                    return Destination(BackStackView, skip_current_view=True)
-                
+                    return Destination(SeedTranscribeSeedQRConfirmWrongSeedView, skip_current_view=True)
                 else:
-                    from seedsigner.gui.screens.screen import LargeIconStatusScreen
-                    LargeIconStatusScreen(
-                        title=_("Confirm SeedQR"),
-                        status_headline=_("Success!"),
-                        text=_("Your transcribed SeedQR successfully scanned and yielded the same seed."),
-                        show_back_button=False,
-                        button_data=[_("OK")],
-                    ).display()
+                    return Destination(SeedTranscribeSeedQRConfirmSuccessView, view_args={"seed_num": self.seed_num})
 
-                    return Destination(SeedOptionsView, view_args={"seed_num": self.seed_num})
+        else:
+            # Will this case ever happen? Will trigger if a different kind of QR code is scanned
+            return Destination(SeedTranscribeSeedQRConfirmInvalidQRView, skip_current_view=True)
 
-            else:
-                # Will this case ever happen? Will trigger if a different kind of QR code is scanned
-                DireWarningScreen(
-                    title=_("Confirm SeedQR"),
-                    status_headline=_("Error!"),
-                    text=_("Your transcribed SeedQR could not be read!"),
-                    show_back_button=False,
-                    button_data=[_("Review SeedQR")],
-                ).display()
 
-                return Destination(BackStackView, skip_current_view=True)
+
+class SeedTranscribeSeedQRConfirmWrongSeedView(View):
+    """
+    A valid SeedQR was scanned but it did NOT match the one we just transcribed!
+    """
+    def run(self):
+        self.run_screen(
+            DireWarningScreen,
+            title=_("Confirm SeedQR"),
+            status_headline=_("Error!"),
+            text=_("Your transcribed SeedQR does not match your original seed!"),
+            show_back_button=False,
+            button_data=[ButtonOption("Review SeedQR")],
+        )
+
+        # Skip BACK to the zoomed in transcription view
+        return Destination(BackStackView, skip_current_view=True)
+
+
+
+class SeedTranscribeSeedQRConfirmInvalidQRView(View):
+    """
+    A QR code was scanned but it was not a SeedQR and certainly not the SeedQR we just
+    transcribed!
+    """
+    def run(self):
+        # TODO: A better error message would be something like: "The QR code you scanned does not contain a valid SeedQR."
+        self.run_screen(
+            DireWarningScreen,
+            title=_("Confirm SeedQR"),
+            status_headline=_("Error!"),
+            text=_("Your transcribed SeedQR could not be read!"),
+            show_back_button=False,
+            button_data=[ButtonOption("Review SeedQR")],
+        )
+
+        # Skip BACK to the zoomed in transcription view
+        return Destination(BackStackView, skip_current_view=True)
+
+
+
+class SeedTranscribeSeedQRConfirmSuccessView(View):
+    """
+    The SeedQR we just scanned matched the one we just transcribed.
+    """
+    def __init__(self, seed_num: int):
+        super().__init__()
+        self.seed_num = seed_num
+
+
+    def run(self):
+        from seedsigner.gui.screens.screen import LargeIconStatusScreen
+        self.run_screen(
+            LargeIconStatusScreen,
+            title=_("Confirm SeedQR"),
+            status_headline=_("Success!"),
+            text=_("Your transcribed SeedQR successfully scanned and yielded the same seed."),
+            show_back_button=False,
+            button_data=[ButtonOption("OK")],
+        )
+
+        return Destination(SeedOptionsView, view_args={"seed_num": self.seed_num})
 
 
 
