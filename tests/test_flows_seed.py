@@ -432,6 +432,9 @@ class TestSeedFlows(FlowTest):
         def load_wrong_seed_into_decoder(view: View):
             view.decoder.add_data("0138" * 24)
 
+        def load_completely_wrong_qr_type_into_decoder(view: View):
+            view.decoder.add_data("I like cheese")
+
         def load_right_seed_into_decoder(view: View):
             view.decoder.add_data("0000" * 11 + "0003")
 
@@ -449,6 +452,12 @@ class TestSeedFlows(FlowTest):
             # Intentionally "scan" the wrong SeedQR
             FlowStep(seed_views.SeedTranscribeSeedQRConfirmScanView, before_run=load_wrong_seed_into_decoder),
             FlowStep(seed_views.SeedTranscribeSeedQRConfirmWrongSeedView),
+            FlowStep(seed_views.SeedTranscribeSeedQRZoomedInView, is_redirect=True),  # Live interactive screens are still weird
+
+            # Intentionally scan QR data that makes no sense for this flow
+            FlowStep(seed_views.SeedTranscribeSeedQRConfirmQRPromptView, button_data_selection=seed_views.SeedTranscribeSeedQRConfirmQRPromptView.SCAN),
+            FlowStep(seed_views.SeedTranscribeSeedQRConfirmScanView, before_run=load_completely_wrong_qr_type_into_decoder),
+            FlowStep(seed_views.SeedTranscribeSeedQRConfirmInvalidQRView),
             FlowStep(seed_views.SeedTranscribeSeedQRZoomedInView, is_redirect=True),  # Live interactive screens are still weird
 
             # Now scan the correct SeedQR
