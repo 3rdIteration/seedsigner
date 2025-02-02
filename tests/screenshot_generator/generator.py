@@ -290,6 +290,9 @@ def generate_screenshots(locale):
                 ScreenshotConfig(seed_views.SeedTranscribeSeedQRZoomedInView, dict(seed_num=0, seedqr_format=QRType.SEED__SEEDQR, initial_block_x=2, initial_block_y=2),        screenshot_name="SeedTranscribeSeedQRZoomedInView_12_Standard"),
 
                 ScreenshotConfig(seed_views.SeedTranscribeSeedQRConfirmQRPromptView, dict(seed_num=0)),
+                ScreenshotConfig(seed_views.SeedTranscribeSeedQRConfirmWrongSeedView),
+                ScreenshotConfig(seed_views.SeedTranscribeSeedQRConfirmInvalidQRView),
+                ScreenshotConfig(seed_views.SeedTranscribeSeedQRConfirmSuccessView, dict(seed_num=0)),
 
                 # Screenshot can't render live preview screens
                 # ScreenshotConfig(seed_views.SeedTranscribeSeedQRConfirmScanView, dict(seed_num=0)),
