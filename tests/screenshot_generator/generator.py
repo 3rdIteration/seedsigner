@@ -26,7 +26,7 @@ patch('PIL.ImageFont.core.HAVE_RAQM', False).start()
 from seedsigner.controller import Controller
 from seedsigner.gui.renderer import Renderer
 from seedsigner.gui.screens.seed_screens import SeedAddPassphraseScreen
-from seedsigner.gui.toast import BaseToastOverlayManagerThread, RemoveSDCardToastManagerThread, SDCardStateChangeToastManagerThread
+from seedsigner.gui.toast import RemoveSDCardToastManagerThread, SDCardStateChangeToastManagerThread
 from seedsigner.hardware.microsd import MicroSD
 from seedsigner.helpers import embit_utils
 from seedsigner.models.decode_qr import DecodeQR
@@ -36,9 +36,9 @@ from seedsigner.models.seed import Seed
 from seedsigner.models.settings import Settings
 from seedsigner.models.settings_definition import SettingsConstants, SettingsDefinition
 from seedsigner.views import (MainMenuView, PowerOptionsView, RestartView, NotYetImplementedView, UnhandledExceptionView, 
-    psbt_views, seed_views, settings_views, tools_views)
+    psbt_views, seed_views, settings_views, tools_views, scan_views)
 from seedsigner.views.screensaver import OpeningSplashView
-from seedsigner.views.view import ErrorView, NetworkMismatchErrorView, OptionDisabledView, PowerOffView, View
+from seedsigner.views.view import NetworkMismatchErrorView, OptionDisabledView, PowerOffView
 
 from .utils import ScreenshotComplete, ScreenshotConfig, ScreenshotRenderer
 
@@ -290,6 +290,9 @@ def generate_screenshots(locale):
                 ScreenshotConfig(seed_views.SeedTranscribeSeedQRZoomedInView, dict(seed_num=0, seedqr_format=QRType.SEED__SEEDQR, initial_block_x=2, initial_block_y=2),        screenshot_name="SeedTranscribeSeedQRZoomedInView_12_Standard"),
 
                 ScreenshotConfig(seed_views.SeedTranscribeSeedQRConfirmQRPromptView, dict(seed_num=0)),
+                ScreenshotConfig(seed_views.SeedTranscribeSeedQRConfirmWrongSeedView),
+                ScreenshotConfig(seed_views.SeedTranscribeSeedQRConfirmInvalidQRView),
+                ScreenshotConfig(seed_views.SeedTranscribeSeedQRConfirmSuccessView, dict(seed_num=0)),
 
                 # Screenshot can't render live preview screens
                 # ScreenshotConfig(seed_views.SeedTranscribeSeedQRConfirmScanView, dict(seed_num=0)),
@@ -359,12 +362,7 @@ def generate_screenshots(locale):
                 ScreenshotConfig(UnhandledExceptionView, dict(error=["IndexError", "line 1, in some_buggy_code.py", "list index out of range"])),
                 ScreenshotConfig(NetworkMismatchErrorView, dict(derivation_path="m/84'/1'/0'")),
                 ScreenshotConfig(OptionDisabledView, dict(settings_attr=SettingsConstants.SETTING__MESSAGE_SIGNING)),
-                ScreenshotConfig(ErrorView, dict(
-                    title="Error",
-                    status_headline="Unknown QR Type",
-                    text="QRCode is invalid or is a data format not yet supported.",
-                    button_text="Back",
-                )),
+                ScreenshotConfig(scan_views.ScanInvalidQRTypeView)
             ]
         }
 
