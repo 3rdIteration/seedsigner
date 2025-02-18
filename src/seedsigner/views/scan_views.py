@@ -2,17 +2,22 @@ import logging
 import re
 import time
 
-from embit.descriptor import Descriptor
+#from embit.descriptor import Descriptor
 
-from seedsigner.gui.screens.screen import RET_CODE__BACK_BUTTON, ButtonListScreen, WarningScreen, DireWarningScreen
-from seedsigner.gui.screens.scan_screens import ScanEncryptedQRScreen, ScanTypeEncryptionKeyScreen, ScanReviewEncryptionKeyScreen
-from seedsigner.models.decode_qr import DecodeQR, DecodeQRStatus
-from seedsigner.models.seed import Seed
+#from seedsigner.gui.screens.screen import RET_CODE__BACK_BUTTON, ButtonListScreen, WarningScreen, DireWarningScreen
+#from seedsigner.gui.screens.scan_screens import ScanEncryptedQRScreen, ScanTypeEncryptionKeyScreen, ScanReviewEncryptionKeyScreen
+#from seedsigner.models.decode_qr import DecodeQR, DecodeQRStatus
+#from seedsigner.models.seed import Seed
+
+from gettext import gettext as _
+from seedsigner.helpers.l10n import mark_for_translation as _mft
+
 from seedsigner.models.settings import SettingsConstants
-from seedsigner.views.settings_views import SettingsIngestSettingsQRView
-from seedsigner.views.view import BackStackView, ErrorView, MainMenuView, NotYetImplementedView, OptionDisabledView, View, Destination
+from seedsigner.views.view import BackStackView, ErrorView, MainMenuView, NotYetImplementedView, View, Destination
+from seedsigner.gui.screens.screen import ButtonOption
 
 logger = logging.getLogger(__name__)
+
 
 
 class ScanView(View):
@@ -24,11 +29,13 @@ class ScanView(View):
         dedicated errors when an unexpected QR type is scanned (e.g. Scan PSBT was
         selected but a SeedQR was scanned).
     """
-    instructions_text = "Scan a QR code"
-    invalid_qr_type_message = "QRCode not recognized or not yet supported."
+    instructions_text = _mft("Scan a QR code")
+    invalid_qr_type_message = _mft("QRCode not recognized or not yet supported.")
 
 
     def __init__(self):
+        from seedsigner.models.decode_qr import DecodeQR
+
         super().__init__()
         # Define the decoder here to make it available to child classes' is_valid_qr_type
         # checks and so we can inject data into it in the test suite's `before_run()`.
@@ -63,10 +70,11 @@ class ScanView(View):
                 # current flow.
                 # Report QR types in more human-readable text (e.g. QRType
                 # `seed__compactseedqr` as "seed: compactseedqr").
+                # TODO: cleanup l10n presentation
                 return Destination(ErrorView, view_args=dict(
                     title="Error",
-                    status_headline="Wrong QR Type",
-                    text=self.invalid_qr_type_message + f""", received "{self.decoder.qr_type.replace("__", ": ").replace("_", " ")}\" format""",
+                    status_headline=_("Wrong QR Type"),
+                    text=_(self.invalid_qr_type_message) + f""", received "{self.decoder.qr_type.replace("__", ": ").replace("_", " ")}\" format""",
                     button_text="Back",
                     next_destination=Destination(BackStackView, skip_current_view=True),
                 ))
@@ -76,10 +84,11 @@ class ScanView(View):
 
                 if not seed_mnemonic:
                     # seed is not valid, Exit if not valid with message
-                    raise Exception("Not yet implemented!")
+                    return Destination(NotYetImplementedView)
                 else:
                     # Found a valid mnemonic seed! All new seeds should be considered
                     #   pending (might set a passphrase, SeedXOR, etc) until finalized.
+                    from seedsigner.models.seed import Seed
                     from .seed_views import SeedFinalizeView
                     self.controller.storage.set_pending_seed(
                         Seed(mnemonic=seed_mnemonic, wordlist_language_code=self.wordlist_language_code)
@@ -98,11 +107,14 @@ class ScanView(View):
                 return Destination(PSBTSelectSeedView, skip_current_view=True)
 
             elif self.decoder.is_settings:
+                from seedsigner.views.settings_views import SettingsIngestSettingsQRView
                 data = self.decoder.get_settings_data()
                 return Destination(SettingsIngestSettingsQRView, view_args=dict(data=data))
             
             elif self.decoder.is_wallet_descriptor:
+                from embit.descriptor import Descriptor
                 from seedsigner.views.seed_views import MultisigWalletDescriptorView
+
                 descriptor_str = self.decoder.get_wallet_descriptor()
 
                 try:
@@ -120,11 +132,6 @@ class ScanView(View):
                     descriptor_str = orig_descriptor_str
 
                 descriptor = Descriptor.from_string(descriptor_str)
-
-                if not descriptor.is_basic_multisig:
-                    # TODO: Handle single-sig descriptors?
-                    logger.info(f"Received single sig descriptor: {descriptor}")
-                    return Destination(NotYetImplementedView)
 
                 self.controller.multisig_wallet_descriptor = descriptor
                 return Destination(MultisigWalletDescriptorView, skip_current_view=True)
@@ -183,24 +190,15 @@ class ScanView(View):
             # For now, don't even try to re-do the attempted operation, just reset and
             # start everything over.
             self.controller.resume_main_flow = None
-            return Destination(
-                ErrorView, 
-                view_args=dict(
-                    title="Error",
-                    status_headline="Unknown QR Type",
-                    text="QRCode is invalid or is a data format not yet supported.",
-                    button_text="Done",
-                    next_destination=Destination(MainMenuView, clear_history=True),
-                )
-            )
+            return Destination(ScanInvalidQRTypeView)
 
         return Destination(MainMenuView)
 
 
 
 class ScanPSBTView(ScanView):
-    instructions_text = "Scan PSBT"
-    invalid_qr_type_message = "Expected a PSBT"
+    instructions_text = _mft("Scan PSBT")
+    invalid_qr_type_message = _mft("Expected a PSBT")
 
     @property
     def is_valid_qr_type(self):
@@ -209,8 +207,8 @@ class ScanPSBTView(ScanView):
 
 
 class ScanSeedQRView(ScanView):
-    instructions_text = "Scan SeedQR"
-    invalid_qr_type_message = f"Expected a SeedQR"
+    instructions_text = _mft("Scan SeedQR")
+    invalid_qr_type_message = _mft("Expected a SeedQR")
 
     @property
     def is_valid_qr_type(self):
@@ -219,8 +217,8 @@ class ScanSeedQRView(ScanView):
 
 
 class ScanWalletDescriptorView(ScanView):
-    instructions_text = "Scan descriptor"
-    invalid_qr_type_message = "Expected a wallet descriptor QR"
+    instructions_text = _mft("Scan descriptor")
+    invalid_qr_type_message = _mft("Expected a wallet descriptor QR")
 
     @property
     def is_valid_qr_type(self):
@@ -229,8 +227,8 @@ class ScanWalletDescriptorView(ScanView):
 
 
 class ScanAddressView(ScanView):
-    instructions_text = "Scan address QR"
-    invalid_qr_type_message = "Expected an address QR"
+    instructions_text = _mft("Scan address QR")
+    invalid_qr_type_message = _mft("Expected an address QR")
 
     @property
     def is_valid_qr_type(self):
@@ -456,4 +454,23 @@ class ScanDecryptEncryptedQRView(View):
                 text="Unknown error",
             ).display()
             return Destination(BackStackView)
+
+
+class ScanInvalidQRTypeView(View):
+    def run(self):
+        from seedsigner.gui.screens import WarningScreen
+
+        # TODO: This screen says "Error" but is intentionally using the WarningScreen in
+        # order to avoid the perception that something is broken on our end. This should
+        # either change to use the red ErrorScreen or the "Error" title should be
+        # changed to something softer.
+        self.run_screen(
+            WarningScreen,
+            title=_("Error"),
+            status_headline=_("Unknown QR Type"),
+            text=_("QRCode is invalid or is a data format not yet supported."),
+            button_data=[ButtonOption("Done")],
+        )
+
+        return Destination(MainMenuView, clear_history=True)
 

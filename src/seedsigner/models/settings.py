@@ -1,9 +1,13 @@
+import gettext
 import logging
 import json
 import os
+import pathlib
 import platform
 
 from typing import List
+
+import RPi.GPIO as GPIO
 
 from seedsigner.models.settings_definition import SettingsConstants, SettingsDefinition
 from seedsigner.models.singleton import Singleton
@@ -20,6 +24,7 @@ class Settings(Singleton):
     HOSTNAME = platform.uname()[1]
     SEEDSIGNER_OS = "seedsigner-os"
     SETTINGS_FILENAME = "/mnt/microsd/settings.json" if HOSTNAME == SEEDSIGNER_OS else "settings.json"
+    SU_COMMAND_PREFIX = "" if HOSTNAME == SEEDSIGNER_OS else "sudo "
         
     @classmethod
     def get_instance(cls):
@@ -35,6 +40,19 @@ class Settings(Singleton):
             if os.path.exists(Settings.SETTINGS_FILENAME):
                 with open(Settings.SETTINGS_FILENAME) as settings_file:
                     settings.update(json.load(settings_file))
+
+            # Setup multilanguage support
+            path = os.path.join(
+                pathlib.Path(__file__).parent.resolve().parent.resolve(),
+                "resources",
+                "seedsigner-translations",
+                "l10n"
+            )
+            gettext.bindtextdomain('messages', localedir=path)
+            gettext.textdomain('messages')
+
+            # Load default/persistent locale setting
+            settings.load_locale()
 
         return cls._instance
 
@@ -118,6 +136,10 @@ class Settings(Singleton):
 
 
     def update(self, new_settings: dict):
+        print("Updating Settings")
+        print("Existing Settings:", self._data) 
+        print()
+        print("New Settings:", new_settings)
         """
             Replaces the current settings with the incoming dict.
 
@@ -141,11 +163,9 @@ class Settings(Singleton):
                         # Break comma-separated SettingsQR input into List
                         new_settings[entry.attr_name] = new_settings[entry.attr_name].split(",")
 
-        # Can't just merge the _data dict; have to replace keys they have in common
-        #   (otherwise list values will be merged instead of replaced).
         for key, value in new_settings.items():
-            self._data.pop(key, None)
-            self._data[key] = value
+            self.set_value(key, value)
+
 
 
     def set_value(self, attr_name: str, value: any):
@@ -155,7 +175,9 @@ class Settings(Singleton):
             Note that for multiselect, the value must be a List.
         """
         if attr_name not in self._data:
-            raise Exception(f"Setting for {attr_name} not found")
+            # Outdated settings
+            print(f"Setting {attr_name} not recognized. Ignoring.")
+            return
 
         if SettingsDefinition.get_settings_entry(attr_name).type == SettingsConstants.TYPE__MULTISELECT:
             if type(value) != list:
@@ -168,10 +190,184 @@ class Settings(Singleton):
                 logger.info(f"Removed {self.SETTINGS_FILENAME}")
             except:
                 logger.info(f"{self.SETTINGS_FILENAME} not found to be removed")
+
+         # Special handling for enabling Smartcard readers
+        if attr_name == SettingsConstants.SETTING__SMARTCARD_INTERFACES:
+            import time
+            import seedsigner
+            #from seedsigner.gui.screens.screen import LoadingScreenThread, WarningScreen
+            
+            print("Smartcard Interface Changed")
+
+            # Basically just check through a a bunch of possible USB hubs and ports and enable/disable them all (Should cover all RPi models, RPi4 has lots of USB ports...)
+            if "usb" not in value and "usb" in self._data[attr_name]:
+                print("Disabling USB")
+                try:
+                    self.loading_screen = seedsigner.gui.screens.screen.LoadingScreenThread(text="Disabling USB Ports")
+                    self.loading_screen.start()
+                except:
+                    pass
+ 
+                # Different Raspberry Pi models have different port config, see
+                # https://github.com/mvp/uhubctl?tab=readme-ov-file#raspberry-pi-b2b3b
+                if "Zero" in GPIO.RPI_INFO['TYPE']: # For RPi0, 02w
+                    os.system(self.SU_COMMAND_PREFIX + "uhubctl -l 1 -a 0")
+                    
+                elif "Pi 4" in GPIO.RPI_INFO['TYPE']: # For RPi4 
+                    os.system(self.SU_COMMAND_PREFIX + "uhubctl -l 2 -a 0")
+                    os.system(self.SU_COMMAND_PREFIX + "uhubctl -l 3 -a 0")
+                    os.system(self.SU_COMMAND_PREFIX + "uhubctl -l 1-1 -a 0")
                 
+                else:
+                    # For Raspberry Pi B+,2B,3B, 3B+
+                    os.system(self.SU_COMMAND_PREFIX + "uhubctl -l 1-1 -p 2 -a 0")
+                
+                try:
+                    self.loading_screen.stop()
+                except:
+                    pass
+
+            if "usb" in value and "usb" not in self._data[attr_name]:
+                print("Enabling USB")
+                try:
+                    self.loading_screen = seedsigner.gui.screens.screen.LoadingScreenThread(text="Enabling USB Ports")
+                    self.loading_screen.start()
+                except:
+                    pass
+
+                # Different Raspberry Pi models have different port config, see
+                # https://github.com/mvp/uhubctl?tab=readme-ov-file#raspberry-pi-b2b3b
+                 
+                if "Zero" in GPIO.RPI_INFO['TYPE']: # For RPi0, 02w
+                    os.system(self.SU_COMMAND_PREFIX + "uhubctl -l 1 -a 1")
+                    
+                elif "Pi 4" in GPIO.RPI_INFO['TYPE']: # For RPi4 
+                    os.system(self.SU_COMMAND_PREFIX + "uhubctl -l 2 -a 1")
+                    os.system(self.SU_COMMAND_PREFIX + "uhubctl -l 3 -a 1")
+                    os.system(self.SU_COMMAND_PREFIX + "uhubctl -l 1-1 -a 1")
+                
+                else:
+                    # For Raspberry Pi B+,2B,3B, 3B+
+                    os.system(self.SU_COMMAND_PREFIX + "uhubctl -l 1-1 -p 2 -a 1")
+
+                time.sleep(1)
+                if self.HOSTNAME == self.SEEDSIGNER_OS:
+                    os.system("/etc/init.d/S01pcscd stop")
+                    time.sleep(1)
+                    os.system("/etc/init.d/S01pcscd start")
+                else:
+                    os.system("sudo service pcscd stop")
+                    time.sleep(1)
+                    os.system("sudo service pcscd start")
+
+                try:
+                    self.loading_screen.stop()
+
+                    if "Zero" in GPIO.RPI_INFO['TYPE'] or "Model A" in GPIO.RPI_INFO['TYPE']: # For RPi0, 02w or model A devices
+                        screen = seedsigner.gui.screens.screen.WarningScreen(
+                            title="Notice",
+                            status_headline=None,
+                            text="Enabling USB ports on this device requires a device restart (Full power cycle)",
+                            show_back_button=False
+                        )
+                        screen.display()
+
+                    if "Unknown" in GPIO.RPI_INFO['TYPE']: # For unknown RPi devices
+                        screen = seedsigner.gui.screens.screen.WarningScreen(
+                            title="Notice",
+                            status_headline="Unable to detect RPi Model",
+                            text="Enabling USB ports on this device likely requires a restart (Full power cycle)",
+                            show_back_button=False
+                        )
+                        screen.display()
+
+                except:
+                    pass
+
+
+            # Execution order matters here if swithing from Phoenix to PN352, basically we want to disable phoenix first and then enable PN532
+            if "phoenix" in value and "phoenix" not in self._data[attr_name]:
+                print("Phoenix Enabled")
+                try:
+                    self.loading_screen = seedsigner.gui.screens.screen.LoadingScreenThread(text="Starting OpenCT")
+                    self.loading_screen.start()
+                except:
+                    pass
+
+                os.system(self.SU_COMMAND_PREFIX + "openct-control init") # OpenCT needs a bit of time to get going before restarting PCSCD (At least two seconds) to work reliabily
+                time.sleep(3)
+
+                if self.HOSTNAME == self.SEEDSIGNER_OS:
+                    os.system("/etc/init.d/S01pcscd stop")
+                    time.sleep(1)
+                    os.system("/etc/init.d/S01pcscd start")
+                else:
+                    os.system("sudo service pcscd stop")
+                    time.sleep(1)
+                    os.system("sudo service pcscd start")
+
+                try:
+                    self.loading_screen.stop()
+                except:
+                    pass
+
+            if "phoenix" not in value and "phoenix" in self._data[attr_name]:
+                print("Phoenix Disabled")
+                try:
+                    self.loading_screen = seedsigner.gui.screens.screen.LoadingScreenThread(text="Stopping OpenCT")
+                    self.loading_screen.start()
+                except:
+                    pass
+                
+                os.system(self.SU_COMMAND_PREFIX + "openct-control shutdown")
+                time.sleep(3)
+
+                if self.HOSTNAME == self.SEEDSIGNER_OS:
+                    os.system("/etc/init.d/S01pcscd stop")
+                    time.sleep(1)
+                    os.system("/etc/init.d/S01pcscd start")
+                else:
+                    os.system("sudo service pcscd stop")
+                    time.sleep(1)
+                    os.system("sudo service pcscd start")
+
+                try:
+                    self.loading_screen.stop()
+                except:
+                    pass
+
+            if "pn532" in value and "pn532" not in self._data[attr_name]:
+                try:
+                    self.loading_screen = seedsigner.gui.screens.screen.LoadingScreenThread(text="Enabling PN532")
+                    self.loading_screen.start()
+                except:
+                    pass
+                print("PN532 Enabled")
+                os.system("ifdnfc-activate yes")
+                try:
+                    self.loading_screen.stop()
+                except:
+                    pass
+
+            if "pn532" not in value and "pn532" in self._data[attr_name]:
+                try:
+                    self.loading_screen = seedsigner.gui.screens.screen.LoadingScreenThread(text="Disabling PN532")
+                    self.loading_screen.start()
+                except:
+                    pass
+                print("PN532 Disabled")
+                os.system("ifdnfc-activate no")
+                try:
+                    self.loading_screen.stop()
+                except:
+                    pass
+
         self._data[attr_name] = value
         self.save()
-    
+
+        # Special handling for localization
+        if attr_name == SettingsConstants.SETTING__LOCALE:
+            self.load_locale()
 
     def get_value(self, attr_name: str):
         """
@@ -222,13 +418,22 @@ class Settings(Singleton):
         return display_names
 
 
+    def load_locale(self):
+        locale = self.get_value(SettingsConstants.SETTING__LOCALE)
+        os.environ['LANGUAGE'] = locale
+
+        # Re-initialize with the new locale
+        print(f"Set LANGUAGE locale to {os.environ['LANGUAGE']}")
+
+
+
     """
         Intentionally keeping the properties very limited to avoid an expectation of
         boilerplate property code for every SettingsEntry.
 
         It's more cumbersome, but instead use:
 
-        settings.get_value(SettingsConstants.SETTING__MY_SETTING_ATTR)
+        Settings.get_instance().get_value(SettingsConstants.SETTING__MY_SETTING_ATTR)
     """
     @property
     def debug(self) -> bool:

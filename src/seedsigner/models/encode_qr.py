@@ -15,7 +15,7 @@ from seedsigner.models.seed import Seed
 from seedsigner.models.settings import SettingsConstants
 
 from urtypes.crypto import PSBT as UR_PSBT
-from urtypes.crypto import Account, HDKey, Output, Keypath, PathComponent, SCRIPT_EXPRESSION_TAG_MAP
+from urtypes.crypto import Account, HDKey, Output, Keypath, PathComponent, SCRIPT_EXPRESSION_TAG_MAP, CoinInfo
 
 
 
@@ -41,10 +41,10 @@ class BaseQrEncoder:
 
     def next_part(self) -> str:
         raise Exception("Not implemented in child class")
-    
+
     def cur_part(self) -> str:
         raise Exception("Not implemented in child class")
-    
+
     def restart(self):
         # only used by animated QR encoders
         pass
@@ -71,7 +71,7 @@ class BaseQrEncoder:
 class BaseStaticQrEncoder(BaseQrEncoder):
     def seq_len(self):
         return 1
-    
+
     def cur_part(self) -> str:
         """ static QRs only have a single part, which `next_part` always returns """
         return self.next_part()
@@ -98,7 +98,7 @@ class SeedQrEncoder(BaseStaticQrEncoder):
         for word in self.mnemonic:
             index = self.wordlist.index(word)
             self.data += str("%04d" % index)
-    
+
 
     def next_part(self):
         return self.data
@@ -312,7 +312,7 @@ class BaseFountainQrEncoder(BaseQrEncoder):
 
     def cur_part(self) -> str:
         return self.ur2_encode.current_part().upper()
-    
+
 
     def restart(self):
         self.ur2_encode.fountain_encoder.restart()
@@ -324,7 +324,7 @@ class UrXpubQrEncoder(BaseFountainQrEncoder, BaseXpubQrEncoder):
     def __post_init__(self):
         super().__post_init__()
         self.prep_xpub()
-        
+
         def derivation_to_keypath(path: str) -> list:
             arr = path.split("/")
             if arr[0] == "m":
@@ -344,11 +344,13 @@ class UrXpubQrEncoder(BaseFountainQrEncoder, BaseXpubQrEncoder):
             return Keypath(arr, self.root.my_fingerprint, len(arr))
             
         origin = derivation_to_keypath(self.derivation)
+        self.use_info = None if self.network == SettingsConstants.MAINNET else CoinInfo(type=None, network=1)
         
         self.ur_hdkey = HDKey({ 'key': self.xpub.key.serialize(),
         'chain_code': self.xpub.chain_code,
         'origin': origin,
-        'parent_fingerprint': self.xpub.fingerprint})
+        'parent_fingerprint': self.xpub.fingerprint,
+        'use_info': self.use_info })
 
         ur_outputs = []
 
@@ -395,3 +397,12 @@ class UrPsbtQrEncoder(BaseFountainQrEncoder):
         super().__post_init__()
         qr_ur_bytes = UR("crypto-psbt", UR_PSBT(self.psbt.serialize()).to_cbor())
         self.ur2_encode = UREncoder(ur=qr_ur_bytes, max_fragment_len=self.qr_max_fragment_size)
+
+class GenericStringEncoder(BaseStaticQrEncoder):
+    def __init__(self, generic_string: str):
+        super().__init__()
+        self.generic_string = generic_string
+
+
+    def next_part(self):
+        return self.generic_string

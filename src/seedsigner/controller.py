@@ -102,8 +102,8 @@ class Controller(Singleton):
         Note: In many/most cases you'll need to do the Controller import within a method
         rather than at the top in order avoid circular imports.
     """
-
-    VERSION = "ssx080r3-c4"
+    
+    VERSION = "0.8.5+Satochip+ERT-B4"
 
     # Declare class member vars with type hints to enable richer IDE support throughout
     # the code.
@@ -129,6 +129,8 @@ class Controller(Singleton):
     sign_message_data: dict = None
     # TODO: end refactor section
 
+    Satochip_Connector = None
+
     # Destination placeholder for when we need to jump out to a side flow but intend to
     # return navigation to the main flow (e.g. PSBT flow, load multisig descriptor,
     # then resume PSBT flow).
@@ -152,20 +154,20 @@ class Controller(Singleton):
         else:
             # Instantiate the one and only Controller instance
             return cls.configure_instance()
+    
+
+    @classmethod
+    def reset_instance(cls):
+        """
+            Currently used by the screenshot generator, but could potentially be used to
+            wipe and reset the state of the device.
+        """
+        cls._instance = None
+        cls.configure_instance()
 
 
     @classmethod
-    def configure_instance(cls, disable_hardware=False):
-        """
-            - `disable_hardware` is only meant to be used by the test suite so that it
-            can keep re-initializing a Controller in however many tests it needs to. But
-            this is only possible if the hardware isn't already being reserved. Without
-            this you get:
-
-            RuntimeError: Conflicting edge detection already enabled for this GPIO channel
-
-            each time you try to re-initialize a Controller.
-        """
+    def configure_instance(cls):
         from seedsigner.gui.renderer import Renderer
         from seedsigner.hardware.microsd import MicroSD
 
@@ -260,10 +262,10 @@ class Controller(Singleton):
             used. Only used by the test suite.
         """
         from seedsigner.views import MainMenuView, BackStackView
-        from seedsigner.views.screensaver import OpeningSplashScreen
+        from seedsigner.views.screensaver import OpeningSplashView
         from seedsigner.gui.toast import RemoveSDCardToastManagerThread
 
-        OpeningSplashScreen().start()
+        OpeningSplashView().run()
 
         """ Class references can be stored as variables in python!
 
@@ -310,7 +312,7 @@ class Controller(Singleton):
                     
                     # Home always wipes the back_stack/state of temp vars
                     self.resume_main_flow = None
-                    self.multisig_wallet_descriptor = None
+                    # self.multisig_wallet_descriptor = None
                     self.unverified_address = None
                     self.address_explorer_data = None
                     self.psbt = None

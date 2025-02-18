@@ -1,19 +1,24 @@
 import logging
+from gettext import gettext as _
+
+
+#from seedsigner.gui.screens import (RET_CODE__BACK_BUTTON, ButtonListScreen, WarningScreen, settings_screens)
+
 from seedsigner.gui.components import SeedSignerIconConstants
-from seedsigner.hardware.microsd import MicroSD
-
-from .view import View, Destination, MainMenuView
-
-from seedsigner.gui.screens import (RET_CODE__BACK_BUTTON, ButtonListScreen, WarningScreen, settings_screens)
+from seedsigner.gui.screens import (RET_CODE__BACK_BUTTON, ButtonListScreen, settings_screens)
+from seedsigner.gui.screens.screen import ButtonOption
 from seedsigner.models.settings import Settings, SettingsConstants, SettingsDefinition
+
+from .view import View, Destination, MainMenuView, BackStackView
 
 logger = logging.getLogger(__name__)
 
 
 
 class SettingsMenuView(View):
-    IO_TEST = "I/O test"
-    DONATE = "Donate"
+    IO_TEST = ButtonOption("I/O test")
+    NFC_TEST = ButtonOption("Test NFC Scan")
+    DONATE = ButtonOption("Donate")
 
     def __init__(self, visibility: str = SettingsConstants.VISIBILITY__GENERAL, selected_attr: str = None, initial_scroll: int = 0):
         super().__init__()
@@ -28,7 +33,7 @@ class SettingsMenuView(View):
         settings_entries = SettingsDefinition.get_settings_entries(
             visibility=self.visibility
         )
-        button_data=[e.display_name for e in settings_entries]
+        button_data=[ButtonOption(e.display_name) for e in settings_entries]
 
         selected_button = 0
         if self.selected_attr:
@@ -38,17 +43,18 @@ class SettingsMenuView(View):
                     break
 
         if self.visibility == SettingsConstants.VISIBILITY__GENERAL:
-            title = "Settings"
+            title = _("Settings")
 
             # Set up the next nested level of menuing
-            button_data.append(("Advanced", None, None, None, SeedSignerIconConstants.CHEVRON_RIGHT))
+            button_data.append(ButtonOption("Advanced", right_icon_name=SeedSignerIconConstants.CHEVRON_RIGHT))
             next_destination = Destination(SettingsMenuView, view_args={"visibility": SettingsConstants.VISIBILITY__ADVANCED})
 
             button_data.append(self.IO_TEST)
+            button_data.append(self.NFC_TEST)
             button_data.append(self.DONATE)
 
         elif self.visibility == SettingsConstants.VISIBILITY__ADVANCED:
-            title = "Advanced"
+            title = _("Advanced")
 
             # So far there are no real Developer options; disabling for now
             # button_data.append(("Developer Options", None, None, None, SeedSignerIconConstants.CHEVRON_RIGHT))
@@ -56,7 +62,7 @@ class SettingsMenuView(View):
             next_destination = None
         
         elif self.visibility == SettingsConstants.VISIBILITY__DEVELOPER:
-            title = "Dev Options"
+            title = _("Dev Options")
             next_destination = None
 
         selected_menu_num = self.run_screen(
@@ -84,6 +90,9 @@ class SettingsMenuView(View):
 
         elif len(button_data) > selected_menu_num and button_data[selected_menu_num] == self.IO_TEST:
             return Destination(IOTestView)
+        
+        elif button_data[selected_menu_num] == self.NFC_TEST:
+            return Destination(NFCTestView)
 
         elif len(button_data) > selected_menu_num and button_data[selected_menu_num] == self.DONATE:
             return Destination(DonateView)
@@ -161,8 +170,7 @@ class SettingsEntryUpdateSelectionView(View):
                 value, display_name = value
             else:
                 display_name = value
-
-            button_data.append(display_name)
+            button_data.append(ButtonOption(display_name))
 
             if (type(initial_value) == list and value in initial_value) or value == initial_value:
                 checked_buttons.append(i)
@@ -238,6 +246,7 @@ class SettingsEntryUpdateSelectionView(View):
 
 class SettingsIngestSettingsQRView(View):
     def __init__(self, data: str):
+        from seedsigner.hardware.microsd import MicroSD
         super().__init__()
 
         # May raise an Exception which will bubble up to the Controller to display to the
@@ -247,15 +256,16 @@ class SettingsIngestSettingsQRView(View):
         self.settings.update(settings_update_dict)
 
         if MicroSD.get_instance().is_inserted and self.settings.get_value(SettingsConstants.SETTING__PERSISTENT_SETTINGS) == SettingsConstants.OPTION__ENABLED:
-            self.status_message = "Persistent Settings enabled. Settings saved to SD card."
+            self.status_message = _("Persistent Settings enabled. Settings saved to SD card.")
         else:
-            self.status_message = "Settings updated in temporary memory"
+            self.status_message = _("Settings updated in temporary memory")
 
 
     def run(self):
         from seedsigner.gui.screens.settings_screens import SettingsQRConfirmationScreen
         self.run_screen(
             SettingsQRConfirmationScreen,
+            title=_("Settings QR"),
             config_name=self.config_name,
             status_message=self.status_message,
         )
@@ -274,6 +284,117 @@ class IOTestView(View):
 
         return Destination(SettingsMenuView)
 
+class NFCTestView(View):
+    def run(self):
+        
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+        import os
+        import time
+        from seedsigner.gui.screens import (RET_CODE__BACK_BUTTON, ButtonListScreen, WarningScreen, DireWarningScreen, seed_screens, LargeIconStatusScreen)
+
+        self.loading_screen = LoadingScreenThread(text="Scanning for NFC Tag")
+        self.loading_screen.start()
+
+        os.system("ifdnfc-activate no") # Need to disable IFD-NFC to be able to scan using libnfc-bindings...
+
+        time.sleep(0.2) #Just give the loading screen a chance to load before moving on...
+
+        import nfc
+        import binascii
+
+        context = nfc.init()
+        nfcdevice = nfc.open(context)
+        if nfcdevice is None:
+            self.loading_screen.stop()
+            print('ERROR: Unable to open NFC device.')
+            self.run_screen(
+                WarningScreen,
+                title="NFC Failure",
+                status_headline=None,
+                text=f"ERROR: Unable to open NFC device. \n(May not be connected)",
+                show_back_button=True,
+            )
+            return Destination(BackStackView)
+            
+        if nfc.initiator_init(nfcdevice) < 0:
+            self.loading_screen.stop()
+            print('ERROR: Unable to init NFC device.')
+            self.run_screen(
+                WarningScreen,
+                title="NFC Failure",
+                status_headline=None,
+                text=f"ERROR: Unable to init NFC device.",
+                show_back_button=True,
+            )
+            return Destination(BackStackView)
+
+        print('NFC reader: %s opened' % nfc.device_get_name(nfcdevice))
+
+        nfcmodulation = nfc.modulation()
+        nfcmodulation.nmt = nfc.NMT_ISO14443A
+        nfcmodulation.nbr = nfc.NBR_847 #Test at the highest baud rate for the best simulation of Smartcard operation
+
+        nt = nfc.target()
+
+        # Scan for 15 seconds
+        ret = nfc.initiator_poll_target(nfcdevice, nfcmodulation, 1, 100, 1, nt)
+
+        self.loading_screen.stop()
+
+        if ret and nt.nti.nai.szUidLen:
+
+            print('The following (NFC) ISO14443A tag was found:')
+            print('    ATQA (SENS_RES): ', end='')
+            nfc.print_hex(nt.nti.nai.abtAtqa, 2)
+            id = 1
+            if nt.nti.nai.abtUid[0] == 8:
+                id = 3
+            print('       UID (NFCID%d): ' % id , end='')
+            nfc.print_hex(nt.nti.nai.abtUid, nt.nti.nai.szUidLen)
+            foundtext="UID:\n" + binascii.hexlify(nt.nti.nai.abtUid).decode()[:14]
+
+            print('      SAK (SEL_RES): ', end='')
+            print(nt.nti.nai.btSak)
+            if nt.nti.nai.szAtsLen:
+                print('          ATS (ATR): ', end='')
+                nfc.print_hex(nt.nti.nai.abtAts, nt.nti.nai.szAtsLen)
+                foundtext = foundtext + "\nATR:\n" + binascii.hexlify(nt.nti.nai.abtAts).decode()[:28]
+
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Found NFC Tag",
+                status_headline=None,
+                text=foundtext,
+                show_back_button=False,
+            )
+        elif ret:
+            print('Warning: IFD-NFC Conflict.')
+            self.run_screen(
+                WarningScreen,
+                title="NFC Conflict",
+                status_headline=None,
+                text=f"Can't scan when IFD-NFC Active",
+                show_back_button=True,
+            )
+        else:
+            print('Warning: No NFC Tag Detected.')
+            self.run_screen(
+                WarningScreen,
+                title="Warning",
+                status_headline=None,
+                text=f"Warning: No NFC Tag Detected.",
+                show_back_button=True,
+            )
+
+        nfc.close(nfcdevice)
+        nfc.exit(context)
+
+        scinterface = self.settings.get_value(SettingsConstants.SETTING__SMARTCARD_INTERFACES)
+
+        if "pn532" in scinterface:
+            os.system("ifdnfc-activate yes") # Need to re-enable IFD-NFC if required...
+        
+        return Destination(MainMenuView)
 
 
 class DonateView(View):

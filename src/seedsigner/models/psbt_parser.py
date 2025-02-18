@@ -53,6 +53,7 @@ class PSBTParser():
 
     @property
     def is_multisig(self):
+        print(self.policy)
         """
             Multisig psbts will have "m" and "n" defined in policy
         """
@@ -117,6 +118,7 @@ class PSBTParser():
         self.destination_amounts = []
         for i, out in enumerate(self.psbt.outputs):
             out_policy = PSBTParser._get_policy(out, self.psbt.tx.vout[i].script_pubkey, self.psbt.xpubs)
+            print(out_policy)
             is_change = False
 
             # if policy is the same - probably change
@@ -130,7 +132,6 @@ class PSBTParser():
 
                 # empty script by default
                 sc = script.Script(b"")
-
                 # if older multisig, just use existing script
                 if self.policy["type"] == "p2sh":
                     sc = script.p2sh(out.redeem_script)
@@ -157,6 +158,8 @@ class PSBTParser():
 
                     if self.policy["type"] == "p2pkh" and my_pubkey is not None:
                         sc = script.p2pkh(my_pubkey)
+                    if self.policy["type"] == "p2wpkh" and my_pubkey is not None:
+                        sc = script.p2wpkh(my_pubkey)
 
                     elif self.policy["type"] == "p2sh-p2wpkh" and my_pubkey is not None:
                         sc = script.p2sh(script.p2wpkh(my_pubkey))
@@ -286,7 +289,7 @@ class PSBTParser():
                     policy.update({"m": m, "n": n, "cosigners": cosigners})
                 except:
                     policy.update({"m": m, "n": n})
-        
+
         return policy
 
 
