@@ -4,7 +4,7 @@ from seedsigner.hardware.microsd import MicroSD
 
 from .view import View, Destination, MainMenuView
 
-from seedsigner.gui.screens import (RET_CODE__BACK_BUTTON, ButtonListScreen, settings_screens)
+from seedsigner.gui.screens import (RET_CODE__BACK_BUTTON, ButtonListScreen, WarningScreen, settings_screens)
 from seedsigner.models.settings import Settings, SettingsConstants, SettingsDefinition
 
 logger = logging.getLogger(__name__)
@@ -88,8 +88,55 @@ class SettingsMenuView(View):
         elif len(button_data) > selected_menu_num and button_data[selected_menu_num] == self.DONATE:
             return Destination(DonateView)
 
+        elif settings_entries[selected_menu_num].attr_name == SettingsConstants.SETTING__ENCRYPTION_ITER:
+            return Destination(SettingPBKDF2IterationsView, view_args=dict(attr_name=settings_entries[selected_menu_num].attr_name, parent_initial_scroll=initial_scroll))
+
         else:
             return Destination(SettingsEntryUpdateSelectionView, view_args=dict(attr_name=settings_entries[selected_menu_num].attr_name, parent_initial_scroll=initial_scroll))
+
+
+
+class SettingPBKDF2IterationsView(View):
+    def __init__(self, attr_name: str, parent_initial_scroll: int = 0):
+        super().__init__()
+        self.settings_entry = SettingsDefinition.get_settings_entry(attr_name)
+        self.initial_scroll = parent_initial_scroll
+        self.initial_value  = str(self.settings.get_value(self.settings_entry.attr_name))
+
+    def run(self):
+        ret_value = settings_screens.SettingPBFDK2IterationsScreen(initial_value=self.initial_value).display()
+
+        if ret_value == RET_CODE__BACK_BUTTON:
+            return Destination(SettingsMenuView)
+
+        elif not 1 <= int(ret_value) <= 50:
+            WarningScreen(
+                title="PBKDF2 Iterations Error",
+                show_back_button=False,
+                status_headline=f"out of range",
+                text=f"Value must be between 1 and 50",
+                button_data=["Try Again"]
+            ).display()
+
+            return Destination(
+                SettingPBKDF2IterationsView,
+                view_args=dict(attr_name=self.settings_entry.attr_name, parent_initial_scroll=self.initial_scroll),
+                skip_current_view=True
+            )
+
+        self.settings.set_value(
+            attr_name=self.settings_entry.attr_name,
+            value = int(ret_value)
+        )
+
+        return Destination(
+            SettingsMenuView,
+            view_args={
+                "visibility": self.settings_entry.visibility,
+                "selected_attr": self.settings_entry.attr_name,
+                "initial_scroll": self.initial_scroll,
+            }
+        )
 
 
 

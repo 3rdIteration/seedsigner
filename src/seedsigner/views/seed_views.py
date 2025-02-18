@@ -2,12 +2,16 @@ import logging
 import embit
 import random
 import time
+import hashlib
+import os
 
 from binascii import hexlify
 from embit import bip39
 from embit.descriptor import Descriptor
 from embit.networks import NETWORKS
 from typing import List
+from PIL import Image
+from PIL.ImageOps import autocontrast
 
 from seedsigner.controller import Controller
 from seedsigner.gui.components import FontAwesomeIconConstants, SeedSignerIconConstants
@@ -168,7 +172,7 @@ class SeedSelectSeedView(View):
     Loading seeds, passphrases, etc
 ****************************************************************************"""
 class LoadSeedView(View):
-    SEED_QR = (" Scan a SeedQR", SeedSignerIconConstants.QRCODE)
+    SEED_QR = ("Scan a SeedQR", SeedSignerIconConstants.QRCODE)
     TYPE_12WORD = ("Enter 12-word seed", FontAwesomeIconConstants.KEYBOARD)
     TYPE_24WORD = ("Enter 24-word seed", FontAwesomeIconConstants.KEYBOARD)
     TYPE_ELECTRUM = ("Enter Electrum seed", FontAwesomeIconConstants.KEYBOARD)
@@ -310,13 +314,15 @@ class SeedFinalizeView(View):
         super().__init__()
         self.seed = self.controller.storage.get_pending_seed()
         self.fingerprint = self.seed.get_fingerprint(network=self.settings.get_value(SettingsConstants.SETTING__NETWORK))
+        self.TYPE_PASSPHRASE = "Type " + self.seed.passphrase_label
+        self.SCAN_PASSPHRASE = "Scan " + self.seed.passphrase_label
 
 
     def run(self):
         button_data = [self.FINALIZE]
-        passphrase_button = self.seed.passphrase_label
         if self.settings.get_value(SettingsConstants.SETTING__PASSPHRASE) != SettingsConstants.OPTION__DISABLED:
-            button_data.append(passphrase_button)
+            button_data.append(self.TYPE_PASSPHRASE)
+            button_data.append(self.SCAN_PASSPHRASE)
 
         selected_menu_num = self.run_screen(
             seed_screens.SeedFinalizeScreen,
@@ -328,8 +334,11 @@ class SeedFinalizeView(View):
             seed_num = self.controller.storage.finalize_pending_seed()
             return Destination(SeedOptionsView, view_args={"seed_num": seed_num}, clear_history=True)
 
-        elif button_data[selected_menu_num] == passphrase_button:
+        elif button_data[selected_menu_num] == self.TYPE_PASSPHRASE:
             return Destination(SeedAddPassphraseView)
+
+        elif button_data[selected_menu_num] == self.SCAN_PASSPHRASE:
+            return Destination(SeedScanPassphraseView)
 
 
 
@@ -341,7 +350,7 @@ class SeedAddPassphraseView(View):
 
     def run(self):
         passphrase_title=self.seed.passphrase_label
-        ret_dict = self.run_screen(seed_screens.SeedAddPassphraseScreen, passphrase=self.seed.passphrase, title=passphrase_title)
+        ret_dict = self.run_screen(seed_screens.SeedAddPassphraseScreen, passphrase=self.seed.passphrase_display, title=passphrase_title)
 
         # The new passphrase will be the return value; it might be empty.
         self.seed.set_passphrase(ret_dict["passphrase"])
@@ -350,7 +359,7 @@ class SeedAddPassphraseView(View):
             if len(self.seed.passphrase) > 0:
                 return Destination(SeedAddPassphraseExitDialogView)
             else:
-                return Destination(BackStackView)
+                return Destination(SeedFinalizeView)
             
         elif len(self.seed.passphrase) > 0:
             return Destination(SeedReviewPassphraseView)
@@ -387,7 +396,35 @@ class SeedAddPassphraseExitDialogView(View):
         elif button_data[selected_menu_num] == self.DISCARD:
             self.seed.set_passphrase("")
             return Destination(SeedFinalizeView)
-        
+
+
+
+class SeedScanPassphraseView(View):
+    def run(self):
+        from seedsigner.gui.screens.scan_screens import ScanScreen
+        decoder = DecodeQR(is_passphrase=True)
+        self.run_screen(
+            ScanScreen,
+            instructions_text="Scan Passphrase",
+            decoder=decoder
+        )
+        self.controller.reset_screensaver_timeout()
+        time.sleep(0.1)
+        if decoder.is_complete:
+            passphrase = decoder.get_passphrase()
+            self.controller.storage.get_pending_seed().set_passphrase(passphrase)
+            return Destination(SeedReviewPassphraseView)
+        elif decoder.is_nonUTF8:
+            DireWarningScreen(
+                title="Error!",
+                show_back_button=False,
+                status_headline="Invalid Text QR Code",
+                text=f"Non UTF-8 data detected."
+            ).display()
+            return Destination(BackStackView)
+        else:
+            return Destination(BackStackView)
+
 
 
 class SeedReviewPassphraseView(View):
@@ -419,12 +456,15 @@ class SeedReviewPassphraseView(View):
             seed_screens.SeedReviewPassphraseScreen,
             fingerprint_without=fingerprint_without,
             fingerprint_with=fingerprint_with,
-            passphrase=self.seed.passphrase,
-            button_data=button_data,
-            show_back_button=False,
+            passphrase=self.seed.passphrase_display,
+            button_data=button_data
         )
 
-        if button_data[selected_menu_num] == self.EDIT:
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            self.seed.set_passphrase("")
+            return Destination(SeedFinalizeView)
+
+        elif button_data[selected_menu_num] == self.EDIT:
             return Destination(SeedAddPassphraseView)
         
         elif button_data[selected_menu_num] == self.DONE:
@@ -612,6 +652,7 @@ class SeedOptionsView(View):
 class SeedBackupView(View):
     VIEW_WORDS = "View Seed Words"
     EXPORT_SEEDQR = "Export as SeedQR"
+    EXPORT_PLAINTEXTQR = "Export as Plaintext QR"
 
     def __init__(self, seed_num):
         super().__init__()
@@ -625,6 +666,9 @@ class SeedBackupView(View):
         if self.seed.seedqr_supported:
             button_data.append(self.EXPORT_SEEDQR)
 
+        if self.settings.get_value(SettingsConstants.SETTING__PLAINTEXTQR) == SettingsConstants.OPTION__ENABLED:
+            button_data.append(self.EXPORT_PLAINTEXTQR)
+
         selected_menu_num = self.run_screen(
             ButtonListScreen,
             title="Backup Seed",
@@ -637,6 +681,9 @@ class SeedBackupView(View):
 
         elif button_data[selected_menu_num] == self.VIEW_WORDS:
             return Destination(SeedWordsWarningView, view_args={"seed_num": self.seed_num})
+
+        elif button_data[selected_menu_num] == self.EXPORT_PLAINTEXTQR:
+            return Destination(SeedExportPlaintextQRView, view_args={"seed_num": self.seed_num})
 
         elif button_data[selected_menu_num] == self.EXPORT_SEEDQR:
             return Destination(SeedTranscribeSeedQRFormatView, view_args={"seed_num": self.seed_num})
@@ -1159,7 +1206,7 @@ class SeedBIP85SelectChildIndexView(View):
             )
 
         return Destination(
-            SeedWordsWarningView,
+            SeedWordsBackupTestPromptView,
             view_args=dict(
                 seed_num=self.seed_num,
                 bip85_data=dict(child_index=int(ret), num_words=self.num_words),
@@ -1206,8 +1253,14 @@ class SeedWordsBackupTestPromptView(View):
 
     def run(self):
         VERIFY = "Verify"
+        REVIEW = "Review"
         SKIP = "Skip"
-        button_data = [VERIFY, SKIP]
+        button_data = [VERIFY, REVIEW, SKIP]
+
+        FINALIZE = ("Finalize child")
+        if self.seed_num is not None and self.bip85_data:
+            button_data.append(FINALIZE)
+
         selected_menu_num = seed_screens.SeedWordsBackupTestPromptScreen(
             button_data=button_data,
         ).display()
@@ -1218,11 +1271,25 @@ class SeedWordsBackupTestPromptView(View):
                 view_args=dict(seed_num=self.seed_num, bip85_data=self.bip85_data),
             )
 
+        elif button_data[selected_menu_num] == REVIEW:
+            return Destination(
+                SeedWordsWarningView,
+                view_args=dict(seed_num=self.seed_num, bip85_data=self.bip85_data),
+            )
+
         elif button_data[selected_menu_num] == SKIP:
             if self.seed_num is not None:
                 return Destination(SeedOptionsView, view_args=dict(seed_num=self.seed_num))
             else:
                 return Destination(SeedFinalizeView)
+
+        elif button_data[selected_menu_num] == FINALIZE:
+            parent = self.controller.storage.seeds[self.seed_num]
+            child = Seed(parent.get_bip85_child_mnemonic(
+                self.bip85_data["child_index"], self.bip85_data["num_words"]
+                ).split())
+            self.controller.storage.set_pending_seed(child)
+            return Destination(SeedFinalizeView)
 
 
 
@@ -1276,7 +1343,7 @@ class SeedWordsBackupTestView(View):
                 # Successfully confirmed the full mnemonic!
                 return Destination(
                     SeedWordsBackupTestSuccessView,
-                    view_args=dict(seed_num=self.seed_num),
+                    view_args=dict(seed_num=self.seed_num, bip85_data=self.bip85_data),
                 )
             else:
                 # Continue testing the remaining words
@@ -1343,9 +1410,11 @@ class SeedWordsBackupTestMistakeView(View):
 
 
 class SeedWordsBackupTestSuccessView(View):
-    def __init__(self, seed_num: int):
+    def __init__(self, seed_num: int, bip85_data: dict = None):
         super().__init__()
         self.seed_num = seed_num
+        self.bip85_data = bip85_data
+
 
     def run(self):
         LargeIconStatusScreen(
@@ -1355,6 +1424,15 @@ class SeedWordsBackupTestSuccessView(View):
             text="All mnemonic backup words were successfully verified!",
             button_data=["OK"]
         ).display()
+
+        # if BIP-85 child is backed-up, setup to finalize it.
+        if self.seed_num is not None and self.bip85_data:
+            parent = self.controller.storage.seeds[self.seed_num]
+            child = Seed(parent.get_bip85_child_mnemonic(
+                self.bip85_data["child_index"], self.bip85_data["num_words"]
+                ).split())
+            self.controller.storage.set_pending_seed(child)
+            self.seed_num = None
 
         if self.seed_num is not None:
             return Destination(SeedOptionsView, view_args=dict(seed_num=self.seed_num), clear_history=True)
@@ -1385,7 +1463,10 @@ class SeedTranscribeSeedQRFormatView(View):
             num_modules_standard = 29
             num_modules_compact = 25
 
-        if self.settings.get_value(SettingsConstants.SETTING__COMPACT_SEEDQR) != SettingsConstants.OPTION__ENABLED:
+        ENCRYPTED = "Encrypted"
+
+        if (self.settings.get_value(SettingsConstants.SETTING__COMPACT_SEEDQR) != SettingsConstants.OPTION__ENABLED and
+            self.settings.get_value(SettingsConstants.SETTING__ENCRYPTED_QR) != SettingsConstants.OPTION__ENABLED):
             # Only configured for standard SeedQR
             return Destination(
                 SeedTranscribeSeedQRWarningView,
@@ -1397,10 +1478,17 @@ class SeedTranscribeSeedQRFormatView(View):
                 skip_current_view=True,
             )
 
-        button_data = [STANDARD, COMPACT]
+        button_data = [STANDARD]
+
+        if self.settings.get_value(SettingsConstants.SETTING__COMPACT_SEEDQR) == SettingsConstants.OPTION__ENABLED:
+            button_data.append(COMPACT)
+        if self.settings.get_value(SettingsConstants.SETTING__ENCRYPTED_QR) == SettingsConstants.OPTION__ENABLED:
+            button_data.append(ENCRYPTED)
 
         selected_menu_num = seed_screens.SeedTranscribeSeedQRFormatScreen(
             title="SeedQR Format",
+            is_compactqr = (self.settings.get_value(SettingsConstants.SETTING__COMPACT_SEEDQR) == SettingsConstants.OPTION__ENABLED),
+            is_encryptedqr = (self.settings.get_value(SettingsConstants.SETTING__ENCRYPTED_QR) == SettingsConstants.OPTION__ENABLED),
             button_data=button_data,
         ).display()
 
@@ -1410,9 +1498,12 @@ class SeedTranscribeSeedQRFormatView(View):
         if button_data[selected_menu_num] == STANDARD:
             seedqr_format = QRType.SEED__SEEDQR
             num_modules = num_modules_standard
-        else:
+        elif button_data[selected_menu_num] == COMPACT:
             seedqr_format = QRType.SEED__COMPACTSEEDQR
             num_modules = num_modules_compact
+        else:
+            seedqr_format = QRType.SEED__ENCRYPTEDQR
+            num_modules = 0  # dummy
         
         return Destination(
             SeedTranscribeSeedQRWarningView,
@@ -1459,7 +1550,7 @@ class SeedTranscribeSeedQRWarningView(View):
         else:
             # User clicked "I Understand"
             return destination
-    
+
 
 
 class SeedTranscribeSeedQRWholeQRView(View):
@@ -1472,31 +1563,551 @@ class SeedTranscribeSeedQRWholeQRView(View):
     
 
     def run(self):
-        encoder_args = dict(mnemonic=self.seed.mnemonic_list,
-                            wordlist_language_code=self.settings.get_value(SettingsConstants.SETTING__WORDLIST_LANGUAGE))
-        if self.seedqr_format == QRType.SEED__SEEDQR:
-            e = SeedQrEncoder(**encoder_args)
-        elif self.seedqr_format == QRType.SEED__COMPACTSEEDQR:
-            e = CompactSeedQrEncoder(**encoder_args)
+        if self.seedqr_format == QRType.SEED__ENCRYPTEDQR:
+            TYPE = "Type encryption key"
+            SCAN = "Scan encryption key"
+            button_data = [TYPE, SCAN]
 
-        data = e.next_part()
+            selected_menu_num = self.run_screen(
+                ButtonListScreen,
+                title="Input\nEncryption Key",
+                button_data=button_data,
+            )
 
-        ret = seed_screens.SeedTranscribeSeedQRWholeQRScreen(
-            qr_data=data,
-            num_modules=self.num_modules,
+            if selected_menu_num == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+
+            elif button_data[selected_menu_num] == TYPE:
+                return Destination(
+                    SeedEncryptedQRTypeEncryptionKeyView,
+                    view_args=dict(seed_num=self.seed_num)
+                )
+
+            elif button_data[selected_menu_num] == SCAN:
+                return Destination(
+                    SeedEncryptedQRScanEncryptionKeyView,
+                    view_args=dict(seed_num=self.seed_num)
+                )
+
+        else:
+            encoder_args = dict(mnemonic=self.seed.mnemonic_list,
+                                wordlist_language_code=self.settings.get_value(SettingsConstants.SETTING__WORDLIST_LANGUAGE))
+            if self.seedqr_format == QRType.SEED__SEEDQR:
+                e = SeedQrEncoder(**encoder_args)
+            elif self.seedqr_format == QRType.SEED__COMPACTSEEDQR:
+                e = CompactSeedQrEncoder(**encoder_args)
+
+            data = e.next_part()
+
+            ret = seed_screens.SeedTranscribeSeedQRWholeQRScreen(
+                qr_data=data,
+                num_modules=self.num_modules,
+            ).display()
+
+            if ret == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+
+            else:
+                return Destination(
+                    SeedTranscribeSeedQRZoomedInView,
+                    view_args={
+                        "seed_num": self.seed_num,
+                        "seedqr_format": self.seedqr_format
+                    }
+                )
+
+
+
+class SeedEncryptedQRTypeEncryptionKeyView(View):
+    def __init__(self, seed_num: int, encryption_key: str = ""):
+        super().__init__()
+        self.seed_num = seed_num
+        self.encryption_key = encryption_key
+
+    def run(self):
+        from seedsigner.gui.screens.scan_screens import ScanTypeEncryptionKeyScreen
+        ret_dict = self.run_screen(ScanTypeEncryptionKeyScreen, encryptionkey=self.encryption_key)
+        encryption_key=ret_dict["encryptionkey"]
+
+        if "is_back_button" in ret_dict:
+            if len(encryption_key) > 0:
+                return Destination(
+                    SeedEncryptedQRTypeEncryptionKeyExitDialogView,
+                    view_args=dict(encryption_key=encryption_key, seed_num=self.seed_num),
+                    skip_current_view=True
+                )
+            else:
+                return Destination(BackStackView)
+
+        else:
+            return Destination(
+                SeedEncryptedQRReviewEncryptionKeyView,
+                view_args=dict(encryption_key=encryption_key, seed_num=self.seed_num),
+                skip_current_view=True
+            )
+
+
+
+class SeedEncryptedQRTypeEncryptionKeyExitDialogView(View):
+    EDIT = "Edit encryption key"
+    DISCARD = ("Discard encryption key", None, None, "red")
+
+    def __init__(self, encryption_key: str, seed_num: int):
+        super().__init__()
+        self.encryption_key = encryption_key
+        self.seed_num = seed_num
+
+
+    def run(self):
+        button_data = [self.EDIT, self.DISCARD]
+        
+        selected_menu_num = self.run_screen(
+            WarningScreen,
+            title="Discard encryption key?",
+            status_headline=None,
+            text=f"Your current key entry will be erased",
+            show_back_button=False,
+            button_data=button_data
+        )
+
+        if button_data[selected_menu_num] == self.EDIT:
+            return Destination(
+                SeedEncryptedQRTypeEncryptionKeyView,
+                view_args=dict(seed_num=self.seed_num, encryption_key=self.encryption_key),
+                skip_current_view=True
+            )
+
+        elif button_data[selected_menu_num] == self.DISCARD:
+            return Destination(BackStackView)
+
+
+
+class SeedEncryptedQRScanEncryptionKeyView(View):
+    def __init__(self, seed_num: int):
+        super().__init__()
+        self.seed_num = seed_num
+
+    def run(self):
+        from seedsigner.gui.screens.scan_screens import ScanScreen
+        decoder = DecodeQR(is_encryptionkey=True)
+        self.run_screen(
+            ScanScreen,
+            instructions_text="Scan encryption key",
+            decoder=decoder
+        )
+        self.controller.reset_screensaver_timeout()
+        time.sleep(0.1)
+        if decoder.is_complete:
+            encryption_key = decoder.get_encryption_key()
+            return Destination(
+                SeedEncryptedQRReviewEncryptionKeyView,
+                view_args=dict(encryption_key=encryption_key, seed_num=self.seed_num),
+                skip_current_view=True
+            )
+        elif decoder.is_nonUTF8:
+            DireWarningScreen(
+                title="Error!",
+                show_back_button=False,
+                status_headline="Invalid Text QR Code",
+                text=f"Non UTF-8 data detected."
+            ).display()
+            return Destination(BackStackView)
+        else:
+            return Destination(BackStackView)
+
+
+
+class SeedEncryptedQRReviewEncryptionKeyView(View):
+    def __init__(self, encryption_key: str, seed_num: int):
+        super().__init__()
+        self.encryption_key = encryption_key
+        self.seed_num = seed_num
+
+    def run(self):
+        if len(self.encryption_key) > 200:
+            WarningScreen(
+                title="Error",
+                show_back_button=False,
+                status_headline="Invalid Key",
+                text="Key length is too long.",
+            ).display()
+            return Destination(BackStackView)
+
+        PROCEED = "Proceed"
+        EDIT = "Edit encryption key"
+        button_data = [PROCEED, EDIT]
+
+        from seedsigner.gui.screens.scan_screens import ScanReviewEncryptionKeyScreen
+
+        selected_menu_num = self.run_screen(
+            ScanReviewEncryptionKeyScreen,
+            encryptionkey=self.encryption_key,
+            button_data=button_data,
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        elif button_data[selected_menu_num] == PROCEED:
+            if self.settings.get_value(SettingsConstants.SETTING__ENCRYPTION_MODE) == SettingsConstants.ENCRYPTION_MODE_CBC:
+                return Destination(
+                    SeedEncryptedQRCBCModeView,
+                    view_args=dict(encryption_key=self.encryption_key, seed_num=self.seed_num)
+                )
+            else:
+                return Destination(
+                    SeedEncryptedQRMnemonicIDPromptView,
+                    view_args=dict(encryption_key=self.encryption_key, i_vector=None, seed_num=self.seed_num)
+                )
+
+        elif button_data[selected_menu_num] == EDIT:
+                return Destination(
+                    SeedEncryptedQRTypeEncryptionKeyView,
+                    view_args=dict(seed_num=self.seed_num, encryption_key=self.encryption_key),
+                    skip_current_view=True
+                )
+
+
+
+class SeedEncryptedQRCBCModeView(View):
+    def __init__(self, encryption_key: str, seed_num: int):
+        super().__init__()
+        self.encryption_key = encryption_key
+        self.seed_num = seed_num
+
+
+    def run(self):
+        CANCEL = "Cancel"
+        button_data=["Input from Camera",CANCEL]
+
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title="Additional Entropy\nfor AES-CBC mode",
+            button_data=button_data
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        elif button_data[selected_menu_num] == CANCEL:
+            return Destination(BackStackView)
+
+        from seedsigner.gui.screens.tools_screens import ToolsImageEntropyLivePreviewScreen, ToolsImageEntropyFinalImageScreen
+        self.controller.image_entropy_preview_frames = None
+        ret = ToolsImageEntropyLivePreviewScreen().display()
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        # Take the final full-res image
+        from seedsigner.hardware.camera import Camera
+        camera = Camera.get_instance()
+        camera.start_single_frame_mode(resolution=(720, 480))
+        time.sleep(0.25)
+        entropy_image = camera.capture_frame()
+        camera.stop_single_frame_mode()
+
+        # A copy of the image for display. The actual image data is 720x480
+        display_version = autocontrast(
+            entropy_image,
+            cutoff=2
+        ).crop(
+            (120, 0, 600, 480)
+        ).resize(
+            (self.canvas_width, self.canvas_height), Image.BICUBIC
+        )
+        ret = ToolsImageEntropyFinalImageScreen(
+            final_image=display_version
         ).display()
 
         if ret == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
-        
+
+        entropy_hash = hashlib.sha256(entropy_image.tobytes()).digest()
+        from seedsigner.models.encryption import AES_BLOCK_SIZE
+        i_vector = entropy_hash[:AES_BLOCK_SIZE]
+
+        return Destination(
+            SeedEncryptedQRMnemonicIDPromptView,
+            view_args=dict(encryption_key=self.encryption_key, i_vector=i_vector, seed_num=self.seed_num)
+        )
+
+
+
+class SeedEncryptedQRMnemonicIDPromptView(View):
+    def __init__(self, encryption_key: str, i_vector: bytes, seed_num: int):
+        super().__init__()
+        self.encryption_key = encryption_key
+        self.i_vector = i_vector
+        self.seed_num = seed_num
+
+        self.seed = self.controller.get_seed(seed_num)
+
+
+    def run(self):
+        CUSTOM_ID = "Assign custom ID"
+        DEFAULT = "Use fingerprint"
+        button_data = [CUSTOM_ID, DEFAULT]
+
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title="Input Mnemonic ID",
+            button_data=button_data,
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        elif button_data[selected_menu_num] == CUSTOM_ID:
+            return Destination(
+                SeedEncryptedQRMnemonicIDEntryView,
+                view_args=dict(encryption_key=self.encryption_key, i_vector=self.i_vector, seed_num=self.seed_num)
+            )
+
+        elif button_data[selected_menu_num] == DEFAULT:
+            mnemonic_id = self.seed.get_fingerprint(network=self.settings.get_value(SettingsConstants.SETTING__NETWORK))
+            return Destination(
+                SeedEncryptedQRReviewMnemonicIDView,
+                view_args=dict(encryption_key=self.encryption_key, i_vector=self.i_vector, mnemonic_id=mnemonic_id, seed_num=self.seed_num)
+            )
+
+
+
+class SeedEncryptedQRMnemonicIDEntryView(View):
+    def __init__(self, encryption_key: str, i_vector: bytes, seed_num: int, custom_id: str = ""):
+        super().__init__()
+        self.encryption_key = encryption_key
+        self.i_vector = i_vector
+        self.seed_num = seed_num
+        self.custom_id = custom_id
+
+
+    def run(self):
+        from seedsigner.gui.screens.seed_screens import SeedEncryptedQRMnemonicIDScreen
+        ret_dict = self.run_screen(SeedEncryptedQRMnemonicIDScreen, mnemonic_id=self.custom_id)
+        mnemonic_id = ret_dict["mnemonic_id"]
+
+        if "is_back_button" in ret_dict:
+            if len(mnemonic_id) > 0:
+                return Destination(
+                    SeedEncryptedQRMnemonicIDEntryExitDialogView,
+                    view_args=dict(encryption_key=self.encryption_key, i_vector=self.i_vector, mnemonic_id=mnemonic_id, seed_num=self.seed_num),
+                    skip_current_view=True
+                )
+            else:
+                return Destination(BackStackView)
+
         else:
             return Destination(
-                SeedTranscribeSeedQRZoomedInView,
-                view_args={
-                    "seed_num": self.seed_num,
-                    "seedqr_format": self.seedqr_format
-                }
+                SeedEncryptedQRReviewMnemonicIDView,
+                view_args=dict(encryption_key=self.encryption_key, i_vector=self.i_vector, mnemonic_id=mnemonic_id, seed_num=self.seed_num),
+                skip_current_view=True
             )
+
+
+
+class SeedEncryptedQRMnemonicIDEntryExitDialogView(View):
+    EDIT = "Edit mnemonic ID"
+    DISCARD = ("Discard mnemonic ID", None, None, "red")
+
+    def __init__(self, encryption_key: str, i_vector: bytes, mnemonic_id: str, seed_num: int):
+        super().__init__()
+        self.encryption_key = encryption_key
+        self.i_vector = i_vector
+        self.mnemonic_id = mnemonic_id
+        self.seed_num = seed_num
+
+
+    def run(self):
+        button_data = [self.EDIT, self.DISCARD]
+        
+        selected_menu_num = self.run_screen(
+            WarningScreen,
+            title="Discard mnemonic ID?",
+            status_headline=None,
+            text=f"Your current mnemonic ID entry will be erased",
+            show_back_button=False,
+            button_data=button_data
+        )
+
+        if button_data[selected_menu_num] == self.EDIT:
+            return Destination(
+                SeedEncryptedQRMnemonicIDEntryView,
+                view_args=dict(encryption_key=self.encryption_key, i_vector=self.i_vector, seed_num=self.seed_num, custom_id=self.mnemonic_id),
+                skip_current_view=True
+            )
+
+        elif button_data[selected_menu_num] == self.DISCARD:
+            return Destination(BackStackView)
+
+
+
+class SeedEncryptedQRReviewMnemonicIDView(View):
+    def __init__(self, encryption_key: str, i_vector: bytes, mnemonic_id: str, seed_num: int):
+        super().__init__()
+        self.encryption_key = encryption_key
+        self.i_vector = i_vector
+        self.mnemonic_id = mnemonic_id
+        self.seed_num = seed_num
+
+        self.seed = self.controller.get_seed(seed_num)
+
+
+    def run(self):
+        from seedsigner.gui.screens.seed_screens import SeedEncryptedQRReviewMnemonicIDScreen
+
+        PROCEED = "Proceed"
+        EDIT = "Edit mnemonic ID"
+        button_data = [PROCEED, EDIT]
+
+        selected_menu_num = self.run_screen(
+            SeedEncryptedQRReviewMnemonicIDScreen,
+            mnemonic_id=self.mnemonic_id,
+            button_data=button_data,
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+
+        elif button_data[selected_menu_num] == EDIT:
+            return Destination(
+                SeedEncryptedQRMnemonicIDEntryView,
+                view_args=dict(encryption_key=self.encryption_key, i_vector=self.i_vector, seed_num=self.seed_num, custom_id=self.mnemonic_id),
+                skip_current_view=True
+            )
+
+        elif button_data[selected_menu_num] == PROCEED:
+            from seedsigner.gui.screens.screen import LoadingScreenThread
+            loading_screen = LoadingScreenThread(text="Processing...")
+            loading_screen.start()
+
+            try:
+                from seedsigner.models.encryption import EncryptedQRCode
+                qr_data = EncryptedQRCode().create(
+                               key=self.encryption_key,
+                               mnemonic_id=self.mnemonic_id,
+                               mnemonic=self.seed.mnemonic_str,
+                               i_vector=self.i_vector
+                           )
+                if not qr_data:
+                    WarningScreen(
+                        title="Error",
+                        show_back_button=False,
+                        status_headline="Encryption failure",
+                        text="",
+                    ).display()
+                    return Destination(BackStackView)
+
+            finally:
+                loading_screen.stop()
+
+            return Destination(
+                SeedEncryptedQRTranscribeModePromptView,
+                view_args=dict(data=qr_data, seed_num=self.seed_num)
+            )
+
+
+
+class SeedEncryptedQRTranscribeModePromptView(View):
+    def __init__(self, data: bytes, seed_num: int):
+        super().__init__()
+        self.data = data
+        self.seed_num = seed_num
+
+
+    def run(self):
+        from seedsigner.helpers.qr import QR
+        num_modules = QR().qrsize(data=self.data)
+        if num_modules <= 33:
+            TRANSCRIBE = "Transcribe mode"
+            FULLSCREEN = "FullScreen mode"
+
+            button_data = [TRANSCRIBE, FULLSCREEN]
+
+            selected_menu_num = self.run_screen(
+                seed_screens.SeedEncryptedQRTranscribeModePromptScreen,
+                title="Transcribe Mode ?",
+                is_button_text_centered=False,
+                button_data=button_data
+            )
+
+            if selected_menu_num == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+
+            elif button_data[selected_menu_num] == TRANSCRIBE:
+                return Destination(
+                    SeedEncryptedQRTranscribeModeView,
+                    view_args=dict(data=self.data, num_modules=num_modules, seed_num=self.seed_num)
+                )
+
+        return Destination(
+            SeedEncryptedQRFullScreenModeView,
+            view_args=dict(data=self.data, seed_num=self.seed_num)
+        )
+
+
+
+class SeedEncryptedQRTranscribeModeView(View):
+    def __init__(self, data: bytes, num_modules: int, seed_num: int):
+        super().__init__()
+        self.data = data
+        self.num_modules = num_modules
+        self.seed_num = seed_num
+
+
+    def run(self):
+        ret = seed_screens.SeedTranscribeEncryptedQRWholeQRScreen(
+            qr_data=self.data,
+            num_modules=self.num_modules
+        ).display()
+
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        else:
+            return Destination(
+                SeedTranscribeEncryptedQRZoomedInView,
+                view_args=dict(data=self.data, num_modules=self.num_modules, seed_num=self.seed_num)
+            )
+
+
+
+class SeedTranscribeEncryptedQRZoomedInView(View):
+    def __init__(self, data: bytes, num_modules: int, seed_num: int):
+        super().__init__()
+        self.data = data
+        self.num_modules = num_modules
+        self.seed_num = seed_num
+
+
+    def run(self):
+        seed_screens.SeedTranscribeEncryptedQRZoomedInScreen(
+            qr_data=self.data,
+            num_modules=self.num_modules
+        ).display()
+        return Destination(
+            SeedOptionsView,
+            view_args=dict(seed_num=self.seed_num),
+            clear_history=True
+        )
+
+
+
+class SeedEncryptedQRFullScreenModeView(View):
+    def __init__(self, data: bytes, seed_num: int):
+        super().__init__()
+        self.data = data
+        self.seed_num = seed_num
+
+    def run(self):
+        encoder_args = dict(data=self.data)
+        e = GenericStaticQrEncoder(**encoder_args)
+        QRDisplayScreen(qr_encoder=e).display()
+        return Destination(
+            SeedOptionsView,
+            view_args=dict(seed_num=self.seed_num),
+            clear_history=True
+        )
 
 
 
@@ -1585,18 +2196,7 @@ class SeedTranscribeSeedQRConfirmScanView(View):
             if self.decoder.is_seed:
                 seed_mnemonic = self.decoder.get_seed_phrase()
                 # Found a valid mnemonic seed! But does it match?
-                if seed_mnemonic != self.seed.mnemonic_list:
-                    DireWarningScreen(
-                        title="Confirm SeedQR",
-                        status_headline="Error!",
-                        text="Your transcribed SeedQR does not match your original seed!",
-                        show_back_button=False,
-                        button_data=["Review SeedQR"],
-                    ).display()
-
-                    return Destination(BackStackView, skip_current_view=True)
-                
-                else:
+                if seed_mnemonic == self.seed.mnemonic_list:
                     LargeIconStatusScreen(
                         title="Confirm SeedQR",
                         status_headline="Success!",
@@ -1606,6 +2206,17 @@ class SeedTranscribeSeedQRConfirmScanView(View):
                     ).display()
 
                     return Destination(SeedOptionsView, view_args={"seed_num": self.seed_num})
+
+                else:
+                    DireWarningScreen(
+                        title="Confirm SeedQR",
+                        status_headline="Error!",
+                        text="Your transcribed SeedQR does not match your original seed!",
+                        show_back_button=False,
+                        button_data=["Review SeedQR"],
+                    ).display()
+
+                    return Destination(BackStackView)
 
             else:
                 # Will this case ever happen? Will trigger if a different kind of QR code is scanned
@@ -1617,7 +2228,7 @@ class SeedTranscribeSeedQRConfirmScanView(View):
                     button_data=["Review SeedQR"],
                 ).display()
 
-                return Destination(BackStackView, skip_current_view=True)
+                return Destination(BackStackView)
 
 
 
@@ -2185,3 +2796,26 @@ class SeedSignMessageSignedMessageQRView(View):
 
         # Exiting/Canceling the QR display screen always returns Home
         return Destination(MainMenuView, skip_current_view=True)
+
+
+
+class SeedExportPlaintextQRView(View):
+    def __init__(self, seed_num: int):
+        super().__init__()
+        self.seed_num = seed_num
+        self.seed = self.controller.get_seed(seed_num)
+
+
+    def run(self):
+        encoder_args = dict(data=self.seed.mnemonic_str)
+        e = GenericStaticQrEncoder(**encoder_args)
+
+        self.run_screen(
+            QRDisplayScreen,
+            qr_encoder=e
+        )
+
+        return Destination(
+            SeedOptionsView,
+            view_args={"seed_num": self.seed_num}
+        )

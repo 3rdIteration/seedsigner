@@ -10,6 +10,7 @@ from seedsigner.gui.toast import BaseToastOverlayManagerThread
 from seedsigner.models.psbt_parser import PSBTParser
 from seedsigner.models.seed import Seed
 from seedsigner.models.seed_storage import SeedStorage
+from seedsigner.models.encryptedqr import EncryptedQRStorage
 from seedsigner.models.settings import Settings
 from seedsigner.models.singleton import Singleton
 from seedsigner.models.threads import BaseThread
@@ -69,6 +70,9 @@ class BackgroundImportThread(BaseThread):
         time_import('seedsigner.models.seed_storage')
         from seedsigner.models.seed_storage import SeedStorage
         Controller.get_instance()._storage = SeedStorage()
+        time_import('seedsigner.models.encryptedqr')
+        from seedsigner.models.encryptedqr import EncryptedQRStorage
+        Controller.get_instance()._storage2 = EncryptedQRStorage()
 
         # Get MainMenuView ready to respond quickly
         time_import('seedsigner.views.scan_views')
@@ -99,11 +103,12 @@ class Controller(Singleton):
         rather than at the top in order avoid circular imports.
     """
 
-    VERSION = "0.8.0"
+    VERSION = "ssx080r3-c4"
 
     # Declare class member vars with type hints to enable richer IDE support throughout
     # the code.
     _storage: SeedStorage = None   # TODO: Rename "storage" to something more indicative of its temp, in-memory state
+    _storage2: EncryptedQRStorage = None
     settings: Settings = None
 
     # TODO: Refactor these flow-related attrs that survive across multiple Screens.
@@ -209,6 +214,13 @@ class Controller(Singleton):
             # This is a rare timing issue that likely only occurs in the test suite.
             time.sleep(0.001)
         return self._storage
+
+
+    @property
+    def storage2(self):
+        while not self._storage2:
+            time.sleep(0.001)
+        return self._storage2
 
 
     def get_seed(self, seed_num: int) -> Seed:

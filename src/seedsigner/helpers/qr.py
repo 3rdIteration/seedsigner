@@ -12,6 +12,18 @@ class QR:
     def __init__(self) -> None:
         return
 
+
+    def qrsize(self, data) -> int:
+        box_size = 5
+        border = 3
+        qr = qrcode.QRCode( version=1, error_correction=qrcode.constants.ERROR_CORRECT_L, box_size=box_size, border=border )
+        qr.add_data(data)
+        qr_image = qr.make_image(image_factory=StyledPilImage)
+        qr_image_width, _ = qr_image.size
+        qr_code_dims = int(qr_image_width / box_size) - 2*border
+        return qr_code_dims
+
+
     def qrimage(self, data, width=240, height=240, border=3, style=None, background_color="#444"):
         box_size = 5
         qr = qrcode.QRCode( version=1, error_correction=qrcode.constants.ERROR_CORRECT_L, box_size=box_size, border=border )
@@ -32,8 +44,8 @@ class QR:
                 qr_code_dims = int(qr_image_width / box_size) - 2*border
 
                 if qr_code_dims > 21:
-                    # The ROUNDED style mis-renders the small lower-right registration box in 25x25
-                    # and 29x29.
+                    # The ROUNDED style mis-renders the small lower-right registration box in 25x25, 29x29,
+                    # and 33x33.
                     draw = ImageDraw.Draw(qr_image)
                     if qr_code_dims == 25:
                         # registration block starts at 16, 16 and is 5x5
@@ -42,6 +54,10 @@ class QR:
                     elif qr_code_dims == 29:
                         # The registration block starts at 20,20 and is 5x5
                         starting_point = 20 + border
+                    
+                    elif qr_code_dims == 33:
+                        # The registration block starts at 24,24 and is 5x5
+                        starting_point = 24 + border
                     
                     else:
                         raise Exception(f"Unrecognized qrimage size: {qr_code_dims}")
@@ -96,12 +112,19 @@ class QR:
         else:
             border_str = "3"
 
-        cmd = f"""qrencode -m {border_str} -s 3 -l L --foreground=000000 --background={background_color} -t PNG -o "/tmp/qrcode.png" "{str(data)}" """
+        if type(data) is str:
+            cmd = f"""qrencode -m {border_str} -s 3 -l L --foreground=000000 --background={background_color} -t PNG -o "/tmp/qrcode.png" "{data}" """
+        else:
+            cmd = f"""qrencode -m {border_str} -s 3 -l L --foreground=000000 --background={background_color} -t PNG -8 -r "/tmp/data.bin" -o "/tmp/qrcode.png" """
+            with open("/tmp/data.bin", "wb") as f:
+                f.write(data)
+
         rv = subprocess.call(cmd, shell=True)
 
         # if qrencode fails, fall back to only encoder
         if rv != 0:
             return self.qrimage(data,width,height,border)
         img = Image.open("/tmp/qrcode.png").resize((width,height), Image.NEAREST).convert("RGBA")
+        rv = subprocess.call("rm -f /tmp/data.bin /tmp/qrcode.png", shell=True)
 
         return img

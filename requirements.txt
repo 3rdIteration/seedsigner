@@ -3,3 +3,4 @@ Pillow==10.0.1
 pyzbar @ git+https://github.com/seedsigner/pyzbar.git@c3c237821c6a20b17953efe59b90df0b514a1c03
 qrcode==7.3.1
 urtypes @ git+https://github.com/selfcustody/urtypes.git@7fb280eab3b3563dfc57d2733b0bf5cbc0a96a6a
+pycryptodomex @ git+https://github.com/Legrandin/pycryptodome.git@0de7b4d80438aeba63e8010fa7da0f1d6d98effb

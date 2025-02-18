@@ -10,11 +10,15 @@ from PIL.ImageOps import autocontrast
 
 from seedsigner.controller import Controller
 from seedsigner.gui.components import FontAwesomeIconConstants, GUIConstants, SeedSignerIconConstants
-from seedsigner.gui.screens import (RET_CODE__BACK_BUTTON, ButtonListScreen, WarningScreen)
+from seedsigner.gui.screens import (RET_CODE__BACK_BUTTON, ButtonListScreen, DireWarningScreen, LargeIconStatusScreen, WarningScreen)
+from seedsigner.gui.screens.scan_screens import ScanScreen
 from seedsigner.gui.screens.tools_screens import (ToolsCalcFinalWordDoneScreen, ToolsCalcFinalWordFinalizePromptScreen,
     ToolsCalcFinalWordScreen, ToolsCoinFlipEntryScreen, ToolsDiceEntropyEntryScreen, ToolsImageEntropyFinalImageScreen,
-    ToolsImageEntropyLivePreviewScreen, ToolsAddressExplorerAddressTypeScreen)
+    ToolsImageEntropyLivePreviewScreen, ToolsAddressExplorerAddressTypeScreen, ToolsTextQRTextEntryScreen, ToolsTextQRReviewTextScreen,
+    ToolsTextQRTranscribeModePromptScreen, ToolsTranscribeTextQRWholeQRScreen, ToolsTranscribeTextQRZoomedInScreen,
+    ToolsTranscribeTextQRConfirmQRPromptScreen)
 from seedsigner.helpers import embit_utils, mnemonic_generation
+from seedsigner.models.decode_qr import DecodeQR
 from seedsigner.models.encode_qr import GenericStaticQrEncoder
 from seedsigner.models.seed import Seed
 from seedsigner.models.settings_definition import SettingsConstants
@@ -31,9 +35,10 @@ class ToolsMenuView(View):
     KEYBOARD = ("Calc 12th/24th word", FontAwesomeIconConstants.KEYBOARD)
     ADDRESS_EXPLORER = "Address Explorer"
     VERIFY_ADDRESS = "Verify address"
+    TEXTQRCODE = "Text QR Code"
 
     def run(self):
-        button_data = [self.IMAGE, self.DICE, self.KEYBOARD, self.ADDRESS_EXPLORER, self.VERIFY_ADDRESS]
+        button_data = [self.IMAGE, self.DICE, self.KEYBOARD, self.ADDRESS_EXPLORER, self.VERIFY_ADDRESS, self.TEXTQRCODE]
 
         selected_menu_num = self.run_screen(
             ButtonListScreen,
@@ -60,6 +65,9 @@ class ToolsMenuView(View):
         elif button_data[selected_menu_num] == self.VERIFY_ADDRESS:
             from seedsigner.views.scan_views import ScanAddressView
             return Destination(ScanAddressView)
+
+        elif button_data[selected_menu_num] == self.TEXTQRCODE:
+            return Destination(ToolsTextQRView)
 
 
 
@@ -714,3 +722,384 @@ class ToolsAddressExplorerAddressView(View):
     
         # Exiting/Cancelling the QR display screen always returns to the list
         return Destination(ToolsAddressExplorerAddressListView, view_args=dict(is_change=self.is_change, start_index=self.start_index, selected_button_index=self.index - self.start_index, initial_scroll=self.parent_initial_scroll), skip_current_view=True)
+
+
+
+"""****************************************************************************
+    Text QR Code Views
+****************************************************************************"""
+class ToolsTextQRView(View):
+    def run(self):
+        ENCODE = "Encode text"
+        DECODE = "Decode QR code"
+
+        button_data = [ENCODE, DECODE]
+
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title="Text QR Code",
+            is_button_text_centered=False,
+            button_data=button_data
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        elif button_data[selected_menu_num] == ENCODE:
+            return Destination(ToolsTextQRTextEntryView)
+
+        elif button_data[selected_menu_num] == DECODE:
+            return Destination(ToolsTextQRScanQRCodeView)
+
+
+
+class ToolsTextQRTextEntryView(View):
+    def __init__(self, textToEncode: str = ""):
+        super().__init__()
+        self.textToEncode = textToEncode
+
+
+    def run(self):
+        ret_dict = ToolsTextQRTextEntryScreen(textToEncode=self.textToEncode, title="Text to Encode").display()
+
+        try:
+            import re
+            self.textToEncode = bytes(
+                re.sub(r"\\(?!u)", r"\\\\", ret_dict["textToEncode"]),
+                encoding="raw_unicode_escape"
+            ).decode("unicode_escape")
+
+        except UnicodeDecodeError:
+            self.textToEncode = ret_dict["textToEncode"]
+
+        if "is_back_button" in ret_dict:
+            if len(self.textToEncode) > 0:
+                return Destination(
+                    ToolsTextQRTextEntryExitDialogView,
+                    view_args=dict(text=self.textToEncode),
+                    skip_current_view=True
+                )
+            else:
+                return Destination(BackStackView)
+
+        else:
+            return Destination(
+                ToolsTextQRReviewTextView,
+                view_args=dict(text=self.textToEncode),
+                skip_current_view=True
+            )
+
+
+
+class ToolsTextQRTextEntryExitDialogView(View):
+    EDIT = "Edit text"
+    DISCARD = ("Discard text", None, None, "red")
+
+    def __init__(self, text: str):
+        super().__init__()
+        self.text = text
+
+
+    def run(self):
+        button_data = [self.EDIT, self.DISCARD]
+        
+        selected_menu_num = self.run_screen(
+            WarningScreen,
+            title="Discard text?",
+            status_headline=None,
+            text=f"Your current text entry will be erased",
+            show_back_button=False,
+            button_data=button_data
+        )
+
+        if button_data[selected_menu_num] == self.EDIT:
+            return Destination(
+                ToolsTextQRTextEntryView,
+                view_args=dict(textToEncode=self.text),
+                skip_current_view=True
+            )
+
+        elif button_data[selected_menu_num] == self.DISCARD:
+            return Destination(BackStackView)
+
+
+
+class ToolsTextQRReviewTextView(View):
+    def __init__(self, text: str):
+        super().__init__()
+        self.text = text
+
+
+    def run(self):
+        ENCODE = "Generate QR code"
+        EDIT = "Edit text"
+
+        button_data = [ENCODE, EDIT]
+
+        selected_menu_num = self.run_screen(
+            ToolsTextQRReviewTextScreen,
+            textToEncode=self.text,
+            title="Text to Encode",
+            button_data=button_data
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        if button_data[selected_menu_num] == ENCODE:
+            from seedsigner.helpers.qr import QR
+            num_modules = QR().qrsize(data=self.text)
+            if num_modules <= 33:
+                return Destination(
+                    ToolsTextQRTranscribeModePromptView,
+                    view_args=dict(text=self.text, num_modules=num_modules)
+                )
+            else:
+                return Destination(
+                    ToolsTextQRFullScreenModeView,
+                    view_args=dict(text=self.text)
+                )
+
+        elif button_data[selected_menu_num] == EDIT:
+            return Destination(
+                ToolsTextQRTextEntryView,
+                view_args=dict(textToEncode=self.text),
+                skip_current_view=True
+            )
+
+
+
+class ToolsTextQRTranscribeModePromptView(View):
+    def __init__(self, text: str, num_modules: int):
+        super().__init__()
+        self.text = text
+        self.num_modules = num_modules
+
+
+    def run(self):
+        TRANSCRIBE = "Transcribe mode"
+        FULLSCREEN = "FullScreen mode"
+
+        button_data = [TRANSCRIBE, FULLSCREEN]
+
+        selected_menu_num = self.run_screen(
+            ToolsTextQRTranscribeModePromptScreen,
+            title="Transcribe Mode ?",
+            is_button_text_centered=False,
+            button_data=button_data
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        elif button_data[selected_menu_num] == TRANSCRIBE:
+            return Destination(
+                ToolsTextQRTranscribeModeView,
+                view_args=dict(text=self.text, num_modules=self.num_modules)
+            )
+
+        elif button_data[selected_menu_num] == FULLSCREEN:
+            return Destination(
+                ToolsTextQRFullScreenModeView,
+                view_args=dict(text=self.text)
+            )
+
+
+
+class ToolsTextQRTranscribeModeView(View):
+    def __init__(self, text: str, num_modules: int):
+        super().__init__()
+        self.text = text
+        self.num_modules = num_modules
+
+
+    def run(self):
+        ret = ToolsTranscribeTextQRWholeQRScreen(
+            qr_data=self.text,
+            num_modules=self.num_modules
+        ).display()
+
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        else:
+            return Destination(
+                ToolsTranscribeTextQRZoomedInView,
+                view_args=dict(text=self.text, num_modules=self.num_modules)
+            )
+
+
+
+class ToolsTextQRFullScreenModeView(View):
+    def __init__(self, text: str):
+        super().__init__()
+        self.text = text
+
+    def run(self):
+        from seedsigner.gui.screens.screen import QRDisplayScreen
+        encoder_args = dict(data=self.text)
+        e = GenericStaticQrEncoder(**encoder_args)
+        QRDisplayScreen(qr_encoder=e).display()
+        return Destination(ToolsTextQRView, clear_history=True)
+
+
+
+class ToolsTranscribeTextQRZoomedInView(View):
+    def __init__(self, text: str, num_modules: int):
+        super().__init__()
+        self.text = text
+        self.num_modules = num_modules
+
+
+    def run(self):
+
+        ToolsTranscribeTextQRZoomedInScreen(
+            qr_data=self.text,
+            num_modules=self.num_modules
+        ).display()
+
+        return Destination(
+            ToolsTranscribeTextQRConfirmQRPromptView,
+            view_args=dict(text=self.text)
+        )
+
+
+
+class ToolsTranscribeTextQRConfirmQRPromptView(View):
+    def __init__(self, text: str):
+        super().__init__()
+        self.text = text
+
+
+    def run(self):
+        SCAN = "Confirm text QR code"
+        DONE = "Done"
+        button_data = [SCAN, DONE]
+
+        selected_menu_option = ToolsTranscribeTextQRConfirmQRPromptScreen(
+            title="Confirm Text QR ?",
+            button_data=button_data
+        ).display()
+
+        if selected_menu_option == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        elif button_data[selected_menu_option] == SCAN:
+            return Destination(ToolsTranscribeTextQRConfirmScanView, view_args=dict(text=self.text))
+
+        elif button_data[selected_menu_option] == DONE:
+            return Destination(ToolsTextQRView, clear_history=True)
+
+
+
+class ToolsTranscribeTextQRConfirmScanView(View):
+    def __init__(self, text: str):
+        super().__init__()
+        self.text = text
+
+
+    def run(self):
+        decoder = DecodeQR(is_text=True)
+        ScanScreen(
+            instructions_text="Scan text QR code",
+            decoder=decoder
+        ).display()
+
+        self.controller.reset_screensaver_timeout()
+        time.sleep(0.1)
+
+        if decoder.is_complete:
+            if decoder.get_text() != self.text:
+                DireWarningScreen(
+                    title="Confirm Text QR Code",
+                    status_headline="Error!",
+                    text="Your transcribed text QR code does not match your original text!",
+                    show_back_button=False,
+                    button_data=["Review text QR code"],
+                ).display()
+
+                return Destination(BackStackView)
+            
+            else:
+                LargeIconStatusScreen(
+                    title="Confirm Text QR Code",
+                    status_headline="Success!",
+                    text="Your transcribed text QR code successfully scanned and yielded the same text.",
+                    show_back_button=False,
+                    button_data=["OK"],
+                ).display()
+
+                return Destination(ToolsTextQRView, clear_history=True)
+
+        else:
+            DireWarningScreen(
+                title="Confirm Text QR",
+                status_headline="Error!",
+                text="Your transcribed text QR code could not be read!",
+                show_back_button=False,
+                button_data=["Review text QR code"],
+            ).display()
+
+            return Destination(BackStackView)
+
+
+
+class ToolsTextQRScanQRCodeView(View):
+    def run(self):
+
+        decoder = DecodeQR(is_text=True)
+        ScanScreen(decoder=decoder, instructions_text="Scan text QR code").display()
+
+        self.controller.reset_screensaver_timeout()
+        time.sleep(0.1)
+
+        if decoder.is_complete:
+            return Destination(
+                ToolsTextQRReviewTextView2,
+                view_args=dict(text=decoder.get_text()),
+                skip_current_view=True
+            )
+
+        elif decoder.is_nonUTF8:
+            DireWarningScreen(
+                title="Error!",
+                show_back_button=False,
+                status_headline="Invalid Text QR Code",
+                text=f"Non UTF-8 data detected."
+            ).display()
+            return Destination(BackStackView)
+
+        else:
+            return Destination(BackStackView)
+
+
+
+class ToolsTextQRReviewTextView2(View):
+    def __init__(self, text: str):
+        super().__init__()
+        self.text = text
+
+
+    def run(self):
+        EDIT = "Edit & Generate QR code"
+        DONE = "Done"
+
+        button_data = [EDIT, DONE]
+
+        selected_menu_num = self.run_screen(
+            ToolsTextQRReviewTextScreen,
+            textToEncode=self.text,
+            title="Decoded Text",
+            button_data=button_data,
+            show_back_button=False,
+        )
+
+        if button_data[selected_menu_num] == EDIT:
+            return Destination(
+                ToolsTextQRTextEntryView,
+                view_args=dict(textToEncode=self.text)
+            )
+
+        elif button_data[selected_menu_num] == DONE:
+            return Destination(BackStackView)
+

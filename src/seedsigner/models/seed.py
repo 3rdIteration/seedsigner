@@ -89,7 +89,14 @@ class Seed:
 
 
     def set_passphrase(self, passphrase: str, regenerate_seed: bool = True):
+        import re
         if passphrase:
+            passphrase_save = passphrase
+            passphrase = re.sub(r"\\(?!u)", r"\\\\", passphrase)
+            try:
+                passphrase = bytes(passphrase, encoding="raw_unicode_escape").decode("unicode_escape")
+            except UnicodeDecodeError:
+                passphrase = passphrase_save
             self._passphrase = unicodedata.normalize("NFKD", passphrase)
         else:
             # Passphrase must always have a string value, even if it's just the empty
@@ -185,7 +192,14 @@ class ElectrumSeed(Seed):
 
 
     def set_passphrase(self, passphrase: str, regenerate_seed: bool = True):
+        import re
         if passphrase:
+            passphrase_save = passphrase
+            passphrase = re.sub(r"\\(?!u)", r"\\\\", passphrase)
+            try:
+                passphrase = bytes(passphrase, encoding="raw_unicode_escape").decode("unicode_escape")
+            except UnicodeDecodeError:
+                passphrase = passphrase_save
             self._passphrase = ElectrumSeed.normalize_electrum_passphrase(passphrase)
         else:
             # Passphrase must always have a string value, even if it's just the empty

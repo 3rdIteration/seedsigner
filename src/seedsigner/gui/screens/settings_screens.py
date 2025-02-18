@@ -6,7 +6,7 @@ from typing import List
 from seedsigner.gui.components import Button, CheckboxButton, CheckedSelectionButton, FontAwesomeIconConstants, Fonts, GUIConstants, Icon, IconButton, IconTextLine, TextArea
 from seedsigner.gui.screens.scan_screens import ScanScreen
 
-from seedsigner.gui.screens.screen import BaseScreen, BaseTopNavScreen, ButtonListScreen
+from seedsigner.gui.screens.screen import BaseScreen, BaseTopNavScreen, ButtonListScreen, KeyboardScreen
 from seedsigner.hardware.buttons import HardwareButtonsConstants
 from seedsigner.hardware.camera import Camera
 from seedsigner.models.settings import SettingsConstants
@@ -46,6 +46,22 @@ class SettingsEntryUpdateSelectionScreen(ButtonListScreen):
                 is_text_centered=True,
                 screen_y=prev_component_bottom + GUIConstants.COMPONENT_PADDING,
             ))
+
+
+
+@dataclass
+class SettingPBFDK2IterationsScreen(KeyboardScreen):
+    def __post_init__(self):
+        self.title = "PBKDF2 Iter.\n(in units of 10k)"
+        self.user_input = ""
+
+        # Specify the keys in the keyboard
+        self.rows = 3
+        self.cols = 5
+        self.keys_charset = "0123456789"
+        self.show_save_button = True
+
+        super().__post_init__()
 
 
 
