@@ -9,10 +9,10 @@ from binascii import hexlify
 from gettext import gettext as _
 
 from embit.descriptor import Descriptor
-#from embit.networks import NETWORKS
-#from typing import List
-#from PIL import Image
-#from PIL.ImageOps import autocontrast
+from embit.networks import NETWORKS
+from typing import List
+from PIL import Image
+from PIL.ImageOps import autocontrast
 
 from seedsigner.gui.components import FontAwesomeIconConstants, SeedSignerIconConstants
 from seedsigner.gui.screens import (RET_CODE__BACK_BUTTON, ButtonListScreen,
@@ -502,7 +502,7 @@ class SeedFinalizeView(View):
 
     def run(self):
         button_data = [self.FINALIZE]
-        self.PASSPHRASE.button_label = self.seed.passphrase_label
+        self.TYPE_PASSPHRASE.button_label = self.seed.passphrase_label
         if self.settings.get_value(SettingsConstants.SETTING__PASSPHRASE) != SettingsConstants.OPTION__DISABLED:
             button_data.append(self.TYPE_PASSPHRASE)
             button_data.append(self.SCAN_PASSPHRASE)
@@ -599,6 +599,7 @@ class SeedAddPassphraseExitDialogView(View):
 class SeedScanPassphraseView(View):
     def run(self):
         from seedsigner.gui.screens.scan_screens import ScanScreen
+        from seedsigner.models.decode_qr import DecodeQR
         decoder = DecodeQR(is_passphrase=True)
         self.run_screen(
             ScanScreen,
@@ -1781,7 +1782,7 @@ class SeedTranscribeSeedQRFormatView(View):
     # SeedQR dims for 24-word seeds
     STANDARD_24 = ButtonOption("Standard: 29x29", return_data=29)
     COMPACT_24 = ButtonOption("Compact: 25x25", return_data=25)
-    ENCRYPTED_24 ButtonOption("Encrypted: XxX", return_data=0) # Encrypted QR uses dummy return data
+    ENCRYPTED_24 = ButtonOption("Encrypted: XxX", return_data=0) # Encrypted QR uses dummy return data
 
     def __init__(self, seed_num: int):
         super().__init__()
@@ -2028,6 +2029,7 @@ class SeedEncryptedQRScanEncryptionKeyView(View):
 
     def run(self):
         from seedsigner.gui.screens.scan_screens import ScanScreen
+        from seedsigner.models.decode_qr import DecodeQR
         decoder = DecodeQR(is_encryptionkey=True)
         self.run_screen(
             ScanScreen,

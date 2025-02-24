@@ -6,14 +6,14 @@ from gettext import gettext as _
 from PIL import Image, ImageDraw
 
 from seedsigner.gui import renderer
-#from seedsigner.gui.keyboard import Keyboard, TextEntryDisplay
-#from seedsigner.hardware.buttons import HardwareButtonsConstants
-#from seedsigner.hardware.camera import Camera
-#from seedsigner.models.decode_qr import DecodeQR, DecodeQRStatus
-#from seedsigner.models.threads import BaseThread, ThreadsafeCounter
+from seedsigner.gui.keyboard import Keyboard, TextEntryDisplay
+from seedsigner.hardware.buttons import HardwareButtonsConstants
+from seedsigner.hardware.camera import Camera
+from seedsigner.models.decode_qr import DecodeQR, DecodeQRStatus
+from seedsigner.models.threads import BaseThread, ThreadsafeCounter
 
-#from .screen import BaseScreen, BaseTopNavScreen, ButtonListScreen
-#from ..components import GUIConstants, Fonts, SeedSignerIconConstants, Button, IconButton, TextArea
+from .screen import BaseScreen, BaseTopNavScreen, ButtonListScreen
+from ..components import GUIConstants, Fonts, SeedSignerIconConstants, Button, IconButton, TextArea
 
 from seedsigner.gui.components import GUIConstants, Fonts
 from seedsigner.models.decode_qr import DecodeQR
@@ -481,7 +481,7 @@ class ScanTypeEncryptionKeyScreen(BaseTopNavScreen):
             text=self.KEYBOARD__UPPERCASE_BUTTON_TEXT,
             is_text_centered=False,
             font_name=GUIConstants.FIXED_WIDTH_EMPHASIS_FONT_NAME,
-            font_size=GUIConstants.BUTTON_FONT_SIZE + 4,
+            font_size=GUIConstants.BUTTON_FONT_SIZE['default'] + 4,
             width=self.right_panel_buttons_width,
             screen_x=hw_button_x,
             screen_y=hw_button_y - 3*GUIConstants.COMPONENT_PADDING - GUIConstants.BUTTON_HEIGHT,
@@ -491,7 +491,7 @@ class ScanTypeEncryptionKeyScreen(BaseTopNavScreen):
             text=self.KEYBOARD__DIGITS_BUTTON_TEXT,
             is_text_centered=False,
             font_name=GUIConstants.FIXED_WIDTH_EMPHASIS_FONT_NAME,
-            font_size=GUIConstants.BUTTON_FONT_SIZE + 4,
+            font_size=GUIConstants.BUTTON_FONT_SIZE['default'] + 4,
             width=self.right_panel_buttons_width,
             screen_x=hw_button_x,
             screen_y=hw_button_y,
@@ -529,8 +529,6 @@ class ScanTypeEncryptionKeyScreen(BaseTopNavScreen):
         while True:
             input = self.hw_inputs.wait_for(
                 HardwareButtonsConstants.ALL_KEYS,
-                check_release=True,
-                release_keys=[HardwareButtonsConstants.KEY_PRESS, HardwareButtonsConstants.KEY1, HardwareButtonsConstants.KEY2, HardwareButtonsConstants.KEY3]
             )
 
             keyboard_swap = False
@@ -716,8 +714,8 @@ class ScanReviewEncryptionKeyScreen(ButtonListScreen):
         if self.encryptionkey != self.encryptionkey.strip() or "  " in self.encryptionkey:
             self.encryptionkey = self.encryptionkey.replace(" ", "\u2589")
         available_height = self.buttons[0].screen_y - self.top_nav.height + GUIConstants.COMPONENT_PADDING
-        max_font_size = GUIConstants.TOP_NAV_TITLE_FONT_SIZE + 8
-        min_font_size = GUIConstants.TOP_NAV_TITLE_FONT_SIZE - 4
+        max_font_size = GUIConstants.TOP_NAV_TITLE_FONT_SIZE['default'] + 8
+        min_font_size = GUIConstants.TOP_NAV_TITLE_FONT_SIZE['default'] - 4
         font_size = max_font_size
         max_lines = 3
         encryptionkey = [self.encryptionkey]

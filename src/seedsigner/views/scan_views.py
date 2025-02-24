@@ -4,10 +4,10 @@ import time
 
 #from embit.descriptor import Descriptor
 
-#from seedsigner.gui.screens.screen import RET_CODE__BACK_BUTTON, ButtonListScreen, WarningScreen, DireWarningScreen
-#from seedsigner.gui.screens.scan_screens import ScanEncryptedQRScreen, ScanTypeEncryptionKeyScreen, ScanReviewEncryptionKeyScreen
-#from seedsigner.models.decode_qr import DecodeQR, DecodeQRStatus
-#from seedsigner.models.seed import Seed
+from seedsigner.gui.screens.screen import RET_CODE__BACK_BUTTON, ButtonListScreen, WarningScreen, DireWarningScreen
+from seedsigner.gui.screens.scan_screens import ScanEncryptedQRScreen, ScanTypeEncryptionKeyScreen, ScanReviewEncryptionKeyScreen
+from seedsigner.models.decode_qr import DecodeQR, DecodeQRStatus
+from seedsigner.models.seed import Seed
 
 from gettext import gettext as _
 from seedsigner.helpers.l10n import mark_for_translation as _mft
@@ -164,8 +164,8 @@ class ScanView(View):
                 )
             
             elif self.decoder.is_encrypted_seedqr:
-                DECRYPT = "Decrypt"
-                CANCEL = "Cancel"
+                DECRYPT = ButtonOption("Decrypt")
+                CANCEL = ButtonOption("Cancel")
                 button_data = [DECRYPT, CANCEL]
 
                 public_data = self.decoder.get_public_data()
@@ -238,9 +238,9 @@ class ScanAddressView(ScanView):
 
 class ScanEncryptedQREncryptionKeyView(View):
     def run(self):
-        TYPE = "Type encryption key"
-        SCAN = "Scan encryption key"
-        CANCEL = "Cancel"
+        TYPE = ButtonOption("Type encryption key")
+        SCAN = ButtonOption("Scan encryption key")
+        CANCEL = ButtonOption("Cancel")
         button_data = [TYPE, SCAN, CANCEL]
 
         selected_menu_num = self.run_screen(
@@ -293,8 +293,8 @@ class ScanEncryptedQRTypeEncryptionKeyView(View):
 
 
 class ScanEncryptedQRTypeEncryptionKeyExitDialogView(View):
-    EDIT = "Edit encryption key"
-    DISCARD = ("Discard encryption key", None, None, "red")
+    EDIT = ButtonOption("Edit encryption key")
+    DISCARD = ButtonOption("Discard encryption key", None, None, "red")
 
     def __init__(self, encryption_key: str):
         super().__init__()
@@ -371,8 +371,8 @@ class ScanEncryptedQRReviewEncryptionKeyView(View):
             ).display()
             return Destination(BackStackView)
 
-        PROCEED = "Proceed"
-        EDIT = "Edit"
+        PROCEED = ButtonOption("Proceed")
+        EDIT = ButtonOption("Edit")
         button_data = [PROCEED, EDIT]
 
         from seedsigner.gui.screens.scan_screens import ScanReviewEncryptionKeyScreen

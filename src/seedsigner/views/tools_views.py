@@ -12,16 +12,16 @@ from PIL.ImageOps import autocontrast
 from gettext import gettext as _
 
 from seedsigner.gui.components import FontAwesomeIconConstants, GUIConstants, SeedSignerIconConstants
-#from seedsigner.gui.screens import (RET_CODE__BACK_BUTTON, ButtonListScreen, DireWarningScreen, LargeIconStatusScreen, WarningScreen)
-#from seedsigner.gui.screens.scan_screens import ScanScreen
-#from seedsigner.gui.screens.tools_screens import (ToolsCalcFinalWordDoneScreen, ToolsCalcFinalWordFinalizePromptScreen,
-#    ToolsCalcFinalWordScreen, ToolsCoinFlipEntryScreen, ToolsDiceEntropyEntryScreen, ToolsImageEntropyFinalImageScreen,
-#    ToolsImageEntropyLivePreviewScreen, ToolsAddressExplorerAddressTypeScreen, ToolsTextQRTextEntryScreen, ToolsTextQRReviewTextScreen,
-#    ToolsTextQRTranscribeModePromptScreen, ToolsTranscribeTextQRWholeQRScreen, ToolsTranscribeTextQRZoomedInScreen,
-#    ToolsTranscribeTextQRConfirmQRPromptScreen)
-#from seedsigner.helpers import embit_utils, mnemonic_generation
-#from seedsigner.models.decode_qr import DecodeQR
-#from seedsigner.models.encode_qr import GenericStaticQrEncoder
+from seedsigner.gui.screens import (RET_CODE__BACK_BUTTON, ButtonListScreen, DireWarningScreen, LargeIconStatusScreen, WarningScreen)
+from seedsigner.gui.screens.scan_screens import ScanScreen
+from seedsigner.gui.screens.tools_screens import (ToolsCalcFinalWordDoneScreen, ToolsCalcFinalWordFinalizePromptScreen,
+    ToolsCalcFinalWordScreen, ToolsCoinFlipEntryScreen, ToolsDiceEntropyEntryScreen, ToolsImageEntropyFinalImageScreen,
+    ToolsImageEntropyLivePreviewScreen, ToolsAddressExplorerAddressTypeScreen, ToolsTextQRTextEntryScreen, ToolsTextQRReviewTextScreen,
+    ToolsTextQRTranscribeModePromptScreen, ToolsTranscribeTextQRWholeQRScreen, ToolsTranscribeTextQRZoomedInScreen,
+    ToolsTranscribeTextQRConfirmQRPromptScreen)
+from seedsigner.helpers import embit_utils, mnemonic_generation
+from seedsigner.models.decode_qr import DecodeQR
+from seedsigner.models.encode_qr import GenericStaticQrEncoder
 
 from seedsigner.gui.screens import RET_CODE__BACK_BUTTON, ButtonListScreen
 from seedsigner.gui.screens.screen import ButtonOption
@@ -1650,6 +1650,10 @@ class ToolsSatochipView(View):
             ButtonListScreen,
             title="Satochip",
             is_button_text_centered=False,
+            button_data=button_data
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
             return Destination(ToolsSmartcardMenuView)
 
         elif button_data[selected_menu_num] == self.IMPORT_SEED:
@@ -1814,7 +1818,7 @@ class ToolsSatochipDIYView(View):
         if selected_menu_num == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
           
-         elif button_data[selected_menu_num] == self.BUILD_APPLETS:
+        elif button_data[selected_menu_num] == self.BUILD_APPLETS:
             return Destination(ToolsDIYBuildAppletsView)
 
         elif button_data[selected_menu_num] == self.INSTALL_APPLET:
