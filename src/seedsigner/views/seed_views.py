@@ -1553,7 +1553,7 @@ class SeedBIP85InvalidChildIndexView(View):
 ****************************************************************************"""
 class SeedWordsBackupTestPromptView(View):
     VERIFY = ButtonOption("Verify")
-    VERIFY = ButtonOption("Review")
+    REVIEW = ButtonOption("Review")
     SKIP = ButtonOption("Skip")
     FINALIZE = ButtonOption("Finalize child")
 
@@ -1591,7 +1591,7 @@ class SeedWordsBackupTestPromptView(View):
             else:
                 return Destination(SeedFinalizeView)
 
-        elif button_data[selected_menu_num] == FINALIZE:
+        elif button_data[selected_menu_num] == self.FINALIZE:
             parent = self.controller.storage.seeds[self.seed_num]
             child = Seed(parent.get_bip85_child_mnemonic(
                 self.bip85_data["child_index"], self.bip85_data["num_words"]
