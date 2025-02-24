@@ -502,7 +502,7 @@ class SeedFinalizeView(View):
 
     def run(self):
         button_data = [self.FINALIZE]
-        self.TYPE_PASSPHRASE.button_label = self.seed.passphrase_label
+        #self.TYPE_PASSPHRASE.button_label = self.seed.passphrase_label
         if self.settings.get_value(SettingsConstants.SETTING__PASSPHRASE) != SettingsConstants.OPTION__DISABLED:
             button_data.append(self.TYPE_PASSPHRASE)
             button_data.append(self.SCAN_PASSPHRASE)
@@ -1777,12 +1777,12 @@ class SeedTranscribeSeedQRFormatView(View):
     # SeedQR dims for 12-word seeds
     STANDARD_12 = ButtonOption("Standard: 25x25", return_data=25)
     COMPACT_12 = ButtonOption("Compact: 21x21", return_data=21)
-    ENCRYPTED_12 = ButtonOption("Encrypted: XxX", return_data=0) # Encrypted QR uses dummy return data
+    ENCRYPTED_12 = ButtonOption("Encrypted: 29x29", return_data=0) # Encrypted QR uses dummy return data
 
     # SeedQR dims for 24-word seeds
     STANDARD_24 = ButtonOption("Standard: 29x29", return_data=29)
     COMPACT_24 = ButtonOption("Compact: 25x25", return_data=25)
-    ENCRYPTED_24 = ButtonOption("Encrypted: XxX", return_data=0) # Encrypted QR uses dummy return data
+    ENCRYPTED_24 = ButtonOption("Encrypted: 33x33", return_data=0) # Encrypted QR uses dummy return data
 
     def __init__(self, seed_num: int):
         super().__init__()
@@ -1904,8 +1904,8 @@ class SeedTranscribeSeedQRWholeQRView(View):
 
     def run(self):
         if self.seedqr_format == QRType.SEED__ENCRYPTEDQR:
-            TYPE = "Type encryption key"
-            SCAN = "Scan encryption key"
+            TYPE = ButtonOption("Type encryption key")
+            SCAN = ButtonOption("Scan encryption key")
             button_data = [TYPE, SCAN]
 
             selected_menu_num = self.run_screen(
@@ -1989,8 +1989,8 @@ class SeedEncryptedQRTypeEncryptionKeyView(View):
 
 
 class SeedEncryptedQRTypeEncryptionKeyExitDialogView(View):
-    EDIT = "Edit encryption key"
-    DISCARD = ("Discard encryption key", None, None, "red")
+    EDIT = ButtonOption("Edit encryption key")
+    DISCARD = ButtonOption("Discard encryption key", None, None, "red")
 
     def __init__(self, encryption_key: str, seed_num: int):
         super().__init__()
@@ -2074,8 +2074,8 @@ class SeedEncryptedQRReviewEncryptionKeyView(View):
             ).display()
             return Destination(BackStackView)
 
-        PROCEED = "Proceed"
-        EDIT = "Edit encryption key"
+        PROCEED = ButtonOption("Proceed")
+        EDIT = ButtonOption("Edit encryption key")
         button_data = [PROCEED, EDIT]
 
         from seedsigner.gui.screens.scan_screens import ScanReviewEncryptionKeyScreen
@@ -2185,8 +2185,8 @@ class SeedEncryptedQRMnemonicIDPromptView(View):
 
 
     def run(self):
-        CUSTOM_ID = "Assign custom ID"
-        DEFAULT = "Use fingerprint"
+        CUSTOM_ID = ButtonOption("Assign custom ID")
+        DEFAULT = ButtonOption("Use fingerprint")
         button_data = [CUSTOM_ID, DEFAULT]
 
         selected_menu_num = self.run_screen(
@@ -2247,8 +2247,8 @@ class SeedEncryptedQRMnemonicIDEntryView(View):
 
 
 class SeedEncryptedQRMnemonicIDEntryExitDialogView(View):
-    EDIT = "Edit mnemonic ID"
-    DISCARD = ("Discard mnemonic ID", None, None, "red")
+    EDIT = ButtonOption("Edit mnemonic ID")
+    DISCARD = ButtonOption("Discard mnemonic ID", None, None, "red")
 
     def __init__(self, encryption_key: str, i_vector: bytes, mnemonic_id: str, seed_num: int):
         super().__init__()
@@ -2296,8 +2296,8 @@ class SeedEncryptedQRReviewMnemonicIDView(View):
     def run(self):
         from seedsigner.gui.screens.seed_screens import SeedEncryptedQRReviewMnemonicIDScreen
 
-        PROCEED = "Proceed"
-        EDIT = "Edit mnemonic ID"
+        PROCEED = ButtonOption("Proceed")
+        EDIT = ButtonOption("Edit mnemonic ID")
         button_data = [PROCEED, EDIT]
 
         selected_menu_num = self.run_screen(
@@ -2360,8 +2360,8 @@ class SeedEncryptedQRTranscribeModePromptView(View):
         from seedsigner.helpers.qr import QR
         num_modules = QR().qrsize(data=self.data)
         if num_modules <= 33:
-            TRANSCRIBE = "Transcribe mode"
-            FULLSCREEN = "FullScreen mode"
+            TRANSCRIBE = ButtonOption("Transcribe mode")
+            FULLSCREEN = ButtonOption("FullScreen mode")
 
             button_data = [TRANSCRIBE, FULLSCREEN]
 
@@ -2441,6 +2441,7 @@ class SeedEncryptedQRFullScreenModeView(View):
         self.seed_num = seed_num
 
     def run(self):
+        from seedsigner.gui.screens.screen import QRDisplayScreen
         encoder_args = dict(data=self.data)
         e = GenericStaticQrEncoder(**encoder_args)
         QRDisplayScreen(qr_encoder=e).display()
@@ -3204,6 +3205,7 @@ class SeedExportPlaintextQRView(View):
 
 
     def run(self):
+        from seedsigner.gui.screens.screen import QRDisplayScreen
         encoder_args = dict(data=self.seed.mnemonic_str)
         e = GenericStaticQrEncoder(**encoder_args)
 

@@ -1901,7 +1901,7 @@ class SeedEncryptedQRMnemonicIDScreen(BaseTopNavScreen):
             text=self.KEYBOARD__UPPERCASE_BUTTON_TEXT,
             is_text_centered=False,
             font_name=GUIConstants.FIXED_WIDTH_EMPHASIS_FONT_NAME,
-            font_size=GUIConstants.BUTTON_FONT_SIZE + 4,
+            font_size=GUIConstants.BUTTON_FONT_SIZE['default'] + 4,
             width=self.right_panel_buttons_width,
             screen_x=hw_button_x,
             screen_y=hw_button_y - 3*GUIConstants.COMPONENT_PADDING - GUIConstants.BUTTON_HEIGHT,
@@ -1911,7 +1911,7 @@ class SeedEncryptedQRMnemonicIDScreen(BaseTopNavScreen):
             text=self.KEYBOARD__DIGITS_BUTTON_TEXT,
             is_text_centered=False,
             font_name=GUIConstants.FIXED_WIDTH_EMPHASIS_FONT_NAME,
-            font_size=GUIConstants.BUTTON_FONT_SIZE + 4,
+            font_size=GUIConstants.BUTTON_FONT_SIZE['default'] + 4,
             width=self.right_panel_buttons_width,
             screen_x=hw_button_x,
             screen_y=hw_button_y,
@@ -1949,8 +1949,6 @@ class SeedEncryptedQRMnemonicIDScreen(BaseTopNavScreen):
         while True:
             input = self.hw_inputs.wait_for(
                 HardwareButtonsConstants.ALL_KEYS,
-                check_release=True,
-                release_keys=[HardwareButtonsConstants.KEY_PRESS, HardwareButtonsConstants.KEY1, HardwareButtonsConstants.KEY2, HardwareButtonsConstants.KEY3]
             )
 
             keyboard_swap = False
@@ -2138,8 +2136,8 @@ class SeedEncryptedQRReviewMnemonicIDScreen(ButtonListScreen):
         if self.mnemonic_id != self.mnemonic_id.strip() or "  " in self.mnemonic_id:
             self.mnemonic_id = self.mnemonic_id.replace(" ", "\u2589")
         available_height = self.buttons[0].screen_y - self.top_nav.height + GUIConstants.COMPONENT_PADDING
-        max_font_size = GUIConstants.TOP_NAV_TITLE_FONT_SIZE + 8
-        min_font_size = GUIConstants.TOP_NAV_TITLE_FONT_SIZE - 4
+        max_font_size = GUIConstants.TOP_NAV_TITLE_FONT_SIZE['default'] + 8
+        min_font_size = GUIConstants.TOP_NAV_TITLE_FONT_SIZE['default'] - 4
         font_size = max_font_size
         max_lines = 3
         mnemonic_id = [self.mnemonic_id]
@@ -2201,7 +2199,8 @@ class SeedTranscribeEncryptedQRWholeQRScreen(WarningEdgesMixin, ButtonListScreen
 
     def __post_init__(self):
         self.title = "Transcribe\nEncrypted QR"
-        self.button_data = [f"Begin {self.num_modules}x{self.num_modules}"]
+        button_label = _("Begin {}x{}").format(self.num_modules, self.num_modules)
+        self.button_data = [ButtonOption(button_label)]
         self.is_bottom_list = True
         self.status_color = GUIConstants.DIRE_WARNING_COLOR
         super().__post_init__()
@@ -2279,7 +2278,7 @@ class SeedTranscribeEncryptedQRZoomedInScreen(BaseScreen):
         draw.line((self.mask_width, self.canvas_height - self.mask_height, self.canvas_width - self.mask_width, self.canvas_height - self.mask_height), fill=GUIConstants.ACCENT_COLOR)
 
         msg = "click to exit"
-        font = Fonts.get_font(GUIConstants.BODY_FONT_NAME, GUIConstants.BODY_FONT_SIZE)
+        font = Fonts.get_font(GUIConstants.BODY_FONT_NAME['default'], GUIConstants.BODY_FONT_SIZE['default'])
         (left, top, right, bottom) = font.getbbox(msg, anchor="ls")
         msg_height = -1 * top
         msg_width = right
@@ -2305,8 +2304,8 @@ class SeedTranscribeEncryptedQRZoomedInScreen(BaseScreen):
             text=msg,
             background_color=GUIConstants.BACKGROUND_COLOR,
             is_text_centered=True,
-            screen_y=self.canvas_height - GUIConstants.BODY_FONT_SIZE - GUIConstants.COMPONENT_PADDING,
-            height=GUIConstants.BODY_FONT_SIZE + GUIConstants.COMPONENT_PADDING,
+            screen_y=self.canvas_height - GUIConstants.BODY_FONT_SIZE['default'] - GUIConstants.COMPONENT_PADDING,
+            height=GUIConstants.BODY_FONT_SIZE['default'] + GUIConstants.COMPONENT_PADDING,
         ).render()
 
 
@@ -2320,7 +2319,7 @@ class SeedTranscribeEncryptedQRZoomedInScreen(BaseScreen):
         draw.rectangle((self.mask_width, 0, self.canvas_width - self.mask_width, self.pixels_per_block), fill=GUIConstants.ACCENT_COLOR)
         draw.rectangle((0, self.mask_height, self.pixels_per_block, self.canvas_height - self.mask_height), fill=GUIConstants.ACCENT_COLOR)
 
-        label_font = Fonts.get_font(GUIConstants.FIXED_WIDTH_EMPHASIS_FONT_NAME, GUIConstants.TOP_NAV_TITLE_FONT_SIZE + 8)
+        label_font = Fonts.get_font(GUIConstants.FIXED_WIDTH_EMPHASIS_FONT_NAME, GUIConstants.TOP_NAV_TITLE_FONT_SIZE['default'] + 8)
         x_label = block_labels_x[cur_block_x]
         (left, top, right, bottom) = label_font.getbbox(x_label, anchor="ls")
         x_label_height = -1 * top
