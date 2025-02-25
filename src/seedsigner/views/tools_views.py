@@ -2459,8 +2459,8 @@ class ToolsGPGVerifyFileView(View):
             if "gpg: assuming signed data in " in line:
                 filechecked = line[30:-1]
                 print(filechecked)
-            elif "RSA key " in line: 
-                valid_sig_keyid += "\n" + line[-16:]
+            elif "Primary key fingerprint:" in line:
+                valid_sig_keyid += "\n" + line[-20:]
             elif "Good signature from" in line:
                 valid_sig = True
             elif "gpg: no signature found":
@@ -2483,25 +2483,38 @@ class ToolsGPGVerifyFileView(View):
                 )
             
             if button_data[ret] == self.CHECK_SHA256:
-                cmd = "cd " + file_list_path + "; sha256sum --check " + filechecked + " --ignore-missing"
+                if platform.uname()[1] == "seedsigner-os":
+                    cmd = "cd " + file_list_path + "; sha256sum -c " + filechecked
+                else:
+                    cmd = "cd " + file_list_path + "; sha256sum --check " + filechecked + " --ignore-missing"
+
                 data = run(cmd, capture_output=True, shell=True, text=True)
 
                 result = data.stdout.split("\n")
                 matched = None
+                prevline = None
+                verified_files = ""
+                failed_files = ""
                 for line in result:
                     if ": OK" in line:
                         matched = True
-                        filechecked = line[:-4]
+                        verified_files += "\n" + line[:-4]
                     elif ": FAILED" in line:
-                        filechecked = line[:-8]
-                        matched = False
+                        failed_filename = line[:-8]
+                        # Need some extra logic here as the buildroot sha256sum behaves differently and doesn't skip missing files
+                        if prevline:
+                            if failed_filename not in prevline: # file not found message will be on the previous line...
+                                failed_files += "\n" + failed_filename
+                                matched = False
+                    
+                    prevline = line
 
                 if matched:
                     self.run_screen(
                         LargeIconStatusScreen,
                         title="Success",
                         status_headline=None,
-                        text="Matched SHA256 for \n" + filechecked,
+                        text="Matched SHA256 for " + verified_files,
                         show_back_button=False,
                         button_data=[ButtonOption("Done")]
                     )
@@ -2510,7 +2523,7 @@ class ToolsGPGVerifyFileView(View):
                         WarningScreen,
                         title="WARNING",
                         status_headline=None,
-                        text="Incorrect SHA256 for \n" + filechecked,
+                        text="Incorrect SHA256 for " + failed_files,
                         show_back_button=False,
                         button_data=[ButtonOption("I Understand")]
                     )
