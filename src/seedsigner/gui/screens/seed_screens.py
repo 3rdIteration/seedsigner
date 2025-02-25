@@ -2126,7 +2126,7 @@ class SeedEncryptedQRReviewMnemonicIDScreen(ButtonListScreen):
 
     def __post_init__(self):
         # Customize defaults
-        self.title = "Review\nMnemonic ID"
+        self.title = "Review Mnemonic ID"
         self.is_bottom_list = True
 
         super().__post_init__()
@@ -2198,7 +2198,7 @@ class SeedTranscribeEncryptedQRWholeQRScreen(WarningEdgesMixin, ButtonListScreen
     num_modules: int = None
 
     def __post_init__(self):
-        self.title = "Transcribe\nEncrypted QR"
+        self.title = "Transcribe Encrypted QR"
         button_label = _("Begin {}x{}").format(self.num_modules, self.num_modules)
         self.button_data = [ButtonOption(button_label)]
         self.is_bottom_list = True

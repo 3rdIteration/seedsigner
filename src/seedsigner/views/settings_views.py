@@ -5,7 +5,7 @@ from gettext import gettext as _
 #from seedsigner.gui.screens import (RET_CODE__BACK_BUTTON, ButtonListScreen, WarningScreen, settings_screens)
 
 from seedsigner.gui.components import SeedSignerIconConstants
-from seedsigner.gui.screens import (RET_CODE__BACK_BUTTON, ButtonListScreen, settings_screens)
+from seedsigner.gui.screens import (RET_CODE__BACK_BUTTON, ButtonListScreen, WarningScreen, settings_screens)
 from seedsigner.gui.screens.screen import ButtonOption
 from seedsigner.models.settings import Settings, SettingsConstants, SettingsDefinition
 
@@ -124,7 +124,7 @@ class SettingPBKDF2IterationsView(View):
                 show_back_button=False,
                 status_headline=f"out of range",
                 text=f"Value must be between 1 and 50",
-                button_data=["Try Again"]
+                button_data=[ButtonOption("Try Again")]
             ).display()
 
             return Destination(

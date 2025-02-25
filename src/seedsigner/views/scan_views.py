@@ -75,7 +75,7 @@ class ScanView(View):
                     title="Error",
                     status_headline=_("Wrong QR Type"),
                     text=_(self.invalid_qr_type_message) + f""", received "{self.decoder.qr_type.replace("__", ": ").replace("_", " ")}\" format""",
-                    button_text="Back",
+                    button_text=_("Back"),
                     next_destination=Destination(BackStackView, skip_current_view=True),
                 ))
 
@@ -294,7 +294,7 @@ class ScanEncryptedQRTypeEncryptionKeyView(View):
 
 class ScanEncryptedQRTypeEncryptionKeyExitDialogView(View):
     EDIT = ButtonOption("Edit encryption key")
-    DISCARD = ButtonOption("Discard encryption key", None, None, "red")
+    DISCARD = ButtonOption("Discard encryption key", button_label_color="red")
 
     def __init__(self, encryption_key: str):
         super().__init__()
@@ -331,7 +331,7 @@ class ScanEncryptedQRScanEncryptionKeyView(View):
         decoder = DecodeQR(is_encryptionkey=True)
         self.run_screen(
             ScanScreen,
-            instructions_text="Scan encryption key",
+            instructions_text=_("Scan encryption key"),
             decoder=decoder
         )
         self.controller.reset_screensaver_timeout()

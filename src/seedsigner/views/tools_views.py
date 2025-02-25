@@ -806,11 +806,11 @@ class ToolsTextQRView(View):
         ENCODE = ButtonOption("Encode text")
         DECODE = ButtonOption("Decode QR code")
 
-        button_data = [self.ENCODE, self.DECODE]
+        button_data = [ENCODE, DECODE]
 
         selected_menu_num = self.run_screen(
             ButtonListScreen,
-            title="Text QR Code",
+            title=_("Text QR Code"),
             is_button_text_centered=False,
             button_data=button_data
         )
@@ -818,10 +818,10 @@ class ToolsTextQRView(View):
         if selected_menu_num == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
 
-        elif button_data[selected_menu_num] == self.ENCODE:
+        elif button_data[selected_menu_num] == ENCODE:
             return Destination(ToolsTextQRTextEntryView)
 
-        elif button_data[selected_menu_num] == self.DECODE:
+        elif button_data[selected_menu_num] == DECODE:
             return Destination(ToolsTextQRScanQRCodeView)
 
 """****************************************************************************
@@ -2600,7 +2600,7 @@ class ToolsTextQRTextEntryView(View):
 
 
     def run(self):
-        ret_dict = ToolsTextQRTextEntryScreen(textToEncode=self.textToEncode, title="Text to Encode").display()
+        ret_dict = ToolsTextQRTextEntryScreen(textToEncode=self.textToEncode, title=_("Text to Encode")).display()
 
         try:
             import re
@@ -2632,8 +2632,8 @@ class ToolsTextQRTextEntryView(View):
 
 
 class ToolsTextQRTextEntryExitDialogView(View):
-    EDIT = "Edit text"
-    DISCARD = ("Discard text", None, None, "red")
+    EDIT = ButtonOption("Edit text")
+    DISCARD = ButtonOption("Discard text", button_label_color="red")
 
     def __init__(self, text: str):
         super().__init__()
@@ -2645,7 +2645,7 @@ class ToolsTextQRTextEntryExitDialogView(View):
         
         selected_menu_num = self.run_screen(
             WarningScreen,
-            title="Discard text?",
+            title=_("Discard text?"),
             status_headline=None,
             text=f"Your current text entry will be erased",
             show_back_button=False,
@@ -2670,15 +2670,15 @@ class ToolsTextQRReviewTextView(View):
 
 
     def run(self):
-        ENCODE = "Generate QR code"
-        EDIT = "Edit text"
+        ENCODE = ButtonOption("Generate QR code")
+        EDIT = ButtonOption("Edit text")
 
         button_data = [ENCODE, EDIT]
 
         selected_menu_num = self.run_screen(
             ToolsTextQRReviewTextScreen,
             textToEncode=self.text,
-            title="Text to Encode",
+            title=_("Text to Encode"),
             button_data=button_data
         )
 
@@ -2716,14 +2716,14 @@ class ToolsTextQRTranscribeModePromptView(View):
 
 
     def run(self):
-        TRANSCRIBE = "Transcribe mode"
-        FULLSCREEN = "FullScreen mode"
+        TRANSCRIBE = ButtonOption("Transcribe mode")
+        FULLSCREEN = ButtonOption("FullScreen mode")
 
         button_data = [TRANSCRIBE, FULLSCREEN]
 
         selected_menu_num = self.run_screen(
             ToolsTextQRTranscribeModePromptScreen,
-            title="Transcribe Mode ?",
+            title=_("Transcribe Mode ?"),
             is_button_text_centered=False,
             button_data=button_data
         )
@@ -2811,12 +2811,12 @@ class ToolsTranscribeTextQRConfirmQRPromptView(View):
 
 
     def run(self):
-        SCAN = "Confirm text QR code"
-        DONE = "Done"
+        SCAN = ButtonOption("Confirm text QR code")
+        DONE = ButtonOption("Done")
         button_data = [SCAN, DONE]
 
         selected_menu_option = ToolsTranscribeTextQRConfirmQRPromptScreen(
-            title="Confirm Text QR ?",
+            title=_("Confirm Text QR ?"),
             button_data=button_data
         ).display()
 
@@ -2840,7 +2840,7 @@ class ToolsTranscribeTextQRConfirmScanView(View):
     def run(self):
         decoder = DecodeQR(is_text=True)
         ScanScreen(
-            instructions_text="Scan text QR code",
+            instructions_text=_("Scan text QR code"),
             decoder=decoder
         ).display()
 
@@ -2850,33 +2850,33 @@ class ToolsTranscribeTextQRConfirmScanView(View):
         if decoder.is_complete:
             if decoder.get_text() != self.text:
                 DireWarningScreen(
-                    title="Confirm Text QR Code",
-                    status_headline="Error!",
-                    text="Your transcribed text QR code does not match your original text!",
+                    title=_("Confirm Text QR Code"),
+                    status_headline=_("Error!"),
+                    text=_("Your transcribed text QR code does not match your original text!"),
                     show_back_button=False,
-                    button_data=["Review text QR code"],
+                    button_data=[ButtonOption("Review text QR code")],
                 ).display()
 
                 return Destination(BackStackView)
             
             else:
                 LargeIconStatusScreen(
-                    title="Confirm Text QR Code",
-                    status_headline="Success!",
-                    text="Your transcribed text QR code successfully scanned and yielded the same text.",
+                    title=_("Confirm Text QR Code"),
+                    status_headline=_("Success!"),
+                    text=_("Your transcribed text QR code successfully scanned and yielded the same text."),
                     show_back_button=False,
-                    button_data=["OK"],
+                    button_data=[ButtonOption("OK")],
                 ).display()
 
                 return Destination(ToolsTextQRView, clear_history=True)
 
         else:
             DireWarningScreen(
-                title="Confirm Text QR",
-                status_headline="Error!",
-                text="Your transcribed text QR code could not be read!",
+                title=_("Confirm Text QR"),
+                status_headline=_("Error!"),
+                text=_("Your transcribed text QR code could not be read!"),
                 show_back_button=False,
-                button_data=["Review text QR code"],
+                button_data=[ButtonOption("Review text QR code")],
             ).display()
 
             return Destination(BackStackView)
@@ -2887,7 +2887,7 @@ class ToolsTextQRScanQRCodeView(View):
     def run(self):
 
         decoder = DecodeQR(is_text=True)
-        ScanScreen(decoder=decoder, instructions_text="Scan text QR code").display()
+        ScanScreen(decoder=decoder, instructions_text=_("Scan text QR code")).display()
 
         self.controller.reset_screensaver_timeout()
         time.sleep(0.1)
@@ -2901,7 +2901,7 @@ class ToolsTextQRScanQRCodeView(View):
 
         elif decoder.is_nonUTF8:
             DireWarningScreen(
-                title="Error!",
+                title=_("Error!"),
                 show_back_button=False,
                 status_headline="Invalid Text QR Code",
                 text=f"Non UTF-8 data detected."
@@ -2920,15 +2920,15 @@ class ToolsTextQRReviewTextView2(View):
 
 
     def run(self):
-        EDIT = "Edit & Generate QR code"
-        DONE = "Done"
+        EDIT = ButtonOption("Edit & Generate QR code")
+        DONE = ButtonOption("Done")
 
         button_data = [EDIT, DONE]
 
         selected_menu_num = self.run_screen(
             ToolsTextQRReviewTextScreen,
             textToEncode=self.text,
-            title="Decoded Text",
+            title=_("Decoded Text"),
             button_data=button_data,
             show_back_button=False,
         )
