@@ -49,10 +49,11 @@ class ToolsMenuView(View):
     TEXTQRCODE = ButtonOption("Text QR Code")
     SMARTCARD = ButtonOption("Smartcard Tools", FontAwesomeIconConstants.LOCK)
     MICROSD = ButtonOption("MicroSD Tools")
+    GPG = ButtonOption("GPG Tools")
     CLEAR_DESCRIPTOR = ButtonOption("Clear Multisig Descriptor")
 
     def run(self):
-        button_data = [self.IMAGE, self.DICE, self.KEYBOARD, self.ADDRESS_EXPLORER, self.VERIFY_ADDRESS, self.TEXTQRCODE, self.SMARTCARD, self.MICROSD, self.CLEAR_DESCRIPTOR]
+        button_data = [self.IMAGE, self.DICE, self.KEYBOARD, self.ADDRESS_EXPLORER, self.VERIFY_ADDRESS, self.TEXTQRCODE, self.SMARTCARD, self.MICROSD, self.GPG, self.CLEAR_DESCRIPTOR]
 
         selected_menu_num = self.run_screen(
             ButtonListScreen,
@@ -88,6 +89,9 @@ class ToolsMenuView(View):
         
         elif button_data[selected_menu_num] == self.MICROSD:
             return Destination(ToolsMicroSDMenuView)
+
+        elif button_data[selected_menu_num] == self.GPG:
+            return Destination(ToolsGPGMenuView)
 
         elif button_data[selected_menu_num] == self.CLEAR_DESCRIPTOR:
             self.controller.multisig_wallet_descriptor = None
@@ -2386,7 +2390,208 @@ class ToolsMicroSDWipeRandomView(View):
         return Destination(MainMenuView)
 
 
+"""****************************************************************************
+    GPG Views
+****************************************************************************"""
+class ToolsGPGMenuView(View):
+    VERIFY_FILE = ButtonOption("Verify File Sig")
+    IMPORT_PUBKEY = ButtonOption("Import Pubkey")
 
+    def run(self):
+        button_data = [self.VERIFY_FILE, self.IMPORT_PUBKEY]
+
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title="GPG Tools",
+            is_button_text_centered=False,
+            button_data=button_data
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        elif button_data[selected_menu_num] == self.VERIFY_FILE:
+            return Destination(ToolsGPGVerifyFileView)
+        
+        elif button_data[selected_menu_num] == self.IMPORT_PUBKEY:
+            return Destination(ToolsGPGImportPubkeyView)
+
+class ToolsGPGVerifyFileView(View):
+    CHECK_SHA256 = ButtonOption("Check SHA256Sum")
+    def run(self):
+        from subprocess import run
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+
+        if platform.uname()[1] == "seedsigner-os":
+            file_list_path = '/mnt/microsd/microsd-images/'
+        else:
+            file_list_path= '/boot/microsd-images/'
+
+        verify_file_list = os.listdir(file_list_path)
+
+        verify_file_buttons = []
+        for file in verify_file_list:
+            verify_file_buttons.append(ButtonOption(file))
+
+        selected_file_num = self.run_screen(
+            ButtonListScreen,
+            title="Select File",
+            is_button_text_centered=False,
+            button_data=verify_file_buttons
+        )
+
+        if selected_file_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        verify_file_name = verify_file_list[selected_file_num]
+        logger.info("Selected:", verify_file_name)
+
+        cmd = "cd " + file_list_path +" ; gpg --verify " + verify_file_name
+
+        data = run(cmd, capture_output=True, shell=True, text=True)
+
+        result = data.stderr.split("\n")
+        print(result)
+        valid_sig = False
+        failed_reason = "Check Failed"
+        valid_sig_keyid = ""
+        for line in result:
+            if "gpg: assuming signed data in " in line:
+                filechecked = line[30:-1]
+                print(filechecked)
+            elif "RSA key " in line: 
+                valid_sig_keyid += "\n" + line[-16:]
+            elif "Good signature from" in line:
+                valid_sig = True
+            elif "gpg: no signature found":
+                failed_reason = "No GPG signature found in file"
+
+        if valid_sig:
+            button_data = []
+            if "manifest" in verify_file_name or "sha256" in verify_file_name:
+                button_data.append(self.CHECK_SHA256)
+
+            button_data.append(ButtonOption("Done"))
+
+            ret = self.run_screen(
+                    LargeIconStatusScreen,
+                    title="Success",
+                    status_headline=None,
+                    text="Valid Signature(s) from" + valid_sig_keyid,
+                    show_back_button=False,
+                    button_data=button_data
+                )
+            
+            if button_data[ret] == self.CHECK_SHA256:
+                cmd = "cd " + file_list_path + "; sha256sum --check " + filechecked + " --ignore-missing"
+                data = run(cmd, capture_output=True, shell=True, text=True)
+
+                result = data.stdout.split("\n")
+                matched = None
+                for line in result:
+                    if ": OK" in line:
+                        matched = True
+                        filechecked = line[:-4]
+                    elif ": FAILED" in line:
+                        filechecked = line[:-8]
+                        matched = False
+
+                if matched:
+                    self.run_screen(
+                        LargeIconStatusScreen,
+                        title="Success",
+                        status_headline=None,
+                        text="Matched SHA256 for \n" + filechecked,
+                        show_back_button=False,
+                        button_data=[ButtonOption("Done")]
+                    )
+                elif  matched == False:
+                    self.run_screen(
+                        WarningScreen,
+                        title="WARNING",
+                        status_headline=None,
+                        text="Incorrect SHA256 for \n" + filechecked,
+                        show_back_button=False,
+                        button_data=[ButtonOption("I Understand")]
+                    )
+                else:
+                    self.run_screen(
+                        WarningScreen,
+                        title="WARNING",
+                        status_headline=None,
+                        text="No files from this checksum list found...",
+                        show_back_button=False,
+                        button_data=[ButtonOption("I Understand")]
+                    )
+        else:
+
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text=failed_reason,
+                show_back_button=True,
+            )
+                
+        
+        return Destination(MainMenuView)
+
+class ToolsGPGImportPubkeyView(View):
+    def run(self):
+        from subprocess import run
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+
+        if platform.uname()[1] == "seedsigner-os":
+            file_list_path = '/mnt/microsd/microsd-images/'
+        else:
+            file_list_path= '/boot/microsd-images/'
+
+        verify_file_list = os.listdir(file_list_path)
+
+        verify_file_buttons = []
+        for file in verify_file_list:
+            verify_file_buttons.append(ButtonOption(file))
+
+        selected_file_num = self.run_screen(
+            ButtonListScreen,
+            title="Select File",
+            is_button_text_centered=False,
+            button_data=verify_file_buttons
+        )
+
+        if selected_file_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        verify_file_name = verify_file_list[selected_file_num]
+        logger.info("Selected:", verify_file_name)
+
+        cmd = "gpg --import " + file_list_path + verify_file_name
+
+        data = run(cmd, capture_output=True, shell=True, text=True)
+
+        result = data.stderr.split("\n")
+        certs_not_changed = 0
+        certs_imported = 0
+        certs_processed = 0
+        for line in result:
+            if "not changed" in line: 
+                certs_not_changed += 1
+                certs_processed += 1
+            elif " imported" in line:
+                certs_imported += 1
+                certs_processed += 1
+
+
+        self.run_screen(
+                LargeIconStatusScreen,
+                title="Success",
+                status_headline=None,
+                text="Imported:" + str(certs_imported) + "\nNot Changed:" + str(certs_not_changed),
+                show_back_button=False,
+                button_data=[ButtonOption("Continue")]
+            )
+        
+        return Destination(MainMenuView)
 
 class ToolsTextQRTextEntryView(View):
     def __init__(self, textToEncode: str = ""):
