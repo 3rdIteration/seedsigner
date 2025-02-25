@@ -546,7 +546,7 @@ class SeedAddPassphraseView(View):
         passphrase_title=self.seed.passphrase_label
         ret_dict = self.run_screen(
             seed_screens.SeedAddPassphraseScreen,
-            passphrase=self.seed.passphrase,
+            passphrase=self.seed.passphrase_display,
             title=passphrase_title,
             initial_keyboard=self.initial_keyboard,
         )
@@ -603,7 +603,7 @@ class SeedScanPassphraseView(View):
         decoder = DecodeQR(is_passphrase=True)
         self.run_screen(
             ScanScreen,
-            instructions_text="Scan Passphrase",
+            instructions_text=_("Scan Passphrase"),
             decoder=decoder
         )
         self.controller.reset_screensaver_timeout()
@@ -614,10 +614,10 @@ class SeedScanPassphraseView(View):
             return Destination(SeedReviewPassphraseView)
         elif decoder.is_nonUTF8:
             DireWarningScreen(
-                title="Error!",
+                title=_("Error!"),
                 show_back_button=False,
-                status_headline="Invalid Text QR Code",
-                text=f"Non UTF-8 data detected."
+                status_headline=_("Invalid Text QR Code"),
+                text=_(f"Non UTF-8 data detected.")
             ).display()
             return Destination(BackStackView)
         else:
@@ -1910,7 +1910,7 @@ class SeedTranscribeSeedQRWholeQRView(View):
 
             selected_menu_num = self.run_screen(
                 ButtonListScreen,
-                title="Input\nEncryption Key",
+                title="Input Encryption Key",
                 button_data=button_data,
             )
 
@@ -1990,7 +1990,7 @@ class SeedEncryptedQRTypeEncryptionKeyView(View):
 
 class SeedEncryptedQRTypeEncryptionKeyExitDialogView(View):
     EDIT = ButtonOption("Edit encryption key")
-    DISCARD = ButtonOption("Discard encryption key", None, None, "red")
+    DISCARD = ButtonOption("Discard encryption key", button_label_color="red")
 
     def __init__(self, encryption_key: str, seed_num: int):
         super().__init__()
@@ -2033,7 +2033,7 @@ class SeedEncryptedQRScanEncryptionKeyView(View):
         decoder = DecodeQR(is_encryptionkey=True)
         self.run_screen(
             ScanScreen,
-            instructions_text="Scan encryption key",
+            instructions_text=_("Scan encryption key"),
             decoder=decoder
         )
         self.controller.reset_screensaver_timeout()
@@ -2118,12 +2118,12 @@ class SeedEncryptedQRCBCModeView(View):
 
 
     def run(self):
-        CANCEL = "Cancel"
-        button_data=["Input from Camera",CANCEL]
+        CANCEL = ButtonOption("Cancel")
+        button_data=[ButtonOption("Input from Camera"), CANCEL]
 
         selected_menu_num = self.run_screen(
             ButtonListScreen,
-            title="Additional Entropy\nfor AES-CBC mode",
+            title="Additional Entropy for AES-CBC mode",
             button_data=button_data
         )
 
@@ -2248,7 +2248,7 @@ class SeedEncryptedQRMnemonicIDEntryView(View):
 
 class SeedEncryptedQRMnemonicIDEntryExitDialogView(View):
     EDIT = ButtonOption("Edit mnemonic ID")
-    DISCARD = ButtonOption("Discard mnemonic ID", None, None, "red")
+    DISCARD = ButtonOption("Discard mnemonic ID", button_label_color="red")
 
     def __init__(self, encryption_key: str, i_vector: bytes, mnemonic_id: str, seed_num: int):
         super().__init__()

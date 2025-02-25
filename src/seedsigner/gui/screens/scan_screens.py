@@ -706,7 +706,7 @@ class ScanReviewEncryptionKeyScreen(ButtonListScreen):
 
     def __post_init__(self):
         # Customize defaults
-        self.title = "Review\nEncryption Key"
+        self.title = "Review Encryption Key"
         self.is_bottom_list = True
 
         super().__post_init__()

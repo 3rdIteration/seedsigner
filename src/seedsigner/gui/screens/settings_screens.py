@@ -57,7 +57,7 @@ class SettingsEntryUpdateSelectionScreen(ButtonListScreen):
 @dataclass
 class SettingPBFDK2IterationsScreen(KeyboardScreen):
     def __post_init__(self):
-        self.title = "PBKDF2 Iter.\n(in units of 10k)"
+        self.title = "PBKDF2 Iter.(in units of 10k)"
         self.user_input = ""
 
         # Specify the keys in the keyboard
