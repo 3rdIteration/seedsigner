@@ -2498,17 +2498,20 @@ class ToolsGPGVerifyFileView(View):
 
                 self.loading_screen.stop()
 
-                result = data.stdout.split("\n")
+                result_stdout = data.stdout.split("\n")
+                result_stderr = data.sterr.split("\n")
                 matched = None
                 verified_files = []
                 failed_files = []
                 missing_files = []
-                for line in result:
+                for line in result_stdout:
                     if ": OK" in line:
                         verified_files.append(line[:-4])
                     elif ": FAILED" in line:
                         failed_files.append(line[:-8])
-                    elif "No such file or directory" in line:
+                        
+                for line in result_stderr
+                    if "No such file or directory" in line:
                         missing_files.append(line[23:-29])
 
                 print("Verified:", verified_files)
