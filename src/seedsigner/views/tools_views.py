@@ -2497,8 +2497,9 @@ class ToolsGPGVerifyFileView(View):
                 failed_files = ""
                 for line in result:
                     if ": OK" in line:
-                        matched = True
-                        verified_files += "\n" + line[:-4]
+                        if matched != False:
+                            matched = True
+                            verified_files += "\n" + line[:-4]
                     elif ": FAILED" in line:
                         failed_filename = line[:-8]
                         # Need some extra logic here as the buildroot sha256sum behaves differently and doesn't skip missing files
@@ -2518,7 +2519,7 @@ class ToolsGPGVerifyFileView(View):
                         show_back_button=False,
                         button_data=[ButtonOption("Done")]
                     )
-                elif  matched == False:
+                elif matched == False:
                     self.run_screen(
                         WarningScreen,
                         title="WARNING",
