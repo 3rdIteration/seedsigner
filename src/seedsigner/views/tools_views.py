@@ -2499,7 +2499,7 @@ class ToolsGPGVerifyFileView(View):
                 self.loading_screen.stop()
 
                 result_stdout = data.stdout.split("\n")
-                result_stderr = data.sterr.split("\n")
+                result_stderr = data.stderr.split("\n")
                 matched = None
                 verified_files = []
                 failed_files = []
@@ -2509,10 +2509,10 @@ class ToolsGPGVerifyFileView(View):
                         verified_files.append(line[:-4])
                     elif ": FAILED" in line:
                         failed_files.append(line[:-8])
-                        
-                for line in result_stderr
+
+                for line in result_stderr:
                     if "No such file or directory" in line:
-                        missing_files.append(line[23:-29])
+                        missing_files.append(line[23:-28])
 
                 print("Verified:", verified_files)
                 print("Failed:", failed_files)
