@@ -2507,7 +2507,7 @@ class ToolsGPGVerifyFileView(View):
                     if ": OK" in line:
                         verified_files.append(line[:-4])
                     elif ": FAILED" in line:
-                        failed_filenames.append(line[:-8])
+                        failed_files.append(line[:-8])
                     elif "No such file or directory" in line:
                         missing_files.append(line[23:-29])
 
@@ -2520,7 +2520,6 @@ class ToolsGPGVerifyFileView(View):
                         failed_files.remove(file)
                     except ValueError:
                         pass
-
 
                 if len(failed_files) > 0:
                     failed_files_string = "\n".join(str(x) for x in failed_files)
