@@ -2450,8 +2450,10 @@ class ToolsGPGVerifyFileView(View):
 
         data = run(cmd, capture_output=True, shell=True, text=True)
 
+        print(cmd, " ", data)
+
         result = data.stderr.split("\n")
-        print(result)
+
         valid_sig = False
         failed_reason = "Check Failed"
         valid_sig_keyid = ""
@@ -2492,39 +2494,35 @@ class ToolsGPGVerifyFileView(View):
                 self.loading_screen.start()
 
                 data = run(cmd, capture_output=True, shell=True, text=True)
+                print(cmd, " ", data)
 
                 self.loading_screen.stop()
 
                 result = data.stdout.split("\n")
                 matched = None
-                prevline = None
-                verified_files = ""
-                failed_files = ""
+                verified_files = []
+                failed_files = []
+                missing_files = []
                 for line in result:
                     if ": OK" in line:
-                        if matched != False:
-                            matched = True
-                            verified_files += "\n" + line[:-4]
+                        verified_files.append(line[:-4])
                     elif ": FAILED" in line:
-                        failed_filename = line[:-8]
-                        # Need some extra logic here as the buildroot sha256sum behaves differently and doesn't skip missing files
-                        if prevline:
-                            if failed_filename not in prevline: # file not found message will be on the previous line...
-                                failed_files += "\n" + failed_filename
-                                matched = False
-                    
-                    prevline = line
+                        failed_filenames.append(line[:-8])
+                    elif "No such file or directory" in line:
+                        missing_files.append(line[23:-29])
 
-                if matched:
-                    self.run_screen(
-                        LargeIconStatusScreen,
-                        title="Success",
-                        status_headline=None,
-                        text="Matched SHA256 for " + verified_files,
-                        show_back_button=False,
-                        button_data=[ButtonOption("Done")]
-                    )
-                elif matched == False:
+                print("Verified:", verified_files)
+                print("Failed:", failed_files)
+                print("Missing:", missing_files)
+
+                for file in missing_files:
+                    try:
+                        failed_files.remove(file)
+                    except ValueError:
+                        pass
+
+
+                if len(failed_files) > 0:
                     self.run_screen(
                         WarningScreen,
                         title="WARNING",
@@ -2532,6 +2530,15 @@ class ToolsGPGVerifyFileView(View):
                         text="Incorrect SHA256 for " + failed_files,
                         show_back_button=False,
                         button_data=[ButtonOption("I Understand")]
+                    )
+                elif len(verified_files) > 0:
+                    self.run_screen(
+                        LargeIconStatusScreen,
+                        title="Success",
+                        status_headline=None,
+                        text="Matched SHA256 for " + verified_files,
+                        show_back_button=False,
+                        button_data=[ButtonOption("Done")]
                     )
                 else:
                     self.run_screen(
