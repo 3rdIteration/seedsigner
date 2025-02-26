@@ -2488,7 +2488,7 @@ class ToolsGPGVerifyFileView(View):
                 else:
                     cmd = "cd " + file_list_path + "; sha256sum --check " + filechecked + " --ignore-missing"
 
-                self.loading_screen = LoadingScreenThread(text="Checking\nSHA256\nChecksumsn\n\n(This takes a while)")
+                self.loading_screen = LoadingScreenThread(text="Checking SHA256\n\n\n\n\n\n(This takes a while)")
                 self.loading_screen.start()
 
                 data = run(cmd, capture_output=True, shell=True, text=True)
