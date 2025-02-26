@@ -2523,20 +2523,22 @@ class ToolsGPGVerifyFileView(View):
 
 
                 if len(failed_files) > 0:
+                    failed_files_string = "\n".join(str(x) for x in failed_files)
                     self.run_screen(
                         WarningScreen,
                         title="WARNING",
                         status_headline=None,
-                        text="Incorrect SHA256 for " + failed_files,
+                        text="Incorrect SHA256 for " + failed_files_string,
                         show_back_button=False,
                         button_data=[ButtonOption("I Understand")]
                     )
                 elif len(verified_files) > 0:
+                    verified_files_string = "\n".join(str(x) for x in verified_files)
                     self.run_screen(
                         LargeIconStatusScreen,
                         title="Success",
                         status_headline=None,
-                        text="Matched SHA256 for " + verified_files,
+                        text="Matched SHA256 for " + verified_files_string,
                         show_back_button=False,
                         button_data=[ButtonOption("Done")]
                     )
