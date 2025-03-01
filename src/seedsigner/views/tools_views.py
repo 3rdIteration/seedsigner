@@ -2448,9 +2448,12 @@ class ToolsGPGVerifyFileView(View):
 
         cmd = "cd " + file_list_path +" ; gpg --verify " + verify_file_name
 
+        self.loading_screen = LoadingScreenThread(text="Checking Signature\n\n\n\n\n\n(May take a while)")
+        self.loading_screen.start()
         data = run(cmd, capture_output=True, shell=True, text=True)
-
         print(cmd, " ", data)
+
+        self.loading_screen.stop()
 
         result = data.stderr.split("\n")
 
