@@ -2468,8 +2468,15 @@ class ToolsGPGVerifyFileView(View):
                 valid_sig_keyid += "\n" + line[-20:]
             elif "Good signature from" in line:
                 valid_sig = True
-            elif "gpg: no signature found":
+            elif "gpg: no signature found" in line:
                 failed_reason = "No GPG signature found in file"
+            elif "BAD signature from" in line:
+                valid_sig = False
+                failed_reason = "Invalid Signature\nfor file..."
+                break
+            elif "can't hash datafile: No data" in line:
+                valid_sig = False
+                failed_reason = "Can't find\ncorresponding file for\nthis signature..."
 
         if valid_sig:
             button_data = []
