@@ -21,7 +21,7 @@
 
 		<!-- Build Seedkeeper (Official) for Javacard 3.0.4 -->
 		<javacard>
-		  <cap jckit="/mnt/diy/Satochip-DIY/sdks/jc304_kit" aid="536565644b6565706572" version="0.1" output="/mnt/microsd/javacard-cap/SeedKeeper-built-0.1.cap" sources="/mnt/diy/Satochip-DIY/applets\seedkeeper\src\org\seedkeeper\applet">
+		  <cap jckit="/mnt/diy/Satochip-DIY/sdks/jc304_kit" aid="536565644b6565706572" version="0.2" output="/mnt/microsd/javacard-cap/SeedKeeper-built-0.2.cap" sources="/mnt/diy/Satochip-DIY/applets\seedkeeper\src\main\java\org\seedkeeper\applet">
 			<applet class="org.seedkeeper.applet.SeedKeeper" aid="536565644b656570657200"/>
 		  </cap>
 		</javacard>
@@ -42,7 +42,7 @@
 
 		<!-- Build Seedkeeper (THD-89) for Javacard 3.0.4 -->
 		<javacard>
-		  <cap jckit="/mnt/diy/Satochip-DIY/sdks/jc304_kit" aid="536565644b6565706572" version="0.1" output="/mnt/microsd/javacard-cap/SeedKeeper-THD89-built-0.1.cap" sources="/mnt/diy/Satochip-DIY/applets\seedkeeper-thd89\src\org\seedkeeper\applet">
+		  <cap jckit="/mnt/diy/Satochip-DIY/sdks/jc304_kit" aid="536565644b6565706572" version="0.2" output="/mnt/microsd/javacard-cap/SeedKeeper-THD89-built-0.2.cap" sources="/mnt/diy/Satochip-DIY/applets\seedkeeper-thd89\src\main\java\org\seedkeeper\applet">
 			<applet class="org.seedkeeper.applet.SeedKeeper" aid="536565644b656570657200"/>
 		  </cap>
 		</javacard>
