@@ -2086,6 +2086,16 @@ class ToolsMicroSDFlashView(View):
             self.loading_screen = LoadingScreenThread(text="Flashing MicroSD\n\n\n\n\n\n")
             self.loading_screen.start()
 
+            # Zero the MicroSD first (Makes sure that the verification step works correctly later)
+            # Seedsigner images are currently 26MB or smaller
+            if platform.uname()[1] == "seedsigner-os":
+                cmd = "dd if=/dev/zero of=/dev/mmcblk0 bs=1M count=26"
+            else:
+                cmd = "sudo dd if=/dev/zero of=/dev/mmcblk0 bs=1M count=26"
+
+            data = run(cmd, capture_output=True, shell=True, text=True)
+
+            # Then flash the image
             data = run("dd if=/tmp/img.img of=/dev/mmcblk0", capture_output=True, shell=True, text=True)
 
             self.loading_screen.stop()
@@ -2147,7 +2157,10 @@ class ToolsMicroSDVerifyWarningView(View):
             return Destination(BackStackView)
         else:
             return Destination(ToolsMicroSDVerifyView)
-        
+
+# The process here only checks the first 26mb of the MicroSD card which is genreally fine, as the SeedSigner images
+# at most 26MB (And for images below 26MB, the hash is the same as the release hashes as long as the sectors immediatly
+# following the image have been zero'd first)
 class ToolsMicroSDVerifyView(View):
     known_checksums = {'5809d4ec68138c737b1b000db4c6ec60983e94544efd893bdfa40ebf19af60f4':'Zero Wiped (First 26MB)',
                        'a380cb93eb852254863718a9c000be9ec30cee14a78fc0ec90708308c17c1b8a':'seedsigner_os.0.7.0.pi0',
@@ -2190,7 +2203,7 @@ class ToolsMicroSDVerifyView(View):
                 LargeIconStatusScreen,
                 title="Success",
                 status_headline="Matched Checksum",
-                text=image_name,
+                text=image_name[:20] + "\n" + image_name[20:40] + "\n" + image_name[40:60], #Split for images where the filename is too long to fit on the screen
                 show_back_button=False,
                 button_data=[ButtonOption("Continue")]
             )
