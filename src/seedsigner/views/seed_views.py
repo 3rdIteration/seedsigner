@@ -1818,7 +1818,7 @@ class SeedTranscribeSeedQRFormatView(View):
               
         if self.settings.get_value(SettingsConstants.SETTING__ENCRYPTED_QR) == SettingsConstants.OPTION__ENABLED:
             if len(seed.mnemonic_list) == 12:
-              button_data.append(self.ENCRYPTED_24)
+              button_data.append(self.ENCRYPTED_12)
             else:
               button_data.append(self.ENCRYPTED_24)
             
@@ -1836,7 +1836,7 @@ class SeedTranscribeSeedQRFormatView(View):
         
         if button_data[selected_menu_num] in [self.STANDARD_12, self.STANDARD_24]:
             seedqr_format = QRType.SEED__SEEDQR
-        elif button_data[selected_menu_num] in [self.STANDARD_12, self.STANDARD_24]:
+        elif button_data[selected_menu_num] in [self.COMPACT_12, self.COMPACT_24]:
             seedqr_format = QRType.SEED__COMPACTSEEDQR
             
         else:
