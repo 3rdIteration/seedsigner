@@ -275,8 +275,6 @@ class SeedKeeperSelectView(View):
                     headers_parsed.append((sid, label))
                     button_data.append(ButtonOption(label))
 
-
-            print(headers_parsed)
             if len(headers_parsed) < 1:
                 self.run_screen(
                 WarningScreen,
@@ -323,7 +321,6 @@ class SeedKeeperSelectView(View):
                 # this format is backward compatible with Masterseed (BIP39 info appended after Masterseed)
                 # mnemonic in compressed format using entropy (16-32 bytes)
                 secret_raw_hex = secret_dict['secret']
-                print(f"secret_raw_hex: {secret_raw_hex}")
                 secret_raw_bytes = bytes.fromhex(secret_raw_hex)
                 
                 offset = 0
@@ -1767,7 +1764,6 @@ class SeedWordsBackupTestSuccessView(View):
             return Destination(SeedOptionsView, view_args=dict(seed_num=self.seed_num), clear_history=True)
         else:
             return Destination(SeedFinalizeView)
-
 
 
 """****************************************************************************

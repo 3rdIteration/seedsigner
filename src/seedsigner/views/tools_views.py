@@ -1810,6 +1810,23 @@ class ToolsSatochipDIYView(View):
     UNINSTALL_APPLET = ButtonOption("Uninstall Applet")
 
     def run(self):
+        # Check if GlobalPlatoform is available as a way of checking if the DIY tools we need are available
+        if platform.uname()[1] == "seedsigner-os":
+            global_platform_path = "/mnt/diy/Satochip-DIY/gp.jar"
+        else:
+            global_platform_path = "/home/pi/Satochip-DIY/gp.jar"
+
+        if os.path.exists(global_platform_path):
+            pass
+        else:
+            self.run_screen(
+                WarningScreen,
+                title="Failed",
+                status_headline=None,
+                text="MicroSD with SeedSigner+Satochip Required...",
+                show_back_button=False,
+            )
+
         button_data = [self.BUILD_APPLETS, self.INSTALL_APPLET, self.UNINSTALL_APPLET]
 
         selected_menu_num = self.run_screen(

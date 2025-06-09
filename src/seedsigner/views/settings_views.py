@@ -17,6 +17,8 @@ logger = logging.getLogger(__name__)
 
 class SettingsMenuView(View):
     IO_TEST = ButtonOption("I/O test")
+    SCARD_TEST = ButtonOption("Test Smartcard")
+    LIST_READERS = ButtonOption("List card readers")
     NFC_TEST = ButtonOption("Test NFC Scan")
     DONATE = ButtonOption("Donate")
 
@@ -50,6 +52,8 @@ class SettingsMenuView(View):
             next_destination = Destination(SettingsMenuView, view_args={"visibility": SettingsConstants.VISIBILITY__ADVANCED})
 
             button_data.append(self.IO_TEST)
+            button_data.append(self.LIST_READERS)
+            button_data.append(self.SCARD_TEST)
             button_data.append(self.NFC_TEST)
             button_data.append(self.DONATE)
 
@@ -91,6 +95,12 @@ class SettingsMenuView(View):
         elif len(button_data) > selected_menu_num and button_data[selected_menu_num] == self.IO_TEST:
             return Destination(IOTestView)
         
+        elif button_data[selected_menu_num] == self.SCARD_TEST:
+            return Destination(SCARDTestView)
+
+        elif button_data[selected_menu_num] == self.LIST_READERS:
+            return Destination(SCardReaderTestView)
+
         elif button_data[selected_menu_num] == self.NFC_TEST:
             return Destination(NFCTestView)
 
@@ -283,6 +293,86 @@ class IOTestView(View):
         self.run_screen(settings_screens.IOTestScreen)
 
         return Destination(SettingsMenuView)
+
+
+class SCardReaderTestView(View):
+    def run(self):
+        from seedsigner.gui.screens import (RET_CODE__BACK_BUTTON, ButtonListScreen, WarningScreen, DireWarningScreen, seed_screens, LargeIconStatusScreen)
+        from smartcard.System import readers
+
+        # Get the list of available smartcard readers
+        available_readers = readers()
+        available_readers_text = ""
+
+        # Print them
+        if available_readers:
+            for reader in available_readers:
+                available_readers_text = available_readers_text + str(reader)[:-5] + " \n"
+
+            self.run_screen(
+                    LargeIconStatusScreen,
+                    title="Found Readers:",
+                    status_headline=None,
+                    text=available_readers_text,
+                    show_back_button=False,
+            )
+        else:
+            self.run_screen(
+                    WarningScreen,
+                    title="Failure",
+                    status_headline=None,
+                    text=f"No Smartcard readers found...",
+                    show_back_button=True,
+                )
+            return Destination(BackStackView)
+        
+        return Destination(MainMenuView)
+
+class SCARDTestView(View):
+    def run(self):
+        
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+        import os
+        import time
+        from seedsigner.gui.screens import (RET_CODE__BACK_BUTTON, ButtonListScreen, WarningScreen, DireWarningScreen, seed_screens, LargeIconStatusScreen)
+
+        self.loading_screen = LoadingScreenThread(text="Scanning for Smart Card")
+        self.loading_screen.start()
+
+        from smartcard.CardType import ATRCardType
+        from smartcard.CardRequest import CardRequest
+        from smartcard.util import toHexString, toBytes
+        from smartcard.CardType import AnyCardType
+        from smartcard.Exceptions import CardRequestTimeoutException
+
+        try:
+            cardrequest = CardRequest(timeout=10, cardType=AnyCardType())
+            cardservice = cardrequest.waitforcard()
+
+            self.loading_screen.stop()
+
+            cardservice.connection.connect()
+            card_atr = toHexString(cardservice.connection.getATR())
+
+            self.run_screen(
+                    LargeIconStatusScreen,
+                    title="Found SmartCard",
+                    status_headline=None,
+                    text=card_atr,
+                    show_back_button=False,
+                )
+        except CardRequestTimeoutException:
+            self.loading_screen.stop()
+            self.run_screen(
+                    WarningScreen,
+                    title="Failure",
+                    status_headline=None,
+                    text=f"No Smartcard detected...",
+                    show_back_button=True,
+                )
+            return Destination(BackStackView)
+        
+        return Destination(MainMenuView)
 
 class NFCTestView(View):
     def run(self):

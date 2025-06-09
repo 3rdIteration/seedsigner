@@ -103,7 +103,7 @@ class Controller(Singleton):
         rather than at the top in order avoid circular imports.
     """
     
-    VERSION = "0.8.5+Satochip+ERT-B5"
+    VERSION = "0.8.5+Satochip+ERT-B6"
 
     # Declare class member vars with type hints to enable richer IDE support throughout
     # the code.
@@ -130,6 +130,8 @@ class Controller(Singleton):
     # TODO: end refactor section
 
     Satochip_Connector = None
+    Satochip_PIN = None
+    Satochip_Last_UID_SHA1 = None
 
     # Destination placeholder for when we need to jump out to a side flow but intend to
     # return navigation to the main flow (e.g. PSBT flow, load multisig descriptor,
