@@ -128,7 +128,7 @@ class SettingsConstants:
     ALL_SMARTCARD_INTERFACES = [
         (SMARTCARD_INTERFACE_NONE, "None"),
         (SMARTCARD_INTERFACE_USB, "USB PC/SC Reader"),
-        (SMARTCARD_INTERFACE_PN532, "PN532 via GPIO"),
+        (SMARTCARD_INTERFACE_PN532, "Hardwired via GPIO"),
         (SMARTCARD_INTERFACE_PHOENIX, "Phoenix via USB")
     ]
 
