@@ -1975,9 +1975,14 @@ class ToolsDIYUninstallAppletView(View):
                     package_info = line.split()
                     logger.info(package_info)
                     # Ignore system packages
-                    if package_info[1] in ['A0000001515350', 'A00000016443446F634C697465', 'A0000000620204', 'A0000000620202', 'D27600012401','D00000000002','4B4D313031']:
+                    if package_info[1] in ['A0000001515350', 'A00000016443446F634C697465', 'A0000000620204', 'A0000000620202','D00000000002','4B4D313031']:
                         continue
                     
+                    # Give some known applets a more human readable package name
+                    if package_info[1] == 'A00000052721010141504558': package_info[3]="(|Apex TOTP|)"
+                    if package_info[1] == 'D27600012401': package_info[3]="(|SmartPGP|)"
+                    if package_info[1] == 'B00B5111CB': package_info[3]="(|SpecterDIY|)"
+
                     installed_applets_list.append(ButtonOption(package_info[3][2:-2]))
                     installed_applets_aids.append(package_info[1])
 
