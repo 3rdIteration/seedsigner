@@ -300,15 +300,12 @@ class SCardReaderTestView(View):
         from seedsigner.gui.screens import (RET_CODE__BACK_BUTTON, ButtonListScreen, WarningScreen, DireWarningScreen, seed_screens, LargeIconStatusScreen)
         from smartcard.System import readers
 
-        # Get the list of available smartcard readers
         available_readers = readers()
-        available_readers_text = ""
-
-        # Print them
+        
         if available_readers:
-            for reader in available_readers:
-                available_readers_text = available_readers_text + str(reader)[:-5] + " \n"
+            available_readers_text = '\n'.join(str(item)[:-5] for item in available_readers)
 
+            print(available_readers_text)
             self.run_screen(
                     LargeIconStatusScreen,
                     title="Found Readers:",
