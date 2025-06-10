@@ -14,6 +14,7 @@ from seedsigner.models.encryptedqr import EncryptedQRStorage
 from seedsigner.models.settings import Settings
 from seedsigner.models.singleton import Singleton
 from seedsigner.models.threads import BaseThread
+from seedsigner.models.settings_definition import SettingsConstants
 from seedsigner.views.screensaver import ScreensaverScreen
 from seedsigner.views.view import Destination
 
@@ -320,6 +321,12 @@ class Controller(Singleton):
                     self.psbt = None
                     self.psbt_parser = None
                     self.psbt_seed = None
+
+                    # Clear the whole Smartcard session if caching PIN is disabled (Same as removing the card)
+                    if Settings.get_instance().get_value(SettingsConstants.SETTING__CACHE_SCARD_PIN) != "E":
+                        self.Satochip_PIN = None
+                        self.Satochip_Last_UID_SHA1 = None
+                        self.Satochip_Connector = None
                 
                 logger.info(f"\nback_stack: {self.back_stack}")
 

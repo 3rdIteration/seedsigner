@@ -887,6 +887,9 @@ class ToolsSatochipChangePinView(View):
                 text=f"PIN Updated",
                 show_back_button=False,
             )
+            # Update cached pin
+            self.controller.Satochip_PIN = new_pin
+
         else:
             logger.info("Failure: Pin Change Failed")
             self.run_screen(

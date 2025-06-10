@@ -35,10 +35,21 @@ def init_satochip(parentObject, init_card_filter=None):
     except:
         parentObject.controller.Satochip_Connector = None
 
-    if parentObject.controller.Satochip_Connector is None:
+    try:
+        if parentObject.controller.Satochip_Connector is None:
             print("No Working CardConnector, Connecting")
             print("Card Filter:",init_card_filter)
             Satochip_Connector = CardConnector(card_filter=init_card_filter)
+    except Exception as e:
+        parentObject.run_screen(
+            WarningScreen,
+            title="Failure",
+            status_headline=None,
+            text=str(e),
+            show_back_button=True,
+        )
+        return None
+
 
     # Prompt for pin if one hasn't been set, otherwise a cached pin will be used
     if parentObject.controller.Satochip_PIN is None:
@@ -46,7 +57,9 @@ def init_satochip(parentObject, init_card_filter=None):
         card_pin = seed_screens.SeedAddPassphraseScreen(title="Card PIN").display()
         if "is_back_button" in card_pin:
             return None
-        parentObject.controller.Satochip_PIN = list(bytes(card_pin['passphrase'], "utf-8"))
+        card_pin = list(bytes(card_pin['passphrase'], "utf-8"))
+    else:
+        card_pin = parentObject.controller.Satochip_PIN
             
     parentObject.loading_screen = LoadingScreenThread(text="Connecting to Card")
     parentObject.loading_screen.start()
@@ -98,11 +111,11 @@ def init_satochip(parentObject, init_card_filter=None):
             card_pin = seed_screens.SeedAddPassphraseScreen(title="Card PIN").display()
             if "is_back_button" in card_pin:
                 return None
-            parentObject.controller.Satochip_PIN = list(bytes(card_pin['passphrase'], "utf-8"))
-        print("Same card, using existing PIN")
+            card_pin = list(bytes(card_pin['passphrase'], "utf-8"))
+        print("Same card, using existing PIN, already loaded...")
 
         # Check PIN
-        Satochip_Connector.set_pin(0, parentObject.controller.Satochip_PIN)
+        Satochip_Connector.set_pin(0, card_pin)
 
         try:
             parentObject.loading_screen = LoadingScreenThread(text="Verifying PIN")
@@ -126,38 +139,7 @@ def init_satochip(parentObject, init_card_filter=None):
                 )
                 return None
 
-        except RuntimeError as e: #Incorrect PIN
-            print("Pin Check Runtime Error:" + str(e))
-            parentObject.loading_screen.stop()
-            if "No card found!" in str(e):
-                parentObject.run_screen(
-                        WarningScreen,
-                        title="Disconnected",
-                        status_headline=None,
-                        text=f"Lost connection to card...",
-                        show_back_button=True,
-                    )
-            else:
-                status = Satochip_Connector.card_get_status()
-                pin_tries_left = status[3]['PIN0_remaining_tries']
-                if pin_tries_left == 0:
-                    parentObject.run_screen(
-                        WarningScreen,
-                        title="Card Blocked",
-                        status_headline=None,
-                        text=f"Incorrect-PIN entered too many times, card locked...",
-                        show_back_button=True,
-                    )
-                else:
-                    parentObject.run_screen(
-                        WarningScreen,
-                        title="Incorrect PIN",
-                        status_headline=None,
-                        text=f"Unable to unlock Card, Incorrect PIN " + str(pin_tries_left) + " tries remain before card locks...",
-                        show_back_button=True,
-                    )
-            return None
-        
+        # Any number of things could have gone wrong, so just report the error and return none...        
         except Exception as e:
             parentObject.loading_screen.stop()
             time.sleep(0.1) # Sleep for 100ms
@@ -226,11 +208,12 @@ def init_satochip(parentObject, init_card_filter=None):
                 text=f"Card Setup Complete",
                 show_back_button=False,
             )
-            # Cache the PIN for the newly set up card...
-            parentObject.controller.Satochip_PIN = list(bytes(ret['passphrase'], "utf-8"))
+            # Save the PIN for the newly set up card...
+            card_pin = list(bytes(ret['passphrase'], "utf-8"))
 
-    # Save the object and also note the UID of the card we last successfully connected to...
+    # Everything works, so save object and also note the PIN & UID of the card we last successfully connected to...
     parentObject.controller.Satochip_Connector = Satochip_Connector
+    parentObject.controller.Satochip_PIN = card_pin
     parentObject.controller.Satochip_Last_UID_SHA1 = Satochip_Connector.UID_SHA1
 
     return parentObject.controller.Satochip_Connector

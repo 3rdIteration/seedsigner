@@ -299,26 +299,51 @@ class SCardReaderTestView(View):
     def run(self):
         from seedsigner.gui.screens import (RET_CODE__BACK_BUTTON, ButtonListScreen, WarningScreen, DireWarningScreen, seed_screens, LargeIconStatusScreen)
         from smartcard.System import readers
+        from smartcard.Exceptions import ListReadersException
+        from smartcard.pcsc.PCSCExceptions import EstablishContextException
 
-        available_readers = readers()
-        
-        if available_readers:
-            available_readers_text = '\n'.join(str(item)[:-5] for item in available_readers)
+        try:
 
-            print(available_readers_text)
-            self.run_screen(
-                    LargeIconStatusScreen,
-                    title="Found Readers:",
-                    status_headline=None,
-                    text=available_readers_text,
-                    show_back_button=False,
-            )
-        else:
+            available_readers = readers()
+            
+            if available_readers:
+                available_readers_text = '\n'.join(str(item)[:-5] for item in available_readers)
+
+                print(available_readers_text)
+                self.run_screen(
+                        LargeIconStatusScreen,
+                        title="Found Readers:",
+                        status_headline=None,
+                        text=available_readers_text,
+                        show_back_button=False,
+                )
+            else:
+                self.run_screen(
+                        WarningScreen,
+                        title="Failure",
+                        status_headline=None,
+                        text=f"No Smartcard readers found...",
+                        show_back_button=True,
+                    )
+                return Destination(BackStackView)
+            
+        except ListReadersException:
             self.run_screen(
                     WarningScreen,
-                    title="Failure",
+                    title="PCSC Failure",
                     status_headline=None,
-                    text=f"No Smartcard readers found...",
+                    text=f"Unable to list readers (A restart may help, possibly faulty reader)",
+                    show_back_button=True,
+                )
+            return Destination(BackStackView)
+
+        except EstablishContextException:
+            self.loading_screen.stop()
+            self.run_screen(
+                    WarningScreen,
+                    title="PCSC Failure",
+                    status_headline=None,
+                    text=f"Unable to establish PCSC context(A restart may help, possibly faulty reader)",
                     show_back_button=True,
                 )
             return Destination(BackStackView)
@@ -340,7 +365,8 @@ class SCARDTestView(View):
         from smartcard.CardRequest import CardRequest
         from smartcard.util import toHexString, toBytes
         from smartcard.CardType import AnyCardType
-        from smartcard.Exceptions import CardRequestTimeoutException
+        from smartcard.Exceptions import CardRequestTimeoutException, ListReadersException
+        from smartcard.pcsc.PCSCExceptions import EstablishContextException
 
         try:
             cardrequest = CardRequest(timeout=10, cardType=AnyCardType())
@@ -358,6 +384,28 @@ class SCARDTestView(View):
                     text=card_atr,
                     show_back_button=False,
                 )
+        except ListReadersException:
+            self.loading_screen.stop()
+            self.run_screen(
+                    WarningScreen,
+                    title="PCSC Failure",
+                    status_headline=None,
+                    text=f"Unable to list readers (A restart may help, possibly faulty reader)",
+                    show_back_button=True,
+                )
+            return Destination(BackStackView)
+        
+        except EstablishContextException:
+            self.loading_screen.stop()
+            self.run_screen(
+                    WarningScreen,
+                    title="PCSC Failure",
+                    status_headline=None,
+                    text=f"Unable to establish PCSC context(A restart may help, possibly faulty reader)",
+                    show_back_button=True,
+                )
+            return Destination(BackStackView)
+        
         except CardRequestTimeoutException:
             self.loading_screen.stop()
             self.run_screen(

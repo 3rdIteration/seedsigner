@@ -193,6 +193,7 @@ class SettingsConstants:
     SETTING__COORDINATORS = "coordinators"
     SETTING__BTC_DENOMINATION = "denomination"
     SETTING__SMARTCARD_INTERFACES = "smartcard_interfaces"
+    SETTING__CACHE_SCARD_PIN = "cache_scard_pin"
 
     SETTING__NETWORK = "network"
     SETTING__QR_DENSITY = "qr_density"
@@ -456,6 +457,14 @@ class SettingsDefinition:
                     type=SettingsConstants.TYPE__SELECT_1,
                     selection_options=SettingsConstants.ALL_SMARTCARD_INTERFACES,
                     default_value=SettingsConstants.SMARTCARD_INTERFACE_USB),
+
+        SettingsEntry(category=SettingsConstants.CATEGORY__SYSTEM,
+                    attr_name=SettingsConstants.SETTING__CACHE_SCARD_PIN,
+                    abbreviated_name="cachepin",
+                    display_name="Cache Smartcard Pin",
+                    type=SettingsConstants.TYPE__SELECT_1,
+                    selection_options=SettingsConstants.OPTIONS__ENABLED_DISABLED,
+                    default_value=SettingsConstants.OPTION__DISABLED),
 
         # Advanced options
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
