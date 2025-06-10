@@ -15,10 +15,6 @@ logger = logging.getLogger(__name__)
 
 def init_satochip(parentObject, init_card_filter=None):
     from seedsigner.models.settings import Settings, SettingsConstants, SettingsDefinition
-
-    # Spam connecting for 5 seconds to give the user time to insert the card
-    status = None
-    time_end = time.time() + 5
     
     # Check for existing card connector
     print("Checking existing card connector...")
@@ -50,7 +46,6 @@ def init_satochip(parentObject, init_card_filter=None):
         )
         return None
 
-
     # Prompt for pin if one hasn't been set, otherwise a cached pin will be used
     if parentObject.controller.Satochip_PIN is None:
         print("No Cached pin, prompting for pin")
@@ -63,6 +58,10 @@ def init_satochip(parentObject, init_card_filter=None):
             
     parentObject.loading_screen = LoadingScreenThread(text="Connecting to Card")
     parentObject.loading_screen.start()
+
+    # Spam connecting for 5 seconds to give the user time to insert the card
+    status = None
+    time_end = time.time() + 5
 
     while time.time() < time_end:
         try:
