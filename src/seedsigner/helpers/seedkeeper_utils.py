@@ -66,7 +66,7 @@ def init_satochip(parentObject, init_card_filter=None):
     while time.time() < time_end:
         try:
                 
-            time.sleep(1)  # give some time to initialize reader...
+            time.sleep(0.5)  # give some time to initialize reader...
             status = Satochip_Connector.card_get_status()
             print("Found Card:", Satochip_Connector.UID_SHA1)
             print(status[3])
@@ -268,38 +268,37 @@ def run_globalplatform(parentObject, command, loadingText = "Loading", successte
         # If it fails, report the error back (And make it more human readable for common errors)
         failureText = errors_cleaned
         if "is not present on card" in errors_cleaned:
-            failureText = "Applet is not on the card, nothing to uninstall..."
+            failureText = "Applet is not on the card, nothing to uninstall."
 
-        if "Multiple readers, must choose one" in errors_cleaned:
-            failureText = "Multiple readers connected, please run with a single reader connected/activated..."
+        elif "Multiple readers, must choose one" in errors_cleaned:
+            failureText = "Multiple readers connected, please run with a single reader connected/activated."
 
-        if " Card cryptogram invalid" in errors_cleaned:
-            failureText = "Card is locked with custom keys. Please refer to the Satochip-DIY documentation..."
+        elif "Card cryptogram invalid" in errors_cleaned:
+            failureText = "Card is locked (DO NOT RETRY, may BRICK card). Refer to Satochip-DIY documentation."
 
-        if "SCARD_E_NO_SMARTCARD" in errors_cleaned:
-            failureText = "Unable to detect Card and/or Reader..."
+        elif "SCARD_E_NO_SMARTCARD" in errors_cleaned:
+            failureText = "Unable to detect Card and/or Reader."
 
-        if "Applet loading not allowed" in errors_cleaned:
-            failureText = "Applet is already installed..."
+        elif "Applet loading not allowed" in errors_cleaned:
+            failureText = "Applet is already installed."
 
-        if "0x6444" in errors_cleaned or "0x6F00" in errors_cleaned:
-            failureText = "Incompatible Javacard..."
+        elif "0x6444" in errors_cleaned or "0x6F00" in errors_cleaned:
+            failureText = "Incompatible Javacard."
             uninstall_required=True
 
-        if "Not enough memory space" in errors_cleaned:
+        elif "Not enough memory space" in errors_cleaned:
             failureText = "Not enough space on Javacard for Applet..."
 
-        if "SCARD_E_NO_SMARTCARD" in errors_cleaned:
+        elif "SCARD_E_NO_SMARTCARD" in errors_cleaned:
             failureText = "Unable to detect Card and/or Reader..."
 
-        if "SCARD_E_NOT_TRANSACTED" in errors_cleaned:
+        elif "SCARD_E_NOT_TRANSACTED" in errors_cleaned:
             failureText = "Applet installation failed, perhaps try with a different Smartcard Interface..."
             uninstall_required=True
 
-        if "Failed to open secure channel" in errors_cleaned or "SCARD_W_RESET_CARD" in errors_cleaned:
+        elif "Failed to open secure channel" in errors_cleaned or "SCARD_W_RESET_CARD" in errors_cleaned:
             failureText = "Unable to complete secure connection... (App or reader may need restart)"
 
-        
 
         parentObject.run_screen(
             WarningScreen,
