@@ -828,16 +828,13 @@ class ToolsTextQRView(View):
     Smartcard Views
 ****************************************************************************"""
 class ToolsSmartcardMenuView(View):
-    CHANGE_PIN = ButtonOption("Change PIN")
-    CHANGE_LABEL = ButtonOption("Change Label")
-    CHANGE_NFC = ButtonOption("Change NFC Policy")
-    FACTORY_RESET = ButtonOption("Factory Reset Card")
+    COMMON = ButtonOption("Common Functions")
     SATOCHIP = ButtonOption("Satochip Functions")
     SEEDKEEPER = ButtonOption("SeedKeeper Functions")
     Satochip_DIY = ButtonOption("DIY Tools")
 
     def run(self):
-        button_data = [self.CHANGE_PIN, self.CHANGE_LABEL, self.CHANGE_NFC, self.FACTORY_RESET, self.SEEDKEEPER, self.SATOCHIP, self.Satochip_DIY]
+        button_data = [self.COMMON, self.SEEDKEEPER, self.SATOCHIP, self.Satochip_DIY]
 
         selected_menu_num = self.run_screen(
             ButtonListScreen,
@@ -847,7 +844,39 @@ class ToolsSmartcardMenuView(View):
         )
 
         if selected_menu_num == RET_CODE__BACK_BUTTON:
-            return Destination(MainMenuView)
+            return Destination(BackStackView)
+
+        elif button_data[selected_menu_num] == self.COMMON:
+            return Destination(ToolsCommonView)
+        
+        elif button_data[selected_menu_num] == self.SATOCHIP:
+            return Destination(ToolsSatochipView)
+        
+        elif button_data[selected_menu_num] == self.SEEDKEEPER:
+            return Destination(ToolsSeedkeeperView)
+
+        elif button_data[selected_menu_num] == self.Satochip_DIY:
+            return Destination(ToolsSatochipDIYView)
+
+class ToolsCommonView(View):
+    CHANGE_PIN = ButtonOption("Change PIN")
+    CHANGE_LABEL = ButtonOption("Change Label")
+    CHANGE_NFC = ButtonOption("Change NFC Policy")
+    FACTORY_RESET = ButtonOption("Factory Reset Card")
+
+    def run(self):
+
+        button_data = [self.CHANGE_PIN, self.CHANGE_LABEL, self.CHANGE_NFC, self.FACTORY_RESET]
+
+        selected_menu_num = self.run_screen(
+                ButtonListScreen,
+                title="Smartcard Tools",
+                is_button_text_centered=False,
+                button_data=button_data
+            )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
 
         elif button_data[selected_menu_num] == self.CHANGE_PIN:
             return Destination(ToolsSatochipChangePinView)
@@ -860,15 +889,6 @@ class ToolsSmartcardMenuView(View):
 
         elif button_data[selected_menu_num] == self.FACTORY_RESET:
             return Destination(ToolsSatochipFactoryResetView)
-
-        elif button_data[selected_menu_num] == self.SATOCHIP:
-            return Destination(ToolsSatochipView)
-        
-        elif button_data[selected_menu_num] == self.SEEDKEEPER:
-            return Destination(ToolsSeedkeeperView)
-
-        elif button_data[selected_menu_num] == self.Satochip_DIY:
-            return Destination(ToolsSatochipDIYView)
 
 class ToolsSatochipChangePinView(View):
     def run(self):
@@ -994,7 +1014,7 @@ class ToolsSatochipFactoryResetView(View):
         
         new version currently only implemented on SeedKeeper v0.2 and higher
         """
-        Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satochip", "seedkeeper"])
+        Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satochip", "seedkeeper"], require_pin = False)
 
         if not Satochip_Connector:
             return Destination(BackStackView)
@@ -1005,10 +1025,10 @@ class ToolsSatochipFactoryResetView(View):
             version = d["protocol_version"]
             if (version >= 2):
                 print("This SeedKeeper supports factory reset (new version)!")
-                self.common_reset_factory_new(Satochip_Connector)
+                resetStatus = self.common_reset_factory_new(Satochip_Connector)
             else: 
                 print("This SeedKeeper supports factory reset (legacy)!")
-                self.common_reset_factory_legacy(Satochip_Connector)
+                resetStatus = self.common_reset_factory_legacy()
         
         elif Satochip_Connector.card_type == "Satodime":
             print("Satodime does not support factory reset!")
@@ -1024,7 +1044,7 @@ class ToolsSatochipFactoryResetView(View):
             version_min = (12<<16)+4 # v0.12-0.4
             if (version >= version_min):
                 print("This Satochip supports factory reset (legacy)!")
-                self.common_reset_factory_legacy(Satochip_Connector) 
+                resetStatus = self.common_reset_factory_legacy() 
             else:
                 print("Satochip below version v0.12-0.4 do not support factory reset!")
                 return
@@ -1033,27 +1053,57 @@ class ToolsSatochipFactoryResetView(View):
             print(f"Unsupported card type: {Satochip_Connector.card_type}")
             return
 
-        return
+        if resetStatus:
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Success",
+                status_headline=None,
+                text=f"Card Factory Reset",
+                show_back_button=False,
+            )
+        else:
+            ret = self.run_screen(
+                WarningScreen,
+                title="Aborted",
+                status_headline=None,
+                text="Factory Reset Aborted",
+                show_back_button=True,
+            )
+
+        return Destination(MainMenuView)
         
-    def common_reset_factory_legacy(self, Satochip_Connector):
+    def common_reset_factory_legacy(self):
+        from pysatochip.CardConnector import CardConnector
+        from seedsigner.gui.screens.screen import LoadingScreenThread
         """Initiate the Factory Reset Process
-        Legacy approach based on sending a specifi APDU a certain number of time
+        Legacy approach based on sending a specifi APDU a certain number of times
         """    
+
+        resetStatus = False
+
         print("WARNING: FACTORY RESET WITHOUT A WORKING BACKUP WILL LEAD TO UNRECOVERABLE LOSS OF FUNDS")
         logger.info("In common_reset_factory_legacy")
-        apdu = [0xB0, 0xFF, 0x00, 0x00, 0x00]  # Reset APDU
+        Satochip_Connector = CardConnector()
+        Satochip_Connector.set_mode_factory_reset(True)
+        print("Created new card connector for legacy factory reset")
+        print(Satochip_Connector.mode_factory_reset)
+        remaining_string = ""
         while(True):
+            self.loading_screen = LoadingScreenThread(text="Sending Command")
             ret = self.run_screen(
                 DireWarningScreen,
                 title="Warning",
                 status_headline=None,
-                text="Are you sure that you want to perform a factory reset?",
+                text="Remove and re-insert the smartcard to continue factory reset." + remaining_string,
                 show_back_button=True,
             )
             if ret == RET_CODE__BACK_BUTTON:
                 return Destination(MainMenuView)
             else:
-                (response, sw1, sw2) = Satochip_Connector.card_transmit(apdu)
+                self.loading_screen.start()
+                time.sleep(2)  # give some time to initialize reader after card insertion...
+                (response, sw1, sw2) = Satochip_Connector.card_reset_factory_signal()
+                self.loading_screen.stop()
                 if sw1 == 0x9c and sw2 == 0x04:
                     print("Factory Reset Failed (setup not done)")
                     #print("In addition to the factory-reset command, you also need to add the '--enablefactoryreset' argument to enable it")
@@ -1064,11 +1114,13 @@ class ToolsSatochipFactoryResetView(View):
                 if sw1 == 0xFF and sw2 == 0x00:
                     Satochip_Connector.card_disconnect()
                     print("CARD HAS BEEN RESET TO FACTORY!")
+                    resetStatus = True
                     break
                 elif sw1 == 0xFF and sw2 == 0xFF:
                     print("RESET ABORTED: you must remove card after each reset!")
                     break
                 elif sw1 == 0xFF and sw2 > 0x00:
+                    remaining_string = "\nREMAINING COUNTER: " + str(sw2)
                     print("Remaining counter: " + str(sw2))
                     print("Please remove and reinsert card, then confirm that you want to continue...")
                 elif sw1 == 0x6F and sw2 == 0x00:
@@ -1082,14 +1134,16 @@ class ToolsSatochipFactoryResetView(View):
                 else:
                     print("The factory reset has been cancelled")
                     break
-        return
+
+        return resetStatus
 
     def common_reset_factory_new(self, Satochip_Connector):
-        from pysatochip.CardConnector import IdentityBlockedError, WrongPinError
+        from pysatochip.CardConnector import IdentityBlockedError, WrongPinError, CardResetToFactoryError
         """Initiate the Factory Reset Process
         New approach where reset to factory is trigerred when PIN and PUK is blocked (the card is basically unusable in this state)
         """ 
         logger.info("In common_reset_factory_new")
+        resetStatus = False
 
         pinRemaining = -1
         ret = self.run_screen(
@@ -1100,21 +1154,22 @@ class ToolsSatochipFactoryResetView(View):
                 show_back_button=True,
             )
         if ret == RET_CODE__BACK_BUTTON:
-            return Destination(MainMenuView)
+            return resetStatus
         else:
             doReset = True
         
         # Block PIN
+        remaining_string = ""
         while(doReset):
             ret = self.run_screen(
                 DireWarningScreen,
                 title="Warning",
                 status_headline=None,
-                text="Enter a wrong PIN to block the card, or the correct PIN to abort:",
+                text="Enter a wrong PIN multiple times to block the card, or the correct PIN to abort." + remaining_string,
                 show_back_button=True,
             )
             if ret == RET_CODE__BACK_BUTTON:
-                return Destination(MainMenuView)
+                return resetStatus
 
             pin = seed_screens.SeedAddPassphraseScreen(title="Enter PIN").display()
 
@@ -1142,6 +1197,7 @@ class ToolsSatochipFactoryResetView(View):
                 pinRemaining = 0
                 break
             except WrongPinError as ex:
+                remaining_string = f"\n{ex.pin_left} TRIES REMAINING!"
                 print(ex)
                 print(f"pinRemaining: {ex.pin_left}")
             except Exception as ex:
@@ -1149,21 +1205,22 @@ class ToolsSatochipFactoryResetView(View):
 
         # Block PUK
         pukRemaining = -1
+        remaining_string = ""
         while(doReset):
             ret = self.run_screen(
                 DireWarningScreen,
                 title="Warning",
                 status_headline=None,
-                text="Enter a wrong PUK to block the card, or the right PUK to abort:",
+                text="Enter a wrong PUK multiple times to block the card, or the right PUK to abort." + remaining_string,
                 show_back_button=True,
             )
             if ret == RET_CODE__BACK_BUTTON:
-                return Destination(MainMenuView)
+                return resetStatus
 
             puk = seed_screens.SeedAddPassphraseScreen(title="Enter PUK").display()
 
             if "is_back_button" in puk:
-                return Destination(ToolsSmartcardMenuView)
+                return resetStatus
             
             puk = puk['passphrase']
             
@@ -1181,44 +1238,28 @@ class ToolsSatochipFactoryResetView(View):
                     pinRemaining = -1
                     pukRemaining = -1
                     break
-                elif sw1==0x63 and (sw2 & 0xc0)==0xc0:
-                    #wrong puk
-                    pukRemaining= (sw2 & ~0xc0)
-                    msg = (f"Wrong PUK! {pukRemaining} tries remaining!")
-                    print(msg)
-                elif sw1==0x9c and sw2==0x0c:
-                    # should not happen actually, since reset to factory is triggered before
-                    pukRemaining = 0
-                    print(f"PUK blocked!")
-                elif sw1 == 0xFF and sw2 == 0x00:
-                    # Card reset to factory
-                    pinRemaining = -1
-                    pukRemaining = -1
-                    print(f"CARD RESET TO FACTORY!")
-                    self.run_screen(
-                        LargeIconStatusScreen,
-                        title="Success",
-                        status_headline=None,
-                        text=f"Card Factory Reset",
-                        show_back_button=False,
-                    )
-                    return Destination(MainMenuView)
+            except IdentityBlockedError as ex:
+                # PUK blocked (Shouldn't happen, as factory reset triggers before this)
+                #print(ex)
+                print("PUK code is blocked!")
+                pukRemaining = 0
+                break
 
-                else:
-                    print(f"Unexpected error (error code {hex(256*sw1+sw2)})")
-
-            except Exception as ex:
+            except WrongPinError as ex:
+                remaining_string = f"\n{ex.pin_left} TRIES REMAINING!"
+                pukRemaining = ex.pin_left
                 print(ex)
-                
+                print(f"pinRemaining: {ex.pin_left}")
 
-        if doReset == False:
-            print("Reset factory aborted")
-            if pinRemaining != -1:
-                print(f"WARNING: remaining PIN tries: {pinRemaining}")
-            if pukRemaining != -1:
-                print(f"WARNING: remaining PIN tries: {pinRemaining}")
+            except CardResetToFactoryError as ex:
+                # Card reset to factory
+                pinRemaining = -1
+                pukRemaining = -1
+                print(f"CARD RESET TO FACTORY!")
+                resetStatus = True
+                break    
             
-        return Destination(MainMenuView)
+        return resetStatus
 
 class ToolsSatochipChangeLabelView(View):
     def run(self):
@@ -1966,7 +2007,7 @@ class ToolsSeedkeeperSaveDescriptorView(View):
         return Destination(BackStackView)
 
 class ToolsSatochipView(View):
-    IMPORT_SEED = ButtonOption("Import Seed")
+    IMPORT_SEED = ButtonOption("Initialise with Seed")
     ENABLE_2FA = ButtonOption("Enable 2FA")
 
     def run(self):

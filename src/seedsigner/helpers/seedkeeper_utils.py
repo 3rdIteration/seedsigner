@@ -13,7 +13,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-def init_satochip(parentObject, init_card_filter=None):
+def init_satochip(parentObject, init_card_filter=None, require_pin = True):
     from seedsigner.models.settings import Settings, SettingsConstants, SettingsDefinition
     
     # Check for existing card connector
@@ -46,15 +46,16 @@ def init_satochip(parentObject, init_card_filter=None):
         )
         return None
 
-    # Prompt for pin if one hasn't been set, otherwise a cached pin will be used
-    if parentObject.controller.Satochip_PIN is None:
-        print("No Cached pin, prompting for pin")
-        card_pin = seed_screens.SeedAddPassphraseScreen(title="Card PIN").display()
-        if "is_back_button" in card_pin:
-            return None
-        card_pin = list(bytes(card_pin['passphrase'], "utf-8"))
-    else:
-        card_pin = parentObject.controller.Satochip_PIN
+    if require_pin:
+        # Prompt for pin if one hasn't been set, otherwise a cached pin will be used
+        if parentObject.controller.Satochip_PIN is None:
+            print("No Cached pin, prompting for pin")
+            card_pin = seed_screens.SeedAddPassphraseScreen(title="Card PIN").display()
+            if "is_back_button" in card_pin:
+                return None
+            card_pin = list(bytes(card_pin['passphrase'], "utf-8"))
+        else:
+            card_pin = parentObject.controller.Satochip_PIN
             
     parentObject.loading_screen = LoadingScreenThread(text="Connecting to Card")
     parentObject.loading_screen.start()
@@ -100,58 +101,59 @@ def init_satochip(parentObject, init_card_filter=None):
     # Check if the Seedkeeper needs the initial setup process
     if status[3]['setup_done']:
 
-        # Check for an existing Seedkeeper card that we may have been using with this PIN,
-        # prompt to re-enter pin if the card has been swapped...
-        if parentObject.controller.Satochip_Last_UID_SHA1 is not None and \
-        parentObject.controller.Satochip_Last_UID_SHA1 != Satochip_Connector.UID_SHA1:
-            print("Found Card:", Satochip_Connector.UID_SHA1)
-            print("Expecting Card:", parentObject.controller.Satochip_Last_UID_SHA1)
-            print("Card has changed, prompting for new PIN")
-            card_pin = seed_screens.SeedAddPassphraseScreen(title="Card PIN").display()
-            if "is_back_button" in card_pin:
-                return None
-            card_pin = list(bytes(card_pin['passphrase'], "utf-8"))
-        print("Same card, using existing PIN, already loaded...")
+        if require_pin:
+            # Check for an existing Seedkeeper card that we may have been using with this PIN,
+            # prompt to re-enter pin if the card has been swapped...
+            if parentObject.controller.Satochip_Last_UID_SHA1 is not None and \
+            parentObject.controller.Satochip_Last_UID_SHA1 != Satochip_Connector.UID_SHA1:
+                print("Found Card:", Satochip_Connector.UID_SHA1)
+                print("Expecting Card:", parentObject.controller.Satochip_Last_UID_SHA1)
+                print("Card has changed, prompting for new PIN")
+                card_pin = seed_screens.SeedAddPassphraseScreen(title="Card PIN").display()
+                if "is_back_button" in card_pin:
+                    return None
+                card_pin = list(bytes(card_pin['passphrase'], "utf-8"))
+            print("Same card, using existing PIN, already loaded...")
 
-        # Check PIN
-        Satochip_Connector.set_pin(0, card_pin)
+            # Check PIN
+            Satochip_Connector.set_pin(0, card_pin)
 
-        try:
-            parentObject.loading_screen = LoadingScreenThread(text="Verifying PIN")
-            parentObject.loading_screen.start()
+            try:
+                parentObject.loading_screen = LoadingScreenThread(text="Verifying PIN")
+                parentObject.loading_screen.start()
 
-            print("Verifying PIN")
-            (response, sw1, sw2) = Satochip_Connector.card_verify_PIN()
+                print("Verifying PIN")
+                (response, sw1, sw2) = Satochip_Connector.card_verify_PIN()
 
-            parentObject.loading_screen.stop()
+                parentObject.loading_screen.stop()
 
-            if sw1 == 0x90 and sw2 == 0x00:
-                print("Pin Correct")
-                pass #Pin is correct
-            else:
+                if sw1 == 0x90 and sw2 == 0x00:
+                    print("Pin Correct")
+                    pass #Pin is correct
+                else:
+                    parentObject.run_screen(
+                        WarningScreen,
+                        title="Failure",
+                        status_headline=None,
+                        text=f"Failed, Code:" + str(sw1) + " " + str(sw2),
+                        show_back_button=True,
+                    )
+                    return None
+
+            # Any number of things could have gone wrong, so just report the error and return none...        
+            except Exception as e:
+                parentObject.loading_screen.stop()
+                time.sleep(0.1) # Sleep for 100ms
+                print("Pin Check General Exception:" + str(e))
+
                 parentObject.run_screen(
                     WarningScreen,
-                    title="Failure",
+                    title="Failed",
                     status_headline=None,
-                    text=f"Failed, Code:" + str(sw1) + " " + str(sw2),
+                    text=str(e)[:100],
                     show_back_button=True,
                 )
                 return None
-
-        # Any number of things could have gone wrong, so just report the error and return none...        
-        except Exception as e:
-            parentObject.loading_screen.stop()
-            time.sleep(0.1) # Sleep for 100ms
-            print("Pin Check General Exception:" + str(e))
-
-            parentObject.run_screen(
-                WarningScreen,
-                title="Failed",
-                status_headline=None,
-                text=str(e)[:100],
-                show_back_button=True,
-            )
-            return None
     
     else:
         print("Card Needs Initial Setup")
@@ -212,8 +214,10 @@ def init_satochip(parentObject, init_card_filter=None):
 
     # Everything works, so save object and also note the PIN & UID of the card we last successfully connected to...
     parentObject.controller.Satochip_Connector = Satochip_Connector
-    parentObject.controller.Satochip_PIN = card_pin
     parentObject.controller.Satochip_Last_UID_SHA1 = Satochip_Connector.UID_SHA1
+
+    # Only cache pin if we are using it
+    if require_pin: parentObject.controller.Satochip_PIN = card_pin
 
     return parentObject.controller.Satochip_Connector
 
