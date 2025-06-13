@@ -1028,7 +1028,7 @@ class ToolsSatochipFactoryResetView(View):
                 resetStatus = self.common_reset_factory_new(Satochip_Connector)
             else: 
                 print("This SeedKeeper supports factory reset (legacy)!")
-                resetStatus = self.common_reset_factory_legacy()
+                resetStatus = self.common_reset_factory_legacy(Satochip_Connector)
         
         elif Satochip_Connector.card_type == "Satodime":
             print("Satodime does not support factory reset!")
@@ -1044,7 +1044,7 @@ class ToolsSatochipFactoryResetView(View):
             version_min = (12<<16)+4 # v0.12-0.4
             if (version >= version_min):
                 print("This Satochip supports factory reset (legacy)!")
-                resetStatus = self.common_reset_factory_legacy() 
+                resetStatus = self.common_reset_factory_legacy(Satochip_Connector) 
             else:
                 print("Satochip below version v0.12-0.4 do not support factory reset!")
                 return
@@ -1072,8 +1072,7 @@ class ToolsSatochipFactoryResetView(View):
 
         return Destination(MainMenuView)
         
-    def common_reset_factory_legacy(self):
-        from pysatochip.CardConnector import CardConnector
+    def common_reset_factory_legacy(self, Satochip_Connector):
         from seedsigner.gui.screens.screen import LoadingScreenThread
         """Initiate the Factory Reset Process
         Legacy approach based on sending a specifi APDU a certain number of times
@@ -1083,10 +1082,7 @@ class ToolsSatochipFactoryResetView(View):
 
         print("WARNING: FACTORY RESET WITHOUT A WORKING BACKUP WILL LEAD TO UNRECOVERABLE LOSS OF FUNDS")
         logger.info("In common_reset_factory_legacy")
-        Satochip_Connector = CardConnector()
         Satochip_Connector.set_mode_factory_reset(True)
-        print("Created new card connector for legacy factory reset")
-        print(Satochip_Connector.mode_factory_reset)
         remaining_string = ""
         while(True):
             self.loading_screen = LoadingScreenThread(text="Sending Command")
@@ -1096,9 +1092,10 @@ class ToolsSatochipFactoryResetView(View):
                 status_headline=None,
                 text="Remove and re-insert the smartcard to continue factory reset." + remaining_string,
                 show_back_button=True,
+                button_data=[ButtonOption("Card Re-Inserted")]
             )
             if ret == RET_CODE__BACK_BUTTON:
-                return Destination(MainMenuView)
+                return resetStatus
             else:
                 self.loading_screen.start()
                 time.sleep(2)  # give some time to initialize reader after card insertion...
@@ -1152,6 +1149,7 @@ class ToolsSatochipFactoryResetView(View):
                 status_headline=None,
                 text="Are you sure that you want to perform a factory reset?",
                 show_back_button=True,
+                button_data=[ButtonOption("Yes")]
             )
         if ret == RET_CODE__BACK_BUTTON:
             return resetStatus
