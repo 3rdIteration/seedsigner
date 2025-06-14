@@ -16,7 +16,7 @@ This SeedSigner fork now supports the SEC1210 Serial Smart Card reader, connecte
 
 ![](img/smartcard_hats.jpg)
 
-[The schematics and design files for these can be found in this repository.](electronics/Smartcard Hat)
+[The schematics and design files for these can be found in this repository](../electronics/SmartcardHat/)
 
 [You can also buy these ready-made from my store](https://cryptoguide.tips/shop/)
 
