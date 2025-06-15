@@ -229,6 +229,7 @@ class SettingsConstants:
         (BTC_DENOMINATION__BTCSATSHYBRID, _mft("BTC | sats hybrid")),
     ]
 
+    # Camera rotation constants
     CAMERA_ROTATION__0 = 0
     CAMERA_ROTATION__90 = 90
     CAMERA_ROTATION__180 = 180
@@ -256,7 +257,6 @@ class SettingsConstants:
     HARDWARE__RPI_26 = "RPI_26"
     HARDWARE__LUCKFOX_22 = "FOX_22"
     HARDWARE__LUCKFOX_40 = "FOX_40"
-
 
     # RPI Devices using BCM pin numbers
     HARDWARE_PIN_CONFIG__RPI_40 = {
@@ -557,6 +557,7 @@ class SettingsConstants:
 
     SETTING__DISPLAY_CONFIGURATION = "display_config"
     SETTING__DISPLAY_COLOR_INVERTED = "color_inverted"
+    SETTING__HARDWARE_CONFIG = "hardware_config"
 
     SETTING__NETWORK = "network"
     SETTING__QR_DENSITY = "qr_density"
@@ -1197,6 +1198,15 @@ class SettingsDefinition:
                       visibility=SettingsConstants.VISIBILITY__HARDWARE,
                       selection_options=SettingsConstants.ALL_DISPLAY_CONFIGURATIONS,
                       default_value=SettingsConstants.DISPLAY_CONFIGURATION__ST7789__240x240),
+
+        SettingsEntry(category=SettingsConstants.CATEGORY__SYSTEM,
+                      attr_name=SettingsConstants.SETTING__HARDWARE_CONFIG,
+                      abbreviated_name="hw_conf",
+                      display_name=_mft("Hardware Configuration"),
+                      type=SettingsConstants.TYPE__SELECT_1,
+                      visibility=SettingsConstants.VISIBILITY__HARDWARE,
+                      selection_options=SettingsConstants.ALL_HARDWARE_PIN_CONFIGS,
+                      default_value=SettingsConstants.HARDWARE__RPI_40),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__SYSTEM,
                       attr_name=SettingsConstants.SETTING__DISPLAY_COLOR_INVERTED,
