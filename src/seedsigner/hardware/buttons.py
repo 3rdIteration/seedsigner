@@ -1,15 +1,7 @@
-"""Hardware button abstraction supporting both Pi GPIO and desktop input.
+"""Hardware button abstraction supporting both periphery GPIO and desktop input.
 
 This module exposes a :class:`HardwareButtons` singleton that hides the
-differences between the physical Waveshare HAT buttons and the simulated
-buttons used when running on a regular desktop.  When the real Raspberry Pi
-GPIO libraries are available we interact with them directly; otherwise we fall
-back to pygame to interpret keyboard presses and mouse clicks.
-
-The desktop simulation also exposes clickable regions that mirror the layout of
-the Waveshare HAT.  The various ``DESKTOP_*`` constants below describe the
-geometry of that simulation and are adjusted at runtime when the desktop display
-is resized.
+differences between physical button input and desktop simulation input.
 """
 
 import logging
@@ -17,7 +9,7 @@ import time
 from typing import Dict, List, Tuple
 
 try:
-    import RPi.GPIO as GPIO
+    from periphery import GPIO
     USING_GPIO = True
 except ModuleNotFoundError:
     USING_GPIO = False
@@ -28,17 +20,12 @@ except ModuleNotFoundError:
         pygame = None
 
 from seedsigner.models.singleton import Singleton
+from seedsigner.models.settings import Settings
+from seedsigner.models.settings_definition import SettingsConstants
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Desktop simulation layout constants
-# ---------------------------------------------------------------------------
-# ``DESKTOP_SCALE`` controls how much to scale up the simulated LCD window on
-# regular PCs.  ``DESKTOP_WIDTH``/``DESKTOP_HEIGHT`` represent the size of the
-# emulated LCD while ``DESKTOP_LEFT_WIDTH`` and ``DESKTOP_RIGHT_WIDTH`` reserve
-# space for the D-pad and function buttons respectively.
-DESKTOP_SCALE = 2  # Updated when the desktop display is created
+DESKTOP_SCALE = 2
 DESKTOP_LEFT_WIDTH = 160
 DESKTOP_RIGHT_WIDTH = 80
 DESKTOP_WIDTH = 240
@@ -49,70 +36,33 @@ BTN_SPACING = 10
 
 
 class HardwareButtons(Singleton):
-    """Abstract access to the device's directional and function buttons.
+    KEY_UP_PIN = "KEY_UP"
+    KEY_DOWN_PIN = "KEY_DOWN"
+    KEY_LEFT_PIN = "KEY_LEFT"
+    KEY_RIGHT_PIN = "KEY_RIGHT"
+    KEY_PRESS_PIN = "KEY_PRESS"
+    KEY1_PIN = "KEY1"
+    KEY2_PIN = "KEY2"
+    KEY3_PIN = "KEY3"
 
-    The SeedSigner hardware uses GPIO pins for input.  When those libraries are
-    present we configure the pin numbers accordingly.  When running on a desktop
-    we fall back to simple numeric identifiers and later map them to pygame
-    events.
-    """
-
-    if USING_GPIO and GPIO.RPI_INFO['P1_REVISION'] == 3:  # RPi with 40-pin GPIO
-        # Raspberry Pi 2 and newer models share the same pin layout.
-        logger.info("Detected 40pin GPIO (Rasbperry Pi 2 and above)")
-        KEY_UP_PIN = 31
-        KEY_DOWN_PIN = 35
-        KEY_LEFT_PIN = 29
-        KEY_RIGHT_PIN = 37
-        KEY_PRESS_PIN = 33
-
-        KEY1_PIN = 40
-        KEY2_PIN = 38
-        KEY3_PIN = 36
-
-    elif USING_GPIO:  # Older 26-pin models
-        # Earlier Pi revisions expose a different set of pins.
-        logger.info("Assuming 26 Pin GPIO (Raspberry P1 1)")
-        KEY_UP_PIN = 5
-        KEY_DOWN_PIN = 11
-        KEY_LEFT_PIN = 3
-        KEY_RIGHT_PIN = 15
-        KEY_PRESS_PIN = 7
-
-        KEY1_PIN = 16
-        KEY2_PIN = 12
-        KEY3_PIN = 8
-
-    else:  # Desktop/keyboard mode
-        # Numeric placeholders that become pygame key codes.
-        KEY_UP_PIN = 1
-        KEY_DOWN_PIN = 2
-        KEY_LEFT_PIN = 3
-        KEY_RIGHT_PIN = 4
-        KEY_PRESS_PIN = 5
-
-        KEY1_PIN = 6
-        KEY2_PIN = 7
-        KEY3_PIN = 8
-
+    BUTTON_NAMES = [
+        KEY_UP_PIN,
+        KEY_DOWN_PIN,
+        KEY_LEFT_PIN,
+        KEY_RIGHT_PIN,
+        KEY_PRESS_PIN,
+        KEY1_PIN,
+        KEY2_PIN,
+        KEY3_PIN,
+    ]
 
     @classmethod
     def set_desktop_scale(cls, scale: int) -> None:
-        """Override the default scaling factor for desktop mode.
-
-        ``scale`` controls how much larger the simulated screen and button hit
-        boxes appear on desktop systems compared to the physical LCD.
-        """
         global DESKTOP_SCALE
         DESKTOP_SCALE = scale
 
     @classmethod
     def set_desktop_dimensions(cls, width: int, height: int) -> None:
-        """Override the simulated screen size in desktop mode.
-
-        This allows the desktop display driver to resize the emulated LCD and
-        rebuild the button hit boxes around the new dimensions.
-        """
         global DESKTOP_WIDTH, DESKTOP_HEIGHT
         DESKTOP_WIDTH = width
         DESKTOP_HEIGHT = height
@@ -128,26 +78,20 @@ class HardwareButtons(Singleton):
                 for key, (x, y, w, h) in DESKTOP_BUTTON_LAYOUT.items()
             }
 
-
     @classmethod
     def get_instance(cls):
-        """Access the singleton instance, creating it if needed."""
         if cls._instance is None:
             cls._instance = cls.__new__(cls)
 
             if USING_GPIO:
-                # Initialise the Raspberry Pi GPIO pins.
-                GPIO.setmode(GPIO.BOARD)
-                GPIO.setup(HardwareButtons.KEY_UP_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-                GPIO.setup(HardwareButtons.KEY_DOWN_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-                GPIO.setup(HardwareButtons.KEY_LEFT_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-                GPIO.setup(HardwareButtons.KEY_RIGHT_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-                GPIO.setup(HardwareButtons.KEY_PRESS_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-                GPIO.setup(HardwareButtons.KEY1_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-                GPIO.setup(HardwareButtons.KEY2_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-                GPIO.setup(HardwareButtons.KEY3_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-
-                cls._instance.GPIO = GPIO
+                hardware_config = Settings.get_instance().get_value(SettingsConstants.SETTING__HARDWARE_CONFIG)
+                pin_mapping = SettingsConstants.ALL_HARDWARE_PIN_CONFIGS__PIN_DEFINITIONS[hardware_config]["buttons"]
+                cls._instance._gpio_pins = {}
+                for name in cls.BUTTON_NAMES:
+                    pin_selector = pin_mapping.get(name) or pin_mapping.get(name.lower())
+                    if pin_selector is None:
+                        raise KeyError(f"Missing hardware button mapping for '{name}'")
+                    cls._instance._gpio_pins[name] = GPIO(*pin_selector, "in", bias="pull_up")
             else:
                 if pygame is None:
                     raise ModuleNotFoundError(
@@ -155,7 +99,6 @@ class HardwareButtons(Singleton):
                     )
                 pygame.init()
                 cls._instance.scale = DESKTOP_SCALE
-                # Map pygame events to abstract button constants.
                 cls._instance.key_map = {
                     pygame.K_UP: HardwareButtons.KEY_UP_PIN,
                     pygame.K_DOWN: HardwareButtons.KEY_DOWN_PIN,
@@ -167,7 +110,6 @@ class HardwareButtons(Singleton):
                     pygame.K_3: HardwareButtons.KEY3_PIN,
                 }
                 cls._instance.reverse_map = {v: k for k, v in cls._instance.key_map.items()}
-                # Pre-calculate rectangles for clickable on-screen buttons.
                 cls._instance.button_rects = {
                     key: pygame.Rect(
                         x * cls._instance.scale,
@@ -179,33 +121,22 @@ class HardwareButtons(Singleton):
                 }
 
             cls._instance.override_ind = False
-
-            # Track state over time so we can handle long presses and repeats.
-            cls._instance.cur_input = None           # Which direction or button was last pressed
-            cls._instance.cur_input_started = None   # When that input began
-            cls._instance.last_input_time = int(time.time() * 1000)  # Last moment of input
-            cls._instance.first_repeat_threshold = 225  # Delay before first repeat
-            cls._instance.next_repeat_threshold = 250  # Delay between repeats
+            cls._instance.cur_input = None
+            cls._instance.cur_input_started = None
+            cls._instance.last_input_time = int(time.time() * 1000)
+            cls._instance.first_repeat_threshold = 225
+            cls._instance.next_repeat_threshold = 250
 
         return cls._instance
 
-
     @classmethod
     def get_instance_no_hardware(cls):
-        """Create the singleton without initialising GPIO or pygame.
-
-        Mainly used in unit tests where no hardware is present.
-        """
         if cls._instance is None:
             cls._instance = cls.__new__(cls)
 
-
-    def wait_for(self, keys: List[int] = []) -> int:
-        """Block until one of the target keys is pressed.
-
-        The wait can be interrupted by calling :meth:`trigger_override`.
-        """
+    def wait_for(self, keys: List = []) -> int:
         from seedsigner.controller import Controller
+
         controller = Controller.get_instance()
         self.override_ind = False
 
@@ -223,7 +154,7 @@ class HardwareButtons(Singleton):
 
             if USING_GPIO:
                 for key in keys:
-                    if self.GPIO.input(key) == GPIO.LOW:
+                    if not self._gpio_pins[key].read():
                         if self.cur_input != key:
                             self.cur_input = key
                             self.cur_input_started = cur_time
@@ -267,69 +198,61 @@ class HardwareButtons(Singleton):
                                 return mapped
                 time.sleep(0.01)
 
-
     def update_last_input_time(self):
-        """Record the current time as the last moment of user interaction."""
         self.last_input_time = int(time.time() * 1000)
 
-
     def trigger_override(self) -> bool:
-        """Break out of the :meth:`wait_for` loop on the next iteration."""
         self.override_ind = True
 
-
-    def check_for_low(self, key: int = None, keys: List[int] = None) -> bool:
-        """Return ``True`` if any of the requested keys are currently pressed."""
+    def check_for_low(self, key=None, keys: List = None) -> bool:
         if key:
             keys = [key]
 
         if USING_GPIO:
             for key in keys:
-                if self.GPIO.input(key) == self.GPIO.LOW:
-                    self.update_last_input_time()
-                    return True
-            return False
-        else:
-            pygame.event.pump()
-            pressed = pygame.key.get_pressed()
-            for key in keys:
-                pg_key = self.reverse_map.get(key)
-                if pg_key and pressed[pg_key]:
+                if not self._gpio_pins[key].read():
                     self.update_last_input_time()
                     return True
             return False
 
+        pygame.event.pump()
+        pressed = pygame.key.get_pressed()
+        for key in keys:
+            pg_key = self.reverse_map.get(key)
+            if pg_key and pressed[pg_key]:
+                self.update_last_input_time()
+                return True
+        return False
 
     def has_any_input(self) -> bool:
-        """Return ``True`` if any button is currently pressed."""
         if USING_GPIO:
             for key in HardwareButtonsConstants.ALL_KEYS:
-                if self.GPIO.input(key) == GPIO.LOW:
-                    return True
-            return False
-        else:
-            pygame.event.pump()
-            pressed = pygame.key.get_pressed()
-            for key in HardwareButtonsConstants.ALL_KEYS:
-                pg_key = self.reverse_map.get(key)
-                if pg_key and pressed[pg_key]:
+                if not self._gpio_pins[key].read():
                     return True
             return False
 
+        pygame.event.pump()
+        pressed = pygame.key.get_pressed()
+        for key in HardwareButtonsConstants.ALL_KEYS:
+            pg_key = self.reverse_map.get(key)
+            if pg_key and pressed[pg_key]:
+                return True
+        return False
 
-# Coordinates for clickable desktop buttons (unscaled)
+    def __del__(self):
+        if hasattr(self, "_gpio_pins"):
+            for pin in self._gpio_pins.values():
+                pin.close()
+
 
 def _recalc_desktop_layout() -> None:
-    """Recalculate button rectangles for the current desktop dimensions."""
     global D_PAD_CENTER_X, D_PAD_CENTER_Y, BTN_X, BTN_TOP, DESKTOP_BUTTON_LAYOUT
 
-    # Centre the D-pad in the left panel and stack function buttons on the right.
     D_PAD_CENTER_X = DESKTOP_LEFT_WIDTH // 2
     D_PAD_CENTER_Y = DESKTOP_HEIGHT // 2
     BTN_X = DESKTOP_LEFT_WIDTH + DESKTOP_WIDTH + (DESKTOP_RIGHT_WIDTH - BTN_SIZE) // 2
     BTN_TOP = DESKTOP_HEIGHT // 2 - (3 * BTN_SIZE + 2 * BTN_SPACING) // 2
     DESKTOP_BUTTON_LAYOUT = {
-        # D-pad on the left
         HardwareButtons.KEY_UP_PIN: (
             D_PAD_CENTER_X - D_PAD_SIZE // 2,
             D_PAD_CENTER_Y - D_PAD_SIZE * 3 // 2,
@@ -360,7 +283,6 @@ def _recalc_desktop_layout() -> None:
             D_PAD_SIZE,
             D_PAD_SIZE,
         ),
-        # Function buttons stacked on the right
         HardwareButtons.KEY1_PIN: (
             BTN_X,
             BTN_TOP,
@@ -385,39 +307,15 @@ def _recalc_desktop_layout() -> None:
 _recalc_desktop_layout()
 
 
-# Convenience class for static button/channel lookup values
 class HardwareButtonsConstants:
-    """Numeric codes representing each physical or simulated button."""
-
-    if USING_GPIO and GPIO.RPI_INFO['P1_REVISION'] == 3:
-        KEY_UP = 31
-        KEY_DOWN = 35
-        KEY_LEFT = 29
-        KEY_RIGHT = 37
-        KEY_PRESS = 33
-
-        KEY1 = 40
-        KEY2 = 38
-        KEY3 = 36
-    elif USING_GPIO:
-        KEY_UP = 5
-        KEY_DOWN = 11
-        KEY_LEFT = 3
-        KEY_RIGHT = 15
-        KEY_PRESS = 7
-
-        KEY1 = 16
-        KEY2 = 12
-        KEY3 = 8
-    else:
-        KEY_UP = HardwareButtons.KEY_UP_PIN
-        KEY_DOWN = HardwareButtons.KEY_DOWN_PIN
-        KEY_LEFT = HardwareButtons.KEY_LEFT_PIN
-        KEY_RIGHT = HardwareButtons.KEY_RIGHT_PIN
-        KEY_PRESS = HardwareButtons.KEY_PRESS_PIN
-        KEY1 = HardwareButtons.KEY1_PIN
-        KEY2 = HardwareButtons.KEY2_PIN
-        KEY3 = HardwareButtons.KEY3_PIN
+    KEY_UP = HardwareButtons.KEY_UP_PIN
+    KEY_DOWN = HardwareButtons.KEY_DOWN_PIN
+    KEY_LEFT = HardwareButtons.KEY_LEFT_PIN
+    KEY_RIGHT = HardwareButtons.KEY_RIGHT_PIN
+    KEY_PRESS = HardwareButtons.KEY_PRESS_PIN
+    KEY1 = HardwareButtons.KEY1_PIN
+    KEY2 = HardwareButtons.KEY2_PIN
+    KEY3 = HardwareButtons.KEY3_PIN
 
     OVERRIDE = 1000
 
