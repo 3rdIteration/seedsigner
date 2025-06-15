@@ -1,18 +1,15 @@
 """Cross-platform camera abstraction used for scanning QR codes.
 
-This module wraps either the Raspberry Pi camera modules or any system webcam
-accessible via pygame or OpenCV. The :class:`Camera` class is implemented as a
-singleton so the rest of the codebase can grab a single shared instance.
+This module wraps system webcams via OpenCV and exposes a singleton camera API.
 """
 
-import io
 from PIL import Image
 from seedsigner.models.settings import Settings, SettingsConstants
 from seedsigner.models.singleton import Singleton
 
 
 class Camera(Singleton):
-    """Singleton wrapper around PiCamera or a system webcam."""
+    """Singleton wrapper around OpenCV camera access."""
 
     _video_stream = None
     _picamera = None
@@ -33,7 +30,6 @@ class Camera(Singleton):
                 options.append((i, name))
             pygame.camera.quit()
         except Exception:
-            # Fall back to probing via OpenCV if pygame's camera module is unavailable.
             try:
                 import cv2  # type: ignore
 
@@ -85,11 +81,7 @@ class Camera(Singleton):
         self._video_stream.start()
 
     def read_video_stream(self, as_image=False):
-        """Return the latest frame from the video stream.
-
-        If ``as_image`` is ``True`` a PIL :class:`Image` is returned instead of
-        the raw numpy array.
-        """
+        """Return the latest frame from the video stream."""
         if not self._video_stream:
             raise Exception("Must call start_video_stream first.")
         frame = self._video_stream.read()
@@ -112,59 +104,36 @@ class Camera(Singleton):
         if self._video_stream is not None:
             self.stop_video_stream_mode()
         if self._picamera is not None:
-            if hasattr(self._picamera, "close"):
-                self._picamera.close()
-            else:
-                self._picamera.release()
+            self._picamera.release()
 
         try:
-            from picamera import PiCamera
-
-            self._picamera = PiCamera(resolution=resolution, framerate=24)
-            self._picamera.start_preview()
-        except Exception:
-            try:
-                import cv2  # type: ignore
-            except Exception as e:
-                raise ModuleNotFoundError(
-                    "OpenCV is required for desktop camera support; install requirements-desktop.txt",
-                ) from e
-            self._picamera = cv2.VideoCapture(self._camera_index)
-            self._picamera.set(cv2.CAP_PROP_FRAME_WIDTH, resolution[0])
-            self._picamera.set(cv2.CAP_PROP_FRAME_HEIGHT, resolution[1])
+            import cv2  # type: ignore
+        except Exception as e:
+            raise ModuleNotFoundError(
+                "OpenCV is required for camera support; install requirements-desktop.txt",
+            ) from e
+        self._picamera = cv2.VideoCapture(self._camera_index)
+        self._picamera.set(cv2.CAP_PROP_FRAME_WIDTH, resolution[0])
+        self._picamera.set(cv2.CAP_PROP_FRAME_HEIGHT, resolution[1])
 
     def capture_frame(self):
         """Capture a single frame from the camera as a PIL image."""
         if self._picamera is None:
             raise Exception("Must call start_single_frame_mode first.")
 
-        if hasattr(self._picamera, "capture"):
-            # PiCamera path
-            self._picamera.shutter_speed = self._picamera.exposure_speed
-            self._picamera.exposure_mode = "off"
-            g = self._picamera.awb_gains
-            self._picamera.awb_mode = "off"
-            self._picamera.awb_gains = g
+        import cv2  # type: ignore
 
-            stream = io.BytesIO()
-            self._picamera.capture(stream, format="jpeg")
-            stream.seek(0)
-            return Image.open(stream).rotate(90 + self._camera_rotation)
-        else:
-            # OpenCV path
-            ret, frame = self._picamera.read()
-            if not ret:
-                return None
-            return Image.fromarray(frame.astype("uint8"), "RGB").rotate(
-                90 + self._camera_rotation
-            )
+        ret, frame = self._picamera.read()
+        if not ret:
+            return None
+
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        return Image.fromarray(rgb_frame.astype("uint8"), "RGB").rotate(
+            90 + self._camera_rotation
+        )
 
     def stop_single_frame_mode(self):
         """Release any resources used for single-frame capture."""
         if self._picamera is not None:
-            if hasattr(self._picamera, "close"):
-                self._picamera.close()
-            else:
-                self._picamera.release()
+            self._picamera.release()
             self._picamera = None
-

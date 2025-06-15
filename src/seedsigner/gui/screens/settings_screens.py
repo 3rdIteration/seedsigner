@@ -232,8 +232,8 @@ class IOTestScreen(BaseTopNavScreen):
                 # Snap a pic, render it as the background, re-render all onscreen elements
                 camera = Camera.get_instance()
                 try:
-                    camera.start_single_frame_mode(resolution=(self.canvas_width, self.canvas_height))
-
+                    # camera.start_single_frame_mode(resolution=(self.canvas_width, self.canvas_height))
+                    camera.start_video_stream_mode()
                     # Reset the button state
                     with self.renderer.lock:
                         cur_selected_button.is_selected = False
@@ -253,7 +253,8 @@ class IOTestScreen(BaseTopNavScreen):
                             component.render()
                         self.renderer.show_image()
                 finally:
-                    camera.stop_single_frame_mode()
+                    # camera.stop_single_frame_mode()
+                    camera.stop_video_stream_mode()
 
                 continue
 
