@@ -1,7 +1,6 @@
 from PIL import Image, ImageDraw
 from threading import Lock
 
-# from seedsigner.hardware.st7789_mpy import ST7789
 from seedsigner.hardware.displays.display_driver import (
     ALL_DISPLAY_TYPES,
     DISPLAY_TYPE__ILI9341,
