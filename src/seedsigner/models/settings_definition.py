@@ -238,6 +238,9 @@ class SettingsConstants:
     # Hardware config settings
     HARDWARE__RPI_40 = "RPI_40"
     HARDWARE__RPI_26 = "RPI_26"
+    HARDWARE__LUCKFOX_22 = "FOX_22"
+    HARDWARE__LUCKFOX_40 = "FOX_40"
+
 
     # RPI Devices using BCM pin numbers
     HARDWARE_PIN_CONFIG__RPI_40 = {
@@ -292,14 +295,74 @@ class SettingsConstants:
         }
     }
 
+
+    # PICO MINI
+    HARDWARE_PIN_CONFIG__FOX_22 = {
+        "display": {
+            "dc": ("/dev/gpiochip1", 20),
+            "rst": ("/dev/gpiochip1", 19),
+            "bl": ("/dev/gpiochip1", 11),
+            "spi_bus": 0,
+            "spi_device": 0
+        },
+        "buttons": {
+            "KEY_UP": ("/dev/gpiochip1", 25),
+            "KEY_DOWN": ("/dev/gpiochip1", 27),
+            "KEY_LEFT": ("/dev/gpiochip1", 24),
+            "KEY_RIGHT": ("/dev/gpiochip1", 22),
+            "KEY_PRESS": ("/dev/gpiochip1", 26),
+            "KEY1": ("/dev/gpiochip1", 23),
+            "KEY2": ("/dev/gpiochip0", 4),
+            "KEY3": ("/dev/gpiochip1", 21),
+        },
+        "camera": {
+            "device": "/dev/video12",
+            "resolution": (800, 600),
+            "pixelformat": "NV12",
+            "framerate": 10
+        }
+    }
+
+    # PICO & PICO PRO
+    HARDWARE_PIN_CONFIG__FOX_40 = {
+        "display": {
+            "dc": ("/dev/gpiochip1", 24),
+            "rst": ("/dev/gpiochip1", 25),
+            "bl": ("/dev/gpiochip2", 8),
+            "spi_bus": 0,
+            "spi_device": 0
+        },
+        "buttons": {
+            "KEY_UP": ("/dev/gpiochip1", 28),
+            "KEY_DOWN": ("/dev/gpiochip1", 21),
+            "KEY_LEFT": ("/dev/gpiochip1", 27),
+            "KEY_RIGHT": ("/dev/gpiochip1", 22),
+            "KEY_PRESS": ("/dev/gpiochip1", 20),
+            "KEY1": ("/dev/gpiochip1", 23),
+            "KEY2": ("/dev/gpiochip1", 11),
+            "KEY3": ("/dev/gpiochip1", 10),
+        },
+        "camera": {
+            "device": "/dev/video12",
+            "resolution": (800, 600),
+            "pixelformat": "NV12",
+            "framerate": 10
+        }
+    }
+
+
     ALL_HARDWARE_PIN_CONFIGS = [
         (HARDWARE__RPI_40, "Raspberry Pi 40-pin"),
         (HARDWARE__RPI_26, "Raspberry Pi 26-pin"),
+        (HARDWARE__LUCKFOX_22, "Luckfox Pico 22-pin"),
+        (HARDWARE__LUCKFOX_40, "Luckfox Pico 40-pin")
     ]
 
     ALL_HARDWARE_PIN_CONFIGS__PIN_DEFINITIONS = {
         HARDWARE__RPI_40: HARDWARE_PIN_CONFIG__RPI_40,
         HARDWARE__RPI_26: HARDWARE_PIN_CONFIG__RPI_26,
+        HARDWARE__LUCKFOX_22: HARDWARE_PIN_CONFIG__FOX_22,
+        HARDWARE__LUCKFOX_40: HARDWARE_PIN_CONFIG__FOX_40
     }
 
     # QR code constants
