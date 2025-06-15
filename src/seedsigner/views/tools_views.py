@@ -605,11 +605,21 @@ class ToolsImageEntropyFinalImageView(View):
 
             # Final image will be at least 4x the number of pixels the screen can
             # actually display.
-            camera.start_single_frame_mode(resolution=(2*max_dim, 2*max_dim))
+            camera.start_video_stream_mode()
 
-            time.sleep(0.25)
-            self.controller.image_entropy_final_image = camera.capture_frame()
-            camera.stop_single_frame_mode()
+            # From testing, it take a while before the first frame is available
+            time.sleep(2)
+            img = camera.read_video_stream(as_image=True)
+            count = 0
+            while img is None and count < 10:
+                logger.info(f"Attempt {count} to read video stream frame")
+                img = camera.read_video_stream(as_image=True)
+                count += 1
+                time.sleep(0.2)
+
+            self.controller.image_entropy_final_image = img
+            # camera.stop_single_frame_mode()
+            camera.stop_video_stream_mode()
 
         # Prep a copy of the image for display:
         #   * Boost the contrast for better presentation (but preserve the original pixels)
