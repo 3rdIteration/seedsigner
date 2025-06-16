@@ -207,8 +207,8 @@ class Settings(Singleton):
 
             if len(pcscd_ignore_devices) > 0:
                 print("Updating PCSC Ignore List to:", ','.join(pcscd_ignore_devices))
-                os.system("export PCSCLITE_FILTER_IGNORE_READER_NAMES=" + ','.join(pcscd_ignore_devices)
-                out = os.system("echo $PCSCLITE_FILTER_IGNORE_READER_NAMES=" + ','.join(pcscd_ignore_devices)
+                os.system("export PCSCLITE_FILTER_IGNORE_READER_NAMES=" + ','.join(pcscd_ignore_devices))
+                out = os.system("echo $PCSCLITE_FILTER_IGNORE_READER_NAMES=" + ','.join(pcscd_ignore_devices))
                 print(out) 
                 os.system("/etc/init.d/S01pcscd stop")
                 time.sleep(1)
