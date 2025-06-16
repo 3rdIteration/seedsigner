@@ -19,7 +19,6 @@ class InvalidSettingsQRData(Exception):
     pass
 
 
-
 class Settings(Singleton):
     HOSTNAME = platform.uname()[1]
     SEEDSIGNER_OS = "seedsigner-os"
