@@ -205,10 +205,11 @@ class Settings(Singleton):
             if 'sec1210' not in value:
                 pcscd_ignore_devices.append("SEC1210")
 
+            # PCSC supports filtering unwanted devices, but this is done through an environment variable
+            # and also requires a restart of PCSC (So it's pretty simple to just edit the init.d file)
             if len(pcscd_ignore_devices) > 0:
                 print("Updating PCSC Ignore List to:", ','.join(pcscd_ignore_devices))
-                os.system("export PCSCLITE_FILTER_IGNORE_READER_NAMES=" + ','.join(pcscd_ignore_devices))
-                out = os.system("echo $PCSCLITE_FILTER_IGNORE_READER_NAMES=" + ','.join(pcscd_ignore_devices))
+                self.patch_pcsc_initd_script(','.join(pcscd_ignore_devices))
                 print(out) 
                 os.system("/etc/init.d/S01pcscd stop")
                 time.sleep(1)
@@ -383,6 +384,43 @@ class Settings(Singleton):
         # Special handling for localization
         if attr_name == SettingsConstants.SETTING__LOCALE:
             self.load_locale()
+
+    def patch_pcsc_initd_script(self, desired_value):
+        import re
+        initd_path = "/etc/init.d/S01pcscd" #This is fixed for seedsigner OS
+
+        with open(initd_path, "r") as f:
+            content = f.read()
+
+        # Pattern to match existing definition + export
+        pattern = re.compile(
+            r'(?m)^PCSCLITE_FILTER_IGNORE_READER_NAMES\s*=.*?\n^export\s+PCSCLITE_FILTER_IGNORE_READER_NAMES\s*\n?',
+            re.MULTILINE
+        )
+
+        replacement = (
+            f'PCSCLITE_FILTER_IGNORE_READER_NAMES="{desired_value}"\n'
+            f'export PCSCLITE_FILTER_IGNORE_READER_NAMES\n'
+        )
+
+        if pattern.search(content):
+            # Replace existing definition
+            content = pattern.sub(replacement, content)
+            print("Replaced existing PCSCLITE_FILTER_IGNORE_READER_NAMES block.")
+        else:
+            # Insert after shebang if not found
+            lines = content.splitlines(keepends=True)
+            for i, line in enumerate(lines):
+                if line.startswith("#!"):
+                    lines.insert(i + 1, replacement)
+                    print("Inserted new PCSCLITE_FILTER_IGNORE_READER_NAMES block.")
+                    break
+            content = ''.join(lines)
+
+        with open(initd_path, "w") as f:
+            f.write(content)
+
+        print("Updated and saved init.d script.")
 
     def get_value(self, attr_name: str):
         """
