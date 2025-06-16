@@ -19,7 +19,6 @@ class InvalidSettingsQRData(Exception):
     pass
 
 
-
 class Settings(Singleton):
     HOSTNAME = platform.uname()[1]
     SEEDSIGNER_OS = "seedsigner-os"
@@ -198,9 +197,28 @@ class Settings(Singleton):
             #from seedsigner.gui.screens.screen import LoadingScreenThread, WarningScreen
             
             print("Smartcard Interface Changed")
+            print("Value:", value)
+            # Update PCSC ignore list (Needed for IFD-NFC, but also add ability to disable SEC1210 or other readers if required)
+            pcscd_ignore_devices = []
+            if 'pn532' not in value:
+                pcscd_ignore_devices.append("IFD-NFC")
+            if 'sec1210' not in value:
+                pcscd_ignore_devices.append("SEC1210")
+            if 'phoenix-usb' not in value:
+                pcscd_ignore_devices.append("OpenCT")
+
+            # PCSC supports filtering unwanted devices, but this is done through an environment variable
+            # and also requires a restart of PCSC (So it's pretty simple to just edit the init.d file)
+            print("Updating PCSC Ignore List to:", ':'.join(pcscd_ignore_devices))
+
+            # Only do this on SeedSignerOS, not on dev environment
+            if self.HOSTNAME == self.SEEDSIGNER_OS:
+                self.patch_pcsc_initd_script(':'.join(pcscd_ignore_devices))
+
+            #PCSC is restarted at the end
 
             # Basically just check through a a bunch of possible USB hubs and ports and enable/disable them all (Should cover all RPi models, RPi4 has lots of USB ports...)
-            if "usb" not in value and "usb" in self._data[attr_name]:
+            if not any('usb' in d for d in value) and any('usb' in d for d in self._data[attr_name]):
                 print("Disabling USB")
                 try:
                     self.loading_screen = seedsigner.gui.screens.screen.LoadingScreenThread(text="Disabling USB Ports")
@@ -227,7 +245,7 @@ class Settings(Singleton):
                 except:
                     pass
 
-            if "usb" in value and "usb" not in self._data[attr_name]:
+            if any('usb' in d for d in value) and not any('usb' in d for d in self._data[attr_name]):
                 print("Enabling USB")
                 try:
                     self.loading_screen = seedsigner.gui.screens.screen.LoadingScreenThread(text="Enabling USB Ports")
@@ -251,14 +269,7 @@ class Settings(Singleton):
                     os.system(self.SU_COMMAND_PREFIX + "uhubctl -l 1-1 -p 2 -a 1")
 
                 time.sleep(1)
-                if self.HOSTNAME == self.SEEDSIGNER_OS:
-                    os.system("/etc/init.d/S01pcscd stop")
-                    time.sleep(1)
-                    os.system("/etc/init.d/S01pcscd start")
-                else:
-                    os.system("sudo service pcscd stop")
-                    time.sleep(1)
-                    os.system("sudo service pcscd start")
+                # Restart PCSC at the end
 
                 try:
                     self.loading_screen.stop()
@@ -285,8 +296,8 @@ class Settings(Singleton):
                     pass
 
 
-            # Execution order matters here if swithing from Phoenix to PN352, basically we want to disable phoenix first and then enable PN532
-            if "phoenix" in value and "phoenix" not in self._data[attr_name]:
+            # Execution order matters here if swithing from Phoenix to PN532, basically we want to disable phoenix first and then enable PN532
+            if "phoenix-usb" in value and "phoenix-usb" not in self._data[attr_name]:
                 print("Phoenix Enabled")
                 try:
                     self.loading_screen = seedsigner.gui.screens.screen.LoadingScreenThread(text="Starting OpenCT")
@@ -297,21 +308,12 @@ class Settings(Singleton):
                 os.system(self.SU_COMMAND_PREFIX + "openct-control init") # OpenCT needs a bit of time to get going before restarting PCSCD (At least two seconds) to work reliabily
                 time.sleep(3)
 
-                if self.HOSTNAME == self.SEEDSIGNER_OS:
-                    os.system("/etc/init.d/S01pcscd stop")
-                    time.sleep(1)
-                    os.system("/etc/init.d/S01pcscd start")
-                else:
-                    os.system("sudo service pcscd stop")
-                    time.sleep(1)
-                    os.system("sudo service pcscd start")
-
                 try:
                     self.loading_screen.stop()
                 except:
                     pass
 
-            if "phoenix" not in value and "phoenix" in self._data[attr_name]:
+            if "phoenix-usb" not in value and "phoenix-usb" in self._data[attr_name]:
                 print("Phoenix Disabled")
                 try:
                     self.loading_screen = seedsigner.gui.screens.screen.LoadingScreenThread(text="Stopping OpenCT")
@@ -321,15 +323,6 @@ class Settings(Singleton):
                 
                 os.system(self.SU_COMMAND_PREFIX + "openct-control shutdown")
                 time.sleep(3)
-
-                if self.HOSTNAME == self.SEEDSIGNER_OS:
-                    os.system("/etc/init.d/S01pcscd stop")
-                    time.sleep(1)
-                    os.system("/etc/init.d/S01pcscd start")
-                else:
-                    os.system("sudo service pcscd stop")
-                    time.sleep(1)
-                    os.system("sudo service pcscd start")
 
                 try:
                     self.loading_screen.stop()
@@ -362,12 +355,78 @@ class Settings(Singleton):
                 except:
                     pass
 
+            # Restart PCSC (Just do this all the time if anything has changed)
+            try:
+                self.loading_screen = seedsigner.gui.screens.screen.LoadingScreenThread(text="Restarting PCSC")
+                self.loading_screen.start()
+            except:
+                pass
+            if self.HOSTNAME == self.SEEDSIGNER_OS:
+                os.system("/etc/init.d/S01pcscd stop")
+                time.sleep(1)
+                os.system("/etc/init.d/S01pcscd start")
+            else:
+                os.system("sudo service pcscd stop")
+                time.sleep(1)
+                os.system("sudo service pcscd start")
+            try:
+                self.loading_screen.stop()
+            except:
+                pass
+
         self._data[attr_name] = value
         self.save()
 
         # Special handling for localization
         if attr_name == SettingsConstants.SETTING__LOCALE:
             self.load_locale()
+
+    import re
+
+    def patch_pcsc_initd_script(self, desired_value, path="/etc/init.d/S01pcscd"):
+        import re
+
+        with open(path, "r") as f:
+            content = f.read()
+
+        # Step 1: Remove global PCSCLITE_FILTER_IGNORE_READER_NAMES definitions
+        content = re.sub(
+            r'(?m)^\s*PCSCLITE_FILTER_IGNORE_READER_NAMES=.*\n^\s*export\s+PCSCLITE_FILTER_IGNORE_READER_NAMES\s*\n?',
+            '',
+            content
+        )
+
+        # Step 2: Patch start() and restart() functions only
+        def patch_function_block(func_name, content):
+            pattern = re.compile(
+                rf'({func_name}\s*\(\)\s*{{)(.*?)(^\s*PCSCLITE_FILTER_IGNORE_READER_NAMES=.*?\n^\s*export\s+PCSCLITE_FILTER_IGNORE_READER_NAMES\s*\n?)?',
+                re.DOTALL | re.MULTILINE
+            )
+
+            def replacer(match):
+                header = match.group(1)
+                body = match.group(2)
+                # Remove old variable lines inside function body
+                body = re.sub(
+                    r'(?m)^\s*PCSCLITE_FILTER_IGNORE_READER_NAMES=.*\n^\s*export\s+PCSCLITE_FILTER_IGNORE_READER_NAMES\s*\n?',
+                    '',
+                    body
+                )
+                insert = (
+                    f'    PCSCLITE_FILTER_IGNORE_READER_NAMES="{desired_value}"\n'
+                    f'    export PCSCLITE_FILTER_IGNORE_READER_NAMES\n'
+                )
+                return f"{header}\n{insert}{body}"
+
+            return pattern.sub(replacer, content, count=1)
+
+        content = patch_function_block("start", content)
+        content = patch_function_block("restart", content)
+
+        with open(path, "w") as f:
+            f.write(content)
+
+        print(f"Environment variable set in 'start()' and 'restart()', and removed from global scope.")
 
     def get_value(self, attr_name: str):
         """

@@ -93,7 +93,7 @@ def init_satochip(parentObject, init_card_filter=None, require_pin = True):
             WarningScreen,
             title="Unable to Connect",
             status_headline=None,
-            text=f"Unable to find SeedKeeper Card \n(or Applet)",
+            text=f"Unable to find SeedKeeper Card \n(or Applet)\n\nTry Re-Inserting Card",
             show_back_button=True,
         )
         return None

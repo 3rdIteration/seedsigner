@@ -21,6 +21,7 @@ class SettingsMenuView(View):
     LIST_READERS = ButtonOption("List card readers")
     NFC_TEST = ButtonOption("Test NFC Scan")
     DONATE = ButtonOption("Donate")
+    RESTART_PCSC = ButtonOption("Restart PCSC")
 
     def __init__(self, visibility: str = SettingsConstants.VISIBILITY__GENERAL, selected_attr: str = None, initial_scroll: int = 0):
         super().__init__()
@@ -55,6 +56,7 @@ class SettingsMenuView(View):
             button_data.append(self.LIST_READERS)
             button_data.append(self.SCARD_TEST)
             button_data.append(self.NFC_TEST)
+            button_data.append(self.RESTART_PCSC)
             button_data.append(self.DONATE)
 
         elif self.visibility == SettingsConstants.VISIBILITY__ADVANCED:
@@ -103,6 +105,9 @@ class SettingsMenuView(View):
 
         elif button_data[selected_menu_num] == self.NFC_TEST:
             return Destination(NFCTestView)
+
+        elif button_data[selected_menu_num] == self.RESTART_PCSC:
+            return Destination(RestartPCSCView)
 
         elif len(button_data) > selected_menu_num and button_data[selected_menu_num] == self.DONATE:
             return Destination(DonateView)
@@ -338,7 +343,6 @@ class SCardReaderTestView(View):
             return Destination(BackStackView)
 
         except EstablishContextException:
-            self.loading_screen.stop()
             self.run_screen(
                     WarningScreen,
                     title="PCSC Failure",
@@ -531,6 +535,27 @@ class NFCTestView(View):
         
         return Destination(MainMenuView)
 
+class RestartPCSCView(View):
+    def run(self):
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+        import os
+        import time
+        # Restart PCSC (Just do this all the time if anything has changed)
+        self.loading_screen = LoadingScreenThread(text="Restarting PCSC")
+        self.loading_screen.start()
+        print(self.settings.HOSTNAME)
+        if self.settings.HOSTNAME == "seedsigner-os":
+            os.system("/etc/init.d/S01pcscd stop")
+            time.sleep(1)
+            os.system("/etc/init.d/S01pcscd start")
+        else:
+            os.system("sudo service pcscd stop")
+            time.sleep(1)
+            os.system("sudo service pcscd start")
+        self.loading_screen.stop()
+
+
+        return Destination(SettingsMenuView)
 
 class DonateView(View):
     def run(self):
