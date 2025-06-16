@@ -210,7 +210,6 @@ class Settings(Singleton):
             if len(pcscd_ignore_devices) > 0:
                 print("Updating PCSC Ignore List to:", ','.join(pcscd_ignore_devices))
                 self.patch_pcsc_initd_script(','.join(pcscd_ignore_devices))
-                print(out) 
                 os.system("/etc/init.d/S01pcscd stop")
                 time.sleep(1)
                 os.system("/etc/init.d/S01pcscd start")
