@@ -338,7 +338,6 @@ class SCardReaderTestView(View):
             return Destination(BackStackView)
 
         except EstablishContextException:
-            self.loading_screen.stop()
             self.run_screen(
                     WarningScreen,
                     title="PCSC Failure",

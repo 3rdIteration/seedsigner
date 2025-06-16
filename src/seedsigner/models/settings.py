@@ -198,6 +198,17 @@ class Settings(Singleton):
             #from seedsigner.gui.screens.screen import LoadingScreenThread, WarningScreen
             
             print("Smartcard Interface Changed")
+            # Update PCSC ignore list (Needed for IFD-NFC, but also add ability to disable SEC1210 if required)
+            pcscd_ignore_devices = []
+            if 'pn532' not in value:
+                pcscd_ignore_devices.append("IFD-NFC")
+            if 'sec1210' not in value:
+                pcscd_ignore_devices.append("SEC1210")
+                
+            # Buildroot runs everything as root so PCSCD should be able to see this...
+            os.environ["PCSCLITE_FILTER_IGNORE_READER_NAMES"] = ','.join(pcscd_ignore_devices)
+
+            print("Updating PCSC Ignore List to:", ','.join(pcscd_ignore_devices))
 
             # Basically just check through a a bunch of possible USB hubs and ports and enable/disable them all (Should cover all RPi models, RPi4 has lots of USB ports...)
             if "usb" not in value and "usb" in self._data[attr_name]:
@@ -285,7 +296,7 @@ class Settings(Singleton):
                     pass
 
 
-            # Execution order matters here if swithing from Phoenix to PN352, basically we want to disable phoenix first and then enable PN532
+            # Execution order matters here if swithing from Phoenix to PN532, basically we want to disable phoenix first and then enable PN532
             if "phoenix" in value and "phoenix" not in self._data[attr_name]:
                 print("Phoenix Enabled")
                 try:
