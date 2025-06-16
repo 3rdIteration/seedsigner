@@ -456,7 +456,7 @@ class SettingsDefinition:
                     display_name="Smartcard Interfaces",
                     type=SettingsConstants.TYPE__MULTISELECT,
                     selection_options=SettingsConstants.ALL_SMARTCARD_INTERFACES,
-                    default_value=SettingsConstants.SMARTCARD_INTERFACE_USB),
+                    default_value=SettingsConstants.ALL_SMARTCARD_INTERFACES),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__SYSTEM,
                     attr_name=SettingsConstants.SETTING__CACHE_SCARD_PIN,
