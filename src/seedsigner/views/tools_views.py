@@ -962,7 +962,7 @@ class ToolsSatochipChangeNFCView(View):
             )
             if ret == RET_CODE__BACK_BUTTON:
                 return Destination(MainMenuView)
-
+        
         (response, sw1, sw2) = Satochip_Connector.card_set_nfc_policy(nfc_policy)
 
         if sw1 == 0x90 and sw2 == 0x00:
@@ -995,6 +995,8 @@ class ToolsSatochipChangeNFCView(View):
 
 class ToolsSatochipFactoryResetView(View):
     def run(self):
+        resetStatus = False
+
         ret = self.run_screen(
                 DireWarningScreen,
                 title="Warning",
@@ -1032,7 +1034,6 @@ class ToolsSatochipFactoryResetView(View):
         
         elif Satochip_Connector.card_type == "Satodime":
             print("Satodime does not support factory reset!")
-            return
 
         elif Satochip_Connector.card_type == "Satochip":
             # get version
@@ -1047,11 +1048,23 @@ class ToolsSatochipFactoryResetView(View):
                 resetStatus = self.common_reset_factory_legacy(Satochip_Connector) 
             else:
                 print("Satochip below version v0.12-0.4 do not support factory reset!")
-                return
+                ret = self.run_screen(
+                    WarningScreen,
+                    title="Failed",
+                    status_headline=None,
+                    text="Satochip below version v0.12-0.4 do not support factory reset!",
+                    show_back_button=True,
+                )
 
         else:
             print(f"Unsupported card type: {Satochip_Connector.card_type}")
-            return
+            ret = self.run_screen(
+                WarningScreen,
+                title="Failed",
+                status_headline=None,
+                text=f"Unsupported card type: {Satochip_Connector.card_type} (Try again)",
+                show_back_button=True,
+            )
 
         if resetStatus:
             self.run_screen(
@@ -1098,15 +1111,41 @@ class ToolsSatochipFactoryResetView(View):
                 return resetStatus
             else:
                 self.loading_screen.start()
-                time.sleep(2)  # give some time to initialize reader after card insertion...
-                (response, sw1, sw2) = Satochip_Connector.card_reset_factory_signal()
-                self.loading_screen.stop()
+                try:
+                    time.sleep(3)  # give some time to initialize reader after card insertion... (Takes a while on Pi0)
+                    (response, sw1, sw2) = Satochip_Connector.card_reset_factory_signal()
+                    self.loading_screen.stop()
+                except Exception as e:
+                    print("Exception:", str(e))
+                    self.loading_screen.stop()
+                    self.run_screen(
+                        WarningScreen,
+                        title="Exception",
+                        status_headline=None,
+                        text=str(e)[:100],
+                        show_back_button=True,
+                    )
+                    break # Just bail out of the workflow if there was an IO error
                 if sw1 == 0x9c and sw2 == 0x04:
                     print("Factory Reset Failed (setup not done)")
+                    self.run_screen(
+                        WarningScreen,
+                        title="Failure",
+                        status_headline=None,
+                        text="Factory Reset Failed (setup not done)",
+                        show_back_button=True,
+                    )
                     #print("In addition to the factory-reset command, you also need to add the '--enablefactoryreset' argument to enable it")
                     break
                 if sw1 == 0x00 and sw2 == 0x00:
                     print("Card Connection Failed!")
+                    self.run_screen(
+                        WarningScreen,
+                        title="Failure",
+                        status_headline=None,
+                        text="Card Connection Failed!",
+                        show_back_button=True,
+                    )
                     break
                 if sw1 == 0xFF and sw2 == 0x00:
                     Satochip_Connector.card_disconnect()
@@ -1115,6 +1154,13 @@ class ToolsSatochipFactoryResetView(View):
                     break
                 elif sw1 == 0xFF and sw2 == 0xFF:
                     print("RESET ABORTED: you must remove card after each reset!")
+                    self.run_screen(
+                        WarningScreen,
+                        title="Failure",
+                        status_headline=None,
+                        text="RESET ABORTED: you must remove card after each reset!",
+                        show_back_button=True,
+                    )
                     break
                 elif sw1 == 0xFF and sw2 > 0x00:
                     remaining_string = "\nREMAINING COUNTER: " + str(sw2)
@@ -1123,10 +1169,24 @@ class ToolsSatochipFactoryResetView(View):
                 elif sw1 == 0x6F and sw2 == 0x00:
                     print("The factory reset failed")
                     print("Unknown error" + str(hex(256 * sw1 + sw2)))
+                    self.run_screen(
+                        WarningScreen,
+                        title="Failure",
+                        status_headline=None,
+                        text="Unknown error" + str(hex(256 * sw1 + sw2)),
+                        show_back_button=True,
+                    )
                     break
                 elif sw1 == 0x6D and sw2 == 0x00:
                     print("The factory reset failed")
                     print("Instruction not supported - error code: " + str(hex(256 * sw1 + sw2)))
+                    self.run_screen(
+                        WarningScreen,
+                        title="Failure",
+                        status_headline=None,
+                        text="Instruction not supported - error code: " + str(hex(256 * sw1 + sw2)),
+                        show_back_button=True,
+                    )
                     break
                 else:
                     print("The factory reset has been cancelled")
