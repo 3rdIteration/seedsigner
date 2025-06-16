@@ -207,12 +207,11 @@ class Settings(Singleton):
 
             # PCSC supports filtering unwanted devices, but this is done through an environment variable
             # and also requires a restart of PCSC (So it's pretty simple to just edit the init.d file)
-            if len(pcscd_ignore_devices) > 0:
-                print("Updating PCSC Ignore List to:", ','.join(pcscd_ignore_devices))
-                self.patch_pcsc_initd_script(','.join(pcscd_ignore_devices))
-                os.system("/etc/init.d/S01pcscd stop")
-                time.sleep(1)
-                os.system("/etc/init.d/S01pcscd start")
+            print("Updating PCSC Ignore List to:", ','.join(pcscd_ignore_devices))
+            self.patch_pcsc_initd_script(','.join(pcscd_ignore_devices))
+            os.system("/etc/init.d/S01pcscd stop")
+            time.sleep(1)
+            os.system("/etc/init.d/S01pcscd start")
 
             # Basically just check through a a bunch of possible USB hubs and ports and enable/disable them all (Should cover all RPi models, RPi4 has lots of USB ports...)
             if "usb" not in value and "usb" in self._data[attr_name]:
