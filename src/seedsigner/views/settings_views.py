@@ -537,13 +537,14 @@ class NFCTestView(View):
 
 class RestartPCSCView(View):
     def run(self):
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+        import os
+        import time
         # Restart PCSC (Just do this all the time if anything has changed)
-        try:
-            self.loading_screen = seedsigner.gui.screens.screen.LoadingScreenThread(text="Restarting PCSC")
-            self.loading_screen.start()
-        except:
-            pass
-        if self.HOSTNAME == self.SEEDSIGNER_OS:
+        self.loading_screen = LoadingScreenThread(text="Restarting PCSC")
+        self.loading_screen.start()
+        print(self.settings.HOSTNAME)
+        if self.settings.HOSTNAME == "seedsigner-os":
             os.system("/etc/init.d/S01pcscd stop")
             time.sleep(1)
             os.system("/etc/init.d/S01pcscd start")
@@ -551,10 +552,8 @@ class RestartPCSCView(View):
             os.system("sudo service pcscd stop")
             time.sleep(1)
             os.system("sudo service pcscd start")
-        try:
-            self.loading_screen.stop()
-        except:
-            pass
+        self.loading_screen.stop()
+
 
         return Destination(SettingsMenuView)
 
