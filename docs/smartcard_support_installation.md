@@ -10,6 +10,18 @@ Demo 1: Pi4 + NFC - https://youtu.be/WHVWqJJBNdA
 Demo 2: PiZero 1.3 + NFC + USB Sim Reader (Phoenix) - https://youtu.be/uG44Fw3rOLg
 
 ## Hardware Requirements
+### GPIO Connected Smartcard Hat
+
+This SeedSigner fork now supports the SEC1210 Serial Smart Card reader, connected via GPIO. 
+
+![](img/smartcard_hats.jpg)
+
+[The schematics and design files for these can be found in this repository](../electronics/SmartcardHat/)
+
+[You can also buy these ready-made from my store](https://cryptoguide.tips/shop/)
+
+You can also simply buy a SmartCard2Click board and connect it to the Raspberry Pi GPIO header.
+
 ### USB Smart Card Readers 
 Any USB smart card reader that is compatible with will work, either hard-wired (Contact) or NFC (Contactless).
 
@@ -21,7 +33,7 @@ If you are running SeedSigner on a system image that is derived from a standard 
 
 The **ACS ACR 122U reader** is unreliable for flashing applets and may brick your card. (Though works fine for normal operation after they have been flashed)
 
-### GPIO Connected Smart Card Readers
+### GPIO NFC Connected Smart Card Readers
 The PN532 NFC V3 module is low cost ($5 on Aliexpress) can be connected via available IO pins and is well supported by LibNFC.
 
 There are a number of ways to connect to the I2C pins, either by adding some 90 degree PIN headers to the top or bottom of the board, or by way of a GPIO splitter.
