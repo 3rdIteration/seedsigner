@@ -204,11 +204,15 @@ class Settings(Singleton):
                 pcscd_ignore_devices.append("IFD-NFC")
             if 'sec1210' not in value:
                 pcscd_ignore_devices.append("SEC1210")
-                
-            # Buildroot runs everything as root so PCSCD should be able to see this...
-            os.environ["PCSCLITE_FILTER_IGNORE_READER_NAMES"] = ','.join(pcscd_ignore_devices)
 
-            print("Updating PCSC Ignore List to:", ','.join(pcscd_ignore_devices))
+            if len(pcscd_ignore_devices) > 0:
+                print("Updating PCSC Ignore List to:", ','.join(pcscd_ignore_devices))
+                os.system("export PCSCLITE_FILTER_IGNORE_READER_NAMES=" + ','.join(pcscd_ignore_devices)
+                out = os.system("echo $PCSCLITE_FILTER_IGNORE_READER_NAMES=" + ','.join(pcscd_ignore_devices)
+                print(out) 
+                os.system("/etc/init.d/S01pcscd stop")
+                time.sleep(1)
+                os.system("/etc/init.d/S01pcscd start")
 
             # Basically just check through a a bunch of possible USB hubs and ports and enable/disable them all (Should cover all RPi models, RPi4 has lots of USB ports...)
             if "usb" not in value and "usb" in self._data[attr_name]:
