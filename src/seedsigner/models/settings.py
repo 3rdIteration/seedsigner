@@ -209,11 +209,11 @@ class Settings(Singleton):
 
             # PCSC supports filtering unwanted devices, but this is done through an environment variable
             # and also requires a restart of PCSC (So it's pretty simple to just edit the init.d file)
-            print("Updating PCSC Ignore List to:", ','.join(pcscd_ignore_devices))
+            print("Updating PCSC Ignore List to:", ':'.join(pcscd_ignore_devices))
 
             # Only do this on SeedSignerOS, not on dev environment
             if self.HOSTNAME == self.SEEDSIGNER_OS:
-                self.patch_pcsc_initd_script(','.join(pcscd_ignore_devices))
+                self.patch_pcsc_initd_script(':'.join(pcscd_ignore_devices))
 
             #PCSC is restarted at the end
 
@@ -381,42 +381,51 @@ class Settings(Singleton):
         if attr_name == SettingsConstants.SETTING__LOCALE:
             self.load_locale()
 
-    def patch_pcsc_initd_script(self, desired_value):
-        import re
-        initd_path = "/etc/init.d/S01pcscd" #This is fixed for seedsigner OS
 
-        with open(initd_path, "r") as f:
+    def patch_pcsc_initd_script(self, desired_value, path="/etc/init.d/S01pcscd"):
+        import re
+
+        with open(path, "r") as f:
             content = f.read()
 
-        # Pattern to match existing definition + export
-        pattern = re.compile(
-            r'(?m)^PCSCLITE_FILTER_IGNORE_READER_NAMES\s*=.*?\n^export\s+PCSCLITE_FILTER_IGNORE_READER_NAMES\s*\n?',
-            re.MULTILINE
+        # Step 1: Remove global PCSCLITE_FILTER_IGNORE_READER_NAMES definitions
+        content = re.sub(
+            r'(?m)^\s*PCSCLITE_FILTER_IGNORE_READER_NAMES=.*\n^\s*export\s+PCSCLITE_FILTER_IGNORE_READER_NAMES\s*\n?',
+            '',
+            content
         )
 
-        replacement = (
-            f'PCSCLITE_FILTER_IGNORE_READER_NAMES="{desired_value}"\n'
-            f'export PCSCLITE_FILTER_IGNORE_READER_NAMES\n'
-        )
+        # Step 2: Patch start() and restart() functions only
+        def patch_function_block(func_name, content):
+            pattern = re.compile(
+                rf'({func_name}\s*\(\)\s*{{)(.*?)(^\s*PCSCLITE_FILTER_IGNORE_READER_NAMES=.*?\n^\s*export\s+PCSCLITE_FILTER_IGNORE_READER_NAMES\s*\n?)?',
+                re.DOTALL | re.MULTILINE
+            )
 
-        if pattern.search(content):
-            # Replace existing definition
-            content = pattern.sub(replacement, content)
-            print("Replaced existing PCSCLITE_FILTER_IGNORE_READER_NAMES block.")
-        else:
-            # Insert after shebang if not found
-            lines = content.splitlines(keepends=True)
-            for i, line in enumerate(lines):
-                if line.startswith("#!"):
-                    lines.insert(i + 1, replacement)
-                    print("Inserted new PCSCLITE_FILTER_IGNORE_READER_NAMES block.")
-                    break
-            content = ''.join(lines)
+            def replacer(match):
+                header = match.group(1)
+                body = match.group(2)
+                # Remove old variable lines inside function body
+                body = re.sub(
+                    r'(?m)^\s*PCSCLITE_FILTER_IGNORE_READER_NAMES=.*\n^\s*export\s+PCSCLITE_FILTER_IGNORE_READER_NAMES\s*\n?',
+                    '',
+                    body
+                )
+                insert = (
+                    f'    PCSCLITE_FILTER_IGNORE_READER_NAMES="{desired_value}"\n'
+                    f'    export PCSCLITE_FILTER_IGNORE_READER_NAMES\n'
+                )
+                return f"{header}\n{insert}{body}"
 
-        with open(initd_path, "w") as f:
+            return pattern.sub(replacer, content, count=1)
+
+        content = patch_function_block("start", content)
+        content = patch_function_block("restart", content)
+
+        with open(path, "w") as f:
             f.write(content)
 
-        print("Updated and saved init.d script.")
+        print(f"Environment variable set in 'start()' and 'restart()', and removed from global scope.")
 
     def get_value(self, attr_name: str):
         """
