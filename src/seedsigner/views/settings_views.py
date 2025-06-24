@@ -352,7 +352,7 @@ class SCardReaderTestView(View):
                 )
             return Destination(BackStackView)
         
-        return Destination(MainMenuView)
+        return Destination(BackStackView)
 
 class SCARDTestView(View):
     def run(self):
@@ -421,7 +421,7 @@ class SCARDTestView(View):
                 )
             return Destination(BackStackView)
         
-        return Destination(MainMenuView)
+        return Destination(BackStackView)
 
 class NFCTestView(View):
     def run(self):

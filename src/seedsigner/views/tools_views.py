@@ -870,7 +870,7 @@ class ToolsCommonView(View):
 
         selected_menu_num = self.run_screen(
                 ButtonListScreen,
-                title="Smartcard Tools",
+                title="Common Tools",
                 is_button_text_centered=False,
                 button_data=button_data
             )
@@ -901,7 +901,7 @@ class ToolsSatochipChangePinView(View):
         NewPin = seed_screens.SeedAddPassphraseScreen(title="New PIN").display()
 
         if "is_back_button" in NewPin:
-            return Destination(ToolsSmartcardMenuView)
+            return Destination(BackStackView)
         
         new_pin = list(NewPin['passphrase'].encode('utf8'))
         response, sw1, sw2 = Satochip_Connector.card_change_PIN(0, Satochip_Connector.pin, new_pin)
@@ -947,11 +947,12 @@ class ToolsSatochipChangeNFCView(View):
             button_data=button_data,
             show_back_button=True,
         )
-        logger.info("Selected" + str(button_data[nfc_policy]) + " " + str(nfc_policy))
 
         if nfc_policy == RET_CODE__BACK_BUTTON:
-            return Destination(MainMenuView)
-    
+            return Destination(BackStackView)
+
+        logger.info("Selected" + str(button_data[nfc_policy]) + " " + str(nfc_policy))    
+
         if (nfc_policy == 2):
             ret = self.run_screen(
                 WarningScreen,
@@ -961,7 +962,7 @@ class ToolsSatochipChangeNFCView(View):
                 show_back_button=True,
             )
             if ret == RET_CODE__BACK_BUTTON:
-                return Destination(MainMenuView)
+                return Destination(BackStackView)
         
         (response, sw1, sw2) = Satochip_Connector.card_set_nfc_policy(nfc_policy)
 
@@ -1005,7 +1006,7 @@ class ToolsSatochipFactoryResetView(View):
                 show_back_button=True,
             )
         if ret == RET_CODE__BACK_BUTTON:
-            return Destination(MainMenuView)
+            return Destination(BackStackView)
 
         """Initiate the card Factory Reset Process using the legacy or new approach based on card type and version
 
@@ -1083,7 +1084,7 @@ class ToolsSatochipFactoryResetView(View):
                 show_back_button=True,
             )
 
-        return Destination(MainMenuView)
+        return Destination(BackStackView)
         
     def common_reset_factory_legacy(self, Satochip_Connector):
         from seedsigner.gui.screens.screen import LoadingScreenThread
@@ -1330,7 +1331,7 @@ class ToolsSatochipChangeLabelView(View):
         NewLabel = seed_screens.SeedAddPassphraseScreen(title="New Label").display()
 
         if "is_back_button" in NewLabel:
-            return Destination(ToolsSmartcardMenuView)
+            return Destination(BackStackView)
 
         """Sets a plain text label for the card (Optional)"""
         try:
@@ -1384,7 +1385,7 @@ class ToolsSeedkeeperView(View):
         )
 
         if selected_menu_num == RET_CODE__BACK_BUTTON:
-            return Destination(ToolsSmartcardMenuView)
+            return Destination(BackStackView)
 
         elif button_data[selected_menu_num] == self.VIEW_SECRETS:
             return Destination(ToolsSeedkeeperViewSecretsView)
@@ -2078,7 +2079,7 @@ class ToolsSatochipView(View):
         )
 
         if selected_menu_num == RET_CODE__BACK_BUTTON:
-            return Destination(ToolsSmartcardMenuView)
+            return Destination(BackStackView)
 
         elif button_data[selected_menu_num] == self.IMPORT_SEED:
             return Destination(ToolsSatochipImportSeedView)
