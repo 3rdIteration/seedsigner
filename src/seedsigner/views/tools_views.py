@@ -2444,6 +2444,15 @@ class ToolsDIYUninstallAppletView(View):
 """****************************************************************************
     MicroSD Views
 ****************************************************************************"""
+def find_sd_card_device():
+    for device in os.listdir("/sys/block"):
+        if device.startswith("mmcblk"):
+            partitions = os.listdir(f"/sys/block/{device}")
+            # Only consider devices with partitions (e.g., mmcblk1p1)
+            if any(p.startswith(device + "p") for p in partitions):
+                return f"/dev/{device}"
+    return None
+
 class ToolsMicroSDMenuView(View):
     FLASH_IMAGE = ButtonOption("Flash Image")
     VERIFY_IMAGE = ButtonOption("Verify MicroSD")
@@ -2480,6 +2489,8 @@ class ToolsMicroSDFlashView(View):
         from subprocess import run
         from seedsigner.gui.screens.screen import LoadingScreenThread
 
+        microsd_dev = find_sd_card_device()
+
         if platform.uname()[1] == "seedsigner-os":
             microsd_images = os.listdir('/mnt/microsd/microsd-images/')
         else:
@@ -2504,6 +2515,7 @@ class ToolsMicroSDFlashView(View):
 
         if platform.uname()[1] == "seedsigner-os":
             data = run("cp /mnt/microsd/microsd-images/" + microsd_image + " /tmp/img.img", capture_output=True, shell=True, text=True)
+            print(data)
             if len(data.stderr) > 1:
                 self.run_screen(
                     WarningScreen,
@@ -2529,17 +2541,30 @@ class ToolsMicroSDFlashView(View):
             self.loading_screen = LoadingScreenThread(text="Flashing MicroSD\n\n\n\n\n\n")
             self.loading_screen.start()
 
+            # Unmount everything
+            if platform.uname()[1] == "seedsigner-os":
+                cmd = "umount /mnt/diy"
+                data = run(cmd, capture_output=True, shell=True, text=True)
+                logger.info(data)
+
+            if platform.uname()[1] == "seedsigner-os":
+                cmd = "umount /mnt/microsd"
+                data = run(cmd, capture_output=True, shell=True, text=True)
+                logger.info(data)
+
             # Zero the MicroSD first (Makes sure that the verification step works correctly later)
             # Seedsigner images are currently 26MB or smaller
             if platform.uname()[1] == "seedsigner-os":
-                cmd = "dd if=/dev/zero of=/dev/mmcblk0 bs=1M count=26"
+                cmd = "dd if=/dev/zero of=" + microsd_dev + " bs=1M count=26"
             else:
-                cmd = "sudo dd if=/dev/zero of=/dev/mmcblk0 bs=1M count=26"
+                cmd = "sudo dd if=/dev/zero of=" + microsd_dev + " bs=1M count=26"
 
             data = run(cmd, capture_output=True, shell=True, text=True)
+            logger.info(data)
 
             # Then flash the image
-            data = run("dd if=/tmp/img.img of=/dev/mmcblk0", capture_output=True, shell=True, text=True)
+            data = run("dd if=/tmp/img.img of=" + microsd_dev, capture_output=True, shell=True, text=True)
+            logger.info(data)
 
             self.loading_screen.stop()
 
@@ -2581,7 +2606,7 @@ class ToolsMicroSDFlashView(View):
 
         else:
             os.system("cp /boot/microsd-images/" + microsd_image + " /tmp/img.img")
-            os.system("sudo dd if=/tmp/img.img of=/dev/mmcblk0")
+            os.system("sudo dd if=/tmp/img.img of=" + microsd_dev)
 
         return Destination(MainMenuView)
 
@@ -2627,13 +2652,14 @@ class ToolsMicroSDVerifyView(View):
         self.loading_screen = LoadingScreenThread(text="Reading MicroSD\n\n\n\n\n\n")
         self.loading_screen.start()
 
+        microsd_dev = find_sd_card_device()
+
         if platform.uname()[1] == "seedsigner-os":
-            os.system("dd if=/dev/mmcblk0 of=/tmp/img.img bs=1M count=26")
+            os.system("dd if=" + microsd_dev + " of=/tmp/img.img bs=1M count=26")
         else:
-            os.system("sudo dd if=/dev/mmcblk0 of=/tmp/img.img bs=1M count=26")
+            os.system("sudo dd if=" + microsd_dev + " of=/tmp/img.img bs=1M count=26")
 
         data = run("sha256sum /tmp/img.img", capture_output=True, shell=True, text=True)
-
         logger.info(data)
 
         self.loading_screen.stop()
@@ -2674,6 +2700,8 @@ class ToolsMicroSDWipeZeroView(View):
         from subprocess import run
         from seedsigner.gui.screens.screen import LoadingScreenThread
 
+        microsd_dev = find_sd_card_device()
+
         button_data=[self.WIPE_64MB, self.WIPE_256MB, self.WIPE_ALL]
 
         wipe_selection = self.run_screen(
@@ -2710,13 +2738,23 @@ class ToolsMicroSDWipeZeroView(View):
         self.loading_screen = LoadingScreenThread(text="Wiping MicroSD\n\n\n\n\n\n(This takes a while)")
         self.loading_screen.start()
 
+        # Unmount everything
         if platform.uname()[1] == "seedsigner-os":
-            cmd = "dd if=/dev/zero of=/dev/mmcblk0 bs=1M" + wipesize_cmd_string
+            cmd = "umount /mnt/diy"
+            data = run(cmd, capture_output=True, shell=True, text=True)
+            logger.info(data)
+
+        if platform.uname()[1] == "seedsigner-os":
+            cmd = "umount /mnt/microsd"
+            data = run(cmd, capture_output=True, shell=True, text=True)
+            logger.info(data)
+
+        if platform.uname()[1] == "seedsigner-os":
+            cmd = "dd if=/dev/zero of=" + microsd_dev + " bs=1M" + wipesize_cmd_string
         else:
-            cmd = "sudo dd if=/dev/zero of=/dev/mmcblk0 bs=1M" + wipesize_cmd_string
+            cmd = "sudo dd if=/dev/zero of=" + microsd_dev + " bs=1M" + wipesize_cmd_string
 
         data = run(cmd, capture_output=True, shell=True, text=True)
-
         logger.info(data)
 
         self.loading_screen.stop()
@@ -2767,6 +2805,8 @@ class ToolsMicroSDWipeRandomView(View):
         from subprocess import run
         from seedsigner.gui.screens.screen import LoadingScreenThread
 
+        microsd_dev = find_sd_card_device()
+
         button_data=[self.WIPE_64MB, self.WIPE_256MB, self.WIPE_ALL]
 
         wipe_selection = self.run_screen(
@@ -2804,12 +2844,11 @@ class ToolsMicroSDWipeRandomView(View):
         self.loading_screen.start()
 
         if platform.uname()[1] == "seedsigner-os":
-            cmd = "dd if=/dev/urandom of=/dev/mmcblk0 bs=1M" + wipesize_cmd_string
+            cmd = "dd if=/dev/urandom of=" + microsd_dev + " bs=1M" + wipesize_cmd_string
         else:
-            cmd = "sudo dd if=/dev/urandom of=/dev/mmcblk0 bs=1M" + wipesize_cmd_string
+            cmd = "sudo dd if=/dev/urandom of=" + microsd_dev + " bs=1M" + wipesize_cmd_string
 
         data = run(cmd, capture_output=True, shell=True, text=True)
-
         logger.info(data)
 
         self.loading_screen.stop()
