@@ -473,4 +473,3 @@ class ScanInvalidQRTypeView(View):
         )
 
         return Destination(MainMenuView, clear_history=True)
-

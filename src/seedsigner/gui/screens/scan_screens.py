@@ -6,6 +6,7 @@ from gettext import gettext as _
 from PIL import Image, ImageDraw
 
 from seedsigner.gui import renderer
+
 from seedsigner.gui.keyboard import Keyboard, TextEntryDisplay
 from seedsigner.hardware.buttons import HardwareButtonsConstants
 from seedsigner.hardware.camera import Camera
@@ -15,7 +16,8 @@ from seedsigner.models.threads import BaseThread, ThreadsafeCounter
 from .screen import BaseScreen, BaseTopNavScreen, ButtonListScreen
 from ..components import GUIConstants, Fonts, SeedSignerIconConstants, Button, IconButton, TextArea
 
-from seedsigner.gui.components import GUIConstants, Fonts
+from seedsigner.gui.components import GUIConstants, Fonts, resize_image_to_fill
+
 from seedsigner.models.decode_qr import DecodeQR
 from seedsigner.models.threads import BaseThread, ThreadsafeCounter
 
@@ -142,11 +144,8 @@ class ScanScreen(BaseScreen):
                             scan_text += f" {cur_fps:0.2f} | {self.decoder_fps}"
 
                     with self.renderer.lock:
-                        if frame.width > self.render_width or frame.height > self.render_height:
-                            frame = frame.resize(
-                                (self.render_width, self.render_height),
-                                resample=Image.NEAREST  # Use nearest neighbor for max speed
-                            )
+                        # Use nearest neighbor resizing for max speed
+                        frame = resize_image_to_fill(frame, self.render_width, self.render_height, sampling_method=Image.Resampling.NEAREST)
 
                         if scan_text:
                             # Note: shadowed text (adding a 'stroke' outline) can
