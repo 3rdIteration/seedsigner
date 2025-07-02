@@ -106,7 +106,7 @@ jobs:
             -v "$(pwd)/seedsigner-os/buildroot_dl:/buildroot_dl" \
             -v "${HOME}/.buildroot-ccache:/root/.buildroot-ccache" \
             seedsigner-os-build \
-            --${{ matrix.target }} --skip-repo --no-clean
+            --${{ matrix.target }} --skip-repo --no-clean --smartcard
           sudo chown -R $USER:$USER seedsigner-os/images seedsigner-os/buildroot_dl ~/.buildroot-ccache/
 
       - name: list image (before rename)

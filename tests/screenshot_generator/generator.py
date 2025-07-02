@@ -13,7 +13,8 @@ from embit.script import Script
 
 # Prevent importing modules w/Raspi hardware dependencies.
 # These must precede any SeedSigner imports.
-sys.modules['seedsigner.hardware.ST7789'] = MagicMock()
+sys.modules['seedsigner.hardware.displays.st7789_mpy'] = MagicMock()
+sys.modules['seedsigner.hardware.displays.ili9341'] = MagicMock()
 sys.modules['seedsigner.views.screensaver.ScreensaverScreen'] = MagicMock()
 sys.modules['RPi'] = MagicMock()
 sys.modules['RPi.GPIO'] = MagicMock()
@@ -24,9 +25,11 @@ sys.modules['seedsigner.hardware.microsd'] = MagicMock()
 patch('PIL.ImageFont.core.HAVE_RAQM', False).start()
 
 from seedsigner.controller import Controller
+from seedsigner.gui.components import GUIConstants
 from seedsigner.gui.renderer import Renderer
 from seedsigner.gui.screens.seed_screens import SeedAddPassphraseScreen
 from seedsigner.gui.toast import RemoveSDCardToastManagerThread, SDCardStateChangeToastManagerThread
+from seedsigner.gui.toast import DefaultToast, InfoToast, SuccessToast, WarningToast, ErrorToast, DireWarningToast
 from seedsigner.hardware.microsd import MicroSD
 from seedsigner.helpers import embit_utils
 from seedsigner.models.decode_qr import DecodeQR
@@ -47,7 +50,7 @@ import warnings; warnings.warn = lambda *args, **kwargs: None
 
 
 # Dynamically generate a pytest test run for each locale
-@pytest.mark.parametrize("locale", [x for x, y in SettingsConstants.ALL_LOCALES])
+@pytest.mark.parametrize("locale", [x for x, y in SettingsConstants.get_detected_languages()])
 def test_generate_all(locale, target_locale):
     """
     `target_locale` is a fixture created in conftest.py via the `--locale` command line arg.
@@ -159,35 +162,56 @@ def generate_screenshots(locale):
             "addr_format": embit_utils.parse_derivation_path(derivation_path)
         }
 
-        # Automatically populate all Settings options Views
-        settings_views_list = []
-        settings_views_list.append(ScreenshotConfig(settings_views.SettingsMenuView))
-        settings_views_list.append(
-            ScreenshotConfig(
-                settings_views.SettingsMenuView,
-                dict(
-                    visibility=SettingsConstants.VISIBILITY__ADVANCED,
-                    selected_attr=SettingsConstants.SETTING__ELECTRUM_SEEDS,
-                    initial_scroll=240,  # Just guessing how many pixels to scroll down
-                ),
-                screenshot_name="SettingsMenuView__Advanced"
-            )
-        )
-
         # so we get a choice for transcribe seed qr format
         controller.settings.set_value(
             attr_name=SettingsConstants.SETTING__COMPACT_SEEDQR,
             value=SettingsConstants.OPTION__ENABLED
         )
-        for settings_entry in SettingsDefinition.settings_entries:
-            if settings_entry.visibility == SettingsConstants.VISIBILITY__HIDDEN:
-                continue
 
-            settings_views_list.append(ScreenshotConfig(settings_views.SettingsEntryUpdateSelectionView, dict(attr_name=settings_entry.attr_name), screenshot_name=f"SettingsEntryUpdateSelectionView_{settings_entry.attr_name}"))
+        # Automatically populate all Settings options Views
+        settings_views_list = []
+        def add_settings_entries(visibility = SettingsConstants.VISIBILITY__GENERAL):
+            for settings_entry in SettingsDefinition.settings_entries:
+                if settings_entry.visibility != visibility:
+                    continue
+
+                if settings_entry.attr_name == SettingsConstants.SETTING__LOCALE:
+                    # Locale selection has its own dedicated View
+                    settings_views_list.append(ScreenshotConfig(settings_views.LocaleSelectionView))
+                else:
+                    # Generic SettingsEntry selection View
+                    settings_views_list.append(ScreenshotConfig(settings_views.SettingsEntryUpdateSelectionView, dict(attr_name=settings_entry.attr_name), screenshot_name=f"SettingsEntryUpdateSelectionView_{settings_entry.attr_name}"))
+
+        # Add the top level "General" settings menu and entries
+        settings_views_list.append(ScreenshotConfig(settings_views.SettingsMenuView))
+        add_settings_entries(SettingsConstants.VISIBILITY__GENERAL)
+
+        # Add the "Advanced" menu...
+        settings_views_list.append(
+            ScreenshotConfig(
+                settings_views.SettingsMenuView,
+                dict(
+                    visibility=SettingsConstants.VISIBILITY__ADVANCED,
+                ),
+                screenshot_name="SettingsMenuView__Advanced"
+            )
+        )
+
+        # ...and Advanced entries
+        add_settings_entries(SettingsConstants.VISIBILITY__ADVANCED)
+
+        # Render the nested "Advanced" -> "Hardware" submenu
+        settings_views_list.append(
+            ScreenshotConfig(
+                settings_views.SettingsMenuView,
+                dict(visibility=SettingsConstants.VISIBILITY__HARDWARE),
+                screenshot_name="SettingsMenuView__Hardware"
+            )
+        )
+        add_settings_entries(SettingsConstants.VISIBILITY__HARDWARE)
 
         settingsqr_data_persistent = f"settings::v1 name=English_noob_mode persistent=E coords=spa,spd denom=thr network=M qr_density=M xpub_export=E sigs=ss scripts=nat xpub_details=E passphrase=E camera=0 compact_seedqr=E bip85=D priv_warn=E dire_warn=E partners=E locale={locale}"
         settingsqr_data_not_persistent = f"settings::v1 name=Mode_Ephemeral persistent=D coords=spa,spd denom=thr network=M qr_density=M xpub_export=E sigs=ss scripts=nat xpub_details=E passphrase=E camera=0 compact_seedqr=E bip85=D priv_warn=E dire_warn=E partners=E locale={locale}"
-
 
         # Set up screenshot-specific callbacks to inject data before the View is run and
         # reset data after the View is run.
@@ -243,6 +267,12 @@ def generate_screenshots(locale):
                 ScreenshotConfig(MainMenuView, screenshot_name='MainMenuView_SDCardStateChangeToast_removed',  toast_thread=SDCardStateChangeToastManagerThread(action=MicroSD.ACTION__REMOVED, activation_delay=0, duration=0)),
                 ScreenshotConfig(MainMenuView, screenshot_name='MainMenuView_SDCardStateChangeToast_inserted', toast_thread=SDCardStateChangeToastManagerThread(action=MicroSD.ACTION__INSERTED, activation_delay=0, duration=0)),
                 ScreenshotConfig(MainMenuView, screenshot_name='MainMenuView_RemoveSDCardToast',               toast_thread=RemoveSDCardToastManagerThread(activation_delay=0, duration=0)),
+                ScreenshotConfig(MainMenuView, screenshot_name='MainMenuView_DefaultToast',                    toast_thread=DefaultToast("This is a default text toast!", activation_delay=0, duration=0)),
+                ScreenshotConfig(MainMenuView, screenshot_name='MainMenuView_InfoToast',                       toast_thread=InfoToast("This is an info toast!", activation_delay=0, duration=0)),
+                ScreenshotConfig(MainMenuView, screenshot_name='MainMenuView_SuccessToast',                    toast_thread=SuccessToast("This is a success toast!", activation_delay=0, duration=0)),
+                ScreenshotConfig(MainMenuView, screenshot_name='MainMenuView_WarningToast',                    toast_thread=WarningToast("This is a warning toast!", activation_delay=0, duration=0)),
+                ScreenshotConfig(MainMenuView, screenshot_name='MainMenuView_DireWarningToast',                toast_thread=DireWarningToast("This is a dire warning toast!", activation_delay=0, duration=0)),
+                ScreenshotConfig(MainMenuView, screenshot_name='MainMenuView_ErrorToast',                      toast_thread=ErrorToast("This is an error toast!", activation_delay=0, duration=0)),
                 ScreenshotConfig(PowerOptionsView),
                 ScreenshotConfig(RestartView),
                 ScreenshotConfig(PowerOffView),
@@ -286,8 +316,8 @@ def generate_screenshots(locale):
                 ScreenshotConfig(seed_views.SeedTranscribeSeedQRWholeQRView, dict(seed_num=0, seedqr_format=QRType.SEED__SEEDQR, num_modules=25),        screenshot_name="SeedTranscribeSeedQRWholeQRView_12_Standard"),
                 ScreenshotConfig(seed_views.SeedTranscribeSeedQRWholeQRView, dict(seed_num=2, seedqr_format=QRType.SEED__COMPACTSEEDQR, num_modules=25), screenshot_name="SeedTranscribeSeedQRWholeQRView_24_Compact"),
                 ScreenshotConfig(seed_views.SeedTranscribeSeedQRWholeQRView, dict(seed_num=2, seedqr_format=QRType.SEED__SEEDQR, num_modules=29),        screenshot_name="SeedTranscribeSeedQRWholeQRView_24_Standard"),
-                ScreenshotConfig(seed_views.SeedTranscribeSeedQRZoomedInView, dict(seed_num=0, seedqr_format=QRType.SEED__COMPACTSEEDQR, initial_block_x=1, initial_block_y=1), screenshot_name="SeedTranscribeSeedQRZoomedInView_12_Compact"),
-                ScreenshotConfig(seed_views.SeedTranscribeSeedQRZoomedInView, dict(seed_num=0, seedqr_format=QRType.SEED__SEEDQR, initial_block_x=2, initial_block_y=2),        screenshot_name="SeedTranscribeSeedQRZoomedInView_12_Standard"),
+                ScreenshotConfig(seed_views.SeedTranscribeSeedQRZoomedInView, dict(seed_num=0, seedqr_format=QRType.SEED__COMPACTSEEDQR, initial_zone_x=1, initial_zone_y=1), screenshot_name="SeedTranscribeSeedQRZoomedInView_12_Compact"),
+                ScreenshotConfig(seed_views.SeedTranscribeSeedQRZoomedInView, dict(seed_num=0, seedqr_format=QRType.SEED__SEEDQR, initial_zone_x=2, initial_zone_y=2),        screenshot_name="SeedTranscribeSeedQRZoomedInView_12_Standard"),
 
                 ScreenshotConfig(seed_views.SeedTranscribeSeedQRConfirmQRPromptView, dict(seed_num=0)),
                 ScreenshotConfig(seed_views.SeedTranscribeSeedQRConfirmWrongSeedView),
@@ -421,7 +451,7 @@ def generate_screenshots(locale):
     with open(messages_source_path, 'r') as messages_source_file:
         num_source_messages = messages_source_file.read().count("msgid \"") - 1
 
-    locale_tuple_list = [locale_tuple for locale_tuple in SettingsConstants.ALL_LOCALES if locale_tuple[0] == locale]
+    locale_tuple_list = [locale_tuple for locale_tuple in SettingsConstants.get_detected_languages() if locale_tuple[0] == locale]
     if not locale_tuple_list:
         raise Exception(f"Invalid locale: {locale}")
 
@@ -471,7 +501,7 @@ def generate_screenshots(locale):
     with open(os.path.join("tests", "screenshot_generator", "template.md"), 'r') as readme_template:
         main_readme = readme_template.read()
 
-    for locale, display_name in SettingsConstants.ALL_LOCALES:
+    for locale, display_name in SettingsConstants.get_detected_languages():
         main_readme += f"* [{display_name}]({locale}/README.md)\n"
 
     with open(os.path.join(screenshot_root, "README.md"), 'w') as readme_file:
