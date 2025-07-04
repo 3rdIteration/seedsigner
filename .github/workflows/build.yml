@@ -33,7 +33,7 @@ jobs:
       - name: checkout seedsigner-os
         uses: actions/checkout@v4
         with:
-          repository: "3rditeratiom/seedsigner-os"
+          repository: "3rditeration/seedsigner-os"
           # use the os-ref input parameter in case of workflow_dispatch or default to main in case of cron triggers
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.os-ref || 'main' }}
           submodules: true
