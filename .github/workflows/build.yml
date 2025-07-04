@@ -28,12 +28,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [ "pi0", "pi2", "pi02w", "pi4" ]
+        target: [ "pi0" ] # , "pi2", "pi02w", "pi4" ] Just build Pi0 to keep within 500mb storage limit for Github free
     steps:
       - name: checkout seedsigner-os
         uses: actions/checkout@v4
         with:
-          repository: "seedsigner/seedsigner-os"
+          repository: "3rditeratiom/seedsigner-os"
           # use the os-ref input parameter in case of workflow_dispatch or default to main in case of cron triggers
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.os-ref || 'main' }}
           submodules: true
