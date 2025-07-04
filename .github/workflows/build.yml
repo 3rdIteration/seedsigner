@@ -116,12 +116,12 @@ jobs:
       - name: rename image
         run: |
           cd seedsigner-os/images
-          mv seedsigner_os*.img seedsigner_os.${{ env.img_version }}.${{ matrix.target }}.img
+          mv seedsigner_os*.img.zip seedsigner_os.${{ env.img_version }}.${{ matrix.target }}.img.zip
 
       - name: print sha256sum
         run: |
           cd seedsigner-os/images
-          sha256sum *.img
+          sha256sum *.img.zip
 
       - name: list image (after rename)
         run: |
@@ -131,7 +131,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: seedsigner_os_images-${{ matrix.target }}
-          path: "seedsigner-os/images/*.img"
+          path: "seedsigner-os/images/*.img.zip"
           if-no-files-found: error
           # maximum 90 days retention
           retention-days: 90
@@ -160,8 +160,8 @@ jobs:
         run: |
           cd images
           # each downloaded image is in its own subfolder
-          find . -name "*.img" -exec mv {} . \;
-          sha256sum *.img > seedsigner_os.${{ env.source_hash }}.sha256
+          find . -name "*.img.zip" -exec mv {} . \;
+          sha256sum *.img.zip > seedsigner_os.${{ env.source_hash }}.sha256
 
       - name: upload checksums
         uses: actions/upload-artifact@v4
