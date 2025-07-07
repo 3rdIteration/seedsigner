@@ -9,33 +9,70 @@ All releases are now running SeedSigner-OS and are built via BuildRoot just like
 
 [I have a video on my YouTube channel which covers the functionality below and also talks about the physical build side.](https://youtu.be/Rhs9z5uL7qg)
 
+Support and discussion relating to this fork can happen via this [Telegram Group](https://t.me/+mp3CIjCQuk0yMjUx)
+
 ## Difference from Stock SeedSigner
 * Multiple Smartcard interface options… 
+   - Smartcard Hat (SEC1210 Connected via UART)
    - Standard USB CCID/PCSC readers
    - PN532 NFC Reader Connected via I2C
    - USB Phoenix Type "Sim Reader" supported via OpenCT 
-* Saving and Loading Seeds & Passphrases
-   - Supports loading of Seed, Seed+Passphrase in one go, or loading passphrase independently. (Potentially from a different SeedKeeper)
-* Saving and Loading Multisig Descriptors 
+* Saving and Loading Seeds & Passphrases in a number of ways
+   - Seedkeeper: Supports loading of Seed, Seed+Passphrase in one go, or loading passphrase independently. (Potentially from a different SeedKeeper)
+   - Encrypted QR: Supports Krux compatible encrypted seeds
+   - Passphrase QR: Supports loading a passphrase from a plain text QR code
+   - Plaintext QR: Support Exporting Seed as Plaintext QR Code
+* Saving and Loading Multisig Descriptors to Satochip Seedkeeper Cards 
    - Also changed default behavior to keep Descriptor loaded until manually cleared. (Including descriptor appearing in the Address Explorer when loaded)
    - Descriptors are split up into a template and xpubs before being saved to SeedKeeper.
+   - Includes ability to load single-sig descriptor and use Address Browser
 * Saving and loading generic secrets to a Seedkeeper card
    - These secrets can be either viewed as text or displayed as a generic text QR code.
 * Initialising Satochip Cards with SeedSigner
   - Load any Seed from the SeedSigner on to the Satochip Card
   - Enable 2FA on the Satochip Card
-* Flashing Satochip Applets to blank Javacards
+* General Satochip/Seedkeeper card operations
+  - Initialise Card
+  - Change Card PIN
+  - Change Card Label
+  - Set NFC Policy
+  - Factory Reset Card
+* Flashing Java Applets to blank Javacards
    - Firmware comes bundled with applets for SeedSigner, Satochip and Satodime (Releases from Satochip Github)
    - Firmware is also bundled with the source code for all three projects, along with a modified varient for THD-89 based Javacards. (This can be built from source on-device at run-time)
+   - Firmware also comes bundled applets for Specter DIY, ApexTOTP, SmartPGP
+* Smartcard Hardware Troubleshooting (In the settings menu)
+   - Enable/Disable smartcard readers (All interfaces enabled by default)
+   - List Smartcard Readers
+   - Check Card Connection
+   - Test NFC connection
+   - Restart PCSC (This should generally not be required)
 * MicroSD Card Tools
    - Flashing MicroSD Cards with official SeedSigner Images (Bundled)
    - Verification of freshly flashed MicroSD cards against known images
    - Secure Wipe (Both with zeros and random data)
+* GPG Tools
+   - GPG Signature verification & Sha256 Manifest check (Includes pubkey bundle the from Sparrow to verify Seedsigner, Sparrow, Electrum, plus many more)
+* BIP85 Support
+   - Supports not only generating BIP85 seeds, but loading them and using them
+* TextQR Tool
+   - Supports both generating and loading standard plaintext QR codes for arbitrary text.
+* Support for 18 word BIP39 Mnemonics
+* Compressed image files (The uncompressed files are large due to having extra free space to make the GPG verification feature useful)
+* Tested and working with the following hardware
+   - Raspberry Pi Zero 1.3
+   - Raspberry Pi Zero W
+   - Raspberry Pi Zero 2W (Raspberry Pi 3 has the same hardware, so should work too)
+   - Raspberry Pi 2
+   - Raspberry Pi 4
  
 ## Future Features & Improvements
+* Add ability to sign transactions on Satochip card directly
 * Add ability to lock/unlock/manage Javacards
 * Add ability to view additional sttings/information for the Satochip cards
 * Tidy up code and reduce re-use
+
+[Software Images along with verification instructions can be found on the releases page.](https://github.com/3rdIteration/seedsigner/releases) 
 
 # -----------------Original Readme Continues Below-----------------
 
@@ -53,7 +90,6 @@ All releases are now running SeedSigner-OS and are built via BuildRoot just like
 * [SeedQR Printable Templates](#seedqr-printable-templates)
 * [Build from Source](#build-from-source)
 * [Developer Local Build Instructions](#developer-local-build-instructions)
-
 
 ---------------
 
