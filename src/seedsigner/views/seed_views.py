@@ -2162,7 +2162,7 @@ class SeedEncryptedQRCBCCTRGCMModeView(View):
             return Destination(BackStackView)
 
         entropy_hash = hashlib.sha256(entropy_image.tobytes()).digest()
-        from seedsigner.models import kef
+        from seedsigner.helpers import kef
         iv_len = kef.MODE_IVS.get(kef.MODE_NUMBERS[self.mode_name], 0)
         i_vector = entropy_hash[:iv_len]
 

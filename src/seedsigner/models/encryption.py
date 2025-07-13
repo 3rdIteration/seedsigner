@@ -22,7 +22,7 @@
 
 import hashlib
 from embit import bip39
-from seedsigner.models import kef
+from seedsigner.helpers import kef
 from seedsigner.models.settings import Settings, SettingsConstants
 
 QR_CODE_ITER_MULTIPLE = 10000
