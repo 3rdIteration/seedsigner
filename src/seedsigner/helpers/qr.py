@@ -113,10 +113,12 @@ class QR:
             border_str = "3"
 
         if type(data) is str:
-            cmd = f"""qrencode -m {border_str} -s 3 -l L --foreground=000000 --background={background_color} -t PNG -o "/tmp/qrcode.png" "{data}" """
+            cmd = f"""qrencode -m {border_str} -s 3 -l L --foreground=000000 --background={background_color} -t PNG    -r "/tmp/data.in" -o "/tmp/qrcode.png" """
+            with open("/tmp/data.in", "w") as f:
+                f.write(data)
         else:
-            cmd = f"""qrencode -m {border_str} -s 3 -l L --foreground=000000 --background={background_color} -t PNG -8 -r "/tmp/data.bin" -o "/tmp/qrcode.png" """
-            with open("/tmp/data.bin", "wb") as f:
+            cmd = f"""qrencode -m {border_str} -s 3 -l L --foreground=000000 --background={background_color} -t PNG -8 -r "/tmp/data.in" -o "/tmp/qrcode.png" """
+            with open("/tmp/data.in", "wb") as f:
                 f.write(data)
 
         rv = subprocess.call(cmd, shell=True)
@@ -126,6 +128,6 @@ class QR:
             return self.qrimage(data,width,height,border)
 
         img = Image.open("/tmp/qrcode.png").resize((width,height), Image.Resampling.NEAREST).convert("RGBA")
-        rv = subprocess.call("rm -f /tmp/data.bin /tmp/qrcode.png", shell=True)
+        rv = subprocess.call("rm -f /tmp/data.in /tmp/qrcode.png", shell=True)
 
         return img

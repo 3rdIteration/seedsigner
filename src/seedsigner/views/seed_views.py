@@ -1773,12 +1773,12 @@ class SeedTranscribeSeedQRFormatView(View):
     # SeedQR dims for 12-word seeds
     STANDARD_12 = ButtonOption("Standard: 25x25", return_data=25)
     COMPACT_12 = ButtonOption("Compact: 21x21", return_data=21)
-    ENCRYPTED_12 = ButtonOption("Encrypted: 29x29", return_data=0) # Encrypted QR uses dummy return data
+    ENCRYPTED_12 = ButtonOption("Encrypted", return_data=0) # Encrypted QR uses dummy return data
 
     # SeedQR dims for 24-word seeds
     STANDARD_24 = ButtonOption("Standard: 29x29", return_data=29)
     COMPACT_24 = ButtonOption("Compact: 25x25", return_data=25)
-    ENCRYPTED_24 = ButtonOption("Encrypted: 33x33", return_data=0) # Encrypted QR uses dummy return data
+    ENCRYPTED_24 = ButtonOption("Encrypted", return_data=0) # Encrypted QR uses dummy return data
 
     def __init__(self, seed_num: int):
         super().__init__()
@@ -2059,6 +2059,7 @@ class SeedEncryptedQRReviewEncryptionKeyView(View):
         super().__init__()
         self.encryption_key = encryption_key
         self.seed_num = seed_num
+        self.mode_name = self.settings.get_value(SettingsConstants.SETTING__ENCRYPTION_MODE)
 
     def run(self):
         if len(self.encryption_key) > 200:
@@ -2086,15 +2087,15 @@ class SeedEncryptedQRReviewEncryptionKeyView(View):
             return Destination(BackStackView)
 
         elif button_data[selected_menu_num] == PROCEED:
-            if self.settings.get_value(SettingsConstants.SETTING__ENCRYPTION_MODE) == SettingsConstants.ENCRYPTION_MODE_CBC:
-                return Destination(
-                    SeedEncryptedQRCBCModeView,
-                    view_args=dict(encryption_key=self.encryption_key, seed_num=self.seed_num)
-                )
-            else:
+            if self.mode_name == SettingsConstants.ENCRYPTION_MODE_ECB:
                 return Destination(
                     SeedEncryptedQRMnemonicIDPromptView,
                     view_args=dict(encryption_key=self.encryption_key, i_vector=None, seed_num=self.seed_num)
+                )
+            else:
+                return Destination(
+                    SeedEncryptedQRCBCCTRGCMModeView,
+                    view_args=dict(encryption_key=self.encryption_key, seed_num=self.seed_num, mode_name=self.mode_name)
                 )
 
         elif button_data[selected_menu_num] == EDIT:
@@ -2106,11 +2107,12 @@ class SeedEncryptedQRReviewEncryptionKeyView(View):
 
 
 
-class SeedEncryptedQRCBCModeView(View):
-    def __init__(self, encryption_key: str, seed_num: int):
+class SeedEncryptedQRCBCCTRGCMModeView(View):
+    def __init__(self, encryption_key: str, seed_num: int, mode_name: str):
         super().__init__()
         self.encryption_key = encryption_key
         self.seed_num = seed_num
+        self.mode_name = mode_name
 
 
     def run(self):
@@ -2119,7 +2121,7 @@ class SeedEncryptedQRCBCModeView(View):
 
         selected_menu_num = self.run_screen(
             ButtonListScreen,
-            title="Additional Entropy for AES-CBC mode",
+            title=f"Additional Entropy for {self.mode_name} mode",
             button_data=button_data
         )
 
@@ -2160,8 +2162,9 @@ class SeedEncryptedQRCBCModeView(View):
             return Destination(BackStackView)
 
         entropy_hash = hashlib.sha256(entropy_image.tobytes()).digest()
-        from seedsigner.models.encryption import AES_BLOCK_SIZE
-        i_vector = entropy_hash[:AES_BLOCK_SIZE]
+        from seedsigner.models import kef
+        iv_len = kef.MODE_IVS.get(kef.MODE_NUMBERS[self.mode_name], 0)
+        i_vector = entropy_hash[:iv_len]
 
         return Destination(
             SeedEncryptedQRMnemonicIDPromptView,
@@ -2181,9 +2184,9 @@ class SeedEncryptedQRMnemonicIDPromptView(View):
 
 
     def run(self):
-        CUSTOM_ID = ButtonOption("Assign custom ID")
         DEFAULT = ButtonOption("Use fingerprint")
-        button_data = [CUSTOM_ID, DEFAULT]
+        CUSTOM_ID = ButtonOption("Assign custom ID")
+        button_data = [DEFAULT, CUSTOM_ID]
 
         selected_menu_num = self.run_screen(
             ButtonListScreen,
@@ -2320,12 +2323,20 @@ class SeedEncryptedQRReviewMnemonicIDView(View):
 
             try:
                 from seedsigner.models.encryption import EncryptedQRCode
-                qr_data = EncryptedQRCode().create(
+                from seedsigner.helpers.base43 import base43_encode
+                encrypted_qr = EncryptedQRCode()
+                qr_data = encrypted_qr.create(
                                key=self.encryption_key,
                                mnemonic_id=self.mnemonic_id,
                                mnemonic=self.seed.mnemonic_str,
                                i_vector=self.i_vector
                            )
+                version_number = encrypted_qr.version
+                del encrypted_qr
+
+                if version_number > 1:
+                    qr_data = base43_encode(qr_data)
+
                 if not qr_data:
                     WarningScreen(
                         title="Error",

@@ -17,7 +17,6 @@ from seedsigner.models.qr_type import QRType
 from seedsigner.models.seed import Seed
 from seedsigner.models.settings import SettingsConstants
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -494,9 +493,18 @@ class DecodeQR:
 
         else:
             from seedsigner.models.encryption import EncryptedQRCode
+            from seedsigner.helpers.base43 import base43_decode
             encrypted_qr = EncryptedQRCode()
-            data_bytes = s.encode("latin-1") if isinstance(s, str) else s
-            public_data = encrypted_qr.public_data(data_bytes)
+            public_data = None
+            try:  # Try to decode base43 data
+                if isinstance(s, bytes):
+                    s = s.decode('utf-8')
+                data_bytes = base43_decode(s)
+                public_data = encrypted_qr.public_data(data_bytes)
+            except:
+                pass
+            if not public_data:  # Failed to decode and parse base43
+                public_data = encrypted_qr.public_data(s)
             if public_data:
                 from seedsigner.models.encryptedqr import EncryptedQR
                 encryptedqr = EncryptedQR(encrypted_qr=encrypted_qr, public_data=public_data)
@@ -1258,9 +1266,18 @@ class EncryptedQrDecoder(BaseSingleFrameQrDecoder):
                     self.public_data = encryptedqr.public_data
                 else:
                     from seedsigner.models.encryption import EncryptedQRCode
+                    from seedsigner.helpers.base43 import base43_decode
                     encrypted_qr = EncryptedQRCode()
-                    data_bytes = segment.encode("latin-1") if isinstance(segment, str) else segment
-                    self.public_data = encrypted_qr.public_data(data_bytes)
+                    self.public_data = None
+                    try:  # Try to decode base43 data
+                        if isinstance(segment, bytes):
+                            segment = segment.decode('utf-8')
+                        data_bytes = base43_decode(segment)
+                        self.public_data = encrypted_qr.public_data(data_bytes)
+                    except:
+                        pass
+                    if not self.public_data:  # Failed to decode and parse base43
+                        self.public_data = encrypted_qr.public_data(segment)
                     if not self.public_data:
                         raise Exception("Encrypted QR code is invalid.")
                     from seedsigner.models.encryptedqr import EncryptedQR
