@@ -2087,14 +2087,14 @@ class SeedEncryptedQRReviewEncryptionKeyView(View):
             return Destination(BackStackView)
 
         elif button_data[selected_menu_num] == PROCEED:
-            if self.mode_name == SettingsConstants.ENCRYPTION_MODE_ECB:
+            if self.mode_name in (SettingsConstants.ENCRYPTION_MODE_ECB, SettingsConstants.ENCRYPTION_MODE_ECBV1):
                 return Destination(
                     SeedEncryptedQRMnemonicIDPromptView,
                     view_args=dict(encryption_key=self.encryption_key, i_vector=None, seed_num=self.seed_num)
                 )
             else:
                 return Destination(
-                    SeedEncryptedQRCBCCTRGCMModeView,
+                    SeedEncryptedQRnonECBModeView,
                     view_args=dict(encryption_key=self.encryption_key, seed_num=self.seed_num, mode_name=self.mode_name)
                 )
 
@@ -2107,7 +2107,7 @@ class SeedEncryptedQRReviewEncryptionKeyView(View):
 
 
 
-class SeedEncryptedQRCBCCTRGCMModeView(View):
+class SeedEncryptedQRnonECBModeView(View):
     def __init__(self, encryption_key: str, seed_num: int, mode_name: str):
         super().__init__()
         self.encryption_key = encryption_key
