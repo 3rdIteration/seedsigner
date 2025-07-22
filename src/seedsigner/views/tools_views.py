@@ -2913,12 +2913,21 @@ class ToolsGPGVerifyFileView(View):
         else:
             file_list_path= '/boot/microsd-images/'
 
-        verify_file_list = os.listdir(file_list_path)
+        # Get only the visible, valid files
+        visible_file_list = [
+            f
+            for f in os.listdir(file_list_path)
+            if (
+                    not f.startswith('.') and  # Ignore hidden files (like .DS_Store)
+                    f != '__MACOSX' and  # Ignore specific macOS metadata folder
+                    os.path.isfile(os.path.join(file_list_path, f))  # Only include actual files
+            )
+        ]
 
-        verify_file_buttons = []
-        for file in verify_file_list:
-            verify_file_buttons.append(ButtonOption(file))
+        # Build button options
+        verify_file_buttons = [ButtonOption(f) for f in visible_file_list]
 
+        # Show selection screen
         selected_file_num = self.run_screen(
             ButtonListScreen,
             title="Select File",
@@ -2926,11 +2935,13 @@ class ToolsGPGVerifyFileView(View):
             button_data=verify_file_buttons
         )
 
+        # Handle cancel
         if selected_file_num == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
 
-        verify_file_name = verify_file_list[selected_file_num]
-        logger.info("Selected:", verify_file_name)
+        # Use the same filtered list to get the selected filename
+        verify_file_name = visible_file_list[selected_file_num]
+        logger.info("Selected: %s", verify_file_name)
 
         cmd = "cd " + file_list_path +" ; gpg --verify " + verify_file_name
 
@@ -2966,7 +2977,11 @@ class ToolsGPGVerifyFileView(View):
 
         if valid_sig:
             button_data = []
-            if "manifest" in verify_file_name or "sha256" in verify_file_name:
+            # There are a bunch of different naming conventions that different projects use...
+            manifest_filenames = ["manifest", # Sparrow uses this
+                                  "sha256", # Seedsigner uses this
+                                  "shasums"] # Liana uses this naming convention
+            if any(manifest_filename in verify_file_name for manifest_filename in manifest_filenames):
                 button_data.append(self.CHECK_SHA256)
 
             button_data.append(ButtonOption("Done"))
