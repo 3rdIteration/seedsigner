@@ -1,6 +1,7 @@
 import logging
 import time
 import traceback
+from gettext import gettext as _
 
 from embit.descriptor import Descriptor
 from embit.psbt import PSBT
@@ -85,6 +86,21 @@ class BackgroundImportThread(BaseThread):
         time_import('seedsigner.views.settings_views')
 
 
+class SleepTimerThread(BaseThread):
+    def run(self):
+        from seedsigner.hardware.buttons import HardwareButtons
+        controller = Controller.get_instance()
+        buttons = HardwareButtons.get_instance()
+        while self.keep_running:
+            sleep_minutes = controller.settings.get_value(SettingsConstants.SETTING__SLEEP_TIMER)
+            if sleep_minutes and sleep_minutes != SettingsConstants.SLEEP_TIMER__DISABLED:
+                controller.sleep_timer_ms = sleep_minutes * 60 * 1000
+                cur = int(time.time() * 1000)
+                if controller.sleep_timer_ms and cur - buttons.last_input_time > controller.sleep_timer_ms:
+                    controller.handle_sleep_timeout()
+                    buttons.update_last_input_time()
+            time.sleep(1)
+
 
 class Controller(Singleton):
     """
@@ -147,6 +163,9 @@ class Controller(Singleton):
     back_stack: BackStack = None
     screensaver: ScreensaverScreen = None
     toast_notification_thread: BaseToastOverlayManagerThread = None
+    sleep_timer_thread: BaseThread = None
+    sleep_timer_ms: int = None
+    auto_wiped: bool = False
 
 
     @classmethod
@@ -199,9 +218,12 @@ class Controller(Singleton):
 
         # Other behavior constants
         controller.screensaver_activation_ms = 2 * 60 * 1000  # two minutes
-    
+
         background_import_thread = BackgroundImportThread()
         background_import_thread.start()
+
+        controller.sleep_timer_thread = SleepTimerThread()
+        controller.sleep_timer_thread.start()
 
         return cls._instance
 
@@ -391,6 +413,9 @@ class Controller(Singleton):
             if self.toast_notification_thread and self.toast_notification_thread.is_alive():
                 self.toast_notification_thread.stop()
 
+            if self.sleep_timer_thread and self.sleep_timer_thread.is_alive():
+                self.sleep_timer_thread.stop()
+
             # Clear the screen when exiting
             logger.info("Clearing screen, exiting")
             Renderer.get_instance().display_blank_screen()
@@ -448,6 +473,40 @@ class Controller(Singleton):
         self.toast_notification_thread = toast_manager_thread
         logger.info(f"Controller: starting {self.toast_notification_thread.__class__.__name__}")
         self.toast_notification_thread.start()
+
+
+    def handle_sleep_timeout(self):
+        from seedsigner.gui.toast import InfoToast
+        from seedsigner.views import MainMenuView
+        from seedsigner.hardware.buttons import HardwareButtons
+
+        logger.info("Controller: sleep timer triggered; wiping data")
+
+        # Wipe sensitive in-memory data
+        self.storage.seeds = []
+        self.storage.clear_pending_seed()
+        if self._storage2:
+            self._storage2.clear_encryptedqr()
+
+        self.psbt = None
+        self.psbt_parser = None
+        self.psbt_seed = None
+        self.multisig_wallet_descriptor = None
+        self.unverified_address = None
+        self.address_explorer_data = None
+        self.sign_message_data = None
+
+        # Return to main menu
+        self.clear_back_stack()
+        self.back_stack.append(Destination(MainMenuView))
+
+        self.auto_wiped = True
+
+        # Notify user
+        self.activate_toast(InfoToast(label_text=_("Seeds cleared after inactivity")))
+
+        # Ensure any running screens break out of wait loops
+        HardwareButtons.get_instance().trigger_override()
 
 
     def handle_exception(self, e) -> Destination:
