@@ -1,4 +1,6 @@
 from gettext import gettext as _
+import os
+import pytest
 
 from base import BaseTest
 from seedsigner.gui.screens.screen import ButtonOption
@@ -6,6 +8,11 @@ from seedsigner.helpers.l10n import mark_for_translation as _mft
 from seedsigner.models.settings import Settings
 from seedsigner.models.settings_definition import SettingsConstants
 from seedsigner.views.view import MainMenuView
+
+# Skip these tests if translation files are unavailable
+translations_path = os.path.join(os.path.dirname(__file__), "..", "src", "seedsigner", "resources", "seedsigner-translations")
+if not os.path.isdir(translations_path) or not os.listdir(translations_path):
+    pytest.skip("translations not present", allow_module_level=True)
 
 
 

@@ -1,6 +1,7 @@
-embit==0.8.0
-Pillow==10.0.1
+embit==0.8.0 --hash=sha256:8bf4b10073c67400370ce523fb16f035fe759f6fdd987c579bdcc268d75ed770
+Pillow==10.0.1 --hash=sha256:4ce90f8a24e1c15465048959f1e94309dfef93af272633e8f37361b824532e91
 pyzbar @ git+https://github.com/seedsigner/pyzbar.git@c3c237821c6a20b17953efe59b90df0b514a1c03
-qrcode==7.3.1
+qrcode==7.3.1 --hash=sha256:375a6ff240ca9bd41adc070428b5dfc1dcfbb0f2507f1ac848f6cded38956578
 urtypes @ git+https://github.com/selfcustody/urtypes.git@7fb280eab3b3563dfc57d2733b0bf5cbc0a96a6a
-pycryptodomex @ git+https://github.com/Legrandin/pycryptodome.git@0de7b4d80438aeba63e8010fa7da0f1d6d98effb
+pycryptodomex==3.23.0 --hash=sha256:f489c4765093fb60e2edafdf223397bc716491b2b69fe74367b70d6999257a5c
+pysatochip==0.17.0 --hash=sha256:2e7085c6d64dd89d2b5ccdab5319735ef837d708f8d2bf084ea8ba5c2c18fe41
