@@ -1,3 +1,3 @@
-coverage==7.6.12
-pytest==7.4.2
-pytest-cov==4.1.0
+coverage==7.6.12 --hash=sha256:48cfc4641d95d34766ad41d9573cc0f22a48aa88d22657a1fe01dca0dbae4de2
+pytest==7.4.2 --hash=sha256:a766259cfab564a2ad52cb1aae1b881a75c3eb7e34ca3779697c23ed47c47069
+pytest-cov==4.1.0 --hash=sha256:3904b13dfbfec47f003b8e77fd5b589cd11904a21ddf1ab38a64f204d6a10ef6
