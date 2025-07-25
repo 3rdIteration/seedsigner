@@ -1,7 +1,7 @@
 embit==0.8.0 --hash=sha256:8bf4b10073c67400370ce523fb16f035fe759f6fdd987c579bdcc268d75ed770
 Pillow==10.0.1 --hash=sha256:4ce90f8a24e1c15465048959f1e94309dfef93af272633e8f37361b824532e91
-pyzbar @ git+https://github.com/seedsigner/pyzbar.git@c3c237821c6a20b17953efe59b90df0b514a1c03
+pyzbar @ https://github.com/seedsigner/pyzbar/archive/c3c237821c6a20b17953efe59b90df0b514a1c03.zip#sha256=74c8330077013d17fb56d9677292dd0b854e44659111f26e210061bda53e72e0
 qrcode==7.3.1 --hash=sha256:375a6ff240ca9bd41adc070428b5dfc1dcfbb0f2507f1ac848f6cded38956578
-urtypes @ git+https://github.com/selfcustody/urtypes.git@7fb280eab3b3563dfc57d2733b0bf5cbc0a96a6a
-pycryptodomex==3.23.0 --hash=sha256:f489c4765093fb60e2edafdf223397bc716491b2b69fe74367b70d6999257a5c
+urtypes @ https://github.com/selfcustody/urtypes/archive/7fb280eab3b3563dfc57d2733b0bf5cbc0a96a6a.zip#sha256=a44046378f6f1bca21cee40ce941d7509e1ec1e8677b5b3b146a918fa6fd475d
+pycryptodomex==3.23.0 --hash=sha256:71909758f010c82bc99b0abf4ea12012c98962fbf0583c2164f8b84533c2e4da
 pysatochip==0.17.0 --hash=sha256:2e7085c6d64dd89d2b5ccdab5319735ef837d708f8d2bf084ea8ba5c2c18fe41
