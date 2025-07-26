@@ -285,16 +285,16 @@ class SettingsConstants:
     PERSISTENT_SETTINGS__SD_INSERTED__HELP_TEXT = _mft("Store Settings on SD card")
     PERSISTENT_SETTINGS__SD_REMOVED__HELP_TEXT = _mft("Insert SD card to enable")
 
-    # Sleep timer constants (minutes)
-    SLEEP_TIMER__DISABLED = 0
-    SLEEP_TIMER__FIVE_MINUTES = 5
-    SLEEP_TIMER__TEN_MINUTES = 10
-    SLEEP_TIMER__FIFTEEN_MINUTES = 15
-    ALL_SLEEP_TIMERS = [
-        (SLEEP_TIMER__DISABLED, _mft("Disabled")),
-        (SLEEP_TIMER__FIVE_MINUTES, _mft("5 minutes")),
-        (SLEEP_TIMER__TEN_MINUTES, _mft("10 minutes")),
-        (SLEEP_TIMER__FIFTEEN_MINUTES, _mft("15 minutes")),
+    # Wipe timer constants (minutes)
+    WIPE_TIMER__DISABLED = 0
+    WIPE_TIMER__FIVE_MINUTES = 5
+    WIPE_TIMER__TEN_MINUTES = 10
+    WIPE_TIMER__FIFTEEN_MINUTES = 15
+    ALL_WIPE_TIMERS = [
+        (WIPE_TIMER__DISABLED, _mft("Disabled")),
+        (WIPE_TIMER__FIVE_MINUTES, _mft("5 minutes")),
+        (WIPE_TIMER__TEN_MINUTES, _mft("10 minutes")),
+        (WIPE_TIMER__FIFTEEN_MINUTES, _mft("15 minutes")),
     ]
 
     SINGLE_SIG = "ss"
@@ -345,7 +345,7 @@ class SettingsConstants:
     SETTING__BTC_DENOMINATION = "denomination"
     SETTING__SMARTCARD_INTERFACES = "smartcard_interfaces"
     SETTING__CACHE_SCARD_PIN = "cache_scard_pin"
-    SETTING__SLEEP_TIMER = "sleep_timer"
+    SETTING__WIPE_TIMER = "wipe_timer"
 
     SETTING__DISPLAY_CONFIGURATION = "display_config"
     SETTING__DISPLAY_COLOR_INVERTED = "color_inverted"
@@ -637,12 +637,12 @@ class SettingsDefinition:
                     default_value=SettingsConstants.OPTION__DISABLED),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__SYSTEM,
-                    attr_name=SettingsConstants.SETTING__SLEEP_TIMER,
-                    abbreviated_name="sleep",
-                    display_name=_mft("Sleep timer"),
+                    attr_name=SettingsConstants.SETTING__WIPE_TIMER,
+                    abbreviated_name="wipe",
+                    display_name=_mft("Wipe timer"),
                     type=SettingsConstants.TYPE__SELECT_1,
-                    selection_options=SettingsConstants.ALL_SLEEP_TIMERS,
-                    default_value=SettingsConstants.SLEEP_TIMER__TEN_MINUTES),
+                    selection_options=SettingsConstants.ALL_WIPE_TIMERS,
+                    default_value=SettingsConstants.WIPE_TIMER__TEN_MINUTES),
 
         # Advanced options
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
