@@ -21,6 +21,36 @@ sys.modules['pysatochip'] = MagicMock()
 sys.modules['pysatochip.JCconstants'] = MagicMock()
 sys.modules['pysatochip.util'] = MagicMock()
 sys.modules['pysatochip.CardConnector'] = MagicMock()
+sys.modules['smbus2'] = MagicMock()
+sys.modules['smartcard'] = MagicMock()
+sys.modules['smartcard.System'] = MagicMock()
+
+# Dummy BatteryHat to prevent hardware thread usage during tests
+class DummyBatteryHat(MagicMock):
+    @classmethod
+    def get_instance(cls):
+        if not getattr(cls, '_instance', None):
+            cls._instance = cls()
+            cls._instance.is_alive.return_value = False
+        return cls._instance
+
+    @classmethod
+    def reset_instance(cls):
+        cls._instance = None
+
+    def start(self):
+        pass
+
+    def stop(self):
+        pass
+
+    def join(self, *a, **k):
+        pass
+
+    def get_percent(self):
+        return None
+
+sys.modules['seedsigner.hardware.battery_hat'] = MagicMock(BatteryHat=DummyBatteryHat)
 
 from seedsigner.controller import Controller, FlowBasedTestException, StopFlowBasedTest
 from seedsigner.gui.screens.screen import RET_CODE__BACK_BUTTON, RET_CODE__POWER_BUTTON, ButtonOption
@@ -87,7 +117,20 @@ class BaseTest:
     @classmethod
     def reset_controller(cls):
         """ Wipe and re-initialize the Controller singleton """
+        controller = Controller._instance
+        if controller:
+            if getattr(controller, "battery_hat", None) and controller.battery_hat.is_alive():
+                controller.battery_hat.stop()
+                controller.battery_hat.join()
+            if getattr(controller, "wipe_timer_thread", None) and controller.wipe_timer_thread.is_alive():
+                controller.wipe_timer_thread.stop()
+                controller.wipe_timer_thread.join()
         Controller._instance = None
+        try:
+            from seedsigner.hardware.battery_hat import BatteryHat
+            BatteryHat.reset_instance()
+        except Exception:
+            pass
         Controller.configure_instance()
 
 

@@ -1336,3 +1336,29 @@ class MainMenuScreen(LargeButtonScreen):
     title_font_size: int = 26
     show_back_button: bool = False
     show_power_button: bool = True
+
+    def __post_init__(self):
+        super().__post_init__()
+        from seedsigner.hardware.battery_hat import BatteryHat
+        from seedsigner.gui.components import BatteryIndicator
+        self.battery_hat = BatteryHat.get_instance()
+        self.battery_indicator = BatteryIndicator()
+        self.battery_indicator.screen_x = self.canvas_width - GUIConstants.EDGE_PADDING - self.battery_indicator.width
+        self.battery_indicator.screen_y = self.canvas_height - GUIConstants.EDGE_PADDING - self.battery_indicator.height
+        self.last_battery_update = 0
+        if self.battery_hat.detected:
+            self.components.append(self.battery_indicator)
+
+    def _run_callback(self):
+        if self.battery_hat.detected:
+            if self.battery_indicator not in self.components:
+                self.components.append(self.battery_indicator)
+            cur_time = time.time()
+            if cur_time - self.last_battery_update > 60:
+                percent = self.battery_hat.get_percent()
+                if percent is not None:
+                    with self.renderer.lock:
+                        self.battery_indicator.percent = percent
+                        self.battery_indicator.render()
+                        self.renderer.show_image()
+                self.last_battery_update = cur_time
