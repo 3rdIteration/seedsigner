@@ -290,11 +290,13 @@ class SettingsConstants:
     WIPE_TIMER__FIVE_MINUTES = 5
     WIPE_TIMER__TEN_MINUTES = 10
     WIPE_TIMER__FIFTEEN_MINUTES = 15
+    WIPE_TIMER__THIRTY_MINUTES = 30
     ALL_WIPE_TIMERS = [
         (WIPE_TIMER__DISABLED, _mft("Disabled")),
         (WIPE_TIMER__FIVE_MINUTES, _mft("5 minutes")),
         (WIPE_TIMER__TEN_MINUTES, _mft("10 minutes")),
         (WIPE_TIMER__FIFTEEN_MINUTES, _mft("15 minutes")),
+        (WIPE_TIMER__THIRTY_MINUTES, _mft("30 minutes")),
     ]
 
     SINGLE_SIG = "ss"
@@ -642,7 +644,7 @@ class SettingsDefinition:
                     display_name=_mft("Wipe timer"),
                     type=SettingsConstants.TYPE__SELECT_1,
                     selection_options=SettingsConstants.ALL_WIPE_TIMERS,
-                    default_value=SettingsConstants.WIPE_TIMER__TEN_MINUTES),
+                    default_value=SettingsConstants.WIPE_TIMER__DISABLED),
 
         # Advanced options
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
