@@ -10,6 +10,7 @@ from seedsigner.helpers.l10n import mark_for_translation as _mft
 from seedsigner.gui.components import Button, CheckboxButton, CheckedSelectionButton, FontAwesomeIconConstants, Fonts, GUIConstants, Icon, IconButton, IconTextLine, SeedSignerIconConstants, TextArea
 from seedsigner.gui.screens.scan_screens import ScanScreen
 from seedsigner.gui.screens.screen import BaseScreen, BaseTopNavScreen, ButtonListScreen, ButtonOption, KeyboardScreen
+from seedsigner.models.threads import BaseThread
 from seedsigner.hardware.buttons import HardwareButtonsConstants
 from seedsigner.hardware.camera import Camera
 from seedsigner.models.settings import SettingsConstants
@@ -325,6 +326,73 @@ class DonateScreen(BaseTopNavScreen):
             supersampling_factor=1,
             screen_y=self.components[-1].screen_y + self.components[-1].height + GUIConstants.COMPONENT_PADDING
         ))
+
+
+@dataclass
+class BatteryInfoScreen(BaseTopNavScreen):
+    """Display live battery information from the UPS HAT."""
+
+    def __post_init__(self):
+        self.title = _("Battery Info")
+        super().__post_init__()
+
+        from seedsigner.hardware.battery_hat import BatteryHat
+        self.battery_hat = BatteryHat.get_instance()
+
+        start_y = self.top_nav.height + 2 * GUIConstants.COMPONENT_PADDING
+        self.voltage_text = TextArea(text="", is_text_centered=True, screen_y=start_y)
+        self.components.append(self.voltage_text)
+
+        start_y += self.voltage_text.height + GUIConstants.COMPONENT_PADDING
+        self.current_text = TextArea(text="", is_text_centered=True, screen_y=start_y)
+        self.components.append(self.current_text)
+
+        start_y += self.current_text.height + GUIConstants.COMPONENT_PADDING
+        self.power_text = TextArea(text="", is_text_centered=True, screen_y=start_y)
+        self.components.append(self.power_text)
+
+        start_y += self.power_text.height + GUIConstants.COMPONENT_PADDING
+        self.percent_text = TextArea(text="", is_text_centered=True, screen_y=start_y)
+        self.components.append(self.percent_text)
+
+        self.threads.append(BatteryInfoScreen.UpdateThread(self))
+
+    class UpdateThread(BaseThread):
+        def __init__(self, screen):
+            super().__init__()
+            self.screen = screen
+            self.battery_hat = screen.battery_hat
+
+        def run(self):
+            while self.keep_running:
+                if not self.battery_hat.detected:
+                    self.battery_hat.detected = self.battery_hat.detect_hat()
+                if self.battery_hat.detected:
+                    voltage = self.battery_hat.get_voltage()
+                    current = self.battery_hat.get_current()
+                    power = self.battery_hat.get_power()
+                    percent = self.battery_hat.get_percent()
+                    with self.screen.renderer.lock:
+                        if voltage is not None:
+                            self.screen.voltage_text.text = f"Load Voltage: {voltage:.3f} V"
+                        else:
+                            self.screen.voltage_text.text = "Load Voltage: --"
+                        if current is not None:
+                            self.screen.current_text.text = f"Current: {current/1000:.3f} A"
+                        else:
+                            self.screen.current_text.text = "Current: --"
+                        if power is not None:
+                            self.screen.power_text.text = f"Power: {power:.3f} W"
+                        else:
+                            self.screen.power_text.text = "Power: --"
+                        if percent is not None:
+                            self.screen.percent_text.text = f"Percent: {percent:.1f}%"
+                        else:
+                            self.screen.percent_text.text = "Percent: --%"
+                        for c in [self.screen.voltage_text, self.screen.current_text, self.screen.power_text, self.screen.percent_text]:
+                            c.render()
+                        self.screen.renderer.show_image()
+                time.sleep(5)
 
 
 

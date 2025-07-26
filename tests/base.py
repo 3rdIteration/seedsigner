@@ -79,7 +79,20 @@ class BaseTest:
     @classmethod
     def reset_controller(cls):
         """ Wipe and re-initialize the Controller singleton """
+        controller = Controller._instance
+        if controller:
+            if getattr(controller, "battery_hat", None) and controller.battery_hat.is_alive():
+                controller.battery_hat.stop()
+                controller.battery_hat.join()
+            if getattr(controller, "wipe_timer_thread", None) and controller.wipe_timer_thread.is_alive():
+                controller.wipe_timer_thread.stop()
+                controller.wipe_timer_thread.join()
         Controller._instance = None
+        try:
+            from seedsigner.hardware.battery_hat import BatteryHat
+            BatteryHat.reset_instance()
+        except Exception:
+            pass
         Controller.configure_instance()
 
 
