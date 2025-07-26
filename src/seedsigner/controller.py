@@ -120,7 +120,7 @@ class Controller(Singleton):
         rather than at the top in order avoid circular imports.
     """
     
-    VERSION = "0.8.6+Satochip+ERT-B2"
+    VERSION = "0.8.6+Satochip+ERT-B3"
 
     # Declare class member vars with type hints to enable richer IDE support throughout
     # the code.
