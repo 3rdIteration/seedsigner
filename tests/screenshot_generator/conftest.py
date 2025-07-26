@@ -1,4 +1,28 @@
+import os
 import pytest
+
+TRANSLATIONS_DIR = os.path.join(
+    os.path.dirname(__file__),
+    "..",
+    "..",
+    "src",
+    "seedsigner",
+    "resources",
+    "seedsigner-translations",
+    "l10n",
+)
+
+def _translations_available() -> bool:
+    return os.path.isdir(TRANSLATIONS_DIR) and any(
+        file.endswith(".mo")
+        for _, _, files in os.walk(TRANSLATIONS_DIR)
+        for file in files
+    )
+
+
+def pytest_ignore_collect(path, config):
+    if not _translations_available() and "screenshot_generator" in str(path):
+        return True
 
 
 

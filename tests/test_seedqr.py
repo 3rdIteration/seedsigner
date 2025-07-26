@@ -1,6 +1,5 @@
 import os
 from embit import bip39
-from seedsigner.helpers.qr import QR
 from seedsigner.models.decode_qr import DecodeQR, DecodeQRStatus
 from seedsigner.models.encode_qr import SeedQrEncoder, CompactSeedQrEncoder
 from seedsigner.models.qr_type import QRType
@@ -19,16 +18,8 @@ def run_encode_decode_test(entropy: bytes, mnemonic_length, qr_type):
 
     data = e.next_part()
 
-    qr = QR()
-    image = qr.qrimage(
-        data=data,
-        width=240,
-        height=240,
-        border=3
-    )
-
     decoder = DecodeQR()
-    status = decoder.add_image(image)
+    status = decoder.add_data(data)
     assert status == DecodeQRStatus.COMPLETE
 
     decoded_seed_phrase = decoder.get_seed_phrase()
