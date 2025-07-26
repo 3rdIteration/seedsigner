@@ -1,6 +1,7 @@
 import logging
 import time
 import traceback
+from gettext import gettext as _
 
 from embit.descriptor import Descriptor
 from embit.psbt import PSBT
@@ -85,6 +86,21 @@ class BackgroundImportThread(BaseThread):
         time_import('seedsigner.views.settings_views')
 
 
+class WipeTimerThread(BaseThread):
+    def run(self):
+        from seedsigner.hardware.buttons import HardwareButtons
+        controller = Controller.get_instance()
+        buttons = HardwareButtons.get_instance()
+        while self.keep_running:
+            wipe_minutes = controller.settings.get_value(SettingsConstants.SETTING__WIPE_TIMER)
+            if wipe_minutes and wipe_minutes != SettingsConstants.WIPE_TIMER__DISABLED:
+                controller.wipe_timer_ms = wipe_minutes * 60 * 1000
+                cur = int(time.time() * 1000)
+                if controller.wipe_timer_ms and cur - buttons.last_input_time > controller.wipe_timer_ms:
+                    controller.handle_wipe_timeout()
+                    buttons.update_last_input_time()
+            time.sleep(1)
+
 
 class Controller(Singleton):
     """
@@ -147,6 +163,9 @@ class Controller(Singleton):
     back_stack: BackStack = None
     screensaver: ScreensaverScreen = None
     toast_notification_thread: BaseToastOverlayManagerThread = None
+    wipe_timer_thread: BaseThread = None
+    wipe_timer_ms: int = None
+    auto_wiped: bool = False
 
 
     @classmethod
@@ -173,6 +192,7 @@ class Controller(Singleton):
     def configure_instance(cls):
         from seedsigner.gui.renderer import Renderer
         from seedsigner.hardware.microsd import MicroSD
+        from seedsigner.hardware.battery_hat import BatteryHat
 
         # Must be called before the first get_instance() call
         if cls._instance:
@@ -188,6 +208,9 @@ class Controller(Singleton):
         controller.microsd = MicroSD.get_instance()
         controller.microsd.start_detection()
 
+        controller.battery_hat = BatteryHat.get_instance()
+        controller.battery_hat.start()
+
         # Store one working psbt in memory
         controller.psbt = None
         controller.psbt_parser = None
@@ -199,9 +222,12 @@ class Controller(Singleton):
 
         # Other behavior constants
         controller.screensaver_activation_ms = 2 * 60 * 1000  # two minutes
-    
+
         background_import_thread = BackgroundImportThread()
         background_import_thread.start()
+
+        controller.wipe_timer_thread = WipeTimerThread()
+        controller.wipe_timer_thread.start()
 
         return cls._instance
 
@@ -391,6 +417,12 @@ class Controller(Singleton):
             if self.toast_notification_thread and self.toast_notification_thread.is_alive():
                 self.toast_notification_thread.stop()
 
+            if hasattr(self, "battery_hat") and self.battery_hat.is_alive():
+                self.battery_hat.stop()
+
+            if self.wipe_timer_thread and self.wipe_timer_thread.is_alive():
+                self.wipe_timer_thread.stop()
+
             # Clear the screen when exiting
             logger.info("Clearing screen, exiting")
             Renderer.get_instance().display_blank_screen()
@@ -448,6 +480,44 @@ class Controller(Singleton):
         self.toast_notification_thread = toast_manager_thread
         logger.info(f"Controller: starting {self.toast_notification_thread.__class__.__name__}")
         self.toast_notification_thread.start()
+
+
+    def handle_wipe_timeout(self):
+        from seedsigner.gui.toast import InfoToast
+        from seedsigner.views import MainMenuView
+        from seedsigner.hardware.buttons import HardwareButtons
+
+        logger.info("Controller: wipe timer triggered; wiping data")
+
+        # Wipe sensitive in-memory data
+        self.storage.seeds = []
+        self.storage.clear_pending_seed()
+        if self._storage2:
+            self._storage2.clear_encryptedqr()
+
+        self.psbt = None
+        self.psbt_parser = None
+        self.psbt_seed = None
+        self.multisig_wallet_descriptor = None
+        self.unverified_address = None
+        self.address_explorer_data = None
+        self.sign_message_data = None
+        self.resume_main_flow = None
+        self.Satochip_PIN = None
+        self.Satochip_Last_UID_SHA1 = None
+        self.Satochip_Connector = None
+
+        # Return to main menu
+        self.clear_back_stack()
+        self.back_stack.append(Destination(MainMenuView))
+
+        self.auto_wiped = True
+
+        # Notify user
+        self.activate_toast(InfoToast(label_text=_("Data wiped after inactivity")))
+
+        # Ensure any running screens break out of wait loops
+        HardwareButtons.get_instance().trigger_override()
 
 
     def handle_exception(self, e) -> Destination:

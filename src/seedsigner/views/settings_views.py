@@ -23,6 +23,7 @@ class SettingsMenuView(View):
     NFC_TEST = ButtonOption("Test NFC Scan")
     DONATE = ButtonOption("Donate")
     RESTART_PCSC = ButtonOption("Restart PCSC")
+    BATTERY_INFO = ButtonOption("Battery info")
 
     def __init__(self, visibility: str = SettingsConstants.VISIBILITY__GENERAL, selected_attr: str = None, initial_scroll: int = 0):
         super().__init__()
@@ -39,6 +40,9 @@ class SettingsMenuView(View):
         )
         button_data: list[ButtonOption] = [ButtonOption(e.display_name) for e in settings_entries]
 
+        advanced_destination = None
+        hardware_destination = None
+
         selected_button = 0
         if self.selected_attr:
             for i, entry in enumerate(settings_entries):
@@ -51,12 +55,16 @@ class SettingsMenuView(View):
 
             # Set up the next nested level of menuing
             button_data.append(self.ADVANCED)
-            next_destination = Destination(SettingsMenuView, view_args={"visibility": SettingsConstants.VISIBILITY__ADVANCED})
+            button_data.append(self.HARDWARE)
+            advanced_destination = Destination(
+                SettingsMenuView,
+                view_args={"visibility": SettingsConstants.VISIBILITY__ADVANCED},
+            )
+            hardware_destination = Destination(
+                SettingsMenuView,
+                view_args={"visibility": SettingsConstants.VISIBILITY__HARDWARE},
+            )
 
-            button_data.append(self.IO_TEST)
-            button_data.append(self.LIST_READERS)
-            button_data.append(self.SCARD_TEST)
-            button_data.append(self.NFC_TEST)
             button_data.append(self.RESTART_PCSC)
             button_data.append(self.DONATE)
 
@@ -65,15 +73,23 @@ class SettingsMenuView(View):
 
             # The hardware options nest below "Advanced"
             button_data.append(self.HARDWARE)
-            next_destination = Destination(SettingsMenuView, view_args={"visibility": SettingsConstants.VISIBILITY__HARDWARE})
+            hardware_destination = Destination(
+                SettingsMenuView,
+                view_args={"visibility": SettingsConstants.VISIBILITY__HARDWARE},
+            )
 
         elif self.visibility == SettingsConstants.VISIBILITY__HARDWARE:
             title = "Hardware"
-            next_destination = None
+            from seedsigner.hardware.battery_hat import BatteryHat
+            if BatteryHat.get_instance().detect_hat():
+                button_data.append(self.BATTERY_INFO)
+            button_data.append(self.IO_TEST)
+            button_data.append(self.LIST_READERS)
+            button_data.append(self.SCARD_TEST)
+            button_data.append(self.NFC_TEST)
 
         elif self.visibility == SettingsConstants.VISIBILITY__DEVELOPER:
             title = _("Dev Options")
-            next_destination = None
 
         selected_menu_num = self.run_screen(
             ButtonListScreen,
@@ -96,10 +112,10 @@ class SettingsMenuView(View):
                 return Destination(SettingsMenuView, view_args={"visibility": SettingsConstants.VISIBILITY__ADVANCED})
         
         if button_data[selected_menu_num] == self.ADVANCED:
-            return next_destination
+            return advanced_destination
 
         elif button_data[selected_menu_num] == self.HARDWARE:
-            return next_destination
+            return hardware_destination
 
         elif button_data[selected_menu_num] == self.IO_TEST:
             return Destination(IOTestView)
@@ -118,6 +134,9 @@ class SettingsMenuView(View):
 
         elif button_data[selected_menu_num] == self.DONATE:
             return Destination(DonateView)
+
+        elif button_data[selected_menu_num] == self.BATTERY_INFO:
+            return Destination(BatteryInfoView)
 
         elif settings_entries[selected_menu_num].attr_name == SettingsConstants.SETTING__ENCRYPTION_ITER:
             return Destination(SettingPBKDF2IterationsView, view_args=dict(attr_name=settings_entries[selected_menu_num].attr_name, parent_initial_scroll=initial_scroll))
@@ -623,3 +642,10 @@ class DonateView(View):
         self.run_screen(settings_screens.DonateScreen)
 
         return Destination(SettingsMenuView)
+
+
+class BatteryInfoView(View):
+    def run(self):
+        self.run_screen(settings_screens.BatteryInfoScreen)
+
+        return Destination(SettingsMenuView, view_args={"visibility": SettingsConstants.VISIBILITY__HARDWARE})
