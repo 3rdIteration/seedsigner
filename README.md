@@ -90,6 +90,7 @@ Support and discussion relating to this fork can happen via this [Telegram Group
 * [SeedQR Printable Templates](#seedqr-printable-templates)
 * [Build from Source](#build-from-source)
 * [Developer Local Build Instructions](#developer-local-build-instructions)
+* [Android Build Instructions](docs/android_build.md)
 
 ---------------
 
@@ -433,3 +434,5 @@ See the [SeedSigner OS repo](https://github.com/SeedSigner/seedsigner-os/) for i
 
 # Developer Local Build Instructions
 Raspberry Pi OS is commonly used for development. See the [Raspberry Pi OS Build Instructions](docs/raspberry_pi_os_build_instructions.md)
+
+For running SeedSigner on Android see the [Android Build Instructions](docs/android_build.md).
