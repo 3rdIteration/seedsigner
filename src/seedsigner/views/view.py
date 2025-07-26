@@ -4,8 +4,6 @@ from typing import Type
 
 from seedsigner.helpers.l10n import mark_for_translation as _mft
 from seedsigner.gui.components import SeedSignerIconConstants
-from seedsigner.gui.toast import InfoToast
-from seedsigner.controller import Controller
 from seedsigner.gui.screens import RET_CODE__POWER_BUTTON, RET_CODE__BACK_BUTTON
 from seedsigner.gui.screens.screen import BaseScreen, ButtonOption, LargeButtonScreen, WarningScreen, ErrorScreen
 from seedsigner.models.settings import Settings, SettingsConstants
@@ -193,6 +191,9 @@ class MainMenuView(View):
 
     def run(self):
         from seedsigner.gui.screens.screen import MainMenuScreen
+        from seedsigner.controller import Controller
+        from seedsigner.gui.toast import InfoToast
+
         controller = Controller.get_instance()
         if controller.auto_wiped:
             controller.auto_wiped = False
