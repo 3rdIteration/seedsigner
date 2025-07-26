@@ -10,6 +10,12 @@ class TestSettings(BaseTest):
     def setup_class(cls):
         super().setup_class()
         cls.settings = Settings.get_instance()
+        cls._orig_patch_pcsc = Settings.patch_pcsc_initd_script
+        Settings.patch_pcsc_initd_script = lambda *a, **kw: None
+
+    @classmethod
+    def teardown_class(cls):
+        Settings.patch_pcsc_initd_script = cls._orig_patch_pcsc
 
 
     def test_reset_settings(self):
