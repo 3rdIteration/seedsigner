@@ -13,6 +13,14 @@ sys.modules['seedsigner.hardware.buttons'] = MagicMock()
 sys.modules['seedsigner.hardware.camera'] = MagicMock()
 sys.modules['seedsigner.hardware.st7789_mpy'] = MagicMock()
 sys.modules['seedsigner.hardware.ili9341'] = MagicMock()
+sys.modules['RPi'] = MagicMock()
+sys.modules['RPi.GPIO'] = MagicMock()
+sys.modules['pyzbar'] = MagicMock()
+sys.modules['pyzbar.pyzbar'] = MagicMock()
+sys.modules['pysatochip'] = MagicMock()
+sys.modules['pysatochip.JCconstants'] = MagicMock()
+sys.modules['pysatochip.util'] = MagicMock()
+sys.modules['pysatochip.CardConnector'] = MagicMock()
 
 from seedsigner.controller import Controller, FlowBasedTestException, StopFlowBasedTest
 from seedsigner.gui.screens.screen import RET_CODE__BACK_BUTTON, RET_CODE__POWER_BUTTON, ButtonOption
