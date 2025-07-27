@@ -56,6 +56,7 @@ class TestSettingsFlows(FlowTest):
         """ Basic flow from MainMenuView to I/O Test View """
         self.run_sequence([
             FlowStep(MainMenuView, button_data_selection=MainMenuView.SETTINGS),
+            FlowStep(settings_views.SettingsMenuView, button_data_selection=settings_views.SettingsMenuView.HARDWARE),
             FlowStep(settings_views.SettingsMenuView, button_data_selection=settings_views.SettingsMenuView.IO_TEST),
             FlowStep(settings_views.IOTestView),
             FlowStep(settings_views.SettingsMenuView),

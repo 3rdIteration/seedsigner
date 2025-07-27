@@ -178,9 +178,15 @@ def generate_screenshots(locale):
                 if settings_entry.attr_name == SettingsConstants.SETTING__LOCALE:
                     # Locale selection has its own dedicated View
                     settings_views_list.append(ScreenshotConfig(settings_views.LocaleSelectionView))
-                else:
-                    # Generic SettingsEntry selection View
-                    settings_views_list.append(ScreenshotConfig(settings_views.SettingsEntryUpdateSelectionView, dict(attr_name=settings_entry.attr_name), screenshot_name=f"SettingsEntryUpdateSelectionView_{settings_entry.attr_name}"))
+                elif settings_entry.selection_options is not None:
+                    # Only render selection-based Views; free-entry settings have no options
+                    settings_views_list.append(
+                        ScreenshotConfig(
+                            settings_views.SettingsEntryUpdateSelectionView,
+                            dict(attr_name=settings_entry.attr_name),
+                            screenshot_name=f"SettingsEntryUpdateSelectionView_{settings_entry.attr_name}"
+                        )
+                    )
 
         # Add the top level "General" settings menu and entries
         settings_views_list.append(ScreenshotConfig(settings_views.SettingsMenuView))

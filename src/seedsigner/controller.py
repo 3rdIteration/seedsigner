@@ -192,6 +192,7 @@ class Controller(Singleton):
     def configure_instance(cls):
         from seedsigner.gui.renderer import Renderer
         from seedsigner.hardware.microsd import MicroSD
+        from seedsigner.hardware.battery_hat import BatteryHat
 
         # Must be called before the first get_instance() call
         if cls._instance:
@@ -206,6 +207,9 @@ class Controller(Singleton):
         
         controller.microsd = MicroSD.get_instance()
         controller.microsd.start_detection()
+
+        controller.battery_hat = BatteryHat.get_instance()
+        controller.battery_hat.start()
 
         # Store one working psbt in memory
         controller.psbt = None
@@ -412,6 +416,9 @@ class Controller(Singleton):
             
             if self.toast_notification_thread and self.toast_notification_thread.is_alive():
                 self.toast_notification_thread.stop()
+
+            if hasattr(self, "battery_hat") and self.battery_hat.is_alive():
+                self.battery_hat.stop()
 
             if self.wipe_timer_thread and self.wipe_timer_thread.is_alive():
                 self.wipe_timer_thread.stop()

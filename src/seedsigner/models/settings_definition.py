@@ -404,7 +404,7 @@ class SettingsConstants:
     VISIBILITY__ADVANCED = "advanced"
     VISIBILITY__HARDWARE = "hardware"
     VISIBILITY__DEVELOPER = "developer"
-    VISIBILITY__HIDDEN = "hidden"   # For data-only (e.g. custom_derivation), not configurable by the user
+    VISIBILITY__HIDDEN = "hidden"   # For data-only (e.g. custom_derivation)
 
     # TODO: Is there really a difference between ENABLED and PROMPT?
     TYPE__ENABLED_DISABLED = "enabled_disabled"
@@ -627,6 +627,7 @@ class SettingsDefinition:
                     abbreviated_name="screaders",
                     display_name="Smartcard Interfaces",
                     type=SettingsConstants.TYPE__MULTISELECT,
+                    visibility=SettingsConstants.VISIBILITY__HARDWARE,
                     selection_options=SettingsConstants.ALL_SMARTCARD_INTERFACES,
                     default_value=SettingsConstants.ALL_SMARTCARD_INTERFACES),
 

@@ -193,6 +193,11 @@ class FontAwesomeIconConstants:
     SQUARE_CARET_UP = "\uf151"
     UNLOCK = "\uf09c"
     X = "\u0058"
+    BATTERY_FULL = "\uf240"
+    BATTERY_THREE_QUARTERS = "\uf241"
+    BATTERY_HALF = "\uf242"
+    BATTERY_QUARTER = "\uf243"
+    BATTERY_EMPTY = "\uf244"
 
 
 
@@ -1785,6 +1790,72 @@ class TopNav(BaseComponent):
         if self.show_power_button:
             self.right_button.is_selected = self.is_selected
             self.right_button.render()
+
+
+@dataclass
+class BatteryIndicator(BaseComponent):
+    """Simple battery indicator component."""
+    percent: float = 0
+    screen_x: int = 0
+    screen_y: int = 0
+    icon_size: int = GUIConstants.ICON_FONT_SIZE
+    font_size: int = 14
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.font = Fonts.get_font(GUIConstants.ICON_FONT_NAME__FONT_AWESOME, self.icon_size)
+        self.text_font = Fonts.get_font(GUIConstants.get_body_font_name(), self.font_size)
+        # Pre-calc height from icon/text
+        (left, top, right, bottom) = self.font.getbbox(FontAwesomeIconConstants.BATTERY_FULL, anchor="ls")
+        self.height = -top
+        self.width = right - left + GUIConstants.COMPONENT_PADDING + self.text_font.getlength("100%")
+
+    def _icon_from_percent(self) -> str:
+        if self.percent is None:
+            return FontAwesomeIconConstants.BATTERY_EMPTY
+        if self.percent >= 75:
+            return FontAwesomeIconConstants.BATTERY_FULL
+        elif self.percent >= 50:
+            return FontAwesomeIconConstants.BATTERY_HALF
+        elif self.percent >= 25:
+            return FontAwesomeIconConstants.BATTERY_QUARTER
+        else:
+            return FontAwesomeIconConstants.BATTERY_EMPTY
+
+    def render(self):
+        # Clear background
+        self.image_draw.rectangle(
+            (
+                self.screen_x,
+                self.screen_y,
+                self.screen_x + self.width,
+                self.screen_y + self.height,
+            ),
+            fill=GUIConstants.BACKGROUND_COLOR,
+        )
+
+        icon = self._icon_from_percent()
+        self.image_draw.text(
+            (self.screen_x, self.screen_y + self.height),
+            text=icon,
+            font=self.font,
+            fill=GUIConstants.BODY_FONT_COLOR,
+            anchor="ls",
+        )
+
+        if self.percent is not None:
+            pct_text = f"{int(self.percent)}%"
+        else:
+            pct_text = "--%"
+
+        text_x = self.screen_x + self.font.getlength(icon) + GUIConstants.COMPONENT_PADDING
+        self.image_draw.text(
+            (text_x, self.screen_y + self.height),
+            text=pct_text,
+            font=self.text_font,
+            fill=GUIConstants.BODY_FONT_COLOR,
+            anchor="ls",
+        )
 
 
 
