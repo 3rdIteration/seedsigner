@@ -5,6 +5,7 @@ import hmac
 
 from binascii import hexlify
 from embit import bip39, bip32, bip85
+import shamir_mnemonic
 from embit.networks import NETWORKS
 from typing import List
 
@@ -249,6 +250,53 @@ class ElectrumSeed(Seed):
     def seedqr_supported(self) -> bool:
         return False
 
+
+    @property
+    def bip85_supported(self) -> bool:
+        return False
+
+
+class Slip39Seed(Seed):
+    """Seed derived from SLIP-39 mnemonic shares."""
+
+    def __init__(self, mnemonics: List[str], passphrase: str = "") -> None:
+        self._wordlist_language_code = SettingsConstants.WORDLIST_LANGUAGE__ENGLISH
+        if not mnemonics:
+            raise Exception("Must provide at least one SLIP-39 share")
+        self._shares: List[str] = [unicodedata.normalize("NFKD", m.strip()) for m in mnemonics]
+
+        self._passphrase: str = ""
+        self.set_passphrase(passphrase, regenerate_seed=False)
+
+        self.seed_bytes: bytes = None
+        self._generate_seed()
+
+    def _generate_seed(self):
+        try:
+            self.seed_bytes = shamir_mnemonic.combine_mnemonics(
+                self._shares, self._passphrase.encode("utf-8")
+            )
+        except Exception as e:
+            logger.info(repr(e), exc_info=True)
+            raise InvalidSeedException(repr(e))
+
+    # Expose shares as the mnemonic list/str for compatibility
+    @property
+    def mnemonic_list(self) -> List[str]:
+        return list(self._shares)
+
+    @property
+    def mnemonic_str(self) -> str:
+        return "\n".join(self._shares)
+
+    def set_passphrase(self, passphrase: str, regenerate_seed: bool = True):
+        self._passphrase = unicodedata.normalize("NFKD", passphrase) if passphrase else ""
+        if regenerate_seed:
+            self._generate_seed()
+
+    @property
+    def seedqr_supported(self) -> bool:
+        return False
 
     @property
     def bip85_supported(self) -> bool:

@@ -87,6 +87,7 @@ class SeedSelectSeedView(View):
     TYPE_18WORD = ButtonOption("Enter 18-word seed", FontAwesomeIconConstants.KEYBOARD)
     TYPE_24WORD = ButtonOption("Enter 24-word seed", FontAwesomeIconConstants.KEYBOARD)
     TYPE_ELECTRUM = ButtonOption("Enter Electrum seed", FontAwesomeIconConstants.KEYBOARD)
+    TYPE_SLIP39 = ButtonOption("Enter SLIP-39 seed", FontAwesomeIconConstants.KEYBOARD)
 
     def __init__(self, flow: str):
         super().__init__()
@@ -125,6 +126,7 @@ class SeedSelectSeedView(View):
 
         if self.settings.get_value(SettingsConstants.SETTING__ELECTRUM_SEEDS) == SettingsConstants.OPTION__ENABLED:
             button_data.append(self.TYPE_ELECTRUM)
+        button_data.append(self.TYPE_SLIP39)
 
         selected_menu_num = self.run_screen(
             seed_screens.SeedSelectSeedScreen,
@@ -166,6 +168,9 @@ class SeedSelectSeedView(View):
         elif button_data[selected_menu_num] == self.TYPE_ELECTRUM:
             return Destination(SeedElectrumMnemonicStartView)
 
+        elif button_data[selected_menu_num] == self.TYPE_SLIP39:
+            return Destination(SeedSlip39MnemonicStartView)
+
 
 
 """****************************************************************************
@@ -177,6 +182,7 @@ class LoadSeedView(View):
     TYPE_18WORD = ButtonOption("Enter 18-word seed", FontAwesomeIconConstants.KEYBOARD)
     TYPE_24WORD = ButtonOption("Enter 24-word seed", FontAwesomeIconConstants.KEYBOARD)
     TYPE_ELECTRUM = ButtonOption("Enter Electrum seed", FontAwesomeIconConstants.KEYBOARD)
+    TYPE_SLIP39 = ButtonOption("Enter SLIP-39 seed", FontAwesomeIconConstants.KEYBOARD)
     IMPORT_SEEDKEEPER = ButtonOption("From SeedKeeper", FontAwesomeIconConstants.LOCK)
     CREATE = ButtonOption(" Create a seed", SeedSignerIconConstants.PLUS)
 
@@ -187,8 +193,10 @@ class LoadSeedView(View):
             self.TYPE_18WORD,
             self.TYPE_24WORD,
             self.IMPORT_SEEDKEEPER,
-            self.CREATE,
         ]
+
+        button_data.append(self.CREATE)
+        button_data.append(self.TYPE_SLIP39)
 
         if self.settings.get_value(SettingsConstants.SETTING__ELECTRUM_SEEDS) == SettingsConstants.OPTION__ENABLED:
             button_data.append(self.TYPE_ELECTRUM)
@@ -224,6 +232,9 @@ class LoadSeedView(View):
 
         elif button_data[selected_menu_num] == self.TYPE_ELECTRUM:
             return Destination(SeedElectrumMnemonicStartView)
+
+        elif button_data[selected_menu_num] == self.TYPE_SLIP39:
+            return Destination(SeedSlip39MnemonicStartView)
 
         elif button_data[selected_menu_num] == self.CREATE:
             from .tools_views import ToolsMenuView
@@ -813,6 +824,78 @@ class SeedElectrumMnemonicStartView(View):
         self.controller.storage.init_pending_mnemonic(num_words=12, is_electrum=True)
 
         return Destination(SeedMnemonicEntryView)
+
+
+class SeedSlip39MnemonicStartView(View):
+    """Prompt before entering SLIP-39 shares."""
+
+    def run(self):
+        self.run_screen(
+            WarningScreen,
+            title=_("SLIP-39 warning"),
+            status_headline=None,
+            text=_("Enter each share in full. Multiple shares will be combined."),
+            show_back_button=False,
+        )
+
+        self.controller.storage.init_pending_slip39_share()
+        return Destination(SeedSlip39ShareEntryView)
+
+
+class SeedSlip39ShareEntryView(View):
+    def __init__(self, cur_word_index: int = 0):
+        super().__init__()
+        self.cur_word_index = cur_word_index
+        self.cur_word = self.controller.storage.get_pending_slip39_word(cur_word_index)
+
+    def run(self):
+        from importlib import import_module
+        slip39_wordlist = import_module("shamir_mnemonic.wordlist").WORDLIST
+        ret = self.run_screen(
+            seed_screens.SeedMnemonicEntryScreen,
+            title=_("Share Word #{}").format(self.cur_word_index + 1),
+            initial_letters=list(self.cur_word) if self.cur_word else ["a"],
+            wordlist=slip39_wordlist,
+        )
+
+        if ret == RET_CODE__BACK_BUTTON:
+            if self.cur_word_index > 0:
+                return Destination(BackStackView)
+            else:
+                self.controller.storage.discard_pending_slip39_shares()
+                return Destination(MainMenuView)
+
+        self.controller.storage.update_pending_slip39_share(ret, self.cur_word_index)
+
+        if self.cur_word_index < self.controller.storage.pending_slip39_share_length - 1:
+            return Destination(
+                SeedSlip39ShareEntryView,
+                view_args={"cur_word_index": self.cur_word_index + 1}
+            )
+        else:
+            self.controller.storage.finalize_current_slip39_share()
+            return Destination(SeedSlip39MoreSharesView)
+
+
+class SeedSlip39MoreSharesView(View):
+    ADD = ButtonOption("Add share")
+    DONE = ButtonOption("Combine shares")
+
+    def run(self):
+        button_data = [self.ADD, self.DONE]
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title=_("More shares?"),
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+
+        if button_data[selected_menu_num] == self.ADD:
+            self.controller.storage.init_pending_slip39_share()
+            return Destination(SeedSlip39ShareEntryView)
+
+        self.controller.storage.convert_pending_slip39_shares_to_pending_seed()
+        return Destination(SeedFinalizeView)
 
 
 
