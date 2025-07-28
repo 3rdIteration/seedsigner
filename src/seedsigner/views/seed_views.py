@@ -830,6 +830,7 @@ class SeedSlip39MnemonicStartView(View):
     """Prompt before entering SLIP-39 shares."""
 
     def run(self):
+        self.controller.storage.discard_pending_slip39_shares()
         self.run_screen(
             WarningScreen,
             title=_("SLIP-39 warning"),
@@ -890,7 +891,17 @@ class SeedSlip39ShareEntryView(View):
                 view_args={"cur_word_index": self.cur_word_index + 1}
             )
         else:
-            self.controller.storage.finalize_current_slip39_share()
+            from seedsigner.models.seed import InvalidSeedException
+            try:
+                self.controller.storage.finalize_current_slip39_share()
+            except InvalidSeedException:
+                length = self.controller.storage.pending_slip39_share_length
+                self.controller.storage.init_pending_slip39_share(num_words=length)
+                return Destination(
+                    SeedSlip39ShareInvalidView,
+                    view_args={"length": length, "retry_scan": False},
+                    skip_current_view=True,
+                )
             return Destination(SeedSlip39MoreSharesView)
 
 
@@ -918,6 +929,33 @@ class SeedSlip39MoreSharesView(View):
 
         self.controller.storage.convert_pending_slip39_shares_to_pending_seed()
         return Destination(SeedFinalizeView)
+
+
+class SeedSlip39ShareInvalidView(View):
+    def __init__(self, length: int, retry_scan: bool):
+        super().__init__()
+        self.length = length
+        self.retry_scan = retry_scan
+
+    def run(self):
+        from seedsigner.gui.screens.screen import DireWarningScreen
+        button = ButtonOption("Try Again")
+        self.run_screen(
+            DireWarningScreen,
+            title=_("Invalid SLIP-39 Share"),
+            show_back_button=False,
+            status_icon_name=SeedSignerIconConstants.ERROR,
+            status_headline=None,
+            text=_("Checksum failure; not a valid SLIP-39 share."),
+            button_data=[button],
+        )
+
+        if self.retry_scan:
+            from seedsigner.views.scan_views import ScanSlip39ShareQRView
+            return Destination(ScanSlip39ShareQRView, skip_current_view=True)
+        else:
+            self.controller.storage.init_pending_slip39_share(num_words=self.length)
+            return Destination(SeedSlip39ShareEntryView, skip_current_view=True)
 
 
 

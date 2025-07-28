@@ -132,6 +132,14 @@ class SeedStorage:
         return len(self._pending_slip39_share)
 
     def finalize_current_slip39_share(self):
+        mnemonic = " ".join(self._pending_slip39_share)
+        from shamir_mnemonic import Share as Slip39Share
+        try:
+            Slip39Share.from_mnemonic(mnemonic)
+        except Exception:
+            self._pending_slip39_share = []
+            raise InvalidSeedException("Invalid SLIP-39 share")
+
         self._pending_slip39_shares.append(list(self._pending_slip39_share))
         self._pending_slip39_share = []
 
