@@ -1079,6 +1079,7 @@ class SeedReviewPassphraseScreen(ButtonListScreen):
         # Customize defaults
         self.title = _("Verify Passphrase")
         self.is_bottom_list = True
+        self.num_display_buttons = 2
 
         super().__post_init__()
 
