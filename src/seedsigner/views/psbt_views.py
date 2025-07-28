@@ -1,4 +1,5 @@
 from gettext import gettext as _
+import logging
 
 from seedsigner.models.psbt_parser import PSBTParser
 from seedsigner.models.settings import SettingsConstants
@@ -11,6 +12,8 @@ from seedsigner.gui.screens.screen import (
     DireWarningScreen,
     QRDisplayScreen,
 )
+
+logger = logging.getLogger(__name__)
 from seedsigner.views.view import BackStackView, MainMenuView, NotYetImplementedView, View, Destination
 
 
@@ -649,7 +652,7 @@ class PSBTSatochipSignView(View):
                         continue
 
                     path = "m" + "".join(
-                        f"/{d & 0x7FFFFFFF}{'h' if d & 0x80000000 else ''}"
+                        f"/{d & 0x7FFFFFFF}{"'" if d & 0x80000000 else ''}"
                         for d in der.derivation
                     )
                     (_, bytepath) = connector.parser.bip32path2bytes(path)
@@ -674,6 +677,7 @@ class PSBTSatochipSignView(View):
 
         except Exception as e:
             self.loading_screen.stop()
+            logger.exception("Satochip signing failed")
             self.run_screen(
                 WarningScreen,
                 title="Failed",

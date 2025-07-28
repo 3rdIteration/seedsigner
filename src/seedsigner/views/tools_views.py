@@ -2230,7 +2230,7 @@ class ToolsSatochipEnable2FAView(View):
             )
         except Exception as e:
             self.loading_screen.stop()
-            logger.info("Enable 2fa failed:", str(e))
+            logger.exception("Enable 2FA failed")
             self.run_screen(
                 WarningScreen,
                 title="Failed",
@@ -2261,7 +2261,7 @@ class ToolsSatochipExportXpubView(View):
 
         network = self.settings.get_value(SettingsConstants.SETTING__NETWORK)
         is_mainnet = network == SettingsConstants.MAINNET
-        derivation = "m/84h/0h/0h" if is_mainnet else "m/84h/1h/0h"
+        derivation = "m/84'/0'/0'" if is_mainnet else "m/84'/1'/0'"
 
         self.loading_screen = LoadingScreenThread(text="Fetching Xpub\n\n\n\n\n\n")
         self.loading_screen.start()
@@ -2273,6 +2273,7 @@ class ToolsSatochipExportXpubView(View):
             )
         except Exception as e:
             self.loading_screen.stop()
+            logger.exception("Satochip export xpub failed")
             self.run_screen(
                 WarningScreen,
                 title="Failed",
@@ -2331,7 +2332,7 @@ class ToolsSatochipDescriptorScriptTypeView(View):
 
         hdkey = HDKey.from_string(self.xpub)
         fingerprint = hdkey.fingerprint.hex()
-        origin_path = self.derivation.replace("m/", "").replace("h", "'")
+        origin_path = self.derivation.replace("m/", "")
         origin = f"[{fingerprint}/{origin_path}]"
 
         if script_type == SettingsConstants.LEGACY_P2PKH:
@@ -2353,6 +2354,7 @@ class ToolsSatochipDescriptorScriptTypeView(View):
                 show_back_button=False,
             )
         except Exception as e:
+            logger.exception("Failed to load descriptor from Satochip xpub")
             self.run_screen(
                 WarningScreen,
                 title="Error",
