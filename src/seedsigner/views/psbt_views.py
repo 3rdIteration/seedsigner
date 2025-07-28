@@ -652,7 +652,7 @@ class PSBTSatochipSignView(View):
                         continue
 
                     path = "m" + "".join(
-                        f"/{d & 0x7FFFFFFF}{'\'' if d & 0x80000000 else ''}"
+                        f"/{d & 0x7FFFFFFF}{"'" if d & 0x80000000 else ''}"
                         for d in der.derivation
                     )
                     (_, bytepath) = connector.parser.bip32path2bytes(path)
