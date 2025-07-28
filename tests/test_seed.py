@@ -91,12 +91,34 @@ def test_slip39_seed():
         seed = Slip39Seed(mnemonics=[shares[0], shares[1]])
         assert seed.seed_bytes == secret
 
+def test_slip39_seed_20_word_share():
+        secret = bytes.fromhex("33" * 16)
+        shares = shamir_mnemonic.generate_mnemonics(1, [(2, 3)], secret)[0]
+        seed = Slip39Seed(mnemonics=[shares[0], shares[1]])
+        assert seed.seed_bytes == secret
+
 def test_slip39_storage_reconstruction():
        secret = bytes.fromhex("22" * 32)
        shares = shamir_mnemonic.generate_mnemonics(1, [(2, 3)], secret)[0]
        from seedsigner.models.seed_storage import SeedStorage
        storage = SeedStorage()
+       storage.init_pending_slip39_share(num_words=len(shares[0].split()))
+       for i, w in enumerate(shares[0].split()):
+               storage.update_pending_slip39_share(w, i)
+       storage.finalize_current_slip39_share()
        storage.init_pending_slip39_share()
+       for i, w in enumerate(shares[1].split()):
+               storage.update_pending_slip39_share(w, i)
+       storage.finalize_current_slip39_share()
+       storage.convert_pending_slip39_shares_to_pending_seed()
+       assert storage.pending_seed.seed_bytes == secret
+
+def test_slip39_storage_reconstruction_20_word():
+       secret = bytes.fromhex("44" * 16)
+       shares = shamir_mnemonic.generate_mnemonics(1, [(2, 3)], secret)[0]
+       from seedsigner.models.seed_storage import SeedStorage
+       storage = SeedStorage()
+       storage.init_pending_slip39_share(num_words=len(shares[0].split()))
        for i, w in enumerate(shares[0].split()):
                storage.update_pending_slip39_share(w, i)
        storage.finalize_current_slip39_share()

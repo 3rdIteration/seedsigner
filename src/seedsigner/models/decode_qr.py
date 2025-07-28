@@ -89,7 +89,10 @@ class DecodeQR:
                 self.decoder = Base43PsbtQrDecoder() # Single Segment Base43
 
             elif self.qr_type in [QRType.SEED__SEEDQR, QRType.SEED__COMPACTSEEDQR, QRType.SEED__MNEMONIC, QRType.SEED__FOUR_LETTER_MNEMONIC, QRType.SEED__UR2]:
-                self.decoder = SeedQrDecoder(wordlist_language_code=self.wordlist_language_code)          
+                self.decoder = SeedQrDecoder(wordlist_language_code=self.wordlist_language_code)
+
+            elif self.qr_type == QRType.SEED__SLIP39:
+                self.decoder = Slip39ShareDecoder()
 
             elif self.qr_type == QRType.SETTINGS:
                 self.decoder = SettingsQrDecoder()  # Settings config
@@ -212,6 +215,10 @@ class DecodeQR:
         if self.is_seed:
             return self.decoder.get_seed_phrase()
 
+    def get_slip39_share(self):
+        if self.is_slip39_share:
+            return self.decoder.get_share()
+
 
     def get_settings_data(self):
         if self.is_settings:
@@ -323,9 +330,13 @@ class DecodeQR:
             QRType.SEED__SEEDQR,
             QRType.SEED__COMPACTSEEDQR,
             QRType.SEED__UR2,
-            QRType.SEED__MNEMONIC, 
+            QRType.SEED__MNEMONIC,
             QRType.SEED__FOUR_LETTER_MNEMONIC,
         ]
+
+    @property
+    def is_slip39_share(self) -> bool:
+        return self.qr_type == QRType.SEED__SLIP39
     
 
     @property
@@ -454,6 +465,9 @@ class DecodeQR:
             except:
                 _4LETTER_WORDLIST = []
 
+            from importlib import import_module
+            slip39_wordlist = import_module("shamir_mnemonic.wordlist").WORDLIST
+
             if all(x in wordlist for x in s.strip().split(" ")):
                 # checks if all words in list are in bip39 word list
                 return QRType.SEED__MNEMONIC
@@ -461,6 +475,9 @@ class DecodeQR:
             elif all(x in _4LETTER_WORDLIST for x in s.strip().split(" ")):
                 # checks if all 4 letter words are in list are in 4 letter bip39 word list
                 return QRType.SEED__FOUR_LETTER_MNEMONIC
+
+            elif all(x in slip39_wordlist for x in s.strip().split(" ")):
+                return QRType.SEED__SLIP39
 
             elif DecodeQR.is_base43_psbt(s):
                 return QRType.PSBT__BASE43
@@ -920,17 +937,40 @@ class SeedQrDecoder(BaseSingleFrameQrDecoder):
         else:
             return DecodeQRStatus.INVALID
 
-
     def get_seed_phrase(self):
         if self.complete:
             return self.seed_phrase[:]
         return []
 
-
     def is_12_or_18_or_24_word_phrase(self):
         if len(self.seed_phrase) in (12, 18, 24):
             return True
         return False
+
+
+class Slip39ShareDecoder(BaseSingleFrameQrDecoder):
+    """Decodes a single-frame SLIP-39 share"""
+    def __init__(self):
+        super().__init__()
+        self.share = None
+
+    def add(self, segment, qr_type=QRType.SEED__SLIP39):
+        if qr_type == QRType.SEED__SLIP39:
+            try:
+                if isinstance(segment, bytes):
+                    segment = segment.decode("utf-8")
+                from shamir_mnemonic import Share as Slip39Share
+                Slip39Share.from_mnemonic(segment)
+                self.share = segment
+                self.complete = True
+                self.collected_segments = 1
+                return DecodeQRStatus.COMPLETE
+            except Exception:
+                pass
+        return DecodeQRStatus.INVALID
+
+    def get_share(self):
+        return self.share
 
 
 

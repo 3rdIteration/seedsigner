@@ -838,7 +838,24 @@ class SeedSlip39MnemonicStartView(View):
             show_back_button=False,
         )
 
-        self.controller.storage.init_pending_slip39_share()
+        TWENTY = ButtonOption("20 words")
+        THIRTYTHREE = ButtonOption("33 words")
+        SCAN = ButtonOption("Scan QR", SeedSignerIconConstants.QRCODE)
+        button_data = [TWENTY, THIRTYTHREE, SCAN]
+
+        selected = self.run_screen(
+            ButtonListScreen,
+            title=_("Share length"),
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+
+        if button_data[selected] == SCAN:
+            from seedsigner.views.scan_views import ScanSlip39ShareQRView
+            return Destination(ScanSlip39ShareQRView)
+
+        length = 20 if button_data[selected] == TWENTY else 33
+        self.controller.storage.init_pending_slip39_share(num_words=length)
         return Destination(SeedSlip39ShareEntryView)
 
 
@@ -879,10 +896,11 @@ class SeedSlip39ShareEntryView(View):
 
 class SeedSlip39MoreSharesView(View):
     ADD = ButtonOption("Add share")
+    SCAN = ButtonOption("Scan share", SeedSignerIconConstants.QRCODE)
     DONE = ButtonOption("Combine shares")
 
     def run(self):
-        button_data = [self.ADD, self.DONE]
+        button_data = [self.ADD, self.SCAN, self.DONE]
         selected_menu_num = self.run_screen(
             ButtonListScreen,
             title=_("More shares?"),
@@ -893,6 +911,10 @@ class SeedSlip39MoreSharesView(View):
         if button_data[selected_menu_num] == self.ADD:
             self.controller.storage.init_pending_slip39_share()
             return Destination(SeedSlip39ShareEntryView)
+
+        elif button_data[selected_menu_num] == self.SCAN:
+            from seedsigner.views.scan_views import ScanSlip39ShareQRView
+            return Destination(ScanSlip39ShareQRView)
 
         self.controller.storage.convert_pending_slip39_shares_to_pending_seed()
         return Destination(SeedFinalizeView)

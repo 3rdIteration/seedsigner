@@ -14,6 +14,7 @@ from seedsigner.helpers.l10n import mark_for_translation as _mft
 
 from seedsigner.models.settings import SettingsConstants
 from seedsigner.views.view import BackStackView, ErrorView, MainMenuView, NotYetImplementedView, View, Destination
+from seedsigner.views.seed_views import SeedSlip39MoreSharesView
 from seedsigner.gui.screens.screen import ButtonOption
 
 logger = logging.getLogger(__name__)
@@ -98,6 +99,15 @@ class ScanView(View):
                         return Destination(SeedAddPassphraseView)
                     else:
                         return Destination(SeedFinalizeView)
+
+            elif self.decoder.is_slip39_share:
+                share = self.decoder.get_slip39_share()
+                words = share.split()
+                self.controller.storage.init_pending_slip39_share(num_words=len(words))
+                for i, w in enumerate(words):
+                    self.controller.storage.update_pending_slip39_share(w, i)
+                self.controller.storage.finalize_current_slip39_share()
+                return Destination(SeedSlip39MoreSharesView)
             
             elif self.decoder.is_psbt:
                 from seedsigner.views.psbt_views import PSBTSelectSeedView
@@ -213,6 +223,15 @@ class ScanSeedQRView(ScanView):
     @property
     def is_valid_qr_type(self):
         return self.decoder.is_seed or self.decoder.is_encrypted_seedqr
+
+
+class ScanSlip39ShareQRView(ScanView):
+    instructions_text = _mft("Scan SLIP-39 Share")
+    invalid_qr_type_message = _mft("Expected a SLIP-39 share QR")
+
+    @property
+    def is_valid_qr_type(self):
+        return self.decoder.is_slip39_share
 
 
 

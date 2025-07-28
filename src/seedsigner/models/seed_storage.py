@@ -13,6 +13,7 @@ class SeedStorage:
         self._pending_is_slip39: bool = False
         self._pending_slip39_share: List[str] = []
         self._pending_slip39_shares: List[List[str]] = []
+        self._slip39_share_length: int | None = None
 
 
     def set_pending_seed(self, seed: Seed):
@@ -109,8 +110,11 @@ class SeedStorage:
 
     """Slip39 share handling"""
 
-    def init_pending_slip39_share(self, num_words: int = 33):
+    def init_pending_slip39_share(self, num_words: int | None = None):
+        if num_words is None:
+            num_words = self._slip39_share_length or 33
         self._pending_slip39_share = [None] * num_words
+        self._slip39_share_length = num_words
         self._pending_is_slip39 = True
 
     def update_pending_slip39_share(self, word: str, index: int):
@@ -140,3 +144,4 @@ class SeedStorage:
         self._pending_slip39_share = []
         self._pending_slip39_shares = []
         self._pending_is_slip39 = False
+        self._slip39_share_length = None
