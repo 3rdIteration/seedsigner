@@ -3,7 +3,14 @@ from gettext import gettext as _
 from seedsigner.models.psbt_parser import PSBTParser
 from seedsigner.models.settings import SettingsConstants
 from seedsigner.gui.components import FontAwesomeIconConstants, SeedSignerIconConstants
-from seedsigner.gui.screens.screen import (RET_CODE__BACK_BUTTON, ButtonListScreen, ButtonOption, WarningScreen, DireWarningScreen, QRDisplayScreen)
+from seedsigner.gui.screens.screen import (
+    RET_CODE__BACK_BUTTON,
+    ButtonListScreen,
+    ButtonOption,
+    WarningScreen,
+    DireWarningScreen,
+    QRDisplayScreen,
+)
 from seedsigner.views.view import BackStackView, MainMenuView, NotYetImplementedView, View, Destination
 
 
@@ -13,6 +20,7 @@ class PSBTSelectSeedView(View):
     TYPE_12WORD = ButtonOption("Enter 12-word seed", FontAwesomeIconConstants.KEYBOARD)
     TYPE_24WORD = ButtonOption("Enter 24-word seed", FontAwesomeIconConstants.KEYBOARD)
     TYPE_ELECTRUM = ButtonOption("Enter Electrum seed", FontAwesomeIconConstants.KEYBOARD)
+    SATOCHIP = ButtonOption("Use Satochip Card", SeedSignerIconConstants.FINGERPRINT)
 
 
     def run(self):
@@ -45,6 +53,7 @@ class PSBTSelectSeedView(View):
         button_data.append(self.TYPE_24WORD)
         if self.settings.get_value(SettingsConstants.SETTING__ELECTRUM_SEEDS) == SettingsConstants.OPTION__ENABLED:
             button_data.append(self.TYPE_ELECTRUM)
+        button_data.append(self.SATOCHIP)
 
         selected_menu_num = self.run_screen(
             ButtonListScreen,
@@ -79,6 +88,9 @@ class PSBTSelectSeedView(View):
         elif button_data[selected_menu_num] == self.TYPE_ELECTRUM:
             from seedsigner.views.seed_views import SeedElectrumMnemonicStartView
             return Destination(SeedElectrumMnemonicStartView)
+
+        elif button_data[selected_menu_num] == self.SATOCHIP:
+            return Destination(PSBTSatochipSignView)
 
 
 
@@ -596,3 +608,94 @@ class PSBTSigningErrorView(View):
 
         if selected_menu_num == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
+
+
+class PSBTSatochipSignView(View):
+    def run(self):
+        from embit.psbt import SIGHASH
+        from embit import hashes
+        from seedsigner.helpers import seedkeeper_utils
+        from seedsigner.gui.screens.screen import LoadingScreenThread, LargeIconStatusScreen
+
+        connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satochip"])
+        if not connector:
+            return Destination(BackStackView)
+
+        psbt = self.controller.psbt
+        if psbt is None:
+            return Destination(MainMenuView)
+
+        self.loading_screen = LoadingScreenThread(text="Signing\n\n\n\n\n")
+        self.loading_screen.start()
+
+        try:
+            pubkey, _ = connector.card_bip32_get_extendedkey(b"")
+            fingerprint = hashes.hash160(pubkey.get_public_key_bytes(compressed=True))[:4]
+
+            sig_before = PSBTParser.sig_count(psbt)
+
+            for idx, inp in enumerate(psbt.inputs):
+                req_sighash = inp.sighash_type
+                if req_sighash is None:
+                    req_sighash = SIGHASH.DEFAULT if inp.is_taproot else SIGHASH.ALL
+                if not inp.is_taproot and req_sighash == SIGHASH.DEFAULT:
+                    req_sighash = SIGHASH.ALL
+
+                h = psbt.sighash(idx, sighash=req_sighash)
+
+                derivs = inp.taproot_bip32_derivations if inp.is_taproot else inp.bip32_derivations
+                for pub, der in derivs.items():
+                    if der.fingerprint != fingerprint:
+                        continue
+
+                    path = "m" + "".join(
+                        f"/{d & 0x7FFFFFFF}{'h' if d & 0x80000000 else ''}"
+                        for d in der.derivation
+                    )
+                    (_, bytepath) = connector.parser.bip32path2bytes(path)
+                    connector.card_bip32_get_extendedkey(bytepath)
+
+                    if inp.is_taproot:
+                        sig_bytes, sw1, sw2 = connector.card_sign_schnorr_hash(0xFF, list(h), None)
+                        if sw1 != 0x90 or sw2 != 0x00:
+                            continue
+                        sig = bytes(sig_bytes)
+                        if req_sighash != SIGHASH.DEFAULT:
+                            sig += bytes([req_sighash])
+                        inp.taproot_sigs[(pub, b"")] = sig
+                    else:
+                        sig_bytes, sw1, sw2 = connector.card_sign_transaction_hash(0xFF, list(h), None)
+                        if sw1 != 0x90 or sw2 != 0x00:
+                            continue
+                        sig = bytes(sig_bytes) + bytes([req_sighash])
+                        inp.partial_sigs[pub] = sig
+
+            sig_after = PSBTParser.sig_count(psbt)
+
+        except Exception as e:
+            self.loading_screen.stop()
+            self.run_screen(
+                WarningScreen,
+                title="Failed",
+                status_headline=None,
+                text=str(e),
+                show_back_button=True,
+            )
+            return Destination(BackStackView)
+
+        self.loading_screen.stop()
+
+        if sig_before == sig_after:
+            return Destination(PSBTSigningErrorView)
+
+        self.controller.psbt = PSBTParser.trim(psbt)
+
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Success",
+            status_headline=None,
+            text="PSBT Signed",
+            show_back_button=False,
+        )
+
+        return Destination(PSBTSignedQRDisplayView)

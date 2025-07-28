@@ -12,28 +12,56 @@ from PIL.ImageOps import autocontrast
 from gettext import gettext as _
 
 from seedsigner.gui.components import FontAwesomeIconConstants, GUIConstants, SeedSignerIconConstants, resize_image_to_fill
-from seedsigner.gui.screens import (RET_CODE__BACK_BUTTON, ButtonListScreen, DireWarningScreen, LargeIconStatusScreen, WarningScreen)
+from seedsigner.gui.screens import (
+    RET_CODE__BACK_BUTTON,
+    ButtonListScreen,
+    DireWarningScreen,
+    LargeIconStatusScreen,
+    WarningScreen,
+)
 from seedsigner.gui.screens.scan_screens import ScanScreen
-from seedsigner.gui.screens.tools_screens import (ToolsCalcFinalWordDoneScreen, ToolsCalcFinalWordFinalizePromptScreen,
-    ToolsCalcFinalWordScreen, ToolsCoinFlipEntryScreen, ToolsDiceEntropyEntryScreen, ToolsImageEntropyFinalImageScreen,
-    ToolsImageEntropyLivePreviewScreen, ToolsAddressExplorerAddressTypeScreen, ToolsTextQRTextEntryScreen, ToolsTextQRReviewTextScreen,
-    ToolsTextQRTranscribeModePromptScreen, ToolsTranscribeTextQRWholeQRScreen, ToolsTranscribeTextQRZoomedInScreen,
-    ToolsTranscribeTextQRConfirmQRPromptScreen)
-from seedsigner.helpers import embit_utils, mnemonic_generation
+from seedsigner.gui.screens.tools_screens import (
+    ToolsCalcFinalWordDoneScreen,
+    ToolsCalcFinalWordFinalizePromptScreen,
+    ToolsCalcFinalWordScreen,
+    ToolsCoinFlipEntryScreen,
+    ToolsDiceEntropyEntryScreen,
+    ToolsImageEntropyFinalImageScreen,
+    ToolsImageEntropyLivePreviewScreen,
+    ToolsAddressExplorerAddressTypeScreen,
+    ToolsTextQRTextEntryScreen,
+    ToolsTextQRReviewTextScreen,
+    ToolsTextQRTranscribeModePromptScreen,
+    ToolsTranscribeTextQRWholeQRScreen,
+    ToolsTranscribeTextQRZoomedInScreen,
+    ToolsTranscribeTextQRConfirmQRPromptScreen,
+)
+from seedsigner.helpers import embit_utils, mnemonic_generation, seedkeeper_utils
 from seedsigner.models.decode_qr import DecodeQR
 from seedsigner.models.encode_qr import GenericStaticQrEncoder
-from seedsigner.gui.screens import RET_CODE__BACK_BUTTON, ButtonListScreen
 from seedsigner.gui.screens.screen import ButtonOption
-from seedsigner.helpers import mnemonic_generation
 from seedsigner.models.seed import Seed
 from seedsigner.models.settings_definition import SettingsConstants
-from seedsigner.views.seed_views import SeedDiscardView, SeedFinalizeView, SeedMnemonicEntryView, SeedOptionsView, SeedWordsWarningView, SeedExportXpubScriptTypeView, LoadSeedView
+from seedsigner.views.seed_views import (
+    SeedDiscardView,
+    SeedFinalizeView,
+    SeedMnemonicEntryView,
+    SeedOptionsView,
+    SeedWordsWarningView,
+    SeedExportXpubScriptTypeView,
+    LoadSeedView,
+)
 
 from .view import View, Destination, BackStackView, MainMenuView
 
-from seedsigner.helpers import seedkeeper_utils
-from seedsigner.gui.screens import (RET_CODE__BACK_BUTTON, ButtonListScreen,
-    WarningScreen, DireWarningScreen, seed_screens, LargeIconStatusScreen)
+from seedsigner.gui.screens import (
+    RET_CODE__BACK_BUTTON,
+    ButtonListScreen,
+    WarningScreen,
+    DireWarningScreen,
+    seed_screens,
+    LargeIconStatusScreen,
+)
 logger = logging.getLogger(__name__)
 
 from pysatochip.JCconstants import SEEDKEEPER_DIC_TYPE, SEEDKEEPER_DIC_ORIGIN, SEEDKEEPER_DIC_EXPORT_RIGHTS, BIP39_WORDLIST_DIC
@@ -2052,9 +2080,10 @@ class ToolsSeedkeeperSaveDescriptorView(View):
 class ToolsSatochipView(View):
     IMPORT_SEED = ButtonOption("Initialise with Seed")
     ENABLE_2FA = ButtonOption("Enable 2FA")
+    EXPORT_XPUB = ButtonOption("Export Xpub")
 
     def run(self):
-        button_data = [self.IMPORT_SEED, self.ENABLE_2FA]
+        button_data = [self.IMPORT_SEED, self.ENABLE_2FA, self.EXPORT_XPUB]
         selected_menu_num = self.run_screen(
             ButtonListScreen,
             title="Satochip",
@@ -2070,6 +2099,9 @@ class ToolsSatochipView(View):
 
         elif button_data[selected_menu_num] == self.ENABLE_2FA:
             return Destination(ToolsSatochipEnable2FAView)
+
+        elif button_data[selected_menu_num] == self.EXPORT_XPUB:
+            return Destination(ToolsSatochipExportXpubView)
         
 class ToolsSatochipImportSeedView(View):
     SCAN_SEED = ButtonOption("Scan a seed", SeedSignerIconConstants.QRCODE)
@@ -2206,6 +2238,129 @@ class ToolsSatochipEnable2FAView(View):
                 text=f"Enable 2FA Failed",
                 show_back_button=False,
             )
+
+        return Destination(MainMenuView)
+
+class ToolsSatochipExportXpubView(View):
+    def run(self):
+        from seedsigner.gui.screens.screen import (
+            LoadingScreenThread,
+            QRDisplayScreen,
+            WarningScreen,
+            ButtonListScreen,
+            ButtonOption,
+            LargeIconStatusScreen,
+        )
+        from seedsigner.models.encode_qr import GenericStaticQrEncoder
+        from seedsigner.models.settings import SettingsConstants
+
+        Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satochip"])
+
+        if not Satochip_Connector:
+            return Destination(BackStackView)
+
+        network = self.settings.get_value(SettingsConstants.SETTING__NETWORK)
+        is_mainnet = network == SettingsConstants.MAINNET
+        derivation = "m/84h/0h/0h" if is_mainnet else "m/84h/1h/0h"
+
+        self.loading_screen = LoadingScreenThread(text="Fetching Xpub\n\n\n\n\n\n")
+        self.loading_screen.start()
+        try:
+            xpub = Satochip_Connector.card_bip32_get_xpub(
+                path=derivation,
+                xtype="p2wpkh",
+                is_mainnet=is_mainnet,
+            )
+        except Exception as e:
+            self.loading_screen.stop()
+            self.run_screen(
+                WarningScreen,
+                title="Failed",
+                status_headline=None,
+                text=str(e),
+                show_back_button=True,
+            )
+            return Destination(BackStackView)
+
+        self.loading_screen.stop()
+
+        qr_encoder = GenericStaticQrEncoder(data=xpub)
+        self.run_screen(QRDisplayScreen, qr_encoder=qr_encoder)
+
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title="Xpub Options",
+            is_button_text_centered=False,
+            button_data=[ButtonOption("Load Descriptor"), ButtonOption("Done")],
+        )
+
+        if selected_menu_num == 0:
+            return Destination(ToolsSatochipDescriptorScriptTypeView, view_args=dict(xpub=xpub, derivation=derivation))
+
+        return Destination(MainMenuView)
+
+
+class ToolsSatochipDescriptorScriptTypeView(View):
+    def __init__(self, xpub: str, derivation: str):
+        super().__init__()
+        self.xpub = xpub
+        self.derivation = derivation
+
+    def run(self):
+        from embit.descriptor import Descriptor
+        from embit.bip32 import HDKey
+
+        script_types = self.settings.get_value(SettingsConstants.SETTING__SCRIPT_TYPES)
+        button_data = []
+        for st, display_name in SettingsConstants.ALL_SCRIPT_TYPES:
+            if st in script_types:
+                button_data.append(ButtonOption(display_name, return_data=st))
+
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Select Script Type",
+            is_button_text_centered=False,
+            button_data=button_data,
+            is_bottom_list=True,
+        )
+
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        script_type = button_data[selected].return_data
+
+        hdkey = HDKey.from_string(self.xpub)
+        fingerprint = hdkey.fingerprint.hex()
+        origin_path = self.derivation.replace("m/", "").replace("h", "'")
+        origin = f"[{fingerprint}/{origin_path}]"
+
+        if script_type == SettingsConstants.LEGACY_P2PKH:
+            desc_str = f"pkh({origin}{self.xpub}/0/*)"
+        elif script_type == SettingsConstants.NESTED_SEGWIT:
+            desc_str = f"sh(wpkh({origin}{self.xpub}/0/*))"
+        elif script_type == SettingsConstants.NATIVE_SEGWIT:
+            desc_str = f"wpkh({origin}{self.xpub}/0/*)"
+        else:
+            desc_str = f"tr({origin}{self.xpub}/0/*)"
+
+        try:
+            self.controller.multisig_wallet_descriptor = Descriptor.from_string(desc_str)
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Success",
+                status_headline=None,
+                text="Descriptor Loaded",
+                show_back_button=False,
+            )
+        except Exception as e:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text=str(e),
+                show_back_button=True,
+            )
+            return Destination(BackStackView)
 
         return Destination(MainMenuView)
 
