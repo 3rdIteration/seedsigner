@@ -73,7 +73,7 @@ def jcardsim_emulator(pytestconfig):
     cap_path = Path(__file__).resolve().parents[1] / "tools" / "javacard-cap" / "SeedKeeper.cap"
 
     # Start local pcscd so pyscard can connect
-    pcscd = Popen(["pcscd", "-f"])
+    pcscd = Popen(["pcscd", "-f", "--disable-polkit"])
     time.sleep(1)
 
     jproc = Popen(["java", "-jar", jar, str(cap_path)])
