@@ -387,6 +387,11 @@ class ScanEncryptedQRTypeEncryptionKeyExitDialogView(View):
 
 
 class ScanEncryptedQRScanEncryptionKeyView(View):
+    def __init__(self, encryption_key: str = ""):
+        super().__init__()
+        self.encryption_key = encryption_key
+
+
     def run(self):
         from seedsigner.gui.screens.scan_screens import ScanScreen
         decoder = DecodeQR(is_encryptionkey=True)
@@ -398,10 +403,10 @@ class ScanEncryptedQRScanEncryptionKeyView(View):
         self.controller.reset_screensaver_timeout()
         time.sleep(0.1)
         if decoder.is_complete:
-            encryption_key = decoder.get_encryption_key()
+            self.encryption_key += decoder.get_encryption_key()
             return Destination(
                 ScanEncryptedQRReviewEncryptionKeyView,
-                view_args=dict(encryption_key=encryption_key),
+                view_args=dict(encryption_key=self.encryption_key),
                 skip_current_view=True
             )
         elif decoder.is_nonUTF8:
@@ -434,7 +439,8 @@ class ScanEncryptedQRReviewEncryptionKeyView(View):
 
         PROCEED = ButtonOption("Proceed")
         EDIT = ButtonOption("Edit")
-        button_data = [PROCEED, EDIT]
+        SCAN = ButtonOption("Scan & Append Another")
+        button_data = [PROCEED, EDIT, SCAN]
 
         from seedsigner.gui.screens.scan_screens import ScanReviewEncryptionKeyScreen
 
@@ -456,6 +462,13 @@ class ScanEncryptedQRReviewEncryptionKeyView(View):
         elif button_data[selected_menu_num] == EDIT:
             return Destination(
                 ScanEncryptedQRTypeEncryptionKeyView,
+                view_args=dict(encryption_key=self.encryption_key),
+                skip_current_view=True
+            )
+
+        elif button_data[selected_menu_num] == SCAN:
+            return Destination(
+                ScanEncryptedQRScanEncryptionKeyView,
                 view_args=dict(encryption_key=self.encryption_key),
                 skip_current_view=True
             )
