@@ -2156,7 +2156,8 @@ class ToolsSatochipEnable2FAView(View):
         import binascii
         from seedsigner.gui.screens.screen import LoadingScreenThread
         key = urandom(20)
-        logger.info("2FA Key:", binascii.hexlify(key))
+        # Avoid logging the 2FA key value
+        logger.info("2FA key generated")
 
         Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satochip"])
 
@@ -2498,7 +2499,8 @@ class ToolsMicroSDFlashView(View):
         logger.info("Selected:", microsd_image)
 
         if platform.uname()[1] == "seedsigner-os":
-            data = run("cp /mnt/microsd/microsd-images/" + microsd_image + " /tmp/img.img", capture_output=True, shell=True, text=True)
+            image_path = os.path.join('/mnt/microsd/microsd-images', microsd_image)
+            data = run(['cp', image_path, '/tmp/img.img'], capture_output=True, text=True)
             print(data)
             if len(data.stderr) > 1:
                 self.run_screen(
@@ -2589,8 +2591,9 @@ class ToolsMicroSDFlashView(View):
                     return Destination(MainMenuView)
 
         else:
-            os.system("cp /boot/microsd-images/" + microsd_image + " /tmp/img.img")
-            os.system("sudo dd if=/tmp/img.img of=" + microsd_dev)
+            image_path = os.path.join('/boot/microsd-images', microsd_image)
+            run(['cp', image_path, '/tmp/img.img'], check=False)
+            run(['sudo', 'dd', f'if=/tmp/img.img', f'of={microsd_dev}'], check=False)
 
         return Destination(MainMenuView)
 
