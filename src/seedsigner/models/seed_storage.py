@@ -14,6 +14,7 @@ class SeedStorage:
         self._pending_slip39_share: List[str] = []
         self._pending_slip39_shares: List[List[str]] = []
         self._slip39_share_length: int | None = None
+        self._slip39_first_share = None
 
 
     def set_pending_seed(self, seed: Seed):
@@ -135,13 +136,29 @@ class SeedStorage:
         mnemonic = " ".join(self._pending_slip39_share)
         from shamir_mnemonic import Share as Slip39Share
         try:
-            Slip39Share.from_mnemonic(mnemonic)
+            share_obj = Slip39Share.from_mnemonic(mnemonic)
         except Exception:
             self._pending_slip39_share = []
             raise InvalidSeedException("Invalid SLIP-39 share")
 
+        if self._slip39_first_share is None:
+            self._slip39_first_share = share_obj
+
         self._pending_slip39_shares.append(list(self._pending_slip39_share))
         self._pending_slip39_share = []
+
+    def add_slip39_share_mnemonic(self, mnemonic: str):
+        """Add a share mnemonic directly."""
+        from shamir_mnemonic import Share as Slip39Share
+        try:
+            share_obj = Slip39Share.from_mnemonic(mnemonic)
+        except Exception:
+            raise InvalidSeedException("Invalid SLIP-39 share")
+        if self._slip39_first_share is None:
+            self._slip39_first_share = share_obj
+        self._pending_slip39_shares.append(mnemonic.split())
+        self._slip39_share_length = len(mnemonic.split())
+        self._pending_is_slip39 = True
 
     def convert_pending_slip39_shares_to_pending_seed(self, passphrase: str = ""):
         mnemonics = [" ".join(share) for share in self._pending_slip39_shares]
@@ -153,3 +170,16 @@ class SeedStorage:
         self._pending_slip39_shares = []
         self._pending_is_slip39 = False
         self._slip39_share_length = None
+        self._slip39_first_share = None
+
+    @property
+    def slip39_shares_entered(self) -> int:
+        return len(self._pending_slip39_shares)
+
+    @property
+    def slip39_total_needed(self) -> int | None:
+        if self._slip39_first_share is None:
+            return None
+        g = self._slip39_first_share.group_threshold
+        m = self._slip39_first_share.member_threshold
+        return m * g if g > 1 else m

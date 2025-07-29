@@ -842,7 +842,8 @@ class SeedSlip39MnemonicStartView(View):
         TWENTY = ButtonOption("20 words")
         THIRTYTHREE = ButtonOption("33 words")
         SCAN = ButtonOption("Scan QR", SeedSignerIconConstants.QRCODE)
-        button_data = [TWENTY, THIRTYTHREE, SCAN]
+        SEEDKEEPER = ButtonOption("SeedKeeper", FontAwesomeIconConstants.LOCK)
+        button_data = [TWENTY, THIRTYTHREE, SCAN, SEEDKEEPER]
 
         selected = self.run_screen(
             ButtonListScreen,
@@ -854,6 +855,10 @@ class SeedSlip39MnemonicStartView(View):
         if button_data[selected] == SCAN:
             from seedsigner.views.scan_views import ScanSlip39ShareQRView
             return Destination(ScanSlip39ShareQRView)
+
+        if button_data[selected] == SEEDKEEPER:
+            from seedsigner.views.seed_views import SeedSlip39LoadFromSeedkeeperView
+            return Destination(SeedSlip39LoadFromSeedkeeperView)
 
         length = 20 if button_data[selected] == TWENTY else 33
         self.controller.storage.init_pending_slip39_share(num_words=length)
@@ -908,13 +913,20 @@ class SeedSlip39ShareEntryView(View):
 class SeedSlip39MoreSharesView(View):
     ADD = ButtonOption("Add share")
     SCAN = ButtonOption("Scan share", SeedSignerIconConstants.QRCODE)
+    SEEDKEEPER = ButtonOption("SeedKeeper", FontAwesomeIconConstants.LOCK)
     DONE = ButtonOption("Combine shares")
 
     def run(self):
-        button_data = [self.ADD, self.SCAN, self.DONE]
+        button_data = [self.ADD, self.SCAN, self.SEEDKEEPER, self.DONE]
+        entered = self.controller.storage.slip39_shares_entered
+        needed = self.controller.storage.slip39_total_needed
+        info_text = None
+        if needed:
+            info_text = _("{} of {} shares entered").format(entered, needed)
         selected_menu_num = self.run_screen(
             ButtonListScreen,
             title=_("More shares?"),
+            text=info_text,
             is_button_text_centered=False,
             button_data=button_data,
         )
@@ -926,6 +938,10 @@ class SeedSlip39MoreSharesView(View):
         elif button_data[selected_menu_num] == self.SCAN:
             from seedsigner.views.scan_views import ScanSlip39ShareQRView
             return Destination(ScanSlip39ShareQRView)
+
+        elif button_data[selected_menu_num] == self.SEEDKEEPER:
+            from seedsigner.views.seed_views import SeedSlip39LoadFromSeedkeeperView
+            return Destination(SeedSlip39LoadFromSeedkeeperView)
 
         self.controller.storage.convert_pending_slip39_shares_to_pending_seed()
         return Destination(SeedFinalizeView)
@@ -956,6 +972,107 @@ class SeedSlip39ShareInvalidView(View):
         else:
             self.controller.storage.init_pending_slip39_share(num_words=self.length)
             return Destination(SeedSlip39ShareEntryView, skip_current_view=True)
+
+
+class SeedSlip39SelectShareView(View):
+    def __init__(self, seed_num: int, next_view, **next_args):
+        super().__init__()
+        self.seed_num = seed_num
+        self.next_view = next_view
+        self.next_args = next_args
+
+    def run(self):
+        seed = self.controller.get_seed(self.seed_num)
+        button_data = [ButtonOption(f"Share {i+1}") for i in range(len(seed.mnemonic_list))]
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Select Share",
+            is_button_text_centered=False,
+            button_data=button_data,
+            show_back_button=True,
+        )
+
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        self.next_args.update({"seed_num": self.seed_num, "share_index": selected})
+        return Destination(self.next_view, view_args=self.next_args)
+
+
+class SeedSlip39LoadFromSeedkeeperView(View):
+    """Load a SLIP-39 share from a SeedKeeper card."""
+
+    def run(self):
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+        try:
+            Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["seedkeeper"])
+            if not Satochip_Connector:
+                return Destination(BackStackView)
+
+            self.loading_screen = LoadingScreenThread(text="Listing Secrets\n\n\n\n\n\n")
+            self.loading_screen.start()
+            headers = Satochip_Connector.seedkeeper_list_secret_headers()
+            self.loading_screen.stop()
+
+            headers_parsed = []
+            button_data = []
+            for header in headers:
+                stype = SEEDKEEPER_DIC_TYPE.get(header['type'], hex(header['type']))
+                rights = SEEDKEEPER_DIC_EXPORT_RIGHTS.get(header['export_rights'], hex(header['export_rights']))
+                label = header['label']
+                if stype == "Password" and rights == 'Plaintext export allowed' and label.startswith("SLIP39:"):
+                    headers_parsed.append(header['id'])
+                    button_data.append(ButtonOption(label[len("SLIP39:"):]))
+
+            if not headers_parsed:
+                self.run_screen(
+                    WarningScreen,
+                    title="No Secrets to Load",
+                    text="No SLIP39 Shares on SeedKeeper",
+                    show_back_button=False,
+                )
+                return Destination(BackStackView)
+
+            selected = self.run_screen(
+                ButtonListScreen,
+                title="Select Share",
+                is_button_text_centered=False,
+                button_data=button_data,
+                show_back_button=True,
+            )
+            if selected == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+
+            self.loading_screen = LoadingScreenThread(text="Loading Secret\n\n\n\n\n\n")
+            self.loading_screen.start()
+            secret_dict = Satochip_Connector.seedkeeper_export_secret(headers_parsed[selected], None)
+            self.loading_screen.stop()
+
+            length = secret_dict['secret_list'][0]
+            share = binascii.unhexlify(secret_dict['secret'])[1:length+1].decode()
+
+            from seedsigner.models.seed import InvalidSeedException
+            try:
+                self.controller.storage.add_slip39_share_mnemonic(share)
+            except InvalidSeedException:
+                return Destination(
+                    SeedSlip39ShareInvalidView,
+                    view_args={"length": len(share.split()), "retry_scan": False},
+                    skip_current_view=True,
+                )
+        except Exception as e:
+            print(e)
+            if hasattr(self, 'loading_screen'):
+                self.loading_screen.stop()
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                text=str(e),
+                show_back_button=True,
+            )
+            return Destination(BackStackView)
+
+        return Destination(SeedSlip39MoreSharesView, skip_current_view=True)
 
 
 
@@ -1108,15 +1225,21 @@ class SeedBackupView(View):
             return Destination(BackStackView)
 
         elif button_data[selected_menu_num] == self.VIEW_WORDS:
+            if isinstance(self.seed, Slip39Seed):
+                return Destination(SeedSlip39SelectShareView, view_args={"seed_num": self.seed_num, "next_view": SeedWordsWarningView})
             return Destination(SeedWordsWarningView, view_args={"seed_num": self.seed_num})
 
         elif button_data[selected_menu_num] == self.EXPORT_PLAINTEXTQR:
+            if isinstance(self.seed, Slip39Seed):
+                return Destination(SeedSlip39SelectShareView, view_args={"seed_num": self.seed_num, "next_view": SeedExportPlaintextQRView})
             return Destination(SeedExportPlaintextQRView, view_args={"seed_num": self.seed_num})
 
         elif button_data[selected_menu_num] == self.EXPORT_SEEDQR:
             return Destination(SeedTranscribeSeedQRFormatView, view_args={"seed_num": self.seed_num})
 
         elif button_data[selected_menu_num] == self.TO_SEEDKEEPER:
+            if isinstance(self.seed, Slip39Seed):
+                return Destination(SeedSlip39SelectShareView, view_args={"seed_num": self.seed_num, "next_view": SaveToSeedkeeperView})
             return Destination(SaveToSeedkeeperView, view_args={"seed_num": self.seed_num})
 
 
@@ -1467,10 +1590,11 @@ class SeedExportXpubQRDisplayView(View):
     View Seed Words flow
 ****************************************************************************"""
 class SeedWordsWarningView(View):
-    def __init__(self, seed_num: int, bip85_data: dict = None):
+    def __init__(self, seed_num: int, bip85_data: dict = None, share_index: int | None = None):
         super().__init__()
         self.seed_num = seed_num
         self.bip85_data = bip85_data
+        self.share_index = share_index
 
 
     def run(self):
@@ -1479,7 +1603,8 @@ class SeedWordsWarningView(View):
             view_args=dict(
                 seed_num=self.seed_num,
                 page_index=0,
-                bip85_data=self.bip85_data
+                bip85_data=self.bip85_data,
+                share_index=self.share_index
             ),
             skip_current_view=True,  # Prevent going BACK to WarningViews
         )
@@ -1505,7 +1630,7 @@ class SeedWordsView(View):
     NEXT = ButtonOption("Next")
     DONE = ButtonOption("Done")
 
-    def __init__(self, seed_num: int, bip85_data: dict = None, page_index: int = 0):
+    def __init__(self, seed_num: int, bip85_data: dict = None, page_index: int = 0, share_index: int | None = None):
         super().__init__()
         self.seed_num = seed_num
         if self.seed_num is None:
@@ -1514,6 +1639,7 @@ class SeedWordsView(View):
             self.seed = self.controller.get_seed(self.seed_num)
         self.bip85_data = bip85_data
         self.page_index = page_index
+        self.share_index = share_index
 
 
     def run(self):
@@ -1525,7 +1651,10 @@ class SeedWordsView(View):
             # TRANSLATOR_NOTE: Inserts the child index (e.g. "Child #0")
             title = _("Child #{}").format(self.bip85_data["child_index"])
         else:
-            mnemonic = self.seed.mnemonic_display_list
+            if isinstance(self.seed, Slip39Seed) and self.share_index is not None:
+                mnemonic = self.seed.mnemonic_list[self.share_index].split()
+            else:
+                mnemonic = self.seed.mnemonic_display_list
             title = _("Seed Words")
         words = mnemonic[self.page_index*words_per_page:(self.page_index + 1)*words_per_page]
 
@@ -1551,19 +1680,19 @@ class SeedWordsView(View):
             if self.seed_num is None and self.page_index == num_pages - 1:
                 return Destination(
                     SeedWordsBackupTestPromptView,
-                    view_args=dict(seed_num=self.seed_num, bip85_data=self.bip85_data),
+                    view_args=dict(seed_num=self.seed_num, bip85_data=self.bip85_data, share_index=self.share_index),
                 )
             else:
                 return Destination(
                     SeedWordsView,
-                    view_args=dict(seed_num=self.seed_num, page_index=self.page_index + 1, bip85_data=self.bip85_data)
+                    view_args=dict(seed_num=self.seed_num, page_index=self.page_index + 1, bip85_data=self.bip85_data, share_index=self.share_index)
                 )
 
         elif button_data[selected_menu_num] == self.DONE:
             # Must clear history to avoid BACK button returning to private info
             return Destination(
                 SeedWordsBackupTestPromptView,
-                view_args=dict(seed_num=self.seed_num, bip85_data=self.bip85_data),
+                view_args=dict(seed_num=self.seed_num, bip85_data=self.bip85_data, share_index=self.share_index),
             )
 
 
@@ -1689,10 +1818,11 @@ class SeedWordsBackupTestPromptView(View):
     SKIP = ButtonOption("Skip")
     FINALIZE = ButtonOption("Finalize child")
 
-    def __init__(self, seed_num: int, bip85_data: dict = None):
+    def __init__(self, seed_num: int, bip85_data: dict = None, share_index: int | None = None):
         super().__init__()
         self.seed_num = seed_num
         self.bip85_data = bip85_data
+        self.share_index = share_index
 
 
     def run(self):
@@ -1707,13 +1837,13 @@ class SeedWordsBackupTestPromptView(View):
         if button_data[selected_menu_num] == self.VERIFY:
             return Destination(
                 SeedWordsBackupTestView,
-                view_args=dict(seed_num=self.seed_num, bip85_data=self.bip85_data),
+                view_args=dict(seed_num=self.seed_num, bip85_data=self.bip85_data, share_index=self.share_index),
             )
 
         elif button_data[selected_menu_num] == self.REVIEW:
             return Destination(
                 SeedWordsWarningView,
-                view_args=dict(seed_num=self.seed_num, bip85_data=self.bip85_data),
+                view_args=dict(seed_num=self.seed_num, bip85_data=self.bip85_data, share_index=self.share_index),
             )
 
         elif button_data[selected_menu_num] == self.SKIP:
@@ -1734,7 +1864,7 @@ class SeedWordsBackupTestPromptView(View):
 
 
 class SeedWordsBackupTestView(View):
-    def __init__(self, seed_num: int, bip85_data: dict = None, confirmed_list: list[bool] = None, cur_index: int = None, rand_seed: int = None):
+    def __init__(self, seed_num: int, bip85_data: dict = None, confirmed_list: list[bool] = None, cur_index: int = None, rand_seed: int = None, share_index: int | None = None):
         """
         Note: `rand_seed` is ONLY USED BY THE SCREENSHOT GENERATOR!!! (to ensure
         consistent screenshot results).
@@ -1746,11 +1876,15 @@ class SeedWordsBackupTestView(View):
         else:
             self.seed = self.controller.get_seed(self.seed_num)
         self.bip85_data = bip85_data
+        self.share_index = share_index
 
         if self.bip85_data is not None:
             self.mnemonic_list = self.seed.get_bip85_child_mnemonic(self.bip85_data["child_index"], self.bip85_data["num_words"]).split()
         else:
-            self.mnemonic_list = self.seed.mnemonic_display_list
+            if isinstance(self.seed, Slip39Seed) and self.share_index is not None:
+                self.mnemonic_list = self.seed.mnemonic_list[self.share_index].split()
+            else:
+                self.mnemonic_list = self.seed.mnemonic_display_list
 
         self.confirmed_list = confirmed_list
         if not self.confirmed_list:
@@ -1795,27 +1929,28 @@ class SeedWordsBackupTestView(View):
                 # Successfully confirmed the full mnemonic!
                 return Destination(
                     SeedWordsBackupTestSuccessView,
-                    view_args=dict(seed_num=self.seed_num, bip85_data=self.bip85_data),
+                    view_args=dict(seed_num=self.seed_num, bip85_data=self.bip85_data, share_index=self.share_index),
                 )
             else:
                 # Continue testing the remaining words
                 return Destination(
                     SeedWordsBackupTestView,
-                    view_args=dict(seed_num=self.seed_num, confirmed_list=self.confirmed_list, bip85_data=self.bip85_data),
+                    view_args=dict(seed_num=self.seed_num, confirmed_list=self.confirmed_list, bip85_data=self.bip85_data, share_index=self.share_index),
                 )
 
         else:
             # Picked the WRONG WORD!
-            return Destination(
-                SeedWordsBackupTestMistakeView,
-                view_args=dict(
-                    seed_num=self.seed_num,
-                    bip85_data=self.bip85_data,
-                    cur_index=self.cur_index,
-                    wrong_word=button_data[selected_menu_num].button_label,
-                    confirmed_list=self.confirmed_list,
+                return Destination(
+                    SeedWordsBackupTestMistakeView,
+                    view_args=dict(
+                        seed_num=self.seed_num,
+                        bip85_data=self.bip85_data,
+                        cur_index=self.cur_index,
+                        wrong_word=button_data[selected_menu_num].button_label,
+                        confirmed_list=self.confirmed_list,
+                        share_index=self.share_index,
+                    )
                 )
-            )
 
 
 
@@ -1823,13 +1958,14 @@ class SeedWordsBackupTestMistakeView(View):
     REVIEW = ButtonOption("Review Seed Words")
     RETRY = ButtonOption("Try Again")
 
-    def __init__(self, seed_num: int, bip85_data: dict = None, cur_index: int = None, wrong_word: str = None, confirmed_list: list[bool] = None):
+    def __init__(self, seed_num: int, bip85_data: dict = None, cur_index: int = None, wrong_word: str = None, confirmed_list: list[bool] = None, share_index: int | None = None):
         super().__init__()
         self.seed_num = seed_num
         self.bip85_data = bip85_data
         self.cur_index = cur_index
         self.wrong_word = wrong_word
         self.confirmed_list = confirmed_list
+        self.share_index = share_index
 
 
     def run(self):
@@ -1853,7 +1989,7 @@ class SeedWordsBackupTestMistakeView(View):
         if button_data[selected_menu_num] == self.REVIEW:
             return Destination(
                 SeedWordsView,
-                view_args=dict(seed_num=self.seed_num, bip85_data=self.bip85_data),
+                view_args=dict(seed_num=self.seed_num, bip85_data=self.bip85_data, share_index=self.share_index),
             )
 
         elif button_data[selected_menu_num] == self.RETRY:
@@ -1864,16 +2000,18 @@ class SeedWordsBackupTestMistakeView(View):
                     confirmed_list=self.confirmed_list,
                     cur_index=self.cur_index,
                     bip85_data=self.bip85_data,
+                    share_index=self.share_index,
                 )
             )
 
 
 
 class SeedWordsBackupTestSuccessView(View):
-    def __init__(self, seed_num: int, bip85_data: dict = None):
+    def __init__(self, seed_num: int, bip85_data: dict = None, share_index: int | None = None):
         super().__init__()
         self.seed_num = seed_num
         self.bip85_data = bip85_data
+        self.share_index = share_index
 
 
     def run(self):
@@ -3329,15 +3467,19 @@ class SeedSignMessageSignedMessageQRView(View):
 
 
 class SeedExportPlaintextQRView(View):
-    def __init__(self, seed_num: int):
+    def __init__(self, seed_num: int, share_index: int | None = None):
         super().__init__()
         self.seed_num = seed_num
         self.seed = self.controller.get_seed(seed_num)
+        self.share_index = share_index
 
 
     def run(self):
         from seedsigner.gui.screens.screen import QRDisplayScreen
-        encoder_args = dict(data=self.seed.mnemonic_str)
+        data = self.seed.mnemonic_str
+        if isinstance(self.seed, Slip39Seed) and self.share_index is not None:
+            data = self.seed.mnemonic_list[self.share_index]
+        encoder_args = dict(data=data)
         e = GenericStaticQrEncoder(**encoder_args)
 
         self.run_screen(
@@ -3362,10 +3504,11 @@ class SaveToSeedkeeperView(View):
         entropy = mnemonic_obj.to_entropy(bip39_mnemonic)
 
         return entropy  # bytearray
-    def __init__(self, seed_num: int, bip85_data: dict = None):
+    def __init__(self, seed_num: int, bip85_data: dict = None, share_index: int | None = None):
         super().__init__()
         self.seed_num = seed_num
         self.bip85_data = bip85_data
+        self.share_index = share_index
 
     def run(self):
         from seedsigner.gui.screens.screen import LoadingScreenThread
@@ -3375,61 +3518,77 @@ class SaveToSeedkeeperView(View):
             if not Satochip_Connector:
                 return Destination(BackStackView)
 
-            ret = seed_screens.SeedAddPassphraseScreen(title="Seed Label").display()
-
-            if "is_back_button" in ret:
-                return Destination(BackStackView)
-
-            status = Satochip_Connector.card_get_status()[3]
-
-            print(status)
-
             seed = self.controller.get_seed(self.seed_num)
 
-            if status['protocol_minor_version'] == 1: # Format needed for Seedkeeper v1 cards
-                print("Saving to SeedKeeper V1")
-                label = ret['passphrase']
+            if isinstance(seed, Slip39Seed):
+                if self.share_index is None:
+                    button_data = [ButtonOption(f"Share {i+1}") for i in range(len(seed.mnemonic_list))]
+                    share_sel = self.run_screen(
+                        ButtonListScreen,
+                        title="Select Share",
+                        is_button_text_centered=False,
+                        button_data=button_data,
+                        show_back_button=True,
+                    )
+                    if share_sel == RET_CODE__BACK_BUTTON:
+                        return Destination(BackStackView)
+                else:
+                    share_sel = self.share_index
+
+                share = seed.mnemonic_list[share_sel]
+                ret = seed_screens.SeedAddPassphraseScreen(title="Secret Label").display()
+                if "is_back_button" in ret:
+                    return Destination(BackStackView)
+
+                label = "SLIP39:" + ret['passphrase']
                 export_rights = "Plaintext export allowed"
-                type = "BIP39 mnemonic"
-                subtype = 0
-                bip39_mnemonic = seed.mnemonic_str
-                bip39_mnemonic_list = list(bytes(bip39_mnemonic, 'utf-8'))
-                bip39_passphrase = seed.passphrase
-                bip39_passphrase_list = list(bytes(bip39_passphrase, 'utf-8'))
-                secret_list = [len(bip39_mnemonic_list)] + bip39_mnemonic_list + [len(bip39_passphrase_list)] + bip39_passphrase_list
+                header = Satochip_Connector.make_header("Password", export_rights, label)
+                share_list = list(bytes(share, 'utf-8'))
+                secret_list = [len(share_list)] + share_list
+                secret_dic = {'header': header, 'secret_list': secret_list}
 
-            else: # Seedkeeper V2 Format (Masterseed with BIP39 info)
-                print("Saving to SeedKeeper V2")
-                label = ret['passphrase']
-                export_rights = "Plaintext export allowed"
-                type = "Masterseed"
-                subtype = 0x01
-
-                # Seedisgner currently only supports English, so just hardcode
-                wordlist_byte = dict_swap_keys_values(BIP39_WORDLIST_DIC).get("english")
-                bip39_entropy_bytes = self.mnemonic_to_entropy(seed.mnemonic_str, "english")
-                bip39_entropy_list = list(bip39_entropy_bytes)
-                bip39_passphrase_list = list(bytes(seed.passphrase, 'utf-8'))
-
-                masterseed_bytes = seed.seed_bytes
-                masterseed_list = list(masterseed_bytes)
-
-                # this format is backward compatible with Masterseed, this facilitates encrypted export to satochip
-                secret_list = ([len(masterseed_list)] +
-                               masterseed_list +
-                               [wordlist_byte] +
-                               [len(bip39_entropy_list)] +
-                               bip39_entropy_list +
-                               [len(bip39_passphrase_list)] +
-                               bip39_passphrase_list
-                               )
+            else:
+                ret = seed_screens.SeedAddPassphraseScreen(title="Seed Label").display()
+                if "is_back_button" in ret:
+                    return Destination(BackStackView)
+                status = Satochip_Connector.card_get_status()[3]
+                print(status)
+                if status['protocol_minor_version'] == 1:  # Seedkeeper v1
+                    print("Saving to SeedKeeper V1")
+                    label = ret['passphrase']
+                    export_rights = "Plaintext export allowed"
+                    type = "BIP39 mnemonic"
+                    subtype = 0
+                    bip39_mnemonic = seed.mnemonic_str
+                    bip39_mnemonic_list = list(bytes(bip39_mnemonic, 'utf-8'))
+                    bip39_passphrase = seed.passphrase
+                    bip39_passphrase_list = list(bytes(bip39_passphrase, 'utf-8'))
+                    secret_list = [len(bip39_mnemonic_list)] + bip39_mnemonic_list + [len(bip39_passphrase_list)] + bip39_passphrase_list
+                else:
+                    print("Saving to SeedKeeper V2")
+                    label = ret['passphrase']
+                    export_rights = "Plaintext export allowed"
+                    type = "Masterseed"
+                    subtype = 0x01
+                    wordlist_byte = dict_swap_keys_values(BIP39_WORDLIST_DIC).get("english")
+                    bip39_entropy_bytes = self.mnemonic_to_entropy(seed.mnemonic_str, "english")
+                    bip39_entropy_list = list(bip39_entropy_bytes)
+                    bip39_passphrase_list = list(bytes(seed.passphrase, 'utf-8'))
+                    masterseed_bytes = seed.seed_bytes
+                    masterseed_list = list(masterseed_bytes)
+                    secret_list = ([len(masterseed_list)] +
+                                   masterseed_list +
+                                   [wordlist_byte] +
+                                   [len(bip39_entropy_list)] +
+                                   bip39_entropy_list +
+                                   [len(bip39_passphrase_list)] +
+                                   bip39_passphrase_list
+                                   )
+                header = Satochip_Connector.make_header(type, export_rights, label, subtype=subtype)
+                secret_dic = {'header': header, 'secret_list': secret_list}
 
             self.loading_screen = LoadingScreenThread(text="Saving Seed\n\n\n\n\n\n")
             self.loading_screen.start()
-
-            header = Satochip_Connector.make_header(type, export_rights, label, subtype= subtype)
-
-            secret_dic = {'header': header, 'secret_list': secret_list}
             (sid, fingerprint) = Satochip_Connector.seedkeeper_import_secret(secret_dic)
             print("Imported - SID:", sid, " Fingerprint:", fingerprint)
 
