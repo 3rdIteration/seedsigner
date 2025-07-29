@@ -20,7 +20,7 @@ from seedsigner.gui.screens import (RET_CODE__BACK_BUTTON, ButtonListScreen,
 from seedsigner.gui.screens.screen import ButtonOption
 from seedsigner.models.encode_qr import CompactSeedQrEncoder, GenericStaticQrEncoder, SeedQrEncoder, SpecterXPubQrEncoder, StaticXpubQrEncoder, UrXpubQrEncoder
 from seedsigner.models.qr_type import QRType
-from seedsigner.models.seed import Seed
+from seedsigner.models.seed import Seed, Slip39Seed
 from seedsigner.models.settings import Settings, SettingsConstants
 from seedsigner.models.settings_definition import SettingsDefinition
 from seedsigner.models.threads import BaseThread, ThreadsafeCounter
@@ -87,7 +87,7 @@ class SeedSelectSeedView(View):
     TYPE_18WORD = ButtonOption("Enter 18-word seed", FontAwesomeIconConstants.KEYBOARD)
     TYPE_24WORD = ButtonOption("Enter 24-word seed", FontAwesomeIconConstants.KEYBOARD)
     TYPE_ELECTRUM = ButtonOption("Enter Electrum seed", FontAwesomeIconConstants.KEYBOARD)
-    TYPE_SLIP39 = ButtonOption("Enter SLIP-39 seed", FontAwesomeIconConstants.KEYBOARD)
+    TYPE_SLIP39 = ButtonOption("SLIP-39 Shares", FontAwesomeIconConstants.KEYBOARD)
 
     def __init__(self, flow: str):
         super().__init__()
@@ -182,7 +182,7 @@ class LoadSeedView(View):
     TYPE_18WORD = ButtonOption("Enter 18-word seed", FontAwesomeIconConstants.KEYBOARD)
     TYPE_24WORD = ButtonOption("Enter 24-word seed", FontAwesomeIconConstants.KEYBOARD)
     TYPE_ELECTRUM = ButtonOption("Enter Electrum seed", FontAwesomeIconConstants.KEYBOARD)
-    TYPE_SLIP39 = ButtonOption("Enter SLIP-39 seed", FontAwesomeIconConstants.KEYBOARD)
+    TYPE_SLIP39 = ButtonOption("SLIP-39 Shares", FontAwesomeIconConstants.KEYBOARD)
     IMPORT_SEEDKEEPER = ButtonOption("From SeedKeeper", FontAwesomeIconConstants.LOCK)
     CREATE = ButtonOption(" Create a seed", SeedSignerIconConstants.PLUS)
 
@@ -195,8 +195,8 @@ class LoadSeedView(View):
             self.IMPORT_SEEDKEEPER,
         ]
 
-        button_data.append(self.CREATE)
         button_data.append(self.TYPE_SLIP39)
+        button_data.append(self.CREATE)
 
         if self.settings.get_value(SettingsConstants.SETTING__ELECTRUM_SEEDS) == SettingsConstants.OPTION__ENABLED:
             button_data.append(self.TYPE_ELECTRUM)
