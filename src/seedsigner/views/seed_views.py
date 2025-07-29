@@ -882,11 +882,7 @@ class SeedSlip39ShareEntryView(View):
         )
 
         if ret == RET_CODE__BACK_BUTTON:
-            if self.cur_word_index > 0:
-                return Destination(BackStackView)
-            else:
-                self.controller.storage.discard_pending_slip39_shares()
-                return Destination(MainMenuView)
+            return Destination(BackStackView)
 
         self.controller.storage.update_pending_slip39_share(ret, self.cur_word_index)
 
@@ -917,16 +913,18 @@ class SeedSlip39MoreSharesView(View):
     DONE = ButtonOption("Combine shares")
 
     def run(self):
-        button_data = [self.ADD, self.SCAN, self.SEEDKEEPER, self.DONE]
         entered = self.controller.storage.slip39_shares_entered
         needed = self.controller.storage.slip39_total_needed
+        if needed > entered:
+            button_data = [self.ADD, self.SCAN, self.SEEDKEEPER]
+        else:
+            button_data = [self.DONE]
         info_text = None
         if needed:
-            info_text = _("{} of {} shares entered").format(entered, needed)
+            info_text = _("{} of {} needed").format(entered, needed)
         selected_menu_num = self.run_screen(
             ButtonListScreen,
-            title=_("More shares?"),
-            text=info_text,
+            title=info_text,
             is_button_text_centered=False,
             button_data=button_data,
         )

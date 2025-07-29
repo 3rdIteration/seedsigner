@@ -273,7 +273,7 @@ class ScanSlip39ShareQRView(ScanView):
             self.controller.resume_main_flow = None
             return Destination(ScanInvalidQRTypeView)
 
-        return Destination(MainMenuView)
+        return Destination(BackStackView)
 
 
 
