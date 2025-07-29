@@ -1,5 +1,6 @@
 import pytest
-from seedsigner.models.seed import InvalidSeedException, Seed, ElectrumSeed
+from seedsigner.models.seed import InvalidSeedException, Seed, ElectrumSeed, Slip39Seed
+import shamir_mnemonic
 
 from seedsigner.models.settings import SettingsConstants
 
@@ -83,3 +84,60 @@ def test_electrum_seed_rejects_most_bip39_mnemonics():
 	mnemonic = "only gain spot output unknown craft simple cram absorb suggest ridge famous".split()
 	Seed(mnemonic)
 	ElectrumSeed(mnemonic)
+
+def test_slip39_seed():
+        secret = bytes.fromhex("11" * 32)
+        shares = shamir_mnemonic.generate_mnemonics(1, [(2, 3)], secret)[0]
+        seed = Slip39Seed(mnemonics=[shares[0], shares[1]])
+        assert seed.seed_bytes == secret
+
+def test_slip39_seed_20_word_share():
+        secret = bytes.fromhex("33" * 16)
+        shares = shamir_mnemonic.generate_mnemonics(1, [(2, 3)], secret)[0]
+        seed = Slip39Seed(mnemonics=[shares[0], shares[1]])
+        assert seed.seed_bytes == secret
+
+def test_slip39_storage_reconstruction():
+       secret = bytes.fromhex("22" * 32)
+       shares = shamir_mnemonic.generate_mnemonics(1, [(2, 3)], secret)[0]
+       from seedsigner.models.seed_storage import SeedStorage
+       storage = SeedStorage()
+       storage.init_pending_slip39_share(num_words=len(shares[0].split()))
+       for i, w in enumerate(shares[0].split()):
+               storage.update_pending_slip39_share(w, i)
+       storage.finalize_current_slip39_share()
+       storage.init_pending_slip39_share()
+       for i, w in enumerate(shares[1].split()):
+               storage.update_pending_slip39_share(w, i)
+       storage.finalize_current_slip39_share()
+       storage.convert_pending_slip39_shares_to_pending_seed()
+       assert storage.pending_seed.seed_bytes == secret
+
+def test_slip39_storage_reconstruction_20_word():
+       secret = bytes.fromhex("44" * 16)
+       shares = shamir_mnemonic.generate_mnemonics(1, [(2, 3)], secret)[0]
+       from seedsigner.models.seed_storage import SeedStorage
+       storage = SeedStorage()
+       storage.init_pending_slip39_share(num_words=len(shares[0].split()))
+       for i, w in enumerate(shares[0].split()):
+               storage.update_pending_slip39_share(w, i)
+       storage.finalize_current_slip39_share()
+       storage.init_pending_slip39_share()
+       for i, w in enumerate(shares[1].split()):
+               storage.update_pending_slip39_share(w, i)
+       storage.finalize_current_slip39_share()
+       storage.convert_pending_slip39_shares_to_pending_seed()
+       assert storage.pending_seed.seed_bytes == secret
+
+def test_slip39_invalid_share_rejected():
+        secret = bytes.fromhex("55" * 16)
+        shares = shamir_mnemonic.generate_mnemonics(1, [(2, 3)], secret)[0]
+        bad_share = shares[0].split()
+        bad_share[-1] = "abandon"
+        from seedsigner.models.seed_storage import SeedStorage, InvalidSeedException
+        storage = SeedStorage()
+        storage.init_pending_slip39_share(num_words=len(bad_share))
+        for i, w in enumerate(bad_share):
+                storage.update_pending_slip39_share(w, i)
+        with pytest.raises(InvalidSeedException):
+                storage.finalize_current_slip39_share()

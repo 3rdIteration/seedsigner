@@ -28,3 +28,6 @@ pycparser==2.22 --hash=sha256:491c8be9c040f5390f5bf44a5b07752bd07f56edf992381b05
 smbus2==0.4.3 \
     --hash=sha256:36f2288a8e1a363cb7a7b2244ec98d880eb5a728a2494ac9c71e9de7bf6a803a \
     --hash=sha256:a2fc29cfda4081ead2ed61ef2c4fc041d71dd40a8d917e85216f44786fca2d1d
+shamir-mnemonic==0.3.0 \
+    --hash=sha256:188c6b5bd00d5e756e12e2b186c3cb7c98ff7ff44df608d4c1d2077f6b6e730f \
+    --hash=sha256:bc04886a1ddfe2a64d8a3ec51abf0f664d98d5b557cc7e78a8ad2d10a1d87438
