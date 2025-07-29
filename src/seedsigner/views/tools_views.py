@@ -2445,6 +2445,15 @@ class ToolsMicroSDMenuView(View):
     WIPE_RANDOM = ButtonOption("Wipe (Random)")
 
     def run(self):
+        if len(self.controller.storage.seeds) > 0:
+            self.run_screen(
+                WarningScreen,
+                title="WARNING",
+                status_headline=None,
+                text="These tools read from the microSD card and may leak loaded secrets.",
+                show_back_button=False,
+                button_data=[ButtonOption("Continue")]
+            )
         button_data = [self.FLASH_IMAGE, self.VERIFY_IMAGE, self.WIPE_ZERO, self.WIPE_RANDOM]
 
         selected_menu_num = self.run_screen(
@@ -2887,6 +2896,15 @@ class ToolsGPGMenuView(View):
     IMPORT_PUBKEY = ButtonOption("Import Pubkey")
 
     def run(self):
+        if len(self.controller.storage.seeds) > 0:
+            self.run_screen(
+                WarningScreen,
+                title="WARNING",
+                status_headline=None,
+                text="These tools load data from the microSD card and may expose loaded secrets.",
+                show_back_button=False,
+                button_data=[ButtonOption("Continue")]
+            )
         button_data = [self.VERIFY_FILE, self.IMPORT_PUBKEY]
 
         selected_menu_num = self.run_screen(
