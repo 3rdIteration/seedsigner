@@ -81,3 +81,13 @@ Generate the interactive html report:
 ```bash
 coverage html
 ```
+
+## SeedKeeper integration tests
+
+Running the integration test suite requires Java and the jCardSim emulator. Install OpenJDK and download the jCardSim jar separately.
+If the jar is not named `jcardsim.jar`, set the `JCARDSIM_JAR` environment variable.
+Then run:
+
+```bash
+pytest tests/test_seedkeeper_integration.py --use-jcardsim
+```

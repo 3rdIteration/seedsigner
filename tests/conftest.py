@@ -1,39 +1,93 @@
+import os
 import sys
+from pathlib import Path
+from subprocess import Popen
+import time
+import pytest
 from unittest.mock import MagicMock
 
-# Mock hardware-dependent modules so unit tests can run without them
-sys.modules.setdefault('RPi', MagicMock())
-sys.modules.setdefault('RPi.GPIO', MagicMock())
-sys.modules.setdefault('pyzbar', MagicMock())
-sys.modules.setdefault('pyzbar.pyzbar', MagicMock())
-sys.modules.setdefault('pysatochip', MagicMock())
-sys.modules.setdefault('pysatochip.JCconstants', MagicMock())
-sys.modules.setdefault('pysatochip.util', MagicMock())
-sys.modules.setdefault('pysatochip.CardConnector', MagicMock())
-sys.modules.setdefault('smbus2', MagicMock())
-sys.modules.setdefault('smartcard', MagicMock())
-sys.modules.setdefault('smartcard.System', MagicMock())
 
-# Provide a dummy BatteryHat implementation used by the controller
-class DummyBatteryHat(MagicMock):
-    @classmethod
-    def get_instance(cls):
-        if not hasattr(cls, '_instance'):
-            cls._instance = cls()
-            cls._instance.is_alive.return_value = False
-        return cls._instance
+def pytest_addoption(parser):
+    parser.addoption(
+        "--use-jcardsim",
+        action="store_true",
+        default=False,
+        help="Run tests using jCardSim instead of mocking pysatochip and smartcard",
+    )
 
-    @classmethod
-    def reset_instance(cls):
-        cls._instance = None
 
-    def start(self):
-        pass
-    def stop(self):
-        pass
-    def join(self, *a, **k):
-        pass
-    def get_percent(self):
-        return None
+def pytest_configure(config):
+    use_jcardsim = config.getoption("--use-jcardsim") or os.environ.get("USE_JCARDSIM")
 
-sys.modules['seedsigner.hardware.battery_hat'] = MagicMock(BatteryHat=DummyBatteryHat)
+    if not use_jcardsim:
+        # Mock hardware-dependent modules so unit tests can run without them
+        for name in [
+            'RPi',
+            'RPi.GPIO',
+            'pyzbar',
+            'pyzbar.pyzbar',
+            'pysatochip',
+            'pysatochip.JCconstants',
+            'pysatochip.util',
+            'pysatochip.CardConnector',
+            'smbus2',
+            'smartcard',
+            'smartcard.System',
+        ]:
+            sys.modules.setdefault(name, MagicMock())
+
+    # Provide a dummy BatteryHat implementation used by the controller
+    class DummyBatteryHat(MagicMock):
+        @classmethod
+        def get_instance(cls):
+            if not hasattr(cls, '_instance'):
+                cls._instance = cls()
+                cls._instance.is_alive.return_value = False
+            return cls._instance
+
+        @classmethod
+        def reset_instance(cls):
+            cls._instance = None
+
+        def start(self):
+            pass
+        def stop(self):
+            pass
+        def join(self, *a, **k):
+            pass
+        def get_percent(self):
+            return None
+
+    sys.modules['seedsigner.hardware.battery_hat'] = MagicMock(BatteryHat=DummyBatteryHat)
+
+
+@pytest.fixture(scope="session")
+def jcardsim_emulator(pytestconfig):
+    """Start jCardSim emulator if requested."""
+
+    use_jcardsim = pytestconfig.getoption("--use-jcardsim") or os.environ.get("USE_JCARDSIM")
+    if not use_jcardsim:
+        pytest.skip("jcardsim emulator not enabled")
+
+    jar = os.environ.get("JCARDSIM_JAR", "jcardsim.jar")
+    cap_path = Path(__file__).resolve().parents[1] / "tools" / "javacard-cap" / "SeedKeeper.cap"
+    proc = Popen(["java", "-jar", jar, str(cap_path)])
+
+    try:
+        from smartcard.System import readers
+        timeout = time.time() + 20
+        while time.time() < timeout:
+            if readers():
+                break
+            if proc.poll() is not None:
+                raise RuntimeError("jCardSim terminated early")
+            time.sleep(0.5)
+        else:
+            proc.terminate()
+            proc.wait()
+            raise RuntimeError("Timeout waiting for jCardSim")
+
+        yield proc
+    finally:
+        proc.terminate()
+        proc.wait()
