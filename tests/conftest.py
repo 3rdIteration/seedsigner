@@ -71,7 +71,12 @@ def jcardsim_emulator(pytestconfig):
 
     jar = os.environ.get("JCARDSIM_JAR", "jcardsim.jar")
     cap_path = Path(__file__).resolve().parents[1] / "tools" / "javacard-cap" / "SeedKeeper.cap"
-    proc = Popen(["java", "-jar", jar, str(cap_path)])
+
+    # Start local pcscd so pyscard can connect
+    pcscd = Popen(["pcscd", "-f"])
+    time.sleep(1)
+
+    jproc = Popen(["java", "-jar", jar, str(cap_path)])
 
     try:
         from smartcard.System import readers
@@ -79,15 +84,17 @@ def jcardsim_emulator(pytestconfig):
         while time.time() < timeout:
             if readers():
                 break
-            if proc.poll() is not None:
+            if jproc.poll() is not None:
                 raise RuntimeError("jCardSim terminated early")
             time.sleep(0.5)
         else:
-            proc.terminate()
-            proc.wait()
+            jproc.terminate()
+            jproc.wait()
             raise RuntimeError("Timeout waiting for jCardSim")
 
-        yield proc
+        yield jproc
     finally:
-        proc.terminate()
-        proc.wait()
+        jproc.terminate()
+        jproc.wait()
+        pcscd.terminate()
+        pcscd.wait()
