@@ -195,6 +195,7 @@ class MainMenuView(View):
         from seedsigner.gui.toast import InfoToast
 
         controller = Controller.get_instance()
+        controller.storage.discard_pending_slip39_shares()
         if controller.auto_wiped:
             controller.auto_wiped = False
             controller.activate_toast(InfoToast(label_text=_("Data wiped after inactivity")))
