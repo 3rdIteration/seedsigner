@@ -84,7 +84,9 @@ coverage html
 
 ## SeedKeeper integration tests
 
-Running the integration test suite requires Java and the jCardSim emulator. Install OpenJDK and download the jCardSim jar separately.
+Running the integration test suite requires Java and the jCardSim emulator.
+Install OpenJDK and download the jCardSim jar from
+<https://github.com/licel/jcardsim/packages/1650016>.
 If the jar is not named `jcardsim.jar`, set the `JCARDSIM_JAR` environment variable.
 Then run:
 

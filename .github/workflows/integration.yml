@@ -27,7 +27,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt -r tests/requirements.txt
           pip install .
-          wget -q https://github.com/licel/jcardsim/releases/download/v3.0.5/jcardsim-3.0.5.jar -O jcardsim.jar
+          # Download jCardSim from GitHub packages
+          wget -q "https://github.com/licel/jcardsim/packages/1650016?filename=jcardsim-3.0.5.jar" \
+            -O jcardsim.jar
       - name: Run SeedKeeper integration tests
         run: |
           export JCARDSIM_JAR=jcardsim.jar
