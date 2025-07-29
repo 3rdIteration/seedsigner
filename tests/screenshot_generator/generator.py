@@ -5,6 +5,7 @@ import os
 import random
 import sys
 import time
+import shamir_mnemonic
 from unittest.mock import Mock, patch, MagicMock
 
 from embit import compact
@@ -264,6 +265,20 @@ def generate_screenshots(locale):
             controller.psbt = decoder.get_psbt()
             controller.psbt_parser = PSBTParser(p=controller.psbt, seed=seed_12b)
 
+        def slip39_share_entry_cb_before():
+            controller.storage.init_pending_slip39_share(num_words=20)
+
+        def slip39_more_shares_cb_before():
+            controller.storage.discard_pending_slip39_shares()
+            shares = shamir_mnemonic.generate_mnemonics(1, [(2, 3)], bytes.fromhex("11" * 16))[0]
+            controller.storage.init_pending_slip39_share(num_words=len(shares[0].split()))
+            for i, w in enumerate(shares[0].split()):
+                controller.storage.update_pending_slip39_share(w, i)
+            controller.storage.finalize_current_slip39_share()
+
+        def slip39_cleanup_cb():
+            controller.storage.discard_pending_slip39_shares()
+
 
         screenshot_sections = {
             "Main Menu Views": [
@@ -345,6 +360,10 @@ def generate_screenshots(locale):
                 ScreenshotConfig(seed_views.SeedSelectSeedView, dict(flow=Controller.FLOW__SIGN_MESSAGE), screenshot_name="SeedSelectSeedView_sign_message"),
                 ScreenshotConfig(seed_views.SeedSignMessageConfirmMessageView),
                 ScreenshotConfig(seed_views.SeedSignMessageConfirmAddressView),
+
+                ScreenshotConfig(seed_views.SeedSlip39MnemonicStartView),
+                ScreenshotConfig(seed_views.SeedSlip39ShareEntryView, run_before=slip39_share_entry_cb_before, run_after=slip39_cleanup_cb),
+                ScreenshotConfig(seed_views.SeedSlip39MoreSharesView, run_before=slip39_more_shares_cb_before, run_after=slip39_cleanup_cb),
 
                 ScreenshotConfig(seed_views.SeedElectrumMnemonicStartView),
             ],

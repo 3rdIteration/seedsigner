@@ -108,6 +108,8 @@ class SettingsMenuView(View):
                 return Destination(MainMenuView)
             elif self.visibility == SettingsConstants.VISIBILITY__ADVANCED:
                 return Destination(SettingsMenuView)
+            elif self.visibility == SettingsConstants.VISIBILITY__HARDWARE:
+                return Destination(SettingsMenuView)
             else:
                 return Destination(SettingsMenuView, view_args={"visibility": SettingsConstants.VISIBILITY__ADVANCED})
         
