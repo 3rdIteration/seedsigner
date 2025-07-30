@@ -42,6 +42,8 @@ from binascii import unhexlify, hexlify
 class ToolsMenuView(View):
     IMAGE = ButtonOption(" New seed", FontAwesomeIconConstants.CAMERA)
     DICE = ButtonOption("New seed", FontAwesomeIconConstants.DICE)
+    SLIP39_IMAGE = ButtonOption("SLIP39 seed", FontAwesomeIconConstants.CAMERA)
+    SLIP39_DICE = ButtonOption("SLIP39 seed", FontAwesomeIconConstants.DICE)
     KEYBOARD = ButtonOption("Calc 12th/24th word", FontAwesomeIconConstants.KEYBOARD)
     ADDRESS_EXPLORER = ButtonOption("Address Explorer")
     VERIFY_ADDRESS = ButtonOption("Verify address")
@@ -52,7 +54,7 @@ class ToolsMenuView(View):
     CLEAR_DESCRIPTOR = ButtonOption("Clear Multisig Descriptor")
 
     def run(self):
-        button_data = [self.IMAGE, self.DICE, self.KEYBOARD, self.ADDRESS_EXPLORER, self.VERIFY_ADDRESS, self.TEXTQRCODE, self.SMARTCARD, self.MICROSD, self.GPG, self.CLEAR_DESCRIPTOR]
+        button_data = [self.IMAGE, self.DICE, self.SLIP39_IMAGE, self.SLIP39_DICE, self.KEYBOARD, self.ADDRESS_EXPLORER, self.VERIFY_ADDRESS, self.TEXTQRCODE, self.SMARTCARD, self.MICROSD, self.GPG, self.CLEAR_DESCRIPTOR]
 
         selected_menu_num = self.run_screen(
             ButtonListScreen,
@@ -68,6 +70,14 @@ class ToolsMenuView(View):
             return Destination(ToolsImageEntropyLivePreviewView)
 
         elif button_data[selected_menu_num] == self.DICE:
+            return Destination(ToolsDiceEntropyMnemonicLengthView)
+
+        elif button_data[selected_menu_num] == self.SLIP39_IMAGE:
+            self.controller.create_slip39 = True
+            return Destination(ToolsImageEntropyLivePreviewView)
+
+        elif button_data[selected_menu_num] == self.SLIP39_DICE:
+            self.controller.create_slip39 = True
             return Destination(ToolsDiceEntropyMnemonicLengthView)
 
         elif button_data[selected_menu_num] == self.KEYBOARD:
@@ -212,23 +222,27 @@ class ToolsImageEntropyMnemonicLengthView(View):
             # 12-word mnemonic only uses the first 128 bits / 16 bytes of entropy
             final_hash = final_hash[:16]
 
-        # Generate the mnemonic
-        mnemonic = mnemonic_generation.generate_mnemonic_from_bytes(final_hash)
+        if getattr(self.controller, "create_slip39", False):
+            secret = final_hash
+        else:
+            mnemonic = mnemonic_generation.generate_mnemonic_from_bytes(final_hash)
 
         # Image should never get saved nor stick around in memory
         seed_entropy_image = None
         preview_images = None
-        final_hash = None
+        if not getattr(self.controller, "create_slip39", False):
+            final_hash = None
         hash_bytes = None
         self.controller.image_entropy_preview_frames = None
         self.controller.image_entropy_final_image = None
 
-        # Add the mnemonic as an in-memory Seed
-        seed = Seed(mnemonic, wordlist_language_code=self.settings.get_value(SettingsConstants.SETTING__WORDLIST_LANGUAGE))
-        self.controller.storage.set_pending_seed(seed)
-        
-        # Cannot return BACK to this View
-        return Destination(SeedWordsWarningView, view_args={"seed_num": None}, clear_history=True)
+        if getattr(self.controller, "create_slip39", False):
+            self.controller.create_slip39 = False
+            return Destination(SeedSlip39CreateFromBytesView, view_args=dict(secret=secret), clear_history=True)
+        else:
+            seed = Seed(mnemonic, wordlist_language_code=self.settings.get_value(SettingsConstants.SETTING__WORDLIST_LANGUAGE))
+            self.controller.storage.set_pending_seed(seed)
+            return Destination(SeedWordsWarningView, view_args={"seed_num": None}, clear_history=True)
 
 
 
@@ -282,14 +296,15 @@ class ToolsDiceEntropyEntryView(View):
         if ret == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
         
-        dice_seed_phrase = mnemonic_generation.generate_mnemonic_from_dice(ret)
-
-        # Add the mnemonic as an in-memory Seed
-        seed = Seed(dice_seed_phrase, wordlist_language_code=self.settings.get_value(SettingsConstants.SETTING__WORDLIST_LANGUAGE))
-        self.controller.storage.set_pending_seed(seed)
-
-        # Cannot return BACK to this View
-        return Destination(SeedWordsWarningView, view_args={"seed_num": None}, clear_history=True)
+        if getattr(self.controller, "create_slip39", False):
+            entropy_bytes = mnemonic_generation.generate_bytes_from_dice(ret)
+            self.controller.create_slip39 = False
+            return Destination(SeedSlip39CreateFromBytesView, view_args=dict(secret=entropy_bytes), clear_history=True)
+        else:
+            dice_seed_phrase = mnemonic_generation.generate_mnemonic_from_dice(ret)
+            seed = Seed(dice_seed_phrase, wordlist_language_code=self.settings.get_value(SettingsConstants.SETTING__WORDLIST_LANGUAGE))
+            self.controller.storage.set_pending_seed(seed)
+            return Destination(SeedWordsWarningView, view_args={"seed_num": None}, clear_history=True)
 
 
 

@@ -13,6 +13,7 @@ from embit.networks import NETWORKS
 from typing import List
 from PIL import Image
 from PIL.ImageOps import autocontrast
+import shamir_mnemonic
 
 from seedsigner.gui.components import FontAwesomeIconConstants, SeedSignerIconConstants
 from seedsigner.gui.screens import (RET_CODE__BACK_BUTTON, ButtonListScreen,
@@ -1081,6 +1082,52 @@ class SeedSlip39LoadFromSeedkeeperView(View):
         return Destination(SeedSlip39MoreSharesView, skip_current_view=True)
 
 
+class SeedSlip39CreateFromBytesView(View):
+    """Create a SLIP-39 seed from entropy bytes and start backup."""
+    def __init__(self, secret: bytes):
+        super().__init__()
+        self.secret = secret
+
+    def run(self):
+        ret = seed_screens.SeedBIP85SelectChildIndexScreen(title="Num Shares").display()
+        if isinstance(ret, dict) and "is_back_button" in ret:
+            return Destination(BackStackView)
+        num_shares = int(ret["text"])
+
+        ret = seed_screens.SeedBIP85SelectChildIndexScreen(title="Threshold").display()
+        if isinstance(ret, dict) and "is_back_button" in ret:
+            return Destination(BackStackView)
+        threshold = int(ret["text"])
+
+        shares = shamir_mnemonic.generate_mnemonics(1, [(threshold, num_shares)], self.secret)[0]
+        seed = Slip39Seed(mnemonics=shares)
+        self.controller.storage.set_pending_seed(seed)
+
+        return Destination(SeedWordsWarningView, view_args={"seed_num": None, "share_index": 0}, clear_history=True)
+
+
+class SeedSlip39RegenerateSharesView(View):
+    """Regenerate SLIP-39 shares for an existing seed."""
+    def __init__(self, seed_num: int):
+        super().__init__()
+        self.seed_num = seed_num
+        self.seed = self.controller.get_seed(seed_num)
+
+    def run(self):
+        ret = seed_screens.SeedBIP85SelectChildIndexScreen(title="Num Shares").display()
+        if isinstance(ret, dict) and "is_back_button" in ret:
+            return Destination(BackStackView)
+        num_shares = int(ret["text"])
+
+        ret = seed_screens.SeedBIP85SelectChildIndexScreen(title="Threshold").display()
+        if isinstance(ret, dict) and "is_back_button" in ret:
+            return Destination(BackStackView)
+        threshold = int(ret["text"])
+
+        self.seed.regenerate_shares(threshold, num_shares)
+        return Destination(SeedWordsWarningView, view_args={"seed_num": self.seed_num, "share_index": 0})
+
+
 
 """****************************************************************************
     Views for actions on individual seeds:
@@ -1203,6 +1250,7 @@ class SeedBackupView(View):
     EXPORT_SEEDQR = ButtonOption("Export as SeedQR")
     EXPORT_PLAINTEXTQR = ButtonOption("Export as Plaintext QR")
     TO_SEEDKEEPER = ButtonOption("To SeedKeeper")
+    REGENERATE_SHARES = ButtonOption("Regenerate Shares")
 
     def __init__(self, seed_num):
         super().__init__()
@@ -1213,6 +1261,8 @@ class SeedBackupView(View):
     def run(self):
 
         button_data = [self.VIEW_WORDS, self.TO_SEEDKEEPER]
+        if isinstance(self.seed, Slip39Seed):
+            button_data.append(self.REGENERATE_SHARES)
 
         if self.seed.seedqr_supported:
             button_data.append(self.EXPORT_SEEDQR)
@@ -1247,6 +1297,9 @@ class SeedBackupView(View):
             if isinstance(self.seed, Slip39Seed):
                 return Destination(SeedSlip39SelectShareView, view_args={"seed_num": self.seed_num, "next_view": SaveToSeedkeeperView})
             return Destination(SaveToSeedkeeperView, view_args={"seed_num": self.seed_num})
+
+        elif button_data[selected_menu_num] == self.REGENERATE_SHARES:
+            return Destination(SeedSlip39RegenerateSharesView, view_args={"seed_num": self.seed_num})
 
 
 """****************************************************************************
@@ -1853,7 +1906,9 @@ class SeedWordsBackupTestPromptView(View):
             )
 
         elif button_data[selected_menu_num] == self.SKIP:
-
+            seed = self.controller.storage.get_pending_seed() if self.seed_num is None else self.controller.get_seed(self.seed_num)
+            if isinstance(seed, Slip39Seed) and self.share_index is not None and self.share_index < len(seed.mnemonic_list) - 1:
+                return Destination(SeedWordsWarningView, view_args=dict(seed_num=self.seed_num, share_index=self.share_index + 1))
             if self.seed_num is not None:
                 return Destination(SeedOptionsView, view_args=dict(seed_num=self.seed_num))
             else:
@@ -2040,8 +2095,14 @@ class SeedWordsBackupTestSuccessView(View):
             self.seed_num = None
 
         if self.seed_num is not None:
+            seed = self.controller.get_seed(self.seed_num)
+            if isinstance(seed, Slip39Seed) and self.share_index is not None and self.share_index < len(seed.mnemonic_list) - 1:
+                return Destination(SeedWordsWarningView, view_args={"seed_num": self.seed_num, "share_index": self.share_index + 1})
             return Destination(SeedOptionsView, view_args=dict(seed_num=self.seed_num), clear_history=True)
         else:
+            seed = self.controller.storage.get_pending_seed()
+            if isinstance(seed, Slip39Seed) and self.share_index is not None and self.share_index < len(seed.mnemonic_list) - 1:
+                return Destination(SeedWordsWarningView, view_args={"seed_num": None, "share_index": self.share_index + 1})
             return Destination(SeedFinalizeView)
 
 

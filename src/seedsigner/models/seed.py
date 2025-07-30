@@ -301,3 +301,9 @@ class Slip39Seed(Seed):
     @property
     def bip85_supported(self) -> bool:
         return False
+
+    def regenerate_shares(self, threshold: int, num_shares: int) -> List[str]:
+        """Generate new SLIP-39 shares for the existing seed."""
+        shares = shamir_mnemonic.generate_mnemonics(1, [(threshold, num_shares)], self.seed_bytes)[0]
+        self._shares = shares
+        return shares
