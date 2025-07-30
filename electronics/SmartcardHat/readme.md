@@ -1,4 +1,22 @@
 # Smartcard Hat
+This hat gives you a CCID/PCSC Compatible Smart Card interface that can connect over UART through a standard Raspberry Pi GPIO header. (Uses the SEC1210UR2 or SEC1210 URT serial interface) and also gives you a USB-C socket that you can use to power your device.
+
+Available in three variants, one for full sized cards and one for sim sized cards and one that has slots for both. (Though you can only use one slot at a time)
+
+Can be used for SeedSigner + Satochip functionality with this fork of SeedSigner here: https://github.com/3rdIteration/seedsigner
+
+Will also work with all normal smartcard functions via the standard Linux CCID driver (https://github.com/LudovicRousseau/CCID) for versions above 1.6.2. (See my Github for an example configuration file)
+
+If using a general Linux operating system with this hat, you will need to make sure that other services aren't using the UART port. (You may need to add things in your config.txt like enable_uart=1 and dtoverlay=disable-bt)
+
+You can use either retail SeedKeeper cards or flash the applets on to a compatible Javacard.
+
+[You can order the hat fabricated via PCBWay here](https://www.pcbway.com/project/shareproject/Smartcard_Hat_for_Raspberry_Pi_with_USB_C_Input_power_Full_SIM_Interface_57b8159c.html)
+
+[You can also order the hat ready-made here](https://cryptoguide.tips/shop/)
+
+# Design Notes
+
 The following folder contains all of the design documents for the smartcard hat. The project was created in KiCAD 9 and the zip file in this folder contains the archived project. The folder also contains everything you need to have the board fabricated with JLCPCB/PCBWay, etc...
 
 In general, the PCB has been designed quite generous tolerances that should make it easy and cheap to have fabricated just about anywhere.
@@ -7,11 +25,7 @@ In general, the PCB has been designed quite generous tolerances that should make
 * Min hole size 0.3mm
 * Small, double sided board
 
-Assembly Video: TBC
-
-You can order the hat fabricated via PCBWay here: TBC
-
-You can also order the hat ready-made here: https://cryptoguide.tips/shop/
+[Manual Assembly Video](https://youtube.com/live/fEvn3GvLtko?feature=share)
 
 # PCB Fabrication Notes
 If you intend to use the PCB with a GPIO Stacking header (Adafruit 4079), the PCB thickness doesn't really matter and a 1.6mm PCB is fine. If you intend to solder the board in between the Raspberry Pi and the display hat, you will want a 1mm PCB.

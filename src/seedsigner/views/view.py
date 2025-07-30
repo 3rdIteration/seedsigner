@@ -191,6 +191,14 @@ class MainMenuView(View):
 
     def run(self):
         from seedsigner.gui.screens.screen import MainMenuScreen
+        from seedsigner.controller import Controller
+        from seedsigner.gui.toast import InfoToast
+
+        controller = Controller.get_instance()
+        controller.storage.discard_pending_slip39_shares()
+        if controller.auto_wiped:
+            controller.auto_wiped = False
+            controller.activate_toast(InfoToast(label_text=_("Data wiped after inactivity")))
         button_data = [self.SCAN, self.SEEDS, self.TOOLS, self.SETTINGS]
         selected_menu_num = self.run_screen(
             MainMenuScreen,

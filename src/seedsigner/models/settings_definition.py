@@ -285,6 +285,20 @@ class SettingsConstants:
     PERSISTENT_SETTINGS__SD_INSERTED__HELP_TEXT = _mft("Store Settings on SD card")
     PERSISTENT_SETTINGS__SD_REMOVED__HELP_TEXT = _mft("Insert SD card to enable")
 
+    # Wipe timer constants (minutes)
+    WIPE_TIMER__DISABLED = 0
+    WIPE_TIMER__FIVE_MINUTES = 5
+    WIPE_TIMER__TEN_MINUTES = 10
+    WIPE_TIMER__FIFTEEN_MINUTES = 15
+    WIPE_TIMER__THIRTY_MINUTES = 30
+    ALL_WIPE_TIMERS = [
+        (WIPE_TIMER__DISABLED, _mft("Disabled")),
+        (WIPE_TIMER__FIVE_MINUTES, _mft("5 minutes")),
+        (WIPE_TIMER__TEN_MINUTES, _mft("10 minutes")),
+        (WIPE_TIMER__FIFTEEN_MINUTES, _mft("15 minutes")),
+        (WIPE_TIMER__THIRTY_MINUTES, _mft("30 minutes")),
+    ]
+
     SINGLE_SIG = "ss"
     MULTISIG = "ms"
     ALL_SIG_TYPES = [
@@ -333,6 +347,7 @@ class SettingsConstants:
     SETTING__BTC_DENOMINATION = "denomination"
     SETTING__SMARTCARD_INTERFACES = "smartcard_interfaces"
     SETTING__CACHE_SCARD_PIN = "cache_scard_pin"
+    SETTING__WIPE_TIMER = "wipe_timer"
 
     SETTING__DISPLAY_CONFIGURATION = "display_config"
     SETTING__DISPLAY_COLOR_INVERTED = "color_inverted"
@@ -389,7 +404,7 @@ class SettingsConstants:
     VISIBILITY__ADVANCED = "advanced"
     VISIBILITY__HARDWARE = "hardware"
     VISIBILITY__DEVELOPER = "developer"
-    VISIBILITY__HIDDEN = "hidden"   # For data-only (e.g. custom_derivation), not configurable by the user
+    VISIBILITY__HIDDEN = "hidden"   # For data-only (e.g. custom_derivation)
 
     # TODO: Is there really a difference between ENABLED and PROMPT?
     TYPE__ENABLED_DISABLED = "enabled_disabled"
@@ -620,6 +635,7 @@ class SettingsDefinition:
                     abbreviated_name="screaders",
                     display_name="Smartcard Interfaces",
                     type=SettingsConstants.TYPE__MULTISELECT,
+                    visibility=SettingsConstants.VISIBILITY__HARDWARE,
                     selection_options=SettingsConstants.ALL_SMARTCARD_INTERFACES,
                     default_value=SettingsConstants.ALL_SMARTCARD_INTERFACES),
 
@@ -630,6 +646,14 @@ class SettingsDefinition:
                     type=SettingsConstants.TYPE__SELECT_1,
                     selection_options=SettingsConstants.OPTIONS__ENABLED_DISABLED,
                     default_value=SettingsConstants.OPTION__DISABLED),
+
+        SettingsEntry(category=SettingsConstants.CATEGORY__SYSTEM,
+                    attr_name=SettingsConstants.SETTING__WIPE_TIMER,
+                    abbreviated_name="wipe",
+                    display_name=_mft("Wipe timer"),
+                    type=SettingsConstants.TYPE__SELECT_1,
+                    selection_options=SettingsConstants.ALL_WIPE_TIMERS,
+                    default_value=SettingsConstants.WIPE_TIMER__DISABLED),
 
         # Advanced options
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,

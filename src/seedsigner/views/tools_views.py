@@ -2156,7 +2156,8 @@ class ToolsSatochipEnable2FAView(View):
         import binascii
         from seedsigner.gui.screens.screen import LoadingScreenThread
         key = urandom(20)
-        logger.info("2FA Key:", binascii.hexlify(key))
+        # Avoid logging the 2FA key value
+        logger.info("2FA key generated")
 
         Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satochip"])
 
@@ -2444,6 +2445,15 @@ class ToolsMicroSDMenuView(View):
     WIPE_RANDOM = ButtonOption("Wipe (Random)")
 
     def run(self):
+        if len(self.controller.storage.seeds) > 0:
+            self.run_screen(
+                WarningScreen,
+                title="WARNING",
+                status_headline=None,
+                text="These tools read from the microSD card and may leak loaded secrets.",
+                show_back_button=False,
+                button_data=[ButtonOption("Continue")]
+            )
         button_data = [self.FLASH_IMAGE, self.VERIFY_IMAGE, self.WIPE_ZERO, self.WIPE_RANDOM]
 
         selected_menu_num = self.run_screen(
@@ -2498,7 +2508,8 @@ class ToolsMicroSDFlashView(View):
         logger.info("Selected:", microsd_image)
 
         if platform.uname()[1] == "seedsigner-os":
-            data = run("cp /mnt/microsd/microsd-images/" + microsd_image + " /tmp/img.img", capture_output=True, shell=True, text=True)
+            image_path = os.path.join('/mnt/microsd/microsd-images', microsd_image)
+            data = run(['cp', image_path, '/tmp/img.img'], capture_output=True, text=True)
             print(data)
             if len(data.stderr) > 1:
                 self.run_screen(
@@ -2589,8 +2600,9 @@ class ToolsMicroSDFlashView(View):
                     return Destination(MainMenuView)
 
         else:
-            os.system("cp /boot/microsd-images/" + microsd_image + " /tmp/img.img")
-            os.system("sudo dd if=/tmp/img.img of=" + microsd_dev)
+            image_path = os.path.join('/boot/microsd-images', microsd_image)
+            run(['cp', image_path, '/tmp/img.img'], check=False)
+            run(['sudo', 'dd', f'if=/tmp/img.img', f'of={microsd_dev}'], check=False)
 
         return Destination(MainMenuView)
 
@@ -2884,6 +2896,15 @@ class ToolsGPGMenuView(View):
     IMPORT_PUBKEY = ButtonOption("Import Pubkey")
 
     def run(self):
+        if len(self.controller.storage.seeds) > 0:
+            self.run_screen(
+                WarningScreen,
+                title="WARNING",
+                status_headline=None,
+                text="These tools load data from the microSD card and may expose loaded secrets.",
+                show_back_button=False,
+                button_data=[ButtonOption("Continue")]
+            )
         button_data = [self.VERIFY_FILE, self.IMPORT_PUBKEY]
 
         selected_menu_num = self.run_screen(
@@ -2913,12 +2934,21 @@ class ToolsGPGVerifyFileView(View):
         else:
             file_list_path= '/boot/microsd-images/'
 
-        verify_file_list = os.listdir(file_list_path)
+        # Get only the visible, valid files
+        visible_file_list = [
+            f
+            for f in os.listdir(file_list_path)
+            if (
+                    not f.startswith('.') and  # Ignore hidden files (like .DS_Store)
+                    f != '__MACOSX' and  # Ignore specific macOS metadata folder
+                    os.path.isfile(os.path.join(file_list_path, f))  # Only include actual files
+            )
+        ]
 
-        verify_file_buttons = []
-        for file in verify_file_list:
-            verify_file_buttons.append(ButtonOption(file))
+        # Build button options
+        verify_file_buttons = [ButtonOption(f) for f in visible_file_list]
 
+        # Show selection screen
         selected_file_num = self.run_screen(
             ButtonListScreen,
             title="Select File",
@@ -2926,11 +2956,13 @@ class ToolsGPGVerifyFileView(View):
             button_data=verify_file_buttons
         )
 
+        # Handle cancel
         if selected_file_num == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
 
-        verify_file_name = verify_file_list[selected_file_num]
-        logger.info("Selected:", verify_file_name)
+        # Use the same filtered list to get the selected filename
+        verify_file_name = visible_file_list[selected_file_num]
+        logger.info("Selected: %s", verify_file_name)
 
         cmd = "cd " + file_list_path +" ; gpg --verify " + verify_file_name
 
@@ -2966,7 +2998,11 @@ class ToolsGPGVerifyFileView(View):
 
         if valid_sig:
             button_data = []
-            if "manifest" in verify_file_name or "sha256" in verify_file_name:
+            # There are a bunch of different naming conventions that different projects use...
+            manifest_filenames = ["manifest", # Sparrow uses this
+                                  "sha256", # Seedsigner uses this
+                                  "shasums"] # Liana uses this naming convention
+            if any(manifest_filename in verify_file_name for manifest_filename in manifest_filenames):
                 button_data.append(self.CHECK_SHA256)
 
             button_data.append(ButtonOption("Done"))

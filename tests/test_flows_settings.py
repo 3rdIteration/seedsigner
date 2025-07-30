@@ -56,9 +56,22 @@ class TestSettingsFlows(FlowTest):
         """ Basic flow from MainMenuView to I/O Test View """
         self.run_sequence([
             FlowStep(MainMenuView, button_data_selection=MainMenuView.SETTINGS),
+            FlowStep(settings_views.SettingsMenuView, button_data_selection=settings_views.SettingsMenuView.HARDWARE),
             FlowStep(settings_views.SettingsMenuView, button_data_selection=settings_views.SettingsMenuView.IO_TEST),
             FlowStep(settings_views.IOTestView),
             FlowStep(settings_views.SettingsMenuView),
+        ])
+
+    def test_hardware_menu_back_returns_to_main(self):
+        """Ensure BACK from Hardware settings returns to main Settings menu."""
+        def assert_general(view: settings_views.SettingsMenuView):
+            assert view.visibility == SettingsConstants.VISIBILITY__GENERAL
+
+        self.run_sequence([
+            FlowStep(MainMenuView, button_data_selection=MainMenuView.SETTINGS),
+            FlowStep(settings_views.SettingsMenuView, button_data_selection=settings_views.SettingsMenuView.HARDWARE),
+            FlowStep(settings_views.SettingsMenuView, screen_return_value=RET_CODE__BACK_BUTTON),
+            FlowStep(settings_views.SettingsMenuView, before_run=assert_general),
         ])
 
 

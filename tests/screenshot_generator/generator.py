@@ -5,6 +5,7 @@ import os
 import random
 import sys
 import time
+import shamir_mnemonic
 from unittest.mock import Mock, patch, MagicMock
 
 from embit import compact
@@ -178,9 +179,15 @@ def generate_screenshots(locale):
                 if settings_entry.attr_name == SettingsConstants.SETTING__LOCALE:
                     # Locale selection has its own dedicated View
                     settings_views_list.append(ScreenshotConfig(settings_views.LocaleSelectionView))
-                else:
-                    # Generic SettingsEntry selection View
-                    settings_views_list.append(ScreenshotConfig(settings_views.SettingsEntryUpdateSelectionView, dict(attr_name=settings_entry.attr_name), screenshot_name=f"SettingsEntryUpdateSelectionView_{settings_entry.attr_name}"))
+                elif settings_entry.selection_options is not None:
+                    # Only render selection-based Views; free-entry settings have no options
+                    settings_views_list.append(
+                        ScreenshotConfig(
+                            settings_views.SettingsEntryUpdateSelectionView,
+                            dict(attr_name=settings_entry.attr_name),
+                            screenshot_name=f"SettingsEntryUpdateSelectionView_{settings_entry.attr_name}"
+                        )
+                    )
 
         # Add the top level "General" settings menu and entries
         settings_views_list.append(ScreenshotConfig(settings_views.SettingsMenuView))
@@ -257,6 +264,20 @@ def generate_screenshots(locale):
             decoder.add_data(BASE64_PSBT_WITH_OP_RETURN_RAW_BYTES)
             controller.psbt = decoder.get_psbt()
             controller.psbt_parser = PSBTParser(p=controller.psbt, seed=seed_12b)
+
+        def slip39_share_entry_cb_before():
+            controller.storage.init_pending_slip39_share(num_words=20)
+
+        def slip39_more_shares_cb_before():
+            controller.storage.discard_pending_slip39_shares()
+            shares = shamir_mnemonic.generate_mnemonics(1, [(2, 3)], bytes.fromhex("11" * 16))[0]
+            controller.storage.init_pending_slip39_share(num_words=len(shares[0].split()))
+            for i, w in enumerate(shares[0].split()):
+                controller.storage.update_pending_slip39_share(w, i)
+            controller.storage.finalize_current_slip39_share()
+
+        def slip39_cleanup_cb():
+            controller.storage.discard_pending_slip39_shares()
 
 
         screenshot_sections = {
@@ -339,6 +360,10 @@ def generate_screenshots(locale):
                 ScreenshotConfig(seed_views.SeedSelectSeedView, dict(flow=Controller.FLOW__SIGN_MESSAGE), screenshot_name="SeedSelectSeedView_sign_message"),
                 ScreenshotConfig(seed_views.SeedSignMessageConfirmMessageView),
                 ScreenshotConfig(seed_views.SeedSignMessageConfirmAddressView),
+
+                ScreenshotConfig(seed_views.SeedSlip39MnemonicStartView),
+                ScreenshotConfig(seed_views.SeedSlip39ShareEntryView, run_before=slip39_share_entry_cb_before, run_after=slip39_cleanup_cb),
+                ScreenshotConfig(seed_views.SeedSlip39MoreSharesView, run_before=slip39_more_shares_cb_before, run_after=slip39_cleanup_cb),
 
                 ScreenshotConfig(seed_views.SeedElectrumMnemonicStartView),
             ],

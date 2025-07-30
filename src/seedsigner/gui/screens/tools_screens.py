@@ -1250,7 +1250,7 @@ class ToolsTranscribeTextQRConfirmQRPromptScreen(ButtonListScreen):
             height=self.buttons[0].screen_y - self.top_nav.height,
         ))
 
-
+@dataclass
 class ToolsAddressExplorerAddressListScreen(ButtonListScreen):
     start_index: int = 0
     addresses: list[str] = None

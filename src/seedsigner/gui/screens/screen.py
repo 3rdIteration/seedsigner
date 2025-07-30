@@ -290,6 +290,8 @@ class ButtonListScreen(BaseTopNavScreen):
     selected_button: int = 0
     is_button_text_centered: bool = True
     is_bottom_list: bool = False
+    num_display_buttons: int = None
+    top_nav_height: int = None
 
     # Cannot define these class attrs w/the get_*_font_*() methods because the attrs will
     # not be dynamically reinterpreted after initial class import.
@@ -340,6 +342,29 @@ class ButtonListScreen(BaseTopNavScreen):
                 # height of the target button itself!
                 self.scroll_y_initial_offset = (button_height + GUIConstants.LIST_ITEM_PADDING) * (self.selected_button - num_buttons_pre_scroll + 1)
 
+            button_display_height = (num_buttons_pre_scroll * button_height) + (GUIConstants.LIST_ITEM_PADDING * (num_buttons_pre_scroll - 1))
+
+        self.top_nav_height = self.top_nav.height
+
+        if self.num_display_buttons and self.num_display_buttons > 0:
+            button_list_y = self.top_nav.height
+            self.has_scroll_arrows = True
+
+            # How many buttons fit on the screen before we need to start scrolling?
+            num_buttons_pre_scroll = math.floor((self.canvas_height - button_list_y - GUIConstants.EDGE_PADDING) / (button_height + GUIConstants.LIST_ITEM_PADDING))
+            num_buttons_pre_scroll = min(num_buttons_pre_scroll, self.num_display_buttons)
+
+            # Force a scroll offset when necessary if none was provided
+            if self.selected_button + 1 > num_buttons_pre_scroll and not self.scroll_y_initial_offset:
+                # Scroll far enough to expose the selected button; +1 to account for the
+                # height of the target button itself!
+                self.scroll_y_initial_offset = (button_height + GUIConstants.LIST_ITEM_PADDING) * (self.selected_button - num_buttons_pre_scroll + 1)
+
+            button_display_height = (num_buttons_pre_scroll * button_height) + (GUIConstants.LIST_ITEM_PADDING * (num_buttons_pre_scroll - 1))
+            if self.is_bottom_list:
+                self.top_nav_height = self.canvas_height - (button_display_height + GUIConstants.EDGE_PADDING) - 8
+                button_list_y = self.top_nav_height
+
         self.buttons: List[Button] = []
         for i, button_option in enumerate(self.button_data):
             icon_name = None
@@ -387,13 +412,13 @@ class ButtonListScreen(BaseTopNavScreen):
             self.arrow_half_width = 10
             self.cur_scroll_y = self.scroll_y_initial_offset if self.scroll_y_initial_offset is not None else 0
             self.up_arrow_img = Image.new("RGBA", size=(2 * self.arrow_half_width, 8), color="black")
-            self.up_arrow_img_y = self.top_nav.height - 12
+            self.up_arrow_img_y = self.top_nav_height - 12
             arrow_draw = ImageDraw.Draw(self.up_arrow_img)
             arrow_draw.line((self.arrow_half_width, 1, 0, 7), fill=GUIConstants.BUTTON_FONT_COLOR)
             arrow_draw.line((self.arrow_half_width, 1, 2 * self.arrow_half_width, 7), fill=GUIConstants.BUTTON_FONT_COLOR)
 
             self.down_arrow_img = Image.new("RGBA", size=(2 * self.arrow_half_width, 8), color="black")
-            self.down_arrow_img_y = self.canvas_height - 16 + 2
+            self.down_arrow_img_y = self.top_nav_height + button_display_height + 2
             arrow_draw = ImageDraw.Draw(self.down_arrow_img)
             center_x = int(self.canvas_width / 2)
             arrow_draw.line((self.arrow_half_width, 7, 0, 1), fill=GUIConstants.BUTTON_FONT_COLOR)
@@ -430,7 +455,7 @@ class ButtonListScreen(BaseTopNavScreen):
                 continue
 
             button_position_y = button.screen_y - button.scroll_y
-            if button_position_y >= self.top_nav.height and button_position_y < self.down_arrow_img_y:
+            if button_position_y >= self.top_nav_height and button_position_y < self.down_arrow_img_y:
                 if i == 0:
                     # We rendered the top button; no more to scroll up for.
                     self._hide_up_arrow()
@@ -511,7 +536,7 @@ class ButtonListScreen(BaseTopNavScreen):
                         next_selected_button: Button = self.buttons[self.selected_button]
                         cur_selected_button.is_selected = False
                         next_selected_button.is_selected = True
-                        if self.has_scroll_arrows and next_selected_button.screen_y - next_selected_button.scroll_y + next_selected_button.height < self.top_nav.height:
+                        if self.has_scroll_arrows and next_selected_button.screen_y - next_selected_button.scroll_y + next_selected_button.height < self.top_nav_height:
                             # Selected a Button that's off the top of the screen
                             frame_scroll = cur_selected_button.screen_y - next_selected_button.screen_y
                             for button in self.buttons:
@@ -1336,3 +1361,29 @@ class MainMenuScreen(LargeButtonScreen):
     title_font_size: int = 26
     show_back_button: bool = False
     show_power_button: bool = True
+
+    def __post_init__(self):
+        super().__post_init__()
+        from seedsigner.hardware.battery_hat import BatteryHat
+        from seedsigner.gui.components import BatteryIndicator
+        self.battery_hat = BatteryHat.get_instance()
+        self.battery_indicator = BatteryIndicator()
+        self.battery_indicator.screen_x = self.canvas_width - GUIConstants.EDGE_PADDING - self.battery_indicator.width
+        self.battery_indicator.screen_y = self.canvas_height - GUIConstants.EDGE_PADDING - self.battery_indicator.height
+        self.last_battery_update = 0
+        if self.battery_hat.detected:
+            self.components.append(self.battery_indicator)
+
+    def _run_callback(self):
+        if self.battery_hat.detected:
+            if self.battery_indicator not in self.components:
+                self.components.append(self.battery_indicator)
+            cur_time = time.time()
+            if cur_time - self.last_battery_update > 60:
+                percent = self.battery_hat.get_percent()
+                if percent is not None:
+                    with self.renderer.lock:
+                        self.battery_indicator.percent = percent
+                        self.battery_indicator.render()
+                        self.renderer.show_image()
+                self.last_battery_update = cur_time
