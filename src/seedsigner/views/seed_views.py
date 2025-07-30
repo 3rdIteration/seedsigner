@@ -1090,14 +1090,14 @@ class SeedSlip39CreateFromBytesView(View):
 
     def run(self):
         ret = seed_screens.SeedBIP85SelectChildIndexScreen(title="Num Shares").display()
-        if isinstance(ret, dict) and "is_back_button" in ret:
+        if ret == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
-        num_shares = int(ret["text"])
+        num_shares = int(ret)
 
         ret = seed_screens.SeedBIP85SelectChildIndexScreen(title="Threshold").display()
-        if isinstance(ret, dict) and "is_back_button" in ret:
+        if ret == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
-        threshold = int(ret["text"])
+        threshold = int(ret)
 
         shares = shamir_mnemonic.generate_mnemonics(1, [(threshold, num_shares)], self.secret)[0]
         seed = Slip39Seed(mnemonics=shares)
@@ -1115,14 +1115,14 @@ class SeedSlip39RegenerateSharesView(View):
 
     def run(self):
         ret = seed_screens.SeedBIP85SelectChildIndexScreen(title="Num Shares").display()
-        if isinstance(ret, dict) and "is_back_button" in ret:
+        if ret == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
-        num_shares = int(ret["text"])
+        num_shares = int(ret)
 
         ret = seed_screens.SeedBIP85SelectChildIndexScreen(title="Threshold").display()
-        if isinstance(ret, dict) and "is_back_button" in ret:
+        if ret == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
-        threshold = int(ret["text"])
+        threshold = int(ret)
 
         self.seed.regenerate_shares(threshold, num_shares)
         return Destination(SeedWordsWarningView, view_args={"seed_num": self.seed_num, "share_index": 0})

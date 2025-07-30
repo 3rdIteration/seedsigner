@@ -141,3 +141,23 @@ def test_slip39_invalid_share_rejected():
                 storage.update_pending_slip39_share(w, i)
         with pytest.raises(InvalidSeedException):
                 storage.finalize_current_slip39_share()
+
+
+def test_seed_passphrase_effect():
+        mnemonic = "abandon " * 11 + "about"
+        seed = Seed(mnemonic=mnemonic.split())
+        orig = seed.seed_bytes
+        seed.set_passphrase("trezor")
+        from embit import bip39
+        expected = bip39.mnemonic_to_seed(mnemonic, passphrase="trezor")
+        assert seed.seed_bytes == expected
+        assert seed.seed_bytes != orig
+
+def test_slip39_regenerate_shares():
+        secret = bytes.fromhex("aa" * 16)
+        shares = shamir_mnemonic.generate_mnemonics(1, [(2, 3)], secret)[0]
+        seed = Slip39Seed(mnemonics=[shares[0], shares[1]])
+        new_shares = seed.regenerate_shares(2, 4)
+        assert len(new_shares) == 4
+        combined = shamir_mnemonic.combine_mnemonics(new_shares[:2])
+        assert combined == secret
