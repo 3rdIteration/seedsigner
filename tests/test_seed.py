@@ -149,7 +149,7 @@ def test_seed_passphrase_effect():
         orig = seed.seed_bytes
         seed.set_passphrase("trezor")
         from embit import bip39
-        expected = bip39.mnemonic_to_seed(mnemonic, passphrase="trezor")
+        expected = bip39.mnemonic_to_seed(mnemonic, password="trezor")
         assert seed.seed_bytes == expected
         assert seed.seed_bytes != orig
 
