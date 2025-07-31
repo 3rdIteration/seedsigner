@@ -23,12 +23,23 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y default-jre libpcsclite-dev pcscd
+          sudo apt-get install -y default-jre build-essential autoconf libtool pkg-config libudev-dev libusb-1.0-0-dev
           python -m pip install --upgrade pip
           pip install -r requirements.txt -r tests/requirements.txt
           pip install .
-          # Download jCardSim from Maven Central
-          wget -q https://repo1.maven.org/maven2/com/klinec/jcardsim/3.0.6.0/jcardsim-3.0.6.0.jar -O jcardsim.jar
+          # build pcsc-lite with polkit disabled
+          wget -q https://github.com/LudovicRousseau/PCSC/archive/refs/tags/pcsc-1.9.0.tar.gz -O pcsc-lite.tar.gz
+          tar -xf pcsc-lite.tar.gz
+          cd PCSC-pcsc-1.9.0
+          ./bootstrap
+          ./configure --prefix=/usr --disable-polkit
+          make -j$(nproc)
+          sudo make install
+          cd ..
+          sudo ldconfig
+          # Download jCardSim jar
+          wget -q https://github.com/licel/jcardsim/packages/1650016 -O jcardsim.html
+          grep -o "https://github-registry-files[^"]*\.jar" jcardsim.html | head -n 1 | xargs -r wget -O jcardsim.jar
       - name: Run SeedKeeper integration tests
         run: |
           export JCARDSIM_JAR=jcardsim.jar

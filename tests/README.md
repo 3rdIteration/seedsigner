@@ -86,10 +86,11 @@ coverage html
 
 Running the integration test suite requires Java, `pcscd` and the jCardSim emulator.
 Install OpenJDK and ensure the `pcscd` service is running.
-Download the jCardSim jar from Maven Central, for example:
+Download the jCardSim jar from the GitHub Packages page or Maven Central, for example:
 
 ```
-wget https://repo1.maven.org/maven2/com/klinec/jcardsim/3.0.6.0/jcardsim-3.0.6.0.jar -O jcardsim.jar
+wget https://github.com/licel/jcardsim/packages/1650016 -O jcardsim.html
+grep -o "https://github-registry-files[^"]*\.jar" jcardsim.html | head -n 1 | xargs -r wget -O jcardsim.jar
 ```
 
 If the jar has a different name or location, set the `JCARDSIM_JAR` environment variable.
