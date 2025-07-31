@@ -9,3 +9,5 @@ src/seedsigner/models/settings_definition.json
 
 *.po
 *.mo
+jcardsim.jar
+
