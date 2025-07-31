@@ -265,6 +265,9 @@ class Slip39Seed(Seed):
             raise Exception("Must provide at least one SLIP-39 share")
         self._shares: List[str] = [unicodedata.normalize("NFKD", m.strip()) for m in mnemonics]
 
+        first_share = shamir_mnemonic.Share.from_mnemonic(self._shares[0])
+        self.extendable: bool = first_share.extendable
+
         self._passphrase: str = ""
         self.set_passphrase(passphrase, regenerate_seed=False)
 
@@ -304,6 +307,10 @@ class Slip39Seed(Seed):
 
     def regenerate_shares(self, threshold: int, num_shares: int) -> List[str]:
         """Generate new SLIP-39 shares for the existing seed."""
-        shares = shamir_mnemonic.generate_mnemonics(1, [(threshold, num_shares)], self.seed_bytes)[0]
+        if not self.extendable:
+            raise InvalidSeedException("This SLIP-39 seed is not extendable")
+        shares = shamir_mnemonic.generate_mnemonics(
+            1, [(threshold, num_shares)], self.seed_bytes, extendable=True
+        )[0]
         self._shares = shares
         return shares

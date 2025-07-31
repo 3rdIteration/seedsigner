@@ -1099,7 +1099,9 @@ class SeedSlip39CreateFromBytesView(View):
             return Destination(BackStackView)
         threshold = int(ret)
 
-        shares = shamir_mnemonic.generate_mnemonics(1, [(threshold, num_shares)], self.secret)[0]
+        shares = shamir_mnemonic.generate_mnemonics(
+            1, [(threshold, num_shares)], self.secret, extendable=True
+        )[0]
         seed = Slip39Seed(mnemonics=shares)
         self.controller.storage.set_pending_seed(seed)
 
@@ -1114,6 +1116,19 @@ class SeedSlip39RegenerateSharesView(View):
         self.seed = self.controller.get_seed(seed_num)
 
     def run(self):
+        if not self.seed.extendable:
+            from seedsigner.gui.screens.screen import WarningScreen
+            self.run_screen(
+                WarningScreen,
+                title=_("Non-extendable Seed"),
+                show_back_button=False,
+                status_icon_name=SeedSignerIconConstants.ERROR,
+                status_headline=None,
+                text=_("This SLIP-39 seed cannot regenerate new shares."),
+                button_data=[ButtonOption("OK")],
+            )
+            return Destination(BackStackView)
+
         ret = seed_screens.SeedBIP85SelectChildIndexScreen(title="Num Shares").display()
         if ret == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)

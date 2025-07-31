@@ -144,7 +144,9 @@ def generate_screenshots(locale):
 
         # Add a SLIP-39 seed for share regeneration screenshots
         slip_secret = bytes.fromhex("11" * 16)
-        slip_shares = shamir_mnemonic.generate_mnemonics(1, [(2, 3)], slip_secret)[0]
+        slip_shares = shamir_mnemonic.generate_mnemonics(
+            1, [(2, 3)], slip_secret, extendable=True
+        )[0]
         slip39_seed = Slip39Seed(mnemonics=[slip_shares[0], slip_shares[1]])
         controller.storage.seeds.append(slip39_seed)
 
@@ -276,7 +278,9 @@ def generate_screenshots(locale):
 
         def slip39_more_shares_cb_before():
             controller.storage.discard_pending_slip39_shares()
-            shares = shamir_mnemonic.generate_mnemonics(1, [(2, 3)], bytes.fromhex("11" * 16))[0]
+            shares = shamir_mnemonic.generate_mnemonics(
+                1, [(2, 3)], bytes.fromhex("11" * 16), extendable=True
+            )[0]
             controller.storage.init_pending_slip39_share(num_words=len(shares[0].split()))
             for i, w in enumerate(shares[0].split()):
                 controller.storage.update_pending_slip39_share(w, i)

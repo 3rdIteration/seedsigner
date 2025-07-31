@@ -155,9 +155,19 @@ def test_seed_passphrase_effect():
 
 def test_slip39_regenerate_shares():
         secret = bytes.fromhex("aa" * 16)
-        shares = shamir_mnemonic.generate_mnemonics(1, [(2, 3)], secret)[0]
+        shares = shamir_mnemonic.generate_mnemonics(1, [(2, 3)], secret, extendable=True)[0]
         seed = Slip39Seed(mnemonics=[shares[0], shares[1]])
+        assert seed.extendable
         new_shares = seed.regenerate_shares(2, 4)
         assert len(new_shares) == 4
         combined = shamir_mnemonic.combine_mnemonics(new_shares[:2])
         assert combined == secret
+
+
+def test_slip39_regenerate_shares_nonextendable():
+        secret = bytes.fromhex("aa" * 16)
+        shares = shamir_mnemonic.generate_mnemonics(1, [(2, 3)], secret, extendable=False)[0]
+        seed = Slip39Seed(mnemonics=[shares[0], shares[1]])
+        assert not seed.extendable
+        with pytest.raises(InvalidSeedException):
+                seed.regenerate_shares(2, 4)
