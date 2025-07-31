@@ -27,7 +27,17 @@ from seedsigner.gui.screens.screen import ButtonOption
 from seedsigner.helpers import mnemonic_generation
 from seedsigner.models.seed import Seed
 from seedsigner.models.settings_definition import SettingsConstants
-from seedsigner.views.seed_views import SeedDiscardView, SeedFinalizeView, SeedMnemonicEntryView, SeedOptionsView, SeedWordsWarningView, SeedExportXpubScriptTypeView, LoadSeedView
+from seedsigner.views.seed_views import (
+    SeedDiscardView,
+    SeedFinalizeView,
+    SeedMnemonicEntryView,
+    SeedOptionsView,
+    SeedWordsWarningView,
+    SeedExportXpubScriptTypeView,
+    LoadSeedView,
+    SeedSlip39CreateFromBytesView,
+    SeedSlip39RegenerateSharesView,
+)
 
 from .view import View, Destination, BackStackView, MainMenuView
 
@@ -180,7 +190,12 @@ class ToolsImageEntropyMnemonicLengthView(View):
     TWENTYFOUR_WORDS = ButtonOption("24 words", return_data=24)
 
     def run(self):
-        button_data = [self.TWELVE_WORDS, self.TWENTYFOUR_WORDS]
+        if getattr(self.controller, "create_slip39", False):
+            twenty = ButtonOption("20 words", return_data=20)
+            thirty_three = ButtonOption("33 words", return_data=33)
+            button_data = [twenty, thirty_three]
+        else:
+            button_data = [self.TWELVE_WORDS, self.TWENTYFOUR_WORDS]
 
         selected_menu_num = ButtonListScreen(
             title=_("Mnemonic Length?"),
@@ -218,8 +233,8 @@ class ToolsImageEntropyMnemonicLengthView(View):
         # Finally build in our headline entropy via the new full-res image
         final_hash = hashlib.sha256(hash_bytes + seed_entropy_image.tobytes()).digest()
 
-        if mnemonic_length == 12:
-            # 12-word mnemonic only uses the first 128 bits / 16 bytes of entropy
+        if mnemonic_length in (12, 20):
+            # 12- or 20-word seeds only use the first 128 bits / 16 bytes of entropy
             final_hash = final_hash[:16]
 
         if getattr(self.controller, "create_slip39", False):
@@ -254,15 +269,26 @@ class ToolsDiceEntropyMnemonicLengthView(View):
         # Since we're dynamically building the ButtonOption button_labels here, it's too
         # awkward to use the usual class-level attr approach.
 
-        # TRANSLATOR_NOTE: Inserts the number of dice rolls needed for a 12-word mnemonic
-        twelve = _("12 words ({} rolls)").format(mnemonic_generation.DICE__NUM_ROLLS__12WORD)
-        TWELVE = ButtonOption(twelve, return_data=mnemonic_generation.DICE__NUM_ROLLS__12WORD)
+        if getattr(self.controller, "create_slip39", False):
+            # TRANSLATOR_NOTE: Inserts the number of dice rolls needed for a 20-word seed
+            twenty = _("20 words ({} rolls)").format(mnemonic_generation.DICE__NUM_ROLLS__12WORD)
+            TWENTY = ButtonOption(twenty, return_data=mnemonic_generation.DICE__NUM_ROLLS__12WORD)
 
-        # TRANSLATOR_NOTE: Inserts the number of dice rolls needed for a 24-word mnemonic
-        twenty_four = _("24 words ({} rolls)").format(mnemonic_generation.DICE__NUM_ROLLS__24WORD)
-        TWENTY_FOUR = ButtonOption(twenty_four, return_data=mnemonic_generation.DICE__NUM_ROLLS__24WORD)
+            # TRANSLATOR_NOTE: Inserts the number of dice rolls needed for a 33-word seed
+            thirty_three = _("33 words ({} rolls)").format(mnemonic_generation.DICE__NUM_ROLLS__24WORD)
+            THIRTY_THREE = ButtonOption(thirty_three, return_data=mnemonic_generation.DICE__NUM_ROLLS__24WORD)
 
-        button_data = [TWELVE, TWENTY_FOUR]
+            button_data = [TWENTY, THIRTY_THREE]
+        else:
+            # TRANSLATOR_NOTE: Inserts the number of dice rolls needed for a 12-word mnemonic
+            twelve = _("12 words ({} rolls)").format(mnemonic_generation.DICE__NUM_ROLLS__12WORD)
+            TWELVE = ButtonOption(twelve, return_data=mnemonic_generation.DICE__NUM_ROLLS__12WORD)
+
+            # TRANSLATOR_NOTE: Inserts the number of dice rolls needed for a 24-word mnemonic
+            twenty_four = _("24 words ({} rolls)").format(mnemonic_generation.DICE__NUM_ROLLS__24WORD)
+            TWENTY_FOUR = ButtonOption(twenty_four, return_data=mnemonic_generation.DICE__NUM_ROLLS__24WORD)
+
+            button_data = [TWELVE, TWENTY_FOUR]
         selected_menu_num = ButtonListScreen(
             title=_("Mnemonic Length"),
             is_bottom_list=True,
