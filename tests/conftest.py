@@ -69,14 +69,20 @@ def jcardsim_emulator(pytestconfig):
     if not use_jcardsim:
         pytest.skip("jcardsim emulator not enabled")
 
-    jar = os.environ.get("JCARDSIM_JAR", "jcardsim.jar")
+    jar = Path(os.environ.get("JCARDSIM_JAR", "jcardsim.jar"))
+    if not jar.exists():
+        pytest.skip(f"jCardSim jar not found: {jar}")
+
     cap_path = Path(__file__).resolve().parents[1] / "tools" / "javacard-cap" / "SeedKeeper.cap"
+    if not cap_path.exists():
+        pytest.skip("SeedKeeper CAP not found")
 
-    # Start local pcscd so pyscard can connect
-    pcscd = Popen(["pcscd", "-f", "--disable-polkit"])
-    time.sleep(1)
+    pcscd = None
+    if not Path("/run/pcscd/pcscd.pid").exists():
+        pcscd = Popen(["pcscd", "-f", "--disable-polkit"])
+        time.sleep(1)
 
-    jproc = Popen(["java", "-jar", jar, str(cap_path)])
+    jproc = Popen(["java", "-jar", str(jar), str(cap_path)])
 
     try:
         from smartcard.System import readers
@@ -96,5 +102,6 @@ def jcardsim_emulator(pytestconfig):
     finally:
         jproc.terminate()
         jproc.wait()
-        pcscd.terminate()
-        pcscd.wait()
+        if pcscd is not None:
+            pcscd.terminate()
+            pcscd.wait()

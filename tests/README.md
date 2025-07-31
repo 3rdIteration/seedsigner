@@ -85,9 +85,15 @@ coverage html
 ## SeedKeeper integration tests
 
 Running the integration test suite requires Java, `pcscd` and the jCardSim emulator.
-Install OpenJDK and make sure the `pcscd` service is available.
-Download the jCardSim jar from <https://github.com/licel/jcardsim/packages/1650016>.
-If the jar is not named `jcardsim.jar`, set the `JCARDSIM_JAR` environment variable.
+Install OpenJDK and ensure the `pcscd` service is running.
+Download the jCardSim jar from Maven Central, for example:
+
+```
+wget https://repo1.maven.org/maven2/com/klinec/jcardsim/3.0.6.0/jcardsim-3.0.6.0.jar -O jcardsim.jar
+```
+
+If the jar has a different name or location, set the `JCARDSIM_JAR` environment variable.
+The SeedKeeper CAP file must be present at `tools/javacard-cap/SeedKeeper.cap`.
 Then run:
 
 ```bash
