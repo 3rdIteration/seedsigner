@@ -90,7 +90,7 @@ Download the jCardSim jar from the GitHub Packages page or Maven Central, for ex
 
 ```
 wget https://github.com/licel/jcardsim/packages/1650016 -O jcardsim.html
-grep -o "https://github-registry-files[^"]*\.jar" jcardsim.html | head -n 1 | xargs -r wget -O jcardsim.jar
+grep -o 'https://github-registry-files[^"\n]*\.jar' jcardsim.html | head -n 1 | xargs -r wget -O jcardsim.jar
 ```
 
 If the jar has a different name or location, set the `JCARDSIM_JAR` environment variable.

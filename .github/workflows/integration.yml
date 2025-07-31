@@ -41,7 +41,7 @@ jobs:
           pip install .
           # Download jCardSim jar
           wget -q https://github.com/licel/jcardsim/packages/1650016 -O jcardsim.html
-          grep -o "https://github-registry-files[^"]*\.jar" jcardsim.html | head -n 1 | xargs -r wget -O jcardsim.jar
+          grep -o 'https://github-registry-files[^"\n]*\.jar' jcardsim.html | head -n 1 | xargs -r wget -O jcardsim.jar
       - name: Run SeedKeeper integration tests
         run: |
           export JCARDSIM_JAR=jcardsim.jar
