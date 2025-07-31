@@ -265,30 +265,28 @@ class ToolsImageEntropyMnemonicLengthView(View):
     Dice rolls Views
 ****************************************************************************"""
 class ToolsDiceEntropyMnemonicLengthView(View):
+    """Prompt for mnemonic length when using dice entropy."""
+
+    # These are defined here so they are available for equality checks later
+    TWELVE = ButtonOption("12 words", return_data=mnemonic_generation.DICE__NUM_ROLLS__12WORD)
+    TWENTY_FOUR = ButtonOption("24 words", return_data=mnemonic_generation.DICE__NUM_ROLLS__24WORD)
+    TWENTY = ButtonOption(
+        _("20 words ({} rolls)").format(mnemonic_generation.DICE__NUM_ROLLS__12WORD),
+        return_data=mnemonic_generation.DICE__NUM_ROLLS__12WORD,
+    )
+    THIRTY_THREE = ButtonOption(
+        _("33 words ({} rolls)").format(mnemonic_generation.DICE__NUM_ROLLS__24WORD),
+        return_data=mnemonic_generation.DICE__NUM_ROLLS__24WORD,
+    )
+
     def run(self):
         # Since we're dynamically building the ButtonOption button_labels here, it's too
         # awkward to use the usual class-level attr approach.
 
         if getattr(self.controller, "create_slip39", False):
-            # TRANSLATOR_NOTE: Inserts the number of dice rolls needed for a 20-word seed
-            twenty = _("20 words ({} rolls)").format(mnemonic_generation.DICE__NUM_ROLLS__12WORD)
-            TWENTY = ButtonOption(twenty, return_data=mnemonic_generation.DICE__NUM_ROLLS__12WORD)
-
-            # TRANSLATOR_NOTE: Inserts the number of dice rolls needed for a 33-word seed
-            thirty_three = _("33 words ({} rolls)").format(mnemonic_generation.DICE__NUM_ROLLS__24WORD)
-            THIRTY_THREE = ButtonOption(thirty_three, return_data=mnemonic_generation.DICE__NUM_ROLLS__24WORD)
-
-            button_data = [TWENTY, THIRTY_THREE]
+            button_data = [self.TWENTY, self.THIRTY_THREE]
         else:
-            # TRANSLATOR_NOTE: Inserts the number of dice rolls needed for a 12-word mnemonic
-            twelve = _("12 words ({} rolls)").format(mnemonic_generation.DICE__NUM_ROLLS__12WORD)
-            TWELVE = ButtonOption(twelve, return_data=mnemonic_generation.DICE__NUM_ROLLS__12WORD)
-
-            # TRANSLATOR_NOTE: Inserts the number of dice rolls needed for a 24-word mnemonic
-            twenty_four = _("24 words ({} rolls)").format(mnemonic_generation.DICE__NUM_ROLLS__24WORD)
-            TWENTY_FOUR = ButtonOption(twenty_four, return_data=mnemonic_generation.DICE__NUM_ROLLS__24WORD)
-
-            button_data = [TWELVE, TWENTY_FOUR]
+            button_data = [self.TWELVE, self.TWENTY_FOUR]
         selected_menu_num = ButtonListScreen(
             title=_("Mnemonic Length"),
             is_bottom_list=True,
@@ -299,11 +297,17 @@ class ToolsDiceEntropyMnemonicLengthView(View):
         if selected_menu_num == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
 
-        elif button_data[selected_menu_num] == TWELVE:
-            return Destination(ToolsDiceEntropyEntryView, view_args=dict(total_rolls=mnemonic_generation.DICE__NUM_ROLLS__12WORD))
+        elif button_data[selected_menu_num] in (self.TWELVE, self.TWENTY):
+            return Destination(
+                ToolsDiceEntropyEntryView,
+                view_args=dict(total_rolls=mnemonic_generation.DICE__NUM_ROLLS__12WORD),
+            )
 
-        elif button_data[selected_menu_num] == TWENTY_FOUR:
-            return Destination(ToolsDiceEntropyEntryView, view_args=dict(total_rolls=mnemonic_generation.DICE__NUM_ROLLS__24WORD))
+        elif button_data[selected_menu_num] in (self.TWENTY_FOUR, self.THIRTY_THREE):
+            return Destination(
+                ToolsDiceEntropyEntryView,
+                view_args=dict(total_rolls=mnemonic_generation.DICE__NUM_ROLLS__24WORD),
+            )
 
 
 
