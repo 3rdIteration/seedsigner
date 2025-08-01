@@ -274,6 +274,7 @@ class Slip39Seed(Seed):
         first_share = shamir_mnemonic.Share.from_mnemonic(self._shares[0])
         self.extendable: bool = first_share.extendable
         self._member_threshold: int = first_share.member_threshold
+        self._group_threshold: int = first_share.group_threshold
 
         # Passphrase used to decrypt the shares
         self._slip39_passphrase: str = unicodedata.normalize("NFKD", slip39_passphrase) if slip39_passphrase else ""
@@ -282,27 +283,49 @@ class Slip39Seed(Seed):
         self._passphrase: str = unicodedata.normalize("NFKD", passphrase) if passphrase else ""
 
         self.seed_bytes: bytes = None
+        self.master_secret: bytes | None = None
         self._generate_seed()
 
     def _generate_seed(self):
         try:
-            combine_list = list(self._shares)
-            if len(combine_list) > self._member_threshold:
-                combine_list = combine_list[: self._member_threshold]
+            try:
+                secret = shamir_mnemonic.combine_mnemonics(
+                    self._shares, self._slip39_passphrase.encode("utf-8")
+                )
+            except Exception as e:
+                if "Wrong number of mnemonics" not in str(e):
+                    raise
+                groups: dict[int, list[str]] = {}
+                for share in self._shares:
+                    s = shamir_mnemonic.Share.from_mnemonic(share)
+                    grp = groups.setdefault(s.group_index, [])
+                    if len(grp) < self._member_threshold:
+                        grp.append(share)
+                    if (
+                        len(groups) >= self._group_threshold
+                        and all(len(v) >= self._member_threshold for v in groups.values())
+                    ):
+                        break
 
-            secret = shamir_mnemonic.combine_mnemonics(
-                combine_list, self._slip39_passphrase.encode("utf-8")
-            )
+                combine_list: list[str] = []
+                for grp_index in sorted(groups.keys())[: self._group_threshold]:
+                    combine_list.extend(groups[grp_index][: self._member_threshold])
+
+                secret = shamir_mnemonic.combine_mnemonics(
+                    combine_list, self._slip39_passphrase.encode("utf-8")
+                )
+
             self.master_secret = secret
 
-            # Convert the recovered secret to a BIP-39 seed so that applying a
-            # passphrase mirrors the behaviour of standard BIP-39 mnemonics.
-            mnemonic = bip39.mnemonic_from_bytes(secret)
-            self.seed_bytes = bip39.mnemonic_to_seed(
-                mnemonic,
-                password=self._passphrase,
-                wordlist=self.wordlist,
-            )
+            if self._passphrase:
+                mnemonic = bip39.mnemonic_from_bytes(secret)
+                self.seed_bytes = bip39.mnemonic_to_seed(
+                    mnemonic,
+                    password=self._passphrase,
+                    wordlist=self.wordlist,
+                )
+            else:
+                self.seed_bytes = secret
         except Exception as e:
             logger.info(repr(e), exc_info=True)
             raise InvalidSeedException(repr(e))

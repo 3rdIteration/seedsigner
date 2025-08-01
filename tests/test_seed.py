@@ -1,3 +1,5 @@
+import os
+import json
 import pytest
 from seedsigner.models.seed import InvalidSeedException, Seed, ElectrumSeed, Slip39Seed
 import shamir_mnemonic
@@ -89,13 +91,13 @@ def test_slip39_seed():
         secret = bytes.fromhex("11" * 32)
         shares = shamir_mnemonic.generate_mnemonics(1, [(2, 3)], secret)[0]
         seed = Slip39Seed(mnemonics=[shares[0], shares[1]])
-        assert seed.master_secret == secret
+        assert seed.seed_bytes == secret
 
 def test_slip39_seed_20_word_share():
         secret = bytes.fromhex("33" * 16)
         shares = shamir_mnemonic.generate_mnemonics(1, [(2, 3)], secret)[0]
         seed = Slip39Seed(mnemonics=[shares[0], shares[1]])
-        assert seed.master_secret == secret
+        assert seed.seed_bytes == secret
 
 def test_slip39_storage_reconstruction():
        secret = bytes.fromhex("22" * 32)
@@ -111,7 +113,7 @@ def test_slip39_storage_reconstruction():
                storage.update_pending_slip39_share(w, i)
        storage.finalize_current_slip39_share()
        storage.convert_pending_slip39_shares_to_pending_seed()
-       assert storage.pending_seed.master_secret == secret
+       assert storage.pending_seed.seed_bytes == secret
 
 def test_slip39_storage_reconstruction_20_word():
        secret = bytes.fromhex("44" * 16)
@@ -127,7 +129,7 @@ def test_slip39_storage_reconstruction_20_word():
                storage.update_pending_slip39_share(w, i)
        storage.finalize_current_slip39_share()
        storage.convert_pending_slip39_shares_to_pending_seed()
-       assert storage.pending_seed.master_secret == secret
+       assert storage.pending_seed.seed_bytes == secret
 
 def test_slip39_invalid_share_rejected():
         secret = bytes.fromhex("55" * 16)
@@ -162,7 +164,7 @@ def test_slip39_regenerate_shares():
         assert len(new_shares) == 4
         combined = shamir_mnemonic.combine_mnemonics(new_shares[:2])
         assert combined == secret
-        assert seed.master_secret == secret
+        assert seed.seed_bytes == secret
 
 
 def test_slip39_regenerate_shares_nonextendable():
@@ -172,3 +174,20 @@ def test_slip39_regenerate_shares_nonextendable():
         assert not seed.extendable
         with pytest.raises(InvalidSeedException):
                 seed.regenerate_shares(2, 4)
+
+
+VECTORS_PATH = os.path.join(os.path.dirname(__file__), "data", "shamir_vectors.json")
+
+
+@pytest.mark.parametrize('desc,mnemonics,secret_hex,xprv', json.load(open(VECTORS_PATH)))
+def test_slip39_vectors_end_to_end(desc, mnemonics, secret_hex, xprv):
+        if not secret_hex:
+                with pytest.raises(Exception):
+                        Slip39Seed(mnemonics=mnemonics, slip39_passphrase="TREZOR")
+        else:
+                seed = Slip39Seed(mnemonics=mnemonics, slip39_passphrase="TREZOR")
+                from embit import bip32
+                from embit.networks import NETWORKS
+                assert seed.seed_bytes.hex() == secret_hex
+                root = bip32.HDKey.from_seed(seed.seed_bytes, version=NETWORKS["main"]["xprv"])
+                assert root.to_base58() == xprv
