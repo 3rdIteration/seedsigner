@@ -89,13 +89,13 @@ def test_slip39_seed():
         secret = bytes.fromhex("11" * 32)
         shares = shamir_mnemonic.generate_mnemonics(1, [(2, 3)], secret)[0]
         seed = Slip39Seed(mnemonics=[shares[0], shares[1]])
-        assert seed.seed_bytes == secret
+        assert seed.master_secret == secret
 
 def test_slip39_seed_20_word_share():
         secret = bytes.fromhex("33" * 16)
         shares = shamir_mnemonic.generate_mnemonics(1, [(2, 3)], secret)[0]
         seed = Slip39Seed(mnemonics=[shares[0], shares[1]])
-        assert seed.seed_bytes == secret
+        assert seed.master_secret == secret
 
 def test_slip39_storage_reconstruction():
        secret = bytes.fromhex("22" * 32)
@@ -111,7 +111,7 @@ def test_slip39_storage_reconstruction():
                storage.update_pending_slip39_share(w, i)
        storage.finalize_current_slip39_share()
        storage.convert_pending_slip39_shares_to_pending_seed()
-       assert storage.pending_seed.seed_bytes == secret
+       assert storage.pending_seed.master_secret == secret
 
 def test_slip39_storage_reconstruction_20_word():
        secret = bytes.fromhex("44" * 16)
@@ -127,7 +127,7 @@ def test_slip39_storage_reconstruction_20_word():
                storage.update_pending_slip39_share(w, i)
        storage.finalize_current_slip39_share()
        storage.convert_pending_slip39_shares_to_pending_seed()
-       assert storage.pending_seed.seed_bytes == secret
+       assert storage.pending_seed.master_secret == secret
 
 def test_slip39_invalid_share_rejected():
         secret = bytes.fromhex("55" * 16)
@@ -162,6 +162,7 @@ def test_slip39_regenerate_shares():
         assert len(new_shares) == 4
         combined = shamir_mnemonic.combine_mnemonics(new_shares[:2])
         assert combined == secret
+        assert seed.master_secret == secret
 
 
 def test_slip39_regenerate_shares_nonextendable():

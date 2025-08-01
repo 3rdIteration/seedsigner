@@ -34,6 +34,7 @@ class Seed:
         self.set_passphrase(passphrase, regenerate_seed=False)
 
         self.seed_bytes: bytes = None
+        self.master_secret: bytes | None = None
         self._generate_seed()
 
 
@@ -257,9 +258,14 @@ class ElectrumSeed(Seed):
 
 
 class Slip39Seed(Seed):
-    """Seed derived from SLIP-39 mnemonic shares."""
+    """Seed derived from SLIP-39 mnemonic shares.
 
-    def __init__(self, mnemonics: List[str], passphrase: str = "") -> None:
+    ``passphrase`` here refers to the SLIP‑39 passphrase used when the shares
+    were originally created.  A separate BIP‑39 passphrase can be set via the
+    :py:meth:`set_passphrase` method once the master secret has been recovered.
+    """
+
+    def __init__(self, mnemonics: List[str], slip39_passphrase: str = "", passphrase: str = "") -> None:
         self._wordlist_language_code = SettingsConstants.WORDLIST_LANGUAGE__ENGLISH
         if not mnemonics:
             raise Exception("Must provide at least one SLIP-39 share")
@@ -269,8 +275,11 @@ class Slip39Seed(Seed):
         self.extendable: bool = first_share.extendable
         self._member_threshold: int = first_share.member_threshold
 
-        self._passphrase: str = ""
-        self.set_passphrase(passphrase, regenerate_seed=False)
+        # Passphrase used to decrypt the shares
+        self._slip39_passphrase: str = unicodedata.normalize("NFKD", slip39_passphrase) if slip39_passphrase else ""
+
+        # Optional BIP-39 passphrase applied after recovering the master secret
+        self._passphrase: str = unicodedata.normalize("NFKD", passphrase) if passphrase else ""
 
         self.seed_bytes: bytes = None
         self._generate_seed()
@@ -280,8 +289,19 @@ class Slip39Seed(Seed):
             combine_list = list(self._shares)
             if len(combine_list) > self._member_threshold:
                 combine_list = combine_list[: self._member_threshold]
-            self.seed_bytes = shamir_mnemonic.combine_mnemonics(
-                combine_list, self._passphrase.encode("utf-8")
+
+            secret = shamir_mnemonic.combine_mnemonics(
+                combine_list, self._slip39_passphrase.encode("utf-8")
+            )
+            self.master_secret = secret
+
+            # Convert the recovered secret to a BIP-39 seed so that applying a
+            # passphrase mirrors the behaviour of standard BIP-39 mnemonics.
+            mnemonic = bip39.mnemonic_from_bytes(secret)
+            self.seed_bytes = bip39.mnemonic_to_seed(
+                mnemonic,
+                password=self._passphrase,
+                wordlist=self.wordlist,
             )
         except Exception as e:
             logger.info(repr(e), exc_info=True)
@@ -301,6 +321,12 @@ class Slip39Seed(Seed):
         if regenerate_seed:
             self._generate_seed()
 
+    def set_slip39_passphrase(self, passphrase: str, regenerate_seed: bool = True):
+        """Set or update the passphrase used to decrypt the SLIP-39 shares."""
+        self._slip39_passphrase = unicodedata.normalize("NFKD", passphrase) if passphrase else ""
+        if regenerate_seed:
+            self._generate_seed()
+
     @property
     def seedqr_supported(self) -> bool:
         return False
@@ -314,7 +340,10 @@ class Slip39Seed(Seed):
         if not self.extendable:
             raise InvalidSeedException("This SLIP-39 seed is not extendable")
         shares = shamir_mnemonic.generate_mnemonics(
-            1, [(threshold, num_shares)], self.seed_bytes, extendable=True
+            1,
+            [(threshold, num_shares)],
+            self.master_secret,
+            extendable=True,
         )[0]
         self._shares = shares
         self._member_threshold = threshold
