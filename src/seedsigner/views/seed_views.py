@@ -552,8 +552,20 @@ class SeedAddPassphraseView(View):
             initial_keyboard=self.initial_keyboard,
         )
 
-        # The new passphrase will be the return value; it might be empty.
-        self.seed.set_passphrase(ret_dict["passphrase"])
+        passphrase = ret_dict["passphrase"]
+        if isinstance(self.seed, Slip39Seed):
+            from seedsigner.gui.screens.screen import LoadingScreenThread
+            self.loading_screen = LoadingScreenThread(text="Deriving Seed\n\n\n\n\n\n")
+            self.loading_screen.start()
+            try:
+                self.seed.set_slip39_passphrase(passphrase)
+                # Store for display purposes
+                self.seed.set_passphrase(passphrase, regenerate_seed=False)
+            finally:
+                self.loading_screen.stop()
+        else:
+            # The new passphrase will be the return value; it might be empty.
+            self.seed.set_passphrase(passphrase)
 
         if "is_back_button" in ret_dict:
             if len(self.seed.passphrase) > 0:
@@ -741,7 +753,7 @@ class SeedReviewPassphraseView(View):
         fingerprint_with = self.seed.get_fingerprint(network=network)
         self.seed.set_passphrase("")
         fingerprint_without = self.seed.get_fingerprint(network=network)
-        self.seed.set_passphrase(passphrase)
+        self.seed.set_passphrase(passphrase, regenerate_seed=not isinstance(self.seed, Slip39Seed))
         
         button_data = [self.DONE, self.EDIT, self.SCAN]
 
@@ -950,7 +962,14 @@ class SeedSlip39MoreSharesView(View):
             from seedsigner.views.seed_views import SeedSlip39LoadFromSeedkeeperView
             return Destination(SeedSlip39LoadFromSeedkeeperView)
 
-        self.controller.storage.convert_pending_slip39_shares_to_pending_seed()
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+        self.loading_screen = LoadingScreenThread(text="Combining Shares\n\n\n\n\n\n")
+        self.loading_screen.start()
+        try:
+            self.controller.storage.convert_pending_slip39_shares_to_pending_seed()
+        finally:
+            self.loading_screen.stop()
+
         return Destination(SeedFinalizeView)
 
 

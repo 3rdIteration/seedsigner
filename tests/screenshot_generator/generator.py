@@ -374,6 +374,7 @@ def generate_screenshots(locale):
                 ScreenshotConfig(seed_views.SeedSlip39MnemonicStartView),
                 ScreenshotConfig(seed_views.SeedSlip39ShareEntryView, run_before=slip39_share_entry_cb_before, run_after=slip39_cleanup_cb),
                 ScreenshotConfig(seed_views.SeedSlip39MoreSharesView, run_before=slip39_more_shares_cb_before, run_after=slip39_cleanup_cb),
+                ScreenshotConfig(seed_views.SeedAddPassphraseView, screenshot_name="SeedSlip39AddPassphraseView", run_before=slip39_more_shares_cb_before, run_after=slip39_cleanup_cb),
                 ScreenshotConfig(seed_views.SeedSlip39CreateFromBytesView, dict(secret=bytes.fromhex("11" * 16))),
                 ScreenshotConfig(seed_views.SeedSlip39RegenerateSharesView, dict(seed_num=3)),
 

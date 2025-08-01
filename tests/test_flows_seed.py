@@ -207,6 +207,29 @@ class TestSeedFlows(FlowTest):
 
         self.run_sequence(sequence)
 
+    def test_slip39_passphrase_flow(self):
+        """Enter SLIP-39 share and apply passphrase afterwards."""
+        share = "testify swimming academic academic column loyalty smear include exotic bedroom exotic wrist lobe cover grief golden smart junior estimate learn".split()
+
+        sequence = [
+            FlowStep(MainMenuView, button_data_selection=MainMenuView.SEEDS),
+            FlowStep(seed_views.SeedsMenuView, is_redirect=True),
+            FlowStep(seed_views.LoadSeedView, button_data_selection=seed_views.LoadSeedView.TYPE_SLIP39),
+            FlowStep(seed_views.SeedSlip39MnemonicStartView, screen_return_value=0),
+        ]
+        for word in share:
+            sequence.append(FlowStep(seed_views.SeedSlip39ShareEntryView, screen_return_value=word))
+        sequence.append(FlowStep(seed_views.SeedSlip39MoreSharesView, button_data_selection=seed_views.SeedSlip39MoreSharesView.DONE))
+        sequence.append(FlowStep(seed_views.SeedFinalizeView, button_data_selection=seed_views.SeedFinalizeView.TYPE_PASSPHRASE))
+        sequence.append(FlowStep(seed_views.SeedAddPassphraseView, screen_return_value=dict(passphrase="test")))
+        sequence.append(FlowStep(seed_views.SeedReviewPassphraseView, button_data_selection=seed_views.SeedReviewPassphraseView.DONE))
+        sequence.append(FlowStep(seed_views.SeedOptionsView))
+
+        self.run_sequence(sequence)
+
+        seed = self.controller.storage.seeds[0]
+        assert seed.get_fingerprint() == "d9fda401"
+
 
     def test_export_xpub_standard_flow(self):
         """
