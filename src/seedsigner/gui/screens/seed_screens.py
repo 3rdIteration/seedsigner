@@ -557,8 +557,9 @@ class SeedWordsScreen(WarningEdgesMixin, ButtonListScreen):
 
 @dataclass
 class SeedBIP85SelectChildIndexScreen(KeyboardScreen):
+    title: str = _("BIP-85 Index")
+
     def __post_init__(self):
-        self.title = _("BIP-85 Index")
         self.user_input = ""
 
         # Specify the keys in the keyboard

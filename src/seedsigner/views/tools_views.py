@@ -27,7 +27,17 @@ from seedsigner.gui.screens.screen import ButtonOption
 from seedsigner.helpers import mnemonic_generation
 from seedsigner.models.seed import Seed
 from seedsigner.models.settings_definition import SettingsConstants
-from seedsigner.views.seed_views import SeedDiscardView, SeedFinalizeView, SeedMnemonicEntryView, SeedOptionsView, SeedWordsWarningView, SeedExportXpubScriptTypeView, LoadSeedView
+from seedsigner.views.seed_views import (
+    SeedDiscardView,
+    SeedFinalizeView,
+    SeedMnemonicEntryView,
+    SeedOptionsView,
+    SeedWordsWarningView,
+    SeedExportXpubScriptTypeView,
+    LoadSeedView,
+    SeedSlip39CreateFromBytesView,
+    SeedSlip39RegenerateSharesView,
+)
 
 from .view import View, Destination, BackStackView, MainMenuView
 
@@ -42,6 +52,8 @@ from binascii import unhexlify, hexlify
 class ToolsMenuView(View):
     IMAGE = ButtonOption(" New seed", FontAwesomeIconConstants.CAMERA)
     DICE = ButtonOption("New seed", FontAwesomeIconConstants.DICE)
+    SLIP39_IMAGE = ButtonOption("SLIP39 seed", FontAwesomeIconConstants.CAMERA)
+    SLIP39_DICE = ButtonOption("SLIP39 seed", FontAwesomeIconConstants.DICE)
     KEYBOARD = ButtonOption("Calc 12th/24th word", FontAwesomeIconConstants.KEYBOARD)
     ADDRESS_EXPLORER = ButtonOption("Address Explorer")
     VERIFY_ADDRESS = ButtonOption("Verify address")
@@ -52,7 +64,7 @@ class ToolsMenuView(View):
     CLEAR_DESCRIPTOR = ButtonOption("Clear Multisig Descriptor")
 
     def run(self):
-        button_data = [self.IMAGE, self.DICE, self.KEYBOARD, self.ADDRESS_EXPLORER, self.VERIFY_ADDRESS, self.TEXTQRCODE, self.SMARTCARD, self.MICROSD, self.GPG, self.CLEAR_DESCRIPTOR]
+        button_data = [self.IMAGE, self.DICE, self.SLIP39_IMAGE, self.SLIP39_DICE, self.KEYBOARD, self.ADDRESS_EXPLORER, self.VERIFY_ADDRESS, self.TEXTQRCODE, self.SMARTCARD, self.MICROSD, self.GPG, self.CLEAR_DESCRIPTOR]
 
         selected_menu_num = self.run_screen(
             ButtonListScreen,
@@ -68,6 +80,14 @@ class ToolsMenuView(View):
             return Destination(ToolsImageEntropyLivePreviewView)
 
         elif button_data[selected_menu_num] == self.DICE:
+            return Destination(ToolsDiceEntropyMnemonicLengthView)
+
+        elif button_data[selected_menu_num] == self.SLIP39_IMAGE:
+            self.controller.create_slip39 = True
+            return Destination(ToolsImageEntropyLivePreviewView)
+
+        elif button_data[selected_menu_num] == self.SLIP39_DICE:
+            self.controller.create_slip39 = True
             return Destination(ToolsDiceEntropyMnemonicLengthView)
 
         elif button_data[selected_menu_num] == self.KEYBOARD:
@@ -170,7 +190,12 @@ class ToolsImageEntropyMnemonicLengthView(View):
     TWENTYFOUR_WORDS = ButtonOption("24 words", return_data=24)
 
     def run(self):
-        button_data = [self.TWELVE_WORDS, self.TWENTYFOUR_WORDS]
+        if getattr(self.controller, "create_slip39", False):
+            twenty = ButtonOption("20 words", return_data=20)
+            thirty_three = ButtonOption("33 words", return_data=33)
+            button_data = [twenty, thirty_three]
+        else:
+            button_data = [self.TWELVE_WORDS, self.TWENTYFOUR_WORDS]
 
         selected_menu_num = ButtonListScreen(
             title=_("Mnemonic Length?"),
@@ -208,27 +233,31 @@ class ToolsImageEntropyMnemonicLengthView(View):
         # Finally build in our headline entropy via the new full-res image
         final_hash = hashlib.sha256(hash_bytes + seed_entropy_image.tobytes()).digest()
 
-        if mnemonic_length == 12:
-            # 12-word mnemonic only uses the first 128 bits / 16 bytes of entropy
+        if mnemonic_length in (12, 20):
+            # 12- or 20-word seeds only use the first 128 bits / 16 bytes of entropy
             final_hash = final_hash[:16]
 
-        # Generate the mnemonic
-        mnemonic = mnemonic_generation.generate_mnemonic_from_bytes(final_hash)
+        if getattr(self.controller, "create_slip39", False):
+            secret = final_hash
+        else:
+            mnemonic = mnemonic_generation.generate_mnemonic_from_bytes(final_hash)
 
         # Image should never get saved nor stick around in memory
         seed_entropy_image = None
         preview_images = None
-        final_hash = None
+        if not getattr(self.controller, "create_slip39", False):
+            final_hash = None
         hash_bytes = None
         self.controller.image_entropy_preview_frames = None
         self.controller.image_entropy_final_image = None
 
-        # Add the mnemonic as an in-memory Seed
-        seed = Seed(mnemonic, wordlist_language_code=self.settings.get_value(SettingsConstants.SETTING__WORDLIST_LANGUAGE))
-        self.controller.storage.set_pending_seed(seed)
-        
-        # Cannot return BACK to this View
-        return Destination(SeedWordsWarningView, view_args={"seed_num": None}, clear_history=True)
+        if getattr(self.controller, "create_slip39", False):
+            self.controller.create_slip39 = False
+            return Destination(SeedSlip39CreateFromBytesView, view_args=dict(secret=secret), clear_history=True)
+        else:
+            seed = Seed(mnemonic, wordlist_language_code=self.settings.get_value(SettingsConstants.SETTING__WORDLIST_LANGUAGE))
+            self.controller.storage.set_pending_seed(seed)
+            return Destination(SeedWordsWarningView, view_args={"seed_num": None}, clear_history=True)
 
 
 
@@ -236,19 +265,28 @@ class ToolsImageEntropyMnemonicLengthView(View):
     Dice rolls Views
 ****************************************************************************"""
 class ToolsDiceEntropyMnemonicLengthView(View):
+    """Prompt for mnemonic length when using dice entropy."""
+
+    # These are defined here so they are available for equality checks later
+    TWELVE = ButtonOption("12 words", return_data=mnemonic_generation.DICE__NUM_ROLLS__12WORD)
+    TWENTY_FOUR = ButtonOption("24 words", return_data=mnemonic_generation.DICE__NUM_ROLLS__24WORD)
+    TWENTY = ButtonOption(
+        _("20 words ({} rolls)").format(mnemonic_generation.DICE__NUM_ROLLS__12WORD),
+        return_data=mnemonic_generation.DICE__NUM_ROLLS__12WORD,
+    )
+    THIRTY_THREE = ButtonOption(
+        _("33 words ({} rolls)").format(mnemonic_generation.DICE__NUM_ROLLS__24WORD),
+        return_data=mnemonic_generation.DICE__NUM_ROLLS__24WORD,
+    )
+
     def run(self):
         # Since we're dynamically building the ButtonOption button_labels here, it's too
         # awkward to use the usual class-level attr approach.
 
-        # TRANSLATOR_NOTE: Inserts the number of dice rolls needed for a 12-word mnemonic
-        twelve = _("12 words ({} rolls)").format(mnemonic_generation.DICE__NUM_ROLLS__12WORD)
-        TWELVE = ButtonOption(twelve, return_data=mnemonic_generation.DICE__NUM_ROLLS__12WORD)
-
-        # TRANSLATOR_NOTE: Inserts the number of dice rolls needed for a 24-word mnemonic
-        twenty_four = _("24 words ({} rolls)").format(mnemonic_generation.DICE__NUM_ROLLS__24WORD)
-        TWENTY_FOUR = ButtonOption(twenty_four, return_data=mnemonic_generation.DICE__NUM_ROLLS__24WORD)
-
-        button_data = [TWELVE, TWENTY_FOUR]
+        if getattr(self.controller, "create_slip39", False):
+            button_data = [self.TWENTY, self.THIRTY_THREE]
+        else:
+            button_data = [self.TWELVE, self.TWENTY_FOUR]
         selected_menu_num = ButtonListScreen(
             title=_("Mnemonic Length"),
             is_bottom_list=True,
@@ -259,11 +297,17 @@ class ToolsDiceEntropyMnemonicLengthView(View):
         if selected_menu_num == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
 
-        elif button_data[selected_menu_num] == TWELVE:
-            return Destination(ToolsDiceEntropyEntryView, view_args=dict(total_rolls=mnemonic_generation.DICE__NUM_ROLLS__12WORD))
+        elif button_data[selected_menu_num] in (self.TWELVE, self.TWENTY):
+            return Destination(
+                ToolsDiceEntropyEntryView,
+                view_args=dict(total_rolls=mnemonic_generation.DICE__NUM_ROLLS__12WORD),
+            )
 
-        elif button_data[selected_menu_num] == TWENTY_FOUR:
-            return Destination(ToolsDiceEntropyEntryView, view_args=dict(total_rolls=mnemonic_generation.DICE__NUM_ROLLS__24WORD))
+        elif button_data[selected_menu_num] in (self.TWENTY_FOUR, self.THIRTY_THREE):
+            return Destination(
+                ToolsDiceEntropyEntryView,
+                view_args=dict(total_rolls=mnemonic_generation.DICE__NUM_ROLLS__24WORD),
+            )
 
 
 
@@ -282,14 +326,15 @@ class ToolsDiceEntropyEntryView(View):
         if ret == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
         
-        dice_seed_phrase = mnemonic_generation.generate_mnemonic_from_dice(ret)
-
-        # Add the mnemonic as an in-memory Seed
-        seed = Seed(dice_seed_phrase, wordlist_language_code=self.settings.get_value(SettingsConstants.SETTING__WORDLIST_LANGUAGE))
-        self.controller.storage.set_pending_seed(seed)
-
-        # Cannot return BACK to this View
-        return Destination(SeedWordsWarningView, view_args={"seed_num": None}, clear_history=True)
+        if getattr(self.controller, "create_slip39", False):
+            entropy_bytes = mnemonic_generation.generate_bytes_from_dice(ret)
+            self.controller.create_slip39 = False
+            return Destination(SeedSlip39CreateFromBytesView, view_args=dict(secret=entropy_bytes), clear_history=True)
+        else:
+            dice_seed_phrase = mnemonic_generation.generate_mnemonic_from_dice(ret)
+            seed = Seed(dice_seed_phrase, wordlist_language_code=self.settings.get_value(SettingsConstants.SETTING__WORDLIST_LANGUAGE))
+            self.controller.storage.set_pending_seed(seed)
+            return Destination(SeedWordsWarningView, view_args={"seed_num": None}, clear_history=True)
 
 
 

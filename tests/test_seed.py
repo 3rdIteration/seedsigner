@@ -1,3 +1,5 @@
+import os
+import json
 import pytest
 from seedsigner.models.seed import InvalidSeedException, Seed, ElectrumSeed, Slip39Seed
 import shamir_mnemonic
@@ -5,85 +7,84 @@ import shamir_mnemonic
 from seedsigner.models.settings import SettingsConstants
 
 
-# TODO: Change TAB indents to SPACE
 
 def test_seed():
-	seed = Seed(mnemonic="obscure bone gas open exotic abuse virus bunker shuffle nasty ship dash".split())
-	
-	assert seed.seed_bytes == b'q\xb3\xd1i\x0c\x9b\x9b\xdf\xa7\xd9\xd97H\xa8,\xa7\xd9>\xeck\xc2\xf5ND?, \x88-\x07\x9aa\xc5\xee\xb7\xbf\xc4x\xd6\x07 X\xb6}?M\xaa\x05\xa6\xa7(>\xbf\x03\xb0\x9d\xef\xed":\xdf\x88w7'
-	
-	assert seed.mnemonic_str == "obscure bone gas open exotic abuse virus bunker shuffle nasty ship dash"
-	
-	assert seed.passphrase == ""
-	
-	# TODO: Not yet supported in new implementation
-	# seed.set_wordlist_language_code("es")
-	
-	# assert seed.mnemonic_str == "natural ayuda futuro nivel espejo abuelo vago bien repetir moreno relevo conga"
-	
-	# seed.set_wordlist_language_code(SettingsConstants.WORDLIST_LANGUAGE__ENGLISH)
-	
-	# seed.mnemonic_str = "height demise useless trap grow lion found off key clown transfer enroll"
-	
-	# assert seed.mnemonic_str == "height demise useless trap grow lion found off key clown transfer enroll"
-	
-	# # TODO: Not yet supported in new implementation
-	# seed.set_wordlist_language_code("es")
-	
-	# assert seed.mnemonic_str == "hebilla cría truco tigre gris llenar folio negocio laico casa tieso eludir"
-	
-	# seed.set_passphrase("test")
-	
-	# assert seed.seed_bytes == b'\xdd\r\xcb\x0b V\xb4@\xee+\x01`\xabem\xc1B\xfd\x8fba0\xab;[\xab\xc9\xf9\xba[F\x0c5,\x7fd8\xebI\x90"\xb8\x86C\x821\x01\xdb\xbe\xf3\xbc\x1cBH"%\x18\xc2{\x04\x08a]\xa5'
-	
-	# assert seed.passphrase == "test"
+    seed = Seed(mnemonic="obscure bone gas open exotic abuse virus bunker shuffle nasty ship dash".split())
+    
+    assert seed.seed_bytes == b'q\xb3\xd1i\x0c\x9b\x9b\xdf\xa7\xd9\xd97H\xa8,\xa7\xd9>\xeck\xc2\xf5ND?, \x88-\x07\x9aa\xc5\xee\xb7\xbf\xc4x\xd6\x07 X\xb6}?M\xaa\x05\xa6\xa7(>\xbf\x03\xb0\x9d\xef\xed":\xdf\x88w7'
+    
+    assert seed.mnemonic_str == "obscure bone gas open exotic abuse virus bunker shuffle nasty ship dash"
+    
+    assert seed.passphrase == ""
+    
+    # TODO: Not yet supported in new implementation
+    # seed.set_wordlist_language_code("es")
+    
+    # assert seed.mnemonic_str == "natural ayuda futuro nivel espejo abuelo vago bien repetir moreno relevo conga"
+    
+    # seed.set_wordlist_language_code(SettingsConstants.WORDLIST_LANGUAGE__ENGLISH)
+    
+    # seed.mnemonic_str = "height demise useless trap grow lion found off key clown transfer enroll"
+    
+    # assert seed.mnemonic_str == "height demise useless trap grow lion found off key clown transfer enroll"
+    
+    # # TODO: Not yet supported in new implementation
+    # seed.set_wordlist_language_code("es")
+    
+    # assert seed.mnemonic_str == "hebilla cría truco tigre gris llenar folio negocio laico casa tieso eludir"
+    
+    # seed.set_passphrase("test")
+    
+    # assert seed.seed_bytes == b'\xdd\r\xcb\x0b V\xb4@\xee+\x01`\xabem\xc1B\xfd\x8fba0\xab;[\xab\xc9\xf9\xba[F\x0c5,\x7fd8\xebI\x90"\xb8\x86C\x821\x01\xdb\xbe\xf3\xbc\x1cBH"%\x18\xc2{\x04\x08a]\xa5'
+    
+    # assert seed.passphrase == "test"
 
-	
+    
 def test_electrum_seed():
-	"""
-	ElectrumSeed should correctly parse a modern Electrum mnemonic.
-	"""
-	seed = ElectrumSeed(mnemonic="regular reject rare profit once math fringe chase until ketchup century escape".split())
+    """
+    ElectrumSeed should correctly parse a modern Electrum mnemonic.
+    """
+    seed = ElectrumSeed(mnemonic="regular reject rare profit once math fringe chase until ketchup century escape".split())
 
-	intended_seed = b'\xcan|\xf8\x8a\x8d\xf78=Pq\xc4_\xe6\x02\x91\xfcs\xb2[\xed*\xdc\xc7%\xb6[_-(~D\xe5\x1e\x85%N\x9c\x03\x9dh\xafX}\x16\xb1\x99,\xbe\xc4\x11\xfaW\x0f\xb0\x89yD\xf4\x0f\xd5?\x8eA'
+    intended_seed = b'\xcan|\xf8\x8a\x8d\xf78=Pq\xc4_\xe6\x02\x91\xfcs\xb2[\xed*\xdc\xc7%\xb6[_-(~D\xe5\x1e\x85%N\x9c\x03\x9dh\xafX}\x16\xb1\x99,\xbe\xc4\x11\xfaW\x0f\xb0\x89yD\xf4\x0f\xd5?\x8eA'
 
-	assert seed.seed_bytes == intended_seed
+    assert seed.seed_bytes == intended_seed
 
 
 def test_electrum_mnemonic_format():
-	"""
-	ElectrumSeed should reject mnemonics that are not 12 words long.
-	"""
-	with pytest.raises(InvalidSeedException):
-		ElectrumSeed(mnemonic=["regular"] * 11)
+    """
+    ElectrumSeed should reject mnemonics that are not 12 words long.
+    """
+    with pytest.raises(InvalidSeedException):
+        ElectrumSeed(mnemonic=["regular"] * 11)
 
-	with pytest.raises(InvalidSeedException):
-		ElectrumSeed(mnemonic=["regular"] * 13)
+    with pytest.raises(InvalidSeedException):
+        ElectrumSeed(mnemonic=["regular"] * 13)
 
-	with pytest.raises(InvalidSeedException):
-		ElectrumSeed(mnemonic=["regular"] * 24)
+    with pytest.raises(InvalidSeedException):
+        ElectrumSeed(mnemonic=["regular"] * 24)
 
 
 def test_electrum_seed_rejects_most_bip39_mnemonics():
-	"""
-	ElectrumSeed should throw an exception for most BIP-39 mnemonics.
+    """
+    ElectrumSeed should throw an exception for most BIP-39 mnemonics.
 
-	There are 1/16 odds that a seed will be valid for both formats.
-	"""
-	# Most BIP-39 seeds should fail; test seeds generated by bitcoiner.guide
-	with pytest.raises(InvalidSeedException):
-		ElectrumSeed(mnemonic="pioneer divide volcano art victory family grow novel mandate bicycle senior adjust".split())
+    There are 1/16 odds that a seed will be valid for both formats.
+    """
+    # Most BIP-39 seeds should fail; test seeds generated by bitcoiner.guide
+    with pytest.raises(InvalidSeedException):
+        ElectrumSeed(mnemonic="pioneer divide volcano art victory family grow novel mandate bicycle senior adjust".split())
 
-	with pytest.raises(InvalidSeedException):
-		ElectrumSeed(mnemonic="gentle combine cool hamster ghost harvest gossip lend dismiss slam any toast".split())
+    with pytest.raises(InvalidSeedException):
+        ElectrumSeed(mnemonic="gentle combine cool hamster ghost harvest gossip lend dismiss slam any toast".split())
 
-	with pytest.raises(InvalidSeedException):
-		ElectrumSeed(mnemonic="enough board blossom stamp fire buffalo digital solution sadness random number stone".split())
+    with pytest.raises(InvalidSeedException):
+        ElectrumSeed(mnemonic="enough board blossom stamp fire buffalo digital solution sadness random number stone".split())
 
-	# This one is valid for both formats
-	mnemonic = "only gain spot output unknown craft simple cram absorb suggest ridge famous".split()
-	Seed(mnemonic)
-	ElectrumSeed(mnemonic)
+    # This one is valid for both formats
+    mnemonic = "only gain spot output unknown craft simple cram absorb suggest ridge famous".split()
+    Seed(mnemonic)
+    ElectrumSeed(mnemonic)
 
 def test_slip39_seed():
         secret = bytes.fromhex("11" * 32)
@@ -141,3 +142,148 @@ def test_slip39_invalid_share_rejected():
                 storage.update_pending_slip39_share(w, i)
         with pytest.raises(InvalidSeedException):
                 storage.finalize_current_slip39_share()
+
+
+def test_seed_passphrase_effect():
+        mnemonic = "abandon " * 11 + "about"
+        seed = Seed(mnemonic=mnemonic.split())
+        orig = seed.seed_bytes
+        seed.set_passphrase("trezor")
+        from embit import bip39
+        expected = bip39.mnemonic_to_seed(mnemonic, password="trezor")
+        assert seed.seed_bytes == expected
+        assert seed.seed_bytes != orig
+
+def test_slip39_regenerate_shares():
+        secret = bytes.fromhex("aa" * 16)
+        shares = shamir_mnemonic.generate_mnemonics(1, [(2, 3)], secret, extendable=True)[0]
+        seed = Slip39Seed(mnemonics=[shares[0], shares[1]])
+        assert seed.extendable
+        new_shares = seed.regenerate_shares(2, 4)
+        assert len(new_shares) == 4
+        combined = shamir_mnemonic.combine_mnemonics(new_shares[:2])
+        assert combined == secret
+        assert seed.seed_bytes == secret
+
+
+def test_slip39_regenerate_shares_nonextendable():
+        secret = bytes.fromhex("aa" * 16)
+        shares = shamir_mnemonic.generate_mnemonics(1, [(2, 3)], secret, extendable=False)[0]
+        seed = Slip39Seed(mnemonics=[shares[0], shares[1]])
+        assert not seed.extendable
+        with pytest.raises(InvalidSeedException):
+                seed.regenerate_shares(2, 4)
+
+
+def test_slip39_passphrase_update():
+    secret = bytes.fromhex("dd" * 16)
+    shares = shamir_mnemonic.generate_mnemonics(
+        1, [(2, 3)], secret, passphrase=b"pw", extendable=True
+    )[0]
+    seed1 = Slip39Seed(mnemonics=[shares[0], shares[1]], slip39_passphrase="pw")
+    seed2 = Slip39Seed(mnemonics=[shares[0], shares[1]])
+    seed2.set_slip39_passphrase("pw")
+    assert seed2.seed_bytes == seed1.seed_bytes
+    assert seed2.master_secret == seed1.master_secret
+
+def test_slip39_passphrase_fingerprint():
+    share = "testify swimming academic academic column loyalty smear include exotic bedroom exotic wrist lobe cover grief golden smart junior estimate learn"
+    seed = Slip39Seed(mnemonics=[share])
+    assert seed.get_fingerprint() == "37bb5fa5"
+    seed.set_slip39_passphrase("test")
+    assert seed.get_fingerprint() == "d9fda401"
+
+
+def test_slip39_regenerate_consistency():
+    """Old and regenerated shares should yield the same master secret."""
+    share = (
+        "testify swimming academic academic column loyalty smear include exotic "
+        "bedroom exotic wrist lobe cover grief golden smart junior estimate learn"
+    )
+    expected_secret = bytes.fromhex("1679b4516e0ee5954351d288a838f45e")
+
+    seed = Slip39Seed(mnemonics=[share])
+    seed.set_slip39_passphrase("TREZOR")
+    assert seed.master_secret == expected_secret
+
+    old_shares = seed.mnemonic_list.copy()
+    new_shares = seed.regenerate_shares(seed._member_threshold, len(old_shares))
+
+    secret_old = shamir_mnemonic.combine_mnemonics(old_shares, b"TREZOR")
+    secret_new = shamir_mnemonic.combine_mnemonics(
+        new_shares[: seed._member_threshold], b"TREZOR"
+    )
+
+    assert secret_old == secret_new == expected_secret
+
+    # Random passphrase should also yield the same result for old and new shares
+    rand_pw = os.urandom(5)
+    assert (
+        shamir_mnemonic.combine_mnemonics(old_shares, rand_pw)
+        == shamir_mnemonic.combine_mnemonics(new_shares[: seed._member_threshold], rand_pw)
+    )
+
+
+def test_slip39_regenerate_consistency_no_passphrase():
+    """Vector 42 should regenerate shares without changing the master secret when no passphrase is used."""
+    share = (
+        "testify swimming academic academic column loyalty smear include exotic"
+        " bedroom exotic wrist lobe cover grief golden smart junior estimate learn"
+    )
+    expected_secret = bytes.fromhex("642a850f4ee8508a3ef44db68ccf0d62")
+
+    seed = Slip39Seed(mnemonics=[share])
+    assert seed.master_secret == expected_secret
+
+    old_shares = seed.mnemonic_list.copy()
+    new_shares = seed.regenerate_shares(seed._member_threshold, len(old_shares))
+
+    secret_old = shamir_mnemonic.combine_mnemonics(old_shares)
+    secret_new = shamir_mnemonic.combine_mnemonics(
+        new_shares[: seed._member_threshold]
+    )
+
+    assert secret_old == secret_new == expected_secret
+
+
+def test_slip39_regenerate_random_passphrase():
+    """Regeneration should keep the master secret with any passphrase."""
+    import random, string
+    slip_pass = ''.join(random.choice(string.ascii_letters) for _ in range(8))
+    secret = os.urandom(16)
+    shares = shamir_mnemonic.generate_mnemonics(
+        1, [(2, 3)], secret, passphrase=slip_pass.encode(), extendable=True
+    )[0]
+
+    seed = Slip39Seed(mnemonics=[shares[0], shares[1]], slip39_passphrase=slip_pass)
+    old_shares = seed.mnemonic_list.copy()
+    new_shares = seed.regenerate_shares(2, 4)
+
+    secret_old = shamir_mnemonic.combine_mnemonics(old_shares, slip_pass.encode())
+    secret_new = shamir_mnemonic.combine_mnemonics(new_shares[:2], slip_pass.encode())
+
+    assert secret_old == secret_new == secret
+
+    alt_pass = os.urandom(5)
+    assert (
+        shamir_mnemonic.combine_mnemonics(old_shares, alt_pass)
+        == shamir_mnemonic.combine_mnemonics(new_shares[:2], alt_pass)
+    )
+
+
+VECTORS_PATH = os.path.join(os.path.dirname(__file__), "data", "shamir_vectors.json")
+
+
+@pytest.mark.parametrize('desc,mnemonics,secret_hex,xprv', json.load(open(VECTORS_PATH)))
+def test_slip39_vectors_end_to_end(desc, mnemonics, secret_hex, xprv):
+        if not secret_hex:
+                with pytest.raises(Exception):
+                        Slip39Seed(mnemonics=mnemonics, slip39_passphrase="TREZOR")
+        else:
+                seed = Slip39Seed(mnemonics=mnemonics, slip39_passphrase="TREZOR")
+                from embit import bip32
+                from embit.networks import NETWORKS
+                assert seed.seed_bytes.hex() == secret_hex
+                root = bip32.HDKey.from_seed(seed.seed_bytes, version=NETWORKS["main"]["xprv"])
+                assert root.to_base58() == xprv
+
