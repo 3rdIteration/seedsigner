@@ -194,6 +194,29 @@ def test_slip39_passphrase_fingerprint():
     assert seed.get_fingerprint() == "d9fda401"
 
 
+def test_slip39_regenerate_consistency():
+    """Old and regenerated shares should yield the same master secret."""
+    share = (
+        "testify swimming academic academic column loyalty smear include exotic "
+        "bedroom exotic wrist lobe cover grief golden smart junior estimate learn"
+    )
+    expected_secret = bytes.fromhex("1679b4516e0ee5954351d288a838f45e")
+
+    seed = Slip39Seed(mnemonics=[share])
+    seed.set_slip39_passphrase("TREZOR")
+    assert seed.master_secret == expected_secret
+
+    old_shares = seed.mnemonic_list.copy()
+    new_shares = seed.regenerate_shares(seed._member_threshold, len(old_shares))
+
+    secret_old = shamir_mnemonic.combine_mnemonics(old_shares, b"TREZOR")
+    secret_new = shamir_mnemonic.combine_mnemonics(
+        new_shares[: seed._member_threshold], b"TREZOR"
+    )
+
+    assert secret_old == secret_new == expected_secret
+
+
 VECTORS_PATH = os.path.join(os.path.dirname(__file__), "data", "shamir_vectors.json")
 
 
