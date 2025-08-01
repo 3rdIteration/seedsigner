@@ -496,9 +496,15 @@ class SeedFinalizeView(View):
             # screenshot generator which creates a pending seed w/a passphrase already
             # set.
             passphrase = self.seed.passphrase
-            self.seed.set_passphrase("")
+            if isinstance(self.seed, Slip39Seed):
+                self.seed.set_slip39_passphrase("")
+            else:
+                self.seed.set_passphrase("")
             self.fingerprint = self.seed.get_fingerprint(network=self.settings.get_value(SettingsConstants.SETTING__NETWORK))
-            self.seed.set_passphrase(passphrase)
+            if isinstance(self.seed, Slip39Seed):
+                self.seed.set_slip39_passphrase(passphrase)
+            else:
+                self.seed.set_passphrase(passphrase)
 
 
     def run(self):
@@ -559,8 +565,6 @@ class SeedAddPassphraseView(View):
             self.loading_screen.start()
             try:
                 self.seed.set_slip39_passphrase(passphrase)
-                # Store for display purposes
-                self.seed.set_passphrase(passphrase, regenerate_seed=False)
             finally:
                 self.loading_screen.stop()
         else:
@@ -606,7 +610,10 @@ class SeedAddPassphraseExitDialogView(View):
             return Destination(SeedAddPassphraseView)
 
         elif button_data[selected_menu_num] == self.DISCARD:
-            self.seed.set_passphrase("")
+            if isinstance(self.seed, Slip39Seed):
+                self.seed.set_slip39_passphrase("")
+            else:
+                self.seed.set_passphrase("")
             return Destination(SeedFinalizeView)
 
 class SeedScanPassphraseView(View):
@@ -627,7 +634,10 @@ class SeedScanPassphraseView(View):
         time.sleep(0.1)
         if decoder.is_complete:
             passphrase = self.seed.passphrase_display + decoder.get_passphrase()
-            self.controller.storage.get_pending_seed().set_passphrase(passphrase)
+            if isinstance(self.seed, Slip39Seed):
+                self.controller.storage.get_pending_seed().set_slip39_passphrase(passphrase)
+            else:
+                self.controller.storage.get_pending_seed().set_passphrase(passphrase)
             return Destination(SeedReviewPassphraseView)
         elif decoder.is_nonUTF8:
             DireWarningScreen(
@@ -727,7 +737,10 @@ class SeedLoadSeedKeeperPassphraseView(View):
             return Destination(BackStackView)
         
         # The new passphrase will be the return value; it might be empty.
-        self.seed.set_passphrase(secret_passphrase)
+        if isinstance(self.seed, Slip39Seed):
+            self.seed.set_slip39_passphrase(secret_passphrase)
+        else:
+            self.seed.set_passphrase(secret_passphrase)
         if len(self.seed.passphrase) > 0:
             return Destination(SeedReviewPassphraseView)
         else:
@@ -751,9 +764,15 @@ class SeedReviewPassphraseView(View):
         network = self.settings.get_value(SettingsConstants.SETTING__NETWORK)
         passphrase = self.seed.passphrase
         fingerprint_with = self.seed.get_fingerprint(network=network)
-        self.seed.set_passphrase("")
+        if isinstance(self.seed, Slip39Seed):
+            self.seed.set_slip39_passphrase("")
+        else:
+            self.seed.set_passphrase("")
         fingerprint_without = self.seed.get_fingerprint(network=network)
-        self.seed.set_passphrase(passphrase, regenerate_seed=not isinstance(self.seed, Slip39Seed))
+        if isinstance(self.seed, Slip39Seed):
+            self.seed.set_slip39_passphrase(passphrase)
+        else:
+            self.seed.set_passphrase(passphrase)
         
         button_data = [self.DONE, self.EDIT, self.SCAN]
 
@@ -768,7 +787,10 @@ class SeedReviewPassphraseView(View):
         )
 
         if selected_menu_num == RET_CODE__BACK_BUTTON:
-            self.seed.set_passphrase("")
+            if isinstance(self.seed, Slip39Seed):
+                self.seed.set_slip39_passphrase("")
+            else:
+                self.seed.set_passphrase("")
             return Destination(SeedFinalizeView)
 
         elif button_data[selected_menu_num] == self.DONE:

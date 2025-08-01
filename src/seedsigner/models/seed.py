@@ -258,14 +258,9 @@ class ElectrumSeed(Seed):
 
 
 class Slip39Seed(Seed):
-    """Seed derived from SLIP-39 mnemonic shares.
+    """Seed derived from SLIP-39 mnemonic shares."""
 
-    ``passphrase`` here refers to the SLIP‑39 passphrase used when the shares
-    were originally created.  A separate BIP‑39 passphrase can be set via the
-    :py:meth:`set_passphrase` method once the master secret has been recovered.
-    """
-
-    def __init__(self, mnemonics: List[str], slip39_passphrase: str = "", passphrase: str = "") -> None:
+    def __init__(self, mnemonics: List[str], slip39_passphrase: str = "") -> None:
         self._wordlist_language_code = SettingsConstants.WORDLIST_LANGUAGE__ENGLISH
         if not mnemonics:
             raise Exception("Must provide at least one SLIP-39 share")
@@ -278,9 +273,6 @@ class Slip39Seed(Seed):
 
         # Passphrase used to decrypt the shares
         self._slip39_passphrase: str = unicodedata.normalize("NFKD", slip39_passphrase) if slip39_passphrase else ""
-
-        # Optional BIP-39 passphrase applied after recovering the master secret
-        self._passphrase: str = unicodedata.normalize("NFKD", passphrase) if passphrase else ""
 
         self.seed_bytes: bytes = None
         self.master_secret: bytes | None = None
@@ -316,16 +308,7 @@ class Slip39Seed(Seed):
                 )
 
             self.master_secret = secret
-
-            if self._passphrase:
-                mnemonic = bip39.mnemonic_from_bytes(secret)
-                self.seed_bytes = bip39.mnemonic_to_seed(
-                    mnemonic,
-                    password=self._passphrase,
-                    wordlist=self.wordlist,
-                )
-            else:
-                self.seed_bytes = secret
+            self.seed_bytes = secret
         except Exception as e:
             logger.info(repr(e), exc_info=True)
             raise InvalidSeedException(repr(e))
@@ -339,16 +322,27 @@ class Slip39Seed(Seed):
     def mnemonic_str(self) -> str:
         return "\n".join(self._shares)
 
-    def set_passphrase(self, passphrase: str, regenerate_seed: bool = True):
-        self._passphrase = unicodedata.normalize("NFKD", passphrase) if passphrase else ""
-        if regenerate_seed:
-            self._generate_seed()
-
     def set_slip39_passphrase(self, passphrase: str, regenerate_seed: bool = True):
         """Set or update the passphrase used to decrypt the SLIP-39 shares."""
         self._slip39_passphrase = unicodedata.normalize("NFKD", passphrase) if passphrase else ""
         if regenerate_seed:
             self._generate_seed()
+
+    @property
+    def has_passphrase(self) -> bool:
+        return self._slip39_passphrase != ""
+
+    @property
+    def passphrase(self) -> str:
+        return self._slip39_passphrase
+
+    @property
+    def passphrase_display(self) -> str:
+        return unicodedata.normalize("NFC", self._slip39_passphrase)
+
+    @property
+    def passphrase_label(self) -> str:
+        return "SLIP-39 Passphrase"
 
     @property
     def seedqr_supported(self) -> bool:
