@@ -281,6 +281,10 @@ class Slip39Seed(Seed):
         self._generate_seed()
 
     def _generate_seed(self):
+        """This takes 4-5 seconds on a Pi0, so need to show a loading screen rather than hang the UI"""
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+        self.loading_screen = LoadingScreenThread(text="Generating Seed\n\n\n\n\n\n")
+        self.loading_screen.start()
         try:
             try:
                 secret = shamir_mnemonic.combine_mnemonics(
@@ -316,6 +320,8 @@ class Slip39Seed(Seed):
         except Exception as e:
             logger.info(repr(e), exc_info=True)
             raise InvalidSeedException(repr(e))
+        finally:
+            self.loading_screen.stop()
 
     # Expose shares as the mnemonic list/str for compatibility
     @property
@@ -328,7 +334,11 @@ class Slip39Seed(Seed):
 
     def set_slip39_passphrase(self, passphrase: str, regenerate_seed: bool = True):
         """Set or update the passphrase used to decrypt the SLIP-39 shares."""
-        self._slip39_passphrase = unicodedata.normalize("NFKD", passphrase) if passphrase else ""
+        normalized_passphrase = unicodedata.normalize("NFKD", passphrase) if passphrase else ""
+        if normalized_passphrase == self._slip39_passphrase:
+            return  # No change, do nothing
+
+        self._slip39_passphrase = normalized_passphrase
         if regenerate_seed:
             self._generate_seed()
 
@@ -364,6 +374,11 @@ class Slip39Seed(Seed):
         if threshold > num_shares:
             raise InvalidSeedException(
                 "The requested threshold must not exceed the number of shares."
+            )
+        
+        if threshold == 1 and num_shares > 1:
+            raise InvalidSeedException(
+                "Multi-Share with threshold of 1 is not allowed, create 1-1 instead."
             )
 
         first_share = shamir_mnemonic.Share.from_mnemonic(self._shares[0])

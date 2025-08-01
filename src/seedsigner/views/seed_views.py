@@ -21,7 +21,7 @@ from seedsigner.gui.screens import (RET_CODE__BACK_BUTTON, ButtonListScreen,
 from seedsigner.gui.screens.screen import ButtonOption
 from seedsigner.models.encode_qr import CompactSeedQrEncoder, GenericStaticQrEncoder, SeedQrEncoder, SpecterXPubQrEncoder, StaticXpubQrEncoder, UrXpubQrEncoder
 from seedsigner.models.qr_type import QRType
-from seedsigner.models.seed import Seed, Slip39Seed
+from seedsigner.models.seed import Seed, Slip39Seed, InvalidSeedException
 from seedsigner.models.settings import Settings, SettingsConstants
 from seedsigner.models.settings_definition import SettingsDefinition
 from seedsigner.models.threads import BaseThread, ThreadsafeCounter
@@ -560,14 +560,7 @@ class SeedAddPassphraseView(View):
 
         passphrase = ret_dict["passphrase"]
         if isinstance(self.seed, Slip39Seed):
-            from seedsigner.gui.screens.screen import LoadingScreenThread
-            self.loading_screen = LoadingScreenThread(text="Deriving Seed\n\n\n\n\n\n")
-            self.loading_screen.start()
-            try:
-                self.seed.set_slip39_passphrase(passphrase)
-            finally:
-                time.sleep(1)
-                self.loading_screen.stop()
+            self.seed.set_slip39_passphrase(passphrase)
         else:
             # The new passphrase will be the return value; it might be empty.
             self.seed.set_passphrase(passphrase)
@@ -875,26 +868,22 @@ class SeedSlip39MnemonicStartView(View):
 
     def run(self):
         self.controller.storage.discard_pending_slip39_shares()
-        self.run_screen(
-            WarningScreen,
-            title=_("SLIP-39 warning"),
-            status_headline=None,
-            text=_("Enter each share in full. Multiple shares will be combined."),
-            show_back_button=False,
-        )
 
-        TWENTY = ButtonOption("20 words")
-        THIRTYTHREE = ButtonOption("33 words")
+        TWENTY = ButtonOption("Enter 20 words")
+        THIRTYTHREE = ButtonOption("Enter 33 words")
         SCAN = ButtonOption("Scan QR", SeedSignerIconConstants.QRCODE)
-        SEEDKEEPER = ButtonOption("SeedKeeper", FontAwesomeIconConstants.LOCK)
+        SEEDKEEPER = ButtonOption("From SeedKeeper", FontAwesomeIconConstants.LOCK)
         button_data = [TWENTY, THIRTYTHREE, SCAN, SEEDKEEPER]
 
         selected = self.run_screen(
             ButtonListScreen,
-            title=_("Share length"),
+            title=_("Load Share"),
             is_button_text_centered=False,
             button_data=button_data,
         )
+
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
 
         if button_data[selected] == SCAN:
             from seedsigner.views.scan_views import ScanSlip39ShareQRView
@@ -951,9 +940,9 @@ class SeedSlip39ShareEntryView(View):
 
 
 class SeedSlip39MoreSharesView(View):
-    ADD = ButtonOption("Add share")
+    ADD = ButtonOption("Enter share")
     SCAN = ButtonOption("Scan share", SeedSignerIconConstants.QRCODE)
-    SEEDKEEPER = ButtonOption("SeedKeeper", FontAwesomeIconConstants.LOCK)
+    SEEDKEEPER = ButtonOption("From SeedKeeper", FontAwesomeIconConstants.LOCK)
     DONE = ButtonOption("Combine shares")
 
     def run(self):
@@ -1132,6 +1121,7 @@ class SeedSlip39CreateFromBytesView(View):
         self.secret = secret
 
     def run(self):
+        
         ret = seed_screens.SeedBIP85SelectChildIndexScreen(title="Num Shares").display()
         if ret == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
@@ -1141,6 +1131,16 @@ class SeedSlip39CreateFromBytesView(View):
         if ret == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
         threshold = int(ret)
+
+        if threshold > num_shares:
+            raise InvalidSeedException(
+                "The requested threshold must not exceed the number of shares."
+            )
+        
+        if threshold == 1 and num_shares > 1:
+            raise InvalidSeedException(
+                "Multi-Share with threshold of 1 not allowed."
+            )
 
         shares = shamir_mnemonic.generate_mnemonics(
             1, [(threshold, num_shares)], self.secret, extendable=True
