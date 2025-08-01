@@ -267,6 +267,7 @@ class Slip39Seed(Seed):
 
         first_share = shamir_mnemonic.Share.from_mnemonic(self._shares[0])
         self.extendable: bool = first_share.extendable
+        self._member_threshold: int = first_share.member_threshold
 
         self._passphrase: str = ""
         self.set_passphrase(passphrase, regenerate_seed=False)
@@ -276,8 +277,11 @@ class Slip39Seed(Seed):
 
     def _generate_seed(self):
         try:
+            combine_list = list(self._shares)
+            if len(combine_list) > self._member_threshold:
+                combine_list = combine_list[: self._member_threshold]
             self.seed_bytes = shamir_mnemonic.combine_mnemonics(
-                self._shares, self._passphrase.encode("utf-8")
+                combine_list, self._passphrase.encode("utf-8")
             )
         except Exception as e:
             logger.info(repr(e), exc_info=True)
@@ -313,4 +317,5 @@ class Slip39Seed(Seed):
             1, [(threshold, num_shares)], self.seed_bytes, extendable=True
         )[0]
         self._shares = shares
+        self._member_threshold = threshold
         return shares
