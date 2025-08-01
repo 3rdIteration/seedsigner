@@ -5,6 +5,7 @@ import os
 import random
 import sys
 import time
+import shamir_mnemonic
 from unittest.mock import Mock, patch, MagicMock
 
 from embit import compact
@@ -35,7 +36,7 @@ from seedsigner.helpers import embit_utils
 from seedsigner.models.decode_qr import DecodeQR
 from seedsigner.models.psbt_parser import OPCODES, PSBTParser
 from seedsigner.models.qr_type import QRType
-from seedsigner.models.seed import Seed
+from seedsigner.models.seed import Seed, Slip39Seed
 from seedsigner.models.settings import Settings
 from seedsigner.models.settings_definition import SettingsConstants, SettingsDefinition
 from seedsigner.views import (MainMenuView, PowerOptionsView, RestartView, NotYetImplementedView, UnhandledExceptionView, 
@@ -140,6 +141,14 @@ def generate_screenshots(locale):
         controller.storage.seeds.append(seed_12b)
         controller.storage.seeds.append(seed_24)
         controller.storage.set_pending_seed(seed_24_w_passphrase)
+
+        # Add a SLIP-39 seed for share regeneration screenshots
+        slip_secret = bytes.fromhex("11" * 16)
+        slip_shares = shamir_mnemonic.generate_mnemonics(
+            1, [(2, 3)], slip_secret, extendable=True
+        )[0]
+        slip39_seed = Slip39Seed(mnemonics=[slip_shares[0], slip_shares[1]])
+        controller.storage.seeds.append(slip39_seed)
 
         # Pending mnemonic for ToolsCalcFinalWordShowFinalWordView
         controller.storage.init_pending_mnemonic(num_words=12)
@@ -264,6 +273,22 @@ def generate_screenshots(locale):
             controller.psbt = decoder.get_psbt()
             controller.psbt_parser = PSBTParser(p=controller.psbt, seed=seed_12b)
 
+        def slip39_share_entry_cb_before():
+            controller.storage.init_pending_slip39_share(num_words=20)
+
+        def slip39_more_shares_cb_before():
+            controller.storage.discard_pending_slip39_shares()
+            shares = shamir_mnemonic.generate_mnemonics(
+                1, [(2, 3)], bytes.fromhex("11" * 16), extendable=True
+            )[0]
+            controller.storage.init_pending_slip39_share(num_words=len(shares[0].split()))
+            for i, w in enumerate(shares[0].split()):
+                controller.storage.update_pending_slip39_share(w, i)
+            controller.storage.finalize_current_slip39_share()
+
+        def slip39_cleanup_cb():
+            controller.storage.discard_pending_slip39_shares()
+
 
         screenshot_sections = {
             "Main Menu Views": [
@@ -345,6 +370,13 @@ def generate_screenshots(locale):
                 ScreenshotConfig(seed_views.SeedSelectSeedView, dict(flow=Controller.FLOW__SIGN_MESSAGE), screenshot_name="SeedSelectSeedView_sign_message"),
                 ScreenshotConfig(seed_views.SeedSignMessageConfirmMessageView),
                 ScreenshotConfig(seed_views.SeedSignMessageConfirmAddressView),
+
+                ScreenshotConfig(seed_views.SeedSlip39MnemonicStartView),
+                ScreenshotConfig(seed_views.SeedSlip39ShareEntryView, run_before=slip39_share_entry_cb_before, run_after=slip39_cleanup_cb),
+                ScreenshotConfig(seed_views.SeedSlip39MoreSharesView, run_before=slip39_more_shares_cb_before, run_after=slip39_cleanup_cb),
+                ScreenshotConfig(seed_views.SeedAddPassphraseView, screenshot_name="SeedSlip39AddPassphraseView", run_before=slip39_more_shares_cb_before, run_after=slip39_cleanup_cb),
+                ScreenshotConfig(seed_views.SeedSlip39CreateFromBytesView, dict(secret=bytes.fromhex("11" * 16))),
+                ScreenshotConfig(seed_views.SeedSlip39RegenerateSharesView, dict(seed_num=3)),
 
                 ScreenshotConfig(seed_views.SeedElectrumMnemonicStartView),
             ],

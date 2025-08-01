@@ -81,6 +81,14 @@ def generate_mnemonic_from_dice(roll_data: str, wordlist_language_code: str = Se
     return bip39.mnemonic_from_bytes(entropy_bytes, wordlist=Seed.get_wordlist(wordlist_language_code)).split()
 
 
+def generate_bytes_from_dice(roll_data: str) -> bytes:
+    """Return entropy bytes from dice rolls without converting to mnemonic."""
+    entropy_bytes = hashlib.sha256(roll_data.encode()).digest()
+    if len(roll_data) == DICE__NUM_ROLLS__12WORD:
+        entropy_bytes = entropy_bytes[:16]
+    return entropy_bytes
+
+
 
 def generate_mnemonic_from_coin_flips(coin_flips: str, wordlist_language_code: str = SettingsConstants.WORDLIST_LANGUAGE__ENGLISH) -> list[str]:
     """

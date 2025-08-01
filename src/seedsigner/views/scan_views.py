@@ -7,13 +7,14 @@ import time
 from seedsigner.gui.screens.screen import RET_CODE__BACK_BUTTON, ButtonListScreen, WarningScreen, DireWarningScreen
 from seedsigner.gui.screens.scan_screens import ScanEncryptedQRScreen, ScanTypeEncryptionKeyScreen, ScanReviewEncryptionKeyScreen
 from seedsigner.models.decode_qr import DecodeQR, DecodeQRStatus
-from seedsigner.models.seed import Seed
+from seedsigner.models.seed import Seed, InvalidSeedException
 
 from gettext import gettext as _
 from seedsigner.helpers.l10n import mark_for_translation as _mft
 
 from seedsigner.models.settings import SettingsConstants
 from seedsigner.views.view import BackStackView, ErrorView, MainMenuView, NotYetImplementedView, View, Destination
+from seedsigner.views.seed_views import SeedSlip39MoreSharesView, SeedSlip39ShareInvalidView
 from seedsigner.gui.screens.screen import ButtonOption
 
 logger = logging.getLogger(__name__)
@@ -98,6 +99,15 @@ class ScanView(View):
                         return Destination(SeedAddPassphraseView)
                     else:
                         return Destination(SeedFinalizeView)
+
+            elif self.decoder.is_slip39_share:
+                share = self.decoder.get_slip39_share()
+                words = share.split()
+                self.controller.storage.init_pending_slip39_share(num_words=len(words))
+                for i, w in enumerate(words):
+                    self.controller.storage.update_pending_slip39_share(w, i)
+                self.controller.storage.finalize_current_slip39_share()
+                return Destination(SeedSlip39MoreSharesView)
             
             elif self.decoder.is_psbt:
                 from seedsigner.views.psbt_views import PSBTSelectSeedView
@@ -215,6 +225,57 @@ class ScanSeedQRView(ScanView):
         return self.decoder.is_seed or self.decoder.is_encrypted_seedqr
 
 
+class ScanSlip39ShareQRView(ScanView):
+    instructions_text = _mft("Scan SLIP-39 Share")
+    invalid_qr_type_message = _mft("Expected a SLIP-39 share QR")
+
+    @property
+    def is_valid_qr_type(self):
+        return self.decoder.is_slip39_share
+
+    def run(self):
+        from seedsigner.gui.screens.scan_screens import ScanScreen
+        from seedsigner.models.qr_type import QRType
+
+        self.run_screen(
+            ScanScreen,
+            instructions_text=self.instructions_text,
+            decoder=self.decoder
+        )
+
+        self.controller.reset_screensaver_timeout()
+        time.sleep(0.1)
+
+        if self.decoder.is_complete:
+            share = self.decoder.get_slip39_share()
+            words = share.split()
+            self.controller.storage.init_pending_slip39_share(num_words=len(words))
+            for i, w in enumerate(words):
+                self.controller.storage.update_pending_slip39_share(w, i)
+            try:
+                self.controller.storage.finalize_current_slip39_share()
+            except InvalidSeedException:
+                return Destination(
+                    SeedSlip39ShareInvalidView,
+                    view_args={"length": len(words), "retry_scan": True},
+                    skip_current_view=True,
+                )
+            return Destination(SeedSlip39MoreSharesView)
+
+        elif self.decoder.qr_type == QRType.SEED__SLIP39:
+            return Destination(
+                SeedSlip39ShareInvalidView,
+                view_args={"length": 33, "retry_scan": True},
+                skip_current_view=True,
+            )
+
+        elif self.decoder.is_invalid:
+            self.controller.resume_main_flow = None
+            return Destination(ScanInvalidQRTypeView)
+
+        return Destination(BackStackView)
+
+
 
 class ScanWalletDescriptorView(ScanView):
     instructions_text = _mft("Scan descriptor")
@@ -326,6 +387,11 @@ class ScanEncryptedQRTypeEncryptionKeyExitDialogView(View):
 
 
 class ScanEncryptedQRScanEncryptionKeyView(View):
+    def __init__(self, encryption_key: str = ""):
+        super().__init__()
+        self.encryption_key = encryption_key
+
+
     def run(self):
         from seedsigner.gui.screens.scan_screens import ScanScreen
         decoder = DecodeQR(is_encryptionkey=True)
@@ -337,10 +403,10 @@ class ScanEncryptedQRScanEncryptionKeyView(View):
         self.controller.reset_screensaver_timeout()
         time.sleep(0.1)
         if decoder.is_complete:
-            encryption_key = decoder.get_encryption_key()
+            self.encryption_key += decoder.get_encryption_key()
             return Destination(
                 ScanEncryptedQRReviewEncryptionKeyView,
-                view_args=dict(encryption_key=encryption_key),
+                view_args=dict(encryption_key=self.encryption_key),
                 skip_current_view=True
             )
         elif decoder.is_nonUTF8:
@@ -373,7 +439,8 @@ class ScanEncryptedQRReviewEncryptionKeyView(View):
 
         PROCEED = ButtonOption("Proceed")
         EDIT = ButtonOption("Edit")
-        button_data = [PROCEED, EDIT]
+        SCAN = ButtonOption("Scan & Append Another")
+        button_data = [PROCEED, EDIT, SCAN]
 
         from seedsigner.gui.screens.scan_screens import ScanReviewEncryptionKeyScreen
 
@@ -395,6 +462,13 @@ class ScanEncryptedQRReviewEncryptionKeyView(View):
         elif button_data[selected_menu_num] == EDIT:
             return Destination(
                 ScanEncryptedQRTypeEncryptionKeyView,
+                view_args=dict(encryption_key=self.encryption_key),
+                skip_current_view=True
+            )
+
+        elif button_data[selected_menu_num] == SCAN:
+            return Destination(
+                ScanEncryptedQRScanEncryptionKeyView,
                 view_args=dict(encryption_key=self.encryption_key),
                 skip_current_view=True
             )

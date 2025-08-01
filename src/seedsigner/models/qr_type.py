@@ -13,6 +13,7 @@ class QRType:
     SEED__MNEMONIC = "seed__mnemonic"
     SEED__FOUR_LETTER_MNEMONIC = "seed__four_letter_mnemonic"
     SEED__ENCRYPTEDQR = "seed__encryptedqr"
+    SEED__SLIP39 = "seed__slip39"
 
     SETTINGS = "settings"
 
