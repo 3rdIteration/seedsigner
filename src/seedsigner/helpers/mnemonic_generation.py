@@ -1,5 +1,7 @@
 import hashlib
 import unicodedata
+from collections import Counter
+import math
 
 from embit import bip39
 from seedsigner.models.settings_definition import SettingsConstants
@@ -129,3 +131,22 @@ def generate_mnemonic_from_image(image, wordlist_language_code: str = SettingsCo
 
     # Return as a list
     return bip39.mnemonic_from_bytes(hash.digest(), wordlist=Seed.get_wordlist(wordlist_language_code)).split()
+
+
+def _shannon_entropy(data: bytes | str) -> float:
+    """Return the Shannon entropy of the provided data."""
+    if isinstance(data, str):
+        data = data.encode()
+    counts = Counter(data)
+    length = len(data)
+    return -sum((count / length) * math.log2(count / length) for count in counts.values())
+
+
+def dice_entropy_is_sufficient(roll_data: str, threshold: float = 2.0) -> bool:
+    """Simple randomness check for dice roll input."""
+    return _shannon_entropy(roll_data) >= threshold
+
+
+def byte_entropy_is_sufficient(data: bytes, threshold: float = 3.5) -> bool:
+    """Simple randomness check for byte data."""
+    return _shannon_entropy(data) >= threshold
