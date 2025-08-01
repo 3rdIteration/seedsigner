@@ -1,6 +1,7 @@
 import json
 import os
 import pytest
+import shamir_mnemonic
 from seedsigner.models.seed import Slip39Seed
 from embit import bip32
 from embit.networks import NETWORKS
@@ -19,3 +20,16 @@ def test_vectors(desc, mnemonics, secret_hex, xprv):
     assert seed.seed_bytes.hex() == secret_hex
     root = bip32.HDKey.from_seed(seed.seed_bytes, version=NETWORKS["main"]["xprv"])
     assert root.to_base58() == xprv
+
+    # Initialize without passphrase and apply it later
+    seed2 = Slip39Seed(mnemonics=mnemonics)
+    seed2.set_slip39_passphrase("TREZOR")
+    assert seed2.seed_bytes == seed.seed_bytes
+    assert seed2.master_secret == seed.master_secret
+
+    if seed2.extendable:
+        new_shares = seed2.regenerate_shares(seed2._member_threshold, len(seed2.mnemonic_list))
+        combined = shamir_mnemonic.combine_mnemonics(
+            new_shares[: seed2._member_threshold], b"TREZOR"
+        )
+        assert combined == seed2.master_secret

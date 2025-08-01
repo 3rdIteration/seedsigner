@@ -366,6 +366,7 @@ class Slip39Seed(Seed):
             1,
             [(threshold, num_shares)],
             self.master_secret,
+            passphrase=self._slip39_passphrase.encode("utf-8"),
             extendable=True,
         )[0]
         self._shares = shares
