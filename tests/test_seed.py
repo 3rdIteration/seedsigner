@@ -175,6 +175,18 @@ def test_slip39_regenerate_shares_nonextendable():
                 seed.regenerate_shares(2, 4)
 
 
+def test_slip39_passphrase_update():
+        secret = bytes.fromhex("dd" * 16)
+        shares = shamir_mnemonic.generate_mnemonics(
+            1, [(2, 3)], secret, passphrase=b"pw", extendable=True
+        )[0]
+        seed1 = Slip39Seed(mnemonics=[shares[0], shares[1]], slip39_passphrase="pw")
+        seed2 = Slip39Seed(mnemonics=[shares[0], shares[1]])
+        seed2.set_slip39_passphrase("pw")
+        assert seed2.seed_bytes == seed1.seed_bytes
+        assert seed2.master_secret == seed1.master_secret
+
+
 VECTORS_PATH = os.path.join(os.path.dirname(__file__), "data", "shamir_vectors.json")
 
 
