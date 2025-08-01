@@ -232,6 +232,22 @@ class ToolsImageEntropyMnemonicLengthView(View):
         millis_hash = hashlib.sha256(hash_bytes + str(time.time()).encode('utf-8'))
         hash_bytes = millis_hash.digest()
 
+        # Mix in entropy from hardware RNG or os.urandom fallback
+        rng_entropy = b""
+        for rng_path in ("/dev/hwrng", "/dev/random"):
+            try:
+                with open(rng_path, "rb") as rng:
+                    rng_entropy = rng.read(32)
+                    if rng_entropy:
+                        break
+            except Exception as e:
+                logger.info(repr(e), exc_info=True)
+        if not rng_entropy:
+            rng_entropy = os.urandom(32)
+
+        rng_hash = hashlib.sha256(hash_bytes + rng_entropy)
+        hash_bytes = rng_hash.digest()
+
         # Build in better entropy by chaining the preview frames
         for frame in preview_images:
             img_hash = hashlib.sha256(hash_bytes + frame.tobytes())
