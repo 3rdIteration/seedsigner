@@ -566,6 +566,7 @@ class SeedAddPassphraseView(View):
             try:
                 self.seed.set_slip39_passphrase(passphrase)
             finally:
+                time.sleep(1)
                 self.loading_screen.stop()
         else:
             # The new passphrase will be the return value; it might be empty.
@@ -990,6 +991,7 @@ class SeedSlip39MoreSharesView(View):
         try:
             self.controller.storage.convert_pending_slip39_shares_to_pending_seed()
         finally:
+            time.sleep(1)
             self.loading_screen.stop()
 
         return Destination(SeedFinalizeView)

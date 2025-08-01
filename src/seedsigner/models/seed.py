@@ -357,26 +357,27 @@ class Slip39Seed(Seed):
         return False
 
     def regenerate_shares(self, threshold: int, num_shares: int) -> List[str]:
-        """Generate new SLIP-39 shares preserving the original identifier and
-        master secret extracted before any passphrase changes."""
+        """Generate new SLIP-39 shares from the original master secret."""
         if not self.extendable:
             raise InvalidSeedException("This SLIP-39 seed is not extendable")
 
+        if threshold > num_shares:
+            raise InvalidSeedException(
+                "The requested threshold must not exceed the number of shares."
+            )
+
         first_share = shamir_mnemonic.Share.from_mnemonic(self._shares[0])
-        ems = shamir_mnemonic.shamir.EncryptedMasterSecret.from_master_secret(
+
+        new_groups = shamir_mnemonic.generate_mnemonics(
+            self._group_threshold,
+            [(threshold, num_shares)],
             self._initial_master_secret,
-            self._creation_passphrase.encode("utf-8"),
-            first_share.identifier,
-            True,
-            first_share.iteration_exponent,
+            passphrase=self._creation_passphrase.encode("utf-8"),
+            extendable=True,
+            iteration_exponent=first_share.iteration_exponent,
         )
 
-        shares_objs = shamir_mnemonic.shamir.split_ems(
-            first_share.group_threshold,
-            [(threshold, num_shares)],
-            ems,
-        )[0]
-        shares = [s.mnemonic() for s in shares_objs]
+        shares = new_groups[0]
 
         self._shares = shares
         self._member_threshold = threshold

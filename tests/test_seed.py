@@ -246,6 +246,31 @@ def test_slip39_regenerate_consistency_no_passphrase():
     assert secret_old == secret_new == expected_secret
 
 
+def test_slip39_regenerate_random_passphrase():
+    """Regeneration should keep the master secret with any passphrase."""
+    import random, string
+    slip_pass = ''.join(random.choice(string.ascii_letters) for _ in range(8))
+    secret = os.urandom(16)
+    shares = shamir_mnemonic.generate_mnemonics(
+        1, [(2, 3)], secret, passphrase=slip_pass.encode(), extendable=True
+    )[0]
+
+    seed = Slip39Seed(mnemonics=[shares[0], shares[1]], slip39_passphrase=slip_pass)
+    old_shares = seed.mnemonic_list.copy()
+    new_shares = seed.regenerate_shares(2, 4)
+
+    secret_old = shamir_mnemonic.combine_mnemonics(old_shares, slip_pass.encode())
+    secret_new = shamir_mnemonic.combine_mnemonics(new_shares[:2], slip_pass.encode())
+
+    assert secret_old == secret_new == secret
+
+    alt_pass = os.urandom(5)
+    assert (
+        shamir_mnemonic.combine_mnemonics(old_shares, alt_pass)
+        == shamir_mnemonic.combine_mnemonics(new_shares[:2], alt_pass)
+    )
+
+
 VECTORS_PATH = os.path.join(os.path.dirname(__file__), "data", "shamir_vectors.json")
 
 
