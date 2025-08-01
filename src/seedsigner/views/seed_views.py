@@ -1142,9 +1142,16 @@ class SeedSlip39CreateFromBytesView(View):
             return Destination(BackStackView)
         threshold = int(ret)
 
-        shares = shamir_mnemonic.generate_mnemonics(
-            1, [(threshold, num_shares)], self.secret, extendable=True
-        )[0]
+        if threshold == 1 and num_shares > 1:
+            groups = [(1, 1)] * num_shares
+            share_groups = shamir_mnemonic.generate_mnemonics(
+                1, groups, self.secret, extendable=True
+            )
+            shares = [g[0] for g in share_groups]
+        else:
+            shares = shamir_mnemonic.generate_mnemonics(
+                1, [(threshold, num_shares)], self.secret, extendable=True
+            )[0]
         seed = Slip39Seed(mnemonics=shares)
         self.controller.storage.set_pending_seed(seed)
 

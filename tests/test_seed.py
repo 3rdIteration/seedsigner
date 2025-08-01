@@ -271,6 +271,17 @@ def test_slip39_regenerate_random_passphrase():
     )
 
 
+def test_slip39_regenerate_thresholds():
+    secret = os.urandom(16)
+    share = shamir_mnemonic.generate_mnemonics(1, [(1, 1)], secret, extendable=True)[0][0]
+    seed = Slip39Seed(mnemonics=[share])
+
+    for threshold in (1, 2, 3):
+        new_shares = seed.regenerate_shares(threshold, 3)
+        assert len(new_shares) == 3
+        assert shamir_mnemonic.combine_mnemonics(new_shares[:threshold]) == secret
+
+
 VECTORS_PATH = os.path.join(os.path.dirname(__file__), "data", "shamir_vectors.json")
 
 

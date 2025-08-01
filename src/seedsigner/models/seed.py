@@ -368,16 +368,28 @@ class Slip39Seed(Seed):
 
         first_share = shamir_mnemonic.Share.from_mnemonic(self._shares[0])
 
-        new_groups = shamir_mnemonic.generate_mnemonics(
-            self._group_threshold,
-            [(threshold, num_shares)],
-            self._initial_master_secret,
-            passphrase=self._creation_passphrase.encode("utf-8"),
-            extendable=True,
-            iteration_exponent=first_share.iteration_exponent,
-        )
-
-        shares = new_groups[0]
+        if threshold == 1 and num_shares > 1:
+            groups = [(1, 1)] * num_shares
+            new_groups = shamir_mnemonic.generate_mnemonics(
+                1,
+                groups,
+                self._initial_master_secret,
+                passphrase=self._creation_passphrase.encode("utf-8"),
+                extendable=True,
+                iteration_exponent=first_share.iteration_exponent,
+            )
+            shares = [g[0] for g in new_groups]
+            self._group_threshold = 1
+        else:
+            new_groups = shamir_mnemonic.generate_mnemonics(
+                self._group_threshold,
+                [(threshold, num_shares)],
+                self._initial_master_secret,
+                passphrase=self._creation_passphrase.encode("utf-8"),
+                extendable=True,
+                iteration_exponent=first_share.iteration_exponent,
+            )
+            shares = new_groups[0]
 
         self._shares = shares
         self._member_threshold = threshold
