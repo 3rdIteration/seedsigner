@@ -217,6 +217,28 @@ def test_slip39_regenerate_consistency():
     assert secret_old == secret_new == expected_secret
 
 
+def test_slip39_regenerate_consistency_no_passphrase():
+    """Vector 42 should regenerate shares without changing the master secret when no passphrase is used."""
+    share = (
+        "testify swimming academic academic column loyalty smear include exotic"
+        " bedroom exotic wrist lobe cover grief golden smart junior estimate learn"
+    )
+    expected_secret = bytes.fromhex("642a850f4ee8508a3ef44db68ccf0d62")
+
+    seed = Slip39Seed(mnemonics=[share])
+    assert seed.master_secret == expected_secret
+
+    old_shares = seed.mnemonic_list.copy()
+    new_shares = seed.regenerate_shares(seed._member_threshold, len(old_shares))
+
+    secret_old = shamir_mnemonic.combine_mnemonics(old_shares)
+    secret_new = shamir_mnemonic.combine_mnemonics(
+        new_shares[: seed._member_threshold]
+    )
+
+    assert secret_old == secret_new == expected_secret
+
+
 VECTORS_PATH = os.path.join(os.path.dirname(__file__), "data", "shamir_vectors.json")
 
 
@@ -232,3 +254,4 @@ def test_slip39_vectors_end_to_end(desc, mnemonics, secret_hex, xprv):
                 assert seed.seed_bytes.hex() == secret_hex
                 root = bip32.HDKey.from_seed(seed.seed_bytes, version=NETWORKS["main"]["xprv"])
                 assert root.to_base58() == xprv
+
