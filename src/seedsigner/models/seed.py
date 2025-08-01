@@ -276,6 +276,8 @@ class Slip39Seed(Seed):
 
         self.seed_bytes: bytes = None
         self.master_secret: bytes | None = None
+        self._initial_master_secret: bytes | None = None
+        self._creation_passphrase: str = self._slip39_passphrase
         self._generate_seed()
 
     def _generate_seed(self):
@@ -308,6 +310,8 @@ class Slip39Seed(Seed):
                 )
 
             self.master_secret = secret
+            if self._initial_master_secret is None:
+                self._initial_master_secret = secret
             self.seed_bytes = secret
         except Exception as e:
             logger.info(repr(e), exc_info=True)
@@ -353,18 +357,26 @@ class Slip39Seed(Seed):
         return False
 
     def regenerate_shares(self, threshold: int, num_shares: int) -> List[str]:
-        """Generate new SLIP-39 shares for the existing seed using the stored
-        master secret and passphrase."""
+        """Generate new SLIP-39 shares preserving the original identifier and
+        master secret extracted before any passphrase changes."""
         if not self.extendable:
             raise InvalidSeedException("This SLIP-39 seed is not extendable")
 
-        shares = shamir_mnemonic.generate_mnemonics(
-            1,
+        first_share = shamir_mnemonic.Share.from_mnemonic(self._shares[0])
+        ems = shamir_mnemonic.shamir.EncryptedMasterSecret.from_master_secret(
+            self._initial_master_secret,
+            self._creation_passphrase.encode("utf-8"),
+            first_share.identifier,
+            True,
+            first_share.iteration_exponent,
+        )
+
+        shares_objs = shamir_mnemonic.shamir.split_ems(
+            first_share.group_threshold,
             [(threshold, num_shares)],
-            self.master_secret,
-            passphrase=self._slip39_passphrase.encode("utf-8"),
-            extendable=True,
+            ems,
         )[0]
+        shares = [s.mnemonic() for s in shares_objs]
 
         self._shares = shares
         self._member_threshold = threshold

@@ -216,6 +216,13 @@ def test_slip39_regenerate_consistency():
 
     assert secret_old == secret_new == expected_secret
 
+    # Random passphrase should also yield the same result for old and new shares
+    rand_pw = os.urandom(5)
+    assert (
+        shamir_mnemonic.combine_mnemonics(old_shares, rand_pw)
+        == shamir_mnemonic.combine_mnemonics(new_shares[: seed._member_threshold], rand_pw)
+    )
+
 
 def test_slip39_regenerate_consistency_no_passphrase():
     """Vector 42 should regenerate shares without changing the master secret when no passphrase is used."""
