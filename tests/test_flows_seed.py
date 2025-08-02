@@ -183,6 +183,9 @@ class TestSeedFlows(FlowTest):
 
     def test_slip39_mnemonic_entry_flow(self):
         """Manually entering SLIP-39 shares should combine into a seed."""
+        settings = Settings.get_instance()
+        settings.set_value(SettingsConstants.SETTING__SLIP39_SEEDS, SettingsConstants.OPTION__ENABLED)
+
         secret = bytes.fromhex("11" * 16)
         shares = shamir_mnemonic.generate_mnemonics(1, [(2, 3)], secret)[0]
         share1 = shares[0].split()
@@ -209,6 +212,9 @@ class TestSeedFlows(FlowTest):
 
     def test_slip39_passphrase_flow(self):
         """Enter SLIP-39 share and apply passphrase afterwards."""
+        settings = Settings.get_instance()
+        settings.set_value(SettingsConstants.SETTING__SLIP39_SEEDS, SettingsConstants.OPTION__ENABLED)
+
         share = "testify swimming academic academic column loyalty smear include exotic bedroom exotic wrist lobe cover grief golden smart junior estimate learn".split()
 
         sequence = [
