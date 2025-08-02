@@ -354,6 +354,7 @@ class SettingsConstants:
     SETTING__SMARTCARD_INTERFACES = "smartcard_interfaces"
     SETTING__CACHE_SCARD_PIN = "cache_scard_pin"
     SETTING__SCARD_PIN_ATTEMPTS = "scard_pin_attempts"
+    SETTING__SMARTCARD_SUPPORT = "smartcard_support"
     SETTING__WIPE_TIMER = "wipe_timer"
 
     SETTING__DISPLAY_CONFIGURATION = "display_config"
@@ -787,6 +788,13 @@ class SettingsDefinition:
                       display_name=_mft("Message signing"),
                       visibility=SettingsConstants.VISIBILITY__ADVANCED,
                       default_value=SettingsConstants.OPTION__DISABLED),
+
+        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
+                      attr_name=SettingsConstants.SETTING__SMARTCARD_SUPPORT,
+                      abbreviated_name="smartcard",
+                      display_name=_mft("Smartcard support"),
+                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
+                      default_value=SettingsConstants.OPTION__ENABLED),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
                       attr_name=SettingsConstants.SETTING__PRIVACY_WARNINGS,

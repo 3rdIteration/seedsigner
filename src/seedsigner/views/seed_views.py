@@ -194,11 +194,14 @@ class LoadSeedView(View):
             self.TYPE_12WORD,
             self.TYPE_18WORD,
             self.TYPE_24WORD,
-            self.IMPORT_SEEDKEEPER,
         ]
+
+        if self.settings.get_value(SettingsConstants.SETTING__SMARTCARD_SUPPORT) == SettingsConstants.OPTION__ENABLED:
+            button_data.append(self.IMPORT_SEEDKEEPER)
 
         if self.settings.get_value(SettingsConstants.SETTING__SLIP39_SEEDS) == SettingsConstants.OPTION__ENABLED:
             button_data.append(self.TYPE_SLIP39)
+
         button_data.append(self.CREATE)
 
         if self.settings.get_value(SettingsConstants.SETTING__ELECTRUM_SEEDS) == SettingsConstants.OPTION__ENABLED:
@@ -516,7 +519,8 @@ class SeedFinalizeView(View):
         if self.settings.get_value(SettingsConstants.SETTING__PASSPHRASE) != SettingsConstants.OPTION__DISABLED:
             button_data.append(self.TYPE_PASSPHRASE)
             button_data.append(self.SCAN_PASSPHRASE)
-            button_data.append(self.LOAD_SEEDKEEPER)
+            if self.settings.get_value(SettingsConstants.SETTING__SMARTCARD_SUPPORT) == SettingsConstants.OPTION__ENABLED:
+                button_data.append(self.LOAD_SEEDKEEPER)
 
         selected_menu_num = self.run_screen(
             seed_screens.SeedFinalizeScreen,
@@ -876,7 +880,9 @@ class SeedSlip39MnemonicStartView(View):
         THIRTYTHREE = ButtonOption("Enter 33 words")
         SCAN = ButtonOption("Scan QR", SeedSignerIconConstants.QRCODE)
         SEEDKEEPER = ButtonOption("From SeedKeeper", FontAwesomeIconConstants.LOCK)
-        button_data = [TWENTY, THIRTYTHREE, SCAN, SEEDKEEPER]
+        button_data = [TWENTY, THIRTYTHREE, SCAN]
+        if self.settings.get_value(SettingsConstants.SETTING__SMARTCARD_SUPPORT) == SettingsConstants.OPTION__ENABLED:
+            button_data.append(SEEDKEEPER)
 
         selected = self.run_screen(
             ButtonListScreen,
@@ -952,7 +958,9 @@ class SeedSlip39MoreSharesView(View):
         entered = self.controller.storage.slip39_shares_entered
         needed = self.controller.storage.slip39_total_needed
         if needed > entered:
-            button_data = [self.ADD, self.SCAN, self.SEEDKEEPER]
+            button_data = [self.ADD, self.SCAN]
+            if self.settings.get_value(SettingsConstants.SETTING__SMARTCARD_SUPPORT) == SettingsConstants.OPTION__ENABLED:
+                button_data.append(self.SEEDKEEPER)
         else:
             button_data = [self.DONE]
         info_text = None
@@ -1321,7 +1329,9 @@ class SeedBackupView(View):
 
     def run(self):
 
-        button_data = [self.VIEW_WORDS, self.TO_SEEDKEEPER]
+        button_data = [self.VIEW_WORDS]
+        if self.settings.get_value(SettingsConstants.SETTING__SMARTCARD_SUPPORT) == SettingsConstants.OPTION__ENABLED:
+            button_data.append(self.TO_SEEDKEEPER)
         if isinstance(self.seed, Slip39Seed):
             button_data.append(self.REGENERATE_SHARES)
 
@@ -3346,7 +3356,10 @@ class LoadMultisigWalletDescriptorView(View):
     CANCEL = ButtonOption("Cancel")
 
     def run(self):
-        button_data = [self.SCAN, self.FROM_SEEDKEEPER, self.CANCEL]
+        button_data = [self.SCAN]
+        if self.settings.get_value(SettingsConstants.SETTING__SMARTCARD_SUPPORT) == SettingsConstants.OPTION__ENABLED:
+            button_data.append(self.FROM_SEEDKEEPER)
+        button_data.append(self.CANCEL)
         selected_menu_num = self.run_screen(
             seed_screens.LoadMultisigWalletDescriptorScreen,
             button_data=button_data,

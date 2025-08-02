@@ -72,8 +72,13 @@ class ToolsMenuView(View):
 
     def run(self):
         button_data = [self.IMAGE, self.DICE]
+        
         if self.settings.get_value(SettingsConstants.SETTING__SLIP39_SEEDS) == SettingsConstants.OPTION__ENABLED:
             button_data.extend([self.SLIP39_IMAGE, self.SLIP39_DICE])
+        
+        if self.settings.get_value(SettingsConstants.SETTING__SMARTCARD_SUPPORT) == SettingsConstants.OPTION__ENABLED:
+            button_data.append(self.SMARTCARD)
+        
         button_data.extend([self.KEYBOARD, self.ADDRESS_EXPLORER, self.VERIFY_ADDRESS, self.TEXTQRCODE, self.SMARTCARD, self.MICROSD, self.GPG, self.CLEAR_DESCRIPTOR])
 
         selected_menu_num = self.run_screen(
