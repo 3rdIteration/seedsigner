@@ -496,8 +496,13 @@ class DecodeQR:
                 # Couldn't convert back to bytes; shouldn't happen
                 raise Exception("Conversion to bytes failed")
 
-        # 32 bytes for 24-word CompactSeedQR; 24 bytes for 18 word, 16 bytes for 12-word CompactSeedQR
-        if len(s) == 32 or len(s) == 24 or len(s) == 16:
+        # Byte lengths for CompactSeedQR entropy:
+        #   32 bytes for 24-word
+        #   28 bytes for 21-word
+        #   24 bytes for 18-word
+        #   20 bytes for 15-word
+        #   16 bytes for 12-word
+        if len(s) in (16, 20, 24, 28, 32):
             try:
                 bitstream = ""
                 for b in s:
@@ -847,7 +852,7 @@ class Base43PsbtQrDecoder(BaseSingleFrameQrDecoder):
 
 class SeedQrDecoder(BaseSingleFrameQrDecoder):
     """
-        Decodes single frame representing a seed.
+        Decodes a single frame representing a BIP39 seed.
         Supports SeedSigner SeedQR numeric (wordlist indices) representation of a seed.
         Supports SeedSigner CompactSeedQR entropy byte representation of a seed.
         Supports mnemonic seed phrase string data.
@@ -865,14 +870,16 @@ class SeedQrDecoder(BaseSingleFrameQrDecoder):
             try:
                 self.seed_phrase = []
 
-                # Parse 12 or 24-word QR code
+                if len(segment) % 4 != 0:
+                    return DecodeQRStatus.INVALID
+
                 num_words = int(len(segment) / 4)
                 for i in range(0, num_words):
                     index = int(segment[i * 4: (i*4) + 4])
                     word = self.wordlist[index]
                     self.seed_phrase.append(word)
                 if len(self.seed_phrase) > 0:
-                    if self.is_12_or_18_or_24_word_phrase() == False:
+                    if not self.has_valid_word_count():
                         return DecodeQRStatus.INVALID
                     self.complete = True
                     self.collected_segments = 1
@@ -886,6 +893,8 @@ class SeedQrDecoder(BaseSingleFrameQrDecoder):
             logging.info("Trying CompactSeedQR")
             try:
                 self.seed_phrase = bip39.mnemonic_from_bytes(segment).split()
+                if not self.has_valid_word_count():
+                    return DecodeQRStatus.INVALID
                 self.complete = True
                 self.collected_segments = 1
                 return DecodeQRStatus.COMPLETE
@@ -900,11 +909,10 @@ class SeedQrDecoder(BaseSingleFrameQrDecoder):
                 # embit mnemonic code to validate
                 seed = Seed(seed_phrase_list, passphrase="", wordlist_language_code=self.wordlist_language_code)
                 if not seed:
-                    # seed is not valid, return invalid
                     return DecodeQRStatus.INVALID
                 self.seed_phrase = seed_phrase_list
-                if self.is_12_or_18_or_24_word_phrase() == False:
-                        return DecodeQRStatus.INVALID
+                if not self.has_valid_word_count():
+                    return DecodeQRStatus.INVALID
                 self.complete = True
                 self.collected_segments = 1
                 return DecodeQRStatus.COMPLETE
@@ -923,11 +931,10 @@ class SeedQrDecoder(BaseSingleFrameQrDecoder):
                 # embit mnemonic code to validate
                 seed = Seed(words, passphrase="", wordlist_language_code=self.wordlist_language_code)
                 if not seed:
-                    # seed is not valid, return invalid
                     return DecodeQRStatus.INVALID
                 self.seed_phrase = words
-                if self.is_12_or_18_or_24_word_phrase() == False:
-                        return DecodeQRStatus.INVALID
+                if not self.has_valid_word_count():
+                    return DecodeQRStatus.INVALID
                 self.complete = True
                 self.collected_segments = 1
                 return DecodeQRStatus.COMPLETE
@@ -942,10 +949,8 @@ class SeedQrDecoder(BaseSingleFrameQrDecoder):
             return self.seed_phrase[:]
         return []
 
-    def is_12_or_18_or_24_word_phrase(self):
-        if len(self.seed_phrase) in (12, 18, 24):
-            return True
-        return False
+    def has_valid_word_count(self):
+        return len(self.seed_phrase) in (12, 15, 18, 21, 24)
 
 
 class Slip39ShareDecoder(BaseSingleFrameQrDecoder):

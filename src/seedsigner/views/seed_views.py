@@ -84,9 +84,11 @@ class SeedSelectSeedView(View):
                 verify single sig addr or sign message).
     """
     SCAN_SEED = ButtonOption("Scan a seed", SeedSignerIconConstants.QRCODE)
-    TYPE_12WORD = ButtonOption("Enter 12-word seed", FontAwesomeIconConstants.KEYBOARD)
-    TYPE_18WORD = ButtonOption("Enter 18-word seed", FontAwesomeIconConstants.KEYBOARD)
-    TYPE_24WORD = ButtonOption("Enter 24-word seed", FontAwesomeIconConstants.KEYBOARD)
+    TYPE_12WORD = ButtonOption("Enter 12-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=12)
+    TYPE_15WORD = ButtonOption("Enter 15-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=15)
+    TYPE_18WORD = ButtonOption("Enter 18-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=18)
+    TYPE_21WORD = ButtonOption("Enter 21-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=21)
+    TYPE_24WORD = ButtonOption("Enter 24-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=24)
     TYPE_ELECTRUM = ButtonOption("Enter Electrum seed", FontAwesomeIconConstants.KEYBOARD)
     TYPE_SLIP39 = ButtonOption("SLIP-39 Shares", FontAwesomeIconConstants.KEYBOARD)
 
@@ -121,9 +123,16 @@ class SeedSelectSeedView(View):
             button_data.append(ButtonOption(button_str, SeedSignerIconConstants.FINGERPRINT, icon_color="blue"))
         
         button_data.append(self.SCAN_SEED)
-        button_data.append(self.TYPE_12WORD)
-        button_data.append(self.TYPE_18WORD)
-        button_data.append(self.TYPE_24WORD)
+        seed_lengths = self.settings.get_value(SettingsConstants.SETTING__SEED_WORD_LENGTHS)
+        options = {
+            12: self.TYPE_12WORD,
+            15: self.TYPE_15WORD,
+            18: self.TYPE_18WORD,
+            21: self.TYPE_21WORD,
+            24: self.TYPE_24WORD,
+        }
+        for l in seed_lengths:
+            button_data.append(options[l])
 
         if self.settings.get_value(SettingsConstants.SETTING__ELECTRUM_SEEDS) == SettingsConstants.OPTION__ENABLED:
             button_data.append(self.TYPE_ELECTRUM)
@@ -157,14 +166,9 @@ class SeedSelectSeedView(View):
             from seedsigner.views.scan_views import ScanView
             return Destination(ScanView)
 
-        elif button_data[selected_menu_num] in [self.TYPE_12WORD, self.TYPE_24WORD]:
+        elif button_data[selected_menu_num] in [self.TYPE_12WORD, self.TYPE_15WORD, self.TYPE_18WORD, self.TYPE_21WORD, self.TYPE_24WORD]:
             from seedsigner.views.seed_views import SeedMnemonicEntryView
-            if button_data[selected_menu_num] == self.TYPE_12WORD:
-                self.controller.storage.init_pending_mnemonic(num_words=12)
-            elif button_data[selected_menu_num] == self.TYPE_18WORD:
-                self.controller.storage.init_pending_mnemonic(num_words=18)
-            else:
-                self.controller.storage.init_pending_mnemonic(num_words=24)
+            self.controller.storage.init_pending_mnemonic(num_words=button_data[selected_menu_num].return_data)
             return Destination(SeedMnemonicEntryView)
 
         elif button_data[selected_menu_num] == self.TYPE_ELECTRUM:
@@ -180,21 +184,26 @@ class SeedSelectSeedView(View):
 ****************************************************************************"""
 class LoadSeedView(View):
     SEED_QR = ButtonOption(" Scan a SeedQR", SeedSignerIconConstants.QRCODE)
-    TYPE_12WORD = ButtonOption("Enter 12-word seed", FontAwesomeIconConstants.KEYBOARD)
-    TYPE_18WORD = ButtonOption("Enter 18-word seed", FontAwesomeIconConstants.KEYBOARD)
-    TYPE_24WORD = ButtonOption("Enter 24-word seed", FontAwesomeIconConstants.KEYBOARD)
+    TYPE_12WORD = ButtonOption("Enter 12-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=12)
+    TYPE_15WORD = ButtonOption("Enter 15-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=15)
+    TYPE_18WORD = ButtonOption("Enter 18-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=18)
+    TYPE_21WORD = ButtonOption("Enter 21-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=21)
+    TYPE_24WORD = ButtonOption("Enter 24-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=24)
     TYPE_ELECTRUM = ButtonOption("Enter Electrum seed", FontAwesomeIconConstants.KEYBOARD)
     TYPE_SLIP39 = ButtonOption("SLIP-39 Shares", FontAwesomeIconConstants.KEYBOARD)
     IMPORT_SEEDKEEPER = ButtonOption("From SeedKeeper", FontAwesomeIconConstants.LOCK)
     CREATE = ButtonOption(" Create a seed", SeedSignerIconConstants.PLUS)
 
     def run(self):
-        button_data = [
-            self.SEED_QR,
-            self.TYPE_12WORD,
-            self.TYPE_18WORD,
-            self.TYPE_24WORD,
-        ]
+        seed_lengths = self.settings.get_value(SettingsConstants.SETTING__SEED_WORD_LENGTHS)
+        options = {
+            12: self.TYPE_12WORD,
+            15: self.TYPE_15WORD,
+            18: self.TYPE_18WORD,
+            21: self.TYPE_21WORD,
+            24: self.TYPE_24WORD,
+        }
+        button_data.extend([options[l] for l in seed_lengths])
 
         if self.settings.get_value(SettingsConstants.SETTING__SMARTCARD_SUPPORT) == SettingsConstants.OPTION__ENABLED:
             button_data.append(self.IMPORT_SEEDKEEPER)
@@ -221,16 +230,8 @@ class LoadSeedView(View):
             from .scan_views import ScanSeedQRView
             return Destination(ScanSeedQRView)
 
-        elif button_data[selected_menu_num] == self.TYPE_12WORD:
-            self.controller.storage.init_pending_mnemonic(num_words=12)
-            return Destination(SeedMnemonicEntryView)
-        
-        elif button_data[selected_menu_num] == self.TYPE_18WORD:
-            self.controller.storage.init_pending_mnemonic(num_words=18)
-            return Destination(SeedMnemonicEntryView)
-
-        elif button_data[selected_menu_num] == self.TYPE_24WORD:
-            self.controller.storage.init_pending_mnemonic(num_words=24)
+        elif button_data[selected_menu_num] in [self.TYPE_12WORD, self.TYPE_15WORD, self.TYPE_18WORD, self.TYPE_21WORD, self.TYPE_24WORD]:
+            self.controller.storage.init_pending_mnemonic(num_words=button_data[selected_menu_num].return_data)
             return Destination(SeedMnemonicEntryView)
 
         elif button_data[selected_menu_num] == self.IMPORT_SEEDKEEPER:
@@ -2181,84 +2182,90 @@ class SeedWordsBackupTestSuccessView(View):
     Export as SeedQR
 ****************************************************************************"""
 class SeedTranscribeSeedQRFormatView(View):
-    # SeedQR dims for 12-word seeds
-    STANDARD_12 = ButtonOption("Standard: 25x25", return_data=25)
-    COMPACT_12 = ButtonOption("Compact: 21x21", return_data=21)
-    ENCRYPTED_12 = ButtonOption("Encrypted: 29x29", return_data=0) # Encrypted QR uses dummy return data
-
-    # SeedQR dims for 24-word seeds
-    STANDARD_24 = ButtonOption("Standard: 29x29", return_data=29)
-    COMPACT_24 = ButtonOption("Compact: 25x25", return_data=25)
-    ENCRYPTED_24 = ButtonOption("Encrypted: 33x33", return_data=0) # Encrypted QR uses dummy return data
-
     def __init__(self, seed_num: int):
         super().__init__()
         self.seed_num = seed_num
 
 
     def run(self):
+        from seedsigner.helpers.qr import QR
+
         seed = self.controller.get_seed(self.seed_num)
 
-        if (self.settings.get_value(SettingsConstants.SETTING__COMPACT_SEEDQR) != SettingsConstants.OPTION__ENABLED and
-            self.settings.get_value(SettingsConstants.SETTING__ENCRYPTED_QR) != SettingsConstants.OPTION__ENABLED):
-            # Only configured for standard SeedQR
+        encoder_args = dict(
+            mnemonic=seed.mnemonic_list,
+            wordlist_language_code=self.settings.get_value(SettingsConstants.SETTING__WORDLIST_LANGUAGE),
+        )
+
+        qr_helper = QR()
+        button_data = []
+
+        standard_encoder = SeedQrEncoder(**encoder_args)
+        standard_modules = qr_helper.qrsize(standard_encoder.next_part())
+        button_data.append(
+            ButtonOption(
+                f"Standard: {standard_modules}x{standard_modules}",
+                return_data=(QRType.SEED__SEEDQR, standard_modules),
+            )
+        )
+
+        if self.settings.get_value(SettingsConstants.SETTING__COMPACT_SEEDQR) == SettingsConstants.OPTION__ENABLED:
+            compact_encoder = CompactSeedQrEncoder(**encoder_args)
+            compact_modules = qr_helper.qrsize(compact_encoder.next_part())
+            button_data.append(
+                ButtonOption(
+                    f"Compact: {compact_modules}x{compact_modules}",
+                    return_data=(QRType.SEED__COMPACTSEEDQR, compact_modules),
+                )
+            )
+
+        if self.settings.get_value(SettingsConstants.SETTING__ENCRYPTED_QR) == SettingsConstants.OPTION__ENABLED:
+            button_data.append(
+                ButtonOption(
+                    "Encrypted",
+                    return_data=(QRType.SEED__ENCRYPTEDQR, 0),
+                )
+            )
+
+        if len(button_data) == 1:
+            seedqr_format, num_modules = button_data[0].return_data
             return Destination(
                 SeedTranscribeSeedQRWarningView,
                 view_args={
                     "seed_num": self.seed_num,
-                    "seedqr_format": QRType.SEED__SEEDQR,
-                    "num_modules": self.STANDARD_12.return_data,
+                    "seedqr_format": seedqr_format,
+                    "num_modules": num_modules,
                 },
                 skip_current_view=True,
             )
 
-        if len(seed.mnemonic_list) == 12:
-            button_data = [self.STANDARD_12]
-        else:
-            button_data = [self.STANDARD_24]
-
-        if self.settings.get_value(SettingsConstants.SETTING__COMPACT_SEEDQR) == SettingsConstants.OPTION__ENABLED:
-            if len(seed.mnemonic_list) == 12:
-              button_data.append(self.COMPACT_12)
-            else:
-              button_data.append(self.COMPACT_24)
-              
-        if self.settings.get_value(SettingsConstants.SETTING__ENCRYPTED_QR) == SettingsConstants.OPTION__ENABLED:
-            if len(seed.mnemonic_list) == 12:
-              button_data.append(self.ENCRYPTED_12)
-            else:
-              button_data.append(self.ENCRYPTED_24)
-            
         selected_menu_num = self.run_screen(
             seed_screens.SeedTranscribeSeedQRFormatScreen,
             title=_("SeedQR Format"),
-            is_compactqr = (self.settings.get_value(SettingsConstants.SETTING__COMPACT_SEEDQR) == SettingsConstants.OPTION__ENABLED),
-            is_encryptedqr = (self.settings.get_value(SettingsConstants.SETTING__ENCRYPTED_QR) == SettingsConstants.OPTION__ENABLED),
-
+            is_compactqr=(
+                self.settings.get_value(SettingsConstants.SETTING__COMPACT_SEEDQR)
+                == SettingsConstants.OPTION__ENABLED
+            ),
+            is_encryptedqr=(
+                self.settings.get_value(SettingsConstants.SETTING__ENCRYPTED_QR)
+                == SettingsConstants.OPTION__ENABLED
+            ),
             button_data=button_data,
         )
 
         if selected_menu_num == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
-        
-        if button_data[selected_menu_num] in [self.STANDARD_12, self.STANDARD_24]:
-            seedqr_format = QRType.SEED__SEEDQR
-        elif button_data[selected_menu_num] in [self.COMPACT_12, self.COMPACT_24]:
-            seedqr_format = QRType.SEED__COMPACTSEEDQR
-            
-        else:
-            seedqr_format = QRType.SEED__ENCRYPTEDQR
 
-        num_modules = button_data[selected_menu_num].return_data
+        seedqr_format, num_modules = button_data[selected_menu_num].return_data
 
         return Destination(
             SeedTranscribeSeedQRWarningView,
-                view_args={
-                    "seed_num": self.seed_num,
-                    "seedqr_format": seedqr_format,
-                    "num_modules": num_modules,
-                }
-            )
+            view_args={
+                "seed_num": self.seed_num,
+                "seedqr_format": seedqr_format,
+                "num_modules": num_modules,
+            },
+        )
 
 
 
@@ -2893,16 +2900,8 @@ class SeedTranscribeSeedQRZoomedInView(View):
 
         data = e.next_part()
 
-        if len(self.seed.mnemonic_list) == 24:
-            if self.seedqr_format == QRType.SEED__COMPACTSEEDQR:
-                num_modules = 25
-            else:
-                num_modules = 29
-        else:
-            if self.seedqr_format == QRType.SEED__COMPACTSEEDQR:
-                num_modules = 21
-            else:
-                num_modules = 25
+        from seedsigner.helpers.qr import QR
+        num_modules = QR().qrsize(data)
 
         seed_screens.SeedTranscribeSeedQRZoomedInScreen(
             qr_data=data,

@@ -501,7 +501,7 @@ class TestSeedFlows(FlowTest):
             FlowStep(seed_views.SeedsMenuView, screen_return_value=0),
             FlowStep(seed_views.SeedOptionsView, button_data_selection=seed_views.SeedOptionsView.BACKUP),
             FlowStep(seed_views.SeedBackupView, button_data_selection=seed_views.SeedBackupView.EXPORT_SEEDQR),
-            FlowStep(seed_views.SeedTranscribeSeedQRFormatView, button_data_selection=seed_views.SeedTranscribeSeedQRFormatView.STANDARD_12),
+            FlowStep(seed_views.SeedTranscribeSeedQRFormatView, screen_return_value=0),
             FlowStep(seed_views.SeedTranscribeSeedQRWarningView),
             FlowStep(seed_views.SeedTranscribeSeedQRWholeQRView, is_redirect=True),
             FlowStep(seed_views.SeedTranscribeSeedQRZoomedInView, is_redirect=True),  # Live interactive screens are a bit weird; not sure why `is_redirect` is necessary here
