@@ -1,5 +1,6 @@
 import pytest
 import random
+import os
 
 from embit import bip39
 from seedsigner.helpers import mnemonic_generation
@@ -141,6 +142,14 @@ def test_verify_against_coldcard_sample():
     actual = " ".join(mnemonic)
     assert bip39.mnemonic_is_valid(actual)
     assert actual == expected
+
+
+def test_entropy_checks():
+    assert mnemonic_generation.dice_entropy_is_sufficient("123456" * 10)
+    assert not mnemonic_generation.dice_entropy_is_sufficient("1" * 50)
+
+    assert mnemonic_generation.byte_entropy_is_sufficient(os.urandom(16))
+    assert not mnemonic_generation.byte_entropy_is_sufficient(b"\x00" * 16)
 
 
 

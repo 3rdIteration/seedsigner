@@ -12,7 +12,14 @@ from PIL.ImageOps import autocontrast
 from gettext import gettext as _
 
 from seedsigner.gui.components import FontAwesomeIconConstants, GUIConstants, SeedSignerIconConstants, resize_image_to_fill
-from seedsigner.gui.screens import (RET_CODE__BACK_BUTTON, ButtonListScreen, DireWarningScreen, LargeIconStatusScreen, WarningScreen)
+from seedsigner.gui.screens import (
+    RET_CODE__BACK_BUTTON,
+    ButtonListScreen,
+    DireWarningScreen,
+    LargeIconStatusScreen,
+    WarningScreen,
+    ErrorScreen,
+)
 from seedsigner.gui.screens.scan_screens import ScanScreen
 from seedsigner.gui.screens.tools_screens import (ToolsCalcFinalWordDoneScreen, ToolsCalcFinalWordFinalizePromptScreen,
     ToolsCalcFinalWordScreen, ToolsCoinFlipEntryScreen, ToolsDiceEntropyEntryScreen, ToolsImageEntropyFinalImageScreen,
@@ -225,6 +232,22 @@ class ToolsImageEntropyMnemonicLengthView(View):
         millis_hash = hashlib.sha256(hash_bytes + str(time.time()).encode('utf-8'))
         hash_bytes = millis_hash.digest()
 
+        # Mix in entropy from hardware RNG or os.urandom fallback
+        rng_entropy = b""
+        for rng_path in ("/dev/hwrng", "/dev/random"):
+            try:
+                with open(rng_path, "rb") as rng:
+                    rng_entropy = rng.read(32)
+                    if rng_entropy:
+                        break
+            except Exception as e:
+                logger.info(repr(e), exc_info=True)
+        if not rng_entropy:
+            rng_entropy = os.urandom(32)
+
+        rng_hash = hashlib.sha256(hash_bytes + rng_entropy)
+        hash_bytes = rng_hash.digest()
+
         # Build in better entropy by chaining the preview frames
         for frame in preview_images:
             img_hash = hashlib.sha256(hash_bytes + frame.tobytes())
@@ -236,6 +259,17 @@ class ToolsImageEntropyMnemonicLengthView(View):
         if mnemonic_length in (12, 20):
             # 12- or 20-word seeds only use the first 128 bits / 16 bytes of entropy
             final_hash = final_hash[:16]
+
+        if not mnemonic_generation.byte_entropy_is_sufficient(final_hash):
+            self.run_screen(
+                ErrorScreen,
+                title=_("Poor Entropy"),
+                status_headline=None,
+                text=_("Camera entropy didn't appear random enough. Please try again."),
+            )
+            self.controller.image_entropy_preview_frames = None
+            self.controller.image_entropy_final_image = None
+            return Destination(BackStackView)
 
         if getattr(self.controller, "create_slip39", False):
             secret = final_hash
@@ -325,7 +359,16 @@ class ToolsDiceEntropyEntryView(View):
 
         if ret == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
-        
+
+        if not mnemonic_generation.dice_entropy_is_sufficient(ret):
+            self.run_screen(
+                ErrorScreen,
+                title=_("Poor Entropy"),
+                status_headline=None,
+                text=_("Dice rolls didn't appear random enough. Please try again."),
+            )
+            return Destination(BackStackView)
+
         if getattr(self.controller, "create_slip39", False):
             entropy_bytes = mnemonic_generation.generate_bytes_from_dice(ret)
             self.controller.create_slip39 = False

@@ -21,7 +21,7 @@ from seedsigner.gui.screens import (RET_CODE__BACK_BUTTON, ButtonListScreen,
 from seedsigner.gui.screens.screen import ButtonOption
 from seedsigner.models.encode_qr import CompactSeedQrEncoder, GenericStaticQrEncoder, SeedQrEncoder, SpecterXPubQrEncoder, StaticXpubQrEncoder, UrXpubQrEncoder
 from seedsigner.models.qr_type import QRType
-from seedsigner.models.seed import Seed, Slip39Seed, InvalidSeedException
+from seedsigner.models.seed import Seed, Slip39Seed, ElectrumSeed, InvalidSeedException
 from seedsigner.models.settings import Settings, SettingsConstants
 from seedsigner.models.settings_definition import SettingsDefinition
 from seedsigner.models.threads import BaseThread, ThreadsafeCounter
@@ -277,7 +277,8 @@ class SeedKeeperSelectView(View):
                 export_rights = SEEDKEEPER_DIC_EXPORT_RIGHTS.get(header['export_rights'], hex(header['export_rights']))
 
                 if ((stype == "BIP39 mnemonic" and export_rights == 'Plaintext export allowed') or
-                        (stype == 'Masterseed' and subtype == 0x01)):
+                        (stype == 'Masterseed' and subtype == 0x01) or
+                        (stype == 'Electrum mnemonic' and export_rights == 'Plaintext export allowed')):
 
                     if not label:
                         label = "Unnamed Secret"
@@ -323,7 +324,7 @@ class SeedKeeperSelectView(View):
 
             assert stype == SEEDKEEPER_DIC_TYPE.get(secret_dict['type'], hex(secret_dict['type']))
 
-            if stype == 'BIP39 mnemonic':
+            if stype == 'BIP39 mnemonic' or stype == 'Electrum mnemonic':
                 secret_dict['secret'] = unhexlify(secret_dict['secret'])[1:].decode().rstrip("\x00")
                 bip39_secret = secret_dict['secret']
                 secret_size = secret_dict['secret_list'][0]
@@ -369,7 +370,7 @@ class SeedKeeperSelectView(View):
             return Destination(BackStackView)
 
         mnemonic = secret_mnemonic.split(" ")
-        self.controller.storage.init_pending_mnemonic(num_words=len(mnemonic))
+        self.controller.storage.init_pending_mnemonic(num_words=len(mnemonic), is_electrum=(stype == 'Electrum mnemonic'))
         for i, word in enumerate(mnemonic):
             self.controller.storage.update_pending_mnemonic(word, i)
 
@@ -3687,39 +3688,51 @@ class SaveToSeedkeeperView(View):
                     return Destination(BackStackView)
                 status = Satochip_Connector.card_get_status()[3]
                 print(status)
-                if status['protocol_minor_version'] == 1:  # Seedkeeper v1
-                    print("Saving to SeedKeeper V1")
+                if isinstance(seed, ElectrumSeed):
+                    print("Saving Electrum seed")
                     label = ret['passphrase']
                     export_rights = "Plaintext export allowed"
-                    type = "BIP39 mnemonic"
+                    type = "Electrum mnemonic"
                     subtype = 0
-                    bip39_mnemonic = seed.mnemonic_str
-                    bip39_mnemonic_list = list(bytes(bip39_mnemonic, 'utf-8'))
-                    bip39_passphrase = seed.passphrase
-                    bip39_passphrase_list = list(bytes(bip39_passphrase, 'utf-8'))
-                    secret_list = [len(bip39_mnemonic_list)] + bip39_mnemonic_list + [len(bip39_passphrase_list)] + bip39_passphrase_list
+                    electrum_mnemonic_list = list(bytes(seed.mnemonic_str, 'utf-8'))
+                    electrum_passphrase_list = list(bytes(seed.passphrase, 'utf-8'))
+                    secret_list = [len(electrum_mnemonic_list)] + electrum_mnemonic_list + [len(electrum_passphrase_list)] + electrum_passphrase_list
+                    header = Satochip_Connector.make_header(type, export_rights, label, subtype=subtype)
+                    secret_dic = {'header': header, 'secret_list': secret_list}
                 else:
-                    print("Saving to SeedKeeper V2")
-                    label = ret['passphrase']
-                    export_rights = "Plaintext export allowed"
-                    type = "Masterseed"
-                    subtype = 0x01
-                    wordlist_byte = dict_swap_keys_values(BIP39_WORDLIST_DIC).get("english")
-                    bip39_entropy_bytes = self.mnemonic_to_entropy(seed.mnemonic_str, "english")
-                    bip39_entropy_list = list(bip39_entropy_bytes)
-                    bip39_passphrase_list = list(bytes(seed.passphrase, 'utf-8'))
-                    masterseed_bytes = seed.seed_bytes
-                    masterseed_list = list(masterseed_bytes)
-                    secret_list = ([len(masterseed_list)] +
-                                   masterseed_list +
-                                   [wordlist_byte] +
-                                   [len(bip39_entropy_list)] +
-                                   bip39_entropy_list +
-                                   [len(bip39_passphrase_list)] +
-                                   bip39_passphrase_list
-                                   )
-                header = Satochip_Connector.make_header(type, export_rights, label, subtype=subtype)
-                secret_dic = {'header': header, 'secret_list': secret_list}
+                    if status['protocol_minor_version'] == 1:  # Seedkeeper v1
+                        print("Saving to SeedKeeper V1")
+                        label = ret['passphrase']
+                        export_rights = "Plaintext export allowed"
+                        type = "BIP39 mnemonic"
+                        subtype = 0
+                        bip39_mnemonic = seed.mnemonic_str
+                        bip39_mnemonic_list = list(bytes(bip39_mnemonic, 'utf-8'))
+                        bip39_passphrase = seed.passphrase
+                        bip39_passphrase_list = list(bytes(bip39_passphrase, 'utf-8'))
+                        secret_list = [len(bip39_mnemonic_list)] + bip39_mnemonic_list + [len(bip39_passphrase_list)] + bip39_passphrase_list
+                    else:
+                        print("Saving to SeedKeeper V2")
+                        label = ret['passphrase']
+                        export_rights = "Plaintext export allowed"
+                        type = "Masterseed"
+                        subtype = 0x01
+                        wordlist_byte = dict_swap_keys_values(BIP39_WORDLIST_DIC).get("english")
+                        bip39_entropy_bytes = self.mnemonic_to_entropy(seed.mnemonic_str, "english")
+                        bip39_entropy_list = list(bip39_entropy_bytes)
+                        bip39_passphrase_list = list(bytes(seed.passphrase, 'utf-8'))
+                        masterseed_bytes = seed.seed_bytes
+                        masterseed_list = list(masterseed_bytes)
+                        secret_list = ([len(masterseed_list)] +
+                                       masterseed_list +
+                                       [wordlist_byte] +
+                                       [len(bip39_entropy_list)] +
+                                       bip39_entropy_list +
+                                       [len(bip39_passphrase_list)] +
+                                       bip39_passphrase_list
+                                       )
+                    header = Satochip_Connector.make_header(type, export_rights, label, subtype=subtype)
+                    secret_dic = {'header': header, 'secret_list': secret_list}
 
             self.loading_screen = LoadingScreenThread(text="Saving Seed\n\n\n\n\n\n")
             self.loading_screen.start()
