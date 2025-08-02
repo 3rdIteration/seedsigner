@@ -1,10 +1,9 @@
 from pysatochip.CardConnector import CardConnector
 from pysatochip.JCconstants import (
+    JCconstants,
     SEEDKEEPER_DIC_TYPE,
     SEEDKEEPER_DIC_ORIGIN,
-    SEEDKEEPER_DIC_EXPORT_RIGHTS,
-    PIN_MIN_SIZE,
-    PIN_MAX_SIZE,
+    SEEDKEEPER_DIC_EXPORT_RIGHTS
 )
 from seedsigner.gui.screens import (
     RET_CODE__BACK_BUTTON,
@@ -36,14 +35,14 @@ def prompt_for_pin(parent_view, title: str):
             return None
 
         pin_str = ret.get("passphrase", "")
-        if PIN_MIN_SIZE <= len(pin_str) <= PIN_MAX_SIZE:
+        if JCconstants.PIN_MIN_SIZE <= len(pin_str) <= JCconstants.PIN_MAX_SIZE:
             return pin_str
 
         parent_view.run_screen(
             WarningScreen,
             title="Invalid PIN",
             status_headline=None,
-            text=f"PIN must be between {PIN_MIN_SIZE} and {PIN_MAX_SIZE} characters.",
+            text=f"PIN must be between {JCconstants.PIN_MIN_SIZE} and {JCconstants.PIN_MAX_SIZE} characters.",
             show_back_button=True,
         )
 
