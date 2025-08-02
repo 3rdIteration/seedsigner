@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from gettext import gettext as _
 from typing import Any
 from PIL import Image, ImageDraw
+from seedsigner.helpers import mnemonic_generation
 from seedsigner.gui.renderer import Renderer
 from seedsigner.hardware.camera import Camera
 from seedsigner.helpers.qr import QR
@@ -75,6 +76,36 @@ class ToolsImageEntropyLivePreviewScreen(BaseScreen):
                     )
 
                 self.renderer.canvas.paste(frame.crop(box=box))
+
+                # Calculate and display Shannon entropy indicator
+                entropy_val = mnemonic_generation._shannon_entropy(frame.tobytes())
+                entropy_text = f"{entropy_val:.2f}"
+                indicator_size = 10
+                text_x = GUIConstants.EDGE_PADDING
+                text_y = GUIConstants.EDGE_PADDING
+                if entropy_val < 3.5:
+                    color = GUIConstants.ERROR_COLOR
+                elif entropy_val < 4.5:
+                    color = GUIConstants.WARNING_COLOR
+                else:
+                    color = GUIConstants.GREEN_INDICATOR_COLOR
+                self.renderer.draw.text(
+                    (text_x, text_y),
+                    text=entropy_text,
+                    fill=GUIConstants.BODY_FONT_COLOR,
+                    font=instructions_font,
+                    anchor="lt",
+                )
+                indicator_x = text_x + instructions_font.getlength(entropy_text) + GUIConstants.COMPONENT_PADDING
+                self.renderer.draw.ellipse(
+                    (
+                        (indicator_x, text_y),
+                        (indicator_x + indicator_size, text_y + indicator_size)
+                    ),
+                    fill=color,
+                    outline="black",
+                    width=1,
+                )
 
             # Check for ANYCLICK to take final entropy image
             if self.hw_inputs.check_for_low(keys=HardwareButtonsConstants.KEYS__ANYCLICK):
