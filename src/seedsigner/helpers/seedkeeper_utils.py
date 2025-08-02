@@ -1,7 +1,19 @@
 from pysatochip.CardConnector import CardConnector
-from pysatochip.JCconstants import SEEDKEEPER_DIC_TYPE, SEEDKEEPER_DIC_ORIGIN, SEEDKEEPER_DIC_EXPORT_RIGHTS
-from seedsigner.gui.screens import (RET_CODE__BACK_BUTTON, ButtonListScreen,
-    WarningScreen, DireWarningScreen, seed_screens, LargeIconStatusScreen, KeyboardScreen)
+from pysatochip.JCconstants import (
+    JCconstants,
+    SEEDKEEPER_DIC_TYPE,
+    SEEDKEEPER_DIC_ORIGIN,
+    SEEDKEEPER_DIC_EXPORT_RIGHTS
+)
+from seedsigner.gui.screens import (
+    RET_CODE__BACK_BUTTON,
+    ButtonListScreen,
+    WarningScreen,
+    DireWarningScreen,
+    seed_screens,
+    LargeIconStatusScreen,
+    KeyboardScreen,
+)
 from seedsigner.gui.screens.screen import LoadingScreenThread
 
 
@@ -13,9 +25,35 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-def init_satochip(parentObject, init_card_filter=None, require_pin = True):
-    from seedsigner.models.settings import Settings, SettingsConstants, SettingsDefinition
-    
+
+def prompt_for_pin(parent_view, title: str):
+    """Prompt for a PIN and enforce length requirements."""
+
+    while True:
+        ret = seed_screens.SeedAddPassphraseScreen(title=title).display()
+        if isinstance(ret, dict) and "is_back_button" in ret:
+            return None
+
+        pin_str = ret.get("passphrase", "")
+        if JCconstants.PIN_MIN_SIZE <= len(pin_str) <= JCconstants.PIN_MAX_SIZE:
+            return pin_str
+
+        parent_view.run_screen(
+            WarningScreen,
+            title="Invalid PIN",
+            status_headline=None,
+            text=f"PIN must be between {JCconstants.PIN_MIN_SIZE} and {JCconstants.PIN_MAX_SIZE} characters.",
+            show_back_button=True,
+        )
+
+
+def init_satochip(parentObject, init_card_filter=None, require_pin=True):
+    from seedsigner.models.settings import (
+        Settings,
+        SettingsConstants,
+        SettingsDefinition,
+    )
+
     # Check for existing card connector
     print("Checking existing card connector...")
     try:
@@ -34,7 +72,7 @@ def init_satochip(parentObject, init_card_filter=None, require_pin = True):
     try:
         if parentObject.controller.Satochip_Connector is None:
             print("No Working CardConnector, Connecting")
-            print("Card Filter:",init_card_filter)
+            print("Card Filter:", init_card_filter)
             Satochip_Connector = CardConnector(card_filter=init_card_filter)
     except Exception as e:
         parentObject.run_screen(
@@ -50,13 +88,13 @@ def init_satochip(parentObject, init_card_filter=None, require_pin = True):
         # Prompt for pin if one hasn't been set, otherwise a cached pin will be used
         if parentObject.controller.Satochip_PIN is None:
             print("No Cached pin, prompting for pin")
-            card_pin = seed_screens.SeedAddPassphraseScreen(title="Card PIN").display()
-            if "is_back_button" in card_pin:
+            pin_str = prompt_for_pin(parentObject, "Card PIN")
+            if pin_str is None:
                 return None
-            card_pin = list(bytes(card_pin['passphrase'], "utf-8"))
+            card_pin = list(pin_str.encode("utf-8"))
         else:
             card_pin = parentObject.controller.Satochip_PIN
-            
+
     parentObject.loading_screen = LoadingScreenThread(text="Connecting to Card")
     parentObject.loading_screen.start()
 
@@ -66,25 +104,27 @@ def init_satochip(parentObject, init_card_filter=None, require_pin = True):
 
     while time.time() < time_end:
         try:
-                
+
             time.sleep(0.5)  # give some time to initialize reader...
             status = Satochip_Connector.card_get_status()
             print("Found Card:", Satochip_Connector.UID_SHA1)
             print(status[3])
-            
-            if (Satochip_Connector.needs_secure_channel):
+
+            if Satochip_Connector.needs_secure_channel:
                 print("Initiating Secure Channel")
                 Satochip_Connector.card_initiate_secure_channel()
                 print("Secure Channel Initialised")
 
-            if len(status[3]) > 0: #Sometimes it's possible to end up with an invalid of zero length here...
+            if (
+                len(status[3]) > 0
+            ):  # Sometimes it's possible to end up with an invalid of zero length here...
                 break
 
         except Exception as e:
             print("CardConnector Init Failed:" + str(e))
-            time.sleep(0.1) # Sleep for 100ms
-        
-        status = None # Reset this every loop...
+            time.sleep(0.1)  # Sleep for 100ms
+
+        status = None  # Reset this every loop...
 
     parentObject.loading_screen.stop()
 
@@ -99,20 +139,23 @@ def init_satochip(parentObject, init_card_filter=None, require_pin = True):
         return None
 
     # Check if the Seedkeeper needs the initial setup process
-    if status[3]['setup_done']:
+    if status[3]["setup_done"]:
 
         if require_pin:
             # Check for an existing Seedkeeper card that we may have been using with this PIN,
             # prompt to re-enter pin if the card has been swapped...
-            if parentObject.controller.Satochip_Last_UID_SHA1 is not None and \
-            parentObject.controller.Satochip_Last_UID_SHA1 != Satochip_Connector.UID_SHA1:
+            if (
+                parentObject.controller.Satochip_Last_UID_SHA1 is not None
+                and parentObject.controller.Satochip_Last_UID_SHA1
+                != Satochip_Connector.UID_SHA1
+            ):
                 print("Found Card:", Satochip_Connector.UID_SHA1)
                 print("Expecting Card:", parentObject.controller.Satochip_Last_UID_SHA1)
                 print("Card has changed, prompting for new PIN")
-                card_pin = seed_screens.SeedAddPassphraseScreen(title="Card PIN").display()
-                if "is_back_button" in card_pin:
+                pin_str = prompt_for_pin(parentObject, "Card PIN")
+                if pin_str is None:
                     return None
-                card_pin = list(bytes(card_pin['passphrase'], "utf-8"))
+                card_pin = list(pin_str.encode("utf-8"))
             print("Same card, using existing PIN, already loaded...")
 
             # Check PIN
@@ -129,7 +172,7 @@ def init_satochip(parentObject, init_card_filter=None, require_pin = True):
 
                 if sw1 == 0x90 and sw2 == 0x00:
                     print("Pin Correct")
-                    pass #Pin is correct
+                    pass  # Pin is correct
                 else:
                     parentObject.run_screen(
                         WarningScreen,
@@ -140,10 +183,10 @@ def init_satochip(parentObject, init_card_filter=None, require_pin = True):
                     )
                     return None
 
-            # Any number of things could have gone wrong, so just report the error and return none...        
+            # Any number of things could have gone wrong, so just report the error and return none...
             except Exception as e:
                 parentObject.loading_screen.stop()
-                time.sleep(0.1) # Sleep for 100ms
+                time.sleep(0.1)  # Sleep for 100ms
                 print("Pin Check General Exception:" + str(e))
 
                 parentObject.run_screen(
@@ -154,7 +197,7 @@ def init_satochip(parentObject, init_card_filter=None, require_pin = True):
                     show_back_button=True,
                 )
                 return None
-    
+
     else:
         print("Card Needs Initial Setup")
         parentObject.run_screen(
@@ -165,13 +208,13 @@ def init_satochip(parentObject, init_card_filter=None, require_pin = True):
             show_back_button=True,
         )
 
-        ret = seed_screens.SeedAddPassphraseScreen(title="New Card PIN").display()
+        pin_str = prompt_for_pin(parentObject, "New Card PIN")
 
-        if "is_back_button" in ret:
+        if pin_str is None:
             return None
-    
+
         """Run the initial card setup process"""
-        pin_0 = list(ret['passphrase'].encode('utf8'))
+        pin_0 = list(pin_str.encode("utf8"))
         # Allow configurable PIN attempt limit
         pin_tries_0 = Settings.get_instance().get_value(SettingsConstants.SETTING__SCARD_PIN_ATTEMPTS)
         ublk_tries_0 = 0x01
@@ -188,7 +231,24 @@ def init_satochip(parentObject, init_card_filter=None, require_pin = True):
         create_key_ACL = 0x01  # RFU
         create_pin_ACL = 0x01  # RFU
 
-        (response, sw1, sw2) = Satochip_Connector.card_setup(pin_tries_0, ublk_tries_0, pin_0, ublk_0, pin_tries_1, ublk_tries_1, pin_1, ublk_1, secmemsize, memsize, create_object_ACL, create_key_ACL, create_pin_ACL, option_flags=0, hmacsha160_key=None, amount_limit=0)
+        (response, sw1, sw2) = Satochip_Connector.card_setup(
+            pin_tries_0,
+            ublk_tries_0,
+            pin_0,
+            ublk_0,
+            pin_tries_1,
+            ublk_tries_1,
+            pin_1,
+            ublk_1,
+            secmemsize,
+            memsize,
+            create_object_ACL,
+            create_key_ACL,
+            create_pin_ACL,
+            option_flags=0,
+            hmacsha160_key=None,
+            amount_limit=0,
+        )
         if sw1 != 0x90 or sw2 != 0x00:
             print("ERROR: Setup Failed")
             parentObject.run_screen(
@@ -200,7 +260,7 @@ def init_satochip(parentObject, init_card_filter=None, require_pin = True):
             )
             return None
         else:
-            Satochip_Connector.set_pin(0, list(bytes(ret['passphrase'], "utf-8")))
+            Satochip_Connector.set_pin(0, pin_0)
             print("Setup Succeeded")
             parentObject.run_screen(
                 LargeIconStatusScreen,
@@ -210,33 +270,45 @@ def init_satochip(parentObject, init_card_filter=None, require_pin = True):
                 show_back_button=False,
             )
             # Save the PIN for the newly set up card...
-            card_pin = list(bytes(ret['passphrase'], "utf-8"))
+            card_pin = pin_0
 
     # Everything works, so save object and also note the PIN & UID of the card we last successfully connected to...
     parentObject.controller.Satochip_Connector = Satochip_Connector
     parentObject.controller.Satochip_Last_UID_SHA1 = Satochip_Connector.UID_SHA1
 
     # Only cache pin if we are using it
-    if require_pin: parentObject.controller.Satochip_PIN = card_pin
+    if require_pin:
+        parentObject.controller.Satochip_PIN = card_pin
 
     return parentObject.controller.Satochip_Connector
 
-def run_globalplatform(parentObject, command, loadingText = "Loading", successtext = "Success"):
+
+def run_globalplatform(
+    parentObject, command, loadingText="Loading", successtext="Success"
+):
     from subprocess import run
-    from seedsigner.models.settings import Settings, SettingsConstants, SettingsDefinition
+    from seedsigner.models.settings import (
+        Settings,
+        SettingsConstants,
+        SettingsDefinition,
+    )
 
     parentObject.loading_screen = LoadingScreenThread(text=loadingText)
     parentObject.loading_screen.start()
 
     if platform.uname()[1] == "seedsigner-os":
-        commandString = "/mnt/diy/jdk/bin/java -jar /mnt/diy/Satochip-DIY/gp.jar " + command
+        commandString = (
+            "/mnt/diy/jdk/bin/java -jar /mnt/diy/Satochip-DIY/gp.jar " + command
+        )
     else:
         commandString = "java -jar /home/pi/Satochip-DIY/gp.jar " + command
 
     data = run(commandString, capture_output=True, shell=True, text=True)
 
     # This process often kills IFD-NFC, so restart it if required
-    scinterface = parentObject.settings.get_value(SettingsConstants.SETTING__SMARTCARD_INTERFACES)
+    scinterface = parentObject.settings.get_value(
+        SettingsConstants.SETTING__SMARTCARD_INTERFACES
+    )
     if "pn532" in scinterface:
         os.system("ifdnfc-activate no")
         time.sleep(1)
@@ -247,13 +319,13 @@ def run_globalplatform(parentObject, command, loadingText = "Loading", successte
     print("StdOut:", data.stdout)
     print("StdErr:", data.stderr)
 
-    #data.stderr = data.stderr.replace("Warning: no keys given, defaulting to 404142434445464748494A4B4C4D4E4F", "")
+    # data.stderr = data.stderr.replace("Warning: no keys given, defaulting to 404142434445464748494A4B4C4D4E4F", "")
 
-    data.stderr = data.stderr.split('\n')
+    data.stderr = data.stderr.split("\n")
 
     errors_cleaned = []
     for errorLine in data.stderr:
-        if "[INFO]" in errorLine: 
+        if "[INFO]" in errorLine:
             continue
         elif "404142434445464748494A4B4C4D4E4F" in errorLine:
             continue
@@ -288,7 +360,7 @@ def run_globalplatform(parentObject, command, loadingText = "Loading", successte
 
         elif "0x6444" in errors_cleaned or "0x6F00" in errors_cleaned:
             failureText = "Incompatible Javacard."
-            uninstall_required=True
+            uninstall_required = True
 
         elif "Not enough memory space" in errors_cleaned:
             failureText = "Not enough space on Javacard for Applet..."
@@ -298,11 +370,13 @@ def run_globalplatform(parentObject, command, loadingText = "Loading", successte
 
         elif "SCARD_E_NOT_TRANSACTED" in errors_cleaned:
             failureText = "Applet installation failed, perhaps try with a different Smartcard Interface..."
-            uninstall_required=True
+            uninstall_required = True
 
-        elif "Failed to open secure channel" in errors_cleaned or "SCARD_W_RESET_CARD" in errors_cleaned:
+        elif (
+            "Failed to open secure channel" in errors_cleaned
+            or "SCARD_W_RESET_CARD" in errors_cleaned
+        ):
             failureText = "Unable to complete secure connection... (App or reader may need restart)"
-
 
         parentObject.run_screen(
             WarningScreen,
@@ -314,7 +388,12 @@ def run_globalplatform(parentObject, command, loadingText = "Loading", successte
 
         if uninstall_required:
             command = command.replace("--install", "--uninstall")
-            data = run_globalplatform(parentObject, command, loadingText = "Uninstalling", successtext = "Mis-Installed Applet Uninstalled")
+            data = run_globalplatform(
+                parentObject,
+                command,
+                loadingText="Uninstalling",
+                successtext="Mis-Installed Applet Uninstalled",
+            )
             if data is None:
                 parentObject.run_screen(
                     WarningScreen,
