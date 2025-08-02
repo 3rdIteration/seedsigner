@@ -127,7 +127,8 @@ class SeedSelectSeedView(View):
 
         if self.settings.get_value(SettingsConstants.SETTING__ELECTRUM_SEEDS) == SettingsConstants.OPTION__ENABLED:
             button_data.append(self.TYPE_ELECTRUM)
-        button_data.append(self.TYPE_SLIP39)
+        if self.settings.get_value(SettingsConstants.SETTING__SLIP39_SEEDS) == SettingsConstants.OPTION__ENABLED:
+            button_data.append(self.TYPE_SLIP39)
 
         selected_menu_num = self.run_screen(
             seed_screens.SeedSelectSeedScreen,
@@ -196,7 +197,8 @@ class LoadSeedView(View):
             self.IMPORT_SEEDKEEPER,
         ]
 
-        button_data.append(self.TYPE_SLIP39)
+        if self.settings.get_value(SettingsConstants.SETTING__SLIP39_SEEDS) == SettingsConstants.OPTION__ENABLED:
+            button_data.append(self.TYPE_SLIP39)
         button_data.append(self.CREATE)
 
         if self.settings.get_value(SettingsConstants.SETTING__ELECTRUM_SEEDS) == SettingsConstants.OPTION__ENABLED:
