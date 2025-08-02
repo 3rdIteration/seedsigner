@@ -83,17 +83,22 @@ class ToolsImageEntropyLivePreviewScreen(BaseScreen):
                 indicator_size = 10
                 text_x = GUIConstants.EDGE_PADDING
                 text_y = GUIConstants.EDGE_PADDING
+                status_text = None
                 if entropy_val < 3.5:
                     color = GUIConstants.ERROR_COLOR
+                    status_text = _("LOW ENTROPY")
                 elif entropy_val < 4.5:
                     color = GUIConstants.WARNING_COLOR
                 else:
                     color = GUIConstants.GREEN_INDICATOR_COLOR
+                    status_text = _("GOOD ENTROPY")
                 self.renderer.draw.text(
                     (text_x, text_y),
                     text=entropy_text,
                     fill=GUIConstants.BODY_FONT_COLOR,
                     font=instructions_font,
+                    stroke_width=4,
+                    stroke_fill=GUIConstants.BACKGROUND_COLOR,
                     anchor="lt",
                 )
                 indicator_x = text_x + instructions_font.getlength(entropy_text) + GUIConstants.COMPONENT_PADDING
@@ -104,8 +109,19 @@ class ToolsImageEntropyLivePreviewScreen(BaseScreen):
                     ),
                     fill=color,
                     outline="black",
-                    width=1,
+                    width=2,
                 )
+                if status_text:
+                    status_x = indicator_x + indicator_size + GUIConstants.COMPONENT_PADDING
+                    self.renderer.draw.text(
+                        (status_x, text_y),
+                        text=status_text,
+                        fill=GUIConstants.BODY_FONT_COLOR,
+                        font=instructions_font,
+                        stroke_width=4,
+                        stroke_fill=GUIConstants.BACKGROUND_COLOR,
+                        anchor="lt",
+                    )
 
             # Check for ANYCLICK to take final entropy image
             if self.hw_inputs.check_for_low(keys=HardwareButtonsConstants.KEYS__ANYCLICK):
