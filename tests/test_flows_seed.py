@@ -250,6 +250,8 @@ class TestSeedFlows(FlowTest):
                     FlowStep(seed_views.SeedExportXpubWarningView, screen_return_value=0),
                     FlowStep(seed_views.SeedExportXpubDetailsView, screen_return_value=0),
                     FlowStep(seed_views.SeedExportXpubQRDisplayView, screen_return_value=0),
+                    FlowStep(seed_views.SeedExportXpubVerifyAddressView, screen_return_value=0),
+                    FlowStep(scan_views.ScanXpubAddressView, screen_return_value=RET_CODE__BACK_BUTTON),
                     FlowStep(MainMenuView),
                 ]
         )
@@ -382,6 +384,8 @@ class TestSeedFlows(FlowTest):
                 FlowStep(seed_views.SeedExportXpubWarningView, screen_return_value=0),
                 FlowStep(seed_views.SeedExportXpubDetailsView, screen_return_value=0),
                 FlowStep(seed_views.SeedExportXpubQRDisplayView, screen_return_value=0),
+                FlowStep(seed_views.SeedExportXpubVerifyAddressView, screen_return_value=0),
+                FlowStep(scan_views.ScanXpubAddressView, screen_return_value=RET_CODE__BACK_BUTTON),
                 FlowStep(MainMenuView),
             ]
         )
@@ -413,6 +417,8 @@ class TestSeedFlows(FlowTest):
                 FlowStep(seed_views.SeedExportXpubWarningView, screen_return_value=0),
                 FlowStep(seed_views.SeedExportXpubDetailsView, screen_return_value=0),
                 FlowStep(seed_views.SeedExportXpubQRDisplayView, screen_return_value=0),
+                FlowStep(seed_views.SeedExportXpubVerifyAddressView, screen_return_value=0),
+                FlowStep(scan_views.ScanXpubAddressView, screen_return_value=RET_CODE__BACK_BUTTON),
                 FlowStep(MainMenuView),
             ]
         )
@@ -444,6 +450,8 @@ class TestSeedFlows(FlowTest):
                 FlowStep(seed_views.SeedExportXpubWarningView, screen_return_value=0),
                 FlowStep(seed_views.SeedExportXpubDetailsView, screen_return_value=0),
                 FlowStep(seed_views.SeedExportXpubQRDisplayView, screen_return_value=0),
+                FlowStep(seed_views.SeedExportXpubVerifyAddressView, screen_return_value=0),
+                FlowStep(scan_views.ScanXpubAddressView, screen_return_value=RET_CODE__BACK_BUTTON),
                 FlowStep(MainMenuView),
             ]
         )

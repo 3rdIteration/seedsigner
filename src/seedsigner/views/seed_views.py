@@ -1158,6 +1158,7 @@ class SeedSlip39RegenerateSharesView(View):
         super().__init__()
         self.seed_num = seed_num
         self.seed = self.controller.get_seed(seed_num)
+        self.seed_num = seed_num
 
     def run(self):
         if not self.seed.extendable:
@@ -1518,6 +1519,8 @@ class SeedExportXpubCoordinatorView(View):
         if len(self.settings.get_value(SettingsConstants.SETTING__COORDINATORS)) == 1:
             # Nothing to select; skip this screen
             args["coordinator"] = self.settings.get_value(SettingsConstants.SETTING__COORDINATORS)[0]
+            entry = SettingsDefinition.get_settings_entry(SettingsConstants.SETTING__COORDINATORS)
+            args["coordinator_label"] = entry.get_selection_option_display_name_by_value(args["coordinator"])
             return Destination(SeedExportXpubWarningView, view_args=args, skip_current_view=True)
 
         button_data = []
@@ -1538,19 +1541,21 @@ class SeedExportXpubCoordinatorView(View):
         # selected_display_name = button_data[selected_menu_num]
         # args["coordinator"] = coordinators_settings_entry.get_selection_option_value_by_display_name(selected_display_name)
         args["coordinator"] = button_data[selected_menu_num].return_data
+        args["coordinator_label"] = button_data[selected_menu_num].button_label
 
         return Destination(SeedExportXpubWarningView, view_args=args)
 
 
 
 class SeedExportXpubWarningView(View):
-    def __init__(self, seed_num: int, sig_type: str, script_type: str, coordinator: str, custom_derivation: str):
+    def __init__(self, seed_num: int, sig_type: str, script_type: str, coordinator: str, custom_derivation: str, coordinator_label: str):
         super().__init__()
         self.seed_num = seed_num
         self.sig_type = sig_type
         self.script_type = script_type
         self.coordinator = coordinator
         self.custom_derivation = custom_derivation
+        self.coordinator_label = coordinator_label
 
 
     def run(self):
@@ -1562,6 +1567,7 @@ class SeedExportXpubWarningView(View):
                 "script_type": self.script_type,
                 "coordinator": self.coordinator,
                 "custom_derivation": self.custom_derivation,
+                "coordinator_label": self.coordinator_label,
             },
             skip_current_view=True,  # Prevent going BACK to WarningViews
         )
@@ -1590,12 +1596,13 @@ class SeedExportXpubDetailsView(View):
         Collects the user input from all the previous screens leading up to this and
         finally calculates the xpub and displays the summary view to the user.
     """
-    def __init__(self, seed_num: int, sig_type: str, script_type: str, coordinator: str, custom_derivation: str):
+    def __init__(self, seed_num: int, sig_type: str, script_type: str, coordinator: str, custom_derivation: str, coordinator_label: str):
         super().__init__()
         self.sig_type = sig_type
         self.script_type = script_type
         self.coordinator = coordinator
         self.custom_derivation = custom_derivation
+        self.coordinator_label = coordinator_label
         
         self.seed_num = seed_num
         self.seed = self.controller.get_seed(self.seed_num)
@@ -1660,7 +1667,9 @@ class SeedExportXpubDetailsView(View):
                 dict(seed_num=self.seed_num,
                      coordinator=self.coordinator,
                      derivation_path=derivation_path,
-                     sig_type=self.sig_type
+                     sig_type=self.sig_type,
+                     script_type=self.script_type,
+                     coordinator_label=self.coordinator_label
                 )
             )
 
@@ -1670,9 +1679,14 @@ class SeedExportXpubDetailsView(View):
 
 
 class SeedExportXpubQRDisplayView(View):
-    def __init__(self, seed_num: int, coordinator: str, derivation_path: str, sig_type: str = SettingsConstants.SINGLE_SIG):
+    def __init__(self, seed_num: int, coordinator: str, derivation_path: str, sig_type: str = SettingsConstants.SINGLE_SIG, script_type: str = SettingsConstants.NATIVE_SEGWIT, coordinator_label: str = ""):
         super().__init__()
         self.seed = self.controller.get_seed(seed_num)
+        self.seed_num = seed_num
+        self.script_type = script_type
+        self.sig_type = sig_type
+        self.derivation_path = derivation_path
+        self.coordinator_label = coordinator_label
 
         encoder_args = dict(
             seed=self.seed,
@@ -1700,7 +1714,52 @@ class SeedExportXpubQRDisplayView(View):
             qr_encoder=self.qr_encoder
         )
 
-        return Destination(MainMenuView)
+        return Destination(
+            SeedExportXpubVerifyAddressView,
+            view_args=dict(
+                seed_num=self.seed_num,
+                derivation_path=self.derivation_path,
+                script_type=self.script_type,
+                sig_type=self.sig_type,
+                coordinator_label=self.coordinator_label,
+            ),
+            skip_current_view=True
+        )
+
+
+class SeedExportXpubVerifyAddressView(View):
+    def __init__(self, seed_num: int, derivation_path: str, script_type: str, sig_type: str, coordinator_label: str):
+        super().__init__()
+        self.seed_num = seed_num
+        self.derivation_path = derivation_path
+        self.script_type = script_type
+        self.sig_type = sig_type
+        self.coordinator_label = coordinator_label
+
+    def run(self):
+        from seedsigner.gui.screens.screen import LargeIconStatusScreen, ButtonOption
+        from seedsigner.views.scan_views import ScanXpubAddressView
+        self.run_screen(
+            LargeIconStatusScreen,
+            title=_("Verify Address"),
+            status_icon_name=SeedSignerIconConstants.QRCODE,
+            status_headline=None,
+            text=_("Open {} and display a receive address.").format(self.coordinator_label),
+            button_data=[ButtonOption(_("Scan"))],
+            show_back_button=False,
+        )
+
+        return Destination(
+            ScanXpubAddressView,
+            view_args=dict(
+                seed_num=self.seed_num,
+                derivation_path=self.derivation_path,
+                script_type=self.script_type,
+                sig_type=self.sig_type,
+                coordinator_label=self.coordinator_label,
+            ),
+            skip_current_view=True
+        )
 
 
 
