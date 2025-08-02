@@ -172,8 +172,8 @@ def init_satochip(parentObject, init_card_filter=None, require_pin = True):
     
         """Run the initial card setup process"""
         pin_0 = list(ret['passphrase'].encode('utf8'))
-        # Just stick with the defaults from SeedKeeper tool
-        pin_tries_0 = 0x05
+        # Allow configurable PIN attempt limit
+        pin_tries_0 = Settings.get_instance().get_value(SettingsConstants.SETTING__SCARD_PIN_ATTEMPTS)
         ublk_tries_0 = 0x01
         # PUK code can be used when PIN is unknown and the card is locked
         # We use a random value as the PUK is not used currently and is not user friendly

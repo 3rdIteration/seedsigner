@@ -272,6 +272,12 @@ class SettingsConstants:
         (SMARTCARD_INTERFACE_PHOENIX, "Phoenix via USB")
     ]
 
+    # Smartcard PIN attempt limits
+    SCARD_PIN_ATTEMPTS_MIN = 2
+    SCARD_PIN_ATTEMPTS_MAX = 10
+    ALL_SCARD_PIN_ATTEMPTS = [(i, str(i)) for i in range(SCARD_PIN_ATTEMPTS_MIN, SCARD_PIN_ATTEMPTS_MAX + 1)]
+    DEFAULT_SCARD_PIN_ATTEMPTS = 5
+
     @classmethod
     def map_network_to_embit(cls, network) -> str:
         # Note these are `embit` constants; do not wrap for translation
@@ -347,6 +353,7 @@ class SettingsConstants:
     SETTING__BTC_DENOMINATION = "denomination"
     SETTING__SMARTCARD_INTERFACES = "smartcard_interfaces"
     SETTING__CACHE_SCARD_PIN = "cache_scard_pin"
+    SETTING__SCARD_PIN_ATTEMPTS = "scard_pin_attempts"
     SETTING__WIPE_TIMER = "wipe_timer"
 
     SETTING__DISPLAY_CONFIGURATION = "display_config"
@@ -640,9 +647,17 @@ class SettingsDefinition:
                     default_value=SettingsConstants.OPTION__DISABLED),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__SYSTEM,
+                    attr_name=SettingsConstants.SETTING__SCARD_PIN_ATTEMPTS,
+                    abbreviated_name="pintries",
+                    display_name=_mft("Smartcard PIN Attempts"),
+                    type=SettingsConstants.TYPE__SELECT_1,
+                    selection_options=SettingsConstants.ALL_SCARD_PIN_ATTEMPTS,
+                    default_value=SettingsConstants.DEFAULT_SCARD_PIN_ATTEMPTS),
+
+        SettingsEntry(category=SettingsConstants.CATEGORY__SYSTEM,
                     attr_name=SettingsConstants.SETTING__WIPE_TIMER,
                     abbreviated_name="wipe",
-                    display_name=_mft("Wipe timer"),
+                    display_name=_mft("Wipe Timer"),
                     type=SettingsConstants.TYPE__SELECT_1,
                     selection_options=SettingsConstants.ALL_WIPE_TIMERS,
                     default_value=SettingsConstants.WIPE_TIMER__DISABLED),
