@@ -975,12 +975,12 @@ class ToolsSatochipChangePinView(View):
         if not Satochip_Connector:
             return Destination(BackStackView)
 
-        NewPin = seed_screens.SeedAddPassphraseScreen(title="New PIN").display()
+        new_pin_str = seedkeeper_utils.prompt_for_pin(self, "New PIN")
 
-        if "is_back_button" in NewPin:
+        if new_pin_str is None:
             return Destination(BackStackView)
-        
-        new_pin = list(NewPin['passphrase'].encode('utf8'))
+
+        new_pin = list(new_pin_str.encode('utf8'))
         response, sw1, sw2 = Satochip_Connector.card_change_PIN(0, Satochip_Connector.pin, new_pin)
         if sw1 == 0x90 and sw2 == 0x00:
             logger.info("Success: Pin Changed")
@@ -1307,17 +1307,10 @@ class ToolsSatochipFactoryResetView(View):
             if ret == RET_CODE__BACK_BUTTON:
                 return resetStatus
 
-            pin = seed_screens.SeedAddPassphraseScreen(title="Enter PIN").display()
+            pin = seedkeeper_utils.prompt_for_pin(self, "Enter PIN")
 
-            if "is_back_button" in pin:
+            if pin is None:
                 return Destination(ToolsSmartcardMenuView)
-            
-            pin = pin['passphrase']
-            
-            if len(pin)<4:
-                print("PIN code too short, factory reset is aborted")
-                doReset = False
-                break
 
             try:
                 (response, sw1, sw2)= Satochip_Connector.card_verify_PIN(pin)
