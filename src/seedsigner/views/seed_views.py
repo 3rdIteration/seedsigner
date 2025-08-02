@@ -1738,7 +1738,7 @@ class SeedExportXpubVerifyAddressView(View):
         self.coordinator_label = coordinator_label
 
     def run(self):
-        from seedsigner.gui.screens.screen import LargeIconStatusScreen, ButtonOption
+        from seedsigner.gui.screens.screen import WarningScreen, ButtonOption
         from seedsigner.views.scan_views import ScanXpubAddressView
         self.run_screen(
             LargeIconStatusScreen,
@@ -3208,6 +3208,8 @@ class SeedAddressVerificationView(View):
     SKIP_10 = ButtonOption("Skip 10")
     CANCEL = ButtonOption("Cancel")
 
+    MAX_ITERATIONS_EXPORT_XPUB = 1000
+
     def __init__(self, seed_num: int = None, export_for_xpub: bool = False):
         super().__init__()
         self.seed_num = seed_num
@@ -3271,7 +3273,7 @@ class SeedAddressVerificationView(View):
             network_display = network_settings_entry.get_selection_option_display_name_by_value(self.network)
             mainnet = network_settings_entry.get_selection_option_display_name_by_value(SettingsConstants.MAINNET)
 
-            max_iterations = 1000 if self.export_for_xpub else None
+            max_iterations = self.MAX_ITERATIONS_EXPORT_XPUB if self.export_for_xpub else None
 
             # Display the Screen to show the brute-forcing progress.
             # Using a loop here to handle the SKIP_10 button presses to increment the counter
@@ -3291,6 +3293,7 @@ class SeedAddressVerificationView(View):
                     threadsafe_counter=self.threadsafe_counter,
                     verified_index=self.verified_index,
                     button_data=button_data,
+                    max_iterations=max_iterations,
                 )
 
                 if self.verified_index.cur_count is not None:
@@ -3410,7 +3413,7 @@ class SeedAddressVerificationSuccessView(View):
 
 class SeedExportXpubVerificationSuccessView(View):
     def run(self):
-        from seedsigner.gui.screens.screen import LargeIconStatusScreen, ButtonOption
+        from seedsigner.gui.screens.screen import WarningScreen, ButtonOption
         self.run_screen(
             LargeIconStatusScreen,
             title=_("Wallet Export"),
@@ -3429,13 +3432,13 @@ class SeedExportXpubVerificationFailedView(View):
         self.reason = reason
 
     def run(self):
-        from seedsigner.gui.screens.screen import LargeIconStatusScreen, ButtonOption
+        from seedsigner.gui.screens.screen import WarningScreen, ButtonOption
         if self.reason == "script_mismatch":
             text = _("Address format doesn't match exported script type. Wallet export unsuccessful.")
         else:
             text = _("Unable to match wallet to current seed. Wallet export unsuccessful.")
         self.run_screen(
-            LargeIconStatusScreen,
+            WarningScreen,
             title=_("Export Failed"),
             status_icon_name=SeedSignerIconConstants.ERROR,
             text=text,

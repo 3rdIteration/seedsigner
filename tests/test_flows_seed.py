@@ -319,6 +319,38 @@ class TestSeedFlows(FlowTest):
             ],
         )
 
+    def test_export_xpub_verification_no_match(self, monkeypatch):
+        mnemonic = "blush twice taste dawn feed second opinion lazy thumb play neglect impact".split()
+        self.controller.storage.set_pending_seed(Seed(mnemonic=mnemonic))
+        self.controller.storage.finalize_pending_seed()
+
+        self.settings.set_value(SettingsConstants.SETTING__SIG_TYPES, [SettingsConstants.SINGLE_SIG])
+        self.settings.set_value(SettingsConstants.SETTING__SCRIPT_TYPES, [SettingsConstants.NATIVE_SEGWIT])
+        self.settings.set_value(SettingsConstants.SETTING__COORDINATORS, [SettingsConstants.COORDINATOR__SPECTER_DESKTOP])
+
+        monkeypatch.setattr(seed_views.SeedAddressVerificationView, "MAX_ITERATIONS_EXPORT_XPUB", 5)
+
+        def load_high_index_address(view: scan_views.ScanXpubAddressView):
+            view.decoder.add_data("bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kg3g4ty")
+
+        self.run_sequence(
+            initial_destination_view_args=dict(seed_num=0),
+            sequence=[
+                FlowStep(seed_views.SeedOptionsView, button_data_selection=seed_views.SeedOptionsView.EXPORT_XPUB),
+                FlowStep(seed_views.SeedExportXpubSigTypeView, is_redirect=True),
+                FlowStep(seed_views.SeedExportXpubScriptTypeView, is_redirect=True),
+                FlowStep(seed_views.SeedExportXpubCoordinatorView, is_redirect=True),
+                FlowStep(seed_views.SeedExportXpubWarningView, screen_return_value=0),
+                FlowStep(seed_views.SeedExportXpubDetailsView, screen_return_value=0),
+                FlowStep(seed_views.SeedExportXpubQRDisplayView, screen_return_value=0),
+                FlowStep(seed_views.SeedExportXpubVerifyAddressView, screen_return_value=0),
+                FlowStep(scan_views.ScanXpubAddressView, before_run=load_high_index_address),
+                FlowStep(seed_views.SeedAddressVerificationView),
+                FlowStep(seed_views.SeedExportXpubVerificationFailedView, screen_return_value=0),
+                FlowStep(MainMenuView),
+            ],
+        )
+
 
     def test_export_xpub_disabled_not_available_flow(self):
         """
@@ -451,8 +483,6 @@ class TestSeedFlows(FlowTest):
                 FlowStep(seed_views.SeedExportXpubWarningView, screen_return_value=0),
                 FlowStep(seed_views.SeedExportXpubDetailsView, screen_return_value=0),
                 FlowStep(seed_views.SeedExportXpubQRDisplayView, screen_return_value=0),
-                FlowStep(seed_views.SeedExportXpubVerifyAddressView, screen_return_value=0),
-                FlowStep(scan_views.ScanXpubAddressView, screen_return_value=RET_CODE__BACK_BUTTON),
                 FlowStep(MainMenuView),
             ]
         )
