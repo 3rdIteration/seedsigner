@@ -97,6 +97,8 @@ class ToolsImageEntropyLivePreviewScreen(BaseScreen):
                     text=entropy_text,
                     fill=GUIConstants.BODY_FONT_COLOR,
                     font=instructions_font,
+                    stroke_width=4,
+                    stroke_fill=GUIConstants.BACKGROUND_COLOR,
                     anchor="lt",
                 )
                 indicator_x = text_x + instructions_font.getlength(entropy_text) + GUIConstants.COMPONENT_PADDING
@@ -107,7 +109,7 @@ class ToolsImageEntropyLivePreviewScreen(BaseScreen):
                     ),
                     fill=color,
                     outline="black",
-                    width=1,
+                    width=2,
                 )
                 if status_text:
                     status_x = indicator_x + indicator_size + GUIConstants.COMPONENT_PADDING
@@ -116,6 +118,8 @@ class ToolsImageEntropyLivePreviewScreen(BaseScreen):
                         text=status_text,
                         fill=GUIConstants.BODY_FONT_COLOR,
                         font=instructions_font,
+                        stroke_width=4,
+                        stroke_fill=GUIConstants.BACKGROUND_COLOR,
                         anchor="lt",
                     )
 
