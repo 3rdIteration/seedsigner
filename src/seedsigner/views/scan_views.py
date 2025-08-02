@@ -303,22 +303,33 @@ class ScanXpubAddressView(ScanAddressView):
         self.derivation_path = derivation_path
         self.script_type = script_type
         self.sig_type = sig_type
-        self.instructions_text = _("Scan {} receive address").format(coordinator_label)
+        self.instructions_text = _("Scan {} receive address from the wallet you just exported").format(coordinator_label)
 
     def run(self):
         destination = super().run()
-        from .seed_views import AddressVerificationStartView, SeedAddressVerificationView
+        from .seed_views import AddressVerificationStartView, SeedAddressVerificationView, SeedExportXpubVerificationFailedView
 
         if destination.View_cls == AddressVerificationStartView:
             address = self.decoder.get_address()
+            (scanned_script_type, network) = self.decoder.get_address_type()
+            if scanned_script_type != self.script_type:
+                return Destination(
+                    SeedExportXpubVerificationFailedView,
+                    view_args=dict(reason="script_mismatch"),
+                    skip_current_view=True,
+                )
             self.controller.unverified_address = dict(
                 address=address,
                 script_type=self.script_type,
-                network=self.settings.get_value(SettingsConstants.SETTING__NETWORK),
+                network=network,
                 sig_type=self.sig_type,
                 derivation_path=self.derivation_path,
             )
-            return Destination(SeedAddressVerificationView, view_args=dict(seed_num=self.seed_num), skip_current_view=True)
+            return Destination(
+                SeedAddressVerificationView,
+                view_args=dict(seed_num=self.seed_num, export_for_xpub=True),
+                skip_current_view=True,
+            )
 
         return destination
 

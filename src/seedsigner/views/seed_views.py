@@ -1713,18 +1713,19 @@ class SeedExportXpubQRDisplayView(View):
             QRDisplayScreen,
             qr_encoder=self.qr_encoder
         )
-
-        return Destination(
-            SeedExportXpubVerifyAddressView,
-            view_args=dict(
-                seed_num=self.seed_num,
-                derivation_path=self.derivation_path,
-                script_type=self.script_type,
-                sig_type=self.sig_type,
-                coordinator_label=self.coordinator_label,
-            ),
-            skip_current_view=True
-        )
+        if self.sig_type == SettingsConstants.SINGLE_SIG:
+            return Destination(
+                SeedExportXpubVerifyAddressView,
+                view_args=dict(
+                    seed_num=self.seed_num,
+                    derivation_path=self.derivation_path,
+                    script_type=self.script_type,
+                    sig_type=self.sig_type,
+                    coordinator_label=self.coordinator_label,
+                ),
+                skip_current_view=True,
+            )
+        return Destination(MainMenuView)
 
 
 class SeedExportXpubVerifyAddressView(View):
@@ -1744,7 +1745,7 @@ class SeedExportXpubVerifyAddressView(View):
             title=_("Verify Address"),
             status_icon_name=SeedSignerIconConstants.QRCODE,
             status_headline=None,
-            text=_("Open {} and display a receive address.").format(self.coordinator_label),
+            text=_("Open {} and display a receive address from the wallet you just exported.").format(self.coordinator_label),
             button_data=[ButtonOption(_("Scan"))],
             show_back_button=False,
         )
@@ -3207,9 +3208,10 @@ class SeedAddressVerificationView(View):
     SKIP_10 = ButtonOption("Skip 10")
     CANCEL = ButtonOption("Cancel")
 
-    def __init__(self, seed_num: int = None):
+    def __init__(self, seed_num: int = None, export_for_xpub: bool = False):
         super().__init__()
         self.seed_num = seed_num
+        self.export_for_xpub = export_for_xpub
         self.is_multisig = self.controller.unverified_address["sig_type"] == SettingsConstants.MULTISIG
         self.seed_derivation_override = ""
         if not self.is_multisig:
@@ -3269,11 +3271,15 @@ class SeedAddressVerificationView(View):
             network_display = network_settings_entry.get_selection_option_display_name_by_value(self.network)
             mainnet = network_settings_entry.get_selection_option_display_name_by_value(SettingsConstants.MAINNET)
 
+            max_iterations = 1000 if self.export_for_xpub else None
+
             # Display the Screen to show the brute-forcing progress.
             # Using a loop here to handle the SKIP_10 button presses to increment the counter
             # and resume displaying the screen. User won't even notice that the Screen is
             # being re-constructed.
             while True:
+                if max_iterations is not None and self.threadsafe_counter.cur_count >= max_iterations:
+                    break
                 selected_menu_num = self.run_screen(
                     seed_screens.SeedAddressVerificationScreen,
                     address=self.address,
@@ -3309,7 +3315,12 @@ class SeedAddressVerificationView(View):
                 # Successfully verified the addr; update the data
                 self.controller.unverified_address["verified_index"] = self.verified_index.cur_count
                 self.controller.unverified_address["verified_index_is_change"] = self.verified_index_is_change.cur_count == 1
+                if self.export_for_xpub:
+                    return Destination(SeedExportXpubVerificationSuccessView)
                 return Destination(SeedAddressVerificationSuccessView, view_args=dict(seed_num=self.seed_num))
+
+            if self.export_for_xpub and max_iterations is not None and self.threadsafe_counter.cur_count >= max_iterations:
+                return Destination(SeedExportXpubVerificationFailedView, view_args=dict(reason="no_match"))
 
         finally:
             # Halt the thread if the user gave up (will already be stopped if it verified the
@@ -3395,6 +3406,44 @@ class SeedAddressVerificationSuccessView(View):
 
         return Destination(MainMenuView)
 
+
+
+class SeedExportXpubVerificationSuccessView(View):
+    def run(self):
+        from seedsigner.gui.screens.screen import LargeIconStatusScreen, ButtonOption
+        self.run_screen(
+            LargeIconStatusScreen,
+            title=_("Wallet Export"),
+            status_icon_name=SeedSignerIconConstants.SUCCESS,
+            text=_("Wallet export successful."),
+            button_data=[ButtonOption(_("OK"))],
+            show_back_button=False,
+        )
+
+        return Destination(MainMenuView)
+
+
+class SeedExportXpubVerificationFailedView(View):
+    def __init__(self, reason: str = "no_match"):
+        super().__init__()
+        self.reason = reason
+
+    def run(self):
+        from seedsigner.gui.screens.screen import LargeIconStatusScreen, ButtonOption
+        if self.reason == "script_mismatch":
+            text = _("Address format doesn't match exported script type. Wallet export unsuccessful.")
+        else:
+            text = _("Unable to match wallet to current seed. Wallet export unsuccessful.")
+        self.run_screen(
+            LargeIconStatusScreen,
+            title=_("Export Failed"),
+            status_icon_name=SeedSignerIconConstants.ERROR,
+            text=text,
+            button_data=[ButtonOption(_("OK"))],
+            show_back_button=False,
+        )
+
+        return Destination(MainMenuView)
 
 
 class LoadMultisigWalletDescriptorView(View):
