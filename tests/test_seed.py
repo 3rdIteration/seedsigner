@@ -4,7 +4,9 @@ import pytest
 from seedsigner.models.seed import InvalidSeedException, Seed, ElectrumSeed, Slip39Seed
 import shamir_mnemonic
 
+from base import BaseTest
 from seedsigner.models.settings import SettingsConstants
+from seedsigner.views import seed_views
 
 
 
@@ -286,4 +288,35 @@ def test_slip39_vectors_end_to_end(desc, mnemonics, secret_hex, xprv):
                 assert seed.seed_bytes.hex() == secret_hex
                 root = bip32.HDKey.from_seed(seed.seed_bytes, version=NETWORKS["main"]["xprv"])
                 assert root.to_base58() == xprv
+
+
+class TestSlip39ExtendableSetting(BaseTest):
+    def test_create_nonextendable_slip39_seed(self, monkeypatch):
+        self.settings.set_value(
+            SettingsConstants.SETTING__SLIP39_SEEDS, SettingsConstants.OPTION__ENABLED
+        )
+        self.settings.set_value(
+            SettingsConstants.SETTING__SLIP39_EXTENDABLE, SettingsConstants.OPTION__DISABLED
+        )
+
+        responses = iter(["2", "2"])
+
+        class DummyScreen:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def display(self):
+                return next(responses)
+
+        monkeypatch.setattr(
+            seed_views.seed_screens, "SeedBIP85SelectChildIndexScreen", DummyScreen
+        )
+
+        secret = bytes.fromhex("11" * 16)
+        view = seed_views.SeedSlip39CreateFromBytesView(secret=secret)
+        view.run()
+
+        seed = self.controller.storage.get_pending_seed()
+        assert isinstance(seed, Slip39Seed)
+        assert not seed.extendable
 

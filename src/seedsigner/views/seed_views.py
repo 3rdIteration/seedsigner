@@ -1157,8 +1157,12 @@ class SeedSlip39CreateFromBytesView(View):
                 "Multi-Share with threshold of 1 not allowed."
             )
 
+        extendable = (
+            self.settings.get_value(SettingsConstants.SETTING__SLIP39_EXTENDABLE)
+            == SettingsConstants.OPTION__ENABLED
+        )
         shares = shamir_mnemonic.generate_mnemonics(
-            1, [(threshold, num_shares)], self.secret, extendable=True
+            1, [(threshold, num_shares)], self.secret, extendable=extendable
         )[0]
         seed = Slip39Seed(mnemonics=shares)
         self.controller.storage.set_pending_seed(seed)
