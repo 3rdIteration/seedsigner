@@ -194,6 +194,9 @@ class ToolsImageEntropyFinalImageView(View):
 
 class ToolsImageEntropyMnemonicLengthView(View):
     TWELVE_WORDS = ButtonOption("12 words", return_data=12)
+    FIFTEEN_WORDS = ButtonOption("15 words", return_data=15)
+    EIGHTEEN_WORDS = ButtonOption("18 words", return_data=18)
+    TWENTYONE_WORDS = ButtonOption("21 words", return_data=21)
     TWENTYFOUR_WORDS = ButtonOption("24 words", return_data=24)
 
     def run(self):
@@ -202,7 +205,15 @@ class ToolsImageEntropyMnemonicLengthView(View):
             thirty_three = ButtonOption("33 words", return_data=33)
             button_data = [twenty, thirty_three]
         else:
-            button_data = [self.TWELVE_WORDS, self.TWENTYFOUR_WORDS]
+            allowed = self.settings.get_value(SettingsConstants.SETTING__SEED_WORD_LENGTHS)
+            options = {
+                12: self.TWELVE_WORDS,
+                15: self.FIFTEEN_WORDS,
+                18: self.EIGHTEEN_WORDS,
+                21: self.TWENTYONE_WORDS,
+                24: self.TWENTYFOUR_WORDS,
+            }
+            button_data = [options[l] for l in allowed]
 
         selected_menu_num = ButtonListScreen(
             title=_("Mnemonic Length?"),
@@ -260,10 +271,9 @@ class ToolsImageEntropyMnemonicLengthView(View):
         mnemonic_generation.byte_entropy_is_sufficient(seed_entropy_image.tobytes())
         final_hash = hashlib.sha256(hash_bytes + seed_entropy_image.tobytes()).digest()
 
-        if mnemonic_length in (12, 20):
-            # 12- or 20-word seeds only use the first 128 bits / 16 bytes of entropy
-            final_hash = final_hash[:16]
-
+        if mnemonic_length in mnemonic_generation.ENTROPY_BYTES_REQUIRED:
+            final_hash = final_hash[:mnemonic_generation.ENTROPY_BYTES_REQUIRED[mnemonic_length]]
+        
         print("Final shannon entropy")
         if not mnemonic_generation.byte_entropy_is_sufficient(final_hash):
             self.run_screen(
@@ -306,26 +316,33 @@ class ToolsImageEntropyMnemonicLengthView(View):
 class ToolsDiceEntropyMnemonicLengthView(View):
     """Prompt for mnemonic length when using dice entropy."""
 
-    # These are defined here so they are available for equality checks later
-    TWELVE = ButtonOption("12 words", return_data=mnemonic_generation.DICE__NUM_ROLLS__12WORD)
-    TWENTY_FOUR = ButtonOption("24 words", return_data=mnemonic_generation.DICE__NUM_ROLLS__24WORD)
+    TWELVE = ButtonOption("12 words", return_data=12)
+    FIFTEEN = ButtonOption("15 words", return_data=15)
+    EIGHTEEN = ButtonOption("18 words", return_data=18)
+    TWENTY_ONE = ButtonOption("21 words", return_data=21)
+    TWENTY_FOUR = ButtonOption("24 words", return_data=24)
     TWENTY = ButtonOption(
-        _("20 words ({} rolls)").format(mnemonic_generation.DICE__NUM_ROLLS__12WORD),
-        return_data=mnemonic_generation.DICE__NUM_ROLLS__12WORD,
+        _("20 words ({} rolls)").format(mnemonic_generation.DICE_ROLLS_REQUIRED[12]),
+        return_data=mnemonic_generation.DICE_ROLLS_REQUIRED[12],
     )
     THIRTY_THREE = ButtonOption(
-        _("33 words ({} rolls)").format(mnemonic_generation.DICE__NUM_ROLLS__24WORD),
-        return_data=mnemonic_generation.DICE__NUM_ROLLS__24WORD,
+        _("33 words ({} rolls)").format(mnemonic_generation.DICE_ROLLS_REQUIRED[24]),
+        return_data=mnemonic_generation.DICE_ROLLS_REQUIRED[24],
     )
 
     def run(self):
-        # Since we're dynamically building the ButtonOption button_labels here, it's too
-        # awkward to use the usual class-level attr approach.
-
         if getattr(self.controller, "create_slip39", False):
             button_data = [self.TWENTY, self.THIRTY_THREE]
         else:
-            button_data = [self.TWELVE, self.TWENTY_FOUR]
+            allowed = self.settings.get_value(SettingsConstants.SETTING__SEED_WORD_LENGTHS)
+            options = {
+                12: self.TWELVE,
+                15: self.FIFTEEN,
+                18: self.EIGHTEEN,
+                21: self.TWENTY_ONE,
+                24: self.TWENTY_FOUR,
+            }
+            button_data = [options[l] for l in allowed]
         selected_menu_num = ButtonListScreen(
             title=_("Mnemonic Length"),
             is_bottom_list=True,
@@ -336,17 +353,15 @@ class ToolsDiceEntropyMnemonicLengthView(View):
         if selected_menu_num == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
 
-        elif button_data[selected_menu_num] in (self.TWELVE, self.TWENTY):
-            return Destination(
-                ToolsDiceEntropyEntryView,
-                view_args=dict(total_rolls=mnemonic_generation.DICE__NUM_ROLLS__12WORD),
-            )
-
-        elif button_data[selected_menu_num] in (self.TWENTY_FOUR, self.THIRTY_THREE):
-            return Destination(
-                ToolsDiceEntropyEntryView,
-                view_args=dict(total_rolls=mnemonic_generation.DICE__NUM_ROLLS__24WORD),
-            )
+        if getattr(self.controller, "create_slip39", False):
+            total_rolls = button_data[selected_menu_num].return_data
+        else:
+            selected_length = button_data[selected_menu_num].return_data
+            total_rolls = mnemonic_generation.DICE_ROLLS_REQUIRED[selected_length]
+        return Destination(
+            ToolsDiceEntropyEntryView,
+            view_args=dict(total_rolls=total_rolls),
+        )
 
 
 
@@ -391,10 +406,21 @@ class ToolsDiceEntropyEntryView(View):
 ****************************************************************************"""
 class ToolsCalcFinalWordNumWordsView(View):
     TWELVE = ButtonOption("12 words", return_data=12)
+    FIFTEEN = ButtonOption("15 words", return_data=15)
+    EIGHTEEN = ButtonOption("18 words", return_data=18)
+    TWENTY_ONE = ButtonOption("21 words", return_data=21)
     TWENTY_FOUR = ButtonOption("24 words", return_data=24)
 
     def run(self):
-        button_data = [self.TWELVE, self.TWENTY_FOUR]
+        allowed = self.settings.get_value(SettingsConstants.SETTING__SEED_WORD_LENGTHS)
+        options = {
+            12: self.TWELVE,
+            15: self.FIFTEEN,
+            18: self.EIGHTEEN,
+            21: self.TWENTY_ONE,
+            24: self.TWENTY_FOUR,
+        }
+        button_data = [options[l] for l in allowed]
 
         selected_menu_num = self.run_screen(
             ButtonListScreen,
@@ -427,10 +453,8 @@ class ToolsCalcFinalWordFinalizePromptView(View):
         from seedsigner.gui.screens.tools_screens import ToolsCalcFinalWordFinalizePromptScreen
         mnemonic = self.controller.storage.pending_mnemonic
         mnemonic_length = len(mnemonic)
-        if mnemonic_length == 12:
-            num_entropy_bits = 7
-        else:
-            num_entropy_bits = 3
+        total_bits = mnemonic_generation.ENTROPY_BYTES_REQUIRED[mnemonic_length] * 8
+        num_entropy_bits = total_bits - ((mnemonic_length - 1) * 11)
 
         button_data = [self.COIN_FLIPS, self.SELECT_WORD, self.ZEROS]
         selected_menu_num = ToolsCalcFinalWordFinalizePromptScreen(
@@ -464,10 +488,8 @@ class ToolsCalcFinalWordCoinFlipsView(View):
         from seedsigner.gui.screens.tools_screens import ToolsCoinFlipEntryScreen
         mnemonic_length = len(self.controller.storage.pending_mnemonic)
 
-        if mnemonic_length == 12:
-            total_flips = 7
-        else:
-            total_flips = 3
+        total_bits = mnemonic_generation.ENTROPY_BYTES_REQUIRED[mnemonic_length] * 8
+        total_flips = total_bits - ((mnemonic_length - 1) * 11)
         
         ret_val = ToolsCoinFlipEntryScreen(
             return_after_n_chars=total_flips,
@@ -531,7 +553,9 @@ class ToolsCalcFinalWordShowFinalWordView(View):
 
         # And grab the actual final word's checksum bits
         self.actual_final_word = self.controller.storage.pending_mnemonic[-1]
-        num_checksum_bits = 4 if mnemonic_length == 12 else 8
+        total_bits = mnemonic_generation.ENTROPY_BYTES_REQUIRED[mnemonic_length] * 8
+        num_entropy_bits = total_bits - ((mnemonic_length - 1) * 11)
+        num_checksum_bits = 11 - num_entropy_bits
         self.checksum_bits = format(wordlist.index(self.actual_final_word), '011b')[-num_checksum_bits:]
 
 
@@ -598,9 +622,11 @@ class ToolsCalcFinalWordDoneView(View):
 class ToolsAddressExplorerSelectSourceView(View):
     SCAN_SEED = ButtonOption("Scan a seed", SeedSignerIconConstants.QRCODE)
     SCAN_DESCRIPTOR = ButtonOption("Scan wallet descriptor", SeedSignerIconConstants.QRCODE)
-    TYPE_12WORD = ButtonOption("Enter 12-word seed", FontAwesomeIconConstants.KEYBOARD)
-    TYPE_18WORD = ButtonOption("Enter 18-word seed", FontAwesomeIconConstants.KEYBOARD)
-    TYPE_24WORD = ButtonOption("Enter 24-word seed", FontAwesomeIconConstants.KEYBOARD)
+    TYPE_12WORD = ButtonOption("Enter 12-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=12)
+    TYPE_15WORD = ButtonOption("Enter 15-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=15)
+    TYPE_18WORD = ButtonOption("Enter 18-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=18)
+    TYPE_21WORD = ButtonOption("Enter 21-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=21)
+    TYPE_24WORD = ButtonOption("Enter 24-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=24)
     LOADED_DESCRIPTOR = ButtonOption("Loaded Multisig Descriptor")
     TYPE_ELECTRUM = ButtonOption("Electrum Seed", FontAwesomeIconConstants.KEYBOARD)
 
@@ -616,7 +642,15 @@ class ToolsAddressExplorerSelectSourceView(View):
         if self.controller.multisig_wallet_descriptor:
             button_data.append(self.LOADED_DESCRIPTOR)
 
-        button_data = button_data + [self.SCAN_SEED, self.SCAN_DESCRIPTOR, self.TYPE_12WORD, self.TYPE_18WORD, self.TYPE_24WORD]
+        seed_lengths = self.settings.get_value(SettingsConstants.SETTING__SEED_WORD_LENGTHS)
+        options = {
+            12: self.TYPE_12WORD,
+            15: self.TYPE_15WORD,
+            18: self.TYPE_18WORD,
+            21: self.TYPE_21WORD,
+            24: self.TYPE_24WORD,
+        }
+        button_data = button_data + [self.SCAN_SEED, self.SCAN_DESCRIPTOR] + [options[l] for l in seed_lengths]
         if self.settings.get_value(SettingsConstants.SETTING__ELECTRUM_SEEDS) == SettingsConstants.OPTION__ENABLED:
             button_data.append(self.TYPE_ELECTRUM)
 
@@ -658,7 +692,7 @@ class ToolsAddressExplorerSelectSourceView(View):
             from seedsigner.views.scan_views import ScanWalletDescriptorView
             return Destination(ScanWalletDescriptorView)
 
-        elif button_data[selected_menu_num] in [self.TYPE_12WORD, self.TYPE_18WORD, self.TYPE_24WORD]:
+        elif button_data[selected_menu_num] in [self.TYPE_12WORD, self.TYPE_15WORD, self.TYPE_18WORD, self.TYPE_21WORD, self.TYPE_24WORD]:
             from seedsigner.views.seed_views import SeedMnemonicEntryView
 
             self.controller.storage.init_pending_mnemonic(num_words=button_data[selected_menu_num].return_data)
@@ -2159,8 +2193,11 @@ class ToolsSatochipView(View):
         
 class ToolsSatochipImportSeedView(View):
     SCAN_SEED = ButtonOption("Scan a seed", SeedSignerIconConstants.QRCODE)
-    TYPE_12WORD = ButtonOption("Enter 12-word seed", FontAwesomeIconConstants.KEYBOARD)
-    TYPE_24WORD = ButtonOption("Enter 24-word seed", FontAwesomeIconConstants.KEYBOARD)
+    TYPE_12WORD = ButtonOption("Enter 12-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=12)
+    TYPE_15WORD = ButtonOption("Enter 15-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=15)
+    TYPE_18WORD = ButtonOption("Enter 18-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=18)
+    TYPE_21WORD = ButtonOption("Enter 21-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=21)
+    TYPE_24WORD = ButtonOption("Enter 24-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=24)
 
     def run(self):
         from seedsigner.gui.screens.screen import LoadingScreenThread
@@ -2175,7 +2212,15 @@ class ToolsSatochipImportSeedView(View):
             button_str = seed.get_fingerprint(self.settings.get_value(SettingsConstants.SETTING__NETWORK))
             button_data.append(ButtonOption(button_str, SeedSignerIconConstants.FINGERPRINT))
         
-        button_data = button_data + [self.SCAN_SEED, self.TYPE_12WORD, self.TYPE_24WORD]
+        seed_lengths = self.settings.get_value(SettingsConstants.SETTING__SEED_WORD_LENGTHS)
+        options = {
+            12: self.TYPE_12WORD,
+            15: self.TYPE_15WORD,
+            18: self.TYPE_18WORD,
+            21: self.TYPE_21WORD,
+            24: self.TYPE_24WORD,
+        }
+        button_data = button_data + [self.SCAN_SEED] + [options[l] for l in seed_lengths]
         
         selected_menu_num = self.run_screen(
             ButtonListScreen,
@@ -2226,12 +2271,9 @@ class ToolsSatochipImportSeedView(View):
             from seedsigner.views.scan_views import ScanSeedQRView
             return Destination(ScanSeedQRView)
 
-        elif button_data[selected_menu_num] in [self.TYPE_12WORD, self.TYPE_24WORD]:
+        elif button_data[selected_menu_num] in [self.TYPE_12WORD, self.TYPE_15WORD, self.TYPE_18WORD, self.TYPE_21WORD, self.TYPE_24WORD]:
             from seedsigner.views.seed_views import SeedMnemonicEntryView
-            if button_data[selected_menu_num] == self.TYPE_12WORD:
-                self.controller.storage.init_pending_mnemonic(num_words=12)
-            else:
-                self.controller.storage.init_pending_mnemonic(num_words=24)
+            self.controller.storage.init_pending_mnemonic(num_words=button_data[selected_menu_num].return_data)
             return Destination(SeedMnemonicEntryView)
         
         return Destination(MainMenuView)

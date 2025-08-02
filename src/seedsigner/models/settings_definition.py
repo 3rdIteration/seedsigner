@@ -364,6 +364,7 @@ class SettingsConstants:
     SETTING__XPUB_EXPORT = "xpub_export"
     SETTING__SIG_TYPES = "sig_types"
     SETTING__SCRIPT_TYPES = "script_types"
+    SETTING__SEED_WORD_LENGTHS = "seed_word_lengths"
     SETTING__XPUB_DETAILS = "xpub_details"
     SETTING__PASSPHRASE = "passphrase"
     SETTING__CAMERA_ROTATION = "camera_rotation"
@@ -447,6 +448,14 @@ class SettingsConstants:
     ALL_ENCRYPTION_MODES = [
         ENCRYPTION_MODE_ECB,
         ENCRYPTION_MODE_CBC,
+    ]
+
+    ALL_SEED_WORD_LENGTHS = [
+        (12, "12 words"),
+        (15, "15 words"),
+        (18, "18 words"),
+        (21, "21 words"),
+        (24, "24 words"),
     ]
 
 
@@ -702,6 +711,15 @@ class SettingsDefinition:
                       visibility=SettingsConstants.VISIBILITY__ADVANCED,
                       selection_options=SettingsConstants.ALL_SCRIPT_TYPES,
                       default_value=[SettingsConstants.NATIVE_SEGWIT, SettingsConstants.NESTED_SEGWIT, SettingsConstants.TAPROOT]),
+
+        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
+                      attr_name=SettingsConstants.SETTING__SEED_WORD_LENGTHS,
+                      abbreviated_name="seedlen",
+                      display_name=_mft("Seed word lengths"),
+                      type=SettingsConstants.TYPE__MULTISELECT,
+                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
+                      selection_options=SettingsConstants.ALL_SEED_WORD_LENGTHS,
+                      default_value=[12, 24]),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
                       attr_name=SettingsConstants.SETTING__XPUB_DETAILS,
