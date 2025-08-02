@@ -116,14 +116,10 @@ class CompactSeedQrEncoder(SeedQrEncoder):
             # Convert index to binary, strip out '0b' prefix; zero-pad to 11 bits
             binary_str += bin(index).split('b')[1].zfill(11)
 
-        # We can exclude the checksum bits at the end
-        if len(self.mnemonic) == 24:
-            # 8 checksum bits in a 24-word seed
-            binary_str = binary_str[:-8]
-
-        elif len(self.mnemonic) == 12:
-            # 4 checksum bits in a 12-word seed
-            binary_str = binary_str[:-4]
+        # Exclude the checksum bits at the end. The checksum length is
+        # entropy_bits / 32 which equates to `word_count / 3`.
+        checksum_bits = len(self.mnemonic) // 3
+        binary_str = binary_str[:-checksum_bits]
 
         # Now convert to bytes, 8 bits at a time
         as_bytes = bytearray()
