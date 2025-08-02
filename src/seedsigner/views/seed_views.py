@@ -203,6 +203,9 @@ class LoadSeedView(View):
             21: self.TYPE_21WORD,
             24: self.TYPE_24WORD,
         }
+
+        # Start with the option to scan a SeedQR
+        button_data = [self.SEED_QR]
         button_data.extend([options[l] for l in seed_lengths])
 
         if self.settings.get_value(SettingsConstants.SETTING__SMARTCARD_SUPPORT) == SettingsConstants.OPTION__ENABLED:
