@@ -139,7 +139,9 @@ def _shannon_entropy(data: bytes | str) -> float:
         data = data.encode()
     counts = Counter(data)
     length = len(data)
-    return -sum((count / length) * math.log2(count / length) for count in counts.values())
+    shannon_entropy = -sum((count / length) * math.log2(count / length) for count in counts.values())
+    print("Shannon Entropy:", shannon_entropy)
+    return shannon_entropy
 
 
 def dice_entropy_is_sufficient(roll_data: str, threshold: float = 2.0) -> bool:

@@ -250,16 +250,21 @@ class ToolsImageEntropyMnemonicLengthView(View):
 
         # Build in better entropy by chaining the preview frames
         for frame in preview_images:
+            print("Preview frame shannon entropy")
+            mnemonic_generation.byte_entropy_is_sufficient(frame.tobytes())
             img_hash = hashlib.sha256(hash_bytes + frame.tobytes())
             hash_bytes = img_hash.digest()
 
         # Finally build in our headline entropy via the new full-res image
+        print("Full image shannon entropy")
+        mnemonic_generation.byte_entropy_is_sufficient(seed_entropy_image.tobytes())
         final_hash = hashlib.sha256(hash_bytes + seed_entropy_image.tobytes()).digest()
 
         if mnemonic_length in (12, 20):
             # 12- or 20-word seeds only use the first 128 bits / 16 bytes of entropy
             final_hash = final_hash[:16]
 
+        print("Final shannon entropy")
         if not mnemonic_generation.byte_entropy_is_sufficient(final_hash):
             self.run_screen(
                 ErrorScreen,
