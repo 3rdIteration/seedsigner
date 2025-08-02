@@ -1562,9 +1562,12 @@ class SeedAddressVerificationScreen(ButtonListScreen):
         if self.verified_index.cur_count is not None:
             # Note that the ProgressThread will have already exited on its own.
 
-            # Return a success value (anything other than None) to end the 
+            # Return a success value (anything other than None) to end the
             # ButtonListScreen._run() loop.
             return 1
+
+        if self.max_iterations is not None and self.threadsafe_counter.cur_count >= self.max_iterations:
+            return RET_CODE__BACK_BUTTON
 
 
     class ProgressThread(BaseThread):

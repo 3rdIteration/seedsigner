@@ -3441,6 +3441,7 @@ class SeedExportXpubVerificationFailedView(View):
             WarningScreen,
             title=_("Export Failed"),
             status_icon_name=SeedSignerIconConstants.ERROR,
+            status_headline=None,
             text=text,
             button_data=[ButtonOption(_("OK"))],
             show_back_button=False,
