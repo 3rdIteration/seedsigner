@@ -1,8 +1,13 @@
 from __future__ import annotations
 
 from embit.psbt import PSBT
-from embit.bip32 import HARDENED_INDEX
 from embit.util import secp256k1
+
+try:
+    # Constant introduced in newer embit versions
+    from embit.bip32 import HARDENED_INDEX  # type: ignore
+except ImportError:  # pragma: no cover - support older embit releases
+    HARDENED_INDEX = 0x80000000
 
 
 def _format_path(derivation: list[int]) -> str:
