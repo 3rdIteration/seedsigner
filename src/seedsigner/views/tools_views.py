@@ -2426,7 +2426,7 @@ class SatochipExportXpubCoordinatorView(View):
             return Destination(BackStackView)
 
         coordinator = button_data[selected_menu_num].return_data
-        coordinator_label = button_data[selected_menu_num].text
+        coordinator_label = button_data[selected_menu_num].button_label
         return Destination(
             SatochipExportXpubWarningView,
             view_args=dict(
