@@ -638,6 +638,7 @@ class ToolsAddressExplorerSelectSourceView(View):
     TYPE_21WORD = ButtonOption("Enter 21-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=21)
     TYPE_24WORD = ButtonOption("Enter 24-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=24)
     LOADED_DESCRIPTOR = ButtonOption("Loaded Multisig Descriptor")
+    SATOCHIP = ButtonOption("Load from Satochip", SeedSignerIconConstants.FINGERPRINT)
     TYPE_ELECTRUM = ButtonOption("Electrum Seed", FontAwesomeIconConstants.KEYBOARD)
 
     def run(self):
@@ -660,7 +661,11 @@ class ToolsAddressExplorerSelectSourceView(View):
             21: self.TYPE_21WORD,
             24: self.TYPE_24WORD,
         }
-        button_data = button_data + [self.SCAN_SEED, self.SCAN_DESCRIPTOR] + [options[l] for l in seed_lengths]
+        button_data = (
+            button_data
+            + [self.SCAN_SEED, self.SCAN_DESCRIPTOR, self.SATOCHIP]
+            + [options[l] for l in seed_lengths]
+        )
         if self.settings.get_value(SettingsConstants.SETTING__ELECTRUM_SEEDS) == SettingsConstants.OPTION__ENABLED:
             button_data.append(self.TYPE_ELECTRUM)
 
@@ -701,6 +706,9 @@ class ToolsAddressExplorerSelectSourceView(View):
         elif button_data[selected_menu_num] == self.SCAN_DESCRIPTOR:
             from seedsigner.views.scan_views import ScanWalletDescriptorView
             return Destination(ScanWalletDescriptorView)
+
+        elif button_data[selected_menu_num] == self.SATOCHIP:
+            return Destination(SatochipLoadDescriptorScriptTypeView)
 
         elif button_data[selected_menu_num] in [self.TYPE_12WORD, self.TYPE_15WORD, self.TYPE_18WORD, self.TYPE_21WORD, self.TYPE_24WORD]:
             from seedsigner.views.seed_views import SeedMnemonicEntryView
@@ -2755,17 +2763,21 @@ class SatochipLoadDescriptorDetailsView(View):
 
         fingerprint = HDKey.from_string(master_xpub).my_fingerprint
         fingerprint_hex = hexlify(fingerprint).decode("utf-8")
+        if derivation_path.startswith("m/"):
+            origin_path = derivation_path[2:]
+        else:
+            origin_path = derivation_path
 
         if self.script_type == SettingsConstants.NATIVE_SEGWIT:
-            desc_str = f"wpkh({xpub_base58}/{{0,1}}/*)"
+            desc_str = f"wpkh([{fingerprint_hex}/{origin_path}]{xpub_base58}/{{0,1}}/*)"
         elif self.script_type == SettingsConstants.NESTED_SEGWIT:
-            desc_str = f"sh(wpkh({xpub_base58}/{{0,1}}/*))"
+            desc_str = f"sh(wpkh([{fingerprint_hex}/{origin_path}]{xpub_base58}/{{0,1}}/*))"
         elif self.script_type == SettingsConstants.LEGACY_P2PKH:
-            desc_str = f"pkh({xpub_base58}/{{0,1}}/*)"
+            desc_str = f"pkh([{fingerprint_hex}/{origin_path}]{xpub_base58}/{{0,1}}/*)"
         elif self.script_type == SettingsConstants.TAPROOT:
-            desc_str = f"tr({xpub_base58}/{{0,1}}/*)"
+            desc_str = f"tr([{fingerprint_hex}/{origin_path}]{xpub_base58}/{{0,1}}/*)"
         else:
-            desc_str = f"wpkh({xpub_base58}/{{0,1}}/*)"
+            desc_str = f"wpkh([{fingerprint_hex}/{origin_path}]{xpub_base58}/{{0,1}}/*)"
 
         descriptor = Descriptor.from_string(desc_str)
 
@@ -2782,6 +2794,10 @@ class SatochipLoadDescriptorDetailsView(View):
             return Destination(BackStackView)
 
         self.controller.multisig_wallet_descriptor = descriptor
+        from seedsigner.controller import Controller
+        if self.controller.resume_main_flow == Controller.FLOW__ADDRESS_EXPLORER:
+            from seedsigner.views.seed_views import MultisigWalletDescriptorView
+            return Destination(MultisigWalletDescriptorView, skip_current_view=True)
 
         self.run_screen(
             LargeIconStatusScreen,
