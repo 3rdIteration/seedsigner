@@ -187,7 +187,7 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True):
             except Exception as e:
                 parentObject.loading_screen.stop()
                 time.sleep(0.1)  # Sleep for 100ms
-                print("Pin Check General Exception:" + str(e))
+                logger.exception("Pin check failed")
 
                 parentObject.run_screen(
                     WarningScreen,
@@ -378,6 +378,7 @@ def run_globalplatform(
         ):
             failureText = "Unable to complete secure connection... (App or reader may need restart)"
 
+        logger.error(failureText)
         parentObject.run_screen(
             WarningScreen,
             title="Failed",
@@ -395,11 +396,13 @@ def run_globalplatform(
                 successtext="Mis-Installed Applet Uninstalled",
             )
             if data is None:
+                msg = "Mis-Installed Applet Uninstalled, try uninstalling it again..."
+                logger.error(msg)
                 parentObject.run_screen(
                     WarningScreen,
                     title="Failed",
                     status_headline=None,
-                    text="Mis-Installed Applet Uninstalled, try uninstalling it again...",
+                    text=msg,
                     show_back_button=False,
                 )
         return None

@@ -2,12 +2,15 @@ from gettext import gettext as _
 
 from binascii import hexlify
 from embit import bip32
+import logging
 
 from seedsigner.models.psbt_parser import PSBTParser
 from seedsigner.models.settings import SettingsConstants
 from seedsigner.gui.components import FontAwesomeIconConstants, SeedSignerIconConstants
 from seedsigner.gui.screens.screen import (RET_CODE__BACK_BUTTON, ButtonListScreen, ButtonOption, WarningScreen, DireWarningScreen, QRDisplayScreen)
 from seedsigner.views.view import BackStackView, MainMenuView, NotYetImplementedView, View, Destination
+
+logger = logging.getLogger(__name__)
 
 
 
@@ -102,7 +105,11 @@ class PSBTSelectSeedView(View):
                     account_path.append(idx)
                 else:
                     break
-            account_path_str = bip32.path_to_str(account_path)
+
+            account_path_str = "m"
+            for i in account_path:
+                hardened = bool(i & HARDENED_INDEX)
+                account_path_str += f"/{i & 0x7FFFFFFF}{"'" if hardened else ''}"
 
             purpose = account_path[0] & 0x7FFFFFFF if account_path else 0
             xtype = {
@@ -116,6 +123,7 @@ class PSBTSelectSeedView(View):
                 account_xpub = connector.card_bip32_get_xpub(account_path_str, xtype, is_mainnet)
                 master_xpub = connector.card_bip32_get_xpub("", xtype, is_mainnet)
             except Exception as e:
+                logger.exception("Failed to export xpub from Satochip card")
                 self.run_screen(
                     WarningScreen,
                     title="Failed",
@@ -136,7 +144,14 @@ class PSBTSelectSeedView(View):
                     master_fingerprint=master_fp,
                     network=network,
                 )
-            except Exception:
+            except Exception as e:
+                logger.exception("Failed to parse PSBT with Satochip data")
+                self.run_screen(
+                    WarningScreen,
+                    title="Failed",
+                    status_headline=None,
+                    text=str(e),
+                )
                 return Destination(BackStackView)
 
             self.controller.psbt_seed = None
