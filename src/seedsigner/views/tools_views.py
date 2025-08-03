@@ -2496,8 +2496,21 @@ class SatochipExportXpubDetailsView(View):
                 script_type=self.script_type,
             )
 
+        network = self.settings.get_value(SettingsConstants.SETTING__NETWORK)
+        is_mainnet = network == SettingsConstants.MAINNET
+        if self.script_type == SettingsConstants.NATIVE_SEGWIT:
+            xtype = "p2wpkh"
+        elif self.script_type == SettingsConstants.NESTED_SEGWIT:
+            xtype = "p2wpkh-p2sh"
+        elif self.script_type == SettingsConstants.LEGACY_P2PKH:
+            xtype = "standard"
+        elif self.script_type == SettingsConstants.TAPROOT:
+            xtype = "standard"
+        else:
+            xtype = "p2wpkh"
+
         try:
-            xpub_base58 = Satochip_Connector.card_bip32_get_extended_pubkey(derivation_path)
+            xpub_base58 = Satochip_Connector.card_bip32_get_xpub(derivation_path, xtype, is_mainnet)
         except Exception as e:
             self.run_screen(
                 WarningScreen,
