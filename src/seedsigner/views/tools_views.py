@@ -638,6 +638,7 @@ class ToolsAddressExplorerSelectSourceView(View):
     TYPE_21WORD = ButtonOption("Enter 21-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=21)
     TYPE_24WORD = ButtonOption("Enter 24-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=24)
     LOADED_DESCRIPTOR = ButtonOption("Loaded Multisig Descriptor")
+    SATOCHIP = ButtonOption("Load from Satochip", SeedSignerIconConstants.FINGERPRINT)
     TYPE_ELECTRUM = ButtonOption("Electrum Seed", FontAwesomeIconConstants.KEYBOARD)
 
     def run(self):
@@ -660,7 +661,11 @@ class ToolsAddressExplorerSelectSourceView(View):
             21: self.TYPE_21WORD,
             24: self.TYPE_24WORD,
         }
-        button_data = button_data + [self.SCAN_SEED, self.SCAN_DESCRIPTOR] + [options[l] for l in seed_lengths]
+        button_data = (
+            button_data
+            + [self.SCAN_SEED, self.SCAN_DESCRIPTOR, self.SATOCHIP]
+            + [options[l] for l in seed_lengths]
+        )
         if self.settings.get_value(SettingsConstants.SETTING__ELECTRUM_SEEDS) == SettingsConstants.OPTION__ENABLED:
             button_data.append(self.TYPE_ELECTRUM)
 
@@ -701,6 +706,9 @@ class ToolsAddressExplorerSelectSourceView(View):
         elif button_data[selected_menu_num] == self.SCAN_DESCRIPTOR:
             from seedsigner.views.scan_views import ScanWalletDescriptorView
             return Destination(ScanWalletDescriptorView)
+
+        elif button_data[selected_menu_num] == self.SATOCHIP:
+            return Destination(SatochipLoadDescriptorScriptTypeView)
 
         elif button_data[selected_menu_num] in [self.TYPE_12WORD, self.TYPE_15WORD, self.TYPE_18WORD, self.TYPE_21WORD, self.TYPE_24WORD]:
             from seedsigner.views.seed_views import SeedMnemonicEntryView
@@ -2782,6 +2790,10 @@ class SatochipLoadDescriptorDetailsView(View):
             return Destination(BackStackView)
 
         self.controller.multisig_wallet_descriptor = descriptor
+        from seedsigner.controller import Controller
+        if self.controller.resume_main_flow == Controller.FLOW__ADDRESS_EXPLORER:
+            from seedsigner.views.seed_views import MultisigWalletDescriptorView
+            return Destination(MultisigWalletDescriptorView, skip_current_view=True)
 
         self.run_screen(
             LargeIconStatusScreen,
