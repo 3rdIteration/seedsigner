@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from embit.ec import PublicKey
 from embit.psbt import PSBT
 from embit.util import secp256k1
 
@@ -34,7 +35,9 @@ def sign_psbt_with_satochip(psbt: PSBT, connector) -> int:
             path = _format_path(deriv.derivation)
             try:
                 key, chaincode = connector.card_bip32_get_extendedkey(path)
-                card_pub = key.get_public_key_bytes(compressed=True)
+                card_pub = PublicKey.parse(
+                    key.get_public_key_bytes(compressed=True)
+                )
             except Exception:
                 continue
             if card_pub != pubkey:
