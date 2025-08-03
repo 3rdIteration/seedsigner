@@ -84,6 +84,7 @@ class SeedSelectSeedView(View):
                 verify single sig addr or sign message).
     """
     SCAN_SEED = ButtonOption("Scan a seed", SeedSignerIconConstants.QRCODE)
+    SATOCHIP = ButtonOption("Use Satochip card", SeedSignerIconConstants.FINGERPRINT)
     TYPE_12WORD = ButtonOption("Enter 12-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=12)
     TYPE_15WORD = ButtonOption("Enter 15-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=15)
     TYPE_18WORD = ButtonOption("Enter 18-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=18)
@@ -121,7 +122,9 @@ class SeedSelectSeedView(View):
         for seed in seeds:
             button_str = seed.get_fingerprint(self.settings.get_value(SettingsConstants.SETTING__NETWORK))
             button_data.append(ButtonOption(button_str, SeedSignerIconConstants.FINGERPRINT, icon_color="blue"))
-        
+        if self.flow == Controller.FLOW__SIGN_MESSAGE:
+            button_data.append(self.SATOCHIP)
+
         button_data.append(self.SCAN_SEED)
         seed_lengths = self.settings.get_value(SettingsConstants.SETTING__SEED_WORD_LENGTHS)
         options = {
@@ -161,6 +164,14 @@ class SeedSelectSeedView(View):
                 return Destination(SeedSignMessageConfirmMessageView)
 
         self.controller.resume_main_flow = self.flow
+
+        if self.flow == Controller.FLOW__SIGN_MESSAGE and button_data[selected_menu_num] == self.SATOCHIP:
+            connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satochip"])
+            if not connector:
+                return Destination(BackStackView)
+            self.controller.sign_message_with_satochip = True
+            self.controller.sign_message_data["seed_num"] = None
+            return Destination(SeedSignMessageConfirmMessageView)
 
         if button_data[selected_menu_num] == self.SCAN_SEED:
             from seedsigner.views.scan_views import ScanView
@@ -3647,26 +3658,22 @@ class SeedSignMessageConfirmMessageView(View):
 
 class SeedSignMessageConfirmAddressView(View):
     def __init__(self):
+        from embit import bip32
         from seedsigner.helpers import embit_utils
+
         super().__init__()
         data = self.controller.sign_message_data
-        seed_num = data.get("seed_num")
+        self.seed_num = data.get("seed_num")
         self.derivation_path = data.get("derivation_path")
 
-        if seed_num is None or not self.derivation_path:
+        if not self.derivation_path:
             raise Exception("Routing error: sign_message_data hasn't been set")
 
-        seed = self.controller.storage.seeds[seed_num]
-        addr_format = data.get("addr_format")
-
-        # calculate the actual receive address
-        seed = self.controller.storage.seeds[seed_num]
         addr_format = embit_utils.parse_derivation_path(self.derivation_path)
         if not addr_format["clean_match"] or addr_format["script_type"] == SettingsConstants.CUSTOM_DERIVATION:
             raise Exception(_("Signing messages for custom derivation paths not supported"))
 
         if addr_format["network"] != SettingsConstants.MAINNET:
-            # We're in either Testnet or Regtest or...?
             if self.settings.get_value(SettingsConstants.SETTING__NETWORK) in [SettingsConstants.TESTNET, SettingsConstants.REGTEST]:
                 addr_format["network"] = self.settings.get_value(SettingsConstants.SETTING__NETWORK)
             else:
@@ -3679,9 +3686,36 @@ class SeedSignMessageConfirmAddressView(View):
                 self.controller.sign_message_data = None
                 return
 
-        xpub = seed.get_xpub(wallet_path=addr_format["wallet_derivation_path"], network=addr_format["network"])
+        if self.controller.sign_message_with_satochip:
+            connector = self.controller.Satochip_Connector
+            script_type = addr_format["script_type"]
+            if script_type == SettingsConstants.NATIVE_SEGWIT:
+                xtype = "p2wpkh"
+            elif script_type == SettingsConstants.NESTED_SEGWIT:
+                xtype = "p2wpkh-p2sh"
+            elif script_type == SettingsConstants.LEGACY_P2PKH:
+                xtype = "standard"
+            elif script_type == SettingsConstants.TAPROOT:
+                xtype = "standard"
+            else:
+                xtype = "p2wpkh"
+            is_mainnet = addr_format["network"] == SettingsConstants.MAINNET
+            xpub_base58 = connector.card_bip32_get_xpub(addr_format["wallet_derivation_path"], xtype, is_mainnet)
+            xpub = bip32.HDKey.from_base58(xpub_base58)
+        else:
+            if self.seed_num is None:
+                raise Exception("Routing error: sign_message_data hasn't been set")
+            seed = self.controller.get_seed(self.seed_num)
+            xpub = seed.get_xpub(wallet_path=addr_format["wallet_derivation_path"], network=addr_format["network"])
+
         embit_network = embit_utils.get_embit_network_name(addr_format["network"])
-        self.address = embit_utils.get_single_sig_address(xpub=xpub, script_type=addr_format["script_type"], index=addr_format["index"], is_change=addr_format["is_change"], embit_network=embit_network)
+        self.address = embit_utils.get_single_sig_address(
+            xpub=xpub,
+            script_type=addr_format["script_type"],
+            index=addr_format["index"],
+            is_change=addr_format["is_change"],
+            embit_network=embit_network,
+        )
 
 
     def run(self):
@@ -3709,12 +3743,23 @@ class SeedSignMessageSignedMessageQRView(View):
         super().__init__()
         data = self.controller.sign_message_data
 
-        self.seed_num = data["seed_num"]
-        seed = self.controller.get_seed(self.seed_num)
         derivation_path = data["derivation_path"]
         message: str = data["message"]
 
-        self.signed_message = embit_utils.sign_message(seed_bytes=seed.seed_bytes, derivation=derivation_path, msg=message.encode())
+        if self.controller.sign_message_with_satochip:
+            from seedsigner.helpers.satochip_signer import sign_message_with_satochip
+
+            self.signed_message = sign_message_with_satochip(
+                derivation_path, message, self.controller.Satochip_Connector
+            )
+        else:
+            self.seed_num = data["seed_num"]
+            seed = self.controller.get_seed(self.seed_num)
+            self.signed_message = embit_utils.sign_message(
+                seed_bytes=seed.seed_bytes,
+                derivation=derivation_path,
+                msg=message.encode(),
+            )
 
 
     def run(self):
@@ -3725,10 +3770,11 @@ class SeedSignMessageSignedMessageQRView(View):
             QRDisplayScreen,
             qr_encoder=qr_encoder,
         )
-    
+
         # cleanup
         self.controller.resume_main_flow = None
         self.controller.sign_message_data = None
+        self.controller.sign_message_with_satochip = False
 
         # Exiting/Canceling the QR display screen always returns Home
         return Destination(MainMenuView, skip_current_view=True)
