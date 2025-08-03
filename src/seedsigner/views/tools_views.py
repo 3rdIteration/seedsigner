@@ -2545,16 +2545,27 @@ class SatochipExportXpubDetailsView(View):
 
         network = self.settings.get_value(SettingsConstants.SETTING__NETWORK)
         is_mainnet = network == SettingsConstants.MAINNET
-        if self.script_type == SettingsConstants.NATIVE_SEGWIT:
-            xtype = "p2wpkh"
-        elif self.script_type == SettingsConstants.NESTED_SEGWIT:
-            xtype = "p2wpkh-p2sh"
-        elif self.script_type == SettingsConstants.LEGACY_P2PKH:
-            xtype = "standard"
-        elif self.script_type == SettingsConstants.TAPROOT:
-            xtype = "standard"
+
+        if self.sig_type == SettingsConstants.MULTISIG:
+            if self.script_type == SettingsConstants.NATIVE_SEGWIT:
+                xtype = "p2wsh"
+            elif self.script_type == SettingsConstants.NESTED_SEGWIT:
+                xtype = "p2wsh-p2sh"
+            elif self.script_type == SettingsConstants.LEGACY_P2PKH:
+                xtype = "standard"
+            else:
+                xtype = "p2wsh"
         else:
-            xtype = "p2wpkh"
+            if self.script_type == SettingsConstants.NATIVE_SEGWIT:
+                xtype = "p2wpkh"
+            elif self.script_type == SettingsConstants.NESTED_SEGWIT:
+                xtype = "p2wpkh-p2sh"
+            elif self.script_type == SettingsConstants.LEGACY_P2PKH:
+                xtype = "standard"
+            elif self.script_type == SettingsConstants.TAPROOT:
+                xtype = "standard"
+            else:
+                xtype = "p2wpkh"
 
         try:
             xpub_base58 = Satochip_Connector.card_bip32_get_xpub(derivation_path, xtype, is_mainnet)

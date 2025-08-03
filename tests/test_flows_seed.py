@@ -1002,3 +1002,39 @@ class TestSatochipExportXpubQRDisplayView(BaseTest):
         destination = view.run()
         assert destination.View_cls == seed_views.SeedExportXpubVerifyAddressView
 
+
+class TestSatochipExportXpubDetailsView(BaseTest):
+    def test_multisig_uses_slip132_headers(self):
+        from seedsigner.views import tools_views
+        from seedsigner.models.settings_definition import SettingsConstants
+        from unittest.mock import Mock, patch
+
+        mock_connector = Mock()
+
+        def fake_get_xpub(path, xtype, is_mainnet):
+            assert xtype == "p2wsh"
+            return "ZpubExample"
+
+        mock_connector.card_bip32_get_xpub.side_effect = fake_get_xpub
+
+        with patch(
+            "seedsigner.helpers.seedkeeper_utils.init_satochip",
+            return_value=mock_connector,
+        ):
+            with patch("seedsigner.views.tools_views.HDKey") as MockHDKey:
+                hdkey = Mock()
+                hdkey.my_fingerprint = b"\x00\x00\x00\x00"
+                MockHDKey.from_string.return_value = hdkey
+
+                view = tools_views.SatochipExportXpubDetailsView(
+                    sig_type=SettingsConstants.MULTISIG,
+                    script_type=SettingsConstants.NATIVE_SEGWIT,
+                    coordinator=SettingsConstants.COORDINATOR__SPECTER_DESKTOP,
+                    custom_derivation="",
+                    coordinator_label="Specter",
+                )
+                view.run_screen = Mock(return_value=0)
+                view.run()
+
+                assert view.run_screen.call_args.kwargs["xpub"].startswith("Zpub")
+
