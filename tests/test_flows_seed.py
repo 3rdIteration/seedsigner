@@ -958,6 +958,9 @@ class TestSatochipLoadDescriptor(BaseTest):
         destination = view.run()
 
         assert view.run_screen.call_count == 2
+        assert (
+            view.run_screen.call_args_list[0].kwargs["button_label"] == "Confirm"
+        )
         assert isinstance(controller.multisig_wallet_descriptor, Descriptor)
         assert destination.View_cls == tools_views.MainMenuView
 

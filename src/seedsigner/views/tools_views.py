@@ -2775,6 +2775,7 @@ class SatochipLoadDescriptorDetailsView(View):
             has_passphrase=False,
             derivation_path=derivation_path,
             xpub=xpub_base58,
+            button_label="Confirm",
         )
 
         if selected_menu_num != 0:
