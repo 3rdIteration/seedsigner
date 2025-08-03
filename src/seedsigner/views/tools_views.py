@@ -2212,7 +2212,7 @@ class ToolsSatochipView(View):
             return Destination(ToolsSatochipEnable2FAView)
 
         elif button_data[selected_menu_num] == self.EXPORT_XPUB:
-            return Destination(SatochipExportXpubScriptTypeView)
+            return Destination(SatochipExportXpubSigTypeView)
 
         elif button_data[selected_menu_num] == self.LOAD_DESCRIPTOR:
             return Destination(SatochipLoadDescriptorScriptTypeView)
@@ -2365,9 +2365,40 @@ class ToolsSatochipEnable2FAView(View):
         return Destination(MainMenuView)
 
 
+class SatochipExportXpubSigTypeView(View):
+    SINGLE_SIG = ButtonOption(_("Single Sig"), return_data=SettingsConstants.SINGLE_SIG)
+    MULTISIG = ButtonOption(_("Multisig"), return_data=SettingsConstants.MULTISIG)
+
+    def run(self):
+        sig_types = self.settings.get_value(SettingsConstants.SETTING__SIG_TYPES)
+        if len(sig_types) == 1:
+            return Destination(
+                SatochipExportXpubScriptTypeView,
+                view_args=dict(sig_type=sig_types[0]),
+                skip_current_view=True,
+            )
+
+        button_data = [self.SINGLE_SIG, self.MULTISIG]
+
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title=_("Export Xpub"),
+            button_data=button_data,
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        return Destination(
+            SatochipExportXpubScriptTypeView,
+            view_args=dict(sig_type=button_data[selected_menu_num].return_data),
+        )
+
+
 class SatochipExportXpubScriptTypeView(View):
-    def __init__(self, script_type: str = None):
+    def __init__(self, sig_type: str, script_type: str = None):
         super().__init__()
+        self.sig_type = sig_type
         self.script_type = script_type
 
     def run(self):
@@ -2389,13 +2420,20 @@ class SatochipExportXpubScriptTypeView(View):
 
         script_type = button_data[selected_menu_num].return_data
         if script_type == SettingsConstants.CUSTOM_DERIVATION:
-            return Destination(SatochipExportXpubCustomDerivationView, view_args=dict(script_type=script_type))
-        return Destination(SatochipExportXpubCoordinatorView, view_args=dict(script_type=script_type))
+            return Destination(
+                SatochipExportXpubCustomDerivationView,
+                view_args=dict(sig_type=self.sig_type, script_type=script_type),
+            )
+        return Destination(
+            SatochipExportXpubCoordinatorView,
+            view_args=dict(sig_type=self.sig_type, script_type=script_type),
+        )
 
 
 class SatochipExportXpubCustomDerivationView(View):
-    def __init__(self, script_type: str):
+    def __init__(self, sig_type: str, script_type: str):
         super().__init__()
+        self.sig_type = sig_type
         self.script_type = script_type
         self.custom_derivation_path = "m/"
 
@@ -2410,13 +2448,14 @@ class SatochipExportXpubCustomDerivationView(View):
 
         return Destination(
             SatochipExportXpubCoordinatorView,
-            view_args=dict(script_type=self.script_type, custom_derivation=ret),
+            view_args=dict(sig_type=self.sig_type, script_type=self.script_type, custom_derivation=ret),
         )
 
 
 class SatochipExportXpubCoordinatorView(View):
-    def __init__(self, script_type: str, custom_derivation: str = ""):
+    def __init__(self, sig_type: str, script_type: str, custom_derivation: str = ""):
         super().__init__()
+        self.sig_type = sig_type
         self.script_type = script_type
         self.custom_derivation = custom_derivation
 
@@ -2442,6 +2481,7 @@ class SatochipExportXpubCoordinatorView(View):
         return Destination(
             SatochipExportXpubWarningView,
             view_args=dict(
+                sig_type=self.sig_type,
                 script_type=self.script_type,
                 coordinator=coordinator,
                 custom_derivation=self.custom_derivation,
@@ -2451,8 +2491,9 @@ class SatochipExportXpubCoordinatorView(View):
 
 
 class SatochipExportXpubWarningView(View):
-    def __init__(self, script_type: str, coordinator: str, custom_derivation: str, coordinator_label: str):
+    def __init__(self, sig_type: str, script_type: str, coordinator: str, custom_derivation: str, coordinator_label: str):
         super().__init__()
+        self.sig_type = sig_type
         self.script_type = script_type
         self.coordinator = coordinator
         self.custom_derivation = custom_derivation
@@ -2462,6 +2503,7 @@ class SatochipExportXpubWarningView(View):
         destination = Destination(
             SatochipExportXpubDetailsView,
             view_args=dict(
+                sig_type=self.sig_type,
                 script_type=self.script_type,
                 coordinator=self.coordinator,
                 custom_derivation=self.custom_derivation,
@@ -2487,8 +2529,9 @@ class SatochipExportXpubWarningView(View):
 
 
 class SatochipExportXpubDetailsView(View):
-    def __init__(self, script_type: str, coordinator: str, custom_derivation: str, coordinator_label: str):
+    def __init__(self, sig_type: str, script_type: str, coordinator: str, custom_derivation: str, coordinator_label: str):
         super().__init__()
+        self.sig_type = sig_type
         self.script_type = script_type
         self.coordinator = coordinator
         self.custom_derivation = custom_derivation
@@ -2504,22 +2547,33 @@ class SatochipExportXpubDetailsView(View):
         else:
             derivation_path = embit_utils.get_standard_derivation_path(
                 network=self.settings.get_value(SettingsConstants.SETTING__NETWORK),
-                wallet_type=SettingsConstants.SINGLE_SIG,
+                wallet_type=self.sig_type,
                 script_type=self.script_type,
             )
 
         network = self.settings.get_value(SettingsConstants.SETTING__NETWORK)
         is_mainnet = network == SettingsConstants.MAINNET
-        if self.script_type == SettingsConstants.NATIVE_SEGWIT:
-            xtype = "p2wpkh"
-        elif self.script_type == SettingsConstants.NESTED_SEGWIT:
-            xtype = "p2wpkh-p2sh"
-        elif self.script_type == SettingsConstants.LEGACY_P2PKH:
-            xtype = "standard"
-        elif self.script_type == SettingsConstants.TAPROOT:
-            xtype = "standard"
+
+        if self.sig_type == SettingsConstants.MULTISIG:
+            if self.script_type == SettingsConstants.NATIVE_SEGWIT:
+                xtype = "p2wsh"
+            elif self.script_type == SettingsConstants.NESTED_SEGWIT:
+                xtype = "p2wsh-p2sh"
+            elif self.script_type == SettingsConstants.LEGACY_P2PKH:
+                xtype = "standard"
+            else:
+                xtype = "p2wsh"
         else:
-            xtype = "p2wpkh"
+            if self.script_type == SettingsConstants.NATIVE_SEGWIT:
+                xtype = "p2wpkh"
+            elif self.script_type == SettingsConstants.NESTED_SEGWIT:
+                xtype = "p2wpkh-p2sh"
+            elif self.script_type == SettingsConstants.LEGACY_P2PKH:
+                xtype = "standard"
+            elif self.script_type == SettingsConstants.TAPROOT:
+                xtype = "standard"
+            else:
+                xtype = "p2wpkh"
 
         try:
             xpub_base58 = Satochip_Connector.card_bip32_get_xpub(derivation_path, xtype, is_mainnet)
@@ -2536,19 +2590,20 @@ class SatochipExportXpubDetailsView(View):
         fingerprint = HDKey.from_string(master_xpub).my_fingerprint
         fingerprint_hex = hexlify(fingerprint).decode("utf-8")
 
-        # Build descriptor and store for address explorer
-        if self.script_type == SettingsConstants.NATIVE_SEGWIT:
-            desc_str = f"wpkh({xpub_base58}/{{0,1}}/*)"
-        elif self.script_type == SettingsConstants.NESTED_SEGWIT:
-            desc_str = f"sh(wpkh({xpub_base58}/{{0,1}}/*))"
-        elif self.script_type == SettingsConstants.LEGACY_P2PKH:
-            desc_str = f"pkh({xpub_base58}/{{0,1}}/*)"
-        elif self.script_type == SettingsConstants.TAPROOT:
-            desc_str = f"tr({xpub_base58}/{{0,1}}/*)"
-        else:
-            desc_str = f"wpkh({xpub_base58}/{{0,1}}/*)"
+        if self.sig_type == SettingsConstants.SINGLE_SIG:
+            # Build descriptor and store for address explorer
+            if self.script_type == SettingsConstants.NATIVE_SEGWIT:
+                desc_str = f"wpkh({xpub_base58}/{{0,1}}/*)"
+            elif self.script_type == SettingsConstants.NESTED_SEGWIT:
+                desc_str = f"sh(wpkh({xpub_base58}/{{0,1}}/*))"
+            elif self.script_type == SettingsConstants.LEGACY_P2PKH:
+                desc_str = f"pkh({xpub_base58}/{{0,1}}/*)"
+            elif self.script_type == SettingsConstants.TAPROOT:
+                desc_str = f"tr({xpub_base58}/{{0,1}}/*)"
+            else:
+                desc_str = f"wpkh({xpub_base58}/{{0,1}}/*)"
 
-        self.controller.multisig_wallet_descriptor = Descriptor.from_string(desc_str)
+            self.controller.multisig_wallet_descriptor = Descriptor.from_string(desc_str)
 
         selected_menu_num = self.run_screen(
             seed_screens.SeedExportXpubDetailsScreen,
@@ -2570,6 +2625,7 @@ class SatochipExportXpubDetailsView(View):
                 coordinator=self.coordinator,
                 coordinator_label=self.coordinator_label,
                 fingerprint=fingerprint_hex,
+                sig_type=self.sig_type,
             ),
         )
 
@@ -2583,6 +2639,7 @@ class SatochipExportXpubQRDisplayView(View):
         coordinator: str,
         coordinator_label: str = "",
         fingerprint: str = "",
+        sig_type: str = SettingsConstants.SINGLE_SIG,
     ):
         super().__init__()
         self.xpub = xpub
@@ -2591,6 +2648,7 @@ class SatochipExportXpubQRDisplayView(View):
         self.coordinator = coordinator
         self.coordinator_label = coordinator_label
         self.fingerprint = fingerprint
+        self.sig_type = sig_type
 
     class _SpecterEncoder:
         def __init__(self, xpubstring: str, qr_density: str):
@@ -2654,17 +2712,20 @@ class SatochipExportXpubQRDisplayView(View):
             qr_encoder=encoder,
         )
 
-        return Destination(
-            SeedExportXpubVerifyAddressView,
-            view_args=dict(
-                seed_num=None,
-                derivation_path=self.derivation_path,
-                script_type=self.script_type,
-                sig_type=SettingsConstants.SINGLE_SIG,
-                coordinator_label=self.coordinator_label,
-            ),
-            skip_current_view=True,
-        )
+        if self.sig_type == SettingsConstants.SINGLE_SIG:
+            return Destination(
+                SeedExportXpubVerifyAddressView,
+                view_args=dict(
+                    seed_num=None,
+                    derivation_path=self.derivation_path,
+                    script_type=self.script_type,
+                    sig_type=self.sig_type,
+                    coordinator_label=self.coordinator_label,
+                ),
+                skip_current_view=True,
+            )
+
+        return Destination(MainMenuView)
 
 
 class SatochipLoadDescriptorScriptTypeView(View):
