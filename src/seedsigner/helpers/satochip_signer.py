@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from embit.psbt import PSBT
-from embit.bip32 import HARDENED
+from embit.bip32 import HARDENED_INDEX
 from embit.util import secp256k1
 
 
@@ -9,8 +9,8 @@ def _format_path(derivation: list[int]) -> str:
     """Convert a list of BIP32 indices to string path"""
     path = "m"
     for index in derivation:
-        hardened = index & HARDENED
-        index &= ~HARDENED
+        hardened = bool(index & HARDENED_INDEX)
+        index &= ~HARDENED_INDEX
         suffix = "'" if hardened else ""
         path += f"/{index}{suffix}"
     return path
