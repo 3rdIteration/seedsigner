@@ -8,6 +8,7 @@ from io import BytesIO
 from typing import List
 
 from seedsigner.models.seed import Seed
+from seedsigner.models.wif import WIFKey
 from seedsigner.models.settings import SettingsConstants
 
 logger = logging.getLogger(__name__)
@@ -19,7 +20,7 @@ class OPCODES:
 
 
 class PSBTParser():
-    def __init__(self, p: PSBT, seed: Seed, network: str = SettingsConstants.MAINNET):
+    def __init__(self, p: PSBT, seed: Seed | WIFKey, network: str = SettingsConstants.MAINNET):
         self.psbt: PSBT = p
         self.seed = seed
         self.network = network
@@ -66,7 +67,14 @@ class PSBTParser():
 
 
     def _set_root(self):
-        self.root = bip32.HDKey.from_seed(self.seed.seed_bytes, version=NETWORKS[SettingsConstants.map_network_to_embit(self.network)]["xprv"])
+        if isinstance(self.seed, WIFKey):
+            # root is a simple private key
+            self.root = self.seed.privkey
+        else:
+            self.root = bip32.HDKey.from_seed(
+                self.seed.seed_bytes,
+                version=NETWORKS[SettingsConstants.map_network_to_embit(self.network)]["xprv"],
+            )
 
 
     def parse(self):
@@ -152,7 +160,7 @@ class PSBTParser():
                     my_pubkey = None
 
                     # should be one or zero for single-key addresses
-                    if len(out.bip32_derivations.values()) > 0:
+                    if hasattr(self.root, "derive") and len(out.bip32_derivations.values()) > 0:
                         der = list(out.bip32_derivations.values())[0].derivation
                         my_pubkey = self.root.derive(der)
 
@@ -173,7 +181,7 @@ class PSBTParser():
                 elif "p2tr" in self.policy["type"]:
                     my_pubkey = None
                     # should have one or zero derivations for single-key addresses
-                    if len(out.taproot_bip32_derivations.values()) > 0:
+                    if hasattr(self.root, "derive") and len(out.taproot_bip32_derivations.values()) > 0:
                         # TODO: Support keys in taptree leaves
                         leaf_hashes, derivation = list(out.taproot_bip32_derivations.values())[0]
                         der = derivation.derivation

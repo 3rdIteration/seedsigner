@@ -17,6 +17,8 @@ class PSBTSelectSeedView(View):
     TYPE_21WORD = ButtonOption("Enter 21-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=21)
     TYPE_24WORD = ButtonOption("Enter 24-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=24)
     TYPE_ELECTRUM = ButtonOption("Enter Electrum seed", FontAwesomeIconConstants.KEYBOARD)
+    TYPE_WIF = ButtonOption("Enter WIF", FontAwesomeIconConstants.KEYBOARD)
+    SCAN_WIF = ButtonOption("Scan WIF", SeedSignerIconConstants.QRCODE)
 
 
     def run(self):
@@ -46,6 +48,7 @@ class PSBTSelectSeedView(View):
 
         button_data.append(self.SATOCHIP)
         button_data.append(self.SCAN_SEED)
+        button_data.append(self.SCAN_WIF)
         seed_lengths = self.settings.get_value(SettingsConstants.SETTING__SEED_WORD_LENGTHS)
         options = {
             12: self.TYPE_12WORD,
@@ -58,6 +61,7 @@ class PSBTSelectSeedView(View):
             button_data.append(options[l])
         if self.settings.get_value(SettingsConstants.SETTING__ELECTRUM_SEEDS) == SettingsConstants.OPTION__ENABLED:
             button_data.append(self.TYPE_ELECTRUM)
+        button_data.append(self.TYPE_WIF)
 
         selected_menu_num = self.run_screen(
             ButtonListScreen,
@@ -81,6 +85,10 @@ class PSBTSelectSeedView(View):
             from seedsigner.views.scan_views import ScanSeedQRView
             return Destination(ScanSeedQRView)
 
+        elif button_data[selected_menu_num] == self.SCAN_WIF:
+            from seedsigner.views.scan_views import ScanWIFQRView
+            return Destination(ScanWIFQRView)
+
         elif button_data[selected_menu_num] == self.SATOCHIP:
             from seedsigner.helpers import seedkeeper_utils
             connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satochip"])
@@ -99,7 +107,42 @@ class PSBTSelectSeedView(View):
             from seedsigner.views.seed_views import SeedElectrumMnemonicStartView
             return Destination(SeedElectrumMnemonicStartView)
 
+        elif button_data[selected_menu_num] == self.TYPE_WIF:
+            return Destination(PSBTWIFEntryView)
 
+
+
+class PSBTWIFEntryView(View):
+    def run(self):
+        from seedsigner.gui.screens import seed_screens
+
+        ret = self.run_screen(
+            seed_screens.SeedAddPassphraseScreen,
+            title=_("Private Key (WIF)"),
+            passphrase="",
+        )
+
+        if "is_back_button" in ret:
+            return Destination(BackStackView)
+
+        wif = ret["passphrase"]
+        from seedsigner.models.wif import WIFKey
+        from seedsigner.models.seed import InvalidSeedException
+
+        try:
+            key = WIFKey(wif)
+        except InvalidSeedException:
+            self.run_screen(
+                DireWarningScreen,
+                status_headline=_("Invalid WIF!"),
+                text=_("Not a valid WIF-encoded private key."),
+                button_data=[ButtonOption("OK")],
+                show_back_button=False,
+            )
+            return Destination(PSBTSelectSeedView)
+
+        self.controller.psbt_seed = key
+        return Destination(PSBTOverviewView)
 
 class PSBTOverviewView(View):
     def __init__(self):

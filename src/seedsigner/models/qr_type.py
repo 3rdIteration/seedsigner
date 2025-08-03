@@ -27,6 +27,8 @@ class QRType:
 
     PASSPHRASE = "passphrase"
 
+    WIF = "wif"
+
     ENCRYPTION_KEY = "encryption_key"
 
     TEXT = "text"

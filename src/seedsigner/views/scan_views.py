@@ -172,7 +172,15 @@ class ScanView(View):
                         message=qr_data["message"],
                     )
                 )
-            
+
+            elif self.decoder.is_wif:
+                from seedsigner.models.wif import WIFKey
+                from seedsigner.views.psbt_views import PSBTOverviewView
+
+                wif = self.decoder.get_wif()
+                self.controller.psbt_seed = WIFKey(wif)
+                return Destination(PSBTOverviewView, skip_current_view=True)
+
             elif self.decoder.is_encrypted_seedqr:
                 DECRYPT = ButtonOption("Decrypt")
                 CANCEL = ButtonOption("Cancel")
@@ -274,6 +282,15 @@ class ScanSlip39ShareQRView(ScanView):
             return Destination(ScanInvalidQRTypeView)
 
         return Destination(BackStackView)
+
+
+class ScanWIFQRView(ScanView):
+    instructions_text = _mft("Scan WIF")
+    invalid_qr_type_message = _mft("Expected a WIF private key")
+
+    @property
+    def is_valid_qr_type(self):
+        return self.decoder.is_wif
 
 
 

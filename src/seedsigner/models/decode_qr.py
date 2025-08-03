@@ -5,7 +5,7 @@ import re
 
 from binascii import a2b_base64, b2a_base64
 from enum import IntEnum
-from embit import psbt, bip39
+from embit import psbt, bip39, ec
 from pyzbar import pyzbar
 from pyzbar.pyzbar import ZBarSymbol
 from urtypes.crypto import PSBT as UR_PSBT
@@ -120,6 +120,9 @@ class DecodeQR:
 
             elif self.qr_type == QRType.ENCRYPTION_KEY:
                 self.decoder = EncryptionKeyQrDecoder()
+
+            elif self.qr_type == QRType.WIF:
+                self.decoder = WifQrDecoder()
 
             elif self.qr_type == QRType.TEXT:
                 self.decoder = TextQrDecoder()
@@ -244,6 +247,10 @@ class DecodeQR:
         if self.is_encryptionkey:
             return self.decoder.get_encryption_key()
 
+    def get_wif(self):
+        if self.is_wif:
+            return self.decoder.get_wif()
+
 
     def get_public_data(self):
         if self.is_encrypted_seedqr:
@@ -352,6 +359,10 @@ class DecodeQR:
     @property
     def is_sign_message(self):
         return self.qr_type == QRType.SIGN_MESSAGE
+
+    @property
+    def is_wif(self):
+        return self.qr_type == QRType.WIF
         
 
     @property
@@ -481,6 +492,13 @@ class DecodeQR:
 
             elif DecodeQR.is_base43_psbt(s):
                 return QRType.PSBT__BASE43
+
+            # WIF private key
+            try:
+                ec.PrivateKey.from_wif(s.strip())
+                return QRType.WIF
+            except Exception:
+                pass
 
         except UnicodeDecodeError:
             # Probably this isn't meant to be string data; check if it's valid byte data
@@ -1279,6 +1297,29 @@ class EncryptionKeyQrDecoder(BaseSingleFrameQrDecoder):
 
     def get_encryption_key(self):
         return self.encryption_key
+
+
+class WifQrDecoder(BaseSingleFrameQrDecoder):
+    """Decodes single frame representing a WIF-encoded private key."""
+
+    def __init__(self):
+        super().__init__()
+        self.wif = None
+
+    def add(self, segment, qr_type=QRType.WIF):
+        if qr_type == QRType.WIF:
+            try:
+                ec.PrivateKey.from_wif(segment)
+                self.wif = segment
+                self.complete = True
+                self.collected_segments = 1
+                return DecodeQRStatus.COMPLETE
+            except Exception as e:
+                logger.exception(repr(e))
+        return DecodeQRStatus.INVALID
+
+    def get_wif(self):
+        return self.wif
 
 
 
