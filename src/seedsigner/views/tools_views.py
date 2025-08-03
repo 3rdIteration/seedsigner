@@ -2219,10 +2219,6 @@ class ToolsSatochipImportSeedView(View):
 
     def run(self):
         from seedsigner.gui.screens.screen import LoadingScreenThread
-        Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satochip"])
-
-        if not Satochip_Connector:
-            return Destination(BackStackView)
 
         seeds = self.controller.storage.seeds
         button_data = []
@@ -2258,6 +2254,12 @@ class ToolsSatochipImportSeedView(View):
 
         if len(seeds) > 0 and selected_menu_num < len(seeds):
             # User selected one of the n seeds
+
+            Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satochip"])
+
+            if not Satochip_Connector:
+                return Destination(BackStackView)
+
             try:
                 self.loading_screen = LoadingScreenThread(text="Importing Secret\n\n\n\n\n\n")
                 self.loading_screen.start()
@@ -2276,7 +2278,7 @@ class ToolsSatochipImportSeedView(View):
                 )
             except Exception as e:
                 self.loading_screen.stop()
-                logger.info("Satochip Import Failed:",str(e))
+                logger.info("Satochip Import Failed:", str(e))
                 self.run_screen(
                     WarningScreen,
                     title="Failed",
