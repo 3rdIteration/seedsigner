@@ -612,10 +612,11 @@ class SeedExportXpubDetailsScreen(WarningEdgesMixin, ButtonListScreen):
     has_passphrase: bool = False
     derivation_path: str = "m/84'/0'/0'"
     xpub: str = "zpub6r..."
+    button_label: str = "Export Xpub"
 
     def __post_init__(self):
         # Programmatically set up other args
-        self.button_data = [ButtonOption("Export Xpub")]
+        self.button_data = [ButtonOption(self.button_label)]
         self.title = _("Xpub Details")
 
         # Initialize the base class

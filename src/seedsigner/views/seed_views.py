@@ -3235,11 +3235,11 @@ class SeedAddressVerificationView(View):
         self.is_multisig = self.controller.unverified_address["sig_type"] == SettingsConstants.MULTISIG
         self.seed_derivation_override = ""
         if not self.is_multisig:
-            if seed_num is None:
-                raise Exception(_("Can't validate a single sig addr without specifying a seed"))
-            self.seed_num = seed_num
-            self.seed = self.controller.get_seed(seed_num)
-            self.seed_derivation_override = self.seed.derivation_override(sig_type=SettingsConstants.SINGLE_SIG)
+            if seed_num is not None:
+                self.seed = self.controller.get_seed(seed_num)
+                self.seed_derivation_override = self.seed.derivation_override(sig_type=SettingsConstants.SINGLE_SIG)
+            else:
+                self.seed = None
         else:
             self.seed = None
         self.address = self.controller.unverified_address["address"]
@@ -3440,7 +3440,7 @@ class SeedExportXpubVerificationSuccessView(View):
             button_data=[ButtonOption(_("OK"))],
             show_back_button=False,
         )
-
+        self.controller.multisig_wallet_descriptor = None
         return Destination(MainMenuView)
 
 
@@ -3464,7 +3464,7 @@ class SeedExportXpubVerificationFailedView(View):
             button_data=[ButtonOption(_("OK"))],
             show_back_button=False,
         )
-
+        self.controller.multisig_wallet_descriptor = None
         return Destination(MainMenuView)
 
 

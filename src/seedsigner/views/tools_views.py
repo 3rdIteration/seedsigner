@@ -7,6 +7,7 @@ import binascii
 
 from embit.descriptor import Descriptor
 from embit.descriptor.checksum import checksum
+from embit.bip32 import HDKey
 from PIL import Image
 from PIL.ImageOps import autocontrast
 from gettext import gettext as _
@@ -41,6 +42,7 @@ from seedsigner.views.seed_views import (
     SeedOptionsView,
     SeedWordsWarningView,
     SeedExportXpubScriptTypeView,
+    SeedExportXpubVerifyAddressView,
     LoadSeedView,
     SeedSlip39CreateFromBytesView,
     SeedSlip39RegenerateSharesView,
@@ -2180,9 +2182,11 @@ class ToolsSeedkeeperSaveDescriptorView(View):
 class ToolsSatochipView(View):
     IMPORT_SEED = ButtonOption("Initialise with Seed")
     ENABLE_2FA = ButtonOption("Enable 2FA")
+    EXPORT_XPUB = ButtonOption("Export Xpub")
+    LOAD_DESCRIPTOR = ButtonOption("Load as Descriptor")
 
     def run(self):
-        button_data = [self.IMPORT_SEED, self.ENABLE_2FA]
+        button_data = [self.IMPORT_SEED, self.ENABLE_2FA, self.EXPORT_XPUB, self.LOAD_DESCRIPTOR]
         selected_menu_num = self.run_screen(
             ButtonListScreen,
             title="Satochip",
@@ -2198,6 +2202,12 @@ class ToolsSatochipView(View):
 
         elif button_data[selected_menu_num] == self.ENABLE_2FA:
             return Destination(ToolsSatochipEnable2FAView)
+
+        elif button_data[selected_menu_num] == self.EXPORT_XPUB:
+            return Destination(SatochipExportXpubScriptTypeView)
+
+        elif button_data[selected_menu_num] == self.LOAD_DESCRIPTOR:
+            return Destination(SatochipLoadDescriptorScriptTypeView)
         
 class ToolsSatochipImportSeedView(View):
     SCAN_SEED = ButtonOption("Scan a seed", SeedSignerIconConstants.QRCODE)
@@ -2343,6 +2353,443 @@ class ToolsSatochipEnable2FAView(View):
                 text=f"Enable 2FA Failed",
                 show_back_button=False,
             )
+
+        return Destination(MainMenuView)
+
+
+class SatochipExportXpubScriptTypeView(View):
+    def __init__(self, script_type: str = None):
+        super().__init__()
+        self.script_type = script_type
+
+    def run(self):
+        button_data = []
+        for script_type, display_name in SettingsConstants.ALL_SCRIPT_TYPES:
+            if script_type in self.settings.get_value(SettingsConstants.SETTING__SCRIPT_TYPES):
+                button_data.append(ButtonOption(display_name, return_data=script_type))
+
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title="Export Xpub",
+            is_button_text_centered=False,
+            button_data=button_data,
+            is_bottom_list=True,
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        script_type = button_data[selected_menu_num].return_data
+        if script_type == SettingsConstants.CUSTOM_DERIVATION:
+            return Destination(SatochipExportXpubCustomDerivationView, view_args=dict(script_type=script_type))
+        return Destination(SatochipExportXpubCoordinatorView, view_args=dict(script_type=script_type))
+
+
+class SatochipExportXpubCustomDerivationView(View):
+    def __init__(self, script_type: str):
+        super().__init__()
+        self.script_type = script_type
+        self.custom_derivation_path = "m/"
+
+    def run(self):
+        ret = self.run_screen(
+            seed_screens.SeedExportXpubCustomDerivationScreen,
+            initial_value=self.custom_derivation_path,
+        )
+
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        return Destination(
+            SatochipExportXpubCoordinatorView,
+            view_args=dict(script_type=self.script_type, custom_derivation=ret),
+        )
+
+
+class SatochipExportXpubCoordinatorView(View):
+    def __init__(self, script_type: str, custom_derivation: str = ""):
+        super().__init__()
+        self.script_type = script_type
+        self.custom_derivation = custom_derivation
+
+    def run(self):
+        button_data = []
+        for coord, display_name in SettingsConstants.ALL_COORDINATORS:
+            if coord in self.settings.get_value(SettingsConstants.SETTING__COORDINATORS):
+                button_data.append(ButtonOption(display_name, return_data=coord))
+
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title="Coordinator",
+            is_button_text_centered=False,
+            button_data=button_data,
+            is_bottom_list=True,
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        coordinator = button_data[selected_menu_num].return_data
+        coordinator_label = button_data[selected_menu_num].button_label
+        return Destination(
+            SatochipExportXpubWarningView,
+            view_args=dict(
+                script_type=self.script_type,
+                coordinator=coordinator,
+                custom_derivation=self.custom_derivation,
+                coordinator_label=coordinator_label,
+            ),
+        )
+
+
+class SatochipExportXpubWarningView(View):
+    def __init__(self, script_type: str, coordinator: str, custom_derivation: str, coordinator_label: str):
+        super().__init__()
+        self.script_type = script_type
+        self.coordinator = coordinator
+        self.custom_derivation = custom_derivation
+        self.coordinator_label = coordinator_label
+
+    def run(self):
+        destination = Destination(
+            SatochipExportXpubDetailsView,
+            view_args=dict(
+                script_type=self.script_type,
+                coordinator=self.coordinator,
+                custom_derivation=self.custom_derivation,
+                coordinator_label=self.coordinator_label,
+            ),
+            skip_current_view=True,
+        )
+
+        if self.settings.get_value(SettingsConstants.SETTING__PRIVACY_WARNINGS) == SettingsConstants.OPTION__DISABLED:
+            return destination
+
+        selected_menu_num = self.run_screen(
+            WarningScreen,
+            status_headline=_("Privacy Leak!"),
+            text=_("Xpub can be used to view all future transactions."),
+        )
+
+        if selected_menu_num == 0:
+            return destination
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+
+class SatochipExportXpubDetailsView(View):
+    def __init__(self, script_type: str, coordinator: str, custom_derivation: str, coordinator_label: str):
+        super().__init__()
+        self.script_type = script_type
+        self.coordinator = coordinator
+        self.custom_derivation = custom_derivation
+        self.coordinator_label = coordinator_label
+
+    def run(self):
+        Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satochip"])
+        if not Satochip_Connector:
+            return Destination(BackStackView)
+
+        if self.script_type == SettingsConstants.CUSTOM_DERIVATION:
+            derivation_path = self.custom_derivation
+        else:
+            derivation_path = embit_utils.get_standard_derivation_path(
+                network=self.settings.get_value(SettingsConstants.SETTING__NETWORK),
+                wallet_type=SettingsConstants.SINGLE_SIG,
+                script_type=self.script_type,
+            )
+
+        network = self.settings.get_value(SettingsConstants.SETTING__NETWORK)
+        is_mainnet = network == SettingsConstants.MAINNET
+        if self.script_type == SettingsConstants.NATIVE_SEGWIT:
+            xtype = "p2wpkh"
+        elif self.script_type == SettingsConstants.NESTED_SEGWIT:
+            xtype = "p2wpkh-p2sh"
+        elif self.script_type == SettingsConstants.LEGACY_P2PKH:
+            xtype = "standard"
+        elif self.script_type == SettingsConstants.TAPROOT:
+            xtype = "standard"
+        else:
+            xtype = "p2wpkh"
+
+        try:
+            xpub_base58 = Satochip_Connector.card_bip32_get_xpub(derivation_path, xtype, is_mainnet)
+            master_xpub = Satochip_Connector.card_bip32_get_xpub("", xtype, is_mainnet)
+        except Exception as e:
+            self.run_screen(
+                WarningScreen,
+                title="Failed",
+                status_headline=None,
+                text=str(e),
+            )
+            return Destination(BackStackView)
+
+        fingerprint = HDKey.from_string(master_xpub).my_fingerprint
+        fingerprint_hex = hexlify(fingerprint).decode("utf-8")
+
+        # Build descriptor and store for address explorer
+        if self.script_type == SettingsConstants.NATIVE_SEGWIT:
+            desc_str = f"wpkh({xpub_base58}/{{0,1}}/*)"
+        elif self.script_type == SettingsConstants.NESTED_SEGWIT:
+            desc_str = f"sh(wpkh({xpub_base58}/{{0,1}}/*))"
+        elif self.script_type == SettingsConstants.LEGACY_P2PKH:
+            desc_str = f"pkh({xpub_base58}/{{0,1}}/*)"
+        elif self.script_type == SettingsConstants.TAPROOT:
+            desc_str = f"tr({xpub_base58}/{{0,1}}/*)"
+        else:
+            desc_str = f"wpkh({xpub_base58}/{{0,1}}/*)"
+
+        self.controller.multisig_wallet_descriptor = Descriptor.from_string(desc_str)
+
+        selected_menu_num = self.run_screen(
+            seed_screens.SeedExportXpubDetailsScreen,
+            fingerprint=fingerprint_hex,
+            has_passphrase=False,
+            derivation_path=derivation_path,
+            xpub=xpub_base58,
+        )
+
+        if selected_menu_num != 0:
+            return Destination(BackStackView)
+
+        return Destination(
+            SatochipExportXpubQRDisplayView,
+            view_args=dict(
+                xpub=xpub_base58,
+                derivation_path=derivation_path,
+                script_type=self.script_type,
+                coordinator=self.coordinator,
+                coordinator_label=self.coordinator_label,
+                fingerprint=fingerprint_hex,
+            ),
+        )
+
+
+class SatochipExportXpubQRDisplayView(View):
+    def __init__(
+        self,
+        xpub: str,
+        derivation_path: str,
+        script_type: str,
+        coordinator: str,
+        coordinator_label: str = "",
+        fingerprint: str = "",
+    ):
+        super().__init__()
+        self.xpub = xpub
+        self.derivation_path = derivation_path
+        self.script_type = script_type
+        self.coordinator = coordinator
+        self.coordinator_label = coordinator_label
+        self.fingerprint = fingerprint
+
+    class _SpecterEncoder:
+        def __init__(self, xpubstring: str, qr_density: str):
+            density_mapping = {
+                SettingsConstants.DENSITY__LOW: 40,
+                SettingsConstants.DENSITY__MEDIUM: 65,
+                SettingsConstants.DENSITY__HIGH: 90,
+            }
+            self.qr_max_fragment_size = density_mapping.get(qr_density, 65)
+            self.parts = []
+            start = 0
+            stop = self.qr_max_fragment_size
+            qr_cnt = ((len(xpubstring) - 1) // self.qr_max_fragment_size) + 1
+            if qr_cnt == 1:
+                self.parts.append(xpubstring[start:stop])
+            cnt = 0
+            while cnt < qr_cnt and qr_cnt != 1:
+                part = "p" + str(cnt + 1) + "of" + str(qr_cnt) + " " + xpubstring[start:stop]
+                self.parts.append(part)
+                start = start + self.qr_max_fragment_size
+                stop = stop + self.qr_max_fragment_size
+                if stop > len(xpubstring):
+                    stop = len(xpubstring)
+                cnt += 1
+            self.part_num_sent = 0
+
+        def next_part(self):
+            if self.part_num_sent > (len(self.parts) - 1):
+                self.part_num_sent = 0
+            part = self.parts[self.part_num_sent]
+            self.part_num_sent += 1
+            return part
+
+        def cur_part(self):
+            if self.part_num_sent == 0:
+                self.part_num_sent = len(self.parts) - 1
+            else:
+                self.part_num_sent -= 1
+            return self.next_part()
+
+        def restart(self):
+            self.part_num_sent = 0
+
+        def is_complete(self):
+            return len(self.parts) == 1
+
+        def seq_len(self):
+            return len(self.parts)
+
+    def run(self):
+        from seedsigner.gui.screens.screen import QRDisplayScreen
+        xpubstring = f"[{self.fingerprint}{self.derivation_path[1:]}]{self.xpub}"
+
+        if self.coordinator == SettingsConstants.COORDINATOR__SPECTER_DESKTOP:
+            encoder = self._SpecterEncoder(xpubstring, self.settings.get_value(SettingsConstants.SETTING__QR_DENSITY))
+        else:
+            encoder = GenericStaticQrEncoder(data=xpubstring)
+
+        self.run_screen(
+            QRDisplayScreen,
+            qr_encoder=encoder,
+        )
+
+        return Destination(
+            SeedExportXpubVerifyAddressView,
+            view_args=dict(
+                seed_num=None,
+                derivation_path=self.derivation_path,
+                script_type=self.script_type,
+                sig_type=SettingsConstants.SINGLE_SIG,
+                coordinator_label=self.coordinator_label,
+            ),
+            skip_current_view=True,
+        )
+
+
+class SatochipLoadDescriptorScriptTypeView(View):
+    def __init__(self, script_type: str = None):
+        super().__init__()
+        self.script_type = script_type
+
+    def run(self):
+        button_data = []
+        for script_type, display_name in SettingsConstants.ALL_SCRIPT_TYPES:
+            if script_type in self.settings.get_value(SettingsConstants.SETTING__SCRIPT_TYPES):
+                button_data.append(ButtonOption(display_name, return_data=script_type))
+
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title="Load Descriptor",
+            is_button_text_centered=False,
+            button_data=button_data,
+            is_bottom_list=True,
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        script_type = button_data[selected_menu_num].return_data
+        if script_type == SettingsConstants.CUSTOM_DERIVATION:
+            return Destination(SatochipLoadDescriptorCustomDerivationView, view_args=dict(script_type=script_type))
+        return Destination(SatochipLoadDescriptorDetailsView, view_args=dict(script_type=script_type))
+
+
+class SatochipLoadDescriptorCustomDerivationView(View):
+    def __init__(self, script_type: str):
+        super().__init__()
+        self.script_type = script_type
+        self.custom_derivation_path = "m/"
+
+    def run(self):
+        ret = self.run_screen(
+            seed_screens.SeedExportXpubCustomDerivationScreen,
+            initial_value=self.custom_derivation_path,
+        )
+
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        return Destination(
+            SatochipLoadDescriptorDetailsView,
+            view_args=dict(script_type=self.script_type, custom_derivation=ret),
+        )
+
+
+class SatochipLoadDescriptorDetailsView(View):
+    def __init__(self, script_type: str, custom_derivation: str = ""):
+        super().__init__()
+        self.script_type = script_type
+        self.custom_derivation = custom_derivation
+
+    def run(self):
+        Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satochip"])
+        if not Satochip_Connector:
+            return Destination(BackStackView)
+
+        if self.script_type == SettingsConstants.CUSTOM_DERIVATION:
+            derivation_path = self.custom_derivation
+        else:
+            derivation_path = embit_utils.get_standard_derivation_path(
+                network=self.settings.get_value(SettingsConstants.SETTING__NETWORK),
+                wallet_type=SettingsConstants.SINGLE_SIG,
+                script_type=self.script_type,
+            )
+
+        network = self.settings.get_value(SettingsConstants.SETTING__NETWORK)
+        is_mainnet = network == SettingsConstants.MAINNET
+        if self.script_type == SettingsConstants.NATIVE_SEGWIT:
+            xtype = "p2wpkh"
+        elif self.script_type == SettingsConstants.NESTED_SEGWIT:
+            xtype = "p2wpkh-p2sh"
+        elif self.script_type == SettingsConstants.LEGACY_P2PKH:
+            xtype = "standard"
+        elif self.script_type == SettingsConstants.TAPROOT:
+            xtype = "standard"
+        else:
+            xtype = "p2wpkh"
+
+        try:
+            xpub_base58 = Satochip_Connector.card_bip32_get_xpub(derivation_path, xtype, is_mainnet)
+            master_xpub = Satochip_Connector.card_bip32_get_xpub("", xtype, is_mainnet)
+        except Exception as e:
+            self.run_screen(
+                WarningScreen,
+                title="Failed",
+                status_headline=None,
+                text=str(e),
+            )
+            return Destination(BackStackView)
+
+        fingerprint = HDKey.from_string(master_xpub).my_fingerprint
+        fingerprint_hex = hexlify(fingerprint).decode("utf-8")
+
+        if self.script_type == SettingsConstants.NATIVE_SEGWIT:
+            desc_str = f"wpkh({xpub_base58}/{{0,1}}/*)"
+        elif self.script_type == SettingsConstants.NESTED_SEGWIT:
+            desc_str = f"sh(wpkh({xpub_base58}/{{0,1}}/*))"
+        elif self.script_type == SettingsConstants.LEGACY_P2PKH:
+            desc_str = f"pkh({xpub_base58}/{{0,1}}/*)"
+        elif self.script_type == SettingsConstants.TAPROOT:
+            desc_str = f"tr({xpub_base58}/{{0,1}}/*)"
+        else:
+            desc_str = f"wpkh({xpub_base58}/{{0,1}}/*)"
+
+        descriptor = Descriptor.from_string(desc_str)
+
+        selected_menu_num = self.run_screen(
+            seed_screens.SeedExportXpubDetailsScreen,
+            fingerprint=fingerprint_hex,
+            has_passphrase=False,
+            derivation_path=derivation_path,
+            xpub=xpub_base58,
+            button_label="Confirm",
+        )
+
+        if selected_menu_num != 0:
+            return Destination(BackStackView)
+
+        self.controller.multisig_wallet_descriptor = descriptor
+
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Success",
+            status_headline=None,
+            text="Descriptor Loaded",
+            show_back_button=False,
+        )
 
         return Destination(MainMenuView)
 
