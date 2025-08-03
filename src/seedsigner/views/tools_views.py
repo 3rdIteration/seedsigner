@@ -2511,6 +2511,7 @@ class SatochipExportXpubDetailsView(View):
 
         try:
             xpub_base58 = Satochip_Connector.card_bip32_get_xpub(derivation_path, xtype, is_mainnet)
+            master_xpub = Satochip_Connector.card_bip32_get_xpub("", xtype, is_mainnet)
         except Exception as e:
             self.run_screen(
                 WarningScreen,
@@ -2520,7 +2521,7 @@ class SatochipExportXpubDetailsView(View):
             )
             return Destination(BackStackView)
 
-        fingerprint = HDKey.from_string(xpub_base58).fingerprint
+        fingerprint = HDKey.from_string(master_xpub).my_fingerprint
         fingerprint_hex = hexlify(fingerprint).decode("utf-8")
 
         # Build descriptor and store for address explorer
@@ -2556,18 +2557,28 @@ class SatochipExportXpubDetailsView(View):
                 script_type=self.script_type,
                 coordinator=self.coordinator,
                 coordinator_label=self.coordinator_label,
+                fingerprint=fingerprint_hex,
             ),
         )
 
 
 class SatochipExportXpubQRDisplayView(View):
-    def __init__(self, xpub: str, derivation_path: str, script_type: str, coordinator: str, coordinator_label: str = ""):
+    def __init__(
+        self,
+        xpub: str,
+        derivation_path: str,
+        script_type: str,
+        coordinator: str,
+        coordinator_label: str = "",
+        fingerprint: str = "",
+    ):
         super().__init__()
         self.xpub = xpub
         self.derivation_path = derivation_path
         self.script_type = script_type
         self.coordinator = coordinator
         self.coordinator_label = coordinator_label
+        self.fingerprint = fingerprint
 
     class _SpecterEncoder:
         def __init__(self, xpubstring: str, qr_density: str):
@@ -2619,8 +2630,7 @@ class SatochipExportXpubQRDisplayView(View):
 
     def run(self):
         from seedsigner.gui.screens.screen import QRDisplayScreen
-        fingerprint = hexlify(HDKey.from_string(self.xpub).fingerprint).decode("utf-8")
-        xpubstring = f"[{fingerprint}{self.derivation_path[1:]}]{self.xpub}"
+        xpubstring = f"[{self.fingerprint}{self.derivation_path[1:]}]{self.xpub}"
 
         if self.coordinator == SettingsConstants.COORDINATOR__SPECTER_DESKTOP:
             encoder = self._SpecterEncoder(xpubstring, self.settings.get_value(SettingsConstants.SETTING__QR_DENSITY))
