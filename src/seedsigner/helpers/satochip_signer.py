@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from binascii import b2a_base64
+
 from embit.ec import PublicKey
 from embit.psbt import PSBT
 from embit.util import secp256k1
@@ -20,6 +22,26 @@ def _format_path(derivation: list[int]) -> str:
         suffix = "'" if hardened else ""
         path += f"/{index}{suffix}"
     return path
+
+
+def format_path_string(path: str) -> str:
+    """Normalize a BIP32 path string for Satochip expectations.
+
+    Satochip's ``CardConnector`` only accepts hardened markers as an
+    apostrophe (``'``) and requires a leading ``m/``. SeedSigner uses
+    ``h`` to denote hardened indices and may omit the master prefix, so
+    we convert here.
+    """
+
+    if path is None:
+        return "m"
+    path = path.strip()
+    if path.startswith("m/"):
+        path = path[2:]
+    path = path.replace("H", "'").replace("h", "'")
+    if path == "" or path == "m":
+        return "m"
+    return "m/" + path
 
 
 def sign_psbt_with_satochip(psbt: PSBT, connector) -> int:
@@ -55,3 +77,23 @@ def sign_psbt_with_satochip(psbt: PSBT, connector) -> int:
             signed += 1
             break
     return signed
+
+
+def sign_message_with_satochip(derivation_path: str, message: str, connector) -> str:
+    """Sign an arbitrary message using a connected Satochip card.
+
+    Args:
+        derivation_path: BIP32 derivation path for the signing key ("m/84'/0'/0'/0/0").
+        message: Message to be signed.
+        connector: Active Satochip ``CardConnector`` instance.
+
+    Returns:
+        Base64 encoded compact signature string.
+    """
+
+    path = format_path_string(derivation_path)
+    key, _chaincode = connector.card_bip32_get_extendedkey(path)
+    _resp, sw1, sw2, compsig = connector.card_sign_message(0xFF, key, message)
+    if sw1 != 0x90 or sw2 != 0x00 or not compsig:
+        raise Exception("Failed to sign message with Satochip")
+    return b2a_base64(compsig).strip().decode()
