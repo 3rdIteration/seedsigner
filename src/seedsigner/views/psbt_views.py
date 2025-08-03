@@ -196,8 +196,8 @@ class PSBTOverviewView(View):
         num_change_outputs = 0
         num_self_transfer_outputs = 0
         for change_output in change_data:
-            # print(f"""{change_output["derivation_path"][0]}""")
-            if change_output["derivation_path"][0].split("/")[-2] == "1":
+            path_ints = bip32.parse_path(change_output["derivation_path"][0])
+            if len(path_ints) >= 2 and (path_ints[-2] & 0x7FFFFFFF) == 1:
                 num_change_outputs += 1
             else:
                 num_self_transfer_outputs += 1
@@ -417,8 +417,9 @@ class PSBTChangeDetailsView(View):
         derivation_path = change_data.get("derivation_path")[i]
 
         # 'm/84h/1h/0h/1/0' would be a change addr while 'm/84h/1h/0h/0/0' is a self-receive
-        is_change_derivation_path = int(derivation_path.split("/")[-2]) == 1
-        derivation_path_addr_index = int(derivation_path.split("/")[-1])
+        path_ints = bip32.parse_path(derivation_path)
+        is_change_derivation_path = len(path_ints) >= 2 and (path_ints[-2] & 0x7FFFFFFF) == 1
+        derivation_path_addr_index = path_ints[-1] & 0x7FFFFFFF if path_ints else 0
 
         if is_change_derivation_path:
             # TRANSLATOR_NOTE: The amount you're receiving back from the transaction
@@ -461,8 +462,9 @@ class PSBTChangeDetailsView(View):
                 script_type = pubkey.script_type()
                 
                 # extract derivation path to get wallet and change derivation
-                change_path = '/'.join(derivation_path.split("/")[-2:])
-                wallet_path = '/'.join(derivation_path.split("/")[:-2])
+                change_path = bip32.path_to_str(path_ints[-2:])[2:] if len(path_ints) >= 2 else ""
+                wallet_path_list = path_ints[:-2]
+                wallet_path = bip32.path_to_str(wallet_path_list)
                 
                 if self.controller.psbt_seed:
                     xpub = self.controller.psbt_seed.get_xpub(
@@ -471,13 +473,17 @@ class PSBTChangeDetailsView(View):
                     )
                     xpub_key = xpub.derive(change_path).key
                 else:
-                    rel_wallet_path = wallet_path.replace(
-                        psbt_parser.root_path_str + "/", "", 1
+                    rel_wallet_path_list = wallet_path_list[len(psbt_parser.root_path):]
+                    rel_wallet_path = (
+                        bip32.path_to_str(rel_wallet_path_list)[2:]
+                        if rel_wallet_path_list
+                        else ""
                     )
-                    if rel_wallet_path:
-                        xpub = psbt_parser.root.derive(rel_wallet_path)
-                    else:
-                        xpub = psbt_parser.root
+                    xpub = (
+                        psbt_parser.root.derive(rel_wallet_path)
+                        if rel_wallet_path
+                        else psbt_parser.root
+                    )
                     xpub_key = xpub.derive(change_path).key
 
                 network = self.settings.get_value(SettingsConstants.SETTING__NETWORK)
