@@ -11,7 +11,8 @@ def _format_path(derivation: list[int]) -> str:
     for index in derivation:
         hardened = index & HARDENED
         index &= ~HARDENED
-        path += f"/{index}{"'" if hardened else ''}"
+        suffix = "'" if hardened else ""
+        path += f"/{index}{suffix}"
     return path
 
 
