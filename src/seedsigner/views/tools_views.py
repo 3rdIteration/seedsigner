@@ -2782,7 +2782,15 @@ class SatochipLoadDescriptorDetailsView(View):
 
         self.controller.multisig_wallet_descriptor = descriptor
 
-        return Destination(ToolsAddressExplorerAddressTypeView)
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Success",
+            status_headline=None,
+            text="Descriptor Loaded",
+            show_back_button=False,
+        )
+
+        return Destination(MainMenuView)
 
 class ToolsSatochipDIYView(View):
     BUILD_APPLETS = ButtonOption("Build Applets")

@@ -957,7 +957,8 @@ class TestSatochipLoadDescriptor(BaseTest):
         view.run_screen = Mock(return_value=0)
         destination = view.run()
 
+        assert view.run_screen.call_count == 2
         assert isinstance(controller.multisig_wallet_descriptor, Descriptor)
-        assert destination.View_cls == tools_views.ToolsAddressExplorerAddressTypeView
+        assert destination.View_cls == tools_views.MainMenuView
 
 
