@@ -13,6 +13,7 @@ from seedsigner.models.settings import Settings, SettingsConstants
 from seedsigner.models.seed import ElectrumSeed, Seed
 from seedsigner.views.view import MainMenuView, OptionDisabledView, View, NetworkMismatchErrorView
 from seedsigner.views import seed_views, scan_views, settings_views
+from binascii import hexlify
 
 
 def load_seed_into_decoder(view: scan_views.ScanView):
@@ -934,6 +935,7 @@ class TestSatochipLoadDescriptor(BaseTest):
         root = HDKey.from_seed(seed_bytes, version=networks.NETWORKS["main"]["xprv"])
         derived_xpub = root.derive("m/84h/0h/0h").to_public().to_string()
         master_xpub = root.to_public().to_string()
+        master_fingerprint = hexlify(root.my_fingerprint).decode()
 
         class MockConnector:
             def card_bip32_get_xpub(self, path, xtype, is_mainnet):
@@ -963,5 +965,9 @@ class TestSatochipLoadDescriptor(BaseTest):
         )
         assert isinstance(controller.multisig_wallet_descriptor, Descriptor)
         assert destination.View_cls == tools_views.MainMenuView
+        assert (
+            hexlify(controller.multisig_wallet_descriptor.keys[0].fingerprint).decode()
+            == master_fingerprint
+        )
 
 

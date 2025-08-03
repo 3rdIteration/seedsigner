@@ -10,6 +10,7 @@ from seedsigner.views import scan_views, seed_views, tools_views
 from embit.bip32 import HDKey
 from embit import bip39, networks
 from seedsigner.helpers import seedkeeper_utils
+from binascii import hexlify
 
 
 
@@ -226,6 +227,7 @@ class TestToolsFlows(FlowTest):
         root = HDKey.from_seed(seed_bytes, version=networks.NETWORKS["main"]["xprv"])
         derived_xpub = root.derive("m/84h/0h/0h").to_public().to_string()
         master_xpub = root.to_public().to_string()
+        master_fingerprint = hexlify(root.my_fingerprint).decode()
 
         class MockConnector:
             def card_bip32_get_xpub(self, path, xtype, is_mainnet):
@@ -256,6 +258,9 @@ class TestToolsFlows(FlowTest):
             FlowStep(tools_views.ToolsAddressExplorerAddressTypeView, button_data_selection=tools_views.ToolsAddressExplorerAddressTypeView.RECEIVE),
             FlowStep(tools_views.ToolsAddressExplorerAddressListView),
         ])
+
+        descriptor = controller.multisig_wallet_descriptor
+        assert hexlify(descriptor.keys[0].fingerprint).decode() == master_fingerprint
 
 
     def test__verify_address__legacy_multisig_p2sh__flow(self):

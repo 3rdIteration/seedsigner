@@ -2763,17 +2763,21 @@ class SatochipLoadDescriptorDetailsView(View):
 
         fingerprint = HDKey.from_string(master_xpub).my_fingerprint
         fingerprint_hex = hexlify(fingerprint).decode("utf-8")
+        if derivation_path.startswith("m/"):
+            origin_path = derivation_path[2:]
+        else:
+            origin_path = derivation_path
 
         if self.script_type == SettingsConstants.NATIVE_SEGWIT:
-            desc_str = f"wpkh({xpub_base58}/{{0,1}}/*)"
+            desc_str = f"wpkh([{fingerprint_hex}/{origin_path}]{xpub_base58}/{{0,1}}/*)"
         elif self.script_type == SettingsConstants.NESTED_SEGWIT:
-            desc_str = f"sh(wpkh({xpub_base58}/{{0,1}}/*))"
+            desc_str = f"sh(wpkh([{fingerprint_hex}/{origin_path}]{xpub_base58}/{{0,1}}/*))"
         elif self.script_type == SettingsConstants.LEGACY_P2PKH:
-            desc_str = f"pkh({xpub_base58}/{{0,1}}/*)"
+            desc_str = f"pkh([{fingerprint_hex}/{origin_path}]{xpub_base58}/{{0,1}}/*)"
         elif self.script_type == SettingsConstants.TAPROOT:
-            desc_str = f"tr({xpub_base58}/{{0,1}}/*)"
+            desc_str = f"tr([{fingerprint_hex}/{origin_path}]{xpub_base58}/{{0,1}}/*)"
         else:
-            desc_str = f"wpkh({xpub_base58}/{{0,1}}/*)"
+            desc_str = f"wpkh([{fingerprint_hex}/{origin_path}]{xpub_base58}/{{0,1}}/*)"
 
         descriptor = Descriptor.from_string(desc_str)
 
