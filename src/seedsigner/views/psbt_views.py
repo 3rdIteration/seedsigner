@@ -1,5 +1,8 @@
 from gettext import gettext as _
 
+from binascii import hexlify
+from embit import bip32
+
 from seedsigner.models.psbt_parser import PSBTParser
 from seedsigner.models.settings import SettingsConstants
 from seedsigner.gui.components import FontAwesomeIconConstants, SeedSignerIconConstants
@@ -83,12 +86,43 @@ class PSBTSelectSeedView(View):
 
         elif button_data[selected_menu_num] == self.SATOCHIP:
             from seedsigner.helpers import seedkeeper_utils
+            from embit.bip32 import HDKey
+
             connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satochip"])
             if not connector:
                 return Destination(BackStackView)
+
+            network = self.settings.get_value(SettingsConstants.SETTING__NETWORK)
+            is_mainnet = network == SettingsConstants.MAINNET
+            first_der = next(iter(self.controller.psbt.inputs[0].bip32_derivations.values())).derivation
+            account_path = []
+            HARDENED_INDEX = 0x80000000
+            for idx in first_der:
+                if idx & HARDENED_INDEX:
+                    account_path.append(idx)
+                else:
+                    break
+            account_path_str = bip32.path_to_str(account_path)
+            account_xpub = connector.card_bip32_get_xpub(account_path_str, "xpub", is_mainnet)
+            root_key = HDKey.from_base58(account_xpub)
+            master_xpub = connector.card_bip32_get_xpub("", "xpub", is_mainnet)
+            master_fp = HDKey.from_base58(master_xpub).child(0).fingerprint
+
+            try:
+                self.controller.psbt_parser = PSBTParser(
+                    self.controller.psbt,
+                    seed=None,
+                    root=root_key,
+                    root_path=account_path,
+                    master_fingerprint=master_fp,
+                    network=network,
+                )
+            except Exception:
+                return Destination(BackStackView)
+
             self.controller.psbt_seed = None
             self.controller.psbt_sign_with_satochip = True
-            return Destination(PSBTFinalizeView)
+            return Destination(PSBTOverviewView)
 
         elif button_data[selected_menu_num] in [self.TYPE_12WORD, self.TYPE_15WORD, self.TYPE_18WORD, self.TYPE_21WORD, self.TYPE_24WORD]:
             from seedsigner.views.seed_views import SeedMnemonicEntryView
@@ -349,7 +383,12 @@ class PSBTChangeDetailsView(View):
 
         # Single-sig verification is easy. We expect to find a single fingerprint
         # and derivation path.
-        seed_fingerprint = self.controller.psbt_seed.get_fingerprint(self.settings.get_value(SettingsConstants.SETTING__NETWORK))
+        if self.controller.psbt_seed:
+            seed_fingerprint = self.controller.psbt_seed.get_fingerprint(
+                self.settings.get_value(SettingsConstants.SETTING__NETWORK)
+            )
+        else:
+            seed_fingerprint = hexlify(psbt_parser.master_fingerprint).decode()
 
         if seed_fingerprint not in change_data.get("fingerprint"):
             # TODO: Something is wrong with this psbt(?). Reroute to warning?
@@ -406,13 +445,22 @@ class PSBTChangeDetailsView(View):
                 change_path = '/'.join(derivation_path.split("/")[-2:])
                 wallet_path = '/'.join(derivation_path.split("/")[:-2])
                 
-                xpub = self.controller.psbt_seed.get_xpub(
-                    wallet_path=wallet_path,
-                    network=self.settings.get_value(SettingsConstants.SETTING__NETWORK)
-                )
-                
-                # take script type and call script method to generate address from seed / derivation
-                xpub_key = xpub.derive(change_path).key
+                if self.controller.psbt_seed:
+                    xpub = self.controller.psbt_seed.get_xpub(
+                        wallet_path=wallet_path,
+                        network=self.settings.get_value(SettingsConstants.SETTING__NETWORK)
+                    )
+                    xpub_key = xpub.derive(change_path).key
+                else:
+                    rel_wallet_path = wallet_path.replace(
+                        psbt_parser.root_path_str + "/", "", 1
+                    )
+                    if rel_wallet_path:
+                        xpub = psbt_parser.root.derive(rel_wallet_path)
+                    else:
+                        xpub = psbt_parser.root
+                    xpub_key = xpub.derive(change_path).key
+
                 network = self.settings.get_value(SettingsConstants.SETTING__NETWORK)
                 scriptcall = getattr(script, script_type)
                 if script_type == "p2sh":
