@@ -965,3 +965,40 @@ class TestSatochipLoadDescriptor(BaseTest):
         assert destination.View_cls == tools_views.MainMenuView
 
 
+class TestSatochipExportXpubQRDisplayView(BaseTest):
+    def test_multisig_skips_verification(self):
+        from seedsigner.views import tools_views, seed_views
+        from seedsigner.models.settings_definition import SettingsConstants
+        from unittest.mock import Mock
+
+        view = tools_views.SatochipExportXpubQRDisplayView(
+            xpub="xpub",
+            derivation_path="m/48'/0'/0'/2'",
+            script_type=SettingsConstants.NATIVE_SEGWIT,
+            coordinator=SettingsConstants.COORDINATOR__SPECTER_DESKTOP,
+            coordinator_label="Specter",
+            fingerprint="f" * 8,
+            sig_type=SettingsConstants.MULTISIG,
+        )
+        view.run_screen = Mock(return_value=0)
+        destination = view.run()
+        assert destination.View_cls == tools_views.MainMenuView
+
+    def test_single_sig_requires_verification(self):
+        from seedsigner.views import tools_views, seed_views
+        from seedsigner.models.settings_definition import SettingsConstants
+        from unittest.mock import Mock
+
+        view = tools_views.SatochipExportXpubQRDisplayView(
+            xpub="xpub",
+            derivation_path="m/84'/0'/0'",
+            script_type=SettingsConstants.NATIVE_SEGWIT,
+            coordinator=SettingsConstants.COORDINATOR__SPECTER_DESKTOP,
+            coordinator_label="Specter",
+            fingerprint="f" * 8,
+            sig_type=SettingsConstants.SINGLE_SIG,
+        )
+        view.run_screen = Mock(return_value=0)
+        destination = view.run()
+        assert destination.View_cls == seed_views.SeedExportXpubVerifyAddressView
+
