@@ -582,6 +582,8 @@ class PSBTFinalizeView(View):
     def run(self):
         from embit.psbt import PSBT
         from seedsigner.gui.screens.psbt_screens import PSBTFinalizeScreen
+        from seedsigner.models.wif import WIFKey
+        from embit.finalizer import finalize_psbt
 
         psbt_parser: PSBTParser = self.controller.psbt_parser
         psbt: PSBT = self.controller.psbt
@@ -610,6 +612,12 @@ class PSBTFinalizeView(View):
                 sign_psbt_with_satochip(psbt, self.controller.Satochip_Connector)
             else:
                 psbt.sign_with(psbt_parser.root)
+            if isinstance(self.controller.psbt_seed, WIFKey):
+                tx = finalize_psbt(psbt)
+                self.controller.signed_tx_hex = tx.serialize().hex() if tx else None
+            else:
+                self.controller.signed_tx_hex = None
+
             trimmed_psbt = PSBTParser.trim(psbt)
 
             if sig_cnt == PSBTParser.sig_count(trimmed_psbt):
@@ -623,12 +631,17 @@ class PSBTFinalizeView(View):
 
 class PSBTSignedQRDisplayView(View):
     def run(self):
-        from seedsigner.models.encode_qr import UrPsbtQrEncoder
+        from seedsigner.models.encode_qr import UrPsbtQrEncoder, GenericStringEncoder
+        from seedsigner.models.wif import WIFKey
 
-        qr_encoder = UrPsbtQrEncoder(
-            psbt=self.controller.psbt,
-            qr_density=self.settings.get_value(SettingsConstants.SETTING__QR_DENSITY),
-        )
+        if isinstance(self.controller.psbt_seed, WIFKey) and getattr(self.controller, "signed_tx_hex", None):
+            qr_encoder = GenericStringEncoder(self.controller.signed_tx_hex)
+        else:
+            qr_encoder = UrPsbtQrEncoder(
+                psbt=self.controller.psbt,
+                qr_density=self.settings.get_value(SettingsConstants.SETTING__QR_DENSITY),
+            )
+
         self.run_screen(QRDisplayScreen, qr_encoder=qr_encoder)
 
         # We're done with this PSBT. Route back to MainMenuView which always
