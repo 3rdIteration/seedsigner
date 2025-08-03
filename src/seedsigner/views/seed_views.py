@@ -3440,7 +3440,7 @@ class SeedExportXpubVerificationSuccessView(View):
             button_data=[ButtonOption(_("OK"))],
             show_back_button=False,
         )
-
+        self.controller.multisig_wallet_descriptor = None
         return Destination(MainMenuView)
 
 

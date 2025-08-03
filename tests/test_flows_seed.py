@@ -893,3 +893,71 @@ class TestSatochipDescriptorVerification(BaseTest):
         assert destination.View_cls == seed_views.SeedExportXpubVerificationSuccessView
 
 
+class TestExportXpubSuccess(BaseTest):
+    def test_success_clears_descriptor(self):
+        from embit.bip32 import HDKey
+        from embit.descriptor import Descriptor
+        from embit import bip39, networks
+        from seedsigner.views import seed_views
+        from seedsigner.controller import Controller
+
+        seed_bytes = bip39.mnemonic_to_seed(
+            "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+        )
+        root = HDKey.from_seed(seed_bytes, version=networks.NETWORKS["main"]["xprv"])
+        xpub = root.derive("m/84h/0h/0h").to_public().to_string()
+        descriptor = Descriptor.from_string(f"wpkh({xpub}/{{0,1}}/*)")
+
+        controller = Controller.get_instance()
+        controller.multisig_wallet_descriptor = descriptor
+
+        view = seed_views.SeedExportXpubVerificationSuccessView()
+        view.run_screen = Mock(return_value=0)
+        view.run()
+
+        assert controller.multisig_wallet_descriptor is None
+
+
+class TestSatochipLoadDescriptor(BaseTest):
+    def test_load_descriptor_sets_descriptor(self, monkeypatch):
+        from embit.bip32 import HDKey
+        from embit.descriptor import Descriptor
+        from embit import bip39, networks
+        from seedsigner.views import tools_views
+        from seedsigner.controller import Controller
+        from seedsigner.models.settings_definition import SettingsConstants
+        from seedsigner.helpers import seedkeeper_utils
+
+        seed_bytes = bip39.mnemonic_to_seed(
+            "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+        )
+        root = HDKey.from_seed(seed_bytes, version=networks.NETWORKS["main"]["xprv"])
+        derived_xpub = root.derive("m/84h/0h/0h").to_public().to_string()
+        master_xpub = root.to_public().to_string()
+
+        class MockConnector:
+            def card_bip32_get_xpub(self, path, xtype, is_mainnet):
+                if path == "":
+                    return master_xpub
+                elif path == "m/84'/0'/0'":
+                    return derived_xpub
+                raise ValueError("unexpected path")
+
+        def mock_init_satochip(parent, init_card_filter=None):
+            return MockConnector()
+
+        monkeypatch.setattr(seedkeeper_utils, "init_satochip", mock_init_satochip)
+
+        controller = Controller.get_instance()
+        controller.multisig_wallet_descriptor = None
+
+        view = tools_views.SatochipLoadDescriptorDetailsView(
+            script_type=SettingsConstants.NATIVE_SEGWIT, custom_derivation=""
+        )
+        view.run_screen = Mock(return_value=0)
+        destination = view.run()
+
+        assert isinstance(controller.multisig_wallet_descriptor, Descriptor)
+        assert destination.View_cls == tools_views.ToolsAddressExplorerAddressTypeView
+
+

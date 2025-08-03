@@ -2183,9 +2183,10 @@ class ToolsSatochipView(View):
     IMPORT_SEED = ButtonOption("Initialise with Seed")
     ENABLE_2FA = ButtonOption("Enable 2FA")
     EXPORT_XPUB = ButtonOption("Export Xpub")
+    LOAD_DESCRIPTOR = ButtonOption("Load as Descriptor")
 
     def run(self):
-        button_data = [self.IMPORT_SEED, self.ENABLE_2FA, self.EXPORT_XPUB]
+        button_data = [self.IMPORT_SEED, self.ENABLE_2FA, self.EXPORT_XPUB, self.LOAD_DESCRIPTOR]
         selected_menu_num = self.run_screen(
             ButtonListScreen,
             title="Satochip",
@@ -2204,6 +2205,9 @@ class ToolsSatochipView(View):
 
         elif button_data[selected_menu_num] == self.EXPORT_XPUB:
             return Destination(SatochipExportXpubScriptTypeView)
+
+        elif button_data[selected_menu_num] == self.LOAD_DESCRIPTOR:
+            return Destination(SatochipLoadDescriptorScriptTypeView)
         
 class ToolsSatochipImportSeedView(View):
     SCAN_SEED = ButtonOption("Scan a seed", SeedSignerIconConstants.QRCODE)
@@ -2653,6 +2657,132 @@ class SatochipExportXpubQRDisplayView(View):
             ),
             skip_current_view=True,
         )
+
+
+class SatochipLoadDescriptorScriptTypeView(View):
+    def __init__(self, script_type: str = None):
+        super().__init__()
+        self.script_type = script_type
+
+    def run(self):
+        button_data = []
+        for script_type, display_name in SettingsConstants.ALL_SCRIPT_TYPES:
+            if script_type in self.settings.get_value(SettingsConstants.SETTING__SCRIPT_TYPES):
+                button_data.append(ButtonOption(display_name, return_data=script_type))
+
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title="Load Descriptor",
+            is_button_text_centered=False,
+            button_data=button_data,
+            is_bottom_list=True,
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        script_type = button_data[selected_menu_num].return_data
+        if script_type == SettingsConstants.CUSTOM_DERIVATION:
+            return Destination(SatochipLoadDescriptorCustomDerivationView, view_args=dict(script_type=script_type))
+        return Destination(SatochipLoadDescriptorDetailsView, view_args=dict(script_type=script_type))
+
+
+class SatochipLoadDescriptorCustomDerivationView(View):
+    def __init__(self, script_type: str):
+        super().__init__()
+        self.script_type = script_type
+        self.custom_derivation_path = "m/"
+
+    def run(self):
+        ret = self.run_screen(
+            seed_screens.SeedExportXpubCustomDerivationScreen,
+            initial_value=self.custom_derivation_path,
+        )
+
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        return Destination(
+            SatochipLoadDescriptorDetailsView,
+            view_args=dict(script_type=self.script_type, custom_derivation=ret),
+        )
+
+
+class SatochipLoadDescriptorDetailsView(View):
+    def __init__(self, script_type: str, custom_derivation: str = ""):
+        super().__init__()
+        self.script_type = script_type
+        self.custom_derivation = custom_derivation
+
+    def run(self):
+        Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satochip"])
+        if not Satochip_Connector:
+            return Destination(BackStackView)
+
+        if self.script_type == SettingsConstants.CUSTOM_DERIVATION:
+            derivation_path = self.custom_derivation
+        else:
+            derivation_path = embit_utils.get_standard_derivation_path(
+                network=self.settings.get_value(SettingsConstants.SETTING__NETWORK),
+                wallet_type=SettingsConstants.SINGLE_SIG,
+                script_type=self.script_type,
+            )
+
+        network = self.settings.get_value(SettingsConstants.SETTING__NETWORK)
+        is_mainnet = network == SettingsConstants.MAINNET
+        if self.script_type == SettingsConstants.NATIVE_SEGWIT:
+            xtype = "p2wpkh"
+        elif self.script_type == SettingsConstants.NESTED_SEGWIT:
+            xtype = "p2wpkh-p2sh"
+        elif self.script_type == SettingsConstants.LEGACY_P2PKH:
+            xtype = "standard"
+        elif self.script_type == SettingsConstants.TAPROOT:
+            xtype = "standard"
+        else:
+            xtype = "p2wpkh"
+
+        try:
+            xpub_base58 = Satochip_Connector.card_bip32_get_xpub(derivation_path, xtype, is_mainnet)
+            master_xpub = Satochip_Connector.card_bip32_get_xpub("", xtype, is_mainnet)
+        except Exception as e:
+            self.run_screen(
+                WarningScreen,
+                title="Failed",
+                status_headline=None,
+                text=str(e),
+            )
+            return Destination(BackStackView)
+
+        fingerprint = HDKey.from_string(master_xpub).my_fingerprint
+        fingerprint_hex = hexlify(fingerprint).decode("utf-8")
+
+        if self.script_type == SettingsConstants.NATIVE_SEGWIT:
+            desc_str = f"wpkh({xpub_base58}/{{0,1}}/*)"
+        elif self.script_type == SettingsConstants.NESTED_SEGWIT:
+            desc_str = f"sh(wpkh({xpub_base58}/{{0,1}}/*))"
+        elif self.script_type == SettingsConstants.LEGACY_P2PKH:
+            desc_str = f"pkh({xpub_base58}/{{0,1}}/*)"
+        elif self.script_type == SettingsConstants.TAPROOT:
+            desc_str = f"tr({xpub_base58}/{{0,1}}/*)"
+        else:
+            desc_str = f"wpkh({xpub_base58}/{{0,1}}/*)"
+
+        descriptor = Descriptor.from_string(desc_str)
+
+        selected_menu_num = self.run_screen(
+            seed_screens.SeedExportXpubDetailsScreen,
+            fingerprint=fingerprint_hex,
+            has_passphrase=False,
+            derivation_path=derivation_path,
+            xpub=xpub_base58,
+        )
+
+        if selected_menu_num != 0:
+            return Destination(BackStackView)
+
+        self.controller.multisig_wallet_descriptor = descriptor
+
+        return Destination(ToolsAddressExplorerAddressTypeView)
 
 class ToolsSatochipDIYView(View):
     BUILD_APPLETS = ButtonOption("Build Applets")
