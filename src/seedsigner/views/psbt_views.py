@@ -103,10 +103,29 @@ class PSBTSelectSeedView(View):
                 else:
                     break
             account_path_str = bip32.path_to_str(account_path)
-            account_xpub = connector.card_bip32_get_xpub(account_path_str, "xpub", is_mainnet)
+
+            purpose = account_path[0] & 0x7FFFFFFF if account_path else 0
+            xtype = {
+                44: "standard",
+                49: "p2wpkh-p2sh",
+                84: "p2wpkh",
+                48: "p2wsh-p2sh" if len(account_path) > 3 and (account_path[3] & 0x7FFFFFFF) == 1 else "p2wsh",
+            }.get(purpose, "standard")
+
+            try:
+                account_xpub = connector.card_bip32_get_xpub(account_path_str, xtype, is_mainnet)
+                master_xpub = connector.card_bip32_get_xpub("", xtype, is_mainnet)
+            except Exception as e:
+                self.run_screen(
+                    WarningScreen,
+                    title="Failed",
+                    status_headline=None,
+                    text=str(e),
+                )
+                return Destination(BackStackView)
+
             root_key = HDKey.from_base58(account_xpub)
-            master_xpub = connector.card_bip32_get_xpub("", "xpub", is_mainnet)
-            master_fp = HDKey.from_base58(master_xpub).child(0).fingerprint
+            master_fp = HDKey.from_base58(master_xpub).my_fingerprint
 
             try:
                 self.controller.psbt_parser = PSBTParser(
