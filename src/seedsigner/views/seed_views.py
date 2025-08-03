@@ -3700,7 +3700,9 @@ class SeedSignMessageConfirmAddressView(View):
             else:
                 xtype = "p2wpkh"
             is_mainnet = addr_format["network"] == SettingsConstants.MAINNET
-            xpub_base58 = connector.card_bip32_get_xpub(addr_format["wallet_derivation_path"], xtype, is_mainnet)
+            from seedsigner.helpers.satochip_signer import format_path_string
+            wallet_path = format_path_string(addr_format["wallet_derivation_path"])
+            xpub_base58 = connector.card_bip32_get_xpub(wallet_path, xtype, is_mainnet)
             xpub = bip32.HDKey.from_base58(xpub_base58)
         else:
             if self.seed_num is None:

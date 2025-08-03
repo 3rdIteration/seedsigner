@@ -22,3 +22,9 @@ def test_sign_message_with_satochip_returns_base64_signature():
     sig = sign_message_with_satochip("m/84'/0'/0'/0/0", "hello", connector)
     assert sig == b2a_base64(b"\x01" * 65).strip().decode()
 
+
+def test_sign_message_with_satochip_accepts_hardened_notation_without_m_prefix():
+    connector = DummyConnector()
+    sig = sign_message_with_satochip("84h/0h/0h/0/0", "hello", connector)
+    assert sig == b2a_base64(b"\x01" * 65).strip().decode()
+
