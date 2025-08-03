@@ -109,7 +109,9 @@ class PSBTSelectSeedView(View):
             account_path_str = "m"
             for i in account_path:
                 hardened = bool(i & HARDENED_INDEX)
-                account_path_str += f"/{i & 0x7FFFFFFF}{"'" if hardened else ''}"
+                index = i & 0x7FFFFFFF
+                suffix = "'" if hardened else ""
+                account_path_str += f"/{index}{suffix}"
 
             purpose = account_path[0] & 0x7FFFFFFF if account_path else 0
             xtype = {
