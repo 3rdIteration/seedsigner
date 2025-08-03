@@ -10,6 +10,7 @@ from seedsigner.views.view import BackStackView, MainMenuView, NotYetImplemented
 
 class PSBTSelectSeedView(View):
     SCAN_SEED = ButtonOption("Scan a seed", SeedSignerIconConstants.QRCODE)
+    SATOCHIP = ButtonOption("Use Satochip card", SeedSignerIconConstants.FINGERPRINT)
     TYPE_12WORD = ButtonOption("Enter 12-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=12)
     TYPE_15WORD = ButtonOption("Enter 15-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=15)
     TYPE_18WORD = ButtonOption("Enter 18-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=18)
@@ -43,6 +44,7 @@ class PSBTSelectSeedView(View):
 
             button_data.append(ButtonOption(button_str, SeedSignerIconConstants.FINGERPRINT))
 
+        button_data.append(self.SATOCHIP)
         button_data.append(self.SCAN_SEED)
         seed_lengths = self.settings.get_value(SettingsConstants.SETTING__SEED_WORD_LENGTHS)
         options = {
@@ -78,6 +80,15 @@ class PSBTSelectSeedView(View):
         if button_data[selected_menu_num] == self.SCAN_SEED:
             from seedsigner.views.scan_views import ScanSeedQRView
             return Destination(ScanSeedQRView)
+
+        elif button_data[selected_menu_num] == self.SATOCHIP:
+            from seedsigner.helpers import seedkeeper_utils
+            connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satochip"])
+            if not connector:
+                return Destination(BackStackView)
+            self.controller.psbt_seed = None
+            self.controller.psbt_sign_with_satochip = True
+            return Destination(PSBTFinalizeView)
 
         elif button_data[selected_menu_num] in [self.TYPE_12WORD, self.TYPE_15WORD, self.TYPE_18WORD, self.TYPE_21WORD, self.TYPE_24WORD]:
             from seedsigner.views.seed_views import SeedMnemonicEntryView
@@ -532,8 +543,11 @@ class PSBTFinalizeView(View):
         psbt_parser: PSBTParser = self.controller.psbt_parser
         psbt: PSBT = self.controller.psbt
 
-        if not psbt_parser:
+        if psbt is None:
             # Should not be able to get here
+            return Destination(MainMenuView)
+
+        if not self.controller.psbt_sign_with_satochip and psbt_parser is None:
             return Destination(MainMenuView)
         
         selected_menu_num = self.run_screen(
@@ -545,20 +559,22 @@ class PSBTFinalizeView(View):
             return Destination(BackStackView)
 
         else:
-            # Sign PSBT
             sig_cnt = PSBTParser.sig_count(psbt)
-            psbt.sign_with(psbt_parser.root)
+            if self.controller.psbt_sign_with_satochip:
+                from seedsigner.helpers.satochip_signer import sign_psbt_with_satochip
+                if not self.controller.Satochip_Connector:
+                    return Destination(PSBTSigningErrorView)
+                sign_psbt_with_satochip(psbt, self.controller.Satochip_Connector)
+            else:
+                psbt.sign_with(psbt_parser.root)
             trimmed_psbt = PSBTParser.trim(psbt)
 
             if sig_cnt == PSBTParser.sig_count(trimmed_psbt):
-                # Signing failed / didn't do anything
-                # TODO: Reserved for Nick. Are there different failure scenarios that we can detect?
-                # Would be nice to alter the message on the next screen w/more detail.
                 return Destination(PSBTSigningErrorView)
-            
-            else:
-                self.controller.psbt = trimmed_psbt
-                return Destination(PSBTSignedQRDisplayView)
+
+            self.controller.psbt = trimmed_psbt
+            self.controller.psbt_sign_with_satochip = False
+            return Destination(PSBTSignedQRDisplayView)
 
 
 
