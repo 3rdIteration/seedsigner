@@ -383,7 +383,9 @@ class SettingsConstants:
     SETTING__ENCRYPTED_QR = "encrypted_qr"
     SETTING__ENCRYPTION_MODE = "version"
     SETTING__ENCRYPTION_ITER = "pbkdf2_iterations"
-    
+    SETTING__WIF_KEYS = "wif_keys"
+    SETTING__BIP38_KEYS = "bip38_keys"
+
     SETTING__DEBUG = "debug"
 
 
@@ -779,6 +781,18 @@ class SettingsDefinition:
                       type=SettingsConstants.TYPE__FREE_ENTRY,
                       visibility=SettingsConstants.VISIBILITY__ADVANCED,
                       default_value=SettingsConstants.ENCRYPTION_ITERATIONS),
+
+        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
+                      attr_name=SettingsConstants.SETTING__WIF_KEYS,
+                      display_name="WIF keys",
+                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
+                      default_value=SettingsConstants.OPTION__ENABLED),
+
+        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
+                      attr_name=SettingsConstants.SETTING__BIP38_KEYS,
+                      display_name="BIP38 keys",
+                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
+                      default_value=SettingsConstants.OPTION__ENABLED),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
                       attr_name=SettingsConstants.SETTING__BIP85_CHILD_SEEDS,

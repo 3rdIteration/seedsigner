@@ -10,6 +10,7 @@ from io import BytesIO
 from typing import List
 
 from seedsigner.models.seed import Seed
+from seedsigner.models.wif import WIFKey
 from seedsigner.models.settings import SettingsConstants
 
 logger = logging.getLogger(__name__)
@@ -24,7 +25,7 @@ class PSBTParser():
     def __init__(
         self,
         p: PSBT,
-        seed: Seed | None = None,
+        seed: Seed | WIFKey | None = None,
         *,
         root: bip32.HDKey | None = None,
         root_path: list[int] | None = None,
@@ -80,10 +81,14 @@ class PSBTParser():
 
     def _set_root(self):
         if self.seed is not None:
-            self.root = bip32.HDKey.from_seed(
-                self.seed.seed_bytes,
-                version=NETWORKS[SettingsConstants.map_network_to_embit(self.network)]["xprv"],
-            )
+            if isinstance(self.seed, WIFKey):
+                # root is a simple private key
+                self.root = self.seed.privkey
+            else:
+                self.root = bip32.HDKey.from_seed(
+                    self.seed.seed_bytes,
+                    version=NETWORKS[SettingsConstants.map_network_to_embit(self.network)]["xprv"],
+                )
         elif self.root is None:
             raise RuntimeError("No seed or root key available")
 
@@ -167,7 +172,7 @@ class PSBTParser():
                     my_pubkey = None
 
                     # should be one or zero for single-key addresses
-                    if len(out.bip32_derivations.values()) > 0:
+                    if hasattr(self.root, "derive") and len(out.bip32_derivations.values()) > 0:
                         der = list(out.bip32_derivations.values())[0].derivation
                         der = der[len(self.root_path):]
                         my_pubkey = self.root.derive(der)
@@ -189,7 +194,7 @@ class PSBTParser():
                 elif "p2tr" in self.policy["type"]:
                     my_pubkey = None
                     # should have one or zero derivations for single-key addresses
-                    if len(out.taproot_bip32_derivations.values()) > 0:
+                    if hasattr(self.root, "derive") and len(out.taproot_bip32_derivations.values()) > 0:
                         # TODO: Support keys in taptree leaves
                         leaf_hashes, derivation = list(out.taproot_bip32_derivations.values())[0]
                         der = derivation.derivation[len(self.root_path):]
