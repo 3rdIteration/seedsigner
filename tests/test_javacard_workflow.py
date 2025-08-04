@@ -18,14 +18,10 @@ if os.environ.get("RUN_JAVACARD_TESTS") != "1":
     )
 
 # Remove MagicMock placeholders inserted by tests/conftest so that we can
-# import the real pysatochip modules.
-for mod in [
-    "pysatochip",
-    "pysatochip.JCconstants",
-    "pysatochip.util",
-    "pysatochip.CardConnector",
-]:
-    sys.modules.pop(mod, None)
+# import the real pysatochip and pyscard modules when present.
+for mod in list(sys.modules):
+    if mod.startswith("pysatochip") or mod.startswith("smartcard"):
+        sys.modules.pop(mod, None)
 try:
     from pysatochip.CardConnector import CardConnector, WrongPinError  # type: ignore
     from pysatochip.JCconstants import (  # type: ignore
