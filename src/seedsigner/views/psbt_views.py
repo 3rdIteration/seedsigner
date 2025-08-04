@@ -137,6 +137,9 @@ class PSBTSelectSeedView(View):
             root_key = HDKey.from_base58(account_xpub)
             master_fp = HDKey.from_base58(master_xpub).my_fingerprint
 
+            from seedsigner.gui.screens.screen import LoadingScreenThread
+            loading = LoadingScreenThread(text=_("Parsing PSBT..."))
+            loading.start()
             try:
                 self.controller.psbt_parser = PSBTParser(
                     self.controller.psbt,
@@ -155,6 +158,8 @@ class PSBTSelectSeedView(View):
                     text=str(e),
                 )
                 return Destination(BackStackView)
+            finally:
+                loading.stop()
 
             self.controller.psbt_seed = None
             self.controller.psbt_sign_with_satochip = True
@@ -639,7 +644,7 @@ class PSBTFinalizeView(View):
 
         if not self.controller.psbt_sign_with_satochip and psbt_parser is None:
             return Destination(MainMenuView)
-        
+
         selected_menu_num = self.run_screen(
             PSBTFinalizeScreen,
             button_data=[self.APPROVE_PSBT]
@@ -648,7 +653,10 @@ class PSBTFinalizeView(View):
         if selected_menu_num == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
 
-        else:
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+        loading = LoadingScreenThread(text=_("Signing PSBT..."))
+        loading.start()
+        try:
             sig_cnt = PSBTParser.sig_count(psbt)
             if self.controller.psbt_sign_with_satochip:
                 from seedsigner.helpers.satochip_signer import sign_psbt_with_satochip
@@ -658,24 +666,33 @@ class PSBTFinalizeView(View):
             else:
                 psbt.sign_with(psbt_parser.root)
             trimmed_psbt = PSBTParser.trim(psbt)
+        finally:
+            loading.stop()
 
-            if sig_cnt == PSBTParser.sig_count(trimmed_psbt):
-                return Destination(PSBTSigningErrorView)
+        if sig_cnt == PSBTParser.sig_count(trimmed_psbt):
+            return Destination(PSBTSigningErrorView)
 
-            self.controller.psbt = trimmed_psbt
-            self.controller.psbt_sign_with_satochip = False
-            return Destination(PSBTSignedQRDisplayView)
+        self.controller.psbt = trimmed_psbt
+        self.controller.psbt_sign_with_satochip = False
+        return Destination(PSBTSignedQRDisplayView)
 
 
 
 class PSBTSignedQRDisplayView(View):
     def run(self):
         from seedsigner.models.encode_qr import UrPsbtQrEncoder
+        from seedsigner.gui.screens.screen import LoadingScreenThread
 
-        qr_encoder = UrPsbtQrEncoder(
-            psbt=self.controller.psbt,
-            qr_density=self.settings.get_value(SettingsConstants.SETTING__QR_DENSITY),
-        )
+        loading = LoadingScreenThread(text=_("Encoding PSBT..."))
+        loading.start()
+        try:
+            qr_encoder = UrPsbtQrEncoder(
+                psbt=self.controller.psbt,
+                qr_density=self.settings.get_value(SettingsConstants.SETTING__QR_DENSITY),
+            )
+        finally:
+            loading.stop()
+
         self.run_screen(QRDisplayScreen, qr_encoder=qr_encoder)
 
         # We're done with this PSBT. Route back to MainMenuView which always
