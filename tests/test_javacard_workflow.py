@@ -26,12 +26,17 @@ for mod in [
     "pysatochip.CardConnector",
 ]:
     sys.modules.pop(mod, None)
-
-from pysatochip.CardConnector import CardConnector, WrongPinError  # type: ignore
-from pysatochip.JCconstants import (
-    SEEDKEEPER_DIC_TYPE,
-    SEEDKEEPER_DIC_EXPORT_RIGHTS,
-)
+try:
+    from pysatochip.CardConnector import CardConnector, WrongPinError  # type: ignore
+    from pysatochip.JCconstants import (  # type: ignore
+        SEEDKEEPER_DIC_TYPE,
+        SEEDKEEPER_DIC_EXPORT_RIGHTS,
+    )
+except ModuleNotFoundError as e:  # pragma: no cover - dependency check
+    pytest.skip(
+        f"pysatochip dependency missing: {e}. Install pyscard and pysatochip to run.",
+        allow_module_level=True,
+    )
 
 from seedsigner.helpers.satochip_signer import (
     sign_message_with_satochip,

@@ -57,10 +57,11 @@ Annoying complications:
 
 End-to-end tests for a physical JavaCard are provided in
 `tests/test_javacard_workflow.py`. These tests require a blank, compatible
-JavaCard and the [Satochip-DIY](https://github.com/3rdIteration/Satochip-DIY)
-toolchain with Java and `ant` available on the system. The tests are skipped by
-default; set `RUN_JAVACARD_TESTS=1` to enable them. Running these tests will
-erase any applets currently installed on the card.
+JavaCard, the [Satochip-DIY](https://github.com/3rdIteration/Satochip-DIY)
+toolchain with Java and `ant`, and the Python packages `pysatochip` and
+`pyscard`. The tests are skipped by default; set `RUN_JAVACARD_TESTS=1` to
+enable them. Running these tests will erase any applets currently installed on
+the card.
 
 1. Clone the Satochip-DIY repository and build the CAP files:
 
@@ -70,9 +71,15 @@ erase any applets currently installed on the card.
     ant
     ```
 
-2. Connect a blank JavaCard to the system.
+2. Install the Python dependencies:
 
-3. From the SeedSigner project root run:
+    ```bash
+    pip install pysatochip pyscard
+    ```
+
+3. Connect a blank JavaCard to the system.
+
+4. From the SeedSigner project root run:
 
     ```bash
     export SATOCHIP_DIY_PATH=/path/to/Satochip-DIY
