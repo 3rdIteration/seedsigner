@@ -53,13 +53,43 @@ Annoying complications:
 * If you want to see `print()` statements that are in a test file, add `-s`
 * Better idea: use a proper logger in the test file and use one of the above options to display logs
 
+## JavaCard integration tests
+
+End-to-end tests for a physical JavaCard are provided in
+`tests/test_javacard_workflow.py`. These tests require a blank, compatible
+JavaCard and the [Satochip-DIY](https://github.com/3rdIteration/Satochip-DIY)
+toolchain with Java and `ant` available on the system. The tests are skipped by
+default; set `RUN_JAVACARD_TESTS=1` to enable them. Running these tests will
+erase any applets currently installed on the card.
+
+1. Clone the Satochip-DIY repository and build the CAP files:
+
+    ```bash
+    git clone https://github.com/3rdIteration/Satochip-DIY.git
+    cd Satochip-DIY
+    ant
+    ```
+
+2. Connect a blank JavaCard to the system.
+
+3. From the SeedSigner project root run:
+
+    ```bash
+    export SATOCHIP_DIY_PATH=/path/to/Satochip-DIY
+    RUN_JAVACARD_TESTS=1 pytest tests/test_javacard_workflow.py
+    ```
+
+The test installs the Satochip applet, signs a message and a PSBT to verify
+signing functionality, uninstalls it, then installs the Seedkeeper applet to
+exercise card management features (label update, PIN change, NFC policy)
+and to import, export, and remove each supported secret type before removing
+the applet.
 
 ## Screenshot generator
 The screenshot generator is meant to mostly be a utility and not really part of the test suite. However,
 it is actually implemented to be run by `pytest`.
 
 see: [Screenshot generator README](screenshot_generator/README.md)
-
 
 ## Generate coverage manually
 Run tests and generate test coverage
