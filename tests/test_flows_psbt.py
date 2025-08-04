@@ -169,3 +169,30 @@ class TestPSBTFlows(FlowTest):
             FlowStep(psbt_views.PSBTSignedQRDisplayView),
             FlowStep(MainMenuView)
         ])
+
+
+class TestPSBTSatochip(FlowTest):
+
+    def test_satochip_connect_failure_returns_to_select_menu(self, monkeypatch):
+        """Satochip connection failure should return to the signer selection menu."""
+        from seedsigner.views import scan_views, psbt_views
+        from seedsigner.views.view import MainMenuView
+        from seedsigner.helpers import seedkeeper_utils
+
+        def load_psbt_into_decoder(view: scan_views.ScanView):
+            # Single sig PSBT for tests
+            view.decoder.add_data(
+                "cHNidP8BAHECAAAAAX9/d6VyI7nvVTyhLBfqu05za2AJ2Z0dKMC0cUX+S2U7AQAAAAD9////AgeHAAAAAAAAFgAUOnNPuZMD1sQudt3+7LvHBUvGhyd//gAAAAAAABYAFGO9QLvu4V9/hz6ZjbIGMrqsEiIYAjQTAAABAR+ghgEAAAAAABYAFKawrgcT62jmIVQwyHPCV0thmJWbAQDBAQAAAAABAYeHL9UQlz/jEKUuNNY3LTeQRjudjBinsP2L0ppvgRt0AAAAAAD/////AnbP3rsPAAAAIlEgtgmCioGjfKwp6f8rOoI4OPb+ZV8db581J9IizZPskl2ghgEAAAAAABYAFKawrgcT62jmIVQwyHPCV0thmJWbAUDCBlMh9VjZN2NdU9Wabi0o3Ct1q9YHTsJRLAkLfUuIHB+BE+ucR4bdGAJG5nBhCWOmCXbpRwKP1INRYvkuQ2fHAAAAACIGA2+PEYHyVy6nhYwAx5SJKBIWXjsWgjhhf/2FEWqXgxnoEKNOC3gAAACAAAAAAAAAAAAAACICA0SBeeHxfHdny6rUnQJuteAnQ7shSydexjJCkSJarn3mEKNOC3gAAACAAQAAAAEAAAAA"
+            )
+
+        def mock_init_satochip(parent, init_card_filter=None, require_pin=True):
+            return None
+
+        monkeypatch.setattr(seedkeeper_utils, "init_satochip", mock_init_satochip)
+
+        self.run_sequence([
+            FlowStep(MainMenuView, button_data_selection=MainMenuView.SCAN),
+            FlowStep(scan_views.ScanView, before_run=load_psbt_into_decoder),
+            FlowStep(psbt_views.PSBTSelectSeedView, button_data_selection=psbt_views.PSBTSelectSeedView.SATOCHIP),
+            FlowStep(psbt_views.PSBTSelectSeedView),
+        ])
