@@ -93,7 +93,7 @@ class PSBTSelectSeedView(View):
 
             connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satochip"])
             if not connector:
-                return Destination(BackStackView)
+                return Destination(PSBTSelectSeedView, clear_history=True)
 
             network = self.settings.get_value(SettingsConstants.SETTING__NETWORK)
             is_mainnet = network == SettingsConstants.MAINNET
@@ -136,7 +136,7 @@ class PSBTSelectSeedView(View):
                         status_headline=None,
                         text=str(e),
                     )
-                    return Destination(BackStackView)
+                    return Destination(PSBTSelectSeedView, clear_history=True)
 
                 root_key = HDKey.from_base58(account_xpub)
                 master_fp = HDKey.from_base58(master_xpub).my_fingerprint
@@ -158,7 +158,7 @@ class PSBTSelectSeedView(View):
                         status_headline=None,
                         text=str(e),
                     )
-                    return Destination(BackStackView)
+                    return Destination(PSBTSelectSeedView, clear_history=True)
             finally:
                 loading.stop()
 
