@@ -56,8 +56,10 @@ class PSBTSelectSeedView(View):
 
         button_data.append(self.SATOCHIP)
         button_data.append(self.SCAN_SEED)
-        button_data.append(self.SCAN_WIF)
-        button_data.append(self.SCAN_BIP38)
+        if self.settings.get_value(SettingsConstants.SETTING__WIF_KEYS) == SettingsConstants.OPTION__ENABLED:
+            button_data.append(self.SCAN_WIF)
+        if self.settings.get_value(SettingsConstants.SETTING__BIP38_KEYS) == SettingsConstants.OPTION__ENABLED:
+            button_data.append(self.SCAN_BIP38)
         seed_lengths = self.settings.get_value(SettingsConstants.SETTING__SEED_WORD_LENGTHS)
         options = {
             12: self.TYPE_12WORD,
@@ -70,8 +72,10 @@ class PSBTSelectSeedView(View):
             button_data.append(options[l])
         if self.settings.get_value(SettingsConstants.SETTING__ELECTRUM_SEEDS) == SettingsConstants.OPTION__ENABLED:
             button_data.append(self.TYPE_ELECTRUM)
-        button_data.append(self.TYPE_WIF)
-        button_data.append(self.TYPE_BIP38)
+        if self.settings.get_value(SettingsConstants.SETTING__WIF_KEYS) == SettingsConstants.OPTION__ENABLED:
+            button_data.append(self.TYPE_WIF)
+        if self.settings.get_value(SettingsConstants.SETTING__BIP38_KEYS) == SettingsConstants.OPTION__ENABLED:
+            button_data.append(self.TYPE_BIP38)
 
         selected_menu_num = self.run_screen(
             ButtonListScreen,

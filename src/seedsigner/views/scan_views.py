@@ -174,18 +174,24 @@ class ScanView(View):
                 )
 
             elif self.decoder.is_bip38:
-                from seedsigner.views.psbt_views import PSBTBIP38PassphraseView
+                if self.settings.get_value(SettingsConstants.SETTING__BIP38_KEYS) == SettingsConstants.OPTION__ENABLED:
+                    from seedsigner.views.psbt_views import PSBTBIP38PassphraseView
 
-                bip38 = self.decoder.get_bip38()
-                return Destination(PSBTBIP38PassphraseView, view_args=dict(encrypted=bip38), skip_current_view=True)
+                    bip38 = self.decoder.get_bip38()
+                    return Destination(PSBTBIP38PassphraseView, view_args=dict(encrypted=bip38), skip_current_view=True)
+                else:
+                    return Destination(ScanInvalidQRTypeView)
 
             elif self.decoder.is_wif:
-                from seedsigner.models.wif import WIFKey
-                from seedsigner.views.psbt_views import PSBTOverviewView
+                if self.settings.get_value(SettingsConstants.SETTING__WIF_KEYS) == SettingsConstants.OPTION__ENABLED:
+                    from seedsigner.models.wif import WIFKey
+                    from seedsigner.views.psbt_views import PSBTOverviewView
 
-                wif = self.decoder.get_wif()
-                self.controller.psbt_seed = WIFKey(wif)
-                return Destination(PSBTOverviewView, skip_current_view=True)
+                    wif = self.decoder.get_wif()
+                    self.controller.psbt_seed = WIFKey(wif)
+                    return Destination(PSBTOverviewView, skip_current_view=True)
+                else:
+                    return Destination(ScanInvalidQRTypeView)
 
             elif self.decoder.is_encrypted_seedqr:
                 DECRYPT = ButtonOption("Decrypt")
@@ -296,7 +302,10 @@ class ScanWIFQRView(ScanView):
 
     @property
     def is_valid_qr_type(self):
-        return self.decoder.is_wif
+        return (
+            self.settings.get_value(SettingsConstants.SETTING__WIF_KEYS) == SettingsConstants.OPTION__ENABLED
+            and self.decoder.is_wif
+        )
 
 
 class ScanBIP38QRView(ScanView):
@@ -305,7 +314,10 @@ class ScanBIP38QRView(ScanView):
 
     @property
     def is_valid_qr_type(self):
-        return self.decoder.is_bip38
+        return (
+            self.settings.get_value(SettingsConstants.SETTING__BIP38_KEYS) == SettingsConstants.OPTION__ENABLED
+            and self.decoder.is_bip38
+        )
 
 
 
