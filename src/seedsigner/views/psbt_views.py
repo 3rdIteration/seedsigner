@@ -121,43 +121,44 @@ class PSBTSelectSeedView(View):
                 48: "p2wsh-p2sh" if len(account_path) > 3 and (account_path[3] & 0x7FFFFFFF) == 1 else "p2wsh",
             }.get(purpose, "standard")
 
-            try:
-                account_xpub = connector.card_bip32_get_xpub(account_path_str, xtype, is_mainnet)
-                master_xpub = connector.card_bip32_get_xpub("", xtype, is_mainnet)
-            except Exception as e:
-                logger.exception("Failed to export xpub from Satochip card")
-                self.run_screen(
-                    WarningScreen,
-                    title="Failed",
-                    status_headline=None,
-                    text=str(e),
-                )
-                return Destination(BackStackView)
-
-            root_key = HDKey.from_base58(account_xpub)
-            master_fp = HDKey.from_base58(master_xpub).my_fingerprint
-
             from seedsigner.gui.screens.screen import LoadingScreenThread
             loading = LoadingScreenThread(text=_("Parsing PSBT..."))
             loading.start()
             try:
-                self.controller.psbt_parser = PSBTParser(
-                    self.controller.psbt,
-                    seed=None,
-                    root=root_key,
-                    root_path=account_path,
-                    master_fingerprint=master_fp,
-                    network=network,
-                )
-            except Exception as e:
-                logger.exception("Failed to parse PSBT with Satochip data")
-                self.run_screen(
-                    WarningScreen,
-                    title="Failed",
-                    status_headline=None,
-                    text=str(e),
-                )
-                return Destination(BackStackView)
+                try:
+                    account_xpub = connector.card_bip32_get_xpub(account_path_str, xtype, is_mainnet)
+                    master_xpub = connector.card_bip32_get_xpub("", xtype, is_mainnet)
+                except Exception as e:
+                    logger.exception("Failed to export xpub from Satochip card")
+                    self.run_screen(
+                        WarningScreen,
+                        title="Failed",
+                        status_headline=None,
+                        text=str(e),
+                    )
+                    return Destination(BackStackView)
+
+                root_key = HDKey.from_base58(account_xpub)
+                master_fp = HDKey.from_base58(master_xpub).my_fingerprint
+
+                try:
+                    self.controller.psbt_parser = PSBTParser(
+                        self.controller.psbt,
+                        seed=None,
+                        root=root_key,
+                        root_path=account_path,
+                        master_fingerprint=master_fp,
+                        network=network,
+                    )
+                except Exception as e:
+                    logger.exception("Failed to parse PSBT with Satochip data")
+                    self.run_screen(
+                        WarningScreen,
+                        title="Failed",
+                        status_headline=None,
+                        text=str(e),
+                    )
+                    return Destination(BackStackView)
             finally:
                 loading.stop()
 
