@@ -56,41 +56,36 @@ Annoying complications:
 ## JavaCard integration tests
 
 End-to-end tests for a physical JavaCard are provided in
-`tests/test_javacard_workflow.py`. These tests require a blank, compatible
-JavaCard, the [Satochip-DIY](https://github.com/3rdIteration/Satochip-DIY)
-toolchain with Java and `ant`, and the Python packages `pysatochip` and
-`pyscard`. The tests are skipped by default; set `RUN_JAVACARD_TESTS=1` to
-enable them. Running these tests will erase any applets currently installed on
-the card.
+`tests/test_javacard_workflow.py`. These tests exercise both the Satochip
+signer applet and the Seedkeeper secret-storage applet. They are skipped by
+default; set `RUN_JAVACARD_TESTS=1` to enable them.
 
-1. Clone the Satochip-DIY repository and build the CAP files:
+### Prerequisites
 
-    ```bash
-    git clone https://github.com/3rdIteration/Satochip-DIY.git
-    cd Satochip-DIY
-    ant
-    ```
+* A compatible JavaCard with **either** the Satochip applet **or** the
+  Seedkeeper applet installed in its default, uninitialised state. The tests
+  do not install or remove applets.
+* Python packages `pysatochip` and `pyscard`.
 
-2. Install the Python dependencies:
+Install the Python dependencies with:
 
-    ```bash
-    pip install pysatochip pyscard
-    ```
+```bash
+pip install pysatochip pyscard
+```
 
-3. Connect a blank JavaCard to the system.
+### Running
 
-4. From the SeedSigner project root run:
+Connect the card and run the desired tests from the project root:
 
-    ```bash
-    export SATOCHIP_DIY_PATH=/path/to/Satochip-DIY
-    RUN_JAVACARD_TESTS=1 pytest tests/test_javacard_workflow.py
-    ```
+```bash
+RUN_JAVACARD_TESTS=1 pytest tests/test_javacard_workflow.py::test_satochip_workflow
+RUN_JAVACARD_TESTS=1 pytest tests/test_javacard_workflow.py::test_seedkeeper_workflow
+```
 
-The test installs the Satochip applet, signs a message and a PSBT to verify
-signing functionality, uninstalls it, then installs the Seedkeeper applet to
-exercise card management features (label update, PIN change, NFC policy)
-and to import, export, and remove each supported secret type before removing
-the applet.
+The Satochip test signs a message and a PSBT to verify basic signing
+functionality. The Seedkeeper test exercises card management (label update, PIN
+change, NFC policy) and imports, exports, and removes each supported secret
+type.
 
 ## Screenshot generator
 The screenshot generator is meant to mostly be a utility and not really part of the test suite. However,

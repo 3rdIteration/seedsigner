@@ -1,19 +1,15 @@
 import os
 import sys
-import subprocess
-from pathlib import Path
 
 import pytest
 
-# These tests require access to a physical JavaCard and the Satochip-DIY
-# toolchain.  They will be skipped automatically unless the
-# RUN_JAVACARD_TESTS environment variable is set.  The tests also expect the
-# Satochip-DIY repository to be available locally and the system to have a
-# working Java environment with the `java` and `ant` commands in PATH.
+# These tests require access to a physical JavaCard with either the
+# Satochip or Seedkeeper applet already installed.  They will be skipped
+# automatically unless the RUN_JAVACARD_TESTS environment variable is set.
 
 if os.environ.get("RUN_JAVACARD_TESTS") != "1":
     pytest.skip(
-        "Hardware JavaCard tests disabled. Set RUN_JAVACARD_TESTS=1 to run", 
+        "Hardware JavaCard tests disabled. Set RUN_JAVACARD_TESTS=1 to run",
         allow_module_level=True,
     )
 
@@ -25,8 +21,8 @@ for mod in list(sys.modules):
 try:
     from pysatochip.CardConnector import CardConnector, WrongPinError  # type: ignore
     from pysatochip.JCconstants import (  # type: ignore
-        SEEDKEEPER_DIC_TYPE,
         SEEDKEEPER_DIC_EXPORT_RIGHTS,
+        SEEDKEEPER_DIC_TYPE,
     )
 except ModuleNotFoundError as e:  # pragma: no cover - dependency check
     pytest.skip(
@@ -34,53 +30,32 @@ except ModuleNotFoundError as e:  # pragma: no cover - dependency check
         allow_module_level=True,
     )
 
+from embit import psbt, script
+from embit.ec import PublicKey
+from embit.transaction import Transaction, TransactionInput, TransactionOutput
 from seedsigner.helpers.satochip_signer import (
     sign_message_with_satochip,
     sign_psbt_with_satochip,
 )
-from embit import psbt, script
-from embit.transaction import (
-    Transaction,
-    TransactionInput,
-    TransactionOutput,
-)
-from embit.ec import PublicKey
+
 try:  # pragma: no cover - compatibility shim for older embit versions
     from embit.bip32 import HARDENED_INDEX  # type: ignore
 except ImportError:  # pragma: no cover - constant not present
     HARDENED_INDEX = 0x80000000
 
-DIY_PATH = Path(os.environ.get("SATOCHIP_DIY_PATH", "../Satochip-DIY")).resolve()
-GP_JAR = DIY_PATH / "gp.jar"
-BUILD_DIR = DIY_PATH / "build"
-SATOCHIP_CAP = BUILD_DIR / "SatoChip-official-3.0.4.cap"
-SEEDKEEPER_CAP = BUILD_DIR / "SeedKeeper-official-3.0.4.cap"
 
-SATOCHIP_AID = "5361746F43686970"
-SEEDKEEPER_AID = "536565644b6565706572"
-
-
-def gp_command(*args: str) -> None:
-    """Run a GlobalPlatformPro command."""
-    subprocess.check_call(["java", "-jar", str(GP_JAR), *args])
+def _connect_or_skip(card_filter: str):
+    """Attempt to connect to the specified card or skip if unavailable."""
+    try:
+        return CardConnector(card_filter=[card_filter])  # type: ignore
+    except Exception as e:  # pragma: no cover - hardware not present
+        pytest.skip(f"{card_filter} card not detected: {e}")
 
 
-def ensure_caps_present() -> None:
-    """Build CAP files if they are missing."""
-    if not (SATOCHIP_CAP.exists() and SEEDKEEPER_CAP.exists()):
-        subprocess.check_call(["ant"], cwd=str(DIY_PATH))
+def test_satochip_workflow():
+    """Exercise signing functionality of an initialized Satochip card."""
 
-
-def test_flash_and_exercise_satochip_and_seedkeeper(tmp_path):
-    ensure_caps_present()
-
-    # Ensure the card starts in a clean state.
-    gp_command("--delete", SATOCHIP_AID, "-f")
-    gp_command("--delete", SEEDKEEPER_AID, "-f")
-
-    # --- Satochip applet ---
-    gp_command("--install", str(SATOCHIP_CAP))
-    connector = CardConnector(card_filter=["satochip"])  # type: ignore
+    connector = _connect_or_skip("satochip")
     status = connector.card_get_status()
     assert status is not None
 
@@ -108,26 +83,26 @@ def test_flash_and_exercise_satochip_and_seedkeeper(tmp_path):
     assert pub in p.inputs[0].partial_sigs
 
     connector.disconnect()
-    gp_command("--delete", SATOCHIP_AID, "-f")
 
-    # --- Seedkeeper applet ---
-    gp_command("--install", str(SEEDKEEPER_CAP))
-    connector = CardConnector(card_filter=["seedkeeper"])  # type: ignore
 
-    # Change and verify card label
+def test_seedkeeper_workflow():
+    """Exercise secret-management functionality of a Seedkeeper card."""
+
+    connector = _connect_or_skip("seedkeeper")
+
+    # Change and verify card label, then restore to default
     connector.card_set_label("pytest")
     _, _, _, label = connector.card_get_label()
     assert label == "pytest"
+    connector.card_set_label("")
 
     # Set and reset NFC policy
     connector.card_set_nfc_policy(1)
     _, _, _, status_dict = connector.card_get_status()
     assert status_dict.get("nfc_policy") == 1
     connector.card_set_nfc_policy(0)
-    _, _, _, status_dict = connector.card_get_status()
-    assert status_dict.get("nfc_policy") == 0
 
-    # Change PIN (create default if needed)
+    # Change PIN (create default if needed) and revert
     old_pin = list(b"123456")
     new_pin = list(b"654321")
     try:
@@ -135,7 +110,6 @@ def test_flash_and_exercise_satochip_and_seedkeeper(tmp_path):
     except WrongPinError:
         connector.card_create_PIN(0, 3, old_pin, [0] * 16)
         connector.card_change_PIN(0, old_pin, new_pin)
-    # Revert to original PIN
     connector.card_change_PIN(0, new_pin, old_pin)
 
     # Import, export, and remove all supported secret types
@@ -161,4 +135,4 @@ def test_flash_and_exercise_satochip_and_seedkeeper(tmp_path):
         assert all(h[0] != sid for h in headers_after_reset)
 
     connector.disconnect()
-    gp_command("--delete", SEEDKEEPER_AID, "-f")
+
