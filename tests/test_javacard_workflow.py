@@ -45,7 +45,10 @@ from embit.transaction import (
     TransactionOutput,
 )
 from embit.ec import PublicKey
-from embit.bip32 import HARDENED_INDEX
+try:  # pragma: no cover - compatibility shim for older embit versions
+    from embit.bip32 import HARDENED_INDEX  # type: ignore
+except ImportError:  # pragma: no cover - constant not present
+    HARDENED_INDEX = 0x80000000
 
 DIY_PATH = Path(os.environ.get("SATOCHIP_DIY_PATH", "../Satochip-DIY")).resolve()
 GP_JAR = DIY_PATH / "gp.jar"
