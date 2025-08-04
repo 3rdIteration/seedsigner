@@ -63,8 +63,9 @@ default; set `RUN_JAVACARD_TESTS=1` to enable them.
 ### Prerequisites
 
 * A compatible JavaCard with **either** the Satochip applet **or** the
-  Seedkeeper applet installed in its default, uninitialised state. The tests
-  do not install or remove applets.
+  Seedkeeper applet installed but **not yet initialised**. Each test performs
+  its own `card_setup` with PIN `123456` and factory-resets the card when
+  finished.
 * Python packages `pysatochip` and `pyscard`.
 
 Install the Python dependencies with:
@@ -82,10 +83,10 @@ RUN_JAVACARD_TESTS=1 pytest tests/test_javacard_workflow.py::test_satochip_workf
 RUN_JAVACARD_TESTS=1 pytest tests/test_javacard_workflow.py::test_seedkeeper_workflow
 ```
 
-The Satochip test signs a message and a PSBT to verify basic signing
-functionality. The Seedkeeper test exercises card management (label update, PIN
-change, NFC policy) and imports, exports, and removes each supported secret
-type.
+The Satochip workflow signs a message and PSBTs covering all supported
+single-signature and multisig script types. The Seedkeeper workflow exercises
+card management (label update, PIN change, NFC policy) and imports, exports, and
+removes every supported secret type.
 
 ## Screenshot generator
 The screenshot generator is meant to mostly be a utility and not really part of the test suite. However,

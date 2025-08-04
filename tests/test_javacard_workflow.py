@@ -3,9 +3,9 @@ import sys
 
 import pytest
 
-# These tests require access to a physical JavaCard with either the
-# Satochip or Seedkeeper applet already installed.  They will be skipped
-# automatically unless the RUN_JAVACARD_TESTS environment variable is set.
+# These tests require access to a blank JavaCard with either the Satochip
+# or Seedkeeper applet already installed but not yet initialised. They are
+# skipped unless RUN_JAVACARD_TESTS=1 is set in the environment.
 
 if os.environ.get("RUN_JAVACARD_TESTS") != "1":
     pytest.skip(
@@ -31,7 +31,7 @@ except ModuleNotFoundError as e:  # pragma: no cover - dependency check
     )
 
 from embit import psbt, script
-from embit.ec import PublicKey
+from embit.ec import PrivateKey, PublicKey
 from embit.transaction import Transaction, TransactionInput, TransactionOutput
 from seedsigner.helpers.satochip_signer import (
     sign_message_with_satochip,
@@ -52,36 +52,176 @@ def _connect_or_skip(card_filter: str):
         pytest.skip(f"{card_filter} card not detected: {e}")
 
 
-def test_satochip_workflow():
-    """Exercise signing functionality of an initialized Satochip card."""
+def _parse_path(path: str) -> list[int]:
+    """Convert BIP32 path string to list of indices."""
+    if path.startswith("m/"):
+        path = path[2:]
+    if path == "m" or path == "":
+        return []
+    result = []
+    for elem in path.split("/"):
+        if elem.endswith("'"):
+            result.append(int(elem[:-1]) | HARDENED_INDEX)
+        else:
+            result.append(int(elem))
+    return result
 
-    connector = _connect_or_skip("satochip")
+
+def _setup_blank_card(connector) -> list[int]:
+    """Ensure the card is blank and run initial setup with a test PIN."""
     status = connector.card_get_status()
     assert status is not None
+    if status[3].get("setup_done"):
+        pytest.skip("Card already initialised; tests require a blank card")
 
-    # Sign a message
-    message_sig = sign_message_with_satochip(
-        "m/84'/0'/0'/0/0", "integration test", connector
+    card_pin = list(b"123456")
+    connector.card_setup(
+        5,
+        5,
+        card_pin,
+        [0] * 16,
+        3,
+        5,
+        [0] * 16,
+        [0] * 16,
+        1024,
+        4096,
+        0x01,
+        0x01,
+        0x01,
+        option_flags=0,
+        hmacsha160_key=None,
+        amount_limit=0,
     )
-    assert message_sig
+    connector.set_pin(0, card_pin)
+    _resp, sw1, sw2 = connector.card_verify_PIN()
+    assert sw1 == 0x90 and sw2 == 0x00
+    return card_pin
 
-    # Sign a dummy PSBT
-    key, _ = connector.card_bip32_get_extendedkey("m/84'/0'/0'/0/0")
+
+def _factory_reset(connector):
+    """Return the card to an uninitialised state if possible."""
+    try:  # pragma: no cover - best effort cleanup
+        connector.card_reset_factory_signal()
+    except Exception:
+        pass
+
+
+def _build_single_sig_psbt(connector, path: str, stype: str):
+    key, _ = connector.card_bip32_get_extendedkey(path)
     pub = PublicKey.parse(key.get_public_key_bytes(compressed=True))
-    spk = script.p2wpkh(pub)
-    inp = TransactionInput(bytes(32), 0, b"", 0xFFFFFFFF)
-    out = TransactionOutput(1000, spk)
-    tx = Transaction(version=2, vin=[inp], vout=[out], locktime=0)
-    p = psbt.PSBT(tx)
-    p.inputs[0].witness_utxo = out
-    deriv = [84 | HARDENED_INDEX, 0 | HARDENED_INDEX, 0 | HARDENED_INDEX, 0, 0]
+    deriv = _parse_path(path)
+
+    if stype == "p2wpkh":
+        spk = script.p2wpkh(pub)
+        prev_out = TransactionOutput(1000, spk)
+        prev_tx = Transaction(2, [], [prev_out], 0)
+        inp = TransactionInput(prev_tx.txid(), 0, b"", 0xFFFFFFFF)
+        tx = Transaction(2, [inp], [TransactionOutput(900, spk)], 0)
+        p = psbt.PSBT(tx)
+        p.inputs[0].witness_utxo = prev_out
+    elif stype == "p2sh-p2wpkh":
+        inner = script.p2wpkh(pub)
+        spk = script.p2sh(inner)
+        prev_out = TransactionOutput(1000, spk)
+        prev_tx = Transaction(2, [], [prev_out], 0)
+        inp = TransactionInput(prev_tx.txid(), 0, b"", 0xFFFFFFFF)
+        tx = Transaction(2, [inp], [TransactionOutput(900, spk)], 0)
+        p = psbt.PSBT(tx)
+        p.inputs[0].witness_utxo = prev_out
+        p.inputs[0].redeem_script = inner
+    else:  # p2pkh
+        spk = script.p2pkh(pub)
+        prev_out = TransactionOutput(1000, spk)
+        prev_tx = Transaction(2, [], [prev_out], 0)
+        inp = TransactionInput(prev_tx.txid(), 0, b"", 0xFFFFFFFF)
+        tx = Transaction(2, [inp], [TransactionOutput(900, spk)], 0)
+        p = psbt.PSBT(tx)
+        p.inputs[0].non_witness_utxo = prev_tx
+
     p.inputs[0].bip32_derivations[pub] = psbt.DerivationPath(
         fingerprint=b"\x00\x00\x00\x00", derivation=deriv
     )
-    signed = sign_psbt_with_satochip(p, connector)
-    assert signed == 1
-    assert pub in p.inputs[0].partial_sigs
+    return p, pub
 
+
+def _build_multisig_psbt(connector, path: str, stype: str):
+    key, _ = connector.card_bip32_get_extendedkey(path)
+    card_pub = PublicKey.parse(key.get_public_key_bytes(compressed=True))
+    dummy1 = PrivateKey(b"\x01" * 32).get_public_key()
+    dummy2 = PrivateKey(b"\x02" * 32).get_public_key()
+    wsh = script.multisig(2, [card_pub, dummy1, dummy2])
+    deriv = _parse_path(path)
+
+    if stype == "p2wsh":
+        spk = script.p2wsh(wsh)
+        prev_out = TransactionOutput(1000, spk)
+        prev_tx = Transaction(2, [], [prev_out], 0)
+        inp = TransactionInput(prev_tx.txid(), 0, b"", 0xFFFFFFFF)
+        tx = Transaction(2, [inp], [TransactionOutput(900, spk)], 0)
+        p = psbt.PSBT(tx)
+        p.inputs[0].witness_utxo = prev_out
+        p.inputs[0].witness_script = wsh
+    elif stype == "p2sh-p2wsh":
+        inner = script.p2wsh(wsh)
+        spk = script.p2sh(inner)
+        prev_out = TransactionOutput(1000, spk)
+        prev_tx = Transaction(2, [], [prev_out], 0)
+        inp = TransactionInput(prev_tx.txid(), 0, b"", 0xFFFFFFFF)
+        tx = Transaction(2, [inp], [TransactionOutput(900, spk)], 0)
+        p = psbt.PSBT(tx)
+        p.inputs[0].non_witness_utxo = prev_tx
+        p.inputs[0].redeem_script = inner
+        p.inputs[0].witness_script = wsh
+    else:  # p2sh
+        spk = script.p2sh(wsh)
+        prev_out = TransactionOutput(1000, spk)
+        prev_tx = Transaction(2, [], [prev_out], 0)
+        inp = TransactionInput(prev_tx.txid(), 0, b"", 0xFFFFFFFF)
+        tx = Transaction(2, [inp], [TransactionOutput(900, spk)], 0)
+        p = psbt.PSBT(tx)
+        p.inputs[0].non_witness_utxo = prev_tx
+        p.inputs[0].redeem_script = wsh
+
+    p.inputs[0].bip32_derivations[card_pub] = psbt.DerivationPath(
+        fingerprint=b"\x00\x00\x00\x00", derivation=deriv
+    )
+    return p, card_pub
+
+
+def test_satochip_workflow():
+    """Exercise Satochip signing across all script types."""
+
+    connector = _connect_or_skip("satochip")
+    _setup_blank_card(connector)
+
+    # Message signing
+    msg_sig = sign_message_with_satochip("m/84'/0'/0'/0/0", "integration test", connector)
+    assert msg_sig
+
+    single_paths = {
+        "p2pkh": "m/44'/0'/0'/0/0",
+        "p2sh-p2wpkh": "m/49'/0'/0'/0/0",
+        "p2wpkh": "m/84'/0'/0'/0/0",
+    }
+    for stype, path in single_paths.items():
+        p, pub = _build_single_sig_psbt(connector, path, stype)
+        signed = sign_psbt_with_satochip(p, connector)
+        assert signed == 1
+        assert pub in p.inputs[0].partial_sigs
+
+    multi_paths = {
+        "p2sh": "m/45'/0'/0'/0/0",
+        "p2sh-p2wsh": "m/48'/0'/0'/1'/0/0",
+        "p2wsh": "m/48'/0'/0'/2'/0/0",
+    }
+    for stype, path in multi_paths.items():
+        p, pub = _build_multisig_psbt(connector, path, stype)
+        signed = sign_psbt_with_satochip(p, connector)
+        assert signed == 1
+        assert pub in p.inputs[0].partial_sigs
+
+    _factory_reset(connector)
     connector.disconnect()
 
 
@@ -89,6 +229,7 @@ def test_seedkeeper_workflow():
     """Exercise secret-management functionality of a Seedkeeper card."""
 
     connector = _connect_or_skip("seedkeeper")
+    _setup_blank_card(connector)
 
     # Change and verify card label, then restore to default
     connector.card_set_label("pytest")
@@ -134,5 +275,6 @@ def test_seedkeeper_workflow():
         headers_after_reset = connector.seedkeeper_list_secret_headers()
         assert all(h[0] != sid for h in headers_after_reset)
 
+    _factory_reset(connector)
     connector.disconnect()
 
