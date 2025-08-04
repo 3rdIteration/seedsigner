@@ -52,7 +52,7 @@ def _connect_or_skip(card_filter: str):
         if not getattr(connector, "card_present", False):
             raise RuntimeError("card absent")
         try:
-            connector.cardservice.connection.setProtocol(CardConnection.T1_protocol)
+            connector.cardservice.connection.connect(CardConnection.T1_protocol)
         except Exception:
             pass
         return connector
