@@ -23,6 +23,10 @@ class PSBTSelectSeedView(View):
     TYPE_21WORD = ButtonOption("Enter 21-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=21)
     TYPE_24WORD = ButtonOption("Enter 24-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=24)
     TYPE_ELECTRUM = ButtonOption("Enter Electrum seed", FontAwesomeIconConstants.KEYBOARD)
+    TYPE_WIF = ButtonOption("Enter WIF", FontAwesomeIconConstants.KEYBOARD)
+    SCAN_WIF = ButtonOption("Scan WIF", SeedSignerIconConstants.QRCODE)
+    TYPE_BIP38 = ButtonOption("Enter BIP38", FontAwesomeIconConstants.KEYBOARD)
+    SCAN_BIP38 = ButtonOption("Scan BIP38", SeedSignerIconConstants.QRCODE)
 
 
     def run(self):
@@ -52,6 +56,8 @@ class PSBTSelectSeedView(View):
 
         button_data.append(self.SATOCHIP)
         button_data.append(self.SCAN_SEED)
+        button_data.append(self.SCAN_WIF)
+        button_data.append(self.SCAN_BIP38)
         seed_lengths = self.settings.get_value(SettingsConstants.SETTING__SEED_WORD_LENGTHS)
         options = {
             12: self.TYPE_12WORD,
@@ -64,6 +70,8 @@ class PSBTSelectSeedView(View):
             button_data.append(options[l])
         if self.settings.get_value(SettingsConstants.SETTING__ELECTRUM_SEEDS) == SettingsConstants.OPTION__ENABLED:
             button_data.append(self.TYPE_ELECTRUM)
+        button_data.append(self.TYPE_WIF)
+        button_data.append(self.TYPE_BIP38)
 
         selected_menu_num = self.run_screen(
             ButtonListScreen,
@@ -86,6 +94,14 @@ class PSBTSelectSeedView(View):
         if button_data[selected_menu_num] == self.SCAN_SEED:
             from seedsigner.views.scan_views import ScanSeedQRView
             return Destination(ScanSeedQRView)
+
+        elif button_data[selected_menu_num] == self.SCAN_WIF:
+            from seedsigner.views.scan_views import ScanWIFQRView
+            return Destination(ScanWIFQRView)
+
+        elif button_data[selected_menu_num] == self.SCAN_BIP38:
+            from seedsigner.views.scan_views import ScanBIP38QRView
+            return Destination(ScanBIP38QRView)
 
         elif button_data[selected_menu_num] == self.SATOCHIP:
             from seedsigner.helpers import seedkeeper_utils
@@ -169,7 +185,98 @@ class PSBTSelectSeedView(View):
             from seedsigner.views.seed_views import SeedElectrumMnemonicStartView
             return Destination(SeedElectrumMnemonicStartView)
 
+        elif button_data[selected_menu_num] == self.TYPE_WIF:
+            return Destination(PSBTWIFEntryView)
 
+        elif button_data[selected_menu_num] == self.TYPE_BIP38:
+            return Destination(PSBTBIP38EntryView)
+
+
+
+class PSBTWIFEntryView(View):
+    def run(self):
+        from seedsigner.gui.screens import seed_screens
+
+        ret = self.run_screen(
+            seed_screens.SeedAddPassphraseScreen,
+            title=_("Private Key (WIF)"),
+            passphrase="",
+        )
+
+        if "is_back_button" in ret:
+            return Destination(BackStackView)
+
+        wif = ret["passphrase"]
+        from seedsigner.models.wif import WIFKey
+        from seedsigner.models.seed import InvalidSeedException
+
+        try:
+            key = WIFKey(wif)
+        except InvalidSeedException:
+            self.run_screen(
+                DireWarningScreen,
+                status_headline=_("Invalid WIF!"),
+                text=_("Not a valid WIF-encoded private key."),
+                button_data=[ButtonOption("OK")],
+                show_back_button=False,
+            )
+            return Destination(PSBTSelectSeedView)
+
+        self.controller.psbt_seed = key
+        return Destination(PSBTOverviewView)
+
+
+class PSBTBIP38EntryView(View):
+    def run(self):
+        from seedsigner.gui.screens import seed_screens
+
+        ret = self.run_screen(
+            seed_screens.SeedAddPassphraseScreen,
+            title=_("BIP38 Key"),
+            passphrase="",
+        )
+
+        if "is_back_button" in ret:
+            return Destination(BackStackView)
+
+        bip38 = ret["passphrase"]
+        return Destination(PSBTBIP38PassphraseView, view_args=dict(encrypted=bip38))
+
+
+class PSBTBIP38PassphraseView(View):
+    def __init__(self, encrypted: str):
+        super().__init__()
+        self.encrypted = encrypted
+
+    def run(self):
+        from seedsigner.gui.screens import seed_screens
+        from seedsigner.models.bip38 import BIP38Key
+        from seedsigner.models.seed import InvalidSeedException
+
+        ret = self.run_screen(
+            seed_screens.SeedAddPassphraseScreen,
+            title=_("BIP38 Passphrase"),
+            passphrase="",
+        )
+
+        if "is_back_button" in ret:
+            return Destination(BackStackView)
+
+        passphrase = ret["passphrase"]
+        try:
+            key = BIP38Key(self.encrypted).decrypt(passphrase, self.settings.get_value(SettingsConstants.SETTING__NETWORK))
+        except InvalidSeedException:
+            self.run_screen(
+                DireWarningScreen,
+                status_headline=_("Invalid BIP38!"),
+                text=_("Could not decrypt BIP38 key."),
+                button_data=[ButtonOption("OK")],
+                show_back_button=False,
+            )
+            return Destination(PSBTSelectSeedView)
+
+        self.controller.psbt_seed = key
+        return Destination(PSBTOverviewView)
 
 class PSBTOverviewView(View):
     def __init__(self):
@@ -629,6 +736,8 @@ class PSBTFinalizeView(View):
     def run(self):
         from embit.psbt import PSBT
         from seedsigner.gui.screens.psbt_screens import PSBTFinalizeScreen
+        from seedsigner.models.wif import WIFKey
+        from embit.finalizer import finalize_psbt
 
         psbt_parser: PSBTParser = self.controller.psbt_parser
         psbt: PSBT = self.controller.psbt
@@ -657,6 +766,12 @@ class PSBTFinalizeView(View):
                 sign_psbt_with_satochip(psbt, self.controller.Satochip_Connector)
             else:
                 psbt.sign_with(psbt_parser.root)
+            if isinstance(self.controller.psbt_seed, WIFKey):
+                tx = finalize_psbt(psbt)
+                self.controller.signed_tx_hex = tx.serialize().hex() if tx else None
+            else:
+                self.controller.signed_tx_hex = None
+
             trimmed_psbt = PSBTParser.trim(psbt)
 
             if sig_cnt == PSBTParser.sig_count(trimmed_psbt):
@@ -670,12 +785,17 @@ class PSBTFinalizeView(View):
 
 class PSBTSignedQRDisplayView(View):
     def run(self):
-        from seedsigner.models.encode_qr import UrPsbtQrEncoder
+        from seedsigner.models.encode_qr import UrPsbtQrEncoder, GenericStringEncoder
+        from seedsigner.models.wif import WIFKey
 
-        qr_encoder = UrPsbtQrEncoder(
-            psbt=self.controller.psbt,
-            qr_density=self.settings.get_value(SettingsConstants.SETTING__QR_DENSITY),
-        )
+        if isinstance(self.controller.psbt_seed, WIFKey) and getattr(self.controller, "signed_tx_hex", None):
+            qr_encoder = GenericStringEncoder(self.controller.signed_tx_hex)
+        else:
+            qr_encoder = UrPsbtQrEncoder(
+                psbt=self.controller.psbt,
+                qr_density=self.settings.get_value(SettingsConstants.SETTING__QR_DENSITY),
+            )
+
         self.run_screen(QRDisplayScreen, qr_encoder=qr_encoder)
 
         # We're done with this PSBT. Route back to MainMenuView which always
