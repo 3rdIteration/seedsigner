@@ -171,6 +171,66 @@ class TestPSBTFlows(FlowTest):
         ])
 
 
+    def test_scan_psbt_then_scan_wif_flow(self):
+        from embit import ec, script, psbt
+        from embit.transaction import Transaction, TransactionInput, TransactionOutput
+        import os, base64
+
+        priv = ec.PrivateKey(os.urandom(32))
+        wif = priv.wif()
+        pub = priv.get_public_key()
+        spk = script.p2wpkh(pub)
+        tx = Transaction(1, [TransactionInput(b"\x00" * 32, 0)], [TransactionOutput(900, spk)], 0)
+        p = psbt.PSBT(tx)
+        p.inputs[0].witness_utxo = TransactionOutput(1000, spk)
+        psbt_b64 = base64.b64encode(p.serialize()).decode()
+
+        def load_psbt_into_decoder(view: scan_views.ScanView):
+            view.decoder.add_data(psbt_b64)
+
+        def load_wif_into_decoder(view: scan_views.ScanView):
+            view.decoder.add_data(wif)
+
+        self.run_sequence([
+            FlowStep(MainMenuView, button_data_selection=MainMenuView.SCAN),
+            FlowStep(scan_views.ScanView, before_run=load_psbt_into_decoder),
+            FlowStep(psbt_views.PSBTSelectSeedView, button_data_selection=psbt_views.PSBTSelectSeedView.SCAN_WIF),
+            FlowStep(scan_views.ScanWIFQRView, before_run=load_wif_into_decoder),
+            FlowStep(psbt_views.PSBTOverviewView),
+        ])
+
+    def test_scan_psbt_then_scan_bip38_flow(self):
+        from embit import ec, script, psbt
+        from embit.transaction import Transaction, TransactionInput, TransactionOutput
+        import base64
+        from seedsigner.models.bip38 import BIP38Key
+
+        enc = "6PRVWUbkzzsbcVac2qwfssoUJAN1Xhrg6bNk8J7Nzm5H7kxEbn2Nh2ZoGg"
+        passphrase = "TestingOneTwoThree"
+        priv = BIP38Key(enc).decrypt(passphrase).privkey
+        pub = priv.get_public_key()
+        spk = script.p2wpkh(pub)
+        tx = Transaction(1, [TransactionInput(b"\x00" * 32, 0)], [TransactionOutput(900, spk)], 0)
+        p = psbt.PSBT(tx)
+        p.inputs[0].witness_utxo = TransactionOutput(1000, spk)
+        psbt_b64 = base64.b64encode(p.serialize()).decode()
+
+        def load_psbt_into_decoder(view: scan_views.ScanView):
+            view.decoder.add_data(psbt_b64)
+
+        def load_bip38_into_decoder(view: scan_views.ScanView):
+            view.decoder.add_data(enc)
+
+        self.run_sequence([
+            FlowStep(MainMenuView, button_data_selection=MainMenuView.SCAN),
+            FlowStep(scan_views.ScanView, before_run=load_psbt_into_decoder),
+            FlowStep(psbt_views.PSBTSelectSeedView, button_data_selection=psbt_views.PSBTSelectSeedView.SCAN_BIP38),
+            FlowStep(scan_views.ScanBIP38QRView, before_run=load_bip38_into_decoder),
+            FlowStep(psbt_views.PSBTBIP38PassphraseView, screen_return_value=dict(passphrase=passphrase)),
+            FlowStep(psbt_views.PSBTOverviewView),
+        ])
+
+
 class TestPSBTSatochip(FlowTest):
 
     def test_satochip_connect_failure_returns_to_select_menu(self, monkeypatch):
