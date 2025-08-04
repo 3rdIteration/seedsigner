@@ -24,6 +24,7 @@ try:
         SEEDKEEPER_DIC_EXPORT_RIGHTS,
         SEEDKEEPER_DIC_TYPE,
     )
+    from smartcard.CardConnection import CardConnection  # type: ignore
 except ModuleNotFoundError as e:  # pragma: no cover - dependency check
     pytest.skip(
         f"pysatochip dependency missing: {e}. Install pyscard and pysatochip to run.",
@@ -47,7 +48,14 @@ except ImportError:  # pragma: no cover - constant not present
 def _connect_or_skip(card_filter: str):
     """Attempt to connect to the specified card or skip if unavailable."""
     try:
-        return CardConnector(card_filter=[card_filter])  # type: ignore
+        connector = CardConnector(card_filter=[card_filter])  # type: ignore
+        if not getattr(connector, "card_present", False):
+            raise RuntimeError("card absent")
+        try:
+            connector.cardservice.connection.setProtocol(CardConnection.T1_protocol)
+        except Exception:
+            pass
+        return connector
     except Exception as e:  # pragma: no cover - hardware not present
         pytest.skip(f"{card_filter} card not detected: {e}")
 
