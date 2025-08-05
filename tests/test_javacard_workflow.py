@@ -51,10 +51,23 @@ def _connect_or_skip(card_filter: str):
         connector = CardConnector(card_filter=[card_filter])  # type: ignore
         if not getattr(connector, "card_present", False):
             raise RuntimeError("card absent")
+
+        # Ensure we have a live connection object regardless of pyscard version
+        if not hasattr(connector.cardservice, "connection"):
+            conn = connector.cardservice.createConnection()
+            connector.cardservice.connection = conn  # type: ignore[attr-defined]
+        connection = connector.cardservice.connection
         try:
-            connector.cardservice.connection.connect(CardConnection.T1_protocol)
+            connection.connect(CardConnection.T1_protocol)
         except Exception:
             pass
+
+        # Select the requested applet so subsequent commands target it
+        try:
+            connector.card_select()
+        except Exception:
+            pass
+
         return connector
     except Exception as e:  # pragma: no cover - hardware not present
         pytest.skip(f"{card_filter} card not detected: {e}")
