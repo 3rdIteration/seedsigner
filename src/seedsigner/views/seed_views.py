@@ -13,6 +13,7 @@ from embit.networks import NETWORKS
 from typing import List
 from PIL import Image
 from PIL.ImageOps import autocontrast
+import shamir_mnemonic
 
 from seedsigner.gui.components import FontAwesomeIconConstants, SeedSignerIconConstants
 from seedsigner.gui.screens import (RET_CODE__BACK_BUTTON, ButtonListScreen,
@@ -20,7 +21,7 @@ from seedsigner.gui.screens import (RET_CODE__BACK_BUTTON, ButtonListScreen,
 from seedsigner.gui.screens.screen import ButtonOption
 from seedsigner.models.encode_qr import CompactSeedQrEncoder, GenericStaticQrEncoder, SeedQrEncoder, SpecterXPubQrEncoder, StaticXpubQrEncoder, UrXpubQrEncoder
 from seedsigner.models.qr_type import QRType
-from seedsigner.models.seed import Seed, Slip39Seed
+from seedsigner.models.seed import Seed, Slip39Seed, ElectrumSeed, InvalidSeedException
 from seedsigner.models.settings import Settings, SettingsConstants
 from seedsigner.models.settings_definition import SettingsDefinition
 from seedsigner.models.threads import BaseThread, ThreadsafeCounter
@@ -83,9 +84,12 @@ class SeedSelectSeedView(View):
                 verify single sig addr or sign message).
     """
     SCAN_SEED = ButtonOption("Scan a seed", SeedSignerIconConstants.QRCODE)
-    TYPE_12WORD = ButtonOption("Enter 12-word seed", FontAwesomeIconConstants.KEYBOARD)
-    TYPE_18WORD = ButtonOption("Enter 18-word seed", FontAwesomeIconConstants.KEYBOARD)
-    TYPE_24WORD = ButtonOption("Enter 24-word seed", FontAwesomeIconConstants.KEYBOARD)
+    SATOCHIP = ButtonOption("Use Satochip card", SeedSignerIconConstants.FINGERPRINT)
+    TYPE_12WORD = ButtonOption("Enter 12-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=12)
+    TYPE_15WORD = ButtonOption("Enter 15-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=15)
+    TYPE_18WORD = ButtonOption("Enter 18-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=18)
+    TYPE_21WORD = ButtonOption("Enter 21-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=21)
+    TYPE_24WORD = ButtonOption("Enter 24-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=24)
     TYPE_ELECTRUM = ButtonOption("Enter Electrum seed", FontAwesomeIconConstants.KEYBOARD)
     TYPE_SLIP39 = ButtonOption("SLIP-39 Shares", FontAwesomeIconConstants.KEYBOARD)
 
@@ -118,15 +122,25 @@ class SeedSelectSeedView(View):
         for seed in seeds:
             button_str = seed.get_fingerprint(self.settings.get_value(SettingsConstants.SETTING__NETWORK))
             button_data.append(ButtonOption(button_str, SeedSignerIconConstants.FINGERPRINT, icon_color="blue"))
-        
+        if self.flow == Controller.FLOW__SIGN_MESSAGE:
+            button_data.append(self.SATOCHIP)
+
         button_data.append(self.SCAN_SEED)
-        button_data.append(self.TYPE_12WORD)
-        button_data.append(self.TYPE_18WORD)
-        button_data.append(self.TYPE_24WORD)
+        seed_lengths = self.settings.get_value(SettingsConstants.SETTING__SEED_WORD_LENGTHS)
+        options = {
+            12: self.TYPE_12WORD,
+            15: self.TYPE_15WORD,
+            18: self.TYPE_18WORD,
+            21: self.TYPE_21WORD,
+            24: self.TYPE_24WORD,
+        }
+        for l in seed_lengths:
+            button_data.append(options[l])
 
         if self.settings.get_value(SettingsConstants.SETTING__ELECTRUM_SEEDS) == SettingsConstants.OPTION__ENABLED:
             button_data.append(self.TYPE_ELECTRUM)
-        button_data.append(self.TYPE_SLIP39)
+        if self.settings.get_value(SettingsConstants.SETTING__SLIP39_SEEDS) == SettingsConstants.OPTION__ENABLED:
+            button_data.append(self.TYPE_SLIP39)
 
         selected_menu_num = self.run_screen(
             seed_screens.SeedSelectSeedScreen,
@@ -151,18 +165,21 @@ class SeedSelectSeedView(View):
 
         self.controller.resume_main_flow = self.flow
 
+        if self.flow == Controller.FLOW__SIGN_MESSAGE and button_data[selected_menu_num] == self.SATOCHIP:
+            connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satochip"])
+            if not connector:
+                return Destination(BackStackView)
+            self.controller.sign_message_with_satochip = True
+            self.controller.sign_message_data["seed_num"] = None
+            return Destination(SeedSignMessageConfirmMessageView)
+
         if button_data[selected_menu_num] == self.SCAN_SEED:
             from seedsigner.views.scan_views import ScanView
             return Destination(ScanView)
 
-        elif button_data[selected_menu_num] in [self.TYPE_12WORD, self.TYPE_24WORD]:
+        elif button_data[selected_menu_num] in [self.TYPE_12WORD, self.TYPE_15WORD, self.TYPE_18WORD, self.TYPE_21WORD, self.TYPE_24WORD]:
             from seedsigner.views.seed_views import SeedMnemonicEntryView
-            if button_data[selected_menu_num] == self.TYPE_12WORD:
-                self.controller.storage.init_pending_mnemonic(num_words=12)
-            elif button_data[selected_menu_num] == self.TYPE_18WORD:
-                self.controller.storage.init_pending_mnemonic(num_words=18)
-            else:
-                self.controller.storage.init_pending_mnemonic(num_words=24)
+            self.controller.storage.init_pending_mnemonic(num_words=button_data[selected_menu_num].return_data)
             return Destination(SeedMnemonicEntryView)
 
         elif button_data[selected_menu_num] == self.TYPE_ELECTRUM:
@@ -178,24 +195,36 @@ class SeedSelectSeedView(View):
 ****************************************************************************"""
 class LoadSeedView(View):
     SEED_QR = ButtonOption(" Scan a SeedQR", SeedSignerIconConstants.QRCODE)
-    TYPE_12WORD = ButtonOption("Enter 12-word seed", FontAwesomeIconConstants.KEYBOARD)
-    TYPE_18WORD = ButtonOption("Enter 18-word seed", FontAwesomeIconConstants.KEYBOARD)
-    TYPE_24WORD = ButtonOption("Enter 24-word seed", FontAwesomeIconConstants.KEYBOARD)
+    TYPE_12WORD = ButtonOption("Enter 12-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=12)
+    TYPE_15WORD = ButtonOption("Enter 15-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=15)
+    TYPE_18WORD = ButtonOption("Enter 18-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=18)
+    TYPE_21WORD = ButtonOption("Enter 21-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=21)
+    TYPE_24WORD = ButtonOption("Enter 24-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=24)
     TYPE_ELECTRUM = ButtonOption("Enter Electrum seed", FontAwesomeIconConstants.KEYBOARD)
     TYPE_SLIP39 = ButtonOption("SLIP-39 Shares", FontAwesomeIconConstants.KEYBOARD)
     IMPORT_SEEDKEEPER = ButtonOption("From SeedKeeper", FontAwesomeIconConstants.LOCK)
     CREATE = ButtonOption(" Create a seed", SeedSignerIconConstants.PLUS)
 
     def run(self):
-        button_data = [
-            self.SEED_QR,
-            self.TYPE_12WORD,
-            self.TYPE_18WORD,
-            self.TYPE_24WORD,
-            self.IMPORT_SEEDKEEPER,
-        ]
+        seed_lengths = self.settings.get_value(SettingsConstants.SETTING__SEED_WORD_LENGTHS)
+        options = {
+            12: self.TYPE_12WORD,
+            15: self.TYPE_15WORD,
+            18: self.TYPE_18WORD,
+            21: self.TYPE_21WORD,
+            24: self.TYPE_24WORD,
+        }
 
-        button_data.append(self.TYPE_SLIP39)
+        # Start with the option to scan a SeedQR
+        button_data = [self.SEED_QR]
+        button_data.extend([options[l] for l in seed_lengths])
+
+        if self.settings.get_value(SettingsConstants.SETTING__SMARTCARD_SUPPORT) == SettingsConstants.OPTION__ENABLED:
+            button_data.append(self.IMPORT_SEEDKEEPER)
+
+        if self.settings.get_value(SettingsConstants.SETTING__SLIP39_SEEDS) == SettingsConstants.OPTION__ENABLED:
+            button_data.append(self.TYPE_SLIP39)
+
         button_data.append(self.CREATE)
 
         if self.settings.get_value(SettingsConstants.SETTING__ELECTRUM_SEEDS) == SettingsConstants.OPTION__ENABLED:
@@ -215,16 +244,8 @@ class LoadSeedView(View):
             from .scan_views import ScanSeedQRView
             return Destination(ScanSeedQRView)
 
-        elif button_data[selected_menu_num] == self.TYPE_12WORD:
-            self.controller.storage.init_pending_mnemonic(num_words=12)
-            return Destination(SeedMnemonicEntryView)
-        
-        elif button_data[selected_menu_num] == self.TYPE_18WORD:
-            self.controller.storage.init_pending_mnemonic(num_words=18)
-            return Destination(SeedMnemonicEntryView)
-
-        elif button_data[selected_menu_num] == self.TYPE_24WORD:
-            self.controller.storage.init_pending_mnemonic(num_words=24)
+        elif button_data[selected_menu_num] in [self.TYPE_12WORD, self.TYPE_15WORD, self.TYPE_18WORD, self.TYPE_21WORD, self.TYPE_24WORD]:
+            self.controller.storage.init_pending_mnemonic(num_words=button_data[selected_menu_num].return_data)
             return Destination(SeedMnemonicEntryView)
 
         elif button_data[selected_menu_num] == self.IMPORT_SEEDKEEPER:
@@ -276,7 +297,8 @@ class SeedKeeperSelectView(View):
                 export_rights = SEEDKEEPER_DIC_EXPORT_RIGHTS.get(header['export_rights'], hex(header['export_rights']))
 
                 if ((stype == "BIP39 mnemonic" and export_rights == 'Plaintext export allowed') or
-                        (stype == 'Masterseed' and subtype == 0x01)):
+                        (stype == 'Masterseed' and subtype == 0x01) or
+                        (stype == 'Electrum mnemonic' and export_rights == 'Plaintext export allowed')):
 
                     if not label:
                         label = "Unnamed Secret"
@@ -322,7 +344,7 @@ class SeedKeeperSelectView(View):
 
             assert stype == SEEDKEEPER_DIC_TYPE.get(secret_dict['type'], hex(secret_dict['type']))
 
-            if stype == 'BIP39 mnemonic':
+            if stype == 'BIP39 mnemonic' or stype == 'Electrum mnemonic':
                 secret_dict['secret'] = unhexlify(secret_dict['secret'])[1:].decode().rstrip("\x00")
                 bip39_secret = secret_dict['secret']
                 secret_size = secret_dict['secret_list'][0]
@@ -368,7 +390,7 @@ class SeedKeeperSelectView(View):
             return Destination(BackStackView)
 
         mnemonic = secret_mnemonic.split(" ")
-        self.controller.storage.init_pending_mnemonic(num_words=len(mnemonic))
+        self.controller.storage.init_pending_mnemonic(num_words=len(mnemonic), is_electrum=(stype == 'Electrum mnemonic'))
         for i, word in enumerate(mnemonic):
             self.controller.storage.update_pending_mnemonic(word, i)
 
@@ -495,9 +517,15 @@ class SeedFinalizeView(View):
             # screenshot generator which creates a pending seed w/a passphrase already
             # set.
             passphrase = self.seed.passphrase
-            self.seed.set_passphrase("")
+            if isinstance(self.seed, Slip39Seed):
+                self.seed.set_slip39_passphrase("")
+            else:
+                self.seed.set_passphrase("")
             self.fingerprint = self.seed.get_fingerprint(network=self.settings.get_value(SettingsConstants.SETTING__NETWORK))
-            self.seed.set_passphrase(passphrase)
+            if isinstance(self.seed, Slip39Seed):
+                self.seed.set_slip39_passphrase(passphrase)
+            else:
+                self.seed.set_passphrase(passphrase)
 
 
     def run(self):
@@ -506,7 +534,8 @@ class SeedFinalizeView(View):
         if self.settings.get_value(SettingsConstants.SETTING__PASSPHRASE) != SettingsConstants.OPTION__DISABLED:
             button_data.append(self.TYPE_PASSPHRASE)
             button_data.append(self.SCAN_PASSPHRASE)
-            button_data.append(self.LOAD_SEEDKEEPER)
+            if self.settings.get_value(SettingsConstants.SETTING__SMARTCARD_SUPPORT) == SettingsConstants.OPTION__ENABLED:
+                button_data.append(self.LOAD_SEEDKEEPER)
 
         selected_menu_num = self.run_screen(
             seed_screens.SeedFinalizeScreen,
@@ -551,8 +580,12 @@ class SeedAddPassphraseView(View):
             initial_keyboard=self.initial_keyboard,
         )
 
-        # The new passphrase will be the return value; it might be empty.
-        self.seed.set_passphrase(ret_dict["passphrase"])
+        passphrase = ret_dict["passphrase"]
+        if isinstance(self.seed, Slip39Seed):
+            self.seed.set_slip39_passphrase(passphrase)
+        else:
+            # The new passphrase will be the return value; it might be empty.
+            self.seed.set_passphrase(passphrase)
 
         if "is_back_button" in ret_dict:
             if len(self.seed.passphrase) > 0:
@@ -593,7 +626,10 @@ class SeedAddPassphraseExitDialogView(View):
             return Destination(SeedAddPassphraseView)
 
         elif button_data[selected_menu_num] == self.DISCARD:
-            self.seed.set_passphrase("")
+            if isinstance(self.seed, Slip39Seed):
+                self.seed.set_slip39_passphrase("")
+            else:
+                self.seed.set_passphrase("")
             return Destination(SeedFinalizeView)
 
 class SeedScanPassphraseView(View):
@@ -614,7 +650,10 @@ class SeedScanPassphraseView(View):
         time.sleep(0.1)
         if decoder.is_complete:
             passphrase = self.seed.passphrase_display + decoder.get_passphrase()
-            self.controller.storage.get_pending_seed().set_passphrase(passphrase)
+            if isinstance(self.seed, Slip39Seed):
+                self.controller.storage.get_pending_seed().set_slip39_passphrase(passphrase)
+            else:
+                self.controller.storage.get_pending_seed().set_passphrase(passphrase)
             return Destination(SeedReviewPassphraseView)
         elif decoder.is_nonUTF8:
             DireWarningScreen(
@@ -714,7 +753,10 @@ class SeedLoadSeedKeeperPassphraseView(View):
             return Destination(BackStackView)
         
         # The new passphrase will be the return value; it might be empty.
-        self.seed.set_passphrase(secret_passphrase)
+        if isinstance(self.seed, Slip39Seed):
+            self.seed.set_slip39_passphrase(secret_passphrase)
+        else:
+            self.seed.set_passphrase(secret_passphrase)
         if len(self.seed.passphrase) > 0:
             return Destination(SeedReviewPassphraseView)
         else:
@@ -738,9 +780,15 @@ class SeedReviewPassphraseView(View):
         network = self.settings.get_value(SettingsConstants.SETTING__NETWORK)
         passphrase = self.seed.passphrase
         fingerprint_with = self.seed.get_fingerprint(network=network)
-        self.seed.set_passphrase("")
+        if isinstance(self.seed, Slip39Seed):
+            self.seed.set_slip39_passphrase("")
+        else:
+            self.seed.set_passphrase("")
         fingerprint_without = self.seed.get_fingerprint(network=network)
-        self.seed.set_passphrase(passphrase)
+        if isinstance(self.seed, Slip39Seed):
+            self.seed.set_slip39_passphrase(passphrase)
+        else:
+            self.seed.set_passphrase(passphrase)
         
         button_data = [self.DONE, self.EDIT, self.SCAN]
 
@@ -755,7 +803,10 @@ class SeedReviewPassphraseView(View):
         )
 
         if selected_menu_num == RET_CODE__BACK_BUTTON:
-            self.seed.set_passphrase("")
+            if isinstance(self.seed, Slip39Seed):
+                self.seed.set_slip39_passphrase("")
+            else:
+                self.seed.set_passphrase("")
             return Destination(SeedFinalizeView)
 
         elif button_data[selected_menu_num] == self.DONE:
@@ -839,26 +890,24 @@ class SeedSlip39MnemonicStartView(View):
 
     def run(self):
         self.controller.storage.discard_pending_slip39_shares()
-        self.run_screen(
-            WarningScreen,
-            title=_("SLIP-39 warning"),
-            status_headline=None,
-            text=_("Enter each share in full. Multiple shares will be combined."),
-            show_back_button=False,
-        )
 
-        TWENTY = ButtonOption("20 words")
-        THIRTYTHREE = ButtonOption("33 words")
+        TWENTY = ButtonOption("Enter 20 words")
+        THIRTYTHREE = ButtonOption("Enter 33 words")
         SCAN = ButtonOption("Scan QR", SeedSignerIconConstants.QRCODE)
-        SEEDKEEPER = ButtonOption("SeedKeeper", FontAwesomeIconConstants.LOCK)
-        button_data = [TWENTY, THIRTYTHREE, SCAN, SEEDKEEPER]
+        SEEDKEEPER = ButtonOption("From SeedKeeper", FontAwesomeIconConstants.LOCK)
+        button_data = [TWENTY, THIRTYTHREE, SCAN]
+        if self.settings.get_value(SettingsConstants.SETTING__SMARTCARD_SUPPORT) == SettingsConstants.OPTION__ENABLED:
+            button_data.append(SEEDKEEPER)
 
         selected = self.run_screen(
             ButtonListScreen,
-            title=_("Share length"),
+            title=_("Load Share"),
             is_button_text_centered=False,
             button_data=button_data,
         )
+
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
 
         if button_data[selected] == SCAN:
             from seedsigner.views.scan_views import ScanSlip39ShareQRView
@@ -915,16 +964,18 @@ class SeedSlip39ShareEntryView(View):
 
 
 class SeedSlip39MoreSharesView(View):
-    ADD = ButtonOption("Add share")
+    ADD = ButtonOption("Enter share")
     SCAN = ButtonOption("Scan share", SeedSignerIconConstants.QRCODE)
-    SEEDKEEPER = ButtonOption("SeedKeeper", FontAwesomeIconConstants.LOCK)
+    SEEDKEEPER = ButtonOption("From SeedKeeper", FontAwesomeIconConstants.LOCK)
     DONE = ButtonOption("Combine shares")
 
     def run(self):
         entered = self.controller.storage.slip39_shares_entered
         needed = self.controller.storage.slip39_total_needed
         if needed > entered:
-            button_data = [self.ADD, self.SCAN, self.SEEDKEEPER]
+            button_data = [self.ADD, self.SCAN]
+            if self.settings.get_value(SettingsConstants.SETTING__SMARTCARD_SUPPORT) == SettingsConstants.OPTION__ENABLED:
+                button_data.append(self.SEEDKEEPER)
         else:
             button_data = [self.DONE]
         info_text = None
@@ -949,7 +1000,15 @@ class SeedSlip39MoreSharesView(View):
             from seedsigner.views.seed_views import SeedSlip39LoadFromSeedkeeperView
             return Destination(SeedSlip39LoadFromSeedkeeperView)
 
-        self.controller.storage.convert_pending_slip39_shares_to_pending_seed()
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+        self.loading_screen = LoadingScreenThread(text="Combining Shares\n\n\n\n\n\n")
+        self.loading_screen.start()
+        try:
+            self.controller.storage.convert_pending_slip39_shares_to_pending_seed()
+        finally:
+            time.sleep(1)
+            self.loading_screen.stop()
+
         return Destination(SeedFinalizeView)
 
 
@@ -1081,6 +1140,83 @@ class SeedSlip39LoadFromSeedkeeperView(View):
         return Destination(SeedSlip39MoreSharesView, skip_current_view=True)
 
 
+class SeedSlip39CreateFromBytesView(View):
+    """Create a SLIP-39 seed from entropy bytes and start backup."""
+    def __init__(self, secret: bytes):
+        super().__init__()
+        self.secret = secret
+
+    def run(self):
+        
+        ret = seed_screens.SeedBIP85SelectChildIndexScreen(title="Num Shares").display()
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        num_shares = int(ret)
+
+        ret = seed_screens.SeedBIP85SelectChildIndexScreen(title="Threshold").display()
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        threshold = int(ret)
+
+        if threshold > num_shares:
+            raise InvalidSeedException(
+                "The requested threshold must not exceed the number of shares."
+            )
+        
+        if threshold == 1 and num_shares > 1:
+            raise InvalidSeedException(
+                "Multi-Share with threshold of 1 not allowed."
+            )
+
+        extendable = (
+            self.settings.get_value(SettingsConstants.SETTING__SLIP39_EXTENDABLE)
+            == SettingsConstants.OPTION__ENABLED
+        )
+        shares = shamir_mnemonic.generate_mnemonics(
+            1, [(threshold, num_shares)], self.secret, extendable=extendable
+        )[0]
+        seed = Slip39Seed(mnemonics=shares)
+        self.controller.storage.set_pending_seed(seed)
+
+        return Destination(SeedWordsWarningView, view_args={"seed_num": None, "share_index": 0}, clear_history=True)
+
+
+class SeedSlip39RegenerateSharesView(View):
+    """Regenerate SLIP-39 shares for an existing seed."""
+    def __init__(self, seed_num: int):
+        super().__init__()
+        self.seed_num = seed_num
+        self.seed = self.controller.get_seed(seed_num)
+        self.seed_num = seed_num
+
+    def run(self):
+        if not self.seed.extendable:
+            from seedsigner.gui.screens.screen import WarningScreen
+            self.run_screen(
+                WarningScreen,
+                title=_("Non-extendable Seed"),
+                show_back_button=False,
+                status_icon_name=SeedSignerIconConstants.ERROR,
+                status_headline=None,
+                text=_("This SLIP-39 seed cannot regenerate new shares."),
+                button_data=[ButtonOption("OK")],
+            )
+            return Destination(BackStackView)
+
+        ret = seed_screens.SeedBIP85SelectChildIndexScreen(title="Num Shares").display()
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        num_shares = int(ret)
+
+        ret = seed_screens.SeedBIP85SelectChildIndexScreen(title="Threshold").display()
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        threshold = int(ret)
+
+        self.seed.regenerate_shares(threshold, num_shares)
+        return Destination(SeedWordsWarningView, view_args={"seed_num": self.seed_num, "share_index": 0})
+
+
 
 """****************************************************************************
     Views for actions on individual seeds:
@@ -1203,6 +1339,7 @@ class SeedBackupView(View):
     EXPORT_SEEDQR = ButtonOption("Export as SeedQR")
     EXPORT_PLAINTEXTQR = ButtonOption("Export as Plaintext QR")
     TO_SEEDKEEPER = ButtonOption("To SeedKeeper")
+    REGENERATE_SHARES = ButtonOption("Regenerate Shares")
 
     def __init__(self, seed_num):
         super().__init__()
@@ -1212,7 +1349,11 @@ class SeedBackupView(View):
 
     def run(self):
 
-        button_data = [self.VIEW_WORDS, self.TO_SEEDKEEPER]
+        button_data = [self.VIEW_WORDS]
+        if self.settings.get_value(SettingsConstants.SETTING__SMARTCARD_SUPPORT) == SettingsConstants.OPTION__ENABLED:
+            button_data.append(self.TO_SEEDKEEPER)
+        if isinstance(self.seed, Slip39Seed):
+            button_data.append(self.REGENERATE_SHARES)
 
         if self.seed.seedqr_supported:
             button_data.append(self.EXPORT_SEEDQR)
@@ -1247,6 +1388,9 @@ class SeedBackupView(View):
             if isinstance(self.seed, Slip39Seed):
                 return Destination(SeedSlip39SelectShareView, view_args={"seed_num": self.seed_num, "next_view": SaveToSeedkeeperView})
             return Destination(SaveToSeedkeeperView, view_args={"seed_num": self.seed_num})
+
+        elif button_data[selected_menu_num] == self.REGENERATE_SHARES:
+            return Destination(SeedSlip39RegenerateSharesView, view_args={"seed_num": self.seed_num})
 
 
 """****************************************************************************
@@ -1406,6 +1550,8 @@ class SeedExportXpubCoordinatorView(View):
         if len(self.settings.get_value(SettingsConstants.SETTING__COORDINATORS)) == 1:
             # Nothing to select; skip this screen
             args["coordinator"] = self.settings.get_value(SettingsConstants.SETTING__COORDINATORS)[0]
+            entry = SettingsDefinition.get_settings_entry(SettingsConstants.SETTING__COORDINATORS)
+            args["coordinator_label"] = entry.get_selection_option_display_name_by_value(args["coordinator"])
             return Destination(SeedExportXpubWarningView, view_args=args, skip_current_view=True)
 
         button_data = []
@@ -1426,19 +1572,21 @@ class SeedExportXpubCoordinatorView(View):
         # selected_display_name = button_data[selected_menu_num]
         # args["coordinator"] = coordinators_settings_entry.get_selection_option_value_by_display_name(selected_display_name)
         args["coordinator"] = button_data[selected_menu_num].return_data
+        args["coordinator_label"] = button_data[selected_menu_num].button_label
 
         return Destination(SeedExportXpubWarningView, view_args=args)
 
 
 
 class SeedExportXpubWarningView(View):
-    def __init__(self, seed_num: int, sig_type: str, script_type: str, coordinator: str, custom_derivation: str):
+    def __init__(self, seed_num: int, sig_type: str, script_type: str, coordinator: str, custom_derivation: str, coordinator_label: str):
         super().__init__()
         self.seed_num = seed_num
         self.sig_type = sig_type
         self.script_type = script_type
         self.coordinator = coordinator
         self.custom_derivation = custom_derivation
+        self.coordinator_label = coordinator_label
 
 
     def run(self):
@@ -1450,6 +1598,7 @@ class SeedExportXpubWarningView(View):
                 "script_type": self.script_type,
                 "coordinator": self.coordinator,
                 "custom_derivation": self.custom_derivation,
+                "coordinator_label": self.coordinator_label,
             },
             skip_current_view=True,  # Prevent going BACK to WarningViews
         )
@@ -1478,12 +1627,13 @@ class SeedExportXpubDetailsView(View):
         Collects the user input from all the previous screens leading up to this and
         finally calculates the xpub and displays the summary view to the user.
     """
-    def __init__(self, seed_num: int, sig_type: str, script_type: str, coordinator: str, custom_derivation: str):
+    def __init__(self, seed_num: int, sig_type: str, script_type: str, coordinator: str, custom_derivation: str, coordinator_label: str):
         super().__init__()
         self.sig_type = sig_type
         self.script_type = script_type
         self.coordinator = coordinator
         self.custom_derivation = custom_derivation
+        self.coordinator_label = coordinator_label
         
         self.seed_num = seed_num
         self.seed = self.controller.get_seed(self.seed_num)
@@ -1548,7 +1698,9 @@ class SeedExportXpubDetailsView(View):
                 dict(seed_num=self.seed_num,
                      coordinator=self.coordinator,
                      derivation_path=derivation_path,
-                     sig_type=self.sig_type
+                     sig_type=self.sig_type,
+                     script_type=self.script_type,
+                     coordinator_label=self.coordinator_label
                 )
             )
 
@@ -1558,9 +1710,14 @@ class SeedExportXpubDetailsView(View):
 
 
 class SeedExportXpubQRDisplayView(View):
-    def __init__(self, seed_num: int, coordinator: str, derivation_path: str, sig_type: str = SettingsConstants.SINGLE_SIG):
+    def __init__(self, seed_num: int, coordinator: str, derivation_path: str, sig_type: str = SettingsConstants.SINGLE_SIG, script_type: str = SettingsConstants.NATIVE_SEGWIT, coordinator_label: str = ""):
         super().__init__()
         self.seed = self.controller.get_seed(seed_num)
+        self.seed_num = seed_num
+        self.script_type = script_type
+        self.sig_type = sig_type
+        self.derivation_path = derivation_path
+        self.coordinator_label = coordinator_label
 
         encoder_args = dict(
             seed=self.seed,
@@ -1587,8 +1744,54 @@ class SeedExportXpubQRDisplayView(View):
             QRDisplayScreen,
             qr_encoder=self.qr_encoder
         )
-
+        if self.sig_type == SettingsConstants.SINGLE_SIG:
+            return Destination(
+                SeedExportXpubVerifyAddressView,
+                view_args=dict(
+                    seed_num=self.seed_num,
+                    derivation_path=self.derivation_path,
+                    script_type=self.script_type,
+                    sig_type=self.sig_type,
+                    coordinator_label=self.coordinator_label,
+                ),
+                skip_current_view=True,
+            )
         return Destination(MainMenuView)
+
+
+class SeedExportXpubVerifyAddressView(View):
+    def __init__(self, seed_num: int, derivation_path: str, script_type: str, sig_type: str, coordinator_label: str):
+        super().__init__()
+        self.seed_num = seed_num
+        self.derivation_path = derivation_path
+        self.script_type = script_type
+        self.sig_type = sig_type
+        self.coordinator_label = coordinator_label
+
+    def run(self):
+        from seedsigner.gui.screens.screen import WarningScreen, ButtonOption
+        from seedsigner.views.scan_views import ScanXpubAddressView
+        self.run_screen(
+            LargeIconStatusScreen,
+            title=_("Verify Address"),
+            status_icon_name=SeedSignerIconConstants.QRCODE,
+            status_headline=None,
+            text=_("Open {} and display a receive address from the wallet you just exported.").format(self.coordinator_label),
+            button_data=[ButtonOption(_("Scan"))],
+            show_back_button=False,
+        )
+
+        return Destination(
+            ScanXpubAddressView,
+            view_args=dict(
+                seed_num=self.seed_num,
+                derivation_path=self.derivation_path,
+                script_type=self.script_type,
+                sig_type=self.sig_type,
+                coordinator_label=self.coordinator_label,
+            ),
+            skip_current_view=True
+        )
 
 
 
@@ -1853,7 +2056,9 @@ class SeedWordsBackupTestPromptView(View):
             )
 
         elif button_data[selected_menu_num] == self.SKIP:
-
+            seed = self.controller.storage.get_pending_seed() if self.seed_num is None else self.controller.get_seed(self.seed_num)
+            if isinstance(seed, Slip39Seed) and self.share_index is not None and self.share_index < len(seed.mnemonic_list) - 1:
+                return Destination(SeedWordsWarningView, view_args=dict(seed_num=self.seed_num, share_index=self.share_index + 1))
             if self.seed_num is not None:
                 return Destination(SeedOptionsView, view_args=dict(seed_num=self.seed_num))
             else:
@@ -2040,8 +2245,14 @@ class SeedWordsBackupTestSuccessView(View):
             self.seed_num = None
 
         if self.seed_num is not None:
+            seed = self.controller.get_seed(self.seed_num)
+            if isinstance(seed, Slip39Seed) and self.share_index is not None and self.share_index < len(seed.mnemonic_list) - 1:
+                return Destination(SeedWordsWarningView, view_args={"seed_num": self.seed_num, "share_index": self.share_index + 1})
             return Destination(SeedOptionsView, view_args=dict(seed_num=self.seed_num), clear_history=True)
         else:
+            seed = self.controller.storage.get_pending_seed()
+            if isinstance(seed, Slip39Seed) and self.share_index is not None and self.share_index < len(seed.mnemonic_list) - 1:
+                return Destination(SeedWordsWarningView, view_args={"seed_num": None, "share_index": self.share_index + 1})
             return Destination(SeedFinalizeView)
 
 
@@ -2049,84 +2260,90 @@ class SeedWordsBackupTestSuccessView(View):
     Export as SeedQR
 ****************************************************************************"""
 class SeedTranscribeSeedQRFormatView(View):
-    # SeedQR dims for 12-word seeds
-    STANDARD_12 = ButtonOption("Standard: 25x25", return_data=25)
-    COMPACT_12 = ButtonOption("Compact: 21x21", return_data=21)
-    ENCRYPTED_12 = ButtonOption("Encrypted", return_data=0) # Encrypted QR uses dummy return data
-
-    # SeedQR dims for 24-word seeds
-    STANDARD_24 = ButtonOption("Standard: 29x29", return_data=29)
-    COMPACT_24 = ButtonOption("Compact: 25x25", return_data=25)
-    ENCRYPTED_24 = ButtonOption("Encrypted", return_data=0) # Encrypted QR uses dummy return data
-
     def __init__(self, seed_num: int):
         super().__init__()
         self.seed_num = seed_num
 
 
     def run(self):
+        from seedsigner.helpers.qr import QR
+
         seed = self.controller.get_seed(self.seed_num)
 
-        if (self.settings.get_value(SettingsConstants.SETTING__COMPACT_SEEDQR) != SettingsConstants.OPTION__ENABLED and
-            self.settings.get_value(SettingsConstants.SETTING__ENCRYPTED_QR) != SettingsConstants.OPTION__ENABLED):
-            # Only configured for standard SeedQR
+        encoder_args = dict(
+            mnemonic=seed.mnemonic_list,
+            wordlist_language_code=self.settings.get_value(SettingsConstants.SETTING__WORDLIST_LANGUAGE),
+        )
+
+        qr_helper = QR()
+        button_data = []
+
+        standard_encoder = SeedQrEncoder(**encoder_args)
+        standard_modules = qr_helper.qrsize(standard_encoder.next_part())
+        button_data.append(
+            ButtonOption(
+                f"Standard: {standard_modules}x{standard_modules}",
+                return_data=(QRType.SEED__SEEDQR, standard_modules),
+            )
+        )
+
+        if self.settings.get_value(SettingsConstants.SETTING__COMPACT_SEEDQR) == SettingsConstants.OPTION__ENABLED:
+            compact_encoder = CompactSeedQrEncoder(**encoder_args)
+            compact_modules = qr_helper.qrsize(compact_encoder.next_part())
+            button_data.append(
+                ButtonOption(
+                    f"Compact: {compact_modules}x{compact_modules}",
+                    return_data=(QRType.SEED__COMPACTSEEDQR, compact_modules),
+                )
+            )
+
+        if self.settings.get_value(SettingsConstants.SETTING__ENCRYPTED_QR) == SettingsConstants.OPTION__ENABLED:
+            button_data.append(
+                ButtonOption(
+                    "Encrypted",
+                    return_data=(QRType.SEED__ENCRYPTEDQR, 0),
+                )
+            )
+
+        if len(button_data) == 1:
+            seedqr_format, num_modules = button_data[0].return_data
             return Destination(
                 SeedTranscribeSeedQRWarningView,
                 view_args={
                     "seed_num": self.seed_num,
-                    "seedqr_format": QRType.SEED__SEEDQR,
-                    "num_modules": self.STANDARD_12.return_data,
+                    "seedqr_format": seedqr_format,
+                    "num_modules": num_modules,
                 },
                 skip_current_view=True,
             )
 
-        if len(seed.mnemonic_list) == 12:
-            button_data = [self.STANDARD_12]
-        else:
-            button_data = [self.STANDARD_24]
-
-        if self.settings.get_value(SettingsConstants.SETTING__COMPACT_SEEDQR) == SettingsConstants.OPTION__ENABLED:
-            if len(seed.mnemonic_list) == 12:
-              button_data.append(self.COMPACT_12)
-            else:
-              button_data.append(self.COMPACT_24)
-              
-        if self.settings.get_value(SettingsConstants.SETTING__ENCRYPTED_QR) == SettingsConstants.OPTION__ENABLED:
-            if len(seed.mnemonic_list) == 12:
-              button_data.append(self.ENCRYPTED_12)
-            else:
-              button_data.append(self.ENCRYPTED_24)
-            
         selected_menu_num = self.run_screen(
             seed_screens.SeedTranscribeSeedQRFormatScreen,
             title=_("SeedQR Format"),
-            is_compactqr = (self.settings.get_value(SettingsConstants.SETTING__COMPACT_SEEDQR) == SettingsConstants.OPTION__ENABLED),
-            is_encryptedqr = (self.settings.get_value(SettingsConstants.SETTING__ENCRYPTED_QR) == SettingsConstants.OPTION__ENABLED),
-
+            is_compactqr=(
+                self.settings.get_value(SettingsConstants.SETTING__COMPACT_SEEDQR)
+                == SettingsConstants.OPTION__ENABLED
+            ),
+            is_encryptedqr=(
+                self.settings.get_value(SettingsConstants.SETTING__ENCRYPTED_QR)
+                == SettingsConstants.OPTION__ENABLED
+            ),
             button_data=button_data,
         )
 
         if selected_menu_num == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
-        
-        if button_data[selected_menu_num] in [self.STANDARD_12, self.STANDARD_24]:
-            seedqr_format = QRType.SEED__SEEDQR
-        elif button_data[selected_menu_num] in [self.COMPACT_12, self.COMPACT_24]:
-            seedqr_format = QRType.SEED__COMPACTSEEDQR
-            
-        else:
-            seedqr_format = QRType.SEED__ENCRYPTEDQR
 
-        num_modules = button_data[selected_menu_num].return_data
+        seedqr_format, num_modules = button_data[selected_menu_num].return_data
 
         return Destination(
             SeedTranscribeSeedQRWarningView,
-                view_args={
-                    "seed_num": self.seed_num,
-                    "seedqr_format": seedqr_format,
-                    "num_modules": num_modules,
-                }
-            )
+            view_args={
+                "seed_num": self.seed_num,
+                "seedqr_format": seedqr_format,
+                "num_modules": num_modules,
+            },
+        )
 
 
 
@@ -2772,16 +2989,8 @@ class SeedTranscribeSeedQRZoomedInView(View):
 
         data = e.next_part()
 
-        if len(self.seed.mnemonic_list) == 24:
-            if self.seedqr_format == QRType.SEED__COMPACTSEEDQR:
-                num_modules = 25
-            else:
-                num_modules = 29
-        else:
-            if self.seedqr_format == QRType.SEED__COMPACTSEEDQR:
-                num_modules = 21
-            else:
-                num_modules = 25
+        from seedsigner.helpers.qr import QR
+        num_modules = QR().qrsize(data)
 
         seed_screens.SeedTranscribeSeedQRZoomedInScreen(
             qr_data=data,
@@ -3039,17 +3248,20 @@ class SeedAddressVerificationView(View):
     SKIP_10 = ButtonOption("Skip 10")
     CANCEL = ButtonOption("Cancel")
 
-    def __init__(self, seed_num: int = None):
+    MAX_ITERATIONS_EXPORT_XPUB = 1000
+
+    def __init__(self, seed_num: int = None, export_for_xpub: bool = False):
         super().__init__()
         self.seed_num = seed_num
+        self.export_for_xpub = export_for_xpub
         self.is_multisig = self.controller.unverified_address["sig_type"] == SettingsConstants.MULTISIG
         self.seed_derivation_override = ""
         if not self.is_multisig:
-            if seed_num is None:
-                raise Exception(_("Can't validate a single sig addr without specifying a seed"))
-            self.seed_num = seed_num
-            self.seed = self.controller.get_seed(seed_num)
-            self.seed_derivation_override = self.seed.derivation_override(sig_type=SettingsConstants.SINGLE_SIG)
+            if seed_num is not None:
+                self.seed = self.controller.get_seed(seed_num)
+                self.seed_derivation_override = self.seed.derivation_override(sig_type=SettingsConstants.SINGLE_SIG)
+            else:
+                self.seed = None
         else:
             self.seed = None
         self.address = self.controller.unverified_address["address"]
@@ -3101,11 +3313,15 @@ class SeedAddressVerificationView(View):
             network_display = network_settings_entry.get_selection_option_display_name_by_value(self.network)
             mainnet = network_settings_entry.get_selection_option_display_name_by_value(SettingsConstants.MAINNET)
 
+            max_iterations = self.MAX_ITERATIONS_EXPORT_XPUB if self.export_for_xpub else None
+
             # Display the Screen to show the brute-forcing progress.
             # Using a loop here to handle the SKIP_10 button presses to increment the counter
             # and resume displaying the screen. User won't even notice that the Screen is
             # being re-constructed.
             while True:
+                if max_iterations is not None and self.threadsafe_counter.cur_count >= max_iterations:
+                    break
                 selected_menu_num = self.run_screen(
                     seed_screens.SeedAddressVerificationScreen,
                     address=self.address,
@@ -3117,6 +3333,7 @@ class SeedAddressVerificationView(View):
                     threadsafe_counter=self.threadsafe_counter,
                     verified_index=self.verified_index,
                     button_data=button_data,
+                    max_iterations=max_iterations,
                 )
 
                 if self.verified_index.cur_count is not None:
@@ -3141,7 +3358,12 @@ class SeedAddressVerificationView(View):
                 # Successfully verified the addr; update the data
                 self.controller.unverified_address["verified_index"] = self.verified_index.cur_count
                 self.controller.unverified_address["verified_index_is_change"] = self.verified_index_is_change.cur_count == 1
+                if self.export_for_xpub:
+                    return Destination(SeedExportXpubVerificationSuccessView)
                 return Destination(SeedAddressVerificationSuccessView, view_args=dict(seed_num=self.seed_num))
+
+            if self.export_for_xpub and max_iterations is not None and self.threadsafe_counter.cur_count >= max_iterations:
+                return Destination(SeedExportXpubVerificationFailedView, view_args=dict(reason="no_match"))
 
         finally:
             # Halt the thread if the user gave up (will already be stopped if it verified the
@@ -3229,13 +3451,55 @@ class SeedAddressVerificationSuccessView(View):
 
 
 
+class SeedExportXpubVerificationSuccessView(View):
+    def run(self):
+        from seedsigner.gui.screens.screen import WarningScreen, ButtonOption
+        self.run_screen(
+            LargeIconStatusScreen,
+            title=_("Wallet Export"),
+            status_icon_name=SeedSignerIconConstants.SUCCESS,
+            text=_("Wallet export successful."),
+            button_data=[ButtonOption(_("OK"))],
+            show_back_button=False,
+        )
+        self.controller.multisig_wallet_descriptor = None
+        return Destination(MainMenuView)
+
+
+class SeedExportXpubVerificationFailedView(View):
+    def __init__(self, reason: str = "no_match"):
+        super().__init__()
+        self.reason = reason
+
+    def run(self):
+        from seedsigner.gui.screens.screen import WarningScreen, ButtonOption
+        if self.reason == "script_mismatch":
+            text = _("Address format doesn't match exported script type. Wallet export unsuccessful.")
+        else:
+            text = _("Unable to match wallet to current seed. Wallet export unsuccessful.")
+        self.run_screen(
+            WarningScreen,
+            title=_("Export Failed"),
+            status_icon_name=SeedSignerIconConstants.ERROR,
+            status_headline=None,
+            text=text,
+            button_data=[ButtonOption(_("OK"))],
+            show_back_button=False,
+        )
+        self.controller.multisig_wallet_descriptor = None
+        return Destination(MainMenuView)
+
+
 class LoadMultisigWalletDescriptorView(View):
     SCAN = ButtonOption("Scan Descriptor", SeedSignerIconConstants.QRCODE)
     FROM_SEEDKEEPER = ButtonOption("Load SeedKeeper", FontAwesomeIconConstants.LOCK)
     CANCEL = ButtonOption("Cancel")
 
     def run(self):
-        button_data = [self.SCAN, self.FROM_SEEDKEEPER, self.CANCEL]
+        button_data = [self.SCAN]
+        if self.settings.get_value(SettingsConstants.SETTING__SMARTCARD_SUPPORT) == SettingsConstants.OPTION__ENABLED:
+            button_data.append(self.FROM_SEEDKEEPER)
+        button_data.append(self.CANCEL)
         selected_menu_num = self.run_screen(
             seed_screens.LoadMultisigWalletDescriptorScreen,
             button_data=button_data,
@@ -3405,26 +3669,22 @@ class SeedSignMessageConfirmMessageView(View):
 
 class SeedSignMessageConfirmAddressView(View):
     def __init__(self):
+        from embit import bip32
         from seedsigner.helpers import embit_utils
+
         super().__init__()
         data = self.controller.sign_message_data
-        seed_num = data.get("seed_num")
+        self.seed_num = data.get("seed_num")
         self.derivation_path = data.get("derivation_path")
 
-        if seed_num is None or not self.derivation_path:
+        if not self.derivation_path:
             raise Exception("Routing error: sign_message_data hasn't been set")
 
-        seed = self.controller.storage.seeds[seed_num]
-        addr_format = data.get("addr_format")
-
-        # calculate the actual receive address
-        seed = self.controller.storage.seeds[seed_num]
         addr_format = embit_utils.parse_derivation_path(self.derivation_path)
         if not addr_format["clean_match"] or addr_format["script_type"] == SettingsConstants.CUSTOM_DERIVATION:
             raise Exception(_("Signing messages for custom derivation paths not supported"))
 
         if addr_format["network"] != SettingsConstants.MAINNET:
-            # We're in either Testnet or Regtest or...?
             if self.settings.get_value(SettingsConstants.SETTING__NETWORK) in [SettingsConstants.TESTNET, SettingsConstants.REGTEST]:
                 addr_format["network"] = self.settings.get_value(SettingsConstants.SETTING__NETWORK)
             else:
@@ -3437,9 +3697,38 @@ class SeedSignMessageConfirmAddressView(View):
                 self.controller.sign_message_data = None
                 return
 
-        xpub = seed.get_xpub(wallet_path=addr_format["wallet_derivation_path"], network=addr_format["network"])
+        if self.controller.sign_message_with_satochip:
+            connector = self.controller.Satochip_Connector
+            script_type = addr_format["script_type"]
+            if script_type == SettingsConstants.NATIVE_SEGWIT:
+                xtype = "p2wpkh"
+            elif script_type == SettingsConstants.NESTED_SEGWIT:
+                xtype = "p2wpkh-p2sh"
+            elif script_type == SettingsConstants.LEGACY_P2PKH:
+                xtype = "standard"
+            elif script_type == SettingsConstants.TAPROOT:
+                xtype = "standard"
+            else:
+                xtype = "p2wpkh"
+            is_mainnet = addr_format["network"] == SettingsConstants.MAINNET
+            from seedsigner.helpers.satochip_signer import format_path_string
+            wallet_path = format_path_string(addr_format["wallet_derivation_path"])
+            xpub_base58 = connector.card_bip32_get_xpub(wallet_path, xtype, is_mainnet)
+            xpub = bip32.HDKey.from_base58(xpub_base58)
+        else:
+            if self.seed_num is None:
+                raise Exception("Routing error: sign_message_data hasn't been set")
+            seed = self.controller.get_seed(self.seed_num)
+            xpub = seed.get_xpub(wallet_path=addr_format["wallet_derivation_path"], network=addr_format["network"])
+
         embit_network = embit_utils.get_embit_network_name(addr_format["network"])
-        self.address = embit_utils.get_single_sig_address(xpub=xpub, script_type=addr_format["script_type"], index=addr_format["index"], is_change=addr_format["is_change"], embit_network=embit_network)
+        self.address = embit_utils.get_single_sig_address(
+            xpub=xpub,
+            script_type=addr_format["script_type"],
+            index=addr_format["index"],
+            is_change=addr_format["is_change"],
+            embit_network=embit_network,
+        )
 
 
     def run(self):
@@ -3467,12 +3756,23 @@ class SeedSignMessageSignedMessageQRView(View):
         super().__init__()
         data = self.controller.sign_message_data
 
-        self.seed_num = data["seed_num"]
-        seed = self.controller.get_seed(self.seed_num)
         derivation_path = data["derivation_path"]
         message: str = data["message"]
 
-        self.signed_message = embit_utils.sign_message(seed_bytes=seed.seed_bytes, derivation=derivation_path, msg=message.encode())
+        if self.controller.sign_message_with_satochip:
+            from seedsigner.helpers.satochip_signer import sign_message_with_satochip
+
+            self.signed_message = sign_message_with_satochip(
+                derivation_path, message, self.controller.Satochip_Connector
+            )
+        else:
+            self.seed_num = data["seed_num"]
+            seed = self.controller.get_seed(self.seed_num)
+            self.signed_message = embit_utils.sign_message(
+                seed_bytes=seed.seed_bytes,
+                derivation=derivation_path,
+                msg=message.encode(),
+            )
 
 
     def run(self):
@@ -3483,10 +3783,11 @@ class SeedSignMessageSignedMessageQRView(View):
             QRDisplayScreen,
             qr_encoder=qr_encoder,
         )
-    
+
         # cleanup
         self.controller.resume_main_flow = None
         self.controller.sign_message_data = None
+        self.controller.sign_message_with_satochip = False
 
         # Exiting/Canceling the QR display screen always returns Home
         return Destination(MainMenuView, skip_current_view=True)
@@ -3579,39 +3880,51 @@ class SaveToSeedkeeperView(View):
                     return Destination(BackStackView)
                 status = Satochip_Connector.card_get_status()[3]
                 print(status)
-                if status['protocol_minor_version'] == 1:  # Seedkeeper v1
-                    print("Saving to SeedKeeper V1")
+                if isinstance(seed, ElectrumSeed):
+                    print("Saving Electrum seed")
                     label = ret['passphrase']
                     export_rights = "Plaintext export allowed"
-                    type = "BIP39 mnemonic"
+                    type = "Electrum mnemonic"
                     subtype = 0
-                    bip39_mnemonic = seed.mnemonic_str
-                    bip39_mnemonic_list = list(bytes(bip39_mnemonic, 'utf-8'))
-                    bip39_passphrase = seed.passphrase
-                    bip39_passphrase_list = list(bytes(bip39_passphrase, 'utf-8'))
-                    secret_list = [len(bip39_mnemonic_list)] + bip39_mnemonic_list + [len(bip39_passphrase_list)] + bip39_passphrase_list
+                    electrum_mnemonic_list = list(bytes(seed.mnemonic_str, 'utf-8'))
+                    electrum_passphrase_list = list(bytes(seed.passphrase, 'utf-8'))
+                    secret_list = [len(electrum_mnemonic_list)] + electrum_mnemonic_list + [len(electrum_passphrase_list)] + electrum_passphrase_list
+                    header = Satochip_Connector.make_header(type, export_rights, label, subtype=subtype)
+                    secret_dic = {'header': header, 'secret_list': secret_list}
                 else:
-                    print("Saving to SeedKeeper V2")
-                    label = ret['passphrase']
-                    export_rights = "Plaintext export allowed"
-                    type = "Masterseed"
-                    subtype = 0x01
-                    wordlist_byte = dict_swap_keys_values(BIP39_WORDLIST_DIC).get("english")
-                    bip39_entropy_bytes = self.mnemonic_to_entropy(seed.mnemonic_str, "english")
-                    bip39_entropy_list = list(bip39_entropy_bytes)
-                    bip39_passphrase_list = list(bytes(seed.passphrase, 'utf-8'))
-                    masterseed_bytes = seed.seed_bytes
-                    masterseed_list = list(masterseed_bytes)
-                    secret_list = ([len(masterseed_list)] +
-                                   masterseed_list +
-                                   [wordlist_byte] +
-                                   [len(bip39_entropy_list)] +
-                                   bip39_entropy_list +
-                                   [len(bip39_passphrase_list)] +
-                                   bip39_passphrase_list
-                                   )
-                header = Satochip_Connector.make_header(type, export_rights, label, subtype=subtype)
-                secret_dic = {'header': header, 'secret_list': secret_list}
+                    if status['protocol_minor_version'] == 1:  # Seedkeeper v1
+                        print("Saving to SeedKeeper V1")
+                        label = ret['passphrase']
+                        export_rights = "Plaintext export allowed"
+                        type = "BIP39 mnemonic"
+                        subtype = 0
+                        bip39_mnemonic = seed.mnemonic_str
+                        bip39_mnemonic_list = list(bytes(bip39_mnemonic, 'utf-8'))
+                        bip39_passphrase = seed.passphrase
+                        bip39_passphrase_list = list(bytes(bip39_passphrase, 'utf-8'))
+                        secret_list = [len(bip39_mnemonic_list)] + bip39_mnemonic_list + [len(bip39_passphrase_list)] + bip39_passphrase_list
+                    else:
+                        print("Saving to SeedKeeper V2")
+                        label = ret['passphrase']
+                        export_rights = "Plaintext export allowed"
+                        type = "Masterseed"
+                        subtype = 0x01
+                        wordlist_byte = dict_swap_keys_values(BIP39_WORDLIST_DIC).get("english")
+                        bip39_entropy_bytes = self.mnemonic_to_entropy(seed.mnemonic_str, "english")
+                        bip39_entropy_list = list(bip39_entropy_bytes)
+                        bip39_passphrase_list = list(bytes(seed.passphrase, 'utf-8'))
+                        masterseed_bytes = seed.seed_bytes
+                        masterseed_list = list(masterseed_bytes)
+                        secret_list = ([len(masterseed_list)] +
+                                       masterseed_list +
+                                       [wordlist_byte] +
+                                       [len(bip39_entropy_list)] +
+                                       bip39_entropy_list +
+                                       [len(bip39_passphrase_list)] +
+                                       bip39_passphrase_list
+                                       )
+                    header = Satochip_Connector.make_header(type, export_rights, label, subtype=subtype)
+                    secret_dic = {'header': header, 'secret_list': secret_list}
 
             self.loading_screen = LoadingScreenThread(text="Saving Seed\n\n\n\n\n\n")
             self.loading_screen.start()

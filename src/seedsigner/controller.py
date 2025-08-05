@@ -120,7 +120,7 @@ class Controller(Singleton):
         rather than at the top in order avoid circular imports.
     """
     
-    VERSION = "0.8.6+Satochip+ERT-B2"
+    VERSION = "0.8.6+Satochip+ERT-B3"
 
     # Declare class member vars with type hints to enable richer IDE support throughout
     # the code.
@@ -133,6 +133,8 @@ class Controller(Singleton):
     psbt: PSBT = None
     psbt_seed: Seed = None
     psbt_parser: PSBTParser = None
+    psbt_sign_with_satochip: bool = False
+    sign_message_with_satochip: bool = False
 
     unverified_address = None
 
@@ -214,6 +216,8 @@ class Controller(Singleton):
         # Store one working psbt in memory
         controller.psbt = None
         controller.psbt_parser = None
+        controller.psbt_sign_with_satochip = False
+        controller.sign_message_with_satochip = False
 
         # Configure the Renderer
         Renderer.configure_instance()
@@ -347,6 +351,8 @@ class Controller(Singleton):
                     self.psbt = None
                     self.psbt_parser = None
                     self.psbt_seed = None
+                    self.psbt_sign_with_satochip = False
+                    self.sign_message_with_satochip = False
 
                     # Clear the whole Smartcard session if caching PIN is disabled (Same as removing the card)
                     if Settings.get_instance().get_value(SettingsConstants.SETTING__CACHE_SCARD_PIN) != "E":
@@ -498,6 +504,8 @@ class Controller(Singleton):
         self.psbt = None
         self.psbt_parser = None
         self.psbt_seed = None
+        self.psbt_sign_with_satochip = False
+        self.sign_message_with_satochip = False
         self.multisig_wallet_descriptor = None
         self.unverified_address = None
         self.address_explorer_data = None

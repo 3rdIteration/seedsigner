@@ -1,67 +1,57 @@
 import pytest
 import random
+import os
 
 from embit import bip39
 from seedsigner.helpers import mnemonic_generation
-from seedsigner.models.settings_definition import SettingsConstants
 
 
 
 def test_dice_rolls():
     """ Given random dice rolls, the resulting mnemonic should be valid. """
-    dice_rolls = ""
-    for i in range(0, 99):
-        # Do not need truly rigorous random for this test
-        dice_rolls += str(random.randint(1, 6))
-
-    mnemonic = mnemonic_generation.generate_mnemonic_from_dice(dice_rolls)
-
-    assert len(mnemonic) == 24
-    assert bip39.mnemonic_is_valid(" ".join(mnemonic))
-
-    dice_rolls = ""
-    for i in range(0, mnemonic_generation.DICE__NUM_ROLLS__12WORD):
-        # Do not need truly rigorous random for this test
-        dice_rolls += str(random.randint(1, 6))
-
-    mnemonic = mnemonic_generation.generate_mnemonic_from_dice(dice_rolls)
-    assert len(mnemonic) == 12
-    assert bip39.mnemonic_is_valid(" ".join(mnemonic))
+    for length, rolls in mnemonic_generation.DICE_ROLLS_REQUIRED.items():
+        dice_rolls = ''.join(str(random.randint(1, 6)) for _ in range(rolls))
+        mnemonic = mnemonic_generation.generate_mnemonic_from_dice(dice_rolls)
+        assert len(mnemonic) == length
+        assert bip39.mnemonic_is_valid(" ".join(mnemonic))
 
 
 
 def test_calculate_checksum_input_type():
     """
-        Given an 11-word or 23-word mnemonic, the calculated checksum should yield a
+        Given a partial mnemonic, the calculated checksum should yield a
         valid complete mnemonic.
-        
+
         calculate_checksum should accept the mnemonic as:
         * a list of strings
         * string: "A B C", "A, B, C", "A,B,C"
     """
-    # Test mnemonics from https://iancoleman.io/bip39/
+
     def _try_all_input_formats(partial_mnemonic: str):
-        # List of strings
         mnemonic = mnemonic_generation.calculate_checksum(partial_mnemonic.split(" "))
         assert bip39.mnemonic_is_valid(" ".join(mnemonic))
 
-        # Comma-separated string
         mnemonic = mnemonic_generation.calculate_checksum(partial_mnemonic.replace(" ", ","))
         assert bip39.mnemonic_is_valid(" ".join(mnemonic))
 
-        # Comma-separated string w/space
         mnemonic = mnemonic_generation.calculate_checksum(partial_mnemonic.replace(" ", ", "))
         assert bip39.mnemonic_is_valid(" ".join(mnemonic))
 
-        # Space-separated string
         mnemonic = mnemonic_generation.calculate_checksum(partial_mnemonic)
         assert bip39.mnemonic_is_valid(" ".join(mnemonic))
 
-    partial_mnemonic = "crawl focus rescue cable view pledge rather dinner cousin unfair day"
-    _try_all_input_formats(partial_mnemonic)
+    entropy_map = {
+        12: "3350f6ac9eeb07d2c6209932808aa7f6",
+        15: "000102030405060708090a0b0c0d0e0f10111213",
+        18: "000102030405060708090a0b0c0d0e0f1011121314151617",
+        21: "000102030405060708090a0b0c0d0e0f101112131415161718191a1b",
+        24: "5bf41629fce815c3570955e8f45422abd7e2234141bd4d7ec63b741043b98cad",
+    }
 
-    partial_mnemonic = "bubble father debate ankle injury fence mesh evolve section wet coyote violin pyramid flower rent arrow round clutch myth safe base skin mobile"
-    _try_all_input_formats(partial_mnemonic)
+    for entropy in entropy_map.values():
+        full = mnemonic_generation.generate_mnemonic_from_bytes(bytes.fromhex(entropy))
+        partial = " ".join(full[:-1])
+        _try_all_input_formats(partial)
 
 
 
@@ -74,19 +64,19 @@ def test_calculate_checksum_invalid_mnemonics():
         # Mnemonic is too short: 10 words instead of 11
         partial_mnemonic = "abandon " * 9 + "about"
         mnemonic_generation.calculate_checksum(partial_mnemonic)
-    assert "12- or 24-word" in str(e)
+    assert "12, 15, 18, 21, or 24-word" in str(e)
 
     with pytest.raises(Exception) as e:
-        # Valid mnemonic but unsupported length
-        mnemonic = "devote myth base logic dust horse nut collect buddy element eyebrow visit empty dress jungle"
+        # Valid mnemonic but unsupported length (16 words)
+        mnemonic = "abandon " * 15 + "about"
         mnemonic_generation.calculate_checksum(mnemonic)
-    assert "12- or 24-word" in str(e)
+    assert "12, 15, 18, 21, or 24-word" in str(e)
 
     with pytest.raises(Exception) as e:
         # Mnemonic is too short: 22 words instead of 23
         partial_mnemonic = "abandon " * 21 + "about"
         mnemonic_generation.calculate_checksum(partial_mnemonic)
-    assert "12- or 24-word" in str(e)
+    assert "12, 15, 18, 21, or 24-word" in str(e)
 
     with pytest.raises(ValueError) as e:
         # Invalid BIP-39 word
@@ -130,6 +120,22 @@ def test_generate_mnemonic_from_bytes():
     mnemonic = mnemonic_generation.generate_mnemonic_from_bytes(bytes.fromhex(entropy))
     assert mnemonic == expected_mnemonic
 
+    # Additional supported lengths
+    entropy = "000102030405060708090a0b0c0d0e0f10111213"  # 20 bytes -> 15 words
+    mnemonic = mnemonic_generation.generate_mnemonic_from_bytes(bytes.fromhex(entropy))
+    assert len(mnemonic) == 15
+    assert bip39.mnemonic_is_valid(" ".join(mnemonic))
+
+    entropy = "000102030405060708090a0b0c0d0e0f1011121314151617"  # 24 bytes -> 18 words
+    mnemonic = mnemonic_generation.generate_mnemonic_from_bytes(bytes.fromhex(entropy))
+    assert len(mnemonic) == 18
+    assert bip39.mnemonic_is_valid(" ".join(mnemonic))
+
+    entropy = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b"  # 28 bytes -> 21 words
+    mnemonic = mnemonic_generation.generate_mnemonic_from_bytes(bytes.fromhex(entropy))
+    assert len(mnemonic) == 21
+    assert bip39.mnemonic_is_valid(" ".join(mnemonic))
+
 
 
 def test_verify_against_coldcard_sample():
@@ -141,6 +147,14 @@ def test_verify_against_coldcard_sample():
     actual = " ".join(mnemonic)
     assert bip39.mnemonic_is_valid(actual)
     assert actual == expected
+
+
+def test_entropy_checks():
+    assert mnemonic_generation.dice_entropy_is_sufficient("123456" * 10)
+    assert not mnemonic_generation.dice_entropy_is_sufficient("1" * 50)
+
+    assert mnemonic_generation.byte_entropy_is_sufficient(os.urandom(16))
+    assert not mnemonic_generation.byte_entropy_is_sufficient(b"\x00" * 16)
 
 
 

@@ -7,12 +7,20 @@ import binascii
 
 from embit.descriptor import Descriptor
 from embit.descriptor.checksum import checksum
+from embit.bip32 import HDKey
 from PIL import Image
 from PIL.ImageOps import autocontrast
 from gettext import gettext as _
 
 from seedsigner.gui.components import FontAwesomeIconConstants, GUIConstants, SeedSignerIconConstants, resize_image_to_fill
-from seedsigner.gui.screens import (RET_CODE__BACK_BUTTON, ButtonListScreen, DireWarningScreen, LargeIconStatusScreen, WarningScreen)
+from seedsigner.gui.screens import (
+    RET_CODE__BACK_BUTTON,
+    ButtonListScreen,
+    DireWarningScreen,
+    LargeIconStatusScreen,
+    WarningScreen,
+    ErrorScreen,
+)
 from seedsigner.gui.screens.scan_screens import ScanScreen
 from seedsigner.gui.screens.tools_screens import (ToolsCalcFinalWordDoneScreen, ToolsCalcFinalWordFinalizePromptScreen,
     ToolsCalcFinalWordScreen, ToolsCoinFlipEntryScreen, ToolsDiceEntropyEntryScreen, ToolsImageEntropyFinalImageScreen,
@@ -27,7 +35,18 @@ from seedsigner.gui.screens.screen import ButtonOption
 from seedsigner.helpers import mnemonic_generation
 from seedsigner.models.seed import Seed
 from seedsigner.models.settings_definition import SettingsConstants
-from seedsigner.views.seed_views import SeedDiscardView, SeedFinalizeView, SeedMnemonicEntryView, SeedOptionsView, SeedWordsWarningView, SeedExportXpubScriptTypeView, LoadSeedView
+from seedsigner.views.seed_views import (
+    SeedDiscardView,
+    SeedFinalizeView,
+    SeedMnemonicEntryView,
+    SeedOptionsView,
+    SeedWordsWarningView,
+    SeedExportXpubScriptTypeView,
+    SeedExportXpubVerifyAddressView,
+    LoadSeedView,
+    SeedSlip39CreateFromBytesView,
+    SeedSlip39RegenerateSharesView,
+)
 
 from .view import View, Destination, BackStackView, MainMenuView
 
@@ -42,6 +61,8 @@ from binascii import unhexlify, hexlify
 class ToolsMenuView(View):
     IMAGE = ButtonOption(" New seed", FontAwesomeIconConstants.CAMERA)
     DICE = ButtonOption("New seed", FontAwesomeIconConstants.DICE)
+    SLIP39_IMAGE = ButtonOption("SLIP39 seed", FontAwesomeIconConstants.CAMERA)
+    SLIP39_DICE = ButtonOption("SLIP39 seed", FontAwesomeIconConstants.DICE)
     KEYBOARD = ButtonOption("Calc 12th/24th word", FontAwesomeIconConstants.KEYBOARD)
     ADDRESS_EXPLORER = ButtonOption("Address Explorer")
     VERIFY_ADDRESS = ButtonOption("Verify address")
@@ -52,7 +73,15 @@ class ToolsMenuView(View):
     CLEAR_DESCRIPTOR = ButtonOption("Clear Multisig Descriptor")
 
     def run(self):
-        button_data = [self.IMAGE, self.DICE, self.KEYBOARD, self.ADDRESS_EXPLORER, self.VERIFY_ADDRESS, self.TEXTQRCODE, self.SMARTCARD, self.MICROSD, self.GPG, self.CLEAR_DESCRIPTOR]
+        button_data = [self.IMAGE, self.DICE]
+        
+        if self.settings.get_value(SettingsConstants.SETTING__SLIP39_SEEDS) == SettingsConstants.OPTION__ENABLED:
+            button_data.extend([self.SLIP39_IMAGE, self.SLIP39_DICE])
+        
+        if self.settings.get_value(SettingsConstants.SETTING__SMARTCARD_SUPPORT) == SettingsConstants.OPTION__ENABLED:
+            button_data.append(self.SMARTCARD)
+        
+        button_data.extend([self.KEYBOARD, self.ADDRESS_EXPLORER, self.VERIFY_ADDRESS, self.TEXTQRCODE, self.SMARTCARD, self.MICROSD, self.GPG, self.CLEAR_DESCRIPTOR])
 
         selected_menu_num = self.run_screen(
             ButtonListScreen,
@@ -68,6 +97,14 @@ class ToolsMenuView(View):
             return Destination(ToolsImageEntropyLivePreviewView)
 
         elif button_data[selected_menu_num] == self.DICE:
+            return Destination(ToolsDiceEntropyMnemonicLengthView)
+
+        elif button_data[selected_menu_num] == self.SLIP39_IMAGE:
+            self.controller.create_slip39 = True
+            return Destination(ToolsImageEntropyLivePreviewView)
+
+        elif button_data[selected_menu_num] == self.SLIP39_DICE:
+            self.controller.create_slip39 = True
             return Destination(ToolsDiceEntropyMnemonicLengthView)
 
         elif button_data[selected_menu_num] == self.KEYBOARD:
@@ -167,10 +204,26 @@ class ToolsImageEntropyFinalImageView(View):
 
 class ToolsImageEntropyMnemonicLengthView(View):
     TWELVE_WORDS = ButtonOption("12 words", return_data=12)
+    FIFTEEN_WORDS = ButtonOption("15 words", return_data=15)
+    EIGHTEEN_WORDS = ButtonOption("18 words", return_data=18)
+    TWENTYONE_WORDS = ButtonOption("21 words", return_data=21)
     TWENTYFOUR_WORDS = ButtonOption("24 words", return_data=24)
 
     def run(self):
-        button_data = [self.TWELVE_WORDS, self.TWENTYFOUR_WORDS]
+        if getattr(self.controller, "create_slip39", False):
+            twenty = ButtonOption("20 words", return_data=20)
+            thirty_three = ButtonOption("33 words", return_data=33)
+            button_data = [twenty, thirty_three]
+        else:
+            allowed = self.settings.get_value(SettingsConstants.SETTING__SEED_WORD_LENGTHS)
+            options = {
+                12: self.TWELVE_WORDS,
+                15: self.FIFTEEN_WORDS,
+                18: self.EIGHTEEN_WORDS,
+                21: self.TWENTYONE_WORDS,
+                24: self.TWENTYFOUR_WORDS,
+            }
+            button_data = [options[l] for l in allowed]
 
         selected_menu_num = ButtonListScreen(
             title=_("Mnemonic Length?"),
@@ -200,35 +253,70 @@ class ToolsImageEntropyMnemonicLengthView(View):
         millis_hash = hashlib.sha256(hash_bytes + str(time.time()).encode('utf-8'))
         hash_bytes = millis_hash.digest()
 
+        # Mix in entropy from hardware RNG or os.urandom fallback
+        rng_entropy = b""
+        for rng_path in ("/dev/hwrng", "/dev/random"):
+            try:
+                with open(rng_path, "rb") as rng:
+                    rng_entropy = rng.read(32)
+                    if rng_entropy:
+                        break
+            except Exception as e:
+                logger.info(repr(e), exc_info=True)
+        if not rng_entropy:
+            rng_entropy = os.urandom(32)
+
+        rng_hash = hashlib.sha256(hash_bytes + rng_entropy)
+        hash_bytes = rng_hash.digest()
+
         # Build in better entropy by chaining the preview frames
         for frame in preview_images:
+            print("Preview frame shannon entropy")
+            mnemonic_generation.byte_entropy_is_sufficient(frame.tobytes())
             img_hash = hashlib.sha256(hash_bytes + frame.tobytes())
             hash_bytes = img_hash.digest()
 
         # Finally build in our headline entropy via the new full-res image
+        print("Full image shannon entropy")
+        mnemonic_generation.byte_entropy_is_sufficient(seed_entropy_image.tobytes())
         final_hash = hashlib.sha256(hash_bytes + seed_entropy_image.tobytes()).digest()
 
-        if mnemonic_length == 12:
-            # 12-word mnemonic only uses the first 128 bits / 16 bytes of entropy
-            final_hash = final_hash[:16]
+        if mnemonic_length in mnemonic_generation.ENTROPY_BYTES_REQUIRED:
+            final_hash = final_hash[:mnemonic_generation.ENTROPY_BYTES_REQUIRED[mnemonic_length]]
+        
+        print("Final shannon entropy")
+        if not mnemonic_generation.byte_entropy_is_sufficient(final_hash):
+            self.run_screen(
+                ErrorScreen,
+                title=_("Poor Entropy"),
+                status_headline=None,
+                text=_("Camera entropy didn't appear random enough. Please try again."),
+            )
+            self.controller.image_entropy_preview_frames = None
+            self.controller.image_entropy_final_image = None
+            return Destination(BackStackView)
 
-        # Generate the mnemonic
-        mnemonic = mnemonic_generation.generate_mnemonic_from_bytes(final_hash)
+        if getattr(self.controller, "create_slip39", False):
+            secret = final_hash
+        else:
+            mnemonic = mnemonic_generation.generate_mnemonic_from_bytes(final_hash)
 
         # Image should never get saved nor stick around in memory
         seed_entropy_image = None
         preview_images = None
-        final_hash = None
+        if not getattr(self.controller, "create_slip39", False):
+            final_hash = None
         hash_bytes = None
         self.controller.image_entropy_preview_frames = None
         self.controller.image_entropy_final_image = None
 
-        # Add the mnemonic as an in-memory Seed
-        seed = Seed(mnemonic, wordlist_language_code=self.settings.get_value(SettingsConstants.SETTING__WORDLIST_LANGUAGE))
-        self.controller.storage.set_pending_seed(seed)
-        
-        # Cannot return BACK to this View
-        return Destination(SeedWordsWarningView, view_args={"seed_num": None}, clear_history=True)
+        if getattr(self.controller, "create_slip39", False):
+            self.controller.create_slip39 = False
+            return Destination(SeedSlip39CreateFromBytesView, view_args=dict(secret=secret), clear_history=True)
+        else:
+            seed = Seed(mnemonic, wordlist_language_code=self.settings.get_value(SettingsConstants.SETTING__WORDLIST_LANGUAGE))
+            self.controller.storage.set_pending_seed(seed)
+            return Destination(SeedWordsWarningView, view_args={"seed_num": None}, clear_history=True)
 
 
 
@@ -236,19 +324,35 @@ class ToolsImageEntropyMnemonicLengthView(View):
     Dice rolls Views
 ****************************************************************************"""
 class ToolsDiceEntropyMnemonicLengthView(View):
+    """Prompt for mnemonic length when using dice entropy."""
+
+    TWELVE = ButtonOption("12 words", return_data=12)
+    FIFTEEN = ButtonOption("15 words", return_data=15)
+    EIGHTEEN = ButtonOption("18 words", return_data=18)
+    TWENTY_ONE = ButtonOption("21 words", return_data=21)
+    TWENTY_FOUR = ButtonOption("24 words", return_data=24)
+    TWENTY = ButtonOption(
+        _("20 words ({} rolls)").format(mnemonic_generation.DICE_ROLLS_REQUIRED[12]),
+        return_data=mnemonic_generation.DICE_ROLLS_REQUIRED[12],
+    )
+    THIRTY_THREE = ButtonOption(
+        _("33 words ({} rolls)").format(mnemonic_generation.DICE_ROLLS_REQUIRED[24]),
+        return_data=mnemonic_generation.DICE_ROLLS_REQUIRED[24],
+    )
+
     def run(self):
-        # Since we're dynamically building the ButtonOption button_labels here, it's too
-        # awkward to use the usual class-level attr approach.
-
-        # TRANSLATOR_NOTE: Inserts the number of dice rolls needed for a 12-word mnemonic
-        twelve = _("12 words ({} rolls)").format(mnemonic_generation.DICE__NUM_ROLLS__12WORD)
-        TWELVE = ButtonOption(twelve, return_data=mnemonic_generation.DICE__NUM_ROLLS__12WORD)
-
-        # TRANSLATOR_NOTE: Inserts the number of dice rolls needed for a 24-word mnemonic
-        twenty_four = _("24 words ({} rolls)").format(mnemonic_generation.DICE__NUM_ROLLS__24WORD)
-        TWENTY_FOUR = ButtonOption(twenty_four, return_data=mnemonic_generation.DICE__NUM_ROLLS__24WORD)
-
-        button_data = [TWELVE, TWENTY_FOUR]
+        if getattr(self.controller, "create_slip39", False):
+            button_data = [self.TWENTY, self.THIRTY_THREE]
+        else:
+            allowed = self.settings.get_value(SettingsConstants.SETTING__SEED_WORD_LENGTHS)
+            options = {
+                12: self.TWELVE,
+                15: self.FIFTEEN,
+                18: self.EIGHTEEN,
+                21: self.TWENTY_ONE,
+                24: self.TWENTY_FOUR,
+            }
+            button_data = [options[l] for l in allowed]
         selected_menu_num = ButtonListScreen(
             title=_("Mnemonic Length"),
             is_bottom_list=True,
@@ -259,11 +363,15 @@ class ToolsDiceEntropyMnemonicLengthView(View):
         if selected_menu_num == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
 
-        elif button_data[selected_menu_num] == TWELVE:
-            return Destination(ToolsDiceEntropyEntryView, view_args=dict(total_rolls=mnemonic_generation.DICE__NUM_ROLLS__12WORD))
-
-        elif button_data[selected_menu_num] == TWENTY_FOUR:
-            return Destination(ToolsDiceEntropyEntryView, view_args=dict(total_rolls=mnemonic_generation.DICE__NUM_ROLLS__24WORD))
+        if getattr(self.controller, "create_slip39", False):
+            total_rolls = button_data[selected_menu_num].return_data
+        else:
+            selected_length = button_data[selected_menu_num].return_data
+            total_rolls = mnemonic_generation.DICE_ROLLS_REQUIRED[selected_length]
+        return Destination(
+            ToolsDiceEntropyEntryView,
+            view_args=dict(total_rolls=total_rolls),
+        )
 
 
 
@@ -281,15 +389,25 @@ class ToolsDiceEntropyEntryView(View):
 
         if ret == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
-        
-        dice_seed_phrase = mnemonic_generation.generate_mnemonic_from_dice(ret)
 
-        # Add the mnemonic as an in-memory Seed
-        seed = Seed(dice_seed_phrase, wordlist_language_code=self.settings.get_value(SettingsConstants.SETTING__WORDLIST_LANGUAGE))
-        self.controller.storage.set_pending_seed(seed)
+        if not mnemonic_generation.dice_entropy_is_sufficient(ret):
+            self.run_screen(
+                ErrorScreen,
+                title=_("Poor Entropy"),
+                status_headline=None,
+                text=_("Dice rolls didn't appear random enough. Please try again."),
+            )
+            return Destination(BackStackView)
 
-        # Cannot return BACK to this View
-        return Destination(SeedWordsWarningView, view_args={"seed_num": None}, clear_history=True)
+        if getattr(self.controller, "create_slip39", False):
+            entropy_bytes = mnemonic_generation.generate_bytes_from_dice(ret)
+            self.controller.create_slip39 = False
+            return Destination(SeedSlip39CreateFromBytesView, view_args=dict(secret=entropy_bytes), clear_history=True)
+        else:
+            dice_seed_phrase = mnemonic_generation.generate_mnemonic_from_dice(ret)
+            seed = Seed(dice_seed_phrase, wordlist_language_code=self.settings.get_value(SettingsConstants.SETTING__WORDLIST_LANGUAGE))
+            self.controller.storage.set_pending_seed(seed)
+            return Destination(SeedWordsWarningView, view_args={"seed_num": None}, clear_history=True)
 
 
 
@@ -298,10 +416,21 @@ class ToolsDiceEntropyEntryView(View):
 ****************************************************************************"""
 class ToolsCalcFinalWordNumWordsView(View):
     TWELVE = ButtonOption("12 words", return_data=12)
+    FIFTEEN = ButtonOption("15 words", return_data=15)
+    EIGHTEEN = ButtonOption("18 words", return_data=18)
+    TWENTY_ONE = ButtonOption("21 words", return_data=21)
     TWENTY_FOUR = ButtonOption("24 words", return_data=24)
 
     def run(self):
-        button_data = [self.TWELVE, self.TWENTY_FOUR]
+        allowed = self.settings.get_value(SettingsConstants.SETTING__SEED_WORD_LENGTHS)
+        options = {
+            12: self.TWELVE,
+            15: self.FIFTEEN,
+            18: self.EIGHTEEN,
+            21: self.TWENTY_ONE,
+            24: self.TWENTY_FOUR,
+        }
+        button_data = [options[l] for l in allowed]
 
         selected_menu_num = self.run_screen(
             ButtonListScreen,
@@ -334,10 +463,8 @@ class ToolsCalcFinalWordFinalizePromptView(View):
         from seedsigner.gui.screens.tools_screens import ToolsCalcFinalWordFinalizePromptScreen
         mnemonic = self.controller.storage.pending_mnemonic
         mnemonic_length = len(mnemonic)
-        if mnemonic_length == 12:
-            num_entropy_bits = 7
-        else:
-            num_entropy_bits = 3
+        total_bits = mnemonic_generation.ENTROPY_BYTES_REQUIRED[mnemonic_length] * 8
+        num_entropy_bits = total_bits - ((mnemonic_length - 1) * 11)
 
         button_data = [self.COIN_FLIPS, self.SELECT_WORD, self.ZEROS]
         selected_menu_num = ToolsCalcFinalWordFinalizePromptScreen(
@@ -371,10 +498,8 @@ class ToolsCalcFinalWordCoinFlipsView(View):
         from seedsigner.gui.screens.tools_screens import ToolsCoinFlipEntryScreen
         mnemonic_length = len(self.controller.storage.pending_mnemonic)
 
-        if mnemonic_length == 12:
-            total_flips = 7
-        else:
-            total_flips = 3
+        total_bits = mnemonic_generation.ENTROPY_BYTES_REQUIRED[mnemonic_length] * 8
+        total_flips = total_bits - ((mnemonic_length - 1) * 11)
         
         ret_val = ToolsCoinFlipEntryScreen(
             return_after_n_chars=total_flips,
@@ -438,7 +563,9 @@ class ToolsCalcFinalWordShowFinalWordView(View):
 
         # And grab the actual final word's checksum bits
         self.actual_final_word = self.controller.storage.pending_mnemonic[-1]
-        num_checksum_bits = 4 if mnemonic_length == 12 else 8
+        total_bits = mnemonic_generation.ENTROPY_BYTES_REQUIRED[mnemonic_length] * 8
+        num_entropy_bits = total_bits - ((mnemonic_length - 1) * 11)
+        num_checksum_bits = 11 - num_entropy_bits
         self.checksum_bits = format(wordlist.index(self.actual_final_word), '011b')[-num_checksum_bits:]
 
 
@@ -505,10 +632,13 @@ class ToolsCalcFinalWordDoneView(View):
 class ToolsAddressExplorerSelectSourceView(View):
     SCAN_SEED = ButtonOption("Scan a seed", SeedSignerIconConstants.QRCODE)
     SCAN_DESCRIPTOR = ButtonOption("Scan wallet descriptor", SeedSignerIconConstants.QRCODE)
-    TYPE_12WORD = ButtonOption("Enter 12-word seed", FontAwesomeIconConstants.KEYBOARD)
-    TYPE_18WORD = ButtonOption("Enter 18-word seed", FontAwesomeIconConstants.KEYBOARD)
-    TYPE_24WORD = ButtonOption("Enter 24-word seed", FontAwesomeIconConstants.KEYBOARD)
+    TYPE_12WORD = ButtonOption("Enter 12-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=12)
+    TYPE_15WORD = ButtonOption("Enter 15-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=15)
+    TYPE_18WORD = ButtonOption("Enter 18-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=18)
+    TYPE_21WORD = ButtonOption("Enter 21-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=21)
+    TYPE_24WORD = ButtonOption("Enter 24-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=24)
     LOADED_DESCRIPTOR = ButtonOption("Loaded Multisig Descriptor")
+    SATOCHIP = ButtonOption("Load from Satochip", SeedSignerIconConstants.FINGERPRINT)
     TYPE_ELECTRUM = ButtonOption("Electrum Seed", FontAwesomeIconConstants.KEYBOARD)
 
     def run(self):
@@ -523,7 +653,19 @@ class ToolsAddressExplorerSelectSourceView(View):
         if self.controller.multisig_wallet_descriptor:
             button_data.append(self.LOADED_DESCRIPTOR)
 
-        button_data = button_data + [self.SCAN_SEED, self.SCAN_DESCRIPTOR, self.TYPE_12WORD, self.TYPE_18WORD, self.TYPE_24WORD]
+        seed_lengths = self.settings.get_value(SettingsConstants.SETTING__SEED_WORD_LENGTHS)
+        options = {
+            12: self.TYPE_12WORD,
+            15: self.TYPE_15WORD,
+            18: self.TYPE_18WORD,
+            21: self.TYPE_21WORD,
+            24: self.TYPE_24WORD,
+        }
+        button_data = (
+            button_data
+            + [self.SCAN_SEED, self.SCAN_DESCRIPTOR, self.SATOCHIP]
+            + [options[l] for l in seed_lengths]
+        )
         if self.settings.get_value(SettingsConstants.SETTING__ELECTRUM_SEEDS) == SettingsConstants.OPTION__ENABLED:
             button_data.append(self.TYPE_ELECTRUM)
 
@@ -565,7 +707,10 @@ class ToolsAddressExplorerSelectSourceView(View):
             from seedsigner.views.scan_views import ScanWalletDescriptorView
             return Destination(ScanWalletDescriptorView)
 
-        elif button_data[selected_menu_num] in [self.TYPE_12WORD, self.TYPE_18WORD, self.TYPE_24WORD]:
+        elif button_data[selected_menu_num] == self.SATOCHIP:
+            return Destination(SatochipLoadDescriptorScriptTypeView)
+
+        elif button_data[selected_menu_num] in [self.TYPE_12WORD, self.TYPE_15WORD, self.TYPE_18WORD, self.TYPE_21WORD, self.TYPE_24WORD]:
             from seedsigner.views.seed_views import SeedMnemonicEntryView
 
             self.controller.storage.init_pending_mnemonic(num_words=button_data[selected_menu_num].return_data)
@@ -882,12 +1027,12 @@ class ToolsSatochipChangePinView(View):
         if not Satochip_Connector:
             return Destination(BackStackView)
 
-        NewPin = seed_screens.SeedAddPassphraseScreen(title="New PIN").display()
+        new_pin_str = seedkeeper_utils.prompt_for_pin(self, "New PIN")
 
-        if "is_back_button" in NewPin:
+        if new_pin_str is None:
             return Destination(BackStackView)
-        
-        new_pin = list(NewPin['passphrase'].encode('utf8'))
+
+        new_pin = list(new_pin_str.encode('utf8'))
         response, sw1, sw2 = Satochip_Connector.card_change_PIN(0, Satochip_Connector.pin, new_pin)
         if sw1 == 0x90 and sw2 == 0x00:
             logger.info("Success: Pin Changed")
@@ -1214,17 +1359,10 @@ class ToolsSatochipFactoryResetView(View):
             if ret == RET_CODE__BACK_BUTTON:
                 return resetStatus
 
-            pin = seed_screens.SeedAddPassphraseScreen(title="Enter PIN").display()
+            pin = seedkeeper_utils.prompt_for_pin(self, "Enter PIN")
 
-            if "is_back_button" in pin:
+            if pin is None:
                 return Destination(ToolsSmartcardMenuView)
-            
-            pin = pin['passphrase']
-            
-            if len(pin)<4:
-                print("PIN code too short, factory reset is aborted")
-                doReset = False
-                break
 
             try:
                 (response, sw1, sw2)= Satochip_Connector.card_verify_PIN(pin)
@@ -2052,9 +2190,11 @@ class ToolsSeedkeeperSaveDescriptorView(View):
 class ToolsSatochipView(View):
     IMPORT_SEED = ButtonOption("Initialise with Seed")
     ENABLE_2FA = ButtonOption("Enable 2FA")
+    EXPORT_XPUB = ButtonOption("Export Xpub")
+    LOAD_DESCRIPTOR = ButtonOption("Load as Descriptor")
 
     def run(self):
-        button_data = [self.IMPORT_SEED, self.ENABLE_2FA]
+        button_data = [self.IMPORT_SEED, self.ENABLE_2FA, self.EXPORT_XPUB, self.LOAD_DESCRIPTOR]
         selected_menu_num = self.run_screen(
             ButtonListScreen,
             title="Satochip",
@@ -2070,11 +2210,20 @@ class ToolsSatochipView(View):
 
         elif button_data[selected_menu_num] == self.ENABLE_2FA:
             return Destination(ToolsSatochipEnable2FAView)
+
+        elif button_data[selected_menu_num] == self.EXPORT_XPUB:
+            return Destination(SatochipExportXpubSigTypeView)
+
+        elif button_data[selected_menu_num] == self.LOAD_DESCRIPTOR:
+            return Destination(SatochipLoadDescriptorScriptTypeView)
         
 class ToolsSatochipImportSeedView(View):
     SCAN_SEED = ButtonOption("Scan a seed", SeedSignerIconConstants.QRCODE)
-    TYPE_12WORD = ButtonOption("Enter 12-word seed", FontAwesomeIconConstants.KEYBOARD)
-    TYPE_24WORD = ButtonOption("Enter 24-word seed", FontAwesomeIconConstants.KEYBOARD)
+    TYPE_12WORD = ButtonOption("Enter 12-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=12)
+    TYPE_15WORD = ButtonOption("Enter 15-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=15)
+    TYPE_18WORD = ButtonOption("Enter 18-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=18)
+    TYPE_21WORD = ButtonOption("Enter 21-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=21)
+    TYPE_24WORD = ButtonOption("Enter 24-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=24)
 
     def run(self):
         from seedsigner.gui.screens.screen import LoadingScreenThread
@@ -2089,7 +2238,15 @@ class ToolsSatochipImportSeedView(View):
             button_str = seed.get_fingerprint(self.settings.get_value(SettingsConstants.SETTING__NETWORK))
             button_data.append(ButtonOption(button_str, SeedSignerIconConstants.FINGERPRINT))
         
-        button_data = button_data + [self.SCAN_SEED, self.TYPE_12WORD, self.TYPE_24WORD]
+        seed_lengths = self.settings.get_value(SettingsConstants.SETTING__SEED_WORD_LENGTHS)
+        options = {
+            12: self.TYPE_12WORD,
+            15: self.TYPE_15WORD,
+            18: self.TYPE_18WORD,
+            21: self.TYPE_21WORD,
+            24: self.TYPE_24WORD,
+        }
+        button_data = button_data + [self.SCAN_SEED] + [options[l] for l in seed_lengths]
         
         selected_menu_num = self.run_screen(
             ButtonListScreen,
@@ -2140,12 +2297,9 @@ class ToolsSatochipImportSeedView(View):
             from seedsigner.views.scan_views import ScanSeedQRView
             return Destination(ScanSeedQRView)
 
-        elif button_data[selected_menu_num] in [self.TYPE_12WORD, self.TYPE_24WORD]:
+        elif button_data[selected_menu_num] in [self.TYPE_12WORD, self.TYPE_15WORD, self.TYPE_18WORD, self.TYPE_21WORD, self.TYPE_24WORD]:
             from seedsigner.views.seed_views import SeedMnemonicEntryView
-            if button_data[selected_menu_num] == self.TYPE_12WORD:
-                self.controller.storage.init_pending_mnemonic(num_words=12)
-            else:
-                self.controller.storage.init_pending_mnemonic(num_words=24)
+            self.controller.storage.init_pending_mnemonic(num_words=button_data[selected_menu_num].return_data)
             return Destination(SeedMnemonicEntryView)
         
         return Destination(MainMenuView)
@@ -2207,6 +2361,512 @@ class ToolsSatochipEnable2FAView(View):
                 text=f"Enable 2FA Failed",
                 show_back_button=False,
             )
+
+        return Destination(MainMenuView)
+
+
+class SatochipExportXpubSigTypeView(View):
+    SINGLE_SIG = ButtonOption(_("Single Sig"), return_data=SettingsConstants.SINGLE_SIG)
+    MULTISIG = ButtonOption(_("Multisig"), return_data=SettingsConstants.MULTISIG)
+
+    def run(self):
+        sig_types = self.settings.get_value(SettingsConstants.SETTING__SIG_TYPES)
+        if len(sig_types) == 1:
+            return Destination(
+                SatochipExportXpubScriptTypeView,
+                view_args=dict(sig_type=sig_types[0]),
+                skip_current_view=True,
+            )
+
+        button_data = [self.SINGLE_SIG, self.MULTISIG]
+
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title=_("Export Xpub"),
+            button_data=button_data,
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        return Destination(
+            SatochipExportXpubScriptTypeView,
+            view_args=dict(sig_type=button_data[selected_menu_num].return_data),
+        )
+
+
+class SatochipExportXpubScriptTypeView(View):
+    def __init__(self, sig_type: str, script_type: str = None):
+        super().__init__()
+        self.sig_type = sig_type
+        self.script_type = script_type
+
+    def run(self):
+        button_data = []
+        for script_type, display_name in SettingsConstants.ALL_SCRIPT_TYPES:
+            if script_type in self.settings.get_value(SettingsConstants.SETTING__SCRIPT_TYPES):
+                button_data.append(ButtonOption(display_name, return_data=script_type))
+
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title="Export Xpub",
+            is_button_text_centered=False,
+            button_data=button_data,
+            is_bottom_list=True,
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        script_type = button_data[selected_menu_num].return_data
+        if script_type == SettingsConstants.CUSTOM_DERIVATION:
+            return Destination(
+                SatochipExportXpubCustomDerivationView,
+                view_args=dict(sig_type=self.sig_type, script_type=script_type),
+            )
+        return Destination(
+            SatochipExportXpubCoordinatorView,
+            view_args=dict(sig_type=self.sig_type, script_type=script_type),
+        )
+
+
+class SatochipExportXpubCustomDerivationView(View):
+    def __init__(self, sig_type: str, script_type: str):
+        super().__init__()
+        self.sig_type = sig_type
+        self.script_type = script_type
+        self.custom_derivation_path = "m/"
+
+    def run(self):
+        ret = self.run_screen(
+            seed_screens.SeedExportXpubCustomDerivationScreen,
+            initial_value=self.custom_derivation_path,
+        )
+
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        return Destination(
+            SatochipExportXpubCoordinatorView,
+            view_args=dict(sig_type=self.sig_type, script_type=self.script_type, custom_derivation=ret),
+        )
+
+
+class SatochipExportXpubCoordinatorView(View):
+    def __init__(self, sig_type: str, script_type: str, custom_derivation: str = ""):
+        super().__init__()
+        self.sig_type = sig_type
+        self.script_type = script_type
+        self.custom_derivation = custom_derivation
+
+    def run(self):
+        button_data = []
+        for coord, display_name in SettingsConstants.ALL_COORDINATORS:
+            if coord in self.settings.get_value(SettingsConstants.SETTING__COORDINATORS):
+                button_data.append(ButtonOption(display_name, return_data=coord))
+
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title="Coordinator",
+            is_button_text_centered=False,
+            button_data=button_data,
+            is_bottom_list=True,
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        coordinator = button_data[selected_menu_num].return_data
+        coordinator_label = button_data[selected_menu_num].button_label
+        return Destination(
+            SatochipExportXpubWarningView,
+            view_args=dict(
+                sig_type=self.sig_type,
+                script_type=self.script_type,
+                coordinator=coordinator,
+                custom_derivation=self.custom_derivation,
+                coordinator_label=coordinator_label,
+            ),
+        )
+
+
+class SatochipExportXpubWarningView(View):
+    def __init__(self, sig_type: str, script_type: str, coordinator: str, custom_derivation: str, coordinator_label: str):
+        super().__init__()
+        self.sig_type = sig_type
+        self.script_type = script_type
+        self.coordinator = coordinator
+        self.custom_derivation = custom_derivation
+        self.coordinator_label = coordinator_label
+
+    def run(self):
+        destination = Destination(
+            SatochipExportXpubDetailsView,
+            view_args=dict(
+                sig_type=self.sig_type,
+                script_type=self.script_type,
+                coordinator=self.coordinator,
+                custom_derivation=self.custom_derivation,
+                coordinator_label=self.coordinator_label,
+            ),
+            skip_current_view=True,
+        )
+
+        if self.settings.get_value(SettingsConstants.SETTING__PRIVACY_WARNINGS) == SettingsConstants.OPTION__DISABLED:
+            return destination
+
+        selected_menu_num = self.run_screen(
+            WarningScreen,
+            status_headline=_("Privacy Leak!"),
+            text=_("Xpub can be used to view all future transactions."),
+        )
+
+        if selected_menu_num == 0:
+            return destination
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+
+class SatochipExportXpubDetailsView(View):
+    def __init__(self, sig_type: str, script_type: str, coordinator: str, custom_derivation: str, coordinator_label: str):
+        super().__init__()
+        self.sig_type = sig_type
+        self.script_type = script_type
+        self.coordinator = coordinator
+        self.custom_derivation = custom_derivation
+        self.coordinator_label = coordinator_label
+
+    def run(self):
+        Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satochip"])
+        if not Satochip_Connector:
+            return Destination(BackStackView)
+
+        if self.script_type == SettingsConstants.CUSTOM_DERIVATION:
+            derivation_path = self.custom_derivation
+        else:
+            derivation_path = embit_utils.get_standard_derivation_path(
+                network=self.settings.get_value(SettingsConstants.SETTING__NETWORK),
+                wallet_type=self.sig_type,
+                script_type=self.script_type,
+            )
+
+        network = self.settings.get_value(SettingsConstants.SETTING__NETWORK)
+        is_mainnet = network == SettingsConstants.MAINNET
+
+        if self.sig_type == SettingsConstants.MULTISIG:
+            if self.script_type == SettingsConstants.NATIVE_SEGWIT:
+                xtype = "p2wsh"
+            elif self.script_type == SettingsConstants.NESTED_SEGWIT:
+                xtype = "p2wsh-p2sh"
+            elif self.script_type == SettingsConstants.LEGACY_P2PKH:
+                xtype = "standard"
+            else:
+                xtype = "p2wsh"
+        else:
+            if self.script_type == SettingsConstants.NATIVE_SEGWIT:
+                xtype = "p2wpkh"
+            elif self.script_type == SettingsConstants.NESTED_SEGWIT:
+                xtype = "p2wpkh-p2sh"
+            elif self.script_type == SettingsConstants.LEGACY_P2PKH:
+                xtype = "standard"
+            elif self.script_type == SettingsConstants.TAPROOT:
+                xtype = "standard"
+            else:
+                xtype = "p2wpkh"
+
+        try:
+            xpub_base58 = Satochip_Connector.card_bip32_get_xpub(derivation_path, xtype, is_mainnet)
+            master_xpub = Satochip_Connector.card_bip32_get_xpub("", xtype, is_mainnet)
+        except Exception as e:
+            self.run_screen(
+                WarningScreen,
+                title="Failed",
+                status_headline=None,
+                text=str(e),
+            )
+            return Destination(BackStackView)
+
+        fingerprint = HDKey.from_string(master_xpub).my_fingerprint
+        fingerprint_hex = hexlify(fingerprint).decode("utf-8")
+
+        if self.sig_type == SettingsConstants.SINGLE_SIG:
+            # Build descriptor and store for address explorer
+            if self.script_type == SettingsConstants.NATIVE_SEGWIT:
+                desc_str = f"wpkh({xpub_base58}/{{0,1}}/*)"
+            elif self.script_type == SettingsConstants.NESTED_SEGWIT:
+                desc_str = f"sh(wpkh({xpub_base58}/{{0,1}}/*))"
+            elif self.script_type == SettingsConstants.LEGACY_P2PKH:
+                desc_str = f"pkh({xpub_base58}/{{0,1}}/*)"
+            elif self.script_type == SettingsConstants.TAPROOT:
+                desc_str = f"tr({xpub_base58}/{{0,1}}/*)"
+            else:
+                desc_str = f"wpkh({xpub_base58}/{{0,1}}/*)"
+
+            self.controller.multisig_wallet_descriptor = Descriptor.from_string(desc_str)
+
+        selected_menu_num = self.run_screen(
+            seed_screens.SeedExportXpubDetailsScreen,
+            fingerprint=fingerprint_hex,
+            has_passphrase=False,
+            derivation_path=derivation_path,
+            xpub=xpub_base58,
+        )
+
+        if selected_menu_num != 0:
+            return Destination(BackStackView)
+
+        return Destination(
+            SatochipExportXpubQRDisplayView,
+            view_args=dict(
+                xpub=xpub_base58,
+                derivation_path=derivation_path,
+                script_type=self.script_type,
+                coordinator=self.coordinator,
+                coordinator_label=self.coordinator_label,
+                fingerprint=fingerprint_hex,
+                sig_type=self.sig_type,
+            ),
+        )
+
+
+class SatochipExportXpubQRDisplayView(View):
+    def __init__(
+        self,
+        xpub: str,
+        derivation_path: str,
+        script_type: str,
+        coordinator: str,
+        coordinator_label: str = "",
+        fingerprint: str = "",
+        sig_type: str = SettingsConstants.SINGLE_SIG,
+    ):
+        super().__init__()
+        self.xpub = xpub
+        self.derivation_path = derivation_path
+        self.script_type = script_type
+        self.coordinator = coordinator
+        self.coordinator_label = coordinator_label
+        self.fingerprint = fingerprint
+        self.sig_type = sig_type
+
+    class _SpecterEncoder:
+        def __init__(self, xpubstring: str, qr_density: str):
+            density_mapping = {
+                SettingsConstants.DENSITY__LOW: 40,
+                SettingsConstants.DENSITY__MEDIUM: 65,
+                SettingsConstants.DENSITY__HIGH: 90,
+            }
+            self.qr_max_fragment_size = density_mapping.get(qr_density, 65)
+            self.parts = []
+            start = 0
+            stop = self.qr_max_fragment_size
+            qr_cnt = ((len(xpubstring) - 1) // self.qr_max_fragment_size) + 1
+            if qr_cnt == 1:
+                self.parts.append(xpubstring[start:stop])
+            cnt = 0
+            while cnt < qr_cnt and qr_cnt != 1:
+                part = "p" + str(cnt + 1) + "of" + str(qr_cnt) + " " + xpubstring[start:stop]
+                self.parts.append(part)
+                start = start + self.qr_max_fragment_size
+                stop = stop + self.qr_max_fragment_size
+                if stop > len(xpubstring):
+                    stop = len(xpubstring)
+                cnt += 1
+            self.part_num_sent = 0
+
+        def next_part(self):
+            if self.part_num_sent > (len(self.parts) - 1):
+                self.part_num_sent = 0
+            part = self.parts[self.part_num_sent]
+            self.part_num_sent += 1
+            return part
+
+        def cur_part(self):
+            if self.part_num_sent == 0:
+                self.part_num_sent = len(self.parts) - 1
+            else:
+                self.part_num_sent -= 1
+            return self.next_part()
+
+        def restart(self):
+            self.part_num_sent = 0
+
+        def is_complete(self):
+            return len(self.parts) == 1
+
+        def seq_len(self):
+            return len(self.parts)
+
+    def run(self):
+        from seedsigner.gui.screens.screen import QRDisplayScreen
+        xpubstring = f"[{self.fingerprint}{self.derivation_path[1:]}]{self.xpub}"
+
+        if self.coordinator == SettingsConstants.COORDINATOR__SPECTER_DESKTOP:
+            encoder = self._SpecterEncoder(xpubstring, self.settings.get_value(SettingsConstants.SETTING__QR_DENSITY))
+        else:
+            encoder = GenericStaticQrEncoder(data=xpubstring)
+
+        self.run_screen(
+            QRDisplayScreen,
+            qr_encoder=encoder,
+        )
+
+        if self.sig_type == SettingsConstants.SINGLE_SIG:
+            return Destination(
+                SeedExportXpubVerifyAddressView,
+                view_args=dict(
+                    seed_num=None,
+                    derivation_path=self.derivation_path,
+                    script_type=self.script_type,
+                    sig_type=self.sig_type,
+                    coordinator_label=self.coordinator_label,
+                ),
+                skip_current_view=True,
+            )
+
+        return Destination(MainMenuView)
+
+
+class SatochipLoadDescriptorScriptTypeView(View):
+    def __init__(self, script_type: str = None):
+        super().__init__()
+        self.script_type = script_type
+
+    def run(self):
+        button_data = []
+        for script_type, display_name in SettingsConstants.ALL_SCRIPT_TYPES:
+            if script_type in self.settings.get_value(SettingsConstants.SETTING__SCRIPT_TYPES):
+                button_data.append(ButtonOption(display_name, return_data=script_type))
+
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title="Load Descriptor",
+            is_button_text_centered=False,
+            button_data=button_data,
+            is_bottom_list=True,
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        script_type = button_data[selected_menu_num].return_data
+        if script_type == SettingsConstants.CUSTOM_DERIVATION:
+            return Destination(SatochipLoadDescriptorCustomDerivationView, view_args=dict(script_type=script_type))
+        return Destination(SatochipLoadDescriptorDetailsView, view_args=dict(script_type=script_type))
+
+
+class SatochipLoadDescriptorCustomDerivationView(View):
+    def __init__(self, script_type: str):
+        super().__init__()
+        self.script_type = script_type
+        self.custom_derivation_path = "m/"
+
+    def run(self):
+        ret = self.run_screen(
+            seed_screens.SeedExportXpubCustomDerivationScreen,
+            initial_value=self.custom_derivation_path,
+        )
+
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        return Destination(
+            SatochipLoadDescriptorDetailsView,
+            view_args=dict(script_type=self.script_type, custom_derivation=ret),
+        )
+
+
+class SatochipLoadDescriptorDetailsView(View):
+    def __init__(self, script_type: str, custom_derivation: str = ""):
+        super().__init__()
+        self.script_type = script_type
+        self.custom_derivation = custom_derivation
+
+    def run(self):
+        Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satochip"])
+        if not Satochip_Connector:
+            return Destination(BackStackView)
+
+        if self.script_type == SettingsConstants.CUSTOM_DERIVATION:
+            derivation_path = self.custom_derivation
+        else:
+            derivation_path = embit_utils.get_standard_derivation_path(
+                network=self.settings.get_value(SettingsConstants.SETTING__NETWORK),
+                wallet_type=SettingsConstants.SINGLE_SIG,
+                script_type=self.script_type,
+            )
+
+        network = self.settings.get_value(SettingsConstants.SETTING__NETWORK)
+        is_mainnet = network == SettingsConstants.MAINNET
+        if self.script_type == SettingsConstants.NATIVE_SEGWIT:
+            xtype = "p2wpkh"
+        elif self.script_type == SettingsConstants.NESTED_SEGWIT:
+            xtype = "p2wpkh-p2sh"
+        elif self.script_type == SettingsConstants.LEGACY_P2PKH:
+            xtype = "standard"
+        elif self.script_type == SettingsConstants.TAPROOT:
+            xtype = "standard"
+        else:
+            xtype = "p2wpkh"
+
+        try:
+            xpub_base58 = Satochip_Connector.card_bip32_get_xpub(derivation_path, xtype, is_mainnet)
+            master_xpub = Satochip_Connector.card_bip32_get_xpub("", xtype, is_mainnet)
+        except Exception as e:
+            self.run_screen(
+                WarningScreen,
+                title="Failed",
+                status_headline=None,
+                text=str(e),
+            )
+            return Destination(BackStackView)
+
+        fingerprint = HDKey.from_string(master_xpub).my_fingerprint
+        fingerprint_hex = hexlify(fingerprint).decode("utf-8")
+        if derivation_path.startswith("m/"):
+            origin_path = derivation_path[2:]
+        else:
+            origin_path = derivation_path
+
+        if self.script_type == SettingsConstants.NATIVE_SEGWIT:
+            desc_str = f"wpkh([{fingerprint_hex}/{origin_path}]{xpub_base58}/{{0,1}}/*)"
+        elif self.script_type == SettingsConstants.NESTED_SEGWIT:
+            desc_str = f"sh(wpkh([{fingerprint_hex}/{origin_path}]{xpub_base58}/{{0,1}}/*))"
+        elif self.script_type == SettingsConstants.LEGACY_P2PKH:
+            desc_str = f"pkh([{fingerprint_hex}/{origin_path}]{xpub_base58}/{{0,1}}/*)"
+        elif self.script_type == SettingsConstants.TAPROOT:
+            desc_str = f"tr([{fingerprint_hex}/{origin_path}]{xpub_base58}/{{0,1}}/*)"
+        else:
+            desc_str = f"wpkh([{fingerprint_hex}/{origin_path}]{xpub_base58}/{{0,1}}/*)"
+
+        descriptor = Descriptor.from_string(desc_str)
+
+        selected_menu_num = self.run_screen(
+            seed_screens.SeedExportXpubDetailsScreen,
+            fingerprint=fingerprint_hex,
+            has_passphrase=False,
+            derivation_path=derivation_path,
+            xpub=xpub_base58,
+            button_label="Confirm",
+        )
+
+        if selected_menu_num != 0:
+            return Destination(BackStackView)
+
+        self.controller.multisig_wallet_descriptor = descriptor
+        from seedsigner.controller import Controller
+        if self.controller.resume_main_flow == Controller.FLOW__ADDRESS_EXPLORER:
+            from seedsigner.views.seed_views import MultisigWalletDescriptorView
+            return Destination(MultisigWalletDescriptorView, skip_current_view=True)
+
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Success",
+            status_headline=None,
+            text="Descriptor Loaded",
+            show_back_button=False,
+        )
 
         return Destination(MainMenuView)
 

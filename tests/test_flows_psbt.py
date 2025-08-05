@@ -169,3 +169,90 @@ class TestPSBTFlows(FlowTest):
             FlowStep(psbt_views.PSBTSignedQRDisplayView),
             FlowStep(MainMenuView)
         ])
+
+
+    def test_scan_psbt_then_scan_wif_flow(self):
+        from embit import ec, script, psbt
+        from embit.transaction import Transaction, TransactionInput, TransactionOutput
+        import os, base64
+
+        priv = ec.PrivateKey(os.urandom(32))
+        wif = priv.wif()
+        pub = priv.get_public_key()
+        spk = script.p2wpkh(pub)
+        tx = Transaction(1, [TransactionInput(b"\x00" * 32, 0)], [TransactionOutput(900, spk)], 0)
+        p = psbt.PSBT(tx)
+        p.inputs[0].witness_utxo = TransactionOutput(1000, spk)
+        psbt_b64 = base64.b64encode(p.serialize()).decode()
+
+        def load_psbt_into_decoder(view: scan_views.ScanView):
+            view.decoder.add_data(psbt_b64)
+
+        def load_wif_into_decoder(view: scan_views.ScanView):
+            view.decoder.add_data(wif)
+
+        self.run_sequence([
+            FlowStep(MainMenuView, button_data_selection=MainMenuView.SCAN),
+            FlowStep(scan_views.ScanView, before_run=load_psbt_into_decoder),
+            FlowStep(psbt_views.PSBTSelectSeedView, button_data_selection=psbt_views.PSBTSelectSeedView.SCAN_WIF),
+            FlowStep(scan_views.ScanWIFQRView, before_run=load_wif_into_decoder),
+            FlowStep(psbt_views.PSBTOverviewView),
+        ])
+
+    def test_scan_psbt_then_scan_bip38_flow(self):
+        from embit import ec, script, psbt
+        from embit.transaction import Transaction, TransactionInput, TransactionOutput
+        import base64
+        from seedsigner.models.bip38 import BIP38Key
+
+        enc = "6PRVWUbkzzsbcVac2qwfssoUJAN1Xhrg6bNk8J7Nzm5H7kxEbn2Nh2ZoGg"
+        passphrase = "TestingOneTwoThree"
+        priv = BIP38Key(enc).decrypt(passphrase).privkey
+        pub = priv.get_public_key()
+        spk = script.p2wpkh(pub)
+        tx = Transaction(1, [TransactionInput(b"\x00" * 32, 0)], [TransactionOutput(900, spk)], 0)
+        p = psbt.PSBT(tx)
+        p.inputs[0].witness_utxo = TransactionOutput(1000, spk)
+        psbt_b64 = base64.b64encode(p.serialize()).decode()
+
+        def load_psbt_into_decoder(view: scan_views.ScanView):
+            view.decoder.add_data(psbt_b64)
+
+        def load_bip38_into_decoder(view: scan_views.ScanView):
+            view.decoder.add_data(enc)
+
+        self.run_sequence([
+            FlowStep(MainMenuView, button_data_selection=MainMenuView.SCAN),
+            FlowStep(scan_views.ScanView, before_run=load_psbt_into_decoder),
+            FlowStep(psbt_views.PSBTSelectSeedView, button_data_selection=psbt_views.PSBTSelectSeedView.SCAN_BIP38),
+            FlowStep(scan_views.ScanBIP38QRView, before_run=load_bip38_into_decoder),
+            FlowStep(psbt_views.PSBTBIP38PassphraseView, screen_return_value=dict(passphrase=passphrase)),
+            FlowStep(psbt_views.PSBTOverviewView),
+        ])
+
+
+class TestPSBTSatochip(FlowTest):
+
+    def test_satochip_connect_failure_returns_to_select_menu(self, monkeypatch):
+        """Satochip connection failure should return to the signer selection menu."""
+        from seedsigner.views import scan_views, psbt_views
+        from seedsigner.views.view import MainMenuView
+        from seedsigner.helpers import seedkeeper_utils
+
+        def load_psbt_into_decoder(view: scan_views.ScanView):
+            # Single sig PSBT for tests
+            view.decoder.add_data(
+                "cHNidP8BAHECAAAAAX9/d6VyI7nvVTyhLBfqu05za2AJ2Z0dKMC0cUX+S2U7AQAAAAD9////AgeHAAAAAAAAFgAUOnNPuZMD1sQudt3+7LvHBUvGhyd//gAAAAAAABYAFGO9QLvu4V9/hz6ZjbIGMrqsEiIYAjQTAAABAR+ghgEAAAAAABYAFKawrgcT62jmIVQwyHPCV0thmJWbAQDBAQAAAAABAYeHL9UQlz/jEKUuNNY3LTeQRjudjBinsP2L0ppvgRt0AAAAAAD/////AnbP3rsPAAAAIlEgtgmCioGjfKwp6f8rOoI4OPb+ZV8db581J9IizZPskl2ghgEAAAAAABYAFKawrgcT62jmIVQwyHPCV0thmJWbAUDCBlMh9VjZN2NdU9Wabi0o3Ct1q9YHTsJRLAkLfUuIHB+BE+ucR4bdGAJG5nBhCWOmCXbpRwKP1INRYvkuQ2fHAAAAACIGA2+PEYHyVy6nhYwAx5SJKBIWXjsWgjhhf/2FEWqXgxnoEKNOC3gAAACAAAAAAAAAAAAAACICA0SBeeHxfHdny6rUnQJuteAnQ7shSydexjJCkSJarn3mEKNOC3gAAACAAQAAAAEAAAAA"
+            )
+
+        def mock_init_satochip(parent, init_card_filter=None, require_pin=True):
+            return None
+
+        monkeypatch.setattr(seedkeeper_utils, "init_satochip", mock_init_satochip)
+
+        self.run_sequence([
+            FlowStep(MainMenuView, button_data_selection=MainMenuView.SCAN),
+            FlowStep(scan_views.ScanView, before_run=load_psbt_into_decoder),
+            FlowStep(psbt_views.PSBTSelectSeedView, button_data_selection=psbt_views.PSBTSelectSeedView.SATOCHIP),
+            FlowStep(psbt_views.PSBTSelectSeedView),
+        ])

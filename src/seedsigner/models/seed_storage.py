@@ -162,7 +162,10 @@ class SeedStorage:
 
     def convert_pending_slip39_shares_to_pending_seed(self, passphrase: str = ""):
         mnemonics = [" ".join(share) for share in self._pending_slip39_shares]
-        self.pending_seed = Slip39Seed(mnemonics=mnemonics, passphrase=passphrase)
+        self.pending_seed = Slip39Seed(
+            mnemonics=mnemonics,
+            slip39_passphrase=passphrase,
+        )
         self.discard_pending_slip39_shares()
 
     def discard_pending_slip39_shares(self):

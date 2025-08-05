@@ -34,6 +34,7 @@ class Seed:
         self.set_passphrase(passphrase, regenerate_seed=False)
 
         self.seed_bytes: bytes = None
+        self.master_secret: bytes | None = None
         self._generate_seed()
 
 
@@ -259,26 +260,68 @@ class ElectrumSeed(Seed):
 class Slip39Seed(Seed):
     """Seed derived from SLIP-39 mnemonic shares."""
 
-    def __init__(self, mnemonics: List[str], passphrase: str = "") -> None:
+    def __init__(self, mnemonics: List[str], slip39_passphrase: str = "") -> None:
         self._wordlist_language_code = SettingsConstants.WORDLIST_LANGUAGE__ENGLISH
         if not mnemonics:
             raise Exception("Must provide at least one SLIP-39 share")
         self._shares: List[str] = [unicodedata.normalize("NFKD", m.strip()) for m in mnemonics]
 
-        self._passphrase: str = ""
-        self.set_passphrase(passphrase, regenerate_seed=False)
+        first_share = shamir_mnemonic.Share.from_mnemonic(self._shares[0])
+        self.extendable: bool = first_share.extendable
+        self._member_threshold: int = first_share.member_threshold
+        self._group_threshold: int = first_share.group_threshold
+
+        # Passphrase used to decrypt the shares
+        self._slip39_passphrase: str = unicodedata.normalize("NFKD", slip39_passphrase) if slip39_passphrase else ""
 
         self.seed_bytes: bytes = None
+        self.master_secret: bytes | None = None
+        self._initial_master_secret: bytes | None = None
+        self._creation_passphrase: str = self._slip39_passphrase
         self._generate_seed()
 
     def _generate_seed(self):
+        """This takes 4-5 seconds on a Pi0, so need to show a loading screen rather than hang the UI"""
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+        self.loading_screen = LoadingScreenThread(text="Generating Seed\n\n\n\n\n\n")
+        self.loading_screen.start()
         try:
-            self.seed_bytes = shamir_mnemonic.combine_mnemonics(
-                self._shares, self._passphrase.encode("utf-8")
-            )
+            try:
+                secret = shamir_mnemonic.combine_mnemonics(
+                    self._shares, self._slip39_passphrase.encode("utf-8")
+                )
+            except Exception as e:
+                if "Wrong number of mnemonics" not in str(e):
+                    raise
+                groups: dict[int, list[str]] = {}
+                for share in self._shares:
+                    s = shamir_mnemonic.Share.from_mnemonic(share)
+                    grp = groups.setdefault(s.group_index, [])
+                    if len(grp) < self._member_threshold:
+                        grp.append(share)
+                    if (
+                        len(groups) >= self._group_threshold
+                        and all(len(v) >= self._member_threshold for v in groups.values())
+                    ):
+                        break
+
+                combine_list: list[str] = []
+                for grp_index in sorted(groups.keys())[: self._group_threshold]:
+                    combine_list.extend(groups[grp_index][: self._member_threshold])
+
+                secret = shamir_mnemonic.combine_mnemonics(
+                    combine_list, self._slip39_passphrase.encode("utf-8")
+                )
+
+            self.master_secret = secret
+            if self._initial_master_secret is None:
+                self._initial_master_secret = secret
+            self.seed_bytes = secret
         except Exception as e:
             logger.info(repr(e), exc_info=True)
             raise InvalidSeedException(repr(e))
+        finally:
+            self.loading_screen.stop()
 
     # Expose shares as the mnemonic list/str for compatibility
     @property
@@ -289,10 +332,31 @@ class Slip39Seed(Seed):
     def mnemonic_str(self) -> str:
         return "\n".join(self._shares)
 
-    def set_passphrase(self, passphrase: str, regenerate_seed: bool = True):
-        self._passphrase = unicodedata.normalize("NFKD", passphrase) if passphrase else ""
+    def set_slip39_passphrase(self, passphrase: str, regenerate_seed: bool = True):
+        """Set or update the passphrase used to decrypt the SLIP-39 shares."""
+        normalized_passphrase = unicodedata.normalize("NFKD", passphrase) if passphrase else ""
+        if normalized_passphrase == self._slip39_passphrase:
+            return  # No change, do nothing
+
+        self._slip39_passphrase = normalized_passphrase
         if regenerate_seed:
             self._generate_seed()
+
+    @property
+    def has_passphrase(self) -> bool:
+        return self._slip39_passphrase != ""
+
+    @property
+    def passphrase(self) -> str:
+        return self._slip39_passphrase
+
+    @property
+    def passphrase_display(self) -> str:
+        return unicodedata.normalize("NFC", self._slip39_passphrase)
+
+    @property
+    def passphrase_label(self) -> str:
+        return "SLIP-39 Passphrase"
 
     @property
     def seedqr_supported(self) -> bool:
@@ -301,3 +365,35 @@ class Slip39Seed(Seed):
     @property
     def bip85_supported(self) -> bool:
         return False
+
+    def regenerate_shares(self, threshold: int, num_shares: int) -> List[str]:
+        """Generate new SLIP-39 shares from the original master secret."""
+        if not self.extendable:
+            raise InvalidSeedException("This SLIP-39 seed is not extendable")
+
+        if threshold > num_shares:
+            raise InvalidSeedException(
+                "The requested threshold must not exceed the number of shares."
+            )
+        
+        if threshold == 1 and num_shares > 1:
+            raise InvalidSeedException(
+                "Multi-Share with threshold of 1 is not allowed, create 1-1 instead."
+            )
+
+        first_share = shamir_mnemonic.Share.from_mnemonic(self._shares[0])
+
+        new_groups = shamir_mnemonic.generate_mnemonics(
+            self._group_threshold,
+            [(threshold, num_shares)],
+            self._initial_master_secret,
+            passphrase=self._creation_passphrase.encode("utf-8"),
+            extendable=True,
+            iteration_exponent=first_share.iteration_exponent,
+        )
+
+        shares = new_groups[0]
+
+        self._shares = shares
+        self._member_threshold = threshold
+        return shares

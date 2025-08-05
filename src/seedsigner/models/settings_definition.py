@@ -272,6 +272,12 @@ class SettingsConstants:
         (SMARTCARD_INTERFACE_PHOENIX, "Phoenix via USB")
     ]
 
+    # Smartcard PIN attempt limits
+    SCARD_PIN_ATTEMPTS_MIN = 2
+    SCARD_PIN_ATTEMPTS_MAX = 10
+    ALL_SCARD_PIN_ATTEMPTS = [(i, str(i)) for i in range(SCARD_PIN_ATTEMPTS_MIN, SCARD_PIN_ATTEMPTS_MAX + 1)]
+    DEFAULT_SCARD_PIN_ATTEMPTS = 5
+
     @classmethod
     def map_network_to_embit(cls, network) -> str:
         # Note these are `embit` constants; do not wrap for translation
@@ -347,6 +353,8 @@ class SettingsConstants:
     SETTING__BTC_DENOMINATION = "denomination"
     SETTING__SMARTCARD_INTERFACES = "smartcard_interfaces"
     SETTING__CACHE_SCARD_PIN = "cache_scard_pin"
+    SETTING__SCARD_PIN_ATTEMPTS = "scard_pin_attempts"
+    SETTING__SMARTCARD_SUPPORT = "smartcard_support"
     SETTING__WIPE_TIMER = "wipe_timer"
 
     SETTING__DISPLAY_CONFIGURATION = "display_config"
@@ -357,11 +365,14 @@ class SettingsConstants:
     SETTING__XPUB_EXPORT = "xpub_export"
     SETTING__SIG_TYPES = "sig_types"
     SETTING__SCRIPT_TYPES = "script_types"
+    SETTING__SEED_WORD_LENGTHS = "seed_word_lengths"
     SETTING__XPUB_DETAILS = "xpub_details"
     SETTING__PASSPHRASE = "passphrase"
     SETTING__CAMERA_ROTATION = "camera_rotation"
     SETTING__COMPACT_SEEDQR = "compact_seedqr"
     SETTING__BIP85_CHILD_SEEDS = "bip85_child_seeds"
+    SETTING__SLIP39_SEEDS = "slip39_seeds"
+    SETTING__SLIP39_EXTENDABLE = "slip39_extendable"
     SETTING__ELECTRUM_SEEDS = "electrum_seeds"
     SETTING__MESSAGE_SIGNING = "message_signing"
     SETTING__PRIVACY_WARNINGS = "privacy_warnings"
@@ -372,7 +383,9 @@ class SettingsConstants:
     SETTING__ENCRYPTED_QR = "encrypted_qr"
     SETTING__ENCRYPTION_MODE = "version"
     SETTING__ENCRYPTION_ITER = "pbkdf2_iterations"
-    
+    SETTING__WIF_KEYS = "wif_keys"
+    SETTING__BIP38_KEYS = "bip38_keys"
+
     SETTING__DEBUG = "debug"
 
 
@@ -448,6 +461,14 @@ class SettingsConstants:
         ENCRYPTION_MODE_GCM,
         ENCRYPTION_MODE_ECBV1,
         ENCRYPTION_MODE_CBCV1,
+    ]
+
+    ALL_SEED_WORD_LENGTHS = [
+        (12, "12 words"),
+        (15, "15 words"),
+        (18, "18 words"),
+        (21, "21 words"),
+        (24, "24 words"),
     ]
 
 
@@ -648,9 +669,17 @@ class SettingsDefinition:
                     default_value=SettingsConstants.OPTION__DISABLED),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__SYSTEM,
+                    attr_name=SettingsConstants.SETTING__SCARD_PIN_ATTEMPTS,
+                    abbreviated_name="pintries",
+                    display_name=_mft("Smartcard PIN Attempts"),
+                    type=SettingsConstants.TYPE__SELECT_1,
+                    selection_options=SettingsConstants.ALL_SCARD_PIN_ATTEMPTS,
+                    default_value=SettingsConstants.DEFAULT_SCARD_PIN_ATTEMPTS),
+
+        SettingsEntry(category=SettingsConstants.CATEGORY__SYSTEM,
                     attr_name=SettingsConstants.SETTING__WIPE_TIMER,
                     abbreviated_name="wipe",
-                    display_name=_mft("Wipe timer"),
+                    display_name=_mft("Wipe Timer"),
                     type=SettingsConstants.TYPE__SELECT_1,
                     selection_options=SettingsConstants.ALL_WIPE_TIMERS,
                     default_value=SettingsConstants.WIPE_TIMER__DISABLED),
@@ -695,6 +724,15 @@ class SettingsDefinition:
                       visibility=SettingsConstants.VISIBILITY__ADVANCED,
                       selection_options=SettingsConstants.ALL_SCRIPT_TYPES,
                       default_value=[SettingsConstants.NATIVE_SEGWIT, SettingsConstants.NESTED_SEGWIT, SettingsConstants.TAPROOT]),
+
+        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
+                      attr_name=SettingsConstants.SETTING__SEED_WORD_LENGTHS,
+                      abbreviated_name="seedlen",
+                      display_name=_mft("Seed word lengths"),
+                      type=SettingsConstants.TYPE__MULTISELECT,
+                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
+                      selection_options=SettingsConstants.ALL_SEED_WORD_LENGTHS,
+                      default_value=[12, 24]),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
                       attr_name=SettingsConstants.SETTING__XPUB_DETAILS,
@@ -753,9 +791,35 @@ class SettingsDefinition:
                       default_value=SettingsConstants.ENCRYPTION_ITERATIONS),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
+                      attr_name=SettingsConstants.SETTING__WIF_KEYS,
+                      display_name="WIF keys",
+                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
+                      default_value=SettingsConstants.OPTION__ENABLED),
+
+        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
+                      attr_name=SettingsConstants.SETTING__BIP38_KEYS,
+                      display_name="BIP38 keys",
+                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
+                      default_value=SettingsConstants.OPTION__ENABLED),
+
+        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
                       attr_name=SettingsConstants.SETTING__BIP85_CHILD_SEEDS,
                       abbreviated_name="bip85",
                       display_name=_mft("BIP-85 child seeds"),
+                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
+                      default_value=SettingsConstants.OPTION__ENABLED),
+
+        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
+                      attr_name=SettingsConstants.SETTING__SLIP39_SEEDS,
+                      abbreviated_name="slip39",
+                      display_name=_mft("SLIP39 seeds"),
+                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
+                      default_value=SettingsConstants.OPTION__DISABLED),
+
+        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
+                      attr_name=SettingsConstants.SETTING__SLIP39_EXTENDABLE,
+                      abbreviated_name="slip39ext",
+                      display_name=_mft("Extendable SLIP39 shares"),
                       visibility=SettingsConstants.VISIBILITY__ADVANCED,
                       default_value=SettingsConstants.OPTION__ENABLED),
 
@@ -772,6 +836,13 @@ class SettingsDefinition:
                       display_name=_mft("Message signing"),
                       visibility=SettingsConstants.VISIBILITY__ADVANCED,
                       default_value=SettingsConstants.OPTION__DISABLED),
+
+        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
+                      attr_name=SettingsConstants.SETTING__SMARTCARD_SUPPORT,
+                      abbreviated_name="smartcard",
+                      display_name=_mft("Smartcard support"),
+                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
+                      default_value=SettingsConstants.OPTION__ENABLED),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
                       attr_name=SettingsConstants.SETTING__PRIVACY_WARNINGS,

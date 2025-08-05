@@ -557,8 +557,9 @@ class SeedWordsScreen(WarningEdgesMixin, ButtonListScreen):
 
 @dataclass
 class SeedBIP85SelectChildIndexScreen(KeyboardScreen):
+    title: str = _("BIP-85 Index")
+
     def __post_init__(self):
-        self.title = _("BIP-85 Index")
         self.user_input = ""
 
         # Specify the keys in the keyboard
@@ -611,10 +612,11 @@ class SeedExportXpubDetailsScreen(WarningEdgesMixin, ButtonListScreen):
     has_passphrase: bool = False
     derivation_path: str = "m/84'/0'/0'"
     xpub: str = "zpub6r..."
+    button_label: str = "Export Xpub"
 
     def __post_init__(self):
         # Programmatically set up other args
-        self.button_data = [ButtonOption("Export Xpub")]
+        self.button_data = [ButtonOption(self.button_label)]
         self.title = _("Xpub Details")
 
         # Initialize the base class
@@ -1517,6 +1519,7 @@ class SeedAddressVerificationScreen(ButtonListScreen):
     is_mainnet: bool = None
     threadsafe_counter: ThreadsafeCounter = None
     verified_index: ThreadsafeCounter = None
+    max_iterations: int | None = None
 
 
     def __post_init__(self):
@@ -1550,6 +1553,7 @@ class SeedAddressVerificationScreen(ButtonListScreen):
             screen_y=self.components[-1].screen_y + self.components[-1].height + GUIConstants.COMPONENT_PADDING,
             threadsafe_counter=self.threadsafe_counter,
             verified_index=self.verified_index,
+            max_iterations=self.max_iterations,
         ))
     
 
@@ -1559,17 +1563,21 @@ class SeedAddressVerificationScreen(ButtonListScreen):
         if self.verified_index.cur_count is not None:
             # Note that the ProgressThread will have already exited on its own.
 
-            # Return a success value (anything other than None) to end the 
+            # Return a success value (anything other than None) to end the
             # ButtonListScreen._run() loop.
             return 1
 
+        if self.max_iterations is not None and self.threadsafe_counter.cur_count >= self.max_iterations:
+            return RET_CODE__BACK_BUTTON
+
 
     class ProgressThread(BaseThread):
-        def __init__(self, renderer: Renderer, screen_y: int, threadsafe_counter: ThreadsafeCounter, verified_index: ThreadsafeCounter):
+        def __init__(self, renderer: Renderer, screen_y: int, threadsafe_counter: ThreadsafeCounter, verified_index: ThreadsafeCounter, max_iterations: int | None = None):
             self.renderer = renderer
             self.screen_y = screen_y
             self.threadsafe_counter = threadsafe_counter
             self.verified_index = verified_index
+            self.max_iterations = max_iterations
             super().__init__()
         
 
@@ -1584,6 +1592,10 @@ class SeedAddressVerificationScreen(ButtonListScreen):
                     HardwareButtons.get_instance().trigger_override()
 
                     # Exit the loop and thereby end this thread
+                    return
+
+                if self.max_iterations is not None and self.threadsafe_counter.cur_count >= self.max_iterations:
+                    HardwareButtons.get_instance().trigger_override()
                     return
 
                 textarea = TextArea(

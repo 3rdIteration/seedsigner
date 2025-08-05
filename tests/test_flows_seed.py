@@ -5,6 +5,7 @@ import shamir_mnemonic
 
 # Must import test base before the Controller
 from base import BaseTest, FlowTest, FlowStep
+from unittest.mock import Mock
 from base import FlowTestInvalidButtonDataSelectionException
 
 from seedsigner.gui.screens.screen import RET_CODE__BACK_BUTTON, ButtonOption
@@ -12,6 +13,7 @@ from seedsigner.models.settings import Settings, SettingsConstants
 from seedsigner.models.seed import ElectrumSeed, Seed
 from seedsigner.views.view import MainMenuView, OptionDisabledView, View, NetworkMismatchErrorView
 from seedsigner.views import seed_views, scan_views, settings_views
+from binascii import hexlify
 
 
 def load_seed_into_decoder(view: scan_views.ScanView):
@@ -183,6 +185,9 @@ class TestSeedFlows(FlowTest):
 
     def test_slip39_mnemonic_entry_flow(self):
         """Manually entering SLIP-39 shares should combine into a seed."""
+        settings = Settings.get_instance()
+        settings.set_value(SettingsConstants.SETTING__SLIP39_SEEDS, SettingsConstants.OPTION__ENABLED)
+
         secret = bytes.fromhex("11" * 16)
         shares = shamir_mnemonic.generate_mnemonics(1, [(2, 3)], secret)[0]
         share1 = shares[0].split()
@@ -207,6 +212,32 @@ class TestSeedFlows(FlowTest):
 
         self.run_sequence(sequence)
 
+    def test_slip39_passphrase_flow(self):
+        """Enter SLIP-39 share and apply passphrase afterwards."""
+        settings = Settings.get_instance()
+        settings.set_value(SettingsConstants.SETTING__SLIP39_SEEDS, SettingsConstants.OPTION__ENABLED)
+
+        share = "testify swimming academic academic column loyalty smear include exotic bedroom exotic wrist lobe cover grief golden smart junior estimate learn".split()
+
+        sequence = [
+            FlowStep(MainMenuView, button_data_selection=MainMenuView.SEEDS),
+            FlowStep(seed_views.SeedsMenuView, is_redirect=True),
+            FlowStep(seed_views.LoadSeedView, button_data_selection=seed_views.LoadSeedView.TYPE_SLIP39),
+            FlowStep(seed_views.SeedSlip39MnemonicStartView, screen_return_value=0),
+        ]
+        for word in share:
+            sequence.append(FlowStep(seed_views.SeedSlip39ShareEntryView, screen_return_value=word))
+        sequence.append(FlowStep(seed_views.SeedSlip39MoreSharesView, button_data_selection=seed_views.SeedSlip39MoreSharesView.DONE))
+        sequence.append(FlowStep(seed_views.SeedFinalizeView, button_data_selection=seed_views.SeedFinalizeView.TYPE_PASSPHRASE))
+        sequence.append(FlowStep(seed_views.SeedAddPassphraseView, screen_return_value=dict(passphrase="test")))
+        sequence.append(FlowStep(seed_views.SeedReviewPassphraseView, button_data_selection=seed_views.SeedReviewPassphraseView.DONE))
+        sequence.append(FlowStep(seed_views.SeedOptionsView))
+
+        self.run_sequence(sequence)
+
+        seed = self.controller.storage.seeds[0]
+        assert seed.get_fingerprint() == "d9fda401"
+
 
     def test_export_xpub_standard_flow(self):
         """
@@ -217,9 +248,7 @@ class TestSeedFlows(FlowTest):
                 sig_selection = seed_views.SeedExportXpubSigTypeView.SINGLE_SIG
             else:
                 sig_selection = seed_views.SeedExportXpubSigTypeView.MULTISIG
-            self.run_sequence(
-                initial_destination_view_args=dict(seed_num=0),
-                sequence=[
+            sequence=[
                     FlowStep(seed_views.SeedOptionsView, button_data_selection=seed_views.SeedOptionsView.EXPORT_XPUB),
                     FlowStep(seed_views.SeedExportXpubSigTypeView, button_data_selection=sig_selection),
                     FlowStep(seed_views.SeedExportXpubScriptTypeView, button_data_selection=ButtonOption(script_tuple[1], return_data=script_tuple[0])),
@@ -227,9 +256,18 @@ class TestSeedFlows(FlowTest):
                     FlowStep(seed_views.SeedExportXpubWarningView, screen_return_value=0),
                     FlowStep(seed_views.SeedExportXpubDetailsView, screen_return_value=0),
                     FlowStep(seed_views.SeedExportXpubQRDisplayView, screen_return_value=0),
-                    FlowStep(MainMenuView),
+            ]
+            if sig_tuple[0] == SettingsConstants.SINGLE_SIG:
+                sequence += [
+                    FlowStep(seed_views.SeedExportXpubVerifyAddressView, screen_return_value=0),
+                    FlowStep(scan_views.ScanXpubAddressView, screen_return_value=RET_CODE__BACK_BUTTON),
                 ]
-        )
+            sequence.append(FlowStep(MainMenuView))
+
+            self.run_sequence(
+                initial_destination_view_args=dict(seed_num=0),
+                sequence=sequence,
+            )
             
         # Load a finalized Seed into the Controller
         mnemonic = "blush twice taste dawn feed second opinion lazy thumb play neglect impact".split()
@@ -252,13 +290,74 @@ class TestSeedFlows(FlowTest):
                 for coord_tuple in coordinators:
                     # skip custom derivation
                     if script_tuple[0] == SettingsConstants.CUSTOM_DERIVATION:
-                        continue 
+                        continue
                     # skip multisig taproot
                     elif sig_tuple[0] == SettingsConstants.MULTISIG and script_tuple[0] == SettingsConstants.TAPROOT:
                         continue
                     else:
                         print('\n\ntest_standard_xpubs(%s, %s, %s)' % (sig_tuple, script_tuple, coord_tuple))
                         flowtest_standard_xpub(sig_tuple, script_tuple, coord_tuple)
+
+    def test_export_xpub_script_type_mismatch(self):
+        mnemonic = "blush twice taste dawn feed second opinion lazy thumb play neglect impact".split()
+        self.controller.storage.set_pending_seed(Seed(mnemonic=mnemonic))
+        self.controller.storage.finalize_pending_seed()
+
+        self.settings.set_value(SettingsConstants.SETTING__SIG_TYPES, [SettingsConstants.SINGLE_SIG, SettingsConstants.MULTISIG])
+        self.settings.set_value(SettingsConstants.SETTING__SCRIPT_TYPES, [SettingsConstants.NATIVE_SEGWIT])
+        self.settings.set_value(SettingsConstants.SETTING__COORDINATORS, [SettingsConstants.COORDINATOR__SPECTER_DESKTOP])
+
+        def load_legacy_address(view: scan_views.ScanXpubAddressView):
+            view.decoder.add_data("1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa")
+
+        self.run_sequence(
+            initial_destination_view_args=dict(seed_num=0),
+            sequence=[
+                FlowStep(seed_views.SeedOptionsView, button_data_selection=seed_views.SeedOptionsView.EXPORT_XPUB),
+                FlowStep(seed_views.SeedExportXpubSigTypeView, button_data_selection=seed_views.SeedExportXpubSigTypeView.SINGLE_SIG),
+                FlowStep(seed_views.SeedExportXpubScriptTypeView, is_redirect=True),
+                FlowStep(seed_views.SeedExportXpubCoordinatorView, is_redirect=True),
+                FlowStep(seed_views.SeedExportXpubWarningView, screen_return_value=0),
+                FlowStep(seed_views.SeedExportXpubDetailsView, screen_return_value=0),
+                FlowStep(seed_views.SeedExportXpubQRDisplayView, screen_return_value=0),
+                FlowStep(seed_views.SeedExportXpubVerifyAddressView, screen_return_value=0),
+                FlowStep(scan_views.ScanXpubAddressView, before_run=load_legacy_address),
+                FlowStep(seed_views.SeedExportXpubVerificationFailedView, screen_return_value=0),
+                FlowStep(MainMenuView),
+            ],
+        )
+
+    def test_export_xpub_verification_no_match(self, monkeypatch):
+        mnemonic = "blush twice taste dawn feed second opinion lazy thumb play neglect impact".split()
+        self.controller.storage.set_pending_seed(Seed(mnemonic=mnemonic))
+        self.controller.storage.finalize_pending_seed()
+
+        self.settings.set_value(SettingsConstants.SETTING__SIG_TYPES, [SettingsConstants.SINGLE_SIG])
+        self.settings.set_value(SettingsConstants.SETTING__SCRIPT_TYPES, [SettingsConstants.NATIVE_SEGWIT])
+        self.settings.set_value(SettingsConstants.SETTING__COORDINATORS, [SettingsConstants.COORDINATOR__SPECTER_DESKTOP])
+
+        monkeypatch.setattr(seed_views.SeedAddressVerificationView, "MAX_ITERATIONS_EXPORT_XPUB", 5)
+
+        def load_high_index_address(view: scan_views.ScanXpubAddressView):
+            view.decoder.add_data("bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kg3g4ty")
+
+        self.run_sequence(
+            initial_destination_view_args=dict(seed_num=0),
+            sequence=[
+                FlowStep(seed_views.SeedOptionsView, button_data_selection=seed_views.SeedOptionsView.EXPORT_XPUB),
+                FlowStep(seed_views.SeedExportXpubSigTypeView, is_redirect=True),
+                FlowStep(seed_views.SeedExportXpubScriptTypeView, is_redirect=True),
+                FlowStep(seed_views.SeedExportXpubCoordinatorView, is_redirect=True),
+                FlowStep(seed_views.SeedExportXpubWarningView, screen_return_value=0),
+                FlowStep(seed_views.SeedExportXpubDetailsView, screen_return_value=0),
+                FlowStep(seed_views.SeedExportXpubQRDisplayView, screen_return_value=0),
+                FlowStep(seed_views.SeedExportXpubVerifyAddressView, screen_return_value=0),
+                FlowStep(scan_views.ScanXpubAddressView, before_run=load_high_index_address),
+                FlowStep(seed_views.SeedAddressVerificationView),
+                FlowStep(seed_views.SeedExportXpubVerificationFailedView, screen_return_value=0),
+                FlowStep(MainMenuView),
+            ],
+        )
 
 
     def test_export_xpub_disabled_not_available_flow(self):
@@ -359,6 +458,8 @@ class TestSeedFlows(FlowTest):
                 FlowStep(seed_views.SeedExportXpubWarningView, screen_return_value=0),
                 FlowStep(seed_views.SeedExportXpubDetailsView, screen_return_value=0),
                 FlowStep(seed_views.SeedExportXpubQRDisplayView, screen_return_value=0),
+                FlowStep(seed_views.SeedExportXpubVerifyAddressView, screen_return_value=0),
+                FlowStep(scan_views.ScanXpubAddressView, screen_return_value=RET_CODE__BACK_BUTTON),
                 FlowStep(MainMenuView),
             ]
         )
@@ -421,6 +522,8 @@ class TestSeedFlows(FlowTest):
                 FlowStep(seed_views.SeedExportXpubWarningView, screen_return_value=0),
                 FlowStep(seed_views.SeedExportXpubDetailsView, screen_return_value=0),
                 FlowStep(seed_views.SeedExportXpubQRDisplayView, screen_return_value=0),
+                FlowStep(seed_views.SeedExportXpubVerifyAddressView, screen_return_value=0),
+                FlowStep(scan_views.ScanXpubAddressView, screen_return_value=RET_CODE__BACK_BUTTON),
                 FlowStep(MainMenuView),
             ]
         )
@@ -472,7 +575,7 @@ class TestSeedFlows(FlowTest):
             FlowStep(seed_views.SeedsMenuView, screen_return_value=0),
             FlowStep(seed_views.SeedOptionsView, button_data_selection=seed_views.SeedOptionsView.BACKUP),
             FlowStep(seed_views.SeedBackupView, button_data_selection=seed_views.SeedBackupView.EXPORT_SEEDQR),
-            FlowStep(seed_views.SeedTranscribeSeedQRFormatView, button_data_selection=seed_views.SeedTranscribeSeedQRFormatView.STANDARD_12),
+            FlowStep(seed_views.SeedTranscribeSeedQRFormatView, screen_return_value=0),
             FlowStep(seed_views.SeedTranscribeSeedQRWarningView),
             FlowStep(seed_views.SeedTranscribeSeedQRWholeQRView, is_redirect=True),
             FlowStep(seed_views.SeedTranscribeSeedQRZoomedInView, is_redirect=True),  # Live interactive screens are a bit weird; not sure why `is_redirect` is necessary here
@@ -753,4 +856,191 @@ class TestMessageSigningFlows(FlowTest):
         self.settings.set_value(SettingsConstants.SETTING__NETWORK, SettingsConstants.MAINNET)
         expect_unsupported_derivation(self.load_custom_derivation_into_decoder)
 
+
+class TestSatochipDescriptorVerification(BaseTest):
+    def test_address_verification_with_descriptor(self):
+        from embit.bip32 import HDKey
+        from embit.descriptor import Descriptor
+        from embit import bip39, networks
+        from seedsigner.models.settings_definition import SettingsConstants
+        from seedsigner.views import seed_views
+        from seedsigner.controller import Controller
+
+        seed_bytes = bip39.mnemonic_to_seed("abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about")
+        root = HDKey.from_seed(seed_bytes, version=networks.NETWORKS['main']['xprv'])
+        xpub = root.derive("m/84h/0h/0h").to_public().to_string()
+        descriptor = Descriptor.from_string(f"wpkh({xpub}/{{0,1}}/*)")
+
+        controller = Controller.get_instance()
+        controller.multisig_wallet_descriptor = descriptor
+        addr = descriptor.derive(0, branch_index=0).script_pubkey().address()
+        controller.unverified_address = dict(
+            address=addr,
+            script_type=SettingsConstants.NATIVE_SEGWIT,
+            network=SettingsConstants.MAINNET,
+            sig_type=SettingsConstants.SINGLE_SIG,
+            derivation_path="m/84'/0'/0'",
+        )
+
+        view = seed_views.SeedAddressVerificationView(seed_num=None, export_for_xpub=True)
+
+        def mock_start(self):
+            self.verified_index.set_value(0)
+            self.verified_index_is_change.set_value(0)
+
+        view.addr_verification_thread.start = mock_start.__get__(view.addr_verification_thread, type(view.addr_verification_thread))
+        view.run_screen = Mock(return_value=RET_CODE__BACK_BUTTON)
+        destination = view.run()
+        assert destination.View_cls == seed_views.SeedExportXpubVerificationSuccessView
+
+
+class TestExportXpubSuccess(BaseTest):
+    def test_success_clears_descriptor(self):
+        from embit.bip32 import HDKey
+        from embit.descriptor import Descriptor
+        from embit import bip39, networks
+        from seedsigner.views import seed_views
+        from seedsigner.controller import Controller
+
+        seed_bytes = bip39.mnemonic_to_seed(
+            "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+        )
+        root = HDKey.from_seed(seed_bytes, version=networks.NETWORKS["main"]["xprv"])
+        xpub = root.derive("m/84h/0h/0h").to_public().to_string()
+        descriptor = Descriptor.from_string(f"wpkh({xpub}/{{0,1}}/*)")
+
+        controller = Controller.get_instance()
+        controller.multisig_wallet_descriptor = descriptor
+
+        view = seed_views.SeedExportXpubVerificationSuccessView()
+        view.run_screen = Mock(return_value=0)
+        view.run()
+
+        assert controller.multisig_wallet_descriptor is None
+
+
+class TestSatochipLoadDescriptor(BaseTest):
+    def test_load_descriptor_sets_descriptor(self, monkeypatch):
+        from embit.bip32 import HDKey
+        from embit.descriptor import Descriptor
+        from embit import bip39, networks
+        from seedsigner.views import tools_views
+        from seedsigner.controller import Controller
+        from seedsigner.models.settings_definition import SettingsConstants
+        from seedsigner.helpers import seedkeeper_utils
+
+        seed_bytes = bip39.mnemonic_to_seed(
+            "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+        )
+        root = HDKey.from_seed(seed_bytes, version=networks.NETWORKS["main"]["xprv"])
+        derived_xpub = root.derive("m/84h/0h/0h").to_public().to_string()
+        master_xpub = root.to_public().to_string()
+        master_fingerprint = hexlify(root.my_fingerprint).decode()
+
+        class MockConnector:
+            def card_bip32_get_xpub(self, path, xtype, is_mainnet):
+                if path == "":
+                    return master_xpub
+                elif path == "m/84'/0'/0'":
+                    return derived_xpub
+                raise ValueError("unexpected path")
+
+        def mock_init_satochip(parent, init_card_filter=None):
+            return MockConnector()
+
+        monkeypatch.setattr(seedkeeper_utils, "init_satochip", mock_init_satochip)
+
+        controller = Controller.get_instance()
+        controller.multisig_wallet_descriptor = None
+
+        view = tools_views.SatochipLoadDescriptorDetailsView(
+            script_type=SettingsConstants.NATIVE_SEGWIT, custom_derivation=""
+        )
+        view.run_screen = Mock(return_value=0)
+        destination = view.run()
+
+        assert view.run_screen.call_count == 2
+        assert (
+            view.run_screen.call_args_list[0].kwargs["button_label"] == "Confirm"
+        )
+        assert isinstance(controller.multisig_wallet_descriptor, Descriptor)
+        assert destination.View_cls == tools_views.MainMenuView
+        assert (
+            hexlify(controller.multisig_wallet_descriptor.keys[0].fingerprint).decode()
+            == master_fingerprint
+        )
+
+
+class TestSatochipExportXpubQRDisplayView(BaseTest):
+    def test_multisig_skips_verification(self):
+        from seedsigner.views import tools_views, seed_views
+        from seedsigner.models.settings_definition import SettingsConstants
+        from unittest.mock import Mock
+
+        view = tools_views.SatochipExportXpubQRDisplayView(
+            xpub="xpub",
+            derivation_path="m/48'/0'/0'/2'",
+            script_type=SettingsConstants.NATIVE_SEGWIT,
+            coordinator=SettingsConstants.COORDINATOR__SPECTER_DESKTOP,
+            coordinator_label="Specter",
+            fingerprint="f" * 8,
+            sig_type=SettingsConstants.MULTISIG,
+        )
+        view.run_screen = Mock(return_value=0)
+        destination = view.run()
+        assert destination.View_cls == tools_views.MainMenuView
+
+    def test_single_sig_requires_verification(self):
+        from seedsigner.views import tools_views, seed_views
+        from seedsigner.models.settings_definition import SettingsConstants
+        from unittest.mock import Mock
+
+        view = tools_views.SatochipExportXpubQRDisplayView(
+            xpub="xpub",
+            derivation_path="m/84'/0'/0'",
+            script_type=SettingsConstants.NATIVE_SEGWIT,
+            coordinator=SettingsConstants.COORDINATOR__SPECTER_DESKTOP,
+            coordinator_label="Specter",
+            fingerprint="f" * 8,
+            sig_type=SettingsConstants.SINGLE_SIG,
+        )
+        view.run_screen = Mock(return_value=0)
+        destination = view.run()
+        assert destination.View_cls == seed_views.SeedExportXpubVerifyAddressView
+
+
+class TestSatochipExportXpubDetailsView(BaseTest):
+    def test_multisig_uses_slip132_headers(self):
+        from seedsigner.views import tools_views
+        from seedsigner.models.settings_definition import SettingsConstants
+        from unittest.mock import Mock, patch
+
+        mock_connector = Mock()
+
+        def fake_get_xpub(path, xtype, is_mainnet):
+            assert xtype == "p2wsh"
+            return "ZpubExample"
+
+        mock_connector.card_bip32_get_xpub.side_effect = fake_get_xpub
+
+        with patch(
+            "seedsigner.helpers.seedkeeper_utils.init_satochip",
+            return_value=mock_connector,
+        ):
+            with patch("seedsigner.views.tools_views.HDKey") as MockHDKey:
+                hdkey = Mock()
+                hdkey.my_fingerprint = b"\x00\x00\x00\x00"
+                MockHDKey.from_string.return_value = hdkey
+
+                view = tools_views.SatochipExportXpubDetailsView(
+                    sig_type=SettingsConstants.MULTISIG,
+                    script_type=SettingsConstants.NATIVE_SEGWIT,
+                    coordinator=SettingsConstants.COORDINATOR__SPECTER_DESKTOP,
+                    custom_derivation="",
+                    coordinator_label="Specter",
+                )
+                view.run_screen = Mock(return_value=0)
+                view.run()
+
+                assert view.run_screen.call_args.kwargs["xpub"].startswith("Zpub")
 

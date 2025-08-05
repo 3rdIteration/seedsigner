@@ -7,6 +7,10 @@ from seedsigner.models.seed import Seed
 from seedsigner.models.settings_definition import SettingsConstants, SettingsDefinition
 from seedsigner.views.view import ErrorView, MainMenuView
 from seedsigner.views import scan_views, seed_views, tools_views
+from embit.bip32 import HDKey
+from embit import bip39, networks
+from seedsigner.helpers import seedkeeper_utils
+from binascii import hexlify
 
 
 
@@ -213,6 +217,50 @@ class TestToolsFlows(FlowTest):
             FlowStep(tools_views.ToolsAddressExplorerAddressView),  # runs until dismissed; no ret value
             FlowStep(tools_views.ToolsAddressExplorerAddressListView),
         ])
+
+
+    def test__address_explorer__satochip_descriptor__flow(self, monkeypatch):
+        """Address Explorer should be able to load a descriptor from a Satochip card."""
+        seed_bytes = bip39.mnemonic_to_seed(
+            "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+        )
+        root = HDKey.from_seed(seed_bytes, version=networks.NETWORKS["main"]["xprv"])
+        derived_xpub = root.derive("m/84h/0h/0h").to_public().to_string()
+        master_xpub = root.to_public().to_string()
+        master_fingerprint = hexlify(root.my_fingerprint).decode()
+
+        class MockConnector:
+            def card_bip32_get_xpub(self, path, xtype, is_mainnet):
+                if path == "":
+                    return master_xpub
+                elif path == "m/84'/0'/0'":
+                    return derived_xpub
+                raise ValueError("unexpected path")
+
+        monkeypatch.setattr(seedkeeper_utils, "init_satochip", lambda *args, **kwargs: MockConnector())
+
+        controller = Controller.get_instance()
+        controller.multisig_wallet_descriptor = None
+
+        self.run_sequence([
+            FlowStep(MainMenuView, button_data_selection=MainMenuView.TOOLS),
+            FlowStep(tools_views.ToolsMenuView, button_data_selection=tools_views.ToolsMenuView.ADDRESS_EXPLORER),
+            FlowStep(tools_views.ToolsAddressExplorerSelectSourceView, button_data_selection=tools_views.ToolsAddressExplorerSelectSourceView.SATOCHIP),
+            FlowStep(
+                tools_views.SatochipLoadDescriptorScriptTypeView,
+                button_data_selection=ButtonOption(
+                    SettingsDefinition.get_settings_entry(SettingsConstants.SETTING__SCRIPT_TYPES).get_selection_option_display_name_by_value(SettingsConstants.NATIVE_SEGWIT),
+                    return_data=SettingsConstants.NATIVE_SEGWIT,
+                ),
+            ),
+            FlowStep(tools_views.SatochipLoadDescriptorDetailsView, screen_return_value=0),
+            FlowStep(seed_views.MultisigWalletDescriptorView, button_data_selection=seed_views.MultisigWalletDescriptorView.ADDRESS_EXPLORER),
+            FlowStep(tools_views.ToolsAddressExplorerAddressTypeView, button_data_selection=tools_views.ToolsAddressExplorerAddressTypeView.RECEIVE),
+            FlowStep(tools_views.ToolsAddressExplorerAddressListView),
+        ])
+
+        descriptor = controller.multisig_wallet_descriptor
+        assert hexlify(descriptor.keys[0].fingerprint).decode() == master_fingerprint
 
 
     def test__verify_address__legacy_multisig_p2sh__flow(self):

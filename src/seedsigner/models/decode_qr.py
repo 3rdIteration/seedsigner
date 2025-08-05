@@ -5,7 +5,7 @@ import re
 
 from binascii import a2b_base64, b2a_base64
 from enum import IntEnum
-from embit import psbt, bip39
+from embit import psbt, bip39, ec
 from pyzbar import pyzbar
 from pyzbar.pyzbar import ZBarSymbol
 from urtypes.crypto import PSBT as UR_PSBT
@@ -119,6 +119,12 @@ class DecodeQR:
 
             elif self.qr_type == QRType.ENCRYPTION_KEY:
                 self.decoder = EncryptionKeyQrDecoder()
+
+            elif self.qr_type == QRType.WIF:
+                self.decoder = WifQrDecoder()
+
+            elif self.qr_type == QRType.BIP38:
+                self.decoder = Bip38QrDecoder()
 
             elif self.qr_type == QRType.TEXT:
                 self.decoder = TextQrDecoder()
@@ -243,6 +249,14 @@ class DecodeQR:
         if self.is_encryptionkey:
             return self.decoder.get_encryption_key()
 
+    def get_wif(self):
+        if self.is_wif:
+            return self.decoder.get_wif()
+
+    def get_bip38(self):
+        if self.is_bip38:
+            return self.decoder.get_bip38()
+
 
     def get_public_data(self):
         if self.is_encrypted_seedqr:
@@ -351,6 +365,14 @@ class DecodeQR:
     @property
     def is_sign_message(self):
         return self.qr_type == QRType.SIGN_MESSAGE
+
+    @property
+    def is_wif(self):
+        return self.qr_type == QRType.WIF
+
+    @property
+    def is_bip38(self):
+        return self.qr_type == QRType.BIP38
         
 
     @property
@@ -481,6 +503,21 @@ class DecodeQR:
             elif DecodeQR.is_base43_psbt(s):
                 return QRType.PSBT__BASE43
 
+            # WIF private key
+            try:
+                ec.PrivateKey.from_wif(s.strip())
+                return QRType.WIF
+            except Exception:
+                pass
+
+            # BIP38 encrypted key
+            try:
+                from seedsigner.models.bip38 import BIP38Key
+                BIP38Key(s.strip())
+                return QRType.BIP38
+            except Exception:
+                pass
+
         except UnicodeDecodeError:
             # Probably this isn't meant to be string data; check if it's valid byte data
             # below.
@@ -495,8 +532,13 @@ class DecodeQR:
                 # Couldn't convert back to bytes; shouldn't happen
                 raise Exception("Conversion to bytes failed")
 
-        # 32 bytes for 24-word CompactSeedQR; 24 bytes for 18 word, 16 bytes for 12-word CompactSeedQR
-        if len(s) == 32 or len(s) == 24 or len(s) == 16:
+        # Byte lengths for CompactSeedQR entropy:
+        #   32 bytes for 24-word
+        #   28 bytes for 21-word
+        #   24 bytes for 18-word
+        #   20 bytes for 15-word
+        #   16 bytes for 12-word
+        if len(s) in (16, 20, 24, 28, 32):
             try:
                 bitstream = ""
                 for b in s:
@@ -855,7 +897,7 @@ class Base43PsbtQrDecoder(BaseSingleFrameQrDecoder):
 
 class SeedQrDecoder(BaseSingleFrameQrDecoder):
     """
-        Decodes single frame representing a seed.
+        Decodes a single frame representing a BIP39 seed.
         Supports SeedSigner SeedQR numeric (wordlist indices) representation of a seed.
         Supports SeedSigner CompactSeedQR entropy byte representation of a seed.
         Supports mnemonic seed phrase string data.
@@ -873,14 +915,16 @@ class SeedQrDecoder(BaseSingleFrameQrDecoder):
             try:
                 self.seed_phrase = []
 
-                # Parse 12 or 24-word QR code
+                if len(segment) % 4 != 0:
+                    return DecodeQRStatus.INVALID
+
                 num_words = int(len(segment) / 4)
                 for i in range(0, num_words):
                     index = int(segment[i * 4: (i*4) + 4])
                     word = self.wordlist[index]
                     self.seed_phrase.append(word)
                 if len(self.seed_phrase) > 0:
-                    if self.is_12_or_18_or_24_word_phrase() == False:
+                    if not self.has_valid_word_count():
                         return DecodeQRStatus.INVALID
                     self.complete = True
                     self.collected_segments = 1
@@ -894,6 +938,8 @@ class SeedQrDecoder(BaseSingleFrameQrDecoder):
             logging.info("Trying CompactSeedQR")
             try:
                 self.seed_phrase = bip39.mnemonic_from_bytes(segment).split()
+                if not self.has_valid_word_count():
+                    return DecodeQRStatus.INVALID
                 self.complete = True
                 self.collected_segments = 1
                 return DecodeQRStatus.COMPLETE
@@ -908,11 +954,10 @@ class SeedQrDecoder(BaseSingleFrameQrDecoder):
                 # embit mnemonic code to validate
                 seed = Seed(seed_phrase_list, passphrase="", wordlist_language_code=self.wordlist_language_code)
                 if not seed:
-                    # seed is not valid, return invalid
                     return DecodeQRStatus.INVALID
                 self.seed_phrase = seed_phrase_list
-                if self.is_12_or_18_or_24_word_phrase() == False:
-                        return DecodeQRStatus.INVALID
+                if not self.has_valid_word_count():
+                    return DecodeQRStatus.INVALID
                 self.complete = True
                 self.collected_segments = 1
                 return DecodeQRStatus.COMPLETE
@@ -931,11 +976,10 @@ class SeedQrDecoder(BaseSingleFrameQrDecoder):
                 # embit mnemonic code to validate
                 seed = Seed(words, passphrase="", wordlist_language_code=self.wordlist_language_code)
                 if not seed:
-                    # seed is not valid, return invalid
                     return DecodeQRStatus.INVALID
                 self.seed_phrase = words
-                if self.is_12_or_18_or_24_word_phrase() == False:
-                        return DecodeQRStatus.INVALID
+                if not self.has_valid_word_count():
+                    return DecodeQRStatus.INVALID
                 self.complete = True
                 self.collected_segments = 1
                 return DecodeQRStatus.COMPLETE
@@ -950,10 +994,8 @@ class SeedQrDecoder(BaseSingleFrameQrDecoder):
             return self.seed_phrase[:]
         return []
 
-    def is_12_or_18_or_24_word_phrase(self):
-        if len(self.seed_phrase) in (12, 18, 24):
-            return True
-        return False
+    def has_valid_word_count(self):
+        return len(self.seed_phrase) in (12, 15, 18, 21, 24)
 
 
 class Slip39ShareDecoder(BaseSingleFrameQrDecoder):
@@ -1282,6 +1324,53 @@ class EncryptionKeyQrDecoder(BaseSingleFrameQrDecoder):
 
     def get_encryption_key(self):
         return self.encryption_key
+
+
+class WifQrDecoder(BaseSingleFrameQrDecoder):
+    """Decodes single frame representing a WIF-encoded private key."""
+
+    def __init__(self):
+        super().__init__()
+        self.wif = None
+
+    def add(self, segment, qr_type=QRType.WIF):
+        if qr_type == QRType.WIF:
+            try:
+                ec.PrivateKey.from_wif(segment)
+                self.wif = segment
+                self.complete = True
+                self.collected_segments = 1
+                return DecodeQRStatus.COMPLETE
+            except Exception as e:
+                logger.exception(repr(e))
+        return DecodeQRStatus.INVALID
+
+    def get_wif(self):
+        return self.wif
+
+
+class Bip38QrDecoder(BaseSingleFrameQrDecoder):
+    """Decodes single frame representing a BIP38-encrypted private key."""
+
+    def __init__(self):
+        super().__init__()
+        self.bip38 = None
+
+    def add(self, segment, qr_type=QRType.BIP38):
+        if qr_type == QRType.BIP38:
+            try:
+                from seedsigner.models.bip38 import BIP38Key
+                BIP38Key(segment)
+                self.bip38 = segment
+                self.complete = True
+                self.collected_segments = 1
+                return DecodeQRStatus.COMPLETE
+            except Exception as e:
+                logger.exception(repr(e))
+        return DecodeQRStatus.INVALID
+
+    def get_bip38(self):
+        return self.bip38
 
 
 

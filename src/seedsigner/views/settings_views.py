@@ -65,7 +65,8 @@ class SettingsMenuView(View):
                 view_args={"visibility": SettingsConstants.VISIBILITY__HARDWARE},
             )
 
-            button_data.append(self.RESTART_PCSC)
+            if self.settings.get_value(SettingsConstants.SETTING__SMARTCARD_SUPPORT) == SettingsConstants.OPTION__ENABLED:
+                button_data.append(self.RESTART_PCSC)
             button_data.append(self.DONATE)
 
         elif self.visibility == SettingsConstants.VISIBILITY__ADVANCED:
@@ -84,9 +85,10 @@ class SettingsMenuView(View):
             if BatteryHat.get_instance().detect_hat():
                 button_data.append(self.BATTERY_INFO)
             button_data.append(self.IO_TEST)
-            button_data.append(self.LIST_READERS)
-            button_data.append(self.SCARD_TEST)
-            button_data.append(self.NFC_TEST)
+            if self.settings.get_value(SettingsConstants.SETTING__SMARTCARD_SUPPORT) == SettingsConstants.OPTION__ENABLED:
+                button_data.append(self.LIST_READERS)
+                button_data.append(self.SCARD_TEST)
+                button_data.append(self.NFC_TEST)
 
         elif self.visibility == SettingsConstants.VISIBILITY__DEVELOPER:
             title = _("Dev Options")
