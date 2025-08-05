@@ -153,6 +153,8 @@ class Cipher:
         v_auth = VERSIONS[version].get("auth", 0)
         v_compress = VERSIONS[version].get("compress", False)
         auth = b""
+        if iv is None:
+            iv = b""
 
         if not isinstance(plain, bytes):
             raise TypeError("Plaintext is not bytes")
@@ -169,7 +171,9 @@ class Cipher:
         if v_auth != 0 and mode in (MODE_ECB, MODE_CBC, MODE_CTR):
             if v_auth > 0:
                 # unencrypted (public) auth: hash the plaintext w/ self._key
-                auth = hashlib.sha256(plain + self._key).digest()[:v_auth]
+                auth = hashlib.sha256(
+                    bytes([version]) + iv + plain + self._key
+                ).digest()[:v_auth]
             elif v_auth < 0:
                 # encrypted auth: hash only the plaintext
                 auth = hashlib.sha256(plain).digest()[:-v_auth]
@@ -207,7 +211,6 @@ class Cipher:
                 encryptor = AES.new(self._key, mode, iv)
         else:
             encryptor = AES.new(self._key, mode)
-            iv = b""
 
         # encrypt the plaintext
         encrypted = encryptor.encrypt(plain)
@@ -234,14 +237,16 @@ class Cipher:
 
         # setup decryptor (pulling initialization-vector from payload if necessary)
         if not v_iv:
+            iv = b""
             decryptor = AES.new(self._key, mode)
         else:
+            iv = payload[:v_iv]
             if mode == MODE_CTR:
-                decryptor = AES.new(self._key, mode, nonce=payload[:v_iv])
+                decryptor = AES.new(self._key, mode, nonce=iv)
             elif mode == MODE_GCM:
-                decryptor = AES.new(self._key, mode, payload[:v_iv], mac_len=v_auth)
+                decryptor = AES.new(self._key, mode, iv, mac_len=v_auth)
             else:
-                decryptor = AES.new(self._key, mode, payload[:v_iv])
+                decryptor = AES.new(self._key, mode, iv)
             payload = payload[v_iv:]
 
         # remove authentication from payload if suffixed to ciphertext
@@ -259,7 +264,7 @@ class Cipher:
         if v_auth != 0:
             try:
                 decrypted = self._authenticate(
-                    decrypted, decryptor, auth, mode, v_auth, v_pkcs_pad
+                    version, iv, decrypted, decryptor, auth, mode, v_auth, v_pkcs_pad
                 )
             except:
                 decrypted = None
@@ -270,10 +275,18 @@ class Cipher:
 
         return decrypted
 
-    def _authenticate(self, decrypted, aes_object, auth, mode, v_auth, v_pkcs_pad):
+    def _authenticate(
+        self, version, iv, decrypted, aes_object, auth, mode, v_auth, v_pkcs_pad
+    ):
         if not (
-            isinstance(decrypted, bytes)
-            # TODO check aes_object
+            isinstance(version, int)
+            and 0 <= version <= 255
+            and isinstance(iv, bytes)
+            and isinstance(decrypted, bytes)
+            and (
+                mode != MODE_GCM
+                or (hasattr(aes_object, "verify") and callable(aes_object.verify))
+            )
             and (isinstance(auth, bytes) or auth is None)
             and mode in MODE_NUMBERS.values()
             and (isinstance(v_auth, int) and -32 <= v_auth <= 32)
@@ -308,7 +321,9 @@ class Cipher:
         for _ in range(max_attempts):
             if v_auth > 0:
                 # for unencrypted (public) auth > 0: hash the decrypted w/ self._key
-                cksum = hashlib.sha256(decrypted + self._key).digest()[:v_auth]
+                cksum = hashlib.sha256(
+                    bytes([version]) + iv + decrypted + self._key
+                ).digest()[:v_auth]
             else:
                 # for encrypted auth < 0: hash only the decrypted
                 cksum = hashlib.sha256(decrypted).digest()[:-v_auth]
@@ -410,25 +425,32 @@ def wrap(id_, version, iterations, payload):
     try:
         # when wrapping, be tolerant about id_ as bytes or str
         id_ = id_ if isinstance(id_, bytes) else id_.encode()
-        assert 0 <= len(id_) <= 252
+        if not 0 <= len(id_) <= 252:
+            raise ValueError
         len_id = len(id_).to_bytes(1, "big")
     except:
         raise ValueError("Invalid ID")
 
     try:
-        assert 0 <= version <= 255
-        assert VERSIONS[version] is not None
-        assert VERSIONS[version]["mode"] is not None
+        if not (
+            0 <= version <= 255
+            and VERSIONS[version] is not None
+            and VERSIONS[version]["mode"] is not None
+        ):
+            raise ValueError
     except:
         raise ValueError("Invalid version")
 
     try:
-        assert isinstance(iterations, int)
+        if not isinstance(iterations, int):
+            raise ValueError
         if iterations % 10000 == 0:
             iterations = iterations // 10000
-            assert 1 <= iterations <= 10000
+            if not 1 <= iterations <= 10000:
+                raise ValueError
         else:
-            assert 10000 < iterations < 2**24
+            if not 10000 < iterations < 2**24:
+                raise ValueError
         iterations = iterations.to_bytes(3, "big")
     except:
         raise ValueError("Invalid iterations")
@@ -457,8 +479,8 @@ def unwrap(kef_bytes):
     try:
         # out-of-order reading to validate version early
         version = kef_bytes[1 + len_id]
-        assert VERSIONS[version] is not None
-        assert VERSIONS[version]["mode"] is not None
+        if VERSIONS[version] is None or VERSIONS[version]["mode"] is None:
+            raise ValueError
     except:
         raise ValueError("Invalid format")
 
