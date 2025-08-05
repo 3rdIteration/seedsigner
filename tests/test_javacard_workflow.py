@@ -1,5 +1,6 @@
 import os
 import sys
+import time
 
 import pytest
 
@@ -24,7 +25,6 @@ try:
         SEEDKEEPER_DIC_EXPORT_RIGHTS,
         SEEDKEEPER_DIC_TYPE,
     )
-    from smartcard.CardConnection import CardConnection  # type: ignore
 except ModuleNotFoundError as e:  # pragma: no cover - dependency check
     pytest.skip(
         f"pysatochip dependency missing: {e}. Install pyscard and pysatochip to run.",
@@ -49,36 +49,28 @@ def _connect_or_skip(card_filter: str):
     """Attempt to connect to the specified card or skip if unavailable."""
     try:
         connector = CardConnector(card_filter=[card_filter])  # type: ignore
-
-        # Ensure we have a live connection object regardless of pyscard version
-        if not hasattr(connector.cardservice, "connection"):
-            conn = connector.cardservice.createConnection()
-            connector.cardservice.connection = conn  # type: ignore[attr-defined]
-        connection = connector.cardservice.connection
-        try:
-            connection.connect(CardConnection.T1_protocol)
-        except Exception:
-            pass
-
-        # Query the card status rather than relying on card_present. This mirrors
-        # the connection workflow in seedkeeper_utils and avoids false negatives
-        # on some platforms where card_present is not reliable.
-        try:
-            status = connector.card_get_status()
-            if not status or len(status) < 4 or len(status[3]) == 0:
-                raise RuntimeError("card status unavailable")
-        except Exception as exc:  # pragma: no cover - hardware not present
-            raise RuntimeError(f"status check failed: {exc}") from exc
-
-        # Select the requested applet so subsequent commands target it
-        try:
-            connector.card_select()
-        except Exception:
-            pass
-
-        return connector
     except Exception as e:  # pragma: no cover - hardware not present
         pytest.skip(f"{card_filter} card not detected: {e}")
+
+    status = None
+    deadline = time.time() + 5
+    while time.time() < deadline:
+        try:
+            time.sleep(0.5)  # give reader time to initialise
+            status = connector.card_get_status()
+            if connector.needs_secure_channel:
+                connector.card_initiate_secure_channel()
+            if status and len(status) >= 4 and len(status[3]) > 0:
+                break
+        except Exception:
+            time.sleep(0.1)
+            status = None
+
+    if not status or len(status) < 4 or len(status[3]) == 0:
+        pytest.skip(f"{card_filter} card not detected: status unavailable")
+
+    time.sleep(0.2)
+    return connector
 
 
 def _parse_path(path: str) -> list[int]:
