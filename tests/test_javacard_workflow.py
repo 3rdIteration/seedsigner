@@ -49,8 +49,6 @@ def _connect_or_skip(card_filter: str):
     """Attempt to connect to the specified card or skip if unavailable."""
     try:
         connector = CardConnector(card_filter=[card_filter])  # type: ignore
-        if not getattr(connector, "card_present", False):
-            raise RuntimeError("card absent")
 
         # Ensure we have a live connection object regardless of pyscard version
         if not hasattr(connector.cardservice, "connection"):
@@ -61,6 +59,16 @@ def _connect_or_skip(card_filter: str):
             connection.connect(CardConnection.T1_protocol)
         except Exception:
             pass
+
+        # Query the card status rather than relying on card_present. This mirrors
+        # the connection workflow in seedkeeper_utils and avoids false negatives
+        # on some platforms where card_present is not reliable.
+        try:
+            status = connector.card_get_status()
+            if not status or len(status) < 4 or len(status[3]) == 0:
+                raise RuntimeError("card status unavailable")
+        except Exception as exc:  # pragma: no cover - hardware not present
+            raise RuntimeError(f"status check failed: {exc}") from exc
 
         # Select the requested applet so subsequent commands target it
         try:
