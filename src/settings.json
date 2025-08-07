@@ -33,7 +33,7 @@
     "qr_brightness_tips": "E",
     "partner_logos": "E",
     "display_config": "st7789_240x240",
-    "hardware_config": "FOX_22",
+    "hardware_config": "FOX_40",
     "color_inverted": "D",
     "qr_background_color": 62
 }

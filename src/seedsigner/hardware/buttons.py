@@ -40,7 +40,8 @@ class HardwareButtons(Singleton):
             for name in cls.BUTTON_NAMES:
                 pin_selector = pin_mapping[name]
                 # Input with pull-up
-                cls._instance._gpio_pins[name] = GPIO(*pin_selector, "in", bias="pull_up")
+                # cls._instance._gpio_pins[name] = GPIO(*pin_selector, "in", bias="pull_up")
+                cls._instance._gpio_pins[name] = GPIO(*pin_selector, "in")
 
             cls._instance.override_ind = False
 
