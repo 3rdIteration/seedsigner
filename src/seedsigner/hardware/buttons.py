@@ -225,6 +225,7 @@ class HardwareButtons(Singleton):
                     return True
             return False
         else:
+            pygame.event.pump()
             pressed = pygame.key.get_pressed()
             for key in keys:
                 pg_key = self.reverse_map.get(key)
@@ -242,6 +243,7 @@ class HardwareButtons(Singleton):
                     return True
             return False
         else:
+            pygame.event.pump()
             pressed = pygame.key.get_pressed()
             for key in HardwareButtonsConstants.ALL_KEYS:
                 pg_key = self.reverse_map.get(key)

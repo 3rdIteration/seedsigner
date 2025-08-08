@@ -51,6 +51,8 @@ class DesktopDisplay:
         )
         self.window.blit(pg_img, (self.left_width * self.scale, 0))
         self.draw_buttons()
+        # Pump events to keep the window responsive even when no input is read
+        self.pygame.event.pump()
         self.pygame.display.flip()
 
     def draw_buttons(self):
