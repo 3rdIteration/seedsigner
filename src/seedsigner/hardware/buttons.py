@@ -1,7 +1,14 @@
 import logging
 from typing import List
-import RPi.GPIO as GPIO
 import time
+
+try:
+    import RPi.GPIO as GPIO
+    USING_GPIO = True
+except ModuleNotFoundError:
+    USING_GPIO = False
+    GPIO = None
+    import pygame
 
 from seedsigner.models.singleton import Singleton
 
@@ -9,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 class HardwareButtons(Singleton):
-    if GPIO.RPI_INFO['P1_REVISION'] == 3: #This indicates that we have revision 3 GPIO
+    if USING_GPIO and GPIO.RPI_INFO['P1_REVISION'] == 3:  # RPi with 40-pin GPIO
         logger.info("Detected 40pin GPIO (Rasbperry Pi 2 and above)")
         KEY_UP_PIN = 31
         KEY_DOWN_PIN = 35
@@ -21,7 +28,7 @@ class HardwareButtons(Singleton):
         KEY2_PIN = 38
         KEY3_PIN = 36
 
-    else:
+    elif USING_GPIO:  # Older 26-pin models
         logger.info("Assuming 26 Pin GPIO (Raspberry P1 1)")
         KEY_UP_PIN = 5
         KEY_DOWN_PIN = 11
@@ -33,6 +40,17 @@ class HardwareButtons(Singleton):
         KEY2_PIN = 12
         KEY3_PIN = 8
 
+    else:  # Desktop/keyboard mode
+        KEY_UP_PIN = 1
+        KEY_DOWN_PIN = 2
+        KEY_LEFT_PIN = 3
+        KEY_RIGHT_PIN = 4
+        KEY_PRESS_PIN = 5
+
+        KEY1_PIN = 6
+        KEY2_PIN = 7
+        KEY3_PIN = 8
+
 
     @classmethod
     def get_instance(cls):
@@ -40,18 +58,33 @@ class HardwareButtons(Singleton):
         if cls._instance is None:
             cls._instance = cls.__new__(cls)
 
-            #init GPIO
-            GPIO.setmode(GPIO.BOARD)
-            GPIO.setup(HardwareButtons.KEY_UP_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)    # Input with pull-up
-            GPIO.setup(HardwareButtons.KEY_DOWN_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)  # Input with pull-up
-            GPIO.setup(HardwareButtons.KEY_LEFT_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)  # Input with pull-up
-            GPIO.setup(HardwareButtons.KEY_RIGHT_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP) # Input with pull-up
-            GPIO.setup(HardwareButtons.KEY_PRESS_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP) # Input with pull-up
-            GPIO.setup(HardwareButtons.KEY1_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)      # Input with pull-up
-            GPIO.setup(HardwareButtons.KEY2_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)      # Input with pull-up
-            GPIO.setup(HardwareButtons.KEY3_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)      # Input with pull-up
+            if USING_GPIO:
+                # init GPIO hardware
+                GPIO.setmode(GPIO.BOARD)
+                GPIO.setup(HardwareButtons.KEY_UP_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+                GPIO.setup(HardwareButtons.KEY_DOWN_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+                GPIO.setup(HardwareButtons.KEY_LEFT_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+                GPIO.setup(HardwareButtons.KEY_RIGHT_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+                GPIO.setup(HardwareButtons.KEY_PRESS_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+                GPIO.setup(HardwareButtons.KEY1_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+                GPIO.setup(HardwareButtons.KEY2_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+                GPIO.setup(HardwareButtons.KEY3_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
-            cls._instance.GPIO = GPIO
+                cls._instance.GPIO = GPIO
+            else:
+                pygame.init()
+                cls._instance.key_map = {
+                    pygame.K_UP: HardwareButtons.KEY_UP_PIN,
+                    pygame.K_DOWN: HardwareButtons.KEY_DOWN_PIN,
+                    pygame.K_LEFT: HardwareButtons.KEY_LEFT_PIN,
+                    pygame.K_RIGHT: HardwareButtons.KEY_RIGHT_PIN,
+                    pygame.K_RETURN: HardwareButtons.KEY_PRESS_PIN,
+                    pygame.K_1: HardwareButtons.KEY1_PIN,
+                    pygame.K_2: HardwareButtons.KEY2_PIN,
+                    pygame.K_3: HardwareButtons.KEY3_PIN,
+                }
+                cls._instance.reverse_map = {v: k for k, v in cls._instance.key_map.items()}
+
             cls._instance.override_ind = False
 
             # Track state over time so we can apply input delays/ignores as needed
@@ -77,70 +110,58 @@ class HardwareButtons(Singleton):
 
         Optionally override the wait by calling `trigger_override()`.
         """
-        # TODO: Refactor to keep control in the Controller and not here
         from seedsigner.controller import Controller
         controller = Controller.get_instance()
         self.override_ind = False
 
         while True:
             if self.override_ind:
-                # Break out of the wait_for without waiting for user input
                 self.override_ind = False
                 return HardwareButtonsConstants.OVERRIDE
 
             cur_time = int(time.time() * 1000)
             if cur_time - self.last_input_time > controller.screensaver_activation_ms and not controller.is_screensaver_running:
-                # Start the screensaver. Will block execution until input detected.
                 controller.start_screensaver()
-
-                # We're back. Update last_input_time to now.
                 self.update_last_input_time()
-
-                # Freeze any further processing for a moment to avoid having the wakeup
-                #   input register in the resumed UI.
                 time.sleep(self.next_repeat_threshold / 1000.0)
-
-                # Resume from a fresh loop
                 continue
 
-            # Check each candidate key to see if it was pressed
-            for key in keys:
-                if self.GPIO.input(key) == GPIO.LOW:
-                    if self.cur_input != key:
-                        self.cur_input = key
-                        self.cur_input_started = int(time.time() * 1000)  # in milliseconds
-                        self.last_input_time = self.cur_input_started
-                        return key
-
-                    else:
-                        # Still pressing the same input
-                        if cur_time - self.last_input_time > self.next_repeat_threshold:
-                            # Too much time has elapsed to consider this the same
-                            #   continuous input. Treat as a new separate press.
+            if USING_GPIO:
+                for key in keys:
+                    if self.GPIO.input(key) == GPIO.LOW:
+                        if self.cur_input != key:
+                            self.cur_input = key
                             self.cur_input_started = cur_time
                             self.last_input_time = cur_time
                             return key
-
-                        elif cur_time - self.cur_input_started > self.first_repeat_threshold:
-                            # We're good to relay this immediately as continuous
-                            #   input.
-                            self.last_input_time = cur_time
-                            return key
-
                         else:
-                            # We're not yet at the first repeat threshold; triggering
-                            #   a key now would be too soon and yields a bad user
-                            #   experience when only a single click was intended but
-                            #   a second input is processed because of race condition
-                            #   against human response time to release the button.
-                            # So there has to be a delay before we allow the first
-                            #   continuous repeat to register. So we'll ignore this
-                            #   round's input and **won't update any of our
-                            #   timekeeping vars**. But once we cross the threshold,
-                            #   we let the repeats fly.
-                            pass
-
-            time.sleep(0.01) # wait 10 ms to give CPU chance to do other things
+                            if cur_time - self.last_input_time > self.next_repeat_threshold:
+                                self.cur_input_started = cur_time
+                                self.last_input_time = cur_time
+                                return key
+                            elif cur_time - self.cur_input_started > self.first_repeat_threshold:
+                                self.last_input_time = cur_time
+                                return key
+                time.sleep(0.01)
+            else:
+                for event in pygame.event.get():
+                    if event.type == pygame.KEYDOWN:
+                        mapped = self.key_map.get(event.key)
+                        if mapped in keys:
+                            if self.cur_input != mapped:
+                                self.cur_input = mapped
+                                self.cur_input_started = cur_time
+                                self.last_input_time = cur_time
+                                return mapped
+                            else:
+                                if cur_time - self.last_input_time > self.next_repeat_threshold:
+                                    self.cur_input_started = cur_time
+                                    self.last_input_time = cur_time
+                                    return mapped
+                                elif cur_time - self.cur_input_started > self.first_repeat_threshold:
+                                    self.last_input_time = cur_time
+                                    return mapped
+                time.sleep(0.01)
 
 
     def update_last_input_time(self):
@@ -156,25 +177,42 @@ class HardwareButtons(Singleton):
         """ Returns True if one of the target keys/key is pressed """
         if key:
             keys = [key]
-        for key in keys:
-            if self.GPIO.input(key) == self.GPIO.LOW:
-                self.update_last_input_time()
-                return True
+
+        if USING_GPIO:
+            for key in keys:
+                if self.GPIO.input(key) == self.GPIO.LOW:
+                    self.update_last_input_time()
+                    return True
+            return False
         else:
+            pressed = pygame.key.get_pressed()
+            for key in keys:
+                pg_key = self.reverse_map.get(key)
+                if pg_key and pressed[pg_key]:
+                    self.update_last_input_time()
+                    return True
             return False
 
 
     def has_any_input(self) -> bool:
         """ Returns True if any of the keys are pressed """
-        for key in HardwareButtonsConstants.ALL_KEYS:
-            if self.GPIO.input(key) == GPIO.LOW:
-                return True
-        return False
+        if USING_GPIO:
+            for key in HardwareButtonsConstants.ALL_KEYS:
+                if self.GPIO.input(key) == GPIO.LOW:
+                    return True
+            return False
+        else:
+            pressed = pygame.key.get_pressed()
+            for key in HardwareButtonsConstants.ALL_KEYS:
+                pg_key = self.reverse_map.get(key)
+                if pg_key and pressed[pg_key]:
+                    return True
+            return False
 
 
 # class used as short hand for static button/channel lookup values
 class HardwareButtonsConstants:
-    if GPIO.RPI_INFO['P1_REVISION'] == 3: #This indicates that we have revision 3 GPIO
+    if USING_GPIO and GPIO.RPI_INFO['P1_REVISION'] == 3:
         KEY_UP = 31
         KEY_DOWN = 35
         KEY_LEFT = 29
@@ -184,7 +222,7 @@ class HardwareButtonsConstants:
         KEY1 = 40
         KEY2 = 38
         KEY3 = 36
-    else:
+    elif USING_GPIO:
         KEY_UP = 5
         KEY_DOWN = 11
         KEY_LEFT = 3
@@ -194,6 +232,15 @@ class HardwareButtonsConstants:
         KEY1 = 16
         KEY2 = 12
         KEY3 = 8
+    else:
+        KEY_UP = HardwareButtons.KEY_UP_PIN
+        KEY_DOWN = HardwareButtons.KEY_DOWN_PIN
+        KEY_LEFT = HardwareButtons.KEY_LEFT_PIN
+        KEY_RIGHT = HardwareButtons.KEY_RIGHT_PIN
+        KEY_PRESS = HardwareButtons.KEY_PRESS_PIN
+        KEY1 = HardwareButtons.KEY1_PIN
+        KEY2 = HardwareButtons.KEY2_PIN
+        KEY3 = HardwareButtons.KEY3_PIN
 
     OVERRIDE = 1000
 

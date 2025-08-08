@@ -10,7 +10,6 @@ from seedsigner.hardware.displays.display_driver import (
     DISPLAY_TYPE__DESKTOP,
     DisplayDriver,
 )
-from seedsigner.hardware.displays.ili9341 import ILI9341, ILI9341_TFTWIDTH, ILI9341_TFTHEIGHT
 from seedsigner.models.settings import Settings
 from seedsigner.models.settings_definition import SettingsConstants
 from seedsigner.models.singleton import ConfigurableSingleton

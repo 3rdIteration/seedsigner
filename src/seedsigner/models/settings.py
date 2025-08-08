@@ -7,7 +7,26 @@ import platform
 
 from typing import List
 
-import RPi.GPIO as GPIO
+try:
+    import RPi.GPIO as GPIO
+    USING_MOCK_GPIO = False
+except ModuleNotFoundError:  # Running on non-Raspberry Pi hardware
+    USING_MOCK_GPIO = True
+
+    class MockGPIO:
+        RPI_INFO = {"P1_REVISION": 3, "TYPE": "Unknown"}
+        BOARD = IN = OUT = PUD_UP = LOW = HIGH = None
+
+        def setmode(self, *args, **kwargs):
+            pass
+
+        def setup(self, *args, **kwargs):
+            pass
+
+        def input(self, *args, **kwargs):
+            return self.HIGH
+
+    GPIO = MockGPIO()
 
 from seedsigner.models.settings_definition import SettingsConstants, SettingsDefinition
 from seedsigner.models.singleton import Singleton
@@ -52,6 +71,11 @@ class Settings(Singleton):
 
             # Load default/persistent locale setting
             settings.load_locale()
+
+            if USING_MOCK_GPIO:
+                settings._data[SettingsConstants.SETTING__DISPLAY_CONFIGURATION] = (
+                    SettingsConstants.DISPLAY_CONFIGURATION__DESKTOP__240x240
+                )
 
         return cls._instance
 
