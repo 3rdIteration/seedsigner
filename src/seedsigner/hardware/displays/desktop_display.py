@@ -3,7 +3,8 @@ from PIL import Image
 from seedsigner.hardware.buttons import (
     HardwareButtons,
     DESKTOP_BUTTON_LAYOUT,
-    DESKTOP_PANEL_HEIGHT,
+    DESKTOP_LEFT_WIDTH,
+    DESKTOP_RIGHT_WIDTH,
 )
 
 
@@ -23,11 +24,13 @@ class DesktopDisplay:
         self.width = width
         self.height = height
         self.scale = scale
-        self.panel_height = DESKTOP_PANEL_HEIGHT
+        self.left_width = DESKTOP_LEFT_WIDTH
+        self.right_width = DESKTOP_RIGHT_WIDTH
         self.pygame.init()
+        total_width = self.width + self.left_width + self.right_width
         # Create a window scaled up so it's easier to view on desktop
         self.window = self.pygame.display.set_mode(
-            (self.width * self.scale, (self.height + self.panel_height) * self.scale)
+            (total_width * self.scale, self.height * self.scale)
         )
         self.pygame.display.set_caption("SeedSigner Desktop Display")
         self.button_layout = DESKTOP_BUTTON_LAYOUT
@@ -46,41 +49,58 @@ class DesktopDisplay:
         pg_img = self.pygame.transform.scale(
             pg_img, (self.width * self.scale, self.height * self.scale)
         )
-        self.window.blit(pg_img, (0, 0))
+        self.window.blit(pg_img, (self.left_width * self.scale, 0))
         self.draw_buttons()
         self.pygame.display.flip()
 
     def draw_buttons(self):
-        """Render clickable button overlays below the simulated display."""
-        panel_rect = self.pygame.Rect(
-            0, self.height * self.scale, self.width * self.scale, self.panel_height * self.scale
+        """Render clickable button overlays alongside the simulated display."""
+        left_rect = self.pygame.Rect(
+            0, 0, self.left_width * self.scale, self.height * self.scale
         )
-        self.pygame.draw.rect(self.window, (30, 30, 30), panel_rect)
+        right_rect = self.pygame.Rect(
+            (self.left_width + self.width) * self.scale,
+            0,
+            self.right_width * self.scale,
+            self.height * self.scale,
+        )
+        self.pygame.draw.rect(self.window, (30, 30, 30), left_rect)
+        self.pygame.draw.rect(self.window, (30, 30, 30), right_rect)
 
         for key, (x, y, w, h) in self.button_layout.items():
             rect = self.pygame.Rect(x * self.scale, y * self.scale, w * self.scale, h * self.scale)
             self.pygame.draw.rect(self.window, (80, 80, 80), rect, border_radius=4)
 
-            if key == HardwareButtons.KEY_UP_PIN:
-                label = "↑"
-            elif key == HardwareButtons.KEY_DOWN_PIN:
-                label = "↓"
-            elif key == HardwareButtons.KEY_LEFT_PIN:
-                label = "←"
-            elif key == HardwareButtons.KEY_RIGHT_PIN:
-                label = "→"
+            if key in (
+                HardwareButtons.KEY_UP_PIN,
+                HardwareButtons.KEY_DOWN_PIN,
+                HardwareButtons.KEY_LEFT_PIN,
+                HardwareButtons.KEY_RIGHT_PIN,
+            ):
+                self._draw_arrow(rect, key)
             elif key == HardwareButtons.KEY_PRESS_PIN:
-                label = "OK"
+                self._draw_label(rect, "OK")
             elif key == HardwareButtons.KEY1_PIN:
-                label = "1"
+                self._draw_label(rect, "1")
             elif key == HardwareButtons.KEY2_PIN:
-                label = "2"
+                self._draw_label(rect, "2")
             elif key == HardwareButtons.KEY3_PIN:
-                label = "3"
-            else:
-                label = ""
+                self._draw_label(rect, "3")
 
-            if label:
-                surf = self.font.render(label, True, (255, 255, 255))
-                text_rect = surf.get_rect(center=rect.center)
-                self.window.blit(surf, text_rect)
+    def _draw_label(self, rect, text):
+        surf = self.font.render(text, True, (255, 255, 255))
+        text_rect = surf.get_rect(center=rect.center)
+        self.window.blit(surf, text_rect)
+
+    def _draw_arrow(self, rect, key):
+        cx, cy = rect.center
+        s = rect.width // 3
+        if key == HardwareButtons.KEY_UP_PIN:
+            pts = [(cx, cy - s), (cx - s, cy + s), (cx + s, cy + s)]
+        elif key == HardwareButtons.KEY_DOWN_PIN:
+            pts = [(cx, cy + s), (cx - s, cy - s), (cx + s, cy - s)]
+        elif key == HardwareButtons.KEY_LEFT_PIN:
+            pts = [(cx - s, cy), (cx + s, cy - s), (cx + s, cy + s)]
+        elif key == HardwareButtons.KEY_RIGHT_PIN:
+            pts = [(cx + s, cy), (cx - s, cy - s), (cx - s, cy + s)]
+        self.pygame.draw.polygon(self.window, (255, 255, 255), pts)

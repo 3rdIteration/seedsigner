@@ -65,7 +65,7 @@ class Camera(Singleton):
         except Exception:
             try:
                 import cv2  # type: ignore
-            except ModuleNotFoundError as e:
+            except Exception as e:
                 raise ModuleNotFoundError(
                     "OpenCV is required for desktop camera support; install requirements-desktop.txt"
                 ) from e

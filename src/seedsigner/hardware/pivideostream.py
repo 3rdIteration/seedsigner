@@ -12,7 +12,7 @@ except Exception:  # ModuleNotFoundError, ImportError, etc.
     PICAMERA_AVAILABLE = False
     try:
         import cv2  # type: ignore
-    except ModuleNotFoundError:
+    except Exception:
         cv2 = None
 
 
