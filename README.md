@@ -433,3 +433,5 @@ See the [SeedSigner OS repo](https://github.com/SeedSigner/seedsigner-os/) for i
 
 # Developer Local Build Instructions
 Raspberry Pi OS is commonly used for development. See the [Raspberry Pi OS Build Instructions](docs/raspberry_pi_os_build_instructions.md)
+
+To experiment on a regular PC, a pygame‑based simulator is available. See the [Desktop Simulation guide](docs/desktop_simulation.md) for installation and usage instructions.

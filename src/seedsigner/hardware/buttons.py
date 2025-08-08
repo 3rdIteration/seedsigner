@@ -1,6 +1,6 @@
 import logging
-from typing import List
 import time
+from typing import Dict, List, Tuple
 
 try:
     import RPi.GPIO as GPIO
@@ -16,6 +16,12 @@ except ModuleNotFoundError:
 from seedsigner.models.singleton import Singleton
 
 logger = logging.getLogger(__name__)
+
+# Dimensions for the desktop simulation
+DESKTOP_SCALE = 2  # Updated when the desktop display is created
+DESKTOP_PANEL_HEIGHT = 80
+DESKTOP_WIDTH = 240
+DESKTOP_HEIGHT = 240
 
 
 class HardwareButtons(Singleton):
@@ -56,6 +62,13 @@ class HardwareButtons(Singleton):
 
 
     @classmethod
+    def set_desktop_scale(cls, scale: int) -> None:
+        """Override the default scaling for desktop mode."""
+        global DESKTOP_SCALE
+        DESKTOP_SCALE = scale
+
+
+    @classmethod
     def get_instance(cls):
         # This is the only way to access the one and only instance
         if cls._instance is None:
@@ -80,6 +93,7 @@ class HardwareButtons(Singleton):
                         "pygame is required for desktop input; install requirements-desktop.txt"
                     )
                 pygame.init()
+                cls._instance.scale = DESKTOP_SCALE
                 cls._instance.key_map = {
                     pygame.K_UP: HardwareButtons.KEY_UP_PIN,
                     pygame.K_DOWN: HardwareButtons.KEY_DOWN_PIN,
@@ -91,6 +105,15 @@ class HardwareButtons(Singleton):
                     pygame.K_3: HardwareButtons.KEY3_PIN,
                 }
                 cls._instance.reverse_map = {v: k for k, v in cls._instance.key_map.items()}
+                cls._instance.button_rects = {
+                    key: pygame.Rect(
+                        x * cls._instance.scale,
+                        y * cls._instance.scale,
+                        w * cls._instance.scale,
+                        h * cls._instance.scale,
+                    )
+                    for key, (x, y, w, h) in DESKTOP_BUTTON_LAYOUT.items()
+                }
 
             cls._instance.override_ind = False
 
@@ -154,20 +177,29 @@ class HardwareButtons(Singleton):
                 for event in pygame.event.get():
                     if event.type == pygame.KEYDOWN:
                         mapped = self.key_map.get(event.key)
-                        if mapped in keys:
-                            if self.cur_input != mapped:
-                                self.cur_input = mapped
+                    elif event.type == pygame.MOUSEBUTTONDOWN:
+                        mapped = None
+                        for key, rect in self.button_rects.items():
+                            if rect.collidepoint(event.pos):
+                                mapped = key
+                                break
+                    else:
+                        mapped = None
+
+                    if mapped in keys:
+                        if self.cur_input != mapped:
+                            self.cur_input = mapped
+                            self.cur_input_started = cur_time
+                            self.last_input_time = cur_time
+                            return mapped
+                        else:
+                            if cur_time - self.last_input_time > self.next_repeat_threshold:
                                 self.cur_input_started = cur_time
                                 self.last_input_time = cur_time
                                 return mapped
-                            else:
-                                if cur_time - self.last_input_time > self.next_repeat_threshold:
-                                    self.cur_input_started = cur_time
-                                    self.last_input_time = cur_time
-                                    return mapped
-                                elif cur_time - self.cur_input_started > self.first_repeat_threshold:
-                                    self.last_input_time = cur_time
-                                    return mapped
+                            elif cur_time - self.cur_input_started > self.first_repeat_threshold:
+                                self.last_input_time = cur_time
+                                return mapped
                 time.sleep(0.01)
 
 
@@ -215,6 +247,25 @@ class HardwareButtons(Singleton):
                 if pg_key and pressed[pg_key]:
                     return True
             return False
+
+
+# Coordinates for clickable desktop buttons (unscaled)
+D_PAD_SIZE = 30
+D_PAD_CENTER_X = 40
+D_PAD_CENTER_Y = DESKTOP_HEIGHT + DESKTOP_PANEL_HEIGHT // 2
+
+DESKTOP_BUTTON_LAYOUT: Dict[int, Tuple[int, int, int, int]] = {
+    # D-pad
+    HardwareButtons.KEY_UP_PIN: (D_PAD_CENTER_X - D_PAD_SIZE // 2, D_PAD_CENTER_Y - D_PAD_SIZE * 3 // 2, D_PAD_SIZE, D_PAD_SIZE),
+    HardwareButtons.KEY_DOWN_PIN: (D_PAD_CENTER_X - D_PAD_SIZE // 2, D_PAD_CENTER_Y + D_PAD_SIZE // 2, D_PAD_SIZE, D_PAD_SIZE),
+    HardwareButtons.KEY_LEFT_PIN: (D_PAD_CENTER_X - D_PAD_SIZE * 3 // 2, D_PAD_CENTER_Y - D_PAD_SIZE // 2, D_PAD_SIZE, D_PAD_SIZE),
+    HardwareButtons.KEY_RIGHT_PIN: (D_PAD_CENTER_X + D_PAD_SIZE // 2, D_PAD_CENTER_Y - D_PAD_SIZE // 2, D_PAD_SIZE, D_PAD_SIZE),
+    HardwareButtons.KEY_PRESS_PIN: (D_PAD_CENTER_X - D_PAD_SIZE // 2, D_PAD_CENTER_Y - D_PAD_SIZE // 2, D_PAD_SIZE, D_PAD_SIZE),
+    # Function buttons
+    HardwareButtons.KEY1_PIN: (100, DESKTOP_HEIGHT + 20, 40, 40),
+    HardwareButtons.KEY2_PIN: (150, DESKTOP_HEIGHT + 20, 40, 40),
+    HardwareButtons.KEY3_PIN: (200, DESKTOP_HEIGHT + 20, 40, 40),
+}
 
 
 # class used as short hand for static button/channel lookup values
