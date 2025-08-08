@@ -252,7 +252,7 @@ class HardwareButtons(Singleton):
 
 # Coordinates for clickable desktop buttons (unscaled)
 D_PAD_SIZE = 40
-D_PAD_CENTER_X = DESKTOP_LEFT_WIDTH // 2 - D_PAD_SIZE // 2
+D_PAD_CENTER_X = DESKTOP_LEFT_WIDTH // 2
 D_PAD_CENTER_Y = DESKTOP_HEIGHT // 2
 
 BTN_SIZE = 40
