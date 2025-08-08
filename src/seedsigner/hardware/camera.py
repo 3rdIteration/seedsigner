@@ -63,7 +63,12 @@ class Camera(Singleton):
             self._picamera = PiCamera(resolution=resolution, framerate=24)
             self._picamera.start_preview()
         except Exception:
-            import cv2
+            try:
+                import cv2  # type: ignore
+            except ModuleNotFoundError as e:
+                raise ModuleNotFoundError(
+                    "OpenCV is required for desktop camera support; install requirements-desktop.txt"
+                ) from e
             self._picamera = cv2.VideoCapture(self._camera_index)
             self._picamera.set(cv2.CAP_PROP_FRAME_WIDTH, resolution[0])
             self._picamera.set(cv2.CAP_PROP_FRAME_HEIGHT, resolution[1])

@@ -10,7 +10,10 @@ try:
     PICAMERA_AVAILABLE = True
 except Exception:  # ModuleNotFoundError, ImportError, etc.
     PICAMERA_AVAILABLE = False
-    import cv2
+    try:
+        import cv2  # type: ignore
+    except ModuleNotFoundError:
+        cv2 = None
 
 
 class PiVideoStream:
@@ -30,6 +33,10 @@ class PiVideoStream:
             )
             self.use_picamera = True
         else:
+            if cv2 is None:
+                raise ModuleNotFoundError(
+                    "OpenCV is required for desktop camera support; install requirements-desktop.txt"
+                )
             self.camera = cv2.VideoCapture(self.device_index)
             self.camera.set(cv2.CAP_PROP_FRAME_WIDTH, resolution[0])
             self.camera.set(cv2.CAP_PROP_FRAME_HEIGHT, resolution[1])

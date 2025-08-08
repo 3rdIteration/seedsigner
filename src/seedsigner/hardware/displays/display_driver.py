@@ -43,7 +43,12 @@ class DisplayDriver:
             raise Exception("ILI9486 display not implemented yet")
 
         elif self.display_type == DISPLAY_TYPE__DESKTOP:
-            from seedsigner.hardware.displays.desktop_display import DesktopDisplay
+            try:
+                from seedsigner.hardware.displays.desktop_display import DesktopDisplay
+            except ModuleNotFoundError as e:
+                raise ModuleNotFoundError(
+                    "Desktop display requires pygame; install requirements-desktop.txt"
+                ) from e
 
             # Desktop display can support arbitrary sizes; defaults are handled by caller
             self.display = DesktopDisplay(width=width, height=height)

@@ -8,7 +8,10 @@ try:
 except ModuleNotFoundError:
     USING_GPIO = False
     GPIO = None
-    import pygame
+    try:
+        import pygame  # type: ignore
+    except ModuleNotFoundError:
+        pygame = None
 
 from seedsigner.models.singleton import Singleton
 
@@ -72,6 +75,10 @@ class HardwareButtons(Singleton):
 
                 cls._instance.GPIO = GPIO
             else:
+                if pygame is None:
+                    raise ModuleNotFoundError(
+                        "pygame is required for desktop input; install requirements-desktop.txt"
+                    )
                 pygame.init()
                 cls._instance.key_map = {
                     pygame.K_UP: HardwareButtons.KEY_UP_PIN,

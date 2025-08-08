@@ -77,7 +77,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [windows-latest, macos-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
         python-version: ["3.12"]
     defaults:
       run:
@@ -91,10 +91,15 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+      - name: Install OS packages
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libzbar0 libpcsclite-dev pcscd swig
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt -r tests/requirements.txt
+          pip install -r requirements.txt -r requirements-desktop.txt -r tests/requirements.txt
           pip install .
       - name: Test with pytest
         run: |
