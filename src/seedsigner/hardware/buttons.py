@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 # Dimensions for the desktop simulation
 DESKTOP_SCALE = 2  # Updated when the desktop display is created
-DESKTOP_LEFT_WIDTH = 80
+DESKTOP_LEFT_WIDTH = 160
 DESKTOP_RIGHT_WIDTH = 80
 DESKTOP_WIDTH = 240
 DESKTOP_HEIGHT = 240
@@ -252,7 +252,7 @@ class HardwareButtons(Singleton):
 
 # Coordinates for clickable desktop buttons (unscaled)
 D_PAD_SIZE = 40
-D_PAD_CENTER_X = DESKTOP_LEFT_WIDTH // 2
+D_PAD_CENTER_X = DESKTOP_LEFT_WIDTH // 2 - D_PAD_SIZE // 2
 D_PAD_CENTER_Y = DESKTOP_HEIGHT // 2
 
 BTN_SIZE = 40
