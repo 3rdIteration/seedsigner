@@ -38,5 +38,8 @@ shamir-mnemonic==0.3.0 \
 # Desktop simulation dependencies
 pygame==2.5.2 \
     --hash=sha256:31648d38ecdc2335ffc0e38fb18a84b3339730521505dac68514f83a1092e3f4 \
-    --hash=sha256:0e24d05184e4195fe5ebcdce8b18ecb086f00182b9ae460a86682d312ce8d31f
-opencv-python==4.9.0.80 --hash=sha256:e4088cab82b66a3b37ffc452976b14a3c599269c247895ae9ceb4066d8188a57
+    --hash=sha256:0e24d05184e4195fe5ebcdce8b18ecb086f00182b9ae460a86682d312ce8d31f \
+    --hash=sha256:dd2d2650faf54f9a0f5bd0db8409f79609319725f8f08af6507a0609deadcad4
+opencv-python==4.9.0.80 \
+    --hash=sha256:e4088cab82b66a3b37ffc452976b14a3c599269c247895ae9ceb4066d8188a57 \
+    --hash=sha256:3f16f08e02b2a2da44259c7cc712e779eff1dd8b55fdb0323e8cab09548086c0
