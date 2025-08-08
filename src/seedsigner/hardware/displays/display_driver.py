@@ -1,8 +1,14 @@
 DISPLAY_TYPE__ST7789 = "st7789"
 DISPLAY_TYPE__ILI9341 = "ili9341"
 DISPLAY_TYPE__ILI9486 = "ili9486"
+DISPLAY_TYPE__DESKTOP = "desktop"
 
-ALL_DISPLAY_TYPES = [DISPLAY_TYPE__ST7789, DISPLAY_TYPE__ILI9341, DISPLAY_TYPE__ILI9486]
+ALL_DISPLAY_TYPES = [
+    DISPLAY_TYPE__ST7789,
+    DISPLAY_TYPE__ILI9341,
+    DISPLAY_TYPE__ILI9486,
+    DISPLAY_TYPE__DESKTOP,
+]
 
 
 class DisplayDriver:
@@ -35,6 +41,12 @@ class DisplayDriver:
         elif self.display_type == DISPLAY_TYPE__ILI9486:
             # TODO: improve performance of ili9486 driver
             raise Exception("ILI9486 display not implemented yet")
+
+        elif self.display_type == DISPLAY_TYPE__DESKTOP:
+            from seedsigner.hardware.displays.desktop_display import DesktopDisplay
+
+            # Desktop display can support arbitrary sizes; defaults are handled by caller
+            self.display = DesktopDisplay(width=width, height=height)
     
 
     def __str__(self):

@@ -1,65 +1,72 @@
-# import the necessary packages
 import logging
-from picamera.array import PiRGBArray
-from picamera import PiCamera
-from threading import Thread
 import time
+from threading import Thread
 
 logger = logging.getLogger(__name__)
 
+try:
+    from picamera.array import PiRGBArray
+    from picamera import PiCamera
+    PICAMERA_AVAILABLE = True
+except Exception:  # ModuleNotFoundError, ImportError, etc.
+    PICAMERA_AVAILABLE = False
+    import cv2
 
-# Modified from: https://github.com/jrosebr1/imutils
+
 class PiVideoStream:
-	def __init__(self, resolution=(320, 240), framerate=32, format="bgr", **kwargs):
-		# initialize the camera
-		self.camera = PiCamera(resolution=resolution, framerate=framerate, **kwargs)
+    """Video stream that falls back to OpenCV on desktops."""
 
-		# initialize the stream
-		self.rawCapture = PiRGBArray(self.camera, size=resolution)
-		self.stream = self.camera.capture_continuous(self.rawCapture,
-			format=format, use_video_port=True)
+    def __init__(self, resolution=(320, 240), framerate=32, format="bgr", device_index=0, **kwargs):
+        self.should_stop = False
+        self.is_stopped = True
+        self.frame = None
+        self.device_index = device_index
 
-		# initialize the frame and the variable used to indicate
-		# if the thread should be stopped
-		self.frame = None
-		self.should_stop = False
-		self.is_stopped = True
+        if PICAMERA_AVAILABLE:
+            self.camera = PiCamera(resolution=resolution, framerate=framerate, **kwargs)
+            self.rawCapture = PiRGBArray(self.camera, size=resolution)
+            self.stream = self.camera.capture_continuous(
+                self.rawCapture, format=format, use_video_port=True
+            )
+            self.use_picamera = True
+        else:
+            self.camera = cv2.VideoCapture(self.device_index)
+            self.camera.set(cv2.CAP_PROP_FRAME_WIDTH, resolution[0])
+            self.camera.set(cv2.CAP_PROP_FRAME_HEIGHT, resolution[1])
+            self.use_picamera = False
 
-	def start(self):
-		# start the thread to read frames from the video stream
-		t = Thread(target=self.update, args=())
-		t.daemon = True
-		t.start()
-		self.is_stopped = False
-		return self
+    def start(self):
+        t = Thread(target=self.update, args=())
+        t.daemon = True
+        t.start()
+        self.is_stopped = False
+        return self
 
-	def update(self):
-		# keep looping infinitely until the thread is stopped
-		for f in self.stream:
-			# grab the frame from the stream and clear the stream in
-			# preparation for the next frame
-			self.frame = f.array
-			self.rawCapture.truncate(0)
+    def update(self):
+        if self.use_picamera:
+            for f in self.stream:
+                self.frame = f.array
+                self.rawCapture.truncate(0)
+                if self.should_stop:
+                    logger.info("PiVideoStream: closing everything")
+                    self.stream.close()
+                    self.rawCapture.close()
+                    self.camera.close()
+                    self.should_stop = False
+                    self.is_stopped = True
+                    return
+        else:
+            while not self.should_stop:
+                ret, frame = self.camera.read()
+                if ret:
+                    self.frame = frame
+            self.camera.release()
+            self.is_stopped = True
 
-			# if the thread indicator variable is set, stop the thread
-			# and resource camera resources
-			if self.should_stop:
-				logger.info("PiVideoStream: closing everything")
-				self.stream.close()
-				self.rawCapture.close()
-				self.camera.close()
-				self.should_stop = False
-				self.is_stopped = True
-				return
+    def read(self):
+        return self.frame
 
-	def read(self):
-		# return the frame most recently read
-		return self.frame
-
-	def stop(self):
-		# indicate that the thread should be stopped
-		self.should_stop = True
-
-		# Block in this thread until stopped
-		while not self.is_stopped:
-			pass
+    def stop(self):
+        self.should_stop = True
+        while not self.is_stopped:
+            time.sleep(0.01)

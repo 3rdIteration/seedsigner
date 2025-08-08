@@ -31,3 +31,9 @@ smbus2==0.4.3 \
 shamir-mnemonic==0.3.0 \
     --hash=sha256:188c6b5bd00d5e756e12e2b186c3cb7c98ff7ff44df608d4c1d2077f6b6e730f \
     --hash=sha256:bc04886a1ddfe2a64d8a3ec51abf0f664d98d5b557cc7e78a8ad2d10a1d87438
+
+# Desktop simulation dependencies
+pygame==2.5.2 \
+    --hash=sha256:31648d38ecdc2335ffc0e38fb18a84b3339730521505dac68514f83a1092e3f4 \
+    --hash=sha256:0e24d05184e4195fe5ebcdce8b18ecb086f00182b9ae460a86682d312ce8d31f
+opencv-python==4.9.0.80 --hash=sha256:e4088cab82b66a3b37ffc452976b14a3c599269c247895ae9ceb4066d8188a57
