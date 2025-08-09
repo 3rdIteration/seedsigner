@@ -23,6 +23,9 @@ DESKTOP_LEFT_WIDTH = 160
 DESKTOP_RIGHT_WIDTH = 80
 DESKTOP_WIDTH = 240
 DESKTOP_HEIGHT = 240
+D_PAD_SIZE = 40
+BTN_SIZE = 40
+BTN_SPACING = 10
 
 
 class HardwareButtons(Singleton):
@@ -67,6 +70,24 @@ class HardwareButtons(Singleton):
         """Override the default scaling for desktop mode."""
         global DESKTOP_SCALE
         DESKTOP_SCALE = scale
+
+    @classmethod
+    def set_desktop_dimensions(cls, width: int, height: int) -> None:
+        """Override the simulated screen size in desktop mode."""
+        global DESKTOP_WIDTH, DESKTOP_HEIGHT
+        DESKTOP_WIDTH = width
+        DESKTOP_HEIGHT = height
+        _recalc_desktop_layout()
+        if cls._instance is not None and not USING_GPIO:
+            cls._instance.button_rects = {
+                key: pygame.Rect(
+                    x * cls._instance.scale,
+                    y * cls._instance.scale,
+                    w * cls._instance.scale,
+                    h * cls._instance.scale,
+                )
+                for key, (x, y, w, h) in DESKTOP_BUTTON_LAYOUT.items()
+            }
 
 
     @classmethod
@@ -253,67 +274,68 @@ class HardwareButtons(Singleton):
 
 
 # Coordinates for clickable desktop buttons (unscaled)
-D_PAD_SIZE = 40
-D_PAD_CENTER_X = DESKTOP_LEFT_WIDTH // 2
-D_PAD_CENTER_Y = DESKTOP_HEIGHT // 2
 
-BTN_SIZE = 40
-BTN_SPACING = 10
-BTN_X = DESKTOP_LEFT_WIDTH + DESKTOP_WIDTH + (DESKTOP_RIGHT_WIDTH - BTN_SIZE) // 2
-BTN_TOP = DESKTOP_HEIGHT // 2 - (3 * BTN_SIZE + 2 * BTN_SPACING) // 2
+def _recalc_desktop_layout() -> None:
+    global D_PAD_CENTER_X, D_PAD_CENTER_Y, BTN_X, BTN_TOP, DESKTOP_BUTTON_LAYOUT
+    D_PAD_CENTER_X = DESKTOP_LEFT_WIDTH // 2
+    D_PAD_CENTER_Y = DESKTOP_HEIGHT // 2
+    BTN_X = DESKTOP_LEFT_WIDTH + DESKTOP_WIDTH + (DESKTOP_RIGHT_WIDTH - BTN_SIZE) // 2
+    BTN_TOP = DESKTOP_HEIGHT // 2 - (3 * BTN_SIZE + 2 * BTN_SPACING) // 2
+    DESKTOP_BUTTON_LAYOUT = {
+        # D-pad on the left
+        HardwareButtons.KEY_UP_PIN: (
+            D_PAD_CENTER_X - D_PAD_SIZE // 2,
+            D_PAD_CENTER_Y - D_PAD_SIZE * 3 // 2,
+            D_PAD_SIZE,
+            D_PAD_SIZE,
+        ),
+        HardwareButtons.KEY_DOWN_PIN: (
+            D_PAD_CENTER_X - D_PAD_SIZE // 2,
+            D_PAD_CENTER_Y + D_PAD_SIZE // 2,
+            D_PAD_SIZE,
+            D_PAD_SIZE,
+        ),
+        HardwareButtons.KEY_LEFT_PIN: (
+            D_PAD_CENTER_X - D_PAD_SIZE * 3 // 2,
+            D_PAD_CENTER_Y - D_PAD_SIZE // 2,
+            D_PAD_SIZE,
+            D_PAD_SIZE,
+        ),
+        HardwareButtons.KEY_RIGHT_PIN: (
+            D_PAD_CENTER_X + D_PAD_SIZE // 2,
+            D_PAD_CENTER_Y - D_PAD_SIZE // 2,
+            D_PAD_SIZE,
+            D_PAD_SIZE,
+        ),
+        HardwareButtons.KEY_PRESS_PIN: (
+            D_PAD_CENTER_X - D_PAD_SIZE // 2,
+            D_PAD_CENTER_Y - D_PAD_SIZE // 2,
+            D_PAD_SIZE,
+            D_PAD_SIZE,
+        ),
+        # Function buttons stacked on the right
+        HardwareButtons.KEY1_PIN: (
+            BTN_X,
+            BTN_TOP,
+            BTN_SIZE,
+            BTN_SIZE,
+        ),
+        HardwareButtons.KEY2_PIN: (
+            BTN_X,
+            BTN_TOP + BTN_SIZE + BTN_SPACING,
+            BTN_SIZE,
+            BTN_SIZE,
+        ),
+        HardwareButtons.KEY3_PIN: (
+            BTN_X,
+            BTN_TOP + 2 * (BTN_SIZE + BTN_SPACING),
+            BTN_SIZE,
+            BTN_SIZE,
+        ),
+    }
 
-DESKTOP_BUTTON_LAYOUT: Dict[int, Tuple[int, int, int, int]] = {
-    # D-pad on the left
-    HardwareButtons.KEY_UP_PIN: (
-        D_PAD_CENTER_X - D_PAD_SIZE // 2,
-        D_PAD_CENTER_Y - D_PAD_SIZE * 3 // 2,
-        D_PAD_SIZE,
-        D_PAD_SIZE,
-    ),
-    HardwareButtons.KEY_DOWN_PIN: (
-        D_PAD_CENTER_X - D_PAD_SIZE // 2,
-        D_PAD_CENTER_Y + D_PAD_SIZE // 2,
-        D_PAD_SIZE,
-        D_PAD_SIZE,
-    ),
-    HardwareButtons.KEY_LEFT_PIN: (
-        D_PAD_CENTER_X - D_PAD_SIZE * 3 // 2,
-        D_PAD_CENTER_Y - D_PAD_SIZE // 2,
-        D_PAD_SIZE,
-        D_PAD_SIZE,
-    ),
-    HardwareButtons.KEY_RIGHT_PIN: (
-        D_PAD_CENTER_X + D_PAD_SIZE // 2,
-        D_PAD_CENTER_Y - D_PAD_SIZE // 2,
-        D_PAD_SIZE,
-        D_PAD_SIZE,
-    ),
-    HardwareButtons.KEY_PRESS_PIN: (
-        D_PAD_CENTER_X - D_PAD_SIZE // 2,
-        D_PAD_CENTER_Y - D_PAD_SIZE // 2,
-        D_PAD_SIZE,
-        D_PAD_SIZE,
-    ),
-    # Function buttons stacked on the right
-    HardwareButtons.KEY1_PIN: (
-        BTN_X,
-        BTN_TOP,
-        BTN_SIZE,
-        BTN_SIZE,
-    ),
-    HardwareButtons.KEY2_PIN: (
-        BTN_X,
-        BTN_TOP + BTN_SIZE + BTN_SPACING,
-        BTN_SIZE,
-        BTN_SIZE,
-    ),
-    HardwareButtons.KEY3_PIN: (
-        BTN_X,
-        BTN_TOP + 2 * (BTN_SIZE + BTN_SPACING),
-        BTN_SIZE,
-        BTN_SIZE,
-    ),
-}
+
+_recalc_desktop_layout()
 
 
 # class used as short hand for static button/channel lookup values

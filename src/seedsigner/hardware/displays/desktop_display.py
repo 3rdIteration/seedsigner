@@ -1,8 +1,8 @@
 from PIL import Image
 
+import seedsigner.hardware.buttons as button_defs
 from seedsigner.hardware.buttons import (
     HardwareButtons,
-    DESKTOP_BUTTON_LAYOUT,
     DESKTOP_LEFT_WIDTH,
     DESKTOP_RIGHT_WIDTH,
 )
@@ -21,6 +21,7 @@ class DesktopDisplay:
                 "pygame is required for desktop display; install requirements-desktop.txt",
             ) from e
 
+        HardwareButtons.set_desktop_dimensions(width, height)
         HardwareButtons.set_desktop_scale(scale)
         self.pygame = pygame
         self.width = width
@@ -35,7 +36,7 @@ class DesktopDisplay:
             (total_width * self.scale, self.height * self.scale)
         )
         self.pygame.display.set_caption("SeedSigner Desktop Display")
-        self.button_layout = DESKTOP_BUTTON_LAYOUT
+        self.button_layout = button_defs.DESKTOP_BUTTON_LAYOUT
         self.font = self.pygame.font.SysFont(None, 12 * self.scale)
 
     def invert(self, enabled: bool = True):

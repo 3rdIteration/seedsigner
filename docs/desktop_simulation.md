@@ -43,3 +43,6 @@ associated keys.
 Desktop mode can use any camera recognised by your operating system. The
 active device can be selected from the **Settings → Hardware** menu,
 which presents a drop-down list of the detected cameras by name.
+
+The display can simulate either a 240×240 or 320×240 screen. Choose the
+desired size from **Settings → Hardware → Display type**.
