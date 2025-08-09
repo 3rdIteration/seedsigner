@@ -41,4 +41,5 @@ associated keys.
 ## Camera selection
 
 Desktop mode can use any camera recognised by your operating system. The
-active device can be selected from the **Settings → Hardware** menu.
+active device can be selected from the **Settings → Hardware** menu,
+which presents a drop-down list of the detected cameras by name.

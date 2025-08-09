@@ -940,6 +940,13 @@ class SettingsDefinition:
     def get_settings_entry(cls, attr_name) -> SettingsEntry:
         for entry in cls.settings_entries:
             if entry.attr_name == attr_name:
+                if attr_name == SettingsConstants.SETTING__CAMERA_DEVICE:
+                    try:
+                        from seedsigner.hardware.camera import Camera
+
+                        entry.selection_options = Camera.list_cameras()
+                    except Exception:
+                        pass
                 return entry
 
 

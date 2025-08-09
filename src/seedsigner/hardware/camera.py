@@ -11,6 +11,35 @@ class Camera(Singleton):
     _camera_rotation = None
     _camera_index = 0
 
+    @staticmethod
+    def list_cameras() -> list[tuple[int, str]]:
+        """Return a list of available camera devices as (index, name)."""
+        options: list[tuple[int, str]] = []
+        try:
+            import pygame  # type: ignore
+
+            pygame.camera.init()
+            devices = pygame.camera.list_cameras()
+            for i, dev in enumerate(devices):
+                name = dev.split("/")[-1] if isinstance(dev, str) else str(dev)
+                options.append((i, name))
+            pygame.camera.quit()
+        except Exception:
+            try:
+                import cv2  # type: ignore
+
+                for i in range(4):
+                    cap = cv2.VideoCapture(i)
+                    if cap is not None and cap.isOpened():
+                        options.append((i, f"Camera {i}"))
+                        cap.release()
+            except Exception:
+                pass
+
+        if not options:
+            options = SettingsConstants.ALL_CAMERA_DEVICES
+        return options
+
     @classmethod
     def get_instance(cls):
         # This is the only way to access the one and only Controller
