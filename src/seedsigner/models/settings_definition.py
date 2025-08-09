@@ -7,6 +7,12 @@ from seedsigner.helpers.l10n import mark_for_translation as _mft
 import logging
 logger = logging.getLogger(__name__)
 
+try:
+    import RPi.GPIO as _GPIO  # type: ignore  # noqa: F401
+    USING_MOCK_GPIO = getattr(_GPIO, "__file__", None) is None
+except ModuleNotFoundError:
+    USING_MOCK_GPIO = True
+
 
 
 class SettingsConstants:
@@ -234,6 +240,17 @@ class SettingsConstants:
         (CAMERA_ROTATION__270, _mft("270°")),
     ]
 
+    CAMERA_DEVICE__0 = 0
+    CAMERA_DEVICE__1 = 1
+    CAMERA_DEVICE__2 = 2
+    CAMERA_DEVICE__3 = 3
+    ALL_CAMERA_DEVICES = [
+        (CAMERA_DEVICE__0, _mft("Camera 0")),
+        (CAMERA_DEVICE__1, _mft("Camera 1")),
+        (CAMERA_DEVICE__2, _mft("Camera 2")),
+        (CAMERA_DEVICE__3, _mft("Camera 3")),
+    ]
+
     # QR code constants
     DENSITY__LOW = "L"
     DENSITY__MEDIUM = "M"
@@ -369,6 +386,7 @@ class SettingsConstants:
     SETTING__XPUB_DETAILS = "xpub_details"
     SETTING__PASSPHRASE = "passphrase"
     SETTING__CAMERA_ROTATION = "camera_rotation"
+    SETTING__CAMERA_DEVICE = "camera_device"
     SETTING__COMPACT_SEEDQR = "compact_seedqr"
     SETTING__BIP85_CHILD_SEEDS = "bip85_child_seeds"
     SETTING__SLIP39_SEEDS = "slip39_seeds"
@@ -394,12 +412,24 @@ class SettingsConstants:
     DISPLAY_CONFIGURATION__ST7789__320x240 = "st7789_320x240"    # natively portrait dimensions; we apply a 90° rotation
     DISPLAY_CONFIGURATION__ILI9341__320x240 = "ili9341_320x240"  # natively portrait dimensions; we apply a 90° rotation
     DISPLAY_CONFIGURATION__ILI9486__480x320 = "ili9486_480x320"  # natively portrait dimensions; we apply a 90° rotation
-    ALL_DISPLAY_CONFIGURATIONS = [
-        (DISPLAY_CONFIGURATION__ST7789__240x240, "st7789 240x240"),
-        (DISPLAY_CONFIGURATION__ST7789__320x240, "st7789 320x240"),
-        (DISPLAY_CONFIGURATION__ILI9341__320x240, "ili9341 320x240 (beta)"),
-        # (DISPLAY_CONFIGURATION__ILI9486__320x480, "ili9486 480x320"),  # TODO: Enable when ili9486 driver performance is improved
-    ]
+    DISPLAY_CONFIGURATION__DESKTOP__240x240 = "desktop_240x240"  # pygame-based desktop simulation
+    DISPLAY_CONFIGURATION__DESKTOP__320x240 = "desktop_320x240"
+    if USING_MOCK_GPIO:
+        ALL_DISPLAY_CONFIGURATIONS = [
+            (DISPLAY_CONFIGURATION__ST7789__240x240, "st7789 240x240"),
+            (DISPLAY_CONFIGURATION__ST7789__320x240, "st7789 320x240"),
+            (DISPLAY_CONFIGURATION__ILI9341__320x240, "ili9341 320x240 (beta)"),
+            (DISPLAY_CONFIGURATION__DESKTOP__240x240, "desktop 240x240"),
+            (DISPLAY_CONFIGURATION__DESKTOP__320x240, "desktop 320x240"),
+            # (DISPLAY_CONFIGURATION__ILI9486__320x480, "ili9486 480x320"),  # TODO: Enable when ili9486 driver performance is improved
+        ]
+    else:
+        ALL_DISPLAY_CONFIGURATIONS = [
+            (DISPLAY_CONFIGURATION__ST7789__240x240, "st7789 240x240"),
+            (DISPLAY_CONFIGURATION__ST7789__320x240, "st7789 320x240"),
+            (DISPLAY_CONFIGURATION__ILI9341__320x240, "ili9341 320x240 (beta)"),
+            # (DISPLAY_CONFIGURATION__ILI9486__320x480, "ili9486 480x320"),  # TODO: Enable when ili9486 driver performance is improved
+        ]
 
 
     # Hidden settings
@@ -884,6 +914,15 @@ class SettingsDefinition:
                       visibility=SettingsConstants.VISIBILITY__HARDWARE,
                       default_value=SettingsConstants.OPTION__DISABLED),
 
+        SettingsEntry(category=SettingsConstants.CATEGORY__SYSTEM,
+                      attr_name=SettingsConstants.SETTING__CAMERA_DEVICE,
+                      abbreviated_name="cam_dev",
+                      display_name=_mft("Camera source"),
+                      type=SettingsConstants.TYPE__SELECT_1,
+                      visibility=SettingsConstants.VISIBILITY__HARDWARE,
+                      selection_options=SettingsConstants.ALL_CAMERA_DEVICES,
+                      default_value=SettingsConstants.CAMERA_DEVICE__0),
+
 
         # Developer options
         # TODO: No real Developer options needed yet. Disable for now.
@@ -908,7 +947,16 @@ class SettingsDefinition:
     def get_settings_entries(cls, visibility: str = SettingsConstants.VISIBILITY__GENERAL) -> List[SettingsEntry]:
         entries = []
         for entry in cls.settings_entries:
+            if entry.attr_name == SettingsConstants.SETTING__CAMERA_DEVICE and not USING_MOCK_GPIO:
+                continue
             if entry.visibility == visibility:
+                if entry.attr_name == SettingsConstants.SETTING__CAMERA_DEVICE:
+                    try:
+                        from seedsigner.hardware.camera import Camera
+
+                        entry.selection_options = Camera.list_cameras()
+                    except Exception:
+                        pass
                 entries.append(entry)
         return entries
     
@@ -917,12 +965,23 @@ class SettingsDefinition:
     def get_settings_entry(cls, attr_name) -> SettingsEntry:
         for entry in cls.settings_entries:
             if entry.attr_name == attr_name:
+                if attr_name == SettingsConstants.SETTING__CAMERA_DEVICE:
+                    if not USING_MOCK_GPIO:
+                        return None
+                    try:
+                        from seedsigner.hardware.camera import Camera
+
+                        entry.selection_options = Camera.list_cameras()
+                    except Exception:
+                        pass
                 return entry
 
 
     @classmethod
     def get_settings_entry_by_abbreviated_name(cls, abbreviated_name: str) -> SettingsEntry:
         for entry in cls.settings_entries:
+            if entry.attr_name == SettingsConstants.SETTING__CAMERA_DEVICE and not USING_MOCK_GPIO:
+                continue
             if abbreviated_name in [entry.abbreviated_name, entry.attr_name]:
                 return entry
 

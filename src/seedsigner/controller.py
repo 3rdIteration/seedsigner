@@ -296,9 +296,13 @@ class Controller(Singleton):
         """
         from seedsigner.views import MainMenuView, BackStackView
         from seedsigner.views.screensaver import OpeningSplashView
+        from seedsigner.models.settings_definition import SettingsConstants
+        from seedsigner.views.desktop_warning import DesktopWarningView
         from seedsigner.gui.toast import RemoveSDCardToastManagerThread
 
         OpeningSplashView().run()
+        if self.settings.get_value(SettingsConstants.SETTING__DISPLAY_CONFIGURATION).startswith("desktop"):
+            DesktopWarningView().run()
 
         """ Class references can be stored as variables in python!
 
