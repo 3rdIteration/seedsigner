@@ -3701,9 +3701,15 @@ class SeedSignMessageConfirmAddressView(View):
                 xtype = "p2wpkh"
             is_mainnet = addr_format["network"] == SettingsConstants.MAINNET
             from seedsigner.helpers.satochip_signer import format_path_string
+            from seedsigner.gui.screens.screen import LoadingScreenThread
             wallet_path = format_path_string(addr_format["wallet_derivation_path"])
-            xpub_base58 = connector.card_bip32_get_xpub(wallet_path, xtype, is_mainnet)
-            xpub = bip32.HDKey.from_base58(xpub_base58)
+            loading = LoadingScreenThread(text=_("Exporting xpub..."))
+            loading.start()
+            try:
+                xpub_base58 = connector.card_bip32_get_xpub(wallet_path, xtype, is_mainnet)
+                xpub = bip32.HDKey.from_base58(xpub_base58)
+            finally:
+                loading.stop()
         else:
             if self.seed_num is None:
                 raise Exception("Routing error: sign_message_data hasn't been set")
@@ -3750,10 +3756,16 @@ class SeedSignMessageSignedMessageQRView(View):
 
         if self.controller.sign_message_with_satochip:
             from seedsigner.helpers.satochip_signer import sign_message_with_satochip
+            from seedsigner.gui.screens.screen import LoadingScreenThread
 
-            self.signed_message = sign_message_with_satochip(
-                derivation_path, message, self.controller.Satochip_Connector
-            )
+            loading = LoadingScreenThread(text=_("Signing message..."))
+            loading.start()
+            try:
+                self.signed_message = sign_message_with_satochip(
+                    derivation_path, message, self.controller.Satochip_Connector
+                )
+            finally:
+                loading.stop()
         else:
             self.seed_num = data["seed_num"]
             seed = self.controller.get_seed(self.seed_num)
