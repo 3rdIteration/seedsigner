@@ -8,6 +8,7 @@ import binascii
 from embit.descriptor import Descriptor
 from embit.descriptor.checksum import checksum
 from embit.bip32 import HDKey
+from embit import ec, script, networks
 from PIL import Image
 from PIL.ImageOps import autocontrast
 from gettext import gettext as _
@@ -959,11 +960,12 @@ class ToolsTextQRView(View):
 class ToolsSmartcardMenuView(View):
     COMMON = ButtonOption("Common Functions")
     SATOCHIP = ButtonOption("Satochip Functions")
+    SATODIME = ButtonOption("Satodime Functions")
     SEEDKEEPER = ButtonOption("SeedKeeper Functions")
     Satochip_DIY = ButtonOption("DIY Tools")
 
     def run(self):
-        button_data = [self.COMMON, self.SEEDKEEPER, self.SATOCHIP, self.Satochip_DIY]
+        button_data = [self.COMMON, self.SEEDKEEPER, self.SATOCHIP, self.SATODIME, self.Satochip_DIY]
 
         selected_menu_num = self.run_screen(
             ButtonListScreen,
@@ -980,7 +982,10 @@ class ToolsSmartcardMenuView(View):
         
         elif button_data[selected_menu_num] == self.SATOCHIP:
             return Destination(ToolsSatochipView)
-        
+
+        elif button_data[selected_menu_num] == self.SATODIME:
+            return Destination(ToolsSatodimeView)
+
         elif button_data[selected_menu_num] == self.SEEDKEEPER:
             return Destination(ToolsSeedkeeperView)
 
@@ -1809,6 +1814,347 @@ class ToolsSeedkeeperImportPasswordView(View):
                 show_back_button=False,
             )
         
+        return Destination(BackStackView)
+
+class ToolsSatodimeView(View):
+    VIEW_ADDRESSES = ButtonOption("View Deposit Addresses")
+    SEAL_SLOT = ButtonOption("Seal Slot")
+    UNSEAL_SLOT = ButtonOption("Unseal Slot")
+    SIGN_TX = ButtonOption("Sign Transaction")
+    TRANSFER = ButtonOption("Transfer Ownership")
+
+    def run(self):
+        button_data = [
+            self.VIEW_ADDRESSES,
+            self.SEAL_SLOT,
+            self.UNSEAL_SLOT,
+            self.SIGN_TX,
+            self.TRANSFER,
+        ]
+
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title="Satodime",
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        if button_data[selected_menu_num] == self.VIEW_ADDRESSES:
+            return Destination(ToolsSatodimeAddressesView)
+        elif button_data[selected_menu_num] == self.SEAL_SLOT:
+            return Destination(ToolsSatodimeSealSlotView)
+        elif button_data[selected_menu_num] == self.UNSEAL_SLOT:
+            return Destination(ToolsSatodimeUnsealSlotView)
+        elif button_data[selected_menu_num] == self.SIGN_TX:
+            return Destination(ToolsSatodimeSignTxView)
+        elif button_data[selected_menu_num] == self.TRANSFER:
+            return Destination(ToolsSatodimeTransferOwnershipView)
+
+
+class ToolsSatodimeAddressesView(View):
+    def run(self):
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+
+        Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satodime"], require_pin=False)
+        if not Satochip_Connector:
+            return Destination(BackStackView)
+
+        Satochip_Connector.satodime_set_unlock_secret()
+        Satochip_Connector.satodime_set_unlock_counter()
+
+        self.loading_screen = LoadingScreenThread(text="Fetching Slots\n\n\n\n\n\n")
+        self.loading_screen.start()
+        (_, _, _, status) = Satochip_Connector.satodime_get_status()
+        self.loading_screen.stop()
+
+        max_keys = status.get("max_num_keys", 0)
+        network = self.settings.get_value(SettingsConstants.SETTING__NETWORK)
+        embit_network = embit_utils.get_embit_network_name(network)
+        net = networks.NETWORKS[embit_network]
+
+        for key_nbr in range(max_keys):
+            try:
+                (_, _, _, slot_status) = Satochip_Connector.satodime_get_keyslot_status(key_nbr)
+                (_, _, _, _, pub_comp) = Satochip_Connector.satodime_get_pubkey(key_nbr)
+                address = script.p2pkh(ec.PublicKey(bytes(pub_comp))).address(network=net)
+                text = f"{slot_status['key_status_txt']}\n{address}"
+            except Exception as e:
+                text = str(e)
+
+            ret = self.run_screen(
+                LargeIconStatusScreen,
+                title=f"Slot {key_nbr}",
+                status_headline=None,
+                text=text,
+                show_back_button=True,
+                button_data=[ButtonOption("Next")],
+            )
+            if ret == RET_CODE__BACK_BUTTON:
+                break
+
+        return Destination(BackStackView)
+
+
+class ToolsSatodimeSealSlotView(View):
+    def run(self):
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+
+        Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satodime"], require_pin=False)
+        if not Satochip_Connector:
+            return Destination(BackStackView)
+
+        Satochip_Connector.satodime_set_unlock_secret()
+        Satochip_Connector.satodime_set_unlock_counter()
+
+        (_, _, _, status) = Satochip_Connector.satodime_get_status()
+        max_keys = status.get("max_num_keys", 0)
+
+        available = []
+        button_data = []
+        for key_nbr in range(max_keys):
+            (_, _, _, slot_status) = Satochip_Connector.satodime_get_keyslot_status(key_nbr)
+            if slot_status.get("key_status_txt") == "Uninitialized":
+                available.append(key_nbr)
+                button_data.append(ButtonOption(f"Slot {key_nbr}"))
+
+        if not available:
+            self.run_screen(
+                WarningScreen,
+                title="Failed",
+                status_headline=None,
+                text="No uninitialized slots",
+                show_back_button=True,
+            )
+            return Destination(BackStackView)
+
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Select Slot",
+            is_button_text_centered=False,
+            button_data=button_data,
+            show_back_button=True,
+        )
+
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        slot = available[selected]
+        entropy = os.urandom(32)
+
+        self.loading_screen = LoadingScreenThread(text="Sealing Slot\n\n\n\n\n\n")
+        self.loading_screen.start()
+        (_, sw1, sw2, _, pub_comp) = Satochip_Connector.satodime_seal_key(slot, entropy)
+        self.loading_screen.stop()
+
+        if sw1 != 0x90 or sw2 != 0x00:
+            self.run_screen(
+                WarningScreen,
+                title="Failed",
+                status_headline=None,
+                text="Seal failed",
+                show_back_button=True,
+            )
+            return Destination(BackStackView)
+
+        network = self.settings.get_value(SettingsConstants.SETTING__NETWORK)
+        embit_network = embit_utils.get_embit_network_name(network)
+        net = networks.NETWORKS[embit_network]
+        address = script.p2pkh(ec.PublicKey(bytes(pub_comp))).address(network=net)
+
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Success",
+            status_headline=None,
+            text=f"Slot {slot} sealed\n{address}",
+            show_back_button=False,
+        )
+
+        return Destination(BackStackView)
+
+
+class ToolsSatodimeUnsealSlotView(View):
+    def run(self):
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+
+        Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satodime"], require_pin=False)
+        if not Satochip_Connector:
+            return Destination(BackStackView)
+
+        Satochip_Connector.satodime_set_unlock_secret()
+        Satochip_Connector.satodime_set_unlock_counter()
+
+        (_, _, _, status) = Satochip_Connector.satodime_get_status()
+        max_keys = status.get("max_num_keys", 0)
+
+        available = []
+        button_data = []
+        for key_nbr in range(max_keys):
+            (_, _, _, slot_status) = Satochip_Connector.satodime_get_keyslot_status(key_nbr)
+            if slot_status.get("key_status_txt") == "Sealed":
+                available.append(key_nbr)
+                button_data.append(ButtonOption(f"Slot {key_nbr}"))
+
+        if not available:
+            self.run_screen(
+                WarningScreen,
+                title="Failed",
+                status_headline=None,
+                text="No sealed slots",
+                show_back_button=True,
+            )
+            return Destination(BackStackView)
+
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Select Slot",
+            is_button_text_centered=False,
+            button_data=button_data,
+            show_back_button=True,
+        )
+
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        slot = available[selected]
+
+        self.loading_screen = LoadingScreenThread(text="Unsealing Slot\n\n\n\n\n\n")
+        self.loading_screen.start()
+        (_, sw1, sw2, _, priv_list) = Satochip_Connector.satodime_unseal_key(slot)
+        self.loading_screen.stop()
+
+        if sw1 != 0x90 or sw2 != 0x00:
+            self.run_screen(
+                WarningScreen,
+                title="Failed",
+                status_headline=None,
+                text="Unseal failed",
+                show_back_button=True,
+            )
+            return Destination(BackStackView)
+
+        network = self.settings.get_value(SettingsConstants.SETTING__NETWORK)
+        embit_network = embit_utils.get_embit_network_name(network)
+        net = networks.NETWORKS[embit_network]
+        wif = ec.PrivateKey(bytes(priv_list), network=net).wif()
+
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Unsealed",
+            status_headline=None,
+            text=wif,
+            show_back_button=True,
+        )
+
+        return Destination(BackStackView)
+
+
+class ToolsSatodimeSignTxView(View):
+    def run(self):
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+        from seedsigner.models.wif import WIFKey
+        from seedsigner.views.scan_views import ScanPSBTView
+
+        Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satodime"], require_pin=False)
+        if not Satochip_Connector:
+            return Destination(BackStackView)
+
+        Satochip_Connector.satodime_set_unlock_secret()
+        Satochip_Connector.satodime_set_unlock_counter()
+
+        (_, _, _, status) = Satochip_Connector.satodime_get_status()
+        max_keys = status.get("max_num_keys", 0)
+
+        available = []
+        button_data = []
+        for key_nbr in range(max_keys):
+            (_, _, _, slot_status) = Satochip_Connector.satodime_get_keyslot_status(key_nbr)
+            if slot_status.get("key_status_txt") == "Sealed":
+                available.append(key_nbr)
+                button_data.append(ButtonOption(f"Slot {key_nbr}"))
+
+        if not available:
+            self.run_screen(
+                WarningScreen,
+                title="Failed",
+                status_headline=None,
+                text="No sealed slots",
+                show_back_button=True,
+            )
+            return Destination(BackStackView)
+
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Select Slot",
+            is_button_text_centered=False,
+            button_data=button_data,
+            show_back_button=True,
+        )
+
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        slot = available[selected]
+
+        self.loading_screen = LoadingScreenThread(text="Unsealing Slot\n\n\n\n\n\n")
+        self.loading_screen.start()
+        (_, sw1, sw2, _, priv_list) = Satochip_Connector.satodime_unseal_key(slot)
+        self.loading_screen.stop()
+
+        if sw1 != 0x90 or sw2 != 0x00:
+            self.run_screen(
+                WarningScreen,
+                title="Failed",
+                status_headline=None,
+                text="Unseal failed",
+                show_back_button=True,
+            )
+            return Destination(BackStackView)
+
+        network = self.settings.get_value(SettingsConstants.SETTING__NETWORK)
+        embit_network = embit_utils.get_embit_network_name(network)
+        net = networks.NETWORKS[embit_network]
+        wif = ec.PrivateKey(bytes(priv_list), network=net).wif()
+        self.controller.psbt_seed = WIFKey(wif)
+
+        return Destination(ScanPSBTView)
+
+
+class ToolsSatodimeTransferOwnershipView(View):
+    def run(self):
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+
+        Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satodime"], require_pin=False)
+        if not Satochip_Connector:
+            return Destination(BackStackView)
+
+        Satochip_Connector.satodime_set_unlock_secret()
+        Satochip_Connector.satodime_set_unlock_counter()
+
+        self.loading_screen = LoadingScreenThread(text="Sending Command\n\n\n\n\n\n")
+        self.loading_screen.start()
+        (_, sw1, sw2) = Satochip_Connector.satodime_initiate_ownership_transfer()
+        self.loading_screen.stop()
+
+        if sw1 == 0x90 and sw2 == 0x00:
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Success",
+                status_headline=None,
+                text="Ownership transfer started",
+                show_back_button=False,
+            )
+        else:
+            self.run_screen(
+                WarningScreen,
+                title="Failed",
+                status_headline=None,
+                text="Ownership transfer failed",
+                show_back_button=True,
+            )
+
         return Destination(BackStackView)
 
 class ToolsSeedkeeperDeleteSecretView(View):
