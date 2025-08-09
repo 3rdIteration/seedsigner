@@ -284,10 +284,13 @@ class PowerOffView(View):
         import os
         import sys
 
+        if not USING_GPIO:
+            if "PYTEST_CURRENT_TEST" not in os.environ:
+                # In desktop mode, exiting the program is the safest way to "power off"
+                sys.exit(0)
+            return Destination(BackStackView)
+
         self.run_screen(PowerOffNotRequiredScreen)
-        if not USING_GPIO and "PYTEST_CURRENT_TEST" not in os.environ:
-            # In desktop mode, exiting the program is the safest way to "power off"
-            sys.exit(0)
         return Destination(BackStackView)
 
 
