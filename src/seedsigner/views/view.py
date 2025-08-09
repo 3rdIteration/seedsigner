@@ -280,7 +280,14 @@ class RestartView(View):
 class PowerOffView(View):
     def run(self):
         from seedsigner.gui.screens.screen import PowerOffNotRequiredScreen
+        from seedsigner.hardware.buttons import USING_GPIO
+        import os
+        import sys
+
         self.run_screen(PowerOffNotRequiredScreen)
+        if not USING_GPIO and "PYTEST_CURRENT_TEST" not in os.environ:
+            # In desktop mode, exiting the program is the safest way to "power off"
+            sys.exit(0)
         return Destination(BackStackView)
 
 

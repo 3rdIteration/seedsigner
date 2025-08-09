@@ -7,6 +7,8 @@ from seedsigner.hardware.buttons import (
     DESKTOP_RIGHT_WIDTH,
 )
 
+DARK_BLUE = (0, 0, 80)
+
 
 class DesktopDisplay:
     """A simple pygame-based display to simulate the Waveshare LCD on desktops."""
@@ -49,6 +51,7 @@ class DesktopDisplay:
         pg_img = self.pygame.transform.scale(
             pg_img, (self.width * self.scale, self.height * self.scale)
         )
+        self.window.fill(DARK_BLUE)
         self.window.blit(pg_img, (self.left_width * self.scale, 0))
         self.draw_buttons()
         # Pump events to keep the window responsive even when no input is read
@@ -66,8 +69,8 @@ class DesktopDisplay:
             self.right_width * self.scale,
             self.height * self.scale,
         )
-        self.pygame.draw.rect(self.window, (30, 30, 30), left_rect)
-        self.pygame.draw.rect(self.window, (30, 30, 30), right_rect)
+        self.pygame.draw.rect(self.window, DARK_BLUE, left_rect)
+        self.pygame.draw.rect(self.window, DARK_BLUE, right_rect)
 
         for key, (x, y, w, h) in self.button_layout.items():
             rect = self.pygame.Rect(x * self.scale, y * self.scale, w * self.scale, h * self.scale)
