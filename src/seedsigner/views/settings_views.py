@@ -249,25 +249,33 @@ class SettingsEntryUpdateSelectionView(View):
 
     def run(self):
         initial_value = self.settings.get_value(self.settings_entry.attr_name)
-        button_data = []
-        checked_buttons = []
-        for i, value in enumerate(self.settings_entry.selection_options):
-            if type(value) == tuple:
-                value, display_name = value
-            else:
-                display_name = value
-            button_data.append(ButtonOption(display_name))
+        button_data: list[ButtonOption] = []
+        checked_buttons: list[int] = []
 
-            if (type(initial_value) == list and value in initial_value) or value == initial_value:
-                checked_buttons.append(i)
-
-                if self.selected_button is None:
-                    # Highlight the selection (for multiselect highlight the first
-                    # selected option).
-                    self.selected_button = i
-        
-        if self.selected_button is None:
+        if not self.settings_entry.selection_options:
+            # Fallback for environments where no choices are available (e.g. no
+            # cameras detected). Provide a single placeholder option so the
+            # screen can render without triggering an IndexError.
+            button_data.append(ButtonOption(_("No options available")))
             self.selected_button = 0
+        else:
+            for i, value in enumerate(self.settings_entry.selection_options):
+                if type(value) == tuple:
+                    value, display_name = value
+                else:
+                    display_name = value
+                button_data.append(ButtonOption(display_name))
+
+                if (type(initial_value) == list and value in initial_value) or value == initial_value:
+                    checked_buttons.append(i)
+
+                    if self.selected_button is None:
+                        # Highlight the selection (for multiselect highlight the first
+                        # selected option).
+                        self.selected_button = i
+
+            if self.selected_button is None:
+                self.selected_button = 0
             
         ret_value = self.run_screen(
             settings_screens.SettingsEntryUpdateSelectionScreen,

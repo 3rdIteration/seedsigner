@@ -32,6 +32,12 @@ class SettingsEntryUpdateSelectionScreen(ButtonListScreen):
             self.Button_cls = CheckboxButton
         else:
             self.Button_cls = CheckedSelectionButton
+
+        if not self.button_data:
+            # Ensure at least one placeholder option so the screen can render
+            # even when no real selection choices are available.
+            self.button_data = [ButtonOption(_("No options available"))]
+
         super().__post_init__()
 
         self.components.append(TextArea(
