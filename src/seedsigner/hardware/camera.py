@@ -21,18 +21,24 @@ class Camera(Singleton):
             pygame.camera.init()
             devices = pygame.camera.list_cameras()
             for i, dev in enumerate(devices):
-                name = dev.split("/")[-1] if isinstance(dev, str) else str(dev)
+                name = dev if isinstance(dev, str) else str(dev)
                 options.append((i, name))
             pygame.camera.quit()
         except Exception:
             try:
                 import cv2  # type: ignore
 
-                for i in range(4):
+                i = 0
+                consecutive_failures = 0
+                while consecutive_failures < 3:
                     cap = cv2.VideoCapture(i)
                     if cap is not None and cap.isOpened():
                         options.append((i, f"Camera {i}"))
                         cap.release()
+                        consecutive_failures = 0
+                    else:
+                        consecutive_failures += 1
+                    i += 1
             except Exception:
                 pass
 

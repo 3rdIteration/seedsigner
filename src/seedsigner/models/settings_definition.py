@@ -932,6 +932,13 @@ class SettingsDefinition:
         entries = []
         for entry in cls.settings_entries:
             if entry.visibility == visibility:
+                if entry.attr_name == SettingsConstants.SETTING__CAMERA_DEVICE:
+                    try:
+                        from seedsigner.hardware.camera import Camera
+
+                        entry.selection_options = Camera.list_cameras()
+                    except Exception:
+                        pass
                 entries.append(entry)
         return entries
     
