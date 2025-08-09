@@ -1,3 +1,5 @@
+"""Threaded video capture that works with both PiCamera and OpenCV webcams."""
+
 import logging
 import time
 from threading import Thread
@@ -17,9 +19,15 @@ except Exception:  # ModuleNotFoundError, ImportError, etc.
 
 
 class PiVideoStream:
-    """Video stream that falls back to OpenCV on desktops."""
+    """Continuously capture frames in a background thread."""
 
     def __init__(self, resolution=(320, 240), framerate=32, format="bgr", device_index=0, **kwargs):
+        """Initialize the video stream.
+
+        When running on a Pi with the ``picamera`` library available we use that;
+        otherwise we fall back to OpenCV's ``VideoCapture`` on the given
+        ``device_index``.
+        """
         self.should_stop = False
         self.is_stopped = True
         self.frame = None
@@ -43,6 +51,7 @@ class PiVideoStream:
             self.use_picamera = False
 
     def start(self):
+        """Start the capture thread."""
         t = Thread(target=self.update, args=())
         t.daemon = True
         t.start()
@@ -50,6 +59,7 @@ class PiVideoStream:
         return self
 
     def update(self):
+        """Continuously read frames until :meth:`stop` is called."""
         if self.use_picamera:
             for f in self.stream:
                 self.frame = f.array
@@ -71,9 +81,11 @@ class PiVideoStream:
             self.is_stopped = True
 
     def read(self):
+        """Return the most recently captured frame."""
         return self.frame
 
     def stop(self):
+        """Signal the capture thread to stop and wait for it to finish."""
         self.should_stop = True
         while not self.is_stopped:
             time.sleep(0.01)

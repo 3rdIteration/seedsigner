@@ -1,3 +1,5 @@
+"""Factory for selecting the appropriate display backend."""
+
 DISPLAY_TYPE__ST7789 = "st7789"
 DISPLAY_TYPE__ILI9341 = "ili9341"
 DISPLAY_TYPE__ILI9486 = "ili9486"
@@ -12,6 +14,8 @@ ALL_DISPLAY_TYPES = [
 
 
 class DisplayDriver:
+    """Wrapper that abstracts away specific display implementations."""
+
     def __init__(self, display_type: str = DISPLAY_TYPE__ST7789, width: int = None, height: int = None):
         if display_type not in ALL_DISPLAY_TYPES:
             raise ValueError(f"Invalid display type: {display_type}")
