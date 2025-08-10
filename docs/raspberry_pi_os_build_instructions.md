@@ -112,8 +112,10 @@ Copy this entire box and run it as one command (~15 minutes on a Pi Zero 1.3):
 ```bash
 sudo apt update && sudo apt install -y wiringpi python3-pip \
    python-pil libjpeg-dev zlib1g-dev libopenjp2-7 \
-   git python3-opencv python3-picamera libatlas-base-dev qrencode
+   git python3-opencv python3-picamera python3-picamera2 libatlas-base-dev qrencode
 ```
+
+On older operating system releases the `python3-picamera2` package may not be available; if so, omit it from the command above and continue with the legacy `python3-picamera` package.
 
 ### Install `zbar`
 `zbar` is "an open source software suite for reading bar codes" (more info here: [https://github.com/mchehab/zbar](https://github.com/mchehab/zbar)).

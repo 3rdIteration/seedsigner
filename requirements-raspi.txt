@@ -1,4 +1,7 @@
 picamera==1.13
+# Optional support for the newer Picamera2 library. Either picamera or
+# picamera2 may be used at runtime.
+picamera2
 # numpy = transitive picamera dependency
 numpy==1.25.2
 RPi.GPIO==0.7.0

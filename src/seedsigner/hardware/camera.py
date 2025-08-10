@@ -18,6 +18,7 @@ class Camera(Singleton):
     _picamera = None
     _camera_rotation = None
     _camera_index = 0
+    _picamera_backend = None
 
     @staticmethod
     def list_cameras() -> list[tuple[int, str]]:
@@ -112,34 +113,49 @@ class Camera(Singleton):
         if self._video_stream is not None:
             self.stop_video_stream_mode()
         if self._picamera is not None:
-            if hasattr(self._picamera, "close"):
-                self._picamera.close()
-            else:
-                self._picamera.release()
+            self.stop_single_frame_mode()
 
-        try:
-            from picamera import PiCamera
+        # Prefer the legacy picamera module if available to maintain backwards
+        # compatibility. Fall back to picamera2 if necessary.
+        try:  # pragma: no cover - hardware dependent
+            from picamera import PiCamera  # type: ignore
 
             self._picamera = PiCamera(resolution=resolution, framerate=24)
             self._picamera.start_preview()
-        except Exception:
+            self._picamera_backend = "picamera"
+        except Exception:  # pragma: no cover
             try:
-                import cv2  # type: ignore
-            except Exception as e:
-                raise ModuleNotFoundError(
-                    "OpenCV is required for desktop camera support; install requirements-desktop.txt",
-                ) from e
-            self._picamera = cv2.VideoCapture(self._camera_index)
-            self._picamera.set(cv2.CAP_PROP_FRAME_WIDTH, resolution[0])
-            self._picamera.set(cv2.CAP_PROP_FRAME_HEIGHT, resolution[1])
+                from picamera2 import Picamera2  # type: ignore
+
+                self._picamera = Picamera2()
+                try:
+                    config = self._picamera.create_still_configuration(
+                        main={"size": resolution, "format": "RGB888"}
+                    )
+                    self._picamera.configure(config)
+                except Exception:
+                    pass
+                self._picamera.start()
+                self._picamera_backend = "picamera2"
+            except Exception:
+                try:
+                    import cv2  # type: ignore
+                except Exception as e:
+                    raise ModuleNotFoundError(
+                        "OpenCV is required for desktop camera support; install requirements-desktop.txt",
+                    ) from e
+                self._picamera = cv2.VideoCapture(self._camera_index)
+                self._picamera.set(cv2.CAP_PROP_FRAME_WIDTH, resolution[0])
+                self._picamera.set(cv2.CAP_PROP_FRAME_HEIGHT, resolution[1])
+                self._picamera_backend = "opencv"
 
     def capture_frame(self):
         """Capture a single frame from the camera as a PIL image."""
         if self._picamera is None:
             raise Exception("Must call start_single_frame_mode first.")
 
-        if hasattr(self._picamera, "capture"):
-            # PiCamera path
+        if self._picamera_backend == "picamera":
+            # Set auto-exposure values
             self._picamera.shutter_speed = self._picamera.exposure_speed
             self._picamera.exposure_mode = "off"
             g = self._picamera.awb_gains
@@ -148,23 +164,39 @@ class Camera(Singleton):
 
             stream = io.BytesIO()
             self._picamera.capture(stream, format="jpeg")
+
+            # "Rewind" the stream to the beginning so we can read its content
             stream.seek(0)
             return Image.open(stream).rotate(90 + self._camera_rotation)
-        else:
-            # OpenCV path
-            ret, frame = self._picamera.read()
-            if not ret:
-                return None
-            return Image.fromarray(frame.astype("uint8"), "RGB").rotate(
-                90 + self._camera_rotation
-            )
+
+        if self._picamera_backend == "picamera2":
+            frame = self._picamera.capture_array()
+            return Image.fromarray(frame).rotate(90 + self._camera_rotation)
+
+        # OpenCV path
+        ret, frame = self._picamera.read()
+        if not ret:
+            return None
+        return Image.fromarray(frame.astype("uint8"), "RGB").rotate(
+            90 + self._camera_rotation
+        )
 
     def stop_single_frame_mode(self):
         """Release any resources used for single-frame capture."""
         if self._picamera is not None:
-            if hasattr(self._picamera, "close"):
+            if self._picamera_backend == "picamera2":
+                try:
+                    self._picamera.stop()
+                except Exception:
+                    pass
+                self._picamera.close()
+            elif self._picamera_backend == "picamera":
                 self._picamera.close()
             else:
-                self._picamera.release()
+                if hasattr(self._picamera, "close"):
+                    self._picamera.close()
+                else:
+                    self._picamera.release()
             self._picamera = None
+            self._picamera_backend = None
 
