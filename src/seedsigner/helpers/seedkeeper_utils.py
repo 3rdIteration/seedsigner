@@ -3,7 +3,7 @@ from pysatochip.JCconstants import (
     JCconstants,
     SEEDKEEPER_DIC_TYPE,
     SEEDKEEPER_DIC_ORIGIN,
-    SEEDKEEPER_DIC_EXPORT_RIGHTS
+    SEEDKEEPER_DIC_EXPORT_RIGHTS,
 )
 from seedsigner.gui.screens import (
     RET_CODE__BACK_BUTTON,
@@ -129,11 +129,19 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True):
     parentObject.loading_screen.stop()
 
     if not status:
+        filter_txt = ""
+        if init_card_filter:
+            if isinstance(init_card_filter, (list, tuple)):
+                filter_str = ", ".join(init_card_filter)
+            else:
+                filter_str = str(init_card_filter)
+            filter_txt = f" matching filter(s): {filter_str}"
+
         parentObject.run_screen(
             WarningScreen,
             title="Unable to Connect",
             status_headline=None,
-            text=f"Unable to find SeedKeeper Card \n(or Applet)\n\nTry Re-Inserting Card",
+            text=f"Unable to find card{filter_txt} \n(or Applet)\n\nTry Re-Inserting Card",
             show_back_button=True,
         )
         return None
@@ -216,7 +224,9 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True):
         """Run the initial card setup process"""
         pin_0 = list(pin_str.encode("utf8"))
         # Allow configurable PIN attempt limit
-        pin_tries_0 = Settings.get_instance().get_value(SettingsConstants.SETTING__SCARD_PIN_ATTEMPTS)
+        pin_tries_0 = Settings.get_instance().get_value(
+            SettingsConstants.SETTING__SCARD_PIN_ATTEMPTS
+        )
         ublk_tries_0 = 0x01
         # PUK code can be used when PIN is unknown and the card is locked
         # We use a random value as the PUK is not used currently and is not user friendly
