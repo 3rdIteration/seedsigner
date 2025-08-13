@@ -135,13 +135,12 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True):
                 filter_str = ", ".join(init_card_filter)
             else:
                 filter_str = str(init_card_filter)
-            filter_txt = f" matching filter(s): {filter_str}"
 
         parentObject.run_screen(
             WarningScreen,
             title="Unable to Connect",
             status_headline=None,
-            text=f"Unable to find card{filter_txt} \n(or Applet)\n\nTry Re-Inserting Card",
+            text=f"Unable to find {filter_str} \n(or Applet)\n\nTry Re-Inserting Card",
             show_back_button=True,
         )
         return None
