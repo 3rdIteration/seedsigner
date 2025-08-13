@@ -2232,6 +2232,21 @@ class ToolsSatochipImportSeedView(View):
         if not Satochip_Connector:
             return Destination(BackStackView)
 
+        # Prevent reseeding an already-initialized card. Attempting to import a new
+        # seed into a seeded Satochip results in a generic failure. Instead, check
+        # the card's status up front and inform the user so they can take
+        # appropriate action (like resetting the card) before proceeding.
+        _resp, _sw1, _sw2, status = Satochip_Connector.card_get_status()
+        if status.get("is_seeded"):
+            self.run_screen(
+                WarningScreen,
+                title=_("Already Seeded"),
+                status_headline=None,
+                text=_("Satochip card already contains a seed."),
+                show_back_button=False,
+            )
+            return Destination(MainMenuView)
+
         seeds = self.controller.storage.seeds
         button_data = []
         for seed in seeds:
