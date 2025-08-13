@@ -2589,11 +2589,14 @@ class SatochipExportXpubDetailsView(View):
                 xtype = "standard"
             else:
                 xtype = "p2wpkh"
-
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+        loading = LoadingScreenThread(text=_("Exporting xpub..."))
+        loading.start()
         try:
             xpub_base58 = Satochip_Connector.card_bip32_get_xpub(derivation_path, xtype, is_mainnet)
             master_xpub = Satochip_Connector.card_bip32_get_xpub("", xtype, is_mainnet)
         except Exception as e:
+            loading.stop()
             self.run_screen(
                 WarningScreen,
                 title="Failed",
@@ -2601,6 +2604,8 @@ class SatochipExportXpubDetailsView(View):
                 text=str(e),
             )
             return Destination(BackStackView)
+        finally:
+            loading.stop()
 
         fingerprint = HDKey.from_string(master_xpub).my_fingerprint
         fingerprint_hex = hexlify(fingerprint).decode("utf-8")
@@ -2824,11 +2829,14 @@ class SatochipLoadDescriptorDetailsView(View):
             xtype = "standard"
         else:
             xtype = "p2wpkh"
-
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+        loading = LoadingScreenThread(text=_("Exporting xpub..."))
+        loading.start()
         try:
             xpub_base58 = Satochip_Connector.card_bip32_get_xpub(derivation_path, xtype, is_mainnet)
             master_xpub = Satochip_Connector.card_bip32_get_xpub("", xtype, is_mainnet)
         except Exception as e:
+            loading.stop()
             self.run_screen(
                 WarningScreen,
                 title="Failed",
@@ -2836,6 +2844,8 @@ class SatochipLoadDescriptorDetailsView(View):
                 text=str(e),
             )
             return Destination(BackStackView)
+        finally:
+            loading.stop()
 
         fingerprint = HDKey.from_string(master_xpub).my_fingerprint
         fingerprint_hex = hexlify(fingerprint).decode("utf-8")
