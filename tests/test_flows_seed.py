@@ -1044,3 +1044,28 @@ class TestSatochipExportXpubDetailsView(BaseTest):
 
                 assert view.run_screen.call_args.kwargs["xpub"].startswith("Zpub")
 
+
+class TestSatochipImportSeedView(BaseTest):
+    def test_already_seeded_card_shows_warning(self, monkeypatch):
+        from seedsigner.views import tools_views
+        from seedsigner.helpers import seedkeeper_utils
+        from unittest.mock import Mock
+
+        class MockConnector:
+            def card_get_status(self):
+                return (None, 0x90, 0x00, {"is_seeded": True})
+
+        monkeypatch.setattr(
+            seedkeeper_utils, "init_satochip", lambda *a, **k: MockConnector()
+        )
+
+        view = tools_views.ToolsSatochipImportSeedView()
+        view.run_screen = Mock(return_value=0)
+        destination = view.run()
+
+        # Should warn user and return to main menu without attempting import
+        assert view.run_screen.call_count == 1
+        assert view.run_screen.call_args.args[0] is tools_views.WarningScreen
+        assert "already" in view.run_screen.call_args.kwargs["text"].lower()
+        assert destination.View_cls == tools_views.MainMenuView
+
