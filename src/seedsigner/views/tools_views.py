@@ -989,6 +989,7 @@ class ToolsSmartcardMenuView(View):
             return Destination(ToolsSatochipDIYView)
 
 class ToolsCommonView(View):
+    INFO = ButtonOption("Card Info")
     CHANGE_PIN = ButtonOption("Change PIN")
     CHANGE_LABEL = ButtonOption("Change Label")
     CHANGE_NFC = ButtonOption("Change NFC Policy")
@@ -996,7 +997,7 @@ class ToolsCommonView(View):
 
     def run(self):
 
-        button_data = [self.CHANGE_PIN, self.CHANGE_LABEL, self.CHANGE_NFC, self.FACTORY_RESET]
+        button_data = [self.INFO, self.CHANGE_PIN, self.CHANGE_LABEL, self.CHANGE_NFC, self.FACTORY_RESET]
 
         selected_menu_num = self.run_screen(
                 ButtonListScreen,
@@ -1007,6 +1008,9 @@ class ToolsCommonView(View):
 
         if selected_menu_num == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
+
+        elif button_data[selected_menu_num] == self.INFO:
+            return Destination(ToolsSmartcardInfoView)
 
         elif button_data[selected_menu_num] == self.CHANGE_PIN:
             return Destination(ToolsSatochipChangePinView)
@@ -1019,6 +1023,56 @@ class ToolsCommonView(View):
 
         elif button_data[selected_menu_num] == self.FACTORY_RESET:
             return Destination(ToolsSatochipFactoryResetView)
+
+class ToolsSmartcardInfoView(View):
+    def run(self):
+
+        Satochip_Connector = seedkeeper_utils.init_satochip(
+            self, init_card_filter=["satochip", "seedkeeper", "satodime"], require_pin=False
+        )
+
+        if not Satochip_Connector:
+            return Destination(BackStackView)
+
+        _resp, _sw1, _sw2, status = Satochip_Connector.card_get_status()
+
+        info_lines = []
+
+        card_type = getattr(Satochip_Connector, "card_type", "Unknown")
+        info_lines.append(f"Type: {card_type}")
+
+        version = f"{status.get('protocol_major_version', 0)}.{status.get('protocol_minor_version', 0)}-" \
+                  f"{status.get('applet_major_version', 0)}.{status.get('applet_minor_version', 0)}"
+        info_lines.append(f"Version: {version}")
+
+        pin0 = status.get("PIN0_remaining_tries")
+        if pin0 is not None:
+            info_lines.append(f"Remaining PIN tries: {pin0}")
+
+        setup_done = status.get("setup_done")
+        if setup_done is not None:
+            setup_str = "Done" if setup_done else "Not done"
+            if card_type == "Satochip" and "is_seeded" in status:
+                setup_str += " (seeded)" if status["is_seeded"] else " (unseeded)"
+            info_lines.append(f"Setup: {setup_str}")
+
+        nfc_policy = status.get("nfc_policy")
+        if nfc_policy is not None:
+            nfc_map = {0: "Enabled", 1: "Disabled", 2: "Blocked"}
+            info_lines.append(f"NFC: {nfc_map.get(nfc_policy, str(nfc_policy))}")
+
+        text = "\n".join(info_lines)
+
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Card Info",
+            status_headline=None,
+            text=text,
+            status_icon_name="",
+            show_back_button=True,
+        )
+
+        return Destination(BackStackView)
 
 class ToolsSatochipChangePinView(View):
     def run(self):
