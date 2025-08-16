@@ -1046,7 +1046,7 @@ class ToolsSmartcardInfoView(View):
 
         pin0 = status.get("PIN0_remaining_tries")
         if pin0 is not None:
-            info_lines.append(f"PIN tries: {pin0}")
+            info_lines.append(f"Remaining PIN tries: {pin0}")
 
         setup_done = status.get("setup_done")
         if setup_done is not None:
