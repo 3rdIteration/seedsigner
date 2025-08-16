@@ -1108,6 +1108,7 @@ class ToolsSatochipChangeNFCView(View):
     
         else:
             error_messages = {
+                0x6D00: "This card's firmware does not support setting the NFC policy",
                 0x9C48: "Cannot set the NFC policy through the NFC interface, use contact interface instead",
                 0x9C49: "Cannot set the NFC policy: NFC interface is BLOCKED, a factory reset is required to reenable NFC!",
             }
