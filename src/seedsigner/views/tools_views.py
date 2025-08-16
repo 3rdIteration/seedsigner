@@ -28,6 +28,7 @@ from seedsigner.gui.screens.tools_screens import (ToolsCalcFinalWordDoneScreen, 
     ToolsTextQRTranscribeModePromptScreen, ToolsTranscribeTextQRWholeQRScreen, ToolsTranscribeTextQRZoomedInScreen,
     ToolsTranscribeTextQRConfirmQRPromptScreen)
 from seedsigner.helpers import embit_utils, mnemonic_generation
+from seedsigner.helpers.iso7816 import format_sw_error
 from seedsigner.models.decode_qr import DecodeQR
 from seedsigner.models.encode_qr import GenericStaticQrEncoder
 from seedsigner.gui.screens import RET_CODE__BACK_BUTTON, ButtonListScreen
@@ -1107,13 +1108,18 @@ class ToolsSatochipChangeNFCView(View):
             return Destination(MainMenuView)
     
         else:
-            if (sw1 == 0x9C and sw2 == 0x48):
-                failed_string = "Cannot set the NFC policy through the NFC interface, use contact interface instead"
-            elif (sw1 == 0x9C and sw2 == 0x49):
-                failed_string = "Cannot set the NFC policy: NFC interface is BLOCKED, a factory reset is required to reenable NFC!"
-            else:
-                failed_string = "Failed to set NFC policy with error code: {hex(256*sw1+sw2)}"
-            logger.info("Failure: NFC Change Failed")
+            error_messages = {
+                0x9C48: "Cannot set the NFC policy through the NFC interface, use contact interface instead",
+                0x9C49: "Cannot set the NFC policy: NFC interface is BLOCKED, a factory reset is required to reenable NFC!",
+            }
+
+            status_word = (sw1 << 8) | sw2
+            failed_string = error_messages.get(status_word, format_sw_error(sw1, sw2))
+
+            logger.info(
+                "Failure: NFC Change Failed with status word %s",
+                hex(status_word),
+            )
             self.run_screen(
                 WarningScreen,
                 title="Failed",

@@ -15,6 +15,7 @@ from seedsigner.gui.screens import (
     KeyboardScreen,
 )
 from seedsigner.gui.screens.screen import LoadingScreenThread
+from seedsigner.helpers.iso7816 import format_sw_error
 
 
 import os
@@ -185,7 +186,7 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True):
                         WarningScreen,
                         title="Failure",
                         status_headline=None,
-                        text=f"Failed, Code:" + str(sw1) + " " + str(sw2),
+                        text=format_sw_error(sw1, sw2),
                         show_back_button=True,
                     )
                     return None
@@ -264,7 +265,7 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True):
                 WarningScreen,
                 title="Invalid PIN",
                 status_headline=None,
-                text=f"Invalid PIN entered, select another and try again.",
+                text=format_sw_error(sw1, sw2),
                 show_back_button=True,
             )
             return None
