@@ -1046,14 +1046,14 @@ class ToolsSmartcardInfoView(View):
 
         pin0 = status.get("PIN0_remaining_tries")
         if pin0 is not None:
-            info_lines.append(f"PIN0 tries: {pin0}")
+            info_lines.append(f"PIN tries: {pin0}")
 
         setup_done = status.get("setup_done")
         if setup_done is not None:
-            info_lines.append("Setup: Done" if setup_done else "Setup: Not done")
-
-        if card_type == "Satochip" and "is_seeded" in status:
-            info_lines.append("Seeded" if status["is_seeded"] else "Not seeded")
+            setup_str = "Done" if setup_done else "Not done"
+            if card_type == "Satochip" and "is_seeded" in status:
+                setup_str += " (seeded)" if status["is_seeded"] else " (unseeded)"
+            info_lines.append(f"Setup: {setup_str}")
 
         nfc_policy = status.get("nfc_policy")
         if nfc_policy is not None:
@@ -1067,6 +1067,7 @@ class ToolsSmartcardInfoView(View):
             title="Card Info",
             status_headline=None,
             text=text,
+            status_icon_name="",
             show_back_button=True,
         )
 
