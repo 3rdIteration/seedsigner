@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from binascii import b2a_base64
+import logging
 
 from embit.ec import PublicKey
 from embit.psbt import PSBT
 from embit.util import secp256k1
+from seedsigner.helpers.iso7816 import format_sw_error
 
 try:
     # Constant introduced in newer embit versions
@@ -12,6 +14,7 @@ try:
 except ImportError:  # pragma: no cover - support older embit releases
     HARDENED_INDEX = 0x80000000
 
+logger = logging.getLogger(__name__)
 
 def _format_path(derivation: list[int]) -> str:
     """Convert a list of BIP32 indices to string path"""
@@ -67,6 +70,7 @@ def sign_psbt_with_satochip(psbt: PSBT, connector) -> int:
             tx_hash = psbt.sighash(i)
             sig, sw1, sw2 = connector.card_sign_transaction_hash(0xFF, list(tx_hash), None)
             if sw1 != 0x90 or sw2 != 0x00:
+                logger.warning("Satochip signing failed: %s", format_sw_error(sw1, sw2))
                 continue
             sig_der = bytes(sig)
             # ensure low-S signature
@@ -95,5 +99,7 @@ def sign_message_with_satochip(derivation_path: str, message: str, connector) ->
     key, _chaincode = connector.card_bip32_get_extendedkey(path)
     _resp, sw1, sw2, compsig = connector.card_sign_message(0xFF, key, message)
     if sw1 != 0x90 or sw2 != 0x00 or not compsig:
-        raise Exception("Failed to sign message with Satochip")
+        raise Exception(
+            f"Failed to sign message with Satochip: {format_sw_error(sw1, sw2)}"
+        )
     return b2a_base64(compsig).strip().decode()
