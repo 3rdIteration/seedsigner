@@ -46,6 +46,7 @@ from seedsigner.views.seed_views import (
     LoadSeedView,
     SeedSlip39CreateFromBytesView,
     SeedSlip39RegenerateSharesView,
+    AccountNumberView,
 )
 
 from .view import View, Destination, BackStackView, MainMenuView
@@ -731,7 +732,7 @@ class ToolsAddressExplorerAddressTypeView(View):
     CHANGE = ButtonOption("Change Addresses")
 
 
-    def __init__(self, seed_num: int = None, script_type: str = None, custom_derivation: str = None):
+    def __init__(self, seed_num: int = None, script_type: str = None, custom_derivation: str = None, account: int = 0):
         """
             If the explorer source is a seed, `seed_num` and `script_type` must be
             specified. `custom_derivation` can be specified as needed.
@@ -743,6 +744,7 @@ class ToolsAddressExplorerAddressTypeView(View):
         self.seed_num = seed_num
         self.script_type = script_type
         self.custom_derivation = custom_derivation
+        self.account = account
     
         network = self.settings.get_value(SettingsConstants.SETTING__NETWORK)
 
@@ -753,6 +755,7 @@ class ToolsAddressExplorerAddressTypeView(View):
             network=self.settings.get_value(SettingsConstants.SETTING__NETWORK),
             embit_network=SettingsConstants.map_network_to_embit(network),
             script_type=script_type,
+            account=account,
         )
         if self.seed_num is not None:
             self.seed = self.controller.storage.seeds[seed_num]
@@ -769,6 +772,7 @@ class ToolsAddressExplorerAddressTypeView(View):
                     network=self.settings.get_value(SettingsConstants.SETTING__NETWORK),
                     wallet_type=SettingsConstants.SINGLE_SIG,
                     script_type=self.script_type,
+                    account=self.account,
                 )
 
             data["derivation_path"] = derivation_path
@@ -2439,6 +2443,14 @@ class SatochipExportXpubScriptTypeView(View):
                 SatochipExportXpubCustomDerivationView,
                 view_args=dict(sig_type=self.sig_type, script_type=script_type),
             )
+        if (
+            self.sig_type == SettingsConstants.SINGLE_SIG
+            and self.settings.get_value(SettingsConstants.SETTING__ACCOUNT_PROMPT) == SettingsConstants.OPTION__ENABLED
+        ):
+            return Destination(
+                AccountNumberView,
+                view_args=dict(next_view_cls=SatochipExportXpubCoordinatorView, next_view_args=dict(sig_type=self.sig_type, script_type=script_type)),
+            )
         return Destination(
             SatochipExportXpubCoordinatorView,
             view_args=dict(sig_type=self.sig_type, script_type=script_type),
@@ -2468,11 +2480,12 @@ class SatochipExportXpubCustomDerivationView(View):
 
 
 class SatochipExportXpubCoordinatorView(View):
-    def __init__(self, sig_type: str, script_type: str, custom_derivation: str = ""):
+    def __init__(self, sig_type: str, script_type: str, custom_derivation: str = "", account: int = 0):
         super().__init__()
         self.sig_type = sig_type
         self.script_type = script_type
         self.custom_derivation = custom_derivation
+        self.account = account
 
     def run(self):
         button_data = []
@@ -2501,18 +2514,20 @@ class SatochipExportXpubCoordinatorView(View):
                 coordinator=coordinator,
                 custom_derivation=self.custom_derivation,
                 coordinator_label=coordinator_label,
+                account=self.account,
             ),
         )
 
 
 class SatochipExportXpubWarningView(View):
-    def __init__(self, sig_type: str, script_type: str, coordinator: str, custom_derivation: str, coordinator_label: str):
+    def __init__(self, sig_type: str, script_type: str, coordinator: str, custom_derivation: str, coordinator_label: str, account: int = 0):
         super().__init__()
         self.sig_type = sig_type
         self.script_type = script_type
         self.coordinator = coordinator
         self.custom_derivation = custom_derivation
         self.coordinator_label = coordinator_label
+        self.account = account
 
     def run(self):
         destination = Destination(
@@ -2523,6 +2538,7 @@ class SatochipExportXpubWarningView(View):
                 coordinator=self.coordinator,
                 custom_derivation=self.custom_derivation,
                 coordinator_label=self.coordinator_label,
+                account=self.account,
             ),
             skip_current_view=True,
         )
@@ -2544,13 +2560,14 @@ class SatochipExportXpubWarningView(View):
 
 
 class SatochipExportXpubDetailsView(View):
-    def __init__(self, sig_type: str, script_type: str, coordinator: str, custom_derivation: str, coordinator_label: str):
+    def __init__(self, sig_type: str, script_type: str, coordinator: str, custom_derivation: str, coordinator_label: str, account: int = 0):
         super().__init__()
         self.sig_type = sig_type
         self.script_type = script_type
         self.coordinator = coordinator
         self.custom_derivation = custom_derivation
         self.coordinator_label = coordinator_label
+        self.account = account
 
     def run(self):
         Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satochip"])
@@ -2564,6 +2581,7 @@ class SatochipExportXpubDetailsView(View):
                 network=self.settings.get_value(SettingsConstants.SETTING__NETWORK),
                 wallet_type=self.sig_type,
                 script_type=self.script_type,
+                account=self.account,
             )
 
         network = self.settings.get_value(SettingsConstants.SETTING__NETWORK)
@@ -2773,6 +2791,8 @@ class SatochipLoadDescriptorScriptTypeView(View):
         script_type = button_data[selected_menu_num].return_data
         if script_type == SettingsConstants.CUSTOM_DERIVATION:
             return Destination(SatochipLoadDescriptorCustomDerivationView, view_args=dict(script_type=script_type))
+        if self.settings.get_value(SettingsConstants.SETTING__ACCOUNT_PROMPT) == SettingsConstants.OPTION__ENABLED:
+            return Destination(AccountNumberView, view_args=dict(next_view_cls=SatochipLoadDescriptorDetailsView, next_view_args=dict(script_type=script_type)))
         return Destination(SatochipLoadDescriptorDetailsView, view_args=dict(script_type=script_type))
 
 
@@ -2798,10 +2818,11 @@ class SatochipLoadDescriptorCustomDerivationView(View):
 
 
 class SatochipLoadDescriptorDetailsView(View):
-    def __init__(self, script_type: str, custom_derivation: str = ""):
+    def __init__(self, script_type: str, custom_derivation: str = "", account: int = 0):
         super().__init__()
         self.script_type = script_type
         self.custom_derivation = custom_derivation
+        self.account = account
 
     def run(self):
         Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satochip"])
@@ -2815,6 +2836,7 @@ class SatochipLoadDescriptorDetailsView(View):
                 network=self.settings.get_value(SettingsConstants.SETTING__NETWORK),
                 wallet_type=SettingsConstants.SINGLE_SIG,
                 script_type=self.script_type,
+                account=self.account,
             )
 
         network = self.settings.get_value(SettingsConstants.SETTING__NETWORK)

@@ -27,6 +27,9 @@ def test_get_standard_derivation_path():
         (SC.TESTNET, SC.SINGLE_SIG, SC.TAPROOT): "m/86'/1'/0'",
         (SC.REGTEST, SC.SINGLE_SIG, SC.TAPROOT): "m/86'/1'/0'",
 
+        (SC.MAINNET, SC.SINGLE_SIG, SC.NATIVE_SEGWIT, 1): "m/84'/0'/1'",
+        (SC.TESTNET, SC.SINGLE_SIG, SC.NESTED_SEGWIT, 2): "m/49'/1'/2'",
+
         (SC.MAINNET, SC.SINGLE_SIG, SC.LEGACY_P2PKH): "m/44'/0'/0'",
         (SC.TESTNET, SC.SINGLE_SIG, SC.LEGACY_P2PKH): "m/44'/1'/0'",
         (SC.REGTEST, SC.SINGLE_SIG, SC.LEGACY_P2PKH): "m/44'/1'/0'",
@@ -76,6 +79,7 @@ def test_get_standard_derivation_path():
             if len(args) == 1: a_dict = {'network': args[0]}
             elif len(args) == 2: a_dict = {'network': args[0], 'wallet_type': args[1]}
             elif len(args) == 3: a_dict = {'network': args[0], 'wallet_type': args[1], 'script_type': args[2]}
+            elif len(args) == 4: a_dict = {'network': args[0], 'wallet_type': args[1], 'script_type': args[2], 'account': args[3]}
             print(f"asserting {func.__name__}(**{a_dict}) == {repr(expected)}")
             assert func(**a_dict) == expected
 
@@ -91,6 +95,7 @@ def test_get_standard_derivation_path():
             if len(args) == 1: a_dict = {'network': args[0]}
             elif len(args) == 2: a_dict = {'network': args[0], 'wallet_type': args[1]}
             elif len(args) == 3: a_dict = {'network': args[0], 'wallet_type': args[1], 'script_type': args[2]}
+            elif len(args) == 4: a_dict = {'network': args[0], 'wallet_type': args[1], 'script_type': args[2], 'account': args[3]}
             print(f"asserting {func.__name__}(**{a_dict}) raises Exception")
             with pytest.raises(expected):
                 func(**a_dict)
