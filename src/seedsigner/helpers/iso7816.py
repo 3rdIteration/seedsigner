@@ -25,7 +25,10 @@ ISO7816_STATUS_WORDS: Dict[int, str] = {
     0x6A86: "Incorrect parameters P1 P2",
     0x6A88: "Referenced data not found",
     0x6B00: "Wrong parameters P1 P2",
-    0x6D00: "Instruction code not supported or invalid",
+    # Commonly returned when a command isn't implemented by the card's
+    # firmware. Keep the wording simple so users understand the feature
+    # isn't available on their card/app.
+    0x6D00: "Feature not supported for this applet",
     0x6E00: "Class not supported",
     0x6F00: "Unknown error, no precise diagnosis",
     0x9000: "Success",
