@@ -1091,20 +1091,38 @@ class ToolsSmartcardGenuineCheckView(View):
         try:
             is_genuine, _, _, _, txt_error = Satochip_Connector.card_verify_authenticity()
             if txt_error:
-                text = f"Genuine check failed: {txt_error}"
+                self.run_screen(
+                    ErrorScreen,
+                    title="Genuine Check",
+                    status_headline=None,
+                    text=f"Genuine check failed: {txt_error}",
+                    show_back_button=True,
+                )
+            elif is_genuine:
+                self.run_screen(
+                    LargeIconStatusScreen,
+                    title="Genuine Check",
+                    status_headline=None,
+                    text="Card is genuine",
+                    status_icon_name="",
+                    show_back_button=True,
+                )
             else:
-                text = "Card is genuine" if is_genuine else "Card is NOT genuine"
+                self.run_screen(
+                    WarningScreen,
+                    title="Genuine Check",
+                    status_headline=None,
+                    text="Card is NOT genuine",
+                    show_back_button=True,
+                )
         except Exception as e:
-            text = f"Genuine: Error ({e})"
-
-        self.run_screen(
-            LargeIconStatusScreen,
-            title="Genuine Check",
-            status_headline=None,
-            text=text,
-            status_icon_name="",
-            show_back_button=True,
-        )
+            self.run_screen(
+                ErrorScreen,
+                title="Genuine Check",
+                status_headline=None,
+                text=f"Genuine: Error ({e})",
+                show_back_button=True,
+            )
 
         return Destination(BackStackView)
 
