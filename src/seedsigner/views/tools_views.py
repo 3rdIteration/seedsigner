@@ -1096,30 +1096,22 @@ class ToolsSmartcardGenuineCheckView(View):
             is_genuine, _, _, _, txt_error = Satochip_Connector.card_verify_authenticity()
 
             # Workaround for occasional incorrect UID calculation in pysatochip
+            # basically just try to connect again, using the PIN entered on the first attempt
             if not is_genuine or txt_error:
+                print("Initial genuine check failed, retrying...")
+                temp_pin = self.controller.Satochip_PIN
                 try:
-                    # Freshly query the card; this may update the UID
-                    Satochip_Connector.card_get_status()
-                    if (
-                        self.controller.Satochip_Last_UID_SHA1 is not None
-                        and Satochip_Connector.UID_SHA1
-                        != self.controller.Satochip_Last_UID_SHA1
-                    ):
-                        # Cached UID doesn't match, clear and recreate connector
-                        try:
-                            self.controller.Satochip_Connector.card_disconnect()
-                        except Exception:
-                            pass
-                        self.controller.Satochip_Connector = None
-                        self.controller.Satochip_Last_UID_SHA1 = None
-                        Satochip_Connector = seedkeeper_utils.init_satochip(
-                            self,
-                            init_card_filter=["satochip", "seedkeeper", "satodime"],
+
+                    Satochip_Connector = seedkeeper_utils.init_satochip(
+                        self,
+                        init_card_filter=["satochip", "seedkeeper", "satodime"],
+                        require_pin=False,
+                    )
+                    Satochip_Connector.set_pin(0, temp_pin)
+                    if Satochip_Connector:
+                        is_genuine, _, _, _, txt_error = (
+                            Satochip_Connector.card_verify_authenticity()
                         )
-                        if Satochip_Connector:
-                            is_genuine, _, _, _, txt_error = (
-                                Satochip_Connector.card_verify_authenticity()
-                            )
                 except Exception:
                     pass
 

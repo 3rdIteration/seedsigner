@@ -197,6 +197,13 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True):
                 time.sleep(0.1)  # Sleep for 100ms
                 logger.exception("Pin check failed")
 
+                # clear any cached PIN as it's obviously wrong and was mistakenly cached somewhere...
+                # (This can happen when the card UID is incorrectly read which happens sometimes)
+                try:
+                    parentObject.controller.Satochip_PIN = None
+                except:
+                    pass
+
                 parentObject.run_screen(
                     WarningScreen,
                     title="Failed",
