@@ -1045,6 +1045,18 @@ class ToolsSmartcardInfoView(View):
                   f"{status.get('applet_major_version', 0)}.{status.get('applet_minor_version', 0)}"
         info_lines.append(f"Version: {version}")
 
+        try:
+            is_genuine, _, _, _, txt_error = (
+                Satochip_Connector.card_verify_authenticity()
+            )
+            if txt_error:
+                info_lines.append(f"Genuine: {txt_error}")
+            else:
+                status_str = "Yes" if is_genuine else "No"
+                info_lines.append(f"Genuine: {status_str}")
+        except Exception as e:
+            info_lines.append(f"Genuine: Error ({e})")
+
         pin0 = status.get("PIN0_remaining_tries")
         if pin0 is not None:
             info_lines.append(f"Remaining PIN tries: {pin0}")
