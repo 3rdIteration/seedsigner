@@ -1049,6 +1049,14 @@ class ToolsSmartcardInfoView(View):
         card_type = getattr(Satochip_Connector, "card_type", "Unknown")
         info_lines.append(f"Type: {card_type}")
 
+        uid = getattr(Satochip_Connector, "UID_SHA1", None)
+        if not uid:
+            uid_raw = getattr(Satochip_Connector, "UID", None)
+            if uid_raw:
+                uid = bytes(uid_raw).hex()
+        if uid:
+            info_lines.append(f"UID: {uid}")
+
         version = f"{status.get('protocol_major_version', 0)}.{status.get('protocol_minor_version', 0)}-" \
                   f"{status.get('applet_major_version', 0)}.{status.get('applet_minor_version', 0)}"
         info_lines.append(f"Version: {version}")
