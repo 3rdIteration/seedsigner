@@ -1366,101 +1366,116 @@ class ToolsSatochipFactoryResetView(View):
         print("WARNING: FACTORY RESET WITHOUT A WORKING BACKUP WILL LEAD TO UNRECOVERABLE LOSS OF FUNDS")
         logger.info("In common_reset_factory_legacy")
         Satochip_Connector.set_mode_factory_reset(True)
+
+        # If other smartcard workflows have previously interacted with the
+        # connector, it may still have an active connection which interferes
+        # with card removal detection during the factory reset sequence. Start
+        # from a clean state so that each removal/reinsertion is picked up
+        # correctly.
+        Satochip_Connector.card_disconnect()
+
         remaining_string = ""
-        while(True):
-            self.loading_screen = LoadingScreenThread(text="Sending Command")
-            ret = self.run_screen(
-                DireWarningScreen,
-                title="Warning",
-                status_headline=None,
-                text="Remove and re-insert the smartcard to continue factory reset." + remaining_string,
-                show_back_button=True,
-                button_data=[ButtonOption("Card Re-Inserted")]
-            )
-            if ret == RET_CODE__BACK_BUTTON:
-                return resetStatus
-            else:
-                self.loading_screen.start()
-                try:
-                    time.sleep(3)  # give some time to initialize reader after card insertion... (Takes a while on Pi0)
-                    (response, sw1, sw2) = Satochip_Connector.card_reset_factory_signal()
-                    self.loading_screen.stop()
-                except Exception as e:
-                    print("Exception:", str(e))
-                    self.loading_screen.stop()
-                    self.run_screen(
-                        WarningScreen,
-                        title="Exception",
-                        status_headline=None,
-                        text=str(e)[:100],
-                        show_back_button=True,
-                    )
-                    break # Just bail out of the workflow if there was an IO error
-                if sw1 == 0x9c and sw2 == 0x04:
-                    print("Factory Reset Failed (setup not done)")
-                    self.run_screen(
-                        WarningScreen,
-                        title="Failure",
-                        status_headline=None,
-                        text="Factory Reset Failed (setup not done)",
-                        show_back_button=True,
-                    )
-                    #print("In addition to the factory-reset command, you also need to add the '--enablefactoryreset' argument to enable it")
-                    break
-                if sw1 == 0x00 and sw2 == 0x00:
-                    print("Card Connection Failed!")
-                    self.run_screen(
-                        WarningScreen,
-                        title="Failure",
-                        status_headline=None,
-                        text="Card Connection Failed!",
-                        show_back_button=True,
-                    )
-                    break
-                if sw1 == 0xFF and sw2 == 0x00:
-                    Satochip_Connector.card_disconnect()
-                    print("CARD HAS BEEN RESET TO FACTORY!")
-                    resetStatus = True
-                    break
-                elif sw1 == 0xFF and sw2 == 0xFF:
-                    print("RESET ABORTED: you must remove card after each reset!")
-                    self.run_screen(
-                        WarningScreen,
-                        title="Failure",
-                        status_headline=None,
-                        text="RESET ABORTED: you must remove card after each reset!",
-                        show_back_button=True,
-                    )
-                    break
-                elif sw1 == 0xFF and sw2 > 0x00:
-                    remaining_string = "\nREMAINING COUNTER: " + str(sw2)
-                    print("Remaining counter: " + str(sw2))
-                    print("Please remove and reinsert card, then confirm that you want to continue...")
-                elif sw1 == 0x6F and sw2 == 0x00:
-                    print("The factory reset failed")
-                    print("Unknown error" + str(hex(256 * sw1 + sw2)))
-                    self.run_screen(
-                        WarningScreen,
-                        title="Failure",
-                        status_headline=None,
-                        text="Unknown error" + str(hex(256 * sw1 + sw2)),
-                        show_back_button=True,
-                    )
-                    break
-                elif sw1 == 0x6D and sw2 == 0x00:
-                    print("The factory reset failed")
-                    print("Instruction not supported - error code: " + str(hex(256 * sw1 + sw2)))
-                    self.run_screen(
-                        WarningScreen,
-                        title="Failure",
-                        status_headline=None,
-                        text="Instruction not supported - error code: " + str(hex(256 * sw1 + sw2)),
-                        show_back_button=True,
-                    )
-                    break
+        try:
+            while(True):
+                self.loading_screen = LoadingScreenThread(text="Sending Command")
+                ret = self.run_screen(
+                    DireWarningScreen,
+                    title="Warning",
+                    status_headline=None,
+                    text="Remove and re-insert the smartcard to continue factory reset." + remaining_string,
+                    show_back_button=True,
+                    button_data=[ButtonOption("Card Re-Inserted")]
+                )
+                if ret == RET_CODE__BACK_BUTTON:
+                    return resetStatus
                 else:
-                    print("The factory reset has been cancelled")
-                    break
+                    self.loading_screen.start()
+                    try:
+                        time.sleep(3)  # give some time to initialize reader after card insertion... (Takes a while on Pi0)
+                        (response, sw1, sw2) = Satochip_Connector.card_reset_factory_signal()
+                        self.loading_screen.stop()
+                    except Exception as e:
+                        print("Exception:", str(e))
+                        self.loading_screen.stop()
+                        self.run_screen(
+                            WarningScreen,
+                            title="Exception",
+                            status_headline=None,
+                            text=str(e)[:100],
+                            show_back_button=True,
+                        )
+                        break # Just bail out of the workflow if there was an IO error
+
+                    if sw1 == 0x9c and sw2 == 0x04:
+                        print("Factory Reset Failed (setup not done)")
+                        self.run_screen(
+                            WarningScreen,
+                            title="Failure",
+                            status_headline=None,
+                            text="Factory Reset Failed (setup not done)",
+                            show_back_button=True,
+                        )
+                        #print("In addition to the factory-reset command, you also need to add the '--enablefactoryreset' argument to enable it")
+                        break
+                    if sw1 == 0x00 and sw2 == 0x00:
+                        print("Card Connection Failed!")
+                        self.run_screen(
+                            WarningScreen,
+                            title="Failure",
+                            status_headline=None,
+                            text="Card Connection Failed!",
+                            show_back_button=True,
+                        )
+                        break
+                    if sw1 == 0xFF and sw2 == 0x00:
+                        Satochip_Connector.card_disconnect()
+                        print("CARD HAS BEEN RESET TO FACTORY!")
+                        resetStatus = True
+                        break
+                    elif sw1 == 0xFF and sw2 == 0xFF:
+                        print("RESET ABORTED: you must remove card after each reset!")
+                        self.run_screen(
+                            WarningScreen,
+                            title="Failure",
+                            status_headline=None,
+                            text="RESET ABORTED: you must remove card after each reset!",
+                            show_back_button=True,
+                        )
+                        break
+                    elif sw1 == 0xFF and sw2 > 0x00:
+                        remaining_string = "\nREMAINING COUNTER: " + str(sw2)
+                        print("Remaining counter: " + str(sw2))
+                        print("Please remove and reinsert card, then confirm that you want to continue...")
+                    elif sw1 == 0x6F and sw2 == 0x00:
+                        print("The factory reset failed")
+                        print("Unknown error" + str(hex(256 * sw1 + sw2)))
+                        self.run_screen(
+                            WarningScreen,
+                            title="Failure",
+                            status_headline=None,
+                            text="Unknown error" + str(hex(256 * sw1 + sw2)),
+                            show_back_button=True,
+                        )
+                        break
+                    elif sw1 == 0x6D and sw2 == 0x00:
+                        print("The factory reset failed")
+                        print("Instruction not supported - error code: " + str(hex(256 * sw1 + sw2)))
+                        self.run_screen(
+                            WarningScreen,
+                            title="Failure",
+                            status_headline=None,
+                            text="Instruction not supported - error code: " + str(hex(256 * sw1 + sw2)),
+                            show_back_button=True,
+                        )
+                        break
+                    else:
+                        print("The factory reset has been cancelled")
+                        break
+        finally:
+            # Always reset the mode and disconnect to return the connector to a
+            # normal operating state for any subsequent smartcard operations.
+            Satochip_Connector.set_mode_factory_reset(False)
+            Satochip_Connector.card_disconnect()
 
         return resetStatus
 
