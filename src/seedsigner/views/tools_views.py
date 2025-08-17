@@ -990,6 +990,7 @@ class ToolsSmartcardMenuView(View):
 
 class ToolsCommonView(View):
     INFO = ButtonOption("Card Info")
+    GENUINE = ButtonOption("Genuine Check")
     CHANGE_PIN = ButtonOption("Change PIN")
     CHANGE_LABEL = ButtonOption("Change Label")
     CHANGE_NFC = ButtonOption("Change NFC Policy")
@@ -997,7 +998,7 @@ class ToolsCommonView(View):
 
     def run(self):
 
-        button_data = [self.INFO, self.CHANGE_PIN, self.CHANGE_LABEL, self.CHANGE_NFC, self.FACTORY_RESET]
+        button_data = [self.INFO, self.GENUINE, self.CHANGE_PIN, self.CHANGE_LABEL, self.CHANGE_NFC, self.FACTORY_RESET]
 
         selected_menu_num = self.run_screen(
                 ButtonListScreen,
@@ -1011,6 +1012,9 @@ class ToolsCommonView(View):
 
         elif button_data[selected_menu_num] == self.INFO:
             return Destination(ToolsSmartcardInfoView)
+
+        elif button_data[selected_menu_num] == self.GENUINE:
+            return Destination(ToolsSmartcardGenuineCheckView)
 
         elif button_data[selected_menu_num] == self.CHANGE_PIN:
             return Destination(ToolsSatochipChangePinView)
@@ -1071,6 +1075,49 @@ class ToolsSmartcardInfoView(View):
             status_icon_name="",
             show_back_button=True,
         )
+
+        return Destination(BackStackView)
+
+class ToolsSmartcardGenuineCheckView(View):
+    def run(self):
+
+        Satochip_Connector = seedkeeper_utils.init_satochip(
+            self, init_card_filter=["satochip", "seedkeeper", "satodime"]
+        )
+
+        if not Satochip_Connector:
+            return Destination(BackStackView)
+
+        try:
+            is_genuine, _, _, _, txt_error = Satochip_Connector.card_verify_authenticity()
+            if txt_error:
+                self.run_screen(
+                    ErrorScreen,
+                    title="Genuine Check",
+                    status_headline=None,
+                    text=f"Genuine check failed: {txt_error}",
+                )
+            elif is_genuine:
+                self.run_screen(
+                    LargeIconStatusScreen,
+                    title="Genuine Check",
+                    status_headline=None,
+                    text="Card is genuine",
+                )
+            else:
+                self.run_screen(
+                    WarningScreen,
+                    title="Genuine Check",
+                    status_headline=None,
+                    text="Card is NOT genuine",
+                )
+        except Exception as e:
+            self.run_screen(
+                ErrorScreen,
+                title="Genuine Check",
+                status_headline=None,
+                text=f"Genuine: Error ({e})",
+            )
 
         return Destination(BackStackView)
 
