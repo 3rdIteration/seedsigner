@@ -120,9 +120,20 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True):
                 len(status[3]) > 0
             ):  # Sometimes it's possible to end up with an invalid of zero length here...
                 break
+            else:
+                # Cleanup the connector and try again
+                try:
+                    Satochip_Connector.card_disconnect()
+                except Exception:
+                    pass
 
         except Exception as e:
             print("CardConnector Init Failed:" + str(e))
+            # Ensure the connector state is clean before trying again
+            try:
+                Satochip_Connector.card_disconnect()
+            except Exception:
+                pass
             time.sleep(0.1)  # Sleep for 100ms
 
         status = None  # Reset this every loop...
@@ -130,6 +141,11 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True):
     parentObject.loading_screen.stop()
 
     if not status:
+        # If we never connected, ensure the connector is reset for future attempts
+        try:
+            Satochip_Connector.card_disconnect()
+        except Exception:
+            pass
         filter_txt = ""
         if init_card_filter:
             if isinstance(init_card_filter, (list, tuple)):
