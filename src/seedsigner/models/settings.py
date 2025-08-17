@@ -188,11 +188,17 @@ class Settings(Singleton):
                         new_settings[entry.attr_name] = new_settings[entry.attr_name].split(",")
 
         for key, value in new_settings.items():
-            self.set_value(key, value)
+            # Defer writing to disk until all values have been applied to avoid
+            # repeatedly touching the microSD card during initialization or
+            # bulk updates.
+            self.set_value(key, value, save=False)
+
+        # Persist once after all settings have been updated.
+        self.save()
 
 
 
-    def set_value(self, attr_name: str, value: any):
+    def set_value(self, attr_name: str, value: any, save: bool = True):
         """
             Updates the attr's current value.
 
@@ -400,7 +406,12 @@ class Settings(Singleton):
                 pass
 
         self._data[attr_name] = value
-        self.save()
+
+        # Persist if requested. Skipping saves is useful during startup when
+        # settings are loaded from disk; saving each key individually could
+        # cause unnecessary microSD activity and long boot times on the Pi.
+        if save:
+            self.save()
 
         # Special handling for localization
         if attr_name == SettingsConstants.SETTING__LOCALE:
