@@ -644,6 +644,35 @@ class RestartPCSCView(View):
             os.system("sudo service pcscd stop")
             time.sleep(1)
             os.system("sudo service pcscd start")
+
+        # Drop and recreate the PC/SC context so pyscard can see readers again
+        try:
+            from smartcard.pcsc import PCSCContext
+
+            pcsc_ctx = PCSCContext.instance()
+            try:
+                pcsc_ctx.releaseContext()
+            except Exception:
+                # Context may already be invalid
+                pass
+            pcsc_ctx.establishContext()
+        except Exception:
+            # Older pyscard versions don't expose PCSCContext; fall back to the
+            # lower-level scard bindings.
+            try:
+                from smartcard.scard import (
+                    SCardEstablishContext,
+                    SCardReleaseContext,
+                    SCARD_SCOPE_USER,
+                    SCARD_S_SUCCESS,
+                )
+
+                hresult, hcontext = SCardEstablishContext(SCARD_SCOPE_USER)
+                if hresult == SCARD_S_SUCCESS:
+                    SCardReleaseContext(hcontext)
+                    SCardEstablishContext(SCARD_SCOPE_USER)
+            except Exception as e:
+                print(f"Failed to reset pyscard context: {e}")
         self.loading_screen.stop()
 
 
