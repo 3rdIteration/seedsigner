@@ -2,6 +2,7 @@ import pytest
 from base import BaseTest
 from seedsigner.models.settings import InvalidSettingsQRData, Settings
 from seedsigner.models.settings_definition import SettingsConstants
+from unittest.mock import patch
 
 
 
@@ -110,3 +111,15 @@ class TestSettings(BaseTest):
 
         # Accepts update with no Exceptions
         self.settings.update(new_settings=settings_update_dict)
+
+    def test_update_handles_legacy_multiselect_format(self):
+        """Updating from old list-of-lists format should normalize to list of values"""
+        legacy = [[opt[0], opt[1]] for opt in SettingsConstants.ALL_SMARTCARD_INTERFACES]
+
+        with patch("os.system"), patch("time.sleep"):
+            self.settings.update({
+                SettingsConstants.SETTING__SMARTCARD_INTERFACES: legacy
+            })
+
+        expected = [opt[0] for opt in SettingsConstants.ALL_SMARTCARD_INTERFACES]
+        assert self.settings.get_value(SettingsConstants.SETTING__SMARTCARD_INTERFACES) == expected
