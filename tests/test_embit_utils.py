@@ -316,6 +316,31 @@ def test_account_changes_xpub_and_address():
     assert addr1 == "bc1qku0qh0mc00y8tk0n65x2tqw4trlspak0fnjmfz"
 
 
+def test_multisig_account_changes_xpub():
+    """Verify different accounts generate unique multisig xpubs"""
+
+    from embit import bip39
+
+    seed = bip39.mnemonic_to_seed("abandon " * 11 + "about")
+
+    path0 = embit_utils.get_standard_derivation_path(
+        SC.MAINNET, SC.MULTISIG, SC.NATIVE_SEGWIT, account=0
+    )
+    path1 = embit_utils.get_standard_derivation_path(
+        SC.MAINNET, SC.MULTISIG, SC.NATIVE_SEGWIT, account=1
+    )
+
+    xpub0 = embit_utils.get_xpub(seed, path0)
+    xpub1 = embit_utils.get_xpub(seed, path1)
+
+    assert str(xpub0) == (
+        "xpub6DkFAXWQ2dHxq2vatrt9qyA3bXYU4ToWQwCHbf5XB2mSTexcHZCeKS1VZYcPoBd5X8yVcbXFHJR9R8UCVpt82VX1VhR28mCyxUFL4r6KFrf"
+    )
+    assert str(xpub1) == (
+        "xpub6DzhyrnFFYQ1HimDiM388xHnDiRPNdZJFBmmxge3Y1WWcHLtMJLfRuhRHqnQCPbTj3fGKTuKFLHzzwpJkp5Dtc3UtLKZKaVZe1yqMBXd6Vk"
+    )
+    assert str(xpub0) != str(xpub1)
+
 def test_get_multisig_address():
     """
     tests seedsigner.helpers.embit_utils.get_multisig_address()

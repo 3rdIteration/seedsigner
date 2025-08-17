@@ -2444,8 +2444,8 @@ class SatochipExportXpubScriptTypeView(View):
                 view_args=dict(sig_type=self.sig_type, script_type=script_type),
             )
         if (
-            self.sig_type == SettingsConstants.SINGLE_SIG
-            and self.settings.get_value(SettingsConstants.SETTING__ACCOUNT_PROMPT) == SettingsConstants.OPTION__ENABLED
+            self.settings.get_value(SettingsConstants.SETTING__ACCOUNT_PROMPT)
+            == SettingsConstants.OPTION__ENABLED
         ):
             return Destination(
                 AccountNumberView,

@@ -1454,8 +1454,8 @@ class SeedExportXpubScriptTypeView(View):
                 return Destination(SeedExportXpubCustomDerivationView, view_args=args, skip_current_view=True)
 
             if (
-                self.sig_type == SettingsConstants.SINGLE_SIG
-                and self.settings.get_value(SettingsConstants.SETTING__ACCOUNT_PROMPT) == SettingsConstants.OPTION__ENABLED
+                self.settings.get_value(SettingsConstants.SETTING__ACCOUNT_PROMPT)
+                == SettingsConstants.OPTION__ENABLED
             ):
                 if self.controller.resume_main_flow == Controller.FLOW__ADDRESS_EXPLORER:
                     del args["sig_type"]
@@ -1499,8 +1499,8 @@ class SeedExportXpubScriptTypeView(View):
                 return Destination(SeedExportXpubCustomDerivationView, view_args=args)
 
             if (
-                self.sig_type == SettingsConstants.SINGLE_SIG
-                and self.settings.get_value(SettingsConstants.SETTING__ACCOUNT_PROMPT) == SettingsConstants.OPTION__ENABLED
+                self.settings.get_value(SettingsConstants.SETTING__ACCOUNT_PROMPT)
+                == SettingsConstants.OPTION__ENABLED
             ):
                 if self.controller.resume_main_flow == Controller.FLOW__ADDRESS_EXPLORER:
                     del args["sig_type"]
