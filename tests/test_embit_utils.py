@@ -40,6 +40,9 @@ def test_get_standard_derivation_path():
         (SC.TESTNET, SC.MULTISIG, SC.NATIVE_SEGWIT): "m/48'/1'/0'/2'",
         (SC.REGTEST, SC.MULTISIG, SC.NATIVE_SEGWIT): "m/48'/1'/0'/2'",
 
+        (SC.MAINNET, SC.MULTISIG, SC.NATIVE_SEGWIT, 3): "m/48'/0'/3'/2'",
+        (SC.TESTNET, SC.MULTISIG, SC.NESTED_SEGWIT, 1): "m/48'/1'/1'/1'",
+
         (SC.MAINNET, SC.MULTISIG, SC.NESTED_SEGWIT): "m/48'/0'/0'/1'",
         (SC.TESTNET, SC.MULTISIG, SC.NESTED_SEGWIT): "m/48'/1'/0'/1'",
         (SC.REGTEST, SC.MULTISIG, SC.NESTED_SEGWIT): "m/48'/1'/0'/1'",
@@ -279,6 +282,38 @@ def test_get_single_sig_address():
         # call with named params
         print(f'  {func.__name__}(xpub=HDKey.from_string("{args[0]}"), script_type="{args[1]}", index={args[2]}, is_change={args[3]}, embit_network="{args[4]}") == "{expected}"')
         assert str(func(xpub=args[0], script_type=args[1], index=args[2], is_change=args[3], embit_network=args[4])) == expected
+
+
+def test_account_changes_xpub_and_address():
+    """Verify different accounts generate unique xpubs and addresses"""
+
+    from embit import bip39
+
+    seed = bip39.mnemonic_to_seed("abandon " * 11 + "about")
+
+    path0 = embit_utils.get_standard_derivation_path(
+        SC.MAINNET, SC.SINGLE_SIG, SC.NATIVE_SEGWIT, account=0
+    )
+    path1 = embit_utils.get_standard_derivation_path(
+        SC.MAINNET, SC.SINGLE_SIG, SC.NATIVE_SEGWIT, account=1
+    )
+
+    xpub0 = embit_utils.get_xpub(seed, path0)
+    xpub1 = embit_utils.get_xpub(seed, path1)
+
+    assert str(xpub0) == (
+        "xpub6CatWdiZiodmUeTDp8LT5or8nmbKNcuyvz7WyksVFkKB4RHwCD3XyuvPEbvqAQY3rAPshWcMLoP2fMFMKHPJ4ZeZXYVUhLv1VMrjPC7PW6V"
+    )
+    assert str(xpub1) == (
+        "xpub6CatWdiZiodmYVtWLtEQsAg1H9ooS1bmsJUBwQ83FE1Fyk386FWcyicJgEZv3quZSJKA5dh5Lo2PbubMGxCfZtRthV6ST2qquL9w3HSzcUn"
+    )
+    assert str(xpub0) != str(xpub1)
+
+    addr0 = embit_utils.get_single_sig_address(xpub0, SC.NATIVE_SEGWIT, 0, False, "main")
+    addr1 = embit_utils.get_single_sig_address(xpub1, SC.NATIVE_SEGWIT, 0, False, "main")
+
+    assert addr0 == "bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu"
+    assert addr1 == "bc1qku0qh0mc00y8tk0n65x2tqw4trlspak0fnjmfz"
 
 
 def test_get_multisig_address():
