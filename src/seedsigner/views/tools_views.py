@@ -1094,6 +1094,27 @@ class ToolsSmartcardGenuineCheckView(View):
 
         try:
             is_genuine, _, _, _, txt_error = Satochip_Connector.card_verify_authenticity()
+
+            # Workaround for occasional incorrect UID calculation in pysatochip
+            # basically just try to connect again, using the PIN entered on the first attempt
+            if not is_genuine or txt_error:
+                print("Initial genuine check failed, retrying...")
+                temp_pin = self.controller.Satochip_PIN
+                try:
+
+                    Satochip_Connector = seedkeeper_utils.init_satochip(
+                        self,
+                        init_card_filter=["satochip", "seedkeeper", "satodime"],
+                        require_pin=False,
+                    )
+                    Satochip_Connector.set_pin(0, temp_pin)
+                    if Satochip_Connector:
+                        is_genuine, _, _, _, txt_error = (
+                            Satochip_Connector.card_verify_authenticity()
+                        )
+                except Exception:
+                    pass
+
             if txt_error:
                 self.run_screen(
                     ErrorScreen,
