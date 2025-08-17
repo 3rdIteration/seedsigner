@@ -990,6 +990,7 @@ class ToolsSmartcardMenuView(View):
 
 class ToolsCommonView(View):
     INFO = ButtonOption("Card Info")
+    GENUINE = ButtonOption("Genuine Check")
     CHANGE_PIN = ButtonOption("Change PIN")
     CHANGE_LABEL = ButtonOption("Change Label")
     CHANGE_NFC = ButtonOption("Change NFC Policy")
@@ -997,7 +998,7 @@ class ToolsCommonView(View):
 
     def run(self):
 
-        button_data = [self.INFO, self.CHANGE_PIN, self.CHANGE_LABEL, self.CHANGE_NFC, self.FACTORY_RESET]
+        button_data = [self.INFO, self.GENUINE, self.CHANGE_PIN, self.CHANGE_LABEL, self.CHANGE_NFC, self.FACTORY_RESET]
 
         selected_menu_num = self.run_screen(
                 ButtonListScreen,
@@ -1011,6 +1012,9 @@ class ToolsCommonView(View):
 
         elif button_data[selected_menu_num] == self.INFO:
             return Destination(ToolsSmartcardInfoView)
+
+        elif button_data[selected_menu_num] == self.GENUINE:
+            return Destination(ToolsSmartcardGenuineCheckView)
 
         elif button_data[selected_menu_num] == self.CHANGE_PIN:
             return Destination(ToolsSatochipChangePinView)
@@ -1045,18 +1049,6 @@ class ToolsSmartcardInfoView(View):
                   f"{status.get('applet_major_version', 0)}.{status.get('applet_minor_version', 0)}"
         info_lines.append(f"Version: {version}")
 
-        try:
-            is_genuine, _, _, _, txt_error = (
-                Satochip_Connector.card_verify_authenticity()
-            )
-            if txt_error:
-                info_lines.append(f"Genuine: {txt_error}")
-            else:
-                status_str = "Yes" if is_genuine else "No"
-                info_lines.append(f"Genuine: {status_str}")
-        except Exception as e:
-            info_lines.append(f"Genuine: Error ({e})")
-
         pin0 = status.get("PIN0_remaining_tries")
         if pin0 is not None:
             info_lines.append(f"Remaining PIN tries: {pin0}")
@@ -1078,6 +1070,36 @@ class ToolsSmartcardInfoView(View):
         self.run_screen(
             LargeIconStatusScreen,
             title="Card Info",
+            status_headline=None,
+            text=text,
+            status_icon_name="",
+            show_back_button=True,
+        )
+
+        return Destination(BackStackView)
+
+class ToolsSmartcardGenuineCheckView(View):
+    def run(self):
+
+        Satochip_Connector = seedkeeper_utils.init_satochip(
+            self, init_card_filter=["satochip", "seedkeeper", "satodime"]
+        )
+
+        if not Satochip_Connector:
+            return Destination(BackStackView)
+
+        try:
+            is_genuine, _, _, _, txt_error = Satochip_Connector.card_verify_authenticity()
+            if txt_error:
+                text = f"Genuine check failed: {txt_error}"
+            else:
+                text = "Card is genuine" if is_genuine else "Card is NOT genuine"
+        except Exception as e:
+            text = f"Genuine: Error ({e})"
+
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Genuine Check",
             status_headline=None,
             text=text,
             status_icon_name="",
