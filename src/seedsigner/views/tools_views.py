@@ -1096,7 +1096,6 @@ class ToolsSmartcardGenuineCheckView(View):
                     title="Genuine Check",
                     status_headline=None,
                     text=f"Genuine check failed: {txt_error}",
-                    show_back_button=True,
                 )
             elif is_genuine:
                 self.run_screen(
@@ -1104,8 +1103,6 @@ class ToolsSmartcardGenuineCheckView(View):
                     title="Genuine Check",
                     status_headline=None,
                     text="Card is genuine",
-                    status_icon_name="",
-                    show_back_button=True,
                 )
             else:
                 self.run_screen(
@@ -1113,7 +1110,6 @@ class ToolsSmartcardGenuineCheckView(View):
                     title="Genuine Check",
                     status_headline=None,
                     text="Card is NOT genuine",
-                    show_back_button=True,
                 )
         except Exception as e:
             self.run_screen(
@@ -1121,7 +1117,6 @@ class ToolsSmartcardGenuineCheckView(View):
                 title="Genuine Check",
                 status_headline=None,
                 text=f"Genuine: Error ({e})",
-                show_back_button=True,
             )
 
         return Destination(BackStackView)
