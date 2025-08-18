@@ -15,6 +15,10 @@ on:
         description: The seedsigner-os ref (tag/branch/sha1) to use
         default: main
         required: true
+      source-ref:
+        description: The seedsigner ref (tag/branch/sha1) to use
+        default: dev
+        required: true
       dev:
         description: Build dev image
         required: false
@@ -49,7 +53,8 @@ jobs:
       - name: checkout source
         uses: actions/checkout@v4
         with:
-          # ref defaults to repo default-branch=dev (cron) or SHA of event (workflow_dispatch)
+          # ref defaults to source-ref input (workflow_dispatch) or SHA of event
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs['source-ref'] || github.sha }}
           path: "seedsigner-os/opt/rootfs-overlay/opt"
           # get full history + tags for "git describe"
           fetch-depth: 0
