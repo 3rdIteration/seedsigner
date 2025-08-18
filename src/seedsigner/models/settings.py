@@ -54,10 +54,13 @@ class Settings(Singleton):
 
             settings._data = SettingsDefinition.get_defaults()
 
-            # Read persistent settings file, if it exists
+            # Read persistent settings file, if it exists. Loading should not
+            # immediately write back to disk which can dramatically slow boot
+            # if the microSD card is present. ``persist=False`` ensures we only
+            # populate the in-memory data without triggering ``save()``.
             if os.path.exists(Settings.SETTINGS_FILENAME):
                 with open(Settings.SETTINGS_FILENAME) as settings_file:
-                    settings.update(json.load(settings_file))
+                    settings.update(json.load(settings_file), persist=False)
 
             # Setup multilanguage support
             path = os.path.join(
@@ -159,7 +162,7 @@ class Settings(Singleton):
                 os.fsync(settings_file.fileno())
 
 
-    def update(self, new_settings: dict):
+    def update(self, new_settings: dict, persist: bool = True):
         print("Updating Settings")
         print("Existing Settings:", self._data) 
         print()
@@ -201,8 +204,9 @@ class Settings(Singleton):
             # bulk updates.
             self.set_value(key, value, save=False)
 
-        # Persist once after all settings have been updated.
-        self.save()
+        # Persist once after all settings have been updated, if requested.
+        if persist:
+            self.save()
 
 
 
@@ -559,15 +563,14 @@ class Settings(Singleton):
                 entry.selection_options = SettingsConstants.OPTIONS__ENABLED_DISABLED
                 entry.help_text = SettingsConstants.PERSISTENT_SETTINGS__SD_INSERTED__HELP_TEXT
 
-                # TODO: Perhaps prompt the user if the current settings (not including persistent
-                # settings) should overwrite the settings on disk, if they differ:
-                # - Overwrite settings on the SD?
-                # - Load settings from SD?
-                # if Settings file exists (meaning persistent settings was previously enabled), write out current settings to disk
+                # If a settings file exists, load it without persisting again. This
+                # avoids unnecessary disk writes during boot and when cards are
+                # re-inserted.
                 if os.path.exists(Settings.SETTINGS_FILENAME):
-                    # enable persistent settings first, then save
-                    Settings.get_instance()._data[SettingsConstants.SETTING__PERSISTENT_SETTINGS] = SettingsConstants.OPTION__ENABLED
-                    Settings.get_instance().save()
+                    settings = Settings.get_instance()
+                    if settings.get_value(SettingsConstants.SETTING__PERSISTENT_SETTINGS) != SettingsConstants.OPTION__ENABLED:
+                        with open(Settings.SETTINGS_FILENAME) as settings_file:
+                            settings.update(json.load(settings_file), persist=False)
 
             elif action == MicroSD.ACTION__REMOVED:
                 # SD card was just removed.
