@@ -24,6 +24,10 @@ on:
         required: false
         default: 'false'
         type: boolean
+      target:
+        description: Build target profile (e.g., pi0, pi2, pi02w, pi4)
+        required: false
+        default: pi0
 
 # Increment this number as part of a PR to trigger an image build for the PR
 # trigger = 0
@@ -37,7 +41,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [ "pi0" ] # , "pi2", "pi02w", "pi4" ] Just build Pi0 to keep within 500mb storage limit for Github free
+        target: [ "${{ github.event_name == 'workflow_dispatch' && github.event.inputs.target || 'pi0' }}" ]
+        # Default target pi0 to keep within 500mb storage limit for Github free
     steps:
       - name: checkout seedsigner-os
         uses: actions/checkout@v4
