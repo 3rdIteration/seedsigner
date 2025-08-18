@@ -1,3 +1,4 @@
+import json
 import pytest
 from base import BaseTest
 from seedsigner.models.settings import InvalidSettingsQRData, Settings
@@ -123,3 +124,26 @@ class TestSettings(BaseTest):
 
         expected = [opt[0] for opt in SettingsConstants.ALL_SMARTCARD_INTERFACES]
         assert self.settings.get_value(SettingsConstants.SETTING__SMARTCARD_INTERFACES) == expected
+
+    def test_update_can_skip_persist(self):
+        """Updating with persist=False should not trigger a save to disk"""
+        from unittest.mock import patch
+        with patch.object(Settings, "save") as mock_save:
+            self.settings.update(
+                {SettingsConstants.SETTING__BTC_DENOMINATION: SettingsConstants.BTC_DENOMINATION__THRESHOLD},
+                persist=False,
+            )
+            mock_save.assert_not_called()
+
+    def test_get_instance_loads_without_saving(self):
+        """Loading settings from disk should not immediately write them back"""
+        from unittest.mock import patch
+        BaseTest.reset_settings()
+        data = {SettingsConstants.SETTING__PERSISTENT_SETTINGS: SettingsConstants.OPTION__ENABLED}
+        with open(Settings.SETTINGS_FILENAME, "w") as f:
+            json.dump(data, f)
+
+        with patch.object(Settings, "save") as mock_save:
+            settings = Settings.get_instance()
+            mock_save.assert_not_called()
+            assert settings.get_value(SettingsConstants.SETTING__PERSISTENT_SETTINGS) == SettingsConstants.OPTION__ENABLED
