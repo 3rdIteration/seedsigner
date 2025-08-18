@@ -15,6 +15,11 @@ on:
         description: The seedsigner-os ref (tag/branch/sha1) to use
         default: main
         required: true
+      dev:
+        description: Build dev image
+        required: false
+        default: 'false'
+        type: boolean
 
 # Increment this number as part of a PR to trigger an image build for the PR
 # trigger = 0
@@ -70,6 +75,10 @@ jobs:
             echo "img_version=os${os_version}_sw${source_version}"| tee -a $GITHUB_ENV
           fi
 
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.dev }}" = "true" ]; then
+            echo "DEV_FLAG=--dev" >> $GITHUB_ENV
+          fi
+
       - name: delete unnecessary files
         run: |
           cd seedsigner-os/opt/rootfs-overlay/opt
@@ -106,7 +115,7 @@ jobs:
             -v "$(pwd)/seedsigner-os/buildroot_dl:/buildroot_dl" \
             -v "${HOME}/.buildroot-ccache:/root/.buildroot-ccache" \
             seedsigner-os-build \
-            --${{ matrix.target }} --skip-repo --no-clean --smartcard
+            --${{ matrix.target }} --skip-repo --no-clean --smartcard $DEV_FLAG
           sudo chown -R $USER:$USER seedsigner-os/images seedsigner-os/buildroot_dl ~/.buildroot-ccache/
 
       - name: list image (before rename)
