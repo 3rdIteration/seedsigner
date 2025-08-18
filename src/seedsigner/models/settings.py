@@ -186,6 +186,14 @@ class Settings(Singleton):
                     if type(new_settings[entry.attr_name]) == str:
                         # Break comma-separated SettingsQR input into List
                         new_settings[entry.attr_name] = new_settings[entry.attr_name].split(",")
+                    elif (
+                        type(new_settings[entry.attr_name]) == list
+                        and len(new_settings[entry.attr_name]) > 0
+                        and type(new_settings[entry.attr_name][0]) in [list, tuple]
+                    ):
+                        # Handle legacy format where selection options were stored
+                        # as [value, label] pairs.
+                        new_settings[entry.attr_name] = [v[0] for v in new_settings[entry.attr_name]]
 
         for key, value in new_settings.items():
             # Defer writing to disk until all values have been applied to avoid
