@@ -673,8 +673,21 @@ class RestartPCSCView(View):
                     SCardEstablishContext(SCARD_SCOPE_USER)
             except Exception as e:
                 print(f"Failed to reset pyscard context: {e}")
-        self.loading_screen.stop()
+        # Drop any cached smartcard connections; restarting pcscd invalidates
+        # existing handles and they must be recreated. Otherwise, subsequent
+        # smartcard operations will continue to fail until the app is restarted.
+        try:
+            if getattr(self.controller, "Satochip_Connector", None):
+                try:
+                    self.controller.Satochip_Connector.card_disconnect()
+                except Exception:
+                    pass  # Ignore errors if already disconnected
+                self.controller.Satochip_Connector = None
+        except Exception:
+            # Controller may not be available in some contexts
+            pass
 
+        self.loading_screen.stop()
 
         return Destination(SettingsMenuView)
 
