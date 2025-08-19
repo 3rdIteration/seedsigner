@@ -94,9 +94,10 @@ class WipeTimerThread(BaseThread):
         try:
             buttons = HardwareButtons.get_instance()
         except (ModuleNotFoundError, AttributeError):
-            # Desktop builds may omit pygame which prevents the button hardware from
-            # initialising.  Rather than raising during startup we simply skip the
-            # wipe timer thread when no input backend is available.
+            # Minimal installs can lack either the GPIO or pygame modules (e.g. a
+            # Raspberry Pi without packages or a desktop dev setup).  Rather than
+            # raising during startup we simply skip the wipe timer thread when no
+            # input backend is available.
             logger.warning("Hardware buttons unavailable; skipping wipe timer thread")
             return
 
