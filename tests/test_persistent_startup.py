@@ -10,7 +10,7 @@ import seedsigner.hardware.buttons as buttons
 
 
 def test_persistent_settings_fallback_without_gpio(tmp_path, monkeypatch):
-    """Loading hardware settings on a Pi missing RPi.GPIO should fall back."""
+    """Loading hardware settings off-device without RPi.GPIO should fall back."""
     settings_path = tmp_path / "settings.json"
     with settings_path.open("w") as f:
         json.dump(
@@ -46,8 +46,8 @@ def test_persistent_settings_fallback_without_gpio(tmp_path, monkeypatch):
     settings_module.GPIO.output(1, settings_module.GPIO.LOW)
 
 
-def test_wipe_timer_thread_skips_without_gpio_and_pygame(tmp_path, monkeypatch):
-    """Simulate a Raspberry Pi lacking both GPIO and pygame modules."""
+def test_wipe_timer_thread_skips_without_pygame(tmp_path, monkeypatch):
+    """Simulate a desktop environment lacking pygame for input."""
 
     # Create persistent settings so hardware initialisation is attempted
     settings_path = tmp_path / "settings.json"
@@ -58,7 +58,7 @@ def test_wipe_timer_thread_skips_without_gpio_and_pygame(tmp_path, monkeypatch):
     monkeypatch.setattr(Settings, "patch_pcsc_initd_script", lambda *a, **kw: None)
     Settings.get_instance()
 
-    # Pretend pygame and RPi.GPIO are not available
+    # Pretend pygame is not available on a non-GPIO system
     monkeypatch.setattr(buttons, "pygame", None, raising=False)
     monkeypatch.setattr(buttons, "USING_GPIO", False)
 
