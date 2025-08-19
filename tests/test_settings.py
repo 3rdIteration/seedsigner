@@ -147,3 +147,27 @@ class TestSettings(BaseTest):
             settings = Settings.get_instance()
             mock_save.assert_not_called()
             assert settings.get_value(SettingsConstants.SETTING__PERSISTENT_SETTINGS) == SettingsConstants.OPTION__ENABLED
+
+    def test_save_skips_fsync_off_device(self, tmp_path, monkeypatch):
+        """save() should avoid fsync when not running on SeedSignerOS"""
+        from seedsigner.hardware.microsd import MicroSD
+        settings = Settings.get_instance()
+        # enable persistence without writing to disk yet
+        settings.set_value(
+            SettingsConstants.SETTING__PERSISTENT_SETTINGS,
+            SettingsConstants.OPTION__ENABLED,
+            save=False,
+        )
+        monkeypatch.setattr(Settings, "HOSTNAME", "devhost")
+        monkeypatch.setattr(Settings, "SETTINGS_FILENAME", str(tmp_path / "settings.json"))
+
+        class DummyMS:
+            @property
+            def is_inserted(self):
+                return True
+
+        monkeypatch.setattr(MicroSD, "get_instance", lambda: DummyMS())
+
+        with patch("os.fsync") as mock_fsync:
+            settings.save()
+            mock_fsync.assert_not_called()

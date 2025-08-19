@@ -14,6 +14,17 @@ except ModuleNotFoundError:  # Running on non-Raspberry Pi hardware
     USING_MOCK_GPIO = True
 
     class MockGPIO:
+        """Minimal stub of the :mod:`RPi.GPIO` API used in development.
+
+        When running the application off-device the real ``RPi.GPIO`` module is not
+        available.  Prior to this stub only ``setmode``/``setup``/``input`` were
+        implemented which caused ``AttributeError`` when other parts of the code
+        attempted to call additional GPIO helpers (e.g. ``setwarnings`` or
+        ``output``) during startup.  Providing no-op implementations keeps the
+        development environment from crashing when persistent settings trigger
+        early hardware initialisation.
+        """
+
         RPI_INFO = {"P1_REVISION": 3, "TYPE": "Unknown"}
         BOARD = IN = OUT = PUD_UP = LOW = HIGH = None
 
@@ -21,6 +32,12 @@ except ModuleNotFoundError:  # Running on non-Raspberry Pi hardware
             pass
 
         def setup(self, *args, **kwargs):
+            pass
+
+        def setwarnings(self, *args, **kwargs):
+            pass
+
+        def output(self, *args, **kwargs):
             pass
 
         def input(self, *args, **kwargs):
@@ -156,10 +173,14 @@ class Settings(Singleton):
         if self._data[SettingsConstants.SETTING__PERSISTENT_SETTINGS] == SettingsConstants.OPTION__ENABLED and MicroSD.get_instance().is_inserted:
             with open(Settings.SETTINGS_FILENAME, 'w') as settings_file:
                 json.dump(self._data, settings_file, indent=4)
-                # SeedSignerOS makes removing the microsd possible, flush and then fsync forces persistent settings to disk
-                # without this, recent settings changes could be missing after the microsd card was removed
-                settings_file.flush()
-                os.fsync(settings_file.fileno())
+                # SeedSignerOS makes removing the microsd possible, flush and then
+                # fsync forces persistent settings to disk. On other platforms this
+                # extra sync can needlessly slow the application or even hang when
+                # the backing storage isn't removable, so only perform the
+                # expensive flush/fsync on the dedicated OS.
+                if self.HOSTNAME == self.SEEDSIGNER_OS:
+                    settings_file.flush()
+                    os.fsync(settings_file.fileno())
 
 
     def update(self, new_settings: dict, persist: bool = True):

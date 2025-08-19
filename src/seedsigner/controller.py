@@ -89,8 +89,17 @@ class BackgroundImportThread(BaseThread):
 class WipeTimerThread(BaseThread):
     def run(self):
         from seedsigner.hardware.buttons import HardwareButtons
+
         controller = Controller.get_instance()
-        buttons = HardwareButtons.get_instance()
+        try:
+            buttons = HardwareButtons.get_instance()
+        except (ModuleNotFoundError, AttributeError):
+            # Desktop builds may omit pygame which prevents the button hardware from
+            # initialising.  Rather than raising during startup we simply skip the
+            # wipe timer thread when no input backend is available.
+            logger.warning("Hardware buttons unavailable; skipping wipe timer thread")
+            return
+
         while self.keep_running:
             wipe_minutes = controller.settings.get_value(SettingsConstants.SETTING__WIPE_TIMER)
             if wipe_minutes and wipe_minutes != SettingsConstants.WIPE_TIMER__DISABLED:
