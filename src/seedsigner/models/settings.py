@@ -75,6 +75,22 @@ class Settings(Singleton):
             # Load default/persistent locale setting
             settings.load_locale()
 
+            # Ensure persisted display configuration is compatible with the
+            # current platform.  Desktop display options rely on optional
+            # modules (e.g. pygame) that are not installed on SeedSignerOS.
+            # If such an option was saved while running on a desktop and is
+            # now loaded on a Pi, fall back to the default hardware display
+            # to avoid import errors during startup.
+            if not USING_MOCK_GPIO:
+                valid_configs = [opt[0] for opt in SettingsConstants.ALL_DISPLAY_CONFIGURATIONS]
+                if (
+                    settings._data.get(SettingsConstants.SETTING__DISPLAY_CONFIGURATION)
+                    not in valid_configs
+                ):
+                    settings._data[
+                        SettingsConstants.SETTING__DISPLAY_CONFIGURATION
+                    ] = SettingsConstants.DISPLAY_CONFIGURATION__ST7789__240x240
+
             if USING_MOCK_GPIO:
                 settings._data[SettingsConstants.SETTING__DISPLAY_CONFIGURATION] = (
                     SettingsConstants.DISPLAY_CONFIGURATION__DESKTOP__240x240
