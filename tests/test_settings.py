@@ -147,3 +147,18 @@ class TestSettings(BaseTest):
             settings = Settings.get_instance()
             mock_save.assert_not_called()
             assert settings.get_value(SettingsConstants.SETTING__PERSISTENT_SETTINGS) == SettingsConstants.OPTION__ENABLED
+
+    def test_set_value_ignores_missing_settings_entry(self):
+        """set_value should not raise if the settings entry cannot be found"""
+        from seedsigner.models import settings_definition
+
+        # Force SettingsDefinition.get_settings_entry to return None for camera device
+        orig = settings_definition.USING_MOCK_GPIO
+        settings_definition.USING_MOCK_GPIO = False
+        try:
+            current = self.settings.get_value(SettingsConstants.SETTING__CAMERA_DEVICE)
+            # Should silently ignore without raising
+            self.settings.set_value(SettingsConstants.SETTING__CAMERA_DEVICE, current)
+            assert self.settings.get_value(SettingsConstants.SETTING__CAMERA_DEVICE) == current
+        finally:
+            settings_definition.USING_MOCK_GPIO = orig

@@ -221,7 +221,13 @@ class Settings(Singleton):
             print(f"Setting {attr_name} not recognized. Ignoring.")
             return
 
-        if SettingsDefinition.get_settings_entry(attr_name).type == SettingsConstants.TYPE__MULTISELECT:
+        settings_entry = SettingsDefinition.get_settings_entry(attr_name)
+        if not settings_entry:
+            # Settings entry may be unavailable on this platform
+            print(f"Setting {attr_name} not found. Ignoring.")
+            return
+
+        if settings_entry.type == SettingsConstants.TYPE__MULTISELECT:
             if type(value) != list:
                 raise Exception(f"value must be a List for {attr_name}")
         
