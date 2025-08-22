@@ -125,6 +125,16 @@ class TestSettings(BaseTest):
         expected = [opt[0] for opt in SettingsConstants.ALL_SMARTCARD_INTERFACES]
         assert self.settings.get_value(SettingsConstants.SETTING__SMARTCARD_INTERFACES) == expected
 
+    def test_update_skips_unchanged_smartcard_interfaces(self):
+        """Updating with identical smartcard interfaces should not restart pcscd"""
+        current = self.settings.get_value(SettingsConstants.SETTING__SMARTCARD_INTERFACES)
+        with patch("os.system") as mock_system, patch("time.sleep"):
+            self.settings.update({
+                SettingsConstants.SETTING__SMARTCARD_INTERFACES: current
+            })
+
+        mock_system.assert_not_called()
+
     def test_update_can_skip_persist(self):
         """Updating with persist=False should not trigger a save to disk"""
         from unittest.mock import patch
