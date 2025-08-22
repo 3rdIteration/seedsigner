@@ -146,6 +146,7 @@ class Controller(Singleton):
     address_explorer_data: dict = None
 
     sign_message_data: dict = None
+    gpg_keys_imported: bool = False
     # TODO: end refactor section
 
     Satochip_Connector = None
