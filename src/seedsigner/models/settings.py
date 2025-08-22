@@ -230,6 +230,18 @@ class Settings(Singleton):
         if settings_entry.type == SettingsConstants.TYPE__MULTISELECT:
             if type(value) != list:
                 raise Exception(f"value must be a List for {attr_name}")
+
+        # Skip processing if the incoming value is identical to the current
+        # value. This prevents unnecessary side-effects (like restarting
+        # services) when loading persistent settings that match defaults.
+        if attr_name in self._data:
+            current_value = self._data[attr_name]
+            if settings_entry.type == SettingsConstants.TYPE__MULTISELECT:
+                if sorted(current_value) == sorted(value):
+                    return
+            else:
+                if current_value == value:
+                    return
         
         # Special handling for toggling persistence
         if attr_name == SettingsConstants.SETTING__PERSISTENT_SETTINGS and value == SettingsConstants.OPTION__DISABLED:
