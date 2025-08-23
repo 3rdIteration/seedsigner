@@ -1398,6 +1398,13 @@ class ToolsSatochipFactoryResetView(View):
                     self.loading_screen.start()
                     try:
                         time.sleep(3)  # give some time to initialize reader after card insertion... (Takes a while on Pi0)
+
+                        # Ensure the newly inserted card is selected before
+                        # attempting the legacy factory reset signal. Without an
+                        # explicit select the connector may still report no card
+                        # present even though the user reinserted it.
+                        Satochip_Connector.card_select()
+
                         (response, sw1, sw2) = Satochip_Connector.card_reset_factory_signal()
                         self.loading_screen.stop()
                     except Exception as e:
