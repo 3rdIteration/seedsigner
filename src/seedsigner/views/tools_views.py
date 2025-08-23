@@ -1365,7 +1365,6 @@ class ToolsSatochipFactoryResetView(View):
 
         print("WARNING: FACTORY RESET WITHOUT A WORKING BACKUP WILL LEAD TO UNRECOVERABLE LOSS OF FUNDS")
         logger.info("In common_reset_factory_legacy")
-        Satochip_Connector.set_mode_factory_reset(True)
 
         # If other smartcard workflows have previously interacted with the
         # connector, it may still have an active connection which interferes
@@ -1373,6 +1372,13 @@ class ToolsSatochipFactoryResetView(View):
         # from a clean state so that each removal/reinsertion is picked up
         # correctly.
         Satochip_Connector.card_disconnect()
+
+        # Enter the special factory reset mode only after ensuring we are in a
+        # clean, disconnected state.  This prevents any lingering connection
+        # from previous smartcard operations from automatically communicating
+        # with the card when it is re-inserted, which would otherwise keep the
+        # reset counter from decrementing.
+        Satochip_Connector.set_mode_factory_reset(True)
 
         remaining_string = ""
         try:
