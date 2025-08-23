@@ -1431,15 +1431,10 @@ class ToolsSatochipFactoryResetView(View):
                         #print("In addition to the factory-reset command, you also need to add the '--enablefactoryreset' argument to enable it")
                         break
                     if sw1 == 0x00 and sw2 == 0x00:
-                        print("Card Connection Failed!")
-                        self.run_screen(
-                            WarningScreen,
-                            title="Failure",
-                            status_headline=None,
-                            text="Card Connection Failed!",
-                            show_back_button=True,
-                        )
-                        break
+                        print("Card not found, retrying...")
+                        Satochip_Connector.card_disconnect()
+                        remaining_string = "\nCard not found. Please re-insert and try again."
+                        continue
                     if sw1 == 0xFF and sw2 == 0x00:
                         Satochip_Connector.card_disconnect()
                         print("CARD HAS BEEN RESET TO FACTORY!")
@@ -1459,6 +1454,7 @@ class ToolsSatochipFactoryResetView(View):
                         remaining_string = "\nREMAINING COUNTER: " + str(sw2)
                         print("Remaining counter: " + str(sw2))
                         print("Please remove and reinsert card, then confirm that you want to continue...")
+                        Satochip_Connector.card_disconnect()
                     elif sw1 == 0x6F and sw2 == 0x00:
                         print("The factory reset failed")
                         print("Unknown error" + str(hex(256 * sw1 + sw2)))
