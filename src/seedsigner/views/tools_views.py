@@ -58,6 +58,7 @@ from seedsigner.gui.screens import (RET_CODE__BACK_BUTTON, ButtonListScreen,
 logger = logging.getLogger(__name__)
 
 from pysatochip.JCconstants import SEEDKEEPER_DIC_TYPE, SEEDKEEPER_DIC_ORIGIN, SEEDKEEPER_DIC_EXPORT_RIGHTS, BIP39_WORDLIST_DIC
+from pysatochip.CardConnector import CardConnector
 from binascii import unhexlify, hexlify
 
 class ToolsMenuView(View):
@@ -1433,13 +1434,23 @@ class ToolsSatochipFactoryResetView(View):
                         )
                         Satochip_Connector.cardservice.connection.connect()
 
-                        # Ensure the newly inserted card is selected before
-                        # attempting the legacy factory reset signal. Without an
-                        # explicit select the connector may still report no card
-                        # present even though the user reinserted it.
-                        Satochip_Connector.card_select()
+                        # Manually select the card's applet without using the
+                        # higher-level helpers which may issue additional
+                        # APDUs such as secure-channel setup. Extra commands
+                        # would reset the legacy counter.
+                        apdu = [0x00, 0xA4, 0x04, 0x00, len(CardConnector.SATOCHIP_AID)] + CardConnector.SATOCHIP_AID
+                        (response, sw1, sw2) = Satochip_Connector.cardservice.connection.transmit(apdu)
+                        if not (sw1 == 0x90 and sw2 == 0x00):
+                            apdu = [0x00, 0xA4, 0x04, 0x00, len(CardConnector.SEEDKEEPER_AID)] + CardConnector.SEEDKEEPER_AID
+                            (response, sw1, sw2) = Satochip_Connector.cardservice.connection.transmit(apdu)
+                            if not (sw1 == 0x90 and sw2 == 0x00):
+                                raise Exception("Card select failed")
 
-                        (response, sw1, sw2) = Satochip_Connector.card_reset_factory_signal()
+                        # Send the legacy factory-reset signal directly to
+                        # avoid any automatic retries or secure-channel
+                        # negotiation.
+                        apdu_reset = [0xB0, 0xFF, 0x00, 0x00, 0x00]
+                        (response, sw1, sw2) = Satochip_Connector.cardservice.connection.transmit(apdu_reset)
                         self.loading_screen.stop()
                     except Exception as e:
                         print("Exception:", str(e))
