@@ -58,6 +58,7 @@ from seedsigner.gui.screens import (RET_CODE__BACK_BUTTON, ButtonListScreen,
 logger = logging.getLogger(__name__)
 
 from pysatochip.JCconstants import SEEDKEEPER_DIC_TYPE, SEEDKEEPER_DIC_ORIGIN, SEEDKEEPER_DIC_EXPORT_RIGHTS, BIP39_WORDLIST_DIC
+from pysatochip.CardConnector import CardConnector
 from binascii import unhexlify, hexlify
 
 class ToolsMenuView(View):
@@ -1365,7 +1366,6 @@ class ToolsSatochipFactoryResetView(View):
 
         print("WARNING: FACTORY RESET WITHOUT A WORKING BACKUP WILL LEAD TO UNRECOVERABLE LOSS OF FUNDS")
         logger.info("In common_reset_factory_legacy")
-        Satochip_Connector.set_mode_factory_reset(True)
 
         # If other smartcard workflows have previously interacted with the
         # connector, it may still have an active connection which interferes
@@ -1373,6 +1373,38 @@ class ToolsSatochipFactoryResetView(View):
         # from a clean state so that each removal/reinsertion is picked up
         # correctly.
         Satochip_Connector.card_disconnect()
+
+        # Purge all card observers and any lingering PCSC context so that no
+        # background task can automatically exchange APDUs with the card when
+        # it is reinserted. Any unexpected APDU would reset the legacy counter
+        # and prevent the factory reset sequence from completing. This also
+        # effectively disables the automatic card monitor for the duration of
+        # the legacy reset workflow.
+        try:
+            # deleteObservers() clears every registered observer on the
+            # underlying CardMonitor singleton.  Our previous approach of
+            # iterating over a non-existent "observers" attribute left the
+            # RemovalObserver active, which continued to automatically talk to
+            # the card on reinsertion and prevented the legacy reset counter
+            # from decrementing.  Explicitly drop all observers so no
+            # background APDUs are sent during the reset workflow.
+            Satochip_Connector.cardmonitor.deleteObservers()
+        except Exception:
+            pass
+        try:
+            from smartcard import scard
+            hresult, hcontext = scard.SCardEstablishContext(scard.SCARD_SCOPE_SYSTEM)
+            if hresult == scard.SCARD_S_SUCCESS:
+                scard.SCardReleaseContext(hcontext)
+        except Exception:
+            pass
+
+        # Enter the special factory reset mode only after ensuring we are in a
+        # clean, disconnected state.  This prevents any lingering connection
+        # from previous smartcard operations from automatically communicating
+        # with the card when it is re-inserted, which would otherwise keep the
+        # reset counter from decrementing.
+        Satochip_Connector.set_mode_factory_reset(True)
 
         remaining_string = ""
         try:
@@ -1392,7 +1424,33 @@ class ToolsSatochipFactoryResetView(View):
                     self.loading_screen.start()
                     try:
                         time.sleep(3)  # give some time to initialize reader after card insertion... (Takes a while on Pi0)
-                        (response, sw1, sw2) = Satochip_Connector.card_reset_factory_signal()
+
+                        # Establish a fresh connection to the newly inserted
+                        # card.  Since the automatic card monitor is disabled
+                        # we must explicitly wait for and connect to the card
+                        # ourselves before selecting it.
+                        Satochip_Connector.cardservice = (
+                            Satochip_Connector.cardrequest.waitforcard()
+                        )
+                        Satochip_Connector.cardservice.connection.connect()
+
+                        # Manually select the card's applet without using the
+                        # higher-level helpers which may issue additional
+                        # APDUs such as secure-channel setup. Extra commands
+                        # would reset the legacy counter.
+                        apdu = [0x00, 0xA4, 0x04, 0x00, len(CardConnector.SATOCHIP_AID)] + CardConnector.SATOCHIP_AID
+                        (response, sw1, sw2) = Satochip_Connector.cardservice.connection.transmit(apdu)
+                        if not (sw1 == 0x90 and sw2 == 0x00):
+                            apdu = [0x00, 0xA4, 0x04, 0x00, len(CardConnector.SEEDKEEPER_AID)] + CardConnector.SEEDKEEPER_AID
+                            (response, sw1, sw2) = Satochip_Connector.cardservice.connection.transmit(apdu)
+                            if not (sw1 == 0x90 and sw2 == 0x00):
+                                raise Exception("Card select failed")
+
+                        # Send the legacy factory-reset signal directly to
+                        # avoid any automatic retries or secure-channel
+                        # negotiation.
+                        apdu_reset = [0xB0, 0xFF, 0x00, 0x00, 0x00]
+                        (response, sw1, sw2) = Satochip_Connector.cardservice.connection.transmit(apdu_reset)
                         self.loading_screen.stop()
                     except Exception as e:
                         print("Exception:", str(e))
@@ -1418,15 +1476,10 @@ class ToolsSatochipFactoryResetView(View):
                         #print("In addition to the factory-reset command, you also need to add the '--enablefactoryreset' argument to enable it")
                         break
                     if sw1 == 0x00 and sw2 == 0x00:
-                        print("Card Connection Failed!")
-                        self.run_screen(
-                            WarningScreen,
-                            title="Failure",
-                            status_headline=None,
-                            text="Card Connection Failed!",
-                            show_back_button=True,
-                        )
-                        break
+                        print("Card not found, retrying...")
+                        Satochip_Connector.card_disconnect()
+                        remaining_string = "\nCard not found. Please re-insert and try again."
+                        continue
                     if sw1 == 0xFF and sw2 == 0x00:
                         Satochip_Connector.card_disconnect()
                         print("CARD HAS BEEN RESET TO FACTORY!")
@@ -1446,6 +1499,7 @@ class ToolsSatochipFactoryResetView(View):
                         remaining_string = "\nREMAINING COUNTER: " + str(sw2)
                         print("Remaining counter: " + str(sw2))
                         print("Please remove and reinsert card, then confirm that you want to continue...")
+                        Satochip_Connector.card_disconnect()
                     elif sw1 == 0x6F and sw2 == 0x00:
                         print("The factory reset failed")
                         print("Unknown error" + str(hex(256 * sw1 + sw2)))
@@ -1476,6 +1530,14 @@ class ToolsSatochipFactoryResetView(View):
             # normal operating state for any subsequent smartcard operations.
             Satochip_Connector.set_mode_factory_reset(False)
             Satochip_Connector.card_disconnect()
+
+            # Re-enable the automatic card monitor for normal operations.
+            try:
+                Satochip_Connector.cardmonitor.addObserver(
+                    Satochip_Connector.cardobserver
+                )
+            except Exception:
+                pass
 
         return resetStatus
 
