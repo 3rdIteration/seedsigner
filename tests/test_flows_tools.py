@@ -237,6 +237,9 @@ class TestToolsFlows(FlowTest):
                     return derived_xpub
                 raise ValueError("unexpected path")
 
+            def card_get_status(self):
+                return None, 0x90, 0x00, {"feature_schnorr_policy": 0}
+
         monkeypatch.setattr(seedkeeper_utils, "init_satochip", lambda *args, **kwargs: MockConnector())
 
         controller = Controller.get_instance()
