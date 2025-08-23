@@ -1380,8 +1380,14 @@ class ToolsSatochipFactoryResetView(View):
         # effectively disables the automatic card monitor for the duration of
         # the legacy reset workflow.
         try:
-            for observer in list(getattr(Satochip_Connector.cardmonitor, "observers", [])):
-                Satochip_Connector.cardmonitor.deleteObserver(observer)
+            # deleteObservers() clears every registered observer on the
+            # underlying CardMonitor singleton.  Our previous approach of
+            # iterating over a non-existent "observers" attribute left the
+            # RemovalObserver active, which continued to automatically talk to
+            # the card on reinsertion and prevented the legacy reset counter
+            # from decrementing.  Explicitly drop all observers so no
+            # background APDUs are sent during the reset workflow.
+            Satochip_Connector.cardmonitor.deleteObservers()
         except Exception:
             pass
         try:
