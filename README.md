@@ -37,6 +37,14 @@ Support and discussion relating to this fork can happen via this [Telegram Group
   - Change Card Label
   - Set NFC Policy
   - Factory Reset Card
+* Satochip cryptographic features
+  - Export xpubs (single- and multisig) with optional BIP32 account prompt
+  - PSBT verification and transaction signing directly on-card
+  - Message signing and WIF/BIP38 key signing support (disabled by default)
+  - Address explorer integration for Satochip cards
+* Smartcard diagnostics
+  - Smartcard info screen with card UID
+  - Genuineness check with automatic retry
 * Flashing Java Applets to blank Javacards
    - Firmware comes bundled with applets for SeedSigner, Satochip and Satodime (Releases from Satochip Github)
    - Firmware is also bundled with the source code for all three projects, along with a modified varient for THD-89 based Javacards. (This can be built from source on-device at run-time)
@@ -53,11 +61,20 @@ Support and discussion relating to this fork can happen via this [Telegram Group
    - Secure Wipe (Both with zeros and random data)
 * GPG Tools
    - GPG Signature verification & Sha256 Manifest check (Includes pubkey bundle the from Sparrow to verify Seedsigner, Sparrow, Electrum, plus many more)
+* SLIP39 seed support
+  - Create, import and extend SLIP39 seed shares
+  - Settings to toggle SLIP39 functionality
 * BIP85 Support
    - Supports not only generating BIP85 seeds, but loading them and using them
 * TextQR Tool
    - Supports both generating and loading standard plaintext QR codes for arbitrary text.
-* Support for 18 word BIP39 Mnemonics
+* Configurable seed word lengths, including support for 18 word BIP39 mnemonics
+* SeedKeeper Electrum seed support
+* Splitted passphrase/encryption key QR support
+* Enhanced entropy and security features
+  - Hardware RNG mixed with camera entropy
+  - Entropy quality indicators with optional 30-minute wipe timer
+* Desktop simulation mode with system camera support
 * Compressed image files (The uncompressed files are large due to having extra free space to make the GPG verification feature useful)
 * Tested and working with the following hardware
    - Raspberry Pi Zero 1.3
@@ -67,9 +84,7 @@ Support and discussion relating to this fork can happen via this [Telegram Group
    - Raspberry Pi 4
  
 ## Future Features & Improvements
-* Add ability to sign transactions on Satochip card directly
 * Add ability to lock/unlock/manage Javacards
-* Add ability to view additional sttings/information for the Satochip cards
 * Tidy up code and reduce re-use
 
 [Software Images along with verification instructions can be found on the releases page.](https://github.com/3rdIteration/seedsigner/releases) 
