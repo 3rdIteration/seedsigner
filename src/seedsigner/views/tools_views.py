@@ -2634,9 +2634,20 @@ class SatochipExportXpubScriptTypeView(View):
         self.script_type = script_type
 
     def run(self):
+        Satochip_Connector = seedkeeper_utils.init_satochip(
+            self, init_card_filter=["satochip"], require_pin=False
+        )
+        if not Satochip_Connector:
+            return Destination(BackStackView)
+
+        status = Satochip_Connector.card_get_status()[3]
+        schnorr_supported = status.get("feature_schnorr_policy") == 0
+
         button_data = []
         for script_type, display_name in SettingsConstants.ALL_SCRIPT_TYPES:
             if script_type in self.settings.get_value(SettingsConstants.SETTING__SCRIPT_TYPES):
+                if script_type == SettingsConstants.TAPROOT and not schnorr_supported:
+                    continue
                 button_data.append(ButtonOption(display_name, return_data=script_type))
 
         selected_menu_num = self.run_screen(
@@ -2985,9 +2996,20 @@ class SatochipLoadDescriptorScriptTypeView(View):
         self.script_type = script_type
 
     def run(self):
+        Satochip_Connector = seedkeeper_utils.init_satochip(
+            self, init_card_filter=["satochip"], require_pin=False
+        )
+        if not Satochip_Connector:
+            return Destination(BackStackView)
+
+        status = Satochip_Connector.card_get_status()[3]
+        schnorr_supported = status.get("feature_schnorr_policy") == 0
+
         button_data = []
         for script_type, display_name in SettingsConstants.ALL_SCRIPT_TYPES:
             if script_type in self.settings.get_value(SettingsConstants.SETTING__SCRIPT_TYPES):
+                if script_type == SettingsConstants.TAPROOT and not schnorr_supported:
+                    continue
                 button_data.append(ButtonOption(display_name, return_data=script_type))
 
         selected_menu_num = self.run_screen(

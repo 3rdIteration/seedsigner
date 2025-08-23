@@ -1045,6 +1045,91 @@ class TestSatochipExportXpubDetailsView(BaseTest):
                 assert view.run_screen.call_args.kwargs["xpub"].startswith("Zpub")
 
 
+class TestSatochipScriptTypeFiltering(BaseTest):
+    def test_export_xpub_hides_taproot_when_unsupported(self, monkeypatch):
+        from seedsigner.views import tools_views
+        from seedsigner.models.settings_definition import SettingsConstants
+        from seedsigner.helpers import seedkeeper_utils
+        from seedsigner.controller import Controller
+        from seedsigner.gui.screens.screen import RET_CODE__BACK_BUTTON
+        from seedsigner.views.view import BackStackView
+
+        class MockConnector:
+            def card_get_status(self):
+                return None, 0x90, 0x00, {"feature_schnorr_policy": 1}
+
+        monkeypatch.setattr(seedkeeper_utils, "init_satochip", lambda *a, **k: MockConnector())
+
+        controller = Controller.get_instance()
+        controller.settings.set_value(
+            SettingsConstants.SETTING__SCRIPT_TYPES,
+            [
+                SettingsConstants.NATIVE_SEGWIT,
+                SettingsConstants.NESTED_SEGWIT,
+                SettingsConstants.TAPROOT,
+            ],
+        )
+
+        view = tools_views.SatochipExportXpubScriptTypeView(sig_type=SettingsConstants.SINGLE_SIG)
+
+        captured = {}
+
+        def fake_run_screen(screen_cls, **kwargs):
+            captured["button_data"] = kwargs.get("button_data")
+            return RET_CODE__BACK_BUTTON
+
+        monkeypatch.setattr(view, "run_screen", fake_run_screen)
+
+        destination = view.run()
+
+        assert destination.View_cls == BackStackView
+        assert all(
+            option.return_data != SettingsConstants.TAPROOT
+            for option in captured["button_data"]
+        )
+
+    def test_load_descriptor_hides_taproot_when_unsupported(self, monkeypatch):
+        from seedsigner.views import tools_views
+        from seedsigner.models.settings_definition import SettingsConstants
+        from seedsigner.helpers import seedkeeper_utils
+        from seedsigner.controller import Controller
+        from seedsigner.gui.screens.screen import RET_CODE__BACK_BUTTON
+        from seedsigner.views.view import BackStackView
+
+        class MockConnector:
+            def card_get_status(self):
+                return None, 0x90, 0x00, {"feature_schnorr_policy": 2}
+
+        monkeypatch.setattr(seedkeeper_utils, "init_satochip", lambda *a, **k: MockConnector())
+
+        controller = Controller.get_instance()
+        controller.settings.set_value(
+            SettingsConstants.SETTING__SCRIPT_TYPES,
+            [
+                SettingsConstants.NATIVE_SEGWIT,
+                SettingsConstants.NESTED_SEGWIT,
+                SettingsConstants.TAPROOT,
+            ],
+        )
+
+        view = tools_views.SatochipLoadDescriptorScriptTypeView()
+
+        captured = {}
+
+        def fake_run_screen(screen_cls, **kwargs):
+            captured["button_data"] = kwargs.get("button_data")
+            return RET_CODE__BACK_BUTTON
+
+        monkeypatch.setattr(view, "run_screen", fake_run_screen)
+
+        destination = view.run()
+
+        assert destination.View_cls == BackStackView
+        assert all(
+            option.return_data != SettingsConstants.TAPROOT
+            for option in captured["button_data"]
+        )
+
 class TestSatochipImportSeedView(BaseTest):
     def test_already_seeded_card_shows_warning(self, monkeypatch):
         from seedsigner.views import tools_views
