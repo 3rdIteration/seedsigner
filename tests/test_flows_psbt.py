@@ -176,6 +176,9 @@ class TestPSBTFlows(FlowTest):
         from embit.transaction import Transaction, TransactionInput, TransactionOutput
         import os, base64
 
+        # Enable WIF signing for this test
+        self.settings.set_value(SettingsConstants.SETTING__WIF_KEYS, SettingsConstants.OPTION__ENABLED)
+
         priv = ec.PrivateKey(os.urandom(32))
         wif = priv.wif()
         pub = priv.get_public_key()
@@ -204,6 +207,9 @@ class TestPSBTFlows(FlowTest):
         from embit.transaction import Transaction, TransactionInput, TransactionOutput
         import base64
         from seedsigner.models.bip38 import BIP38Key
+
+        # Enable BIP38 signing for this test
+        self.settings.set_value(SettingsConstants.SETTING__BIP38_KEYS, SettingsConstants.OPTION__ENABLED)
 
         enc = "6PRVWUbkzzsbcVac2qwfssoUJAN1Xhrg6bNk8J7Nzm5H7kxEbn2Nh2ZoGg"
         passphrase = "TestingOneTwoThree"
