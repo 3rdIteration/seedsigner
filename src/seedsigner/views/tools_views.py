@@ -1373,6 +1373,17 @@ class ToolsSatochipFactoryResetView(View):
         # correctly.
         Satochip_Connector.card_disconnect()
 
+        # Temporarily disable the automatic card monitor so it doesn't
+        # immediately communicate with the card upon reinsertion.  Any
+        # background APDU exchange would prevent the legacy reset counter from
+        # decrementing.
+        try:
+            Satochip_Connector.cardmonitor.deleteObserver(
+                Satochip_Connector.cardobserver
+            )
+        except Exception:
+            pass
+
         # Enter the special factory reset mode only after ensuring we are in a
         # clean, disconnected state.  This prevents any lingering connection
         # from previous smartcard operations from automatically communicating
@@ -1398,6 +1409,15 @@ class ToolsSatochipFactoryResetView(View):
                     self.loading_screen.start()
                     try:
                         time.sleep(3)  # give some time to initialize reader after card insertion... (Takes a while on Pi0)
+
+                        # Establish a fresh connection to the newly inserted
+                        # card.  Since the automatic card monitor is disabled
+                        # we must explicitly wait for and connect to the card
+                        # ourselves before selecting it.
+                        Satochip_Connector.cardservice = (
+                            Satochip_Connector.cardrequest.waitforcard()
+                        )
+                        Satochip_Connector.cardservice.connection.connect()
 
                         # Ensure the newly inserted card is selected before
                         # attempting the legacy factory reset signal. Without an
@@ -1485,6 +1505,14 @@ class ToolsSatochipFactoryResetView(View):
             # normal operating state for any subsequent smartcard operations.
             Satochip_Connector.set_mode_factory_reset(False)
             Satochip_Connector.card_disconnect()
+
+            # Re-enable the automatic card monitor for normal operations.
+            try:
+                Satochip_Connector.cardmonitor.addObserver(
+                    Satochip_Connector.cardobserver
+                )
+            except Exception:
+                pass
 
         return resetStatus
 
