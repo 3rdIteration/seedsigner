@@ -1373,14 +1373,22 @@ class ToolsSatochipFactoryResetView(View):
         # correctly.
         Satochip_Connector.card_disconnect()
 
-        # Temporarily disable the automatic card monitor so it doesn't
-        # immediately communicate with the card upon reinsertion.  Any
-        # background APDU exchange would prevent the legacy reset counter from
-        # decrementing.
+        # Purge all card observers and any lingering PCSC context so that no
+        # background task can automatically exchange APDUs with the card when
+        # it is reinserted. Any unexpected APDU would reset the legacy counter
+        # and prevent the factory reset sequence from completing. This also
+        # effectively disables the automatic card monitor for the duration of
+        # the legacy reset workflow.
         try:
-            Satochip_Connector.cardmonitor.deleteObserver(
-                Satochip_Connector.cardobserver
-            )
+            for observer in list(getattr(Satochip_Connector.cardmonitor, "observers", [])):
+                Satochip_Connector.cardmonitor.deleteObserver(observer)
+        except Exception:
+            pass
+        try:
+            from smartcard import scard
+            hresult, hcontext = scard.SCardEstablishContext(scard.SCARD_SCOPE_SYSTEM)
+            if hresult == scard.SCARD_S_SUCCESS:
+                scard.SCardReleaseContext(hcontext)
         except Exception:
             pass
 
