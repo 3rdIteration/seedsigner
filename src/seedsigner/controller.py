@@ -299,9 +299,13 @@ class Controller(Singleton):
         from seedsigner.views.screensaver import OpeningSplashView
         from seedsigner.models.settings_definition import SettingsConstants
         from seedsigner.views.desktop_warning import DesktopWarningView
+        from seedsigner.views.developer_os_warning import DeveloperOSWarningView
+        from seedsigner.helpers.seedsigner_os import is_seedsigner_os_dev_build
         from seedsigner.gui.toast import RemoveSDCardToastManagerThread
 
         OpeningSplashView().run()
+        if is_seedsigner_os_dev_build():
+            DeveloperOSWarningView().run()
         if self.settings.get_value(SettingsConstants.SETTING__DISPLAY_CONFIGURATION).startswith("desktop"):
             DesktopWarningView().run()
 
