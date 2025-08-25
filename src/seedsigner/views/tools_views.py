@@ -48,6 +48,9 @@ from seedsigner.views.seed_views import (
     SeedSlip39CreateFromBytesView,
     SeedSlip39RegenerateSharesView,
     AccountNumberView,
+    SeedElectrumMnemonicStartView,
+    SeedSlip39MnemonicStartView,
+    SeedKeeperSelectView,
 )
 
 from .view import View, Destination, BackStackView, MainMenuView
@@ -2453,6 +2456,10 @@ class ToolsSatochipImportSeedView(View):
     TYPE_18WORD = ButtonOption("Enter 18-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=18)
     TYPE_21WORD = ButtonOption("Enter 21-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=21)
     TYPE_24WORD = ButtonOption("Enter 24-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=24)
+    TYPE_ELECTRUM = ButtonOption("Enter Electrum seed", FontAwesomeIconConstants.KEYBOARD)
+    TYPE_SLIP39 = ButtonOption("SLIP-39 Shares", FontAwesomeIconConstants.KEYBOARD)
+    IMPORT_SEEDKEEPER = ButtonOption("From SeedKeeper", FontAwesomeIconConstants.LOCK)
+    CREATE = ButtonOption(" Create a seed", SeedSignerIconConstants.PLUS)
 
     def run(self):
         from seedsigner.gui.screens.screen import LoadingScreenThread
@@ -2491,6 +2498,13 @@ class ToolsSatochipImportSeedView(View):
             24: self.TYPE_24WORD,
         }
         button_data = button_data + [self.SCAN_SEED] + [options[l] for l in seed_lengths]
+        if self.settings.get_value(SettingsConstants.SETTING__SMARTCARD_SUPPORT) == SettingsConstants.OPTION__ENABLED:
+            button_data.append(self.IMPORT_SEEDKEEPER)
+        if self.settings.get_value(SettingsConstants.SETTING__SLIP39_SEEDS) == SettingsConstants.OPTION__ENABLED:
+            button_data.append(self.TYPE_SLIP39)
+        button_data.append(self.CREATE)
+        if self.settings.get_value(SettingsConstants.SETTING__ELECTRUM_SEEDS) == SettingsConstants.OPTION__ENABLED:
+            button_data.append(self.TYPE_ELECTRUM)
         
         selected_menu_num = self.run_screen(
             ButtonListScreen,
@@ -2545,6 +2559,14 @@ class ToolsSatochipImportSeedView(View):
             from seedsigner.views.seed_views import SeedMnemonicEntryView
             self.controller.storage.init_pending_mnemonic(num_words=button_data[selected_menu_num].return_data)
             return Destination(SeedMnemonicEntryView)
+        elif button_data[selected_menu_num] == self.IMPORT_SEEDKEEPER:
+            return Destination(SeedKeeperSelectView)
+        elif button_data[selected_menu_num] == self.TYPE_SLIP39:
+            return Destination(SeedSlip39MnemonicStartView)
+        elif button_data[selected_menu_num] == self.CREATE:
+            return Destination(ToolsMenuView)
+        elif button_data[selected_menu_num] == self.TYPE_ELECTRUM:
+            return Destination(SeedElectrumMnemonicStartView)
         
         return Destination(MainMenuView)
 
