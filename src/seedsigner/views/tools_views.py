@@ -235,8 +235,12 @@ class ToolsImageEntropyMnemonicLengthView(View):
 
         if selected_menu_num == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
-        
+
         mnemonic_length = button_data[selected_menu_num].return_data
+
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+        loading_screen = LoadingScreenThread(text=_("Processing..."))
+        loading_screen.start()
 
         preview_images = self.controller.image_entropy_preview_frames
         seed_entropy_image = self.controller.image_entropy_final_image
@@ -286,9 +290,10 @@ class ToolsImageEntropyMnemonicLengthView(View):
 
         if mnemonic_length in mnemonic_generation.ENTROPY_BYTES_REQUIRED:
             final_hash = final_hash[:mnemonic_generation.ENTROPY_BYTES_REQUIRED[mnemonic_length]]
-        
+
         print("Final shannon entropy")
         if not mnemonic_generation.byte_entropy_is_sufficient(final_hash):
+            loading_screen.stop()
             self.run_screen(
                 ErrorScreen,
                 title=_("Poor Entropy"),
@@ -303,6 +308,8 @@ class ToolsImageEntropyMnemonicLengthView(View):
             secret = final_hash
         else:
             mnemonic = mnemonic_generation.generate_mnemonic_from_bytes(final_hash)
+
+        loading_screen.stop()
 
         # Image should never get saved nor stick around in memory
         seed_entropy_image = None
@@ -401,15 +408,20 @@ class ToolsDiceEntropyEntryView(View):
                 text=_("Dice rolls didn't appear random enough. Please try again."),
             )
             return Destination(BackStackView)
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+        loading_screen = LoadingScreenThread(text=_("Processing..."))
+        loading_screen.start()
 
         if getattr(self.controller, "create_slip39", False):
             entropy_bytes = mnemonic_generation.generate_bytes_from_dice(ret)
             self.controller.create_slip39 = False
+            loading_screen.stop()
             return Destination(SeedSlip39CreateFromBytesView, view_args=dict(secret=entropy_bytes), clear_history=True)
         else:
             dice_seed_phrase = mnemonic_generation.generate_mnemonic_from_dice(ret)
             seed = Seed(dice_seed_phrase, wordlist_language_code=self.settings.get_value(SettingsConstants.SETTING__WORDLIST_LANGUAGE))
             self.controller.storage.set_pending_seed(seed)
+            loading_screen.stop()
             return Destination(SeedWordsWarningView, view_args={"seed_num": None}, clear_history=True)
 
 
