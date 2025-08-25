@@ -4,13 +4,13 @@ All notable changes to this project are documented in this file.
 
 Entries marked "(SeedSigner official)" originate from the upstream project, while "(smartcard fork)" indicates releases and changes unique to this repository.
 
-## [Unreleased] (smartcard fork)
-- WIF and BIP38 key signing support (disabled by default)
+## 2025-08-04 - SS0.8.6+Satochip+Earthdiver-B3 (smartcard fork)
 - Satochip card transaction signing and PSBT verification
-- Message signing and xpub export (single and multisig) with address explorer integration
-- BIP32 account prompt when exporting xpubs
+- Satochip Message signing and xpub export (single and multisig) with address explorer integration
+- BIP32 account prompt when exporting xpubs (disabled by default)
 - Smartcard info screen with card UID and genuineness check
 - SLIP39 seed creation, import, and extendable shares with configurable seed word lengths
+- WIF and BIP38 key signing support (disabled by default)
 - Settings to toggle smartcard and SLIP39 features and to configure smartcard PIN attempts
 - SeedKeeper Electrum seed support and splitted passphrase/encryption key QR codes
 - Enhanced entropy monitoring with hardware RNG, quality indicators and optional 30-minute wipe timer

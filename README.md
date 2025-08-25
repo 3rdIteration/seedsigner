@@ -22,60 +22,57 @@ Support and discussion relating to this fork can happen via this [Telegram Group
    - Encrypted QR: Supports Krux compatible encrypted seeds
    - Passphrase QR: Supports loading a passphrase from a plain text QR code
    - Plaintext QR: Support Exporting Seed as Plaintext QR Code
+   - Split passphrase/encryption key QR support (Multi-Factor entry)
 * Saving and Loading Multisig Descriptors to Satochip Seedkeeper Cards 
    - Also changed default behavior to keep Descriptor loaded until manually cleared. (Including descriptor appearing in the Address Explorer when loaded)
    - Descriptors are split up into a template and xpubs before being saved to SeedKeeper.
    - Includes ability to load single-sig descriptor and use Address Browser
 * Saving and loading generic secrets to a Seedkeeper card
    - These secrets can be either viewed as text or displayed as a generic text QR code.
-* Initialising Satochip Cards with SeedSigner
-  - Load any Seed from the SeedSigner on to the Satochip Card
-  - Enable 2FA on the Satochip Card
 * General Satochip/Seedkeeper card operations
   - Initialise Card
   - Change Card PIN
   - Change Card Label
   - Set NFC Policy
   - Factory Reset Card
-* Satochip cryptographic features
-  - Export xpubs (single- and multisig) with optional BIP32 account prompt
-  - PSBT verification and transaction signing directly on-card
-  - Message signing and WIF/BIP38 key signing support (disabled by default)
-  - Address explorer integration for Satochip cards
-* Smartcard diagnostics
   - Smartcard info screen with card UID
-  - Genuineness check with automatic retry
-* Flashing Java Applets to blank Javacards
-   - Firmware comes bundled with applets for SeedSigner, Satochip and Satodime (Releases from Satochip Github)
-   - Firmware is also bundled with the source code for all three projects, along with a modified varient for THD-89 based Javacards. (This can be built from source on-device at run-time)
-   - Firmware also comes bundled applets for Specter DIY, ApexTOTP, SmartPGP
-* Smartcard Hardware Troubleshooting (In the settings menu)
-   - Enable/Disable smartcard readers (All interfaces enabled by default)
-   - List Smartcard Readers
-   - Check Card Connection
-   - Test NFC connection
-   - Restart PCSC (This should generally not be required)
-* MicroSD Card Tools
+  - Genuineness check
+* Satochip Card features
+  - Load any Seed from the SeedSigner on to the Satochip Card
+  - Enable 2FA on the Satochip Card
+  - Export xpubs (single- and multisig) 
+  - PSBT verification and transaction signing directly on-card
+  - Message signing
+  - Address explorer integration for Satochip cards
+* SLIP39 seed support
+  - Create, import and extend SLIP39 seed shares (Can load from text, QR or Seedkeeper)
+  - Save SLIP39 shares to Seedkeeper
+  - Initialise Satochip card from reconstructed SLIP39 seed.
+  - Settings to toggle SLIP39 functionality
+* BIP85 Support
+   - Supports not only generating BIP85 seeds, but loading them and using them
+* WIF/BIP38 key signing support (disabled by default)
+* Wallet xpub export verification (Checks receive address for safety)
+* TextQR Tool
+   - Supports both generating and loading standard plaintext QR codes for arbitrary text.
+* Configurable seed word lengths (12, 15, 18, 21 and 24 word mnemonics)
+* Enhanced entropy and security features
+  - Live display of camera entropy quality
+  - Shannon Entropy checks for Dice and Camera seed generation
+  - Hardware RNG mixed with camera entropy
+  - Entropy quality indicators with optional 30-minute wipe timer
+* Extra Developer Tools
+  - All dev builds throw a warning on startup...
+  - Desktop simulation mode with system camera support (Useful for development)
+  - Dev builds allow running seedsigner source from a folder on microSD
+  - Dev builds have ability to enable networking and include extra tools like SSH, git and rsync (To make dev easier)
+* Compressed image files (The uncompressed files are large due to having extra free space to make the GPG verification feature useful)
+* * MicroSD Card Tools
    - Flashing MicroSD Cards with official SeedSigner Images (Bundled)
    - Verification of freshly flashed MicroSD cards against known images
    - Secure Wipe (Both with zeros and random data)
 * GPG Tools
    - GPG Signature verification & Sha256 Manifest check (Includes pubkey bundle the from Sparrow to verify Seedsigner, Sparrow, Electrum, plus many more)
-* SLIP39 seed support
-  - Create, import and extend SLIP39 seed shares
-  - Settings to toggle SLIP39 functionality
-* BIP85 Support
-   - Supports not only generating BIP85 seeds, but loading them and using them
-* TextQR Tool
-   - Supports both generating and loading standard plaintext QR codes for arbitrary text.
-* Configurable seed word lengths, including support for 18 word BIP39 mnemonics
-* SeedKeeper Electrum seed support
-* Splitted passphrase/encryption key QR support
-* Enhanced entropy and security features
-  - Hardware RNG mixed with camera entropy
-  - Entropy quality indicators with optional 30-minute wipe timer
-* Desktop simulation mode with system camera support
-* Compressed image files (The uncompressed files are large due to having extra free space to make the GPG verification feature useful)
 * Tested and working with the following hardware
    - Raspberry Pi Zero 1.3
    - Raspberry Pi Zero W
