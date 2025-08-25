@@ -498,7 +498,7 @@ class DecodeQR:
                 # checks if all 4 letter words are in list are in 4 letter bip39 word list
                 return QRType.SEED__FOUR_LETTER_MNEMONIC
 
-            elif all(x in slip39_wordlist for x in s.strip().split(" ")):
+            elif all(x in slip39_wordlist for x in s.strip().lower().split(" ")):
                 return QRType.SEED__SLIP39
 
             elif DecodeQR.is_base43_psbt(s):
@@ -1001,6 +1001,7 @@ class Slip39ShareDecoder(BaseSingleFrameQrDecoder):
             try:
                 if isinstance(segment, bytes):
                     segment = segment.decode("utf-8")
+                segment = segment.lower()
                 from shamir_mnemonic import Share as Slip39Share
                 Slip39Share.from_mnemonic(segment)
                 self.share = segment

@@ -2,6 +2,7 @@ import os
 import json
 import pytest
 from seedsigner.models.seed import InvalidSeedException, Seed, ElectrumSeed, Slip39Seed
+from seedsigner.models.decode_qr import DecodeQR, DecodeQRStatus
 import shamir_mnemonic
 
 from base import BaseTest
@@ -99,6 +100,17 @@ def test_slip39_seed_20_word_share():
         shares = shamir_mnemonic.generate_mnemonics(1, [(2, 3)], secret)[0]
         seed = Slip39Seed(mnemonics=[shares[0], shares[1]])
         assert seed.seed_bytes == secret
+
+
+def test_slip39_qr_with_capitalization():
+        secret = bytes.fromhex("11" * 32)
+        share = shamir_mnemonic.generate_mnemonics(1, [(1, 1)], secret)[0][0]
+        share_caps = share.upper()
+        decoder = DecodeQR()
+        status = decoder.add_data(share_caps)
+        assert status == DecodeQRStatus.COMPLETE
+        assert decoder.is_slip39_share
+        assert decoder.get_slip39_share() == share
 
 def test_slip39_storage_reconstruction():
        secret = bytes.fromhex("22" * 32)
