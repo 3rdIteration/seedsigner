@@ -152,6 +152,7 @@ class Controller(Singleton):
     Satochip_Connector = None
     Satochip_PIN = None
     Satochip_Last_UID_SHA1 = None
+    tools_common_card_filter: list[str] = None
 
     # Destination placeholder for when we need to jump out to a side flow but intend to
     # return navigation to the main flow (e.g. PSBT flow, load multisig descriptor,

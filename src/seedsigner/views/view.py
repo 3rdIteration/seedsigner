@@ -196,6 +196,7 @@ class MainMenuView(View):
 
         controller = Controller.get_instance()
         controller.storage.discard_pending_slip39_shares()
+        controller.tools_common_card_filter = None
         if controller.auto_wiped:
             controller.auto_wiped = False
             controller.activate_toast(InfoToast(label_text=_("Data wiped after inactivity")))
