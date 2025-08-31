@@ -3870,6 +3870,7 @@ class ToolsMicroSDWipeRandomView(View):
 class ToolsGPGMenuView(View):
     VERIFY_FILE = ButtonOption("Verify File Sig")
     IMPORT_PUBKEY = ButtonOption("Import Pubkey")
+    LOAD_BIP85_KEY = ButtonOption("Load BIP85 Key")
 
     def run(self):
         from subprocess import run
@@ -3895,7 +3896,7 @@ class ToolsGPGMenuView(View):
                 show_back_button=False,
                 button_data=[ButtonOption("Continue")]
             )
-        button_data = [self.VERIFY_FILE, self.IMPORT_PUBKEY]
+        button_data = [self.VERIFY_FILE, self.IMPORT_PUBKEY, self.LOAD_BIP85_KEY]
 
         selected_menu_num = self.run_screen(
             ButtonListScreen,
@@ -3912,6 +3913,8 @@ class ToolsGPGMenuView(View):
         
         elif button_data[selected_menu_num] == self.IMPORT_PUBKEY:
             return Destination(ToolsGPGImportPubkeyView)
+        elif button_data[selected_menu_num] == self.LOAD_BIP85_KEY:
+            return Destination(ToolsGPGLoadBIP85KeyView)
 
 class ToolsGPGVerifyFileView(View):
     CHECK_SHA256 = ButtonOption("Check SHA256Sum")
@@ -4142,7 +4145,194 @@ class ToolsGPGImportPubkeyView(View):
                 show_back_button=False,
                 button_data=[ButtonOption("Continue")]
             )
-        
+
+        return Destination(MainMenuView)
+
+
+class ToolsGPGLoadBIP85KeyView(View):
+    def run(self):
+        from hashlib import shake_256
+        from embit import bip32, bip85
+        from Cryptodome.PublicKey import RSA
+        from pgpy import PGPKey, PGPUID
+        from pgpy.constants import (
+            PubKeyAlgorithm,
+            KeyFlags,
+            HashAlgorithm,
+            SymmetricKeyAlgorithm,
+            CompressionAlgorithm,
+        )
+        from pgpy.pgp import PrivKeyV4, PrivSubKeyV4
+        from pgpy.packet import fields
+        from pgpy.packet.types import MPI
+        from datetime import datetime, timezone
+        from subprocess import run
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+        from seedsigner.gui.screens import LargeIconStatusScreen, WarningScreen
+        from seedsigner.gui.screens import seed_screens, tools_screens
+
+        if len(self.controller.storage.seeds) == 0:
+            self.run_screen(
+                WarningScreen,
+                title="WARNING",
+                status_headline=None,
+                text="Load a seed before using\nBIP85 GPG tools.",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        ret = seed_screens.SeedBIP85SelectChildIndexScreen(title="Key Index").display()
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        key_index = int(ret)
+
+        def prompt_text(title: str):
+            ret_dict = tools_screens.ToolsTextQRTextEntryScreen(
+                textToEncode="", title=title
+            ).display()
+            if "is_back_button" in ret_dict:
+                return None
+            try:
+                import re
+                return bytes(
+                    re.sub(r"\\(?!u)", r"\\\\", ret_dict["textToEncode"]),
+                    encoding="raw_unicode_escape",
+                ).decode("unicode_escape")
+            except UnicodeDecodeError:
+                return ret_dict["textToEncode"]
+
+        name = prompt_text("Name")
+        if name is None:
+            return Destination(BackStackView)
+
+        email = prompt_text("Email")
+        if email is None:
+            return Destination(BackStackView)
+
+        created = datetime.fromtimestamp(1231006505, tz=timezone.utc)
+        expiration_str = prompt_text("Expiration YYYY-MM-DD")
+        if expiration_str is None:
+            return Destination(BackStackView)
+        try:
+            expiration_dt = datetime.strptime(
+                expiration_str, "%Y-%m-%d"
+            ).replace(tzinfo=timezone.utc)
+            if expiration_dt <= created:
+                raise ValueError
+            expires = expiration_dt - created
+        except ValueError:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="Invalid expiration date",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        seed = self.controller.get_seed(0)
+        root = bip32.HDKey.from_seed(seed.seed_bytes)
+        KEY_BITS = 4096
+
+        def bip85_rsa(bits: int, index: int, sub_index: int | None = None):
+            path = [bits, index]
+            if sub_index is not None:
+                path.append(sub_index)
+            entropy = bip85.derive_entropy(root, 828365, path)
+            shake_data = shake_256(entropy).digest(1000000)
+            offset = 0
+
+            def randfunc(n: int) -> bytes:
+                nonlocal offset
+                data = shake_data[offset:offset + n]
+                offset += n
+                return data
+
+            return RSA.generate(bits, randfunc=randfunc)
+
+        def rsa_to_privpacket(rsa_key: RSA.RsaKey) -> fields.RSAPriv:
+            priv = fields.RSAPriv()
+            priv.n = MPI(rsa_key.n)
+            priv.e = MPI(rsa_key.e)
+            priv.d = MPI(rsa_key.d)
+            priv.p = MPI(rsa_key.p)
+            priv.q = MPI(rsa_key.q)
+            priv.u = MPI(pow(rsa_key.p, -1, rsa_key.q))
+            priv._compute_chksum()
+            return priv
+
+        rsa_main = bip85_rsa(KEY_BITS, key_index)
+        pk = PrivKeyV4()
+        pk.pkalg = PubKeyAlgorithm.RSAEncryptOrSign
+        pk.keymaterial = rsa_to_privpacket(rsa_main)
+        pk.created = created
+        pk.update_hlen()
+
+        pgp_key = PGPKey()
+        pgp_key._key = pk
+
+        uid = PGPUID.new(name, email=email)
+        pgp_key.add_uid(
+            uid,
+            usage={KeyFlags.Certify, KeyFlags.Sign},
+            hashes=[HashAlgorithm.SHA256],
+            ciphers=[SymmetricKeyAlgorithm.AES256],
+            compression=[CompressionAlgorithm.ZLIB],
+            expires=expires,
+        )
+
+        subkey_specs = [
+            (0, {KeyFlags.EncryptCommunications, KeyFlags.EncryptStorage}),
+            (1, {KeyFlags.Authentication}),
+            (2, {KeyFlags.Sign}),
+        ]
+
+        for sub_index, usage in subkey_specs:
+            rsa_sub = bip85_rsa(KEY_BITS, key_index, sub_index)
+            subpkt = PrivSubKeyV4()
+            subpkt.pkalg = PubKeyAlgorithm.RSAEncryptOrSign
+            subpkt.keymaterial = rsa_to_privpacket(rsa_sub)
+            subpkt.created = created
+            subpkt.update_hlen()
+            subkey = PGPKey()
+            subkey._key = subpkt
+            pgp_key.add_subkey(
+                subkey,
+                usage=usage,
+                hashes=[HashAlgorithm.SHA256],
+                ciphers=[SymmetricKeyAlgorithm.AES256],
+                compression=[CompressionAlgorithm.ZLIB],
+                expires=expires,
+            )
+
+        armored = str(pgp_key)
+
+        self.loading_screen = LoadingScreenThread(text="Importing BIP85 GPG key\n\n\n\n\n\n(May take a while)")
+        self.loading_screen.start()
+        result = run(["gpg", "--batch", "--import"], input=armored.encode(), capture_output=True)
+        self.loading_screen.stop()
+
+        if result.returncode == 0:
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Success",
+                status_headline=None,
+                text="BIP85 GPG key imported",
+                show_back_button=False,
+                button_data=[ButtonOption("Done")],
+            )
+        else:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="Failed to import key",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+
         return Destination(MainMenuView)
 
 class ToolsTextQRTextEntryView(View):
