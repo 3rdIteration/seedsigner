@@ -4178,6 +4178,42 @@ def bip85_rsa_from_root(root, bits: int, index: int, sub_index: int | None = Non
     return RSA.generate(bits, randfunc=randfunc)
 
 
+def bip85_secp256k1_from_root(
+    root, index: int, sub_index: int | None = None, alg: str = "ECDSA"
+):
+    from embit import bip85
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from pgpy.constants import EllipticCurveOID
+    from pgpy.packet import fields
+
+    path = [256, index]
+    if sub_index is not None:
+        path.append(sub_index)
+    entropy = bip85.derive_entropy(root, 828365, path)
+    order = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
+    d = int.from_bytes(entropy[:32], "big") % order
+    if d == 0:
+        d = 1
+    pn = ec.derive_private_key(d, ec.SECP256K1()).public_key().public_numbers()
+    if alg == "ECDH":
+        priv = fields.ECDHPriv()
+        priv.oid = EllipticCurveOID.SECP256K1
+        priv.kdf.halg = priv.oid.kdf_halg
+        priv.kdf.encalg = priv.oid.kek_alg
+    else:
+        priv = fields.ECDSAPriv()
+        priv.oid = EllipticCurveOID.SECP256K1
+    priv.p = fields.ECPoint.from_values(
+        priv.oid.key_size,
+        fields.ECPointFormat.Standard,
+        fields.MPI(pn.x),
+        fields.MPI(pn.y),
+    )
+    priv.s = fields.MPI(d)
+    priv._compute_chksum()
+    return priv
+
+
 class ToolsGPGLoadBIP85KeyView(View):
     def run(self):
         from embit import bip32
@@ -4215,6 +4251,21 @@ class ToolsGPGLoadBIP85KeyView(View):
             return Destination(BackStackView)
         key_index = int(ret)
 
+        keytype_buttons = [
+            ButtonOption("RSA 4096"),
+            ButtonOption("RSA 2048"),
+            ButtonOption("secp256k1"),
+        ]
+        selected_type = self.run_screen(
+            ButtonListScreen,
+            title="Key Type",
+            is_button_text_centered=False,
+            button_data=keytype_buttons,
+        )
+        if selected_type == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        key_type = ["rsa4096", "rsa2048", "secp256k1"][selected_type]
+
         def prompt_text(title: str, default: str = ""):
             ret_dict = tools_screens.ToolsTextQRTextEntryScreen(
                 textToEncode=default, title=title
@@ -4239,8 +4290,8 @@ class ToolsGPGLoadBIP85KeyView(View):
             return Destination(BackStackView)
 
         created = datetime.fromtimestamp(1231006505, tz=timezone.utc)
-        # Per NIST guidelines, default expiration is set to the last day of 2035.
-        default_expiration = date(2035, 12, 31)
+        from datetime import timedelta
+        default_expiration = (datetime.now(timezone.utc) + timedelta(days=3650)).date()
         expiration_str = prompt_text(
             "Expiration YYYY-MM-DD", default_expiration.isoformat()
         )
@@ -4271,7 +4322,7 @@ class ToolsGPGLoadBIP85KeyView(View):
 
         seed = self.controller.get_seed(0)
         root = bip32.HDKey.from_seed(seed.seed_bytes)
-        KEY_BITS = 4096
+        KEY_BITS = 4096 if key_type == "rsa4096" else 2048
 
         def rsa_to_privpacket(rsa_key: RSA.RsaKey) -> fields.RSAPriv:
             priv = fields.RSAPriv()
@@ -4287,10 +4338,14 @@ class ToolsGPGLoadBIP85KeyView(View):
         self.loading_screen = LoadingScreenThread(text="Generating BIP85 GPG key\n\n\n\n\n\n(This takes a while)")
         self.loading_screen.start()
         try:
-            rsa_main = bip85_rsa_from_root(root, KEY_BITS, key_index)
             pk = PrivKeyV4()
-            pk.pkalg = PubKeyAlgorithm.RSAEncryptOrSign
-            pk.keymaterial = rsa_to_privpacket(rsa_main)
+            if key_type == "secp256k1":
+                pk.pkalg = PubKeyAlgorithm.ECDSA
+                pk.keymaterial = bip85_secp256k1_from_root(root, key_index)
+            else:
+                rsa_main = bip85_rsa_from_root(root, KEY_BITS, key_index)
+                pk.pkalg = PubKeyAlgorithm.RSAEncryptOrSign
+                pk.keymaterial = rsa_to_privpacket(rsa_main)
             pk.created = created
             pk.update_hlen()
 
@@ -4307,17 +4362,28 @@ class ToolsGPGLoadBIP85KeyView(View):
                 expires=expires,
             )
 
-            subkey_specs = [
-                (0, {KeyFlags.EncryptCommunications, KeyFlags.EncryptStorage}),
-                (1, {KeyFlags.Authentication}),
-                (2, {KeyFlags.Sign}),
-            ]
+            if key_type == "secp256k1":
+                subkey_specs = [
+                    (0, PubKeyAlgorithm.ECDH, {KeyFlags.EncryptCommunications, KeyFlags.EncryptStorage}, "ECDH"),
+                    (1, PubKeyAlgorithm.ECDSA, {KeyFlags.Authentication}, "ECDSA"),
+                    (2, PubKeyAlgorithm.ECDSA, {KeyFlags.Sign}, "ECDSA"),
+                ]
+            else:
+                subkey_specs = [
+                    (0, PubKeyAlgorithm.RSAEncryptOrSign, {KeyFlags.EncryptCommunications, KeyFlags.EncryptStorage}),
+                    (1, PubKeyAlgorithm.RSAEncryptOrSign, {KeyFlags.Authentication}),
+                    (2, PubKeyAlgorithm.RSAEncryptOrSign, {KeyFlags.Sign}),
+                ]
 
-            for sub_index, usage in subkey_specs:
-                rsa_sub = bip85_rsa_from_root(root, KEY_BITS, key_index, sub_index)
+            for spec in subkey_specs:
+                sub_index, pkalg, usage, *alg = spec
                 subpkt = PrivSubKeyV4()
-                subpkt.pkalg = PubKeyAlgorithm.RSAEncryptOrSign
-                subpkt.keymaterial = rsa_to_privpacket(rsa_sub)
+                subpkt.pkalg = pkalg
+                if key_type == "secp256k1":
+                    subpkt.keymaterial = bip85_secp256k1_from_root(root, key_index, sub_index, alg[0])
+                else:
+                    rsa_sub = bip85_rsa_from_root(root, KEY_BITS, key_index, sub_index)
+                    subpkt.keymaterial = rsa_to_privpacket(rsa_sub)
                 subpkt.created = created
                 subpkt.update_hlen()
                 subkey = PGPKey()

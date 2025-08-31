@@ -1,6 +1,6 @@
 from embit import bip32
 from seedsigner.models.seed import Seed
-from seedsigner.views.tools_views import bip85_rsa_from_root
+from seedsigner.views.tools_views import bip85_rsa_from_root, bip85_secp256k1_from_root
 
 MNEMONIC = "resource timber firm banner horror pupil frozen main pear direct pioneer broken grid core insane begin sister pony end debate task silk empty curious".split()
 
@@ -21,3 +21,12 @@ def test_bip85_rsa_large_key():
     root = bip32.HDKey.from_seed(seed.seed_bytes)
     key = bip85_rsa_from_root(root, 4096, 0)
     assert key.size_in_bits() == 4096
+
+
+def test_bip85_secp256k1_deterministic():
+    seed = Seed(mnemonic=MNEMONIC)
+    root = bip32.HDKey.from_seed(seed.seed_bytes)
+    key = bip85_secp256k1_from_root(root, 0)
+    assert int(key.s) == int(
+        "cefbb3197f44cbcd28ca548e7d6c22e2b67f497caeebb71fa91d1cc6ab78e502", 16
+    )
