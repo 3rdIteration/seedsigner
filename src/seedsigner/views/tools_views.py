@@ -4283,56 +4283,58 @@ class ToolsGPGLoadBIP85KeyView(View):
             priv._compute_chksum()
             return priv
 
-        rsa_main = bip85_rsa_from_root(root, KEY_BITS, key_index)
-        pk = PrivKeyV4()
-        pk.pkalg = PubKeyAlgorithm.RSAEncryptOrSign
-        pk.keymaterial = rsa_to_privpacket(rsa_main)
-        pk.created = created
-        pk.update_hlen()
+        self.loading_screen = LoadingScreenThread(text="Generating BIP85 GPG key\n\n\n\n\n\n(This takes a while)")
+        self.loading_screen.start()
+        try:
+            rsa_main = bip85_rsa_from_root(root, KEY_BITS, key_index)
+            pk = PrivKeyV4()
+            pk.pkalg = PubKeyAlgorithm.RSAEncryptOrSign
+            pk.keymaterial = rsa_to_privpacket(rsa_main)
+            pk.created = created
+            pk.update_hlen()
 
-        pgp_key = PGPKey()
-        pgp_key._key = pk
+            pgp_key = PGPKey()
+            pgp_key._key = pk
 
-        uid = PGPUID.new(name, email=email)
-        pgp_key.add_uid(
-            uid,
-            usage={KeyFlags.Certify, KeyFlags.Sign},
-            hashes=[HashAlgorithm.SHA256],
-            ciphers=[SymmetricKeyAlgorithm.AES256],
-            compression=[CompressionAlgorithm.ZLIB],
-            expires=expires,
-        )
-
-        subkey_specs = [
-            (0, {KeyFlags.EncryptCommunications, KeyFlags.EncryptStorage}),
-            (1, {KeyFlags.Authentication}),
-            (2, {KeyFlags.Sign}),
-        ]
-
-        for sub_index, usage in subkey_specs:
-            rsa_sub = bip85_rsa_from_root(root, KEY_BITS, key_index, sub_index)
-            subpkt = PrivSubKeyV4()
-            subpkt.pkalg = PubKeyAlgorithm.RSAEncryptOrSign
-            subpkt.keymaterial = rsa_to_privpacket(rsa_sub)
-            subpkt.created = created
-            subpkt.update_hlen()
-            subkey = PGPKey()
-            subkey._key = subpkt
-            pgp_key.add_subkey(
-                subkey,
-                usage=usage,
+            uid = PGPUID.new(name, email=email)
+            pgp_key.add_uid(
+                uid,
+                usage={KeyFlags.Certify, KeyFlags.Sign},
                 hashes=[HashAlgorithm.SHA256],
                 ciphers=[SymmetricKeyAlgorithm.AES256],
                 compression=[CompressionAlgorithm.ZLIB],
                 expires=expires,
             )
 
-        armored = str(pgp_key)
+            subkey_specs = [
+                (0, {KeyFlags.EncryptCommunications, KeyFlags.EncryptStorage}),
+                (1, {KeyFlags.Authentication}),
+                (2, {KeyFlags.Sign}),
+            ]
 
-        self.loading_screen = LoadingScreenThread(text="Importing BIP85 GPG key\n\n\n\n\n\n(May take a while)")
-        self.loading_screen.start()
-        result = run(["gpg", "--batch", "--import"], input=armored.encode(), capture_output=True)
-        self.loading_screen.stop()
+            for sub_index, usage in subkey_specs:
+                rsa_sub = bip85_rsa_from_root(root, KEY_BITS, key_index, sub_index)
+                subpkt = PrivSubKeyV4()
+                subpkt.pkalg = PubKeyAlgorithm.RSAEncryptOrSign
+                subpkt.keymaterial = rsa_to_privpacket(rsa_sub)
+                subpkt.created = created
+                subpkt.update_hlen()
+                subkey = PGPKey()
+                subkey._key = subpkt
+                pgp_key.add_subkey(
+                    subkey,
+                    usage=usage,
+                    hashes=[HashAlgorithm.SHA256],
+                    ciphers=[SymmetricKeyAlgorithm.AES256],
+                    compression=[CompressionAlgorithm.ZLIB],
+                    expires=expires,
+                )
+
+            armored = str(pgp_key)
+
+            result = run(["gpg", "--batch", "--import"], input=armored.encode(), capture_output=True)
+        finally:
+            self.loading_screen.stop()
 
         if result.returncode == 0:
             self.run_screen(
