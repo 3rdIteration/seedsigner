@@ -4154,12 +4154,35 @@ class ToolsGPGImportPubkeyView(View):
         return Destination(MainMenuView)
 
 
+def bip85_rsa_from_root(root, bits: int, index: int, sub_index: int | None = None):
+    from hashlib import shake_256
+    from embit import bip85
+    from Cryptodome.PublicKey import RSA
+
+    path = [bits, index]
+    if sub_index is not None:
+        path.append(sub_index)
+    entropy = bip85.derive_entropy(root, 828365, path)
+    counter = 0
+    buffer = b""
+
+    def randfunc(n: int) -> bytes:
+        nonlocal counter, buffer
+        while len(buffer) < n:
+            ctr = counter.to_bytes(4, "big")
+            buffer += shake_256(entropy + ctr).digest(64)
+            counter += 1
+        result, buffer = buffer[:n], buffer[n:]
+        return result
+
+    return RSA.generate(bits, randfunc=randfunc)
+
+
 class ToolsGPGLoadBIP85KeyView(View):
     def run(self):
-        from hashlib import shake_256
-        from embit import bip32, bip85
-        from Cryptodome.PublicKey import RSA
+        from embit import bip32
         from pgpy import PGPKey, PGPUID
+        from Cryptodome.PublicKey import RSA
         from pgpy.constants import (
             PubKeyAlgorithm,
             KeyFlags,
@@ -4170,7 +4193,7 @@ class ToolsGPGLoadBIP85KeyView(View):
         from pgpy.pgp import PrivKeyV4, PrivSubKeyV4
         from pgpy.packet import fields
         from pgpy.packet.types import MPI
-        from datetime import datetime, timezone
+        from datetime import datetime, timezone, timedelta
         from subprocess import run
         from seedsigner.gui.screens.screen import LoadingScreenThread
         from seedsigner.gui.screens import LargeIconStatusScreen, WarningScreen
@@ -4192,9 +4215,9 @@ class ToolsGPGLoadBIP85KeyView(View):
             return Destination(BackStackView)
         key_index = int(ret)
 
-        def prompt_text(title: str):
+        def prompt_text(title: str, default: str = ""):
             ret_dict = tools_screens.ToolsTextQRTextEntryScreen(
-                textToEncode="", title=title
+                textToEncode=default, title=title
             ).display()
             if "is_back_button" in ret_dict:
                 return None
@@ -4216,13 +4239,21 @@ class ToolsGPGLoadBIP85KeyView(View):
             return Destination(BackStackView)
 
         created = datetime.fromtimestamp(1231006505, tz=timezone.utc)
-        expiration_str = prompt_text("Expiration YYYY-MM-DD")
+        default_expiration = (datetime.now(timezone.utc) + timedelta(days=365 * 10)).date()
+        expiration_str = prompt_text(
+            "Expiration YYYY-MM-DD", default_expiration.isoformat()
+        )
         if expiration_str is None:
             return Destination(BackStackView)
         try:
-            expiration_dt = datetime.strptime(
-                expiration_str, "%Y-%m-%d"
-            ).replace(tzinfo=timezone.utc)
+            if expiration_str == "":
+                expiration_dt = datetime.combine(
+                    default_expiration, datetime.min.time(), tzinfo=timezone.utc
+                )
+            else:
+                expiration_dt = datetime.strptime(
+                    expiration_str, "%Y-%m-%d"
+                ).replace(tzinfo=timezone.utc)
             if expiration_dt <= created:
                 raise ValueError
             expires = expiration_dt - created
@@ -4241,22 +4272,6 @@ class ToolsGPGLoadBIP85KeyView(View):
         root = bip32.HDKey.from_seed(seed.seed_bytes)
         KEY_BITS = 4096
 
-        def bip85_rsa(bits: int, index: int, sub_index: int | None = None):
-            path = [bits, index]
-            if sub_index is not None:
-                path.append(sub_index)
-            entropy = bip85.derive_entropy(root, 828365, path)
-            shake_data = shake_256(entropy).digest(1000000)
-            offset = 0
-
-            def randfunc(n: int) -> bytes:
-                nonlocal offset
-                data = shake_data[offset:offset + n]
-                offset += n
-                return data
-
-            return RSA.generate(bits, randfunc=randfunc)
-
         def rsa_to_privpacket(rsa_key: RSA.RsaKey) -> fields.RSAPriv:
             priv = fields.RSAPriv()
             priv.n = MPI(rsa_key.n)
@@ -4268,7 +4283,7 @@ class ToolsGPGLoadBIP85KeyView(View):
             priv._compute_chksum()
             return priv
 
-        rsa_main = bip85_rsa(KEY_BITS, key_index)
+        rsa_main = bip85_rsa_from_root(root, KEY_BITS, key_index)
         pk = PrivKeyV4()
         pk.pkalg = PubKeyAlgorithm.RSAEncryptOrSign
         pk.keymaterial = rsa_to_privpacket(rsa_main)
@@ -4295,7 +4310,7 @@ class ToolsGPGLoadBIP85KeyView(View):
         ]
 
         for sub_index, usage in subkey_specs:
-            rsa_sub = bip85_rsa(KEY_BITS, key_index, sub_index)
+            rsa_sub = bip85_rsa_from_root(root, KEY_BITS, key_index, sub_index)
             subpkt = PrivSubKeyV4()
             subpkt.pkalg = PubKeyAlgorithm.RSAEncryptOrSign
             subpkt.keymaterial = rsa_to_privpacket(rsa_sub)
