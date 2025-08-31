@@ -3426,15 +3426,6 @@ class ToolsMicroSDMenuView(View):
     WIPE_RANDOM = ButtonOption("Wipe (Random)")
 
     def run(self):
-        if len(self.controller.storage.seeds) > 0:
-            self.run_screen(
-                WarningScreen,
-                title="WARNING",
-                status_headline=None,
-                text="These tools read from the microSD card and may leak loaded secrets.",
-                show_back_button=False,
-                button_data=[ButtonOption("Continue")]
-            )
         button_data = [self.FLASH_IMAGE, self.VERIFY_IMAGE, self.WIPE_ZERO, self.WIPE_RANDOM]
 
         selected_menu_num = self.run_screen(
@@ -3463,6 +3454,18 @@ class ToolsMicroSDFlashView(View):
     def run(self):
         from subprocess import run
         from seedsigner.gui.screens.screen import LoadingScreenThread
+
+        if len(self.controller.storage.seeds) > 0:
+            ret = self.run_screen(
+                WarningScreen,
+                title="WARNING",
+                status_headline=None,
+                text="These tools read from the microSD card and may leak loaded secrets.",
+                show_back_button=True,
+                button_data=[ButtonOption("Continue")]
+            )
+            if ret == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
 
         microsd_dev = find_sd_card_device()
 
@@ -3891,16 +3894,6 @@ class ToolsGPGMenuView(View):
                 run(["gpg", "--import", *key_files])
             self.loading_screen.stop()
             self.controller.gpg_keys_imported = True
-
-        if len(self.controller.storage.seeds) > 0:
-            self.run_screen(
-                WarningScreen,
-                title="WARNING",
-                status_headline=None,
-                text="These tools load data from the microSD card and may expose loaded secrets.",
-                show_back_button=False,
-                button_data=[ButtonOption("Continue")]
-            )
         button_data = [self.VERIFY_FILE, self.IMPORT_PUBKEY, self.LOAD_BIP85_KEY]
 
         selected_menu_num = self.run_screen(
@@ -3926,6 +3919,18 @@ class ToolsGPGVerifyFileView(View):
     def run(self):
         from subprocess import run
         from seedsigner.gui.screens.screen import LoadingScreenThread
+
+        if len(self.controller.storage.seeds) > 0:
+            ret = self.run_screen(
+                WarningScreen,
+                title="WARNING",
+                status_headline=None,
+                text="These tools load data from the microSD card and may expose loaded secrets.",
+                show_back_button=True,
+                button_data=[ButtonOption("Continue")]
+            )
+            if ret == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
 
         if platform.uname()[1] == "seedsigner-os":
             file_list_path = '/mnt/microsd/microsd-images/'
@@ -4100,6 +4105,18 @@ class ToolsGPGImportPubkeyView(View):
     def run(self):
         from subprocess import run
         from seedsigner.gui.screens.screen import LoadingScreenThread
+
+        if len(self.controller.storage.seeds) > 0:
+            ret = self.run_screen(
+                WarningScreen,
+                title="WARNING",
+                status_headline=None,
+                text="These tools load data from the microSD card and may expose loaded secrets.",
+                show_back_button=True,
+                button_data=[ButtonOption("Continue")]
+            )
+            if ret == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
 
         if platform.uname()[1] == "seedsigner-os":
             file_list_path = '/mnt/microsd/microsd-images/'
