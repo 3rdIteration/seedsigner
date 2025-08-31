@@ -4,6 +4,9 @@ All notable changes to this project are documented in this file.
 
 Entries marked "(SeedSigner official)" originate from the upstream project, while "(smartcard fork)" indicates releases and changes unique to this repository.
 
+## Unreleased - SS0.8.6+Satochip+Earthdiver-B4 (smartcard fork)
+- Deterministic BIP85 GPG key derivation with configurable name, email, and expiration (defaulting to 10 years from creation); metadata such as expiration, deprecation, and end-of-use dates can be modified after import
+
 ## 2025-08-04 - SS0.8.6+Satochip+Earthdiver-B3 (smartcard fork)
 - Satochip card transaction signing and PSBT verification
 - Satochip Message signing and xpub export (single and multisig) with address explorer integration
@@ -15,7 +18,6 @@ Entries marked "(SeedSigner official)" originate from the upstream project, whil
 - SeedKeeper Electrum seed support and splitted passphrase/encryption key QR codes
 - Enhanced entropy monitoring with hardware RNG, quality indicators and optional 30-minute wipe timer
 - Desktop simulation mode with system camera support
-- Deterministic BIP85 GPG key derivation with configurable name, email, and expiration (defaulting to 2035-12-31); metadata such as expiration, deprecation, and end-of-use dates can be modified after import
 
 ## 2025-08-04 - SS0.8.6+Satochip+Earthdiver-B2-A1 (smartcard fork)
 - Pre-release build for SS0.8.6 smartcard fork; see GitHub release notes
