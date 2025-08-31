@@ -4193,7 +4193,7 @@ class ToolsGPGLoadBIP85KeyView(View):
         from pgpy.pgp import PrivKeyV4, PrivSubKeyV4
         from pgpy.packet import fields
         from pgpy.packet.types import MPI
-        from datetime import datetime, timezone, timedelta
+        from datetime import datetime, timezone, date
         from subprocess import run
         from seedsigner.gui.screens.screen import LoadingScreenThread
         from seedsigner.gui.screens import LargeIconStatusScreen, WarningScreen
@@ -4239,7 +4239,8 @@ class ToolsGPGLoadBIP85KeyView(View):
             return Destination(BackStackView)
 
         created = datetime.fromtimestamp(1231006505, tz=timezone.utc)
-        default_expiration = (datetime.now(timezone.utc) + timedelta(days=365 * 10)).date()
+        # Per NIST guidelines, default expiration is set to the last day of 2035.
+        default_expiration = date(2035, 12, 31)
         expiration_str = prompt_text(
             "Expiration YYYY-MM-DD", default_expiration.isoformat()
         )

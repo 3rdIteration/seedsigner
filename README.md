@@ -73,6 +73,7 @@ Support and discussion relating to this fork can happen via this [Telegram Group
    - Secure Wipe (Both with zeros and random data)
 * GPG Tools
    - GPG Signature verification & Sha256 Manifest check (Includes pubkey bundle the from Sparrow to verify Seedsigner, Sparrow, Electrum, plus many more)
+   - Load BIP85-derived RSA keys into gpg with prompts for name, email, and expiration (defaulting to 2035-12-31); metadata such as name, email, expiration, and deprecation/end-of-use dates can be modified later ([docs](./docs/gpg_tools.md))
 * Tested and working with the following hardware
    - Raspberry Pi Zero 1.3
    - Raspberry Pi Zero W
