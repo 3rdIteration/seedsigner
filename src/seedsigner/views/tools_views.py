@@ -31,9 +31,7 @@ from seedsigner.helpers import embit_utils, mnemonic_generation
 from seedsigner.helpers.iso7816 import format_sw_error
 from seedsigner.models.decode_qr import DecodeQR
 from seedsigner.models.encode_qr import GenericStaticQrEncoder
-from seedsigner.gui.screens import RET_CODE__BACK_BUTTON, ButtonListScreen
 from seedsigner.gui.screens.screen import ButtonOption
-from seedsigner.helpers import mnemonic_generation
 from seedsigner.models.seed import Seed
 from seedsigner.models.settings_definition import SettingsConstants
 from seedsigner.views.seed_views import (
@@ -56,8 +54,7 @@ from seedsigner.views.seed_views import (
 from .view import View, Destination, BackStackView, MainMenuView
 
 from seedsigner.helpers import seedkeeper_utils
-from seedsigner.gui.screens import (RET_CODE__BACK_BUTTON, ButtonListScreen,
-    WarningScreen, DireWarningScreen, seed_screens, LargeIconStatusScreen)
+from seedsigner.gui.screens import seed_screens
 logger = logging.getLogger(__name__)
 
 from pysatochip.JCconstants import SEEDKEEPER_DIC_TYPE, SEEDKEEPER_DIC_ORIGIN, SEEDKEEPER_DIC_EXPORT_RIGHTS, BIP39_WORDLIST_DIC
@@ -87,7 +84,15 @@ class ToolsMenuView(View):
         if self.settings.get_value(SettingsConstants.SETTING__SMARTCARD_SUPPORT) == SettingsConstants.OPTION__ENABLED:
             button_data.append(self.SMARTCARD)
         
-        button_data.extend([self.KEYBOARD, self.ADDRESS_EXPLORER, self.VERIFY_ADDRESS, self.TEXTQRCODE, self.SMARTCARD, self.MICROSD, self.GPG, self.CLEAR_DESCRIPTOR])
+        button_data.extend([
+            self.KEYBOARD,
+            self.ADDRESS_EXPLORER,
+            self.VERIFY_ADDRESS,
+            self.TEXTQRCODE,
+            self.MICROSD,
+            self.GPG,
+            self.CLEAR_DESCRIPTOR,
+        ])
 
         selected_menu_num = self.run_screen(
             ButtonListScreen,
