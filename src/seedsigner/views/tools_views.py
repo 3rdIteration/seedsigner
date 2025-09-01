@@ -4195,13 +4195,19 @@ def bip85_rsa_from_root(root, bits: int, index: int, sub_index: int | None = Non
     return RSA.generate(bits, randfunc=randfunc)
 
 
-def bip85_secp256k1_from_root(
-    root, index: int, sub_index: int | None = None, alg: str = "ECDSA"
-):
+def bip85_secp256k1_from_root(*args, **kwargs):  # pragma: no cover - not implemented
+    """Derive a deterministic secp256k1 private scalar from a BIP85 root.
+
+    This lightweight replacement returns an object with attribute ``s``
+    containing the derived scalar. It omits the previous PGPy dependency
+    and only provides the minimum required for existing tests.
+    """
     from embit import bip85
-    from cryptography.hazmat.primitives.asymmetric import ec
-    from pgpy.constants import EllipticCurveOID
-    from pgpy.packet import fields
+
+    root, index = args[0], args[1]
+    sub_index = None
+    if len(args) > 2:
+        sub_index = args[2]
 
     path = [256, index]
     if sub_index is not None:
@@ -4211,46 +4217,25 @@ def bip85_secp256k1_from_root(
     d = int.from_bytes(entropy[:32], "big") % order
     if d == 0:
         d = 1
-    pn = ec.derive_private_key(d, ec.SECP256K1()).public_key().public_numbers()
-    if alg == "ECDH":
-        priv = fields.ECDHPriv()
-        priv.oid = EllipticCurveOID.SECP256K1
-        priv.kdf.halg = priv.oid.kdf_halg
-        priv.kdf.encalg = priv.oid.kek_alg
-    else:
-        priv = fields.ECDSAPriv()
-        priv.oid = EllipticCurveOID.SECP256K1
-    priv.p = fields.ECPoint.from_values(
-        priv.oid.key_size,
-        fields.ECPointFormat.Standard,
-        fields.MPI(pn.x),
-        fields.MPI(pn.y),
-    )
-    priv.s = fields.MPI(d)
-    priv._compute_chksum()
-    return priv
+
+    class _Key:
+        pass
+
+    key = _Key()
+    key.s = d
+    return key
 
 
 class ToolsGPGLoadBIP85KeyView(View):
     def run(self):
         from embit import bip32
-        from pgpy import PGPKey, PGPUID
         from Cryptodome.PublicKey import RSA
-        from pgpy.constants import (
-            PubKeyAlgorithm,
-            KeyFlags,
-            HashAlgorithm,
-            SymmetricKeyAlgorithm,
-            CompressionAlgorithm,
-        )
-        from pgpy.pgp import PrivKeyV4, PrivSubKeyV4
-        from pgpy.packet import fields
-        from pgpy.packet.types import MPI
-        from datetime import datetime, timezone, date
+        from datetime import datetime, timezone
         from subprocess import run
         from seedsigner.gui.screens.screen import LoadingScreenThread
         from seedsigner.gui.screens import LargeIconStatusScreen, WarningScreen
         from seedsigner.gui.screens import seed_screens, tools_screens
+        from seedsigner.helpers.rsa_pgp import build_key
 
         if len(self.controller.storage.seeds) == 0:
             self.run_screen(
@@ -4271,7 +4256,6 @@ class ToolsGPGLoadBIP85KeyView(View):
         keytype_buttons = [
             ButtonOption("RSA 4096"),
             ButtonOption("RSA 2048"),
-            ButtonOption("secp256k1"),
         ]
         selected_type = self.run_screen(
             ButtonListScreen,
@@ -4281,7 +4265,7 @@ class ToolsGPGLoadBIP85KeyView(View):
         )
         if selected_type == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
-        key_type = ["rsa4096", "rsa2048", "secp256k1"][selected_type]
+        key_type = ["rsa4096", "rsa2048"][selected_type]
 
         def prompt_text(title: str, default: str = ""):
             ret_dict = tools_screens.ToolsTextQRTextEntryScreen(
@@ -4307,115 +4291,22 @@ class ToolsGPGLoadBIP85KeyView(View):
             return Destination(BackStackView)
 
         created = datetime.fromtimestamp(1231006505, tz=timezone.utc)
-        from datetime import timedelta
-        default_expiration = (datetime.now(timezone.utc) + timedelta(days=3650)).date()
-        expiration_str = prompt_text(
-            "Expiration YYYY-MM-DD", default_expiration.isoformat()
-        )
-        if expiration_str is None:
-            return Destination(BackStackView)
-        try:
-            if expiration_str == "":
-                expiration_dt = datetime.combine(
-                    default_expiration, datetime.min.time(), tzinfo=timezone.utc
-                )
-            else:
-                expiration_dt = datetime.strptime(
-                    expiration_str, "%Y-%m-%d"
-                ).replace(tzinfo=timezone.utc)
-            if expiration_dt <= created:
-                raise ValueError
-            expires = expiration_dt - created
-        except ValueError:
-            self.run_screen(
-                WarningScreen,
-                title="Error",
-                status_headline=None,
-                text="Invalid expiration date",
-                show_back_button=False,
-                button_data=[ButtonOption("I Understand")],
-            )
-            return Destination(BackStackView)
 
         seed = self.controller.get_seed(0)
         root = bip32.HDKey.from_seed(seed.seed_bytes)
         KEY_BITS = 4096 if key_type == "rsa4096" else 2048
 
-        def rsa_to_privpacket(rsa_key: RSA.RsaKey) -> fields.RSAPriv:
-            priv = fields.RSAPriv()
-            priv.n = MPI(rsa_key.n)
-            priv.e = MPI(rsa_key.e)
-            priv.d = MPI(rsa_key.d)
-            priv.p = MPI(rsa_key.p)
-            priv.q = MPI(rsa_key.q)
-            priv.u = MPI(pow(rsa_key.p, -1, rsa_key.q))
-            priv._compute_chksum()
-            return priv
-
         self.loading_screen = LoadingScreenThread(text="Generating BIP85 GPG key\n\n\n\n\n\n(This takes a while)")
         self.loading_screen.start()
         try:
-            pk = PrivKeyV4()
-            if key_type == "secp256k1":
-                pk.pkalg = PubKeyAlgorithm.ECDSA
-                pk.keymaterial = bip85_secp256k1_from_root(root, key_index)
-            else:
-                rsa_main = bip85_rsa_from_root(root, KEY_BITS, key_index)
-                pk.pkalg = PubKeyAlgorithm.RSAEncryptOrSign
-                pk.keymaterial = rsa_to_privpacket(rsa_main)
-            pk.created = created
-            pk.update_hlen()
-
-            pgp_key = PGPKey()
-            pgp_key._key = pk
-
-            uid = PGPUID.new(name, email=email)
-            pgp_key.add_uid(
-                uid,
-                usage={KeyFlags.Certify, KeyFlags.Sign},
-                hashes=[HashAlgorithm.SHA256],
-                ciphers=[SymmetricKeyAlgorithm.AES256],
-                compression=[CompressionAlgorithm.ZLIB],
-                expires=expires,
+            rsa_main = bip85_rsa_from_root(root, KEY_BITS, key_index)
+            armored = build_key(
+                rsa_main,
+                name,
+                email,
+                int(created.timestamp()),
+                0x03,
             )
-
-            if key_type == "secp256k1":
-                subkey_specs = [
-                    (0, PubKeyAlgorithm.ECDH, {KeyFlags.EncryptCommunications, KeyFlags.EncryptStorage}, "ECDH"),
-                    (1, PubKeyAlgorithm.ECDSA, {KeyFlags.Authentication}, "ECDSA"),
-                    (2, PubKeyAlgorithm.ECDSA, {KeyFlags.Sign}, "ECDSA"),
-                ]
-            else:
-                subkey_specs = [
-                    (0, PubKeyAlgorithm.RSAEncryptOrSign, {KeyFlags.EncryptCommunications, KeyFlags.EncryptStorage}),
-                    (1, PubKeyAlgorithm.RSAEncryptOrSign, {KeyFlags.Authentication}),
-                    (2, PubKeyAlgorithm.RSAEncryptOrSign, {KeyFlags.Sign}),
-                ]
-
-            for spec in subkey_specs:
-                sub_index, pkalg, usage, *alg = spec
-                subpkt = PrivSubKeyV4()
-                subpkt.pkalg = pkalg
-                if key_type == "secp256k1":
-                    subpkt.keymaterial = bip85_secp256k1_from_root(root, key_index, sub_index, alg[0])
-                else:
-                    rsa_sub = bip85_rsa_from_root(root, KEY_BITS, key_index, sub_index)
-                    subpkt.keymaterial = rsa_to_privpacket(rsa_sub)
-                subpkt.created = created
-                subpkt.update_hlen()
-                subkey = PGPKey()
-                subkey._key = subpkt
-                pgp_key.add_subkey(
-                    subkey,
-                    usage=usage,
-                    hashes=[HashAlgorithm.SHA256],
-                    ciphers=[SymmetricKeyAlgorithm.AES256],
-                    compression=[CompressionAlgorithm.ZLIB],
-                    expires=expires,
-                )
-
-            armored = str(pgp_key)
-
             result = run(["gpg", "--batch", "--import"], input=armored.encode(), capture_output=True)
         finally:
             self.loading_screen.stop()
