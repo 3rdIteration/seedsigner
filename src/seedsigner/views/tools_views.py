@@ -4195,19 +4195,9 @@ def bip85_rsa_from_root(root, bits: int, index: int, sub_index: int | None = Non
     return RSA.generate(bits, randfunc=randfunc)
 
 
-def bip85_secp256k1_from_root(*args, **kwargs):  # pragma: no cover - not implemented
-    """Derive a deterministic secp256k1 private scalar from a BIP85 root.
-
-    This lightweight replacement returns an object with attribute ``s``
-    containing the derived scalar. It omits the previous PGPy dependency
-    and only provides the minimum required for existing tests.
-    """
+def bip85_secp256k1_from_root(root, index: int, sub_index: int | None = None):
     from embit import bip85
-
-    root, index = args[0], args[1]
-    sub_index = None
-    if len(args) > 2:
-        sub_index = args[2]
+    from embit.ec import PrivateKey
 
     path = [256, index]
     if sub_index is not None:
@@ -4217,13 +4207,7 @@ def bip85_secp256k1_from_root(*args, **kwargs):  # pragma: no cover - not implem
     d = int.from_bytes(entropy[:32], "big") % order
     if d == 0:
         d = 1
-
-    class _Key:
-        pass
-
-    key = _Key()
-    key.s = d
-    return key
+    return PrivateKey(d.to_bytes(32, "big"))
 
 
 class ToolsGPGLoadBIP85KeyView(View):
@@ -4235,7 +4219,7 @@ class ToolsGPGLoadBIP85KeyView(View):
         from seedsigner.gui.screens.screen import LoadingScreenThread
         from seedsigner.gui.screens import LargeIconStatusScreen, WarningScreen
         from seedsigner.gui.screens import seed_screens, tools_screens
-        from seedsigner.helpers.rsa_pgp import build_key
+        from seedsigner.helpers.pgp import build_rsa_key, build_secp256k1_key
 
         if len(self.controller.storage.seeds) == 0:
             self.run_screen(
@@ -4256,6 +4240,7 @@ class ToolsGPGLoadBIP85KeyView(View):
         keytype_buttons = [
             ButtonOption("RSA 4096"),
             ButtonOption("RSA 2048"),
+            ButtonOption("secp256k1"),
         ]
         selected_type = self.run_screen(
             ButtonListScreen,
@@ -4265,7 +4250,7 @@ class ToolsGPGLoadBIP85KeyView(View):
         )
         if selected_type == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
-        key_type = ["rsa4096", "rsa2048"][selected_type]
+        key_type = ["rsa4096", "rsa2048", "secp256k1"][selected_type]
 
         def prompt_text(title: str, default: str = ""):
             ret_dict = tools_screens.ToolsTextQRTextEntryScreen(
@@ -4294,19 +4279,28 @@ class ToolsGPGLoadBIP85KeyView(View):
 
         seed = self.controller.get_seed(0)
         root = bip32.HDKey.from_seed(seed.seed_bytes)
-        KEY_BITS = 4096 if key_type == "rsa4096" else 2048
-
         self.loading_screen = LoadingScreenThread(text="Generating BIP85 GPG key\n\n\n\n\n\n(This takes a while)")
         self.loading_screen.start()
         try:
-            rsa_main = bip85_rsa_from_root(root, KEY_BITS, key_index)
-            armored = build_key(
-                rsa_main,
-                name,
-                email,
-                int(created.timestamp()),
-                0x03,
-            )
+            if key_type == "secp256k1":
+                key_main = bip85_secp256k1_from_root(root, key_index)
+                armored = build_secp256k1_key(
+                    key_main,
+                    name,
+                    email,
+                    int(created.timestamp()),
+                    0x03,
+                )
+            else:
+                KEY_BITS = 4096 if key_type == "rsa4096" else 2048
+                rsa_main = bip85_rsa_from_root(root, KEY_BITS, key_index)
+                armored = build_rsa_key(
+                    rsa_main,
+                    name,
+                    email,
+                    int(created.timestamp()),
+                    0x03,
+                )
             result = run(["gpg", "--batch", "--import"], input=armored.encode(), capture_output=True)
         finally:
             self.loading_screen.stop()
