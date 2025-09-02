@@ -3879,7 +3879,7 @@ class ToolsGPGMenuView(View):
     VERIFY_FILE = ButtonOption("Verify File Sig")
     IMPORT_PUBKEY = ButtonOption("Import Pubkey")
     LOAD_BIP85_KEY = ButtonOption("Load BIP85 Key")
-    EXPORT_PUBKEY_QR = ButtonOption("Export Pubkey QR")
+    EXPORT_PUBKEY = ButtonOption("Export Pubkey")
 
     def run(self):
         from subprocess import run
@@ -3899,7 +3899,7 @@ class ToolsGPGMenuView(View):
             self.VERIFY_FILE,
             self.IMPORT_PUBKEY,
             self.LOAD_BIP85_KEY,
-            self.EXPORT_PUBKEY_QR,
+            self.EXPORT_PUBKEY,
         ]
 
         selected_menu_num = self.run_screen(
@@ -3919,8 +3919,8 @@ class ToolsGPGMenuView(View):
             return Destination(ToolsGPGImportPubkeyView)
         elif button_data[selected_menu_num] == self.LOAD_BIP85_KEY:
             return Destination(ToolsGPGLoadBIP85KeyView)
-        elif button_data[selected_menu_num] == self.EXPORT_PUBKEY_QR:
-            return Destination(ToolsGPGExportPubkeyQRView)
+        elif button_data[selected_menu_num] == self.EXPORT_PUBKEY:
+            return Destination(ToolsGPGExportPubkeyView)
 
 class ToolsGPGVerifyFileView(View):
     CHECK_SHA256 = ButtonOption("Check SHA256Sum")
@@ -4547,15 +4547,33 @@ class ToolsGPGLoadBIP85KeyView(View):
         return Destination(MainMenuView)
 
 
-class ToolsGPGExportPubkeyQRView(View):
+class ToolsGPGExportPubkeyView(View):
     def run(self):
         from subprocess import run
+        import os
+        import platform
         from seedsigner.gui.screens.screen import (
             ButtonListScreen,
-            QRDisplayScreen,
+            LargeIconStatusScreen,
             WarningScreen,
         )
-        from seedsigner.models.encode_qr import GenericStringEncoder
+
+        if len(self.controller.storage.seeds) > 0:
+            ret = self.run_screen(
+                WarningScreen,
+                title="WARNING",
+                status_headline=None,
+                text="These tools write data to the microSD card and may expose loaded secrets.",
+                show_back_button=True,
+                button_data=[ButtonOption("Continue")],
+            )
+            if ret == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+
+        if platform.uname()[1] == "seedsigner-os":
+            file_list_path = "/mnt/microsd/microsd-images/"
+        else:
+            file_list_path = "/boot/microsd-images/"
 
         result = run(
             ["gpg", "--list-secret-keys", "--with-colons"],
@@ -4601,8 +4619,10 @@ class ToolsGPGExportPubkeyQRView(View):
             return Destination(BackStackView)
 
         key = keys[selected]
+        filename = key["fpr"] + ".asc"
+        filepath = os.path.join(file_list_path, filename)
         exported = run(
-            ["gpg", "--armor", "--export", key["fpr"]],
+            ["gpg", "--armor", "--output", filepath, "--export", key["fpr"]],
             capture_output=True,
             text=True,
         )
@@ -4617,8 +4637,14 @@ class ToolsGPGExportPubkeyQRView(View):
             )
             return Destination(BackStackView)
 
-        qr_encoder = GenericStringEncoder(exported.stdout)
-        self.run_screen(QRDisplayScreen, qr_encoder=qr_encoder)
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Success",
+            status_headline=None,
+            text=f"Saved as {filename}",
+            show_back_button=False,
+            button_data=[ButtonOption("Continue")],
+        )
         return Destination(MainMenuView)
 
 class ToolsTextQRTextEntryView(View):
