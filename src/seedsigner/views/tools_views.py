@@ -4243,7 +4243,10 @@ def bip85_p256_from_root(
     if sub_index is not None:
         path.append(sub_index)
     entropy = bip85.derive_entropy(root, 828365, path)
-    order = ec.SECP256R1().group_order
+    # Avoid relying on cryptography's ``group_order`` attribute since
+    # some versions (such as those bundled with seedsigner-os) do not
+    # expose it. Instead, use the well-known group order for P-256.
+    order = 0xFFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551
     d = int.from_bytes(entropy[:32], "big") % order
     if d == 0:
         d = 1
