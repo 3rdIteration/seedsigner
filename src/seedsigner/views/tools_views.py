@@ -4346,9 +4346,10 @@ class ToolsGPGLoadBIP85KeyView(View):
         key_index = int(ret)
 
         keytype_buttons = [
+            ButtonOption("NIST P-256"),
             ButtonOption("Brainpool P-256"),
-            ButtonOption("ECC P-256"),
             ButtonOption("RSA 2048"),
+            ButtonOption("RSA 3072"),
             ButtonOption("secp256k1"),
         ]
         selected_type = self.run_screen(
@@ -4359,7 +4360,13 @@ class ToolsGPGLoadBIP85KeyView(View):
         )
         if selected_type == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
-        key_type = ["brainpoolp256r1", "p256", "rsa2048", "secp256k1"][selected_type]
+        key_type = [
+            "p256",
+            "brainpoolp256r1",
+            "rsa2048",
+            "rsa3072",
+            "secp256k1",
+        ][selected_type]
 
         def prompt_text(title: str, default: str = ""):
             ret_dict = tools_screens.ToolsTextQRTextEntryScreen(
@@ -4417,7 +4424,9 @@ class ToolsGPGLoadBIP85KeyView(View):
 
         seed = self.controller.get_seed(0)
         root = bip32.HDKey.from_seed(seed.seed_bytes)
-        KEY_BITS = 2048 if key_type == "rsa2048" else None
+        KEY_BITS = (
+            2048 if key_type == "rsa2048" else 3072 if key_type == "rsa3072" else None
+        )
 
         def rsa_to_privpacket(rsa_key: RSA.RsaKey) -> fields.RSAPriv:
             priv = fields.RSAPriv()
