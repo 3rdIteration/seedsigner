@@ -2,6 +2,8 @@
 
 SeedSigner includes tools to interact with GPG. When `gpg2` is available on the host system, the Tools menu offers a **Load BIP85 Key** option. This feature deterministically derives a keypair (NIST P-256, Brainpool P-256, RSA 2048, RSA 3072, or secp256k1) from the currently loaded seed using [BIP85](https://github.com/bitcoin/bips/blob/master/bip-0085.mediawiki#user-content-RSA_GPG) and imports it into GPG.
 
+In addition to verifying detached signatures, a loaded private key can now be used to sign a file with the resulting signature saved alongside the original file on the microSD card.
+
 Additional menu options can export existing GPG keys. Public keys are written to the microSD card in ASCII armor, while private keys are first exported and then symmetrically encrypted with a user-provided passphrase before being saved.
 
 For SeedSignerOS, everything is stateless. If running on desktop or some other normal system, you will be interacting with your system GPG2 install...
