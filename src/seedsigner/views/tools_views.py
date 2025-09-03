@@ -5867,25 +5867,45 @@ class ToolsGPGImportKeyToCardView(View):
     def run(self):
         from subprocess import run
         from seedsigner.gui.screens.screen import LoadingScreenThread
+        from seedsigner.helpers import seedkeeper_utils
+
+        pin = seedkeeper_utils.prompt_for_pin(self, "Card PIN")
+        if pin is None:
+            return Destination(BackStackView)
+
+        result = run(
+            ["gpg", "--list-secret-keys", "--with-colons", self.fingerprint],
+            capture_output=True,
+            text=True,
+        )
+        subkeys = []
+        for line in result.stdout.splitlines():
+            parts = line.split(":")
+            if parts[0] == "ssb":
+                subkeys.append(parts[11].lower())
+
+        slot_map = {"s": "1", "e": "2", "a": "3"}
+        cmds = []
+        for idx, caps in enumerate(subkeys, start=1):
+            slot = next((slot_map[c] for c in "sea" if c in caps), None)
+            if slot:
+                cmds.append(f"key {idx}\nkeytocard {slot}\ny\n")
+        cmds.append("save\n")
+        edit_commands = "".join(cmds)
 
         self.loading_screen = LoadingScreenThread(
             text="Importing key to card\n\n\n(May take a while)",
         )
         self.loading_screen.start()
 
-        edit_commands = "".join(
-            [
-                "key 1\nkeytocard\n1\ny\nkey 1\n",
-                "key 2\nkeytocard\n2\ny\nkey 2\n",
-                "key 3\nkeytocard\n3\ny\nkey 3\n",
-                "save\n",
-            ]
-        )
-
-        run(
+        result = run(
             [
                 "gpg",
                 "--batch",
+                "--pinentry-mode",
+                "loopback",
+                "--passphrase",
+                pin,
                 "--command-fd",
                 "0",
                 "--status-fd",
@@ -5894,10 +5914,22 @@ class ToolsGPGImportKeyToCardView(View):
                 self.fingerprint,
             ],
             input=edit_commands,
+            capture_output=True,
             text=True,
         )
 
         self.loading_screen.stop()
+
+        if result.returncode != 0:
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Error",
+                status_headline=None,
+                text="Failed to import key", 
+                show_back_button=False,
+                button_data=[ButtonOption("Continue")],
+            )
+            return Destination(BackStackView)
 
         self.run_screen(
             LargeIconStatusScreen,
