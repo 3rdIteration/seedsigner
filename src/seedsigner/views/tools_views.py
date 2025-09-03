@@ -4295,22 +4295,51 @@ class ToolsGPGSignFileView(View):
 
         filename = file_list[selected_file_num]
 
-        ret_dict = ToolsTextQRTextEntryScreen(
-            textToEncode="",
-            title="Passphrase",
-        ).display()
-        if "is_back_button" in ret_dict:
+        # Gather available private keys for signing
+        result = run(
+            ["gpg", "--list-secret-keys", "--with-colons"],
+            capture_output=True,
+            text=True,
+        )
+        keys = []
+        cur = None
+        for line in result.stdout.splitlines():
+            parts = line.split(":")
+            if parts[0] == "sec":
+                cur = {"fpr": None, "uid": None}
+                keys.append(cur)
+            elif parts[0] == "fpr" and cur is not None:
+                cur["fpr"] = parts[9]
+            elif parts[0] == "uid" and cur is not None and cur.get("uid") is None:
+                cur["uid"] = parts[9]
+
+        if not keys:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No private keys found",
+                show_back_button=False,
+                button_data=[ButtonOption("OK")],
+            )
             return Destination(BackStackView)
 
-        try:
-            import re
+        key_buttons = []
+        for key in keys:
+            label = key["uid"] if key["uid"] else key["fpr"][-8:]
+            key_buttons.append(ButtonOption(label))
 
-            passphrase = bytes(
-                re.sub(r"\\(?!u)", r"\\\\", ret_dict["textToEncode"]),
-                encoding="raw_unicode_escape",
-            ).decode("unicode_escape")
-        except UnicodeDecodeError:
-            passphrase = ret_dict["textToEncode"]
+        selected_key = self.run_screen(
+            ButtonListScreen,
+            title="Select Key",
+            is_button_text_centered=False,
+            button_data=key_buttons,
+        )
+
+        if selected_key == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        key = keys[selected_key]
 
         self.loading_screen = LoadingScreenThread(text="Signing File\n\n\n\n\n\n(May take a while)")
         self.loading_screen.start()
@@ -4319,10 +4348,8 @@ class ToolsGPGSignFileView(View):
                 "gpg",
                 "--batch",
                 "--yes",
-                "--pinentry-mode",
-                "loopback",
-                "--passphrase",
-                passphrase,
+                "--local-user",
+                key["fpr"],
                 "--output",
                 f"{filename}.asc",
                 "--armor",
