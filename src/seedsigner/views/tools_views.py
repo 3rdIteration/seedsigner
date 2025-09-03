@@ -3879,6 +3879,7 @@ class ToolsGPGMenuView(View):
     VERIFY_FILE = ButtonOption("Verify File Sig")
     IMPORT_PUBKEY = ButtonOption("Import Pubkey")
     LOAD_BIP85_KEY = ButtonOption("Load BIP85 Key")
+    EXPORT_PUBKEY = ButtonOption("Export Pubkey")
 
     def run(self):
         from subprocess import run
@@ -3894,7 +3895,12 @@ class ToolsGPGMenuView(View):
                 run(["gpg", "--import", *key_files])
             self.loading_screen.stop()
             self.controller.gpg_keys_imported = True
-        button_data = [self.VERIFY_FILE, self.IMPORT_PUBKEY, self.LOAD_BIP85_KEY]
+        button_data = [
+            self.VERIFY_FILE,
+            self.IMPORT_PUBKEY,
+            self.LOAD_BIP85_KEY,
+            self.EXPORT_PUBKEY,
+        ]
 
         selected_menu_num = self.run_screen(
             ButtonListScreen,
@@ -3913,6 +3919,8 @@ class ToolsGPGMenuView(View):
             return Destination(ToolsGPGImportPubkeyView)
         elif button_data[selected_menu_num] == self.LOAD_BIP85_KEY:
             return Destination(ToolsGPGLoadBIP85KeyView)
+        elif button_data[selected_menu_num] == self.EXPORT_PUBKEY:
+            return Destination(ToolsGPGExportPubkeyView)
 
 class ToolsGPGVerifyFileView(View):
     CHECK_SHA256 = ButtonOption("Check SHA256Sum")
@@ -4536,6 +4544,107 @@ class ToolsGPGLoadBIP85KeyView(View):
                 button_data=[ButtonOption("I Understand")],
             )
 
+        return Destination(MainMenuView)
+
+
+class ToolsGPGExportPubkeyView(View):
+    def run(self):
+        from subprocess import run
+        import os
+        import platform
+        from seedsigner.gui.screens.screen import (
+            ButtonListScreen,
+            LargeIconStatusScreen,
+            WarningScreen,
+        )
+
+        if len(self.controller.storage.seeds) > 0:
+            ret = self.run_screen(
+                WarningScreen,
+                title="WARNING",
+                status_headline=None,
+                text="These tools write data to the microSD card and may expose loaded secrets.",
+                show_back_button=True,
+                button_data=[ButtonOption("Continue")],
+            )
+            if ret == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+
+        if platform.uname()[1] == "seedsigner-os":
+            file_list_path = "/mnt/microsd/microsd-images/"
+        else:
+            file_list_path = "/boot/microsd-images/"
+
+        result = run(
+            ["gpg", "--list-secret-keys", "--with-colons"],
+            capture_output=True,
+            text=True,
+        )
+        keys = []
+        cur = None
+        for line in result.stdout.splitlines():
+            parts = line.split(":")
+            if parts[0] == "sec":
+                cur = {"fpr": None, "uid": None}
+                keys.append(cur)
+            elif parts[0] == "fpr" and cur is not None:
+                cur["fpr"] = parts[9]
+            elif parts[0] == "uid" and cur is not None and cur.get("uid") is None:
+                cur["uid"] = parts[9]
+
+        if not keys:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No private keys found",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        buttons = []
+        for key in keys:
+            label = key["uid"] if key["uid"] else key["fpr"][-8:]
+            buttons.append(ButtonOption(label))
+
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Select Key",
+            is_button_text_centered=False,
+            button_data=buttons,
+        )
+
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        key = keys[selected]
+        filename = key["fpr"] + ".asc"
+        filepath = os.path.join(file_list_path, filename)
+        exported = run(
+            ["gpg", "--armor", "--output", filepath, "--export", key["fpr"]],
+            capture_output=True,
+            text=True,
+        )
+        if exported.returncode != 0:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="Failed to export key",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Success",
+            status_headline=None,
+            text=f"Saved as {filename}",
+            show_back_button=False,
+            button_data=[ButtonOption("Continue")],
+        )
         return Destination(MainMenuView)
 
 class ToolsTextQRTextEntryView(View):
