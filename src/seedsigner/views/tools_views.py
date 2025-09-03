@@ -5890,7 +5890,7 @@ class ToolsGPGImportKeyToCardView(View):
             slot = next((slot_map[c] for c in "sea" if c in caps), None)
             if slot:
                 cmds.append(
-                    f"key {idx}\nkeytocard\n{slot}\ny\nkey {idx}\n"
+                    f"key {idx}\nkeytocard\n{slot}\nkey {idx}\n"
                 )
         cmds.append("save\n")
         edit_commands = "".join(cmds)
