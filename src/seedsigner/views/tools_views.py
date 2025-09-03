@@ -4351,7 +4351,7 @@ class ToolsGPGSignFileView(View):
                 "--local-user",
                 key["fpr"],
                 "--output",
-                f"{filename}.asc",
+                f"{filename}.sig",
                 "--armor",
                 "--detach-sign",
                 filename,
@@ -4377,7 +4377,7 @@ class ToolsGPGSignFileView(View):
             LargeIconStatusScreen,
             title="Success",
             status_headline=None,
-            text=f"Signature saved as {filename}.asc",
+            text=f"Signature saved as {filename}.sig",
             show_back_button=False,
             button_data=[ButtonOption("Done")],
         )
