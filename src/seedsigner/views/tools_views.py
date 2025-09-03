@@ -4288,7 +4288,16 @@ def bip85_brainpoolp256r1_from_root(
     d = int.from_bytes(entropy[:32], "big") % order
     if d == 0:
         d = 1
-    pn = ec.derive_private_key(d, ec.BrainpoolP256R1()).public_key().public_numbers()
+
+    if not hasattr(ec.BrainpoolP256R1, "group_order"):
+        class _BrainpoolP256R1(ec.BrainpoolP256R1):
+            group_order = order
+
+        curve = _BrainpoolP256R1()
+    else:
+        curve = ec.BrainpoolP256R1()
+
+    pn = ec.derive_private_key(d, curve).public_key().public_numbers()
     if alg == "ECDH":
         priv = fields.ECDHPriv()
         priv.oid = EllipticCurveOID.Brainpool_P256
