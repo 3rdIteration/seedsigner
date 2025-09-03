@@ -4772,7 +4772,7 @@ class ToolsGPGExportPubkeyView(View):
                 secret_list = list(len(pubkey_bytes).to_bytes(2, "big")) + list(pubkey_bytes)
 
             header = Satochip_Connector.make_header(
-                "Public Key", "Plaintext export allowed", label
+                "Data", "Plaintext export allowed", label
             )
             secret_dic = {"header": header, "secret_list": secret_list}
 
