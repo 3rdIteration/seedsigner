@@ -329,12 +329,16 @@ def run_globalplatform(
     parentObject.loading_screen = LoadingScreenThread(text=loadingText)
     parentObject.loading_screen.start()
 
-    if platform.uname()[1] == "seedsigner-os":
+    hostname = platform.uname()[1]
+    if hostname == "seedsigner-os":
         commandString = (
             "/mnt/diy/jdk/bin/java -jar /mnt/diy/Satochip-DIY/gp.jar " + command
         )
-    else:
+    elif os.path.exists("/home/pi/Satochip-DIY/gp.jar"):
         commandString = "java -jar /home/pi/Satochip-DIY/gp.jar " + command
+    else:
+        # Assume gp.jar is available in the current working directory
+        commandString = "java -jar gp.jar " + command
 
     data = run(commandString, capture_output=True, shell=True, text=True)
 

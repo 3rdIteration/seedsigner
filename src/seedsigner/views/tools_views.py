@@ -53,6 +53,7 @@ from seedsigner.views.seed_views import (
 
 from .view import View, Destination, BackStackView, MainMenuView
 
+from seedsigner.hardware.microsd import MicroSD
 from seedsigner.helpers import seedkeeper_utils
 from seedsigner.gui.screens import seed_screens
 logger = logging.getLogger(__name__)
@@ -3268,10 +3269,15 @@ class ToolsSatochipDIYView(View):
 
     def run(self):
         # Check if GlobalPlatoform is available as a way of checking if the DIY tools we need are available
-        if platform.uname()[1] == "seedsigner-os":
+        from pathlib import Path
+        from seedsigner.models.settings import Settings
+
+        if Settings.HOSTNAME == Settings.SEEDSIGNER_OS:
             global_platform_path = "/mnt/diy/Satochip-DIY/gp.jar"
-        else:
+        elif os.path.exists("/home/pi"):
             global_platform_path = "/home/pi/Satochip-DIY/gp.jar"
+        else:
+            global_platform_path = str(Path.home() / "Satochip-DIY/gp.jar")
 
         if os.path.exists(global_platform_path):
             pass
@@ -3310,28 +3316,45 @@ class ToolsDIYBuildAppletsView(View):
     def run(self):
         from subprocess import run
         import os
+        import shutil
+        from pathlib import Path
         from seedsigner.gui.screens.screen import LoadingScreenThread
+        from seedsigner.hardware.microsd import MicroSD
+        from seedsigner.models.settings import Settings
 
         self.loading_screen = LoadingScreenThread(text="Building Applets\n\n\n\n\n\n(This takes a while)")
         self.loading_screen.start()
 
-        if platform.uname()[1] == "seedsigner-os":
-            if not os.path.exists("/mnt/microsd/javacard-build.xml"):
-                os.system("cp /opt/tools/javacard-build.xml.seedsigneros /mnt/microsd/javacard-build.xml")
+        microsd_dir = MicroSD.get_microsd_dir()
+        repo_root = Path(__file__).resolve().parents[3]
 
-            if not os.path.exists("/mnt/microsd/javacard-cap/"):
-                os.system("mkdir -p /mnt/microsd/javacard-cap/")
+        if Settings.HOSTNAME == Settings.SEEDSIGNER_OS:
+            if not os.path.exists(microsd_dir / "javacard-build.xml"):
+                os.system(f"cp /opt/tools/javacard-build.xml.seedsigneros {microsd_dir}/javacard-build.xml")
+
+            if not os.path.exists(microsd_dir / "javacard-cap/"):
+                os.system(f"mkdir -p {microsd_dir}/javacard-cap/")
 
             os.environ["JAVA_HOME"] = "/mnt/diy/jdk"
-            commandString = "/mnt/diy/ant/bin/ant -f /mnt/microsd/javacard-build.xml"
+            commandString = f"/mnt/diy/ant/bin/ant -f {microsd_dir}/javacard-build.xml"
+        elif os.path.exists("/home/pi"):
+            if not os.path.exists(microsd_dir / "javacard-build.xml"):
+                os.system(f"sudo cp {repo_root}/tools/javacard-build.xml.manual {microsd_dir}/javacard-build.xml")
+
+            if not os.path.exists(microsd_dir / "javacard-cap/"):
+                os.system(f"sudo mkdir -p {microsd_dir}/javacard-cap/")
+
+            commandString = f"sudo ant -f {microsd_dir}/javacard-build.xml"
         else:
-            if not os.path.exists("/boot/javacard-build.xml"):
-                os.system("sudo cp /home/pi/seedsigner/tools/javacard-build.xml.manual /boot/javacard-build.xml")
+            build_xml = microsd_dir / "javacard-build.xml"
+            if not build_xml.exists():
+                shutil.copy(repo_root / "tools" / "javacard-build.xml.manual", build_xml)
 
-            if not os.path.exists("/boot/javacard-cap/"):
-                os.system("sudo mkdir -p /boot/javacard-cap/")
+            cap_dir = microsd_dir / "javacard-cap"
+            if not cap_dir.exists():
+                os.makedirs(cap_dir)
 
-            commandString = "sudo ant -f /boot/javacard-build.xml"
+            commandString = f"ant -f {build_xml}"
 
         data = run(commandString, capture_output=True, shell=True, text=True)
 
@@ -3364,11 +3387,10 @@ class ToolsDIYInstallAppletView(View):
         from subprocess import run
         import os
         from seedsigner.gui.screens.screen import LoadingScreenThread
+        from seedsigner.hardware.microsd import MicroSD
 
-        if platform.uname()[1] == "seedsigner-os":
-            cap_files = os.listdir('/mnt/microsd/javacard-cap/')
-        else:
-            cap_files = os.listdir('/boot/javacard-cap/')
+        cap_dir = MicroSD.get_microsd_dir() / "javacard-cap"
+        cap_files = os.listdir(cap_dir)
 
         cap_file_buttons = []
         for file in cap_files:
@@ -3387,11 +3409,12 @@ class ToolsDIYInstallAppletView(View):
         applet_file = cap_files[selected_file_num]
         logger.info("Selected:", applet_file)
 
-        if platform.uname()[1] == "seedsigner-os":
-            installed_applets = seedkeeper_utils.run_globalplatform(self,
-                                                                    "--install /mnt/microsd/javacard-cap/" + applet_file, "Installing Applet", "Applet Installed")
-        else:
-            installed_applets = seedkeeper_utils.run_globalplatform(self,"--install /boot/javacard-cap/" + applet_file, "Installing Applet", "Applet Installed")
+        installed_applets = seedkeeper_utils.run_globalplatform(
+            self,
+            f"--install {cap_dir}/{applet_file}",
+            "Installing Applet",
+            "Applet Installed",
+        )
 
         # This process often kills IFD-NFC, so restart it if required
         scinterface = self.settings.get_value(SettingsConstants.SETTING__SMARTCARD_INTERFACES)
@@ -3508,9 +3531,21 @@ class ToolsMicroSDMenuView(View):
         if selected_menu_num == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
 
+        # All MicroSD operations require hardware access; block in desktop mode
+        if MicroSD.is_desktop_mode():
+            self.run_screen(
+                WarningScreen,
+                title="Unavailable",
+                status_headline=None,
+                text="MicroSD tools are not supported on desktop.",
+                show_back_button=False,
+                button_data=[ButtonOption("OK")],
+            )
+            return Destination(ToolsMicroSDMenuView, skip_current_view=True)
+
         elif button_data[selected_menu_num] == self.FLASH_IMAGE:
             return Destination(ToolsMicroSDFlashView)
-        
+
         elif button_data[selected_menu_num] == self.VERIFY_IMAGE:
             return Destination(ToolsMicroSDVerifyWarningView)
 
@@ -3524,6 +3559,9 @@ class ToolsMicroSDFlashView(View):
     def run(self):
         from subprocess import run
         from seedsigner.gui.screens.screen import LoadingScreenThread
+        from seedsigner.hardware.microsd import MicroSD
+        from seedsigner.hardware.microsd import MicroSD
+        from seedsigner.models.settings import Settings
 
         if len(self.controller.storage.seeds) > 0:
             ret = self.run_screen(
@@ -4010,10 +4048,8 @@ class ToolsGPGVerifyFileView(View):
             if ret == RET_CODE__BACK_BUTTON:
                 return Destination(BackStackView)
 
-        if platform.uname()[1] == "seedsigner-os":
-            file_list_path = '/mnt/microsd/microsd-images/'
-        else:
-            file_list_path= '/boot/microsd-images/'
+        file_list_path = MicroSD.get_microsd_dir() / "microsd-images"
+        os.makedirs(file_list_path, exist_ok=True)
 
         # Get only the visible, valid files
         visible_file_list = [
@@ -4028,6 +4064,17 @@ class ToolsGPGVerifyFileView(View):
 
         # Build button options
         verify_file_buttons = [ButtonOption(f) for f in visible_file_list]
+
+        if not verify_file_buttons:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No files found in microsd-images.",
+                show_back_button=False,
+                button_data=[ButtonOption("OK")],
+            )
+            return Destination(BackStackView)
 
         # Show selection screen
         selected_file_num = self.run_screen(
@@ -4045,7 +4092,7 @@ class ToolsGPGVerifyFileView(View):
         verify_file_name = visible_file_list[selected_file_num]
         logger.info("Selected: %s", verify_file_name)
 
-        cmd = "cd " + file_list_path +" ; gpg --verify " + verify_file_name
+        cmd = f"cd {file_list_path} ; gpg --verify {verify_file_name}"
 
         self.loading_screen = LoadingScreenThread(text="Checking Signature\n\n\n\n\n\n(May take a while)")
         self.loading_screen.start()
@@ -4098,10 +4145,10 @@ class ToolsGPGVerifyFileView(View):
                 )
             
             if button_data[ret] == self.CHECK_SHA256:
-                if platform.uname()[1] == "seedsigner-os":
-                    cmd = "cd " + file_list_path + "; sha256sum -c " + filechecked
+                if Settings.HOSTNAME == Settings.SEEDSIGNER_OS:
+                    cmd = f"cd {file_list_path} ; sha256sum -c {filechecked}"
                 else:
-                    cmd = "cd " + file_list_path + "; sha256sum --check " + filechecked + " --ignore-missing"
+                    cmd = f"cd {file_list_path} ; sha256sum --check {filechecked} --ignore-missing"
 
                 self.loading_screen = LoadingScreenThread(text="Checking SHA256\n\n\n\n\n\n(This takes a while)")
                 self.loading_screen.start()
@@ -4196,16 +4243,31 @@ class ToolsGPGImportPubkeyView(View):
             if ret == RET_CODE__BACK_BUTTON:
                 return Destination(BackStackView)
 
-        if platform.uname()[1] == "seedsigner-os":
-            file_list_path = '/mnt/microsd/microsd-images/'
-        else:
-            file_list_path= '/boot/microsd-images/'
+        file_list_path = MicroSD.get_microsd_dir() / "microsd-images"
+        os.makedirs(file_list_path, exist_ok=True)
 
-        verify_file_list = os.listdir(file_list_path)
+        verify_file_list = [
+            f
+            for f in os.listdir(file_list_path)
+            if (
+                not f.startswith('.')
+                and f != '__MACOSX'
+                and os.path.isfile(os.path.join(file_list_path, f))
+            )
+        ]
 
-        verify_file_buttons = []
-        for file in verify_file_list:
-            verify_file_buttons.append(ButtonOption(file))
+        verify_file_buttons = [ButtonOption(file) for file in verify_file_list]
+
+        if not verify_file_buttons:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No files found in microsd-images.",
+                show_back_button=False,
+                button_data=[ButtonOption("OK")],
+            )
+            return Destination(BackStackView)
 
         selected_file_num = self.run_screen(
             ButtonListScreen,
@@ -4218,9 +4280,9 @@ class ToolsGPGImportPubkeyView(View):
             return Destination(BackStackView)
 
         verify_file_name = verify_file_list[selected_file_num]
-        logger.info("Selected:", verify_file_name)
+        logger.info("Selected: %s", verify_file_name)
 
-        cmd = "gpg --import " + file_list_path + verify_file_name
+        cmd = f"gpg --import {file_list_path}/{verify_file_name}"
 
         data = run(cmd, capture_output=True, shell=True, text=True)
 
