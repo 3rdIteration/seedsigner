@@ -4626,6 +4626,7 @@ class ToolsGPGExportPubkeyView(View):
             ButtonListScreen,
             LargeIconStatusScreen,
             WarningScreen,
+            LoadingScreenThread,
         )
 
         if len(self.controller.storage.seeds) > 0:
@@ -4689,33 +4690,104 @@ class ToolsGPGExportPubkeyView(View):
             return Destination(BackStackView)
 
         key = keys[selected]
-        filename = key["fpr"] + ".asc"
-        filepath = os.path.join(file_list_path, filename)
-        exported = run(
-            ["gpg", "--armor", "--output", filepath, "--export", key["fpr"]],
-            capture_output=True,
-            text=True,
+        label = key["uid"] if key["uid"] else key["fpr"][-8:]
+
+        dest_buttons = [ButtonOption("microSD"), ButtonOption("Seedkeeper")]
+        dest_selected = self.run_screen(
+            ButtonListScreen,
+            title="Export to",
+            is_button_text_centered=False,
+            button_data=dest_buttons,
         )
-        if exported.returncode != 0:
-            self.run_screen(
-                WarningScreen,
-                title="Error",
-                status_headline=None,
-                text="Failed to export key",
-                show_back_button=False,
-                button_data=[ButtonOption("I Understand")],
-            )
+
+        if dest_selected == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
 
-        self.run_screen(
-            LargeIconStatusScreen,
-            title="Success",
-            status_headline=None,
-            text=f"Saved as {filename}",
-            show_back_button=False,
-            button_data=[ButtonOption("Continue")],
-        )
-        return Destination(MainMenuView)
+        if dest_selected == 0:
+            filename = key["fpr"] + ".asc"
+            filepath = os.path.join(file_list_path, filename)
+            exported = run(
+                ["gpg", "--armor", "--output", filepath, "--export", key["fpr"]],
+                capture_output=True,
+                text=True,
+            )
+            if exported.returncode != 0:
+                self.run_screen(
+                    WarningScreen,
+                    title="Error",
+                    status_headline=None,
+                    text="Failed to export key",
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
+
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Success",
+                status_headline=None,
+                text=f"Saved as {filename}",
+                show_back_button=False,
+                button_data=[ButtonOption("Continue")],
+            )
+            return Destination(MainMenuView)
+        else:
+            exported = run(
+                ["gpg", "--armor", "--export", key["fpr"]],
+                capture_output=True,
+                text=True,
+            )
+            if exported.returncode != 0:
+                self.run_screen(
+                    WarningScreen,
+                    title="Error",
+                    status_headline=None,
+                    text="Failed to export key",
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
+
+            Satochip_Connector = seedkeeper_utils.init_satochip(
+                self, init_card_filter=["seedkeeper"]
+            )
+            if not Satochip_Connector:
+                return Destination(BackStackView)
+
+            pubkey_bytes = exported.stdout.encode("utf-8")
+            header = Satochip_Connector.make_header(
+                "Public Key", "Plaintext export allowed", label
+            )
+            secret_list = [len(pubkey_bytes)] + list(pubkey_bytes)
+            secret_dic = {"header": header, "secret_list": secret_list}
+
+            try:
+                self.loading_screen = LoadingScreenThread(
+                    text="Saving Secret\n\n\n\n\n\n"
+                )
+                self.loading_screen.start()
+                Satochip_Connector.seedkeeper_import_secret(secret_dic)
+                self.loading_screen.stop()
+                self.run_screen(
+                    LargeIconStatusScreen,
+                    title="Success",
+                    status_headline=None,
+                    text="Pubkey saved to Seedkeeper",
+                    show_back_button=False,
+                    button_data=[ButtonOption("Continue")],
+                )
+                return Destination(MainMenuView)
+            except Exception:
+                self.loading_screen.stop()
+                self.run_screen(
+                    WarningScreen,
+                    title="Error",
+                    status_headline=None,
+                    text="Failed to export key",
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
 
 class ToolsTextQRTextEntryView(View):
     def __init__(self, textToEncode: str = ""):

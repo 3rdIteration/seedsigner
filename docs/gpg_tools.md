@@ -8,3 +8,5 @@ During import, SeedSigner prompts for the key type, user name, email address, an
 
 Note: The key derivation with BIP85 is deterministic, meaning the key and fingerprint will always be the same, but metadata like the username, email address and expiration date can be changed. (And are not saved on-device, but can be exported to a Smartcard, etc)
 
+Existing GPG keys can also be exported. After selecting a key, SeedSigner offers to save the ASCII-armored public key either to the microSD card or directly to a connected Seedkeeper smartcard.
+
