@@ -3988,6 +3988,7 @@ class ToolsGPGMenuView(View):
     IMPORT_PUBKEY = ButtonOption("Import Pubkey")
     LOAD_BIP85_KEY = ButtonOption("Load BIP85 Key")
     EXPORT_PUBKEY = ButtonOption("Export Pubkey")
+    EXPORT_PRIVKEY = ButtonOption("Export Privkey")
 
     def run(self):
         from subprocess import run
@@ -4008,6 +4009,7 @@ class ToolsGPGMenuView(View):
             self.IMPORT_PUBKEY,
             self.LOAD_BIP85_KEY,
             self.EXPORT_PUBKEY,
+            self.EXPORT_PRIVKEY,
         ]
 
         selected_menu_num = self.run_screen(
@@ -4029,6 +4031,8 @@ class ToolsGPGMenuView(View):
             return Destination(ToolsGPGLoadBIP85KeyView)
         elif button_data[selected_menu_num] == self.EXPORT_PUBKEY:
             return Destination(ToolsGPGExportPubkeyView)
+        elif button_data[selected_menu_num] == self.EXPORT_PRIVKEY:
+            return Destination(ToolsGPGExportPrivkeyView)
 
 class ToolsGPGVerifyFileView(View):
     CHECK_SHA256 = ButtonOption("Check SHA256Sum")
@@ -4764,6 +4768,155 @@ class ToolsGPGExportPubkeyView(View):
                 title="Error",
                 status_headline=None,
                 text="Failed to export key",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Success",
+            status_headline=None,
+            text=f"Saved as {filename}",
+            show_back_button=False,
+            button_data=[ButtonOption("Continue")],
+        )
+        return Destination(MainMenuView)
+
+
+class ToolsGPGExportPrivkeyView(View):
+    def run(self):
+        from subprocess import run
+        import os
+        import platform
+        from seedsigner.gui.screens.screen import (
+            ButtonListScreen,
+            LargeIconStatusScreen,
+            WarningScreen,
+        )
+        from seedsigner.gui.screens import tools_screens
+
+        if len(self.controller.storage.seeds) > 0:
+            ret = self.run_screen(
+                WarningScreen,
+                title="WARNING",
+                status_headline=None,
+                text="These tools write data to the microSD card and may expose loaded secrets.",
+                show_back_button=True,
+                button_data=[ButtonOption("Continue")],
+            )
+            if ret == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+
+        if platform.uname()[1] == "seedsigner-os":
+            file_list_path = "/mnt/microsd/microsd-images/"
+        else:
+            file_list_path = "/boot/microsd-images/"
+
+        result = run(
+            ["gpg", "--list-secret-keys", "--with-colons"],
+            capture_output=True,
+            text=True,
+        )
+        keys = []
+        cur = None
+        for line in result.stdout.splitlines():
+            parts = line.split(":")
+            if parts[0] == "sec":
+                cur = {"fpr": None, "uid": None}
+                keys.append(cur)
+            elif parts[0] == "fpr" and cur is not None:
+                cur["fpr"] = parts[9]
+            elif parts[0] == "uid" and cur is not None and cur.get("uid") is None:
+                cur["uid"] = parts[9]
+
+        if not keys:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No private keys found",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        buttons = []
+        for key in keys:
+            label = key["uid"] if key["uid"] else key["fpr"][-8:]
+            buttons.append(ButtonOption(label))
+
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Select Key",
+            is_button_text_centered=False,
+            button_data=buttons,
+        )
+
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        key = keys[selected]
+
+        ret_dict = tools_screens.ToolsTextQRTextEntryScreen(
+            textToEncode="", title="Passphrase"
+        ).display()
+        if "is_back_button" in ret_dict:
+            return Destination(BackStackView)
+        try:
+            import re
+
+            passphrase = bytes(
+                re.sub(r"\\(?!u)", r"\\\\", ret_dict["textToEncode"]),
+                encoding="raw_unicode_escape",
+            ).decode("unicode_escape")
+        except UnicodeDecodeError:
+            passphrase = ret_dict["textToEncode"]
+
+        filename = key["fpr"] + "_private.gpg"
+        filepath = os.path.join(file_list_path, filename)
+        exported = run(
+            ["gpg", "--armor", "--export-secret-keys", key["fpr"]],
+            capture_output=True,
+            text=True,
+        )
+        if exported.returncode != 0:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="Failed to export key",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        protected = run(
+            [
+                "gpg",
+                "--armor",
+                "--batch",
+                "--yes",
+                "--pinentry-mode",
+                "loopback",
+                "--passphrase",
+                passphrase,
+                "--symmetric",
+                "--cipher-algo",
+                "AES256",
+                "--output",
+                filepath,
+            ],
+            input=exported.stdout,
+            capture_output=True,
+            text=True,
+        )
+        if protected.returncode != 0:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="Failed to protect key",
                 show_back_button=False,
                 button_data=[ButtonOption("I Understand")],
             )
