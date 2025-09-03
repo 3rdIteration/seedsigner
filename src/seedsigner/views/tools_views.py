@@ -3986,6 +3986,7 @@ class ToolsMicroSDWipeRandomView(View):
 class ToolsGPGMenuView(View):
     VERIFY_FILE = ButtonOption("Verify File Sig")
     IMPORT_PUBKEY = ButtonOption("Import Pubkey")
+    GENERATE_KEY = ButtonOption("Generate Key")
     LOAD_PRIVKEY = ButtonOption("Load Privkey")
     EXPORT_PUBKEY = ButtonOption("Export Pubkey")
     EXPORT_PRIVKEY = ButtonOption("Export Privkey")
@@ -4007,6 +4008,7 @@ class ToolsGPGMenuView(View):
         button_data = [
             self.VERIFY_FILE,
             self.IMPORT_PUBKEY,
+            self.GENERATE_KEY,
             self.LOAD_PRIVKEY,
             self.EXPORT_PUBKEY,
             self.EXPORT_PRIVKEY,
@@ -4027,6 +4029,8 @@ class ToolsGPGMenuView(View):
         
         elif button_data[selected_menu_num] == self.IMPORT_PUBKEY:
             return Destination(ToolsGPGImportPubkeyView)
+        elif button_data[selected_menu_num] == self.GENERATE_KEY:
+            return Destination(ToolsGPGGenerateKeyView)
         elif button_data[selected_menu_num] == self.LOAD_PRIVKEY:
             return Destination(ToolsGPGLoadPrivkeyMenuView)
         elif button_data[selected_menu_num] == self.EXPORT_PUBKEY:
@@ -4913,6 +4917,188 @@ class ToolsGPGLoadBIP85KeyView(View):
                 title="Success",
                 status_headline=None,
                 text="BIP85 GPG key imported",
+                show_back_button=False,
+                button_data=[ButtonOption("Done")],
+            )
+        else:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="Failed to import key",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+
+        return Destination(MainMenuView)
+
+
+class ToolsGPGGenerateKeyView(View):
+    def run(self):
+        from pgpy import PGPKey, PGPUID
+        from pgpy.constants import (
+            PubKeyAlgorithm,
+            KeyFlags,
+            HashAlgorithm,
+            SymmetricKeyAlgorithm,
+            CompressionAlgorithm,
+            EllipticCurveOID,
+        )
+        from datetime import datetime, timezone, timedelta
+        from subprocess import run
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+        from seedsigner.gui.screens import (
+            LargeIconStatusScreen,
+            WarningScreen,
+            tools_screens,
+        )
+
+        keytype_buttons = [
+            ButtonOption("NIST P-256"),
+            ButtonOption("Brainpool P-256"),
+            ButtonOption("RSA 2048"),
+            ButtonOption("RSA 3072"),
+            ButtonOption("secp256k1"),
+        ]
+        selected_type = self.run_screen(
+            ButtonListScreen,
+            title="Key Type",
+            is_button_text_centered=False,
+            button_data=keytype_buttons,
+        )
+        if selected_type == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        alg, param = [
+            (PubKeyAlgorithm.ECDSA, EllipticCurveOID.NIST_P256),
+            (PubKeyAlgorithm.ECDSA, EllipticCurveOID.Brainpool_P256),
+            (PubKeyAlgorithm.RSAEncryptOrSign, 2048),
+            (PubKeyAlgorithm.RSAEncryptOrSign, 3072),
+            (PubKeyAlgorithm.ECDSA, EllipticCurveOID.SECP256K1),
+        ][selected_type]
+
+        def prompt_text(title: str, default: str = ""):
+            ret_dict = tools_screens.ToolsTextQRTextEntryScreen(
+                textToEncode=default, title=title
+            ).display()
+            if "is_back_button" in ret_dict:
+                return None
+            try:
+                import re
+
+                return bytes(
+                    re.sub(r"\\(?!u)", r"\\\\", ret_dict["textToEncode"]),
+                    encoding="raw_unicode_escape",
+                ).decode("unicode_escape")
+            except UnicodeDecodeError:
+                return ret_dict["textToEncode"]
+
+        name = prompt_text("Name")
+        if name is None:
+            return Destination(BackStackView)
+
+        email = prompt_text("Email")
+        if email is None:
+            return Destination(BackStackView)
+
+        created = datetime.now(timezone.utc)
+        default_expiration = (created + timedelta(days=3650)).date()
+        expiration_str = prompt_text(
+            "Expiration YYYY-MM-DD", default_expiration.isoformat()
+        )
+        if expiration_str is None:
+            return Destination(BackStackView)
+        try:
+            if expiration_str == "":
+                expiration_dt = datetime.combine(
+                    default_expiration, datetime.min.time(), tzinfo=timezone.utc
+                )
+            else:
+                expiration_dt = datetime.strptime(
+                    expiration_str, "%Y-%m-%d"
+                ).replace(tzinfo=timezone.utc)
+            if expiration_dt <= created:
+                raise ValueError
+            expires = expiration_dt - created
+        except ValueError:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="Invalid expiration date",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        self.loading_screen = LoadingScreenThread(
+            text="Generating GPG key\n\n\n\n\n\n(This takes a while)"
+        )
+        self.loading_screen.start()
+        try:
+            # PGPKey.new leverages the OS CSPRNG for secure entropy
+            master_key = PGPKey.new(alg, param)
+
+            uid = PGPUID.new(name, email=email)
+            master_key.add_uid(
+                uid,
+                usage={KeyFlags.Certify, KeyFlags.Sign},
+                hashes=[HashAlgorithm.SHA256],
+                ciphers=[SymmetricKeyAlgorithm.AES256],
+                compression=[CompressionAlgorithm.ZLIB],
+                expires=expires,
+            )
+
+            if alg == PubKeyAlgorithm.RSAEncryptOrSign:
+                sub_enc = PGPKey.new(PubKeyAlgorithm.RSAEncryptOrSign, param)
+                sub_auth = PGPKey.new(PubKeyAlgorithm.RSAEncryptOrSign, param)
+                sub_sign = PGPKey.new(PubKeyAlgorithm.RSAEncryptOrSign, param)
+            else:
+                curve = param
+                sub_enc = PGPKey.new(PubKeyAlgorithm.ECDH, curve)
+                sub_auth = PGPKey.new(PubKeyAlgorithm.ECDSA, curve)
+                sub_sign = PGPKey.new(PubKeyAlgorithm.ECDSA, curve)
+
+            master_key.add_subkey(
+                sub_enc,
+                usage={KeyFlags.EncryptCommunications, KeyFlags.EncryptStorage},
+                hashes=[HashAlgorithm.SHA256],
+                ciphers=[SymmetricKeyAlgorithm.AES256],
+                compression=[CompressionAlgorithm.ZLIB],
+                expires=expires,
+            )
+            master_key.add_subkey(
+                sub_auth,
+                usage={KeyFlags.Authentication},
+                hashes=[HashAlgorithm.SHA256],
+                ciphers=[SymmetricKeyAlgorithm.AES256],
+                compression=[CompressionAlgorithm.ZLIB],
+                expires=expires,
+            )
+            master_key.add_subkey(
+                sub_sign,
+                usage={KeyFlags.Sign},
+                hashes=[HashAlgorithm.SHA256],
+                ciphers=[SymmetricKeyAlgorithm.AES256],
+                compression=[CompressionAlgorithm.ZLIB],
+                expires=expires,
+            )
+
+            armored = str(master_key)
+            result = run(
+                ["gpg", "--batch", "--import"],
+                input=armored.encode(),
+                capture_output=True,
+            )
+        finally:
+            self.loading_screen.stop()
+
+        if result.returncode == 0:
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Success",
+                status_headline=None,
+                text="GPG key generated",
                 show_back_button=False,
                 button_data=[ButtonOption("Done")],
             )
