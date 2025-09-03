@@ -3985,6 +3985,7 @@ class ToolsMicroSDWipeRandomView(View):
 ****************************************************************************"""
 class ToolsGPGMenuView(View):
     VERIFY_FILE = ButtonOption("Verify File Sig")
+    SIGN_FILE = ButtonOption("Sign File")
     IMPORT_PUBKEY = ButtonOption("Import Pubkey")
     GENERATE_KEY = ButtonOption("Generate New Key")
     LOAD_PRIVKEY = ButtonOption("Import Privkey")
@@ -4007,6 +4008,7 @@ class ToolsGPGMenuView(View):
             self.controller.gpg_keys_imported = True
         button_data = [
             self.VERIFY_FILE,
+            self.SIGN_FILE,
             self.IMPORT_PUBKEY,
             self.GENERATE_KEY,
             self.LOAD_PRIVKEY,
@@ -4026,7 +4028,10 @@ class ToolsGPGMenuView(View):
 
         elif button_data[selected_menu_num] == self.VERIFY_FILE:
             return Destination(ToolsGPGVerifyFileView)
-        
+
+        elif button_data[selected_menu_num] == self.SIGN_FILE:
+            return Destination(ToolsGPGSignFileView)
+
         elif button_data[selected_menu_num] == self.IMPORT_PUBKEY:
             return Destination(ToolsGPGImportPubkeyMenuView)
         elif button_data[selected_menu_num] == self.GENERATE_KEY:
@@ -4230,8 +4235,153 @@ class ToolsGPGVerifyFileView(View):
                 text=failed_reason,
                 show_back_button=True,
             )
-                
-        
+
+
+        return Destination(MainMenuView)
+
+
+class ToolsGPGSignFileView(View):
+    def run(self):
+        from subprocess import run
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+
+        if len(self.controller.storage.seeds) > 0:
+            ret = self.run_screen(
+                WarningScreen,
+                title="WARNING",
+                status_headline=None,
+                text="These tools load data from the microSD card and may expose loaded secrets.",
+                show_back_button=True,
+                button_data=[ButtonOption("Continue")],
+            )
+            if ret == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+
+        file_list_path = MicroSD.get_microsd_dir() / "microsd-images"
+        os.makedirs(file_list_path, exist_ok=True)
+
+        file_list = [
+            f
+            for f in os.listdir(file_list_path)
+            if (
+                not f.startswith('.')
+                and f != '__MACOSX'
+                and os.path.isfile(os.path.join(file_list_path, f))
+            )
+        ]
+
+        buttons = [ButtonOption(file) for file in file_list]
+
+        if not buttons:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No files found in microsd-images.",
+                show_back_button=False,
+                button_data=[ButtonOption("OK")],
+            )
+            return Destination(BackStackView)
+
+        selected_file_num = self.run_screen(
+            ButtonListScreen,
+            title="Select File",
+            is_button_text_centered=False,
+            button_data=buttons,
+        )
+
+        if selected_file_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        filename = file_list[selected_file_num]
+
+        # Gather available private keys for signing
+        result = run(
+            ["gpg", "--list-secret-keys", "--with-colons"],
+            capture_output=True,
+            text=True,
+        )
+        keys = []
+        cur = None
+        for line in result.stdout.splitlines():
+            parts = line.split(":")
+            if parts[0] == "sec":
+                cur = {"fpr": None, "uid": None}
+                keys.append(cur)
+            elif parts[0] == "fpr" and cur is not None:
+                cur["fpr"] = parts[9]
+            elif parts[0] == "uid" and cur is not None and cur.get("uid") is None:
+                cur["uid"] = parts[9]
+
+        if not keys:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No private keys found",
+                show_back_button=False,
+                button_data=[ButtonOption("OK")],
+            )
+            return Destination(BackStackView)
+
+        key_buttons = []
+        for key in keys:
+            label = key["uid"] if key["uid"] else key["fpr"][-8:]
+            key_buttons.append(ButtonOption(label))
+
+        selected_key = self.run_screen(
+            ButtonListScreen,
+            title="Select Key",
+            is_button_text_centered=False,
+            button_data=key_buttons,
+        )
+
+        if selected_key == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        key = keys[selected_key]
+
+        self.loading_screen = LoadingScreenThread(text="Signing File\n\n\n\n\n\n(May take a while)")
+        self.loading_screen.start()
+        result = run(
+            [
+                "gpg",
+                "--batch",
+                "--yes",
+                "--local-user",
+                key["fpr"],
+                "--output",
+                f"{filename}.sig",
+                "--armor",
+                "--detach-sign",
+                filename,
+            ],
+            cwd=file_list_path,
+            capture_output=True,
+            text=True,
+        )
+        self.loading_screen.stop()
+
+        if result.returncode != 0:
+            logger.warning("gpg sign failed: %s", result.stderr)
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="Failed to sign file",
+                show_back_button=False,
+            )
+            return Destination(BackStackView)
+
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Success",
+            status_headline=None,
+            text=f"Signature saved as {filename}.sig",
+            show_back_button=False,
+            button_data=[ButtonOption("Done")],
+        )
+
         return Destination(MainMenuView)
 
 class ToolsGPGImportPubkeyMenuView(View):
