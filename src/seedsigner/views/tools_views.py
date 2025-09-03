@@ -3947,6 +3947,7 @@ class ToolsMicroSDWipeRandomView(View):
 ****************************************************************************"""
 class ToolsGPGMenuView(View):
     VERIFY_FILE = ButtonOption("Verify File Sig")
+    SIGN_FILE = ButtonOption("Sign File")
     IMPORT_PUBKEY = ButtonOption("Import Pubkey")
     LOAD_BIP85_KEY = ButtonOption("Load BIP85 Key")
     EXPORT_PUBKEY = ButtonOption("Export Pubkey")
@@ -3967,6 +3968,7 @@ class ToolsGPGMenuView(View):
             self.controller.gpg_keys_imported = True
         button_data = [
             self.VERIFY_FILE,
+            self.SIGN_FILE,
             self.IMPORT_PUBKEY,
             self.LOAD_BIP85_KEY,
             self.EXPORT_PUBKEY,
@@ -3984,6 +3986,9 @@ class ToolsGPGMenuView(View):
 
         elif button_data[selected_menu_num] == self.VERIFY_FILE:
             return Destination(ToolsGPGVerifyFileView)
+
+        elif button_data[selected_menu_num] == self.SIGN_FILE:
+            return Destination(ToolsGPGSignFileView)
         
         elif button_data[selected_menu_num] == self.IMPORT_PUBKEY:
             return Destination(ToolsGPGImportPubkeyView)
@@ -4178,6 +4183,84 @@ class ToolsGPGVerifyFileView(View):
                 
         
         return Destination(MainMenuView)
+
+
+class ToolsGPGSignFileView(View):
+    def run(self):
+        from subprocess import run
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+
+        if len(self.controller.storage.seeds) > 0:
+            ret = self.run_screen(
+                WarningScreen,
+                title="WARNING",
+                status_headline=None,
+                text="These tools load data from the microSD card and may expose loaded secrets.",
+                show_back_button=True,
+                button_data=[ButtonOption("Continue")],
+            )
+            if ret == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+
+        if platform.uname()[1] == "seedsigner-os":
+            file_list_path = '/mnt/microsd/microsd-images/'
+        else:
+            file_list_path = '/boot/microsd-images/'
+
+        visible_file_list = [
+            f
+            for f in os.listdir(file_list_path)
+            if (
+                not f.startswith('.')
+                and f != '__MACOSX'
+                and os.path.isfile(os.path.join(file_list_path, f))
+            )
+        ]
+
+        sign_file_buttons = [ButtonOption(f) for f in visible_file_list]
+
+        selected_file_num = self.run_screen(
+            ButtonListScreen,
+            title="Select File",
+            is_button_text_centered=False,
+            button_data=sign_file_buttons,
+        )
+
+        if selected_file_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        file_to_sign = visible_file_list[selected_file_num]
+        cmd = ["gpg", "--armor", "--detach-sign", os.path.join(file_list_path, file_to_sign)]
+
+        self.loading_screen = LoadingScreenThread(text="Signing File\n\n\n\n\n\n(May take a while)")
+        self.loading_screen.start()
+        result = run(cmd, capture_output=True, text=True)
+        self.loading_screen.stop()
+
+        if result.returncode != 0:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="Failed to sign file",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        signature_filename = file_to_sign + ".asc"
+
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Success",
+            status_headline=None,
+            text=f"Saved as {signature_filename}",
+            show_back_button=False,
+            button_data=[ButtonOption("Done")],
+        )
+
+        return Destination(MainMenuView)
+
 
 class ToolsGPGImportPubkeyView(View):
     def run(self):
