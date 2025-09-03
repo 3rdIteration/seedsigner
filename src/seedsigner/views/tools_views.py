@@ -53,6 +53,7 @@ from seedsigner.views.seed_views import (
 
 from .view import View, Destination, BackStackView, MainMenuView
 
+from seedsigner.hardware.microsd import MicroSD
 from seedsigner.helpers import seedkeeper_utils
 from seedsigner.gui.screens import seed_screens
 logger = logging.getLogger(__name__)
