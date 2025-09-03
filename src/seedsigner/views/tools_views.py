@@ -2010,7 +2010,7 @@ class ToolsSeedkeeperViewSecretsView(View):
                 secret_dict['secret'] = secret_string
 
 
-            elif stype in ('Descriptor', 'Data'):
+            elif stype in ('Descriptor', 'Data', 'Public Key'):
                 secret_dict['secret'] = unhexlify(secret_dict['secret'])[2:].decode()
                 
             else:
@@ -4755,10 +4755,25 @@ class ToolsGPGExportPubkeyView(View):
                 return Destination(BackStackView)
 
             pubkey_bytes = exported.stdout.encode("utf-8")
+            status = Satochip_Connector.card_get_status()[3]
+            if status['protocol_minor_version'] == 1:
+                if len(pubkey_bytes) > 255:
+                    self.run_screen(
+                        WarningScreen,
+                        title="Error",
+                        status_headline=None,
+                        text="Pubkey too large for Seedkeeper v1",
+                        show_back_button=False,
+                        button_data=[ButtonOption("I Understand")],
+                    )
+                    return Destination(BackStackView)
+                secret_list = [len(pubkey_bytes)] + list(pubkey_bytes)
+            else:
+                secret_list = list(len(pubkey_bytes).to_bytes(2, "big")) + list(pubkey_bytes)
+
             header = Satochip_Connector.make_header(
                 "Public Key", "Plaintext export allowed", label
             )
-            secret_list = [len(pubkey_bytes)] + list(pubkey_bytes)
             secret_dic = {"header": header, "secret_list": secret_list}
 
             try:
