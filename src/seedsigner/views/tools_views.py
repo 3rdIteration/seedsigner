@@ -4706,10 +4706,8 @@ class ToolsGPGExportPubkeyView(View):
             if ret == RET_CODE__BACK_BUTTON:
                 return Destination(BackStackView)
 
-        if platform.uname()[1] == "seedsigner-os":
-            file_list_path = "/mnt/microsd/microsd-images/"
-        else:
-            file_list_path = "/boot/microsd-images/"
+        file_list_path = MicroSD.get_microsd_dir() / "microsd-images"
+        os.makedirs(file_list_path, exist_ok=True)
 
         result = run(
             ["gpg", "--list-secret-keys", "--with-colons"],
@@ -4808,10 +4806,8 @@ class ToolsGPGExportPrivkeyView(View):
             if ret == RET_CODE__BACK_BUTTON:
                 return Destination(BackStackView)
 
-        if platform.uname()[1] == "seedsigner-os":
-            file_list_path = "/mnt/microsd/microsd-images/"
-        else:
-            file_list_path = "/boot/microsd-images/"
+        file_list_path = MicroSD.get_microsd_dir() / "microsd-images"
+        os.makedirs(file_list_path, exist_ok=True)
 
         result = run(
             ["gpg", "--list-secret-keys", "--with-colons"],
