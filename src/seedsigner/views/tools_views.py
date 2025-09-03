@@ -4282,20 +4282,19 @@ def bip85_brainpoolp256r1_from_root(
     if sub_index is not None:
         path.append(sub_index)
     entropy = bip85.derive_entropy(root, 828365, path)
-    # Hardcode BrainpoolP256r1 group order to avoid relying on attributes
-    # that may be missing in some cryptography builds.
-    order = 0xA9FB57DBA1EEA9BC3E660A909D838D718C397AA3B561A6F7901E0E82974856A7
+    if not hasattr(ec.BrainpoolP256R1, "group_order"):
+        # Some cryptography builds omit the group order attribute required by
+        # libraries such as PGPy. Add it here so the base class can be used.
+        ec.BrainpoolP256R1.group_order = (
+            0xA9FB57DBA1EEA9BC3E660A909D838D718C397AA3B561A6F7901E0E82974856A7
+        )
+
+    order = ec.BrainpoolP256R1.group_order
     d = int.from_bytes(entropy[:32], "big") % order
     if d == 0:
         d = 1
 
-    if not hasattr(ec.BrainpoolP256R1, "group_order"):
-        class _BrainpoolP256R1(ec.BrainpoolP256R1):
-            group_order = order
-
-        curve = _BrainpoolP256R1()
-    else:
-        curve = ec.BrainpoolP256R1()
+    curve = ec.BrainpoolP256R1()
 
     pn = ec.derive_private_key(d, curve).public_key().public_numbers()
     if alg == "ECDH":
