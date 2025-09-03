@@ -59,7 +59,7 @@ from seedsigner.gui.screens import seed_screens
 logger = logging.getLogger(__name__)
 
 from pysatochip.JCconstants import SEEDKEEPER_DIC_TYPE, SEEDKEEPER_DIC_ORIGIN, SEEDKEEPER_DIC_EXPORT_RIGHTS, BIP39_WORDLIST_DIC
-from pysatochip.CardConnector import CardConnector
+from pysatochip.CardConnector import CardConnector, UnexpectedSW12Error
 from binascii import unhexlify, hexlify
 
 class ToolsMenuView(View):
@@ -4842,7 +4842,7 @@ class ToolsGPGExportPubkeyView(View):
 
             try:
                 self.loading_screen = LoadingScreenThread(
-                    text="Saving Secret\n\n\n\n\n\n"
+                    text="Saving Secret\n\n\n\n\n\n",
                 )
                 self.loading_screen.start()
                 Satochip_Connector.seedkeeper_import_secret(secret_dic)
@@ -4856,6 +4856,21 @@ class ToolsGPGExportPubkeyView(View):
                     button_data=[ButtonOption("Continue")],
                 )
                 return Destination(MainMenuView)
+            except UnexpectedSW12Error as e:
+                self.loading_screen.stop()
+                if e.sw1 == 0x6A and e.sw2 == 0x84:
+                    error_text = "Not enough space on Seedkeeper for key"
+                else:
+                    error_text = format_sw_error(e.sw1, e.sw2)
+                self.run_screen(
+                    WarningScreen,
+                    title="Error",
+                    status_headline=None,
+                    text=error_text,
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
             except Exception:
                 self.loading_screen.stop()
                 self.run_screen(
@@ -4878,6 +4893,7 @@ class ToolsGPGExportPrivkeyView(View):
             ButtonListScreen,
             LargeIconStatusScreen,
             WarningScreen,
+            LoadingScreenThread,
         )
         from seedsigner.gui.screens import tools_screens
 
@@ -4940,80 +4956,180 @@ class ToolsGPGExportPrivkeyView(View):
             return Destination(BackStackView)
 
         key = keys[selected]
+        label = key["uid"] if key["uid"] else key["fpr"][-8:]
 
-        ret_dict = tools_screens.ToolsTextQRTextEntryScreen(
-            textToEncode="", title="Passphrase"
-        ).display()
-        if "is_back_button" in ret_dict:
-            return Destination(BackStackView)
-        try:
-            import re
-
-            passphrase = bytes(
-                re.sub(r"\\(?!u)", r"\\\\", ret_dict["textToEncode"]),
-                encoding="raw_unicode_escape",
-            ).decode("unicode_escape")
-        except UnicodeDecodeError:
-            passphrase = ret_dict["textToEncode"]
-
-        filename = key["fpr"] + "_private.gpg"
-        filepath = os.path.join(file_list_path, filename)
-        exported = run(
-            ["gpg", "--armor", "--export-secret-keys", key["fpr"]],
-            capture_output=True,
-            text=True,
+        dest_buttons = [ButtonOption("microSD"), ButtonOption("Seedkeeper")]
+        dest_selected = self.run_screen(
+            ButtonListScreen,
+            title="Export to",
+            is_button_text_centered=False,
+            button_data=dest_buttons,
         )
-        if exported.returncode != 0:
-            self.run_screen(
-                WarningScreen,
-                title="Error",
-                status_headline=None,
-                text="Failed to export key",
-                show_back_button=False,
-                button_data=[ButtonOption("I Understand")],
+
+        if dest_selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        if dest_selected == 0:
+            ret_dict = tools_screens.ToolsTextQRTextEntryScreen(
+                textToEncode="", title="Passphrase"
+            ).display()
+            if "is_back_button" in ret_dict:
+                return Destination(BackStackView)
+            try:
+                import re
+
+                passphrase = bytes(
+                    re.sub(r"\\(?!u)", r"\\\\", ret_dict["textToEncode"]),
+                    encoding="raw_unicode_escape",
+                ).decode("unicode_escape")
+            except UnicodeDecodeError:
+                passphrase = ret_dict["textToEncode"]
+
+            filename = key["fpr"] + "_private.gpg"
+            filepath = os.path.join(file_list_path, filename)
+            exported = run(
+                ["gpg", "--armor", "--export-secret-keys", key["fpr"]],
+                capture_output=True,
+                text=True,
             )
-            return Destination(BackStackView)
+            if exported.returncode != 0:
+                self.run_screen(
+                    WarningScreen,
+                    title="Error",
+                    status_headline=None,
+                    text="Failed to export key",
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
 
-        protected = run(
-            [
-                "gpg",
-                "--armor",
-                "--batch",
-                "--yes",
-                "--pinentry-mode",
-                "loopback",
-                "--passphrase",
-                passphrase,
-                "--symmetric",
-                "--cipher-algo",
-                "AES256",
-                "--output",
-                filepath,
-            ],
-            input=exported.stdout,
-            capture_output=True,
-            text=True,
-        )
-        if protected.returncode != 0:
-            self.run_screen(
-                WarningScreen,
-                title="Error",
-                status_headline=None,
-                text="Failed to protect key",
-                show_back_button=False,
-                button_data=[ButtonOption("I Understand")],
+            protected = run(
+                [
+                    "gpg",
+                    "--armor",
+                    "--batch",
+                    "--yes",
+                    "--pinentry-mode",
+                    "loopback",
+                    "--passphrase",
+                    passphrase,
+                    "--symmetric",
+                    "--cipher-algo",
+                    "AES256",
+                    "--output",
+                    filepath,
+                ],
+                input=exported.stdout,
+                capture_output=True,
+                text=True,
             )
-            return Destination(BackStackView)
+            if protected.returncode != 0:
+                self.run_screen(
+                    WarningScreen,
+                    title="Error",
+                    status_headline=None,
+                    text="Failed to protect key",
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
 
-        self.run_screen(
-            LargeIconStatusScreen,
-            title="Success",
-            status_headline=None,
-            text=f"Saved as {filename}",
-            show_back_button=False,
-            button_data=[ButtonOption("Continue")],
-        )
-        return Destination(MainMenuView)
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Success",
+                status_headline=None,
+                text=f"Saved as {filename}",
+                show_back_button=False,
+                button_data=[ButtonOption("Continue")],
+            )
+            return Destination(MainMenuView)
+        else:
+            exported = run(
+                ["gpg", "--armor", "--export-secret-keys", key["fpr"]],
+                capture_output=True,
+                text=True,
+            )
+            if exported.returncode != 0:
+                self.run_screen(
+                    WarningScreen,
+                    title="Error",
+                    status_headline=None,
+                    text="Failed to export key",
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
+
+            Satochip_Connector = seedkeeper_utils.init_satochip(
+                self, init_card_filter=["seedkeeper"]
+            )
+            if not Satochip_Connector:
+                return Destination(BackStackView)
+
+            privkey_bytes = exported.stdout.encode("utf-8")
+            status = Satochip_Connector.card_get_status()[3]
+            if status['protocol_minor_version'] == 1:
+                if len(privkey_bytes) > 255:
+                    self.run_screen(
+                        WarningScreen,
+                        title="Error",
+                        status_headline=None,
+                        text="Privkey too large for Seedkeeper v1",
+                        show_back_button=False,
+                        button_data=[ButtonOption("I Understand")],
+                    )
+                    return Destination(BackStackView)
+                secret_list = [len(privkey_bytes)] + list(privkey_bytes)
+            else:
+                secret_list = list(len(privkey_bytes).to_bytes(2, "big")) + list(privkey_bytes)
+
+            header = Satochip_Connector.make_header(
+                "Data", "Plaintext export allowed", label
+            )
+            secret_dic = {"header": header, "secret_list": secret_list}
+
+            try:
+                self.loading_screen = LoadingScreenThread(
+                    text="Saving Secret\n\n\n\n\n\n",
+                )
+                self.loading_screen.start()
+                Satochip_Connector.seedkeeper_import_secret(secret_dic)
+                self.loading_screen.stop()
+                self.run_screen(
+                    LargeIconStatusScreen,
+                    title="Success",
+                    status_headline=None,
+                    text="Privkey saved to Seedkeeper",
+                    show_back_button=False,
+                    button_data=[ButtonOption("Continue")],
+                )
+                return Destination(MainMenuView)
+            except UnexpectedSW12Error as e:
+                self.loading_screen.stop()
+                if e.sw1 == 0x6A and e.sw2 == 0x84:
+                    error_text = "Not enough space on Seedkeeper for key"
+                else:
+                    error_text = format_sw_error(e.sw1, e.sw2)
+                self.run_screen(
+                    WarningScreen,
+                    title="Error",
+                    status_headline=None,
+                    text=error_text,
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
+            except Exception:
+                self.loading_screen.stop()
+                self.run_screen(
+                    WarningScreen,
+                    title="Error",
+                    status_headline=None,
+                    text="Failed to export key",
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
 
 class ToolsTextQRTextEntryView(View):
     def __init__(self, textToEncode: str = ""):
