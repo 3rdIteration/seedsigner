@@ -7,6 +7,7 @@ Entries marked "(SeedSigner official)" originate from the upstream project, whil
 ## Unreleased - SS0.8.6+Satochip+Earthdiver-B4 (smartcard fork)
 - Deterministic BIP85 GPG key derivation with configurable name, email, expiration (defaulting to 10 years from creation), and key type (NIST P-256, Brainpool P-256, RSA 2048, RSA 3072, or secp256k1); metadata such as expiration, deprecation, and end-of-use dates can be modified after import
 - MicroSD and GPG tools now display seed-loaded warnings only when opening file pickers
+- GPG public keys can now be exported directly to a connected Seedkeeper card as ASCII-armored text
 
 ## 2025-08-04 - SS0.8.6+Satochip+Earthdiver-B3 (smartcard fork)
 - Satochip card transaction signing and PSBT verification
