@@ -3986,7 +3986,7 @@ class ToolsMicroSDWipeRandomView(View):
 class ToolsGPGMenuView(View):
     VERIFY_FILE = ButtonOption("Verify File Sig")
     IMPORT_PUBKEY = ButtonOption("Import Pubkey")
-    LOAD_BIP85_KEY = ButtonOption("Load BIP85 Key")
+    LOAD_PRIVKEY = ButtonOption("Load Privkey")
     EXPORT_PUBKEY = ButtonOption("Export Pubkey")
     EXPORT_PRIVKEY = ButtonOption("Export Privkey")
 
@@ -4007,7 +4007,7 @@ class ToolsGPGMenuView(View):
         button_data = [
             self.VERIFY_FILE,
             self.IMPORT_PUBKEY,
-            self.LOAD_BIP85_KEY,
+            self.LOAD_PRIVKEY,
             self.EXPORT_PUBKEY,
             self.EXPORT_PRIVKEY,
         ]
@@ -4027,8 +4027,8 @@ class ToolsGPGMenuView(View):
         
         elif button_data[selected_menu_num] == self.IMPORT_PUBKEY:
             return Destination(ToolsGPGImportPubkeyView)
-        elif button_data[selected_menu_num] == self.LOAD_BIP85_KEY:
-            return Destination(ToolsGPGLoadBIP85KeyView)
+        elif button_data[selected_menu_num] == self.LOAD_PRIVKEY:
+            return Destination(ToolsGPGLoadPrivkeyMenuView)
         elif button_data[selected_menu_num] == self.EXPORT_PUBKEY:
             return Destination(ToolsGPGExportPubkeyView)
         elif button_data[selected_menu_num] == self.EXPORT_PRIVKEY:
@@ -4311,6 +4311,252 @@ class ToolsGPGImportPubkeyView(View):
                 show_back_button=False,
                 button_data=[ButtonOption("Continue")]
             )
+
+        return Destination(MainMenuView)
+
+
+class ToolsGPGLoadPrivkeyMenuView(View):
+    LOAD_BIP85_KEY = ButtonOption("Load BIP85 Key")
+    LOAD_FILE = ButtonOption("Load from File")
+    LOAD_SEEDKEEPER = ButtonOption("Load from Seedkeeper")
+
+    def run(self):
+        button_data = [self.LOAD_BIP85_KEY, self.LOAD_FILE, self.LOAD_SEEDKEEPER]
+
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title="Load GPG Privkey",
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        if button_data[selected_menu_num] == self.LOAD_BIP85_KEY:
+            return Destination(ToolsGPGLoadBIP85KeyView)
+        if button_data[selected_menu_num] == self.LOAD_FILE:
+            return Destination(ToolsGPGLoadPrivkeyFileView)
+        if button_data[selected_menu_num] == self.LOAD_SEEDKEEPER:
+            return Destination(ToolsGPGLoadPrivkeySeedkeeperView)
+
+
+class ToolsGPGLoadPrivkeyFileView(View):
+    def run(self):
+        from subprocess import run
+        from seedsigner.gui.screens import tools_screens
+
+        if len(self.controller.storage.seeds) > 0:
+            ret = self.run_screen(
+                WarningScreen,
+                title="WARNING",
+                status_headline=None,
+                text="These tools load data from the microSD card and may expose loaded secrets.",
+                show_back_button=True,
+                button_data=[ButtonOption("Continue")],
+            )
+            if ret == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+
+        file_list_path = MicroSD.get_microsd_dir() / "microsd-images"
+        os.makedirs(file_list_path, exist_ok=True)
+
+        file_list = [
+            f
+            for f in os.listdir(file_list_path)
+            if (
+                not f.startswith('.')
+                and f != '__MACOSX'
+                and os.path.isfile(os.path.join(file_list_path, f))
+            )
+        ]
+
+        buttons = [ButtonOption(file) for file in file_list]
+
+        if not buttons:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No files found in microsd-images.",
+                show_back_button=False,
+                button_data=[ButtonOption("OK")],
+            )
+            return Destination(BackStackView)
+
+        selected_file_num = self.run_screen(
+            ButtonListScreen,
+            title="Select File",
+            is_button_text_centered=False,
+            button_data=buttons,
+        )
+
+        if selected_file_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        filename = file_list[selected_file_num]
+        filepath = os.path.join(file_list_path, filename)
+
+        ret_dict = tools_screens.ToolsTextQRTextEntryScreen(
+            textToEncode="", title="Passphrase"
+        ).display()
+        if "is_back_button" in ret_dict:
+            return Destination(BackStackView)
+
+        try:
+            import re
+
+            passphrase = bytes(
+                re.sub(r"\\(?!u)", r"\\\\", ret_dict["textToEncode"]),
+                encoding="raw_unicode_escape",
+            ).decode("unicode_escape")
+        except UnicodeDecodeError:
+            passphrase = ret_dict["textToEncode"]
+
+        decrypted = run(
+            [
+                "gpg",
+                "--batch",
+                "--yes",
+                "--pinentry-mode",
+                "loopback",
+                "--passphrase",
+                passphrase,
+                "--decrypt",
+                filepath,
+            ],
+            capture_output=True,
+            text=True,
+        )
+        if decrypted.returncode != 0:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="Failed to decrypt key",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        imported = run(
+            ["gpg", "--import"],
+            input=decrypted.stdout,
+            capture_output=True,
+            text=True,
+        )
+        if imported.returncode != 0:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="Failed to import key",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Success",
+            status_headline=None,
+            text="Privkey imported",
+            show_back_button=False,
+            button_data=[ButtonOption("Continue")],
+        )
+
+        return Destination(MainMenuView)
+
+
+class ToolsGPGLoadPrivkeySeedkeeperView(View):
+    def run(self):
+        from subprocess import run
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+
+        Satochip_Connector = seedkeeper_utils.init_satochip(
+            self, init_card_filter=["seedkeeper"]
+        )
+        if not Satochip_Connector:
+            return Destination(BackStackView)
+
+        self.loading_screen = LoadingScreenThread(text="Listing Keys\n\n\n\n\n\n")
+        self.loading_screen.start()
+        headers = Satochip_Connector.seedkeeper_list_secret_headers()
+        self.loading_screen.stop()
+
+        status = Satochip_Connector.card_get_status()[3]
+
+        secret_ids = []
+        buttons = []
+        for header in headers:
+            stype = SEEDKEEPER_DIC_TYPE.get(header['type'], hex(header['type']))
+            label = header.get('label', '')
+            if stype == "Data" and label.startswith("GPGPriv:"):
+                display_label = label[len("GPGPriv:") :]
+                secret_ids.append(header['id'])
+                buttons.append(ButtonOption(display_label))
+
+        if not buttons:
+            self.run_screen(
+                WarningScreen,
+                title="No Keys",
+                status_headline=None,
+                text="No GPG private keys on Seedkeeper",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Select Key",
+            is_button_text_centered=False,
+            button_data=buttons,
+        )
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        sid = secret_ids[selected]
+
+        self.loading_screen = LoadingScreenThread(text="Loading Key\n\n\n\n\n\n")
+        self.loading_screen.start()
+        secret_dict = Satochip_Connector.seedkeeper_export_secret(sid, None)
+        self.loading_screen.stop()
+
+        raw = secret_dict['secret_list']
+        if status['protocol_minor_version'] == 1:
+            length = raw[0]
+            key_bytes = bytes(raw[1:1 + length])
+        else:
+            length = (raw[0] << 8) + raw[1]
+            key_bytes = bytes(raw[2:2 + length])
+        privkey = key_bytes.decode("utf-8")
+
+        imported = run(
+            ["gpg", "--import"],
+            input=privkey,
+            capture_output=True,
+            text=True,
+        )
+        if imported.returncode != 0:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="Failed to import key",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Success",
+            status_headline=None,
+            text="Privkey imported",
+            show_back_button=False,
+            button_data=[ButtonOption("Continue")],
+        )
 
         return Destination(MainMenuView)
 
@@ -4754,7 +5000,7 @@ class ToolsGPGExportPubkeyView(View):
             return Destination(BackStackView)
 
         key = keys[selected]
-        label = key["uid"] if key["uid"] else key["fpr"][-8:]
+        base_label = key["uid"] if key["uid"] else key["fpr"][-8:]
 
         dest_buttons = [ButtonOption("microSD"), ButtonOption("Seedkeeper")]
         dest_selected = self.run_screen(
@@ -4819,6 +5065,7 @@ class ToolsGPGExportPubkeyView(View):
                 return Destination(BackStackView)
 
             pubkey_bytes = exported.stdout.encode("utf-8")
+            label = f"GPGPub:{base_label}"
             status = Satochip_Connector.card_get_status()[3]
             if status['protocol_minor_version'] == 1:
                 if len(pubkey_bytes) > 255:
@@ -4956,7 +5203,7 @@ class ToolsGPGExportPrivkeyView(View):
             return Destination(BackStackView)
 
         key = keys[selected]
-        label = key["uid"] if key["uid"] else key["fpr"][-8:]
+        base_label = key["uid"] if key["uid"] else key["fpr"][-8:]
 
         dest_buttons = [ButtonOption("microSD"), ButtonOption("Seedkeeper")]
         dest_selected = self.run_screen(
@@ -5067,6 +5314,7 @@ class ToolsGPGExportPrivkeyView(View):
                 return Destination(BackStackView)
 
             privkey_bytes = exported.stdout.encode("utf-8")
+            label = f"GPGPriv:{base_label}"
             status = Satochip_Connector.card_get_status()[3]
             if status['protocol_minor_version'] == 1:
                 if len(privkey_bytes) > 255:
