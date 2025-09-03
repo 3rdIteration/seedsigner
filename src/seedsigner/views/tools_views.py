@@ -26,7 +26,7 @@ from seedsigner.gui.screens.tools_screens import (ToolsCalcFinalWordDoneScreen, 
     ToolsCalcFinalWordScreen, ToolsCoinFlipEntryScreen, ToolsDiceEntropyEntryScreen, ToolsImageEntropyFinalImageScreen,
     ToolsImageEntropyLivePreviewScreen, ToolsAddressExplorerAddressTypeScreen, ToolsTextQRTextEntryScreen, ToolsTextQRReviewTextScreen,
     ToolsTextQRTranscribeModePromptScreen, ToolsTranscribeTextQRWholeQRScreen, ToolsTranscribeTextQRZoomedInScreen,
-    ToolsTranscribeTextQRConfirmQRPromptScreen)
+    ToolsTranscribeTextQRConfirmQRPromptScreen, ToolsCommonFilterScreen)
 from seedsigner.helpers import embit_utils, mnemonic_generation
 from seedsigner.helpers.iso7816 import format_sw_error
 from seedsigner.models.decode_qr import DecodeQR
@@ -1014,6 +1014,7 @@ class ToolsSmartcardMenuView(View):
             return Destination(ToolsSatochipDIYView)
 
 class ToolsCommonView(View):
+    FILTER = ButtonOption("Device Filter")
     INFO = ButtonOption("Card Info")
     GENUINE = ButtonOption("Genuine Check")
     CHANGE_PIN = ButtonOption("Change PIN")
@@ -1023,7 +1024,15 @@ class ToolsCommonView(View):
 
     def run(self):
 
-        button_data = [self.INFO, self.GENUINE, self.CHANGE_PIN, self.CHANGE_LABEL, self.CHANGE_NFC, self.FACTORY_RESET]
+        button_data = [
+            self.FILTER,
+            self.INFO,
+            self.GENUINE,
+            self.CHANGE_PIN,
+            self.CHANGE_LABEL,
+            self.CHANGE_NFC,
+            self.FACTORY_RESET,
+        ]
 
         selected_menu_num = self.run_screen(
                 ButtonListScreen,
@@ -1034,6 +1043,9 @@ class ToolsCommonView(View):
 
         if selected_menu_num == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
+
+        elif button_data[selected_menu_num] == self.FILTER:
+            return Destination(ToolsCommonFilterView)
 
         elif button_data[selected_menu_num] == self.INFO:
             return Destination(ToolsSmartcardInfoView)
@@ -1053,11 +1065,49 @@ class ToolsCommonView(View):
         elif button_data[selected_menu_num] == self.FACTORY_RESET:
             return Destination(ToolsSatochipFactoryResetView)
 
+
+class ToolsCommonFilterView(View):
+    def run(self):
+        devices = [
+            ("satochip", "Satochip"),
+            ("seedkeeper", "Seedkeeper"),
+            ("satodime", "Satodime"),
+        ]
+
+        selected = self.controller.tools_common_card_filter or [d[0] for d in devices]
+
+        while True:
+            button_data = [ButtonOption(name) for _, name in devices]
+            checked = [i for i, (code, _) in enumerate(devices) if code in selected]
+
+            ret = self.run_screen(
+                ToolsCommonFilterScreen,
+                button_data=button_data,
+                checked_buttons=checked,
+            )
+
+            if ret == RET_CODE__BACK_BUTTON:
+                if len(selected) == len(devices):
+                    self.controller.tools_common_card_filter = None
+                else:
+                    self.controller.tools_common_card_filter = list(selected)
+                return Destination(BackStackView)
+
+            code = devices[ret][0]
+            if code in selected:
+                selected.remove(code)
+            else:
+                selected.append(code)
+
 class ToolsSmartcardInfoView(View):
     def run(self):
 
+        allowed = ["satochip", "seedkeeper", "satodime"]
+        card_filter = self.controller.tools_common_card_filter or allowed
+        card_filter = [c for c in card_filter if c in allowed]
+
         Satochip_Connector = seedkeeper_utils.init_satochip(
-            self, init_card_filter=["satochip", "seedkeeper", "satodime"], require_pin=False
+            self, init_card_filter=card_filter, require_pin=False
         )
 
         if not Satochip_Connector:
@@ -1114,8 +1164,12 @@ class ToolsSmartcardInfoView(View):
 class ToolsSmartcardGenuineCheckView(View):
     def run(self):
 
+        allowed = ["satochip", "seedkeeper", "satodime"]
+        card_filter = self.controller.tools_common_card_filter or allowed
+        card_filter = [c for c in card_filter if c in allowed]
+
         Satochip_Connector = seedkeeper_utils.init_satochip(
-            self, init_card_filter=["satochip", "seedkeeper", "satodime"]
+            self, init_card_filter=card_filter
         )
 
         if not Satochip_Connector:
@@ -1133,7 +1187,7 @@ class ToolsSmartcardGenuineCheckView(View):
 
                     Satochip_Connector = seedkeeper_utils.init_satochip(
                         self,
-                        init_card_filter=["satochip", "seedkeeper", "satodime"],
+                        init_card_filter=card_filter,
                         require_pin=False,
                     )
                     Satochip_Connector.set_pin(0, temp_pin)
@@ -1177,8 +1231,12 @@ class ToolsSmartcardGenuineCheckView(View):
 
 class ToolsSatochipChangePinView(View):
     def run(self):
-        
-        Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satochip", "seedkeeper"])
+
+        allowed = ["satochip", "seedkeeper"]
+        card_filter = self.controller.tools_common_card_filter or ["satochip", "seedkeeper", "satodime"]
+        card_filter = [c for c in card_filter if c in allowed]
+
+        Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=card_filter)
 
         if not Satochip_Connector:
             return Destination(BackStackView)
@@ -1216,8 +1274,12 @@ class ToolsSatochipChangePinView(View):
     
 class ToolsSatochipChangeNFCView(View):
     def run(self):
-        
-        Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satochip", "seedkeeper"])
+
+        allowed = ["satochip", "seedkeeper"]
+        card_filter = self.controller.tools_common_card_filter or ["satochip", "seedkeeper", "satodime"]
+        card_filter = [c for c in card_filter if c in allowed]
+
+        Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=card_filter)
 
         if not Satochip_Connector:
             return Destination(BackStackView)
@@ -1307,7 +1369,11 @@ class ToolsSatochipFactoryResetView(View):
         
         new version currently only implemented on SeedKeeper v0.2 and higher
         """
-        Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satochip", "seedkeeper"], require_pin = False)
+        allowed = ["satochip", "seedkeeper"]
+        card_filter = self.controller.tools_common_card_filter or ["satochip", "seedkeeper", "satodime"]
+        card_filter = [c for c in card_filter if c in allowed]
+
+        Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=card_filter, require_pin = False)
 
         if not Satochip_Connector:
             return Destination(BackStackView)
@@ -1681,8 +1747,12 @@ class ToolsSatochipFactoryResetView(View):
 
 class ToolsSatochipChangeLabelView(View):
     def run(self):
-        
-        Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satochip", "seedkeeper"])
+
+        allowed = ["satochip", "seedkeeper"]
+        card_filter = self.controller.tools_common_card_filter or ["satochip", "seedkeeper", "satodime"]
+        card_filter = [c for c in card_filter if c in allowed]
+
+        Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=card_filter)
 
         if not Satochip_Connector:
             return Destination(BackStackView)
