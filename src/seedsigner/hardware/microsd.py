@@ -40,6 +40,19 @@ class MicroSD(Singleton, BaseThread):
             microsd_path.mkdir(exist_ok=True)
             return microsd_path
 
+    @staticmethod
+    def is_desktop_mode() -> bool:
+        """Return True when running in a desktop development environment.
+
+        SeedSigner OS reports a distinct hostname and development boards typically
+        have a ``/home/pi`` directory. Anything else is treated as "desktop".
+        """
+        from seedsigner.models.settings import Settings  # avoid circular import
+
+        return not (
+            Settings.HOSTNAME == Settings.SEEDSIGNER_OS or os.path.exists("/home/pi")
+        )
+
 
     @classmethod
     def get_instance(cls):

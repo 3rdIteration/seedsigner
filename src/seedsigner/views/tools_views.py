@@ -3461,9 +3461,21 @@ class ToolsMicroSDMenuView(View):
         if selected_menu_num == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
 
+        # All MicroSD operations require hardware access; block in desktop mode
+        if MicroSD.is_desktop_mode():
+            self.run_screen(
+                WarningScreen,
+                title="Unavailable",
+                status_headline=None,
+                text="MicroSD tools are not supported on desktop.",
+                show_back_button=False,
+                button_data=[ButtonOption("OK")],
+            )
+            return Destination(ToolsMicroSDMenuView, skip_current_view=True)
+
         elif button_data[selected_menu_num] == self.FLASH_IMAGE:
             return Destination(ToolsMicroSDFlashView)
-        
+
         elif button_data[selected_menu_num] == self.VERIFY_IMAGE:
             return Destination(ToolsMicroSDVerifyWarningView)
 
@@ -3975,6 +3987,17 @@ class ToolsGPGVerifyFileView(View):
         # Build button options
         verify_file_buttons = [ButtonOption(f) for f in visible_file_list]
 
+        if not verify_file_buttons:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No files found in microsd-images.",
+                show_back_button=False,
+                button_data=[ButtonOption("OK")],
+            )
+            return Destination(BackStackView)
+
         # Show selection screen
         selected_file_num = self.run_screen(
             ButtonListScreen,
@@ -4145,11 +4168,28 @@ class ToolsGPGImportPubkeyView(View):
         file_list_path = MicroSD.get_microsd_dir() / "microsd-images"
         os.makedirs(file_list_path, exist_ok=True)
 
-        verify_file_list = os.listdir(file_list_path)
+        verify_file_list = [
+            f
+            for f in os.listdir(file_list_path)
+            if (
+                not f.startswith('.')
+                and f != '__MACOSX'
+                and os.path.isfile(os.path.join(file_list_path, f))
+            )
+        ]
 
-        verify_file_buttons = []
-        for file in verify_file_list:
-            verify_file_buttons.append(ButtonOption(file))
+        verify_file_buttons = [ButtonOption(file) for file in verify_file_list]
+
+        if not verify_file_buttons:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No files found in microsd-images.",
+                show_back_button=False,
+                button_data=[ButtonOption("OK")],
+            )
+            return Destination(BackStackView)
 
         selected_file_num = self.run_screen(
             ButtonListScreen,
@@ -4162,7 +4202,7 @@ class ToolsGPGImportPubkeyView(View):
             return Destination(BackStackView)
 
         verify_file_name = verify_file_list[selected_file_num]
-        logger.info("Selected:", verify_file_name)
+        logger.info("Selected: %s", verify_file_name)
 
         cmd = f"gpg --import {file_list_path}/{verify_file_name}"
 
