@@ -3948,6 +3948,7 @@ class ToolsMicroSDWipeRandomView(View):
 class ToolsGPGMenuView(View):
     VERIFY_FILE = ButtonOption("Verify File Sig")
     IMPORT_PUBKEY = ButtonOption("Import Pubkey")
+    SMART_GPG = ButtonOption("SmartGPG")
     LOAD_BIP85_KEY = ButtonOption("Load BIP85 Key")
     EXPORT_PUBKEY = ButtonOption("Export Pubkey")
 
@@ -3965,9 +3966,20 @@ class ToolsGPGMenuView(View):
                 run(["gpg", "--import", *key_files])
             self.loading_screen.stop()
             self.controller.gpg_keys_imported = True
+
+        if len(self.controller.storage.seeds) > 0:
+            self.run_screen(
+                WarningScreen,
+                title="WARNING",
+                status_headline=None,
+                text="These tools load data from the microSD card and may expose loaded secrets.",
+                show_back_button=False,
+                button_data=[ButtonOption("Continue")],
+            )
         button_data = [
             self.VERIFY_FILE,
             self.IMPORT_PUBKEY,
+            self.SMART_GPG,
             self.LOAD_BIP85_KEY,
             self.EXPORT_PUBKEY,
         ]
@@ -3987,10 +3999,166 @@ class ToolsGPGMenuView(View):
         
         elif button_data[selected_menu_num] == self.IMPORT_PUBKEY:
             return Destination(ToolsGPGImportPubkeyView)
+        elif button_data[selected_menu_num] == self.SMART_GPG:
+            return Destination(ToolsGPGSmartMenuView)
         elif button_data[selected_menu_num] == self.LOAD_BIP85_KEY:
             return Destination(ToolsGPGLoadBIP85KeyView)
         elif button_data[selected_menu_num] == self.EXPORT_PUBKEY:
             return Destination(ToolsGPGExportPubkeyView)
+
+
+class ToolsGPGSmartMenuView(View):
+    CARD_INFO = ButtonOption("View Card Info")
+    GENERATE_ON_CARD = ButtonOption("Generate On-Card Key")
+    IMPORT_KEY = ButtonOption("Import Key to Card")
+    CHANGE_ADMIN_PIN = ButtonOption("Change Admin PIN")
+    CHANGE_USER_PIN = ButtonOption("Change User PIN")
+    LOAD_KEY = ButtonOption("Load Key to GPG")
+
+    def run(self):
+        button_data = [
+            self.CARD_INFO,
+            self.GENERATE_ON_CARD,
+            self.IMPORT_KEY,
+            self.CHANGE_ADMIN_PIN,
+            self.CHANGE_USER_PIN,
+            self.LOAD_KEY,
+        ]
+
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title="SmartGPG",
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        selected = button_data[selected_menu_num]
+        if selected == self.CARD_INFO:
+            return Destination(ToolsGPGCardInfoView)
+        elif selected == self.GENERATE_ON_CARD:
+            return Destination(ToolsGPGGenerateKeyOnCardView)
+        elif selected == self.IMPORT_KEY:
+            return Destination(ToolsGPGImportKeyToCardView)
+        elif selected == self.CHANGE_ADMIN_PIN:
+            return Destination(ToolsGPGChangeAdminPinView)
+        elif selected == self.CHANGE_USER_PIN:
+            return Destination(ToolsGPGChangeUserPinView)
+        elif selected == self.LOAD_KEY:
+            return Destination(ToolsGPGLoadKeyFromCardView)
+
+
+class ToolsGPGCardInfoView(View):
+    def run(self):
+        from subprocess import run
+
+        data = run(["gpg", "--card-status"], capture_output=True, text=True)
+        text = data.stdout or data.stderr or "No card info"
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Card Info",
+            status_headline=None,
+            text=text[:400],
+            show_back_button=False,
+            button_data=[ButtonOption("Continue")],
+        )
+        return Destination(BackStackView)
+
+
+class ToolsGPGGenerateKeyOnCardView(View):
+    def run(self):
+        from subprocess import run
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+
+        self.loading_screen = LoadingScreenThread(text="Generating key\n\n\n(May take a while)")
+        self.loading_screen.start()
+        run(
+            ["gpg", "--batch", "--pinentry-mode", "loopback", "--status-fd", "1", "--command-fd", "0", "--edit-card"],
+            input="admin\ngenerate\ny\n",
+            text=True,
+        )
+        self.loading_screen.stop()
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Success",
+            status_headline=None,
+            text="Key generated on card",
+            show_back_button=False,
+            button_data=[ButtonOption("Continue")],
+        )
+        return Destination(MainMenuView)
+
+
+class ToolsGPGChangeAdminPinView(View):
+    def run(self):
+        from subprocess import run
+
+        old_pin = seedkeeper_utils.prompt_for_pin(self, "Current Admin PIN")
+        if old_pin is None:
+            return Destination(BackStackView)
+        new_pin = seedkeeper_utils.prompt_for_pin(self, "New Admin PIN")
+        if new_pin is None:
+            return Destination(BackStackView)
+        cmds = f"admin\npasswd\n3\n{old_pin}\n{new_pin}\n{new_pin}\n"
+        run(
+            ["gpg", "--batch", "--pinentry-mode", "loopback", "--status-fd", "1", "--command-fd", "0", "--edit-card"],
+            input=cmds,
+            text=True,
+        )
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Success",
+            status_headline=None,
+            text="Admin PIN changed",
+            show_back_button=False,
+            button_data=[ButtonOption("Continue")],
+        )
+        return Destination(MainMenuView)
+
+
+class ToolsGPGChangeUserPinView(View):
+    def run(self):
+        from subprocess import run
+
+        old_pin = seedkeeper_utils.prompt_for_pin(self, "Current User PIN")
+        if old_pin is None:
+            return Destination(BackStackView)
+        new_pin = seedkeeper_utils.prompt_for_pin(self, "New User PIN")
+        if new_pin is None:
+            return Destination(BackStackView)
+        cmds = f"admin\npasswd\n1\n{old_pin}\n{new_pin}\n{new_pin}\n"
+        run(
+            ["gpg", "--batch", "--pinentry-mode", "loopback", "--status-fd", "1", "--command-fd", "0", "--edit-card"],
+            input=cmds,
+            text=True,
+        )
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Success",
+            status_headline=None,
+            text="User PIN changed",
+            show_back_button=False,
+            button_data=[ButtonOption("Continue")],
+        )
+        return Destination(MainMenuView)
+
+
+class ToolsGPGLoadKeyFromCardView(View):
+    def run(self):
+        from subprocess import run
+
+        run(["gpg", "--card-status"])
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Success",
+            status_headline=None,
+            text="Key loaded from card",
+            show_back_button=False,
+            button_data=[ButtonOption("Continue")],
+        )
+        return Destination(MainMenuView)
 
 class ToolsGPGVerifyFileView(View):
     CHECK_SHA256 = ButtonOption("Check SHA256Sum")
@@ -4715,6 +4883,88 @@ class ToolsGPGExportPubkeyView(View):
             show_back_button=False,
             button_data=[ButtonOption("Continue")],
         )
+        return Destination(MainMenuView)
+
+
+class ToolsGPGImportKeyToCardView(View):
+    def run(self):
+        from subprocess import run
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+
+        if platform.uname()[1] == "seedsigner-os":
+            file_list_path = '/mnt/microsd/microsd-images/'
+        else:
+            file_list_path = '/boot/microsd-images/'
+
+        verify_file_list = os.listdir(file_list_path)
+        verify_file_buttons = [ButtonOption(f) for f in verify_file_list]
+
+        selected_file_num = self.run_screen(
+            ButtonListScreen,
+            title="Select Key File",
+            is_button_text_centered=False,
+            button_data=verify_file_buttons,
+        )
+
+        if selected_file_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        key_file_name = verify_file_list[selected_file_num]
+        key_file_path = file_list_path + key_file_name
+
+        # Get fingerprint from key file
+        data = run(
+            f"gpg --with-colons --import-options show-only --import {key_file_path}",
+            capture_output=True,
+            shell=True,
+            text=True,
+        )
+        fingerprint = None
+        for line in data.stdout.splitlines():
+            if line.startswith("fpr:"):
+                fingerprint = line.split(":")[9]
+                break
+
+        if not fingerprint:
+            self.run_screen(
+                ErrorScreen,
+                title="Error",
+                status_headline=None,
+                text="No fingerprint found",
+                show_back_button=False,
+                button_data=[ButtonOption("Continue")],
+            )
+            return Destination(MainMenuView)
+
+        self.loading_screen = LoadingScreenThread(text="Importing key to card\n\n\n(May take a while)")
+        self.loading_screen.start()
+
+        run(["gpg", "--batch", "--yes", "--import", key_file_path])
+
+        edit_commands = (
+            "key 1\nkeytocard\n1\ny\nkey 1\n",
+            "key 2\nkeytocard\n2\ny\nkey 2\n",
+            "key 3\nkeytocard\n3\ny\nkey 3\n",
+            "save\n",
+        )
+
+        run(
+            ["gpg", "--batch", "--command-fd", "0", "--status-fd", "1", "--edit-key", fingerprint],
+            input=edit_commands,
+            text=True,
+        )
+
+        self.loading_screen.stop()
+
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Success",
+            status_headline=None,
+            text="Key imported to card",
+            show_back_button=False,
+            button_data=[ButtonOption("Continue")],
+        )
+
         return Destination(MainMenuView)
 
 class ToolsTextQRTextEntryView(View):
