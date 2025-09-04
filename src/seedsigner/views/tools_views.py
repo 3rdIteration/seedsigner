@@ -4567,7 +4567,7 @@ class ToolsGPGImportPubkeyFileView(View):
                 button_data=[ButtonOption("Continue")]
             )
 
-        return Destination(MainMenuView)
+        return Destination(ToolsGPGMenuView)
 
 
 class ToolsGPGImportPubkeySeedkeeperView(View):
@@ -4660,7 +4660,7 @@ class ToolsGPGImportPubkeySeedkeeperView(View):
             button_data=[ButtonOption("Continue")],
         )
 
-        return Destination(MainMenuView)
+        return Destination(ToolsGPGMenuView)
 
 
 class ToolsGPGLoadPrivkeyMenuView(View):
@@ -4813,7 +4813,7 @@ class ToolsGPGLoadPrivkeyFileView(View):
             button_data=[ButtonOption("Continue")],
         )
 
-        return Destination(MainMenuView)
+        return Destination(ToolsGPGMenuView)
 
 
 class ToolsGPGLoadPrivkeySeedkeeperView(View):
@@ -4906,7 +4906,7 @@ class ToolsGPGLoadPrivkeySeedkeeperView(View):
             button_data=[ButtonOption("Continue")],
         )
 
-        return Destination(MainMenuView)
+        return Destination(ToolsGPGMenuView)
 
 
 def bip85_rsa_from_root(root, bits: int, index: int, sub_index: int | None = None):
@@ -5274,7 +5274,7 @@ class ToolsGPGLoadBIP85KeyView(View):
                 button_data=[ButtonOption("I Understand")],
             )
 
-        return Destination(MainMenuView)
+        return Destination(ToolsGPGMenuView)
 
 
 class ToolsGPGGenerateKeyView(View):
@@ -5471,21 +5471,6 @@ class ToolsGPGExportPubkeyView(View):
             LoadingScreenThread,
         )
 
-        if len(self.controller.storage.seeds) > 0:
-            ret = self.run_screen(
-                WarningScreen,
-                title="WARNING",
-                status_headline=None,
-                text="These tools write data to the microSD card and may expose loaded secrets.",
-                show_back_button=True,
-                button_data=[ButtonOption("Continue")],
-            )
-            if ret == RET_CODE__BACK_BUTTON:
-                return Destination(BackStackView)
-
-        file_list_path = MicroSD.get_microsd_dir() / "microsd-images"
-        os.makedirs(file_list_path, exist_ok=True)
-
         result = run(
             ["gpg", "--list-secret-keys", "--with-colons"],
             capture_output=True,
@@ -5548,6 +5533,21 @@ class ToolsGPGExportPubkeyView(View):
             return Destination(BackStackView)
 
         if dest_selected == 0:
+            if len(self.controller.storage.seeds) > 0:
+                ret = self.run_screen(
+                    WarningScreen,
+                    title="WARNING",
+                    status_headline=None,
+                    text="These tools write data to the microSD card and may expose loaded secrets.",
+                    show_back_button=True,
+                    button_data=[ButtonOption("Continue")],
+                )
+                if ret == RET_CODE__BACK_BUTTON:
+                    return Destination(BackStackView)
+
+            file_list_path = MicroSD.get_microsd_dir() / "microsd-images"
+            os.makedirs(file_list_path, exist_ok=True)
+
             filename = key["fpr"] + ".asc"
             filepath = os.path.join(file_list_path, filename)
             exported = run(
@@ -5678,21 +5678,6 @@ class ToolsGPGExportPrivkeyView(View):
         )
         from seedsigner.gui.screens import tools_screens
 
-        if len(self.controller.storage.seeds) > 0:
-            ret = self.run_screen(
-                WarningScreen,
-                title="WARNING",
-                status_headline=None,
-                text="These tools write data to the microSD card and may expose loaded secrets.",
-                show_back_button=True,
-                button_data=[ButtonOption("Continue")],
-            )
-            if ret == RET_CODE__BACK_BUTTON:
-                return Destination(BackStackView)
-
-        file_list_path = MicroSD.get_microsd_dir() / "microsd-images"
-        os.makedirs(file_list_path, exist_ok=True)
-
         result = run(
             ["gpg", "--list-secret-keys", "--with-colons"],
             capture_output=True,
@@ -5755,6 +5740,21 @@ class ToolsGPGExportPrivkeyView(View):
             return Destination(BackStackView)
 
         if dest_selected == 0:
+            if len(self.controller.storage.seeds) > 0:
+                ret = self.run_screen(
+                    WarningScreen,
+                    title="WARNING",
+                    status_headline=None,
+                    text="These tools write data to the microSD card and may expose loaded secrets.",
+                    show_back_button=True,
+                    button_data=[ButtonOption("Continue")],
+                )
+                if ret == RET_CODE__BACK_BUTTON:
+                    return Destination(BackStackView)
+
+            file_list_path = MicroSD.get_microsd_dir() / "microsd-images"
+            os.makedirs(file_list_path, exist_ok=True)
+
             ret_dict = tools_screens.ToolsTextQRTextEntryScreen(
                 textToEncode="", title="Passphrase"
             ).display()
@@ -5947,8 +5947,9 @@ class ToolsGPGImportKeyToCardView(View):
 
         # Check if card has keys loaded; if not, force initial PIN changes
         card_status = run(["gpg", "--card-status"], capture_output=True, text=True)
+        status_out = (card_status.stdout or "") + (card_status.stderr or "")
         admin_pin = self.controller.GPG_Admin_PIN
-        if "[none]" in card_status.stdout:
+        if "[none]" in status_out:
             ret = self.run_screen(
                 WarningScreen,
                 title="Default PINs",
@@ -6217,7 +6218,7 @@ class ToolsGPGImportKeyToCardView(View):
             button_data=[ButtonOption("Continue")],
         )
 
-        return Destination(MainMenuView)
+        return Destination(ToolsGPGMenuView)
 
 class ToolsTextQRTextEntryView(View):
     def __init__(self, textToEncode: str = ""):
