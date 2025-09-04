@@ -5878,15 +5878,21 @@ class ToolsGPGImportKeyToCardView(View):
             capture_output=True,
             text=True,
         )
+        primary_caps = ""
         subkeys = []
         for line in result.stdout.splitlines():
             parts = line.split(":")
-            if parts[0] == "ssb":
+            if parts[0] == "sec":
+                primary_caps = parts[11].lower()
+            elif parts[0] == "ssb":
                 subkeys.append(parts[11].lower())
 
         slot_map = {"s": "1", "e": "2", "a": "3"}
-        cmds = ["toggle\n", "keytocard\n", "y\n", "1\n"]
-        used_slots = {"1"}
+        cmds = ["toggle\n"]
+        used_slots = set()
+        if "s" in primary_caps:
+            cmds.extend(["keytocard\n", "y\n", "1\n"])
+            used_slots.add("1")
         for idx, caps in enumerate(subkeys, start=1):
             slot = next(
                 (
@@ -5920,6 +5926,7 @@ class ToolsGPGImportKeyToCardView(View):
                 "0",
                 "--status-fd",
                 "1",
+                "--expert",
                 "--edit-key",
                 self.fingerprint,
             ],
