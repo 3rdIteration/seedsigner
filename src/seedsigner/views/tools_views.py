@@ -5912,7 +5912,7 @@ class ToolsGPGImportKeyToCardView(View):
             if admin_pin is None:
                 return Destination(BackStackView)
             try:
-                from smartpgp.highlevel import CardConnectionContext
+                from seedsigner.helpers.smartpgp.highlevel import CardConnectionContext
 
                 ctx = CardConnectionContext()
                 ctx.admin_pin = admin_pin
