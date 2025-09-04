@@ -5869,6 +5869,18 @@ class ToolsGPGImportKeyToCardView(View):
         from seedsigner.gui.screens.screen import LoadingScreenThread
         from seedsigner.helpers import seedkeeper_utils
 
+        ret = self.run_screen(
+            WarningScreen,
+            title="Insert Card",
+            status_headline=None,
+            text="Remove and re-insert the smartcard, then press Continue.",
+            show_back_button=True,
+            button_data=[ButtonOption("Continue")],
+        )
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        run(["gpgconf", "--reload", "scdaemon"])
+
         result = run(
             ["gpg", "--list-secret-keys", "--with-colons", self.fingerprint],
             capture_output=True,
@@ -5887,6 +5899,13 @@ class ToolsGPGImportKeyToCardView(View):
                     curve = parts[16].lower()
             elif parts[0] == "ssb":
                 subkeys.append(parts[11].lower())
+
+        admin_pin = self.controller.GPG_Admin_PIN
+        if admin_pin is None:
+            admin_pin = seedkeeper_utils.prompt_for_pin(self, "Admin PIN")
+            if admin_pin is None:
+                return Destination(BackStackView)
+            self.controller.GPG_Admin_PIN = admin_pin
 
         if algo not in ("1", "2", "3"):
             curve_map = {
@@ -5908,9 +5927,6 @@ class ToolsGPGImportKeyToCardView(View):
                     button_data=[ButtonOption("Continue")],
                 )
                 return Destination(BackStackView)
-            admin_pin = seedkeeper_utils.prompt_for_pin(self, "Admin PIN")
-            if admin_pin is None:
-                return Destination(BackStackView)
             try:
                 from seedsigner.helpers.smartpgp.highlevel import CardConnectionContext
 
@@ -5928,10 +5944,15 @@ class ToolsGPGImportKeyToCardView(View):
                     button_data=[ButtonOption("Continue")],
                 )
                 return Destination(BackStackView)
-
-        pin = seedkeeper_utils.prompt_for_pin(self, "Card PIN")
-        if pin is None:
-            return Destination(BackStackView)
+            self.run_screen(
+                WarningScreen,
+                title="Reinsert Card",
+                status_headline=None,
+                text="Remove and re-insert the smartcard to apply new key type.",
+                show_back_button=False,
+                button_data=[ButtonOption("Continue")],
+            )
+            run(["gpgconf", "--reload", "scdaemon"])
 
         sign_idx = next(
             (i for i, caps in enumerate(subkeys, start=1) if "s" in caps),
@@ -5977,7 +5998,7 @@ class ToolsGPGImportKeyToCardView(View):
                 "--pinentry-mode",
                 "loopback",
                 "--passphrase",
-                pin,
+                admin_pin,
                 "--command-fd",
                 "0",
                 "--status-fd",
