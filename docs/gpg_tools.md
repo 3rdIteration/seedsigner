@@ -14,3 +14,7 @@ Note: The key derivation with BIP85 is deterministic, meaning the key and finger
 
 Existing GPG keys can also be exported. After selecting a key, SeedSigner offers to save the ASCII-armored public key either to the microSD card or directly to a connected Seedkeeper smartcard. On Seedkeeper, the key is saved as ASCII-armored text so it can be copied and pasted easily.
 
+## SmartPGP Applet Installation
+
+SeedSigner can install the [SmartPGP](https://github.com/ANSSI-FR/SmartPGP) applet onto a JavaCard via the **Smartcard Tools → Satochip DIY → Install Applet** menu. When a SmartPGP CAP file is selected, SeedSigner now generates a random 4‑byte serial number and embeds it into the application identifier (AID) during installation, following the [flexsecure applet procedure](https://github.com/DangerousThings/flexsecure-applets/blob/master/docs/applets/1-pgp.md).
+
