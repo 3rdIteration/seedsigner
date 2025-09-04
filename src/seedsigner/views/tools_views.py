@@ -3420,6 +3420,13 @@ class ToolsDIYInstallAppletView(View):
                 "Installing Applet",
                 f"Applet Installed\nSerial: {serial_hex}",
             )
+        elif "seedkeeper" in applet_file.lower():
+            installed_applets = seedkeeper_utils.run_globalplatform(
+                self,
+                f"--install {cap_dir}/{applet_file} --params 1FFF",
+                "Installing Applet",
+                "Applet Installed",
+            )
         else:
             installed_applets = seedkeeper_utils.run_globalplatform(
                 self,
