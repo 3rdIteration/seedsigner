@@ -63,6 +63,13 @@ def disconnect_smartcard_connections(controller):
         except Exception:
             pass
 
+    # Ensure gpg's smartcard daemon releases the reader as well
+    try:
+        from subprocess import run
+        run(["gpgconf", "--kill", "scdaemon"], check=False)
+    except Exception:
+        pass
+
 
 def init_satochip(parentObject, init_card_filter=None, require_pin=True):
     from seedsigner.models.settings import (
