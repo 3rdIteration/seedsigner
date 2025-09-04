@@ -4007,16 +4007,6 @@ class ToolsGPGMenuView(View):
             self.loading_screen.stop()
             self.controller.gpg_keys_imported = True
 
-        if len(self.controller.storage.seeds) > 0:
-            self.run_screen(
-                WarningScreen,
-                title="WARNING",
-                status_headline=None,
-                text="These tools load data from the microSD card and may expose loaded secrets.",
-                show_back_button=False,
-                button_data=[ButtonOption("Continue")],
-            )
-
         button_data = [
             self.VERIFY_FILE,
             self.IMPORT_PUBKEY,
