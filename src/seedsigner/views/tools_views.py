@@ -3386,6 +3386,7 @@ class ToolsDIYInstallAppletView(View):
     def run(self):
         from subprocess import run
         import os
+        import secrets
         from seedsigner.gui.screens.screen import LoadingScreenThread
         from seedsigner.hardware.microsd import MicroSD
 
@@ -3409,12 +3410,23 @@ class ToolsDIYInstallAppletView(View):
         applet_file = cap_files[selected_file_num]
         logger.info("Selected:", applet_file)
 
-        installed_applets = seedkeeper_utils.run_globalplatform(
-            self,
-            f"--install {cap_dir}/{applet_file}",
-            "Installing Applet",
-            "Applet Installed",
-        )
+        if "smartpgp" in applet_file.lower():
+            serial_hex = secrets.token_bytes(4).hex().upper()
+            aid = f"D276000124010304C0FE{serial_hex}0000"
+            logger.info("SmartPGP AID: %s", aid)
+            installed_applets = seedkeeper_utils.run_globalplatform(
+                self,
+                f"--install {cap_dir}/{applet_file} --create {aid}",
+                "Installing Applet",
+                f"Applet Installed\nSerial: {serial_hex}",
+            )
+        else:
+            installed_applets = seedkeeper_utils.run_globalplatform(
+                self,
+                f"--install {cap_dir}/{applet_file}",
+                "Installing Applet",
+                "Applet Installed",
+            )
 
         # This process often kills IFD-NFC, so restart it if required
         scinterface = self.settings.get_value(SettingsConstants.SETTING__SMARTCARD_INTERFACES)
