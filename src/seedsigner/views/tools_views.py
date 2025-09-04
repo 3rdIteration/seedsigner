@@ -6008,6 +6008,16 @@ class ToolsGPGImportKeyToCardView(View):
                 )
                 return Destination(BackStackView)
 
+            self.run_screen(
+                WarningScreen,
+                title="Reinsert Card",
+                status_headline=None,
+                text="Remove and re-insert the smartcard, then press Continue.",
+                show_back_button=False,
+                button_data=[ButtonOption("Continue")],
+            )
+            run(["gpgconf", "--reload", "scdaemon"])
+
         if admin_pin is None:
             admin_pin = seedkeeper_utils.prompt_for_pin(self, "Admin PIN")
             if admin_pin is None:
