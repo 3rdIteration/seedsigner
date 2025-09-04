@@ -4137,7 +4137,16 @@ class ToolsGPGGenerateKeyOnCardView(View):
 class ToolsGPGChangeAdminPinView(View):
     def run(self):
         from subprocess import run
-
+        ret = self.run_screen(
+            WarningScreen,
+            title="Admin PIN Required",
+            status_headline=None,
+            text="Admin PIN is needed for changing keys and editing card settings.",
+            show_back_button=True,
+            button_data=[ButtonOption("Continue")],
+        )
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
         old_pin = seedkeeper_utils.prompt_for_pin(self, "Current Admin PIN")
         if old_pin is None:
             return Destination(BackStackView)
@@ -4177,7 +4186,7 @@ class ToolsGPGChangeAdminPinView(View):
             LargeIconStatusScreen,
             title="Success",
             status_headline=None,
-            text="Admin PIN changed",
+            text="PIN updated. Please remove and re-insert the card.",
             show_back_button=False,
             button_data=[ButtonOption("Continue")],
         )
@@ -4187,7 +4196,16 @@ class ToolsGPGChangeAdminPinView(View):
 class ToolsGPGChangeUserPinView(View):
     def run(self):
         from subprocess import run
-
+        ret = self.run_screen(
+            WarningScreen,
+            title="User PIN Required",
+            status_headline=None,
+            text="User PIN is needed for signing and using on-card keys.",
+            show_back_button=True,
+            button_data=[ButtonOption("Continue")],
+        )
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
         old_pin = seedkeeper_utils.prompt_for_pin(self, "Current User PIN")
         if old_pin is None:
             return Destination(BackStackView)
@@ -4227,7 +4245,7 @@ class ToolsGPGChangeUserPinView(View):
             LargeIconStatusScreen,
             title="Success",
             status_headline=None,
-            text="User PIN changed",
+            text="PIN updated. Please remove and re-insert the card.",
             show_back_button=False,
             button_data=[ButtonOption("Continue")],
         )
@@ -5941,7 +5959,16 @@ class ToolsGPGImportKeyToCardView(View):
             )
             if ret == RET_CODE__BACK_BUTTON:
                 return Destination(BackStackView)
-
+            ret = self.run_screen(
+                WarningScreen,
+                title="Admin PIN Required",
+                status_headline=None,
+                text="Admin PIN is needed for changing keys and editing card settings.",
+                show_back_button=True,
+                button_data=[ButtonOption("Continue")],
+            )
+            if ret == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
             new_admin = seedkeeper_utils.prompt_for_pin(self, "New Admin PIN")
             if new_admin is None:
                 return Destination(BackStackView)
@@ -5976,6 +6003,16 @@ class ToolsGPGImportKeyToCardView(View):
             self.controller.GPG_Admin_PIN = new_admin
             admin_pin = new_admin
 
+            ret = self.run_screen(
+                WarningScreen,
+                title="User PIN Required",
+                status_headline=None,
+                text="User PIN is needed for signing and using on-card keys.",
+                show_back_button=True,
+                button_data=[ButtonOption("Continue")],
+            )
+            if ret == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
             new_user = seedkeeper_utils.prompt_for_pin(self, "New User PIN")
             if new_user is None:
                 return Destination(BackStackView)
@@ -6012,13 +6049,23 @@ class ToolsGPGImportKeyToCardView(View):
                 WarningScreen,
                 title="Reinsert Card",
                 status_headline=None,
-                text="Remove and re-insert the smartcard, then press Continue.",
+                text="PINs updated. Please remove and re-insert the card.",
                 show_back_button=False,
                 button_data=[ButtonOption("Continue")],
             )
             run(["gpgconf", "--reload", "scdaemon"])
 
         if admin_pin is None:
+            ret = self.run_screen(
+                WarningScreen,
+                title="Admin PIN Required",
+                status_headline=None,
+                text="Admin PIN is needed for changing keys and editing card settings.",
+                show_back_button=True,
+                button_data=[ButtonOption("Continue")],
+            )
+            if ret == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
             admin_pin = seedkeeper_utils.prompt_for_pin(self, "Admin PIN")
             if admin_pin is None:
                 return Destination(BackStackView)
@@ -6084,7 +6131,7 @@ class ToolsGPGImportKeyToCardView(View):
                 WarningScreen,
                 title="Reinsert Card",
                 status_headline=None,
-                text="Remove and re-insert the smartcard to apply new key type.",
+                text="Card key type updated. Please remove and re-insert the card.",
                 show_back_button=False,
                 button_data=[ButtonOption("Continue")],
             )
