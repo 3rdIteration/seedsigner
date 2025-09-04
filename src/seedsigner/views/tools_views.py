@@ -5887,13 +5887,23 @@ class ToolsGPGImportKeyToCardView(View):
             elif parts[0] == "ssb":
                 subkeys.append(parts[11].lower())
 
+        sign_idx = next(
+            (i for i, caps in enumerate(subkeys, start=1) if "s" in caps),
+            None,
+        )
+
         slot_map = {"s": "1", "e": "2", "a": "3"}
         cmds = ["toggle\n"]
         used_slots = set()
-        if "s" in primary_caps:
+        if sign_idx is not None:
+            cmds.append(f"key {sign_idx}\nkeytocard\n1\nkey {sign_idx}\n")
+            used_slots.add("1")
+        elif "s" in primary_caps:
             cmds.extend(["keytocard\n", "y\n", "1\n"])
             used_slots.add("1")
         for idx, caps in enumerate(subkeys, start=1):
+            if idx == sign_idx:
+                continue
             slot = next(
                 (
                     slot_map[c]
