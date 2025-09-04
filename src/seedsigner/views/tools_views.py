@@ -5943,6 +5943,8 @@ class ToolsGPGImportKeyToCardView(View):
         with TemporaryDirectory() as tmp_home:
             env = os.environ.copy()
             env["GNUPGHOME"] = tmp_home
+            env.pop("GPG_AGENT_INFO", None)
+            env.pop("SSH_AUTH_SOCK", None)
             card_status = run(
                 ["gpg", "--card-status"], capture_output=True, text=True, env=env
             )
