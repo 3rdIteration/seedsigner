@@ -4144,24 +4144,23 @@ class ToolsGPGChangeAdminPinView(View):
         new_pin = seedkeeper_utils.prompt_for_pin(self, "New Admin PIN")
         if new_pin is None:
             return Destination(BackStackView)
-        cmds = f"admin\npasswd\n3\n{old_pin}\n{new_pin}\n{new_pin}\nQ\nquit\n"
+        cmds = f"3\n{old_pin}\n{new_pin}\n{new_pin}\n"
         result = run(
             [
                 "gpg",
-                "--batch",
                 "--pinentry-mode",
                 "loopback",
                 "--status-fd",
                 "1",
                 "--command-fd",
                 "0",
-                "--edit-card",
+                "--change-pin",
             ],
             input=cmds,
             capture_output=True,
             text=True,
         )
-        if result.returncode != 0 or "PIN changed." not in result.stdout:
+        if result.returncode != 0 or "PIN changed" not in result.stdout:
             self.run_screen(
                 LargeIconStatusScreen,
                 title="Failed",
@@ -4192,24 +4191,23 @@ class ToolsGPGChangeUserPinView(View):
         new_pin = seedkeeper_utils.prompt_for_pin(self, "New User PIN")
         if new_pin is None:
             return Destination(BackStackView)
-        cmds = f"admin\npasswd\n1\n{old_pin}\n{new_pin}\n{new_pin}\nQ\nquit\n"
+        cmds = f"{old_pin}\n{new_pin}\n{new_pin}\n"
         result = run(
             [
                 "gpg",
-                "--batch",
                 "--pinentry-mode",
                 "loopback",
                 "--status-fd",
                 "1",
                 "--command-fd",
                 "0",
-                "--edit-card",
+                "--change-pin",
             ],
             input=cmds,
             capture_output=True,
             text=True,
         )
-        if result.returncode != 0 or "PIN changed." not in result.stdout:
+        if result.returncode != 0 or "PIN changed" not in result.stdout:
             self.run_screen(
                 LargeIconStatusScreen,
                 title="Failed",
