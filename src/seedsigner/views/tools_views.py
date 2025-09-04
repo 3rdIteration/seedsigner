@@ -4144,7 +4144,7 @@ class ToolsGPGChangeAdminPinView(View):
         new_pin = seedkeeper_utils.prompt_for_pin(self, "New Admin PIN")
         if new_pin is None:
             return Destination(BackStackView)
-        cmds = f"3\n{old_pin}\n{new_pin}\n{new_pin}\n"
+        cmds = f"3\n{old_pin}\n{new_pin}\n{new_pin}\nQ\n"
         result = run(
             [
                 "gpg",
@@ -4162,11 +4162,7 @@ class ToolsGPGChangeAdminPinView(View):
         )
         output = (result.stdout or "") + (result.stderr or "")
         success = "PIN changed" in output or "SC_OP_SUCCESS" in result.stdout
-        failed = (
-            result.returncode != 0
-            or "SC_OP_FAILURE" in result.stdout
-            or not success
-        )
+        failed = "SC_OP_FAILURE" in result.stdout or not success
         if failed:
             self.run_screen(
                 LargeIconStatusScreen,
@@ -4198,7 +4194,7 @@ class ToolsGPGChangeUserPinView(View):
         new_pin = seedkeeper_utils.prompt_for_pin(self, "New User PIN")
         if new_pin is None:
             return Destination(BackStackView)
-        cmds = f"{old_pin}\n{new_pin}\n{new_pin}\n"
+        cmds = f"1\n{old_pin}\n{new_pin}\n{new_pin}\nQ\n"
         result = run(
             [
                 "gpg",
@@ -4216,11 +4212,7 @@ class ToolsGPGChangeUserPinView(View):
         )
         output = (result.stdout or "") + (result.stderr or "")
         success = "PIN changed" in output or "SC_OP_SUCCESS" in result.stdout
-        failed = (
-            result.returncode != 0
-            or "SC_OP_FAILURE" in result.stdout
-            or not success
-        )
+        failed = "SC_OP_FAILURE" in result.stdout or not success
         if failed:
             self.run_screen(
                 LargeIconStatusScreen,
