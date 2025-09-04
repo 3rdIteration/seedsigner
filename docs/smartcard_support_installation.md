@@ -163,7 +163,8 @@ _The applet management (install/uninstall) in the SeedSigner menu assume that th
 
 The commands that the menu items run are currently hardcoded to be:
 
-    java -jar /home/pi/Satochip-DIY/gp.jar --install /home/pi/Satochip-DIY/build/SeedKeeper-official-3.0.4.cap
+    java -jar /home/pi/Satochip-DIY/gp.jar --install /home/pi/Satochip-DIY/build/SeedKeeper-official-3.0.4.cap --params 2000
+        # reserves 8KB of storage for secrets when the CAP filename includes "SeedKeeper" (case-insensitive)
 
     java -jar /home/pi/Satochip-DIY/gp.jar --uninstall /home/pi/Satochip-DIY/build/SeedKeeper-official-3.0.4.cap
 

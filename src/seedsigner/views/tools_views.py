@@ -3409,9 +3409,11 @@ class ToolsDIYInstallAppletView(View):
         applet_file = cap_files[selected_file_num]
         logger.info("Selected:", applet_file)
 
+        params = " --params 2000" if "seedkeeper" in applet_file.lower() else ""
+
         installed_applets = seedkeeper_utils.run_globalplatform(
             self,
-            f"--install {cap_dir}/{applet_file}",
+            f"--install {cap_dir}/{applet_file}{params}",
             "Installing Applet",
             "Applet Installed",
         )
