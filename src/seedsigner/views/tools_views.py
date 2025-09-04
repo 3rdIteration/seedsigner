@@ -4127,6 +4127,22 @@ class ToolsGPGGenerateKeyOnCardView(View):
 class ToolsGPGChangeAdminPinView(View):
     def run(self):
         from subprocess import run
+        from seedsigner.helpers import seedkeeper_utils
+
+        seedkeeper_utils.disconnect_smartcard_connections(self.controller)
+
+        ret = self.run_screen(
+            WarningScreen,
+            title="Insert Card",
+            status_headline=None,
+            text="Remove and re-insert the smartcard, then press Continue.",
+            show_back_button=True,
+            button_data=[ButtonOption("Continue")],
+        )
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        run(["gpgconf", "--reload", "scdaemon"])
+
         ret = self.run_screen(
             WarningScreen,
             title="Admin PIN Required",
@@ -4186,6 +4202,22 @@ class ToolsGPGChangeAdminPinView(View):
 class ToolsGPGChangeUserPinView(View):
     def run(self):
         from subprocess import run
+        from seedsigner.helpers import seedkeeper_utils
+
+        seedkeeper_utils.disconnect_smartcard_connections(self.controller)
+
+        ret = self.run_screen(
+            WarningScreen,
+            title="Insert Card",
+            status_headline=None,
+            text="Remove and re-insert the smartcard, then press Continue.",
+            show_back_button=True,
+            button_data=[ButtonOption("Continue")],
+        )
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        run(["gpgconf", "--reload", "scdaemon"])
+
         ret = self.run_screen(
             WarningScreen,
             title="User PIN Required",
@@ -4245,6 +4277,21 @@ class ToolsGPGChangeUserPinView(View):
 class ToolsGPGLoadKeyFromCardView(View):
     def run(self):
         from subprocess import run
+        from seedsigner.helpers import seedkeeper_utils
+
+        seedkeeper_utils.disconnect_smartcard_connections(self.controller)
+
+        ret = self.run_screen(
+            WarningScreen,
+            title="Insert Card",
+            status_headline=None,
+            text="Remove and re-insert the smartcard, then press Continue.",
+            show_back_button=True,
+            button_data=[ButtonOption("Continue")],
+        )
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        run(["gpgconf", "--reload", "scdaemon"])
 
         run(["gpg", "--card-status"])
         self.run_screen(
@@ -5923,6 +5970,8 @@ class ToolsGPGImportKeyToCardView(View):
         from seedsigner.gui.screens.screen import LoadingScreenThread
         from seedsigner.helpers import seedkeeper_utils
 
+        seedkeeper_utils.disconnect_smartcard_connections(self.controller)
+
         ret = self.run_screen(
             WarningScreen,
             title="Insert Card",
@@ -5935,19 +5984,7 @@ class ToolsGPGImportKeyToCardView(View):
             return Destination(BackStackView)
         run(["gpgconf", "--reload", "scdaemon"])
 
-        # Check if card has keys loaded using a clean GNUPG home to avoid
-        # interference from any locally cached keys (e.g. a loaded seed)
-        from tempfile import TemporaryDirectory
-        import os
-
-        with TemporaryDirectory() as tmp_home:
-            env = os.environ.copy()
-            env["GNUPGHOME"] = tmp_home
-            env.pop("GPG_AGENT_INFO", None)
-            env.pop("SSH_AUTH_SOCK", None)
-            card_status = run(
-                ["gpg", "--card-status"], capture_output=True, text=True, env=env
-            )
+        card_status = run(["gpg", "--card-status"], capture_output=True, text=True)
         status_out = (card_status.stdout or "") + (card_status.stderr or "")
         admin_pin = self.controller.GPG_Admin_PIN
         if "[none]" in status_out:

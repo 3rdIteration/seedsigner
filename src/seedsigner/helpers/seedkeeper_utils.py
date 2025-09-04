@@ -48,6 +48,22 @@ def prompt_for_pin(parent_view, title: str):
         )
 
 
+def disconnect_smartcard_connections(controller):
+    """Ensure no other smartcard connectors are holding the reader."""
+    try:
+        conn = getattr(controller, "Satochip_Connector", None)
+        if conn:
+            try:
+                conn.card_disconnect()
+            except Exception:
+                pass
+    finally:
+        try:
+            controller.Satochip_Connector = None
+        except Exception:
+            pass
+
+
 def init_satochip(parentObject, init_card_filter=None, require_pin=True):
     from seedsigner.models.settings import (
         Settings,
