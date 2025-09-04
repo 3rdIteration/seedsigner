@@ -5869,10 +5869,6 @@ class ToolsGPGImportKeyToCardView(View):
         from seedsigner.gui.screens.screen import LoadingScreenThread
         from seedsigner.helpers import seedkeeper_utils
 
-        pin = seedkeeper_utils.prompt_for_pin(self, "Card PIN")
-        if pin is None:
-            return Destination(BackStackView)
-
         result = run(
             ["gpg", "--list-secret-keys", "--with-colons", self.fingerprint],
             capture_output=True,
@@ -5880,12 +5876,62 @@ class ToolsGPGImportKeyToCardView(View):
         )
         primary_caps = ""
         subkeys = []
+        algo = None
+        curve = ""
         for line in result.stdout.splitlines():
             parts = line.split(":")
             if parts[0] == "sec":
                 primary_caps = parts[11].lower()
+                algo = parts[3]
+                if len(parts) > 16:
+                    curve = parts[16].lower()
             elif parts[0] == "ssb":
                 subkeys.append(parts[11].lower())
+
+        if algo not in ("1", "2", "3"):
+            curve_map = {
+                "nistp256": "p256",
+                "nistp384": "p384",
+                "nistp521": "p521",
+                "brainpoolp256r1": "bp256",
+                "brainpoolp384r1": "bp384",
+                "brainpoolp512r1": "bp512",
+            }
+            cmd_suffix = curve_map.get(curve)
+            if not cmd_suffix:
+                self.run_screen(
+                    LargeIconStatusScreen,
+                    title="Error",
+                    status_headline=None,
+                    text="Unsupported key type",
+                    show_back_button=False,
+                    button_data=[ButtonOption("Continue")],
+                )
+                return Destination(BackStackView)
+            admin_pin = seedkeeper_utils.prompt_for_pin(self, "Admin PIN")
+            if admin_pin is None:
+                return Destination(BackStackView)
+            try:
+                from smartpgp.highlevel import CardConnectionContext
+
+                ctx = CardConnectionContext()
+                ctx.admin_pin = admin_pin
+                getattr(ctx, f"cmd_switch_{cmd_suffix}")()
+            except Exception as e:
+                logger.exception("SmartPGP switch failed: %s", e)
+                self.run_screen(
+                    LargeIconStatusScreen,
+                    title="Error",
+                    status_headline=None,
+                    text="Failed to set card key type",
+                    show_back_button=False,
+                    button_data=[ButtonOption("Continue")],
+                )
+                return Destination(BackStackView)
+
+        pin = seedkeeper_utils.prompt_for_pin(self, "Card PIN")
+        if pin is None:
+            return Destination(BackStackView)
 
         sign_idx = next(
             (i for i, caps in enumerate(subkeys, start=1) if "s" in caps),
