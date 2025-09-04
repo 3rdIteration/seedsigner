@@ -4144,12 +4144,33 @@ class ToolsGPGChangeAdminPinView(View):
         new_pin = seedkeeper_utils.prompt_for_pin(self, "New Admin PIN")
         if new_pin is None:
             return Destination(BackStackView)
-        cmds = f"admin\npasswd\n3\n{old_pin}\n{new_pin}\n{new_pin}\n"
-        run(
-            ["gpg", "--batch", "--pinentry-mode", "loopback", "--status-fd", "1", "--command-fd", "0", "--edit-card"],
+        cmds = f"admin\npasswd\n3\n{old_pin}\n{new_pin}\n{new_pin}\nQ\nquit\n"
+        result = run(
+            [
+                "gpg",
+                "--batch",
+                "--pinentry-mode",
+                "loopback",
+                "--status-fd",
+                "1",
+                "--command-fd",
+                "0",
+                "--edit-card",
+            ],
             input=cmds,
+            capture_output=True,
             text=True,
         )
+        if result.returncode != 0 or "PIN changed." not in result.stdout:
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Failed",
+                status_headline=None,
+                text="Admin PIN change failed",
+                show_back_button=False,
+                button_data=[ButtonOption("Continue")],
+            )
+            return Destination(MainMenuView)
         self.run_screen(
             LargeIconStatusScreen,
             title="Success",
@@ -4171,12 +4192,33 @@ class ToolsGPGChangeUserPinView(View):
         new_pin = seedkeeper_utils.prompt_for_pin(self, "New User PIN")
         if new_pin is None:
             return Destination(BackStackView)
-        cmds = f"admin\npasswd\n1\n{old_pin}\n{new_pin}\n{new_pin}\n"
-        run(
-            ["gpg", "--batch", "--pinentry-mode", "loopback", "--status-fd", "1", "--command-fd", "0", "--edit-card"],
+        cmds = f"admin\npasswd\n1\n{old_pin}\n{new_pin}\n{new_pin}\nQ\nquit\n"
+        result = run(
+            [
+                "gpg",
+                "--batch",
+                "--pinentry-mode",
+                "loopback",
+                "--status-fd",
+                "1",
+                "--command-fd",
+                "0",
+                "--edit-card",
+            ],
             input=cmds,
+            capture_output=True,
             text=True,
         )
+        if result.returncode != 0 or "PIN changed." not in result.stdout:
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Failed",
+                status_headline=None,
+                text="User PIN change failed",
+                show_back_button=False,
+                button_data=[ButtonOption("Continue")],
+            )
+            return Destination(MainMenuView)
         self.run_screen(
             LargeIconStatusScreen,
             title="Success",
