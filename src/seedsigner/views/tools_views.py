@@ -5935,8 +5935,17 @@ class ToolsGPGImportKeyToCardView(View):
             return Destination(BackStackView)
         run(["gpgconf", "--reload", "scdaemon"])
 
-        # Check if card has keys loaded; if not, force initial PIN changes
-        card_status = run(["gpg", "--card-status"], capture_output=True, text=True)
+        # Check if card has keys loaded using a clean GNUPG home to avoid
+        # interference from any locally cached keys (e.g. a loaded seed)
+        from tempfile import TemporaryDirectory
+        import os
+
+        with TemporaryDirectory() as tmp_home:
+            env = os.environ.copy()
+            env["GNUPGHOME"] = tmp_home
+            card_status = run(
+                ["gpg", "--card-status"], capture_output=True, text=True, env=env
+            )
         status_out = (card_status.stdout or "") + (card_status.stderr or "")
         admin_pin = self.controller.GPG_Admin_PIN
         if "[none]" in status_out:
