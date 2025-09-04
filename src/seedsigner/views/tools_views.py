@@ -4160,7 +4160,14 @@ class ToolsGPGChangeAdminPinView(View):
             capture_output=True,
             text=True,
         )
-        if result.returncode != 0 or "PIN changed" not in result.stdout:
+        output = (result.stdout or "") + (result.stderr or "")
+        success = "PIN changed" in output or "SC_OP_SUCCESS" in result.stdout
+        failed = (
+            result.returncode != 0
+            or "SC_OP_FAILURE" in result.stdout
+            or not success
+        )
+        if failed:
             self.run_screen(
                 LargeIconStatusScreen,
                 title="Failed",
@@ -4207,7 +4214,14 @@ class ToolsGPGChangeUserPinView(View):
             capture_output=True,
             text=True,
         )
-        if result.returncode != 0 or "PIN changed" not in result.stdout:
+        output = (result.stdout or "") + (result.stderr or "")
+        success = "PIN changed" in output or "SC_OP_SUCCESS" in result.stdout
+        failed = (
+            result.returncode != 0
+            or "SC_OP_FAILURE" in result.stdout
+            or not success
+        )
+        if failed:
             self.run_screen(
                 LargeIconStatusScreen,
                 title="Failed",
