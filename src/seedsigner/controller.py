@@ -152,6 +152,7 @@ class Controller(Singleton):
     Satochip_Connector = None
     Satochip_PIN = None
     Satochip_Last_UID_SHA1 = None
+    GPG_Admin_PIN = None
     tools_common_card_filter: list[str] = None
 
     # Destination placeholder for when we need to jump out to a side flow but intend to
@@ -369,6 +370,7 @@ class Controller(Singleton):
                         self.Satochip_PIN = None
                         self.Satochip_Last_UID_SHA1 = None
                         self.Satochip_Connector = None
+                        self.GPG_Admin_PIN = None
                 
                 logger.info(f"\nback_stack: {self.back_stack}")
 
@@ -524,6 +526,7 @@ class Controller(Singleton):
         self.Satochip_PIN = None
         self.Satochip_Last_UID_SHA1 = None
         self.Satochip_Connector = None
+        self.GPG_Admin_PIN = None
 
         # Return to main menu
         self.clear_back_stack()

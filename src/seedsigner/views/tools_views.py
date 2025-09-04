@@ -3989,6 +3989,7 @@ class ToolsGPGMenuView(View):
     IMPORT_PUBKEY = ButtonOption("Import Pubkey")
     GENERATE_KEY = ButtonOption("Generate New Key")
     LOAD_PRIVKEY = ButtonOption("Import Privkey")
+    SMART_GPG = ButtonOption("SmartGPG")
     EXPORT_PUBKEY = ButtonOption("Export Pubkey")
     EXPORT_PRIVKEY = ButtonOption("Export Privkey")
 
@@ -4006,12 +4007,14 @@ class ToolsGPGMenuView(View):
                 run(["gpg", "--import", *key_files])
             self.loading_screen.stop()
             self.controller.gpg_keys_imported = True
+
         button_data = [
             self.VERIFY_FILE,
             self.SIGN_FILE,
             self.IMPORT_PUBKEY,
             self.GENERATE_KEY,
             self.LOAD_PRIVKEY,
+            self.SMART_GPG,
             self.EXPORT_PUBKEY,
             self.EXPORT_PRIVKEY,
         ]
@@ -4038,10 +4041,273 @@ class ToolsGPGMenuView(View):
             return Destination(ToolsGPGGenerateKeyView)
         elif button_data[selected_menu_num] == self.LOAD_PRIVKEY:
             return Destination(ToolsGPGLoadPrivkeyMenuView)
+        elif button_data[selected_menu_num] == self.SMART_GPG:
+            return Destination(ToolsGPGSmartMenuView)
         elif button_data[selected_menu_num] == self.EXPORT_PUBKEY:
             return Destination(ToolsGPGExportPubkeyView)
         elif button_data[selected_menu_num] == self.EXPORT_PRIVKEY:
             return Destination(ToolsGPGExportPrivkeyView)
+
+
+class ToolsGPGSmartMenuView(View):
+    CARD_INFO = ButtonOption("View Card Info")
+    GENERATE_ON_CARD = ButtonOption("Generate On-Card Key")
+    CHANGE_ADMIN_PIN = ButtonOption("Change Admin PIN")
+    CHANGE_USER_PIN = ButtonOption("Change User PIN")
+    LOAD_KEY = ButtonOption("Load Key to GPG")
+
+    def run(self):
+        button_data = [
+            self.CARD_INFO,
+            self.GENERATE_ON_CARD,
+            self.CHANGE_ADMIN_PIN,
+            self.CHANGE_USER_PIN,
+            self.LOAD_KEY,
+        ]
+
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title="SmartGPG",
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        selected = button_data[selected_menu_num]
+        if selected == self.CARD_INFO:
+            return Destination(ToolsGPGCardInfoView)
+        elif selected == self.GENERATE_ON_CARD:
+            return Destination(ToolsGPGGenerateKeyOnCardView)
+        elif selected == self.CHANGE_ADMIN_PIN:
+            return Destination(ToolsGPGChangeAdminPinView)
+        elif selected == self.CHANGE_USER_PIN:
+            return Destination(ToolsGPGChangeUserPinView)
+        elif selected == self.LOAD_KEY:
+            return Destination(ToolsGPGLoadKeyFromCardView)
+
+
+class ToolsGPGCardInfoView(View):
+    def run(self):
+        from subprocess import run
+
+        data = run(["gpg", "--card-status"], capture_output=True, text=True)
+        text = data.stdout or data.stderr or "No card info"
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Card Info",
+            status_headline=None,
+            text=text[:400],
+            show_back_button=False,
+            button_data=[ButtonOption("Continue")],
+        )
+        return Destination(BackStackView)
+
+
+class ToolsGPGGenerateKeyOnCardView(View):
+    def run(self):
+        from subprocess import run
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+
+        self.loading_screen = LoadingScreenThread(text="Generating key\n\n\n(May take a while)")
+        self.loading_screen.start()
+        run(
+            ["gpg", "--batch", "--pinentry-mode", "loopback", "--status-fd", "1", "--command-fd", "0", "--edit-card"],
+            input="admin\ngenerate\ny\n",
+            text=True,
+        )
+        self.loading_screen.stop()
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Success",
+            status_headline=None,
+            text="Key generated on card",
+            show_back_button=False,
+            button_data=[ButtonOption("Continue")],
+        )
+        return Destination(MainMenuView)
+
+
+class ToolsGPGChangeAdminPinView(View):
+    def run(self):
+        from subprocess import run
+        from seedsigner.helpers import seedkeeper_utils
+
+        seedkeeper_utils.disconnect_smartcard_connections(self.controller)
+
+        ret = self.run_screen(
+            WarningScreen,
+            title="Insert Card",
+            status_headline=None,
+            text="Remove and re-insert the smartcard, then press Continue.",
+            show_back_button=True,
+            button_data=[ButtonOption("Continue")],
+        )
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        run(["gpgconf", "--reload", "scdaemon"])
+
+        ret = self.run_screen(
+            WarningScreen,
+            title="Admin PIN Required",
+            status_headline=None,
+            text="Admin PIN is needed for changing keys and editing card settings.",
+            show_back_button=True,
+            button_data=[ButtonOption("Continue")],
+        )
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        old_pin = seedkeeper_utils.prompt_for_pin(self, "Current Admin PIN")
+        if old_pin is None:
+            return Destination(BackStackView)
+        new_pin = seedkeeper_utils.prompt_for_pin(self, "New Admin PIN")
+        if new_pin is None:
+            return Destination(BackStackView)
+        cmds = f"3\n{old_pin}\n{new_pin}\n{new_pin}\nQ\n"
+        result = run(
+            [
+                "gpg",
+                "--pinentry-mode",
+                "loopback",
+                "--status-fd",
+                "1",
+                "--command-fd",
+                "0",
+                "--change-pin",
+            ],
+            input=cmds,
+            capture_output=True,
+            text=True,
+        )
+        output = (result.stdout or "") + (result.stderr or "")
+        success = "PIN changed" in output or "SC_OP_SUCCESS" in result.stdout
+        failed = "SC_OP_FAILURE" in result.stdout or not success
+        if failed:
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Failed",
+                status_headline=None,
+                text="Admin PIN change failed",
+                show_back_button=False,
+                button_data=[ButtonOption("Continue")],
+            )
+            return Destination(MainMenuView)
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Success",
+            status_headline=None,
+            text="PIN updated. Please remove and re-insert the card.",
+            show_back_button=False,
+            button_data=[ButtonOption("Continue")],
+        )
+        return Destination(MainMenuView)
+
+
+class ToolsGPGChangeUserPinView(View):
+    def run(self):
+        from subprocess import run
+        from seedsigner.helpers import seedkeeper_utils
+
+        seedkeeper_utils.disconnect_smartcard_connections(self.controller)
+
+        ret = self.run_screen(
+            WarningScreen,
+            title="Insert Card",
+            status_headline=None,
+            text="Remove and re-insert the smartcard, then press Continue.",
+            show_back_button=True,
+            button_data=[ButtonOption("Continue")],
+        )
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        run(["gpgconf", "--reload", "scdaemon"])
+
+        ret = self.run_screen(
+            WarningScreen,
+            title="User PIN Required",
+            status_headline=None,
+            text="User PIN is needed for signing and using on-card keys.",
+            show_back_button=True,
+            button_data=[ButtonOption("Continue")],
+        )
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        old_pin = seedkeeper_utils.prompt_for_pin(self, "Current User PIN")
+        if old_pin is None:
+            return Destination(BackStackView)
+        new_pin = seedkeeper_utils.prompt_for_pin(self, "New User PIN")
+        if new_pin is None:
+            return Destination(BackStackView)
+        cmds = f"1\n{old_pin}\n{new_pin}\n{new_pin}\nQ\n"
+        result = run(
+            [
+                "gpg",
+                "--pinentry-mode",
+                "loopback",
+                "--status-fd",
+                "1",
+                "--command-fd",
+                "0",
+                "--change-pin",
+            ],
+            input=cmds,
+            capture_output=True,
+            text=True,
+        )
+        output = (result.stdout or "") + (result.stderr or "")
+        success = "PIN changed" in output or "SC_OP_SUCCESS" in result.stdout
+        failed = "SC_OP_FAILURE" in result.stdout or not success
+        if failed:
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Failed",
+                status_headline=None,
+                text="User PIN change failed",
+                show_back_button=False,
+                button_data=[ButtonOption("Continue")],
+            )
+            return Destination(MainMenuView)
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Success",
+            status_headline=None,
+            text="PIN updated. Please remove and re-insert the card.",
+            show_back_button=False,
+            button_data=[ButtonOption("Continue")],
+        )
+        return Destination(MainMenuView)
+
+
+class ToolsGPGLoadKeyFromCardView(View):
+    def run(self):
+        from subprocess import run
+        from seedsigner.helpers import seedkeeper_utils
+
+        seedkeeper_utils.disconnect_smartcard_connections(self.controller)
+
+        ret = self.run_screen(
+            WarningScreen,
+            title="Insert Card",
+            status_headline=None,
+            text="Remove and re-insert the smartcard, then press Continue.",
+            show_back_button=True,
+            button_data=[ButtonOption("Continue")],
+        )
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        run(["gpgconf", "--reload", "scdaemon"])
+
+        run(["gpg", "--card-status"])
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Success",
+            status_headline=None,
+            text="Key loaded from card",
+            show_back_button=False,
+            button_data=[ButtonOption("Continue")],
+        )
+        return Destination(MainMenuView)
 
 class ToolsGPGVerifyFileView(View):
     CHECK_SHA256 = ButtonOption("Check SHA256Sum")
@@ -4488,7 +4754,7 @@ class ToolsGPGImportPubkeyFileView(View):
                 button_data=[ButtonOption("Continue")]
             )
 
-        return Destination(MainMenuView)
+        return Destination(ToolsGPGMenuView)
 
 
 class ToolsGPGImportPubkeySeedkeeperView(View):
@@ -4581,7 +4847,7 @@ class ToolsGPGImportPubkeySeedkeeperView(View):
             button_data=[ButtonOption("Continue")],
         )
 
-        return Destination(MainMenuView)
+        return Destination(ToolsGPGMenuView)
 
 
 class ToolsGPGLoadPrivkeyMenuView(View):
@@ -4734,7 +5000,7 @@ class ToolsGPGLoadPrivkeyFileView(View):
             button_data=[ButtonOption("Continue")],
         )
 
-        return Destination(MainMenuView)
+        return Destination(ToolsGPGMenuView)
 
 
 class ToolsGPGLoadPrivkeySeedkeeperView(View):
@@ -4827,7 +5093,7 @@ class ToolsGPGLoadPrivkeySeedkeeperView(View):
             button_data=[ButtonOption("Continue")],
         )
 
-        return Destination(MainMenuView)
+        return Destination(ToolsGPGMenuView)
 
 
 def bip85_rsa_from_root(root, bits: int, index: int, sub_index: int | None = None):
@@ -5195,7 +5461,7 @@ class ToolsGPGLoadBIP85KeyView(View):
                 button_data=[ButtonOption("I Understand")],
             )
 
-        return Destination(MainMenuView)
+        return Destination(ToolsGPGMenuView)
 
 
 class ToolsGPGGenerateKeyView(View):
@@ -5392,21 +5658,6 @@ class ToolsGPGExportPubkeyView(View):
             LoadingScreenThread,
         )
 
-        if len(self.controller.storage.seeds) > 0:
-            ret = self.run_screen(
-                WarningScreen,
-                title="WARNING",
-                status_headline=None,
-                text="These tools write data to the microSD card and may expose loaded secrets.",
-                show_back_button=True,
-                button_data=[ButtonOption("Continue")],
-            )
-            if ret == RET_CODE__BACK_BUTTON:
-                return Destination(BackStackView)
-
-        file_list_path = MicroSD.get_microsd_dir() / "microsd-images"
-        os.makedirs(file_list_path, exist_ok=True)
-
         result = run(
             ["gpg", "--list-secret-keys", "--with-colons"],
             capture_output=True,
@@ -5453,7 +5704,11 @@ class ToolsGPGExportPubkeyView(View):
         key = keys[selected]
         base_label = key["uid"] if key["uid"] else key["fpr"][-8:]
 
-        dest_buttons = [ButtonOption("microSD"), ButtonOption("Seedkeeper")]
+        dest_buttons = [
+            ButtonOption("microSD"),
+            ButtonOption("Seedkeeper"),
+            ButtonOption("OpenGPG Card"),
+        ]
         dest_selected = self.run_screen(
             ButtonListScreen,
             title="Export to",
@@ -5465,6 +5720,21 @@ class ToolsGPGExportPubkeyView(View):
             return Destination(BackStackView)
 
         if dest_selected == 0:
+            if len(self.controller.storage.seeds) > 0:
+                ret = self.run_screen(
+                    WarningScreen,
+                    title="WARNING",
+                    status_headline=None,
+                    text="These tools write data to the microSD card and may expose loaded secrets.",
+                    show_back_button=True,
+                    button_data=[ButtonOption("Continue")],
+                )
+                if ret == RET_CODE__BACK_BUTTON:
+                    return Destination(BackStackView)
+
+            file_list_path = MicroSD.get_microsd_dir() / "microsd-images"
+            os.makedirs(file_list_path, exist_ok=True)
+
             filename = key["fpr"] + ".asc"
             filepath = os.path.join(file_list_path, filename)
             exported = run(
@@ -5595,21 +5865,6 @@ class ToolsGPGExportPrivkeyView(View):
         )
         from seedsigner.gui.screens import tools_screens
 
-        if len(self.controller.storage.seeds) > 0:
-            ret = self.run_screen(
-                WarningScreen,
-                title="WARNING",
-                status_headline=None,
-                text="These tools write data to the microSD card and may expose loaded secrets.",
-                show_back_button=True,
-                button_data=[ButtonOption("Continue")],
-            )
-            if ret == RET_CODE__BACK_BUTTON:
-                return Destination(BackStackView)
-
-        file_list_path = MicroSD.get_microsd_dir() / "microsd-images"
-        os.makedirs(file_list_path, exist_ok=True)
-
         result = run(
             ["gpg", "--list-secret-keys", "--with-colons"],
             capture_output=True,
@@ -5656,7 +5911,11 @@ class ToolsGPGExportPrivkeyView(View):
         key = keys[selected]
         base_label = key["uid"] if key["uid"] else key["fpr"][-8:]
 
-        dest_buttons = [ButtonOption("microSD"), ButtonOption("Seedkeeper")]
+        dest_buttons = [
+            ButtonOption("microSD"),
+            ButtonOption("Seedkeeper"),
+            ButtonOption("OpenGPG Card"),
+        ]
         dest_selected = self.run_screen(
             ButtonListScreen,
             title="Export to",
@@ -5668,6 +5927,21 @@ class ToolsGPGExportPrivkeyView(View):
             return Destination(BackStackView)
 
         if dest_selected == 0:
+            if len(self.controller.storage.seeds) > 0:
+                ret = self.run_screen(
+                    WarningScreen,
+                    title="WARNING",
+                    status_headline=None,
+                    text="These tools write data to the microSD card and may expose loaded secrets.",
+                    show_back_button=True,
+                    button_data=[ButtonOption("Continue")],
+                )
+                if ret == RET_CODE__BACK_BUTTON:
+                    return Destination(BackStackView)
+
+            file_list_path = MicroSD.get_microsd_dir() / "microsd-images"
+            os.makedirs(file_list_path, exist_ok=True)
+
             ret_dict = tools_screens.ToolsTextQRTextEntryScreen(
                 textToEncode="", title="Passphrase"
             ).display()
@@ -5741,7 +6015,7 @@ class ToolsGPGExportPrivkeyView(View):
                 button_data=[ButtonOption("Continue")],
             )
             return Destination(MainMenuView)
-        else:
+        elif dest_selected == 1:
             exported = run(
                 ["gpg", "--armor", "--export-secret-keys", key["fpr"]],
                 capture_output=True,
@@ -5829,6 +6103,310 @@ class ToolsGPGExportPrivkeyView(View):
                     button_data=[ButtonOption("I Understand")],
                 )
                 return Destination(BackStackView)
+        else:
+            return Destination(
+                ToolsGPGImportKeyToCardView,
+                view_args={"fingerprint": key["fpr"]},
+            )
+
+
+class ToolsGPGImportKeyToCardView(View):
+    def __init__(self, fingerprint: str):
+        super().__init__()
+        self.fingerprint = fingerprint
+
+    def run(self):
+        from subprocess import run
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+        from seedsigner.helpers import seedkeeper_utils
+
+        seedkeeper_utils.disconnect_smartcard_connections(self.controller)
+
+        ret = self.run_screen(
+            WarningScreen,
+            title="Insert Card",
+            status_headline=None,
+            text="Remove and re-insert the smartcard, then press Continue.",
+            show_back_button=True,
+            button_data=[ButtonOption("Continue")],
+        )
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        run(["gpgconf", "--reload", "scdaemon"])
+
+        card_status = run(["gpg", "--card-status"], capture_output=True, text=True)
+        status_out = (card_status.stdout or "") + (card_status.stderr or "")
+        admin_pin = self.controller.GPG_Admin_PIN
+        if "[none]" in status_out:
+            ret = self.run_screen(
+                WarningScreen,
+                title="Default PINs",
+                status_headline=None,
+                text="Card uses default PINs. You'll set new Admin and User PINs before import.",
+                show_back_button=True,
+                button_data=[ButtonOption("Continue")],
+            )
+            if ret == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+            ret = self.run_screen(
+                WarningScreen,
+                title="Admin PIN Required",
+                status_headline=None,
+                text="Admin PIN is needed for changing keys and editing card settings.",
+                show_back_button=True,
+                button_data=[ButtonOption("Continue")],
+            )
+            if ret == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+            new_admin = seedkeeper_utils.prompt_for_pin(self, "New Admin PIN")
+            if new_admin is None:
+                return Destination(BackStackView)
+            admin_cmds = f"3\n12345678\n{new_admin}\n{new_admin}\nQ\n"
+            admin_res = run(
+                [
+                    "gpg",
+                    "--pinentry-mode",
+                    "loopback",
+                    "--status-fd",
+                    "1",
+                    "--command-fd",
+                    "0",
+                    "--change-pin",
+                ],
+                input=admin_cmds,
+                capture_output=True,
+                text=True,
+            )
+            out = (admin_res.stdout or "") + (admin_res.stderr or "")
+            success = "PIN changed" in out or "SC_OP_SUCCESS" in admin_res.stdout
+            if "SC_OP_FAILURE" in admin_res.stdout or not success:
+                self.run_screen(
+                    LargeIconStatusScreen,
+                    title="Failed",
+                    status_headline=None,
+                    text="Admin PIN change failed",
+                    show_back_button=False,
+                    button_data=[ButtonOption("Continue")],
+                )
+                return Destination(BackStackView)
+            self.controller.GPG_Admin_PIN = new_admin
+            admin_pin = new_admin
+
+            ret = self.run_screen(
+                WarningScreen,
+                title="User PIN Required",
+                status_headline=None,
+                text="User PIN is needed for signing and using on-card keys.",
+                show_back_button=True,
+                button_data=[ButtonOption("Continue")],
+            )
+            if ret == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+            new_user = seedkeeper_utils.prompt_for_pin(self, "New User PIN")
+            if new_user is None:
+                return Destination(BackStackView)
+            user_cmds = f"1\n123456\n{new_user}\n{new_user}\nQ\n"
+            user_res = run(
+                [
+                    "gpg",
+                    "--pinentry-mode",
+                    "loopback",
+                    "--status-fd",
+                    "1",
+                    "--command-fd",
+                    "0",
+                    "--change-pin",
+                ],
+                input=user_cmds,
+                capture_output=True,
+                text=True,
+            )
+            out = (user_res.stdout or "") + (user_res.stderr or "")
+            success = "PIN changed" in out or "SC_OP_SUCCESS" in user_res.stdout
+            if "SC_OP_FAILURE" in user_res.stdout or not success:
+                self.run_screen(
+                    LargeIconStatusScreen,
+                    title="Failed",
+                    status_headline=None,
+                    text="User PIN change failed",
+                    show_back_button=False,
+                    button_data=[ButtonOption("Continue")],
+                )
+                return Destination(BackStackView)
+
+            self.run_screen(
+                WarningScreen,
+                title="Reinsert Card",
+                status_headline=None,
+                text="PINs updated. Please remove and re-insert the card.",
+                show_back_button=False,
+                button_data=[ButtonOption("Continue")],
+            )
+            run(["gpgconf", "--reload", "scdaemon"])
+
+        if admin_pin is None:
+            ret = self.run_screen(
+                WarningScreen,
+                title="Admin PIN Required",
+                status_headline=None,
+                text="Admin PIN is needed for changing keys and editing card settings.",
+                show_back_button=True,
+                button_data=[ButtonOption("Continue")],
+            )
+            if ret == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+            admin_pin = seedkeeper_utils.prompt_for_pin(self, "Admin PIN")
+            if admin_pin is None:
+                return Destination(BackStackView)
+            self.controller.GPG_Admin_PIN = admin_pin
+
+        result = run(
+            ["gpg", "--list-secret-keys", "--with-colons", self.fingerprint],
+            capture_output=True,
+            text=True,
+        )
+        primary_caps = ""
+        subkeys = []
+        algo = None
+        curve = ""
+        for line in result.stdout.splitlines():
+            parts = line.split(":")
+            if parts[0] == "sec":
+                primary_caps = parts[11].lower()
+                algo = parts[3]
+                if len(parts) > 16:
+                    curve = parts[16].lower()
+            elif parts[0] == "ssb":
+                subkeys.append(parts[11].lower())
+
+        if algo not in ("1", "2", "3"):
+            curve_map = {
+                "nistp256": "p256",
+                "nistp384": "p384",
+                "nistp521": "p521",
+                "brainpoolp256r1": "bp256",
+                "brainpoolp384r1": "bp384",
+                "brainpoolp512r1": "bp512",
+            }
+            cmd_suffix = curve_map.get(curve)
+            if not cmd_suffix:
+                self.run_screen(
+                    LargeIconStatusScreen,
+                    title="Error",
+                    status_headline=None,
+                    text="Unsupported key type",
+                    show_back_button=False,
+                    button_data=[ButtonOption("Continue")],
+                )
+                return Destination(BackStackView)
+            try:
+                from seedsigner.helpers.smartpgp.highlevel import CardConnectionContext
+
+                ctx = CardConnectionContext()
+                ctx.admin_pin = admin_pin
+                getattr(ctx, f"cmd_switch_{cmd_suffix}")()
+            except Exception as e:
+                logger.exception("SmartPGP switch failed: %s", e)
+                self.run_screen(
+                    LargeIconStatusScreen,
+                    title="Error",
+                    status_headline=None,
+                    text="Failed to set card key type",
+                    show_back_button=False,
+                    button_data=[ButtonOption("Continue")],
+                )
+                return Destination(BackStackView)
+            self.run_screen(
+                WarningScreen,
+                title="Reinsert Card",
+                status_headline=None,
+                text="Card key type updated. Please remove and re-insert the card.",
+                show_back_button=False,
+                button_data=[ButtonOption("Continue")],
+            )
+            run(["gpgconf", "--reload", "scdaemon"])
+
+        sign_idx = next(
+            (i for i, caps in enumerate(subkeys, start=1) if "s" in caps),
+            None,
+        )
+
+        slot_map = {"s": "1", "e": "2", "a": "3"}
+        cmds = ["toggle\n"]
+        used_slots = set()
+        if sign_idx is not None:
+            cmds.append(f"key {sign_idx}\nkeytocard\n1\nkey {sign_idx}\n")
+            used_slots.add("1")
+        elif "s" in primary_caps:
+            cmds.extend(["keytocard\n", "y\n", "1\n"])
+            used_slots.add("1")
+        for idx, caps in enumerate(subkeys, start=1):
+            if idx == sign_idx:
+                continue
+            slot = next(
+                (
+                    slot_map[c]
+                    for c in "sea"
+                    if c in caps and slot_map[c] not in used_slots
+                ),
+                None,
+            )
+            if slot:
+                cmds.append(f"key {idx}\nkeytocard\n{slot}\nkey {idx}\n")
+                used_slots.add(slot)
+        cmds.append("quit\ny\n")
+        edit_commands = "".join(cmds)
+        logger.info("GPG edit commands:\n%s", edit_commands)
+
+        self.loading_screen = LoadingScreenThread(
+            text="Importing key to card\n\n\n(May take a while)",
+        )
+        self.loading_screen.start()
+
+        result = run(
+            [
+                "gpg",
+                "--batch",
+                "--pinentry-mode",
+                "loopback",
+                "--passphrase",
+                admin_pin,
+                "--command-fd",
+                "0",
+                "--status-fd",
+                "1",
+                "--expert",
+                "--edit-key",
+                self.fingerprint,
+            ],
+            input=edit_commands,
+            capture_output=True,
+            text=True,
+        )
+
+        self.loading_screen.stop()
+
+        if result.returncode != 0:
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Error",
+                status_headline=None,
+                text="Failed to import key", 
+                show_back_button=False,
+                button_data=[ButtonOption("Continue")],
+            )
+            return Destination(BackStackView)
+
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Success",
+            status_headline=None,
+            text="Key imported to card",
+            show_back_button=False,
+            button_data=[ButtonOption("Continue")],
+        )
+
+        return Destination(ToolsGPGMenuView)
 
 class ToolsTextQRTextEntryView(View):
     def __init__(self, textToEncode: str = ""):
