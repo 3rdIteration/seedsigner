@@ -5885,15 +5885,23 @@ class ToolsGPGImportKeyToCardView(View):
                 subkeys.append(parts[11].lower())
 
         slot_map = {"s": "1", "e": "2", "a": "3"}
-        cmds = []
+        cmds = ["toggle\n", "keytocard\n", "y\n", "1\n"]
+        used_slots = {"1"}
         for idx, caps in enumerate(subkeys, start=1):
-            slot = next((slot_map[c] for c in "sea" if c in caps), None)
+            slot = next(
+                (
+                    slot_map[c]
+                    for c in "sea"
+                    if c in caps and slot_map[c] not in used_slots
+                ),
+                None,
+            )
             if slot:
-                cmds.append(
-                    f"key {idx}\nkeytocard\n{slot}\nkey {idx}\n"
-                )
-        cmds.append("save\n")
+                cmds.append(f"key {idx}\nkeytocard\n{slot}\nkey {idx}\n")
+                used_slots.add(slot)
+        cmds.append("quit\ny\n")
         edit_commands = "".join(cmds)
+        logger.info("GPG edit commands:\n%s", edit_commands)
 
         self.loading_screen = LoadingScreenThread(
             text="Importing key to card\n\n\n(May take a while)",
