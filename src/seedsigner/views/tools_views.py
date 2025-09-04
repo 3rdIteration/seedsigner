@@ -5927,6 +5927,93 @@ class ToolsGPGImportKeyToCardView(View):
             return Destination(BackStackView)
         run(["gpgconf", "--reload", "scdaemon"])
 
+        # Check if card has keys loaded; if not, force initial PIN changes
+        card_status = run(["gpg", "--card-status"], capture_output=True, text=True)
+        admin_pin = self.controller.GPG_Admin_PIN
+        if "[none]" in card_status.stdout:
+            ret = self.run_screen(
+                WarningScreen,
+                title="Default PINs",
+                status_headline=None,
+                text="Card uses default PINs. You'll set new Admin and User PINs before import.",
+                show_back_button=True,
+                button_data=[ButtonOption("Continue")],
+            )
+            if ret == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+
+            new_admin = seedkeeper_utils.prompt_for_pin(self, "New Admin PIN")
+            if new_admin is None:
+                return Destination(BackStackView)
+            admin_cmds = f"3\n12345678\n{new_admin}\n{new_admin}\nQ\n"
+            admin_res = run(
+                [
+                    "gpg",
+                    "--pinentry-mode",
+                    "loopback",
+                    "--status-fd",
+                    "1",
+                    "--command-fd",
+                    "0",
+                    "--change-pin",
+                ],
+                input=admin_cmds,
+                capture_output=True,
+                text=True,
+            )
+            out = (admin_res.stdout or "") + (admin_res.stderr or "")
+            success = "PIN changed" in out or "SC_OP_SUCCESS" in admin_res.stdout
+            if "SC_OP_FAILURE" in admin_res.stdout or not success:
+                self.run_screen(
+                    LargeIconStatusScreen,
+                    title="Failed",
+                    status_headline=None,
+                    text="Admin PIN change failed",
+                    show_back_button=False,
+                    button_data=[ButtonOption("Continue")],
+                )
+                return Destination(BackStackView)
+            self.controller.GPG_Admin_PIN = new_admin
+            admin_pin = new_admin
+
+            new_user = seedkeeper_utils.prompt_for_pin(self, "New User PIN")
+            if new_user is None:
+                return Destination(BackStackView)
+            user_cmds = f"1\n123456\n{new_user}\n{new_user}\nQ\n"
+            user_res = run(
+                [
+                    "gpg",
+                    "--pinentry-mode",
+                    "loopback",
+                    "--status-fd",
+                    "1",
+                    "--command-fd",
+                    "0",
+                    "--change-pin",
+                ],
+                input=user_cmds,
+                capture_output=True,
+                text=True,
+            )
+            out = (user_res.stdout or "") + (user_res.stderr or "")
+            success = "PIN changed" in out or "SC_OP_SUCCESS" in user_res.stdout
+            if "SC_OP_FAILURE" in user_res.stdout or not success:
+                self.run_screen(
+                    LargeIconStatusScreen,
+                    title="Failed",
+                    status_headline=None,
+                    text="User PIN change failed",
+                    show_back_button=False,
+                    button_data=[ButtonOption("Continue")],
+                )
+                return Destination(BackStackView)
+
+        if admin_pin is None:
+            admin_pin = seedkeeper_utils.prompt_for_pin(self, "Admin PIN")
+            if admin_pin is None:
+                return Destination(BackStackView)
+            self.controller.GPG_Admin_PIN = admin_pin
+
         result = run(
             ["gpg", "--list-secret-keys", "--with-colons", self.fingerprint],
             capture_output=True,
@@ -5945,13 +6032,6 @@ class ToolsGPGImportKeyToCardView(View):
                     curve = parts[16].lower()
             elif parts[0] == "ssb":
                 subkeys.append(parts[11].lower())
-
-        admin_pin = self.controller.GPG_Admin_PIN
-        if admin_pin is None:
-            admin_pin = seedkeeper_utils.prompt_for_pin(self, "Admin PIN")
-            if admin_pin is None:
-                return Destination(BackStackView)
-            self.controller.GPG_Admin_PIN = admin_pin
 
         if algo not in ("1", "2", "3"):
             curve_map = {
