@@ -67,6 +67,8 @@ def disconnect_smartcard_connections(controller):
     try:
         from subprocess import run
         run(["gpgconf", "--kill", "scdaemon"], check=False)
+        # Immediately relaunch so external tools can detect the card
+        run(["gpgconf", "--launch", "scdaemon"], check=False)
     except Exception:
         pass
 
