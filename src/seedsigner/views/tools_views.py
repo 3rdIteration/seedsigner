@@ -6409,6 +6409,10 @@ class ToolsGPGImportKeyToCardView(View):
 
         self.loading_screen.stop()
 
+        logger.info("GPG keytocard stdout:\n%s", result.stdout)
+        if result.stderr:
+            logger.warning("GPG keytocard stderr:\n%s", result.stderr)
+
         if result.returncode != 0:
             try:
                 from seedsigner.helpers.smartpgp_import import import_keys_with_smartpgp
