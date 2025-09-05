@@ -44,9 +44,22 @@ def import_keys_with_smartpgp(fingerprint: str, admin_pin: str) -> bool:
         logger.exception('SmartPGP connection failed: %s', e)
         return False
 
-    all_keys = [key] + list(key.subkeys.values())
+    # OpenPGP cards are normally loaded with the signing/encryption/auth
+    # **sub**keys rather than the primary certification key.  Importing the
+    # primary key can confuse GnuPG's card interface.  Restrict the import to
+    # subkeys when they exist; fall back to the primary key only if no subkeys
+    # are present.
+    all_keys = list(key.subkeys.values())
+    if not all_keys:
+        all_keys = [key]
     fp_tags = {'sig': 0xC7, 'dec': 0xC8, 'auth': 0xC9}
-    ts_tags = {'sig': 0xCD, 'dec': 0xCE, 'auth': 0xCF}
+    # Key generation timestamps are stored in individual DOs for each key
+    # slot.  The previous implementation accidentally wrote the signature's
+    # timestamp to ``0xCD`` which actually refers to the *combined* "key
+    # generation dates" structure.  Aside from leaving the per-slot DOs empty,
+    # that corrupted the aggregate record and confused OpenPGP clients when
+    # they queried the card.  Use the correct tags for each key instead.
+    ts_tags = {'sig': 0xCE, 'dec': 0xCF, 'auth': 0xD0}
     size_map = {
         'P-256': 32,
         'P-384': 48,
@@ -86,7 +99,7 @@ def import_keys_with_smartpgp(fingerprint: str, admin_pin: str) -> bool:
             point = km.p
             pub = b'\x04' + point.x.to_bytes(size, 'big') + point.y.to_bytes(size, 'big')
             ctx.cmd_switch_crypto(curve_name, role)
-            ctx.cmd_put_key(pub, priv)
+            ctx.cmd_put_key(role, pub, priv)
             fp = bytes.fromhex(str(k.fingerprint).replace(' ', ''))
             ts = int(k.created.timestamp()).to_bytes(4, 'big')
             ctx.cmd_put_data(fp_tags[role], fp)

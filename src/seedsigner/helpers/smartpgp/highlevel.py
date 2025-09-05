@@ -273,12 +273,12 @@ class CardConnectionContext:
         self.connect()
         self.verify_admin_pin()
         switch_crypto(self.connection, curve, 'sm')
-        put_key(self.connection, pubkey, privkey)
+        put_key(self.connection, 'sm', pubkey, privkey)
 
-    def cmd_put_key(self, pubkey, privkey):
+    def cmd_put_key(self, role, pubkey, privkey):
         self.connect()
         self.verify_admin_pin()
-        put_key(self.connection, list(pubkey), list(privkey))
+        put_key(self.connection, role, list(pubkey), list(privkey))
 
     def cmd_put_data(self, tag, value):
         self.connect()
