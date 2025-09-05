@@ -6406,11 +6406,26 @@ class ToolsGPGImportKeyToCardView(View):
         self.loading_screen.stop()
 
         if result.returncode != 0:
+            try:
+                from seedsigner.helpers.smartpgp_import import import_keys_with_smartpgp
+
+                if import_keys_with_smartpgp(self.fingerprint, admin_pin):
+                    self.run_screen(
+                        LargeIconStatusScreen,
+                        title="Success",
+                        status_headline=None,
+                        text="Key imported to card",
+                        show_back_button=False,
+                        button_data=[ButtonOption("Continue")],
+                    )
+                    return Destination(ToolsGPGMenuView)
+            except Exception as e:
+                logger.exception("SmartPGP fallback failed: %s", e)
             self.run_screen(
                 LargeIconStatusScreen,
                 title="Error",
                 status_headline=None,
-                text="Failed to import key", 
+                text="Failed to import key",
                 show_back_button=False,
                 button_data=[ButtonOption("Continue")],
             )
