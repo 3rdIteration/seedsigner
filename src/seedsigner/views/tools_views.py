@@ -6354,7 +6354,9 @@ class ToolsGPGImportKeyToCardView(View):
         cmds = ["toggle\n"]
         used_slots = set()
         if sign_idx is not None:
-            cmds.append(f"key {sign_idx}\nkeytocard\n1\nkey {sign_idx}\n")
+            cmds.append(
+                f"key {sign_idx}\nkeytocard\ny\n1\nkey {sign_idx}\n"
+            )
             used_slots.add("1")
         elif "s" in primary_caps:
             cmds.extend(["keytocard\n", "y\n", "1\n"])
@@ -6371,7 +6373,9 @@ class ToolsGPGImportKeyToCardView(View):
                 None,
             )
             if slot:
-                cmds.append(f"key {idx}\nkeytocard\n{slot}\nkey {idx}\n")
+                cmds.append(
+                    f"key {idx}\nkeytocard\ny\n{slot}\nkey {idx}\n"
+                )
                 used_slots.add(slot)
         cmds.append("quit\ny\n")
         edit_commands = "".join(cmds)
