@@ -93,7 +93,7 @@ def import_keys_with_smartpgp(fingerprint: str, admin_pin: str) -> bool:
             point = km.p
             pub = b'\x04' + point.x.to_bytes(size, 'big') + point.y.to_bytes(size, 'big')
             ctx.cmd_switch_crypto(curve_name, role)
-            ctx.cmd_put_key(pub, priv)
+            ctx.cmd_put_key(role, pub, priv)
             fp = bytes.fromhex(str(k.fingerprint).replace(' ', ''))
             ts = int(k.created.timestamp()).to_bytes(4, 'big')
             ctx.cmd_put_data(fp_tags[role], fp)
