@@ -53,7 +53,13 @@ def import_keys_with_smartpgp(fingerprint: str, admin_pin: str) -> bool:
     if not all_keys:
         all_keys = [key]
     fp_tags = {'sig': 0xC7, 'dec': 0xC8, 'auth': 0xC9}
-    ts_tags = {'sig': 0xCD, 'dec': 0xCE, 'auth': 0xCF}
+    # Key generation timestamps are stored in individual DOs for each key
+    # slot.  The previous implementation accidentally wrote the signature's
+    # timestamp to ``0xCD`` which actually refers to the *combined* "key
+    # generation dates" structure.  Aside from leaving the per-slot DOs empty,
+    # that corrupted the aggregate record and confused OpenPGP clients when
+    # they queried the card.  Use the correct tags for each key instead.
+    ts_tags = {'sig': 0xCE, 'dec': 0xCF, 'auth': 0xD0}
     size_map = {
         'P-256': 32,
         'P-384': 48,
