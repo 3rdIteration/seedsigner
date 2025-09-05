@@ -2,19 +2,19 @@ import logging
 from subprocess import run
 
 import pgpy
-from pgpy.constants import KeyFlags
+from pgpy.constants import KeyFlags, EllipticCurveOID
 
 from seedsigner.helpers.smartpgp.highlevel import CardConnectionContext
 
 logger = logging.getLogger(__name__)
 
 _curve_map = {
-    'NIST_P256': 'P-256',
-    'NIST_P384': 'P-384',
-    'NIST_P521': 'P-521',
-    'BRAINPOOLP256R1': 'brainpoolP256r1',
-    'BRAINPOOLP384R1': 'brainpoolP384r1',
-    'BRAINPOOLP512R1': 'brainpoolP512r1',
+    EllipticCurveOID.NIST_P256: 'P-256',
+    EllipticCurveOID.NIST_P384: 'P-384',
+    EllipticCurveOID.NIST_P521: 'P-521',
+    EllipticCurveOID.Brainpool_P256: 'brainpoolP256r1',
+    EllipticCurveOID.Brainpool_P384: 'brainpoolP384r1',
+    EllipticCurveOID.Brainpool_P512: 'brainpoolP512r1',
 }
 
 
@@ -86,7 +86,7 @@ def import_keys_with_smartpgp(fingerprint: str, admin_pin: str) -> bool:
         if role is None:
             continue
         km = k._key.keymaterial
-        curve_name = _curve_map.get(km.oid.name.upper())
+        curve_name = _curve_map.get(km.oid)
         if not curve_name:
             logger.error('Unsupported curve %s', km.oid)
             return False
