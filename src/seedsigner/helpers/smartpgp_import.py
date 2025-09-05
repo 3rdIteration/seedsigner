@@ -46,7 +46,12 @@ def import_keys_with_smartpgp(fingerprint: str, admin_pin: str) -> bool:
 
     all_keys = [key] + list(key.subkeys.values())
     for k in all_keys:
-        flags = set(k.key_flags)
+        try:
+            flags = set(k.key_flags)  # pgpy <0.6
+        except AttributeError:
+            # pgpy 0.6 dropped the ``key_flags`` attribute; rely on the internal
+            # helper instead so we still detect the proper key usages
+            flags = set(k._get_key_flags())
         role = None
         if KeyFlags.Sign in flags:
             role = 'sig'
