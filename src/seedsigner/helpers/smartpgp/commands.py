@@ -314,6 +314,13 @@ def put_key(connection, pubkey, privkey):
         _raw_send_apdu(connection,"Sending key chunk",apdu)
 
 
+def put_data(connection, tag, value):
+    """Generic helper for ``PUT DATA`` command."""
+    prefix = [0x00, 0xDA, 0x00, tag]
+    apdu = assemble_with_len(prefix, list(value))
+    _raw_send_apdu(connection, f"Put data {tag:02X}", apdu)
+
+
 def put_sm_key(connection, pubkey, privkey):
     """Backward-compatible wrapper for legacy naming."""
     put_key(connection, pubkey, privkey)

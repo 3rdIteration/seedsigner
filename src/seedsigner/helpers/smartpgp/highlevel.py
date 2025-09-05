@@ -280,6 +280,11 @@ class CardConnectionContext:
         self.verify_admin_pin()
         put_key(self.connection, list(pubkey), list(privkey))
 
+    def cmd_put_data(self, tag, value):
+        self.connect()
+        self.verify_admin_pin()
+        put_data(self.connection, tag, list(value))
+
     def cmd_set_resetting_code(self):
         self.connect()
         self.verify_admin_pin()

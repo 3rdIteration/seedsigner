@@ -45,6 +45,17 @@ def import_keys_with_smartpgp(fingerprint: str, admin_pin: str) -> bool:
         return False
 
     all_keys = [key] + list(key.subkeys.values())
+    fp_tags = {'sig': 0xC7, 'dec': 0xC8, 'auth': 0xC9}
+    ts_tags = {'sig': 0xCD, 'dec': 0xCE, 'auth': 0xCF}
+    size_map = {
+        'P-256': 32,
+        'P-384': 48,
+        'P-521': 66,
+        'brainpoolP256r1': 32,
+        'brainpoolP384r1': 48,
+        'brainpoolP512r1': 64,
+    }
+
     for k in all_keys:
         try:
             flags = set(k.key_flags)  # pgpy <0.6
@@ -66,13 +77,20 @@ def import_keys_with_smartpgp(fingerprint: str, admin_pin: str) -> bool:
         if not curve_name:
             logger.error('Unsupported curve %s', km.oid)
             return False
+        size = size_map.get(curve_name)
+        if not size:
+            logger.error('No size mapping for curve %s', curve_name)
+            return False
         try:
-            priv = km.s.to_bytes((km.s.bit_length() + 7) // 8, 'big')
+            priv = km.s.to_bytes(size, 'big')
             point = km.p
-            size = (point.x.bit_length() + 7) // 8
             pub = b'\x04' + point.x.to_bytes(size, 'big') + point.y.to_bytes(size, 'big')
             ctx.cmd_switch_crypto(curve_name, role)
             ctx.cmd_put_key(pub, priv)
+            fp = bytes.fromhex(str(k.fingerprint).replace(' ', ''))
+            ts = int(k.created.timestamp()).to_bytes(4, 'big')
+            ctx.cmd_put_data(fp_tags[role], fp)
+            ctx.cmd_put_data(ts_tags[role], ts)
         except Exception as e:
             logger.exception('Failed to import %s key via SmartPGP: %s', role, e)
             return False
