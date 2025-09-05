@@ -44,7 +44,14 @@ def import_keys_with_smartpgp(fingerprint: str, admin_pin: str) -> bool:
         logger.exception('SmartPGP connection failed: %s', e)
         return False
 
-    all_keys = [key] + list(key.subkeys.values())
+    # OpenPGP cards are normally loaded with the signing/encryption/auth
+    # **sub**keys rather than the primary certification key.  Importing the
+    # primary key can confuse GnuPG's card interface.  Restrict the import to
+    # subkeys when they exist; fall back to the primary key only if no subkeys
+    # are present.
+    all_keys = list(key.subkeys.values())
+    if not all_keys:
+        all_keys = [key]
     fp_tags = {'sig': 0xC7, 'dec': 0xC8, 'auth': 0xC9}
     ts_tags = {'sig': 0xCD, 'dec': 0xCE, 'auth': 0xCF}
     size_map = {

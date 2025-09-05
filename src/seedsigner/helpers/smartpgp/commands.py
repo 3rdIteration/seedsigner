@@ -265,6 +265,14 @@ def switch_crypto(connection,crypto,key_role):
         role = 0xc2
     elif key_role == 'auth':
         role = 0xc3
+        # Authentication keys perform signatures (e.g. for SSH).
+        # The previous implementation marked them as ECDH (0x12),
+        # which leads GPG to treat the key as an encryption key and
+        # ignore the private component imported on the card.  This
+        # prevented cards provisioned via the SmartPGP module from
+        # being usable for signing.  Use the ECDSA tag (0x13) like the
+        # signature key so that GPG recognises the key correctly.
+        byte1 = 0x13
     elif key_role == 'sm':
         role = 0xd4
     else:
