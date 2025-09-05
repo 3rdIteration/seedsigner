@@ -4005,12 +4005,9 @@ class ToolsMicroSDWipeRandomView(View):
 class ToolsGPGMenuView(View):
     VERIFY_FILE = ButtonOption("Verify File Sig")
     SIGN_FILE = ButtonOption("Sign File")
-    IMPORT_PUBKEY = ButtonOption("Import Pubkey")
-    GENERATE_KEY = ButtonOption("Generate New Key")
-    LOAD_PRIVKEY = ButtonOption("Import Privkey")
+    IMPORT = ButtonOption("Import")
+    EXPORT = ButtonOption("Export")
     SMART_GPG = ButtonOption("SmartGPG")
-    EXPORT_PUBKEY = ButtonOption("Export Pubkey")
-    EXPORT_PRIVKEY = ButtonOption("Export Privkey")
 
     def run(self):
         from subprocess import run
@@ -4030,12 +4027,9 @@ class ToolsGPGMenuView(View):
         button_data = [
             self.VERIFY_FILE,
             self.SIGN_FILE,
-            self.IMPORT_PUBKEY,
-            self.GENERATE_KEY,
-            self.LOAD_PRIVKEY,
+            self.IMPORT,
+            self.EXPORT,
             self.SMART_GPG,
-            self.EXPORT_PUBKEY,
-            self.EXPORT_PRIVKEY,
         ]
 
         selected_menu_num = self.run_screen(
@@ -4054,18 +4048,56 @@ class ToolsGPGMenuView(View):
         elif button_data[selected_menu_num] == self.SIGN_FILE:
             return Destination(ToolsGPGSignFileView)
 
-        elif button_data[selected_menu_num] == self.IMPORT_PUBKEY:
-            return Destination(ToolsGPGImportPubkeyMenuView)
-        elif button_data[selected_menu_num] == self.GENERATE_KEY:
-            return Destination(ToolsGPGGenerateKeyView)
-        elif button_data[selected_menu_num] == self.LOAD_PRIVKEY:
-            return Destination(ToolsGPGLoadPrivkeyMenuView)
+        elif button_data[selected_menu_num] == self.IMPORT:
+            return Destination(ToolsGPGImportMenuView)
+        elif button_data[selected_menu_num] == self.EXPORT:
+            return Destination(ToolsGPGExportMenuView)
         elif button_data[selected_menu_num] == self.SMART_GPG:
             return Destination(ToolsGPGSmartMenuView)
-        elif button_data[selected_menu_num] == self.EXPORT_PUBKEY:
+
+
+class ToolsGPGImportMenuView(View):
+    PUBKEY = ButtonOption("Public Key")
+    PRIVKEY = ButtonOption("Private Key")
+
+    def run(self):
+        button_data = [self.PUBKEY, self.PRIVKEY]
+
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title="Import",
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        if button_data[selected_menu_num] == self.PUBKEY:
+            return Destination(ToolsGPGImportPubkeyMenuView)
+        return Destination(ToolsGPGImportPrivkeyMenuView)
+
+
+class ToolsGPGExportMenuView(View):
+    PUBKEY = ButtonOption("Public Key")
+    PRIVKEY = ButtonOption("Private Key")
+
+    def run(self):
+        button_data = [self.PUBKEY, self.PRIVKEY]
+
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title="Export",
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        if button_data[selected_menu_num] == self.PUBKEY:
             return Destination(ToolsGPGExportPubkeyView)
-        elif button_data[selected_menu_num] == self.EXPORT_PRIVKEY:
-            return Destination(ToolsGPGExportPrivkeyView)
+        return Destination(ToolsGPGExportPrivkeyView)
 
 
 class ToolsGPGSmartMenuView(View):
@@ -4073,7 +4105,6 @@ class ToolsGPGSmartMenuView(View):
     GENERATE_ON_CARD = ButtonOption("Generate On-Card Key")
     CHANGE_ADMIN_PIN = ButtonOption("Change Admin PIN")
     CHANGE_USER_PIN = ButtonOption("Change User PIN")
-    LOAD_KEY = ButtonOption("Load Key to GPG")
 
     def run(self):
         button_data = [
@@ -4081,7 +4112,6 @@ class ToolsGPGSmartMenuView(View):
             self.GENERATE_ON_CARD,
             self.CHANGE_ADMIN_PIN,
             self.CHANGE_USER_PIN,
-            self.LOAD_KEY,
         ]
 
         selected_menu_num = self.run_screen(
@@ -4103,8 +4133,6 @@ class ToolsGPGSmartMenuView(View):
             return Destination(ToolsGPGChangeAdminPinView)
         elif selected == self.CHANGE_USER_PIN:
             return Destination(ToolsGPGChangeUserPinView)
-        elif selected == self.LOAD_KEY:
-            return Destination(ToolsGPGLoadKeyFromCardView)
 
 
 class ToolsGPGCardInfoView(View):
@@ -4154,17 +4182,6 @@ class ToolsGPGChangeAdminPinView(View):
         from seedsigner.helpers import seedkeeper_utils
 
         seedkeeper_utils.disconnect_smartcard_connections(self.controller)
-
-        ret = self.run_screen(
-            WarningScreen,
-            title="Insert Card",
-            status_headline=None,
-            text="Remove and re-insert the smartcard, then press Continue.",
-            show_back_button=True,
-            button_data=[ButtonOption("Continue")],
-        )
-        if ret == RET_CODE__BACK_BUTTON:
-            return Destination(BackStackView)
         run(["gpgconf", "--reload", "scdaemon"])
 
         ret = self.run_screen(
@@ -4297,36 +4314,6 @@ class ToolsGPGChangeUserPinView(View):
         )
         return Destination(MainMenuView)
 
-
-class ToolsGPGLoadKeyFromCardView(View):
-    def run(self):
-        from subprocess import run
-        from seedsigner.helpers import seedkeeper_utils
-
-        seedkeeper_utils.disconnect_smartcard_connections(self.controller)
-
-        ret = self.run_screen(
-            WarningScreen,
-            title="Insert Card",
-            status_headline=None,
-            text="Remove and re-insert the smartcard, then press Continue.",
-            show_back_button=True,
-            button_data=[ButtonOption("Continue")],
-        )
-        if ret == RET_CODE__BACK_BUTTON:
-            return Destination(BackStackView)
-        run(["gpgconf", "--reload", "scdaemon"])
-
-        run(["gpg", "--card-status"])
-        self.run_screen(
-            LargeIconStatusScreen,
-            title="Success",
-            status_headline=None,
-            text="Key loaded from card",
-            show_back_button=False,
-            button_data=[ButtonOption("Continue")],
-        )
-        return Destination(MainMenuView)
 
 class ToolsGPGVerifyFileView(View):
     CHECK_SHA256 = ButtonOption("Check SHA256Sum")
@@ -4869,13 +4856,19 @@ class ToolsGPGImportPubkeySeedkeeperView(View):
         return Destination(ToolsGPGMenuView)
 
 
-class ToolsGPGLoadPrivkeyMenuView(View):
-    LOAD_BIP85_KEY = ButtonOption("Import BIP85 Key")
-    LOAD_FILE = ButtonOption("Import from File")
-    LOAD_SEEDKEEPER = ButtonOption("Import from Seedkeeper")
+class ToolsGPGImportPrivkeyMenuView(View):
+    GENERATE_NEW = ButtonOption("Generate New")
+    LOAD_BIP85_KEY = ButtonOption("Derive BIP85")
+    LOAD_FILE = ButtonOption("From File")
+    LOAD_SEEDKEEPER = ButtonOption("From Seedkeeper")
 
     def run(self):
-        button_data = [self.LOAD_BIP85_KEY, self.LOAD_FILE, self.LOAD_SEEDKEEPER]
+        button_data = [
+            self.GENERATE_NEW,
+            self.LOAD_BIP85_KEY,
+            self.LOAD_FILE,
+            self.LOAD_SEEDKEEPER,
+        ]
 
         selected_menu_num = self.run_screen(
             ButtonListScreen,
@@ -4887,6 +4880,8 @@ class ToolsGPGLoadPrivkeyMenuView(View):
         if selected_menu_num == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
 
+        if button_data[selected_menu_num] == self.GENERATE_NEW:
+            return Destination(ToolsGPGGenerateKeyView)
         if button_data[selected_menu_num] == self.LOAD_BIP85_KEY:
             return Destination(ToolsGPGLoadBIP85KeyView)
         if button_data[selected_menu_num] == self.LOAD_FILE:
@@ -6140,17 +6135,6 @@ class ToolsGPGImportKeyToCardView(View):
         from seedsigner.helpers import seedkeeper_utils
 
         seedkeeper_utils.disconnect_smartcard_connections(self.controller)
-
-        ret = self.run_screen(
-            WarningScreen,
-            title="Insert Card",
-            status_headline=None,
-            text="Remove and re-insert the smartcard, then press Continue.",
-            show_back_button=True,
-            button_data=[ButtonOption("Continue")],
-        )
-        if ret == RET_CODE__BACK_BUTTON:
-            return Destination(BackStackView)
         run(["gpgconf", "--reload", "scdaemon"])
 
         card_status = run(["gpg", "--card-status"], capture_output=True, text=True)
@@ -6253,14 +6237,6 @@ class ToolsGPGImportKeyToCardView(View):
                 )
                 return Destination(BackStackView)
 
-            self.run_screen(
-                WarningScreen,
-                title="Reinsert Card",
-                status_headline=None,
-                text="PINs updated. Please remove and re-insert the card.",
-                show_back_button=False,
-                button_data=[ButtonOption("Continue")],
-            )
             run(["gpgconf", "--reload", "scdaemon"])
 
         if admin_pin is None:
@@ -6335,14 +6311,6 @@ class ToolsGPGImportKeyToCardView(View):
                     button_data=[ButtonOption("Continue")],
                 )
                 return Destination(BackStackView)
-            self.run_screen(
-                WarningScreen,
-                title="Reinsert Card",
-                status_headline=None,
-                text="Card key type updated. Please remove and re-insert the card.",
-                show_back_button=False,
-                button_data=[ButtonOption("Continue")],
-            )
             run(["gpgconf", "--reload", "scdaemon"])
 
         sign_idx = next(
