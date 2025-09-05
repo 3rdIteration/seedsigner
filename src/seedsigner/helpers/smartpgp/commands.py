@@ -292,7 +292,7 @@ def unblock_pin(connection, resetting_code, new_user_pin):
     apdu = assemble_with_len([0x00, 0x2C, 0x00, 0x81], data)
     _raw_send_apdu(connection,"Unblock user PIN with resetting code",apdu)
 
-def put_sm_key(connection, pubkey, privkey):
+def put_key(connection, pubkey, privkey):
     ins_p1_p2 = [0xDB, 0x3F, 0xFF]
     cdata = [0x92] + encode_len(privkey) + [0x99] + encode_len(pubkey)
     cdata = [0xA6, 0x00, 0x7F, 0x48] + encode_len(cdata) + cdata
@@ -311,7 +311,19 @@ def put_sm_key(connection, pubkey, privkey):
             data = cdata[i:i+cl]
             i = i + cl
         apdu = assemble_with_len([cla] + ins_p1_p2, data)
-        _raw_send_apdu(connection,"Sending SM key chunk",apdu)
+        _raw_send_apdu(connection,"Sending key chunk",apdu)
+
+
+def put_data(connection, tag, value):
+    """Generic helper for ``PUT DATA`` command."""
+    prefix = [0x00, 0xDA, 0x00, tag]
+    apdu = assemble_with_len(prefix, list(value))
+    _raw_send_apdu(connection, f"Put data {tag:02X}", apdu)
+
+
+def put_sm_key(connection, pubkey, privkey):
+    """Backward-compatible wrapper for legacy naming."""
+    put_key(connection, pubkey, privkey)
 
 def put_sign_certificate(connection, cert):
     prefix = [0x00, 0xA5, 0x02, 0x04]
