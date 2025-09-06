@@ -4401,17 +4401,45 @@ class ToolsGPGVerifyFileView(View):
         # Use the same filtered list to get the selected filename
         verify_file_name = visible_file_list[selected_file_num]
         logger.info("Selected: %s", verify_file_name)
+        filechecked = verify_file_name[:-4] if verify_file_name.endswith(".sig") else verify_file_name
 
         self.loading_screen = LoadingScreenThread(
             text="Checking Signature\n\n\n\n\n\n(May take a while)"
         )
         self.loading_screen.start()
-        data = run(
-            ["gpg", "--verify", verify_file_name],
-            capture_output=True,
-            text=True,
-            cwd=file_list_path,
-        )
+
+        cmd = ["gpg", "--verify"]
+        if verify_file_name.endswith(".sig"):
+            cmd.append(verify_file_name)
+            if (file_list_path / filechecked).exists():
+                cmd.append(filechecked)
+        else:
+            sig_candidate = verify_file_name + ".sig"
+            if (file_list_path / sig_candidate).exists():
+                cmd.extend([sig_candidate, verify_file_name])
+            else:
+                cmd.append(verify_file_name)
+
+        try:
+            data = run(
+                cmd,
+                capture_output=True,
+                text=True,
+                cwd=str(file_list_path),
+            )
+        except FileNotFoundError as exc:
+            self.loading_screen.stop()
+            logger.warning("gpg verify failed: %s", exc)
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="GPG not found",
+                show_back_button=False,
+                button_data=[ButtonOption("OK")],
+            )
+            return Destination(BackStackView)
+
         self.loading_screen.stop()
 
         result = data.stderr.split("\n")
