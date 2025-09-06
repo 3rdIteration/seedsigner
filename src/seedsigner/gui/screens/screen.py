@@ -954,16 +954,21 @@ class LargeIconStatusScreen(ButtonListScreen):
         self.is_bottom_list = True
         super().__post_init__()
 
-        self.status_icon = Icon(
-            icon_name=self.status_icon_name,
-            icon_size=self.status_icon_size,
-            icon_color=self.status_color,
-        )
-        self.status_icon.screen_y = self.top_nav.height - int(GUIConstants.COMPONENT_PADDING/2)
-        self.status_icon.screen_x = int((self.canvas_width - self.status_icon.width) / 2)
-        self.components.append(self.status_icon)
+        if self.status_icon_size > 0:
+            self.status_icon = Icon(
+                icon_name=self.status_icon_name,
+                icon_size=self.status_icon_size,
+                icon_color=self.status_color,
+            )
+            self.status_icon.screen_y = self.top_nav.height - int(GUIConstants.COMPONENT_PADDING/2)
+            self.status_icon.screen_x = int((self.canvas_width - self.status_icon.width) / 2)
+            self.components.append(self.status_icon)
 
-        next_y = self.status_icon.screen_y + self.status_icon.height + int(GUIConstants.COMPONENT_PADDING/2)
+            next_y = self.status_icon.screen_y + self.status_icon.height + int(GUIConstants.COMPONENT_PADDING/2)
+        else:
+            # Allow callers to set status_icon_size=0 to render the screen without an icon
+            self.status_icon = None
+            next_y = self.top_nav.height + int(GUIConstants.COMPONENT_PADDING/2)
         if self.status_headline:
             self.warning_headline_textarea = TextArea(
                 text=_(self.status_headline),  # Wrap here for just-in-time translations
@@ -982,6 +987,7 @@ class LargeIconStatusScreen(ButtonListScreen):
                 width=self.canvas_width,
                 edge_padding=self.text_edge_padding,  # Don't render all the way up to the far left/right edges
                 screen_y=next_y,
+                allow_text_overflow=self.allow_text_overflow,
             ))
 
 
