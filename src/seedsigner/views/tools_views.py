@@ -5309,12 +5309,17 @@ class ToolsGPGLoadBIP85KeyView(View):
             "secp256k1",
         ][selected_type]
 
-        if key_type == "rsa4096":
+        if key_type.startswith("rsa"):
+            warn_text = {
+                "rsa2048": "Generating an RSA 2048 key can take around 3 minutes on a Pi Zero.\nNIST or Brainpool keys are faster and smaller.",
+                "rsa3072": "Generating an RSA 3072 key can take around 15 minutes on a Pi Zero.\nNIST or Brainpool keys are faster and smaller.",
+                "rsa4096": "Generating an RSA 4096 key can take around an hour on a Pi Zero.\nNIST or Brainpool keys are faster and smaller.",
+            }[key_type]
             self.run_screen(
                 WarningScreen,
                 title="WARNING",
                 status_headline=None,
-                text="Generating an RSA 4096 key can take around an hour on a Pi Zero.",
+                text=warn_text,
                 show_back_button=False,
                 button_data=[ButtonOption("I Understand")],
             )
@@ -5343,8 +5348,10 @@ class ToolsGPGLoadBIP85KeyView(View):
             return Destination(BackStackView)
 
         created = datetime.fromtimestamp(1231006505, tz=timezone.utc)
-        from datetime import timedelta
-        default_expiration = (datetime.now(timezone.utc) + timedelta(days=3650)).date()
+        if key_type == "rsa2048":
+            default_expiration = date(2029, 12, 31)
+        else:
+            default_expiration = date(2035, 12, 31)
         expiration_str = prompt_text(
             "Expiration YYYY-MM-DD", default_expiration.isoformat()
         )
@@ -5507,7 +5514,7 @@ class ToolsGPGGenerateKeyView(View):
             CompressionAlgorithm,
             EllipticCurveOID,
         )
-        from datetime import datetime, timezone, timedelta
+        from datetime import datetime, timezone, date
         from subprocess import run
         from seedsigner.gui.screens.screen import LoadingScreenThread
         from seedsigner.gui.screens import (
@@ -5542,12 +5549,17 @@ class ToolsGPGGenerateKeyView(View):
             (PubKeyAlgorithm.ECDSA, EllipticCurveOID.SECP256K1),
         ][selected_type]
 
-        if alg == PubKeyAlgorithm.RSAEncryptOrSign and param == 4096:
+        if alg == PubKeyAlgorithm.RSAEncryptOrSign:
+            warn_text = {
+                2048: "Generating an RSA 2048 key can take around 3 minutes on a Pi Zero.\nNIST or Brainpool keys are faster and smaller.",
+                3072: "Generating an RSA 3072 key can take around 15 minutes on a Pi Zero.\nNIST or Brainpool keys are faster and smaller.",
+                4096: "Generating an RSA 4096 key can take around an hour on a Pi Zero.\nNIST or Brainpool keys are faster and smaller.",
+            }[param]
             self.run_screen(
                 WarningScreen,
                 title="WARNING",
                 status_headline=None,
-                text="Generating an RSA 4096 key can take around an hour on a Pi Zero.",
+                text=warn_text,
                 show_back_button=False,
                 button_data=[ButtonOption("I Understand")],
             )
@@ -5577,7 +5589,10 @@ class ToolsGPGGenerateKeyView(View):
             return Destination(BackStackView)
 
         created = datetime.now(timezone.utc)
-        default_expiration = (created + timedelta(days=3650)).date()
+        if alg == PubKeyAlgorithm.RSAEncryptOrSign and param == 2048:
+            default_expiration = date(2029, 12, 31)
+        else:
+            default_expiration = date(2035, 12, 31)
         expiration_str = prompt_text(
             "Expiration YYYY-MM-DD", default_expiration.isoformat()
         )
