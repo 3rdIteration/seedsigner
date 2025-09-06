@@ -5121,6 +5121,60 @@ def bip85_rsa_from_root(root, bits: int, index: int, sub_index: int | None = Non
     return RSA.generate(bits, randfunc=drng.read)
 
 
+def bip85_ed25519_from_root(
+    root, index: int, sub_index: int | None = None, alg: str = "EdDSA"
+):
+    from embit import bip85
+    from cryptography.hazmat.primitives.asymmetric import ed25519, x25519
+    from cryptography.hazmat.primitives import serialization
+    from pgpy.constants import EllipticCurveOID
+    from pgpy.packet import fields
+
+    path = [259, index]
+    if sub_index is not None:
+        path.append(sub_index)
+    entropy = bip85.derive_entropy(root, 828365, path)
+    d_bytes = entropy[:32]
+    if alg == "EdDSA":
+        priv = fields.EdDSAPriv()
+        priv.oid = EllipticCurveOID.Ed25519
+        pub_bytes = (
+            ed25519.Ed25519PrivateKey.from_private_bytes(d_bytes)
+            .public_key()
+            .public_bytes(
+                encoding=serialization.Encoding.Raw,
+                format=serialization.PublicFormat.Raw,
+            )
+        )
+        priv.p = fields.ECPoint.from_values(
+            priv.oid.key_size,
+            fields.ECPointFormat.Native,
+            pub_bytes,
+        )
+        priv.s = fields.MPI(int.from_bytes(d_bytes, "big"))
+    else:
+        priv = fields.ECDHPriv()
+        priv.oid = EllipticCurveOID.Curve25519
+        priv.kdf.halg = priv.oid.kdf_halg
+        priv.kdf.encalg = priv.oid.kek_alg
+        pub_bytes = (
+            x25519.X25519PrivateKey.from_private_bytes(d_bytes)
+            .public_key()
+            .public_bytes(
+                encoding=serialization.Encoding.Raw,
+                format=serialization.PublicFormat.Raw,
+            )
+        )
+        priv.p = fields.ECPoint.from_values(
+            priv.oid.key_size,
+            fields.ECPointFormat.Native,
+            pub_bytes,
+        )
+        priv.s = fields.MPI(int.from_bytes(d_bytes, "big"))
+    priv._compute_chksum()
+    return priv
+
+
 def bip85_secp256k1_from_root(
     root, index: int, sub_index: int | None = None, alg: str = "ECDSA"
 ):
@@ -5278,6 +5332,7 @@ class ToolsGPGLoadBIP85KeyView(View):
             ButtonOption("RSA 3072"),
             ButtonOption("RSA 4096"),
             ButtonOption("secp256k1"),
+            ButtonOption("Ed25519"),
         ]
         selected_type = self.run_screen(
             ButtonListScreen,
@@ -5294,7 +5349,20 @@ class ToolsGPGLoadBIP85KeyView(View):
             "rsa3072",
             "rsa4096",
             "secp256k1",
+            "ed25519",
         ][selected_type]
+
+        if key_type in ["secp256k1", "ed25519"]:
+            ret = self.run_screen(
+                WarningScreen,
+                title="WARNING",
+                status_headline=None,
+                text="This key type can't be exported to SmartPGP cards.",
+                show_back_button=True,
+                button_data=[ButtonOption("I Understand")],
+            )
+            if ret == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
 
         if key_type.startswith("rsa"):
             warn_text = {
@@ -5405,6 +5473,9 @@ class ToolsGPGLoadBIP85KeyView(View):
             elif key_type == "brainpoolp256r1":
                 pk.pkalg = PubKeyAlgorithm.ECDSA
                 pk.keymaterial = bip85_brainpoolp256r1_from_root(root, key_index)
+            elif key_type == "ed25519":
+                pk.pkalg = PubKeyAlgorithm.EdDSA
+                pk.keymaterial = bip85_ed25519_from_root(root, key_index)
             else:
                 rsa_main = bip85_rsa_from_root(root, KEY_BITS, key_index)
                 pk.pkalg = PubKeyAlgorithm.RSAEncryptOrSign
@@ -5425,7 +5496,13 @@ class ToolsGPGLoadBIP85KeyView(View):
                 expires=expires,
             )
 
-            if key_type in ["secp256k1", "p256", "brainpoolp256r1"]:
+            if key_type == "ed25519":
+                subkey_specs = [
+                    (0, PubKeyAlgorithm.ECDH, {KeyFlags.EncryptCommunications, KeyFlags.EncryptStorage}, "ECDH"),
+                    (1, PubKeyAlgorithm.EdDSA, {KeyFlags.Authentication}, "EdDSA"),
+                    (2, PubKeyAlgorithm.EdDSA, {KeyFlags.Sign}, "EdDSA"),
+                ]
+            elif key_type in ["secp256k1", "p256", "brainpoolp256r1"]:
                 subkey_specs = [
                     (0, PubKeyAlgorithm.ECDH, {KeyFlags.EncryptCommunications, KeyFlags.EncryptStorage}, "ECDH"),
                     (1, PubKeyAlgorithm.ECDSA, {KeyFlags.Authentication}, "ECDSA"),
@@ -5448,6 +5525,8 @@ class ToolsGPGLoadBIP85KeyView(View):
                     subpkt.keymaterial = bip85_p256_from_root(root, key_index, sub_index, alg[0])
                 elif key_type == "brainpoolp256r1":
                     subpkt.keymaterial = bip85_brainpoolp256r1_from_root(root, key_index, sub_index, alg[0])
+                elif key_type == "ed25519":
+                    subpkt.keymaterial = bip85_ed25519_from_root(root, key_index, sub_index, alg[0])
                 else:
                     rsa_sub = bip85_rsa_from_root(root, KEY_BITS, key_index, sub_index)
                     subpkt.keymaterial = rsa_to_privpacket(rsa_sub)
@@ -5519,6 +5598,7 @@ class ToolsGPGGenerateKeyView(View):
             ButtonOption("RSA 3072"),
             ButtonOption("RSA 4096"),
             ButtonOption("secp256k1"),
+            ButtonOption("Ed25519"),
         ]
         selected_type = self.run_screen(
             ButtonListScreen,
@@ -5529,6 +5609,18 @@ class ToolsGPGGenerateKeyView(View):
         if selected_type == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
 
+        if keytype_buttons[selected_type].text in ["secp256k1", "Ed25519"]:
+            ret = self.run_screen(
+                WarningScreen,
+                title="WARNING",
+                status_headline=None,
+                text="This key type can't be exported to SmartPGP cards.",
+                show_back_button=True,
+                button_data=[ButtonOption("I Understand")],
+            )
+            if ret == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+
         alg, param = [
             (PubKeyAlgorithm.ECDSA, EllipticCurveOID.NIST_P256),
             (PubKeyAlgorithm.ECDSA, EllipticCurveOID.Brainpool_P256),
@@ -5536,6 +5628,7 @@ class ToolsGPGGenerateKeyView(View):
             (PubKeyAlgorithm.RSAEncryptOrSign, 3072),
             (PubKeyAlgorithm.RSAEncryptOrSign, 4096),
             (PubKeyAlgorithm.ECDSA, EllipticCurveOID.SECP256K1),
+            (PubKeyAlgorithm.EdDSA, EllipticCurveOID.Ed25519),
         ][selected_type]
 
         if alg == PubKeyAlgorithm.RSAEncryptOrSign:
@@ -5634,6 +5727,10 @@ class ToolsGPGGenerateKeyView(View):
                 sub_enc = PGPKey.new(PubKeyAlgorithm.RSAEncryptOrSign, param)
                 sub_auth = PGPKey.new(PubKeyAlgorithm.RSAEncryptOrSign, param)
                 sub_sign = PGPKey.new(PubKeyAlgorithm.RSAEncryptOrSign, param)
+            elif alg == PubKeyAlgorithm.EdDSA:
+                sub_enc = PGPKey.new(PubKeyAlgorithm.ECDH, EllipticCurveOID.Curve25519)
+                sub_auth = PGPKey.new(PubKeyAlgorithm.EdDSA, param)
+                sub_sign = PGPKey.new(PubKeyAlgorithm.EdDSA, param)
             else:
                 curve = param
                 sub_enc = PGPKey.new(PubKeyAlgorithm.ECDH, curve)

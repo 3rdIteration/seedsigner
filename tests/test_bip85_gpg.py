@@ -2,6 +2,7 @@ from embit import bip32, bip85
 from seedsigner.models.seed import Seed
 from seedsigner.views.tools_views import (
     bip85_brainpoolp256r1_from_root,
+    bip85_ed25519_from_root,
     bip85_p256_from_root,
     bip85_rsa_from_root,
     bip85_secp256k1_from_root,
@@ -81,4 +82,13 @@ def test_bip85_brainpoolp256r1_deterministic():
     key = bip85_brainpoolp256r1_from_root(root, 0)
     assert int(key.s) == int(
         "6f48a0f8172149dd27c6d18e43017e2083e3dcf9ac58144ca054e4e86a7d3a24", 16
+    )
+
+
+def test_bip85_ed25519_deterministic():
+    seed = Seed(mnemonic=MNEMONIC)
+    root = bip32.HDKey.from_seed(seed.seed_bytes)
+    key = bip85_ed25519_from_root(root, 0)
+    assert int(key.s) == int(
+        "7b947d4d726e678ce219948c837221b6712cdf74862b453921442d038f55040c", 16
     )
