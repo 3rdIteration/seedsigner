@@ -6370,14 +6370,12 @@ class ToolsGPGImportKeyToCardView(View):
             capture_output=True,
             text=True,
         )
-
-        self.loading_screen.stop()
-
         if result.returncode != 0:
             try:
                 from seedsigner.helpers.smartpgp_import import import_keys_with_smartpgp
 
                 if import_keys_with_smartpgp(self.fingerprint, admin_pin):
+                    self.loading_screen.stop()
                     self.run_screen(
                         LargeIconStatusScreen,
                         title="Success",
@@ -6389,6 +6387,7 @@ class ToolsGPGImportKeyToCardView(View):
                     return Destination(ToolsGPGMenuView)
             except Exception as e:
                 logger.exception("SmartPGP fallback failed: %s", e)
+            self.loading_screen.stop()
             self.run_screen(
                 LargeIconStatusScreen,
                 title="Error",
@@ -6399,6 +6398,7 @@ class ToolsGPGImportKeyToCardView(View):
             )
             return Destination(BackStackView)
 
+        self.loading_screen.stop()
         self.run_screen(
             LargeIconStatusScreen,
             title="Success",
