@@ -5609,7 +5609,7 @@ class ToolsGPGGenerateKeyView(View):
         if selected_type == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
 
-        if keytype_buttons[selected_type].text in ["secp256k1", "Ed25519"]:
+        if keytype_buttons[selected_type].button_label in ["secp256k1", "Ed25519"]:
             ret = self.run_screen(
                 WarningScreen,
                 title="WARNING",
