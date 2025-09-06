@@ -5289,6 +5289,7 @@ class ToolsGPGLoadBIP85KeyView(View):
             ButtonOption("Brainpool P-256"),
             ButtonOption("RSA 2048"),
             ButtonOption("RSA 3072"),
+            ButtonOption("RSA 4096"),
             ButtonOption("secp256k1"),
         ]
         selected_type = self.run_screen(
@@ -5304,8 +5305,26 @@ class ToolsGPGLoadBIP85KeyView(View):
             "brainpoolp256r1",
             "rsa2048",
             "rsa3072",
+            "rsa4096",
             "secp256k1",
         ][selected_type]
+
+        if key_type.startswith("rsa"):
+            warn_text = {
+                "rsa2048": "Generating an RSA 2048 key can take around 3 minutes on a Pi Zero.\nNIST or Brainpool keys are faster and smaller.",
+                "rsa3072": "Generating an RSA 3072 key can take around 15 minutes on a Pi Zero.\nNIST or Brainpool keys are faster and smaller.",
+                "rsa4096": "Generating an RSA 4096 key can take around an hour on a Pi Zero.\nNIST or Brainpool keys are faster and smaller.",
+            }[key_type]
+            ret = self.run_screen(
+                WarningScreen,
+                title="WARNING",
+                status_headline=None,
+                text=warn_text,
+                show_back_button=True,
+                button_data=[ButtonOption("I Understand")],
+            )
+            if ret == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
 
         def prompt_text(title: str, default: str = ""):
             ret_dict = tools_screens.ToolsTextQRTextEntryScreen(
@@ -5331,8 +5350,10 @@ class ToolsGPGLoadBIP85KeyView(View):
             return Destination(BackStackView)
 
         created = datetime.fromtimestamp(1231006505, tz=timezone.utc)
-        from datetime import timedelta
-        default_expiration = (datetime.now(timezone.utc) + timedelta(days=3650)).date()
+        if key_type == "rsa2048":
+            default_expiration = date(2029, 12, 31)
+        else:
+            default_expiration = date(2035, 12, 31)
         expiration_str = prompt_text(
             "Expiration YYYY-MM-DD", default_expiration.isoformat()
         )
@@ -5364,7 +5385,13 @@ class ToolsGPGLoadBIP85KeyView(View):
         seed = self.controller.get_seed(0)
         root = bip32.HDKey.from_seed(seed.seed_bytes)
         KEY_BITS = (
-            2048 if key_type == "rsa2048" else 3072 if key_type == "rsa3072" else None
+            2048
+            if key_type == "rsa2048"
+            else 3072
+            if key_type == "rsa3072"
+            else 4096
+            if key_type == "rsa4096"
+            else None
         )
 
         def rsa_to_privpacket(rsa_key: RSA.RsaKey) -> fields.RSAPriv:
@@ -5489,7 +5516,7 @@ class ToolsGPGGenerateKeyView(View):
             CompressionAlgorithm,
             EllipticCurveOID,
         )
-        from datetime import datetime, timezone, timedelta
+        from datetime import datetime, timezone, date
         from subprocess import run
         from seedsigner.gui.screens.screen import LoadingScreenThread
         from seedsigner.gui.screens import (
@@ -5503,6 +5530,7 @@ class ToolsGPGGenerateKeyView(View):
             ButtonOption("Brainpool P-256"),
             ButtonOption("RSA 2048"),
             ButtonOption("RSA 3072"),
+            ButtonOption("RSA 4096"),
             ButtonOption("secp256k1"),
         ]
         selected_type = self.run_screen(
@@ -5519,8 +5547,26 @@ class ToolsGPGGenerateKeyView(View):
             (PubKeyAlgorithm.ECDSA, EllipticCurveOID.Brainpool_P256),
             (PubKeyAlgorithm.RSAEncryptOrSign, 2048),
             (PubKeyAlgorithm.RSAEncryptOrSign, 3072),
+            (PubKeyAlgorithm.RSAEncryptOrSign, 4096),
             (PubKeyAlgorithm.ECDSA, EllipticCurveOID.SECP256K1),
         ][selected_type]
+
+        if alg == PubKeyAlgorithm.RSAEncryptOrSign:
+            warn_text = {
+                2048: "Generating an RSA 2048 key can take around 3 minutes on a Pi Zero.\nNIST or Brainpool keys are faster and smaller.",
+                3072: "Generating an RSA 3072 key can take around 15 minutes on a Pi Zero.\nNIST or Brainpool keys are faster and smaller.",
+                4096: "Generating an RSA 4096 key can take around an hour on a Pi Zero.\nNIST or Brainpool keys are faster and smaller.",
+            }[param]
+            ret = self.run_screen(
+                WarningScreen,
+                title="WARNING",
+                status_headline=None,
+                text=warn_text,
+                show_back_button=True,
+                button_data=[ButtonOption("I Understand")],
+            )
+            if ret == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
 
         def prompt_text(title: str, default: str = ""):
             ret_dict = tools_screens.ToolsTextQRTextEntryScreen(
@@ -5547,7 +5593,10 @@ class ToolsGPGGenerateKeyView(View):
             return Destination(BackStackView)
 
         created = datetime.now(timezone.utc)
-        default_expiration = (created + timedelta(days=3650)).date()
+        if alg == PubKeyAlgorithm.RSAEncryptOrSign and param == 2048:
+            default_expiration = date(2029, 12, 31)
+        else:
+            default_expiration = date(2035, 12, 31)
         expiration_str = prompt_text(
             "Expiration YYYY-MM-DD", default_expiration.isoformat()
         )
