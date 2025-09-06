@@ -4730,6 +4730,8 @@ class ToolsGPGSignManifestView(View):
         file_list_path = MicroSD.get_microsd_dir() / "microsd-images"
         os.makedirs(file_list_path, exist_ok=True)
 
+        manifest_name = "sha256.txt"
+
         file_list = [
             f
             for f in os.listdir(file_list_path)
@@ -4738,8 +4740,11 @@ class ToolsGPGSignManifestView(View):
                 and f != '__MACOSX'
                 and os.path.isfile(os.path.join(file_list_path, f))
                 and not f.endswith('.sig')
+                and f != manifest_name
             )
         ]
+
+        file_list.sort()
 
         if not file_list:
             self.run_screen(
@@ -4754,7 +4759,6 @@ class ToolsGPGSignManifestView(View):
 
         self.loading_screen = LoadingScreenThread(text="Generating Manifest\n\n\n\n\n\n(May take a while)")
         self.loading_screen.start()
-        manifest_name = "manifest.sha256.txt"
 
         if shutil.which("sha256sum"):
             result = run(
