@@ -5109,27 +5109,16 @@ class ToolsGPGLoadPrivkeySeedkeeperView(View):
 
 
 def bip85_rsa_from_root(root, bits: int, index: int, sub_index: int | None = None):
-    from hashlib import shake_256
     from embit import bip85
     from Cryptodome.PublicKey import RSA
+    from seedsigner.helpers.bip85_drng import BIP85DRNG
 
     path = [bits, index]
     if sub_index is not None:
         path.append(sub_index)
     entropy = bip85.derive_entropy(root, 828365, path)
-    counter = 0
-    buffer = b""
-
-    def randfunc(n: int) -> bytes:
-        nonlocal counter, buffer
-        while len(buffer) < n:
-            ctr = counter.to_bytes(4, "big")
-            buffer += shake_256(entropy + ctr).digest(64)
-            counter += 1
-        result, buffer = buffer[:n], buffer[n:]
-        return result
-
-    return RSA.generate(bits, randfunc=randfunc)
+    drng = BIP85DRNG.new(entropy)
+    return RSA.generate(bits, randfunc=drng.read)
 
 
 def bip85_secp256k1_from_root(
