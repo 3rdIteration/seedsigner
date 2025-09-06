@@ -4012,19 +4012,6 @@ class ToolsGPGMenuView(View):
     SMART_GPG = ButtonOption("SmartGPG")
 
     def run(self):
-        from subprocess import run
-        from pathlib import Path
-        from seedsigner.gui.screens.screen import LoadingScreenThread
-
-        if not self.controller.gpg_keys_imported:
-            gpg_dir = Path(__file__).resolve().parent.parent.parent.parent / "gpg_keys"
-            self.loading_screen = LoadingScreenThread(text="Importing GPG Keys\n\n\n\n\n\n(May take a while)")
-            self.loading_screen.start()
-            key_files = [str(p) for p in gpg_dir.glob("*.asc")]
-            if key_files:
-                run(["gpg", "--import", *key_files])
-            self.loading_screen.stop()
-            self.controller.gpg_keys_imported = True
 
         button_data = [
             self.VERIFY_FILE,
@@ -4344,6 +4331,7 @@ class ToolsGPGVerifyFileView(View):
     def run(self):
         from subprocess import run
         import hashlib, shutil
+        from pathlib import Path
         from seedsigner.gui.screens.screen import LoadingScreenThread
 
         if len(self.controller.storage.seeds) > 0:
@@ -4357,6 +4345,16 @@ class ToolsGPGVerifyFileView(View):
             )
             if ret == RET_CODE__BACK_BUTTON:
                 return Destination(BackStackView)
+
+        if not self.controller.gpg_keys_imported:
+            gpg_dir = Path(__file__).resolve().parent.parent.parent.parent / "gpg_keys"
+            self.loading_screen = LoadingScreenThread(text="Importing GPG Keys\n\n\n\n\n\n(May take a while)")
+            self.loading_screen.start()
+            key_files = [str(p) for p in gpg_dir.glob("*.asc")]
+            if key_files:
+                run(["gpg", "--import", *key_files])
+            self.loading_screen.stop()
+            self.controller.gpg_keys_imported = True
 
         file_list_path = MicroSD.get_microsd_dir() / "microsd-images"
         os.makedirs(file_list_path, exist_ok=True)
@@ -5358,27 +5356,16 @@ class ToolsGPGLoadPrivkeySeedkeeperView(View):
 
 
 def bip85_rsa_from_root(root, bits: int, index: int, sub_index: int | None = None):
-    from hashlib import shake_256
     from embit import bip85
     from Cryptodome.PublicKey import RSA
+    from seedsigner.helpers.bip85_drng import BIP85DRNG
 
     path = [bits, index]
     if sub_index is not None:
         path.append(sub_index)
     entropy = bip85.derive_entropy(root, 828365, path)
-    counter = 0
-    buffer = b""
-
-    def randfunc(n: int) -> bytes:
-        nonlocal counter, buffer
-        while len(buffer) < n:
-            ctr = counter.to_bytes(4, "big")
-            buffer += shake_256(entropy + ctr).digest(64)
-            counter += 1
-        result, buffer = buffer[:n], buffer[n:]
-        return result
-
-    return RSA.generate(bits, randfunc=randfunc)
+    drng = BIP85DRNG.new(entropy)
+    return RSA.generate(bits, randfunc=drng.read)
 
 
 def bip85_secp256k1_from_root(
@@ -5536,6 +5523,7 @@ class ToolsGPGLoadBIP85KeyView(View):
             ButtonOption("Brainpool P-256"),
             ButtonOption("RSA 2048"),
             ButtonOption("RSA 3072"),
+            ButtonOption("RSA 4096"),
             ButtonOption("secp256k1"),
         ]
         selected_type = self.run_screen(
@@ -5551,8 +5539,26 @@ class ToolsGPGLoadBIP85KeyView(View):
             "brainpoolp256r1",
             "rsa2048",
             "rsa3072",
+            "rsa4096",
             "secp256k1",
         ][selected_type]
+
+        if key_type.startswith("rsa"):
+            warn_text = {
+                "rsa2048": "Generating an RSA 2048 key can take around 3 minutes on a Pi Zero.\nNIST or Brainpool keys are faster and smaller.",
+                "rsa3072": "Generating an RSA 3072 key can take around 15 minutes on a Pi Zero.\nNIST or Brainpool keys are faster and smaller.",
+                "rsa4096": "Generating an RSA 4096 key can take around an hour on a Pi Zero.\nNIST or Brainpool keys are faster and smaller.",
+            }[key_type]
+            ret = self.run_screen(
+                WarningScreen,
+                title="WARNING",
+                status_headline=None,
+                text=warn_text,
+                show_back_button=True,
+                button_data=[ButtonOption("I Understand")],
+            )
+            if ret == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
 
         def prompt_text(title: str, default: str = ""):
             ret_dict = tools_screens.ToolsTextQRTextEntryScreen(
@@ -5578,8 +5584,10 @@ class ToolsGPGLoadBIP85KeyView(View):
             return Destination(BackStackView)
 
         created = datetime.fromtimestamp(1231006505, tz=timezone.utc)
-        from datetime import timedelta
-        default_expiration = (datetime.now(timezone.utc) + timedelta(days=3650)).date()
+        if key_type == "rsa2048":
+            default_expiration = date(2029, 12, 31)
+        else:
+            default_expiration = date(2035, 12, 31)
         expiration_str = prompt_text(
             "Expiration YYYY-MM-DD", default_expiration.isoformat()
         )
@@ -5611,7 +5619,13 @@ class ToolsGPGLoadBIP85KeyView(View):
         seed = self.controller.get_seed(0)
         root = bip32.HDKey.from_seed(seed.seed_bytes)
         KEY_BITS = (
-            2048 if key_type == "rsa2048" else 3072 if key_type == "rsa3072" else None
+            2048
+            if key_type == "rsa2048"
+            else 3072
+            if key_type == "rsa3072"
+            else 4096
+            if key_type == "rsa4096"
+            else None
         )
 
         def rsa_to_privpacket(rsa_key: RSA.RsaKey) -> fields.RSAPriv:
@@ -5736,7 +5750,7 @@ class ToolsGPGGenerateKeyView(View):
             CompressionAlgorithm,
             EllipticCurveOID,
         )
-        from datetime import datetime, timezone, timedelta
+        from datetime import datetime, timezone, date
         from subprocess import run
         from seedsigner.gui.screens.screen import LoadingScreenThread
         from seedsigner.gui.screens import (
@@ -5750,6 +5764,7 @@ class ToolsGPGGenerateKeyView(View):
             ButtonOption("Brainpool P-256"),
             ButtonOption("RSA 2048"),
             ButtonOption("RSA 3072"),
+            ButtonOption("RSA 4096"),
             ButtonOption("secp256k1"),
         ]
         selected_type = self.run_screen(
@@ -5766,8 +5781,26 @@ class ToolsGPGGenerateKeyView(View):
             (PubKeyAlgorithm.ECDSA, EllipticCurveOID.Brainpool_P256),
             (PubKeyAlgorithm.RSAEncryptOrSign, 2048),
             (PubKeyAlgorithm.RSAEncryptOrSign, 3072),
+            (PubKeyAlgorithm.RSAEncryptOrSign, 4096),
             (PubKeyAlgorithm.ECDSA, EllipticCurveOID.SECP256K1),
         ][selected_type]
+
+        if alg == PubKeyAlgorithm.RSAEncryptOrSign:
+            warn_text = {
+                2048: "Generating an RSA 2048 key can take around 3 minutes on a Pi Zero.\nNIST or Brainpool keys are faster and smaller.",
+                3072: "Generating an RSA 3072 key can take around 15 minutes on a Pi Zero.\nNIST or Brainpool keys are faster and smaller.",
+                4096: "Generating an RSA 4096 key can take around an hour on a Pi Zero.\nNIST or Brainpool keys are faster and smaller.",
+            }[param]
+            ret = self.run_screen(
+                WarningScreen,
+                title="WARNING",
+                status_headline=None,
+                text=warn_text,
+                show_back_button=True,
+                button_data=[ButtonOption("I Understand")],
+            )
+            if ret == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
 
         def prompt_text(title: str, default: str = ""):
             ret_dict = tools_screens.ToolsTextQRTextEntryScreen(
@@ -5794,7 +5827,10 @@ class ToolsGPGGenerateKeyView(View):
             return Destination(BackStackView)
 
         created = datetime.now(timezone.utc)
-        default_expiration = (created + timedelta(days=3650)).date()
+        if alg == PubKeyAlgorithm.RSAEncryptOrSign and param == 2048:
+            default_expiration = date(2029, 12, 31)
+        else:
+            default_expiration = date(2035, 12, 31)
         expiration_str = prompt_text(
             "Expiration YYYY-MM-DD", default_expiration.isoformat()
         )
@@ -6617,14 +6653,12 @@ class ToolsGPGImportKeyToCardView(View):
             capture_output=True,
             text=True,
         )
-
-        self.loading_screen.stop()
-
         if result.returncode != 0:
             try:
                 from seedsigner.helpers.smartpgp_import import import_keys_with_smartpgp
 
                 if import_keys_with_smartpgp(self.fingerprint, admin_pin):
+                    self.loading_screen.stop()
                     self.run_screen(
                         LargeIconStatusScreen,
                         title="Success",
@@ -6636,6 +6670,7 @@ class ToolsGPGImportKeyToCardView(View):
                     return Destination(ToolsGPGMenuView)
             except Exception as e:
                 logger.exception("SmartPGP fallback failed: %s", e)
+            self.loading_screen.stop()
             self.run_screen(
                 LargeIconStatusScreen,
                 title="Error",
@@ -6646,6 +6681,7 @@ class ToolsGPGImportKeyToCardView(View):
             )
             return Destination(BackStackView)
 
+        self.loading_screen.stop()
         self.run_screen(
             LargeIconStatusScreen,
             title="Success",
