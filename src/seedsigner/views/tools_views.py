@@ -6045,11 +6045,13 @@ class ToolsGPGExportPubkeyView(View):
         from subprocess import run
         import os
         import platform
+        from seedsigner.models.encode_qr import UrBytesQrEncoder
         from seedsigner.gui.screens.screen import (
             ButtonListScreen,
             LargeIconStatusScreen,
             WarningScreen,
             LoadingScreenThread,
+            QRDisplayScreen,
         )
 
         result = run(
@@ -6100,6 +6102,7 @@ class ToolsGPGExportPubkeyView(View):
 
         dest_buttons = [
             ButtonOption("microSD"),
+            ButtonOption("Animated QR"),
             ButtonOption("Seedkeeper"),
             ButtonOption("OpenGPG Card"),
         ]
@@ -6155,6 +6158,46 @@ class ToolsGPGExportPubkeyView(View):
                 show_back_button=False,
                 button_data=[ButtonOption("Continue")],
             )
+            return Destination(MainMenuView)
+        elif dest_selected == 1:
+            exported = run(
+                ["gpg", "--armor", "--export", key["fpr"]],
+                capture_output=True,
+            )
+            if exported.returncode != 0:
+                self.run_screen(
+                    WarningScreen,
+                    title="Error",
+                    status_headline=None,
+                    text="Failed to export key",
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
+
+            loading = LoadingScreenThread(text="Encoding...")
+            loading.start()
+            try:
+                qr_encoder = UrBytesQrEncoder(
+                    data=exported.stdout,
+                    qr_density=self.settings.get_value(SettingsConstants.SETTING__QR_DENSITY),
+                )
+            finally:
+                loading.stop()
+
+            num_codes = qr_encoder.seq_len()
+            ret = self.run_screen(
+                WarningScreen,
+                title="Animated QR",
+                status_headline=None,
+                text=f"This export requires {num_codes} QR code{'s' if num_codes > 1 else ''}.",
+                show_back_button=True,
+                button_data=[ButtonOption("Start")],
+            )
+            if ret == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+
+            self.run_screen(QRDisplayScreen, qr_encoder=qr_encoder)
             return Destination(MainMenuView)
         else:
             exported = run(
