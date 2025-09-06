@@ -1,4 +1,4 @@
-from embit import bip32
+from embit import bip32, bip85
 from seedsigner.models.seed import Seed
 from seedsigner.views.tools_views import (
     bip85_brainpoolp256r1_from_root,
@@ -6,8 +6,26 @@ from seedsigner.views.tools_views import (
     bip85_rsa_from_root,
     bip85_secp256k1_from_root,
 )
+from seedsigner.helpers.bip85_drng import BIP85DRNG
 
 MNEMONIC = "resource timber firm banner horror pupil frozen main pear direct pioneer broken grid core insane begin sister pony end debate task silk empty curious".split()
+
+
+def test_bip85_drng_vector():
+    root = bip32.HDKey.from_string(
+        "xprv9s21ZrQH143K2LBWUUQRFXhucrQqBpKdRRxNVq2zBqsx8HVqFk2uYo8kmbaLLHRdqtQpUm98uKfu3vca1LqdGhUtyoFnCNkfmXRyPXLjbKb"
+    )
+    entropy = bip85.derive_entropy(root, 0, [0])
+    assert entropy.hex() == (
+        "efecfbccffea313214232d29e71563d941229afb4338c21f9517c41aaa0d16f0"
+        "0b83d2a09ef747e7a64e8e2bd5a14869e693da66ce94ac2da570ab7ee48618f7"
+    )
+    drng = BIP85DRNG.new(entropy)
+    assert drng.read(80).hex() == (
+        "b78b1ee6b345eae6836c2d53d33c64cdaf9a696487be81b03e822dc84b3f1cd8"
+        "83d7559e53d175f243e4c349e822a957bbff9224bc5dde9492ef54e8a439f6bc"
+        "8c7355b87a925a37ee405a7502991111"
+    )
 
 
 def test_bip85_rsa_deterministic():
@@ -16,7 +34,7 @@ def test_bip85_rsa_deterministic():
     key = bip85_rsa_from_root(root, 1024, 0)
     assert key.size_in_bits() == 1024
     assert key.n == int(
-        "d5ddf7786d30bf996b024d1a70aff00354c658ed60479c732343abcaa6b86749c28ee25200f923b1e56b89ba7cb3b4187360781d95651a221880f161c366bab91122762386b6895b38d7b46ed860ac00f12f782a138e92154388927721d0e8a05921ec35d042d64ebd0beaafe819a4af10cb6cc1225fbad35e06c906ffaecd6d",
+        "a3ec52b3ad61128b8253f0a34bfc9d19d01df9603acc8fac3eba3dda750421029d647122fbfc0384fdab97c44f6a7d0748819c46a33414217120daff2f0a471b234023897af78a7cb119df3c9f3b2b7690803587bff8016d14f5b91088201792569d745ff1d9c58235458faf706475242feb4fb699fccaf94b564398f57d921b",
         16,
     )
 
@@ -34,12 +52,7 @@ def test_bip85_rsa_3072_deterministic():
     key = bip85_rsa_from_root(root, 3072, 0)
     assert key.size_in_bits() == 3072
     assert key.n == int(
-        "d75e35129fd00e06a4b26894c11d7c420d1b758d18190857ce100e3a7720a1a57fee5820ee5332bf2fe8c7d336acbeb44b6543f01a162c3304c970e20924f495"
-        "09936ee727cbd07b39a091340e5518a72ad6dafe181014109a1b8d8db0bd94cf5bda97ee713dd90ef4acebee6f7f747362dc0deb86fa93ef76ab7ec884381fac"
-        "eda19721939b39f7a6c25ea4ba58f8a430b1d6ba7b2d3dd994c93096f206e1a95ef2a872299a302718510869fb27d6bbfe0d27801d6f05465e8bb8d748aa55db"
-        "235268644ffe5cf16d4d5d6ee8e51a16072bba3e3c1d1075f20061e62562ab7bc267f6be05fb2d56e4e477653c2b22cd88b849ee69cbf4fdcf8d297ce2f804dd"
-        "0545cfc9f533997e5f5df984c9de844597674ba349bf6a8770a6f6e86a9cbaee6134b4349d226acc80101b31f80888cbb0113b138a79e2d5467af2a21991d0a8"
-        "307247fcaa44fb123248e848edfcb1306878e1020fc5832bc2213241caa30b2309d5bc9ea3e0f47275f2a2299fa9bed5faa8256fbf9e0fa253e3a1defa034685",
+        "c3cfd8332fde9f8ec605520f687c11f250b0eedfd695aa3170f3eb242c15e0be769a1120f9c81c30615e3a5f3a0c50aa399df15f2d3a8554a0d698c5c86cacfbbce160c8bf6e7f581f9ad16885cbe5aeffeddc8ff66c16a16b6f429da765b98adbdd4554e0ec322206fc8c9b780f3527f2b93aa3075bde1fb735829e41f5f42be6ee7dc0d28f570c394e7610f44b85ba452a933e2405a3a72cdf8d33577a85fb5bb35b2cd0c2d7c6f3309c4ca47aab8eb094d31db982c91e9ea9c8f369827d73c4a53f943c15dfff791b33aa2d60173f13dc437cee05222b288726cea9d02eefff111a74714655ed6c048c27ff1a3264732d2952a233c42b640ec93bc214a39eef342b285c828ae00d2082fae2bef26e88a6fc0650939beeeb518feea3b79576a54afe640146eb0d9fb0bcd12d14d7dea6aed79527243a182f6bf83d9b6128582b87eddecfb99d8969c779314e8334e7580204ac25ae734035b45510268d6fb8964a4f74ae7ca5ff2cabf0553c374d760d600da4472d09a42a81844844346525",
         16,
     )
 
