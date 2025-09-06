@@ -3577,6 +3577,7 @@ class ToolsMicroSDMenuView(View):
 class ToolsMicroSDFlashView(View):
     def run(self):
         from subprocess import run
+        import hashlib, shutil
         from seedsigner.gui.screens.screen import LoadingScreenThread
         from seedsigner.hardware.microsd import MicroSD
         from seedsigner.hardware.microsd import MicroSD
@@ -3805,6 +3806,7 @@ class ToolsMicroSDWipeZeroView(View):
 
     def run(self):
         from subprocess import run
+        import hashlib, shutil
         from seedsigner.gui.screens.screen import LoadingScreenThread
 
         microsd_dev = find_sd_card_device()
@@ -4341,6 +4343,7 @@ class ToolsGPGVerifyFileView(View):
     CHECK_SHA256 = ButtonOption("Check SHA256Sum")
     def run(self):
         from subprocess import run
+        import hashlib, shutil
         from seedsigner.gui.screens.screen import LoadingScreenThread
 
         if len(self.controller.storage.seeds) > 0:
@@ -4452,38 +4455,65 @@ class ToolsGPGVerifyFileView(View):
                 )
             
             if button_data[ret] == self.CHECK_SHA256:
-                if Settings.HOSTNAME == Settings.SEEDSIGNER_OS:
-                    cmd = f"cd {file_list_path} ; sha256sum -c {filechecked}"
-                else:
-                    cmd = f"cd {file_list_path} ; sha256sum --check {filechecked} --ignore-missing"
-
-                self.loading_screen = LoadingScreenThread(text="Checking SHA256\n\n\n\n\n\n(This takes a while)")
-                self.loading_screen.start()
-
-                data = run(cmd, capture_output=True, shell=True, text=True)
-                print(cmd, " ", data)
-
-                self.loading_screen.stop()
-
-                result_stdout = data.stdout.split("\n")
-                result_stderr = data.stderr.split("\n")
-                matched = None
                 verified_files = []
                 failed_files = []
                 missing_files = []
-                for line in result_stdout:
-                    if ": OK" in line:
-                        verified_files.append(line[:-4])
-                    elif ": FAILED" in line:
-                        failed_files.append(line[:-8])
 
-                for line in result_stderr:
-                    if "No such file or directory" in line:
-                        missing_files.append(line[23:-28])
+                if shutil.which("sha256sum"):
+                    if Settings.HOSTNAME == Settings.SEEDSIGNER_OS:
+                        cmd = f"cd {file_list_path} ; sha256sum -c {filechecked}"
+                    else:
+                        cmd = f"cd {file_list_path} ; sha256sum --check {filechecked} --ignore-missing"
 
-                print("Verified:", verified_files)
-                print("Failed:", failed_files)
-                print("Missing:", missing_files)
+                    self.loading_screen = LoadingScreenThread(text="Checking SHA256\n\n\n\n\n\n(This takes a while)")
+                    self.loading_screen.start()
+
+                    data = run(cmd, capture_output=True, shell=True, text=True)
+                    print(cmd, " ", data)
+
+                    self.loading_screen.stop()
+
+                    result_stdout = data.stdout.split("\n")
+                    result_stderr = data.stderr.split("\n")
+                    for line in result_stdout:
+                        if ": OK" in line:
+                            verified_files.append(line[:-4])
+                        elif ": FAILED" in line:
+                            failed_files.append(line[:-8])
+
+                    for line in result_stderr:
+                        if "No such file or directory" in line:
+                            missing_files.append(line[23:-28])
+
+                    print("Verified:", verified_files)
+                    print("Failed:", failed_files)
+                    print("Missing:", missing_files)
+                else:
+                    self.loading_screen = LoadingScreenThread(text="Checking SHA256\n\n\n\n\n\n(This takes a while)")
+                    self.loading_screen.start()
+                    manifest_path = file_list_path / filechecked
+                    with open(manifest_path, "r") as mf:
+                        for line in mf:
+                            line = line.strip()
+                            if not line:
+                                continue
+                            parts = line.split()
+                            if len(parts) < 2:
+                                continue
+                            checksum, name = parts[0], parts[-1].lstrip("*")
+                            file_path = file_list_path / name
+                            if file_path.exists():
+                                h = hashlib.sha256()
+                                with open(file_path, "rb") as f:
+                                    for chunk in iter(lambda: f.read(65536), b""):
+                                        h.update(chunk)
+                                if h.hexdigest().lower() == checksum.lower():
+                                    verified_files.append(name)
+                                else:
+                                    failed_files.append(name)
+                            else:
+                                missing_files.append(name)
+                    self.loading_screen.stop()
 
                 for file in missing_files:
                     try:
@@ -4682,6 +4712,7 @@ class ToolsGPGSignFileView(View):
 class ToolsGPGSignManifestView(View):
     def run(self):
         from subprocess import run
+        import hashlib, shutil
         from seedsigner.gui.screens.screen import LoadingScreenThread
 
         if len(self.controller.storage.seeds) > 0:
@@ -4723,14 +4754,27 @@ class ToolsGPGSignManifestView(View):
 
         self.loading_screen = LoadingScreenThread(text="Generating Manifest\n\n\n\n\n\n(May take a while)")
         self.loading_screen.start()
-        result = run(
-            ["sha256sum", *file_list],
-            cwd=file_list_path,
-            capture_output=True,
-            text=True,
-        )
         manifest_name = "manifest.sha256.txt"
-        (file_list_path / manifest_name).write_text(result.stdout)
+
+        if shutil.which("sha256sum"):
+            result = run(
+                ["sha256sum", *file_list],
+                cwd=file_list_path,
+                capture_output=True,
+                text=True,
+            )
+            manifest_content = result.stdout
+        else:
+            lines = []
+            for fname in file_list:
+                h = hashlib.sha256()
+                with open(file_list_path / fname, "rb") as f:
+                    for chunk in iter(lambda: f.read(65536), b""):
+                        h.update(chunk)
+                lines.append(f"{h.hexdigest()}  {fname}")
+            manifest_content = "\n".join(lines) + "\n"
+
+        (file_list_path / manifest_name).write_text(manifest_content)
         self.loading_screen.stop()
 
         key_result = run(
