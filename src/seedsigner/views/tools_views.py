@@ -4431,9 +4431,13 @@ class ToolsGPGDecryptMessageView(View):
             return Destination(BackStackView)
 
         if decoder.qr_type == QRType.BYTES__UR:
-            ciphertext = Bytes.from_cbor(
+            raw = Bytes.from_cbor(
                 decoder.decoder.result_message().cbor
-            ).data.decode("utf-8")
+            ).data
+            if isinstance(raw, (bytes, bytearray)):
+                ciphertext = raw.decode("utf-8")
+            else:
+                ciphertext = raw
         elif decoder.qr_type == QRType.TEXT:
             ciphertext = decoder.get_text()
         else:

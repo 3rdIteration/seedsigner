@@ -38,7 +38,11 @@ def test_encrypt_qr_roundtrip():
         part = encoder.next_part()
         assert decoder.receive_part(part)
     ur = decoder.result_message()
-    decoded_ciphertext = Bytes.from_cbor(ur.cbor).data.decode()
+    raw = Bytes.from_cbor(ur.cbor).data
+    if isinstance(raw, (bytes, bytearray)):
+        decoded_ciphertext = raw.decode()
+    else:
+        decoded_ciphertext = raw
 
     decrypted = decrypt_message(str(key), decoded_ciphertext)
     assert decrypted == plaintext
