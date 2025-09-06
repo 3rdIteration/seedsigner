@@ -112,3 +112,9 @@ def test_ur_bytes_qr_roundtrip():
     ur = decoder.result_message()
     assert ur.type == "bytes"
     assert ur.cbor == data
+
+
+def test_ur_bytes_qr_seq_len_multiple():
+    data = b"a" * 200
+    encoder = UrBytesQrEncoder(data=data, qr_density=SettingsConstants.DENSITY__MEDIUM)
+    assert encoder.seq_len() > 1

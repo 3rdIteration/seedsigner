@@ -5806,6 +5806,18 @@ class ToolsGPGExportPubkeyView(View):
             finally:
                 loading.stop()
 
+            num_codes = qr_encoder.seq_len()
+            ret = self.run_screen(
+                WarningScreen,
+                title="Animated QR",
+                status_headline=None,
+                text=f"This export requires {num_codes} QR code{'s' if num_codes > 1 else ''}.",
+                show_back_button=True,
+                button_data=[ButtonOption("Start")],
+            )
+            if ret == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+
             self.run_screen(QRDisplayScreen, qr_encoder=qr_encoder)
             return Destination(MainMenuView)
         else:
