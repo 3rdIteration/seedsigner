@@ -12,6 +12,7 @@ from embit import psbt
 from binascii import a2b_base64
 from seedsigner.helpers.ur2.ur_decoder import URDecoder
 from seedsigner.helpers.ur2.cbor_lite import CBORDecoder
+from urtypes.bytes import Bytes
 
 from seedsigner.models.settings import SettingsConstants
 from seedsigner.models.seed import Seed
@@ -105,15 +106,15 @@ def test_ur_xpub_qr():
 
 
 def test_ur_bytes_qr_roundtrip():
-    data = b"hello world"
-    encoder = UrBytesQrEncoder(data=data, qr_density=SettingsConstants.DENSITY__MEDIUM)
+    text = "hello world"
+    encoder = UrBytesQrEncoder(data=text.encode(), qr_density=SettingsConstants.DENSITY__MEDIUM)
     part = encoder.next_part()
     decoder = URDecoder()
     assert decoder.receive_part(part)
     assert decoder.is_complete()
     ur = decoder.result_message()
     assert ur.type == "bytes"
-    assert ur.cbor == data
+    assert Bytes.from_cbor(ur.cbor).data.decode() == text
 
 
 def test_ur_bytes_qr_seq_len_multiple():

@@ -11,6 +11,7 @@ from embit.psbt import PSBT
 from seedsigner.helpers.ur2.ur_encoder import UREncoder
 from seedsigner.helpers.ur2.ur import UR
 from seedsigner.helpers.ur2.cbor_lite import CBOREncoder
+from urtypes.bytes import Bytes
 from seedsigner.helpers.qr import QR
 from seedsigner.models.seed import Seed
 from seedsigner.models.settings import SettingsConstants
@@ -402,7 +403,7 @@ class UrBytesQrEncoder(BaseFountainQrEncoder):
 
     def __post_init__(self):
         super().__post_init__()
-        qr_ur_bytes = UR("bytes", self.data)
+        qr_ur_bytes = UR("bytes", Bytes(self.data).to_cbor())
         self.ur2_encode = UREncoder(ur=qr_ur_bytes, max_fragment_len=self.qr_max_fragment_size)
 
 
