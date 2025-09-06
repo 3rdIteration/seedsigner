@@ -1978,16 +1978,12 @@ def reflow_text_for_width(text: str,
                 # Candidate line is possibly shorter than necessary.
                 return _binary_len_search(min_index=index, max_index=max_index, word_spacer=word_spacer)
 
-        if len(text.split()) == 1 and not allow_text_overflow and not treat_chars_as_words:
-            # No whitespace chars to split on!
-            raise TextDoesNotFitException("Text cannot fit in target rect with this font+size")
-
         # Now we're ready to go line-by-line into our line break binary search!
         for line in text.split("\n"):
-            if treat_chars_as_words:
+            if treat_chars_as_words or (" " not in line):
                 # Each char in `line` will be considered a word; lets us make line breaks
                 # at any char.
-                words = line
+                words = list(line)
 
                 # When re-joining words, no additional spacer is used
                 word_spacer = ""
