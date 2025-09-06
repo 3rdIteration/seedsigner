@@ -4128,18 +4128,8 @@ class ToolsGPGEncryptMessageView(View):
             elif parts[0] == "uid" and cur is not None and cur.get("uid") is None:
                 cur["uid"] = parts[9]
 
-        if not keys:
-            self.run_screen(
-                WarningScreen,
-                title="Error",
-                status_headline=None,
-                text="No public keys found",
-                show_back_button=False,
-                button_data=[ButtonOption("I Understand")],
-            )
-            return Destination(BackStackView)
-
-        buttons = []
+        SKIP = ButtonOption("Skip")
+        buttons = [SKIP]
         for key in keys:
             label = key["uid"] if key["uid"] else key["fpr"][-8:]
             buttons.append(ButtonOption(label))
@@ -4154,7 +4144,10 @@ class ToolsGPGEncryptMessageView(View):
         if selected == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
 
-        key = keys[selected]
+        if buttons[selected] is SKIP:
+            key = None
+        else:
+            key = keys[selected - 1]
 
         SRC_TYPE = ButtonOption("Type Message")
         SRC_SEEDKEEPER = ButtonOption("Load Seedkeeper")
@@ -4293,32 +4286,36 @@ class ToolsGPGEncryptMessageView(View):
                     return Destination(BackStackView)
                 signkey_blob = exported_sign.stdout
 
-        exported = run([
-            "gpg",
-            "--armor",
-            "--export",
-            key["fpr"],
-        ], capture_output=True, text=True)
-        if exported.returncode != 0:
-            self.run_screen(
-                WarningScreen,
-                title="Error",
-                status_headline=None,
-                text="Failed to export key",
-                show_back_button=False,
-                button_data=[ButtonOption("I Understand")],
-            )
-            return Destination(BackStackView)
+        if key is not None:
+            exported = run([
+                "gpg",
+                "--armor",
+                "--export",
+                key["fpr"],
+            ], capture_output=True, text=True)
+            if exported.returncode != 0:
+                self.run_screen(
+                    WarningScreen,
+                    title="Error",
+                    status_headline=None,
+                    text="Failed to export key",
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
+            pub_blob = exported.stdout
+        else:
+            pub_blob = None
 
         try:
-            ciphertext = encrypt_message(exported.stdout, message, signkey_blob=signkey_blob)
+            ciphertext = encrypt_message(pub_blob, message, signkey_blob=signkey_blob)
         except ValueError:
             ret_dict = ToolsTextQRTextEntryScreen(textToEncode="", title="Passphrase").display()
             if "is_back_button" in ret_dict:
                 return Destination(BackStackView)
             passphrase = ret_dict["textToEncode"]
             ciphertext = encrypt_message(
-                exported.stdout,
+                pub_blob,
                 message,
                 signkey_blob=signkey_blob,
                 signkey_passphrase=passphrase,

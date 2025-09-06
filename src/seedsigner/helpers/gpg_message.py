@@ -14,17 +14,18 @@ from pgpy import PGPKey, PGPMessage
 
 
 def encrypt_message(
-    pubkey_blob: str,
+    pubkey_blob: Optional[str],
     message: str,
     signkey_blob: Optional[str] = None,
     signkey_passphrase: Optional[str] = None,
 ) -> str:
-    """Encrypt ``message`` with the provided ASCII-armored public key.
+    """Sign and optionally encrypt ``message``.
 
     Parameters
     ----------
-    pubkey_blob: str
-        ASCII-armored public key data.
+    pubkey_blob: Optional[str]
+        ASCII-armored public key data. If ``None`` the message will not be
+        encrypted.
     message: str
         Plaintext message to encrypt.
     signkey_blob: Optional[str]
@@ -37,11 +38,10 @@ def encrypt_message(
     Returns
     -------
     str
-        ASCII-armored encrypted message suitable for transport or QR
-        encoding.
+        The resulting ASCII-armored message which may be signed and/or
+        encrypted.
     """
 
-    pubkey, _ = PGPKey.from_blob(pubkey_blob)
     pgp_message = PGPMessage.new(message)
 
     if signkey_blob:
@@ -54,32 +54,47 @@ def encrypt_message(
         else:
             pgp_message |= signkey.sign(pgp_message)
 
-    encrypted_message = pubkey.encrypt(pgp_message)
-    return str(encrypted_message)
+    if pubkey_blob:
+        pubkey, _ = PGPKey.from_blob(pubkey_blob)
+        pgp_message = pubkey.encrypt(pgp_message)
+
+    return str(pgp_message)
 
 
-def decrypt_message(privkey_blob: str, ciphertext: str, passphrase: Optional[str] = None) -> str:
-    """Decrypt ``ciphertext`` with ``privkey_blob``.
+def decrypt_message(
+    privkey_blob: Optional[str],
+    ciphertext: str,
+    passphrase: Optional[str] = None,
+) -> str:
+    """Decrypt ``ciphertext`` if needed and return the plaintext.
 
     Parameters
     ----------
-    privkey_blob: str
-        ASCII-armored private key data.
+    privkey_blob: Optional[str]
+        ASCII-armored private key data. Required if ``ciphertext`` is
+        encrypted; otherwise ``None`` can be supplied.
     ciphertext: str
-        ASCII-armored encrypted message produced by
-        :func:`encrypt_message`.
+        ASCII-armored message produced by :func:`encrypt_message`.
     passphrase: Optional[str]
-        Optional passphrase to unlock the private key.  ``None`` can be
+        Optional passphrase to unlock the private key. ``None`` can be
         provided for unprotected keys.
 
     Returns
     -------
     str
-        The decrypted plaintext message.
+        The decrypted plaintext message (or the original message if it was
+        not encrypted).
     """
 
-    privkey, _ = PGPKey.from_blob(privkey_blob)
     message = PGPMessage.from_blob(ciphertext)
+
+    if not message.is_encrypted:
+        return message.message
+
+    if privkey_blob is None:
+        raise ValueError("Encrypted message requires a private key")
+
+    privkey, _ = PGPKey.from_blob(privkey_blob)
 
     if privkey.is_protected:
         if passphrase is None:

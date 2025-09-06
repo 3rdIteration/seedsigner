@@ -68,3 +68,18 @@ def test_sign_encrypt_decrypt_roundtrip():
     # verify signature
     dec_msg = recipient.decrypt(PGPMessage.from_blob(ciphertext))
     assert signer.pubkey.verify(dec_msg)
+
+
+def test_sign_only_roundtrip():
+    signer = PGPKey.new(PubKeyAlgorithm.RSAEncryptOrSign, 1024)
+    signer_uid = PGPUID.new("Signer", email="sign@example.com")
+    signer.add_uid(signer_uid, usage={KeyFlags.Sign})
+
+    plaintext = "SeedSigner sign only"
+    signed_msg = encrypt_message(None, plaintext, signkey_blob=str(signer))
+
+    # decrypt_message should return the original message even without a key
+    assert decrypt_message(None, signed_msg) == plaintext
+
+    # verify signature
+    assert signer.pubkey.verify(PGPMessage.from_blob(signed_msg))
