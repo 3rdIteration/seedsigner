@@ -4402,13 +4402,16 @@ class ToolsGPGVerifyFileView(View):
         verify_file_name = visible_file_list[selected_file_num]
         logger.info("Selected: %s", verify_file_name)
 
-        cmd = f"cd {file_list_path} ; gpg --verify {verify_file_name}"
-
-        self.loading_screen = LoadingScreenThread(text="Checking Signature\n\n\n\n\n\n(May take a while)")
+        self.loading_screen = LoadingScreenThread(
+            text="Checking Signature\n\n\n\n\n\n(May take a while)"
+        )
         self.loading_screen.start()
-        data = run(cmd, capture_output=True, shell=True, text=True)
-        print(cmd, " ", data)
-
+        data = run(
+            ["gpg", "--verify", verify_file_name],
+            capture_output=True,
+            text=True,
+            cwd=file_list_path,
+        )
         self.loading_screen.stop()
 
         result = data.stderr.split("\n")
@@ -4419,7 +4422,6 @@ class ToolsGPGVerifyFileView(View):
         for line in result:
             if "gpg: assuming signed data in " in line:
                 filechecked = line[30:-1]
-                print(filechecked)
             elif "Primary key fingerprint:" in line:
                 valid_sig_keyid += "\n" + line[-20:]
             elif "Good signature from" in line:
@@ -4460,16 +4462,24 @@ class ToolsGPGVerifyFileView(View):
                 missing_files = []
 
                 if shutil.which("sha256sum"):
-                    if Settings.HOSTNAME == Settings.SEEDSIGNER_OS:
-                        cmd = f"cd {file_list_path} ; sha256sum -c {filechecked}"
-                    else:
-                        cmd = f"cd {file_list_path} ; sha256sum --check {filechecked} --ignore-missing"
+                    from seedsigner.models.settings import Settings
 
-                    self.loading_screen = LoadingScreenThread(text="Checking SHA256\n\n\n\n\n\n(This takes a while)")
+                    if Settings.HOSTNAME == Settings.SEEDSIGNER_OS:
+                        sha256_cmd = ["sha256sum", "-c", filechecked]
+                    else:
+                        sha256_cmd = ["sha256sum", "--check", filechecked, "--ignore-missing"]
+
+                    self.loading_screen = LoadingScreenThread(
+                        text="Checking SHA256\n\n\n\n\n\n(This takes a while)"
+                    )
                     self.loading_screen.start()
 
-                    data = run(cmd, capture_output=True, shell=True, text=True)
-                    print(cmd, " ", data)
+                    data = run(
+                        sha256_cmd,
+                        capture_output=True,
+                        text=True,
+                        cwd=file_list_path,
+                    )
 
                     self.loading_screen.stop()
 
@@ -4484,10 +4494,6 @@ class ToolsGPGVerifyFileView(View):
                     for line in result_stderr:
                         if "No such file or directory" in line:
                             missing_files.append(line[23:-28])
-
-                    print("Verified:", verified_files)
-                    print("Failed:", failed_files)
-                    print("Missing:", missing_files)
                 else:
                     self.loading_screen = LoadingScreenThread(text="Checking SHA256\n\n\n\n\n\n(This takes a while)")
                     self.loading_screen.start()

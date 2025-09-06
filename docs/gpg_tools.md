@@ -4,7 +4,7 @@ SeedSigner includes tools to interact with GPG. When `gpg2` is available on the 
 
 In addition to verifying detached signatures, the **Sign** submenu offers two workflows. Selecting **File** prompts for a file on the microSD card and a private key from the local GPG keyring; a detached signature (`.sig`) is saved alongside the original file.
 
-Choosing **Manifest** creates a `sha256.txt` file listing each file's SHA256 hash and signs it in one step, saving both `sha256.txt` and `sha256.txt.sig` to the same microSD folder. The manifest uses the same format as the `sha256sum` utility so it can be verified with the existing **Verify File Sig** workflow. When the `sha256sum` utility isn't available (such as on Windows), SeedSigner calculates the hashes internally so the workflow still works.
+Choosing **Manifest** creates a `sha256.txt` file listing each file's SHA256 hash and signs it in one step, saving both `sha256.txt` and `sha256.txt.sig` to the same microSD folder. The manifest uses the same format as the `sha256sum` utility so it can be verified with the existing **Verify File Sig** workflow. When the `sha256sum` utility isn't available (such as on Windows), SeedSigner calculates the hashes internally for both manifest creation and verification so the workflow still works.
 
 Additional menu options can export existing GPG keys. Public keys are written to the microSD card in ASCII armor, while private keys are first exported and then symmetrically encrypted with a user-provided passphrase before being saved.
 
