@@ -4010,19 +4010,6 @@ class ToolsGPGMenuView(View):
     SMART_GPG = ButtonOption("SmartGPG")
 
     def run(self):
-        from subprocess import run
-        from pathlib import Path
-        from seedsigner.gui.screens.screen import LoadingScreenThread
-
-        if not self.controller.gpg_keys_imported:
-            gpg_dir = Path(__file__).resolve().parent.parent.parent.parent / "gpg_keys"
-            self.loading_screen = LoadingScreenThread(text="Importing GPG Keys\n\n\n\n\n\n(May take a while)")
-            self.loading_screen.start()
-            key_files = [str(p) for p in gpg_dir.glob("*.asc")]
-            if key_files:
-                run(["gpg", "--import", *key_files])
-            self.loading_screen.stop()
-            self.controller.gpg_keys_imported = True
 
         button_data = [
             self.VERIFY_FILE,
@@ -4319,6 +4306,7 @@ class ToolsGPGVerifyFileView(View):
     CHECK_SHA256 = ButtonOption("Check SHA256Sum")
     def run(self):
         from subprocess import run
+        from pathlib import Path
         from seedsigner.gui.screens.screen import LoadingScreenThread
 
         if len(self.controller.storage.seeds) > 0:
@@ -4332,6 +4320,16 @@ class ToolsGPGVerifyFileView(View):
             )
             if ret == RET_CODE__BACK_BUTTON:
                 return Destination(BackStackView)
+
+        if not self.controller.gpg_keys_imported:
+            gpg_dir = Path(__file__).resolve().parent.parent.parent.parent / "gpg_keys"
+            self.loading_screen = LoadingScreenThread(text="Importing GPG Keys\n\n\n\n\n\n(May take a while)")
+            self.loading_screen.start()
+            key_files = [str(p) for p in gpg_dir.glob("*.asc")]
+            if key_files:
+                run(["gpg", "--import", *key_files])
+            self.loading_screen.stop()
+            self.controller.gpg_keys_imported = True
 
         file_list_path = MicroSD.get_microsd_dir() / "microsd-images"
         os.makedirs(file_list_path, exist_ok=True)
