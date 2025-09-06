@@ -4238,6 +4238,60 @@ class ToolsGPGEncryptMessageView(View):
                 length = (secret_list[0] << 8) + secret_list[1]
                 msg_bytes = bytes(secret_list[2:2 + length])
             message = msg_bytes.decode("utf-8")
+        signkey_blob = None
+        result = run([
+            "gpg",
+            "--list-secret-keys",
+            "--with-colons",
+        ], capture_output=True, text=True)
+
+        sign_keys = []
+        cur = None
+        for line in result.stdout.splitlines():
+            parts = line.split(":")
+            if parts[0] == "sec":
+                cur = {"fpr": None, "uid": None}
+                sign_keys.append(cur)
+            elif parts[0] == "fpr" and cur is not None:
+                cur["fpr"] = parts[9]
+            elif parts[0] == "uid" and cur is not None and cur.get("uid") is None:
+                cur["uid"] = parts[9]
+
+        if sign_keys:
+            sign_buttons = [ButtonOption("Skip")]
+            for sk in sign_keys:
+                label = sk["uid"] if sk["uid"] else sk["fpr"][-8:]
+                sign_buttons.append(ButtonOption(label))
+
+            selected_sign = self.run_screen(
+                ButtonListScreen,
+                title="Signing Key",
+                is_button_text_centered=False,
+                button_data=sign_buttons,
+            )
+
+            if selected_sign == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+
+            if selected_sign > 0:
+                sign_key = sign_keys[selected_sign - 1]
+                exported_sign = run([
+                    "gpg",
+                    "--armor",
+                    "--export-secret-keys",
+                    sign_key["fpr"],
+                ], capture_output=True, text=True)
+                if exported_sign.returncode != 0:
+                    self.run_screen(
+                        WarningScreen,
+                        title="Error",
+                        status_headline=None,
+                        text="Failed to export signing key",
+                        show_back_button=False,
+                        button_data=[ButtonOption("I Understand")],
+                    )
+                    return Destination(BackStackView)
+                signkey_blob = exported_sign.stdout
 
         exported = run([
             "gpg",
@@ -4257,7 +4311,18 @@ class ToolsGPGEncryptMessageView(View):
             return Destination(BackStackView)
 
         try:
-            ciphertext = encrypt_message(exported.stdout, message)
+            ciphertext = encrypt_message(exported.stdout, message, signkey_blob=signkey_blob)
+        except ValueError:
+            ret_dict = ToolsTextQRTextEntryScreen(textToEncode="", title="Passphrase").display()
+            if "is_back_button" in ret_dict:
+                return Destination(BackStackView)
+            passphrase = ret_dict["textToEncode"]
+            ciphertext = encrypt_message(
+                exported.stdout,
+                message,
+                signkey_blob=signkey_blob,
+                signkey_passphrase=passphrase,
+            )
         except Exception:
             self.run_screen(
                 WarningScreen,

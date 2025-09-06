@@ -13,7 +13,12 @@ from typing import Optional
 from pgpy import PGPKey, PGPMessage
 
 
-def encrypt_message(pubkey_blob: str, message: str) -> str:
+def encrypt_message(
+    pubkey_blob: str,
+    message: str,
+    signkey_blob: Optional[str] = None,
+    signkey_passphrase: Optional[str] = None,
+) -> str:
     """Encrypt ``message`` with the provided ASCII-armored public key.
 
     Parameters
@@ -22,6 +27,12 @@ def encrypt_message(pubkey_blob: str, message: str) -> str:
         ASCII-armored public key data.
     message: str
         Plaintext message to encrypt.
+    signkey_blob: Optional[str]
+        Optional ASCII-armored private key used to sign the message before
+        encryption.
+    signkey_passphrase: Optional[str]
+        Optional passphrase for the signing key when ``signkey_blob`` is
+        provided.
 
     Returns
     -------
@@ -32,6 +43,17 @@ def encrypt_message(pubkey_blob: str, message: str) -> str:
 
     pubkey, _ = PGPKey.from_blob(pubkey_blob)
     pgp_message = PGPMessage.new(message)
+
+    if signkey_blob:
+        signkey, _ = PGPKey.from_blob(signkey_blob)
+        if signkey.is_protected:
+            if signkey_passphrase is None:
+                raise ValueError("Passphrase required for encrypted signing key")
+            with signkey.unlock(signkey_passphrase):
+                pgp_message |= signkey.sign(pgp_message)
+        else:
+            pgp_message |= signkey.sign(pgp_message)
+
     encrypted_message = pubkey.encrypt(pgp_message)
     return str(encrypted_message)
 

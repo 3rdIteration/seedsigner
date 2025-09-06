@@ -1,5 +1,5 @@
 """Tests for helpers.gpg_message"""
-from pgpy import PGPKey, PGPUID
+from pgpy import PGPKey, PGPUID, PGPMessage
 from pgpy.constants import PubKeyAlgorithm, KeyFlags
 
 from seedsigner.helpers.gpg_message import encrypt_message, decrypt_message
@@ -42,3 +42,25 @@ def test_encrypt_qr_roundtrip():
 
     decrypted = decrypt_message(str(key), decoded_ciphertext)
     assert decrypted == plaintext
+
+
+def test_sign_encrypt_decrypt_roundtrip():
+    recipient = PGPKey.new(PubKeyAlgorithm.RSAEncryptOrSign, 1024)
+    recipient_uid = PGPUID.new("Recipient", email="rcpt@example.com")
+    recipient.add_uid(recipient_uid, usage={KeyFlags.EncryptCommunications})
+
+    signer = PGPKey.new(PubKeyAlgorithm.RSAEncryptOrSign, 1024)
+    signer_uid = PGPUID.new("Signer", email="sign@example.com")
+    signer.add_uid(signer_uid, usage={KeyFlags.Sign})
+
+    plaintext = "SeedSigner signed message"
+    ciphertext = encrypt_message(
+        str(recipient.pubkey), plaintext, signkey_blob=str(signer)
+    )
+
+    # decrypt using helper
+    assert decrypt_message(str(recipient), ciphertext) == plaintext
+
+    # verify signature
+    dec_msg = recipient.decrypt(PGPMessage.from_blob(ciphertext))
+    assert signer.pubkey.verify(dec_msg)
