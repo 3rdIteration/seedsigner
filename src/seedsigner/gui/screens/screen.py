@@ -987,6 +987,7 @@ class LargeIconStatusScreen(ButtonListScreen):
                 width=self.canvas_width,
                 edge_padding=self.text_edge_padding,  # Don't render all the way up to the far left/right edges
                 screen_y=next_y,
+                allow_text_overflow=self.allow_text_overflow,
             ))
 
 
