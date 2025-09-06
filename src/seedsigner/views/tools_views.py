@@ -4104,8 +4104,8 @@ class ToolsGPGEncryptMessageView(View):
             WarningScreen,
             LoadingScreenThread,
             QRDisplayScreen,
-            ScanScreen,
         )
+        from seedsigner.gui.screens.scan_screens import ScanScreen
         from seedsigner.gui.screens.tools_screens import ToolsTextQRTextEntryScreen
         from seedsigner.models.decode_qr import DecodeQR
         from seedsigner.models.encode_qr import UrBytesQrEncoder
@@ -4305,8 +4305,8 @@ class ToolsGPGDecryptMessageView(View):
             LargeIconStatusScreen,
             LoadingScreenThread,
             QRDisplayScreen,
-            ScanScreen,
         )
+        from seedsigner.gui.screens.scan_screens import ScanScreen
         from seedsigner.models.decode_qr import DecodeQR
         from seedsigner.models.encode_qr import GenericStaticQrEncoder
         import time
