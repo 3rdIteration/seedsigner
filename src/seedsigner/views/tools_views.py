@@ -4273,7 +4273,7 @@ class ToolsGPGEncryptMessageView(View):
         loading.start()
         try:
             qr_encoder = UrBytesQrEncoder(
-                data=ciphertext,
+                data=ciphertext.encode("utf-8"),
                 qr_density=self.settings.get_value(SettingsConstants.SETTING__QR_DENSITY),
             )
         finally:
@@ -4307,8 +4307,9 @@ class ToolsGPGDecryptMessageView(View):
             QRDisplayScreen,
         )
         from seedsigner.gui.screens.scan_screens import ScanScreen
-        from seedsigner.models.decode_qr import DecodeQR
+        from seedsigner.models.decode_qr import DecodeQR, QRType
         from seedsigner.models.encode_qr import GenericStaticQrEncoder
+        from urtypes.bytes import Bytes
         import time
 
         result = run([
@@ -4357,13 +4358,29 @@ class ToolsGPGDecryptMessageView(View):
 
         key = keys[selected]
 
-        decoder = DecodeQR(is_text=True)
+        decoder = DecodeQR()
         ScanScreen(decoder=decoder, instructions_text="Scan encrypted message").display()
         self.controller.reset_screensaver_timeout()
         time.sleep(0.1)
         if not decoder.is_complete:
             return Destination(BackStackView)
-        ciphertext = decoder.get_text()
+
+        if decoder.qr_type == QRType.BYTES__UR:
+            ciphertext = Bytes.from_cbor(
+                decoder.decoder.result_message().cbor
+            ).data.decode("utf-8")
+        elif decoder.qr_type == QRType.TEXT:
+            ciphertext = decoder.get_text()
+        else:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="Unsupported QR format",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
 
         exported = run([
             "gpg",
