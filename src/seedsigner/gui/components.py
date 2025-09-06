@@ -1980,7 +1980,8 @@ def reflow_text_for_width(text: str,
 
         # Now we're ready to go line-by-line into our line break binary search!
         for line in text.split("\n"):
-            if treat_chars_as_words or (" " not in line):
+            stripped_line = line.strip()
+            if treat_chars_as_words or (" " not in stripped_line):
                 # Each char in `line` will be considered a word; lets us make line breaks
                 # at any char.
                 words = list(line)
@@ -1997,6 +1998,19 @@ def reflow_text_for_width(text: str,
 
                 # When re-joining words, separate with a space char
                 word_spacer = " "
+
+                # If any individual word is wider than the target width, fall back to
+                # character-level wrapping for the entire line so that the oversized word
+                # can still be broken up.
+                for word in words:
+                    (left, top, right, _) = font.getbbox(word, anchor="ls")
+                    word_width = right - left
+                    if not ImageFont.core.HAVE_RAQM:
+                        word_width = int(word_width * 1.05)
+                    if word_width >= width:
+                        words = list(line)
+                        word_spacer = ""
+                        break
 
             if not words:
                 # It's a blank line
