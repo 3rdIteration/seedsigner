@@ -3577,6 +3577,7 @@ class ToolsMicroSDMenuView(View):
 class ToolsMicroSDFlashView(View):
     def run(self):
         from subprocess import run
+        import hashlib, shutil
         from seedsigner.gui.screens.screen import LoadingScreenThread
         from seedsigner.hardware.microsd import MicroSD
         from seedsigner.hardware.microsd import MicroSD
@@ -3805,6 +3806,7 @@ class ToolsMicroSDWipeZeroView(View):
 
     def run(self):
         from subprocess import run
+        import hashlib, shutil
         from seedsigner.gui.screens.screen import LoadingScreenThread
 
         microsd_dev = find_sd_card_device()
@@ -4004,7 +4006,7 @@ class ToolsMicroSDWipeRandomView(View):
 ****************************************************************************"""
 class ToolsGPGMenuView(View):
     VERIFY_FILE = ButtonOption("Verify File Sig")
-    SIGN_FILE = ButtonOption("Sign File")
+    SIGN = ButtonOption("Sign")
     IMPORT = ButtonOption("Import")
     EXPORT = ButtonOption("Export")
     SMART_GPG = ButtonOption("SmartGPG")
@@ -4013,7 +4015,7 @@ class ToolsGPGMenuView(View):
 
         button_data = [
             self.VERIFY_FILE,
-            self.SIGN_FILE,
+            self.SIGN,
             self.IMPORT,
             self.EXPORT,
             self.SMART_GPG,
@@ -4032,8 +4034,8 @@ class ToolsGPGMenuView(View):
         elif button_data[selected_menu_num] == self.VERIFY_FILE:
             return Destination(ToolsGPGVerifyFileView)
 
-        elif button_data[selected_menu_num] == self.SIGN_FILE:
-            return Destination(ToolsGPGSignFileView)
+        elif button_data[selected_menu_num] == self.SIGN:
+            return Destination(ToolsGPGSignMenuView)
 
         elif button_data[selected_menu_num] == self.IMPORT:
             return Destination(ToolsGPGImportMenuView)
@@ -4041,6 +4043,28 @@ class ToolsGPGMenuView(View):
             return Destination(ToolsGPGExportMenuView)
         elif button_data[selected_menu_num] == self.SMART_GPG:
             return Destination(ToolsGPGSmartMenuView)
+
+
+class ToolsGPGSignMenuView(View):
+    FILE = ButtonOption("File")
+    MANIFEST = ButtonOption("Manifest")
+
+    def run(self):
+        button_data = [self.FILE, self.MANIFEST]
+
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title="Sign",
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        if button_data[selected_menu_num] == self.FILE:
+            return Destination(ToolsGPGSignFileView)
+        return Destination(ToolsGPGSignManifestView)
 
 
 class ToolsGPGImportMenuView(View):
@@ -4306,6 +4330,7 @@ class ToolsGPGVerifyFileView(View):
     CHECK_SHA256 = ButtonOption("Check SHA256Sum")
     def run(self):
         from subprocess import run
+        import hashlib, shutil
         from pathlib import Path
         from seedsigner.gui.screens.screen import LoadingScreenThread
 
@@ -4374,13 +4399,44 @@ class ToolsGPGVerifyFileView(View):
         # Use the same filtered list to get the selected filename
         verify_file_name = visible_file_list[selected_file_num]
         logger.info("Selected: %s", verify_file_name)
+        filechecked = verify_file_name[:-4] if verify_file_name.endswith(".sig") else verify_file_name
 
-        cmd = f"cd {file_list_path} ; gpg --verify {verify_file_name}"
-
-        self.loading_screen = LoadingScreenThread(text="Checking Signature\n\n\n\n\n\n(May take a while)")
+        self.loading_screen = LoadingScreenThread(
+            text="Checking Signature\n\n\n\n\n\n(May take a while)"
+        )
         self.loading_screen.start()
-        data = run(cmd, capture_output=True, shell=True, text=True)
-        print(cmd, " ", data)
+
+        cmd = ["gpg", "--verify"]
+        if verify_file_name.endswith(".sig"):
+            cmd.append(verify_file_name)
+            if (file_list_path / filechecked).exists():
+                cmd.append(filechecked)
+        else:
+            sig_candidate = verify_file_name + ".sig"
+            if (file_list_path / sig_candidate).exists():
+                cmd.extend([sig_candidate, verify_file_name])
+            else:
+                cmd.append(verify_file_name)
+
+        try:
+            data = run(
+                cmd,
+                capture_output=True,
+                text=True,
+                cwd=str(file_list_path),
+            )
+        except FileNotFoundError as exc:
+            self.loading_screen.stop()
+            logger.warning("gpg verify failed: %s", exc)
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="GPG not found",
+                show_back_button=False,
+                button_data=[ButtonOption("OK")],
+            )
+            return Destination(BackStackView)
 
         self.loading_screen.stop()
 
@@ -4392,7 +4448,6 @@ class ToolsGPGVerifyFileView(View):
         for line in result:
             if "gpg: assuming signed data in " in line:
                 filechecked = line[30:-1]
-                print(filechecked)
             elif "Primary key fingerprint:" in line:
                 valid_sig_keyid += "\n" + line[-20:]
             elif "Good signature from" in line:
@@ -4428,38 +4483,69 @@ class ToolsGPGVerifyFileView(View):
                 )
             
             if button_data[ret] == self.CHECK_SHA256:
-                if Settings.HOSTNAME == Settings.SEEDSIGNER_OS:
-                    cmd = f"cd {file_list_path} ; sha256sum -c {filechecked}"
-                else:
-                    cmd = f"cd {file_list_path} ; sha256sum --check {filechecked} --ignore-missing"
-
-                self.loading_screen = LoadingScreenThread(text="Checking SHA256\n\n\n\n\n\n(This takes a while)")
-                self.loading_screen.start()
-
-                data = run(cmd, capture_output=True, shell=True, text=True)
-                print(cmd, " ", data)
-
-                self.loading_screen.stop()
-
-                result_stdout = data.stdout.split("\n")
-                result_stderr = data.stderr.split("\n")
-                matched = None
                 verified_files = []
                 failed_files = []
                 missing_files = []
-                for line in result_stdout:
-                    if ": OK" in line:
-                        verified_files.append(line[:-4])
-                    elif ": FAILED" in line:
-                        failed_files.append(line[:-8])
 
-                for line in result_stderr:
-                    if "No such file or directory" in line:
-                        missing_files.append(line[23:-28])
+                if shutil.which("sha256sum"):
+                    from seedsigner.models.settings import Settings
 
-                print("Verified:", verified_files)
-                print("Failed:", failed_files)
-                print("Missing:", missing_files)
+                    if Settings.HOSTNAME == Settings.SEEDSIGNER_OS:
+                        sha256_cmd = ["sha256sum", "-c", filechecked]
+                    else:
+                        sha256_cmd = ["sha256sum", "--check", filechecked, "--ignore-missing"]
+
+                    self.loading_screen = LoadingScreenThread(
+                        text="Checking SHA256\n\n\n\n\n\n(This takes a while)"
+                    )
+                    self.loading_screen.start()
+
+                    data = run(
+                        sha256_cmd,
+                        capture_output=True,
+                        text=True,
+                        cwd=file_list_path,
+                    )
+
+                    self.loading_screen.stop()
+
+                    result_stdout = data.stdout.split("\n")
+                    result_stderr = data.stderr.split("\n")
+                    for line in result_stdout:
+                        if ": OK" in line:
+                            verified_files.append(line[:-4])
+                        elif ": FAILED" in line:
+                            failed_files.append(line[:-8])
+
+                    for line in result_stderr:
+                        if "No such file or directory" in line:
+                            missing_files.append(line[23:-28])
+                else:
+                    self.loading_screen = LoadingScreenThread(text="Checking SHA256\n\n\n\n\n\n(This takes a while)")
+                    self.loading_screen.start()
+                    manifest_path = file_list_path / filechecked
+                    with open(manifest_path, "r") as mf:
+                        for line in mf:
+                            line = line.strip()
+                            if not line:
+                                continue
+                            parts = line.split()
+                            if len(parts) < 2:
+                                continue
+                            checksum, name = parts[0], parts[-1].lstrip("*")
+                            file_path = file_list_path / name
+                            if file_path.exists():
+                                h = hashlib.sha256()
+                                with open(file_path, "rb") as f:
+                                    for chunk in iter(lambda: f.read(65536), b""):
+                                        h.update(chunk)
+                                if h.hexdigest().lower() == checksum.lower():
+                                    verified_files.append(name)
+                                else:
+                                    failed_files.append(name)
+                            else:
+                                missing_files.append(name)
+                    self.loading_screen.stop()
 
                 for file in missing_files:
                     try:
@@ -4648,6 +4734,167 @@ class ToolsGPGSignFileView(View):
             title="Success",
             status_headline=None,
             text=f"Signature saved as {filename}.sig",
+            show_back_button=False,
+            button_data=[ButtonOption("Done")],
+        )
+
+        return Destination(MainMenuView)
+
+
+class ToolsGPGSignManifestView(View):
+    def run(self):
+        from subprocess import run
+        import hashlib, shutil
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+
+        if len(self.controller.storage.seeds) > 0:
+            ret = self.run_screen(
+                WarningScreen,
+                title="WARNING",
+                status_headline=None,
+                text="These tools load data from the microSD card and may expose loaded secrets.",
+                show_back_button=True,
+                button_data=[ButtonOption("Continue")],
+            )
+            if ret == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+
+        file_list_path = MicroSD.get_microsd_dir() / "microsd-images"
+        os.makedirs(file_list_path, exist_ok=True)
+
+        manifest_name = "sha256.txt"
+
+        file_list = [
+            f
+            for f in os.listdir(file_list_path)
+            if (
+                not f.startswith('.')
+                and f != '__MACOSX'
+                and os.path.isfile(os.path.join(file_list_path, f))
+                and not f.endswith('.sig')
+                and f != manifest_name
+            )
+        ]
+
+        file_list.sort()
+
+        if not file_list:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No files found in microsd-images.",
+                show_back_button=False,
+                button_data=[ButtonOption("OK")],
+            )
+            return Destination(BackStackView)
+
+        self.loading_screen = LoadingScreenThread(text="Generating Manifest\n\n\n\n\n\n(May take a while)")
+        self.loading_screen.start()
+
+        if shutil.which("sha256sum"):
+            result = run(
+                ["sha256sum", *file_list],
+                cwd=file_list_path,
+                capture_output=True,
+                text=True,
+            )
+            manifest_content = result.stdout
+        else:
+            lines = []
+            for fname in file_list:
+                h = hashlib.sha256()
+                with open(file_list_path / fname, "rb") as f:
+                    for chunk in iter(lambda: f.read(65536), b""):
+                        h.update(chunk)
+                lines.append(f"{h.hexdigest()}  {fname}")
+            manifest_content = "\n".join(lines) + "\n"
+
+        (file_list_path / manifest_name).write_text(manifest_content)
+        self.loading_screen.stop()
+
+        key_result = run(
+            ["gpg", "--list-secret-keys", "--with-colons"],
+            capture_output=True,
+            text=True,
+        )
+        keys = []
+        cur = None
+        for line in key_result.stdout.splitlines():
+            parts = line.split(":")
+            if parts[0] == "sec":
+                cur = {"fpr": None, "uid": None}
+                keys.append(cur)
+            elif parts[0] == "fpr" and cur is not None:
+                cur["fpr"] = parts[9]
+            elif parts[0] == "uid" and cur is not None and cur.get("uid") is None:
+                cur["uid"] = parts[9]
+
+        if not keys:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No private keys found",
+                show_back_button=False,
+                button_data=[ButtonOption("OK")],
+            )
+            return Destination(BackStackView)
+
+        key_buttons = []
+        for key in keys:
+            label = key["uid"] if key["uid"] else key["fpr"][-8:]
+            key_buttons.append(ButtonOption(label))
+
+        selected_key = self.run_screen(
+            ButtonListScreen,
+            title="Select Key",
+            is_button_text_centered=False,
+            button_data=key_buttons,
+        )
+
+        if selected_key == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        key = keys[selected_key]
+
+        self.loading_screen = LoadingScreenThread(text="Signing File\n\n\n\n\n\n(May take a while)")
+        self.loading_screen.start()
+        result = run(
+            [
+                "gpg",
+                "--batch",
+                "--yes",
+                "--local-user",
+                key["fpr"],
+                "--output",
+                f"{manifest_name}.sig",
+                "--armor",
+                "--detach-sign",
+                manifest_name,
+            ],
+            cwd=file_list_path,
+            capture_output=True,
+            text=True,
+        )
+        self.loading_screen.stop()
+
+        if result.returncode != 0:
+            logger.warning("gpg sign failed: %s", result.stderr)
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="Failed to sign manifest",
+                show_back_button=False,
+            )
+            return Destination(BackStackView)
+
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Success",
+            status_headline=None,
+            text=f"Manifest saved as {manifest_name} and {manifest_name}.sig",
             show_back_button=False,
             button_data=[ButtonOption("Done")],
         )
