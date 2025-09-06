@@ -5665,7 +5665,7 @@ class ToolsGPGExportPubkeyView(View):
         from subprocess import run
         import os
         import platform
-        from seedsigner.models.encode_qr import UrBytesQrEncoder
+        from seedsigner.models.encode_qr import UrTextQrEncoder
         from seedsigner.gui.screens.screen import (
             ButtonListScreen,
             LargeIconStatusScreen,
@@ -5799,8 +5799,8 @@ class ToolsGPGExportPubkeyView(View):
             loading = LoadingScreenThread(text="Encoding...")
             loading.start()
             try:
-                qr_encoder = UrBytesQrEncoder(
-                    data=exported.stdout.encode("utf-8"),
+                qr_encoder = UrTextQrEncoder(
+                    text=exported.stdout,
                     qr_density=self.settings.get_value(SettingsConstants.SETTING__QR_DENSITY),
                 )
             finally:

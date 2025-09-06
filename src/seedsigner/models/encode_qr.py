@@ -10,6 +10,7 @@ from embit.networks import NETWORKS
 from embit.psbt import PSBT
 from seedsigner.helpers.ur2.ur_encoder import UREncoder
 from seedsigner.helpers.ur2.ur import UR
+from seedsigner.helpers.ur2.cbor_lite import CBOREncoder
 from seedsigner.helpers.qr import QR
 from seedsigner.models.seed import Seed
 from seedsigner.models.settings import SettingsConstants
@@ -403,6 +404,18 @@ class UrBytesQrEncoder(BaseFountainQrEncoder):
         super().__post_init__()
         qr_ur_bytes = UR("bytes", self.data)
         self.ur2_encode = UREncoder(ur=qr_ur_bytes, max_fragment_len=self.qr_max_fragment_size)
+
+
+@dataclass
+class UrTextQrEncoder(BaseFountainQrEncoder):
+    text: str = None
+
+    def __post_init__(self):
+        super().__post_init__()
+        cbor_encoder = CBOREncoder()
+        cbor_encoder.encodeText(self.text)
+        qr_ur_text = UR("text", cbor_encoder.get_bytes())
+        self.ur2_encode = UREncoder(ur=qr_ur_text, max_fragment_len=self.qr_max_fragment_size)
 
 
 class GenericStringEncoder(BaseStaticQrEncoder):
