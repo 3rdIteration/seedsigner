@@ -2,7 +2,9 @@
 
 SeedSigner includes tools to interact with GPG. When `gpg2` is available on the host system, the Tools menu offers a **Load BIP85 Key** option. This feature deterministically derives a keypair (NIST P-256, Brainpool P-256, RSA 2048, RSA 3072, or secp256k1) from the currently loaded seed using [BIP85](https://github.com/bitcoin/bips/blob/master/bip-0085.mediawiki#user-content-RSA_GPG) and imports it into GPG.
 
-In addition to verifying detached signatures, files on the microSD card can now be signed. After selecting a file, choose which private key to use from the local GPG keyring and a detached signature (.sig) will be saved alongside the original file on the microSD card.
+In addition to verifying detached signatures, the **Sign** submenu offers two workflows. Selecting **File** prompts for a file on the microSD card and a private key from the local GPG keyring; a detached signature (`.sig`) is saved alongside the original file.
+
+Choosing **Manifest** generates a SHA256 manifest for every file in the directory and signs it in one step. Both the manifest and its detached signature are written to the same microSD folder.
 
 Additional menu options can export existing GPG keys. Public keys are written to the microSD card in ASCII armor, while private keys are first exported and then symmetrically encrypted with a user-provided passphrase before being saved.
 
