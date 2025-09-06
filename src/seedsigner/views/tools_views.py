@@ -5783,7 +5783,6 @@ class ToolsGPGExportPubkeyView(View):
             exported = run(
                 ["gpg", "--armor", "--export", key["fpr"]],
                 capture_output=True,
-                text=True,
             )
             if exported.returncode != 0:
                 self.run_screen(
@@ -5800,7 +5799,7 @@ class ToolsGPGExportPubkeyView(View):
             loading.start()
             try:
                 qr_encoder = UrBytesQrEncoder(
-                    data=exported.stdout.encode(),
+                    data=exported.stdout,
                     qr_density=self.settings.get_value(SettingsConstants.SETTING__QR_DENSITY),
                 )
             finally:

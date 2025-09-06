@@ -117,6 +117,18 @@ def test_ur_bytes_qr_roundtrip():
     assert Bytes.from_cbor(ur.cbor).data.decode() == text
 
 
+def test_ur_bytes_qr_roundtrip_ascii_armored():
+    armored = "-----BEGIN PGP PUBLIC KEY BLOCK-----\nabc123\n-----END PGP PUBLIC KEY BLOCK-----\n"
+    encoder = UrBytesQrEncoder(data=armored.encode(), qr_density=SettingsConstants.DENSITY__MEDIUM)
+    decoder = URDecoder()
+    while not decoder.is_complete():
+        part = encoder.next_part()
+        assert decoder.receive_part(part)
+    ur = decoder.result_message()
+    assert ur.type == "bytes"
+    assert Bytes.from_cbor(ur.cbor).data.decode() == armored
+
+
 def test_ur_bytes_qr_seq_len_multiple():
     data = b"a" * 200
     encoder = UrBytesQrEncoder(data=data, qr_density=SettingsConstants.DENSITY__MEDIUM)
