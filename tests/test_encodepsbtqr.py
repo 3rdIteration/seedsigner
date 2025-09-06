@@ -1,6 +1,15 @@
-from seedsigner.models.encode_qr import CompactSeedQrEncoder, SeedQrEncoder, SpecterXPubQrEncoder, StaticXpubQrEncoder, UrPsbtQrEncoder, UrXpubQrEncoder
+from seedsigner.models.encode_qr import (
+    CompactSeedQrEncoder,
+    SeedQrEncoder,
+    SpecterXPubQrEncoder,
+    StaticXpubQrEncoder,
+    UrPsbtQrEncoder,
+    UrXpubQrEncoder,
+    UrBytesQrEncoder,
+)
 from embit import psbt
 from binascii import a2b_base64
+from seedsigner.helpers.ur2.ur_decoder import URDecoder
 
 from seedsigner.models.settings import SettingsConstants
 from seedsigner.models.seed import Seed
@@ -91,3 +100,15 @@ def test_ur_xpub_qr():
     assert e.next_part() == "UR:CRYPTO-ACCOUNT/3-5/LPAXAHCSKECYRTPEDKMOHDCFZTBEAAHDCXVDTPMYRSTDSPZSBZSPGERLGDATUYNLPYBTGYIYYKBDFGWPKE"
     assert e.next_part() == "UR:CRYPTO-ACCOUNT/4-5/LPAAAHCSKECYRTPEDKMOHDCFBTWTAOSWKSVTSGCHBYDKYAVDAHTAADEHOYAOADAMTAADDYOTADGYBKBWFE"
     assert e.next_part() == "UR:CRYPTO-ACCOUNT/5-5/LPAHAHCSKECYRTPEDKMOHDCFLOCSDYYKADYKAEYKAOYKAOCYSSMECPONAXAAAYCYIOREKKJKAETODLFYWP"
+
+
+def test_ur_bytes_qr_roundtrip():
+    data = b"hello world"
+    encoder = UrBytesQrEncoder(data=data, qr_density=SettingsConstants.DENSITY__MEDIUM)
+    part = encoder.next_part()
+    decoder = URDecoder()
+    assert decoder.receive_part(part)
+    assert decoder.is_complete()
+    ur = decoder.result_message()
+    assert ur.type == "bytes"
+    assert ur.cbor == data
