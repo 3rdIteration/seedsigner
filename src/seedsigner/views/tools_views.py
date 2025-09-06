@@ -5315,14 +5315,16 @@ class ToolsGPGLoadBIP85KeyView(View):
                 "rsa3072": "Generating an RSA 3072 key can take around 15 minutes on a Pi Zero.\nNIST or Brainpool keys are faster and smaller.",
                 "rsa4096": "Generating an RSA 4096 key can take around an hour on a Pi Zero.\nNIST or Brainpool keys are faster and smaller.",
             }[key_type]
-            self.run_screen(
+            ret = self.run_screen(
                 WarningScreen,
                 title="WARNING",
                 status_headline=None,
                 text=warn_text,
-                show_back_button=False,
+                show_back_button=True,
                 button_data=[ButtonOption("I Understand")],
             )
+            if ret == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
 
         def prompt_text(title: str, default: str = ""):
             ret_dict = tools_screens.ToolsTextQRTextEntryScreen(
@@ -5555,14 +5557,16 @@ class ToolsGPGGenerateKeyView(View):
                 3072: "Generating an RSA 3072 key can take around 15 minutes on a Pi Zero.\nNIST or Brainpool keys are faster and smaller.",
                 4096: "Generating an RSA 4096 key can take around an hour on a Pi Zero.\nNIST or Brainpool keys are faster and smaller.",
             }[param]
-            self.run_screen(
+            ret = self.run_screen(
                 WarningScreen,
                 title="WARNING",
                 status_headline=None,
                 text=warn_text,
-                show_back_button=False,
+                show_back_button=True,
                 button_data=[ButtonOption("I Understand")],
             )
+            if ret == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
 
         def prompt_text(title: str, default: str = ""):
             ret_dict = tools_screens.ToolsTextQRTextEntryScreen(
