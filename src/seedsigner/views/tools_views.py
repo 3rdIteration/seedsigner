@@ -4009,6 +4009,7 @@ class ToolsGPGMenuView(View):
     SIGN = ButtonOption("Sign")
     IMPORT = ButtonOption("Import")
     EXPORT = ButtonOption("Export")
+    MESSAGE = ButtonOption("Encrypted Message")
     SMART_GPG = ButtonOption("SmartGPG")
 
     def run(self):
@@ -4018,6 +4019,7 @@ class ToolsGPGMenuView(View):
             self.SIGN,
             self.IMPORT,
             self.EXPORT,
+            self.MESSAGE,
             self.SMART_GPG,
         ]
 
@@ -4041,8 +4043,32 @@ class ToolsGPGMenuView(View):
             return Destination(ToolsGPGImportMenuView)
         elif button_data[selected_menu_num] == self.EXPORT:
             return Destination(ToolsGPGExportMenuView)
+        elif button_data[selected_menu_num] == self.MESSAGE:
+            return Destination(ToolsGPGMessageMenuView)
         elif button_data[selected_menu_num] == self.SMART_GPG:
             return Destination(ToolsGPGSmartMenuView)
+
+
+class ToolsGPGMessageMenuView(View):
+    ENCRYPT = ButtonOption("Encrypt Message")
+    DECRYPT = ButtonOption("Decrypt Message")
+
+    def run(self):
+        button_data = [self.ENCRYPT, self.DECRYPT]
+
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title="Encrypted Message",
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        if button_data[selected_menu_num] == self.ENCRYPT:
+            return Destination(ToolsGPGEncryptMessageView)
+        return Destination(ToolsGPGDecryptMessageView)
 
 
 class ToolsGPGSignMenuView(View):
@@ -4065,6 +4091,414 @@ class ToolsGPGSignMenuView(View):
         if button_data[selected_menu_num] == self.FILE:
             return Destination(ToolsGPGSignFileView)
         return Destination(ToolsGPGSignManifestView)
+
+
+class ToolsGPGEncryptMessageView(View):
+    def run(self):
+        from subprocess import run
+        import time
+        from seedsigner.helpers import seedkeeper_utils
+        from seedsigner.helpers.gpg_message import encrypt_message
+        from seedsigner.gui.screens.screen import (
+            ButtonListScreen,
+            WarningScreen,
+            LoadingScreenThread,
+            QRDisplayScreen,
+            ScanScreen,
+        )
+        from seedsigner.gui.screens.tools_screens import ToolsTextQRTextEntryScreen
+        from seedsigner.models.decode_qr import DecodeQR
+        from seedsigner.models.encode_qr import UrBytesQrEncoder
+
+        result = run([
+            "gpg",
+            "--list-keys",
+            "--with-colons",
+        ], capture_output=True, text=True)
+
+        keys = []
+        cur = None
+        for line in result.stdout.splitlines():
+            parts = line.split(":")
+            if parts[0] == "pub":
+                cur = {"fpr": None, "uid": None}
+                keys.append(cur)
+            elif parts[0] == "fpr" and cur is not None:
+                cur["fpr"] = parts[9]
+            elif parts[0] == "uid" and cur is not None and cur.get("uid") is None:
+                cur["uid"] = parts[9]
+
+        if not keys:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No public keys found",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        buttons = []
+        for key in keys:
+            label = key["uid"] if key["uid"] else key["fpr"][-8:]
+            buttons.append(ButtonOption(label))
+
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Select Key",
+            is_button_text_centered=False,
+            button_data=buttons,
+        )
+
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        key = keys[selected]
+
+        SRC_TYPE = ButtonOption("Type Message")
+        SRC_SEEDKEEPER = ButtonOption("Load Seedkeeper")
+        SRC_SCAN = ButtonOption("Scan QR")
+        src_buttons = [SRC_TYPE, SRC_SEEDKEEPER, SRC_SCAN]
+
+        src_selected = self.run_screen(
+            ButtonListScreen,
+            title="Message Source",
+            is_button_text_centered=False,
+            button_data=src_buttons,
+        )
+
+        if src_selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        if src_buttons[src_selected] == SRC_TYPE:
+            ret_dict = ToolsTextQRTextEntryScreen(textToEncode="", title="Message").display()
+            if "is_back_button" in ret_dict:
+                return Destination(BackStackView)
+            message = ret_dict["textToEncode"]
+        elif src_buttons[src_selected] == SRC_SCAN:
+            decoder = DecodeQR(is_text=True)
+            ScanScreen(decoder=decoder, instructions_text="Scan message").display()
+            self.controller.reset_screensaver_timeout()
+            time.sleep(0.1)
+            if not decoder.is_complete:
+                return Destination(BackStackView)
+            message = decoder.get_text()
+        else:
+            Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["seedkeeper"])
+            if not Satochip_Connector:
+                return Destination(BackStackView)
+
+            loading = LoadingScreenThread(text="Listing Secrets\n\n\n\n\n\n")
+            loading.start()
+            headers = Satochip_Connector.seedkeeper_list_secret_headers()
+            loading.stop()
+
+            headers_parsed = []
+            buttons = []
+            for header in headers:
+                stype = SEEDKEEPER_DIC_TYPE.get(header["type"], hex(header["type"]))
+                export_rights = SEEDKEEPER_DIC_EXPORT_RIGHTS.get(header["export_rights"], hex(header["export_rights"]))
+                if stype == "Data" and export_rights == "Plaintext export allowed":
+                    label = header["label"] or "Unnamed"
+                    headers_parsed.append((header["id"], label))
+                    buttons.append(ButtonOption(label))
+
+            if not headers_parsed:
+                self.run_screen(
+                    WarningScreen,
+                    title="Error",
+                    status_headline=None,
+                    text="No messages found",
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
+
+            selected_msg = self.run_screen(
+                ButtonListScreen,
+                title="Select Message",
+                is_button_text_centered=False,
+                button_data=buttons,
+            )
+            if selected_msg == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+
+            loading = LoadingScreenThread(text="Loading Secret\n\n\n\n\n\n")
+            loading.start()
+            secret_dict = Satochip_Connector.seedkeeper_export_secret(headers_parsed[selected_msg][0], None)
+            loading.stop()
+
+            secret_list = secret_dict["secret_list"]
+            status = Satochip_Connector.card_get_status()[3]
+            if status["protocol_minor_version"] == 1:
+                length = secret_list[0]
+                msg_bytes = bytes(secret_list[1:1 + length])
+            else:
+                length = (secret_list[0] << 8) + secret_list[1]
+                msg_bytes = bytes(secret_list[2:2 + length])
+            message = msg_bytes.decode("utf-8")
+
+        exported = run([
+            "gpg",
+            "--armor",
+            "--export",
+            key["fpr"],
+        ], capture_output=True, text=True)
+        if exported.returncode != 0:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="Failed to export key",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        try:
+            ciphertext = encrypt_message(exported.stdout, message)
+        except Exception:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="Failed to encrypt message",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        loading = LoadingScreenThread(text="Encoding...")
+        loading.start()
+        try:
+            qr_encoder = UrBytesQrEncoder(
+                data=ciphertext,
+                qr_density=self.settings.get_value(SettingsConstants.SETTING__QR_DENSITY),
+            )
+        finally:
+            loading.stop()
+
+        num_codes = qr_encoder.seq_len()
+        ret = self.run_screen(
+            WarningScreen,
+            title="Animated QR",
+            status_headline=None,
+            text=f"This export requires {num_codes} QR code{'s' if num_codes > 1 else ''}.",
+            show_back_button=True,
+            button_data=[ButtonOption("Start")],
+        )
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        self.run_screen(QRDisplayScreen, qr_encoder=qr_encoder)
+        return Destination(MainMenuView)
+
+
+class ToolsGPGDecryptMessageView(View):
+    def run(self):
+        from subprocess import run
+        from seedsigner.helpers.gpg_message import decrypt_message
+        from seedsigner.gui.screens.screen import (
+            ButtonListScreen,
+            WarningScreen,
+            LargeIconStatusScreen,
+            LoadingScreenThread,
+            QRDisplayScreen,
+            ScanScreen,
+        )
+        from seedsigner.models.decode_qr import DecodeQR
+        from seedsigner.models.encode_qr import GenericStaticQrEncoder
+        import time
+
+        result = run([
+            "gpg",
+            "--list-secret-keys",
+            "--with-colons",
+        ], capture_output=True, text=True)
+
+        keys = []
+        cur = None
+        for line in result.stdout.splitlines():
+            parts = line.split(":")
+            if parts[0] == "sec":
+                cur = {"fpr": None, "uid": None}
+                keys.append(cur)
+            elif parts[0] == "fpr" and cur is not None:
+                cur["fpr"] = parts[9]
+            elif parts[0] == "uid" and cur is not None and cur.get("uid") is None:
+                cur["uid"] = parts[9]
+
+        if not keys:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No private keys found",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        buttons = []
+        for key in keys:
+            label = key["uid"] if key["uid"] else key["fpr"][-8:]
+            buttons.append(ButtonOption(label))
+
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Select Key",
+            is_button_text_centered=False,
+            button_data=buttons,
+        )
+
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        key = keys[selected]
+
+        decoder = DecodeQR(is_text=True)
+        ScanScreen(decoder=decoder, instructions_text="Scan encrypted message").display()
+        self.controller.reset_screensaver_timeout()
+        time.sleep(0.1)
+        if not decoder.is_complete:
+            return Destination(BackStackView)
+        ciphertext = decoder.get_text()
+
+        exported = run([
+            "gpg",
+            "--armor",
+            "--export-secret-keys",
+            key["fpr"],
+        ], capture_output=True, text=True)
+        if exported.returncode != 0:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="Failed to export key",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        try:
+            plaintext = decrypt_message(exported.stdout, ciphertext)
+        except ValueError:
+            ret_dict = ToolsTextQRTextEntryScreen(textToEncode="", title="Passphrase").display()
+            if "is_back_button" in ret_dict:
+                return Destination(BackStackView)
+            passphrase = ret_dict["textToEncode"]
+            plaintext = decrypt_message(exported.stdout, ciphertext, passphrase=passphrase)
+        except Exception:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="Failed to decrypt message",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        SAVE = ButtonOption("Save to Seedkeeper")
+        SHOW = ButtonOption("Show as QR")
+        DONE = ButtonOption("Done")
+        button_data = [SAVE, SHOW, DONE]
+
+        if len(plaintext) <= 400:
+            selected_option = self.run_screen(
+                LargeIconStatusScreen,
+                title="Decrypted Message",
+                status_headline=None,
+                text=plaintext,
+                button_data=button_data,
+            )
+        else:
+            selected_option = self.run_screen(
+                ToolsTextQRReviewTextScreen,
+                textToEncode=plaintext,
+                title="Decrypted Message",
+                button_data=button_data,
+            )
+
+        if selected_option == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        if button_data[selected_option] == SAVE:
+            Satochip_Connector = seedkeeper_utils.init_satochip(
+                self, init_card_filter=["seedkeeper"]
+            )
+            if not Satochip_Connector:
+                return Destination(BackStackView)
+
+            msg_bytes = plaintext.encode("utf-8")
+            status = Satochip_Connector.card_get_status()[3]
+            if status['protocol_minor_version'] == 1:
+                if len(msg_bytes) > 255:
+                    self.run_screen(
+                        WarningScreen,
+                        title="Error",
+                        status_headline=None,
+                        text="Message too large for Seedkeeper v1",
+                        show_back_button=False,
+                        button_data=[ButtonOption("I Understand")],
+                    )
+                    return Destination(BackStackView)
+                secret_list = [len(msg_bytes)] + list(msg_bytes)
+            else:
+                secret_list = list(len(msg_bytes).to_bytes(2, "big")) + list(msg_bytes)
+
+            header = Satochip_Connector.make_header(
+                "Data", "Plaintext export allowed", f"GPGMsg:{key['fpr'][-8:]}"
+            )
+            secret_dic = {"header": header, "secret_list": secret_list}
+
+            try:
+                loading = LoadingScreenThread(text="Saving Secret\n\n\n\n\n\n")
+                loading.start()
+                Satochip_Connector.seedkeeper_import_secret(secret_dic)
+                loading.stop()
+                self.run_screen(
+                    LargeIconStatusScreen,
+                    title="Success",
+                    status_headline=None,
+                    text="Message saved to Seedkeeper",
+                    show_back_button=False,
+                    button_data=[ButtonOption("Continue")],
+                )
+            except UnexpectedSW12Error as e:
+                loading.stop()
+                if e.sw1 == 0x6A and e.sw2 == 0x84:
+                    err_text = "Not enough space on Seedkeeper for message"
+                else:
+                    err_text = format_sw_error(e.sw1, e.sw2)
+                self.run_screen(
+                    WarningScreen,
+                    title="Error",
+                    status_headline=None,
+                    text=err_text,
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+            except Exception:
+                loading.stop()
+                self.run_screen(
+                    WarningScreen,
+                    title="Error",
+                    status_headline=None,
+                    text="Failed to save message",
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+            return Destination(MainMenuView)
+
+        if button_data[selected_option] == SHOW:
+            encoder = GenericStaticQrEncoder(data=plaintext)
+            self.run_screen(QRDisplayScreen, qr_encoder=encoder)
+            return Destination(MainMenuView)
+
+        return Destination(MainMenuView)
 
 
 class ToolsGPGImportMenuView(View):
