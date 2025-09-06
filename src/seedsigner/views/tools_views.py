@@ -5289,6 +5289,7 @@ class ToolsGPGLoadBIP85KeyView(View):
             ButtonOption("Brainpool P-256"),
             ButtonOption("RSA 2048"),
             ButtonOption("RSA 3072"),
+            ButtonOption("RSA 4096"),
             ButtonOption("secp256k1"),
         ]
         selected_type = self.run_screen(
@@ -5304,8 +5305,19 @@ class ToolsGPGLoadBIP85KeyView(View):
             "brainpoolp256r1",
             "rsa2048",
             "rsa3072",
+            "rsa4096",
             "secp256k1",
         ][selected_type]
+
+        if key_type == "rsa4096":
+            self.run_screen(
+                WarningScreen,
+                title="WARNING",
+                status_headline=None,
+                text="Generating an RSA 4096 key can take around an hour on a Pi Zero.",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
 
         def prompt_text(title: str, default: str = ""):
             ret_dict = tools_screens.ToolsTextQRTextEntryScreen(
@@ -5364,7 +5376,13 @@ class ToolsGPGLoadBIP85KeyView(View):
         seed = self.controller.get_seed(0)
         root = bip32.HDKey.from_seed(seed.seed_bytes)
         KEY_BITS = (
-            2048 if key_type == "rsa2048" else 3072 if key_type == "rsa3072" else None
+            2048
+            if key_type == "rsa2048"
+            else 3072
+            if key_type == "rsa3072"
+            else 4096
+            if key_type == "rsa4096"
+            else None
         )
 
         def rsa_to_privpacket(rsa_key: RSA.RsaKey) -> fields.RSAPriv:
@@ -5503,6 +5521,7 @@ class ToolsGPGGenerateKeyView(View):
             ButtonOption("Brainpool P-256"),
             ButtonOption("RSA 2048"),
             ButtonOption("RSA 3072"),
+            ButtonOption("RSA 4096"),
             ButtonOption("secp256k1"),
         ]
         selected_type = self.run_screen(
@@ -5519,8 +5538,19 @@ class ToolsGPGGenerateKeyView(View):
             (PubKeyAlgorithm.ECDSA, EllipticCurveOID.Brainpool_P256),
             (PubKeyAlgorithm.RSAEncryptOrSign, 2048),
             (PubKeyAlgorithm.RSAEncryptOrSign, 3072),
+            (PubKeyAlgorithm.RSAEncryptOrSign, 4096),
             (PubKeyAlgorithm.ECDSA, EllipticCurveOID.SECP256K1),
         ][selected_type]
+
+        if alg == PubKeyAlgorithm.RSAEncryptOrSign and param == 4096:
+            self.run_screen(
+                WarningScreen,
+                title="WARNING",
+                status_headline=None,
+                text="Generating an RSA 4096 key can take around an hour on a Pi Zero.",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
 
         def prompt_text(title: str, default: str = ""):
             ret_dict = tools_screens.ToolsTextQRTextEntryScreen(
