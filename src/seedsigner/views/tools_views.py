@@ -4005,10 +4005,9 @@ class ToolsMicroSDWipeRandomView(View):
     GPG Views
 ****************************************************************************"""
 class ToolsGPGMenuView(View):
-    VERIFY_FILE = ButtonOption("Verify File Sig")
-    SIGN = ButtonOption("Sign")
-    IMPORT = ButtonOption("Import")
-    EXPORT = ButtonOption("Export")
+    FILE_OPS = ButtonOption("File Operations")
+    IMPORT = ButtonOption("Import Keys")
+    EXPORT = ButtonOption("Export Keys")
     MESSAGE = ButtonOption("Secure Messaging")
     SMART_GPG = ButtonOption("SmartGPG")
 
@@ -4020,8 +4019,7 @@ class ToolsGPGMenuView(View):
             return Destination(ToolsGPGDecryptMessageView, skip_current_view=True)
 
         button_data = [
-            self.VERIFY_FILE,
-            self.SIGN,
+            self.FILE_OPS,
             self.IMPORT,
             self.EXPORT,
             self.MESSAGE,
@@ -4038,11 +4036,8 @@ class ToolsGPGMenuView(View):
         if selected_menu_num == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
 
-        elif button_data[selected_menu_num] == self.VERIFY_FILE:
-            return Destination(ToolsGPGVerifyFileView)
-
-        elif button_data[selected_menu_num] == self.SIGN:
-            return Destination(ToolsGPGSignMenuView)
+        elif button_data[selected_menu_num] == self.FILE_OPS:
+            return Destination(ToolsGPGFileOpsMenuView)
 
         elif button_data[selected_menu_num] == self.IMPORT:
             return Destination(ToolsGPGImportMenuView)
@@ -4052,6 +4047,35 @@ class ToolsGPGMenuView(View):
             return Destination(ToolsGPGMessageMenuView)
         elif button_data[selected_menu_num] == self.SMART_GPG:
             return Destination(ToolsGPGSmartMenuView)
+
+
+class ToolsGPGFileOpsMenuView(View):
+    ENCRYPT = ButtonOption("Encrypt")
+    DECRYPT = ButtonOption("Decrypt")
+    SIGN = ButtonOption("Sign")
+    VERIFY = ButtonOption("Verify Signature")
+
+    def run(self):
+        button_data = [self.ENCRYPT, self.DECRYPT, self.SIGN, self.VERIFY]
+
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title="File Operations",
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        selected = button_data[selected_menu_num]
+        if selected == self.ENCRYPT:
+            return Destination(ToolsGPGEncryptFileView)
+        if selected == self.DECRYPT:
+            return Destination(ToolsGPGDecryptFileView)
+        if selected == self.SIGN:
+            return Destination(ToolsGPGSignMenuView)
+        return Destination(ToolsGPGVerifyFileView)
 
 
 class ToolsGPGMessageMenuView(View):
@@ -5073,6 +5097,454 @@ class ToolsGPGChangeUserPinView(View):
             text="PIN updated. Please remove and re-insert the card.",
             show_back_button=False,
             button_data=[ButtonOption("Continue")],
+        )
+        return Destination(MainMenuView)
+
+
+class ToolsGPGEncryptFileView(View):
+    def run(self):
+        from subprocess import run
+        import os
+        from seedsigner.helpers.gpg_message import encrypt_message
+        from seedsigner.gui.screens.screen import (
+            ButtonListScreen,
+            WarningScreen,
+            LargeIconStatusScreen,
+        )
+        from seedsigner.gui.screens.tools_screens import ToolsTextQRTextEntryScreen
+
+        if len(self.controller.storage.seeds) > 0:
+            ret = self.run_screen(
+                WarningScreen,
+                title="WARNING",
+                status_headline=None,
+                text="These tools load data from the microSD card and may expose loaded secrets.",
+                show_back_button=True,
+                button_data=[ButtonOption("Continue")],
+            )
+            if ret == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+
+        file_list_path = MicroSD.get_microsd_dir() / "microsd-images"
+        os.makedirs(file_list_path, exist_ok=True)
+        file_list = [
+            f
+            for f in os.listdir(file_list_path)
+            if (
+                not f.startswith('.')
+                and f != '__MACOSX'
+                and os.path.isfile(os.path.join(file_list_path, f))
+            )
+        ]
+        buttons = [ButtonOption(file) for file in file_list]
+        if not buttons:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No files found in microsd-images.",
+                show_back_button=False,
+                button_data=[ButtonOption("OK")],
+            )
+            return Destination(BackStackView)
+
+        selected_file = self.run_screen(
+            ButtonListScreen,
+            title="Select File",
+            is_button_text_centered=False,
+            button_data=buttons,
+        )
+        if selected_file == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        filename = file_list[selected_file]
+        filepath = os.path.join(file_list_path, filename)
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                plaintext = f.read()
+        except Exception:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="Failed to load file",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        result = run([
+            "gpg",
+            "--list-keys",
+            "--with-colons",
+        ], capture_output=True, text=True)
+        keys = []
+        cur = None
+        for line in result.stdout.splitlines():
+            parts = line.split(":")
+            if parts[0] == "pub":
+                cur = {"fpr": None, "uid": None}
+                keys.append(cur)
+            elif parts[0] == "fpr" and cur is not None:
+                cur["fpr"] = parts[9]
+            elif parts[0] == "uid" and cur is not None and cur.get("uid") is None:
+                cur["uid"] = parts[9]
+        if not keys:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No public keys found",
+                show_back_button=False,
+                button_data=[ButtonOption("OK")],
+            )
+            return Destination(BackStackView)
+        key_buttons = [ButtonOption(k["uid"] if k["uid"] else k["fpr"][-8:]) for k in keys]
+        selected_key = self.run_screen(
+            ButtonListScreen,
+            title="Select Recipient",
+            is_button_text_centered=False,
+            button_data=key_buttons,
+        )
+        if selected_key == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        rec_key = keys[selected_key]
+        exported = run([
+            "gpg",
+            "--armor",
+            "--export",
+            rec_key["fpr"],
+        ], capture_output=True, text=True)
+        pub_blob = exported.stdout
+
+        result = run([
+            "gpg",
+            "--list-secret-keys",
+            "--with-colons",
+        ], capture_output=True, text=True)
+        skeys = []
+        cur = None
+        for line in result.stdout.splitlines():
+            parts = line.split(":")
+            if parts[0] == "sec":
+                cur = {"fpr": None, "uid": None}
+                skeys.append(cur)
+            elif parts[0] == "fpr" and cur is not None:
+                cur["fpr"] = parts[9]
+            elif parts[0] == "uid" and cur is not None and cur.get("uid") is None:
+                cur["uid"] = parts[9]
+        SKIP = ButtonOption("Skip")
+        sign_buttons = [SKIP]
+        for k in skeys:
+            label = k["uid"] if k["uid"] else k["fpr"][-8:]
+            sign_buttons.append(ButtonOption(label))
+        selected_sign = self.run_screen(
+            ButtonListScreen,
+            title="Sign with",
+            is_button_text_centered=False,
+            button_data=sign_buttons,
+        )
+        if selected_sign == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        signkey_blob = None
+        if sign_buttons[selected_sign] is not SKIP:
+            sign_key = skeys[selected_sign - 1]
+            exported = run([
+                "gpg",
+                "--armor",
+                "--export-secret-keys",
+                sign_key["fpr"],
+            ], capture_output=True, text=True)
+            signkey_blob = exported.stdout
+        try:
+            ciphertext = encrypt_message(pub_blob, plaintext, signkey_blob=signkey_blob)
+        except ValueError:
+            ret_dict = ToolsTextQRTextEntryScreen(textToEncode="", title="Passphrase").display()
+            if "is_back_button" in ret_dict:
+                return Destination(BackStackView)
+            passphrase = ret_dict["textToEncode"]
+            ciphertext = encrypt_message(
+                pub_blob,
+                plaintext,
+                signkey_blob=signkey_blob,
+                signkey_passphrase=passphrase,
+            )
+        except Exception:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="Failed to encrypt file",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        outname = f"{filename}.gpg"
+        outpath = os.path.join(file_list_path, outname)
+        try:
+            with open(outpath, "w", encoding="utf-8") as f:
+                f.write(ciphertext)
+        except Exception:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="Failed to save file",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Success",
+            status_headline=None,
+            text=f"Saved as {outname}",
+            show_back_button=False,
+            button_data=[ButtonOption("Done")],
+        )
+        return Destination(MainMenuView)
+
+
+class ToolsGPGDecryptFileView(View):
+    def run(self):
+        from subprocess import run
+        import os
+        from seedsigner.helpers.gpg_message import decrypt_message
+        from seedsigner.gui.screens.screen import (
+            ButtonListScreen,
+            WarningScreen,
+            LargeIconStatusScreen,
+        )
+        from seedsigner.gui.screens.tools_screens import ToolsTextQRTextEntryScreen
+
+        if len(self.controller.storage.seeds) > 0:
+            ret = self.run_screen(
+                WarningScreen,
+                title="WARNING",
+                status_headline=None,
+                text="These tools load data from the microSD card and may expose loaded secrets.",
+                show_back_button=True,
+                button_data=[ButtonOption("Continue")],
+            )
+            if ret == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+
+        file_list_path = MicroSD.get_microsd_dir() / "microsd-images"
+        os.makedirs(file_list_path, exist_ok=True)
+        file_list = [
+            f
+            for f in os.listdir(file_list_path)
+            if (
+                not f.startswith('.')
+                and f != '__MACOSX'
+                and os.path.isfile(os.path.join(file_list_path, f))
+            )
+        ]
+        buttons = [ButtonOption(file) for file in file_list]
+        if not buttons:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No files found in microsd-images.",
+                show_back_button=False,
+                button_data=[ButtonOption("OK")],
+            )
+            return Destination(BackStackView)
+        selected_file = self.run_screen(
+            ButtonListScreen,
+            title="Select File",
+            is_button_text_centered=False,
+            button_data=buttons,
+        )
+        if selected_file == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        filename = file_list[selected_file]
+        filepath = os.path.join(file_list_path, filename)
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                ciphertext = f.read()
+        except Exception:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="Failed to load file",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        result = run([
+            "gpg",
+            "--list-secret-keys",
+            "--with-colons",
+        ], capture_output=True, text=True)
+        keys = []
+        cur = None
+        for line in result.stdout.splitlines():
+            parts = line.split(":")
+            if parts[0] == "sec":
+                cur = {"fpr": None, "uid": None}
+                keys.append(cur)
+            elif parts[0] == "fpr" and cur is not None:
+                cur["fpr"] = parts[9]
+            elif parts[0] == "uid" and cur is not None and cur.get("uid") is None:
+                cur["uid"] = parts[9]
+
+        pub_result = run([
+            "gpg",
+            "--list-keys",
+            "--with-colons",
+        ], capture_output=True, text=True)
+        pubkeys = []
+        cur = None
+        for line in pub_result.stdout.splitlines():
+            parts = line.split(":")
+            if parts[0] == "pub":
+                cur = {"fpr": None, "uid": None}
+                pubkeys.append(cur)
+            elif parts[0] == "fpr" and cur is not None:
+                cur["fpr"] = parts[9]
+            elif parts[0] == "uid" and cur is not None and cur.get("uid") is None:
+                cur["uid"] = parts[9]
+        for pk in pubkeys:
+            exp = run([
+                "gpg",
+                "--armor",
+                "--export",
+                pk["fpr"],
+            ], capture_output=True, text=True)
+            pk["blob"] = exp.stdout
+
+        try:
+            plaintext, signer_fpr, verified = decrypt_message(
+                None,
+                ciphertext,
+                pubkey_blobs=[pk["blob"] for pk in pubkeys],
+            )
+        except ValueError:
+            decrypted = False
+            for key in keys:
+                exported = run([
+                    "gpg",
+                    "--armor",
+                    "--export-secret-keys",
+                    key["fpr"],
+                ], capture_output=True, text=True)
+                if exported.returncode != 0:
+                    continue
+                try:
+                    plaintext, signer_fpr, verified = decrypt_message(
+                        exported.stdout,
+                        ciphertext,
+                        pubkey_blobs=[pk["blob"] for pk in pubkeys],
+                    )
+                    decrypted = True
+                    break
+                except ValueError as e:
+                    if "Passphrase required" in str(e):
+                        ret_dict = ToolsTextQRTextEntryScreen(
+                            textToEncode="", title="Passphrase"
+                        ).display()
+                        if "is_back_button" in ret_dict:
+                            return Destination(BackStackView)
+                        passphrase = ret_dict["textToEncode"]
+                        try:
+                            plaintext, signer_fpr, verified = decrypt_message(
+                                exported.stdout,
+                                ciphertext,
+                                passphrase=passphrase,
+                                pubkey_blobs=[pk["blob"] for pk in pubkeys],
+                            )
+                            decrypted = True
+                            break
+                        except Exception:
+                            continue
+                    else:
+                        continue
+                except Exception:
+                    continue
+            if not decrypted:
+                self.run_screen(
+                    WarningScreen,
+                    title="Error",
+                    status_headline=None,
+                    text=("No private keys found" if not keys else "Failed to decrypt file"),
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
+
+        if isinstance(plaintext, (bytes, bytearray, memoryview)):
+            plaintext = plaintext.decode("utf-8")
+
+        if signer_fpr:
+            label = signer_fpr[-8:]
+            have_pub = False
+            for pk in pubkeys:
+                if pk["fpr"] == signer_fpr:
+                    have_pub = True
+                    label = pk["uid"] if pk["uid"] else pk["fpr"][-8:]
+                    break
+            if not verified and not have_pub:
+                load = ButtonOption("Load Key")
+                cont = ButtonOption("Continue")
+                selected = self.run_screen(
+                    WarningScreen,
+                    title="Warning",
+                    status_headline=None,
+                    text="Missing public key to verify signature",
+                    show_back_button=False,
+                    button_data=[load, cont],
+                )
+                if selected == 0:
+                    return Destination(ToolsGPGImportPubkeyMenuView)
+            if verified:
+                self.run_screen(
+                    LargeIconStatusScreen,
+                    title="Success",
+                    status_headline=None,
+                    text=f"Valid Signature from\n{label}",
+                    show_back_button=False,
+                    button_data=[ButtonOption("Next")],
+                )
+            else:
+                self.run_screen(
+                    LargeIconStatusScreen,
+                    title="Warning",
+                    status_icon_name=SeedSignerIconConstants.WARNING,
+                    status_color=GUIConstants.WARNING_COLOR,
+                    status_headline=None,
+                    text=f"Unverified Signature from\n{label}",
+                    show_back_button=False,
+                    button_data=[ButtonOption("Next")],
+                )
+
+        outname = f"{filename}.dec"
+        outpath = os.path.join(file_list_path, outname)
+        try:
+            with open(outpath, "w", encoding="utf-8") as f:
+                f.write(plaintext)
+        except Exception:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="Failed to save file",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Success",
+            status_headline=None,
+            text=f"Saved as {outname}",
+            show_back_button=False,
+            button_data=[ButtonOption("Done")],
         )
         return Destination(MainMenuView)
 

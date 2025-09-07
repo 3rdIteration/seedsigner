@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: seedsigner 0.8.6\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2025-08-04 00:02+0000\n"
+"POT-Creation-Date: 2025-09-07 19:36+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -221,7 +221,8 @@ msgstr ""
 
 #: src/seedsigner/gui/screens/screen.py
 #: src/seedsigner/gui/screens/seed_screens.py
-#: src/seedsigner/views/seed_views.py src/seedsigner/views/tools_views.py
+#: src/seedsigner/views/psbt_views.py src/seedsigner/views/seed_views.py
+#: src/seedsigner/views/tools_views.py
 msgid "OK"
 msgstr ""
 
@@ -234,7 +235,9 @@ msgstr ""
 msgid "Privacy Leak!"
 msgstr ""
 
-#: src/seedsigner/gui/screens/screen.py src/seedsigner/views/tools_views.py
+#: src/seedsigner/gui/screens/screen.py src/seedsigner/views/desktop_warning.py
+#: src/seedsigner/views/developer_os_warning.py
+#: src/seedsigner/views/tools_views.py
 msgid "I Understand"
 msgstr ""
 
@@ -312,6 +315,10 @@ msgstr ""
 
 #: src/seedsigner/gui/screens/seed_screens.py
 msgid "Optionally verify that your mnemonic backup is correct."
+msgstr ""
+
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Account Number"
 msgstr ""
 
 #: src/seedsigner/gui/screens/seed_screens.py
@@ -506,6 +513,11 @@ msgstr ""
 msgid "Settings"
 msgstr ""
 
+#: src/seedsigner/gui/screens/settings_screens.py
+#: src/seedsigner/views/settings_views.py
+msgid "No options available"
+msgstr ""
+
 #. Short for "Input/Output"; screen to make sure the buttons and camera are
 #. working properly
 #: src/seedsigner/gui/screens/settings_screens.py
@@ -558,6 +570,11 @@ msgstr ""
 
 #: src/seedsigner/gui/screens/settings_screens.py src/seedsigner/views/view.py
 msgid "Home"
+msgstr ""
+
+#: src/seedsigner/gui/screens/tools_screens.py
+#: src/seedsigner/views/tools_views.py
+msgid "Device Filter"
 msgstr ""
 
 #: src/seedsigner/gui/screens/tools_screens.py
@@ -711,6 +728,22 @@ msgstr ""
 msgid "270°"
 msgstr ""
 
+#: src/seedsigner/models/settings_definition.py
+msgid "Camera 0"
+msgstr ""
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Camera 1"
+msgstr ""
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Camera 2"
+msgstr ""
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Camera 3"
+msgstr ""
+
 #. QR code density option: Low, Medium, High
 #: src/seedsigner/models/settings_definition.py
 msgid "Low"
@@ -849,6 +882,10 @@ msgid "Show xpub details"
 msgstr ""
 
 #: src/seedsigner/models/settings_definition.py
+msgid "BIP32 account prompt"
+msgstr ""
+
+#: src/seedsigner/models/settings_definition.py
 msgid "BIP-39 passphrase"
 msgstr ""
 
@@ -916,7 +953,36 @@ msgid "Invert colors"
 msgstr ""
 
 #: src/seedsigner/models/settings_definition.py
+msgid "Camera source"
+msgstr ""
+
+#: src/seedsigner/models/settings_definition.py
 msgid "QR background color"
+msgstr ""
+
+#: src/seedsigner/views/desktop_warning.py
+msgid "Desktop Mode"
+msgstr ""
+
+#: src/seedsigner/views/desktop_warning.py
+#: src/seedsigner/views/developer_os_warning.py
+msgid "Not secure!"
+msgstr ""
+
+#: src/seedsigner/views/desktop_warning.py
+msgid ""
+"This desktop version is for testing only.\n"
+"Do NOT use with real seeds or private keys."
+msgstr ""
+
+#: src/seedsigner/views/developer_os_warning.py
+msgid "Development Build"
+msgstr ""
+
+#: src/seedsigner/views/developer_os_warning.py
+msgid ""
+"This SeedSignerOS development build is for testing only.\n"
+"Do NOT use with real seeds or private keys."
 msgstr ""
 
 #: src/seedsigner/views/psbt_views.py src/seedsigner/views/seed_views.py
@@ -954,7 +1020,24 @@ msgid "Enter 24-word seed"
 msgstr ""
 
 #: src/seedsigner/views/psbt_views.py src/seedsigner/views/seed_views.py
+#: src/seedsigner/views/tools_views.py
 msgid "Enter Electrum seed"
+msgstr ""
+
+#: src/seedsigner/views/psbt_views.py
+msgid "Enter WIF"
+msgstr ""
+
+#: src/seedsigner/views/psbt_views.py src/seedsigner/views/scan_views.py
+msgid "Scan WIF"
+msgstr ""
+
+#: src/seedsigner/views/psbt_views.py
+msgid "Enter BIP38"
+msgstr ""
+
+#: src/seedsigner/views/psbt_views.py src/seedsigner/views/scan_views.py
+msgid "Scan BIP38"
 msgstr ""
 
 #. Inserts fingerprint w/"?" to indicate that this seed can't sign the current
@@ -970,6 +1053,34 @@ msgstr ""
 
 #: src/seedsigner/views/psbt_views.py
 msgid "Parsing PSBT..."
+msgstr ""
+
+#: src/seedsigner/views/psbt_views.py
+msgid "Private Key (WIF)"
+msgstr ""
+
+#: src/seedsigner/views/psbt_views.py
+msgid "Invalid WIF!"
+msgstr ""
+
+#: src/seedsigner/views/psbt_views.py
+msgid "Not a valid WIF-encoded private key."
+msgstr ""
+
+#: src/seedsigner/views/psbt_views.py
+msgid "BIP38 Key"
+msgstr ""
+
+#: src/seedsigner/views/psbt_views.py
+msgid "BIP38 Passphrase"
+msgstr ""
+
+#: src/seedsigner/views/psbt_views.py
+msgid "Invalid BIP38!"
+msgstr ""
+
+#: src/seedsigner/views/psbt_views.py
+msgid "Could not decrypt BIP38 key."
 msgstr ""
 
 #: src/seedsigner/views/psbt_views.py
@@ -1106,7 +1217,7 @@ msgstr ""
 msgid "Back"
 msgstr ""
 
-#: src/seedsigner/views/scan_views.py
+#: src/seedsigner/views/scan_views.py src/seedsigner/views/tools_views.py
 msgid "Decrypt"
 msgstr ""
 
@@ -1136,6 +1247,14 @@ msgstr ""
 
 #: src/seedsigner/views/scan_views.py
 msgid "Expected a SLIP-39 share QR"
+msgstr ""
+
+#: src/seedsigner/views/scan_views.py
+msgid "Expected a WIF private key"
+msgstr ""
+
+#: src/seedsigner/views/scan_views.py
+msgid "Expected a BIP38 private key"
 msgstr ""
 
 #: src/seedsigner/views/scan_views.py
@@ -1213,7 +1332,7 @@ msgstr ""
 msgid "In-Memory Seeds"
 msgstr ""
 
-#: src/seedsigner/views/seed_views.py
+#: src/seedsigner/views/seed_views.py src/seedsigner/views/tools_views.py
 msgid "SLIP-39 Shares"
 msgstr ""
 
@@ -1237,11 +1356,11 @@ msgstr ""
 msgid " Scan a SeedQR"
 msgstr ""
 
-#: src/seedsigner/views/seed_views.py
+#: src/seedsigner/views/seed_views.py src/seedsigner/views/tools_views.py
 msgid "From SeedKeeper"
 msgstr ""
 
-#: src/seedsigner/views/seed_views.py
+#: src/seedsigner/views/seed_views.py src/seedsigner/views/tools_views.py
 msgid " Create a seed"
 msgstr ""
 
@@ -1341,7 +1460,7 @@ msgstr ""
 msgid "Enter 33 words"
 msgstr ""
 
-#: src/seedsigner/views/seed_views.py
+#: src/seedsigner/views/seed_views.py src/seedsigner/views/tools_views.py
 msgid "Scan QR"
 msgstr ""
 
@@ -1494,7 +1613,7 @@ msgstr ""
 msgid "Review"
 msgstr ""
 
-#: src/seedsigner/views/seed_views.py
+#: src/seedsigner/views/seed_views.py src/seedsigner/views/tools_views.py
 msgid "Skip"
 msgstr ""
 
@@ -1604,7 +1723,7 @@ msgstr ""
 msgid "Your current mnemonic ID entry will be erased"
 msgstr ""
 
-#: src/seedsigner/views/seed_views.py
+#: src/seedsigner/views/seed_views.py src/seedsigner/views/tools_views.py
 msgid "Processing..."
 msgstr ""
 
@@ -1697,6 +1816,14 @@ msgstr ""
 
 #: src/seedsigner/views/seed_views.py
 msgid "Signing messages for custom derivation paths not supported"
+msgstr ""
+
+#: src/seedsigner/views/seed_views.py src/seedsigner/views/tools_views.py
+msgid "Exporting xpub..."
+msgstr ""
+
+#: src/seedsigner/views/seed_views.py
+msgid "Signing message..."
 msgstr ""
 
 #: src/seedsigner/views/settings_views.py
@@ -1937,6 +2064,14 @@ msgid "DIY Tools"
 msgstr ""
 
 #: src/seedsigner/views/tools_views.py
+msgid "Card Info"
+msgstr ""
+
+#: src/seedsigner/views/tools_views.py
+msgid "Genuine Check"
+msgstr ""
+
+#: src/seedsigner/views/tools_views.py
 msgid "Change PIN"
 msgstr ""
 
@@ -2009,6 +2144,14 @@ msgid "Load as Descriptor"
 msgstr ""
 
 #: src/seedsigner/views/tools_views.py
+msgid "Already Seeded"
+msgstr ""
+
+#: src/seedsigner/views/tools_views.py
+msgid "Satochip card already contains a seed."
+msgstr ""
+
+#: src/seedsigner/views/tools_views.py
 msgid "Build Applets"
 msgstr ""
 
@@ -2049,15 +2192,175 @@ msgid "All"
 msgstr ""
 
 #: src/seedsigner/views/tools_views.py
-msgid "Verify File Sig"
+msgid "File Operations"
 msgstr ""
 
 #: src/seedsigner/views/tools_views.py
-msgid "Import Pubkey"
+msgid "Import Keys"
+msgstr ""
+
+#: src/seedsigner/views/tools_views.py
+msgid "Export Keys"
+msgstr ""
+
+#: src/seedsigner/views/tools_views.py
+msgid "Secure Messaging"
+msgstr ""
+
+#: src/seedsigner/views/tools_views.py
+msgid "SmartGPG"
+msgstr ""
+
+#: src/seedsigner/views/tools_views.py
+msgid "Encrypt"
+msgstr ""
+
+#: src/seedsigner/views/tools_views.py
+msgid "Sign"
+msgstr ""
+
+#: src/seedsigner/views/tools_views.py
+msgid "Verify Signature"
+msgstr ""
+
+#: src/seedsigner/views/tools_views.py
+msgid "Create Message"
+msgstr ""
+
+#: src/seedsigner/views/tools_views.py
+msgid "Load Message"
+msgstr ""
+
+#: src/seedsigner/views/tools_views.py
+msgid "File"
+msgstr ""
+
+#: src/seedsigner/views/tools_views.py
+msgid "Manifest"
+msgstr ""
+
+#: src/seedsigner/views/tools_views.py
+msgid "Type Message"
+msgstr ""
+
+#: src/seedsigner/views/tools_views.py
+msgid "Load Seedkeeper"
+msgstr ""
+
+#: src/seedsigner/views/tools_views.py
+msgid "Animated QR"
+msgstr ""
+
+#: src/seedsigner/views/tools_views.py
+msgid "microSD"
+msgstr ""
+
+#: src/seedsigner/views/tools_views.py
+msgid "Start"
+msgstr ""
+
+#: src/seedsigner/views/tools_views.py
+msgid "Load File"
+msgstr ""
+
+#: src/seedsigner/views/tools_views.py
+msgid "Load Key"
+msgstr ""
+
+#: src/seedsigner/views/tools_views.py
+msgid "Save to Seedkeeper"
+msgstr ""
+
+#: src/seedsigner/views/tools_views.py
+msgid "Public Key"
+msgstr ""
+
+#: src/seedsigner/views/tools_views.py
+msgid "Private Key"
+msgstr ""
+
+#: src/seedsigner/views/tools_views.py
+msgid "View Card Info"
+msgstr ""
+
+#: src/seedsigner/views/tools_views.py
+msgid "Generate On-Card Key"
+msgstr ""
+
+#: src/seedsigner/views/tools_views.py
+msgid "Change Admin PIN"
+msgstr ""
+
+#: src/seedsigner/views/tools_views.py
+msgid "Change User PIN"
+msgstr ""
+
+#: src/seedsigner/views/tools_views.py
+msgid "uiduidfpr"
 msgstr ""
 
 #: src/seedsigner/views/tools_views.py
 msgid "Check SHA256Sum"
+msgstr ""
+
+#: src/seedsigner/views/tools_views.py
+msgid "Update"
+msgstr ""
+
+#: src/seedsigner/views/tools_views.py
+msgid "From QR"
+msgstr ""
+
+#: src/seedsigner/views/tools_views.py
+msgid "From File"
+msgstr ""
+
+#: src/seedsigner/views/tools_views.py
+msgid "From Seedkeeper"
+msgstr ""
+
+#: src/seedsigner/views/tools_views.py
+msgid "Generate New"
+msgstr ""
+
+#: src/seedsigner/views/tools_views.py
+msgid "Derive BIP85"
+msgstr ""
+
+#: src/seedsigner/views/tools_views.py
+msgid "NIST P-256"
+msgstr ""
+
+#: src/seedsigner/views/tools_views.py
+msgid "Brainpool P-256"
+msgstr ""
+
+#: src/seedsigner/views/tools_views.py
+msgid "RSA 2048"
+msgstr ""
+
+#: src/seedsigner/views/tools_views.py
+msgid "RSA 3072"
+msgstr ""
+
+#: src/seedsigner/views/tools_views.py
+msgid "RSA 4096"
+msgstr ""
+
+#: src/seedsigner/views/tools_views.py
+msgid "secp256k1"
+msgstr ""
+
+#: src/seedsigner/views/tools_views.py
+msgid "Ed25519"
+msgstr ""
+
+#: src/seedsigner/views/tools_views.py
+msgid "Seedkeeper"
+msgstr ""
+
+#: src/seedsigner/views/tools_views.py
+msgid "OpenGPG Card"
 msgstr ""
 
 #: src/seedsigner/views/tools_views.py
