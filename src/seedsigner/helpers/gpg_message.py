@@ -8,14 +8,14 @@ runtime is available.
 """
 from __future__ import annotations
 
-from typing import Iterable, Optional, Tuple
+from typing import Iterable, Optional, Tuple, Union
 
 from pgpy import PGPKey, PGPMessage
 
 
 def encrypt_message(
     pubkey_blob: Optional[str],
-    message: str,
+    message: Union[str, bytes],
     signkey_blob: Optional[str] = None,
     signkey_passphrase: Optional[str] = None,
 ) -> str:
@@ -26,8 +26,8 @@ def encrypt_message(
     pubkey_blob: Optional[str]
         ASCII-armored public key data. If ``None`` the message will not be
         encrypted.
-    message: str
-        Plaintext message to encrypt.
+    message: Union[str, bytes]
+        Plaintext message to encrypt. Can be a ``str`` or raw ``bytes``.
     signkey_blob: Optional[str]
         Optional ASCII-armored private key used to sign the message before
         encryption.
@@ -66,7 +66,7 @@ def decrypt_message(
     ciphertext: str,
     passphrase: Optional[str] = None,
     pubkey_blobs: Optional[Iterable[str]] = None,
-) -> Tuple[str, Optional[str], bool]:
+) -> Tuple[Union[str, bytes], Optional[str], bool]:
     """Decrypt ``ciphertext`` and optionally verify a signature.
 
     Parameters
@@ -82,9 +82,9 @@ def decrypt_message(
 
     Returns
     -------
-    Tuple[str, Optional[str], bool]
-        A tuple containing the decrypted plaintext message (or the original
-        message if it was not encrypted), the fingerprint of the signing
+    Tuple[Union[str, bytes], Optional[str], bool]
+        A tuple containing the decrypted plaintext message (``bytes`` are
+        returned for binary payloads), the fingerprint of the signing
         key if the message included a signature, and a boolean indicating
         whether the signature was verified with the provided public keys.
     """
@@ -108,8 +108,8 @@ def decrypt_message(
             decrypted = privkey.decrypt(message)
 
     result = decrypted.message
-    if isinstance(result, (bytes, bytearray)):
-        plaintext = result.decode("utf-8")
+    if isinstance(result, (bytes, bytearray, memoryview)):
+        plaintext = bytes(result)
     else:
         plaintext = result
 

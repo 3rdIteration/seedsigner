@@ -5159,9 +5159,10 @@ class ToolsGPGEncryptFileView(View):
         filename = file_list[selected_file]
         filepath = os.path.join(file_list_path, filename)
         try:
-            with open(filepath, "r", encoding="utf-8") as f:
+            with open(filepath, "rb") as f:
                 plaintext = f.read()
         except Exception as e:
+            logger.exception("Failed to load file %s", filepath)
             self.run_screen(
                 WarningScreen,
                 title="Error",
@@ -5268,7 +5269,8 @@ class ToolsGPGEncryptFileView(View):
                 signkey_blob=signkey_blob,
                 signkey_passphrase=passphrase,
             )
-        except Exception:
+        except Exception as e:
+            logger.exception("Failed to encrypt file %s", filepath)
             self.run_screen(
                 WarningScreen,
                 title="Error",
@@ -5284,7 +5286,8 @@ class ToolsGPGEncryptFileView(View):
         try:
             with open(outpath, "w", encoding="utf-8") as f:
                 f.write(ciphertext)
-        except Exception:
+        except Exception as e:
+            logger.exception("Failed to save file %s", outpath)
             self.run_screen(
                 WarningScreen,
                 title="Error",
@@ -5366,6 +5369,7 @@ class ToolsGPGDecryptFileView(View):
             with open(filepath, "r", encoding="utf-8") as f:
                 ciphertext = f.read()
         except Exception as e:
+            logger.exception("Failed to load file %s", filepath)
             self.run_screen(
                 WarningScreen,
                 title="Error",
@@ -5467,6 +5471,7 @@ class ToolsGPGDecryptFileView(View):
                 except Exception:
                     continue
             if not decrypted:
+                logger.error("Failed to decrypt file %s", filepath)
                 self.run_screen(
                     WarningScreen,
                     title="Error",
@@ -5476,9 +5481,6 @@ class ToolsGPGDecryptFileView(View):
                     button_data=[ButtonOption("I Understand")],
                 )
                 return Destination(BackStackView)
-
-        if isinstance(plaintext, (bytes, bytearray, memoryview)):
-            plaintext = plaintext.decode("utf-8")
 
         if signer_fpr:
             label = signer_fpr[-8:]
@@ -5525,9 +5527,14 @@ class ToolsGPGDecryptFileView(View):
         outname = f"{filename}.dec"
         outpath = os.path.join(file_list_path, outname)
         try:
-            with open(outpath, "w", encoding="utf-8") as f:
-                f.write(plaintext)
-        except Exception:
+            if isinstance(plaintext, str):
+                with open(outpath, "w", encoding="utf-8") as f:
+                    f.write(plaintext)
+            else:
+                with open(outpath, "wb") as f:
+                    f.write(plaintext)
+        except Exception as e:
+            logger.exception("Failed to save file %s", outpath)
             self.run_screen(
                 WarningScreen,
                 title="Error",

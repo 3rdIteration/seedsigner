@@ -158,3 +158,18 @@ def test_encrypt_decrypt_roundtrip_key_types(key_type):
     assert decrypted == plaintext
     assert signer is None
     assert not verified
+
+
+def test_encrypt_decrypt_binary_roundtrip():
+    key = PGPKey.new(PubKeyAlgorithm.RSAEncryptOrSign, 1024)
+    uid = PGPUID.new("Test", email="test@example.com")
+    key.add_uid(uid, usage={KeyFlags.Sign, KeyFlags.EncryptCommunications})
+
+    plaintext = bytes(range(256))
+    ciphertext = encrypt_message(str(key.pubkey), plaintext)
+    decrypted, signer, verified = decrypt_message(str(key), ciphertext)
+
+    assert isinstance(decrypted, bytes)
+    assert decrypted == plaintext
+    assert signer is None
+    assert not verified
