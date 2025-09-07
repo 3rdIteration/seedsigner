@@ -6240,7 +6240,7 @@ class ToolsGPGLoadBIP85KeyView(View):
         if email is None:
             return Destination(BackStackView)
 
-        created = datetime.fromtimestamp(1231006505, tz=timezone.utc)
+        created = datetime.fromtimestamp(1231005905, tz=timezone.utc)
         if key_type == "rsa2048":
             default_expiration = date(2029, 12, 31)
         else:
