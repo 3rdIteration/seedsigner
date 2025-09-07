@@ -5679,9 +5679,9 @@ def _check_future_key_creation(view, key_blob: str) -> None:
             run(["date", "-s", formatted], capture_output=True)
 
 class ToolsGPGImportPubkeyMenuView(View):
-    LOAD_QR = ButtonOption("Import from QR")
-    LOAD_FILE = ButtonOption("Import from File")
-    LOAD_SEEDKEEPER = ButtonOption("Import from Seedkeeper")
+    LOAD_QR = ButtonOption("From QR")
+    LOAD_FILE = ButtonOption("From File")
+    LOAD_SEEDKEEPER = ButtonOption("From Seedkeeper")
 
     def run(self):
         button_data = [self.LOAD_QR, self.LOAD_FILE, self.LOAD_SEEDKEEPER]
