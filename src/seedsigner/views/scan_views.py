@@ -199,7 +199,7 @@ class ScanView(View):
                             LargeIconStatusScreen,
                             title="Success",
                             status_headline=None,
-                            text=dt.strftime("%Y-%m-%d %H:%M:%S"),
+                            text=_("Time set to:") + f" {dt.strftime('%Y-%m-%d %H:%M:%S')}",
                             show_back_button=False,
                         )
                     except Exception as e:
