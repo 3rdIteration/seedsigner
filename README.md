@@ -154,6 +154,7 @@ If you have specific questions about the project, our [Telegram Group](https://t
   * Scan a software wallet's receive or change address to verify that it's correct.
   * Address Explorer for single sig and multisig wallets.
   * Message signing to prove address ownership.
+  * Sync the system clock using a [GoPro Labs timecode QR](https://gopro.github.io/labs/control/) for camera alignment.
   * BIP85 child seed generation.
 
 * Compatible with:
