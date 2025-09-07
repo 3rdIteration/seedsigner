@@ -5105,7 +5105,6 @@ class ToolsGPGEncryptFileView(View):
     def run(self):
         from subprocess import run
         import os
-        from seedsigner.helpers.gpg_message import encrypt_message
         from seedsigner.gui.screens.screen import (
             ButtonListScreen,
             WarningScreen,
@@ -5159,8 +5158,9 @@ class ToolsGPGEncryptFileView(View):
         filename = file_list[selected_file]
         filepath = os.path.join(file_list_path, filename)
         try:
-            with open(filepath, "rb") as f:
-                plaintext = f.read()
+            # Sanity-check that the file is readable before invoking gpg
+            with open(filepath, "rb"):
+                pass
         except Exception as e:
             logger.exception("Failed to load file %s", filepath)
             self.run_screen(
@@ -5209,13 +5209,6 @@ class ToolsGPGEncryptFileView(View):
         if selected_key == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
         rec_key = keys[selected_key]
-        exported = run([
-            "gpg",
-            "--armor",
-            "--export",
-            rec_key["fpr"],
-        ], capture_output=True, text=True)
-        pub_blob = exported.stdout
 
         result = run([
             "gpg",
@@ -5246,53 +5239,46 @@ class ToolsGPGEncryptFileView(View):
         )
         if selected_sign == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
-        signkey_blob = None
+        sign_key = None
         if sign_buttons[selected_sign] is not SKIP:
             sign_key = skeys[selected_sign - 1]
-            exported = run([
+
+        outname = f"{filename}.gpg"
+
+        def gpg_encrypt(passphrase: str | None = None):
+            cmd = [
                 "gpg",
+                "--batch",
+                "--yes",
+                "--trust-model",
+                "always",
+                "--output",
+                outname,
                 "--armor",
-                "--export-secret-keys",
-                sign_key["fpr"],
-            ], capture_output=True, text=True)
-            signkey_blob = exported.stdout
-        try:
-            ciphertext = encrypt_message(pub_blob, plaintext, signkey_blob=signkey_blob)
-        except ValueError:
+            ]
+            if passphrase is not None:
+                cmd.extend(["--pinentry-mode", "loopback", "--passphrase", passphrase])
+            if sign_key is not None:
+                cmd.extend(["--local-user", sign_key["fpr"], "--sign"])
+            cmd.extend(["--recipient", rec_key["fpr"], "--encrypt", filename])
+            return run(cmd, capture_output=True, text=True, cwd=file_list_path)
+
+        result = gpg_encrypt()
+        if result.returncode != 0 and sign_key is not None:
+            # Likely needs a passphrase for the signing key
             ret_dict = ToolsTextQRTextEntryScreen(textToEncode="", title="Passphrase").display()
             if "is_back_button" in ret_dict:
                 return Destination(BackStackView)
             passphrase = ret_dict["textToEncode"]
-            ciphertext = encrypt_message(
-                pub_blob,
-                plaintext,
-                signkey_blob=signkey_blob,
-                signkey_passphrase=passphrase,
-            )
-        except Exception as e:
-            logger.exception("Failed to encrypt file %s", filepath)
+            result = gpg_encrypt(passphrase)
+
+        if result.returncode != 0:
+            logger.warning("gpg encrypt failed: %s", result.stderr)
             self.run_screen(
                 WarningScreen,
                 title="Error",
                 status_headline=None,
                 text="Failed to encrypt file",
-                show_back_button=False,
-                button_data=[ButtonOption("I Understand")],
-            )
-            return Destination(BackStackView)
-
-        outname = f"{filename}.gpg"
-        outpath = os.path.join(file_list_path, outname)
-        try:
-            with open(outpath, "w", encoding="utf-8") as f:
-                f.write(ciphertext)
-        except Exception as e:
-            logger.exception("Failed to save file %s", outpath)
-            self.run_screen(
-                WarningScreen,
-                title="Error",
-                status_headline=None,
-                text="Failed to save file",
                 show_back_button=False,
                 button_data=[ButtonOption("I Understand")],
             )
@@ -5313,7 +5299,6 @@ class ToolsGPGDecryptFileView(View):
     def run(self):
         from subprocess import run
         import os
-        from seedsigner.helpers.gpg_message import decrypt_message
         from seedsigner.gui.screens.screen import (
             ButtonListScreen,
             WarningScreen,
@@ -5366,8 +5351,8 @@ class ToolsGPGDecryptFileView(View):
         filename = file_list[selected_file]
         filepath = os.path.join(file_list_path, filename)
         try:
-            with open(filepath, "r", encoding="utf-8") as f:
-                ciphertext = f.read()
+            with open(filepath, "rb"):
+                pass
         except Exception as e:
             logger.exception("Failed to load file %s", filepath)
             self.run_screen(
@@ -5380,109 +5365,104 @@ class ToolsGPGDecryptFileView(View):
             )
             return Destination(BackStackView)
 
-        result = run([
-            "gpg",
-            "--list-secret-keys",
-            "--with-colons",
-        ], capture_output=True, text=True)
-        keys = []
-        cur = None
-        for line in result.stdout.splitlines():
-            parts = line.split(":")
-            if parts[0] == "sec":
-                cur = {"fpr": None, "uid": None}
-                keys.append(cur)
-            elif parts[0] == "fpr" and cur is not None:
-                cur["fpr"] = parts[9]
-            elif parts[0] == "uid" and cur is not None and cur.get("uid") is None:
-                cur["uid"] = parts[9]
+        outname = f"{filename}.dec"
 
-        pub_result = run([
-            "gpg",
-            "--list-keys",
-            "--with-colons",
-        ], capture_output=True, text=True)
-        pubkeys = []
-        cur = None
-        for line in pub_result.stdout.splitlines():
-            parts = line.split(":")
-            if parts[0] == "pub":
-                cur = {"fpr": None, "uid": None}
-                pubkeys.append(cur)
-            elif parts[0] == "fpr" and cur is not None:
-                cur["fpr"] = parts[9]
-            elif parts[0] == "uid" and cur is not None and cur.get("uid") is None:
-                cur["uid"] = parts[9]
-        for pk in pubkeys:
-            exp = run([
+        def gpg_decrypt(passphrase: str | None = None):
+            cmd = [
                 "gpg",
-                "--armor",
-                "--export",
-                pk["fpr"],
-            ], capture_output=True, text=True)
-            pk["blob"] = exp.stdout
+                "--batch",
+                "--yes",
+                "--output",
+                outname,
+                "--decrypt",
+                "--status-fd",
+                "1",
+            ]
+            if passphrase is not None:
+                cmd.extend(["--pinentry-mode", "loopback", "--passphrase", passphrase])
+            cmd.append(filename)
+            return run(cmd, capture_output=True, text=True, cwd=file_list_path)
 
-        try:
-            plaintext, signer_fpr, verified = decrypt_message(
-                None,
-                ciphertext,
-                pubkey_blobs=[pk["blob"] for pk in pubkeys],
-            )
-        except ValueError:
-            decrypted = False
-            for key in keys:
-                exported = run([
-                    "gpg",
-                    "--armor",
-                    "--export-secret-keys",
-                    key["fpr"],
-                ], capture_output=True, text=True)
-                if exported.returncode != 0:
+        def parse_status(output: str):
+            need_passphrase = False
+            missing_priv = False
+            signer_fpr = None
+            verified = False
+            missing_pub = False
+            for line in output.splitlines():
+                if not line.startswith("[GNUPG:]"):
                     continue
-                try:
-                    plaintext, signer_fpr, verified = decrypt_message(
-                        exported.stdout,
-                        ciphertext,
-                        pubkey_blobs=[pk["blob"] for pk in pubkeys],
-                    )
-                    decrypted = True
-                    break
-                except ValueError as e:
-                    if "Passphrase required" in str(e):
-                        ret_dict = ToolsTextQRTextEntryScreen(
-                            textToEncode="", title="Passphrase"
-                        ).display()
-                        if "is_back_button" in ret_dict:
-                            return Destination(BackStackView)
-                        passphrase = ret_dict["textToEncode"]
-                        try:
-                            plaintext, signer_fpr, verified = decrypt_message(
-                                exported.stdout,
-                                ciphertext,
-                                passphrase=passphrase,
-                                pubkey_blobs=[pk["blob"] for pk in pubkeys],
-                            )
-                            decrypted = True
-                            break
-                        except Exception:
-                            continue
-                    else:
-                        continue
-                except Exception:
-                    continue
-            if not decrypted:
-                logger.error("Failed to decrypt file %s", filepath)
-                self.run_screen(
-                    WarningScreen,
-                    title="Error",
-                    status_headline=None,
-                    text=("No private keys found" if not keys else "Failed to decrypt file"),
-                    show_back_button=False,
-                    button_data=[ButtonOption("I Understand")],
-                )
+                parts = line[9:].split()
+                tag = parts[0]
+                if tag in {"NEED_PASSPHRASE", "MISSING_PASSPHRASE", "BAD_PASSPHRASE"}:
+                    need_passphrase = True
+                elif tag == "NO_SECKEY":
+                    missing_priv = True
+                elif tag == "NO_PUBKEY":
+                    missing_pub = True
+                    if len(parts) > 1:
+                        signer_fpr = parts[1]
+                elif tag == "BADSIG":
+                    signer_fpr = parts[1]
+                    verified = False
+                elif tag == "VALIDSIG":
+                    signer_fpr = parts[1]
+                    verified = True
+            return need_passphrase, missing_priv, signer_fpr, verified, missing_pub
+
+        result = gpg_decrypt()
+        need_pw, missing_priv, signer_fpr, verified, missing_pub = parse_status(result.stdout)
+
+        if result.returncode != 0 and need_pw:
+            ret_dict = ToolsTextQRTextEntryScreen(textToEncode="", title="Passphrase").display()
+            if "is_back_button" in ret_dict:
                 return Destination(BackStackView)
+            passphrase = ret_dict["textToEncode"]
+            result = gpg_decrypt(passphrase)
+            need_pw, missing_priv, signer_fpr, verified, missing_pub = parse_status(result.stdout)
+
+        if result.returncode != 0:
+            if missing_priv:
+                load = ButtonOption("Load Key")
+                cont = ButtonOption("Continue")
+                selected = self.run_screen(
+                    WarningScreen,
+                    title="Warning",
+                    status_headline=None,
+                    text="Missing private key to decrypt",
+                    show_back_button=False,
+                    button_data=[load, cont],
+                )
+                if selected == 0:
+                    return Destination(ToolsGPGImportPrivkeyMenuView)
+            logger.warning("gpg decrypt failed: %s", result.stderr)
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="Failed to decrypt file",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
 
         if signer_fpr:
+            pub_result = run([
+                "gpg",
+                "--list-keys",
+                "--with-colons",
+            ], capture_output=True, text=True)
+            pubkeys = []
+            cur = None
+            for line in pub_result.stdout.splitlines():
+                parts = line.split(":")
+                if parts[0] == "pub":
+                    cur = {"fpr": None, "uid": None}
+                    pubkeys.append(cur)
+                elif parts[0] == "fpr" and cur is not None:
+                    cur["fpr"] = parts[9]
+                elif parts[0] == "uid" and cur is not None and cur.get("uid") is None:
+                    cur["uid"] = parts[9]
             label = signer_fpr[-8:]
             have_pub = False
             for pk in pubkeys:
@@ -5490,7 +5470,7 @@ class ToolsGPGDecryptFileView(View):
                     have_pub = True
                     label = pk["uid"] if pk["uid"] else pk["fpr"][-8:]
                     break
-            if not verified and not have_pub:
+            if (not verified or missing_pub) and not have_pub:
                 load = ButtonOption("Load Key")
                 cont = ButtonOption("Continue")
                 selected = self.run_screen(
@@ -5523,27 +5503,6 @@ class ToolsGPGDecryptFileView(View):
                     show_back_button=False,
                     button_data=[ButtonOption("Next")],
                 )
-
-        outname = f"{filename}.dec"
-        outpath = os.path.join(file_list_path, outname)
-        try:
-            if isinstance(plaintext, str):
-                with open(outpath, "w", encoding="utf-8") as f:
-                    f.write(plaintext)
-            else:
-                with open(outpath, "wb") as f:
-                    f.write(plaintext)
-        except Exception as e:
-            logger.exception("Failed to save file %s", outpath)
-            self.run_screen(
-                WarningScreen,
-                title="Error",
-                status_headline=None,
-                text="Failed to save file",
-                show_back_button=False,
-                button_data=[ButtonOption("I Understand")],
-            )
-            return Destination(BackStackView)
 
         self.run_screen(
             LargeIconStatusScreen,
