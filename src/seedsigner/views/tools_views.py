@@ -6050,13 +6050,33 @@ def bip85_ed25519_from_root(
     return priv
 
 
+def _bip85_subkey_specs(alg):
+    from pgpy.constants import PubKeyAlgorithm, KeyFlags
+
+    if alg == "ed25519":
+        return [
+            (0, PubKeyAlgorithm.ECDH, {KeyFlags.EncryptCommunications, KeyFlags.EncryptStorage}, "ECDH"),
+            (1, PubKeyAlgorithm.EdDSA, {KeyFlags.Authentication, KeyFlags.Sign}, "EdDSA"),
+            (2, PubKeyAlgorithm.EdDSA, {KeyFlags.Sign}, "EdDSA"),
+        ]
+    if alg in ["secp256k1", "nistp256", "brainpoolP256r1"]:
+        return [
+            (0, PubKeyAlgorithm.ECDH, {KeyFlags.EncryptCommunications, KeyFlags.EncryptStorage}, "ECDH"),
+            (1, PubKeyAlgorithm.ECDSA, {KeyFlags.Authentication, KeyFlags.Sign}, "ECDSA"),
+            (2, PubKeyAlgorithm.ECDSA, {KeyFlags.Sign}, "ECDSA"),
+        ]
+    return [
+        (0, PubKeyAlgorithm.RSAEncryptOrSign, {KeyFlags.EncryptCommunications, KeyFlags.EncryptStorage}),
+        (1, PubKeyAlgorithm.RSAEncryptOrSign, {KeyFlags.Authentication, KeyFlags.Sign}),
+        (2, PubKeyAlgorithm.RSAEncryptOrSign, {KeyFlags.Sign}),
+    ]
+
+
 def bip85_add_subkeys(fingerprint: str, alg: str, key_index: int, start_index: int) -> bool:
     from subprocess import run
     from embit import bip32
     from pgpy import PGPKey
     from pgpy.constants import (
-        PubKeyAlgorithm,
-        KeyFlags,
         HashAlgorithm,
         SymmetricKeyAlgorithm,
         CompressionAlgorithm,
@@ -6100,24 +6120,7 @@ def bip85_add_subkeys(fingerprint: str, alg: str, key_index: int, start_index: i
         priv._compute_chksum()
         return priv
 
-    if alg == "ed25519":
-        subkey_specs = [
-            (0, PubKeyAlgorithm.ECDH, {KeyFlags.EncryptCommunications, KeyFlags.EncryptStorage}, "ECDH"),
-            (1, PubKeyAlgorithm.EdDSA, {KeyFlags.Authentication}, "EdDSA"),
-            (2, PubKeyAlgorithm.EdDSA, {KeyFlags.Sign}, "EdDSA"),
-        ]
-    elif alg in ["secp256k1", "nistp256", "brainpoolP256r1"]:
-        subkey_specs = [
-            (0, PubKeyAlgorithm.ECDH, {KeyFlags.EncryptCommunications, KeyFlags.EncryptStorage}, "ECDH"),
-            (1, PubKeyAlgorithm.ECDSA, {KeyFlags.Authentication}, "ECDSA"),
-            (2, PubKeyAlgorithm.ECDSA, {KeyFlags.Sign}, "ECDSA"),
-        ]
-    else:
-        subkey_specs = [
-            (0, PubKeyAlgorithm.RSAEncryptOrSign, {KeyFlags.EncryptCommunications, KeyFlags.EncryptStorage}),
-            (1, PubKeyAlgorithm.RSAEncryptOrSign, {KeyFlags.Authentication}),
-            (2, PubKeyAlgorithm.RSAEncryptOrSign, {KeyFlags.Sign}),
-        ]
+    subkey_specs = _bip85_subkey_specs(alg)
 
     for offset, pkalg, usage, *alg_name in subkey_specs:
         sub_index = start_index + offset
@@ -6814,7 +6817,7 @@ class ToolsGPGAddSubkeysView(View):
             if bip85:
                 success = bip85_add_subkeys(fingerprint, alg, key_index, start_index)
             elif alg.startswith("rsa"):
-                for usage in ["encrypt", "auth", "sign"]:
+                for usage in ["encrypt", "sign,auth", "sign"]:
                     r = run(["gpg", "--quick-addkey", fingerprint, alg, usage])
                     if r.returncode != 0:
                         success = False
@@ -6822,7 +6825,7 @@ class ToolsGPGAddSubkeysView(View):
             elif alg == "ed25519":
                 cmds = [
                     ["gpg", "--quick-addkey", fingerprint, "cv25519", "encrypt"],
-                    ["gpg", "--quick-addkey", fingerprint, "ed25519", "auth"],
+                    ["gpg", "--quick-addkey", fingerprint, "ed25519", "sign,auth"],
                     ["gpg", "--quick-addkey", fingerprint, "ed25519", "sign"],
                 ]
                 for cmd in cmds:
@@ -6831,7 +6834,7 @@ class ToolsGPGAddSubkeysView(View):
                         success = False
                         break
             else:
-                for usage in ["encrypt", "auth", "sign"]:
+                for usage in ["encrypt", "sign,auth", "sign"]:
                     r = run(["gpg", "--quick-addkey", fingerprint, alg, usage])
                     if r.returncode != 0:
                         success = False

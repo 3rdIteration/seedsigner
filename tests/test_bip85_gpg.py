@@ -6,6 +6,7 @@ from seedsigner.views.tools_views import (
     bip85_p256_from_root,
     bip85_rsa_from_root,
     bip85_secp256k1_from_root,
+    _bip85_subkey_specs,
     parse_secret_key_list,
 )
 from seedsigner.helpers.bip85_drng import BIP85DRNG
@@ -117,3 +118,12 @@ def test_parse_secret_key_list_primary_fingerprint_only():
     )
     keys = parse_secret_key_list(output)
     assert keys[0]["fpr"] == "PRIMARYFPR"
+
+
+def test_bip85_subkey_specs_include_sign_for_auth():
+    from pgpy.constants import KeyFlags
+
+    specs = _bip85_subkey_specs("ed25519")
+    auth_flags = specs[1][2]
+    assert KeyFlags.Authentication in auth_flags
+    assert KeyFlags.Sign in auth_flags
