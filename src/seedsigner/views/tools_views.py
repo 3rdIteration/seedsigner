@@ -5161,12 +5161,12 @@ class ToolsGPGEncryptFileView(View):
         try:
             with open(filepath, "r", encoding="utf-8") as f:
                 plaintext = f.read()
-        except Exception:
+        except Exception as e:
             self.run_screen(
                 WarningScreen,
                 title="Error",
                 status_headline=None,
-                text="Failed to load file",
+                text=f"Failed to load file:\n{e}",
                 show_back_button=False,
                 button_data=[ButtonOption("I Understand")],
             )
@@ -5365,12 +5365,12 @@ class ToolsGPGDecryptFileView(View):
         try:
             with open(filepath, "r", encoding="utf-8") as f:
                 ciphertext = f.read()
-        except Exception:
+        except Exception as e:
             self.run_screen(
                 WarningScreen,
                 title="Error",
                 status_headline=None,
-                text="Failed to load file",
+                text=f"Failed to load file:\n{e}",
                 show_back_button=False,
                 button_data=[ButtonOption("I Understand")],
             )

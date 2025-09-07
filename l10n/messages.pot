@@ -8,14 +8,14 @@ msgid ""
 msgstr ""
 "Project-Id-Version: seedsigner 0.8.6\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2025-09-07 19:36+0000\n"
+"POT-Creation-Date: 2025-09-07 20:16+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"Generated-By: Babel 2.17.0\n"
+"Generated-By: Babel 2.16.0\n"
 
 #: src/seedsigner/controller.py src/seedsigner/views/view.py
 msgid "Data wiped after inactivity"
@@ -82,7 +82,6 @@ msgstr ""
 
 #. Input number will be inserted (e.g. "input 3")
 #: src/seedsigner/gui/screens/psbt_screens.py
-#, python-brace-format
 msgid "input {}"
 msgstr ""
 
@@ -102,7 +101,6 @@ msgstr ""
 
 #. Inserts the recipient number (e.g. the fifth one is: "recipient 5")
 #: src/seedsigner/gui/screens/psbt_screens.py
-#, python-brace-format
 msgid "recipient {}"
 msgstr ""
 
@@ -144,7 +142,6 @@ msgstr[1] ""
 
 #. Denonination is inserted (e.g. your "btc change" or "sats change")
 #: src/seedsigner/gui/screens/psbt_screens.py
-#, python-brace-format
 msgid "{} change"
 msgstr ""
 
@@ -187,7 +184,6 @@ msgstr ""
 
 #. Inserts the percentage value of the animated QR scan progress
 #: src/seedsigner/gui/screens/scan_screens.py
-#, python-brace-format
 msgid "{}%"
 msgstr ""
 
@@ -301,7 +297,6 @@ msgstr ""
 
 #. Displays the page number and total: (e.g. page 1 of 6)
 #: src/seedsigner/gui/screens/seed_screens.py
-#, python-brace-format
 msgid "Seed Words: {}/{}"
 msgstr ""
 
@@ -399,7 +394,6 @@ msgstr ""
 #. Refers to the QR code size: 21x21, 25x25, or 29x29
 #: src/seedsigner/gui/screens/seed_screens.py
 #: src/seedsigner/gui/screens/tools_screens.py
-#, python-brace-format
 msgid "Begin {}x{}"
 msgstr ""
 
@@ -421,7 +415,6 @@ msgstr ""
 
 #. Inserts the nth address number (e.g. "Checking address 7")
 #: src/seedsigner/gui/screens/seed_screens.py
-#, python-brace-format
 msgid "Checking address {}"
 msgstr ""
 
@@ -441,7 +434,6 @@ msgstr ""
 
 #. Describes the address index (e.g. "index 7")
 #: src/seedsigner/gui/screens/seed_screens.py
-#, python-brace-format
 msgid "index {}"
 msgstr ""
 
@@ -601,7 +593,6 @@ msgstr ""
 
 #. current roll number vs total rolls (e.g. roll 7 of 50)
 #: src/seedsigner/gui/screens/tools_screens.py
-#, python-brace-format
 msgid "Dice Roll {}/{}"
 msgstr ""
 
@@ -613,7 +604,6 @@ msgstr ""
 #. Final word calc. `mnemonic_length` = 12 or 24. `num_bits` = 7 or 3 (bits of
 #. entropy in final word).
 #: src/seedsigner/gui/screens/tools_screens.py
-#, python-brace-format
 msgid ""
 "The {mnemonic_length}th word is built from {num_bits} more entropy bits "
 "plus auto-calculated checksum."
@@ -621,7 +611,6 @@ msgstr ""
 
 #. current coin-flip number vs total flips (e.g. flip 3 of 4)
 #: src/seedsigner/gui/screens/tools_screens.py
-#, python-brace-format
 msgid "Coin Flip {}/{}"
 msgstr ""
 
@@ -637,7 +626,6 @@ msgstr ""
 
 #. The additional entropy the user supplied (e.g. coin flips)
 #: src/seedsigner/gui/screens/tools_screens.py
-#, python-brace-format
 msgid "Your input: \"{}\""
 msgstr ""
 
@@ -648,7 +636,6 @@ msgstr ""
 
 #. labeled presentation of the last word in a BIP-39 mnemonic seed phrase.
 #: src/seedsigner/gui/screens/tools_screens.py
-#, python-brace-format
 msgid "Final Word: \"{}\""
 msgstr ""
 
@@ -680,7 +667,6 @@ msgstr ""
 
 #. Insert the number of addrs displayed per screen (e.g. "Next 10")
 #: src/seedsigner/gui/screens/tools_screens.py
-#, python-brace-format
 msgid "Next {}"
 msgstr ""
 
@@ -1043,7 +1029,6 @@ msgstr ""
 #. Inserts fingerprint w/"?" to indicate that this seed can't sign the current
 #. PSBT
 #: src/seedsigner/views/psbt_views.py
-#, python-brace-format
 msgid "{} (?)"
 msgstr ""
 
@@ -1151,13 +1136,11 @@ msgstr ""
 
 #. Variable is either "change" or "self-transfer".
 #: src/seedsigner/views/psbt_views.py
-#, python-brace-format
 msgid "PSBT's {} address could not be verified from wallet descriptor."
 msgstr ""
 
 #. Variable is either "change" or "self-transfer".
 #: src/seedsigner/views/psbt_views.py
-#, python-brace-format
 msgid "PSBT's {} address could not be generated from your seed."
 msgstr ""
 
@@ -1274,7 +1257,6 @@ msgid "Expected an address QR"
 msgstr ""
 
 #: src/seedsigner/views/scan_views.py
-#, python-brace-format
 msgid "Scan {} receive address from the wallet you just exported"
 msgstr ""
 
@@ -1370,7 +1352,6 @@ msgstr ""
 
 #. Inserts the word number (e.g. "Seed Word #6")
 #: src/seedsigner/views/seed_views.py
-#, python-brace-format
 msgid "Seed Word #{}"
 msgstr ""
 
@@ -1436,7 +1417,6 @@ msgstr ""
 
 #. Inserts the seed fingerprint
 #: src/seedsigner/views/seed_views.py
-#, python-brace-format
 msgid "Wipe seed {} from the device?"
 msgstr ""
 
@@ -1469,7 +1449,6 @@ msgid "Load Share"
 msgstr ""
 
 #: src/seedsigner/views/seed_views.py
-#, python-brace-format
 msgid "Share Word #{}"
 msgstr ""
 
@@ -1486,7 +1465,6 @@ msgid "Combine shares"
 msgstr ""
 
 #: src/seedsigner/views/seed_views.py
-#, python-brace-format
 msgid "{} of {} needed"
 msgstr ""
 
@@ -1555,7 +1533,6 @@ msgid "Generating xpub..."
 msgstr ""
 
 #: src/seedsigner/views/seed_views.py
-#, python-brace-format
 msgid "Open {} and display a receive address from the wallet you just exported."
 msgstr ""
 
@@ -1569,7 +1546,6 @@ msgstr ""
 
 #. Inserts the child index (e.g. "Child #0")
 #: src/seedsigner/views/seed_views.py
-#, python-brace-format
 msgid "Child #{}"
 msgstr ""
 
@@ -1623,7 +1599,6 @@ msgstr ""
 
 #. Inserts the word number (e.g. "Verify Word #1")
 #: src/seedsigner/views/seed_views.py
-#, python-brace-format
 msgid "Verify Word #{}"
 msgstr ""
 
@@ -1633,7 +1608,6 @@ msgstr ""
 
 #. Inserts the word number and the word (e.g. "Word #1 is not "apple"!")
 #: src/seedsigner/views/seed_views.py
-#, python-brace-format
 msgid "Word #{} is not \"{}\"!"
 msgstr ""
 
@@ -1955,12 +1929,10 @@ msgid "Camera entropy didn't appear random enough. Please try again."
 msgstr ""
 
 #: src/seedsigner/views/tools_views.py
-#, python-brace-format
 msgid "20 words ({} rolls)"
 msgstr ""
 
 #: src/seedsigner/views/tools_views.py
-#, python-brace-format
 msgid "33 words ({} rolls)"
 msgstr ""
 
@@ -2470,7 +2442,6 @@ msgstr ""
 
 #. Inserts mainnet/testnet/regtest and derivation path
 #: src/seedsigner/views/view.py
-#, python-brace-format
 msgid "Current network setting ({}) doesn't match {}."
 msgstr ""
 
@@ -2485,7 +2456,6 @@ msgstr ""
 #. Inserts the name of a settings option (e.g. "Persistent Settings" is
 #. currently...)
 #: src/seedsigner/views/view.py
-#, python-brace-format
 msgid "\"{}\" is currently disabled in Settings."
 msgstr ""
 
