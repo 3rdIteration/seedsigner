@@ -126,8 +126,15 @@ class URDecoder:
                 return False
 
             # Process the part
-            if not self.fountain_decoder.receive_part(part):
-                return False
+            #
+            # The underlying ``FountainDecoder`` returns ``False`` when the part is
+            # syntactically valid but doesn't add any new information (for example a
+            # duplicate frame).  In the context of this helper we still consider that
+            # a successfully processed part – callers generally only need to know
+            # whether the fragment was well-formed.  Returning ``False`` here caused
+            # consumers to treat valid duplicates as errors which broke roundtrip QR
+            # decoding in the tests.
+            self.fountain_decoder.receive_part(part)
 
             if self.fountain_decoder.is_success():
                 self.result = UR(type, self.fountain_decoder.result_message())
