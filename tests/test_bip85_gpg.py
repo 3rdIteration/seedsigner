@@ -6,6 +6,7 @@ from seedsigner.views.tools_views import (
     bip85_p256_from_root,
     bip85_rsa_from_root,
     bip85_secp256k1_from_root,
+    parse_secret_key_list,
 )
 from seedsigner.helpers.bip85_drng import BIP85DRNG
 
@@ -102,3 +103,17 @@ def test_bip85_ed25519_sub_index_progression():
     repeat = bip85_ed25519_from_root(root, 0, 3, "EdDSA")
     assert int(first.s) != int(later.s)
     assert int(later.s) == int(repeat.s)
+
+
+def test_parse_secret_key_list_primary_fingerprint_only():
+    output = "\n".join(
+        [
+            "sec:-:0:0:::0::::::23::0:",
+            "fpr:::::::::PRIMARYFPR:",
+            "uid::::Test User:::::::",
+            "ssb:-:0:0:::0::::::23::0:",
+            "fpr:::::::::SUBKEYFPR:",
+        ]
+    )
+    keys = parse_secret_key_list(output)
+    assert keys[0]["fpr"] == "PRIMARYFPR"

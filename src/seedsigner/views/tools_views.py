@@ -4004,6 +4004,24 @@ class ToolsMicroSDWipeRandomView(View):
 """****************************************************************************
     GPG Views
 ****************************************************************************"""
+
+
+def parse_secret_key_list(colon_output: str):
+    """Parse `gpg --list-secret-keys --with-colons` output."""
+    keys = []
+    cur = None
+    for line in colon_output.splitlines():
+        parts = line.split(":")
+        if parts[0] == "sec":
+            cur = {"fpr": None, "uid": None}
+            keys.append(cur)
+        elif parts[0] == "fpr" and cur is not None and cur.get("fpr") is None:
+            cur["fpr"] = parts[9]
+        elif parts[0] == "uid" and cur is not None and cur.get("uid") is None:
+            cur["uid"] = parts[9]
+    return keys
+
+
 class ToolsGPGMenuView(View):
     VERIFY_FILE = ButtonOption("Verify File Sig")
     SIGN = ButtonOption("Sign")
@@ -4154,7 +4172,7 @@ class ToolsGPGEncryptMessageView(View):
             if parts[0] == "pub":
                 cur = {"fpr": None, "uid": None}
                 keys.append(cur)
-            elif parts[0] == "fpr" and cur is not None:
+            elif parts[0] == "fpr" and cur is not None and cur.get("fpr") is None:
                 cur["fpr"] = parts[9]
             elif parts[0] == "uid" and cur is not None and cur.get("uid") is None:
                 cur["uid"] = parts[9]
@@ -4276,7 +4294,7 @@ class ToolsGPGEncryptMessageView(View):
             if parts[0] == "sec":
                 cur = {"fpr": None, "uid": None}
                 sign_keys.append(cur)
-            elif parts[0] == "fpr" and cur is not None:
+            elif parts[0] == "fpr" and cur is not None and cur.get("fpr") is None:
                 cur["fpr"] = parts[9]
             elif parts[0] == "uid" and cur is not None and cur.get("uid") is None:
                 cur["uid"] = parts[9]
@@ -4422,7 +4440,7 @@ class ToolsGPGDecryptMessageView(View):
             if parts[0] == "sec":
                 cur = {"fpr": None, "uid": None}
                 keys.append(cur)
-            elif parts[0] == "fpr" and cur is not None:
+            elif parts[0] == "fpr" and cur is not None and cur.get("fpr") is None:
                 cur["fpr"] = parts[9]
             elif parts[0] == "uid" and cur is not None and cur.get("uid") is None:
                 cur["uid"] = parts[9]
@@ -4471,7 +4489,7 @@ class ToolsGPGDecryptMessageView(View):
             if parts[0] == "pub":
                 cur = {"fpr": None, "uid": None}
                 pubkeys.append(cur)
-            elif parts[0] == "fpr" and cur is not None:
+            elif parts[0] == "fpr" and cur is not None and cur.get("fpr") is None:
                 cur["fpr"] = parts[9]
             elif parts[0] == "uid" and cur is not None and cur.get("uid") is None:
                 cur["uid"] = parts[9]
@@ -5277,17 +5295,7 @@ class ToolsGPGSignFileView(View):
             capture_output=True,
             text=True,
         )
-        keys = []
-        cur = None
-        for line in result.stdout.splitlines():
-            parts = line.split(":")
-            if parts[0] == "sec":
-                cur = {"fpr": None, "uid": None}
-                keys.append(cur)
-            elif parts[0] == "fpr" and cur is not None:
-                cur["fpr"] = parts[9]
-            elif parts[0] == "uid" and cur is not None and cur.get("uid") is None:
-                cur["uid"] = parts[9]
+        keys = parse_secret_key_list(result.stdout)
 
         if not keys:
             self.run_screen(
@@ -5445,7 +5453,7 @@ class ToolsGPGSignManifestView(View):
             if parts[0] == "sec":
                 cur = {"fpr": None, "uid": None}
                 keys.append(cur)
-            elif parts[0] == "fpr" and cur is not None:
+            elif parts[0] == "fpr" and cur is not None and cur.get("fpr") is None:
                 cur["fpr"] = parts[9]
             elif parts[0] == "uid" and cur is not None and cur.get("uid") is None:
                 cur["uid"] = parts[9]
@@ -6556,7 +6564,7 @@ class ToolsGPGListSubkeysView(View):
             if parts[0] == "sec":
                 cur = {"fpr": None, "uid": None}
                 keys.append(cur)
-            elif parts[0] == "fpr" and cur is not None:
+            elif parts[0] == "fpr" and cur is not None and cur.get("fpr") is None:
                 cur["fpr"] = parts[9]
             elif parts[0] == "uid" and cur is not None and cur.get("uid") is None:
                 cur["uid"] = parts[9]
@@ -6646,7 +6654,7 @@ class ToolsGPGCopySubkeysToCardView(View):
             if parts[0] == "sec":
                 cur = {"fpr": None, "uid": None}
                 keys.append(cur)
-            elif parts[0] == "fpr" and cur is not None:
+            elif parts[0] == "fpr" and cur is not None and cur.get("fpr") is None:
                 cur["fpr"] = parts[9]
             elif parts[0] == "uid" and cur is not None and cur.get("uid") is None:
                 cur["uid"] = parts[9]
@@ -6700,17 +6708,7 @@ class ToolsGPGAddSubkeysView(View):
             capture_output=True,
             text=True,
         )
-        keys = []
-        cur = None
-        for line in result.stdout.splitlines():
-            parts = line.split(":")
-            if parts[0] == "sec":
-                cur = {"fpr": None, "uid": None}
-                keys.append(cur)
-            elif parts[0] == "fpr" and cur is not None:
-                cur["fpr"] = parts[9]
-            elif parts[0] == "uid" and cur is not None and cur.get("uid") is None:
-                cur["uid"] = parts[9]
+        keys = parse_secret_key_list(result.stdout)
 
         if not keys:
             self.run_screen(
@@ -7111,7 +7109,7 @@ class ToolsGPGExportPubkeyView(View):
             if parts[0] == "sec":
                 cur = {"fpr": None, "uid": None}
                 keys.append(cur)
-            elif parts[0] == "fpr" and cur is not None:
+            elif parts[0] == "fpr" and cur is not None and cur.get("fpr") is None:
                 cur["fpr"] = parts[9]
             elif parts[0] == "uid" and cur is not None and cur.get("uid") is None:
                 cur["uid"] = parts[9]
@@ -7359,7 +7357,7 @@ class ToolsGPGExportPrivkeyView(View):
             if parts[0] == "sec":
                 cur = {"fpr": None, "uid": None}
                 keys.append(cur)
-            elif parts[0] == "fpr" and cur is not None:
+            elif parts[0] == "fpr" and cur is not None and cur.get("fpr") is None:
                 cur["fpr"] = parts[9]
             elif parts[0] == "uid" and cur is not None and cur.get("uid") is None:
                 cur["uid"] = parts[9]
