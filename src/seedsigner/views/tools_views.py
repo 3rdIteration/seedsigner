@@ -4011,6 +4011,7 @@ class ToolsGPGMenuView(View):
     EXPORT = ButtonOption("Export")
     MESSAGE = ButtonOption("Encrypted Message")
     SMART_GPG = ButtonOption("SmartGPG")
+    ADVANCED = ButtonOption("Advanced")
 
     def run(self):
 
@@ -4021,6 +4022,7 @@ class ToolsGPGMenuView(View):
             self.EXPORT,
             self.MESSAGE,
             self.SMART_GPG,
+            self.ADVANCED,
         ]
 
         selected_menu_num = self.run_screen(
@@ -4047,6 +4049,35 @@ class ToolsGPGMenuView(View):
             return Destination(ToolsGPGMessageMenuView)
         elif button_data[selected_menu_num] == self.SMART_GPG:
             return Destination(ToolsGPGSmartMenuView)
+        elif button_data[selected_menu_num] == self.ADVANCED:
+            return Destination(ToolsGPGAdvancedMenuView)
+
+
+class ToolsGPGAdvancedMenuView(View):
+    ADD_SUBKEYS = ButtonOption("Add Subkeys")
+    LIST_SUBKEYS = ButtonOption("List Subkeys")
+    COPY_TO_CARD = ButtonOption("Copy Subkeys to Card")
+
+    def run(self):
+        button_data = [self.ADD_SUBKEYS, self.LIST_SUBKEYS, self.COPY_TO_CARD]
+
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title="Advanced",
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        selected = button_data[selected_menu_num]
+        if selected == self.ADD_SUBKEYS:
+            return Destination(ToolsGPGAddSubkeysView)
+        elif selected == self.LIST_SUBKEYS:
+            return Destination(ToolsGPGListSubkeysView)
+        elif selected == self.COPY_TO_CARD:
+            return Destination(ToolsGPGCopySubkeysToCardView)
 
 
 class ToolsGPGMessageMenuView(View):
@@ -6011,6 +6042,111 @@ def bip85_ed25519_from_root(
     return priv
 
 
+def bip85_add_subkeys(fingerprint: str, alg: str, key_index: int, start_index: int) -> bool:
+    from subprocess import run
+    from embit import bip32
+    from pgpy import PGPKey
+    from pgpy.constants import (
+        PubKeyAlgorithm,
+        KeyFlags,
+        HashAlgorithm,
+        SymmetricKeyAlgorithm,
+        CompressionAlgorithm,
+    )
+    from pgpy.pgp import PrivSubKeyV4
+    from pgpy.packet import fields
+    from pgpy.packet.types import MPI
+    from Cryptodome.PublicKey import RSA
+    from seedsigner.controller import Controller
+
+    seed = Controller.get_instance().get_seed(0)
+    root = bip32.HDKey.from_seed(seed.seed_bytes)
+
+    export = run(
+        ["gpg", "--armor", "--export-secret-keys", fingerprint],
+        capture_output=True,
+        text=True,
+    )
+    pgp_key, _ = PGPKey.from_blob(export.stdout)
+    created = pgp_key._key.created
+    expires = pgp_key._key.expires
+
+    KEY_BITS = (
+        2048
+        if alg == "rsa2048"
+        else 3072
+        if alg == "rsa3072"
+        else 4096
+        if alg == "rsa4096"
+        else None
+    )
+
+    def rsa_to_privpacket(rsa_key: RSA.RsaKey) -> fields.RSAPriv:
+        priv = fields.RSAPriv()
+        priv.n = MPI(rsa_key.n)
+        priv.e = MPI(rsa_key.e)
+        priv.d = MPI(rsa_key.d)
+        priv.p = MPI(rsa_key.p)
+        priv.q = MPI(rsa_key.q)
+        priv.u = MPI(pow(rsa_key.p, -1, rsa_key.q))
+        priv._compute_chksum()
+        return priv
+
+    if alg == "ed25519":
+        subkey_specs = [
+            (0, PubKeyAlgorithm.ECDH, {KeyFlags.EncryptCommunications, KeyFlags.EncryptStorage}, "ECDH"),
+            (1, PubKeyAlgorithm.EdDSA, {KeyFlags.Authentication}, "EdDSA"),
+            (2, PubKeyAlgorithm.EdDSA, {KeyFlags.Sign}, "EdDSA"),
+        ]
+    elif alg in ["secp256k1", "nistp256", "brainpoolP256r1"]:
+        subkey_specs = [
+            (0, PubKeyAlgorithm.ECDH, {KeyFlags.EncryptCommunications, KeyFlags.EncryptStorage}, "ECDH"),
+            (1, PubKeyAlgorithm.ECDSA, {KeyFlags.Authentication}, "ECDSA"),
+            (2, PubKeyAlgorithm.ECDSA, {KeyFlags.Sign}, "ECDSA"),
+        ]
+    else:
+        subkey_specs = [
+            (0, PubKeyAlgorithm.RSAEncryptOrSign, {KeyFlags.EncryptCommunications, KeyFlags.EncryptStorage}),
+            (1, PubKeyAlgorithm.RSAEncryptOrSign, {KeyFlags.Authentication}),
+            (2, PubKeyAlgorithm.RSAEncryptOrSign, {KeyFlags.Sign}),
+        ]
+
+    for offset, pkalg, usage, *alg_name in subkey_specs:
+        sub_index = start_index + offset
+        subpkt = PrivSubKeyV4()
+        subpkt.pkalg = pkalg
+        if alg == "secp256k1":
+            subpkt.keymaterial = bip85_secp256k1_from_root(root, key_index, sub_index, alg_name[0])
+        elif alg == "nistp256":
+            subpkt.keymaterial = bip85_p256_from_root(root, key_index, sub_index, alg_name[0])
+        elif alg == "brainpoolP256r1":
+            subpkt.keymaterial = bip85_brainpoolp256r1_from_root(root, key_index, sub_index, alg_name[0])
+        elif alg == "ed25519":
+            subpkt.keymaterial = bip85_ed25519_from_root(root, key_index, sub_index, alg_name[0])
+        else:
+            rsa_sub = bip85_rsa_from_root(root, KEY_BITS, key_index, sub_index)
+            subpkt.keymaterial = rsa_to_privpacket(rsa_sub)
+        subpkt.created = created
+        subpkt.update_hlen()
+        subkey = PGPKey()
+        subkey._key = subpkt
+        pgp_key.add_subkey(
+            subkey,
+            usage=usage,
+            hashes=[HashAlgorithm.SHA256],
+            ciphers=[SymmetricKeyAlgorithm.AES256],
+            compression=[CompressionAlgorithm.ZLIB],
+            expires=expires,
+        )
+
+    armored = str(pgp_key)
+    r = run(
+        ["gpg", "--batch", "--import-options", "merge-only", "--import"],
+        input=armored.encode(),
+        capture_output=True,
+    )
+    return r.returncode == 0
+
 def bip85_secp256k1_from_root(
     root, index: int, sub_index: int | None = None, alg: str = "ECDSA"
 ):
@@ -6400,6 +6536,326 @@ class ToolsGPGLoadBIP85KeyView(View):
                 title="Error",
                 status_headline=None,
                 text="Failed to import key",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+
+        return Destination(ToolsGPGMenuView)
+
+
+class ToolsGPGListSubkeysView(View):
+    def run(self):
+        from subprocess import run
+        from seedsigner.gui.screens import ButtonListScreen, WarningScreen
+
+        result = run(["gpg", "--list-secret-keys", "--with-colons"], capture_output=True, text=True)
+        keys = []
+        cur = None
+        for line in result.stdout.splitlines():
+            parts = line.split(":")
+            if parts[0] == "sec":
+                cur = {"fpr": None, "uid": None}
+                keys.append(cur)
+            elif parts[0] == "fpr" and cur is not None:
+                cur["fpr"] = parts[9]
+            elif parts[0] == "uid" and cur is not None and cur.get("uid") is None:
+                cur["uid"] = parts[9]
+
+        if not keys:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No private keys found",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        buttons = []
+        for key in keys:
+            label = key["uid"] if key["uid"] else key["fpr"][-8:]
+            buttons.append(ButtonOption(label))
+
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Select Key",
+            is_button_text_centered=False,
+            button_data=buttons,
+        )
+
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        fingerprint = keys[selected]["fpr"]
+
+        result = run(
+            ["gpg", "--list-secret-keys", "--with-colons", fingerprint],
+            capture_output=True,
+            text=True,
+        )
+
+        subkeys = []
+        cur = None
+        for line in result.stdout.splitlines():
+            parts = line.split(":")
+            if parts[0] == "ssb":
+                cur = {"bits": parts[2], "algo": parts[3], "caps": parts[11], "fpr": None}
+                subkeys.append(cur)
+            elif parts[0] == "fpr" and cur is not None and cur.get("fpr") is None:
+                cur["fpr"] = parts[9]
+
+        if not subkeys:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No subkeys found",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        algo_map = {"1": "RSA", "17": "DSA", "18": "ECDH", "19": "ECDSA", "22": "EdDSA"}
+        buttons = []
+        for sk in subkeys:
+            alg = algo_map.get(sk["algo"], sk["algo"])
+            label = f"{sk['fpr'][-8:]} {alg} [{sk['caps']}]"
+            buttons.append(ButtonOption(label))
+
+        self.run_screen(
+            ButtonListScreen,
+            title="Subkeys",
+            is_button_text_centered=False,
+            button_data=buttons,
+        )
+
+        return Destination(BackStackView)
+
+
+class ToolsGPGCopySubkeysToCardView(View):
+    def run(self):
+        from subprocess import run
+        from seedsigner.gui.screens import ButtonListScreen, WarningScreen
+
+        result = run(["gpg", "--list-secret-keys", "--with-colons"], capture_output=True, text=True)
+        keys = []
+        cur = None
+        for line in result.stdout.splitlines():
+            parts = line.split(":")
+            if parts[0] == "sec":
+                cur = {"fpr": None, "uid": None}
+                keys.append(cur)
+            elif parts[0] == "fpr" and cur is not None:
+                cur["fpr"] = parts[9]
+            elif parts[0] == "uid" and cur is not None and cur.get("uid") is None:
+                cur["uid"] = parts[9]
+
+        if not keys:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No private keys found",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        buttons = []
+        for key in keys:
+            label = key["uid"] if key["uid"] else key["fpr"][-8:]
+            buttons.append(ButtonOption(label))
+
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Select Key",
+            is_button_text_centered=False,
+            button_data=buttons,
+        )
+
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        fingerprint = keys[selected]["fpr"]
+
+        return Destination(
+            ToolsGPGImportKeyToCardView,
+            view_args={"fingerprint": fingerprint},
+        )
+
+
+class ToolsGPGAddSubkeysView(View):
+    def run(self):
+        from subprocess import run
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+        from seedsigner.gui.screens import (
+            ButtonListScreen,
+            LargeIconStatusScreen,
+            WarningScreen,
+        )
+
+        result = run(
+            ["gpg", "--list-secret-keys", "--with-colons"],
+            capture_output=True,
+            text=True,
+        )
+        keys = []
+        cur = None
+        for line in result.stdout.splitlines():
+            parts = line.split(":")
+            if parts[0] == "sec":
+                cur = {"fpr": None, "uid": None}
+                keys.append(cur)
+            elif parts[0] == "fpr" and cur is not None:
+                cur["fpr"] = parts[9]
+            elif parts[0] == "uid" and cur is not None and cur.get("uid") is None:
+                cur["uid"] = parts[9]
+
+        if not keys:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No private keys found",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        buttons = []
+        for key in keys:
+            label = key["uid"] if key["uid"] else key["fpr"][-8:]
+            buttons.append(ButtonOption(label))
+
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Select Key",
+            is_button_text_centered=False,
+            button_data=buttons,
+        )
+
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        fingerprint = keys[selected]["fpr"]
+
+        result = run(
+            ["gpg", "--list-secret-keys", "--with-colons", fingerprint],
+            capture_output=True,
+            text=True,
+        )
+        start_index = sum(1 for line in result.stdout.splitlines() if line.startswith("ssb"))
+
+        keytype_buttons = [
+            ButtonOption("NIST P-256"),
+            ButtonOption("Brainpool P-256"),
+            ButtonOption("RSA 2048"),
+            ButtonOption("RSA 3072"),
+            ButtonOption("RSA 4096"),
+            ButtonOption("secp256k1"),
+            ButtonOption("Ed25519"),
+        ]
+        selected_type = self.run_screen(
+            ButtonListScreen,
+            title="Key Type",
+            is_button_text_centered=False,
+            button_data=keytype_buttons,
+        )
+        if selected_type == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        if keytype_buttons[selected_type].button_label in ["secp256k1", "Ed25519"]:
+            ret = self.run_screen(
+                WarningScreen,
+                title="WARNING",
+                status_headline=None,
+                text="This key type can't be exported to SmartPGP cards.",
+                show_back_button=True,
+                button_data=[ButtonOption("I Understand")],
+            )
+            if ret == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+
+        alg = [
+            "nistp256",
+            "brainpoolP256r1",
+            "rsa2048",
+            "rsa3072",
+            "rsa4096",
+            "secp256k1",
+            "ed25519",
+        ][selected_type]
+        bip85 = False
+        key_index = None
+        if len(self.controller.storage.seeds) > 0:
+            origin_buttons = [ButtonOption("Random"), ButtonOption("BIP85")]
+            origin_choice = self.run_screen(
+                ButtonListScreen,
+                title="Subkey Source",
+                is_button_text_centered=False,
+                button_data=origin_buttons,
+            )
+            if origin_choice == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+            if origin_buttons[origin_choice].button_label == "BIP85":
+                from seedsigner.gui.screens import seed_screens
+
+                ret = seed_screens.SeedBIP85SelectChildIndexScreen(title="Key Index").display()
+                if ret == RET_CODE__BACK_BUTTON:
+                    return Destination(BackStackView)
+                key_index = int(ret)
+                bip85 = True
+
+        self.loading_screen = LoadingScreenThread(
+            text="Generating subkeys\n\n\n\n\n(This takes a while)"
+        )
+        self.loading_screen.start()
+        success = True
+        try:
+            if bip85:
+                success = bip85_add_subkeys(fingerprint, alg, key_index, start_index)
+            elif alg.startswith("rsa"):
+                for usage in ["encrypt", "auth", "sign"]:
+                    r = run(["gpg", "--quick-addkey", fingerprint, alg, usage])
+                    if r.returncode != 0:
+                        success = False
+                        break
+            elif alg == "ed25519":
+                cmds = [
+                    ["gpg", "--quick-addkey", fingerprint, "cv25519", "encrypt"],
+                    ["gpg", "--quick-addkey", fingerprint, "ed25519", "auth"],
+                    ["gpg", "--quick-addkey", fingerprint, "ed25519", "sign"],
+                ]
+                for cmd in cmds:
+                    r = run(cmd)
+                    if r.returncode != 0:
+                        success = False
+                        break
+            else:
+                for usage in ["encrypt", "auth", "sign"]:
+                    r = run(["gpg", "--quick-addkey", fingerprint, alg, usage])
+                    if r.returncode != 0:
+                        success = False
+                        break
+        finally:
+            self.loading_screen.stop()
+
+        if success:
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Success",
+                status_headline=None,
+                text="Subkeys added",
+                show_back_button=False,
+                button_data=[ButtonOption("Done")],
+            )
+        else:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="Failed to add subkeys",
                 show_back_button=False,
                 button_data=[ButtonOption("I Understand")],
             )

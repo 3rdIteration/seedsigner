@@ -8,6 +8,8 @@ Choosing **Manifest** creates a `sha256.txt` file listing each file's SHA256 has
 
 Additional menu options can export existing GPG keys. Public keys are written to the microSD card in ASCII armor, while private keys are first exported and then symmetrically encrypted with a user-provided passphrase before being saved.
 
+The **Advanced** submenu offers more key management. **Add Subkeys** attaches three new subkeys—encryption, authentication, and signing—to an existing primary key. The user can choose the key type (NIST P-256, Brainpool P-256, RSA 2048/3072/4096, secp256k1, or Ed25519) for the new subkeys before they are generated. If the primary key was derived via BIP85, these additional subkeys are deterministically derived via BIP85 and continue from the last subkey index. **List Subkeys** shows all subkeys for a selected key, and **Copy Subkeys to Card** imports the selected key's subkeys onto a connected smartcard.
+
 For SeedSignerOS, everything is stateless. If running on desktop or some other normal system, you will be interacting with your system GPG2 install...
 
 During import, SeedSigner prompts for the key type, user name, email address, and expiration date. The expiration defaults to **the end of 2029 for RSA 2048 keys and the end of 2035 for all other key types**. (Noting that NIST guidelines have RSA2048 deprecated in 2030 and non-quantum safe keys, including ECC keys, being discontinued for government applications after 2035)

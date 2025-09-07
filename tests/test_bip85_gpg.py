@@ -92,3 +92,13 @@ def test_bip85_ed25519_deterministic():
     assert int(key.s) == int(
         "7b947d4d726e678ce219948c837221b6712cdf74862b453921442d038f55040c", 16
     )
+
+
+def test_bip85_ed25519_sub_index_progression():
+    seed = Seed(mnemonic=MNEMONIC)
+    root = bip32.HDKey.from_seed(seed.seed_bytes)
+    first = bip85_ed25519_from_root(root, 0, 0, "EdDSA")
+    later = bip85_ed25519_from_root(root, 0, 3, "EdDSA")
+    repeat = bip85_ed25519_from_root(root, 0, 3, "EdDSA")
+    assert int(first.s) != int(later.s)
+    assert int(later.s) == int(repeat.s)
