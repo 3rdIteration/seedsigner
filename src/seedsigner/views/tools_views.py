@@ -5109,6 +5109,7 @@ class ToolsGPGEncryptFileView(View):
             ButtonListScreen,
             WarningScreen,
             LargeIconStatusScreen,
+            LoadingScreenThread,
         )
         from seedsigner.gui.screens.tools_screens import ToolsTextQRTextEntryScreen
 
@@ -5246,6 +5247,10 @@ class ToolsGPGEncryptFileView(View):
         outname = f"{filename}.gpg"
 
         def gpg_encrypt(passphrase: str | None = None):
+            self.loading_screen = LoadingScreenThread(
+                text=_("Encrypting File") + "\n\n\n\n\n\n" + _("(May take a while)")
+            )
+            self.loading_screen.start()
             cmd = [
                 "gpg",
                 "--batch",
@@ -5261,7 +5266,9 @@ class ToolsGPGEncryptFileView(View):
             if sign_key is not None:
                 cmd.extend(["--local-user", sign_key["fpr"], "--sign"])
             cmd.extend(["--recipient", rec_key["fpr"], "--encrypt", filename])
-            return run(cmd, capture_output=True, text=True, cwd=file_list_path)
+            result = run(cmd, capture_output=True, text=True, cwd=file_list_path)
+            self.loading_screen.stop()
+            return result
 
         result = gpg_encrypt()
         if result.returncode != 0 and sign_key is not None:
@@ -5303,6 +5310,7 @@ class ToolsGPGDecryptFileView(View):
             ButtonListScreen,
             WarningScreen,
             LargeIconStatusScreen,
+            LoadingScreenThread,
         )
         from seedsigner.gui.screens.tools_screens import ToolsTextQRTextEntryScreen
 
@@ -5368,6 +5376,10 @@ class ToolsGPGDecryptFileView(View):
         outname = f"{filename}.dec"
 
         def gpg_decrypt(passphrase: str | None = None):
+            self.loading_screen = LoadingScreenThread(
+                text=_("Decrypting File") + "\n\n\n\n\n\n" + _("(May take a while)")
+            )
+            self.loading_screen.start()
             cmd = [
                 "gpg",
                 "--batch",
@@ -5381,7 +5393,9 @@ class ToolsGPGDecryptFileView(View):
             if passphrase is not None:
                 cmd.extend(["--pinentry-mode", "loopback", "--passphrase", passphrase])
             cmd.append(filename)
-            return run(cmd, capture_output=True, text=True, cwd=file_list_path)
+            result = run(cmd, capture_output=True, text=True, cwd=file_list_path)
+            self.loading_screen.stop()
+            return result
 
         def parse_status(output: str):
             need_passphrase = False
