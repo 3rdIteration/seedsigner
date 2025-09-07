@@ -16,10 +16,11 @@ def test_encrypt_decrypt_roundtrip():
 
     plaintext = "SeedSigner test message"
     ciphertext = encrypt_message(str(key.pubkey), plaintext)
-    decrypted, signer = decrypt_message(str(key), ciphertext)
+    decrypted, signer, verified = decrypt_message(str(key), ciphertext)
 
     assert decrypted == plaintext
     assert signer is None
+    assert not verified
 
 
 def test_encrypt_qr_roundtrip():
@@ -45,9 +46,10 @@ def test_encrypt_qr_roundtrip():
     else:
         decoded_ciphertext = raw
 
-    decrypted, signer = decrypt_message(str(key), decoded_ciphertext)
+    decrypted, signer, verified = decrypt_message(str(key), decoded_ciphertext)
     assert decrypted == plaintext
     assert signer is None
+    assert not verified
 
 
 def test_sign_encrypt_decrypt_roundtrip():
@@ -65,11 +67,12 @@ def test_sign_encrypt_decrypt_roundtrip():
     )
 
     # decrypt using helper
-    decrypted, signer_fpr = decrypt_message(
+    decrypted, signer_fpr, verified = decrypt_message(
         str(recipient), ciphertext, pubkey_blobs=[str(signer.pubkey)]
     )
     assert decrypted == plaintext
     assert signer_fpr == signer.fingerprint
+    assert verified
 
 
 def test_sign_only_roundtrip():
@@ -81,6 +84,23 @@ def test_sign_only_roundtrip():
     signed_msg = encrypt_message(None, plaintext, signkey_blob=str(signer))
 
     # decrypt_message should return the original message even without a key
-    decrypted, signer_fpr = decrypt_message(None, signed_msg, pubkey_blobs=[str(signer.pubkey)])
+    decrypted, signer_fpr, verified = decrypt_message(
+        None, signed_msg, pubkey_blobs=[str(signer.pubkey)]
+    )
     assert decrypted == plaintext
     assert signer_fpr == signer.fingerprint
+    assert verified
+
+
+def test_unverified_signature():
+    signer = PGPKey.new(PubKeyAlgorithm.RSAEncryptOrSign, 1024)
+    signer_uid = PGPUID.new("Signer", email="sign@example.com")
+    signer.add_uid(signer_uid, usage={KeyFlags.Sign})
+
+    plaintext = "SeedSigner unverified sign"
+    signed_msg = encrypt_message(None, plaintext, signkey_blob=str(signer))
+
+    decrypted, signer_fpr, verified = decrypt_message(None, signed_msg)
+    assert decrypted == plaintext
+    assert signer_fpr == signer.fingerprint
+    assert not verified

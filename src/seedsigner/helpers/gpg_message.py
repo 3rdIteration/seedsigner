@@ -66,7 +66,7 @@ def decrypt_message(
     ciphertext: str,
     passphrase: Optional[str] = None,
     pubkey_blobs: Optional[Iterable[str]] = None,
-) -> Tuple[str, Optional[str]]:
+) -> Tuple[str, Optional[str], bool]:
     """Decrypt ``ciphertext`` and optionally verify a signature.
 
     Parameters
@@ -82,12 +82,11 @@ def decrypt_message(
 
     Returns
     -------
-    Tuple[str, Optional[str]]
+    Tuple[str, Optional[str], bool]
         A tuple containing the decrypted plaintext message (or the original
-        message if it was not encrypted) and the fingerprint of the signing
-        key if the message included a valid signature. ``None`` is returned
-        for the fingerprint when the message is unsigned or cannot be
-        verified with the provided public keys.
+        message if it was not encrypted), the fingerprint of the signing
+        key if the message included a signature, and a boolean indicating
+        whether the signature was verified with the provided public keys.
     """
 
     message = PGPMessage.from_blob(ciphertext)
@@ -115,14 +114,17 @@ def decrypt_message(
         plaintext = result
 
     signer_fpr: Optional[str] = None
-    if decrypted.is_signed and pubkey_blobs:
-        for blob in pubkey_blobs:
-            try:
-                pub, _ = PGPKey.from_blob(blob)
-                if pub.verify(decrypted):
-                    signer_fpr = decrypted.signatures[0].signer_fingerprint
-                    break
-            except Exception:
-                continue
+    verified = False
+    if decrypted.is_signed:
+        signer_fpr = decrypted.signatures[0].signer_fingerprint
+        if pubkey_blobs:
+            for blob in pubkey_blobs:
+                try:
+                    pub, _ = PGPKey.from_blob(blob)
+                    if pub.verify(decrypted):
+                        verified = True
+                        break
+                except Exception:
+                    continue
 
-    return plaintext, signer_fpr
+    return plaintext, signer_fpr, verified

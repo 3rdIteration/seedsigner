@@ -4500,7 +4500,7 @@ class ToolsGPGDecryptMessageView(View):
             pk["blob"] = exp.stdout
 
         try:
-            plaintext, signer_fpr = decrypt_message(
+            plaintext, signer_fpr, verified = decrypt_message(
                 exported.stdout,
                 ciphertext,
                 pubkey_blobs=[pk["blob"] for pk in pubkeys],
@@ -4510,7 +4510,7 @@ class ToolsGPGDecryptMessageView(View):
             if "is_back_button" in ret_dict:
                 return Destination(BackStackView)
             passphrase = ret_dict["textToEncode"]
-            plaintext, signer_fpr = decrypt_message(
+            plaintext, signer_fpr, verified = decrypt_message(
                 exported.stdout,
                 ciphertext,
                 passphrase=passphrase,
@@ -4536,14 +4536,26 @@ class ToolsGPGDecryptMessageView(View):
                 if pk["fpr"] == signer_fpr:
                     label = pk["uid"] if pk["uid"] else pk["fpr"][-8:]
                     break
-            self.run_screen(
-                LargeIconStatusScreen,
-                title="Success",
-                status_headline=None,
-                text=f"Valid Signature from\n{label}",
-                show_back_button=False,
-                button_data=[ButtonOption("Next")],
-            )
+            if verified:
+                self.run_screen(
+                    LargeIconStatusScreen,
+                    title="Success",
+                    status_headline=None,
+                    text=f"Valid Signature from\n{label}",
+                    show_back_button=False,
+                    button_data=[ButtonOption("Next")],
+                )
+            else:
+                self.run_screen(
+                    LargeIconStatusScreen,
+                    title="Warning",
+                    status_icon_name=SeedSignerIconConstants.WARNING,
+                    status_color=GUIConstants.WARNING_COLOR,
+                    status_headline=None,
+                    text=f"Unverified Signature from\n{label}",
+                    show_back_button=False,
+                    button_data=[ButtonOption("Next")],
+                )
 
         next_button = ButtonOption("Next")
         self.run_screen(
