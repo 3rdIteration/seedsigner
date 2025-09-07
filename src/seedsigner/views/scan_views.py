@@ -195,6 +195,8 @@ class ScanView(View):
                             "-s",
                             dt.strftime("%Y-%m-%d %H:%M:%S"),
                         ], check=True)
+                        # Reset activity-based timers since system time changed
+                        self.controller.reset_screensaver_timeout()
                         self.run_screen(
                             LargeIconStatusScreen,
                             title="Success",
