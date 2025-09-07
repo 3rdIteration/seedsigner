@@ -6129,6 +6129,8 @@ def _check_future_key_creation(view, key_blob: str) -> None:
         )
         if ret == 0:
             run(["date", "-s", formatted], capture_output=True)
+            # Reset activity-based timers since system time changed
+            view.controller.reset_screensaver_timeout()
 
 class ToolsGPGImportPubkeyMenuView(View):
     LOAD_QR = ButtonOption("From QR")
