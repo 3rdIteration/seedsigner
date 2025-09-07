@@ -1,11 +1,13 @@
 import logging
 import re
 import time
+import subprocess
 
 #from embit.descriptor import Descriptor
 
 from seedsigner.gui.screens.screen import RET_CODE__BACK_BUTTON, ButtonListScreen, WarningScreen, DireWarningScreen
 from seedsigner.gui.screens.scan_screens import ScanEncryptedQRScreen, ScanTypeEncryptionKeyScreen, ScanReviewEncryptionKeyScreen
+from seedsigner.gui.screens import LargeIconStatusScreen
 from seedsigner.models.decode_qr import DecodeQR, DecodeQRStatus
 from seedsigner.models.seed import Seed, InvalidSeedException
 
@@ -16,6 +18,7 @@ from seedsigner.models.settings import SettingsConstants
 from seedsigner.views.view import BackStackView, ErrorView, MainMenuView, NotYetImplementedView, View, Destination
 from seedsigner.views.seed_views import SeedSlip39MoreSharesView, SeedSlip39ShareInvalidView
 from seedsigner.gui.screens.screen import ButtonOption
+from seedsigner.hardware.microsd import MicroSD
 
 logger = logging.getLogger(__name__)
 
@@ -172,6 +175,57 @@ class ScanView(View):
                         message=qr_data["message"],
                     )
                 )
+
+            elif self.decoder.is_time:
+                dt = self.decoder.get_time()
+                if dt:
+                    if MicroSD.is_desktop_mode():
+                        self.run_screen(
+                            WarningScreen,
+                            title="Unavailable",
+                            status_headline=None,
+                            text="Setting the system time is not supported on desktop.",
+                            show_back_button=False,
+                            button_data=[ButtonOption("OK")],
+                        )
+                        return Destination(MainMenuView)
+                    try:
+                        subprocess.run([
+                            "sudo",
+                            "date",
+                            "-s",
+                            dt.strftime("%Y-%m-%d %H:%M:%S"),
+                        ], check=True)
+                        self.run_screen(
+                            LargeIconStatusScreen,
+                            title="Success",
+                            status_headline=None,
+                            text=dt.strftime("%Y-%m-%d %H:%M:%S"),
+                            show_back_button=False,
+                        )
+                    except Exception as e:
+                        return Destination(
+                            ErrorView,
+                            view_args=dict(
+                                title="Error",
+                                status_headline=_("Set Time Failed"),
+                                text=str(e),
+                                button_text=_("Back"),
+                                next_destination=Destination(MainMenuView, skip_current_view=True),
+                            ),
+                        )
+                    return Destination(MainMenuView)
+                else:
+                    return Destination(
+                        ErrorView,
+                        view_args=dict(
+                            title="Error",
+                            status_headline=_("Invalid Time"),
+                            text=_("Could not parse time from QR"),
+                            button_text=_("Back"),
+                            next_destination=Destination(MainMenuView, skip_current_view=True),
+                        ),
+                    )
 
             elif self.decoder.is_bip38:
                 if self.settings.get_value(SettingsConstants.SETTING__BIP38_KEYS) == SettingsConstants.OPTION__ENABLED:
