@@ -40,6 +40,10 @@ def test_encrypt_qr_roundtrip():
     while not decoder.is_complete():
         part = encoder.next_part()
         assert decoder.receive_part(part)
+        # Duplicate fragments may be encountered in animated QR streams but
+        # should still be treated as successfully received parts.
+        if not decoder.is_complete():
+            assert decoder.receive_part(part)
     ur = decoder.result_message()
     raw = Bytes.from_cbor(ur.cbor).data
     if isinstance(raw, (bytes, bytearray)):
