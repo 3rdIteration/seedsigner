@@ -191,7 +191,6 @@ class ScanView(View):
                         return Destination(MainMenuView)
                     try:
                         subprocess.run([
-                            "sudo",
                             "date",
                             "-s",
                             dt.strftime("%Y-%m-%d %H:%M:%S"),
