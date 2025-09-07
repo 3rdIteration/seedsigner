@@ -147,6 +147,7 @@ class Controller(Singleton):
 
     sign_message_data: dict = None
     gpg_keys_imported: bool = False
+    gpg_pending_message: str = None
     # TODO: end refactor section
 
     Satochip_Connector = None
@@ -163,6 +164,7 @@ class Controller(Singleton):
     FLOW__VERIFY_SINGLESIG_ADDR = "singlesig_addr"
     FLOW__ADDRESS_EXPLORER = "address_explorer"
     FLOW__SIGN_MESSAGE = "sign_message"
+    FLOW__GPG_MESSAGE = "gpg_message"
     resume_main_flow: str = None
 
     back_stack: BackStack = None
