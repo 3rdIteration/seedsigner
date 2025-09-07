@@ -16,9 +16,10 @@ def test_encrypt_decrypt_roundtrip():
 
     plaintext = "SeedSigner test message"
     ciphertext = encrypt_message(str(key.pubkey), plaintext)
-    decrypted = decrypt_message(str(key), ciphertext)
+    decrypted, signer = decrypt_message(str(key), ciphertext)
 
     assert decrypted == plaintext
+    assert signer is None
 
 
 def test_encrypt_qr_roundtrip():
@@ -44,8 +45,9 @@ def test_encrypt_qr_roundtrip():
     else:
         decoded_ciphertext = raw
 
-    decrypted = decrypt_message(str(key), decoded_ciphertext)
+    decrypted, signer = decrypt_message(str(key), decoded_ciphertext)
     assert decrypted == plaintext
+    assert signer is None
 
 
 def test_sign_encrypt_decrypt_roundtrip():
@@ -63,11 +65,11 @@ def test_sign_encrypt_decrypt_roundtrip():
     )
 
     # decrypt using helper
-    assert decrypt_message(str(recipient), ciphertext) == plaintext
-
-    # verify signature
-    dec_msg = recipient.decrypt(PGPMessage.from_blob(ciphertext))
-    assert signer.pubkey.verify(dec_msg)
+    decrypted, signer_fpr = decrypt_message(
+        str(recipient), ciphertext, pubkey_blobs=[str(signer.pubkey)]
+    )
+    assert decrypted == plaintext
+    assert signer_fpr == signer.fingerprint
 
 
 def test_sign_only_roundtrip():
@@ -79,7 +81,6 @@ def test_sign_only_roundtrip():
     signed_msg = encrypt_message(None, plaintext, signkey_blob=str(signer))
 
     # decrypt_message should return the original message even without a key
-    assert decrypt_message(None, signed_msg) == plaintext
-
-    # verify signature
-    assert signer.pubkey.verify(PGPMessage.from_blob(signed_msg))
+    decrypted, signer_fpr = decrypt_message(None, signed_msg, pubkey_blobs=[str(signer.pubkey)])
+    assert decrypted == plaintext
+    assert signer_fpr == signer.fingerprint

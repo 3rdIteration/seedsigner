@@ -4369,6 +4369,10 @@ class ToolsGPGDecryptMessageView(View):
             QRDisplayScreen,
         )
         from seedsigner.gui.screens.scan_screens import ScanScreen
+        from seedsigner.gui.screens.tools_screens import (
+            ToolsTextQRTextEntryScreen,
+            ToolsTextQRReviewTextScreen,
+        )
         from seedsigner.models.decode_qr import DecodeQR, QRType
         from seedsigner.models.encode_qr import GenericStaticQrEncoder
         from urtypes.bytes import Bytes
@@ -4467,14 +4471,51 @@ class ToolsGPGDecryptMessageView(View):
             )
             return Destination(BackStackView)
 
+        # gather public keys for signature verification
+        pub_result = run([
+            "gpg",
+            "--list-keys",
+            "--with-colons",
+        ], capture_output=True, text=True)
+
+        pubkeys = []
+        cur = None
+        for line in pub_result.stdout.splitlines():
+            parts = line.split(":")
+            if parts[0] == "pub":
+                cur = {"fpr": None, "uid": None}
+                pubkeys.append(cur)
+            elif parts[0] == "fpr" and cur is not None:
+                cur["fpr"] = parts[9]
+            elif parts[0] == "uid" and cur is not None and cur.get("uid") is None:
+                cur["uid"] = parts[9]
+
+        for pk in pubkeys:
+            exp = run([
+                "gpg",
+                "--armor",
+                "--export",
+                pk["fpr"],
+            ], capture_output=True, text=True)
+            pk["blob"] = exp.stdout
+
         try:
-            plaintext = decrypt_message(exported.stdout, ciphertext)
+            plaintext, signer_fpr = decrypt_message(
+                exported.stdout,
+                ciphertext,
+                pubkey_blobs=[pk["blob"] for pk in pubkeys],
+            )
         except ValueError:
             ret_dict = ToolsTextQRTextEntryScreen(textToEncode="", title="Passphrase").display()
             if "is_back_button" in ret_dict:
                 return Destination(BackStackView)
             passphrase = ret_dict["textToEncode"]
-            plaintext = decrypt_message(exported.stdout, ciphertext, passphrase=passphrase)
+            plaintext, signer_fpr = decrypt_message(
+                exported.stdout,
+                ciphertext,
+                passphrase=passphrase,
+                pubkey_blobs=[pk["blob"] for pk in pubkeys],
+            )
         except Exception:
             self.run_screen(
                 WarningScreen,
@@ -4489,26 +4530,41 @@ class ToolsGPGDecryptMessageView(View):
         if isinstance(plaintext, (bytes, bytearray, memoryview)):
             plaintext = plaintext.decode("utf-8")
 
+        if signer_fpr:
+            label = signer_fpr[-8:]
+            for pk in pubkeys:
+                if pk["fpr"] == signer_fpr:
+                    label = pk["uid"] if pk["uid"] else pk["fpr"][-8:]
+                    break
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Success",
+                status_headline=None,
+                text=f"Valid Signature from\n{label}",
+                show_back_button=False,
+                button_data=[ButtonOption("Next")],
+            )
+
+        next_button = ButtonOption("Next")
+        self.run_screen(
+            ToolsTextQRReviewTextScreen,
+            textToEncode=plaintext,
+            title="Decrypted Message",
+            button_data=[next_button],
+            show_back_button=False,
+        )
+
         SAVE = ButtonOption("Save to Seedkeeper")
         SHOW = ButtonOption("Show as QR")
         DONE = ButtonOption("Done")
         button_data = [SAVE, SHOW, DONE]
-
-        if len(plaintext) <= 400:
-            selected_option = self.run_screen(
-                LargeIconStatusScreen,
-                title="Decrypted Message",
-                status_headline=None,
-                text=plaintext,
-                button_data=button_data,
-            )
-        else:
-            selected_option = self.run_screen(
-                ToolsTextQRReviewTextScreen,
-                textToEncode=plaintext,
-                title="Decrypted Message",
-                button_data=button_data,
-            )
+        selected_option = self.run_screen(
+            ButtonListScreen,
+            title="Decrypted Message",
+            is_button_text_centered=False,
+            button_data=button_data,
+            show_back_button=False,
+        )
 
         if selected_option == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)

@@ -8,7 +8,7 @@ runtime is available.
 """
 from __future__ import annotations
 
-from typing import Optional
+from typing import Iterable, Optional, Tuple
 
 from pgpy import PGPKey, PGPMessage
 
@@ -65,8 +65,9 @@ def decrypt_message(
     privkey_blob: Optional[str],
     ciphertext: str,
     passphrase: Optional[str] = None,
-) -> str:
-    """Decrypt ``ciphertext`` if needed and return the plaintext.
+    pubkey_blobs: Optional[Iterable[str]] = None,
+) -> Tuple[str, Optional[str]]:
+    """Decrypt ``ciphertext`` and optionally verify a signature.
 
     Parameters
     ----------
@@ -81,33 +82,47 @@ def decrypt_message(
 
     Returns
     -------
-    str
-        The decrypted plaintext message (or the original message if it was
-        not encrypted).
+    Tuple[str, Optional[str]]
+        A tuple containing the decrypted plaintext message (or the original
+        message if it was not encrypted) and the fingerprint of the signing
+        key if the message included a valid signature. ``None`` is returned
+        for the fingerprint when the message is unsigned or cannot be
+        verified with the provided public keys.
     """
 
     message = PGPMessage.from_blob(ciphertext)
 
     if not message.is_encrypted:
-        result = message.message
-        if isinstance(result, (bytes, bytearray)):
-            return result.decode("utf-8")
-        return result
-
-    if privkey_blob is None:
-        raise ValueError("Encrypted message requires a private key")
-
-    privkey, _ = PGPKey.from_blob(privkey_blob)
-
-    if privkey.is_protected:
-        if passphrase is None:
-            raise ValueError("Passphrase required for encrypted private key")
-        with privkey.unlock(passphrase):
-            decrypted = privkey.decrypt(message)
+        decrypted = message
     else:
-        decrypted = privkey.decrypt(message)
+        if privkey_blob is None:
+            raise ValueError("Encrypted message requires a private key")
+
+        privkey, _ = PGPKey.from_blob(privkey_blob)
+
+        if privkey.is_protected:
+            if passphrase is None:
+                raise ValueError("Passphrase required for encrypted private key")
+            with privkey.unlock(passphrase):
+                decrypted = privkey.decrypt(message)
+        else:
+            decrypted = privkey.decrypt(message)
 
     result = decrypted.message
     if isinstance(result, (bytes, bytearray)):
-        return result.decode("utf-8")
-    return result
+        plaintext = result.decode("utf-8")
+    else:
+        plaintext = result
+
+    signer_fpr: Optional[str] = None
+    if decrypted.is_signed and pubkey_blobs:
+        for blob in pubkey_blobs:
+            try:
+                pub, _ = PGPKey.from_blob(blob)
+                if pub.verify(decrypted):
+                    signer_fpr = decrypted.signatures[0].signer_fingerprint
+                    break
+            except Exception:
+                continue
+
+    return plaintext, signer_fpr
