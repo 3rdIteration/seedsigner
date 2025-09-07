@@ -89,7 +89,10 @@ def decrypt_message(
     message = PGPMessage.from_blob(ciphertext)
 
     if not message.is_encrypted:
-        return message.message
+        result = message.message
+        if isinstance(result, (bytes, bytearray)):
+            return result.decode("utf-8")
+        return result
 
     if privkey_blob is None:
         raise ValueError("Encrypted message requires a private key")
@@ -104,4 +107,7 @@ def decrypt_message(
     else:
         decrypted = privkey.decrypt(message)
 
-    return decrypted.message
+    result = decrypted.message
+    if isinstance(result, (bytes, bytearray)):
+        return result.decode("utf-8")
+    return result

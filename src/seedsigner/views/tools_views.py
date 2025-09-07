@@ -4431,6 +4431,8 @@ class ToolsGPGDecryptMessageView(View):
             raw = Bytes.from_cbor(
                 decoder.decoder.result_message().cbor
             ).data
+            if isinstance(raw, memoryview):
+                raw = raw.tobytes()
             if isinstance(raw, (bytes, bytearray)):
                 ciphertext = raw.decode("utf-8")
             else:
@@ -4483,6 +4485,9 @@ class ToolsGPGDecryptMessageView(View):
                 button_data=[ButtonOption("I Understand")],
             )
             return Destination(BackStackView)
+
+        if isinstance(plaintext, (bytes, bytearray, memoryview)):
+            plaintext = plaintext.decode("utf-8")
 
         SAVE = ButtonOption("Save to Seedkeeper")
         SHOW = ButtonOption("Show as QR")
