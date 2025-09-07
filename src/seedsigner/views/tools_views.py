@@ -4396,34 +4396,6 @@ class ToolsGPGDecryptMessageView(View):
             elif parts[0] == "uid" and cur is not None and cur.get("uid") is None:
                 cur["uid"] = parts[9]
 
-        if not keys:
-            self.run_screen(
-                WarningScreen,
-                title="Error",
-                status_headline=None,
-                text="No private keys found",
-                show_back_button=False,
-                button_data=[ButtonOption("I Understand")],
-            )
-            return Destination(BackStackView)
-
-        buttons = []
-        for key in keys:
-            label = key["uid"] if key["uid"] else key["fpr"][-8:]
-            buttons.append(ButtonOption(label))
-
-        selected = self.run_screen(
-            ButtonListScreen,
-            title="Select Key",
-            is_button_text_centered=False,
-            button_data=buttons,
-        )
-
-        if selected == RET_CODE__BACK_BUTTON:
-            return Destination(BackStackView)
-
-        key = keys[selected]
-
         decoder = DecodeQR()
         ScanScreen(decoder=decoder, instructions_text="Scan encrypted message").display()
         self.controller.reset_screensaver_timeout()
@@ -4449,23 +4421,6 @@ class ToolsGPGDecryptMessageView(View):
                 title="Error",
                 status_headline=None,
                 text="Unsupported QR format",
-                show_back_button=False,
-                button_data=[ButtonOption("I Understand")],
-            )
-            return Destination(BackStackView)
-
-        exported = run([
-            "gpg",
-            "--armor",
-            "--export-secret-keys",
-            key["fpr"],
-        ], capture_output=True, text=True)
-        if exported.returncode != 0:
-            self.run_screen(
-                WarningScreen,
-                title="Error",
-                status_headline=None,
-                text="Failed to export key",
                 show_back_button=False,
                 button_data=[ButtonOption("I Understand")],
             )
@@ -4499,36 +4454,79 @@ class ToolsGPGDecryptMessageView(View):
             ], capture_output=True, text=True)
             pk["blob"] = exp.stdout
 
+        # try without a private key first in case message is unencrypted
+        dec_key = None
         try:
             plaintext, signer_fpr, verified = decrypt_message(
-                exported.stdout,
+                None,
                 ciphertext,
                 pubkey_blobs=[pk["blob"] for pk in pubkeys],
             )
         except ValueError:
-            ret_dict = ToolsTextQRTextEntryScreen(textToEncode="", title="Passphrase").display()
-            if "is_back_button" in ret_dict:
+            # message is encrypted; try each available private key
+            decrypted = False
+            for key in keys:
+                exported = run([
+                    "gpg",
+                    "--armor",
+                    "--export-secret-keys",
+                    key["fpr"],
+                ], capture_output=True, text=True)
+                if exported.returncode != 0:
+                    continue
+                try:
+                    plaintext, signer_fpr, verified = decrypt_message(
+                        exported.stdout,
+                        ciphertext,
+                        pubkey_blobs=[pk["blob"] for pk in pubkeys],
+                    )
+                    dec_key = key
+                    decrypted = True
+                    break
+                except ValueError as e:
+                    if "Passphrase required" in str(e):
+                        ret_dict = ToolsTextQRTextEntryScreen(
+                            textToEncode="", title="Passphrase"
+                        ).display()
+                        if "is_back_button" in ret_dict:
+                            return Destination(BackStackView)
+                        passphrase = ret_dict["textToEncode"]
+                        try:
+                            plaintext, signer_fpr, verified = decrypt_message(
+                                exported.stdout,
+                                ciphertext,
+                                passphrase=passphrase,
+                                pubkey_blobs=[pk["blob"] for pk in pubkeys],
+                            )
+                            dec_key = key
+                            decrypted = True
+                            break
+                        except Exception:
+                            continue
+                    else:
+                        continue
+                except Exception:
+                    continue
+
+            if not decrypted:
+                err_text = (
+                    "No private keys found" if not keys else "Failed to decrypt message"
+                )
+                self.run_screen(
+                    WarningScreen,
+                    title="Error",
+                    status_headline=None,
+                    text=err_text,
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
                 return Destination(BackStackView)
-            passphrase = ret_dict["textToEncode"]
-            plaintext, signer_fpr, verified = decrypt_message(
-                exported.stdout,
-                ciphertext,
-                passphrase=passphrase,
-                pubkey_blobs=[pk["blob"] for pk in pubkeys],
-            )
-        except Exception:
-            self.run_screen(
-                WarningScreen,
-                title="Error",
-                status_headline=None,
-                text="Failed to decrypt message",
-                show_back_button=False,
-                button_data=[ButtonOption("I Understand")],
-            )
-            return Destination(BackStackView)
 
         if isinstance(plaintext, (bytes, bytearray, memoryview)):
             plaintext = plaintext.decode("utf-8")
+
+        # normalize line endings to avoid display issues on carriage returns
+        plaintext = plaintext.replace("\r\n", "\n").replace("\r", "\n")
 
         if signer_fpr:
             label = signer_fpr[-8:]
@@ -4605,8 +4603,9 @@ class ToolsGPGDecryptMessageView(View):
             else:
                 secret_list = list(len(msg_bytes).to_bytes(2, "big")) + list(msg_bytes)
 
+            label = f"GPGMsg:{dec_key['fpr'][-8:]}" if dec_key else "GPGMsg"
             header = Satochip_Connector.make_header(
-                "Data", "Plaintext export allowed", f"GPGMsg:{key['fpr'][-8:]}"
+                "Data", "Plaintext export allowed", label
             )
             secret_dic = {"header": header, "secret_list": secret_list}
 
