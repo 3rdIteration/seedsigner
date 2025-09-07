@@ -5652,6 +5652,32 @@ class ToolsGPGSignManifestView(View):
 
         return Destination(MainMenuView)
 
+
+def _check_future_key_creation(view, key_blob: str) -> None:
+    """Warn if the key's creation date is in the future and offer to set system time."""
+    from subprocess import run
+    from pgpy import PGPKey
+
+    try:
+        key, _ = PGPKey.from_blob(key_blob)
+    except Exception:
+        return
+
+    import time
+
+    if key.created and key.created.timestamp() > time.time():
+        formatted = key.created.strftime("%Y-%m-%d %H:%M:%S")
+        ret = view.run_screen(
+            WarningScreen,
+            title="Future Date",
+            status_headline=None,
+            text=f"Key date {formatted} is in the future.\nUpdate system time?",
+            show_back_button=False,
+            button_data=[ButtonOption("Update"), ButtonOption("Skip")],
+        )
+        if ret == 0:
+            run(["date", "-s", formatted], capture_output=True)
+
 class ToolsGPGImportPubkeyMenuView(View):
     LOAD_QR = ButtonOption("Import from QR")
     LOAD_FILE = ButtonOption("Import from File")
@@ -5714,6 +5740,8 @@ class ToolsGPGLoadPubkeyQRView(View):
                 button_data=[ButtonOption("I Understand")],
             )
             return Destination(BackStackView)
+
+        _check_future_key_creation(self, key_blob)
 
         imported = run(["gpg", "--import"], input=key_blob, capture_output=True, text=True)
         if imported.returncode != 0:
@@ -5794,8 +5822,13 @@ class ToolsGPGImportPubkeyFileView(View):
 
         verify_file_name = verify_file_list[selected_file_num]
         logger.info("Selected: %s", verify_file_name)
+        filepath = os.path.join(file_list_path, verify_file_name)
+        with open(filepath, "r") as f:
+            key_blob = f.read()
 
-        cmd = f"gpg --import {file_list_path}/{verify_file_name}"
+        _check_future_key_creation(self, key_blob)
+
+        cmd = f"gpg --import {filepath}"
 
         data = run(cmd, capture_output=True, shell=True, text=True)
 
@@ -5886,6 +5919,8 @@ class ToolsGPGImportPubkeySeedkeeperView(View):
             length = (raw[0] << 8) + raw[1]
             key_bytes = bytes(raw[2:2 + length])
         pubkey = key_bytes.decode("utf-8")
+
+        _check_future_key_creation(self, pubkey)
 
         imported = run(
             ["gpg", "--import"],
@@ -5990,6 +6025,8 @@ class ToolsGPGLoadPrivkeyQRView(View):
                 button_data=[ButtonOption("I Understand")],
             )
             return Destination(BackStackView)
+
+        _check_future_key_creation(self, key_blob)
 
         imported = run(["gpg", "--import"], input=key_blob, capture_output=True, text=True)
         if imported.returncode != 0:
@@ -6113,6 +6150,8 @@ class ToolsGPGLoadPrivkeyFileView(View):
             )
             return Destination(BackStackView)
 
+        _check_future_key_creation(self, decrypted.stdout)
+
         imported = run(
             ["gpg", "--import"],
             input=decrypted.stdout,
@@ -6205,6 +6244,8 @@ class ToolsGPGLoadPrivkeySeedkeeperView(View):
             length = (raw[0] << 8) + raw[1]
             key_bytes = bytes(raw[2:2 + length])
         privkey = key_bytes.decode("utf-8")
+
+        _check_future_key_creation(self, privkey)
 
         imported = run(
             ["gpg", "--import"],
