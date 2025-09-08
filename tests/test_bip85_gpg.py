@@ -8,6 +8,7 @@ from seedsigner.views.tools_views import (
     bip85_secp256k1_from_root,
     _bip85_subkey_specs,
     parse_secret_key_list,
+    parse_subkey_list,
 )
 from seedsigner.helpers.bip85_drng import BIP85DRNG
 
@@ -118,6 +119,20 @@ def test_parse_secret_key_list_primary_fingerprint_only():
     )
     keys = parse_secret_key_list(output)
     assert keys[0]["fpr"] == "PRIMARYFPR"
+
+
+def test_parse_subkey_list_extracts_fingerprint():
+    output = "\n".join(
+        [
+            "ssb:-:0:0:::0::::::s::", 
+            "fpr:::::::::SUBFPR1:",
+            "ssb:-:0:0:::0::::::e::",
+            "fpr:::::::::SUBFPR2:",
+        ]
+    )
+    subs = parse_subkey_list(output)
+    assert subs[0]["fpr"] == "SUBFPR1"
+    assert subs[1]["fpr"] == "SUBFPR2"
 
 
 def test_bip85_subkey_specs_include_sign_for_auth():

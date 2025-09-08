@@ -4023,6 +4023,20 @@ def parse_secret_key_list(colon_output: str):
     return keys
 
 
+def parse_subkey_list(colon_output: str):
+    """Parse `gpg --list-secret-keys --with-colons` subkey data."""
+    subkeys = []
+    cur = None
+    for line in colon_output.splitlines():
+        parts = line.split(":")
+        if parts[0] == "ssb":
+            cur = {"fpr": None, "caps": parts[11]}
+            subkeys.append(cur)
+        elif parts[0] == "fpr" and cur is not None and cur.get("fpr") is None:
+            cur["fpr"] = parts[9]
+    return subkeys
+
+
 class ToolsGPGMenuView(View):
     VERIFY_FILE = ButtonOption("Verify File Sig")
     SIGN = ButtonOption("Sign")
@@ -4073,12 +4087,10 @@ class ToolsGPGMenuView(View):
 
 
 class ToolsGPGAdvancedMenuView(View):
-    ADD_SUBKEYS = ButtonOption("Add Subkeys")
-    LIST_SUBKEYS = ButtonOption("List Subkeys")
-    COPY_TO_CARD = ButtonOption("Copy Subkeys to Card")
+    SUBKEY_OPS = ButtonOption("Subkey Operations")
 
     def run(self):
-        button_data = [self.ADD_SUBKEYS, self.LIST_SUBKEYS, self.COPY_TO_CARD]
+        button_data = [self.SUBKEY_OPS]
 
         selected_menu_num = self.run_screen(
             ButtonListScreen,
@@ -4089,14 +4101,457 @@ class ToolsGPGAdvancedMenuView(View):
 
         if selected_menu_num == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
+        return Destination(ToolsGPGSubkeyMenuView)
 
-        selected = button_data[selected_menu_num]
-        if selected == self.ADD_SUBKEYS:
+
+class ToolsGPGSubkeyMenuView(View):
+    ADD_SUBKEYS = ButtonOption("Add Subkeys")
+    REVOKE_SUBKEYS = ButtonOption("Revoke Subkeys")
+    DELETE_SUBKEYS = ButtonOption("Delete Subkeys")
+    CHANGE_EXPIRY = ButtonOption("Change Expiry")
+    EXPORT_SUBKEYS = ButtonOption("Export Subkeys")
+
+    def run(self):
+        button_data = [
+            self.ADD_SUBKEYS,
+            self.REVOKE_SUBKEYS,
+            self.DELETE_SUBKEYS,
+            self.CHANGE_EXPIRY,
+            self.EXPORT_SUBKEYS,
+        ]
+
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Subkey Operations",
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        choice = button_data[selected]
+        if choice == self.ADD_SUBKEYS:
             return Destination(ToolsGPGAddSubkeysView)
-        elif selected == self.LIST_SUBKEYS:
-            return Destination(ToolsGPGListSubkeysView)
-        elif selected == self.COPY_TO_CARD:
-            return Destination(ToolsGPGCopySubkeysToCardView)
+        if choice == self.REVOKE_SUBKEYS:
+            return Destination(ToolsGPGRevokeSubkeysView)
+        if choice == self.DELETE_SUBKEYS:
+            return Destination(ToolsGPGDeleteSubkeysView)
+        if choice == self.CHANGE_EXPIRY:
+            return Destination(ToolsGPGChangeExpiryView)
+        return Destination(ToolsGPGExportSubkeysView)
+
+
+class ToolsGPGRevokeSubkeysView(View):
+    def run(self):
+        from subprocess import run
+        from seedsigner.gui.screens import ButtonListScreen, LargeIconStatusScreen, WarningScreen
+
+        result = run(["gpg", "--list-secret-keys", "--with-colons"], capture_output=True, text=True)
+        keys = parse_secret_key_list(result.stdout)
+
+        if not keys:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No private keys found",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        buttons = [ButtonOption(k["uid"] if k["uid"] else k["fpr"][-8:]) for k in keys]
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Select Key",
+            is_button_text_centered=False,
+            button_data=buttons,
+        )
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        fingerprint = keys[selected]["fpr"]
+        result = run([
+            "gpg",
+            "--list-secret-keys",
+            "--with-colons",
+            fingerprint,
+        ], capture_output=True, text=True)
+        subkeys = parse_subkey_list(result.stdout)
+        if not subkeys:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No subkeys found",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        while subkeys:
+            sk_buttons = [ButtonOption(f"{sk['fpr'][-8:]} [{sk['caps']}]") for sk in subkeys]
+            sk_buttons.append(ButtonOption("Done"))
+            sel = self.run_screen(
+                ButtonListScreen,
+                title="Revoke Subkeys",
+                is_button_text_centered=False,
+                button_data=sk_buttons,
+            )
+            if sel == RET_CODE__BACK_BUTTON or sk_buttons[sel] == sk_buttons[-1]:
+                break
+            sub_fpr = subkeys.pop(sel)["fpr"]
+            r = run(["gpg", "--quick-revoke-subkey", fingerprint, sub_fpr])
+            screen = LargeIconStatusScreen if r.returncode == 0 else WarningScreen
+            msg = "Subkey revoked" if r.returncode == 0 else "Failed to revoke"
+            self.run_screen(
+                screen,
+                title="Result",
+                status_headline=None,
+                text=msg,
+                show_back_button=False,
+                button_data=[ButtonOption("Continue")],
+            )
+        return Destination(ToolsGPGMenuView)
+
+
+class ToolsGPGDeleteSubkeysView(View):
+    def run(self):
+        from subprocess import run
+        from seedsigner.gui.screens import ButtonListScreen, LargeIconStatusScreen, WarningScreen
+
+        result = run(["gpg", "--list-secret-keys", "--with-colons"], capture_output=True, text=True)
+        keys = parse_secret_key_list(result.stdout)
+        if not keys:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No private keys found",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        buttons = [ButtonOption(k["uid"] if k["uid"] else k["fpr"][-8:]) for k in keys]
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Select Key",
+            is_button_text_centered=False,
+            button_data=buttons,
+        )
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        fingerprint = keys[selected]["fpr"]
+        result = run([
+            "gpg",
+            "--list-secret-keys",
+            "--with-colons",
+            fingerprint,
+        ], capture_output=True, text=True)
+        subkeys = parse_subkey_list(result.stdout)
+        if not subkeys:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No subkeys found",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        while subkeys:
+            sk_buttons = [ButtonOption(f"{sk['fpr'][-8:]} [{sk['caps']}]") for sk in subkeys]
+            sk_buttons.append(ButtonOption("Done"))
+            sel = self.run_screen(
+                ButtonListScreen,
+                title="Delete Subkeys",
+                is_button_text_centered=False,
+                button_data=sk_buttons,
+            )
+            if sel == RET_CODE__BACK_BUTTON or sk_buttons[sel] == sk_buttons[-1]:
+                break
+            sub_fpr = subkeys.pop(sel)["fpr"]
+            r = run([
+                "gpg",
+                "--batch",
+                "--yes",
+                "--quick-delete-key",
+                fingerprint,
+                sub_fpr,
+            ])
+            screen = LargeIconStatusScreen if r.returncode == 0 else WarningScreen
+            msg = "Subkey deleted" if r.returncode == 0 else "Failed to delete"
+            self.run_screen(
+                screen,
+                title="Result",
+                status_headline=None,
+                text=msg,
+                show_back_button=False,
+                button_data=[ButtonOption("Continue")],
+            )
+        return Destination(ToolsGPGMenuView)
+
+
+class ToolsGPGChangeExpiryView(View):
+    def run(self):
+        from subprocess import run
+        from seedsigner.gui.screens import ButtonListScreen, LargeIconStatusScreen, WarningScreen
+
+        result = run(["gpg", "--list-secret-keys", "--with-colons"], capture_output=True, text=True)
+        keys = parse_secret_key_list(result.stdout)
+        if not keys:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No private keys found",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        buttons = [ButtonOption(k["uid"] if k["uid"] else k["fpr"][-8:]) for k in keys]
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Select Key",
+            is_button_text_centered=False,
+            button_data=buttons,
+        )
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        fingerprint = keys[selected]["fpr"]
+        result = run([
+            "gpg",
+            "--list-secret-keys",
+            "--with-colons",
+            fingerprint,
+        ], capture_output=True, text=True)
+        subkeys = parse_subkey_list(result.stdout)
+        if not subkeys:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No subkeys found",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        sk_buttons = [ButtonOption(f"{sk['fpr'][-8:]} [{sk['caps']}]") for sk in subkeys]
+        sel = self.run_screen(
+            ButtonListScreen,
+            title="Select Subkey",
+            is_button_text_centered=False,
+            button_data=sk_buttons,
+        )
+        if sel == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        sub_fpr = subkeys[sel]["fpr"]
+
+        exp_buttons = [
+            ButtonOption("1 year"),
+            ButtonOption("2 years"),
+            ButtonOption("5 years"),
+            ButtonOption("Never"),
+        ]
+        exp_vals = ["1y", "2y", "5y", "0"]
+        exp_sel = self.run_screen(
+            ButtonListScreen,
+            title="Set Expiry",
+            is_button_text_centered=False,
+            button_data=exp_buttons,
+        )
+        if exp_sel == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        expire = exp_vals[exp_sel]
+        r = run([
+            "gpg",
+            "--batch",
+            "--yes",
+            "--quick-set-expire",
+            fingerprint,
+            expire,
+            sub_fpr,
+        ])
+        screen = LargeIconStatusScreen if r.returncode == 0 else WarningScreen
+        msg = "Expiry changed" if r.returncode == 0 else "Failed to change expiry"
+        self.run_screen(
+            screen,
+            title="Result",
+            status_headline=None,
+            text=msg,
+            show_back_button=False,
+            button_data=[ButtonOption("Continue")],
+        )
+        return Destination(ToolsGPGMenuView)
+
+
+class ToolsGPGExportSubkeysView(View):
+    def run(self):
+        from subprocess import run
+        import os
+        from seedsigner.hardware import MicroSD
+        from seedsigner.models.encode_qr import UrBytesQrEncoder
+        from seedsigner.gui.screens.screen import (
+            ButtonListScreen,
+            LargeIconStatusScreen,
+            WarningScreen,
+            LoadingScreenThread,
+            QRDisplayScreen,
+        )
+
+        result = run(["gpg", "--list-secret-keys", "--with-colons"], capture_output=True, text=True)
+        keys = parse_secret_key_list(result.stdout)
+        if not keys:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No private keys found",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        buttons = [ButtonOption(k["uid"] if k["uid"] else k["fpr"][-8:]) for k in keys]
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Select Key",
+            is_button_text_centered=False,
+            button_data=buttons,
+        )
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        fingerprint = keys[selected]["fpr"]
+        result = run([
+            "gpg",
+            "--list-secret-keys",
+            "--with-colons",
+            fingerprint,
+        ], capture_output=True, text=True)
+        subkeys = parse_subkey_list(result.stdout)
+        if not subkeys:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No subkeys found",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        selected_fprs = []
+        for label, flag in [("Signing", "s"), ("Encryption", "e"), ("Auth", "a")]:
+            candidates = [sk for sk in subkeys if flag in sk["caps"] and sk["fpr"] not in selected_fprs]
+            if not candidates:
+                continue
+            sk_buttons = [ButtonOption(sk["fpr"][-8:]) for sk in candidates]
+            sk_buttons.append(ButtonOption("Skip"))
+            sel = self.run_screen(
+                ButtonListScreen,
+                title=f"{label} Subkey",
+                is_button_text_centered=False,
+                button_data=sk_buttons,
+            )
+            if sel == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+            if sk_buttons[sel].button_label != "Skip":
+                selected_fprs.append(candidates[sel]["fpr"])
+
+        if not selected_fprs:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No subkeys selected",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        dest_buttons = [
+            ButtonOption("File"),
+            ButtonOption("QR"),
+            ButtonOption("Smartcard"),
+        ]
+        dest_sel = self.run_screen(
+            ButtonListScreen,
+            title="Export As",
+            is_button_text_centered=False,
+            button_data=dest_buttons,
+        )
+        if dest_sel == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        cmd = [
+            "gpg",
+            "--armor",
+            "--export-secret-subkeys",
+            fingerprint,
+        ] + selected_fprs
+        exported = run(cmd, capture_output=True, text=True)
+        if exported.returncode != 0:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="Failed to export",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        if dest_buttons[dest_sel].button_label == "File":
+            file_list_path = MicroSD.get_microsd_dir() / "microsd-images"
+            os.makedirs(file_list_path, exist_ok=True)
+            filename = fingerprint + "_subkeys.asc"
+            filepath = os.path.join(file_list_path, filename)
+            with open(filepath, "w") as f:
+                f.write(exported.stdout)
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Success",
+                status_headline=None,
+                text=f"Saved as {filename}",
+                show_back_button=False,
+                button_data=[ButtonOption("Continue")],
+            )
+            return Destination(ToolsGPGMenuView)
+        if dest_buttons[dest_sel].button_label == "QR":
+            loading = LoadingScreenThread(text="Encoding...")
+            loading.start()
+            try:
+                qr_encoder = UrBytesQrEncoder(
+                    data=exported.stdout,
+                    qr_density=self.settings.get_value(SettingsConstants.SETTING__QR_DENSITY),
+                )
+            finally:
+                loading.stop()
+            num_codes = qr_encoder.seq_len()
+            ret = self.run_screen(
+                WarningScreen,
+                title="Animated QR",
+                status_headline=None,
+                text=f"This export requires {num_codes} QR code{'s' if num_codes > 1 else ''}.",
+                show_back_button=True,
+                button_data=[ButtonOption("Start")],
+            )
+            if ret == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+            self.run_screen(QRDisplayScreen, qr_encoder=qr_encoder)
+            return Destination(ToolsGPGMenuView)
+        return Destination(
+            ToolsGPGImportKeyToCardView,
+            view_args={"fingerprint": fingerprint, "selected_subkeys": selected_fprs},
+        )
 
 
 class ToolsGPGMessageMenuView(View):
@@ -6621,146 +7076,6 @@ class ToolsGPGLoadBIP85KeyView(View):
         return Destination(ToolsGPGMenuView)
 
 
-class ToolsGPGListSubkeysView(View):
-    def run(self):
-        from subprocess import run
-        from seedsigner.gui.screens import ButtonListScreen, WarningScreen
-
-        result = run(["gpg", "--list-secret-keys", "--with-colons"], capture_output=True, text=True)
-        keys = []
-        cur = None
-        for line in result.stdout.splitlines():
-            parts = line.split(":")
-            if parts[0] == "sec":
-                cur = {"fpr": None, "uid": None}
-                keys.append(cur)
-            elif parts[0] == "fpr" and cur is not None and cur.get("fpr") is None:
-                cur["fpr"] = parts[9]
-            elif parts[0] == "uid" and cur is not None and cur.get("uid") is None:
-                cur["uid"] = parts[9]
-
-        if not keys:
-            self.run_screen(
-                WarningScreen,
-                title="Error",
-                status_headline=None,
-                text="No private keys found",
-                show_back_button=False,
-                button_data=[ButtonOption("I Understand")],
-            )
-            return Destination(BackStackView)
-
-        buttons = []
-        for key in keys:
-            label = key["uid"] if key["uid"] else key["fpr"][-8:]
-            buttons.append(ButtonOption(label))
-
-        selected = self.run_screen(
-            ButtonListScreen,
-            title="Select Key",
-            is_button_text_centered=False,
-            button_data=buttons,
-        )
-
-        if selected == RET_CODE__BACK_BUTTON:
-            return Destination(BackStackView)
-
-        fingerprint = keys[selected]["fpr"]
-
-        result = run(
-            ["gpg", "--list-secret-keys", "--with-colons", fingerprint],
-            capture_output=True,
-            text=True,
-        )
-
-        subkeys = []
-        cur = None
-        for line in result.stdout.splitlines():
-            parts = line.split(":")
-            if parts[0] == "ssb":
-                cur = {"bits": parts[2], "algo": parts[3], "caps": parts[11], "fpr": None}
-                subkeys.append(cur)
-            elif parts[0] == "fpr" and cur is not None and cur.get("fpr") is None:
-                cur["fpr"] = parts[9]
-
-        if not subkeys:
-            self.run_screen(
-                WarningScreen,
-                title="Error",
-                status_headline=None,
-                text="No subkeys found",
-                show_back_button=False,
-                button_data=[ButtonOption("I Understand")],
-            )
-            return Destination(BackStackView)
-
-        algo_map = {"1": "RSA", "17": "DSA", "18": "ECDH", "19": "ECDSA", "22": "EdDSA"}
-        buttons = []
-        for sk in subkeys:
-            alg = algo_map.get(sk["algo"], sk["algo"])
-            label = f"{sk['fpr'][-8:]} {alg} [{sk['caps']}]"
-            buttons.append(ButtonOption(label))
-
-        self.run_screen(
-            ButtonListScreen,
-            title="Subkeys",
-            is_button_text_centered=False,
-            button_data=buttons,
-        )
-
-        return Destination(BackStackView)
-
-
-class ToolsGPGCopySubkeysToCardView(View):
-    def run(self):
-        from subprocess import run
-        from seedsigner.gui.screens import ButtonListScreen, WarningScreen
-
-        result = run(["gpg", "--list-secret-keys", "--with-colons"], capture_output=True, text=True)
-        keys = []
-        cur = None
-        for line in result.stdout.splitlines():
-            parts = line.split(":")
-            if parts[0] == "sec":
-                cur = {"fpr": None, "uid": None}
-                keys.append(cur)
-            elif parts[0] == "fpr" and cur is not None and cur.get("fpr") is None:
-                cur["fpr"] = parts[9]
-            elif parts[0] == "uid" and cur is not None and cur.get("uid") is None:
-                cur["uid"] = parts[9]
-
-        if not keys:
-            self.run_screen(
-                WarningScreen,
-                title="Error",
-                status_headline=None,
-                text="No private keys found",
-                show_back_button=False,
-                button_data=[ButtonOption("I Understand")],
-            )
-            return Destination(BackStackView)
-
-        buttons = []
-        for key in keys:
-            label = key["uid"] if key["uid"] else key["fpr"][-8:]
-            buttons.append(ButtonOption(label))
-
-        selected = self.run_screen(
-            ButtonListScreen,
-            title="Select Key",
-            is_button_text_centered=False,
-            button_data=buttons,
-        )
-
-        if selected == RET_CODE__BACK_BUTTON:
-            return Destination(BackStackView)
-
-        fingerprint = keys[selected]["fpr"]
-
-        return Destination(
-            ToolsGPGImportKeyToCardView,
-            view_args={"fingerprint": fingerprint},
-        )
 
 
 class ToolsGPGAddSubkeysView(View):
@@ -7657,9 +7972,10 @@ class ToolsGPGExportPrivkeyView(View):
 
 
 class ToolsGPGImportKeyToCardView(View):
-    def __init__(self, fingerprint: str):
+    def __init__(self, fingerprint: str, selected_subkeys=None):
         super().__init__()
         self.fingerprint = fingerprint
+        self.selected_subkeys = selected_subkeys
 
     def run(self):
         from subprocess import run
@@ -7794,6 +8110,7 @@ class ToolsGPGImportKeyToCardView(View):
         )
         primary_caps = ""
         subkeys = []
+        cur = None
         algo = None
         curve = ""
         for line in result.stdout.splitlines():
@@ -7804,7 +8121,10 @@ class ToolsGPGImportKeyToCardView(View):
                 if len(parts) > 16:
                     curve = parts[16].lower()
             elif parts[0] == "ssb":
-                subkeys.append(parts[11].lower())
+                cur = {"caps": parts[11].lower(), "fpr": None}
+                subkeys.append(cur)
+            elif parts[0] == "fpr" and cur is not None and cur["fpr"] is None:
+                cur["fpr"] = parts[9]
 
         if algo not in ("1", "2", "3"):
             curve_map = {
@@ -7846,7 +8166,12 @@ class ToolsGPGImportKeyToCardView(View):
             run(["gpgconf", "--reload", "scdaemon"])
 
         sign_idx = next(
-            (i for i, caps in enumerate(subkeys, start=1) if "s" in caps),
+            (
+                i
+                for i, sk in enumerate(subkeys, start=1)
+                if "s" in sk["caps"]
+                and (not self.selected_subkeys or sk["fpr"] in self.selected_subkeys)
+            ),
             None,
         )
 
@@ -7859,8 +8184,11 @@ class ToolsGPGImportKeyToCardView(View):
         elif "s" in primary_caps:
             cmds.extend(["keytocard\n", "y\n", "1\n"])
             used_slots.add("1")
-        for idx, caps in enumerate(subkeys, start=1):
+        for idx, sk in enumerate(subkeys, start=1):
+            caps = sk["caps"]
             if idx == sign_idx:
+                continue
+            if self.selected_subkeys and sk["fpr"] not in self.selected_subkeys:
                 continue
             slot = next(
                 (
