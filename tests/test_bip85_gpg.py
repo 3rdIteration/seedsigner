@@ -124,7 +124,7 @@ def test_parse_secret_key_list_primary_fingerprint_only():
 def test_parse_subkey_list_extracts_fingerprint():
     output = "\n".join(
         [
-            "ssb:-:0:0:::0::::::s::", 
+            "ssb:-:0:0:::0::::::s::",
             "fpr:::::::::SUBFPR1:",
             "ssb:-:0:0:::0::::::e::",
             "fpr:::::::::SUBFPR2:",
@@ -133,6 +133,8 @@ def test_parse_subkey_list_extracts_fingerprint():
     subs = parse_subkey_list(output)
     assert subs[0]["fpr"] == "SUBFPR1"
     assert subs[1]["fpr"] == "SUBFPR2"
+    assert subs[0]["idx"] == 1
+    assert subs[1]["idx"] == 2
 
 
 def test_bip85_subkey_specs_include_sign_for_auth():
@@ -173,6 +175,38 @@ def test_gpg_quick_addkey_uses_loopback(monkeypatch):
         "rsa2048",
         "encrypt",
     ]
+
+
+def test_gpg_edit_subkey_invokes_edit(monkeypatch):
+    from seedsigner.views import tools_views
+
+    captured = {}
+
+    def fake_run(cmd, *args, **kwargs):
+        captured["cmd"] = cmd
+        captured["input"] = kwargs.get("input")
+        class Dummy:
+            returncode = 0
+        return Dummy()
+
+    monkeypatch.setattr(tools_views.subprocess, "run", fake_run)
+    tools_views.gpg_edit_subkey("FPR", 2, "revkey")
+    assert captured["cmd"] == [
+        "gpg",
+        "--batch",
+        "--yes",
+        "--pinentry-mode",
+        "loopback",
+        "--passphrase",
+        "",
+        "--command-fd",
+        "0",
+        "--status-fd",
+        "2",
+        "--edit-key",
+        "FPR",
+    ]
+    assert captured["input"] == "key 2\nrevkey\ny\nsave\n"
 
 
 def test_loose_add_subkeys_uses_pgpy(monkeypatch):

@@ -4027,10 +4027,12 @@ def parse_subkey_list(colon_output: str):
     """Parse `gpg --list-secret-keys --with-colons` subkey data."""
     subkeys = []
     cur = None
+    idx = 0
     for line in colon_output.splitlines():
         parts = line.split(":")
         if parts[0] == "ssb":
-            cur = {"fpr": None, "caps": parts[11]}
+            idx += 1
+            cur = {"fpr": None, "caps": parts[11], "idx": idx}
             subkeys.append(cur)
         elif parts[0] == "fpr" and cur is not None and cur.get("fpr") is None:
             cur["fpr"] = parts[9]
@@ -4201,8 +4203,8 @@ class ToolsGPGRevokeSubkeysView(View):
             )
             if sel == RET_CODE__BACK_BUTTON or sk_buttons[sel] == sk_buttons[-1]:
                 break
-            sub_fpr = subkeys.pop(sel)["fpr"]
-            r = run(["gpg", "--quick-revoke-subkey", fingerprint, sub_fpr])
+            sub = subkeys[sel]
+            r = gpg_edit_subkey(fingerprint, sub["idx"], "revkey")
             screen = LargeIconStatusScreen if r.returncode == 0 else WarningScreen
             msg = "Subkey revoked" if r.returncode == 0 else "Failed to revoke"
             self.run_screen(
@@ -4213,6 +4215,13 @@ class ToolsGPGRevokeSubkeysView(View):
                 show_back_button=False,
                 button_data=[ButtonOption("Continue")],
             )
+            result = run([
+                "gpg",
+                "--list-secret-keys",
+                "--with-colons",
+                fingerprint,
+            ], capture_output=True, text=True)
+            subkeys = parse_subkey_list(result.stdout)
         return Destination(ToolsGPGMenuView)
 
 
@@ -4274,15 +4283,8 @@ class ToolsGPGDeleteSubkeysView(View):
             )
             if sel == RET_CODE__BACK_BUTTON or sk_buttons[sel] == sk_buttons[-1]:
                 break
-            sub_fpr = subkeys.pop(sel)["fpr"]
-            r = run([
-                "gpg",
-                "--batch",
-                "--yes",
-                "--quick-delete-key",
-                fingerprint,
-                sub_fpr,
-            ])
+            sub = subkeys[sel]
+            r = gpg_edit_subkey(fingerprint, sub["idx"], "delkey")
             screen = LargeIconStatusScreen if r.returncode == 0 else WarningScreen
             msg = "Subkey deleted" if r.returncode == 0 else "Failed to delete"
             self.run_screen(
@@ -4293,6 +4295,13 @@ class ToolsGPGDeleteSubkeysView(View):
                 show_back_button=False,
                 button_data=[ButtonOption("Continue")],
             )
+            result = run([
+                "gpg",
+                "--list-secret-keys",
+                "--with-colons",
+                fingerprint,
+            ], capture_output=True, text=True)
+            subkeys = parse_subkey_list(result.stdout)
         return Destination(ToolsGPGMenuView)
 
 
@@ -6520,6 +6529,26 @@ def gpg_quick_addkey(fingerprint: str, alg: str, usage: str):
         usage,
     ]
     return subprocess.run(cmd)
+
+
+def gpg_edit_subkey(fingerprint: str, idx: int, action: str):
+    cmd = [
+        "gpg",
+        "--batch",
+        "--yes",
+        "--pinentry-mode",
+        "loopback",
+        "--passphrase",
+        "",
+        "--command-fd",
+        "0",
+        "--status-fd",
+        "2",
+        "--edit-key",
+        fingerprint,
+    ]
+    script = f"key {idx}\n{action}\ny\nsave\n"
+    return subprocess.run(cmd, input=script, text=True)
 
 
 def _bip85_subkey_specs(alg):
