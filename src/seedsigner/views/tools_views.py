@@ -6114,7 +6114,7 @@ def bip85_add_subkeys(fingerprint: str, alg: str, key_index: int, start_index: i
     )
     pgp_key, _ = PGPKey.from_blob(export.stdout)
     created = pgp_key._key.created
-    expires = pgp_key._key.expires
+    expires = pgp_key.expires_at
 
     KEY_BITS = (
         2048
@@ -6201,7 +6201,7 @@ def loose_add_subkeys(fingerprint: str, alg: str) -> bool:
     )
     pgp_key, _ = PGPKey.from_blob(export.stdout)
     created = pgp_key._key.created
-    expires = pgp_key._key.expires
+    expires = pgp_key.expires_at
 
     subkey_specs = _bip85_subkey_specs(alg)
     for _, pkalg, usage, *rest in subkey_specs:

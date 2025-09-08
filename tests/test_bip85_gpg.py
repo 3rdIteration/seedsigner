@@ -173,7 +173,8 @@ def test_loose_add_subkeys_uses_pgpy(monkeypatch):
 
     class MainKey:
         def __init__(self):
-            self._key = SimpleNamespace(created=None, expires=None)
+            self._key = SimpleNamespace(created=None)
+            self.expires_at = None
 
         def add_subkey(self, subkey, **kwargs):
             state["add"] += 1
