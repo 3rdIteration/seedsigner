@@ -208,7 +208,7 @@ def test_gpg_edit_subkey_invokes_edit(monkeypatch):
     ]
     assert (
         captured["input"]
-        == "key 2\nrevkey\ny\n0\n\n\ny\nsave\n"
+        == "key 2\nrevkey\ny\n0\n\ny\nsave\n"
     )
 
 
