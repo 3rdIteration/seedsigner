@@ -6554,15 +6554,15 @@ def gpg_edit_subkey(fingerprint: str, idx: int, action: str):
 
 def gpg_export_selected_subkeys(fingerprint: str, sub_fprs: list[str]):
     keyids = [f[-16:] for f in sub_fprs]
-    filt = "||".join(f"keyid={kid}" for kid in keyids)
+    filt = " || ".join(f"keyid={kid}" for kid in keyids)
     cmd = [
         "gpg",
         "--armor",
-        "--export-secret-keys",
-        fingerprint,
         "--export-options=export-minimal",
         "--export-filter",
         f"keep-subkey={filt}",
+        "--export-secret-keys",
+        fingerprint,
     ]
     return subprocess.run(cmd, capture_output=True, text=True)
 

@@ -272,8 +272,15 @@ def test_gpg_export_selected_subkeys_filters(monkeypatch):
     monkeypatch.setattr(tools_views.subprocess, "run", fake_run)
     tools_views.gpg_export_selected_subkeys("FPR", ["A" * 40, "B" * 40, "C" * 40])
     cmd = captured["cmd"]
-    assert cmd[:4] == ["gpg", "--armor", "--export-secret-keys", "FPR"]
-    assert "--export-options=export-minimal" in cmd
+    assert cmd == [
+        "gpg",
+        "--armor",
+        "--export-options=export-minimal",
+        "--export-filter",
+        "keep-subkey=keyid=AAAAAAAAAAAAAAAA || keyid=BBBBBBBBBBBBBBBB || keyid=CCCCCCCCCCCCCCCC",
+        "--export-secret-keys",
+        "FPR",
+    ]
     filt = cmd[cmd.index("--export-filter") + 1]
     assert all(f"keyid={x[-16:]}" in filt for x in ["A" * 40, "B" * 40, "C" * 40])
     assert filt.count("keyid=") == 3
