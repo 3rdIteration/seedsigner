@@ -6548,7 +6548,9 @@ def gpg_edit_subkey(fingerprint: str, idx: int, action: str):
         fingerprint,
     ]
     if action == "revkey":
-        script = f"key {idx}\nrevkey\n0\n\n\ny\nsave\n"
+        # Confirm revocation, supply a default reason code of 0 (no reason),
+        # send an empty description, confirm the summary, then save.
+        script = f"key {idx}\nrevkey\ny\n0\n\n\ny\nsave\n"
     else:
         script = f"key {idx}\n{action}\ny\nsave\n"
     return subprocess.run(cmd, input=script, text=True)
