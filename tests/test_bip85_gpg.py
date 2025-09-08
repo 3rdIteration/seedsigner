@@ -254,3 +254,26 @@ def test_loose_add_subkeys_uses_pgpy(monkeypatch):
     assert tools_views.loose_add_subkeys("FPR", "secp256k1")
     assert len(new_calls) == 3
     assert state["add"] == 3
+
+
+def test_gpg_export_selected_subkeys_filters(monkeypatch):
+    from seedsigner.views import tools_views
+
+    captured = {}
+
+    def fake_run(cmd, *args, **kwargs):
+        captured["cmd"] = cmd
+        class R:
+            returncode = 0
+            stdout = "data"
+
+        return R()
+
+    monkeypatch.setattr(tools_views.subprocess, "run", fake_run)
+    tools_views.gpg_export_selected_subkeys("FPR", ["A" * 40, "B" * 40, "C" * 40])
+    cmd = captured["cmd"]
+    assert cmd[:4] == ["gpg", "--armor", "--export-secret-keys", "FPR"]
+    assert "--export-options=export-minimal" in cmd
+    filt = cmd[cmd.index("--export-filter") + 1]
+    assert all(f"keyid={x[-16:]}" in filt for x in ["A" * 40, "B" * 40, "C" * 40])
+    assert filt.count("keyid=") == 3

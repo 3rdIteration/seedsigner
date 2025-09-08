@@ -4499,14 +4499,13 @@ class ToolsGPGExportSubkeysView(View):
         )
         if dest_sel == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
+        if dest_buttons[dest_sel].button_label == "Smartcard":
+            return Destination(
+                ToolsGPGImportKeyToCardView,
+                view_args={"fingerprint": fingerprint, "selected_subkeys": selected_fprs},
+            )
 
-        cmd = [
-            "gpg",
-            "--armor",
-            "--export-secret-subkeys",
-            fingerprint,
-        ] + selected_fprs
-        exported = run(cmd, capture_output=True, text=True)
+        exported = gpg_export_selected_subkeys(fingerprint, selected_fprs)
         if exported.returncode != 0:
             self.run_screen(
                 WarningScreen,
@@ -4557,10 +4556,7 @@ class ToolsGPGExportSubkeysView(View):
                 return Destination(BackStackView)
             self.run_screen(QRDisplayScreen, qr_encoder=qr_encoder)
             return Destination(ToolsGPGMenuView)
-        return Destination(
-            ToolsGPGImportKeyToCardView,
-            view_args={"fingerprint": fingerprint, "selected_subkeys": selected_fprs},
-        )
+        return Destination(BackStackView)
 
 
 class ToolsGPGMessageMenuView(View):
@@ -6554,6 +6550,21 @@ def gpg_edit_subkey(fingerprint: str, idx: int, action: str):
     else:
         script = f"key {idx}\n{action}\ny\nsave\n"
     return subprocess.run(cmd, input=script, text=True)
+
+
+def gpg_export_selected_subkeys(fingerprint: str, sub_fprs: list[str]):
+    keyids = [f[-16:] for f in sub_fprs]
+    filt = "||".join(f"keyid={kid}" for kid in keyids)
+    cmd = [
+        "gpg",
+        "--armor",
+        "--export-secret-keys",
+        fingerprint,
+        "--export-options=export-minimal",
+        "--export-filter",
+        f"keep-subkey={filt}",
+    ]
+    return subprocess.run(cmd, capture_output=True, text=True)
 
 
 def _bip85_subkey_specs(alg):
