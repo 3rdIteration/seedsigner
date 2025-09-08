@@ -6557,12 +6557,13 @@ def gpg_edit_subkey(fingerprint: str, idx: int, action: str):
 
 
 def gpg_export_selected_subkeys(fingerprint: str, sub_fprs: list[str]):
-    """Export a minimal secret key containing only the selected subkeys.
+    """Export selected secret subkeys with a stubbed primary key.
 
-    Older GPG releases do not support the ``keep-subkey`` export filter, but
-    specific subkeys can still be exported by appending ``!`` to each desired
-    subkey ID.  This helper constructs such a command and returns the completed
-    process.
+    ``gpg --export-secret-subkeys`` strips the primary secret key material while
+    including the full secret data for the requested subkeys.  Older GPG
+    releases may not support the ``keep-subkey`` filter, but individual subkeys
+    can still be targeted by appending ``!`` to each desired key ID.  This
+    helper builds that command and returns the completed process.
     """
 
     keyids = [f[-16:] + "!" for f in sub_fprs]
@@ -6570,7 +6571,7 @@ def gpg_export_selected_subkeys(fingerprint: str, sub_fprs: list[str]):
         "gpg",
         "--armor",
         "--export-options=export-minimal",
-        "--export-secret-keys",
+        "--export-secret-subkeys",
         fingerprint,
         *keyids,
     ]

@@ -289,7 +289,7 @@ def test_gpg_export_selected_subkeys_filters(monkeypatch):
         "gpg",
         "--armor",
         "--export-options=export-minimal",
-        "--export-secret-keys",
+        "--export-secret-subkeys",
         "FPR",
         "AAAAAAAAAAAAAAAA!",
         "BBBBBBBBBBBBBBBB!",
