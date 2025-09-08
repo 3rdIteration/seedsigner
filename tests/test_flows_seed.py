@@ -1155,3 +1155,26 @@ class TestSatochipImportSeedView(BaseTest):
         assert "already" in view.run_screen.call_args.kwargs["text"].lower()
         assert destination.View_cls == tools_views.MainMenuView
 
+
+class TestSatochipVerifyAddressOption(BaseTest):
+    def test_seed_select_view_includes_satochip(self, monkeypatch):
+        from seedsigner.views import seed_views
+        from seedsigner.controller import Controller
+        from seedsigner.gui.screens.screen import RET_CODE__BACK_BUTTON
+        from seedsigner.views.view import BackStackView
+
+        view = seed_views.SeedSelectSeedView(flow=Controller.FLOW__VERIFY_SINGLESIG_ADDR)
+
+        captured = {}
+
+        def fake_run_screen(screen_cls, **kwargs):
+            captured["button_data"] = kwargs.get("button_data")
+            return RET_CODE__BACK_BUTTON
+
+        monkeypatch.setattr(view, "run_screen", fake_run_screen)
+
+        destination = view.run()
+
+        assert destination.View_cls == BackStackView
+        assert seed_views.SeedSelectSeedView.SATOCHIP in captured["button_data"]
+

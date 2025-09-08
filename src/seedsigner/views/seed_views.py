@@ -122,7 +122,7 @@ class SeedSelectSeedView(View):
         for seed in seeds:
             button_str = seed.get_fingerprint(self.settings.get_value(SettingsConstants.SETTING__NETWORK))
             button_data.append(ButtonOption(button_str, SeedSignerIconConstants.FINGERPRINT, icon_color="blue"))
-        if self.flow == Controller.FLOW__SIGN_MESSAGE:
+        if self.flow in [Controller.FLOW__SIGN_MESSAGE, Controller.FLOW__VERIFY_SINGLESIG_ADDR]:
             button_data.append(self.SATOCHIP)
 
         button_data.append(self.SCAN_SEED)
@@ -165,13 +165,16 @@ class SeedSelectSeedView(View):
 
         self.controller.resume_main_flow = self.flow
 
-        if self.flow == Controller.FLOW__SIGN_MESSAGE and button_data[selected_menu_num] == self.SATOCHIP:
-            connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satochip"])
-            if not connector:
-                return Destination(BackStackView)
-            self.controller.sign_message_with_satochip = True
-            self.controller.sign_message_data["seed_num"] = None
-            return Destination(SeedSignMessageConfirmMessageView)
+        if button_data[selected_menu_num] == self.SATOCHIP:
+            if self.flow == Controller.FLOW__SIGN_MESSAGE:
+                connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satochip"])
+                if not connector:
+                    return Destination(BackStackView)
+                self.controller.sign_message_with_satochip = True
+                self.controller.sign_message_data["seed_num"] = None
+                return Destination(SeedSignMessageConfirmMessageView)
+            elif self.flow == Controller.FLOW__VERIFY_SINGLESIG_ADDR:
+                return Destination(SeedKeeperSelectView)
 
         if button_data[selected_menu_num] == self.SCAN_SEED:
             from seedsigner.views.scan_views import ScanView
