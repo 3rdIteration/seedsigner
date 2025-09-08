@@ -4405,7 +4405,7 @@ class ToolsGPGExportSubkeysView(View):
     def run(self):
         from subprocess import run
         import os
-        from seedsigner.hardware import MicroSD
+        from seedsigner.hardware.microsd import MicroSD
         from seedsigner.models.encode_qr import UrBytesQrEncoder
         from seedsigner.gui.screens.screen import (
             ButtonListScreen,
@@ -6547,7 +6547,10 @@ def gpg_edit_subkey(fingerprint: str, idx: int, action: str):
         "--edit-key",
         fingerprint,
     ]
-    script = f"key {idx}\n{action}\ny\nsave\n"
+    if action == "revkey":
+        script = f"key {idx}\nrevkey\n0\n\n\ny\nsave\n"
+    else:
+        script = f"key {idx}\n{action}\ny\nsave\n"
     return subprocess.run(cmd, input=script, text=True)
 
 

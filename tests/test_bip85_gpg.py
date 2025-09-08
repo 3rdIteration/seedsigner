@@ -206,7 +206,7 @@ def test_gpg_edit_subkey_invokes_edit(monkeypatch):
         "--edit-key",
         "FPR",
     ]
-    assert captured["input"] == "key 2\nrevkey\ny\nsave\n"
+    assert captured["input"] == "key 2\nrevkey\n0\n\n\ny\nsave\n"
 
 
 def test_loose_add_subkeys_uses_pgpy(monkeypatch):
