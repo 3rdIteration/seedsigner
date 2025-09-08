@@ -158,3 +158,46 @@ def test_gpg_quick_addkey_uses_loopback(monkeypatch):
         "rsa2048",
         "encrypt",
     ]
+
+
+def test_loose_add_subkeys_uses_pgpy(monkeypatch):
+    from types import SimpleNamespace
+    from seedsigner.views import tools_views
+
+    new_calls = []
+    state = {"add": 0}
+
+    def fake_new(pkalg, curve):
+        new_calls.append((pkalg, curve))
+        return SimpleNamespace(_key=SimpleNamespace(created=None, update_hlen=lambda: None))
+
+    class MainKey:
+        def __init__(self):
+            self._key = SimpleNamespace(created=None, expires=None)
+
+        def add_subkey(self, subkey, **kwargs):
+            state["add"] += 1
+
+    def fake_from_blob(data):
+        return MainKey(), None
+
+    import pgpy
+
+    monkeypatch.setattr(
+        pgpy,
+        "PGPKey",
+        SimpleNamespace(new=fake_new, from_blob=fake_from_blob),
+    )
+
+    def fake_run(cmd, *args, **kwargs):
+        class R:
+            returncode = 0
+            stdout = ""
+
+        return R()
+
+    monkeypatch.setattr("seedsigner.views.tools_views.subprocess.run", fake_run)
+
+    assert tools_views.loose_add_subkeys("FPR", "secp256k1")
+    assert len(new_calls) == 3
+    assert state["add"] == 3

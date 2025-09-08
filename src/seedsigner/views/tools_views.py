@@ -6175,6 +6175,56 @@ def bip85_add_subkeys(fingerprint: str, alg: str, key_index: int, start_index: i
     )
     return r.returncode == 0
 
+
+def loose_add_subkeys(fingerprint: str, alg: str) -> bool:
+    """Generate and merge random subkeys for algorithms unsupported by GPG."""
+    from subprocess import run
+    from pgpy import PGPKey
+    from pgpy.constants import (
+        HashAlgorithm,
+        SymmetricKeyAlgorithm,
+        CompressionAlgorithm,
+        EllipticCurveOID,
+    )
+
+    curve_map = {
+        "secp256k1": EllipticCurveOID.SECP256K1,
+        "nistp256": EllipticCurveOID.NIST_P256,
+        "brainpoolP256r1": EllipticCurveOID.Brainpool_P256,
+    }
+    curve = curve_map[alg]
+
+    export = run(
+        ["gpg", "--armor", "--export-secret-keys", fingerprint],
+        capture_output=True,
+        text=True,
+    )
+    pgp_key, _ = PGPKey.from_blob(export.stdout)
+    created = pgp_key._key.created
+    expires = pgp_key._key.expires
+
+    subkey_specs = _bip85_subkey_specs(alg)
+    for _, pkalg, usage, *rest in subkey_specs:
+        subkey = PGPKey.new(pkalg, curve)
+        subkey._key.created = created
+        subkey._key.update_hlen()
+        pgp_key.add_subkey(
+            subkey,
+            usage=usage,
+            hashes=[HashAlgorithm.SHA256],
+            ciphers=[SymmetricKeyAlgorithm.AES256],
+            compression=[CompressionAlgorithm.ZLIB],
+            expires=expires,
+        )
+
+    armored = str(pgp_key)
+    r = run(
+        ["gpg", "--batch", "--import-options", "merge-only", "--import"],
+        input=armored.encode(),
+        capture_output=True,
+    )
+    return r.returncode == 0
+
 def bip85_secp256k1_from_root(
     root, index: int, sub_index: int | None = None, alg: str = "ECDSA"
 ):
@@ -6851,11 +6901,7 @@ class ToolsGPGAddSubkeysView(View):
                         success = False
                         break
             else:
-                for usage in ["encrypt", "sign,auth", "sign"]:
-                    r = gpg_quick_addkey(fingerprint, alg, usage)
-                    if r.returncode != 0:
-                        success = False
-                        break
+                success = loose_add_subkeys(fingerprint, alg)
         finally:
             self.loading_screen.stop()
 
