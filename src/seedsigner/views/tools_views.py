@@ -6679,6 +6679,7 @@ def bip85_add_subkeys(fingerprint: str, alg: str, key_index: int, start_index: i
 def loose_add_subkeys(fingerprint: str, alg: str) -> bool:
     """Generate and merge random subkeys for algorithms unsupported by GPG."""
     from subprocess import run
+    from contextlib import nullcontext
     from pgpy import PGPKey
     from pgpy.constants import (
         HashAlgorithm,
@@ -6704,18 +6705,20 @@ def loose_add_subkeys(fingerprint: str, alg: str) -> bool:
     expires = pgp_key.expires_at
 
     subkey_specs = _bip85_subkey_specs(alg)
-    for _, pkalg, usage, *rest in subkey_specs:
-        subkey = PGPKey.new(pkalg, curve)
-        subkey._key.created = created
-        subkey._key.update_hlen()
-        pgp_key.add_subkey(
-            subkey,
-            usage=usage,
-            hashes=[HashAlgorithm.SHA256],
-            ciphers=[SymmetricKeyAlgorithm.AES256],
-            compression=[CompressionAlgorithm.ZLIB],
-            expires=expires,
-        )
+    ctx = pgp_key.unlock("") if pgp_key.is_protected else nullcontext()
+    with ctx:
+        for _, pkalg, usage, *rest in subkey_specs:
+            subkey = PGPKey.new(pkalg, curve)
+            subkey._key.created = created
+            subkey._key.update_hlen()
+            pgp_key.add_subkey(
+                subkey,
+                usage=usage,
+                hashes=[HashAlgorithm.SHA256],
+                ciphers=[SymmetricKeyAlgorithm.AES256],
+                compression=[CompressionAlgorithm.ZLIB],
+                expires=expires,
+            )
 
     armored = str(pgp_key)
     r = run(

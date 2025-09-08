@@ -217,16 +217,28 @@ def test_loose_add_subkeys_uses_pgpy(monkeypatch):
     from seedsigner.views import tools_views
 
     new_calls = []
-    state = {"add": 0}
+    state = {"add": 0, "unlock": 0}
 
     def fake_new(pkalg, curve):
         new_calls.append((pkalg, curve))
         return SimpleNamespace(_key=SimpleNamespace(created=None, update_hlen=lambda: None))
 
+    from contextlib import contextmanager
+
     class MainKey:
         def __init__(self):
             self._key = SimpleNamespace(created=None)
             self.expires_at = None
+            self.is_protected = True
+
+        def unlock(self, passphrase):
+            state["unlock"] += 1
+
+            @contextmanager
+            def cm():
+                yield
+
+            return cm()
 
         def add_subkey(self, subkey, **kwargs):
             state["add"] += 1
@@ -254,6 +266,7 @@ def test_loose_add_subkeys_uses_pgpy(monkeypatch):
     assert tools_views.loose_add_subkeys("FPR", "secp256k1")
     assert len(new_calls) == 3
     assert state["add"] == 3
+    assert state["unlock"] == 1
 
 
 def test_gpg_export_selected_subkeys_filters(monkeypatch):
