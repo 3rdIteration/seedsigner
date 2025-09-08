@@ -4405,6 +4405,7 @@ class ToolsGPGExportSubkeysView(View):
     def run(self):
         from subprocess import run
         import os
+        import logging
         from seedsigner.hardware.microsd import MicroSD
         from seedsigner.models.encode_qr import UrBytesQrEncoder
         from seedsigner.gui.screens.screen import (
@@ -4507,6 +4508,9 @@ class ToolsGPGExportSubkeysView(View):
 
         exported = gpg_export_selected_subkeys(fingerprint, selected_fprs)
         if exported.returncode != 0:
+            logging.getLogger(__name__).error(
+                "gpg export failed: %s", exported.stderr.strip()
+            )
             self.run_screen(
                 WarningScreen,
                 title="Error",
@@ -6553,16 +6557,22 @@ def gpg_edit_subkey(fingerprint: str, idx: int, action: str):
 
 
 def gpg_export_selected_subkeys(fingerprint: str, sub_fprs: list[str]):
-    keyids = [f[-16:] for f in sub_fprs]
-    filt = " || ".join(f"keyid={kid}" for kid in keyids)
+    """Export a minimal secret key containing only the selected subkeys.
+
+    Older GPG releases do not support the ``keep-subkey`` export filter, but
+    specific subkeys can still be exported by appending ``!`` to each desired
+    subkey ID.  This helper constructs such a command and returns the completed
+    process.
+    """
+
+    keyids = [f[-16:] + "!" for f in sub_fprs]
     cmd = [
         "gpg",
         "--armor",
         "--export-options=export-minimal",
-        "--export-filter",
-        f"keep-subkey={filt}",
         "--export-secret-keys",
         fingerprint,
+        *keyids,
     ]
     return subprocess.run(cmd, capture_output=True, text=True)
 

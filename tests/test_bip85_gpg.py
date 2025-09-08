@@ -289,11 +289,9 @@ def test_gpg_export_selected_subkeys_filters(monkeypatch):
         "gpg",
         "--armor",
         "--export-options=export-minimal",
-        "--export-filter",
-        "keep-subkey=keyid=AAAAAAAAAAAAAAAA || keyid=BBBBBBBBBBBBBBBB || keyid=CCCCCCCCCCCCCCCC",
         "--export-secret-keys",
         "FPR",
+        "AAAAAAAAAAAAAAAA!",
+        "BBBBBBBBBBBBBBBB!",
+        "CCCCCCCCCCCCCCCC!",
     ]
-    filt = cmd[cmd.index("--export-filter") + 1]
-    assert all(f"keyid={x[-16:]}" in filt for x in ["A" * 40, "B" * 40, "C" * 40])
-    assert filt.count("keyid=") == 3
