@@ -4111,7 +4111,7 @@ class ToolsGPGSubkeyMenuView(View):
     REVOKE_SUBKEYS = ButtonOption("Revoke Subkeys")
     DELETE_SUBKEYS = ButtonOption("Delete Subkeys")
     CHANGE_EXPIRY = ButtonOption("Change Expiry")
-    EXPORT_SUBKEYS = ButtonOption("Export Subkeys")
+    EXPORT_SUBKEY_SECRETS = ButtonOption("Export Subkey Secrets")
 
     def run(self):
         button_data = [
@@ -4119,7 +4119,7 @@ class ToolsGPGSubkeyMenuView(View):
             self.REVOKE_SUBKEYS,
             self.DELETE_SUBKEYS,
             self.CHANGE_EXPIRY,
-            self.EXPORT_SUBKEYS,
+            self.EXPORT_SUBKEY_SECRETS,
         ]
 
         selected = self.run_screen(
@@ -4141,7 +4141,7 @@ class ToolsGPGSubkeyMenuView(View):
             return Destination(ToolsGPGDeleteSubkeysView)
         if choice == self.CHANGE_EXPIRY:
             return Destination(ToolsGPGChangeExpiryView)
-        return Destination(ToolsGPGExportSubkeysView)
+        return Destination(ToolsGPGExportSubkeySecretsView)
 
 
 class ToolsGPGRevokeSubkeysView(View):
@@ -4401,7 +4401,7 @@ class ToolsGPGChangeExpiryView(View):
         return Destination(ToolsGPGMenuView)
 
 
-class ToolsGPGExportSubkeysView(View):
+class ToolsGPGExportSubkeySecretsView(View):
     def run(self):
         from subprocess import run
         import os
@@ -4521,13 +4521,60 @@ class ToolsGPGExportSubkeysView(View):
             )
             return Destination(BackStackView)
 
+        from seedsigner.gui.screens import tools_screens
+
+        ret_dict = tools_screens.ToolsTextQRTextEntryScreen(
+            textToEncode="", title="Passphrase"
+        ).display()
+        if "is_back_button" in ret_dict:
+            return Destination(BackStackView)
+        try:
+            import re
+
+            passphrase = bytes(
+                re.sub(r"\\(?!u)", r"\\\\", ret_dict["textToEncode"]),
+                encoding="raw_unicode_escape",
+            ).decode("unicode_escape")
+        except UnicodeDecodeError:
+            passphrase = ret_dict["textToEncode"]
+
+        protected = run(
+            [
+                "gpg",
+                "--armor",
+                "--batch",
+                "--yes",
+                "--pinentry-mode",
+                "loopback",
+                "--passphrase",
+                passphrase,
+                "--symmetric",
+                "--cipher-algo",
+                "AES256",
+            ],
+            input=exported.stdout,
+            capture_output=True,
+            text=True,
+        )
+        if protected.returncode != 0:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="Failed to protect export",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+        armored = protected.stdout
+
         if dest_buttons[dest_sel].button_label == "File":
             file_list_path = MicroSD.get_microsd_dir() / "microsd-images"
             os.makedirs(file_list_path, exist_ok=True)
-            filename = fingerprint + "_subkeys.asc"
+            filename = fingerprint + "_subkey_secrets.asc"
             filepath = os.path.join(file_list_path, filename)
             with open(filepath, "w") as f:
-                f.write(exported.stdout)
+                f.write(armored)
             self.run_screen(
                 LargeIconStatusScreen,
                 title="Success",
@@ -4542,7 +4589,7 @@ class ToolsGPGExportSubkeysView(View):
             loading.start()
             try:
                 qr_encoder = UrBytesQrEncoder(
-                    data=exported.stdout,
+                    data=armored,
                     qr_density=self.settings.get_value(SettingsConstants.SETTING__QR_DENSITY),
                 )
             finally:
