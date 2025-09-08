@@ -127,3 +127,34 @@ def test_bip85_subkey_specs_include_sign_for_auth():
     auth_flags = specs[1][2]
     assert KeyFlags.Authentication in auth_flags
     assert KeyFlags.Sign in auth_flags
+
+
+def test_gpg_quick_addkey_uses_loopback(monkeypatch):
+    from seedsigner.views import tools_views
+
+    captured = {}
+
+    def fake_run(cmd, *args, **kwargs):
+        captured["cmd"] = cmd
+
+        class Dummy:
+            returncode = 0
+
+        return Dummy()
+
+    monkeypatch.setattr(tools_views.subprocess, "run", fake_run)
+    tools_views.gpg_quick_addkey("FPR", "rsa2048", "encrypt")
+    assert captured["cmd"][:6] == [
+        "gpg",
+        "--batch",
+        "--pinentry-mode",
+        "loopback",
+        "--passphrase",
+        "",
+    ]
+    assert captured["cmd"][6:] == [
+        "--quick-addkey",
+        "FPR",
+        "rsa2048",
+        "encrypt",
+    ]

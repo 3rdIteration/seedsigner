@@ -4,6 +4,7 @@ import os
 import time
 import platform
 import binascii
+import subprocess
 
 from embit.descriptor import Descriptor
 from embit.descriptor.checksum import checksum
@@ -6050,6 +6051,22 @@ def bip85_ed25519_from_root(
     return priv
 
 
+def gpg_quick_addkey(fingerprint: str, alg: str, usage: str):
+    cmd = [
+        "gpg",
+        "--batch",
+        "--pinentry-mode",
+        "loopback",
+        "--passphrase",
+        "",
+        "--quick-addkey",
+        fingerprint,
+        alg,
+        usage,
+    ]
+    return subprocess.run(cmd)
+
+
 def _bip85_subkey_specs(alg):
     from pgpy.constants import PubKeyAlgorithm, KeyFlags
 
@@ -6818,24 +6835,24 @@ class ToolsGPGAddSubkeysView(View):
                 success = bip85_add_subkeys(fingerprint, alg, key_index, start_index)
             elif alg.startswith("rsa"):
                 for usage in ["encrypt", "sign,auth", "sign"]:
-                    r = run(["gpg", "--quick-addkey", fingerprint, alg, usage])
+                    r = gpg_quick_addkey(fingerprint, alg, usage)
                     if r.returncode != 0:
                         success = False
                         break
             elif alg == "ed25519":
                 cmds = [
-                    ["gpg", "--quick-addkey", fingerprint, "cv25519", "encrypt"],
-                    ["gpg", "--quick-addkey", fingerprint, "ed25519", "sign,auth"],
-                    ["gpg", "--quick-addkey", fingerprint, "ed25519", "sign"],
+                    ("cv25519", "encrypt"),
+                    ("ed25519", "sign,auth"),
+                    ("ed25519", "sign"),
                 ]
-                for cmd in cmds:
-                    r = run(cmd)
+                for sub_alg, usage in cmds:
+                    r = gpg_quick_addkey(fingerprint, sub_alg, usage)
                     if r.returncode != 0:
                         success = False
                         break
             else:
                 for usage in ["encrypt", "sign,auth", "sign"]:
-                    r = run(["gpg", "--quick-addkey", fingerprint, alg, usage])
+                    r = gpg_quick_addkey(fingerprint, alg, usage)
                     if r.returncode != 0:
                         success = False
                         break
