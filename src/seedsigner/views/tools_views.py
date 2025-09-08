@@ -292,14 +292,7 @@ class ToolsImageEntropyMnemonicLengthView(View):
 
         # Finally build in our headline entropy via the new full-res image
         print("Full image shannon entropy")
-        mnemonic_generation.byte_entropy_is_sufficient(seed_entropy_image.tobytes())
-        final_hash = hashlib.sha256(hash_bytes + seed_entropy_image.tobytes()).digest()
-
-        if mnemonic_length in mnemonic_generation.ENTROPY_BYTES_REQUIRED:
-            final_hash = final_hash[:mnemonic_generation.ENTROPY_BYTES_REQUIRED[mnemonic_length]]
-
-        print("Final shannon entropy")
-        if not mnemonic_generation.byte_entropy_is_sufficient(final_hash):
+        if not mnemonic_generation.byte_entropy_is_sufficient(seed_entropy_image.tobytes()):
             loading_screen.stop()
             self.run_screen(
                 ErrorScreen,
@@ -310,6 +303,10 @@ class ToolsImageEntropyMnemonicLengthView(View):
             self.controller.image_entropy_preview_frames = None
             self.controller.image_entropy_final_image = None
             return Destination(BackStackView)
+        final_hash = hashlib.sha256(hash_bytes + seed_entropy_image.tobytes()).digest()
+
+        if mnemonic_length in mnemonic_generation.ENTROPY_BYTES_REQUIRED:
+            final_hash = final_hash[:mnemonic_generation.ENTROPY_BYTES_REQUIRED[mnemonic_length]]
 
         if getattr(self.controller, "create_slip39", False):
             secret = final_hash
