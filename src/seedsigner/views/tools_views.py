@@ -287,8 +287,6 @@ class ToolsImageEntropyMnemonicLengthView(View):
 
         # Build in better entropy by chaining the preview frames
         for frame in preview_images:
-            print("Preview frame shannon entropy")
-            mnemonic_generation.byte_entropy_is_sufficient(frame.tobytes())
             img_hash = hashlib.sha256(hash_bytes + frame.tobytes())
             hash_bytes = img_hash.digest()
 
