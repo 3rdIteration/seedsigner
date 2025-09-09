@@ -1,6 +1,8 @@
 import logging
 from subprocess import run
 
+from typing import Iterable, Optional
+
 import pgpy
 from pgpy.constants import KeyFlags, EllipticCurveOID
 
@@ -18,7 +20,11 @@ _curve_map = {
 }
 
 
-def import_keys_with_smartpgp(fingerprint: str, admin_pin: str) -> bool:
+def import_keys_with_smartpgp(
+    fingerprint: str,
+    admin_pin: str,
+    subkeys: Optional[Iterable[str]] = None,
+) -> bool:
     """Fallback key import using the bundled SmartPGP module.
 
     Parameters
@@ -27,9 +33,24 @@ def import_keys_with_smartpgp(fingerprint: str, admin_pin: str) -> bool:
         Fingerprint of the key to import.
     admin_pin: str
         Admin PIN for the OpenPGP card.
+    subkeys: Iterable[str], optional
+        Iterable of subkey fingerprints to include.  When provided, only those
+        subkeys are exported and imported; otherwise the entire key is used.
     """
     try:
-        res = run(['gpg', '--export-secret-key', fingerprint], capture_output=True, check=True)
+        if subkeys:
+            keyids = [f[-16:] + "!" for f in subkeys]
+            cmd = [
+                'gpg',
+                '--armor',
+                '--export-options=export-minimal',
+                '--export-secret-subkeys',
+                fingerprint,
+                *keyids,
+            ]
+        else:
+            cmd = ['gpg', '--export-secret-key', fingerprint]
+        res = run(cmd, capture_output=True, check=True)
         key, _ = pgpy.PGPKey.from_blob(res.stdout)
     except Exception as e:
         logger.exception('Failed to export key for SmartPGP import: %s', e)
@@ -48,8 +69,12 @@ def import_keys_with_smartpgp(fingerprint: str, admin_pin: str) -> bool:
     # **sub**keys rather than the primary certification key.  Importing the
     # primary key can confuse GnuPG's card interface.  Restrict the import to
     # subkeys when they exist; fall back to the primary key only if no subkeys
-    # are present.
+    # are present.  If a list of desired subkey fingerprints was supplied,
+    # further trim the set to only those subkeys.
     all_keys = list(key.subkeys.values())
+    if subkeys:
+        wanted = {f.replace(' ', '').upper() for f in subkeys}
+        all_keys = [k for k in all_keys if str(k.fingerprint).replace(' ', '').upper() in wanted]
     if not all_keys:
         all_keys = [key]
     fp_tags = {'sig': 0xC7, 'dec': 0xC8, 'auth': 0xC9}

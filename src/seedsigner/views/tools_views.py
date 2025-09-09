@@ -8407,7 +8407,7 @@ class ToolsGPGImportKeyToCardView(View):
             try:
                 from seedsigner.helpers.smartpgp_import import import_keys_with_smartpgp
 
-                if import_keys_with_smartpgp(self.fingerprint, admin_pin):
+                if import_keys_with_smartpgp(self.fingerprint, admin_pin, self.selected_subkeys):
                     self.loading_screen.stop()
                     self.run_screen(
                         LargeIconStatusScreen,

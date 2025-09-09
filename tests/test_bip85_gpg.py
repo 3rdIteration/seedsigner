@@ -408,3 +408,85 @@ def test_add_subkeys_auto_bip85_index(monkeypatch):
     tools_views.ToolsGPGAddSubkeysView.run(view)
     assert captured["key_index"] == 1
     assert captured["start_index"] == 3
+
+
+def test_smartpgp_import_filters_subkeys(monkeypatch):
+    import types, sys, datetime as dt
+    from pgpy.constants import KeyFlags, EllipticCurveOID
+
+    # Stub out the smartcard modules to avoid dependency on actual hardware libs
+    sc = types.ModuleType("smartcard")
+    sc_exc = types.ModuleType("smartcard.Exceptions")
+    class NoCardException(Exception):
+        pass
+    sc_exc.NoCardException = NoCardException
+    sc_sys = types.ModuleType("smartcard.System")
+    sc_sys.readers = lambda: []
+    sc_util = types.ModuleType("smartcard.util")
+    sc_util.toHexString = lambda data: ""
+    sc.Exceptions = sc_exc
+    sc.System = sc_sys
+    sc.util = sc_util
+    sys.modules.update({
+        "smartcard": sc,
+        "smartcard.Exceptions": sc_exc,
+        "smartcard.System": sc_sys,
+        "smartcard.util": sc_util,
+    })
+
+    from seedsigner.helpers import smartpgp_import
+
+    captured = {}
+
+    def fake_run(cmd, capture_output=True, check=True):
+        captured["cmd"] = cmd
+        class Res:
+            stdout = b"dummy"
+        return Res()
+
+    monkeypatch.setattr(smartpgp_import, "run", fake_run)
+
+    sk_fpr = "F" * 40
+
+    class KM:
+        oid = EllipticCurveOID.NIST_P256
+        s = 1
+        class P:
+            x = 1
+            y = 1
+        p = P()
+
+    class Sub:
+        def __init__(self):
+            self.key_flags = {KeyFlags.Sign}
+            self.fingerprint = sk_fpr
+            self.created = dt.datetime(2020, 1, 1)
+            self._key = type("K", (), {"keymaterial": KM})()
+
+    class Key:
+        def __init__(self):
+            self.subkeys = {"a": Sub()}
+
+    monkeypatch.setattr(smartpgp_import.pgpy.PGPKey, "from_blob", lambda data: (Key(), None))
+
+    class DummyCtx:
+        def __init__(self):
+            self.admin_pin = None
+        def connect(self):
+            pass
+        def verify_admin_pin(self):
+            pass
+        def cmd_switch_crypto(self, curve, role):
+            pass
+        def cmd_put_key(self, role, pub, priv):
+            pass
+        def cmd_put_data(self, tag, value):
+            pass
+
+    monkeypatch.setattr(smartpgp_import, "CardConnectionContext", lambda: DummyCtx())
+
+    assert smartpgp_import.import_keys_with_smartpgp("PRIFPR", "1234", [sk_fpr])
+    cmd = captured["cmd"]
+    assert "--export-secret-subkeys" in cmd
+    assert "--export-secret-key" not in cmd
+    assert cmd[-1] == "FFFFFFFFFFFFFFFF!"
