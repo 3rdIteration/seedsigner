@@ -291,7 +291,6 @@ class ToolsImageEntropyMnemonicLengthView(View):
             hash_bytes = img_hash.digest()
 
         # Finally build in our headline entropy via the new full-res image
-        print("Full image shannon entropy")
         if not mnemonic_generation.byte_entropy_is_sufficient(seed_entropy_image.tobytes()):
             loading_screen.stop()
             self.run_screen(

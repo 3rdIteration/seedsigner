@@ -91,8 +91,8 @@ class ToolsImageEntropyLivePreviewScreen(BaseScreen):
 
                 self.renderer.canvas.paste(frame.crop(box=box))
 
-                # Calculate and display Shannon entropy indicator
-                if time.time() - last_entropy_check >= 2:
+                # Calculate and display Shannon entropy indicator (throttled to ~1s)
+                if time.time() - last_entropy_check >= 1:
                     entropy_val = mnemonic_generation._shannon_entropy(frame.tobytes())
                     last_entropy_check = time.time()
                 entropy_text = f"{entropy_val:.2f}"
