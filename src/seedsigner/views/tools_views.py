@@ -4061,7 +4061,8 @@ def filter_deletable_subkeys(created_ts: int, subkeys):
 def _select_import_algo(primary_algo: str, primary_curve: str, subkeys, selected_fprs):
     """Determine the algorithm/curve for card import based on selected subkeys."""
     if selected_fprs:
-        selected = [sk for sk in subkeys if sk["fpr"] in selected_fprs]
+        fprs = selected_fprs.values() if isinstance(selected_fprs, dict) else selected_fprs
+        selected = [sk for sk in subkeys if sk["fpr"] in fprs]
         if not selected:
             return primary_algo, primary_curve
         algos = {sk["algo"] for sk in selected}
@@ -4511,9 +4512,11 @@ class ToolsGPGExportSubkeySecretsView(View):
             )
             return Destination(BackStackView)
 
-        selected_fprs = []
+        selected_fprs: dict[str, str] = {}
         for label, flag in [("Signing", "s"), ("Encryption", "e"), ("Auth", "a")]:
-            candidates = [sk for sk in subkeys if flag in sk["caps"] and sk["fpr"] not in selected_fprs]
+            candidates = [
+                sk for sk in subkeys if flag in sk["caps"] and sk["fpr"] not in selected_fprs.values()
+            ]
             if not candidates:
                 continue
             sk_buttons = [ButtonOption(sk["fpr"][-8:]) for sk in candidates]
@@ -4527,7 +4530,7 @@ class ToolsGPGExportSubkeySecretsView(View):
             if sel == RET_CODE__BACK_BUTTON:
                 return Destination(BackStackView)
             if sk_buttons[sel].button_label != "Skip":
-                selected_fprs.append(candidates[sel]["fpr"])
+                selected_fprs[flag] = candidates[sel]["fpr"]
 
         if not selected_fprs:
             self.run_screen(
@@ -4559,7 +4562,7 @@ class ToolsGPGExportSubkeySecretsView(View):
                 view_args={"fingerprint": fingerprint, "selected_subkeys": selected_fprs},
             )
 
-        exported = gpg_export_selected_subkeys(fingerprint, selected_fprs)
+        exported = gpg_export_selected_subkeys(fingerprint, list(selected_fprs.values()))
         if exported.returncode != 0:
             logging.getLogger(__name__).error(
                 "gpg export failed: %s", exported.stderr.strip()
@@ -8338,42 +8341,54 @@ class ToolsGPGImportKeyToCardView(View):
                 return Destination(BackStackView)
             run(["gpgconf", "--reload", "scdaemon"])
 
-        sign_idx = next(
-            (
-                i
-                for i, sk in enumerate(subkeys, start=1)
-                if "s" in sk["caps"]
-                and (not self.selected_subkeys or sk["fpr"] in self.selected_subkeys)
-            ),
-            None,
-        )
-
         slot_map = {"s": "1", "e": "2", "a": "3"}
         cmds = ["toggle\n"]
-        used_slots = set()
-        if sign_idx is not None:
-            cmds.append(f"key {sign_idx}\nkeytocard\n1\nkey {sign_idx}\n")
-            used_slots.add("1")
-        elif "s" in primary_caps:
-            cmds.extend(["keytocard\n", "y\n", "1\n"])
-            used_slots.add("1")
-        for idx, sk in enumerate(subkeys, start=1):
-            caps = sk["caps"]
-            if idx == sign_idx:
-                continue
-            if self.selected_subkeys and sk["fpr"] not in self.selected_subkeys:
-                continue
-            slot = next(
+        if isinstance(self.selected_subkeys, dict):
+            for flag in ("s", "e", "a"):
+                fpr = self.selected_subkeys.get(flag)
+                if not fpr:
+                    continue
+                idx = next(
+                    (i for i, sk in enumerate(subkeys, start=1) if sk["fpr"] == fpr),
+                    None,
+                )
+                if idx is None:
+                    continue
+                cmds.append(f"key {idx}\nkeytocard\n{slot_map[flag]}\nkey {idx}\n")
+        else:
+            used_slots = set()
+            sign_idx = next(
                 (
-                    slot_map[c]
-                    for c in "sea"
-                    if c in caps and slot_map[c] not in used_slots
+                    i
+                    for i, sk in enumerate(subkeys, start=1)
+                    if "s" in sk["caps"]
+                    and (not self.selected_subkeys or sk["fpr"] in self.selected_subkeys)
                 ),
                 None,
             )
-            if slot:
-                cmds.append(f"key {idx}\nkeytocard\n{slot}\nkey {idx}\n")
-                used_slots.add(slot)
+            if sign_idx is not None:
+                cmds.append(f"key {sign_idx}\nkeytocard\n1\nkey {sign_idx}\n")
+                used_slots.add("1")
+            elif "s" in primary_caps:
+                cmds.extend(["keytocard\n", "y\n", "1\n"])
+                used_slots.add("1")
+            for idx, sk in enumerate(subkeys, start=1):
+                caps = sk["caps"]
+                if idx == sign_idx:
+                    continue
+                if self.selected_subkeys and sk["fpr"] not in self.selected_subkeys:
+                    continue
+                slot = next(
+                    (
+                        slot_map[c]
+                        for c in "sea"
+                        if c in caps and slot_map[c] not in used_slots
+                    ),
+                    None,
+                )
+                if slot:
+                    cmds.append(f"key {idx}\nkeytocard\n{slot}\nkey {idx}\n")
+                    used_slots.add(slot)
         cmds.append("quit\ny\n")
         edit_commands = "".join(cmds)
         logger.info("GPG edit commands:\n%s", edit_commands)

@@ -483,10 +483,15 @@ def test_smartpgp_import_filters_subkeys(monkeypatch):
         def cmd_put_data(self, tag, value):
             pass
 
-    monkeypatch.setattr(smartpgp_import, "CardConnectionContext", lambda: DummyCtx())
+    ctx_calls = {}
+    class Ctx(DummyCtx):
+        def cmd_put_key(self, role, pub, priv):
+            ctx_calls["role"] = role
+    monkeypatch.setattr(smartpgp_import, "CardConnectionContext", lambda: Ctx())
 
-    assert smartpgp_import.import_keys_with_smartpgp("PRIFPR", "1234", [sk_fpr])
+    assert smartpgp_import.import_keys_with_smartpgp("PRIFPR", "1234", {"s": sk_fpr})
     cmd = captured["cmd"]
     assert "--export-secret-subkeys" in cmd
     assert "--export-secret-key" not in cmd
     assert cmd[-1] == "FFFFFFFFFFFFFFFF!"
+    assert ctx_calls["role"] == "sig"
