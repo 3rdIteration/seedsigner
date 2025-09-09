@@ -1,3 +1,4 @@
+import pytest
 from embit import bip32, bip85
 from seedsigner.models.seed import Seed
 from seedsigner.views.tools_views import (
@@ -11,6 +12,7 @@ from seedsigner.views.tools_views import (
     parse_subkey_list,
     filter_deletable_subkeys,
     BIP85_GPG_CREATED_TS,
+    _select_import_algo,
 )
 from seedsigner.helpers.bip85_drng import BIP85DRNG
 
@@ -139,7 +141,7 @@ def test_parse_subkey_list_extracts_fingerprint():
         [
             "ssb:-:0:0:::0::::::s::",
             "fpr:::::::::SUBFPR1:",
-            "ssb:-:0:0:::0::::::e::",
+            "ssb:-:19:0:::0::::::e::::nistp256:",
             "fpr:::::::::SUBFPR2:",
         ]
     )
@@ -148,6 +150,10 @@ def test_parse_subkey_list_extracts_fingerprint():
     assert subs[1]["fpr"] == "SUBFPR2"
     assert subs[0]["idx"] == 1
     assert subs[1]["idx"] == 2
+    assert subs[0]["algo"] == "0"
+    assert subs[0]["curve"] == ""
+    assert subs[1]["algo"] == "19"
+    assert subs[1]["curve"] == "nistp256"
 
 
 def test_filter_deletable_subkeys_bip85_only_latest():
@@ -168,6 +174,24 @@ def test_bip85_subkey_specs_include_sign_for_auth():
     auth_flags = specs[1][2]
     assert KeyFlags.Authentication in auth_flags
     assert KeyFlags.Sign in auth_flags
+
+
+def test_select_import_algo_uses_selected_subkeys():
+    subkeys = [
+        {"fpr": "A", "algo": "1", "curve": ""},
+        {"fpr": "B", "algo": "19", "curve": "nistp256"},
+    ]
+    algo, curve = _select_import_algo("1", "", subkeys, ["B"])
+    assert algo == "19" and curve == "nistp256"
+
+
+def test_select_import_algo_mixed_types_error():
+    subkeys = [
+        {"fpr": "A", "algo": "1", "curve": ""},
+        {"fpr": "B", "algo": "19", "curve": "nistp256"},
+    ]
+    with pytest.raises(ValueError):
+        _select_import_algo("1", "", subkeys, ["A", "B"])
 
 
 def test_gpg_quick_addkey_uses_loopback(monkeypatch):

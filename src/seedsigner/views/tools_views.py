@@ -4033,7 +4033,15 @@ def parse_subkey_list(colon_output: str):
         parts = line.split(":")
         if parts[0] == "ssb":
             idx += 1
-            cur = {"fpr": None, "caps": parts[11], "idx": idx}
+            algo = parts[2]
+            curve = parts[16].lower() if len(parts) > 16 else ""
+            cur = {
+                "fpr": None,
+                "caps": parts[11].lower(),
+                "idx": idx,
+                "algo": algo,
+                "curve": curve,
+            }
             subkeys.append(cur)
         elif parts[0] == "fpr" and cur is not None and cur.get("fpr") is None:
             cur["fpr"] = parts[9]
@@ -4048,6 +4056,26 @@ def filter_deletable_subkeys(created_ts: int, subkeys):
         max_idx = max(sk["idx"] for sk in subkeys)
         return [sk for sk in subkeys if sk["idx"] == max_idx]
     return subkeys
+
+
+def _select_import_algo(primary_algo: str, primary_curve: str, subkeys, selected_fprs):
+    """Determine the algorithm/curve for card import based on selected subkeys."""
+    if selected_fprs:
+        selected = [sk for sk in subkeys if sk["fpr"] in selected_fprs]
+        if not selected:
+            return primary_algo, primary_curve
+        algos = {sk["algo"] for sk in selected}
+        if len(algos) != 1:
+            raise ValueError("Selected subkeys use different key types")
+        algo = algos.pop()
+        curve = ""
+        if algo not in ("1", "2", "3"):
+            curves = {sk["curve"] for sk in selected}
+            if len(curves) != 1:
+                raise ValueError("Selected subkeys use different key curves")
+            curve = curves.pop()
+        return algo, curve
+    return primary_algo, primary_curve
 
 
 class ToolsGPGMenuView(View):
@@ -8242,16 +8270,36 @@ class ToolsGPGImportKeyToCardView(View):
             parts = line.split(":")
             if parts[0] == "sec":
                 primary_caps = parts[11].lower()
-                algo = parts[3]
+                algo = parts[2]
                 if len(parts) > 16:
                     curve = parts[16].lower()
             elif parts[0] == "ssb":
-                cur = {"caps": parts[11].lower(), "fpr": None}
+                cur = {
+                    "caps": parts[11].lower(),
+                    "fpr": None,
+                    "algo": parts[2],
+                    "curve": parts[16].lower() if len(parts) > 16 else "",
+                }
                 subkeys.append(cur)
             elif parts[0] == "fpr" and cur is not None and cur["fpr"] is None:
                 cur["fpr"] = parts[9]
 
-        if algo not in ("1", "2", "3"):
+        try:
+            algo_to_check, curve_to_check = _select_import_algo(
+                algo, curve, subkeys, self.selected_subkeys
+            )
+        except ValueError as e:
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Error",
+                status_headline=None,
+                text=str(e),
+                show_back_button=False,
+                button_data=[ButtonOption("Continue")],
+            )
+            return Destination(BackStackView)
+
+        if algo_to_check not in ("1", "2", "3"):
             curve_map = {
                 "nistp256": "p256",
                 "nistp384": "p384",
@@ -8260,7 +8308,7 @@ class ToolsGPGImportKeyToCardView(View):
                 "brainpoolp384r1": "bp384",
                 "brainpoolp512r1": "bp512",
             }
-            cmd_suffix = curve_map.get(curve)
+            cmd_suffix = curve_map.get(curve_to_check)
             if not cmd_suffix:
                 self.run_screen(
                     LargeIconStatusScreen,
