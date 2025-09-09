@@ -4049,6 +4049,18 @@ def parse_subkey_list(colon_output: str):
 BIP85_GPG_CREATED_TS = 1231006505
 
 
+def parse_uid_list(colon_output: str):
+    """Parse `gpg --list-secret-keys --with-colons` UID data."""
+    uids = []
+    idx = 0
+    for line in colon_output.splitlines():
+        parts = line.split(":")
+        if parts[0] == "uid":
+            idx += 1
+            uids.append({"uid": parts[9], "idx": idx})
+    return uids
+
+
 def filter_deletable_subkeys(created_ts: int, subkeys):
     if created_ts == BIP85_GPG_CREATED_TS and subkeys:
         max_idx = max(sk["idx"] for sk in subkeys)
@@ -4128,9 +4140,10 @@ class ToolsGPGMenuView(View):
 
 class ToolsGPGAdvancedMenuView(View):
     SUBKEY_OPS = ButtonOption("Subkey Operations")
+    UID_OPS = ButtonOption("Edit UIDs")
 
     def run(self):
-        button_data = [self.SUBKEY_OPS]
+        button_data = [self.SUBKEY_OPS, self.UID_OPS]
 
         selected_menu_num = self.run_screen(
             ButtonListScreen,
@@ -4141,7 +4154,9 @@ class ToolsGPGAdvancedMenuView(View):
 
         if selected_menu_num == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
-        return Destination(ToolsGPGSubkeyMenuView)
+        if button_data[selected_menu_num] == self.SUBKEY_OPS:
+            return Destination(ToolsGPGSubkeyMenuView)
+        return Destination(ToolsGPGUidMenuView)
 
 
 class ToolsGPGSubkeyMenuView(View):
@@ -4662,6 +4677,360 @@ class ToolsGPGExportSubkeySecretsView(View):
             self.run_screen(QRDisplayScreen, qr_encoder=qr_encoder)
             return Destination(ToolsGPGMenuView)
         return Destination(BackStackView)
+
+
+class ToolsGPGUidMenuView(View):
+    ADD_UID = ButtonOption("Add User ID")
+    EDIT_UID = ButtonOption("Edit User IDs")
+    REVOKE_UID = ButtonOption("Revoke User ID")
+    DELETE_UID = ButtonOption("Delete User ID")
+
+    def run(self):
+        button_data = [
+            self.ADD_UID,
+            self.EDIT_UID,
+            self.REVOKE_UID,
+            self.DELETE_UID,
+        ]
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Edit User IDs",
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        choice = button_data[selected]
+        if choice == self.ADD_UID:
+            return Destination(ToolsGPGAddUidView)
+        if choice == self.EDIT_UID:
+            return Destination(ToolsGPGEditUidView)
+        if choice == self.REVOKE_UID:
+            return Destination(ToolsGPGRevokeUidView)
+        return Destination(ToolsGPGDeleteUidView)
+
+
+class ToolsGPGAddUidView(View):
+    def run(self):
+        from subprocess import run
+        from seedsigner.gui.screens import (
+            ButtonListScreen,
+            LargeIconStatusScreen,
+            WarningScreen,
+            tools_screens,
+        )
+
+        result = run(["gpg", "--list-secret-keys", "--with-colons"], capture_output=True, text=True)
+        keys = parse_secret_key_list(result.stdout)
+
+        if not keys:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No private keys found",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        buttons = [ButtonOption(k["uid"] if k["uid"] else k["fpr"][-8:]) for k in keys]
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Select Key",
+            is_button_text_centered=False,
+            button_data=buttons,
+        )
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        fingerprint = keys[selected]["fpr"]
+
+        def prompt_text(title: str):
+            ret_dict = tools_screens.ToolsTextQRTextEntryScreen(textToEncode="", title=title).display()
+            if "is_back_button" in ret_dict:
+                return None
+            try:
+                import re
+
+                return bytes(
+                    re.sub(r"\\(?!u)", r"\\\\", ret_dict["textToEncode"]),
+                    encoding="raw_unicode_escape",
+                ).decode("unicode_escape")
+            except UnicodeDecodeError:
+                return ret_dict["textToEncode"]
+
+        name = prompt_text("Name")
+        if name is None:
+            return Destination(BackStackView)
+        email = prompt_text("Email")
+        if email is None:
+            return Destination(BackStackView)
+        uid_str = f"{name} <{email}>" if email else name
+
+        r = run(["gpg", "--batch", "--quick-add-uid", fingerprint, uid_str])
+        screen = LargeIconStatusScreen if r.returncode == 0 else WarningScreen
+        msg = "User ID added" if r.returncode == 0 else "Failed to add User ID"
+        self.run_screen(
+            screen,
+            title="Result",
+            status_headline=None,
+            text=msg,
+            show_back_button=False,
+            button_data=[ButtonOption("Done")],
+        )
+        return Destination(ToolsGPGMenuView)
+
+
+class ToolsGPGEditUidView(View):
+    def run(self):
+        from subprocess import run
+        from seedsigner.gui.screens import (
+            ButtonListScreen,
+            LargeIconStatusScreen,
+            WarningScreen,
+            tools_screens,
+        )
+
+        result = run(["gpg", "--list-secret-keys", "--with-colons"], capture_output=True, text=True)
+        keys = parse_secret_key_list(result.stdout)
+        if not keys:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No private keys found",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        buttons = [ButtonOption(k["uid"] if k["uid"] else k["fpr"][-8:]) for k in keys]
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Select Key",
+            is_button_text_centered=False,
+            button_data=buttons,
+        )
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        fingerprint = keys[selected]["fpr"]
+        result = run(["gpg", "--list-secret-keys", "--with-colons", fingerprint], capture_output=True, text=True)
+        uids = parse_uid_list(result.stdout)
+        if not uids:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No user IDs found",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        uid_buttons = [ButtonOption(u["uid"]) for u in uids]
+        sel = self.run_screen(
+            ButtonListScreen,
+            title="Select User ID",
+            is_button_text_centered=False,
+            button_data=uid_buttons,
+        )
+        if sel == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        old_uid = uids[sel]["uid"]
+
+        def prompt_text(title: str, default: str = ""):
+            ret_dict = tools_screens.ToolsTextQRTextEntryScreen(textToEncode=default, title=title).display()
+            if "is_back_button" in ret_dict:
+                return None
+            try:
+                import re
+
+                return bytes(
+                    re.sub(r"\\(?!u)", r"\\\\", ret_dict["textToEncode"]),
+                    encoding="raw_unicode_escape",
+                ).decode("unicode_escape")
+            except UnicodeDecodeError:
+                return ret_dict["textToEncode"]
+
+        name = prompt_text("Name")
+        if name is None:
+            return Destination(BackStackView)
+        email = prompt_text("Email")
+        if email is None:
+            return Destination(BackStackView)
+        new_uid = f"{name} <{email}>" if email else name
+
+        r = run(["gpg", "--batch", "--quick-add-uid", fingerprint, new_uid])
+        success = r.returncode == 0
+        if success:
+            run(["gpg", "--batch", "--quick-set-primary-uid", fingerprint, new_uid])
+            run(["gpg", "--batch", "--quick-revoke-uid", fingerprint, old_uid])
+        screen = LargeIconStatusScreen if success else WarningScreen
+        msg = "User ID updated" if success else "Failed to update User ID"
+        self.run_screen(
+            screen,
+            title="Result",
+            status_headline=None,
+            text=msg,
+            show_back_button=False,
+            button_data=[ButtonOption("Done")],
+        )
+        return Destination(ToolsGPGMenuView)
+
+
+class ToolsGPGRevokeUidView(View):
+    def run(self):
+        from subprocess import run
+        from seedsigner.gui.screens import (
+            ButtonListScreen,
+            LargeIconStatusScreen,
+            WarningScreen,
+        )
+
+        result = run(["gpg", "--list-secret-keys", "--with-colons"], capture_output=True, text=True)
+        keys = parse_secret_key_list(result.stdout)
+        if not keys:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No private keys found",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        buttons = [ButtonOption(k["uid"] if k["uid"] else k["fpr"][-8:]) for k in keys]
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Select Key",
+            is_button_text_centered=False,
+            button_data=buttons,
+        )
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        fingerprint = keys[selected]["fpr"]
+        result = run(["gpg", "--list-secret-keys", "--with-colons", fingerprint], capture_output=True, text=True)
+        uids = parse_uid_list(result.stdout)
+        if not uids:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No user IDs found",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        uid_buttons = [ButtonOption(u["uid"]) for u in uids]
+        sel = self.run_screen(
+            ButtonListScreen,
+            title="Revoke User ID",
+            is_button_text_centered=False,
+            button_data=uid_buttons,
+        )
+        if sel == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        uid = uids[sel]["uid"]
+
+        r = run(["gpg", "--batch", "--quick-revoke-uid", fingerprint, uid])
+        screen = LargeIconStatusScreen if r.returncode == 0 else WarningScreen
+        msg = "User ID revoked" if r.returncode == 0 else "Failed to revoke User ID"
+        self.run_screen(
+            screen,
+            title="Result",
+            status_headline=None,
+            text=msg,
+            show_back_button=False,
+            button_data=[ButtonOption("Done")],
+        )
+        return Destination(ToolsGPGMenuView)
+
+
+class ToolsGPGDeleteUidView(View):
+    def run(self):
+        from subprocess import run
+        from seedsigner.gui.screens import (
+            ButtonListScreen,
+            LargeIconStatusScreen,
+            WarningScreen,
+        )
+
+        ret = self.run_screen(
+            WarningScreen,
+            title="WARNING",
+            status_headline=None,
+            text="Revocation is almost always\npreferable to deleting.",
+            show_back_button=True,
+            button_data=[ButtonOption("I Understand")],
+        )
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        result = run(["gpg", "--list-secret-keys", "--with-colons"], capture_output=True, text=True)
+        keys = parse_secret_key_list(result.stdout)
+        if not keys:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No private keys found",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        buttons = [ButtonOption(k["uid"] if k["uid"] else k["fpr"][-8:]) for k in keys]
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Select Key",
+            is_button_text_centered=False,
+            button_data=buttons,
+        )
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        fingerprint = keys[selected]["fpr"]
+        result = run(["gpg", "--list-secret-keys", "--with-colons", fingerprint], capture_output=True, text=True)
+        uids = parse_uid_list(result.stdout)
+        if not uids:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No user IDs found",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        uid_buttons = [ButtonOption(u["uid"]) for u in uids]
+        sel = self.run_screen(
+            ButtonListScreen,
+            title="Delete User ID",
+            is_button_text_centered=False,
+            button_data=uid_buttons,
+        )
+        if sel == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        idx = uids[sel]["idx"]
+
+        r = gpg_edit_uid(fingerprint, idx, "deluid")
+        screen = LargeIconStatusScreen if r.returncode == 0 else WarningScreen
+        msg = "User ID deleted" if r.returncode == 0 else "Failed to delete User ID"
+        self.run_screen(
+            screen,
+            title="Result",
+            status_headline=None,
+            text=msg,
+            show_back_button=False,
+            button_data=[ButtonOption("Done")],
+        )
+        return Destination(ToolsGPGMenuView)
 
 
 class ToolsGPGFileOpsMenuView(View):
@@ -7440,6 +7809,26 @@ def gpg_edit_subkey(fingerprint: str, idx: int, action: str):
         script = f"key {idx}\nrevkey\ny\n0\n\ny\nsave\n"
     else:
         script = f"key {idx}\n{action}\ny\nsave\n"
+    return subprocess.run(cmd, input=script, text=True)
+
+
+def gpg_edit_uid(fingerprint: str, idx: int, action: str):
+    cmd = [
+        "gpg",
+        "--batch",
+        "--yes",
+        "--pinentry-mode",
+        "loopback",
+        "--passphrase",
+        "",
+        "--command-fd",
+        "0",
+        "--status-fd",
+        "2",
+        "--edit-key",
+        fingerprint,
+    ]
+    script = f"uid {idx}\n{action}\ny\nsave\n"
     return subprocess.run(cmd, input=script, text=True)
 
 

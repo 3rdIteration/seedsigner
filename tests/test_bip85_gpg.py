@@ -10,6 +10,7 @@ from seedsigner.views.tools_views import (
     _bip85_subkey_specs,
     parse_secret_key_list,
     parse_subkey_list,
+    parse_uid_list,
     filter_deletable_subkeys,
     BIP85_GPG_CREATED_TS,
     _select_import_algo,
@@ -154,6 +155,22 @@ def test_parse_subkey_list_extracts_fingerprint():
     assert subs[0]["curve"] == ""
     assert subs[1]["algo"] == "19"
     assert subs[1]["curve"] == "nistp256"
+
+
+def test_parse_uid_list_extracts_uids():
+    output = "\n".join(
+        [
+            "sec:-:0:0:KEYID:::0::::::23::0:",
+            "fpr:::::::::PRIMARYFPR:",
+            "uid:::::::::User One::",
+            "uid:::::::::User Two::",
+        ]
+    )
+    uids = parse_uid_list(output)
+    assert uids[0]["uid"] == "User One"
+    assert uids[0]["idx"] == 1
+    assert uids[1]["uid"] == "User Two"
+    assert uids[1]["idx"] == 2
 
 
 def test_filter_deletable_subkeys_bip85_only_latest():
