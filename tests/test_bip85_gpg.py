@@ -319,3 +319,68 @@ def test_gpg_export_selected_subkeys_filters(monkeypatch):
         "BBBBBBBBBBBBBBBB!",
         "CCCCCCCCCCCCCCCC!",
     ]
+
+
+def test_add_subkeys_auto_bip85_index(monkeypatch):
+    import seedsigner.views.tools_views as tools_views
+
+    # Mock gpg list outputs: first call lists one BIP85 key, second shows three subkeys
+    def fake_run(cmd, *args, **kwargs):
+        class R:
+            returncode = 0
+
+            def __init__(self, stdout=""):
+                self.stdout = stdout
+
+        if cmd[:3] == ["gpg", "--list-secret-keys", "--with-colons"]:
+            if len(cmd) == 3:
+                return R(
+                    f"sec:-:0:0:KEYID:{tools_views.BIP85_GPG_CREATED_TS}:0:::::::\n"
+                    "fpr:::::::::FPR:\n"
+                )
+            else:
+                return R("ssb:-:0:0:::0:::::::\n" * 3)
+        return R()
+
+    import subprocess
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    captured = {}
+
+    def fake_bip85_add_subkeys(fpr, alg, key_index, start_index):
+        captured["key_index"] = key_index
+        captured["start_index"] = start_index
+        return True
+
+    monkeypatch.setattr(tools_views, "bip85_add_subkeys", fake_bip85_add_subkeys)
+
+    class DummyLoading:
+        def __init__(self, text=""):
+            pass
+
+        def start(self):
+            pass
+
+        def stop(self):
+            pass
+
+    monkeypatch.setattr(
+        "seedsigner.gui.screens.screen.LoadingScreenThread", DummyLoading
+    )
+
+    # Simulate selecting the only key and NIST P-256 type
+    def fake_run_screen(self, screen, **kwargs):
+        if kwargs.get("title") == "Select Key":
+            return 0
+        if kwargs.get("title") == "Key Type":
+            return 0
+        return 0
+
+    monkeypatch.setattr(tools_views.ToolsGPGAddSubkeysView, "run_screen", fake_run_screen)
+
+    view = object.__new__(tools_views.ToolsGPGAddSubkeysView)
+    view.controller = type("C", (), {"storage": type("S", (), {"seeds": [object()]})()})()
+    tools_views.ToolsGPGAddSubkeysView.run(view)
+    assert captured["key_index"] == 1
+    assert captured["start_index"] == 3

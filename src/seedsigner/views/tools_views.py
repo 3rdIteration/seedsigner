@@ -6723,7 +6723,7 @@ def bip85_add_subkeys(fingerprint: str, alg: str, key_index: int, start_index: i
     subkey_specs = _bip85_subkey_specs(alg)
 
     for offset, pkalg, usage, *alg_name in subkey_specs:
-        sub_index = start_index + offset
+        sub_index = (start_index % 3) + offset
         subpkt = PrivSubKeyV4()
         subpkt.pkalg = pkalg
         if alg == "secp256k1":
@@ -7300,26 +7300,20 @@ class ToolsGPGAddSubkeysView(View):
             "secp256k1",
             "ed25519",
         ][selected_type]
-        bip85 = False
-        key_index = None
-        if len(self.controller.storage.seeds) > 0:
-            origin_buttons = [ButtonOption("Random"), ButtonOption("BIP85")]
-            origin_choice = self.run_screen(
-                ButtonListScreen,
-                title="Subkey Source",
-                is_button_text_centered=False,
-                button_data=origin_buttons,
-            )
-            if origin_choice == RET_CODE__BACK_BUTTON:
-                return Destination(BackStackView)
-            if origin_buttons[origin_choice].button_label == "BIP85":
-                from seedsigner.gui.screens import seed_screens
 
-                ret = seed_screens.SeedBIP85SelectChildIndexScreen(title="Key Index").display()
-                if ret == RET_CODE__BACK_BUTTON:
-                    return Destination(BackStackView)
-                key_index = int(ret)
-                bip85 = True
+        created_ts = keys[selected]["created"]
+        bip85 = created_ts == BIP85_GPG_CREATED_TS
+        key_index = start_index // 3 if bip85 else None
+        if bip85 and len(self.controller.storage.seeds) == 0:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="Load a seed before using BIP85",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
 
         self.loading_screen = LoadingScreenThread(
             text="Generating subkeys\n\n\n\n\n(This takes a while)"
