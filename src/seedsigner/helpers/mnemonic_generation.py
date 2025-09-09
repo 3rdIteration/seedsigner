@@ -178,7 +178,6 @@ def _shannon_entropy(data: bytes | str) -> float:
     counts = Counter(data)
     length = len(data)
     shannon_entropy = -sum((count / length) * math.log2(count / length) for count in counts.values())
-    print("Shannon Entropy:", shannon_entropy)
     return shannon_entropy
 
 

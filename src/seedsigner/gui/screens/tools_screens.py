@@ -48,6 +48,8 @@ class ToolsImageEntropyLivePreviewScreen(BaseScreen):
         preview_images = []
         max_entropy_frames = 50
         instructions_font = Fonts.get_font(GUIConstants.get_body_font_name(), GUIConstants.get_button_font_size())
+        last_entropy_check = 0
+        entropy_val = 0.0
 
         while True:
             if self.hw_inputs.check_for_low(HardwareButtonsConstants.KEY_LEFT):
@@ -89,8 +91,10 @@ class ToolsImageEntropyLivePreviewScreen(BaseScreen):
 
                 self.renderer.canvas.paste(frame.crop(box=box))
 
-                # Calculate and display Shannon entropy indicator
-                entropy_val = mnemonic_generation._shannon_entropy(frame.tobytes())
+                # Calculate and display Shannon entropy indicator (throttled to ~1s)
+                if time.time() - last_entropy_check >= 1:
+                    entropy_val = mnemonic_generation._shannon_entropy(frame.tobytes())
+                    last_entropy_check = time.time()
                 entropy_text = f"{entropy_val:.2f}"
                 indicator_size = 10
                 text_x = GUIConstants.EDGE_PADDING
