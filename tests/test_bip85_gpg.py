@@ -1,3 +1,4 @@
+import pytest
 from embit import bip32, bip85
 from seedsigner.models.seed import Seed
 from seedsigner.views.tools_views import (
@@ -6,6 +7,12 @@ from seedsigner.views.tools_views import (
     bip85_p256_from_root,
     bip85_rsa_from_root,
     bip85_secp256k1_from_root,
+    _bip85_subkey_specs,
+    parse_secret_key_list,
+    parse_subkey_list,
+    filter_deletable_subkeys,
+    BIP85_GPG_CREATED_TS,
+    _select_import_algo,
 )
 from seedsigner.helpers.bip85_drng import BIP85DRNG
 
@@ -92,3 +99,399 @@ def test_bip85_ed25519_deterministic():
     assert int(key.s) == int(
         "7b947d4d726e678ce219948c837221b6712cdf74862b453921442d038f55040c", 16
     )
+
+
+def test_bip85_ed25519_sub_index_progression():
+    seed = Seed(mnemonic=MNEMONIC)
+    root = bip32.HDKey.from_seed(seed.seed_bytes)
+    first = bip85_ed25519_from_root(root, 0, 0, "EdDSA")
+    later = bip85_ed25519_from_root(root, 0, 3, "EdDSA")
+    repeat = bip85_ed25519_from_root(root, 0, 3, "EdDSA")
+    assert int(first.s) != int(later.s)
+    assert int(later.s) == int(repeat.s)
+
+
+def test_parse_secret_key_list_primary_fingerprint_only():
+    output = "\n".join(
+        [
+            "sec:-:0:0:::0::::::23::0:",
+            "fpr:::::::::PRIMARYFPR:",
+            "uid::::Test User:::::::",
+            "ssb:-:0:0:::0::::::23::0:",
+            "fpr:::::::::SUBKEYFPR:",
+        ]
+    )
+    keys = parse_secret_key_list(output)
+    assert keys[0]["fpr"] == "PRIMARYFPR"
+
+
+def test_parse_secret_key_list_includes_created():
+    output = "\n".join(
+        [
+            "sec:-:0:0:KEYID:1231006505:0::::::23::0:",
+            "fpr:::::::::PRIMARYFPR:",
+        ]
+    )
+    keys = parse_secret_key_list(output)
+    assert keys[0]["created"] == 1231006505
+
+
+def test_parse_subkey_list_extracts_fingerprint():
+    output = "\n".join(
+        [
+            "ssb:-:0:0:::0::::::s::",
+            "fpr:::::::::SUBFPR1:",
+            "ssb:-:19:0:::0::::::e::::nistp256:",
+            "fpr:::::::::SUBFPR2:",
+        ]
+    )
+    subs = parse_subkey_list(output)
+    assert subs[0]["fpr"] == "SUBFPR1"
+    assert subs[1]["fpr"] == "SUBFPR2"
+    assert subs[0]["idx"] == 1
+    assert subs[1]["idx"] == 2
+    assert subs[0]["algo"] == "0"
+    assert subs[0]["curve"] == ""
+    assert subs[1]["algo"] == "19"
+    assert subs[1]["curve"] == "nistp256"
+
+
+def test_filter_deletable_subkeys_bip85_only_latest():
+    subs = [
+        {"fpr": "A", "caps": "e", "idx": 1},
+        {"fpr": "B", "caps": "s", "idx": 2},
+    ]
+    filtered = filter_deletable_subkeys(BIP85_GPG_CREATED_TS, subs)
+    assert len(filtered) == 1 and filtered[0]["idx"] == 2
+    filtered2 = filter_deletable_subkeys(0, subs)
+    assert len(filtered2) == 2
+
+
+def test_bip85_subkey_specs_include_sign_for_auth():
+    from pgpy.constants import KeyFlags
+
+    specs = _bip85_subkey_specs("ed25519")
+    auth_flags = specs[1][2]
+    assert KeyFlags.Authentication in auth_flags
+    assert KeyFlags.Sign in auth_flags
+
+
+def test_select_import_algo_uses_selected_subkeys():
+    subkeys = [
+        {"fpr": "A", "algo": "1", "curve": ""},
+        {"fpr": "B", "algo": "19", "curve": "nistp256"},
+    ]
+    algo, curve = _select_import_algo("1", "", subkeys, ["B"])
+    assert algo == "19" and curve == "nistp256"
+
+
+def test_select_import_algo_mixed_types_error():
+    subkeys = [
+        {"fpr": "A", "algo": "1", "curve": ""},
+        {"fpr": "B", "algo": "19", "curve": "nistp256"},
+    ]
+    with pytest.raises(ValueError):
+        _select_import_algo("1", "", subkeys, ["A", "B"])
+
+
+def test_gpg_quick_addkey_uses_loopback(monkeypatch):
+    from seedsigner.views import tools_views
+
+    captured = {}
+
+    def fake_run(cmd, *args, **kwargs):
+        captured["cmd"] = cmd
+
+        class Dummy:
+            returncode = 0
+
+        return Dummy()
+
+    monkeypatch.setattr(tools_views.subprocess, "run", fake_run)
+    tools_views.gpg_quick_addkey("FPR", "rsa2048", "encrypt")
+    assert captured["cmd"][:6] == [
+        "gpg",
+        "--batch",
+        "--pinentry-mode",
+        "loopback",
+        "--passphrase",
+        "",
+    ]
+    assert captured["cmd"][6:] == [
+        "--quick-addkey",
+        "FPR",
+        "rsa2048",
+        "encrypt",
+    ]
+
+
+def test_gpg_edit_subkey_invokes_edit(monkeypatch):
+    from seedsigner.views import tools_views
+
+    captured = {}
+
+    def fake_run(cmd, *args, **kwargs):
+        captured["cmd"] = cmd
+        captured["input"] = kwargs.get("input")
+        class Dummy:
+            returncode = 0
+        return Dummy()
+
+    monkeypatch.setattr(tools_views.subprocess, "run", fake_run)
+    tools_views.gpg_edit_subkey("FPR", 2, "revkey")
+    assert captured["cmd"] == [
+        "gpg",
+        "--batch",
+        "--yes",
+        "--pinentry-mode",
+        "loopback",
+        "--passphrase",
+        "",
+        "--command-fd",
+        "0",
+        "--status-fd",
+        "2",
+        "--edit-key",
+        "FPR",
+    ]
+    assert (
+        captured["input"]
+        == "key 2\nrevkey\ny\n0\n\ny\nsave\n"
+    )
+
+
+def test_loose_add_subkeys_uses_pgpy(monkeypatch):
+    from types import SimpleNamespace
+    from seedsigner.views import tools_views
+
+    new_calls = []
+    state = {"add": 0, "unlock": 0}
+
+    def fake_new(pkalg, curve):
+        new_calls.append((pkalg, curve))
+        return SimpleNamespace(_key=SimpleNamespace(created=None, update_hlen=lambda: None))
+
+    from contextlib import contextmanager
+
+    class MainKey:
+        def __init__(self):
+            self._key = SimpleNamespace(created=None)
+            self.expires_at = None
+            self.is_protected = True
+
+        def unlock(self, passphrase):
+            state["unlock"] += 1
+
+            @contextmanager
+            def cm():
+                yield
+
+            return cm()
+
+        def add_subkey(self, subkey, **kwargs):
+            state["add"] += 1
+
+    def fake_from_blob(data):
+        return MainKey(), None
+
+    import pgpy
+
+    monkeypatch.setattr(
+        pgpy,
+        "PGPKey",
+        SimpleNamespace(new=fake_new, from_blob=fake_from_blob),
+    )
+
+    def fake_run(cmd, *args, **kwargs):
+        class R:
+            returncode = 0
+            stdout = ""
+
+        return R()
+
+    monkeypatch.setattr("seedsigner.views.tools_views.subprocess.run", fake_run)
+
+    assert tools_views.loose_add_subkeys("FPR", "secp256k1")
+    assert len(new_calls) == 3
+    assert state["add"] == 3
+    assert state["unlock"] == 1
+
+
+def test_gpg_export_selected_subkeys_filters(monkeypatch):
+    from seedsigner.views import tools_views
+
+    captured = {}
+
+    def fake_run(cmd, *args, **kwargs):
+        captured["cmd"] = cmd
+        class R:
+            returncode = 0
+            stdout = "data"
+
+        return R()
+
+    monkeypatch.setattr(tools_views.subprocess, "run", fake_run)
+    tools_views.gpg_export_selected_subkeys("FPR", ["A" * 40, "B" * 40, "C" * 40])
+    cmd = captured["cmd"]
+    assert cmd == [
+        "gpg",
+        "--armor",
+        "--export-options=export-minimal",
+        "--export-secret-subkeys",
+        "FPR",
+        "AAAAAAAAAAAAAAAA!",
+        "BBBBBBBBBBBBBBBB!",
+        "CCCCCCCCCCCCCCCC!",
+    ]
+
+
+def test_add_subkeys_auto_bip85_index(monkeypatch):
+    import seedsigner.views.tools_views as tools_views
+
+    # Mock gpg list outputs: first call lists one BIP85 key, second shows three subkeys
+    def fake_run(cmd, *args, **kwargs):
+        class R:
+            returncode = 0
+
+            def __init__(self, stdout=""):
+                self.stdout = stdout
+
+        if cmd[:3] == ["gpg", "--list-secret-keys", "--with-colons"]:
+            if len(cmd) == 3:
+                return R(
+                    f"sec:-:0:0:KEYID:{tools_views.BIP85_GPG_CREATED_TS}:0:::::::\n"
+                    "fpr:::::::::FPR:\n"
+                )
+            else:
+                return R("ssb:-:0:0:::0:::::::\n" * 3)
+        return R()
+
+    import subprocess
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    captured = {}
+
+    def fake_bip85_add_subkeys(fpr, alg, key_index, start_index):
+        captured["key_index"] = key_index
+        captured["start_index"] = start_index
+        return True
+
+    monkeypatch.setattr(tools_views, "bip85_add_subkeys", fake_bip85_add_subkeys)
+
+    class DummyLoading:
+        def __init__(self, text=""):
+            pass
+
+        def start(self):
+            pass
+
+        def stop(self):
+            pass
+
+    monkeypatch.setattr(
+        "seedsigner.gui.screens.screen.LoadingScreenThread", DummyLoading
+    )
+
+    # Simulate selecting the only key and NIST P-256 type
+    def fake_run_screen(self, screen, **kwargs):
+        if kwargs.get("title") == "Select Key":
+            return 0
+        if kwargs.get("title") == "Key Type":
+            return 0
+        return 0
+
+    monkeypatch.setattr(tools_views.ToolsGPGAddSubkeysView, "run_screen", fake_run_screen)
+
+    view = object.__new__(tools_views.ToolsGPGAddSubkeysView)
+    view.controller = type("C", (), {"storage": type("S", (), {"seeds": [object()]})()})()
+    tools_views.ToolsGPGAddSubkeysView.run(view)
+    assert captured["key_index"] == 1
+    assert captured["start_index"] == 3
+
+
+def test_smartpgp_import_filters_subkeys(monkeypatch):
+    import types, sys, datetime as dt
+    from pgpy.constants import KeyFlags, EllipticCurveOID
+
+    # Stub out the smartcard modules to avoid dependency on actual hardware libs
+    sc = types.ModuleType("smartcard")
+    sc_exc = types.ModuleType("smartcard.Exceptions")
+    class NoCardException(Exception):
+        pass
+    sc_exc.NoCardException = NoCardException
+    sc_sys = types.ModuleType("smartcard.System")
+    sc_sys.readers = lambda: []
+    sc_util = types.ModuleType("smartcard.util")
+    sc_util.toHexString = lambda data: ""
+    sc.Exceptions = sc_exc
+    sc.System = sc_sys
+    sc.util = sc_util
+    sys.modules.update({
+        "smartcard": sc,
+        "smartcard.Exceptions": sc_exc,
+        "smartcard.System": sc_sys,
+        "smartcard.util": sc_util,
+    })
+
+    from seedsigner.helpers import smartpgp_import
+
+    captured = {}
+
+    def fake_run(cmd, capture_output=True, check=True):
+        captured["cmd"] = cmd
+        class Res:
+            stdout = b"dummy"
+        return Res()
+
+    monkeypatch.setattr(smartpgp_import, "run", fake_run)
+
+    sk_fpr = "F" * 40
+
+    class KM:
+        oid = EllipticCurveOID.NIST_P256
+        s = 1
+        class P:
+            x = 1
+            y = 1
+        p = P()
+
+    class Sub:
+        def __init__(self):
+            self.key_flags = {KeyFlags.Sign}
+            self.fingerprint = sk_fpr
+            self.created = dt.datetime(2020, 1, 1)
+            self._key = type("K", (), {"keymaterial": KM})()
+
+    class Key:
+        def __init__(self):
+            self.subkeys = {"a": Sub()}
+
+    monkeypatch.setattr(smartpgp_import.pgpy.PGPKey, "from_blob", lambda data: (Key(), None))
+
+    class DummyCtx:
+        def __init__(self):
+            self.admin_pin = None
+        def connect(self):
+            pass
+        def verify_admin_pin(self):
+            pass
+        def cmd_switch_crypto(self, curve, role):
+            pass
+        def cmd_put_key(self, role, pub, priv):
+            pass
+        def cmd_put_data(self, tag, value):
+            pass
+
+    ctx_calls = {}
+    class Ctx(DummyCtx):
+        def cmd_put_key(self, role, pub, priv):
+            ctx_calls["role"] = role
+    monkeypatch.setattr(smartpgp_import, "CardConnectionContext", lambda: Ctx())
+
+    assert smartpgp_import.import_keys_with_smartpgp("PRIFPR", "1234", {"s": sk_fpr})
+    cmd = captured["cmd"]
+    assert "--export-secret-subkeys" in cmd
+    assert "--export-secret-key" not in cmd
+    assert cmd[-1] == "FFFFFFFFFFFFFFFF!"
+    assert ctx_calls["role"] == "sig"

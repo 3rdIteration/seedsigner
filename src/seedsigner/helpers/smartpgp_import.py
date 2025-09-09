@@ -1,6 +1,8 @@
 import logging
 from subprocess import run
 
+from typing import Iterable, Optional
+
 import pgpy
 from pgpy.constants import KeyFlags, EllipticCurveOID
 
@@ -18,7 +20,11 @@ _curve_map = {
 }
 
 
-def import_keys_with_smartpgp(fingerprint: str, admin_pin: str) -> bool:
+def import_keys_with_smartpgp(
+    fingerprint: str,
+    admin_pin: str,
+    subkeys: Optional[Iterable[str] | dict[str, str]] = None,
+) -> bool:
     """Fallback key import using the bundled SmartPGP module.
 
     Parameters
@@ -27,9 +33,27 @@ def import_keys_with_smartpgp(fingerprint: str, admin_pin: str) -> bool:
         Fingerprint of the key to import.
     admin_pin: str
         Admin PIN for the OpenPGP card.
+    subkeys: Iterable[str] | dict[str, str], optional
+        Iterable or mapping of subkey fingerprints to include.  When provided,
+        only those subkeys are exported and imported; otherwise the entire key
+        is used.  When a mapping is supplied, the keys should be ``'s'``,
+        ``'e'``, or ``'a'`` to denote the desired card slot.
     """
     try:
-        res = run(['gpg', '--export-secret-key', fingerprint], capture_output=True, check=True)
+        if subkeys:
+            fprs = subkeys.values() if isinstance(subkeys, dict) else subkeys
+            keyids = [f[-16:] + "!" for f in fprs]
+            cmd = [
+                'gpg',
+                '--armor',
+                '--export-options=export-minimal',
+                '--export-secret-subkeys',
+                fingerprint,
+                *keyids,
+            ]
+        else:
+            cmd = ['gpg', '--export-secret-key', fingerprint]
+        res = run(cmd, capture_output=True, check=True)
         key, _ = pgpy.PGPKey.from_blob(res.stdout)
     except Exception as e:
         logger.exception('Failed to export key for SmartPGP import: %s', e)
@@ -48,10 +72,32 @@ def import_keys_with_smartpgp(fingerprint: str, admin_pin: str) -> bool:
     # **sub**keys rather than the primary certification key.  Importing the
     # primary key can confuse GnuPG's card interface.  Restrict the import to
     # subkeys when they exist; fall back to the primary key only if no subkeys
-    # are present.
+    # are present.  If a list of desired subkey fingerprints was supplied,
+    # further trim the set to only those subkeys.
     all_keys = list(key.subkeys.values())
+    if subkeys:
+        if isinstance(subkeys, dict):
+            selected = []
+            for flag in ('s', 'e', 'a'):
+                fpr = subkeys.get(flag)
+                if not fpr:
+                    continue
+                for k in all_keys:
+                    if str(k.fingerprint).replace(' ', '').upper() == fpr.replace(' ', '').upper():
+                        selected.append((flag, k))
+                        break
+            all_keys = selected
+        else:
+            wanted = {f.replace(' ', '').upper() for f in subkeys}
+            all_keys = [
+                (None, k)
+                for k in all_keys
+                if str(k.fingerprint).replace(' ', '').upper() in wanted
+            ]
+    else:
+        all_keys = [(None, k) for k in all_keys]
     if not all_keys:
-        all_keys = [key]
+        all_keys = [(None, key)]
     fp_tags = {'sig': 0xC7, 'dec': 0xC8, 'auth': 0xC9}
     # Key generation timestamps are stored in individual DOs for each key
     # slot.  The previous implementation accidentally wrote the signature's
@@ -69,22 +115,27 @@ def import_keys_with_smartpgp(fingerprint: str, admin_pin: str) -> bool:
         'brainpoolP512r1': 64,
     }
 
-    for k in all_keys:
-        try:
-            flags = set(k.key_flags)  # pgpy <0.6
-        except AttributeError:
-            # pgpy 0.6 dropped the ``key_flags`` attribute; rely on the internal
-            # helper instead so we still detect the proper key usages
-            flags = set(k._get_key_flags())
-        role = None
-        if KeyFlags.Sign in flags:
-            role = 'sig'
-        elif KeyFlags.EncryptCommunications in flags or KeyFlags.EncryptStorage in flags:
-            role = 'dec'
-        elif KeyFlags.Authentication in flags:
-            role = 'auth'
-        if role is None:
-            continue
+    role_map = {'s': 'sig', 'e': 'dec', 'a': 'auth'}
+    for flag, k in all_keys:
+        if flag:
+            role = role_map.get(flag)
+        else:
+            try:
+                flags = set(k.key_flags)  # pgpy <0.6
+            except AttributeError:
+                flags = set(k._get_key_flags())
+            role = None
+            if KeyFlags.Sign in flags:
+                role = 'sig'
+            elif (
+                KeyFlags.EncryptCommunications in flags
+                or KeyFlags.EncryptStorage in flags
+            ):
+                role = 'dec'
+            elif KeyFlags.Authentication in flags:
+                role = 'auth'
+            if role is None:
+                continue
         km = k._key.keymaterial
         curve_name = _curve_map.get(km.oid)
         if not curve_name:
