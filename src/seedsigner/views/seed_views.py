@@ -122,7 +122,7 @@ class SeedSelectSeedView(View):
         for seed in seeds:
             button_str = seed.get_fingerprint(self.settings.get_value(SettingsConstants.SETTING__NETWORK))
             button_data.append(ButtonOption(button_str, SeedSignerIconConstants.FINGERPRINT, icon_color="blue"))
-        if self.flow == Controller.FLOW__SIGN_MESSAGE:
+        if self.flow in [Controller.FLOW__SIGN_MESSAGE, Controller.FLOW__VERIFY_SINGLESIG_ADDR]:
             button_data.append(self.SATOCHIP)
 
         button_data.append(self.SCAN_SEED)
@@ -164,6 +164,10 @@ class SeedSelectSeedView(View):
                 return Destination(SeedSignMessageConfirmMessageView)
 
         self.controller.resume_main_flow = self.flow
+
+        if self.flow == Controller.FLOW__VERIFY_SINGLESIG_ADDR and button_data[selected_menu_num] == self.SATOCHIP:
+            from seedsigner.views.tools_views import SatochipLoadDescriptorScriptTypeView
+            return Destination(SatochipLoadDescriptorScriptTypeView)
 
         if self.flow == Controller.FLOW__SIGN_MESSAGE and button_data[selected_menu_num] == self.SATOCHIP:
             connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satochip"])

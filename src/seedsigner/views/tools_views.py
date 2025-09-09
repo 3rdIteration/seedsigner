@@ -3245,6 +3245,10 @@ class SatochipLoadDescriptorDetailsView(View):
         if self.controller.resume_main_flow == Controller.FLOW__ADDRESS_EXPLORER:
             from seedsigner.views.seed_views import MultisigWalletDescriptorView
             return Destination(MultisigWalletDescriptorView, skip_current_view=True)
+        elif self.controller.resume_main_flow == Controller.FLOW__VERIFY_SINGLESIG_ADDR:
+            from seedsigner.views.seed_views import SeedAddressVerificationView
+            self.controller.resume_main_flow = None
+            return Destination(SeedAddressVerificationView, skip_current_view=True)
 
         self.run_screen(
             LargeIconStatusScreen,
