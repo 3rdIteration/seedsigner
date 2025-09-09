@@ -4014,7 +4014,8 @@ def parse_secret_key_list(colon_output: str):
     for line in colon_output.splitlines():
         parts = line.split(":")
         if parts[0] == "sec":
-            cur = {"fpr": None, "uid": None}
+            created = int(parts[5]) if len(parts) > 5 and parts[5] else None
+            cur = {"fpr": None, "uid": None, "created": created}
             keys.append(cur)
         elif parts[0] == "fpr" and cur is not None and cur.get("fpr") is None:
             cur["fpr"] = parts[9]
@@ -4036,6 +4037,16 @@ def parse_subkey_list(colon_output: str):
             subkeys.append(cur)
         elif parts[0] == "fpr" and cur is not None and cur.get("fpr") is None:
             cur["fpr"] = parts[9]
+    return subkeys
+
+
+BIP85_GPG_CREATED_TS = 1231006505
+
+
+def filter_deletable_subkeys(created_ts: int, subkeys):
+    if created_ts == BIP85_GPG_CREATED_TS and subkeys:
+        max_idx = max(sk["idx"] for sk in subkeys)
+        return [sk for sk in subkeys if sk["idx"] == max_idx]
     return subkeys
 
 
@@ -4230,6 +4241,17 @@ class ToolsGPGDeleteSubkeysView(View):
         from subprocess import run
         from seedsigner.gui.screens import ButtonListScreen, LargeIconStatusScreen, WarningScreen
 
+        ret = self.run_screen(
+            WarningScreen,
+            title="WARNING",
+            status_headline=None,
+            text="Revoking subkeys is usually preferred\nover deleting them.",
+            show_back_button=True,
+            button_data=[ButtonOption("I Understand")],
+        )
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
         result = run(["gpg", "--list-secret-keys", "--with-colons"], capture_output=True, text=True)
         keys = parse_secret_key_list(result.stdout)
         if not keys:
@@ -4254,6 +4276,7 @@ class ToolsGPGDeleteSubkeysView(View):
             return Destination(BackStackView)
 
         fingerprint = keys[selected]["fpr"]
+        created_ts = keys[selected]["created"]
         result = run([
             "gpg",
             "--list-secret-keys",
@@ -4261,6 +4284,7 @@ class ToolsGPGDeleteSubkeysView(View):
             fingerprint,
         ], capture_output=True, text=True)
         subkeys = parse_subkey_list(result.stdout)
+        subkeys = filter_deletable_subkeys(created_ts, subkeys)
         if not subkeys:
             self.run_screen(
                 WarningScreen,
@@ -4302,6 +4326,7 @@ class ToolsGPGDeleteSubkeysView(View):
                 fingerprint,
             ], capture_output=True, text=True)
             subkeys = parse_subkey_list(result.stdout)
+            subkeys = filter_deletable_subkeys(created_ts, subkeys)
         return Destination(ToolsGPGMenuView)
 
 

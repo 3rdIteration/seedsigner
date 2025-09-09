@@ -9,6 +9,8 @@ from seedsigner.views.tools_views import (
     _bip85_subkey_specs,
     parse_secret_key_list,
     parse_subkey_list,
+    filter_deletable_subkeys,
+    BIP85_GPG_CREATED_TS,
 )
 from seedsigner.helpers.bip85_drng import BIP85DRNG
 
@@ -121,6 +123,17 @@ def test_parse_secret_key_list_primary_fingerprint_only():
     assert keys[0]["fpr"] == "PRIMARYFPR"
 
 
+def test_parse_secret_key_list_includes_created():
+    output = "\n".join(
+        [
+            "sec:-:0:0:KEYID:1231006505:0::::::23::0:",
+            "fpr:::::::::PRIMARYFPR:",
+        ]
+    )
+    keys = parse_secret_key_list(output)
+    assert keys[0]["created"] == 1231006505
+
+
 def test_parse_subkey_list_extracts_fingerprint():
     output = "\n".join(
         [
@@ -135,6 +148,17 @@ def test_parse_subkey_list_extracts_fingerprint():
     assert subs[1]["fpr"] == "SUBFPR2"
     assert subs[0]["idx"] == 1
     assert subs[1]["idx"] == 2
+
+
+def test_filter_deletable_subkeys_bip85_only_latest():
+    subs = [
+        {"fpr": "A", "caps": "e", "idx": 1},
+        {"fpr": "B", "caps": "s", "idx": 2},
+    ]
+    filtered = filter_deletable_subkeys(BIP85_GPG_CREATED_TS, subs)
+    assert len(filtered) == 1 and filtered[0]["idx"] == 2
+    filtered2 = filter_deletable_subkeys(0, subs)
+    assert len(filtered2) == 2
 
 
 def test_bip85_subkey_specs_include_sign_for_auth():
