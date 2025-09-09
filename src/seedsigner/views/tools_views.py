@@ -4140,7 +4140,7 @@ class ToolsGPGMenuView(View):
 
 class ToolsGPGAdvancedMenuView(View):
     SUBKEY_OPS = ButtonOption("Subkey Operations")
-    UID_OPS = ButtonOption("Edit UIDs")
+    UID_OPS = ButtonOption("User ID Operations")
 
     def run(self):
         button_data = [self.SUBKEY_OPS, self.UID_OPS]
@@ -4694,7 +4694,7 @@ class ToolsGPGUidMenuView(View):
         ]
         selected = self.run_screen(
             ButtonListScreen,
-            title="Edit User IDs",
+            title="User ID Operations",
             is_button_text_centered=False,
             button_data=button_data,
         )
