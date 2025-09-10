@@ -6,6 +6,7 @@ Entries marked "(SeedSigner official)" originate from the upstream project, whil
 
 ## Unreleased - SS0.8.6+Satochip+Earthdiver-B4 (smartcard fork)
 - Randomized dummy Satochip signing requests (0-8) and optional extra per-input signatures with random selection among them to reduce potential nonce leakage
+- Enforce 5-second timeout for each Satochip signing request
 - Deterministic BIP85 GPG key derivation with configurable name, email, expiration (defaulting to the end of 2029 for RSA 2048 keys and the end of 2035 for other key types), and key type (NIST P-256, Brainpool P-256, RSA 2048, RSA 3072, RSA 4096, or secp256k1); metadata such as expiration, deprecation, and end-of-use dates can be modified after import
 - RSA key selections warn that generation on a Pi Zero may take approximately 3 minutes (2048), 15 minutes (3072), or an hour (4096) and recommend NIST or Brainpool keys as faster, smaller alternatives
 - MicroSD and GPG tools now display seed-loaded warnings only when opening file pickers

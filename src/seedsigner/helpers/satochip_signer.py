@@ -4,6 +4,7 @@ from binascii import b2a_base64
 import logging
 import os
 import random
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
 
 from embit.ec import PublicKey
 from embit.psbt import PSBT
@@ -17,6 +18,15 @@ except ImportError:  # pragma: no cover - support older embit releases
     HARDENED_INDEX = 0x80000000
 
 logger = logging.getLogger(__name__)
+
+SIGN_TIMEOUT = 5  # seconds
+
+
+def _call_with_timeout(func, *args):
+    """Execute ``func`` with ``SIGN_TIMEOUT`` seconds limit."""
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(func, *args)
+        return future.result(timeout=SIGN_TIMEOUT)
 
 def _format_path(derivation: list[int]) -> str:
     """Convert a list of BIP32 indices to string path"""
@@ -57,7 +67,8 @@ def sign_psbt_with_satochip(psbt: PSBT, connector) -> int:
     For each input that the card can sign there is a 50% chance that 1-3
     additional signatures will be generated, and the signature ultimately
     included in the PSBT is randomly selected from among all signatures
-    produced for that input.
+    produced for that input. Each signing attempt is limited to five
+    seconds.
 
     Returns the number of signatures added to ``psbt``.
     """
@@ -67,7 +78,9 @@ def sign_psbt_with_satochip(psbt: PSBT, connector) -> int:
     for _ in range(random.randint(0, 8)):
         dummy_hash = os.urandom(32)
         try:
-            connector.card_sign_transaction_hash(0xFF, list(dummy_hash), None)
+            _call_with_timeout(
+                connector.card_sign_transaction_hash, 0xFF, list(dummy_hash), None
+            )
         except Exception:
             pass
 
@@ -93,7 +106,17 @@ def sign_psbt_with_satochip(psbt: PSBT, connector) -> int:
             results: list[tuple | None] = []
             for _ in range(1 + extra_sigs):
                 try:
-                    results.append(connector.card_sign_transaction_hash(0xFF, list(tx_hash), None))
+                    results.append(
+                        _call_with_timeout(
+                            connector.card_sign_transaction_hash,
+                            0xFF,
+                            list(tx_hash),
+                            None,
+                        )
+                    )
+                except TimeoutError:
+                    logger.warning("Satochip signing timed out")
+                    results.append(None)
                 except Exception:
                     results.append(None)
             chosen = random.choice(results) if results else None
@@ -132,11 +155,18 @@ def sign_message_with_satochip(derivation_path: str, message: str, connector) ->
 
     Returns:
         Base64 encoded compact signature string.
+
+    Signing requests time out after five seconds.
     """
 
     path = format_path_string(derivation_path)
     key, _chaincode = connector.card_bip32_get_extendedkey(path)
-    _resp, sw1, sw2, compsig = connector.card_sign_message(0xFF, key, message)
+    try:
+        _resp, sw1, sw2, compsig = _call_with_timeout(
+            connector.card_sign_message, 0xFF, key, message
+        )
+    except TimeoutError:
+        raise Exception("Satochip signing timed out")
     if sw1 != 0x90 or sw2 != 0x00 or not compsig:
         raise Exception(
             f"Failed to sign message with Satochip: {format_sw_error(sw1, sw2)}"
