@@ -4,6 +4,7 @@ from binascii import b2a_base64
 import logging
 import os
 import random
+import time
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
 
 from embit.ec import PublicKey
@@ -22,10 +23,15 @@ logger = logging.getLogger(__name__)
 
 
 def _call_with_timeout(func, timeout: int, *args):
-    """Execute ``func`` with the provided timeout."""
+    """Execute ``func`` with the provided timeout and log duration."""
+    start = time.monotonic()
     with ThreadPoolExecutor(max_workers=1) as executor:
         future = executor.submit(func, *args)
-        return future.result(timeout=timeout)
+        try:
+            return future.result(timeout=timeout)
+        finally:
+            elapsed = time.monotonic() - start
+            logger.info("Satochip %s took %.3fs", func.__name__, elapsed)
 
 def _format_path(derivation: list[int]) -> str:
     """Convert a list of BIP32 indices to string path"""
@@ -85,7 +91,9 @@ def sign_psbt_with_satochip(psbt: PSBT, connector) -> int:
     signed = 0
 
     # Issue 0-N dummy signing requests and discard the results.
-    for _ in range(random.randint(0, pre_dummy_max)):
+    pre_dummy_count = random.randint(0, pre_dummy_max)
+    logger.info("Pre-signing dummy signatures: %d", pre_dummy_count)
+    for _ in range(pre_dummy_count):
         dummy_hash = os.urandom(32)
         try:
             _call_with_timeout(
@@ -119,6 +127,14 @@ def sign_psbt_with_satochip(psbt: PSBT, connector) -> int:
             extra_sigs = (
                 random.randint(1, in_tx_dummy_max) if random.random() < dummy_prob else 0
             )
+            if extra_sigs:
+                logger.info(
+                    "Input %d selected for dummy signing: %d dummy signatures",
+                    i,
+                    extra_sigs,
+                )
+            else:
+                logger.info("Input %d not selected for dummy signing", i)
             results: list[tuple | None] = []
             for _ in range(1 + extra_sigs):
                 try:
