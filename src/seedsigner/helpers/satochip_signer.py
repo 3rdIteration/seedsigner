@@ -168,10 +168,13 @@ def sign_psbt_with_satochip(psbt: PSBT, connector) -> int:
                     )
                 continue
             sig_der = bytes(sig)
-            # ensure low-S signature
-            sig_obj = secp256k1.ecdsa_signature_parse_der(sig_der)
-            sig_norm = secp256k1.ecdsa_signature_normalize(sig_obj)
-            sig_der = secp256k1.ecdsa_signature_serialize_der(sig_norm)
+            # ensure low-S signature; gracefully handle normalization errors
+            try:
+                sig_obj = secp256k1.ecdsa_signature_parse_der(sig_der)
+                sig_norm = secp256k1.ecdsa_signature_normalize(sig_obj)
+                sig_der = secp256k1.ecdsa_signature_serialize_der(sig_norm)
+            except Exception as e:
+                logger.warning("Failed to normalize Satochip signature: %s", e)
             inp.partial_sigs[pubkey] = sig_der + b"\x01"
             signed += 1
             break
