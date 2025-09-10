@@ -22,7 +22,7 @@ except ImportError:  # pragma: no cover - support older embit releases
 logger = logging.getLogger(__name__)
 
 
-def _call_with_timeout(func, timeout: int, *args):
+def _call_with_timeout(func, timeout: float, *args):
     """Execute ``func`` with the provided timeout and log duration."""
     start = time.monotonic()
     with ThreadPoolExecutor(max_workers=1) as executor:
