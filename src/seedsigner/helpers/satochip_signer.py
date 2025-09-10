@@ -68,12 +68,12 @@ def sign_psbt_with_satochip(psbt: PSBT, connector) -> int:
     """Sign the given PSBT using a connected Satochip card.
 
     To obfuscate potential chosen-nonce attacks, a random number of dummy
-    signing requests are issued prior to signing the real transaction.
-    For each input that the card can sign there is a configurable chance
-    that additional signatures will be generated, and the signature
-    ultimately included in the PSBT is randomly selected from among all
-    signatures produced for that input. Each signing attempt is limited
-    to a configurable timeout.
+    signing requests are issued before and after signing the real
+    transaction. For each input that the card can sign there is a
+    configurable chance that additional signatures will be generated, and
+    the signature ultimately included in the PSBT is randomly selected
+    from among all signatures produced for that input. Each signing
+    attempt is limited to a configurable timeout.
 
     Returns the number of signatures added to ``psbt``.
     """
@@ -81,6 +81,9 @@ def sign_psbt_with_satochip(psbt: PSBT, connector) -> int:
     timeout = settings.get_value(SettingsConstants.SETTING__SATOCHIP_SIGN_TIMEOUT)
     pre_dummy_max = settings.get_value(
         SettingsConstants.SETTING__SATOCHIP_MAX_PRE_DUMMIES
+    )
+    post_dummy_max = settings.get_value(
+        SettingsConstants.SETTING__SATOCHIP_MAX_POST_DUMMIES
     )
     in_tx_dummy_max = settings.get_value(
         SettingsConstants.SETTING__SATOCHIP_MAX_IN_TX_DUMMIES
@@ -178,6 +181,22 @@ def sign_psbt_with_satochip(psbt: PSBT, connector) -> int:
             inp.partial_sigs[pubkey] = sig_der + b"\x01"
             signed += 1
             break
+
+    # Issue 0-N dummy signing requests after signing completes.
+    post_dummy_count = random.randint(0, post_dummy_max)
+    logger.info("Post-signing dummy signatures: %d", post_dummy_count)
+    for _ in range(post_dummy_count):
+        dummy_hash = os.urandom(32)
+        try:
+            _call_with_timeout(
+                connector.card_sign_transaction_hash,
+                timeout,
+                0xFF,
+                list(dummy_hash),
+                None,
+            )
+        except Exception:
+            pass
     return signed
 
 

@@ -312,6 +312,16 @@ class SettingsConstants:
     ]
     DEFAULT_SATOCHIP_PRE_DUMMY_MAX = 8
 
+    SATOCHIP_POST_DUMMY_MAX_MIN = 0
+    SATOCHIP_POST_DUMMY_MAX_MAX = 12
+    ALL_SATOCHIP_POST_DUMMY_MAX = [
+        (i, str(i))
+        for i in range(
+            SATOCHIP_POST_DUMMY_MAX_MIN, SATOCHIP_POST_DUMMY_MAX_MAX + 1
+        )
+    ]
+    DEFAULT_SATOCHIP_POST_DUMMY_MAX = 8
+
     SATOCHIP_IN_TX_DUMMY_MAX_MIN = 1
     SATOCHIP_IN_TX_DUMMY_MAX_MAX = 5
     ALL_SATOCHIP_IN_TX_DUMMY_MAX = [
@@ -439,6 +449,7 @@ class SettingsConstants:
 
     SETTING__SATOCHIP_SIGN_TIMEOUT = "satochip_sign_timeout"
     SETTING__SATOCHIP_MAX_PRE_DUMMIES = "satochip_max_pre_dummies"
+    SETTING__SATOCHIP_MAX_POST_DUMMIES = "satochip_max_post_dummies"
     SETTING__SATOCHIP_MAX_IN_TX_DUMMIES = "satochip_max_in_tx_dummies"
     SETTING__SATOCHIP_DUMMY_PROBABILITY = "satochip_dummy_probability"
 
@@ -954,6 +965,15 @@ class SettingsDefinition:
                       visibility=SettingsConstants.VISIBILITY__ADVANCED,
                       selection_options=SettingsConstants.ALL_SATOCHIP_PRE_DUMMY_MAX,
                       default_value=SettingsConstants.DEFAULT_SATOCHIP_PRE_DUMMY_MAX),
+
+        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
+                      attr_name=SettingsConstants.SETTING__SATOCHIP_MAX_POST_DUMMIES,
+                      abbreviated_name="satopost",
+                      display_name="Satochip post-sign dummies",
+                      type=SettingsConstants.TYPE__SELECT_1,
+                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
+                      selection_options=SettingsConstants.ALL_SATOCHIP_POST_DUMMY_MAX,
+                      default_value=SettingsConstants.DEFAULT_SATOCHIP_POST_DUMMY_MAX),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
                       attr_name=SettingsConstants.SETTING__SATOCHIP_MAX_IN_TX_DUMMIES,
