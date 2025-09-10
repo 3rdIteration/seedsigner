@@ -2538,7 +2538,7 @@ class ToolsSatochipBenchmarkSignView(View):
         durations: list[float] = []
         loading = LoadingScreenThread(text="Benchmarking\n\n\n\n\n\n")
         loading.start()
-        for _ in range(10):
+        for _ in range(20):
             tx_hash = os.urandom(32)
             start = time.monotonic()
             try:
@@ -2556,12 +2556,20 @@ class ToolsSatochipBenchmarkSignView(View):
 
         if durations:
             avg = sum(durations) / len(durations)
+            min_time = min(durations)
+            max_time = max(durations)
             logger.info(
-                "Benchmark signing average: %.3fs over %d signatures",
+                "Benchmark signing results: min=%.3fs avg=%.3fs max=%.3fs over %d signatures",
+                min_time,
                 avg,
+                max_time,
                 len(durations),
             )
-            text = f"Average signing time: {avg:.3f}s"
+            text = (
+                "Min: {min_time:.3f}s\n"
+                "Avg: {avg:.3f}s\n"
+                "Max: {max_time:.3f}s"
+            ).format(min_time=min_time, avg=avg, max_time=max_time)
         else:
             text = "Benchmark signing failed"
 
