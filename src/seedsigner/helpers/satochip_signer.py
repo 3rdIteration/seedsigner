@@ -69,11 +69,13 @@ def sign_psbt_with_satochip(psbt: PSBT, connector) -> int:
 
     To obfuscate potential chosen-nonce attacks, a random number of dummy
     signing requests are issued before and after signing the real
-    transaction. For each input that the card can sign there is a
-    configurable chance that additional signatures will be generated, and
-    the signature ultimately included in the PSBT is randomly selected
-    from among all signatures produced for that input. Each signing
-    attempt is limited to a configurable timeout.
+    transaction. These dummy requests, like actual inputs, may themselves
+    be signed multiple times based on the configured probability and
+    maximum dummy count. For each real PSBT input that the card can sign
+    there is a configurable chance that additional signatures will be
+    generated, and the signature ultimately included in the PSBT is
+    randomly selected from among all signatures produced for that input.
+    Each signing attempt is limited to a configurable timeout.
 
     Returns the number of signatures added to ``psbt``.
     """
@@ -93,21 +95,25 @@ def sign_psbt_with_satochip(psbt: PSBT, connector) -> int:
     )
     signed = 0
 
-    # Issue 0-N dummy signing requests and discard the results.
+    # Issue 0-N dummy signing requests and discard the results. Each dummy
+    # request may itself trigger extra signatures according to the configured
+    # per-input dummy probability and maximum count.
     pre_dummy_count = random.randint(0, pre_dummy_max)
     logger.info("Pre-signing dummy signatures: %d", pre_dummy_count)
     for _ in range(pre_dummy_count):
         dummy_hash = os.urandom(32)
-        try:
-            _call_with_timeout(
-                connector.card_sign_transaction_hash,
-                timeout,
-                0xFF,
-                list(dummy_hash),
-                None,
-            )
-        except Exception:
-            pass
+        extra = random.randint(1, in_tx_dummy_max) if random.random() < dummy_prob else 0
+        for _ in range(1 + extra):
+            try:
+                _call_with_timeout(
+                    connector.card_sign_transaction_hash,
+                    timeout,
+                    0xFF,
+                    list(dummy_hash),
+                    None,
+                )
+            except Exception:
+                pass
 
     # Now sign the actual PSBT inputs.
     for i, inp in enumerate(psbt.inputs):
@@ -182,21 +188,25 @@ def sign_psbt_with_satochip(psbt: PSBT, connector) -> int:
             signed += 1
             break
 
-    # Issue 0-N dummy signing requests after signing completes.
+    # Issue 0-N dummy signing requests after signing completes, again applying
+    # the per-input dummy settings to potentially sign each dummy hash multiple
+    # times before discarding all results.
     post_dummy_count = random.randint(0, post_dummy_max)
     logger.info("Post-signing dummy signatures: %d", post_dummy_count)
     for _ in range(post_dummy_count):
         dummy_hash = os.urandom(32)
-        try:
-            _call_with_timeout(
-                connector.card_sign_transaction_hash,
-                timeout,
-                0xFF,
-                list(dummy_hash),
-                None,
-            )
-        except Exception:
-            pass
+        extra = random.randint(1, in_tx_dummy_max) if random.random() < dummy_prob else 0
+        for _ in range(1 + extra):
+            try:
+                _call_with_timeout(
+                    connector.card_sign_transaction_hash,
+                    timeout,
+                    0xFF,
+                    list(dummy_hash),
+                    None,
+                )
+            except Exception:
+                pass
     return signed
 
 

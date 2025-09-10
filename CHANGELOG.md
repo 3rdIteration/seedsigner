@@ -5,8 +5,8 @@ All notable changes to this project are documented in this file.
 Entries marked "(SeedSigner official)" originate from the upstream project, while "(smartcard fork)" indicates releases and changes unique to this repository.
 
 ## Unreleased - SS0.8.6+Satochip+Earthdiver-B4 (smartcard fork)
-- Randomized dummy Satochip signing requests (0-8) and optional extra per-input signatures with random selection among them to reduce potential nonce leakage
-- Issue a random number of post-signing dummy requests (0-12, default 8) for additional nonce obfuscation
+- Randomized dummy Satochip signing requests (0-8) that themselves may execute extra signatures per the configured probability and dummy count, plus optional extra per-input signatures with random selection among them to reduce potential nonce leakage
+- Issue a random number of post-signing dummy requests (0-12, default 8) applying the same extra-signing rules for additional nonce obfuscation
 - Enforce configurable per-signature timeout (0.5–5 s, default 1 s, adjustable in 0.5 s steps) and allow tuning of pre-signing dummies, in-transaction dummy count, and per-input dummy probability
 - Log dummy signing counts and per-operation signing durations for Satochip actions
 - Gracefully handle Satochip signature normalization failures to avoid crashes
