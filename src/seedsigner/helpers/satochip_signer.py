@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from binascii import b2a_base64
 import logging
+import os
+import random
 
 from embit.ec import PublicKey
 from embit.psbt import PSBT
@@ -50,16 +52,54 @@ def format_path_string(path: str) -> str:
 def sign_psbt_with_satochip(psbt: PSBT, connector) -> int:
     """Sign the given PSBT using a connected Satochip card.
 
-    Returns the number of signatures added.
+    To obfuscate potential chosen-nonce attacks, a random number of dummy
+    signing requests are issued prior to signing the real transaction. In
+    addition, roughly half of the inputs that require a signature are signed
+    twice with one of the signatures randomly selected and the other
+    discarded.
+
+    Returns the number of signatures added to ``psbt``.
     """
     signed = 0
+
+    # Determine which inputs are signable so we can randomly pick some for
+    # double-signing.
+    signable_indices: list[int] = []
     for i, inp in enumerate(psbt.inputs):
         if len(inp.bip32_derivations) == 0:
             continue
         for pubkey, deriv in inp.bip32_derivations.items():
             path = _format_path(deriv.derivation)
             try:
-                key, chaincode = connector.card_bip32_get_extendedkey(path)
+                key, _chaincode = connector.card_bip32_get_extendedkey(path)
+                card_pub = PublicKey.parse(
+                    key.get_public_key_bytes(compressed=True)
+                )
+            except Exception:
+                continue
+            if card_pub == pubkey:
+                signable_indices.append(i)
+                break
+
+    double_count = len(signable_indices) // 2
+    double_indices = set(random.sample(signable_indices, double_count)) if double_count else set()
+
+    # Issue 1-3 dummy signing requests and discard the results.
+    for _ in range(random.randint(1, 3)):
+        dummy_hash = os.urandom(32)
+        try:
+            connector.card_sign_transaction_hash(0xFF, list(dummy_hash), None)
+        except Exception:
+            pass
+
+    # Now sign the actual PSBT inputs.
+    for i, inp in enumerate(psbt.inputs):
+        if len(inp.bip32_derivations) == 0:
+            continue
+        for pubkey, deriv in inp.bip32_derivations.items():
+            path = _format_path(deriv.derivation)
+            try:
+                key, _chaincode = connector.card_bip32_get_extendedkey(path)
                 card_pub = PublicKey.parse(
                     key.get_public_key_bytes(compressed=True)
                 )
@@ -67,10 +107,35 @@ def sign_psbt_with_satochip(psbt: PSBT, connector) -> int:
                 continue
             if card_pub != pubkey:
                 continue
+
             tx_hash = psbt.sighash(i)
-            sig, sw1, sw2 = connector.card_sign_transaction_hash(0xFF, list(tx_hash), None)
+
+            sig, sw1, sw2 = None, None, None
+            if i in double_indices:
+                # Sign twice and randomly keep one signature to obfuscate nonce usage.
+                first = None
+                second = None
+                try:
+                    first = connector.card_sign_transaction_hash(0xFF, list(tx_hash), None)
+                except Exception:
+                    pass
+                try:
+                    second = connector.card_sign_transaction_hash(0xFF, list(tx_hash), None)
+                except Exception:
+                    pass
+                chosen = random.choice([first, second])
+                if chosen is None:
+                    chosen = first if second is None else second
+                sig, sw1, sw2 = chosen if chosen is not None else (None, None, None)
+            else:
+                sig, sw1, sw2 = connector.card_sign_transaction_hash(0xFF, list(tx_hash), None)
             if sw1 != 0x90 or sw2 != 0x00:
-                logger.warning("Satochip signing failed: %s", format_sw_error(sw1, sw2))
+                if sw1 is None or sw2 is None:
+                    logger.warning("Satochip signing failed")
+                else:
+                    logger.warning(
+                        "Satochip signing failed: %s", format_sw_error(sw1, sw2)
+                    )
                 continue
             sig_der = bytes(sig)
             # ensure low-S signature
