@@ -9,6 +9,7 @@ Entries marked "(SeedSigner official)" originate from the upstream project, whil
 - Enforce configurable per-signature timeout (default 2s) and allow tuning of pre-signing dummies, in-transaction dummy count, and per-input dummy probability
 - Log dummy signing counts and per-operation signing durations for Satochip actions
 - Gracefully handle Satochip signature normalization failures to avoid crashes
+- Add Satochip benchmark signing tool to measure average card signing time
 - Deterministic BIP85 GPG key derivation with configurable name, email, expiration (defaulting to the end of 2029 for RSA 2048 keys and the end of 2035 for other key types), and key type (NIST P-256, Brainpool P-256, RSA 2048, RSA 3072, RSA 4096, or secp256k1); metadata such as expiration, deprecation, and end-of-use dates can be modified after import
 - RSA key selections warn that generation on a Pi Zero may take approximately 3 minutes (2048), 15 minutes (3072), or an hour (4096) and recommend NIST or Brainpool keys as faster, smaller alternatives
 - MicroSD and GPG tools now display seed-loaded warnings only when opening file pickers
