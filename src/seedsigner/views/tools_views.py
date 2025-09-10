@@ -56,6 +56,7 @@ from .view import View, Destination, BackStackView, MainMenuView
 
 from seedsigner.hardware.microsd import MicroSD
 from seedsigner.helpers import seedkeeper_utils
+from seedsigner.helpers.satochip_signer import _call_with_timeout
 from seedsigner.gui.screens import seed_screens
 logger = logging.getLogger(__name__)
 
@@ -2495,9 +2496,10 @@ class ToolsSatochipView(View):
     ENABLE_2FA = ButtonOption("Enable 2FA")
     EXPORT_XPUB = ButtonOption("Export Xpub")
     LOAD_DESCRIPTOR = ButtonOption("Load as Descriptor")
+    BENCHMARK = ButtonOption("Benchmark Signing")
 
     def run(self):
-        button_data = [self.IMPORT_SEED, self.ENABLE_2FA, self.EXPORT_XPUB, self.LOAD_DESCRIPTOR]
+        button_data = [self.IMPORT_SEED, self.ENABLE_2FA, self.EXPORT_XPUB, self.LOAD_DESCRIPTOR, self.BENCHMARK]
         selected_menu_num = self.run_screen(
             ButtonListScreen,
             title="Satochip",
@@ -2519,7 +2521,67 @@ class ToolsSatochipView(View):
 
         elif button_data[selected_menu_num] == self.LOAD_DESCRIPTOR:
             return Destination(SatochipLoadDescriptorScriptTypeView)
-        
+        elif button_data[selected_menu_num] == self.BENCHMARK:
+            return Destination(ToolsSatochipBenchmarkSignView)
+
+class ToolsSatochipBenchmarkSignView(View):
+    """Benchmark Satochip signing performance."""
+
+    def run(self):
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+
+        connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satochip"])
+        if not connector:
+            return Destination(BackStackView)
+
+        timeout = self.settings.get_value(SettingsConstants.SETTING__SATOCHIP_SIGN_TIMEOUT)
+        durations: list[float] = []
+        loading = LoadingScreenThread(text="Benchmarking\n\n\n\n\n\n")
+        loading.start()
+        for _ in range(20):
+            tx_hash = os.urandom(32)
+            start = time.monotonic()
+            try:
+                _call_with_timeout(
+                    connector.card_sign_transaction_hash,
+                    timeout,
+                    0xFF,
+                    list(tx_hash),
+                    None,
+                )
+                durations.append(time.monotonic() - start)
+            except Exception as e:
+                logger.warning("Benchmark signing failed: %s", e)
+        loading.stop()
+
+        if durations:
+            avg = sum(durations) / len(durations)
+            min_time = min(durations)
+            max_time = max(durations)
+            logger.info(
+                "Benchmark signing results: min=%.3fs avg=%.3fs max=%.3fs over %d signatures",
+                min_time,
+                avg,
+                max_time,
+                len(durations),
+            )
+            text = (
+                "Min: {min_time:.3f}s\n"
+                "Avg: {avg:.3f}s\n"
+                "Max: {max_time:.3f}s"
+            ).format(min_time=min_time, avg=avg, max_time=max_time)
+        else:
+            text = "Benchmark signing failed"
+
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Benchmark",
+            status_headline=None,
+            text=text,
+            show_back_button=False,
+        )
+        return Destination(MainMenuView)
+
 class ToolsSatochipImportSeedView(View):
     SCAN_SEED = ButtonOption("Scan a seed", SeedSignerIconConstants.QRCODE)
     TYPE_12WORD = ButtonOption("Enter 12-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=12)

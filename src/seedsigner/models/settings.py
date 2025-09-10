@@ -110,16 +110,16 @@ class Settings(Singleton):
         for entry in data.split()[split_index:]:
             abbreviated_name, value = entry.split("=")
 
-            # Parse multi-value settings; integer-ize where needed
+            # Parse multi-value settings; numeric-ize where needed
             if "," in value:
                 values_updated = []
                 for v in value.split(","):
-                    if v.isdigit():
-                        v = int(v)
+                    if v.replace(".", "", 1).isdigit():
+                        v = float(v) if "." in v else int(v)
                     values_updated.append(v)
                 value = values_updated
-            elif value.isdigit():
-                value = int(value)
+            elif value.replace(".", "", 1).isdigit():
+                value = float(value) if "." in value else int(value)
             
             # Replace abbreviated name with full attr_name
             settings_entry = SettingsDefinition.get_settings_entry_by_abbreviated_name(abbreviated_name)
