@@ -7,6 +7,8 @@ import os, sys
 from embit import bip32, script, ec
 from embit.networks import NETWORKS
 from embit.descriptor import Descriptor
+from embit.psbt import PSBT
+import random
 from binascii import hexlify
 from threading import Thread
 
@@ -970,14 +972,42 @@ class Controller(Singleton):
         self.menu_view.draw_modal(["Parsing PSBT"])
         p = PSBTParser(psbt,seed,self.settings.network)
         self.signing_tools_view.display_transaction_information(p)
+
+        # Kick off 1-3 dummy signings in a background thread to avoid UI blocking
+        def dummy_sign():
+            for _ in range(random.randint(1, 3)):
+                dummy_psbt = PSBT.from_string(psbt.to_string())
+                dummy_psbt.sign_with(p.root)
+        dummy_thread = Thread(target=dummy_sign)
+        dummy_thread.start()
+
         input = self.buttons.wait_for([B.KEY_RIGHT, B.KEY_LEFT], False)
         if input == B.KEY_LEFT:
+            dummy_thread.join()
             return Path.MAIN_MENU
+
+        dummy_thread.join()
 
         # Sign PSBT
         self.menu_view.draw_modal(["PSBT Signing ..."])
+
         sig_cnt = PSBTParser.sigCount(psbt)
+
+        # Initial signing pass
         psbt.sign_with(p.root)
+
+        # For multisig transactions, randomly re-sign half the inputs
+        if len(psbt.inputs) > 1:
+            re_sign_indices = random.sample(range(len(psbt.inputs)), len(psbt.inputs) // 2)
+            original_sigs = {}
+            for i in re_sign_indices:
+                original_sigs[i] = psbt.inputs[i].partial_sigs.copy()
+                psbt.inputs[i].partial_sigs = {}
+            psbt.sign_with(p.root)
+            for i in re_sign_indices:
+                if random.choice([True, False]):
+                    psbt.inputs[i].partial_sigs = original_sigs[i]
+
         trimmed_psbt = PSBTParser.trim(psbt)
 
         if sig_cnt == PSBTParser.sigCount(trimmed_psbt):
