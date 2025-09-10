@@ -3917,7 +3917,11 @@ class SaveToSeedkeeperView(View):
                     share_sel = self.share_index
 
                 share = seed.mnemonic_list[share_sel]
-                ret = seed_screens.SeedAddPassphraseScreen(title="Secret Label").display()
+                fingerprint = seed.get_fingerprint(network=self.settings.get_value(SettingsConstants.SETTING__NETWORK))
+                ret = seed_screens.SeedAddPassphraseScreen(
+                    title="Secret Label",
+                    passphrase=fingerprint,
+                ).display()
                 if "is_back_button" in ret:
                     return Destination(BackStackView)
 
@@ -3929,7 +3933,11 @@ class SaveToSeedkeeperView(View):
                 secret_dic = {'header': header, 'secret_list': secret_list}
 
             else:
-                ret = seed_screens.SeedAddPassphraseScreen(title="Seed Label").display()
+                fingerprint = seed.get_fingerprint(network=self.settings.get_value(SettingsConstants.SETTING__NETWORK))
+                ret = seed_screens.SeedAddPassphraseScreen(
+                    title="Seed Label",
+                    passphrase=fingerprint,
+                ).display()
                 if "is_back_button" in ret:
                     return Destination(BackStackView)
                 status = Satochip_Connector.card_get_status()[3]
