@@ -188,11 +188,14 @@ class ToolsSatochipBiasCheckView(View):
         csv_path = MicroSD.get_microsd_dir() / f"satochip_bias_{transport}.csv"
         txt_path = MicroSD.get_microsd_dir() / f"satochip_bias_{transport}.txt"
         try:
+            csv_path.parent.mkdir(parents=True, exist_ok=True)
             with csv_path.open("w", newline="") as f:
                 writer = csv.writer(f)
                 writer.writerow(["index", "r_hex", "s_hex", "msb_r", "lsb_r", "lsb4_bucket", "latency_ms", "dropped_reason"])
                 for row in csv_rows:
                     writer.writerow([row.get("index"), row.get("r_hex"), row.get("s_hex"), row.get("msb_r"), row.get("lsb_r"), row.get("lsb4_bucket"), row.get("latency_ms"), row.get("dropped_reason")])
+                f.flush()
+                os.fsync(f.fileno())
         except Exception as e:
             logger.warning("Failed to write CSV: %s", e)
 
@@ -217,6 +220,12 @@ class ToolsSatochipBiasCheckView(View):
                 f.write(console_text + "\n")
                 f.flush()
                 os.fsync(f.fileno())
+            try:
+                dir_fd = os.open(str(txt_path.parent), os.O_RDONLY)
+                os.fsync(dir_fd)
+                os.close(dir_fd)
+            except Exception:
+                pass
         except Exception as e:
             logger.warning("Failed to write text log: %s", e)
         screen_text = f"Status: {final_status.upper()}\nDetails saved to microSD"
