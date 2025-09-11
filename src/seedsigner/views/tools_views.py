@@ -1651,9 +1651,9 @@ class ToolsSatochipFactoryResetView(View):
         while(doReset):
             ret = self.run_screen(
                 DireWarningScreen,
-                title="Warning",
+                title="Factory Reset",
                 status_headline=None,
-                text="Enter a wrong PIN multiple times to block the card, or the correct PIN to abort." + remaining_string,
+                text="Wrong PIN blocks & wipes card—normal step. Continue?" + remaining_string,
                 show_back_button=True,
             )
             if ret == RET_CODE__BACK_BUTTON:
@@ -1690,9 +1690,9 @@ class ToolsSatochipFactoryResetView(View):
         while(doReset):
             ret = self.run_screen(
                 DireWarningScreen,
-                title="Warning",
+                title="Factory Reset",
                 status_headline=None,
-                text="Enter a wrong PUK multiple times to block the card, or the right PUK to abort." + remaining_string,
+                text="Wrong PUK blocks & wipes card—normal step. Continue?" + remaining_string,
                 show_back_button=True,
             )
             if ret == RET_CODE__BACK_BUTTON:
