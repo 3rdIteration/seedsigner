@@ -186,6 +186,7 @@ class ToolsSatochipBiasCheckView(View):
         avg_latency = sum(latencies) / len(latencies) if latencies else 0
 
         csv_path = MicroSD.get_microsd_dir() / f"satochip_bias_{transport}.csv"
+        txt_path = MicroSD.get_microsd_dir() / f"satochip_bias_{transport}.txt"
         try:
             with csv_path.open("w", newline="") as f:
                 writer = csv.writer(f)
@@ -206,12 +207,16 @@ class ToolsSatochipBiasCheckView(View):
             f"Dropped: {sum(dropped.values())} (parse={dropped['parse']}, dup={dropped['duplicate']}, soft={dropped['soft_timeout']}, hard={dropped['hard_timeout']}, sw={dropped['sw_error']}, exc={dropped['exception']})",
             f"Avg latency: {avg_latency:.1f} ms",
             f"CSV: {csv_path.name}",
+            f"TXT: {txt_path.name}",
         ]
 
         console_text = "\n".join(lines)
-        screen_text = "\n".join(
-            l for l in lines if not l.startswith("Transport:") and not l.startswith("Samples:")
-        )
+        try:
+            with txt_path.open("w") as f:
+                f.write(console_text + "\n")
+        except Exception as e:
+            logger.warning("Failed to write text log: %s", e)
+        screen_text = f"Status: {final_status.upper()}\nDetails saved to microSD"
 
         logger.info("Bias test results:\n%s", console_text)
         print(console_text)
