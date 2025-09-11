@@ -1653,7 +1653,7 @@ class ToolsSatochipFactoryResetView(View):
                 DireWarningScreen,
                 title="Factory Reset",
                 status_headline=None,
-                text="Wrong PIN blocks & wipes card—normal step. Continue?" + remaining_string,
+                text="Enter wrong PIN to continue Factory Reset." + remaining_string,
                 show_back_button=True,
             )
             if ret == RET_CODE__BACK_BUTTON:
@@ -1692,7 +1692,7 @@ class ToolsSatochipFactoryResetView(View):
                 DireWarningScreen,
                 title="Factory Reset",
                 status_headline=None,
-                text="Wrong PUK blocks & wipes card—normal step. Continue?" + remaining_string,
+                text="Enter wrong PUK to continue Factory Reset." + remaining_string,
                 show_back_button=True,
             )
             if ret == RET_CODE__BACK_BUTTON:
