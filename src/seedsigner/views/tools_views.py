@@ -1653,8 +1653,9 @@ class ToolsSatochipFactoryResetView(View):
                 DireWarningScreen,
                 title="Factory Reset",
                 status_headline=None,
-                text="Enter wrong PIN to continue Factory Reset." + remaining_string,
+                text="Enter wrong PIN multiple times to continue Factory Reset." + remaining_string,
                 show_back_button=True,
+                button_data=[ButtonOption("Continue")],
             )
             if ret == RET_CODE__BACK_BUTTON:
                 return resetStatus
