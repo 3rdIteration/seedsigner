@@ -195,24 +195,32 @@ class ToolsSatochipBiasCheckView(View):
         except Exception as e:
             logger.warning("Failed to write CSV: %s", e)
 
-        text = (
-            f"Status: {final_status.upper()}\n"
-            f"Transport: {transport}\n"
-            f"Samples: {total}\n"
-            f"MSB1: {msb_ones}/{total} ({msb_pct*100:.1f}%) z={msb_z:.2f} p={msb_p:.3g} CI[{msb_ci_low*100:.1f}%, {msb_ci_high*100:.1f}%]\n"
-            f"LSB1: {lsb_ones}/{total} ({lsb_pct*100:.1f}%) z={lsb_z:.2f} p={lsb_p:.3g} CI[{lsb_ci_low*100:.1f}%, {lsb_ci_high*100:.1f}%]\n"
-            f"LSB4 χ²: {chi2:.2f} ({chi_status})\n"
-            f"Runs z={runs_z:.2f} p={runs_p:.3g}\n"
-            f"Dropped: {sum(dropped.values())} (parse={dropped['parse']}, dup={dropped['duplicate']}, soft={dropped['soft_timeout']}, hard={dropped['hard_timeout']}, sw={dropped['sw_error']}, exc={dropped['exception']})\n"
-            f"Avg latency: {avg_latency:.1f} ms\n"
-            f"CSV: {csv_path.name}"
+        lines = [
+            f"Status: {final_status.upper()}",
+            f"Transport: {transport}",
+            f"Samples: {total}",
+            f"MSB1: {msb_ones}/{total} ({msb_pct*100:.1f}%) z={msb_z:.2f} p={msb_p:.3g} CI[{msb_ci_low*100:.1f}%, {msb_ci_high*100:.1f}%]",
+            f"LSB1: {lsb_ones}/{total} ({lsb_pct*100:.1f}%) z={lsb_z:.2f} p={lsb_p:.3g} CI[{lsb_ci_low*100:.1f}%, {lsb_ci_high*100:.1f}%]",
+            f"LSB4 χ²: {chi2:.2f} ({chi_status})",
+            f"Runs z={runs_z:.2f} p={runs_p:.3g}",
+            f"Dropped: {sum(dropped.values())} (parse={dropped['parse']}, dup={dropped['duplicate']}, soft={dropped['soft_timeout']}, hard={dropped['hard_timeout']}, sw={dropped['sw_error']}, exc={dropped['exception']})",
+            f"Avg latency: {avg_latency:.1f} ms",
+            f"CSV: {csv_path.name}",
+        ]
+
+        console_text = "\n".join(lines)
+        screen_text = "\n".join(
+            l for l in lines if not l.startswith("Transport:") and not l.startswith("Samples:")
         )
+
+        logger.info("Bias test results:\n%s", console_text)
+        print(console_text)
 
         self.run_screen(
             LargeIconStatusScreen,
             title="Bias Test",
             status_headline=None,
-            text=text,
+            text=screen_text,
             show_back_button=False,
         )
         return Destination(MainMenuView)
