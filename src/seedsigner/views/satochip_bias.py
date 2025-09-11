@@ -212,8 +212,11 @@ class ToolsSatochipBiasCheckView(View):
 
         console_text = "\n".join(lines)
         try:
+            txt_path.parent.mkdir(parents=True, exist_ok=True)
             with txt_path.open("w") as f:
                 f.write(console_text + "\n")
+                f.flush()
+                os.fsync(f.fileno())
         except Exception as e:
             logger.warning("Failed to write text log: %s", e)
         screen_text = f"Status: {final_status.upper()}\nDetails saved to microSD"
