@@ -5,6 +5,7 @@ import time
 import platform
 import binascii
 import subprocess
+from embit.util import secp256k1
 
 from embit.descriptor import Descriptor
 from embit.descriptor.checksum import checksum
@@ -2498,9 +2499,17 @@ class ToolsSatochipView(View):
     EXPORT_XPUB = ButtonOption("Export Xpub")
     LOAD_DESCRIPTOR = ButtonOption("Load as Descriptor")
     BENCHMARK = ButtonOption("Benchmark Signing")
+    BIAS_TEST = ButtonOption("Check signing bias")
 
     def run(self):
-        button_data = [self.IMPORT_SEED, self.ENABLE_2FA, self.EXPORT_XPUB, self.LOAD_DESCRIPTOR, self.BENCHMARK]
+        button_data = [
+            self.IMPORT_SEED,
+            self.ENABLE_2FA,
+            self.EXPORT_XPUB,
+            self.LOAD_DESCRIPTOR,
+            self.BENCHMARK,
+            self.BIAS_TEST,
+        ]
         selected_menu_num = self.run_screen(
             ButtonListScreen,
             title="Satochip",
@@ -2524,6 +2533,8 @@ class ToolsSatochipView(View):
             return Destination(SatochipLoadDescriptorScriptTypeView)
         elif button_data[selected_menu_num] == self.BENCHMARK:
             return Destination(ToolsSatochipBenchmarkSignView)
+        elif button_data[selected_menu_num] == self.BIAS_TEST:
+            return Destination(ToolsSatochipBiasCheckView)
 
 class ToolsSatochipBenchmarkSignView(View):
     """Benchmark Satochip signing performance."""
@@ -2577,6 +2588,67 @@ class ToolsSatochipBenchmarkSignView(View):
         self.run_screen(
             LargeIconStatusScreen,
             title="Benchmark",
+            status_headline=None,
+            text=text,
+            show_back_button=False,
+        )
+        return Destination(MainMenuView)
+
+
+class ToolsSatochipBiasCheckView(View):
+    """Run multiple signatures to look for ECDSA bias."""
+
+    def run(self):
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+
+        connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satochip"])
+        if not connector:
+            return Destination(BackStackView)
+
+        timeout = self.settings.get_value(SettingsConstants.SETTING__SATOCHIP_SIGN_TIMEOUT)
+        high = 0
+        low = 0
+        loading = LoadingScreenThread(text="Testing\n\n\n\n\n\n")
+        loading.start()
+        for _ in range(1000):
+            tx_hash = os.urandom(32)
+            try:
+                sig, sw1, sw2 = _call_with_timeout(
+                    connector.card_sign_transaction_hash,
+                    timeout,
+                    0xFF,
+                    list(tx_hash),
+                    None,
+                )
+                if sw1 != 0x90 or sw2 != 0x00:
+                    continue
+                sig_obj = secp256k1.ecdsa_signature_parse_der(bytes(sig))
+                compact = secp256k1.ecdsa_signature_serialize_compact(sig_obj)
+                r = compact[:32]
+                if r[0] & 0x80:
+                    high += 1
+                else:
+                    low += 1
+            except Exception as e:
+                logger.warning("Bias test signing failed: %s", e)
+        loading.stop()
+
+        total = high + low
+        if total:
+            pct = high / total * 100
+            text = (
+                "High bit set: {high}\n"
+                "High bit clear: {low}\n"
+                "({pct:.1f}% set)"
+            ).format(high=high, low=low, pct=pct)
+            if abs(high - low) > total * 0.1:
+                text += "\nPossible bias detected"
+        else:
+            text = "Bias test failed"
+
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Bias Test",
             status_headline=None,
             text=text,
             show_back_button=False,
