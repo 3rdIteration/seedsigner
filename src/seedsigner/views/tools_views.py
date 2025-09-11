@@ -54,6 +54,7 @@ from seedsigner.views.seed_views import (
 )
 
 from .view import View, Destination, BackStackView, MainMenuView
+from .satochip_bias import ToolsSatochipBiasCheckView
 
 from seedsigner.hardware.microsd import MicroSD
 from seedsigner.helpers import seedkeeper_utils
@@ -2594,66 +2595,6 @@ class ToolsSatochipBenchmarkSignView(View):
         )
         return Destination(MainMenuView)
 
-
-class ToolsSatochipBiasCheckView(View):
-    """Run multiple signatures to look for ECDSA bias."""
-
-    def run(self):
-        from seedsigner.gui.screens.screen import LoadingScreenThread
-
-        connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satochip"])
-        if not connector:
-            return Destination(BackStackView)
-
-        timeout = self.settings.get_value(SettingsConstants.SETTING__SATOCHIP_SIGN_TIMEOUT)
-        high = 0
-        low = 0
-        loading = LoadingScreenThread(text="Testing\n\n\n\n\n\n")
-        loading.start()
-        for _ in range(1000):
-            tx_hash = os.urandom(32)
-            try:
-                sig, sw1, sw2 = _call_with_timeout(
-                    connector.card_sign_transaction_hash,
-                    timeout,
-                    0xFF,
-                    list(tx_hash),
-                    None,
-                )
-                if sw1 != 0x90 or sw2 != 0x00:
-                    continue
-                sig_obj = secp256k1.ecdsa_signature_parse_der(bytes(sig))
-                compact = secp256k1.ecdsa_signature_serialize_compact(sig_obj)
-                r = compact[:32]
-                if r[0] & 0x80:
-                    high += 1
-                else:
-                    low += 1
-            except Exception as e:
-                logger.warning("Bias test signing failed: %s", e)
-        loading.stop()
-
-        total = high + low
-        if total:
-            pct = high / total * 100
-            text = (
-                "High bit set: {high}\n"
-                "High bit clear: {low}\n"
-                "({pct:.1f}% set)"
-            ).format(high=high, low=low, pct=pct)
-            if abs(high - low) > total * 0.1:
-                text += "\nPossible bias detected"
-        else:
-            text = "Bias test failed"
-
-        self.run_screen(
-            LargeIconStatusScreen,
-            title="Bias Test",
-            status_headline=None,
-            text=text,
-            show_back_button=False,
-        )
-        return Destination(MainMenuView)
 
 class ToolsSatochipImportSeedView(View):
     SCAN_SEED = ButtonOption("Scan a seed", SeedSignerIconConstants.QRCODE)
