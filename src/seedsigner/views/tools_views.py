@@ -4106,12 +4106,19 @@ def parse_secret_key_list(colon_output: str):
         parts = line.split(":")
         if parts[0] == "sec":
             created = int(parts[5]) if len(parts) > 5 and parts[5] else None
-            cur = {"fpr": None, "uid": None, "created": created}
+            cur = {
+                "fpr": None,
+                "uid": None,
+                "created": created,
+                "valid_from": None,
+            }
             keys.append(cur)
         elif parts[0] == "fpr" and cur is not None and cur.get("fpr") is None:
             cur["fpr"] = parts[9]
         elif parts[0] == "uid" and cur is not None and cur.get("uid") is None:
             cur["uid"] = parts[9]
+            if len(parts) > 5 and parts[5]:
+                cur["valid_from"] = int(parts[5])
     return keys
 
 
@@ -4158,8 +4165,12 @@ def parse_uid_list(colon_output: str):
     return uids
 
 
-def filter_deletable_subkeys(created_ts: int, subkeys):
-    if created_ts == BIP85_GPG_CREATED_TS and subkeys:
+def filter_deletable_subkeys(created_ts: int, valid_from_ts: int, subkeys):
+    if (
+        created_ts == BIP85_GPG_CREATED_TS
+        and valid_from_ts == BIP85_GPG_CREATED_TS
+        and subkeys
+    ):
         if all(sk.get("created") == BIP85_GPG_CREATED_TS for sk in subkeys):
             max_idx = max(sk["idx"] for sk in subkeys)
             return [sk for sk in subkeys if sk["idx"] == max_idx]
@@ -4417,6 +4428,7 @@ class ToolsGPGDeleteSubkeysView(View):
 
         fingerprint = keys[selected]["fpr"]
         created_ts = keys[selected]["created"]
+        valid_from_ts = keys[selected].get("valid_from")
         result = run([
             "gpg",
             "--list-secret-keys",
@@ -4424,7 +4436,7 @@ class ToolsGPGDeleteSubkeysView(View):
             fingerprint,
         ], capture_output=True, text=True)
         subkeys = parse_subkey_list(result.stdout)
-        subkeys = filter_deletable_subkeys(created_ts, subkeys)
+        subkeys = filter_deletable_subkeys(created_ts, valid_from_ts, subkeys)
         if not subkeys:
             self.run_screen(
                 WarningScreen,
@@ -8781,7 +8793,11 @@ class ToolsGPGAddSubkeysView(View):
         )
         start_index = sum(1 for line in result.stdout.splitlines() if line.startswith("ssb"))
         created_ts = keys[selected]["created"]
-        bip85 = created_ts == BIP85_GPG_CREATED_TS
+        valid_from_ts = keys[selected].get("valid_from")
+        bip85 = (
+            created_ts == BIP85_GPG_CREATED_TS
+            and valid_from_ts == BIP85_GPG_CREATED_TS
+        )
         key_index = start_index // 3 if bip85 else None
         sec_line = next(l for l in result.stdout.splitlines() if l.startswith("sec"))
         sec_parts = sec_line.split(":")

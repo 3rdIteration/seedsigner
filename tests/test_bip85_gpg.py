@@ -220,15 +220,17 @@ def test_parse_secret_key_list_primary_fingerprint_only():
     assert keys[0]["fpr"] == "PRIMARYFPR"
 
 
-def test_parse_secret_key_list_includes_created():
+def test_parse_secret_key_list_includes_created_and_valid_from():
     output = "\n".join(
         [
-            "sec:-:0:0:KEYID:1231006505:0::::::23::0:",
+            f"sec:-:0:0:KEYID:{BIP85_GPG_CREATED_TS}:0::::::23::0:",
             "fpr:::::::::PRIMARYFPR:",
+            f"uid:u::::{BIP85_GPG_CREATED_TS}::HASH::Test User::::::::0:",
         ]
     )
     keys = parse_secret_key_list(output)
-    assert keys[0]["created"] == 1231006505
+    assert keys[0]["created"] == BIP85_GPG_CREATED_TS
+    assert keys[0]["valid_from"] == BIP85_GPG_CREATED_TS
 
 
 def test_parse_subkey_list_extracts_fingerprint():
@@ -453,14 +455,16 @@ def test_filter_deletable_subkeys_bip85_only_latest():
         {"fpr": "A", "caps": "e", "idx": 1, "created": BIP85_GPG_CREATED_TS},
         {"fpr": "B", "caps": "s", "idx": 2, "created": BIP85_GPG_CREATED_TS},
     ]
-    filtered = filter_deletable_subkeys(BIP85_GPG_CREATED_TS, bip85_subs)
+    filtered = filter_deletable_subkeys(
+        BIP85_GPG_CREATED_TS, BIP85_GPG_CREATED_TS, bip85_subs
+    )
     assert len(filtered) == 1 and filtered[0]["idx"] == 2
 
     non_bip85 = [
         {"fpr": "A", "caps": "e", "idx": 1, "created": 0},
         {"fpr": "B", "caps": "s", "idx": 2, "created": 1},
     ]
-    filtered2 = filter_deletable_subkeys(BIP85_GPG_CREATED_TS, non_bip85)
+    filtered2 = filter_deletable_subkeys(BIP85_GPG_CREATED_TS, 0, non_bip85)
     assert len(filtered2) == 2
 
 
@@ -657,7 +661,8 @@ def test_add_subkeys_auto_bip85_index(monkeypatch):
             if len(cmd) == 3:
                 return R(
                     f"sec:-:0:0:KEYID:{tools_views.BIP85_GPG_CREATED_TS}:0:::::::\n"
-                    "fpr:::::::::FPR:\n"
+                    f"fpr:::::::::FPR:\n"
+                    f"uid:u::::{tools_views.BIP85_GPG_CREATED_TS}::H::User::::::::\n"
                 )
             else:
                 return R(
@@ -743,7 +748,8 @@ def test_add_subkeys_mismatched_seed(monkeypatch):
             if len(cmd) == 3:
                 return R(
                     f"sec:-:0:0:KEYID:{tools_views.BIP85_GPG_CREATED_TS}:0:::::::\n"
-                    "fpr:::::::::FPR:\n"
+                    f"fpr:::::::::FPR:\n"
+                    f"uid:u::::{tools_views.BIP85_GPG_CREATED_TS}::H::User::::::::\n"
                 )
             return R(
                 "sec:-:0:0:KEYID:0:::::::\n" + "ssb:-:0:0:::0:::::::\n" * 3
