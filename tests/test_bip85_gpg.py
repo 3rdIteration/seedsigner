@@ -227,6 +227,89 @@ def test_add_uid_preserves_primary(tmp_path):
     assert uids[0]["uid"] == primary
 
 
+def test_uid_menu_includes_set_primary_option(monkeypatch):
+    from seedsigner.views import tools_views
+
+    captured = {}
+
+    def fake_run_screen(self, screen, *args, **kwargs):
+        captured["labels"] = [b.button_label for b in kwargs.get("button_data", [])]
+        return RET_CODE__BACK_BUTTON
+
+    monkeypatch.setattr(tools_views.ToolsGPGUidMenuView, "run_screen", fake_run_screen)
+    view = tools_views.ToolsGPGUidMenuView()
+    view.run()
+    assert "Set Primary User ID" in captured["labels"]
+
+
+def test_set_primary_uid_sets_selected_uid(tmp_path, monkeypatch):
+    import subprocess
+    from seedsigner.views import tools_views
+
+    gnupg_home = tmp_path / "gnupg"
+    gnupg_home.mkdir()
+    env = {"GNUPGHOME": str(gnupg_home)}
+
+    subprocess.run(
+        ["gpg", "--batch", "--passphrase", "", "--quick-gen-key", "tester@example.com"],
+        env=env,
+        check=True,
+    )
+
+    result = subprocess.run(
+        ["gpg", "--list-secret-keys", "--with-colons"],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    keys = parse_secret_key_list(result.stdout)
+    fpr = keys[0]["fpr"]
+
+    subprocess.run(
+        ["gpg", "--batch", "--quick-add-uid", fpr, "Another <alt@example.com>"],
+        env=env,
+        check=True,
+    )
+
+    subprocess.run(
+        ["gpg", "--batch", "--quick-set-primary-uid", fpr, "tester@example.com"],
+        env=env,
+        check=True,
+    )
+
+    real_run = subprocess.run
+
+    def fake_run(cmd, *args, **kwargs):
+        kwargs.setdefault("env", env)
+        return real_run(cmd, *args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    def fake_run_screen(self, screen, *args, **kwargs):
+        title = kwargs.get("title")
+        if title == "Select Key":
+            return 0
+        if title == "Set Primary User ID":
+            return 1
+        return RET_CODE__BACK_BUTTON
+
+    monkeypatch.setattr(tools_views.ToolsGPGSetPrimaryUidView, "run_screen", fake_run_screen)
+
+    view = tools_views.ToolsGPGSetPrimaryUidView()
+    view.run()
+
+    result = real_run(
+        ["gpg", "--list-secret-keys", "--with-colons", fpr],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    uids = parse_uid_list(result.stdout)
+    assert uids[0]["uid"] == "Another <alt@example.com>"
+
+
 def test_load_bip85_key_selects_seed(monkeypatch):
     from seedsigner.views import tools_views
 

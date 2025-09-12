@@ -2292,6 +2292,10 @@ msgid "Delete User ID"
 msgstr ""
 
 #: src/seedsigner/views/tools_views.py
+msgid "Set Primary User ID"
+msgstr ""
+
+#: src/seedsigner/views/tools_views.py
 msgid "uid"
 msgstr ""
 

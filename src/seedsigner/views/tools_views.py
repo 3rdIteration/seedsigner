@@ -4775,6 +4775,7 @@ class ToolsGPGExportSubkeySecretsView(View):
 class ToolsGPGUidMenuView(View):
     ADD_UID = ButtonOption("Add User ID")
     EDIT_UID = ButtonOption("Edit User IDs")
+    SET_PRIMARY_UID = ButtonOption("Set Primary User ID")
     REVOKE_UID = ButtonOption("Revoke User ID")
     DELETE_UID = ButtonOption("Delete User ID")
 
@@ -4782,6 +4783,7 @@ class ToolsGPGUidMenuView(View):
         button_data = [
             self.ADD_UID,
             self.EDIT_UID,
+            self.SET_PRIMARY_UID,
             self.REVOKE_UID,
             self.DELETE_UID,
         ]
@@ -4798,6 +4800,8 @@ class ToolsGPGUidMenuView(View):
             return Destination(ToolsGPGAddUidView)
         if choice == self.EDIT_UID:
             return Destination(ToolsGPGEditUidView)
+        if choice == self.SET_PRIMARY_UID:
+            return Destination(ToolsGPGSetPrimaryUidView)
         if choice == self.REVOKE_UID:
             return Destination(ToolsGPGRevokeUidView)
         return Destination(ToolsGPGDeleteUidView)
@@ -4981,6 +4985,77 @@ class ToolsGPGEditUidView(View):
             run(["gpg", "--batch", "--quick-revoke-uid", fingerprint, old_uid])
         screen = LargeIconStatusScreen if success else WarningScreen
         msg = "User ID updated" if success else "Failed to update User ID"
+        self.run_screen(
+            screen,
+            title="Result",
+            status_headline=None,
+            text=msg,
+            show_back_button=False,
+            button_data=[ButtonOption("Done")],
+        )
+        return Destination(ToolsGPGMenuView)
+
+
+class ToolsGPGSetPrimaryUidView(View):
+    def run(self):
+        from subprocess import run
+        from seedsigner.gui.screens import (
+            ButtonListScreen,
+            LargeIconStatusScreen,
+            WarningScreen,
+        )
+
+        result = run(["gpg", "--list-secret-keys", "--with-colons"], capture_output=True, text=True)
+        keys = parse_secret_key_list(result.stdout)
+        if not keys:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No private keys found",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        buttons = [ButtonOption(k["uid"] if k["uid"] else k["fpr"][-8:]) for k in keys]
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Select Key",
+            is_button_text_centered=False,
+            button_data=buttons,
+        )
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        fingerprint = keys[selected]["fpr"]
+        result = run(["gpg", "--list-secret-keys", "--with-colons", fingerprint], capture_output=True, text=True)
+        uids = parse_uid_list(result.stdout)
+        if not uids:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No user IDs found",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        uid_buttons = [ButtonOption(u["uid"]) for u in uids]
+        sel = self.run_screen(
+            ButtonListScreen,
+            title="Set Primary User ID",
+            is_button_text_centered=False,
+            button_data=uid_buttons,
+        )
+        if sel == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        uid = uids[sel]["uid"]
+
+        r = run(["gpg", "--batch", "--quick-set-primary-uid", fingerprint, uid])
+        screen = LargeIconStatusScreen if r.returncode == 0 else WarningScreen
+        msg = "Primary UID set" if r.returncode == 0 else "Failed to set primary UID"
         self.run_screen(
             screen,
             title="Result",
