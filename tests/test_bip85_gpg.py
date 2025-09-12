@@ -805,6 +805,115 @@ def test_add_subkeys_mismatched_seed(monkeypatch):
     assert called["warning"] == "Selected seed/index mismatch"
 
 
+def test_delete_subkeys_bip85_only_latest(monkeypatch):
+    import subprocess
+    from seedsigner.views import tools_views
+
+    ts = tools_views.BIP85_GPG_CREATED_TS
+
+    def fake_run(cmd, *args, **kwargs):
+        class R:
+            returncode = 0
+
+            def __init__(self, stdout=""):
+                self.stdout = stdout
+
+        if cmd[:3] == ["gpg", "--list-secret-keys", "--with-colons"]:
+            if len(cmd) == 3:
+                return R(
+                    f"sec:-:0:0:KEYID:{ts}:0:::::::\n"
+                    f"fpr:::::::::FPR:\n"
+                    f"uid:u::::{ts}::H::User::::::::\n"
+                )
+            return R(
+                "sec:-:0:0:KEYID:0:::::::\n"
+                f"ssb:-:0:0::{ts}::::::e:::::\n"
+                "fpr:::::::::AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA:\n"
+                f"ssb:-:0:0::{ts}::::::s:::::\n"
+                "fpr:::::::::BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB:\n"
+                f"ssb:-:0:0::{ts}::::::e:::::\n"
+                "fpr:::::::::CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC:\n"
+            )
+        return R()
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    captured = {}
+
+    def fake_run_screen(self, screen, **kwargs):
+        if kwargs.get("title") == "WARNING":
+            return 0
+        if kwargs.get("title") == "Select Key":
+            return 0
+        if kwargs.get("title") == "Delete Subkeys":
+            captured["labels"] = [b.button_label for b in kwargs["button_data"]]
+            return RET_CODE__BACK_BUTTON
+        return RET_CODE__BACK_BUTTON
+
+    monkeypatch.setattr(tools_views.ToolsGPGDeleteSubkeysView, "run_screen", fake_run_screen)
+
+    view = object.__new__(tools_views.ToolsGPGDeleteSubkeysView)
+    tools_views.ToolsGPGDeleteSubkeysView.run(view)
+
+    assert captured["labels"] == ["CCCCCCCC [e]", "Done"]
+
+
+def test_delete_subkeys_non_bip85_lists_all(monkeypatch):
+    import subprocess
+    from seedsigner.views import tools_views
+
+    def fake_run(cmd, *args, **kwargs):
+        class R:
+            returncode = 0
+
+            def __init__(self, stdout=""):
+                self.stdout = stdout
+
+        if cmd[:3] == ["gpg", "--list-secret-keys", "--with-colons"]:
+            if len(cmd) == 3:
+                return R(
+                    "sec:-:0:0:KEYID:0:0:::::::\n"
+                    "fpr:::::::::FPR:\n"
+                    "uid:u::::0::H::User::::::::\n"
+                )
+            return R(
+                "sec:-:0:0:KEYID:0:::::::\n"
+                "ssb:-:0:0::1::::::e:::::\n"
+                "fpr:::::::::AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA:\n"
+                "ssb:-:0:0::2::::::s:::::\n"
+                "fpr:::::::::BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB:\n"
+                "ssb:-:0:0::3::::::e:::::\n"
+                "fpr:::::::::CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC:\n"
+            )
+        return R()
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    captured = {}
+
+    def fake_run_screen(self, screen, **kwargs):
+        if kwargs.get("title") == "WARNING":
+            return 0
+        if kwargs.get("title") == "Select Key":
+            return 0
+        if kwargs.get("title") == "Delete Subkeys":
+            captured["labels"] = [b.button_label for b in kwargs["button_data"]]
+            return RET_CODE__BACK_BUTTON
+        return RET_CODE__BACK_BUTTON
+
+    monkeypatch.setattr(tools_views.ToolsGPGDeleteSubkeysView, "run_screen", fake_run_screen)
+
+    view = object.__new__(tools_views.ToolsGPGDeleteSubkeysView)
+    tools_views.ToolsGPGDeleteSubkeysView.run(view)
+
+    assert captured["labels"] == [
+        "AAAAAAAA [e]",
+        "BBBBBBBB [s]",
+        "CCCCCCCC [e]",
+        "Done",
+    ]
+
+
 def test_smartpgp_import_filters_subkeys(monkeypatch):
     import types, sys, datetime as dt
     from pgpy.constants import KeyFlags, EllipticCurveOID

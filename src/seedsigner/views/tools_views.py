@@ -4478,7 +4478,7 @@ class ToolsGPGDeleteSubkeysView(View):
                 fingerprint,
             ], capture_output=True, text=True)
             subkeys = parse_subkey_list(result.stdout)
-            subkeys = filter_deletable_subkeys(created_ts, subkeys)
+            subkeys = filter_deletable_subkeys(created_ts, valid_from_ts, subkeys)
         return Destination(ToolsGPGMenuView)
 
 
