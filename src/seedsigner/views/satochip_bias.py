@@ -22,6 +22,8 @@ class ToolsSatochipBiasCheckView(View):
     """Run multiple signatures to look for ECDSA bias."""
 
     NUM_SAMPLES = 1000
+    MAX_ATTEMPTS_FACTOR = 5
+    MAX_CONSECUTIVE_FAILURES = 25
 
     @staticmethod
     def binom_z_p(n, k, p0=0.5):
@@ -90,24 +92,34 @@ class ToolsSatochipBiasCheckView(View):
         csv_rows = []
         dropped = {"parse": 0, "duplicate": 0, "soft_timeout": 0, "hard_timeout": 0, "sw_error": 0, "exception": 0}
 
+        max_attempts = self.NUM_SAMPLES * self.MAX_ATTEMPTS_FACTOR
         idx = 0
-        while len(msb_bits) < self.NUM_SAMPLES:
+        consecutive_failures = 0
+        while (
+            len(msb_bits) < self.NUM_SAMPLES
+            and idx < max_attempts
+            and consecutive_failures < self.MAX_CONSECUTIVE_FAILURES
+        ):
             tx_hash = os.urandom(32)
             if tx_hash in messages:
                 csv_rows.append({"index": idx, "r_hex": "", "s_hex": "", "msb_r": "", "lsb_r": "", "lsb4_bucket": "", "latency_ms": "", "dropped_reason": "duplicate"})
                 dropped["duplicate"] += 1
                 idx += 1
+                consecutive_failures += 1
                 continue
             messages.add(tx_hash)
             for attempt in range(2):
                 time.sleep(random.uniform(0.01, 0.03))
                 start = time.monotonic()
                 try:
-                    sig, sw1, sw2 = _call_with_timeout(connector.card_sign_transaction_hash, timeout, 0xFF, list(tx_hash), None)
+                    sig, sw1, sw2 = _call_with_timeout(
+                        connector.card_sign_transaction_hash, timeout, 0xFF, list(tx_hash), None
+                    )
                 except Exception:
                     csv_rows.append({"index": idx, "r_hex": "", "s_hex": "", "msb_r": "", "lsb_r": "", "lsb4_bucket": "", "latency_ms": "", "dropped_reason": "exception"})
                     dropped["exception"] += 1
                     idx += 1
+                    consecutive_failures += 1
                     break
                 latency = time.monotonic() - start
                 latency_ms = int(latency * 1000)
@@ -115,11 +127,13 @@ class ToolsSatochipBiasCheckView(View):
                     csv_rows.append({"index": idx, "r_hex": "", "s_hex": "", "msb_r": "", "lsb_r": "", "lsb4_bucket": "", "latency_ms": latency_ms, "dropped_reason": "hard_timeout"})
                     dropped["hard_timeout"] += 1
                     idx += 1
+                    consecutive_failures += 1
                     break
                 if latency > soft_threshold:
                     csv_rows.append({"index": idx, "r_hex": "", "s_hex": "", "msb_r": "", "lsb_r": "", "lsb4_bucket": "", "latency_ms": latency_ms, "dropped_reason": "soft_timeout"})
                     dropped["soft_timeout"] += 1
                     idx += 1
+                    consecutive_failures += 1
                     if attempt == 0:
                         continue
                     break
@@ -127,6 +141,7 @@ class ToolsSatochipBiasCheckView(View):
                     csv_rows.append({"index": idx, "r_hex": "", "s_hex": "", "msb_r": "", "lsb_r": "", "lsb4_bucket": "", "latency_ms": latency_ms, "dropped_reason": f"sw_{sw1:02x}{sw2:02x}"})
                     dropped["sw_error"] += 1
                     idx += 1
+                    consecutive_failures += 1
                     break
                 try:
                     sig_obj = secp256k1.ecdsa_signature_parse_der(bytes(sig))
@@ -137,6 +152,7 @@ class ToolsSatochipBiasCheckView(View):
                     csv_rows.append({"index": idx, "r_hex": "", "s_hex": "", "msb_r": "", "lsb_r": "", "lsb4_bucket": "", "latency_ms": latency_ms, "dropped_reason": "parse"})
                     dropped["parse"] += 1
                     idx += 1
+                    consecutive_failures += 1
                     break
                 msb = 1 if r >= (1 << 255) else 0
                 lsb = r & 1
@@ -147,6 +163,7 @@ class ToolsSatochipBiasCheckView(View):
                 latencies.append(latency_ms)
                 csv_rows.append({"index": idx, "r_hex": f"{r:064x}", "s_hex": f"{s:064x}", "msb_r": msb, "lsb_r": lsb, "lsb4_bucket": bucket, "latency_ms": latency_ms, "dropped_reason": ""})
                 idx += 1
+                consecutive_failures = 0
                 break
 
         loading.stop()
@@ -154,16 +171,23 @@ class ToolsSatochipBiasCheckView(View):
         total = len(msb_bits)
         msb_ones = sum(msb_bits)
         lsb_ones = sum(lsb_bits)
-        msb_pct = msb_ones / total if total else 0
-        lsb_pct = lsb_ones / total if total else 0
-        msb_z, msb_p = self.binom_z_p(total, msb_ones)
-        lsb_z, lsb_p = self.binom_z_p(total, lsb_ones)
-        msb_ci_low = msb_pct - 1.96 * (msb_pct * (1 - msb_pct) / total) ** 0.5
-        msb_ci_high = msb_pct + 1.96 * (msb_pct * (1 - msb_pct) / total) ** 0.5
-        lsb_ci_low = lsb_pct - 1.96 * (lsb_pct * (1 - lsb_pct) / total) ** 0.5
-        lsb_ci_high = lsb_pct + 1.96 * (lsb_pct * (1 - lsb_pct) / total) ** 0.5
-        chi2, chi_status = self.chi2_16(lsb4_counts)
-        runs_z, runs_p = self.runs_test(lsb_bits)
+        if total:
+            msb_pct = msb_ones / total
+            lsb_pct = lsb_ones / total
+            msb_z, msb_p = self.binom_z_p(total, msb_ones)
+            lsb_z, lsb_p = self.binom_z_p(total, lsb_ones)
+            msb_ci_low = msb_pct - 1.96 * (msb_pct * (1 - msb_pct) / total) ** 0.5
+            msb_ci_high = msb_pct + 1.96 * (msb_pct * (1 - msb_pct) / total) ** 0.5
+            lsb_ci_low = lsb_pct - 1.96 * (lsb_pct * (1 - lsb_pct) / total) ** 0.5
+            lsb_ci_high = lsb_pct + 1.96 * (lsb_pct * (1 - lsb_pct) / total) ** 0.5
+            chi2, chi_status = self.chi2_16(lsb4_counts)
+            runs_z, runs_p = self.runs_test(lsb_bits)
+        else:
+            msb_pct = lsb_pct = 0
+            msb_z = msb_p = lsb_z = lsb_p = 0
+            msb_ci_low = msb_ci_high = lsb_ci_low = lsb_ci_high = 0
+            chi2, chi_status = 0, "fail"
+            runs_z = runs_p = 0
 
         def p_status(p):
             if p < 0.01:
@@ -178,7 +202,8 @@ class ToolsSatochipBiasCheckView(View):
 
         final_status = "pass"
         if (
-            msb_status == "fail"
+            total < self.NUM_SAMPLES
+            or msb_status == "fail"
             or lsb_status == "fail"
             or runs_status == "fail"
             or chi_status == "fail"
@@ -214,7 +239,7 @@ class ToolsSatochipBiasCheckView(View):
         lines = [
             f"Status: {final_status.upper()}",
             f"Transport: {transport}",
-            f"Samples: {total}",
+            f"Samples: {total}/{self.NUM_SAMPLES}",
             f"MSB1: {msb_ones}/{total} ({msb_pct*100:.1f}%) z={msb_z:.2f} p={msb_p:.3g} CI[{msb_ci_low*100:.1f}%, {msb_ci_high*100:.1f}%]",
             f"LSB1: {lsb_ones}/{total} ({lsb_pct*100:.1f}%) z={lsb_z:.2f} p={lsb_p:.3g} CI[{lsb_ci_low*100:.1f}%, {lsb_ci_high*100:.1f}%]",
             f"LSB4 χ²: {chi2:.2f} ({chi_status})",
@@ -224,6 +249,8 @@ class ToolsSatochipBiasCheckView(View):
             f"CSV: {csv_path.name}",
             f"TXT: {txt_path.name}",
         ]
+        if total < self.NUM_SAMPLES:
+            lines.append(f"Aborted after {idx} attempts; insufficient valid signatures.")
 
         console_text = "\n".join(lines)
         try:
