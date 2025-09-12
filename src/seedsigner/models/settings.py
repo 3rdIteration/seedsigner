@@ -4,6 +4,8 @@ import json
 import os
 import pathlib
 import platform
+import shutil
+import subprocess
 
 from typing import List
 
@@ -256,6 +258,12 @@ class Settings(Singleton):
             import time
             import seedsigner
             #from seedsigner.gui.screens.screen import LoadingScreenThread, WarningScreen
+            openct_control = shutil.which("openct-control")
+            if not openct_control:
+                for candidate in ("/usr/local/sbin/openct-control", "/usr/local/bin/openct-control"):
+                    if os.path.exists(candidate):
+                        openct_control = candidate
+                        break
             
             print("Smartcard Interface Changed")
             print("Value:", value)
@@ -366,8 +374,12 @@ class Settings(Singleton):
                 except:
                     pass
 
-                os.system(self.SU_COMMAND_PREFIX + "openct-control init") # OpenCT needs a bit of time to get going before restarting PCSCD (At least two seconds) to work reliabily
-                time.sleep(3)
+                if openct_control:
+                    try:
+                        subprocess.run(self.SU_COMMAND_PREFIX.strip().split() + [openct_control, "init"], check=True)
+                    except subprocess.SubprocessError:
+                        logger.warning("Failed to initialize OpenCT")
+                    time.sleep(3)
 
                 try:
                     self.loading_screen.stop()
@@ -381,9 +393,13 @@ class Settings(Singleton):
                     self.loading_screen.start()
                 except:
                     pass
-                
-                os.system(self.SU_COMMAND_PREFIX + "openct-control shutdown")
-                time.sleep(3)
+
+                if openct_control:
+                    try:
+                        subprocess.run(self.SU_COMMAND_PREFIX.strip().split() + [openct_control, "shutdown"], check=True)
+                    except subprocess.SubprocessError:
+                        logger.warning("Failed to shutdown OpenCT")
+                    time.sleep(3)
 
                 try:
                     self.loading_screen.stop()
