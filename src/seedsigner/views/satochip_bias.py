@@ -200,25 +200,52 @@ class ToolsSatochipBiasCheckView(View):
         lsb_status = p_status(lsb_p)
         runs_status = p_status(runs_p)
 
-        final_status = "pass"
-        if (
-            total < self.NUM_SAMPLES
-            or msb_status == "fail"
-            or lsb_status == "fail"
-            or runs_status == "fail"
-            or chi_status == "fail"
-            or dropped["hard_timeout"] > 0
-            or dropped["soft_timeout"] > self.NUM_SAMPLES * 0.01
-        ):
+        fail_reasons = []
+        warn_reasons = []
+        abort_reason = None
+
+        if total < self.NUM_SAMPLES:
+            abort_reason = "insufficient valid signatures"
+
+        if msb_status == "fail":
+            fail_reasons.append("MSB monobit")
+        elif msb_status == "warn":
+            warn_reasons.append("MSB monobit")
+        if lsb_status == "fail":
+            fail_reasons.append("LSB monobit")
+        elif lsb_status == "warn":
+            warn_reasons.append("LSB monobit")
+        if runs_status == "fail":
+            fail_reasons.append("runs test")
+        elif runs_status == "warn":
+            warn_reasons.append("runs test")
+        if chi_status == "fail":
+            fail_reasons.append("chi-square")
+        elif chi_status == "warn":
+            warn_reasons.append("chi-square")
+
+        if dropped["hard_timeout"] > 0:
+            fail_reasons.append("hard timeout")
+        if dropped["soft_timeout"] > self.NUM_SAMPLES * 0.01:
+            fail_reasons.append(">1% soft timeouts")
+        if dropped["parse"] > 0:
+            warn_reasons.append("parse errors")
+
+        if abort_reason:
+            final_status = "abort"
+        elif fail_reasons:
             final_status = "fail"
-        elif (
-            msb_status == "warn"
-            or lsb_status == "warn"
-            or runs_status == "warn"
-            or chi_status == "warn"
-            or dropped["parse"] > 0
-        ):
+        elif warn_reasons:
             final_status = "warn"
+        else:
+            final_status = "pass"
+
+        reason_text = ""
+        if abort_reason:
+            reason_text = abort_reason
+        elif final_status in ("fail", "warn"):
+            reasons = fail_reasons if final_status == "fail" else warn_reasons
+            reason_text = ", ".join(reasons)
 
         avg_latency = sum(latencies) / len(latencies) if latencies else 0
 
@@ -237,7 +264,7 @@ class ToolsSatochipBiasCheckView(View):
             logger.warning("Failed to write CSV: %s", e)
 
         lines = [
-            f"Status: {final_status.upper()}",
+            f"Status: {final_status.upper()}" + (f" ({reason_text})" if reason_text else ""),
             f"Transport: {transport}",
             f"Samples: {total}/{self.NUM_SAMPLES}",
             f"MSB1: {msb_ones}/{total} ({msb_pct*100:.1f}%) z={msb_z:.2f} p={msb_p:.3g} CI[{msb_ci_low*100:.1f}%, {msb_ci_high*100:.1f}%]",
