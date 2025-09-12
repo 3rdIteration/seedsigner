@@ -8272,6 +8272,32 @@ class ToolsGPGLoadBIP85KeyView(View):
             )
             return Destination(BackStackView)
 
+        if len(self.controller.storage.seeds) > 1:
+            seed_buttons = []
+            for seed in self.controller.storage.seeds:
+                button_str = seed.get_fingerprint(
+                    self.settings.get_value(SettingsConstants.SETTING__NETWORK)
+                )
+                seed_buttons.append(
+                    ButtonOption(
+                        button_str,
+                        SeedSignerIconConstants.FINGERPRINT,
+                        icon_color="blue",
+                    )
+                )
+            selected_seed = self.run_screen(
+                seed_screens.SeedSelectSeedScreen,
+                title="Select Seed",
+                text="Choose seed for BIP85 key",
+                is_button_text_centered=False,
+                button_data=seed_buttons,
+            )
+            if selected_seed == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+            seed = self.controller.get_seed(selected_seed)
+        else:
+            seed = self.controller.get_seed(0)
+
         ret = seed_screens.SeedBIP85SelectChildIndexScreen(title="Key Index").display()
         if ret == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
@@ -8388,8 +8414,6 @@ class ToolsGPGLoadBIP85KeyView(View):
                 button_data=[ButtonOption("I Understand")],
             )
             return Destination(BackStackView)
-
-        seed = self.controller.get_seed(0)
         root = bip32.HDKey.from_seed(seed.seed_bytes)
         KEY_BITS = (
             2048

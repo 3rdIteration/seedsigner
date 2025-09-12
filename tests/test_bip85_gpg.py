@@ -1,6 +1,8 @@
 import pytest
 from embit import bip32, bip85
 from seedsigner.models.seed import Seed
+from seedsigner.controller import Controller
+from seedsigner.gui.screens import RET_CODE__BACK_BUTTON
 from seedsigner.views.tools_views import (
     bip85_brainpoolp256r1_from_root,
     bip85_ed25519_from_root,
@@ -223,6 +225,50 @@ def test_add_uid_preserves_primary(tmp_path):
     )
     uids = parse_uid_list(result.stdout)
     assert uids[0]["uid"] == primary
+
+
+def test_load_bip85_key_selects_seed(monkeypatch):
+    from seedsigner.views import tools_views
+
+    controller = Controller.get_instance()
+    original = list(controller.storage.seeds)
+    controller.storage.seeds = [Seed(mnemonic=MNEMONIC), Seed(mnemonic=MNEMONIC)]
+
+    responses = iter([1, RET_CODE__BACK_BUTTON])
+    screens = []
+
+    def fake_run_screen(self, screen, *args, **kwargs):
+        screens.append(screen)
+        return next(responses)
+
+    class DummyIndexScreen:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def display(self):
+            return "0"
+
+    monkeypatch.setattr(tools_views.ToolsGPGLoadBIP85KeyView, "run_screen", fake_run_screen)
+    monkeypatch.setattr(
+        tools_views.seed_screens, "SeedBIP85SelectChildIndexScreen", DummyIndexScreen
+    )
+
+    captured = {}
+
+    def fake_get_seed(idx):
+        captured["idx"] = idx
+        return controller.storage.seeds[idx]
+
+    monkeypatch.setattr(controller, "get_seed", fake_get_seed)
+
+    view = tools_views.ToolsGPGLoadBIP85KeyView()
+    try:
+        view.run()
+    finally:
+        controller.storage.seeds = original
+
+    assert captured["idx"] == 1
+    assert screens[0] == tools_views.seed_screens.SeedSelectSeedScreen
 
 
 def test_filter_deletable_subkeys_bip85_only_latest():
