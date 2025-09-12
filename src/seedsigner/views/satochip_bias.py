@@ -235,8 +235,8 @@ class ToolsSatochipBiasCheckView(View):
             fail_reasons.append("hard timeout")
         if dropped["soft_timeout"] > self.NUM_SAMPLES * 0.01:
             fail_reasons.append(">1% soft timeouts")
-        if dropped["parse"] > 0:
-            warn_reasons.append("parse errors")
+        if dropped["parse"] > self.NUM_SAMPLES * 0.01:
+            fail_reasons.append(">1% parse errors")
 
         if abort_reason:
             final_status = "abort"
@@ -262,7 +262,7 @@ class ToolsSatochipBiasCheckView(View):
                 "chi-square": "Chi2",
                 "hard timeout": "HardTimeout",
                 ">1% soft timeouts": "SoftTimeout",
-                "parse errors": "Parse",
+                ">1% parse errors": "Parse",
             }
             reason_codes = ", ".join(code_map.get(r, r) for r in reasons)
 
@@ -272,7 +272,7 @@ class ToolsSatochipBiasCheckView(View):
         txt_path = MicroSD.get_microsd_dir() / f"satochip_bias_{transport}.txt"
         try:
             csv_path.parent.mkdir(parents=True, exist_ok=True)
-            with csv_path.open("w", newline="") as f:
+            with csv_path.open("w", newline="", encoding="utf-8") as f:
                 writer = csv.writer(f)
                 writer.writerow(["index", "r_hex", "s_hex", "msb_r", "lsb_r", "lsb4_bucket", "latency_ms", "dropped_reason"])
                 for row in csv_rows:
@@ -289,7 +289,7 @@ class ToolsSatochipBiasCheckView(View):
             f"Samples: {total}/{self.NUM_SAMPLES}",
             f"MSB1: {msb_ones}/{total} ({msb_pct*100:.1f}%) z={msb_z:.2f} p={msb_p:.3g} CI[{msb_ci_low*100:.1f}%, {msb_ci_high*100:.1f}%]",
             f"LSB1: {lsb_ones}/{total} ({lsb_pct*100:.1f}%) z={lsb_z:.2f} p={lsb_p:.3g} CI[{lsb_ci_low*100:.1f}%, {lsb_ci_high*100:.1f}%]",
-            f"LSB4 χ²: {chi2:.2f} ({chi_status})",
+            f"LSB4 chi2: {chi2:.2f} ({chi_status})",
             f"Runs z={runs_z:.2f} p={runs_p:.3g}",
             f"Dropped: {sum(dropped.values())} (parse={dropped['parse']}, dup={dropped['duplicate']}, soft={dropped['soft_timeout']}, hard={dropped['hard_timeout']}, sw={dropped['sw_error']}, exc={dropped['exception']})",
             f"Avg latency: {avg_latency:.1f} ms",
@@ -304,7 +304,7 @@ class ToolsSatochipBiasCheckView(View):
         console_text = "\n".join(lines)
         try:
             txt_path.parent.mkdir(parents=True, exist_ok=True)
-            with txt_path.open("w") as f:
+            with txt_path.open("w", encoding="utf-8") as f:
                 f.write(console_text + "\n")
                 f.flush()
                 os.fsync(f.fileno())
@@ -321,7 +321,7 @@ class ToolsSatochipBiasCheckView(View):
             f"{screen_status}\n"
             f"MSB1: {msb_pct*100:.1f}%\n"
             f"LSB1: {lsb_pct*100:.1f}%\n"
-            f"LSB4 χ²: {chi2:.2f}\n"
+            f"LSB4 chi2: {chi2:.2f}\n"
             "Details saved to microSD"
         )
 
