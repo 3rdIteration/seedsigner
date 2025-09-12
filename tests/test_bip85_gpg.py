@@ -173,6 +173,58 @@ def test_parse_uid_list_extracts_uids():
     assert uids[1]["idx"] == 2
 
 
+def test_add_uid_preserves_primary(tmp_path):
+    from subprocess import run
+
+    gnupg_home = tmp_path / "gnupg"
+    gnupg_home.mkdir()
+    env = {"GNUPGHOME": str(gnupg_home)}
+
+    run(
+        ["gpg", "--batch", "--passphrase", "", "--quick-gen-key", "tester@example.com"],
+        env=env,
+        check=True,
+    )
+
+    result = run(
+        ["gpg", "--list-secret-keys", "--with-colons"],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    keys = parse_secret_key_list(result.stdout)
+    fpr = keys[0]["fpr"]
+    primary = keys[0]["uid"]
+
+    run(
+        [
+            "gpg",
+            "--batch",
+            "--quick-add-uid",
+            fpr,
+            "Another User <alt@example.com>",
+        ],
+        env=env,
+        check=True,
+    )
+    run(
+        ["gpg", "--batch", "--quick-set-primary-uid", fpr, primary],
+        env=env,
+        check=True,
+    )
+
+    result = run(
+        ["gpg", "--list-secret-keys", "--with-colons", fpr],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    uids = parse_uid_list(result.stdout)
+    assert uids[0]["uid"] == primary
+
+
 def test_filter_deletable_subkeys_bip85_only_latest():
     subs = [
         {"fpr": "A", "caps": "e", "idx": 1},

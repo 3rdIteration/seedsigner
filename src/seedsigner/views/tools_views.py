@@ -4839,6 +4839,17 @@ class ToolsGPGAddUidView(View):
 
         fingerprint = keys[selected]["fpr"]
 
+        # Preserve the key's original primary UID so that adding an
+        # additional UID does not change which one is displayed as primary.
+        result = run([
+            "gpg",
+            "--list-secret-keys",
+            "--with-colons",
+            fingerprint,
+        ], capture_output=True, text=True)
+        uids = parse_uid_list(result.stdout)
+        primary_uid = uids[0]["uid"] if uids else None
+
         def prompt_text(title: str):
             ret_dict = tools_screens.ToolsTextQRTextEntryScreen(textToEncode="", title=title).display()
             if "is_back_button" in ret_dict:
@@ -4862,6 +4873,14 @@ class ToolsGPGAddUidView(View):
         uid_str = f"{name} <{email}>" if email else name
 
         r = run(["gpg", "--batch", "--quick-add-uid", fingerprint, uid_str])
+        if r.returncode == 0 and primary_uid:
+            run([
+                "gpg",
+                "--batch",
+                "--quick-set-primary-uid",
+                fingerprint,
+                primary_uid,
+            ])
         screen = LargeIconStatusScreen if r.returncode == 0 else WarningScreen
         msg = "User ID added" if r.returncode == 0 else "Failed to add User ID"
         self.run_screen(
