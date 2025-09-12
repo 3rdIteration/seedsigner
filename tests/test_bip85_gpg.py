@@ -449,13 +449,18 @@ def test_load_bip85_key_selects_seed(monkeypatch):
 
 
 def test_filter_deletable_subkeys_bip85_only_latest():
-    subs = [
-        {"fpr": "A", "caps": "e", "idx": 1},
-        {"fpr": "B", "caps": "s", "idx": 2},
+    bip85_subs = [
+        {"fpr": "A", "caps": "e", "idx": 1, "created": BIP85_GPG_CREATED_TS},
+        {"fpr": "B", "caps": "s", "idx": 2, "created": BIP85_GPG_CREATED_TS},
     ]
-    filtered = filter_deletable_subkeys(BIP85_GPG_CREATED_TS, subs)
+    filtered = filter_deletable_subkeys(BIP85_GPG_CREATED_TS, bip85_subs)
     assert len(filtered) == 1 and filtered[0]["idx"] == 2
-    filtered2 = filter_deletable_subkeys(0, subs)
+
+    non_bip85 = [
+        {"fpr": "A", "caps": "e", "idx": 1, "created": 0},
+        {"fpr": "B", "caps": "s", "idx": 2, "created": 1},
+    ]
+    filtered2 = filter_deletable_subkeys(BIP85_GPG_CREATED_TS, non_bip85)
     assert len(filtered2) == 2
 
 

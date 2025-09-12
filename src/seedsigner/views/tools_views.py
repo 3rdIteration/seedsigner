@@ -4127,6 +4127,7 @@ def parse_subkey_list(colon_output: str):
             bits = parts[2]
             algo = parts[3] if len(parts) > 3 else ""
             curve = parts[16].lower() if len(parts) > 16 else ""
+            created = int(parts[5]) if len(parts) > 5 and parts[5] else None
             cur = {
                 "fpr": None,
                 "caps": parts[11].lower(),
@@ -4134,6 +4135,7 @@ def parse_subkey_list(colon_output: str):
                 "algo": algo,
                 "bits": bits,
                 "curve": curve,
+                "created": created,
             }
             subkeys.append(cur)
         elif parts[0] == "fpr" and cur is not None and cur.get("fpr") is None:
@@ -4158,8 +4160,9 @@ def parse_uid_list(colon_output: str):
 
 def filter_deletable_subkeys(created_ts: int, subkeys):
     if created_ts == BIP85_GPG_CREATED_TS and subkeys:
-        max_idx = max(sk["idx"] for sk in subkeys)
-        return [sk for sk in subkeys if sk["idx"] == max_idx]
+        if all(sk.get("created") == BIP85_GPG_CREATED_TS for sk in subkeys):
+            max_idx = max(sk["idx"] for sk in subkeys)
+            return [sk for sk in subkeys if sk["idx"] == max_idx]
     return subkeys
 
 
