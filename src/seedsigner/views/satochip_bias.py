@@ -248,11 +248,23 @@ class ToolsSatochipBiasCheckView(View):
             final_status = "pass"
 
         reason_text = ""
+        reason_codes = ""
         if abort_reason:
             reason_text = abort_reason
+            reason_codes = abort_reason
         elif final_status in ("fail", "warn"):
             reasons = fail_reasons if final_status == "fail" else warn_reasons
             reason_text = ", ".join(reasons)
+            code_map = {
+                "MSB monobit": "MSB1",
+                "LSB monobit": "LSB1",
+                "runs test": "Runs",
+                "chi-square": "Chi2",
+                "hard timeout": "HardTimeout",
+                ">1% soft timeouts": "SoftTimeout",
+                "parse errors": "Parse",
+            }
+            reason_codes = ", ".join(code_map.get(r, r) for r in reasons)
 
         avg_latency = sum(latencies) / len(latencies) if latencies else 0
 
@@ -270,8 +282,9 @@ class ToolsSatochipBiasCheckView(View):
         except Exception as e:
             logger.warning("Failed to write CSV: %s", e)
 
+        status_line = f"Status: {final_status.upper()}" + (f" ({reason_codes})" if reason_codes else "")
         lines = [
-            f"Status: {final_status.upper()}" + (f" ({reason_text})" if reason_text else ""),
+            status_line,
             f"Transport: {transport}",
             f"Samples: {total}/{self.NUM_SAMPLES}",
             f"MSB1: {msb_ones}/{total} ({msb_pct*100:.1f}%) z={msb_z:.2f} p={msb_p:.3g} CI[{msb_ci_low*100:.1f}%, {msb_ci_high*100:.1f}%]",
@@ -283,6 +296,8 @@ class ToolsSatochipBiasCheckView(View):
             f"CSV: {csv_path.name}",
             f"TXT: {txt_path.name}",
         ]
+        if reason_text and reason_text != reason_codes:
+            lines.insert(1, f"Cause: {reason_text}")
         if total < self.NUM_SAMPLES:
             lines.append(f"Aborted after {idx} attempts; insufficient valid signatures.")
 
@@ -301,8 +316,9 @@ class ToolsSatochipBiasCheckView(View):
                 pass
         except Exception as e:
             logger.warning("Failed to write text log: %s", e)
+        screen_status = status_line
         screen_text = (
-            f"Status: {final_status.upper()}\n"
+            f"{screen_status}\n"
             f"MSB1: {msb_pct*100:.1f}%\n"
             f"LSB1: {lsb_pct*100:.1f}%\n"
             f"LSB4 χ²: {chi2:.2f}\n"
