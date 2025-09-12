@@ -10,7 +10,6 @@ from embit.util import secp256k1
 from seedsigner.hardware.microsd import MicroSD
 from seedsigner.helpers import seedkeeper_utils
 from seedsigner.helpers.satochip_signer import _call_with_timeout
-from seedsigner.models.settings_definition import SettingsConstants
 from seedsigner.gui.screens import LargeIconStatusScreen, WarningScreen, RET_CODE__BACK_BUTTON
 from seedsigner.gui.screens.screen import ButtonOption
 from .view import View, Destination, MainMenuView, BackStackView
@@ -76,7 +75,7 @@ class ToolsSatochipBiasCheckView(View):
         if not connector:
             return Destination(BackStackView)
 
-        timeout = self.settings.get_value(SettingsConstants.SETTING__SATOCHIP_SIGN_TIMEOUT)
+        timeout = 1.0
         soft_threshold = timeout * 0.5
         hard_threshold = timeout
         transport = getattr(connector, "transport", "unknown")
@@ -196,8 +195,16 @@ class ToolsSatochipBiasCheckView(View):
                 return "warn"
             return "pass"
 
-        msb_status = p_status(msb_p)
-        lsb_status = p_status(lsb_p)
+        def bias_status(pct):
+            bias = abs(pct - 0.5)
+            if bias > 0.10:
+                return "fail"
+            elif bias > 0.05:
+                return "warn"
+            return "pass"
+
+        msb_status = bias_status(msb_pct)
+        lsb_status = bias_status(lsb_pct)
         runs_status = p_status(runs_p)
 
         fail_reasons = []
@@ -294,7 +301,13 @@ class ToolsSatochipBiasCheckView(View):
                 pass
         except Exception as e:
             logger.warning("Failed to write text log: %s", e)
-        screen_text = f"Status: {final_status.upper()}\nDetails saved to microSD"
+        screen_text = (
+            f"Status: {final_status.upper()}\n"
+            f"MSB1: {msb_pct*100:.1f}%\n"
+            f"LSB1: {lsb_pct*100:.1f}%\n"
+            f"LSB4 χ²: {chi2:.2f}\n"
+            "Details saved to microSD"
+        )
 
         logger.info("Bias test results:\n%s", console_text)
         print(console_text)
