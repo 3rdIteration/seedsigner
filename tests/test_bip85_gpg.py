@@ -115,6 +115,97 @@ def test_bip85_ed25519_sub_index_progression():
     assert int(later.s) == int(repeat.s)
 
 
+def test_bip85_gpg_mixed_subkeys_deterministic():
+    import datetime
+    from pgpy import PGPKey, PGPUID
+    from pgpy.pgp import PrivKeyV4, PrivSubKeyV4
+    from pgpy.constants import (
+        PubKeyAlgorithm,
+        KeyFlags,
+        HashAlgorithm,
+        SymmetricKeyAlgorithm,
+        CompressionAlgorithm,
+    )
+    from pgpy.packet import fields
+    from pgpy.packet.types import MPI
+    from Cryptodome.PublicKey import RSA
+
+    seed = Seed(mnemonic=MNEMONIC)
+    root = bip32.HDKey.from_seed(seed.seed_bytes)
+    created = datetime.datetime.fromtimestamp(
+        BIP85_GPG_CREATED_TS, tz=datetime.timezone.utc
+    )
+    pk = PrivKeyV4()
+    pk.pkalg = PubKeyAlgorithm.ECDSA
+    pk.keymaterial = bip85_p256_from_root(root, 0)
+    pk.created = created
+    pk.update_hlen()
+    pgp_key = PGPKey()
+    pgp_key._key = pk
+    uid = PGPUID.new("Test", email="test@example.com")
+    pgp_key.add_uid(
+        uid,
+        usage={KeyFlags.Certify, KeyFlags.Sign},
+        hashes=[HashAlgorithm.SHA256],
+        ciphers=[SymmetricKeyAlgorithm.AES256],
+        compression=[CompressionAlgorithm.ZLIB],
+    )
+    for sub_index, pkalg, usage, alg in _bip85_subkey_specs("nistp256"):
+        subpkt = PrivSubKeyV4()
+        subpkt.pkalg = pkalg
+        subpkt.keymaterial = bip85_p256_from_root(root, 0, sub_index, alg)
+        subpkt.created = created
+        subpkt.update_hlen()
+        subkey = PGPKey()
+        subkey._key = subpkt
+        pgp_key.add_subkey(
+            subkey,
+            usage=usage,
+            hashes=[HashAlgorithm.SHA256],
+            ciphers=[SymmetricKeyAlgorithm.AES256],
+            compression=[CompressionAlgorithm.ZLIB],
+        )
+
+    def rsa_to_privpacket(rsa_key: RSA.RsaKey):
+        priv = fields.RSAPriv()
+        priv.n = MPI(rsa_key.n)
+        priv.e = MPI(rsa_key.e)
+        priv.d = MPI(rsa_key.d)
+        priv.p = MPI(rsa_key.p)
+        priv.q = MPI(rsa_key.q)
+        priv.u = MPI(pow(rsa_key.p, -1, rsa_key.q))
+        priv._compute_chksum()
+        return priv
+
+    for sub_index, pkalg, usage in _bip85_subkey_specs("rsa2048"):
+        subpkt = PrivSubKeyV4()
+        subpkt.pkalg = pkalg
+        rsa_sub = bip85_rsa_from_root(root, 2048, 1, sub_index)
+        subpkt.keymaterial = rsa_to_privpacket(rsa_sub)
+        subpkt.created = created
+        subpkt.update_hlen()
+        subkey = PGPKey()
+        subkey._key = subpkt
+        pgp_key.add_subkey(
+            subkey,
+            usage=usage,
+            hashes=[HashAlgorithm.SHA256],
+            ciphers=[SymmetricKeyAlgorithm.AES256],
+            compression=[CompressionAlgorithm.ZLIB],
+        )
+
+    assert pgp_key.fingerprint == "E22DC9A7FDC9F51B7E795EA4134E37F3677DD798"
+    fingerprints = [sk.fingerprint for sk in pgp_key.subkeys.values()]
+    assert fingerprints == [
+        "CF79EEF39935329B69CFCD6FD73018577F0CBE35",
+        "15BD8E20336AD1CFFA0B4363DEC612E5764867B6",
+        "BFD31BC4A4579ADD568D6C3B5FB00DCBCB25E073",
+        "0938B62C0B8FE641FE528A8411A26272C153E6CF",
+        "9696B4AAFCA808BFFDE2A04AD2CA980F3652A5D4",
+        "07A435FD12E96F72C09B31966577C9E71A248706",
+    ]
+
+
 def test_parse_secret_key_list_primary_fingerprint_only():
     output = "\n".join(
         [
