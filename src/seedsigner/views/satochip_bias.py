@@ -11,7 +11,8 @@ from seedsigner.hardware.microsd import MicroSD
 from seedsigner.helpers import seedkeeper_utils
 from seedsigner.helpers.satochip_signer import _call_with_timeout
 from seedsigner.models.settings_definition import SettingsConstants
-from seedsigner.gui.screens import LargeIconStatusScreen
+from seedsigner.gui.screens import LargeIconStatusScreen, WarningScreen, RET_CODE__BACK_BUTTON
+from seedsigner.gui.screens.screen import ButtonOption
 from .view import View, Destination, MainMenuView, BackStackView
 
 logger = logging.getLogger(__name__)
@@ -57,6 +58,17 @@ class ToolsSatochipBiasCheckView(View):
 
     def run(self):
         from seedsigner.gui.screens.screen import LoadingScreenThread
+
+        info_ret = self.run_screen(
+            WarningScreen,
+            title="Bias Test",
+            status_headline=None,
+            text="Test uses a limited number of signatures; an occasional failure is normal.",
+            button_data=[ButtonOption("Run Test")],
+            show_back_button=True,
+        )
+        if info_ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
 
         connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satochip"])
         if not connector:

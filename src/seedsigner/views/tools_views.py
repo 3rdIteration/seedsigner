@@ -2496,20 +2496,16 @@ class ToolsSeedkeeperSaveDescriptorView(View):
 
 class ToolsSatochipView(View):
     IMPORT_SEED = ButtonOption("Initialise with Seed")
-    ENABLE_2FA = ButtonOption("Enable 2FA")
     EXPORT_XPUB = ButtonOption("Export Xpub")
     LOAD_DESCRIPTOR = ButtonOption("Load as Descriptor")
-    BENCHMARK = ButtonOption("Benchmark Signing")
-    BIAS_TEST = ButtonOption("Check signing bias")
+    ADVANCED = ButtonOption("Advanced")
 
     def run(self):
         button_data = [
             self.IMPORT_SEED,
-            self.ENABLE_2FA,
             self.EXPORT_XPUB,
             self.LOAD_DESCRIPTOR,
-            self.BENCHMARK,
-            self.BIAS_TEST,
+            self.ADVANCED,
         ]
         selected_menu_num = self.run_screen(
             ButtonListScreen,
@@ -2524,16 +2520,37 @@ class ToolsSatochipView(View):
         elif button_data[selected_menu_num] == self.IMPORT_SEED:
             return Destination(ToolsSatochipImportSeedView)
 
-        elif button_data[selected_menu_num] == self.ENABLE_2FA:
-            return Destination(ToolsSatochipEnable2FAView)
-
         elif button_data[selected_menu_num] == self.EXPORT_XPUB:
             return Destination(SatochipExportXpubSigTypeView)
 
         elif button_data[selected_menu_num] == self.LOAD_DESCRIPTOR:
             return Destination(SatochipLoadDescriptorScriptTypeView)
+        elif button_data[selected_menu_num] == self.ADVANCED:
+            return Destination(ToolsSatochipAdvancedView)
+
+class ToolsSatochipAdvancedView(View):
+    ENABLE_2FA = ButtonOption("Enable 2FA")
+    BENCHMARK = ButtonOption("Benchmark Signing")
+    BIAS_TEST = ButtonOption("Check signing bias")
+
+    def run(self):
+        button_data = [self.ENABLE_2FA, self.BENCHMARK, self.BIAS_TEST]
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title="Satochip Advanced",
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        elif button_data[selected_menu_num] == self.ENABLE_2FA:
+            return Destination(ToolsSatochipEnable2FAView)
+
         elif button_data[selected_menu_num] == self.BENCHMARK:
             return Destination(ToolsSatochipBenchmarkSignView)
+
         elif button_data[selected_menu_num] == self.BIAS_TEST:
             return Destination(ToolsSatochipBiasCheckView)
 
