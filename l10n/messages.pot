@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: seedsigner 0.8.6\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2025-09-11 17:59+0000\n"
+"POT-Creation-Date: 2025-09-12 21:07+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -1184,6 +1184,10 @@ msgstr ""
 msgid "Signing with this seed did not add a valid signature."
 msgstr ""
 
+#: src/seedsigner/views/satochip_bias.py
+msgid "Run Test"
+msgstr ""
+
 #: src/seedsigner/views/scan_views.py
 msgid "Scan a QR code"
 msgstr ""
@@ -2124,15 +2128,19 @@ msgid "Initialise with Seed"
 msgstr ""
 
 #: src/seedsigner/views/tools_views.py
-msgid "Enable 2FA"
-msgstr ""
-
-#: src/seedsigner/views/tools_views.py
 msgid "Load as Descriptor"
 msgstr ""
 
 #: src/seedsigner/views/tools_views.py
+msgid "Enable 2FA"
+msgstr ""
+
+#: src/seedsigner/views/tools_views.py
 msgid "Benchmark Signing"
+msgstr ""
+
+#: src/seedsigner/views/tools_views.py
+msgid "Check signing bias"
 msgstr ""
 
 #: src/seedsigner/views/tools_views.py
@@ -2284,15 +2292,15 @@ msgid "Edit User IDs"
 msgstr ""
 
 #: src/seedsigner/views/tools_views.py
+msgid "Set Primary User ID"
+msgstr ""
+
+#: src/seedsigner/views/tools_views.py
 msgid "Revoke User ID"
 msgstr ""
 
 #: src/seedsigner/views/tools_views.py
 msgid "Delete User ID"
-msgstr ""
-
-#: src/seedsigner/views/tools_views.py
-msgid "Set Primary User ID"
 msgstr ""
 
 #: src/seedsigner/views/tools_views.py

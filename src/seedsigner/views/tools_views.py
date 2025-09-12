@@ -4124,13 +4124,15 @@ def parse_subkey_list(colon_output: str):
         parts = line.split(":")
         if parts[0] == "ssb":
             idx += 1
-            algo = parts[2]
+            bits = parts[2]
+            algo = parts[3] if len(parts) > 3 else ""
             curve = parts[16].lower() if len(parts) > 16 else ""
             cur = {
                 "fpr": None,
                 "caps": parts[11].lower(),
                 "idx": idx,
                 "algo": algo,
+                "bits": bits,
                 "curve": curve,
             }
             subkeys.append(cur)
@@ -5003,6 +5005,7 @@ class ToolsGPGSetPrimaryUidView(View):
             ButtonListScreen,
             LargeIconStatusScreen,
             WarningScreen,
+            seed_screens,
         )
 
         result = run(["gpg", "--list-secret-keys", "--with-colons"], capture_output=True, text=True)
@@ -8063,7 +8066,108 @@ def _bip85_subkey_specs(alg):
     ]
 
 
-def bip85_add_subkeys(fingerprint: str, alg: str, key_index: int, start_index: int) -> bool:
+def bip85_verify_existing(
+    seed,
+    fingerprint: str,
+    key_index: int,
+    created_ts: int,
+    primary_algo: str,
+    primary_bits: str,
+    primary_curve: str,
+    subkeys,
+) -> bool:
+    from embit import bip32
+    from pgpy import PGPKey
+    from pgpy.pgp import PrivKeyV4, PrivSubKeyV4
+    from pgpy.constants import PubKeyAlgorithm
+    from pgpy.packet import fields
+    from pgpy.packet.types import MPI
+    from Cryptodome.PublicKey import RSA
+    from datetime import datetime, timezone
+
+    root = bip32.HDKey.from_seed(seed.seed_bytes)
+    created = datetime.fromtimestamp(created_ts, tz=timezone.utc)
+
+    def rsa_to_privpacket(rsa_key: RSA.RsaKey) -> fields.RSAPriv:
+        priv = fields.RSAPriv()
+        priv.n = MPI(rsa_key.n)
+        priv.e = MPI(rsa_key.e)
+        priv.d = MPI(rsa_key.d)
+        priv.p = MPI(rsa_key.p)
+        priv.q = MPI(rsa_key.q)
+        priv.u = MPI(pow(rsa_key.p, -1, rsa_key.q))
+        priv._compute_chksum()
+        return priv
+
+    pk = PrivKeyV4()
+    if primary_algo in ("1", "2", "3"):
+        pk.pkalg = PubKeyAlgorithm.RSAEncryptOrSign
+        bits = int(primary_bits) if primary_bits else 0
+        rsa_main = bip85_rsa_from_root(root, bits, key_index)
+        pk.keymaterial = rsa_to_privpacket(rsa_main)
+    elif primary_curve == "secp256k1":
+        pk.pkalg = PubKeyAlgorithm.ECDSA
+        pk.keymaterial = bip85_secp256k1_from_root(root, key_index)
+    elif primary_curve == "nistp256":
+        pk.pkalg = PubKeyAlgorithm.ECDSA
+        pk.keymaterial = bip85_p256_from_root(root, key_index)
+    elif primary_curve == "brainpoolp256r1":
+        pk.pkalg = PubKeyAlgorithm.ECDSA
+        pk.keymaterial = bip85_brainpoolp256r1_from_root(root, key_index)
+    elif primary_curve == "ed25519":
+        pk.pkalg = PubKeyAlgorithm.EdDSA
+        pk.keymaterial = bip85_ed25519_from_root(root, key_index)
+    else:
+        return False
+    pk.created = created
+    pk.update_hlen()
+    primary = PGPKey()
+    primary._key = pk
+    if primary.fingerprint != fingerprint:
+        return False
+
+    for sk in subkeys:
+        j = sk["idx"] - 1
+        group_idx = j // 3
+        sub_index = j % 3
+        subpkt = PrivSubKeyV4()
+        algo = sk["algo"]
+        curve = sk["curve"]
+        bits = int(sk.get("bits", "0") or "0")
+        if algo in ("1", "2", "3"):
+            subpkt.pkalg = PubKeyAlgorithm.RSAEncryptOrSign
+            rsa_sub = bip85_rsa_from_root(root, bits, group_idx, sub_index)
+            subpkt.keymaterial = rsa_to_privpacket(rsa_sub)
+        elif curve == "secp256k1":
+            subpkt.pkalg = PubKeyAlgorithm.ECDH if algo == "18" else PubKeyAlgorithm.ECDSA
+            alg_name = "ECDH" if algo == "18" else "ECDSA"
+            subpkt.keymaterial = bip85_secp256k1_from_root(root, group_idx, sub_index, alg_name)
+        elif curve == "nistp256":
+            subpkt.pkalg = PubKeyAlgorithm.ECDH if algo == "18" else PubKeyAlgorithm.ECDSA
+            alg_name = "ECDH" if algo == "18" else "ECDSA"
+            subpkt.keymaterial = bip85_p256_from_root(root, group_idx, sub_index, alg_name)
+        elif curve == "brainpoolp256r1":
+            subpkt.pkalg = PubKeyAlgorithm.ECDH if algo == "18" else PubKeyAlgorithm.ECDSA
+            alg_name = "ECDH" if algo == "18" else "ECDSA"
+            subpkt.keymaterial = bip85_brainpoolp256r1_from_root(root, group_idx, sub_index, alg_name)
+        elif curve == "ed25519":
+            subpkt.pkalg = PubKeyAlgorithm.EdDSA if algo == "22" else PubKeyAlgorithm.ECDH
+            alg_name = "EdDSA" if algo == "22" else "ECDH"
+            subpkt.keymaterial = bip85_ed25519_from_root(root, group_idx, sub_index, alg_name)
+        else:
+            return False
+        subpkt.created = created
+        subpkt.update_hlen()
+        subkey = PGPKey()
+        subkey._key = subpkt
+        if subkey.fingerprint != sk["fpr"]:
+            return False
+    return True
+
+
+def bip85_add_subkeys(
+    fingerprint: str, alg: str, key_index: int, start_index: int, seed
+) -> bool:
     from subprocess import run
     from embit import bip32
     from pgpy import PGPKey
@@ -8076,9 +8180,7 @@ def bip85_add_subkeys(fingerprint: str, alg: str, key_index: int, start_index: i
     from pgpy.packet import fields
     from pgpy.packet.types import MPI
     from Cryptodome.PublicKey import RSA
-    from seedsigner.controller import Controller
 
-    seed = Controller.get_instance().get_seed(0)
     root = bip32.HDKey.from_seed(seed.seed_bytes)
 
     export = run(
@@ -8675,6 +8777,73 @@ class ToolsGPGAddSubkeysView(View):
             text=True,
         )
         start_index = sum(1 for line in result.stdout.splitlines() if line.startswith("ssb"))
+        created_ts = keys[selected]["created"]
+        bip85 = created_ts == BIP85_GPG_CREATED_TS
+        key_index = start_index // 3 if bip85 else None
+        sec_line = next(l for l in result.stdout.splitlines() if l.startswith("sec"))
+        sec_parts = sec_line.split(":")
+        primary_bits = sec_parts[2] if len(sec_parts) > 2 else ""
+        primary_algo = sec_parts[3] if len(sec_parts) > 3 else ""
+        primary_curve = sec_parts[16].lower() if len(sec_parts) > 16 else ""
+        subkeys = parse_subkey_list(result.stdout)
+
+        seed = None
+        if bip85:
+            if len(self.controller.storage.seeds) == 0:
+                self.run_screen(
+                    WarningScreen,
+                    title="Error",
+                    status_headline=None,
+                    text="Load a seed before using BIP85",
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
+            if len(self.controller.storage.seeds) > 1:
+                seed_buttons = []
+                for seed_obj in self.controller.storage.seeds:
+                    button_str = seed_obj.get_fingerprint(
+                        self.settings.get_value(SettingsConstants.SETTING__NETWORK)
+                    )
+                    seed_buttons.append(
+                        ButtonOption(
+                            button_str,
+                            SeedSignerIconConstants.FINGERPRINT,
+                            icon_color="blue",
+                        )
+                    )
+                selected_seed = self.run_screen(
+                    seed_screens.SeedSelectSeedScreen,
+                    title="Select Seed",
+                    text="Choose seed for BIP85 subkeys",
+                    is_button_text_centered=False,
+                    button_data=seed_buttons,
+                )
+                if selected_seed == RET_CODE__BACK_BUTTON:
+                    return Destination(BackStackView)
+                seed = self.controller.get_seed(selected_seed)
+            else:
+                seed = self.controller.get_seed(0)
+
+            if not bip85_verify_existing(
+                seed,
+                fingerprint,
+                key_index,
+                created_ts,
+                primary_algo,
+                primary_bits,
+                primary_curve,
+                subkeys,
+            ):
+                self.run_screen(
+                    WarningScreen,
+                    title="Error",
+                    status_headline=None,
+                    text="Selected seed/index mismatch",
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
 
         keytype_buttons = [
             ButtonOption("NIST P-256"),
@@ -8715,21 +8884,6 @@ class ToolsGPGAddSubkeysView(View):
             "secp256k1",
             "ed25519",
         ][selected_type]
-
-        created_ts = keys[selected]["created"]
-        bip85 = created_ts == BIP85_GPG_CREATED_TS
-        key_index = start_index // 3 if bip85 else None
-        if bip85 and len(self.controller.storage.seeds) == 0:
-            self.run_screen(
-                WarningScreen,
-                title="Error",
-                status_headline=None,
-                text="Load a seed before using BIP85",
-                show_back_button=False,
-                button_data=[ButtonOption("I Understand")],
-            )
-            return Destination(BackStackView)
-
         self.loading_screen = LoadingScreenThread(
             text="Generating subkeys\n\n\n\n\n(This takes a while)"
         )
@@ -8737,7 +8891,9 @@ class ToolsGPGAddSubkeysView(View):
         success = True
         try:
             if bip85:
-                success = bip85_add_subkeys(fingerprint, alg, key_index, start_index)
+                success = bip85_add_subkeys(
+                    fingerprint, alg, key_index, start_index, seed
+                )
             elif alg.startswith("rsa"):
                 for usage in ["encrypt", "sign,auth", "sign"]:
                     r = gpg_quick_addkey(fingerprint, alg, usage)

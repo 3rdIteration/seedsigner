@@ -3,6 +3,7 @@ from embit import bip32, bip85
 from seedsigner.models.seed import Seed
 from seedsigner.controller import Controller
 from seedsigner.gui.screens import RET_CODE__BACK_BUTTON
+from seedsigner.views import tools_views
 from seedsigner.views.tools_views import (
     bip85_brainpoolp256r1_from_root,
     bip85_ed25519_from_root,
@@ -142,9 +143,9 @@ def test_parse_secret_key_list_includes_created():
 def test_parse_subkey_list_extracts_fingerprint():
     output = "\n".join(
         [
-            "ssb:-:0:0:::0::::::s::",
+            "ssb:-:2048:1:::0::::::s::",
             "fpr:::::::::SUBFPR1:",
-            "ssb:-:19:0:::0::::::e::::nistp256:",
+            "ssb:-:256:19:::0::::::e::::nistp256:",
             "fpr:::::::::SUBFPR2:",
         ]
     )
@@ -153,9 +154,11 @@ def test_parse_subkey_list_extracts_fingerprint():
     assert subs[1]["fpr"] == "SUBFPR2"
     assert subs[0]["idx"] == 1
     assert subs[1]["idx"] == 2
-    assert subs[0]["algo"] == "0"
+    assert subs[0]["algo"] == "1"
+    assert subs[0]["bits"] == "2048"
     assert subs[0]["curve"] == ""
     assert subs[1]["algo"] == "19"
+    assert subs[1]["bits"] == "256"
     assert subs[1]["curve"] == "nistp256"
 
 
@@ -561,7 +564,9 @@ def test_add_subkeys_auto_bip85_index(monkeypatch):
                     "fpr:::::::::FPR:\n"
                 )
             else:
-                return R("ssb:-:0:0:::0:::::::\n" * 3)
+                return R(
+                    "sec:-:0:0:KEYID:0:::::::\n" + "ssb:-:0:0:::0:::::::\n" * 3
+                )
         return R()
 
     import subprocess
@@ -570,12 +575,20 @@ def test_add_subkeys_auto_bip85_index(monkeypatch):
 
     captured = {}
 
-    def fake_bip85_add_subkeys(fpr, alg, key_index, start_index):
+    def fake_bip85_add_subkeys(fpr, alg, key_index, start_index, seed):
         captured["key_index"] = key_index
         captured["start_index"] = start_index
+        captured["seed"] = seed
         return True
 
     monkeypatch.setattr(tools_views, "bip85_add_subkeys", fake_bip85_add_subkeys)
+
+    def fake_verify(seed, fingerprint, key_index, created_ts, primary_algo, primary_bits, primary_curve, subkeys):
+        captured["verified_seed"] = seed
+        captured["verified_key_index"] = key_index
+        return True
+
+    monkeypatch.setattr(tools_views, "bip85_verify_existing", fake_verify)
 
     class DummyLoading:
         def __init__(self, text=""):
@@ -591,9 +604,13 @@ def test_add_subkeys_auto_bip85_index(monkeypatch):
         "seedsigner.gui.screens.screen.LoadingScreenThread", DummyLoading
     )
 
-    # Simulate selecting the only key and NIST P-256 type
+    seed_obj = object()
+
+    # Simulate selecting the only key, seed, and NIST P-256 type
     def fake_run_screen(self, screen, **kwargs):
         if kwargs.get("title") == "Select Key":
+            return 0
+        if kwargs.get("text") == "Choose seed for BIP85 subkeys":
             return 0
         if kwargs.get("title") == "Key Type":
             return 0
@@ -602,10 +619,88 @@ def test_add_subkeys_auto_bip85_index(monkeypatch):
     monkeypatch.setattr(tools_views.ToolsGPGAddSubkeysView, "run_screen", fake_run_screen)
 
     view = object.__new__(tools_views.ToolsGPGAddSubkeysView)
-    view.controller = type("C", (), {"storage": type("S", (), {"seeds": [object()]})()})()
+    ControllerClass = type(
+        "C",
+        (),
+        {
+            "storage": type("S", (), {"seeds": [seed_obj]})(),
+            "get_seed": lambda self, idx: seed_obj,
+        },
+    )
+    view.controller = ControllerClass()
+    view.settings = type("Set", (), {"get_value": lambda self, x: None})()
     tools_views.ToolsGPGAddSubkeysView.run(view)
     assert captured["key_index"] == 1
     assert captured["start_index"] == 3
+    assert captured["seed"] is seed_obj
+    assert captured["verified_seed"] is seed_obj
+    assert captured["verified_key_index"] == 1
+
+
+def test_add_subkeys_mismatched_seed(monkeypatch):
+    class R:
+        def __init__(self, stdout=""):
+            self.stdout = stdout
+
+    def fake_run(cmd, capture_output=True, text=True):
+        if cmd[:3] == ["gpg", "--list-secret-keys", "--with-colons"]:
+            if len(cmd) == 3:
+                return R(
+                    f"sec:-:0:0:KEYID:{tools_views.BIP85_GPG_CREATED_TS}:0:::::::\n"
+                    "fpr:::::::::FPR:\n"
+                )
+            return R(
+                "sec:-:0:0:KEYID:0:::::::\n" + "ssb:-:0:0:::0:::::::\n" * 3
+            )
+        return R()
+
+    import subprocess
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    called = {"add": False, "warning": None}
+
+    def fake_bip85_add_subkeys(*args, **kwargs):
+        called["add"] = True
+        return True
+
+    monkeypatch.setattr(tools_views, "bip85_add_subkeys", fake_bip85_add_subkeys)
+
+    def fake_verify(*args, **kwargs):
+        return False
+
+    monkeypatch.setattr(tools_views, "bip85_verify_existing", fake_verify)
+
+    seed_obj = object()
+
+    def fake_run_screen(self, screen, **kwargs):
+        if kwargs.get("title") == "Select Key":
+            return 0
+        if kwargs.get("text") == "Choose seed for BIP85 subkeys":
+            return 0
+        if kwargs.get("title") == "Key Type":
+            return 0
+        if kwargs.get("text") == "Selected seed/index mismatch":
+            called["warning"] = kwargs.get("text")
+            return 0
+        return 0
+
+    monkeypatch.setattr(tools_views.ToolsGPGAddSubkeysView, "run_screen", fake_run_screen)
+
+    view = object.__new__(tools_views.ToolsGPGAddSubkeysView)
+    ControllerClass = type(
+        "C",
+        (),
+        {
+            "storage": type("S", (), {"seeds": [seed_obj]})(),
+            "get_seed": lambda self, idx: seed_obj,
+        },
+    )
+    view.controller = ControllerClass()
+    view.settings = type("Set", (), {"get_value": lambda self, x: None})()
+    tools_views.ToolsGPGAddSubkeysView.run(view)
+    assert not called["add"]
+    assert called["warning"] == "Selected seed/index mismatch"
 
 
 def test_smartpgp_import_filters_subkeys(monkeypatch):
