@@ -8529,6 +8529,18 @@ def bip85_verify_existing(
             subpkt.pkalg = PubKeyAlgorithm.ECDH if algo == "18" else PubKeyAlgorithm.ECDSA
             alg_name = "ECDH" if algo == "18" else "ECDSA"
             subpkt.keymaterial = bip85_brainpoolp256r1_from_root(root, group_idx, sub_index, alg_name)
+        elif curve == "cv25519":
+            if algo != "18":
+                logger.warning(
+                    "Unsupported subkey params at idx=%s: algo=%s curve=%s bits=%s",
+                    sk["idx"],
+                    algo,
+                    curve,
+                    bits,
+                )
+                return False
+            subpkt.pkalg = PubKeyAlgorithm.ECDH
+            subpkt.keymaterial = bip85_ed25519_from_root(root, group_idx, sub_index, "ECDH")
         elif curve == "ed25519":
             subpkt.pkalg = PubKeyAlgorithm.EdDSA if algo == "22" else PubKeyAlgorithm.ECDH
             alg_name = "EdDSA" if algo == "22" else "ECDH"
