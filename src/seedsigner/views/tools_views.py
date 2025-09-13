@@ -4106,19 +4106,12 @@ def parse_secret_key_list(colon_output: str):
         parts = line.split(":")
         if parts[0] == "sec":
             created = int(parts[5]) if len(parts) > 5 and parts[5] else None
-            cur = {
-                "fpr": None,
-                "uid": None,
-                "created": created,
-                "valid_from": None,
-            }
+            cur = {"fpr": None, "uid": None, "created": created}
             keys.append(cur)
         elif parts[0] == "fpr" and cur is not None and cur.get("fpr") is None:
             cur["fpr"] = parts[9]
         elif parts[0] == "uid" and cur is not None and cur.get("uid") is None:
             cur["uid"] = parts[9]
-            if len(parts) > 5 and parts[5]:
-                cur["valid_from"] = int(parts[5])
     return keys
 
 
@@ -4150,7 +4143,29 @@ def parse_subkey_list(colon_output: str):
     return subkeys
 
 
+# Retained for deterministic test vectors but no longer used for BIP85 detection
 BIP85_GPG_CREATED_TS = 1231006505
+
+# In-memory registry of BIP85-derived keys
+BIP85_DATA = {}
+
+
+def bip85_save_data(path):
+    import json
+
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(list(BIP85_DATA.values()), f, indent=2)
+
+
+def bip85_load_data(path):
+    import json
+
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
+    BIP85_DATA.clear()
+    for entry in data:
+        if "primary_fpr" in entry:
+            BIP85_DATA[entry["primary_fpr"]] = entry
 
 
 def parse_uid_list(colon_output: str):
@@ -4165,11 +4180,11 @@ def parse_uid_list(colon_output: str):
     return uids
 
 
-def filter_deletable_subkeys(valid_from_ts: int, subkeys):
-    bip85 = valid_from_ts == BIP85_GPG_CREATED_TS
+def filter_deletable_subkeys(primary_fpr: str, subkeys):
+    bip85 = primary_fpr in BIP85_DATA
     logger.info(
-        "filter_deletable_subkeys: valid_from=%s bip85=%s subkey_count=%s",
-        valid_from_ts,
+        "filter_deletable_subkeys: fpr=%s bip85=%s subkey_count=%s",
+        primary_fpr,
         bip85,
         len(subkeys),
     )
@@ -4254,9 +4269,16 @@ class ToolsGPGMenuView(View):
 class ToolsGPGAdvancedMenuView(View):
     SUBKEY_OPS = ButtonOption("Subkey Operations")
     UID_OPS = ButtonOption("User ID Operations")
+    SAVE_BIP85 = ButtonOption("Save BIP85 Data")
+    LOAD_BIP85 = ButtonOption("Load BIP85 Data")
 
     def run(self):
-        button_data = [self.SUBKEY_OPS, self.UID_OPS]
+        button_data = [
+            self.SUBKEY_OPS,
+            self.UID_OPS,
+            self.SAVE_BIP85,
+            self.LOAD_BIP85,
+        ]
 
         selected_menu_num = self.run_screen(
             ButtonListScreen,
@@ -4267,9 +4289,60 @@ class ToolsGPGAdvancedMenuView(View):
 
         if selected_menu_num == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
-        if button_data[selected_menu_num] == self.SUBKEY_OPS:
+        choice = button_data[selected_menu_num]
+        if choice == self.SUBKEY_OPS:
             return Destination(ToolsGPGSubkeyMenuView)
-        return Destination(ToolsGPGUidMenuView)
+        if choice == self.UID_OPS:
+            return Destination(ToolsGPGUidMenuView)
+        if choice == self.SAVE_BIP85:
+            return Destination(ToolsGPGSaveBip85DataView)
+        return Destination(ToolsGPGLoadBip85DataView)
+
+
+class ToolsGPGSaveBip85DataView(View):
+    def run(self):
+        from seedsigner.gui.screens import LargeIconStatusScreen, WarningScreen
+
+        path = "bip85_data.json"
+        try:
+            bip85_save_data(path)
+            screen = LargeIconStatusScreen
+            msg = "BIP85 data saved"
+        except Exception:
+            screen = WarningScreen
+            msg = "Failed to save BIP85 data"
+        self.run_screen(
+            screen,
+            title="Result",
+            status_headline=None,
+            text=msg,
+            show_back_button=False,
+            button_data=[ButtonOption("Done")],
+        )
+        return Destination(ToolsGPGMenuView)
+
+
+class ToolsGPGLoadBip85DataView(View):
+    def run(self):
+        from seedsigner.gui.screens import LargeIconStatusScreen, WarningScreen
+
+        path = "bip85_data.json"
+        try:
+            bip85_load_data(path)
+            screen = LargeIconStatusScreen
+            msg = "BIP85 data loaded"
+        except Exception:
+            screen = WarningScreen
+            msg = "Failed to load BIP85 data"
+        self.run_screen(
+            screen,
+            title="Result",
+            status_headline=None,
+            text=msg,
+            show_back_button=False,
+            button_data=[ButtonOption("Done")],
+        )
+        return Destination(ToolsGPGMenuView)
 
 
 class ToolsGPGSubkeyMenuView(View):
@@ -4371,6 +4444,8 @@ class ToolsGPGRevokeSubkeysView(View):
                 break
             sub = subkeys[sel]
             r = gpg_edit_subkey(fingerprint, sub["idx"], "revkey")
+            if r.returncode == 0 and fingerprint in BIP85_DATA:
+                BIP85_DATA[fingerprint]["revocations"].append(sub["fpr"])
             screen = LargeIconStatusScreen if r.returncode == 0 else WarningScreen
             msg = "Subkey revoked" if r.returncode == 0 else "Failed to revoke"
             self.run_screen(
@@ -4431,8 +4506,6 @@ class ToolsGPGDeleteSubkeysView(View):
             return Destination(BackStackView)
 
         fingerprint = keys[selected]["fpr"]
-        created_ts = keys[selected]["created"]
-        valid_from_ts = keys[selected].get("valid_from")
         result = run([
             "gpg",
             "--list-secret-keys",
@@ -4440,7 +4513,7 @@ class ToolsGPGDeleteSubkeysView(View):
             fingerprint,
         ], capture_output=True, text=True)
         subkeys = parse_subkey_list(result.stdout)
-        subkeys = filter_deletable_subkeys(valid_from_ts, subkeys)
+        subkeys = filter_deletable_subkeys(fingerprint, subkeys)
         if not subkeys:
             self.run_screen(
                 WarningScreen,
@@ -4481,8 +4554,13 @@ class ToolsGPGDeleteSubkeysView(View):
                 "--with-colons",
                 fingerprint,
             ], capture_output=True, text=True)
+            if r.returncode == 0 and fingerprint in BIP85_DATA:
+                entry = BIP85_DATA[fingerprint]
+                entry["subkeys"] = [
+                    sk for sk in entry["subkeys"] if sk["fingerprint"] != sub["fpr"]
+                ]
             subkeys = parse_subkey_list(result.stdout)
-            subkeys = filter_deletable_subkeys(valid_from_ts, subkeys)
+            subkeys = filter_deletable_subkeys(fingerprint, subkeys)
         return Destination(ToolsGPGMenuView)
 
 
@@ -4906,6 +4984,8 @@ class ToolsGPGAddUidView(View):
                 fingerprint,
                 primary_uid,
             ])
+        if r.returncode == 0 and fingerprint in BIP85_DATA:
+            BIP85_DATA[fingerprint]["uids"].append(uid_str)
         screen = LargeIconStatusScreen if r.returncode == 0 else WarningScreen
         msg = "User ID added" if r.returncode == 0 else "Failed to add User ID"
         self.run_screen(
@@ -8200,9 +8280,12 @@ def bip85_verify_existing(
     return True
 
 
+from typing import Optional, List, Dict
+
+
 def bip85_add_subkeys(
     fingerprint: str, alg: str, key_index: int, start_index: int, seed
-) -> bool:
+) -> Optional[List[Dict]]:
     from subprocess import run
     from embit import bip32
     from pgpy import PGPKey
@@ -8257,6 +8340,7 @@ def bip85_add_subkeys(
 
     subkey_specs = _bip85_subkey_specs(alg)
 
+    added = []
     for offset, pkalg, usage, *alg_name in subkey_specs:
         sub_index = (start_index % 3) + offset
         subpkt = PrivSubKeyV4()
@@ -8284,6 +8368,8 @@ def bip85_add_subkeys(
             compression=[CompressionAlgorithm.ZLIB],
             expires=expires,
         )
+        alg_name_str = alg_name[0] if alg_name else pkalg.name
+        added.append({"index": sub_index, "type": alg_name_str, "fingerprint": subkey.fingerprint})
 
     armored = str(pgp_key)
     r = run(
@@ -8291,7 +8377,7 @@ def bip85_add_subkeys(
         input=armored.encode(),
         capture_output=True,
     )
-    return r.returncode == 0
+    return added if r.returncode == 0 else None
 
 
 def loose_add_subkeys(fingerprint: str, alg: str) -> bool:
@@ -8601,7 +8687,7 @@ class ToolsGPGLoadBIP85KeyView(View):
         if email is None:
             return Destination(BackStackView)
 
-        created = datetime.fromtimestamp(BIP85_GPG_CREATED_TS, tz=timezone.utc)
+        created = datetime.now(tz=timezone.utc)
         if key_type == "rsa2048":
             default_expiration = date(2029, 12, 31)
         else:
@@ -8682,6 +8768,7 @@ class ToolsGPGLoadBIP85KeyView(View):
             pgp_key._key = pk
 
             uid = PGPUID.new(name, email=email)
+            uid_str = str(uid)
             pgp_key.add_uid(
                 uid,
                 usage={KeyFlags.Certify, KeyFlags.Sign},
@@ -8711,6 +8798,7 @@ class ToolsGPGLoadBIP85KeyView(View):
                     (2, PubKeyAlgorithm.RSAEncryptOrSign, {KeyFlags.Sign}),
                 ]
 
+            subkey_info_list = []
             for spec in subkey_specs:
                 sub_index, pkalg, usage, *alg = spec
                 subpkt = PrivSubKeyV4()
@@ -8739,6 +8827,14 @@ class ToolsGPGLoadBIP85KeyView(View):
                     expires=expires,
                     created=created,
                 )
+                alg_name = alg[0] if alg else pkalg.name
+                subkey_info_list.append(
+                    {
+                        "index": sub_index,
+                        "type": alg_name,
+                        "fingerprint": subkey.fingerprint,
+                    }
+                )
 
             armored = str(pgp_key)
 
@@ -8747,6 +8843,17 @@ class ToolsGPGLoadBIP85KeyView(View):
             self.loading_screen.stop()
 
         if result.returncode == 0:
+            seed_fpr = seed.get_fingerprint(
+                self.settings.get_value(SettingsConstants.SETTING__NETWORK)
+            )
+            BIP85_DATA[pgp_key.fingerprint] = {
+                "primary_fpr": pgp_key.fingerprint,
+                "seed_fpr": seed_fpr,
+                "index": key_index,
+                "uids": [uid_str],
+                "subkeys": subkey_info_list,
+                "revocations": [],
+            }
             self.run_screen(
                 LargeIconStatusScreen,
                 title="Success",
@@ -8822,13 +8929,12 @@ class ToolsGPGAddSubkeysView(View):
         )
         start_index = sum(1 for line in result.stdout.splitlines() if line.startswith("ssb"))
         created_ts = keys[selected]["created"]
-        valid_from_ts = keys[selected].get("valid_from")
-        bip85 = valid_from_ts == BIP85_GPG_CREATED_TS
-        key_index = start_index // 3 if bip85 else None
+        entry = BIP85_DATA.get(fingerprint)
+        bip85 = entry is not None
+        key_index = entry["index"] + (start_index // 3) if bip85 else None
         logger.info(
-            "AddSubkeysView: fpr=%s valid_from=%s bip85=%s start_index=%s key_index=%s",
+            "AddSubkeysView: fpr=%s bip85=%s start_index=%s key_index=%s",
             fingerprint,
-            valid_from_ts,
             bip85,
             start_index,
             key_index,
@@ -8881,13 +8987,13 @@ class ToolsGPGAddSubkeysView(View):
                 seed = self.controller.get_seed(0)
                 logger.info("Single seed loaded; using index 0")
 
-            logger.info(
-                "Validating existing key against seed and index %s", key_index
+            selected_seed_fpr = seed.get_fingerprint(
+                self.settings.get_value(SettingsConstants.SETTING__NETWORK)
             )
-            if not bip85_verify_existing(
+            if selected_seed_fpr != entry["seed_fpr"] or not bip85_verify_existing(
                 seed,
                 fingerprint,
-                key_index,
+                entry["index"],
                 created_ts,
                 primary_algo,
                 primary_bits,
@@ -8895,7 +9001,8 @@ class ToolsGPGAddSubkeysView(View):
                 subkeys,
             ):
                 logger.warning(
-                    "Selected seed/index failed validation for fingerprint %s", fingerprint
+                    "Selected seed/index failed validation for fingerprint %s",
+                    fingerprint,
                 )
                 self.run_screen(
                     WarningScreen,
@@ -8952,11 +9059,13 @@ class ToolsGPGAddSubkeysView(View):
         )
         self.loading_screen.start()
         success = True
+        added_info = None
         try:
             if bip85:
-                success = bip85_add_subkeys(
+                added_info = bip85_add_subkeys(
                     fingerprint, alg, key_index, start_index, seed
                 )
+                success = added_info is not None
             elif alg.startswith("rsa"):
                 for usage in ["encrypt", "sign,auth", "sign"]:
                     r = gpg_quick_addkey(fingerprint, alg, usage)
@@ -8980,6 +9089,8 @@ class ToolsGPGAddSubkeysView(View):
             self.loading_screen.stop()
 
         if success:
+            if bip85 and added_info is not None:
+                BIP85_DATA[fingerprint]["subkeys"].extend(added_info)
             self.run_screen(
                 LargeIconStatusScreen,
                 title="Success",
