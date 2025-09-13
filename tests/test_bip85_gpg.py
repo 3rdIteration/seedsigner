@@ -1,6 +1,8 @@
 import pytest
+import sys
 import base  # ensure hardware mocks
 import os
+import shutil
 from embit import bip32, bip85
 from seedsigner.models.seed import Seed
 from seedsigner.controller import Controller
@@ -26,6 +28,11 @@ from seedsigner.views.tools_views import (
     bip85_verify_existing,
 )
 from seedsigner.helpers.bip85_drng import BIP85DRNG
+
+pytestmark = pytest.mark.skipif(
+    sys.platform in ("darwin", "win32") or shutil.which("gpg") is None,
+    reason="requires working GnuPG2"
+)
 
 MNEMONIC = "resource timber firm banner horror pupil frozen main pear direct pioneer broken grid core insane begin sister pony end debate task silk empty curious".split()
 
