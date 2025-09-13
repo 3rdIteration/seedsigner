@@ -743,6 +743,7 @@ def test_bip85_save_and_load(tmp_path):
         "index": 0,
         "key_type": "NIST P-256",
         "uids": ["User <user@example.com>"],
+        "primary_uid": "User <user@example.com>",
         "subkeys": [{"index": 0, "type": "ECDH NIST P-256", "fingerprint": "A"}],
         "revocations": ["A"],
     }
@@ -753,6 +754,7 @@ def test_bip85_save_and_load(tmp_path):
     assert BIP85_DATA[fpr]["seed_fpr"] == "seedfpr"
     assert BIP85_DATA[fpr]["key_type"] == "NIST P-256"
     assert BIP85_DATA[fpr]["uids"][0] == "User <user@example.com>"
+    assert BIP85_DATA[fpr]["primary_uid"] == "User <user@example.com>"
     assert BIP85_DATA[fpr]["subkeys"][0]["type"] == "ECDH NIST P-256"
 
 
@@ -981,7 +983,8 @@ def test_rebuild_bip85_key(monkeypatch):
         "seed_fpr": fpr,
         "index": 1,
         "key_type": "NIST P-256",
-        "uids": ["User <a@b.com>"],
+        "uids": ["Other <o@b.com>", "Primary <a@b.com>"],
+        "primary_uid": "Primary <a@b.com>",
         "subkeys": [
             {"index": 0, "type": "ECDH NIST P-256", "fingerprint": "F0"},
             {"index": 1, "type": "ECDSA NIST P-256", "fingerprint": "F1"},
@@ -1016,6 +1019,22 @@ def test_rebuild_bip85_key(monkeypatch):
         return Result()
 
     monkeypatch.setattr(tools_views.subprocess, "run", fake_run)
+
+    added = []
+    import pgpy
+
+    real_add_uid = pgpy.PGPKey.add_uid
+
+    def fake_add_uid(self, uid, selfsign=True, **prefs):
+        label = uid.name
+        if uid.email:
+            label += f" <{uid.email}>"
+        added.append((label, prefs.get("primary", False)))
+        if len(self._uids) == 0:
+            return real_add_uid(self, uid, selfsign=selfsign, **prefs)
+        return None
+
+    monkeypatch.setattr(pgpy.PGPKey, "add_uid", fake_add_uid)
 
     calls = []
     real = tools_views.bip85_p256_from_root
@@ -1065,6 +1084,10 @@ def test_rebuild_bip85_key(monkeypatch):
         {"idx": 4, "algo": "1", "bits": "2048", "curve": "", "fpr": "F3"},
         {"idx": 5, "algo": "1", "bits": "2048", "curve": "", "fpr": "F4"},
         {"idx": 6, "algo": "1", "bits": "2048", "curve": "", "fpr": "F5"},
+    ]
+    assert added == [
+        ("Primary <a@b.com>", True),
+        ("Other <o@b.com>", False),
     ]
 
 
@@ -1280,6 +1303,7 @@ def test_add_subkeys_auto_bip85_index(monkeypatch):
         "index": 0,
         "key_type": "NIST P-256",
         "uids": ["User"],
+        "primary_uid": "User",
         "subkeys": [
             {"index": 0, "type": "ECDH NIST P-256", "fingerprint": "A"},
             {"index": 1, "type": "ECDSA NIST P-256", "fingerprint": "B"},
@@ -1386,6 +1410,7 @@ def test_add_subkeys_registry_index_correction(monkeypatch):
         "index": 1,
         "key_type": "NIST P-256",
         "uids": ["User"],
+        "primary_uid": "User",
         "subkeys": [],
         "revocations": [],
     }
@@ -1482,6 +1507,7 @@ def test_add_subkeys_mismatched_seed(monkeypatch):
         "index": 0,
         "key_type": "NIST P-256",
         "uids": ["User"],
+        "primary_uid": "User",
         "subkeys": [
             {"index": 0, "type": "ECDH NIST P-256", "fingerprint": "A"},
             {"index": 1, "type": "ECDSA NIST P-256", "fingerprint": "B"},
@@ -1576,6 +1602,7 @@ def test_delete_subkeys_bip85_only_latest(monkeypatch):
         "index": 0,
         "key_type": "NIST P-256",
         "uids": ["User"],
+        "primary_uid": "User",
         "subkeys": [
             {
                 "index": 0,

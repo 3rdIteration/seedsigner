@@ -4163,6 +4163,11 @@ def bip85_import_json(data: str):
     BIP85_DATA.clear()
     for entry in entries:
         if "primary_fpr" in entry:
+            uids = entry.get("uids", [])
+            primary = entry.get("primary_uid")
+            if primary and primary in uids:
+                uids = [primary] + [u for u in uids if u != primary]
+                entry["uids"] = uids
             BIP85_DATA[entry["primary_fpr"]] = entry
 
 
@@ -4719,6 +4724,7 @@ class ToolsGPGRebuildBip85KeyView(View):
                 button_data=[ButtonOption("I Understand")],
             )
             return Destination(BackStackView)
+        primary_uid = entry.get("primary_uid", uid_list[0])
 
         def parse_uid(uid_str):
             m = re.match(r"^(.*?)(?:\s*<([^>]+)>)?$", uid_str)
@@ -4862,6 +4868,7 @@ class ToolsGPGRebuildBip85KeyView(View):
                     compression=[CompressionAlgorithm.ZLIB],
                     expires=expires,
                     created=created,
+                    primary=(uid_str == primary_uid),
                 )
 
             for sub in entry.get("subkeys", _bip85_subkey_specs("rsa")):
@@ -5651,7 +5658,9 @@ class ToolsGPGAddUidView(View):
                 primary_uid,
             ])
         if r.returncode == 0 and fingerprint in BIP85_DATA:
-            BIP85_DATA[fingerprint]["uids"].append(uid_str)
+            entry = BIP85_DATA[fingerprint]
+            entry.setdefault("primary_uid", primary_uid)
+            entry["uids"].append(uid_str)
         screen = LargeIconStatusScreen if r.returncode == 0 else WarningScreen
         msg = "User ID added" if r.returncode == 0 else "Failed to add User ID"
         self.run_screen(
@@ -5822,6 +5831,13 @@ class ToolsGPGSetPrimaryUidView(View):
         uid = uids[sel]["uid"]
 
         r = run(["gpg", "--batch", "--quick-set-primary-uid", fingerprint, uid])
+        if r.returncode == 0 and fingerprint in BIP85_DATA:
+            entry = BIP85_DATA[fingerprint]
+            entry["primary_uid"] = uid
+            ulist = entry.get("uids", [])
+            if uid in ulist:
+                ulist.remove(uid)
+                ulist.insert(0, uid)
         screen = LargeIconStatusScreen if r.returncode == 0 else WarningScreen
         msg = "Primary UID set" if r.returncode == 0 else "Failed to set primary UID"
         self.run_screen(
@@ -5972,9 +5988,15 @@ class ToolsGPGDeleteUidView(View):
         )
         if sel == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
+        uid_str = uids[sel]["uid"]
         idx = uids[sel]["idx"]
 
         r = gpg_edit_uid(fingerprint, idx, "deluid")
+        if r.returncode == 0 and fingerprint in BIP85_DATA:
+            entry = BIP85_DATA[fingerprint]
+            entry["uids"] = [u for u in entry.get("uids", []) if u != uid_str]
+            if entry.get("primary_uid") == uid_str:
+                entry["primary_uid"] = entry["uids"][0] if entry["uids"] else None
         screen = LargeIconStatusScreen if r.returncode == 0 else WarningScreen
         msg = "User ID deleted" if r.returncode == 0 else "Failed to delete User ID"
         self.run_screen(
@@ -9560,6 +9582,7 @@ class ToolsGPGLoadBIP85KeyView(View):
                 "index": key_index,
                 "key_type": key_type_label,
                 "uids": [uid_str],
+                "primary_uid": uid_str,
                 "subkeys": subkey_info_list,
                 "revocations": [],
             }
