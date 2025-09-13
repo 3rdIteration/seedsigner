@@ -842,9 +842,12 @@ def test_rebuild_bip85_key(monkeypatch):
         "key_type": "NIST P-256",
         "uids": ["User <a@b.com>"],
         "subkeys": [
-            {"index": 0, "type": "ECDH NIST P-256"},
-            {"index": 1, "type": "ECDSA NIST P-256"},
-            {"index": 2, "type": "ECDSA NIST P-256"},
+            {"index": 0, "type": "ECDH NIST P-256", "fingerprint": "F0"},
+            {"index": 1, "type": "ECDSA NIST P-256", "fingerprint": "F1"},
+            {"index": 2, "type": "ECDSA NIST P-256", "fingerprint": "F2"},
+            {"index": 3, "type": "ECDH NIST P-256", "fingerprint": "F3"},
+            {"index": 4, "type": "ECDSA NIST P-256", "fingerprint": "F4"},
+            {"index": 5, "type": "ECDSA NIST P-256", "fingerprint": "F5"},
         ],
         "revocations": [],
     }
@@ -878,6 +881,14 @@ def test_rebuild_bip85_key(monkeypatch):
 
     monkeypatch.setattr(tools_views, "bip85_p256_from_root", fake_p256)
 
+    verify_called = {}
+
+    def fake_verify(seed, fingerprint, key_index, created_ts, primary_algo, primary_bits, primary_curve, subkeys):
+        verify_called["args"] = (fingerprint, key_index, subkeys)
+        return True
+
+    monkeypatch.setattr(tools_views, "bip85_verify_existing", fake_verify)
+
     view = tools_views.ToolsGPGRebuildBip85KeyView()
     try:
         view.run()
@@ -885,7 +896,17 @@ def test_rebuild_bip85_key(monkeypatch):
         controller.storage.seeds = original
 
     assert captured["cmd"] == ["gpg", "--batch", "--import"]
-    assert calls[0] == (1, None, None)
+    expected = [
+        (1, None, None),
+        (1, 0, "ECDH"),
+        (1, 1, "ECDSA"),
+        (1, 2, "ECDSA"),
+        (1, 0, "ECDH"),
+        (1, 1, "ECDSA"),
+        (1, 2, "ECDSA"),
+    ]
+    assert calls == expected
+    assert len(verify_called["args"][2]) == 6
 
 
 def test_bip85_subkey_specs_include_sign_for_auth():

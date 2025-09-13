@@ -4733,6 +4733,69 @@ class ToolsGPGRebuildBip85KeyView(View):
             expiration_dt = datetime(2035, 12, 31, tzinfo=timezone.utc)
         expires = expiration_dt - created
 
+        # Map primary key type to algorithm details for verification
+        algo_map = {
+            "Ed25519": ("22", "", "ed25519"),
+            "secp256k1": ("19", "", "secp256k1"),
+            "NIST P-256": ("19", "", "nistp256"),
+            "Brainpool P-256": ("19", "", "brainpoolp256r1"),
+            "RSA 2048": ("1", "2048", ""),
+            "RSA 3072": ("1", "3072", ""),
+            "RSA 4096": ("1", "4096", ""),
+        }
+        primary_algo, primary_bits, primary_curve = algo_map[key_type_label]
+
+        # Build subkey info for verification
+        verify_subkeys = []
+        for sk in entry.get("subkeys", []):
+            g_idx = sk["index"]
+            parts = sk["type"].split()
+            if parts[0] == "RSA":
+                algo = "1"
+                bits = parts[1]
+                curve = ""
+            else:
+                algo = {"ECDH": "18", "ECDSA": "19", "EdDSA": "22"}[parts[0]]
+                curve = parts[1].lower()
+                if parts[0] == "ECDH" and parts[1] == "Ed25519":
+                    curve = "cv25519"
+                bits = ""
+            verify_subkeys.append(
+                {
+                    "idx": g_idx + 1,
+                    "algo": algo,
+                    "bits": bits,
+                    "curve": curve,
+                    "fpr": sk.get("fingerprint", ""),
+                }
+            )
+
+        logger.info(
+            "Verifying BIP85 data for %s idx=%s", entry["primary_fpr"], key_index
+        )
+        if not bip85_verify_existing(
+            seed,
+            entry["primary_fpr"],
+            key_index,
+            BIP85_GPG_CREATED_TS,
+            primary_algo,
+            primary_bits,
+            primary_curve,
+            verify_subkeys,
+        ):
+            logger.warning(
+                "BIP85 verification failed for %s", entry["primary_fpr"]
+            )
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="Selected seed/index failed validation",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
         root = bip32.HDKey.from_seed(seed.seed_bytes)
         KEY_BITS = (
             2048
@@ -4804,11 +4867,10 @@ class ToolsGPGRebuildBip85KeyView(View):
             )
 
             for sub in entry.get("subkeys", specs):
-                sub_index = sub if isinstance(sub, int) else sub.get("index")
-                spec = next((s for s in specs if s[0] == sub_index), None)
-                if not spec:
-                    continue
-                idx, pkalg, usage, *alg = spec
+                g_idx = sub if isinstance(sub, int) else sub.get("index", 0)
+                spec = specs[g_idx % len(specs)]
+                idx = g_idx % len(specs)
+                _, pkalg, usage, *alg = spec
                 subpkt = PrivSubKeyV4()
                 subpkt.pkalg = pkalg
                 if key_type == "secp256k1":
@@ -4826,6 +4888,20 @@ class ToolsGPGRebuildBip85KeyView(View):
                 subpkt.update_hlen()
                 subkey = PGPKey()
                 subkey._key = subpkt
+                exp_fpr = sub.get("fingerprint") if isinstance(sub, dict) else None
+                logger.info(
+                    "Derived subkey idx=%s fpr=%s expected=%s",
+                    g_idx,
+                    subkey.fingerprint,
+                    exp_fpr,
+                )
+                if exp_fpr and subkey.fingerprint != exp_fpr:
+                    logger.warning(
+                        "Subkey fingerprint mismatch at idx=%s: expected %s got %s",
+                        g_idx,
+                        exp_fpr,
+                        subkey.fingerprint,
+                    )
                 pgp_key.add_subkey(
                     subkey,
                     usage=usage,
