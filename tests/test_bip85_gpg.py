@@ -503,6 +503,108 @@ def test_bip85_save_and_load(tmp_path):
     assert BIP85_DATA[fpr]["seed_fpr"] == "seedfpr"
 
 
+def test_bip85_save_to_qr(monkeypatch):
+    from seedsigner.gui.screens.screen import ButtonListScreen, QRDisplayScreen
+    from seedsigner.models.encode_qr import UrTextQrEncoder
+    import json
+
+    BIP85_DATA.clear()
+    fpr = "F"
+    BIP85_DATA[fpr] = {
+        "primary_fpr": fpr,
+        "seed_fpr": "S",
+        "index": 0,
+        "uids": [],
+        "subkeys": [],
+        "revocations": [],
+    }
+
+    captured = {}
+
+    def fake_run_screen(self, screen, *args, **kwargs):
+        if screen == ButtonListScreen:
+            return 1  # select To QR
+        if screen == QRDisplayScreen:
+            captured["encoder"] = kwargs["qr_encoder"]
+            return RET_CODE__BACK_BUTTON
+        return RET_CODE__BACK_BUTTON
+
+    monkeypatch.setattr(tools_views.ToolsGPGSaveBip85DataView, "run_screen", fake_run_screen)
+    view = tools_views.ToolsGPGSaveBip85DataView()
+    view.run()
+    encoder = captured["encoder"]
+    assert isinstance(encoder, UrTextQrEncoder)
+    data = json.loads(encoder.text)[0]
+    assert data["primary_fpr"] == fpr
+
+
+def test_bip85_save_to_seedkeeper(monkeypatch):
+    from seedsigner.gui.screens.screen import ButtonListScreen
+
+    class DummyConnector:
+        def __init__(self):
+            self.saved = None
+
+        def card_get_status(self):
+            return (None, None, None, {"protocol_minor_version": 2})
+
+        def make_header(self, t, rights, label):
+            return {"label": label}
+
+        def seedkeeper_import_secret(self, secret_dic):
+            self.saved = secret_dic
+
+    dummy = DummyConnector()
+    monkeypatch.setattr(
+        tools_views.seedkeeper_utils, "init_satochip", lambda *a, **k: dummy
+    )
+
+    BIP85_DATA.clear()
+    BIP85_DATA["F"] = {
+        "primary_fpr": "F",
+        "seed_fpr": "S",
+        "index": 0,
+        "uids": [],
+        "subkeys": [],
+        "revocations": [],
+    }
+
+    def fake_run_screen(self, screen, *args, **kwargs):
+        if screen == ButtonListScreen:
+            return 2  # select To Seedkeeper
+        return 0
+
+    monkeypatch.setattr(tools_views.ToolsGPGSaveBip85DataView, "run_screen", fake_run_screen)
+    view = tools_views.ToolsGPGSaveBip85DataView()
+    view.run()
+    assert dummy.saved is not None
+    assert dummy.saved["header"]["label"].startswith("BIP85-GPG-")
+
+
+def test_bip85_seedkeeper_import_format():
+    import json, binascii
+
+    data_json = json.dumps(
+        [
+            {
+                "primary_fpr": "F",
+                "seed_fpr": "S",
+                "index": 0,
+                "uids": [],
+                "subkeys": [],
+                "revocations": [],
+            }
+        ]
+    )
+    secret_hex = (
+        len(data_json.encode()).to_bytes(2, "big") + data_json.encode()
+    ).hex()
+    BIP85_DATA.clear()
+    decoded = binascii.unhexlify(secret_hex)[2:]
+    tools_views.bip85_import_json(decoded.decode())
+    assert BIP85_DATA["F"]["seed_fpr"] == "S"
+
+
 def test_advanced_menu_has_bip85_data_options(monkeypatch):
     buttons = {}
 

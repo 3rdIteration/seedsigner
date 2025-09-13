@@ -4150,22 +4150,30 @@ BIP85_GPG_CREATED_TS = 1231006505
 BIP85_DATA = {}
 
 
-def bip85_save_data(path):
+def bip85_export_json():
     import json
 
+    return json.dumps(list(BIP85_DATA.values()), indent=2)
+
+
+def bip85_import_json(data: str):
+    import json
+
+    entries = json.loads(data)
+    BIP85_DATA.clear()
+    for entry in entries:
+        if "primary_fpr" in entry:
+            BIP85_DATA[entry["primary_fpr"]] = entry
+
+
+def bip85_save_data(path):
     with open(path, "w", encoding="utf-8") as f:
-        json.dump(list(BIP85_DATA.values()), f, indent=2)
+        f.write(bip85_export_json())
 
 
 def bip85_load_data(path):
-    import json
-
     with open(path, encoding="utf-8") as f:
-        data = json.load(f)
-    BIP85_DATA.clear()
-    for entry in data:
-        if "primary_fpr" in entry:
-            BIP85_DATA[entry["primary_fpr"]] = entry
+        bip85_import_json(f.read())
 
 
 def parse_uid_list(colon_output: str):
@@ -4300,17 +4308,110 @@ class ToolsGPGAdvancedMenuView(View):
 
 
 class ToolsGPGSaveBip85DataView(View):
-    def run(self):
-        from seedsigner.gui.screens import LargeIconStatusScreen, WarningScreen
+    TO_FILE = ButtonOption("To File")
+    TO_QR = ButtonOption("To QR")
+    TO_SEEDKEEPER = ButtonOption("To Seedkeeper")
 
-        path = "bip85_data.json"
+    def run(self):
+        from seedsigner.gui.screens.screen import (
+            ButtonListScreen,
+            QRDisplayScreen,
+            LargeIconStatusScreen,
+            WarningScreen,
+            LoadingScreenThread,
+        )
+        from seedsigner.models.encode_qr import UrTextQrEncoder
+        from seedsigner.helpers import seedkeeper_utils
+        from pysatochip.CardConnector import UnexpectedSW12Error
+        from seedsigner.helpers.iso7816 import format_sw_error
+        import time
+
+        button_data = [self.TO_FILE, self.TO_QR, self.TO_SEEDKEEPER]
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Save BIP85 Data",
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        choice = button_data[selected]
+        if choice == self.TO_FILE:
+            from seedsigner.gui.screens import LargeIconStatusScreen, WarningScreen
+
+            path = "bip85_data.json"
+            try:
+                bip85_save_data(path)
+                screen = LargeIconStatusScreen
+                msg = "BIP85 data saved"
+            except Exception:
+                screen = WarningScreen
+                msg = "Failed to save BIP85 data"
+            self.run_screen(
+                screen,
+                title="Result",
+                status_headline=None,
+                text=msg,
+                show_back_button=False,
+                button_data=[ButtonOption("Done")],
+            )
+            return Destination(ToolsGPGMenuView)
+
+        if choice == self.TO_QR:
+            data = bip85_export_json()
+            encoder = UrTextQrEncoder(text=data)
+            self.run_screen(QRDisplayScreen, qr_encoder=encoder)
+            return Destination(ToolsGPGMenuView)
+
+        # Seedkeeper export
+        Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["seedkeeper"])
+        if not Satochip_Connector:
+            return Destination(BackStackView)
+
+        data_bytes = bip85_export_json().encode("utf-8")
+        status = Satochip_Connector.card_get_status()[3]
+        if status["protocol_minor_version"] == 1:
+            if len(data_bytes) > 255:
+                self.run_screen(
+                    WarningScreen,
+                    title="Error",
+                    status_headline=None,
+                    text="BIP85 data too large for Seedkeeper v1",
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
+            secret_list = [len(data_bytes)] + list(data_bytes)
+        else:
+            secret_list = list(len(data_bytes).to_bytes(2, "big")) + list(data_bytes)
+
+        label = f"BIP85-GPG-{int(time.time())}"
+        header = Satochip_Connector.make_header(
+            "Data", "Plaintext export allowed", label
+        )
+        secret_dic = {"header": header, "secret_list": secret_list}
+
         try:
-            bip85_save_data(path)
+            loading = LoadingScreenThread(text="Saving Secret\n\n\n\n\n\n")
+            loading.start()
+            Satochip_Connector.seedkeeper_import_secret(secret_dic)
+            loading.stop()
             screen = LargeIconStatusScreen
             msg = "BIP85 data saved"
+        except UnexpectedSW12Error as e:
+            loading.stop()
+            if e.sw1 == 0x6A and e.sw2 == 0x84:
+                err_text = "Not enough space on Seedkeeper"
+            else:
+                err_text = format_sw_error(e.sw1, e.sw2)
+            screen = WarningScreen
+            msg = err_text
         except Exception:
+            loading.stop()
             screen = WarningScreen
             msg = "Failed to save BIP85 data"
+
         self.run_screen(
             screen,
             title="Result",
@@ -4323,22 +4424,148 @@ class ToolsGPGSaveBip85DataView(View):
 
 
 class ToolsGPGLoadBip85DataView(View):
-    def run(self):
-        from seedsigner.gui.screens import LargeIconStatusScreen, WarningScreen
+    FROM_FILE = ButtonOption("From File")
+    FROM_QR = ButtonOption("From QR")
+    FROM_SEEDKEEPER = ButtonOption("From Seedkeeper")
 
-        path = "bip85_data.json"
-        try:
-            bip85_load_data(path)
-            screen = LargeIconStatusScreen
-            msg = "BIP85 data loaded"
-        except Exception:
-            screen = WarningScreen
-            msg = "Failed to load BIP85 data"
+    def run(self):
+        from seedsigner.gui.screens.screen import (
+            ButtonListScreen,
+            QRDisplayScreen,
+            WarningScreen,
+            LargeIconStatusScreen,
+            LoadingScreenThread,
+        )
+        from seedsigner.gui.screens.scan_screens import ScanScreen
+        from seedsigner.models.decode_qr import DecodeQR, QRType
+        from seedsigner.helpers import seedkeeper_utils
+        from urtypes.bytes import Bytes
+        import time, binascii
+
+        button_data = [self.FROM_FILE, self.FROM_QR, self.FROM_SEEDKEEPER]
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Load BIP85 Data",
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        choice = button_data[selected]
+        if choice == self.FROM_FILE:
+            from seedsigner.gui.screens import LargeIconStatusScreen, WarningScreen
+
+            path = "bip85_data.json"
+            try:
+                bip85_load_data(path)
+                screen = LargeIconStatusScreen
+                msg = "BIP85 data loaded"
+            except Exception:
+                screen = WarningScreen
+                msg = "Failed to load BIP85 data"
+            self.run_screen(
+                screen,
+                title="Result",
+                status_headline=None,
+                text=msg,
+                show_back_button=False,
+                button_data=[ButtonOption("Done")],
+            )
+            return Destination(ToolsGPGMenuView)
+
+        if choice == self.FROM_QR:
+            decoder = DecodeQR()
+            ScanScreen(decoder=decoder, instructions_text="Scan BIP85 data").display()
+            self.controller.reset_screensaver_timeout()
+            time.sleep(0.1)
+            if not decoder.is_complete:
+                return Destination(BackStackView)
+            if decoder.qr_type == QRType.BYTES__UR:
+                raw = Bytes.from_cbor(decoder.decoder.result_message().cbor).data
+                if isinstance(raw, memoryview):
+                    raw = raw.tobytes()
+                data_str = raw.decode("utf-8")
+            elif decoder.qr_type == QRType.TEXT:
+                data_str = decoder.get_text()
+            else:
+                self.run_screen(
+                    WarningScreen,
+                    title="Error",
+                    status_headline=None,
+                    text="Unsupported QR format",
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
+            bip85_import_json(data_str)
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Result",
+                status_headline=None,
+                text="BIP85 data loaded",
+                show_back_button=False,
+                button_data=[ButtonOption("Done")],
+            )
+            return Destination(ToolsGPGMenuView)
+
+        # Seedkeeper import
+        Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["seedkeeper"])
+        if not Satochip_Connector:
+            return Destination(BackStackView)
+
+        loading = LoadingScreenThread(text="Listing Secrets\n\n\n\n\n\n")
+        loading.start()
+        headers = Satochip_Connector.seedkeeper_list_secret_headers()
+        loading.stop()
+
+        entries = []
+        buttons = []
+        for header in headers:
+            stype = SEEDKEEPER_DIC_TYPE.get(header["type"], hex(header["type"]))
+            rights = SEEDKEEPER_DIC_EXPORT_RIGHTS.get(header["export_rights"], hex(header["export_rights"]))
+            label = header["label"]
+            if (
+                stype == "Data"
+                and rights == "Plaintext export allowed"
+                and label.startswith("BIP85-GPG-")
+            ):
+                entries.append(header)
+                buttons.append(ButtonOption(label))
+
+        if not entries:
+            self.run_screen(
+                WarningScreen,
+                title="No BIP85 Data",
+                status_headline=None,
+                text="No BIP85 data on Seedkeeper",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Select BIP85 Data",
+            is_button_text_centered=False,
+            button_data=buttons,
+            show_back_button=True,
+        )
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        loading = LoadingScreenThread(text="Loading BIP85 Data\n\n\n\n\n\n")
+        loading.start()
+        secret_dict = Satochip_Connector.seedkeeper_export_secret(entries[selected]["id"], None)
+        loading.stop()
+
+        data_bytes = binascii.unhexlify(secret_dict["secret"])[2:]
+        bip85_import_json(data_bytes.decode())
         self.run_screen(
-            screen,
+            LargeIconStatusScreen,
             title="Result",
             status_headline=None,
-            text=msg,
+            text="BIP85 data loaded",
             show_back_button=False,
             button_data=[ButtonOption("Done")],
         )
