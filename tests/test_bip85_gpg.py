@@ -504,8 +504,8 @@ def test_bip85_save_and_load(tmp_path):
 
 
 def test_bip85_save_to_qr(monkeypatch):
-    from seedsigner.gui.screens.screen import ButtonListScreen, QRDisplayScreen
-    from seedsigner.models.encode_qr import UrTextQrEncoder
+    from seedsigner.gui.screens.screen import ButtonListScreen, QRDisplayScreen, WarningScreen
+    from seedsigner.models.encode_qr import UrBytesQrEncoder
     import json
 
     BIP85_DATA.clear()
@@ -524,6 +524,8 @@ def test_bip85_save_to_qr(monkeypatch):
     def fake_run_screen(self, screen, *args, **kwargs):
         if screen == ButtonListScreen:
             return 1  # select To QR
+        if screen == WarningScreen:
+            return 0  # start QR display
         if screen == QRDisplayScreen:
             captured["encoder"] = kwargs["qr_encoder"]
             return RET_CODE__BACK_BUTTON
@@ -533,9 +535,48 @@ def test_bip85_save_to_qr(monkeypatch):
     view = tools_views.ToolsGPGSaveBip85DataView()
     view.run()
     encoder = captured["encoder"]
-    assert isinstance(encoder, UrTextQrEncoder)
-    data = json.loads(encoder.text)[0]
+    assert isinstance(encoder, UrBytesQrEncoder)
+    data = json.loads(encoder.data.decode())[0]
     assert data["primary_fpr"] == fpr
+
+
+def test_bip85_save_to_file_logs_path(monkeypatch):
+    from seedsigner.gui.screens.screen import ButtonListScreen
+
+    BIP85_DATA.clear()
+    BIP85_DATA["F"] = {
+        "primary_fpr": "F",
+        "seed_fpr": "S",
+        "index": 0,
+        "uids": [],
+        "subkeys": [],
+        "revocations": [],
+    }
+
+    captured = {}
+
+    def fake_run_screen(self, screen, *args, **kwargs):
+        if screen == ButtonListScreen:
+            return 0  # select To File
+        return 0
+
+    def fake_save(path):
+        captured["path"] = path
+
+    logs = []
+
+    def fake_log(msg, *args):
+        logs.append(msg % args)
+
+    monkeypatch.setattr(tools_views.ToolsGPGSaveBip85DataView, "run_screen", fake_run_screen)
+    monkeypatch.setattr(tools_views, "bip85_save_data", fake_save)
+    monkeypatch.setattr(tools_views.logger, "info", fake_log)
+
+    view = tools_views.ToolsGPGSaveBip85DataView()
+    view.run()
+
+    assert captured["path"] == "bip85_data.json"
+    assert any("bip85_data.json" in entry for entry in logs)
 
 
 def test_bip85_save_to_seedkeeper(monkeypatch):

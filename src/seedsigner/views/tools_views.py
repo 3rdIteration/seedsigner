@@ -4320,7 +4320,7 @@ class ToolsGPGSaveBip85DataView(View):
             WarningScreen,
             LoadingScreenThread,
         )
-        from seedsigner.models.encode_qr import UrTextQrEncoder
+        from seedsigner.models.encode_qr import UrBytesQrEncoder
         from seedsigner.helpers import seedkeeper_utils
         from pysatochip.CardConnector import UnexpectedSW12Error
         from seedsigner.helpers.iso7816 import format_sw_error
@@ -4343,6 +4343,7 @@ class ToolsGPGSaveBip85DataView(View):
             path = "bip85_data.json"
             try:
                 bip85_save_data(path)
+                logger.info("BIP85 data saved to %s", os.path.abspath(path))
                 screen = LargeIconStatusScreen
                 msg = "BIP85 data saved"
             except Exception:
@@ -4359,9 +4360,30 @@ class ToolsGPGSaveBip85DataView(View):
             return Destination(ToolsGPGMenuView)
 
         if choice == self.TO_QR:
-            data = bip85_export_json()
-            encoder = UrTextQrEncoder(text=data)
-            self.run_screen(QRDisplayScreen, qr_encoder=encoder)
+            data = bip85_export_json().encode("utf-8")
+            loading = LoadingScreenThread(text="Encoding...")
+            loading.start()
+            try:
+                qr_encoder = UrBytesQrEncoder(
+                    data=data,
+                    qr_density=self.settings.get_value(SettingsConstants.SETTING__QR_DENSITY),
+                )
+            finally:
+                loading.stop()
+
+            num_codes = qr_encoder.seq_len()
+            ret = self.run_screen(
+                WarningScreen,
+                title="Animated QR",
+                status_headline=None,
+                text=f"This export requires {num_codes} QR code{'s' if num_codes > 1 else ''}.",
+                show_back_button=True,
+                button_data=[ButtonOption("Start")],
+            )
+            if ret == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+
+            self.run_screen(QRDisplayScreen, qr_encoder=qr_encoder)
             return Destination(ToolsGPGMenuView)
 
         # Seedkeeper export
