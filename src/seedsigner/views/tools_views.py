@@ -4462,7 +4462,7 @@ class ToolsGPGSaveBip85DataView(View):
 
 
 class ToolsGPGLoadBip85DataView(View):
-    FROM_FILE = ButtonOption("From File")
+    FROM_MICROSD = ButtonOption("From MicroSD")
     FROM_QR = ButtonOption("From QR")
     FROM_SEEDKEEPER = ButtonOption("From Seedkeeper")
 
@@ -4480,7 +4480,7 @@ class ToolsGPGLoadBip85DataView(View):
         from urtypes.bytes import Bytes
         import time, binascii
 
-        button_data = [self.FROM_FILE, self.FROM_QR, self.FROM_SEEDKEEPER]
+        button_data = [self.FROM_MICROSD, self.FROM_QR, self.FROM_SEEDKEEPER]
         selected = self.run_screen(
             ButtonListScreen,
             title="Load BIP85 Data",
@@ -4491,12 +4491,16 @@ class ToolsGPGLoadBip85DataView(View):
             return Destination(BackStackView)
 
         choice = button_data[selected]
-        if choice == self.FROM_FILE:
+        if choice == self.FROM_MICROSD:
             from seedsigner.gui.screens import LargeIconStatusScreen, WarningScreen
+            from seedsigner.hardware.microsd import MicroSD
+            import os
 
-            path = "bip85_data.json"
+            file_list_path = MicroSD.get_microsd_dir() / "microsd-images"
+            path = file_list_path / "bip85_data.json"
             try:
                 bip85_load_data(path)
+                logger.info("BIP85 data loaded from %s", os.path.abspath(path))
                 screen = LargeIconStatusScreen
                 msg = "BIP85 data loaded"
             except Exception:
@@ -8644,6 +8648,7 @@ def bip85_add_subkeys(
     added = []
     for offset, pkalg, usage, *alg_name in subkey_specs:
         sub_index = (start_index % 3) + offset
+        global_index = start_index + offset
         subpkt = PrivSubKeyV4()
         subpkt.pkalg = pkalg
         if alg == "secp256k1":
@@ -8671,7 +8676,7 @@ def bip85_add_subkeys(
         )
         alg_name_str = alg_name[0] if alg_name else pkalg.name
         sub_type = alg_label if alg.startswith("rsa") else f"{alg_name_str} {alg_label}"
-        added.append({"index": sub_index, "type": sub_type, "fingerprint": subkey.fingerprint})
+        added.append({"index": global_index, "type": sub_type, "fingerprint": subkey.fingerprint})
 
     armored = str(pgp_key)
     r = run(

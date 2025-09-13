@@ -10,6 +10,7 @@ from seedsigner.views.tools_views import (
     bip85_p256_from_root,
     bip85_rsa_from_root,
     bip85_secp256k1_from_root,
+    bip85_add_subkeys,
     _bip85_subkey_specs,
     parse_secret_key_list,
     parse_subkey_list,
@@ -211,6 +212,58 @@ def test_bip85_gpg_mixed_subkeys_deterministic():
         "9696B4AAFCA808BFFDE2A04AD2CA980F3652A5D4",
         "07A435FD12E96F72C09B31966577C9E71A248706",
     ]
+
+
+def test_bip85_add_subkeys_index_sequential(monkeypatch):
+    import datetime, subprocess
+    from pgpy import PGPKey, PGPUID
+    from pgpy.pgp import PrivKeyV4
+    from pgpy.constants import (
+        PubKeyAlgorithm,
+        KeyFlags,
+        HashAlgorithm,
+        SymmetricKeyAlgorithm,
+        CompressionAlgorithm,
+    )
+
+    seed = Seed(mnemonic=MNEMONIC)
+    root = bip32.HDKey.from_seed(seed.seed_bytes)
+    created = datetime.datetime.fromtimestamp(
+        BIP85_GPG_CREATED_TS, tz=datetime.timezone.utc
+    )
+    pk = PrivKeyV4()
+    pk.pkalg = PubKeyAlgorithm.ECDSA
+    pk.keymaterial = bip85_p256_from_root(root, 0)
+    pk.created = created
+    pk.update_hlen()
+    pgp_key = PGPKey()
+    pgp_key._key = pk
+    uid = PGPUID.new("Test", email="t@example.com")
+    pgp_key.add_uid(
+        uid,
+        usage={KeyFlags.Certify, KeyFlags.Sign},
+        hashes=[HashAlgorithm.SHA256],
+        ciphers=[SymmetricKeyAlgorithm.AES256],
+        compression=[CompressionAlgorithm.ZLIB],
+        created=created,
+    )
+
+    def fake_run(cmd, capture_output=False, text=False, input=None):
+        class Result:
+            def __init__(self, stdout=""):
+                self.stdout = stdout
+                self.returncode = 0
+
+        if "--export-secret-keys" in cmd:
+            return Result(str(pgp_key))
+        return Result()
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    added1 = bip85_add_subkeys(pgp_key.fingerprint, "ed25519", 0, 0, seed)
+    added2 = bip85_add_subkeys(pgp_key.fingerprint, "secp256k1", 1, 3, seed)
+    assert [a["index"] for a in added1] == [0, 1, 2]
+    assert [a["index"] for a in added2] == [3, 4, 5]
 
 
 def test_bip85_verify_existing_supports_cv25519():
@@ -559,6 +612,33 @@ def test_bip85_save_and_load(tmp_path):
     assert BIP85_DATA[fpr]["key_type"] == "NIST P-256"
     assert BIP85_DATA[fpr]["uids"][0] == "User <user@example.com>"
     assert BIP85_DATA[fpr]["subkeys"][0]["type"] == "ECDH NIST P-256"
+
+
+def test_load_bip85_data_from_microsd(monkeypatch, tmp_path):
+    from pathlib import Path
+
+    captured = {}
+
+    def fake_bip85_load_data(path):
+        captured["path"] = Path(path)
+
+    monkeypatch.setattr(tools_views, "bip85_load_data", fake_bip85_load_data)
+    monkeypatch.setattr(
+        tools_views.MicroSD, "get_microsd_dir", lambda: tmp_path
+    )
+
+    def fake_run_screen(self, *args, **kwargs):
+        return 0  # Select "From MicroSD"
+
+    monkeypatch.setattr(
+        tools_views.ToolsGPGLoadBip85DataView, "run_screen", fake_run_screen
+    )
+
+    view = tools_views.ToolsGPGLoadBip85DataView()
+    view.run()
+
+    expected = tmp_path / "microsd-images" / "bip85_data.json"
+    assert captured["path"] == expected
 
 
 def test_bip85_save_to_qr(monkeypatch):

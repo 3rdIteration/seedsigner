@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: seedsigner 0.8.6\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2025-09-13 13:32+0000\n"
+"POT-Creation-Date: 2025-09-13 13:48+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -2272,7 +2272,7 @@ msgid "Start"
 msgstr ""
 
 #: src/seedsigner/views/tools_views.py
-msgid "From File"
+msgid "From MicroSD"
 msgstr ""
 
 #: src/seedsigner/views/tools_views.py
@@ -2461,6 +2461,10 @@ msgstr ""
 
 #: src/seedsigner/views/tools_views.py
 msgid "Update"
+msgstr ""
+
+#: src/seedsigner/views/tools_views.py
+msgid "From File"
 msgstr ""
 
 #: src/seedsigner/views/tools_views.py
