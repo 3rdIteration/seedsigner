@@ -455,16 +455,14 @@ def test_filter_deletable_subkeys_bip85_only_latest():
         {"fpr": "A", "caps": "e", "idx": 1, "created": BIP85_GPG_CREATED_TS},
         {"fpr": "B", "caps": "s", "idx": 2, "created": BIP85_GPG_CREATED_TS},
     ]
-    filtered = filter_deletable_subkeys(
-        BIP85_GPG_CREATED_TS, BIP85_GPG_CREATED_TS, bip85_subs
-    )
+    filtered = filter_deletable_subkeys(BIP85_GPG_CREATED_TS, bip85_subs)
     assert len(filtered) == 1 and filtered[0]["idx"] == 2
 
     non_bip85 = [
         {"fpr": "A", "caps": "e", "idx": 1, "created": 0},
         {"fpr": "B", "caps": "s", "idx": 2, "created": 1},
     ]
-    filtered2 = filter_deletable_subkeys(BIP85_GPG_CREATED_TS, 0, non_bip85)
+    filtered2 = filter_deletable_subkeys(0, non_bip85)
     assert len(filtered2) == 2
 
 
@@ -660,7 +658,7 @@ def test_add_subkeys_auto_bip85_index(monkeypatch):
         if cmd[:3] == ["gpg", "--list-secret-keys", "--with-colons"]:
             if len(cmd) == 3:
                 return R(
-                    f"sec:-:0:0:KEYID:{tools_views.BIP85_GPG_CREATED_TS}:0:::::::\n"
+                    "sec:-:0:0:KEYID:0:0:::::::\n"
                     f"fpr:::::::::FPR:\n"
                     f"uid:u::::{tools_views.BIP85_GPG_CREATED_TS}::H::User::::::::\n"
                 )
@@ -747,7 +745,7 @@ def test_add_subkeys_mismatched_seed(monkeypatch):
         if cmd[:3] == ["gpg", "--list-secret-keys", "--with-colons"]:
             if len(cmd) == 3:
                 return R(
-                    f"sec:-:0:0:KEYID:{tools_views.BIP85_GPG_CREATED_TS}:0:::::::\n"
+                    "sec:-:0:0:KEYID:0:0:::::::\n"
                     f"fpr:::::::::FPR:\n"
                     f"uid:u::::{tools_views.BIP85_GPG_CREATED_TS}::H::User::::::::\n"
                 )
@@ -821,7 +819,7 @@ def test_delete_subkeys_bip85_only_latest(monkeypatch):
         if cmd[:3] == ["gpg", "--list-secret-keys", "--with-colons"]:
             if len(cmd) == 3:
                 return R(
-                    f"sec:-:0:0:KEYID:{ts}:0:::::::\n"
+                    f"sec:-:0:0:KEYID:0:0:::::::\n"
                     f"fpr:::::::::FPR:\n"
                     f"uid:u::::{ts}::H::User::::::::\n"
                 )

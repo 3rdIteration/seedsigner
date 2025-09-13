@@ -4165,15 +4165,19 @@ def parse_uid_list(colon_output: str):
     return uids
 
 
-def filter_deletable_subkeys(created_ts: int, valid_from_ts: int, subkeys):
-    if (
-        created_ts == BIP85_GPG_CREATED_TS
-        and valid_from_ts == BIP85_GPG_CREATED_TS
-        and subkeys
-    ):
-        if all(sk.get("created") == BIP85_GPG_CREATED_TS for sk in subkeys):
-            max_idx = max(sk["idx"] for sk in subkeys)
-            return [sk for sk in subkeys if sk["idx"] == max_idx]
+def filter_deletable_subkeys(valid_from_ts: int, subkeys):
+    bip85 = valid_from_ts == BIP85_GPG_CREATED_TS
+    logger.info(
+        "filter_deletable_subkeys: valid_from=%s bip85=%s subkey_count=%s",
+        valid_from_ts,
+        bip85,
+        len(subkeys),
+    )
+    if bip85 and subkeys:
+        max_idx = max(sk["idx"] for sk in subkeys)
+        logger.info("BIP85 key detected; allowing deletion of index %s only", max_idx)
+        return [sk for sk in subkeys if sk["idx"] == max_idx]
+    logger.info("Non-BIP85 key or no subkeys; returning all subkeys")
     return subkeys
 
 
@@ -4436,7 +4440,7 @@ class ToolsGPGDeleteSubkeysView(View):
             fingerprint,
         ], capture_output=True, text=True)
         subkeys = parse_subkey_list(result.stdout)
-        subkeys = filter_deletable_subkeys(created_ts, valid_from_ts, subkeys)
+        subkeys = filter_deletable_subkeys(valid_from_ts, subkeys)
         if not subkeys:
             self.run_screen(
                 WarningScreen,
@@ -4478,7 +4482,7 @@ class ToolsGPGDeleteSubkeysView(View):
                 fingerprint,
             ], capture_output=True, text=True)
             subkeys = parse_subkey_list(result.stdout)
-            subkeys = filter_deletable_subkeys(created_ts, valid_from_ts, subkeys)
+            subkeys = filter_deletable_subkeys(valid_from_ts, subkeys)
         return Destination(ToolsGPGMenuView)
 
 
@@ -8100,6 +8104,9 @@ def bip85_verify_existing(
     from Cryptodome.PublicKey import RSA
     from datetime import datetime, timezone
 
+    logger.info(
+        "bip85_verify_existing: fpr=%s index=%s", fingerprint, key_index
+    )
     root = bip32.HDKey.from_seed(seed.seed_bytes)
     created = datetime.fromtimestamp(created_ts, tz=timezone.utc)
 
@@ -8139,9 +8146,15 @@ def bip85_verify_existing(
     primary = PGPKey()
     primary._key = pk
     if primary.fingerprint != fingerprint:
+        logger.warning(
+            "Primary key fingerprint mismatch: expected %s got %s",
+            fingerprint,
+            primary.fingerprint,
+        )
         return False
 
     for sk in subkeys:
+        logger.info("Validating subkey idx=%s fpr=%s", sk["idx"], sk["fpr"])
         j = sk["idx"] - 1
         group_idx = j // 3
         sub_index = j % 3
@@ -8176,7 +8189,14 @@ def bip85_verify_existing(
         subkey = PGPKey()
         subkey._key = subpkt
         if subkey.fingerprint != sk["fpr"]:
+            logger.warning(
+                "Subkey fingerprint mismatch at idx=%s: expected %s got %s",
+                sk["idx"],
+                sk["fpr"],
+                subkey.fingerprint,
+            )
             return False
+    logger.info("Primary and subkeys validated successfully")
     return True
 
 
@@ -8196,6 +8216,13 @@ def bip85_add_subkeys(
     from pgpy.packet.types import MPI
     from Cryptodome.PublicKey import RSA
 
+    logger.info(
+        "bip85_add_subkeys: fpr=%s alg=%s key_index=%s start_index=%s",
+        fingerprint,
+        alg,
+        key_index,
+        start_index,
+    )
     root = bip32.HDKey.from_seed(seed.seed_bytes)
 
     export = run(
@@ -8794,11 +8821,16 @@ class ToolsGPGAddSubkeysView(View):
         start_index = sum(1 for line in result.stdout.splitlines() if line.startswith("ssb"))
         created_ts = keys[selected]["created"]
         valid_from_ts = keys[selected].get("valid_from")
-        bip85 = (
-            created_ts == BIP85_GPG_CREATED_TS
-            and valid_from_ts == BIP85_GPG_CREATED_TS
-        )
+        bip85 = valid_from_ts == BIP85_GPG_CREATED_TS
         key_index = start_index // 3 if bip85 else None
+        logger.info(
+            "AddSubkeysView: fpr=%s valid_from=%s bip85=%s start_index=%s key_index=%s",
+            fingerprint,
+            valid_from_ts,
+            bip85,
+            start_index,
+            key_index,
+        )
         sec_line = next(l for l in result.stdout.splitlines() if l.startswith("sec"))
         sec_parts = sec_line.split(":")
         primary_bits = sec_parts[2] if len(sec_parts) > 2 else ""
@@ -8808,6 +8840,7 @@ class ToolsGPGAddSubkeysView(View):
 
         seed = None
         if bip85:
+            logger.info("BIP85 key detected; prompting for seed selection")
             if len(self.controller.storage.seeds) == 0:
                 self.run_screen(
                     WarningScreen,
@@ -8840,10 +8873,15 @@ class ToolsGPGAddSubkeysView(View):
                 )
                 if selected_seed == RET_CODE__BACK_BUTTON:
                     return Destination(BackStackView)
+                logger.info("Seed selected index=%s", selected_seed)
                 seed = self.controller.get_seed(selected_seed)
             else:
                 seed = self.controller.get_seed(0)
+                logger.info("Single seed loaded; using index 0")
 
+            logger.info(
+                "Validating existing key against seed and index %s", key_index
+            )
             if not bip85_verify_existing(
                 seed,
                 fingerprint,
@@ -8854,6 +8892,9 @@ class ToolsGPGAddSubkeysView(View):
                 primary_curve,
                 subkeys,
             ):
+                logger.warning(
+                    "Selected seed/index failed validation for fingerprint %s", fingerprint
+                )
                 self.run_screen(
                     WarningScreen,
                     title="Error",
@@ -8863,6 +8904,7 @@ class ToolsGPGAddSubkeysView(View):
                     button_data=[ButtonOption("I Understand")],
                 )
                 return Destination(BackStackView)
+            logger.info("Existing key validated successfully")
 
         keytype_buttons = [
             ButtonOption("NIST P-256"),
