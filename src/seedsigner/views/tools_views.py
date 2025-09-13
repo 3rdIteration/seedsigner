@@ -4747,6 +4747,12 @@ class ToolsGPGRebuildBip85KeyView(View):
 
         # Build subkey info for verification
         verify_subkeys = []
+        curve_map = {
+            "nist p-256": "nistp256",
+            "brainpool p-256": "brainpoolp256r1",
+            "secp256k1": "secp256k1",
+            "ed25519": "ed25519",
+        }
         for sk in entry.get("subkeys", []):
             g_idx = sk["index"]
             parts = sk["type"].split()
@@ -4756,8 +4762,9 @@ class ToolsGPGRebuildBip85KeyView(View):
                 curve = ""
             else:
                 algo = {"ECDH": "18", "ECDSA": "19", "EdDSA": "22"}[parts[0]]
-                curve = parts[1].lower()
-                if parts[0] == "ECDH" and parts[1] == "Ed25519":
+                curve_label = " ".join(parts[1:]).lower()
+                curve = curve_map.get(curve_label, curve_label)
+                if parts[0] == "ECDH" and curve_label == "ed25519":
                     curve = "cv25519"
                 bits = ""
             verify_subkeys.append(
@@ -4857,33 +4864,99 @@ class ToolsGPGRebuildBip85KeyView(View):
                     created=created,
                 )
 
-            specs = _bip85_subkey_specs(
-                {
-                    "p256": "nistp256",
-                    "brainpoolp256r1": "brainpoolP256r1",
-                    "secp256k1": "secp256k1",
-                    "ed25519": "ed25519",
-                }.get(key_type, "rsa")
-            )
-
-            for sub in entry.get("subkeys", specs):
-                g_idx = sub if isinstance(sub, int) else sub.get("index", 0)
-                spec = specs[g_idx % len(specs)]
-                idx = g_idx % len(specs)
-                _, pkalg, usage, *alg = spec
-                subpkt = PrivSubKeyV4()
-                subpkt.pkalg = pkalg
-                if key_type == "secp256k1":
-                    subpkt.keymaterial = bip85_secp256k1_from_root(root, key_index, idx, alg[0])
-                elif key_type == "p256":
-                    subpkt.keymaterial = bip85_p256_from_root(root, key_index, idx, alg[0])
-                elif key_type == "brainpoolp256r1":
-                    subpkt.keymaterial = bip85_brainpoolp256r1_from_root(root, key_index, idx, alg[0])
-                elif key_type == "ed25519":
-                    subpkt.keymaterial = bip85_ed25519_from_root(root, key_index, idx, alg[0])
+            for sub in entry.get("subkeys", _bip85_subkey_specs("rsa")):
+                if isinstance(sub, int):
+                    g_idx = sub
+                    group_idx = g_idx // 3
+                    idx = g_idx % 3
+                    specs = _bip85_subkey_specs(
+                        {
+                            "p256": "nistp256",
+                            "brainpoolp256r1": "brainpoolP256r1",
+                            "secp256k1": "secp256k1",
+                            "ed25519": "ed25519",
+                        }.get(key_type, "rsa")
+                    )
+                    _, pkalg, usage, *alg = specs[idx]
+                    func_map = {
+                        "secp256k1": bip85_secp256k1_from_root,
+                        "p256": bip85_p256_from_root,
+                        "brainpoolp256r1": bip85_brainpoolp256r1_from_root,
+                        "ed25519": bip85_ed25519_from_root,
+                    }
+                    subpkt = PrivSubKeyV4()
+                    subpkt.pkalg = pkalg
+                    if key_type in func_map:
+                        subpkt.keymaterial = func_map[key_type](
+                            root, group_idx, idx, alg[0]
+                        )
+                    else:
+                        rsa_sub = bip85_rsa_from_root(root, KEY_BITS, group_idx, idx)
+                        subpkt.keymaterial = rsa_to_privpacket(rsa_sub)
                 else:
-                    rsa_sub = bip85_rsa_from_root(root, KEY_BITS, key_index, idx)
-                    subpkt.keymaterial = rsa_to_privpacket(rsa_sub)
+                    g_idx = sub.get("index", 0)
+                    group_idx = g_idx // 3
+                    idx = g_idx % 3
+                    usage = (
+                        {KeyFlags.EncryptCommunications, KeyFlags.EncryptStorage}
+                        if idx == 0
+                        else {KeyFlags.Authentication}
+                        if idx == 1
+                        else {KeyFlags.Sign}
+                    )
+                    parts = sub.get("type", key_type_label).split()
+                    subpkt = PrivSubKeyV4()
+                    if parts[0] == "RSA":
+                        bits = int(parts[1])
+                        subpkt.pkalg = PubKeyAlgorithm.RSAEncryptOrSign
+                        rsa_sub = bip85_rsa_from_root(root, bits, group_idx, idx)
+                        subpkt.keymaterial = rsa_to_privpacket(rsa_sub)
+                    else:
+                        alg_name = parts[0]
+                        curve_label = " ".join(parts[1:]).lower()
+                        func_map = {
+                            "secp256k1": bip85_secp256k1_from_root,
+                            "nist p-256": bip85_p256_from_root,
+                            "brainpool p-256": bip85_brainpoolp256r1_from_root,
+                            "ed25519": bip85_ed25519_from_root,
+                        }
+                        pkalg_map = {
+                            "ECDH": PubKeyAlgorithm.ECDH,
+                            "ECDSA": PubKeyAlgorithm.ECDSA,
+                            "EdDSA": PubKeyAlgorithm.EdDSA,
+                        }
+                        subpkt.pkalg = pkalg_map[parts[0]]
+                        func = func_map[curve_label]
+                        subpkt.keymaterial = func(root, group_idx, idx, alg_name)
+                    subpkt.created = created
+                    subpkt.update_hlen()
+                    subkey = PGPKey()
+                    subkey._key = subpkt
+                    exp_fpr = sub.get("fingerprint")
+                    logger.info(
+                        "Derived subkey idx=%s fpr=%s expected=%s",
+                        g_idx,
+                        subkey.fingerprint,
+                        exp_fpr,
+                    )
+                    if exp_fpr and subkey.fingerprint != exp_fpr:
+                        logger.warning(
+                            "Subkey fingerprint mismatch at idx=%s: expected %s got %s",
+                            g_idx,
+                            exp_fpr,
+                            subkey.fingerprint,
+                        )
+                    pgp_key.add_subkey(
+                        subkey,
+                        usage=usage,
+                        hashes=[HashAlgorithm.SHA256],
+                        ciphers=[SymmetricKeyAlgorithm.AES256],
+                        compression=[CompressionAlgorithm.ZLIB],
+                        expires=expires,
+                        created=created,
+                    )
+                    continue
+
                 subpkt.created = created
                 subpkt.update_hlen()
                 subkey = PGPKey()

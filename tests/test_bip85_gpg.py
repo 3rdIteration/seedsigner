@@ -986,12 +986,16 @@ def test_rebuild_bip85_key(monkeypatch):
             {"index": 0, "type": "ECDH NIST P-256", "fingerprint": "F0"},
             {"index": 1, "type": "ECDSA NIST P-256", "fingerprint": "F1"},
             {"index": 2, "type": "ECDSA NIST P-256", "fingerprint": "F2"},
-            {"index": 3, "type": "ECDH NIST P-256", "fingerprint": "F3"},
-            {"index": 4, "type": "ECDSA NIST P-256", "fingerprint": "F4"},
-            {"index": 5, "type": "ECDSA NIST P-256", "fingerprint": "F5"},
+            {"index": 3, "type": "RSA 2048", "fingerprint": "F3"},
+            {"index": 4, "type": "RSA 2048", "fingerprint": "F4"},
+            {"index": 5, "type": "RSA 2048", "fingerprint": "F5"},
         ],
         "revocations": [],
     }
+    # round-trip export/import
+    data_json = tools_views.bip85_export_json()
+    tools_views.BIP85_DATA.clear()
+    tools_views.bip85_import_json(data_json)
 
     captured = {}
 
@@ -1017,15 +1021,24 @@ def test_rebuild_bip85_key(monkeypatch):
     real = tools_views.bip85_p256_from_root
 
     def fake_p256(root, key_index, sub_index=None, alg=None):
-        calls.append((key_index, sub_index, alg))
+        calls.append(("p256", key_index, sub_index, alg))
         return real(root, key_index, sub_index, alg)
 
     monkeypatch.setattr(tools_views, "bip85_p256_from_root", fake_p256)
 
+    rsa_calls = []
+    real_rsa = tools_views.bip85_rsa_from_root
+
+    def fake_rsa(root, bits, key_index, sub_index=None):
+        rsa_calls.append((bits, key_index, sub_index))
+        return real_rsa(root, bits, key_index, sub_index)
+
+    monkeypatch.setattr(tools_views, "bip85_rsa_from_root", fake_rsa)
+
     verify_called = {}
 
     def fake_verify(seed, fingerprint, key_index, created_ts, primary_algo, primary_bits, primary_curve, subkeys):
-        verify_called["args"] = (fingerprint, key_index, subkeys)
+        verify_called["subkeys"] = subkeys
         return True
 
     monkeypatch.setattr(tools_views, "bip85_verify_existing", fake_verify)
@@ -1038,16 +1051,21 @@ def test_rebuild_bip85_key(monkeypatch):
 
     assert captured["cmd"] == ["gpg", "--batch", "--import"]
     expected = [
-        (1, None, None),
-        (1, 0, "ECDH"),
-        (1, 1, "ECDSA"),
-        (1, 2, "ECDSA"),
-        (1, 0, "ECDH"),
-        (1, 1, "ECDSA"),
-        (1, 2, "ECDSA"),
+        ("p256", 1, None, None),
+        ("p256", 0, 0, "ECDH"),
+        ("p256", 0, 1, "ECDSA"),
+        ("p256", 0, 2, "ECDSA"),
     ]
     assert calls == expected
-    assert len(verify_called["args"][2]) == 6
+    assert rsa_calls == [(2048, 1, 0), (2048, 1, 1), (2048, 1, 2)]
+    assert verify_called["subkeys"] == [
+        {"idx": 1, "algo": "18", "bits": "", "curve": "nistp256", "fpr": "F0"},
+        {"idx": 2, "algo": "19", "bits": "", "curve": "nistp256", "fpr": "F1"},
+        {"idx": 3, "algo": "19", "bits": "", "curve": "nistp256", "fpr": "F2"},
+        {"idx": 4, "algo": "1", "bits": "2048", "curve": "", "fpr": "F3"},
+        {"idx": 5, "algo": "1", "bits": "2048", "curve": "", "fpr": "F4"},
+        {"idx": 6, "algo": "1", "bits": "2048", "curve": "", "fpr": "F5"},
+    ]
 
 
 def test_bip85_subkey_specs_include_sign_for_auth():
