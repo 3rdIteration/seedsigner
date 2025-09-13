@@ -1,5 +1,6 @@
 import pytest
 import base  # ensure hardware mocks
+import os
 from embit import bip32, bip85
 from seedsigner.models.seed import Seed
 from seedsigner.controller import Controller
@@ -501,7 +502,7 @@ def test_add_uid_preserves_primary(tmp_path):
 
     gnupg_home = tmp_path / "gnupg"
     gnupg_home.mkdir()
-    env = {"GNUPGHOME": str(gnupg_home)}
+    env = {**os.environ, "GNUPGHOME": str(gnupg_home)}
 
     run(
         ["gpg", "--batch", "--passphrase", "", "--quick-gen-key", "tester@example.com"],
@@ -569,7 +570,7 @@ def test_set_primary_uid_sets_selected_uid(tmp_path, monkeypatch):
 
     gnupg_home = tmp_path / "gnupg"
     gnupg_home.mkdir()
-    env = {"GNUPGHOME": str(gnupg_home)}
+    env = {**os.environ, "GNUPGHOME": str(gnupg_home)}
 
     subprocess.run(
         ["gpg", "--batch", "--passphrase", "", "--quick-gen-key", "tester@example.com"],
