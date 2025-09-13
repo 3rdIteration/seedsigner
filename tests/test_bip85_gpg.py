@@ -502,6 +502,7 @@ def test_add_uid_preserves_primary(tmp_path):
 
     gnupg_home = tmp_path / "gnupg"
     gnupg_home.mkdir()
+    os.chmod(gnupg_home, 0o700)
     env = {**os.environ, "GNUPGHOME": str(gnupg_home)}
 
     run(
@@ -579,6 +580,7 @@ def test_set_primary_uid_sets_selected_uid(tmp_path, monkeypatch):
 
     gnupg_home = tmp_path / "gnupg"
     gnupg_home.mkdir()
+    os.chmod(gnupg_home, 0o700)
     env = {**os.environ, "GNUPGHOME": str(gnupg_home)}
 
     subprocess.run(
