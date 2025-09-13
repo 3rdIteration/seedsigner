@@ -215,6 +215,119 @@ def test_bip85_gpg_mixed_subkeys_deterministic():
     ]
 
 
+def test_bip85_load_key_deterministic(monkeypatch):
+    from pgpy import PGPKey
+
+    seed = Seed(mnemonic=MNEMONIC)
+
+    captured = {}
+
+    def fake_run(cmd, input=None, capture_output=False, text=False, **kwargs):
+        captured["armored"] = input
+        class R:
+            returncode = 0
+            stdout = ""
+            stderr = ""
+        return R()
+
+    monkeypatch.setattr("subprocess.run", fake_run)
+
+    from seedsigner.gui.screens import seed_screens, tools_screens
+
+    class DummyIndexScreen:
+        def __init__(self, *args, **kwargs):
+            pass
+        def display(self):
+            return "0"
+
+    monkeypatch.setattr(
+        seed_screens,
+        "SeedBIP85SelectChildIndexScreen",
+        DummyIndexScreen,
+    )
+
+    inputs = iter([
+        {"textToEncode": "Test"},
+        {"textToEncode": "t@example.com"},
+        {"textToEncode": ""},
+    ])
+
+    class DummyTextEntry:
+        def __init__(self, textToEncode="", title=""):
+            pass
+        def display(self):
+            return next(inputs)
+
+    monkeypatch.setattr(
+        tools_screens,
+        "ToolsTextQRTextEntryScreen",
+        DummyTextEntry,
+    )
+
+    class DummyLoading:
+        def __init__(self, text=""):
+            pass
+        def start(self):
+            pass
+        def stop(self):
+            pass
+
+    from seedsigner.gui.screens import screen as screen_mod
+    monkeypatch.setattr(screen_mod, "LoadingScreenThread", DummyLoading)
+
+    def fake_run_screen(self, screen, **kwargs):
+        if kwargs.get("title") == "Key Type":
+            return 0
+        return 0
+
+    monkeypatch.setattr(tools_views.ToolsGPGLoadBIP85KeyView, "run_screen", fake_run_screen)
+
+    controller = type(
+        "C",
+        (),
+        {
+            "storage": type("S", (), {"seeds": [seed]})(),
+            "get_seed": lambda self, idx: seed,
+        },
+    )()
+    from seedsigner.models.settings_definition import SettingsConstants
+    settings = type(
+        "S",
+        (),
+        {"get_value": lambda self, x: SettingsConstants.MAINNET},
+    )()
+
+    view = object.__new__(tools_views.ToolsGPGLoadBIP85KeyView)
+    view.controller = controller
+    view.settings = settings
+
+    tools_views.BIP85_DATA.clear()
+    tools_views.ToolsGPGLoadBIP85KeyView.run(view)
+    fpr1 = PGPKey.from_blob(captured["armored"])[0].fingerprint
+
+    inputs = iter([
+        {"textToEncode": "Test"},
+        {"textToEncode": "t@example.com"},
+        {"textToEncode": ""},
+    ])
+    class DummyTextEntry2:
+        def __init__(self, textToEncode="", title=""):
+            pass
+        def display(self):
+            return next(inputs)
+
+    monkeypatch.setattr(
+        tools_screens,
+        "ToolsTextQRTextEntryScreen",
+        DummyTextEntry2,
+    )
+    captured.clear()
+    tools_views.ToolsGPGLoadBIP85KeyView.run(view)
+    fpr2 = PGPKey.from_blob(captured["armored"])[0].fingerprint
+
+    assert fpr1 == fpr2
+
+
 def test_bip85_add_subkeys_index_sequential(monkeypatch):
     import datetime, subprocess
     from pgpy import PGPKey, PGPUID
