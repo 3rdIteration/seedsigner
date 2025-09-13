@@ -908,6 +908,103 @@ def test_add_subkeys_auto_bip85_index(monkeypatch):
     assert captured["verified_key_index"] == 0
 
 
+def test_add_subkeys_registry_index_correction(monkeypatch):
+    import seedsigner.views.tools_views as tools_views
+
+    class R:
+        def __init__(self, stdout=""):
+            self.stdout = stdout
+
+    def fake_run(cmd, capture_output=True, text=True):
+        if cmd[:3] == ["gpg", "--list-secret-keys", "--with-colons"]:
+            if len(cmd) == 3:
+                return R(
+                    "sec:-:0:0:KEYID:0:0:::::::\n"
+                    f"fpr:::::::::FPR:\n"
+                    f"uid:u::::{tools_views.BIP85_GPG_CREATED_TS}::H::User::::::::\n"
+                )
+            return R(
+                "sec:-:0:0:KEYID:0:::::::\n" + "ssb:-:0:0:::0:::::::\n" * 3
+            )
+        return R()
+
+    import subprocess
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    tools_views.BIP85_DATA["FPR"] = {
+        "primary_fpr": "FPR",
+        "seed_fpr": "seedfpr",
+        "index": 1,
+        "uids": ["User"],
+        "subkeys": [],
+        "revocations": [],
+    }
+
+    calls = []
+
+    def fake_bip85_add_subkeys(fpr, alg, key_index, start_index, seed):
+        calls.append(("add", key_index, start_index))
+        return []
+
+    monkeypatch.setattr(tools_views, "bip85_add_subkeys", fake_bip85_add_subkeys)
+
+    def fake_verify(seed, fingerprint, key_index, created_ts, primary_algo, primary_bits, primary_curve, subkeys):
+        calls.append(("verify", key_index))
+        return key_index == 0
+
+    monkeypatch.setattr(tools_views, "bip85_verify_existing", fake_verify)
+
+    class DummyLoading:
+        def __init__(self, text=""):
+            pass
+
+        def start(self):
+            pass
+
+        def stop(self):
+            pass
+
+    monkeypatch.setattr(
+        "seedsigner.gui.screens.screen.LoadingScreenThread", DummyLoading
+    )
+
+    class SeedObj:
+        def get_fingerprint(self, network=None):
+            return "seedfpr"
+
+    seed_obj = SeedObj()
+
+    def fake_run_screen(self, screen, **kwargs):
+        if kwargs.get("title") == "Select Key":
+            return 0
+        if kwargs.get("text") == "Choose seed for BIP85 subkeys":
+            return 0
+        if kwargs.get("title") == "Key Type":
+            return 0
+        return 0
+
+    monkeypatch.setattr(tools_views.ToolsGPGAddSubkeysView, "run_screen", fake_run_screen)
+
+    view = object.__new__(tools_views.ToolsGPGAddSubkeysView)
+    ControllerClass = type(
+        "C",
+        (),
+        {
+            "storage": type("S", (), {"seeds": [seed_obj]})(),
+            "get_seed": lambda self, idx: seed_obj,
+        },
+    )
+    view.controller = ControllerClass()
+    view.settings = type("Set", (), {"get_value": lambda self, x: None})()
+    tools_views.ToolsGPGAddSubkeysView.run(view)
+
+    assert calls[0] == ("verify", 1)
+    assert calls[1] == ("verify", 0)
+    assert calls[2] == ("add", 1, 3)
+    assert tools_views.BIP85_DATA["FPR"]["index"] == 0
+
+
 def test_add_subkeys_mismatched_seed(monkeypatch):
     class R:
         def __init__(self, stdout=""):

@@ -9158,13 +9158,11 @@ class ToolsGPGAddSubkeysView(View):
         created_ts = keys[selected]["created"]
         entry = BIP85_DATA.get(fingerprint)
         bip85 = entry is not None
-        key_index = entry["index"] + (start_index // 3) if bip85 else None
         logger.info(
-            "AddSubkeysView: fpr=%s bip85=%s start_index=%s key_index=%s",
+            "AddSubkeysView: fpr=%s bip85=%s start_index=%s",
             fingerprint,
             bip85,
             start_index,
-            key_index,
         )
         sec_line = next(l for l in result.stdout.splitlines() if l.startswith("sec"))
         sec_parts = sec_line.split(":")
@@ -9174,6 +9172,7 @@ class ToolsGPGAddSubkeysView(View):
         subkeys = parse_subkey_list(result.stdout)
 
         seed = None
+        base_index = None
         if bip85:
             logger.info("BIP85 key detected; prompting for seed selection")
             if len(self.controller.storage.seeds) == 0:
@@ -9217,10 +9216,11 @@ class ToolsGPGAddSubkeysView(View):
             selected_seed_fpr = seed.get_fingerprint(
                 self.settings.get_value(SettingsConstants.SETTING__NETWORK)
             )
+            base_index = entry["index"]
             if selected_seed_fpr != entry["seed_fpr"] or not bip85_verify_existing(
                 seed,
                 fingerprint,
-                entry["index"],
+                base_index,
                 created_ts,
                 primary_algo,
                 primary_bits,
@@ -9231,17 +9231,47 @@ class ToolsGPGAddSubkeysView(View):
                     "Selected seed/index failed validation for fingerprint %s",
                     fingerprint,
                 )
-                self.run_screen(
-                    WarningScreen,
-                    title="Error",
-                    status_headline=None,
-                    text="Selected seed/index mismatch",
-                    show_back_button=False,
-                    button_data=[ButtonOption("I Understand")],
+                # Attempt to recover by searching lower indexes
+                corrected = None
+                for i in range(base_index - 1, -1, -1):
+                    if bip85_verify_existing(
+                        seed,
+                        fingerprint,
+                        i,
+                        created_ts,
+                        primary_algo,
+                        primary_bits,
+                        primary_curve,
+                        subkeys,
+                    ):
+                        corrected = i
+                        break
+                if corrected is None:
+                    self.run_screen(
+                        WarningScreen,
+                        title="Error",
+                        status_headline=None,
+                        text="Selected seed/index mismatch",
+                        show_back_button=False,
+                        button_data=[ButtonOption("I Understand")],
+                    )
+                    return Destination(BackStackView)
+                logger.warning(
+                    "Registry index %s mismatched; corrected to %s",
+                    base_index,
+                    corrected,
                 )
-                return Destination(BackStackView)
-            logger.info("Existing key validated successfully")
+                BIP85_DATA[fingerprint]["index"] = corrected
+                base_index = corrected
+            logger.info("Existing key validated successfully at index %s", base_index)
 
+        key_index = base_index + (start_index // 3) if bip85 else None
+        if bip85:
+            logger.info(
+                "AddSubkeysView: validated base_index=%s resulting key_index=%s",
+                base_index,
+                key_index,
+            )
         keytype_buttons = [
             ButtonOption("NIST P-256"),
             ButtonOption("Brainpool P-256"),
