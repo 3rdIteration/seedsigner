@@ -1,4 +1,5 @@
 import pytest
+import base  # ensure hardware mocks
 from embit import bip32, bip85
 from seedsigner.models.seed import Seed
 from seedsigner.controller import Controller
@@ -807,8 +808,84 @@ def test_advanced_menu_has_bip85_data_options(monkeypatch):
     )
     view = tools_views.ToolsGPGAdvancedMenuView()
     view.run()
+    assert "BIP85 Metadata" in buttons["labels"]
+
+
+def test_bip85_metadata_menu_has_options(monkeypatch):
+    buttons = {}
+
+    def fake_run_screen(*args, **kwargs):
+        buttons["labels"] = [b.button_label for b in kwargs["button_data"]]
+        return RET_CODE__BACK_BUTTON
+
+    monkeypatch.setattr(
+        tools_views.ToolsGPGBip85MetadataMenuView, "run_screen", fake_run_screen
+    )
+    view = tools_views.ToolsGPGBip85MetadataMenuView()
+    view.run()
     assert "Save BIP85 Data" in buttons["labels"]
     assert "Load BIP85 Data" in buttons["labels"]
+    assert "Rebuild BIP85 Key" in buttons["labels"]
+
+
+def test_rebuild_bip85_key(monkeypatch):
+    controller = Controller.get_instance()
+    seed = Seed(mnemonic=MNEMONIC)
+    original = controller.storage.seeds
+    controller.storage.seeds = [seed]
+    fpr = seed.get_fingerprint()
+    tools_views.BIP85_DATA.clear()
+    tools_views.BIP85_DATA["X"] = {
+        "primary_fpr": "X",
+        "seed_fpr": fpr,
+        "index": 1,
+        "key_type": "NIST P-256",
+        "uids": ["User <a@b.com>"],
+        "subkeys": [
+            {"index": 0, "type": "ECDH NIST P-256"},
+            {"index": 1, "type": "ECDSA NIST P-256"},
+            {"index": 2, "type": "ECDSA NIST P-256"},
+        ],
+        "revocations": [],
+    }
+
+    captured = {}
+
+    def fake_run_screen(self, *args, **kwargs):
+        if args[0].__name__ == "ButtonListScreen":
+            captured["labels"] = [b.button_label for b in kwargs["button_data"]]
+            return 0
+        return RET_CODE__BACK_BUTTON
+
+    monkeypatch.setattr(
+        tools_views.ToolsGPGRebuildBip85KeyView, "run_screen", fake_run_screen
+    )
+
+    def fake_run(cmd, input=None, capture_output=False):
+        captured["cmd"] = cmd
+        class Result:
+            returncode = 0
+        return Result()
+
+    monkeypatch.setattr(tools_views.subprocess, "run", fake_run)
+
+    calls = []
+    real = tools_views.bip85_p256_from_root
+
+    def fake_p256(root, key_index, sub_index=None, alg=None):
+        calls.append((key_index, sub_index, alg))
+        return real(root, key_index, sub_index, alg)
+
+    monkeypatch.setattr(tools_views, "bip85_p256_from_root", fake_p256)
+
+    view = tools_views.ToolsGPGRebuildBip85KeyView()
+    try:
+        view.run()
+    finally:
+        controller.storage.seeds = original
+
+    assert captured["cmd"] == ["gpg", "--batch", "--import"]
+    assert calls[0] == (1, None, None)
 
 
 def test_bip85_subkey_specs_include_sign_for_auth():

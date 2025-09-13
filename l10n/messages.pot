@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: seedsigner 0.8.6\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2025-09-13 13:48+0000\n"
+"POT-Creation-Date: 2025-09-13 14:16+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -2248,11 +2248,19 @@ msgid "User ID Operations"
 msgstr ""
 
 #: src/seedsigner/views/tools_views.py
+msgid "BIP85 Metadata"
+msgstr ""
+
+#: src/seedsigner/views/tools_views.py
 msgid "Save BIP85 Data"
 msgstr ""
 
 #: src/seedsigner/views/tools_views.py
 msgid "Load BIP85 Data"
+msgstr ""
+
+#: src/seedsigner/views/tools_views.py
+msgid "Rebuild BIP85 Key"
 msgstr ""
 
 #: src/seedsigner/views/tools_views.py
