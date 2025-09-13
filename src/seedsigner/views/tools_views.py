@@ -8601,7 +8601,7 @@ class ToolsGPGLoadBIP85KeyView(View):
         if email is None:
             return Destination(BackStackView)
 
-        created = datetime.fromtimestamp(1231005905, tz=timezone.utc)
+        created = datetime.fromtimestamp(BIP85_GPG_CREATED_TS, tz=timezone.utc)
         if key_type == "rsa2048":
             default_expiration = date(2029, 12, 31)
         else:
@@ -8689,6 +8689,7 @@ class ToolsGPGLoadBIP85KeyView(View):
                 ciphers=[SymmetricKeyAlgorithm.AES256],
                 compression=[CompressionAlgorithm.ZLIB],
                 expires=expires,
+                created=created,
             )
 
             if key_type == "ed25519":
@@ -8736,6 +8737,7 @@ class ToolsGPGLoadBIP85KeyView(View):
                     ciphers=[SymmetricKeyAlgorithm.AES256],
                     compression=[CompressionAlgorithm.ZLIB],
                     expires=expires,
+                    created=created,
                 )
 
             armored = str(pgp_key)

@@ -149,6 +149,7 @@ def test_bip85_gpg_mixed_subkeys_deterministic():
         hashes=[HashAlgorithm.SHA256],
         ciphers=[SymmetricKeyAlgorithm.AES256],
         compression=[CompressionAlgorithm.ZLIB],
+        created=created,
     )
     for sub_index, pkalg, usage, alg in _bip85_subkey_specs("nistp256"):
         subpkt = PrivSubKeyV4()
@@ -164,6 +165,7 @@ def test_bip85_gpg_mixed_subkeys_deterministic():
             hashes=[HashAlgorithm.SHA256],
             ciphers=[SymmetricKeyAlgorithm.AES256],
             compression=[CompressionAlgorithm.ZLIB],
+            created=created,
         )
 
     def rsa_to_privpacket(rsa_key: RSA.RsaKey):
@@ -192,6 +194,7 @@ def test_bip85_gpg_mixed_subkeys_deterministic():
             hashes=[HashAlgorithm.SHA256],
             ciphers=[SymmetricKeyAlgorithm.AES256],
             compression=[CompressionAlgorithm.ZLIB],
+            created=created,
         )
 
     assert pgp_key.fingerprint == "E22DC9A7FDC9F51B7E795EA4134E37F3677DD798"
@@ -229,6 +232,58 @@ def test_parse_secret_key_list_includes_created_and_valid_from():
         ]
     )
     keys = parse_secret_key_list(output)
+    assert keys[0]["created"] == BIP85_GPG_CREATED_TS
+    assert keys[0]["valid_from"] == BIP85_GPG_CREATED_TS
+
+
+def test_generated_bip85_key_has_genesis_valid_from(tmp_path):
+    import datetime
+    from subprocess import run
+    from pgpy import PGPKey, PGPUID
+    from pgpy.pgp import PrivKeyV4
+    from pgpy.constants import (
+        PubKeyAlgorithm,
+        KeyFlags,
+        HashAlgorithm,
+        SymmetricKeyAlgorithm,
+        CompressionAlgorithm,
+    )
+
+    gnupg_home = tmp_path / "gnupg"
+    gnupg_home.mkdir()
+    env = {"GNUPGHOME": str(gnupg_home)}
+
+    seed = Seed(mnemonic=MNEMONIC)
+    root = bip32.HDKey.from_seed(seed.seed_bytes)
+    created = datetime.datetime.fromtimestamp(
+        BIP85_GPG_CREATED_TS, tz=datetime.timezone.utc
+    )
+    pk = PrivKeyV4()
+    pk.pkalg = PubKeyAlgorithm.ECDSA
+    pk.keymaterial = bip85_p256_from_root(root, 0)
+    pk.created = created
+    pk.update_hlen()
+    pgp_key = PGPKey()
+    pgp_key._key = pk
+    uid = PGPUID.new("Test", email="test@example.com")
+    pgp_key.add_uid(
+        uid,
+        usage={KeyFlags.Certify, KeyFlags.Sign},
+        hashes=[HashAlgorithm.SHA256],
+        ciphers=[SymmetricKeyAlgorithm.AES256],
+        compression=[CompressionAlgorithm.ZLIB],
+        created=created,
+    )
+    armored = str(pgp_key)
+    run(["gpg", "--batch", "--import"], input=armored.encode(), env=env, check=True)
+    result = run(
+        ["gpg", "--list-secret-keys", "--with-colons"],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    keys = parse_secret_key_list(result.stdout)
     assert keys[0]["created"] == BIP85_GPG_CREATED_TS
     assert keys[0]["valid_from"] == BIP85_GPG_CREATED_TS
 
