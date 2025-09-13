@@ -505,7 +505,16 @@ def test_add_uid_preserves_primary(tmp_path):
     env = {**os.environ, "GNUPGHOME": str(gnupg_home)}
 
     run(
-        ["gpg", "--batch", "--passphrase", "", "--quick-gen-key", "tester@example.com"],
+        [
+            "gpg",
+            "--batch",
+            "--passphrase",
+            "",
+            "--pinentry-mode",
+            "loopback",
+            "--quick-gen-key",
+            "tester@example.com",
+        ],
         env=env,
         check=True,
     )
@@ -573,7 +582,16 @@ def test_set_primary_uid_sets_selected_uid(tmp_path, monkeypatch):
     env = {**os.environ, "GNUPGHOME": str(gnupg_home)}
 
     subprocess.run(
-        ["gpg", "--batch", "--passphrase", "", "--quick-gen-key", "tester@example.com"],
+        [
+            "gpg",
+            "--batch",
+            "--passphrase",
+            "",
+            "--pinentry-mode",
+            "loopback",
+            "--quick-gen-key",
+            "tester@example.com",
+        ],
         env=env,
         check=True,
     )
