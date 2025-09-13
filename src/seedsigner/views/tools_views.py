@@ -9679,50 +9679,31 @@ class ToolsGPGAddSubkeysView(View):
         seed = None
         base_index = None
         if bip85:
-            logger.info("BIP85 key detected; prompting for seed selection")
-            if len(self.controller.storage.seeds) == 0:
+            logger.info(
+                "BIP85 key detected; searching for seed fingerprint %s",
+                entry["seed_fpr"],
+            )
+            network = self.settings.get_value(SettingsConstants.SETTING__NETWORK)
+            seed = None
+            seed_index = None
+            for idx, seed_obj in enumerate(self.controller.storage.seeds):
+                if seed_obj.get_fingerprint(network) == entry["seed_fpr"]:
+                    seed = seed_obj
+                    seed_index = idx
+                    break
+            if seed is None:
                 self.run_screen(
                     WarningScreen,
                     title="Error",
                     status_headline=None,
-                    text="Load a seed before using BIP85",
+                    text="Required seed not loaded",
                     show_back_button=False,
                     button_data=[ButtonOption("I Understand")],
                 )
                 return Destination(BackStackView)
-            if len(self.controller.storage.seeds) > 1:
-                seed_buttons = []
-                for seed_obj in self.controller.storage.seeds:
-                    button_str = seed_obj.get_fingerprint(
-                        self.settings.get_value(SettingsConstants.SETTING__NETWORK)
-                    )
-                    seed_buttons.append(
-                        ButtonOption(
-                            button_str,
-                            SeedSignerIconConstants.FINGERPRINT,
-                            icon_color="blue",
-                        )
-                    )
-                selected_seed = self.run_screen(
-                    seed_screens.SeedSelectSeedScreen,
-                    title="Select Seed",
-                    text="Choose seed for BIP85 subkeys",
-                    is_button_text_centered=False,
-                    button_data=seed_buttons,
-                )
-                if selected_seed == RET_CODE__BACK_BUTTON:
-                    return Destination(BackStackView)
-                logger.info("Seed selected index=%s", selected_seed)
-                seed = self.controller.get_seed(selected_seed)
-            else:
-                seed = self.controller.get_seed(0)
-                logger.info("Single seed loaded; using index 0")
-
-            selected_seed_fpr = seed.get_fingerprint(
-                self.settings.get_value(SettingsConstants.SETTING__NETWORK)
-            )
+            logger.info("Seed matched at index=%s", seed_index)
             base_index = entry["index"]
-            if selected_seed_fpr != entry["seed_fpr"] or not bip85_verify_existing(
+            if not bip85_verify_existing(
                 seed,
                 fingerprint,
                 base_index,
@@ -9736,7 +9717,6 @@ class ToolsGPGAddSubkeysView(View):
                     "Selected seed/index failed validation for fingerprint %s",
                     fingerprint,
                 )
-                # Attempt to recover by searching lower indexes
                 corrected = None
                 for i in range(base_index - 1, -1, -1):
                     if bip85_verify_existing(

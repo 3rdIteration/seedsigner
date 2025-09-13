@@ -1349,11 +1349,10 @@ def test_add_subkeys_auto_bip85_index(monkeypatch):
 
     seed_obj = SeedObj()
 
-    # Simulate selecting the only key, seed, and NIST P-256 type
+    # Simulate selecting the only key and NIST P-256 type
     def fake_run_screen(self, screen, **kwargs):
+        assert kwargs.get("text") != "Choose seed for BIP85 subkeys"
         if kwargs.get("title") == "Select Key":
-            return 0
-        if kwargs.get("text") == "Choose seed for BIP85 subkeys":
             return 0
         if kwargs.get("title") == "Key Type":
             return 0
@@ -1450,9 +1449,8 @@ def test_add_subkeys_registry_index_correction(monkeypatch):
     seed_obj = SeedObj()
 
     def fake_run_screen(self, screen, **kwargs):
+        assert kwargs.get("text") != "Choose seed for BIP85 subkeys"
         if kwargs.get("title") == "Select Key":
-            return 0
-        if kwargs.get("text") == "Choose seed for BIP85 subkeys":
             return 0
         if kwargs.get("title") == "Key Type":
             return 0
@@ -1479,7 +1477,7 @@ def test_add_subkeys_registry_index_correction(monkeypatch):
     assert tools_views.BIP85_DATA["FPR"]["index"] == 0
 
 
-def test_add_subkeys_mismatched_seed(monkeypatch):
+def test_add_subkeys_missing_seed(monkeypatch):
     class R:
         def __init__(self, stdout=""):
             self.stdout = stdout
@@ -1489,11 +1487,11 @@ def test_add_subkeys_mismatched_seed(monkeypatch):
             if len(cmd) == 3:
                 return R(
                     "sec:-:0:0:KEYID:0:0:::::::\n"
-                    f"fpr:::::::::FPR:\n"
-                    f"uid:u::::{tools_views.BIP85_GPG_CREATED_TS}::H::User::::::::\n"
+                    + f"fpr:::::::::FPR:\n"
+                    + f"uid:u::::{tools_views.BIP85_GPG_CREATED_TS}::H::User::::::::\n"
                 )
             return R(
-                "sec:-:0:0:KEYID:0:::::::\n" + "ssb:-:0:0:::0:::::::\n" * 3
+                    "sec:-:0:0:KEYID:0:::::::\n" + "ssb:-:0:0:::0:::::::\n" * 3
             )
         return R()
 
@@ -1524,11 +1522,6 @@ def test_add_subkeys_mismatched_seed(monkeypatch):
 
     monkeypatch.setattr(tools_views, "bip85_add_subkeys", fake_bip85_add_subkeys)
 
-    def fake_verify(*args, **kwargs):
-        return False
-
-    monkeypatch.setattr(tools_views, "bip85_verify_existing", fake_verify)
-
     class SeedObj:
         def get_fingerprint(self, network=None):
             return "other"
@@ -1538,13 +1531,12 @@ def test_add_subkeys_mismatched_seed(monkeypatch):
     def fake_run_screen(self, screen, **kwargs):
         if kwargs.get("title") == "Select Key":
             return 0
-        if kwargs.get("text") == "Choose seed for BIP85 subkeys":
-            return 0
         if kwargs.get("title") == "Key Type":
             return 0
-        if kwargs.get("text") == "Selected seed/index mismatch":
+        if kwargs.get("text") == "Required seed not loaded":
             called["warning"] = kwargs.get("text")
             return 0
+        assert kwargs.get("text") != "Choose seed for BIP85 subkeys"
         return 0
 
     monkeypatch.setattr(tools_views.ToolsGPGAddSubkeysView, "run_screen", fake_run_screen)
@@ -1555,14 +1547,13 @@ def test_add_subkeys_mismatched_seed(monkeypatch):
         (),
         {
             "storage": type("S", (), {"seeds": [seed_obj]})(),
-            "get_seed": lambda self, idx: seed_obj,
         },
     )
     view.controller = ControllerClass()
     view.settings = type("Set", (), {"get_value": lambda self, x: None})()
     tools_views.ToolsGPGAddSubkeysView.run(view)
     assert not called["add"]
-    assert called["warning"] == "Selected seed/index mismatch"
+    assert called["warning"] == "Required seed not loaded"
 
 
 def test_delete_subkeys_bip85_only_latest(monkeypatch):
