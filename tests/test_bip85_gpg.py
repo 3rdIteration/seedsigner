@@ -462,10 +462,11 @@ def test_filter_deletable_subkeys_bip85_only_latest():
         "primary_fpr": fpr,
         "seed_fpr": "S",
         "index": 0,
+        "key_type": "NIST P-256",
         "uids": [],
         "subkeys": [
-            {"index": 0, "type": "e", "fingerprint": "A"},
-            {"index": 1, "type": "s", "fingerprint": "B"},
+            {"index": 0, "type": "ECDH NIST P-256", "fingerprint": "A"},
+            {"index": 1, "type": "ECDSA NIST P-256", "fingerprint": "B"},
         ],
         "revocations": [],
     }
@@ -492,8 +493,9 @@ def test_bip85_save_and_load(tmp_path):
         "primary_fpr": fpr,
         "seed_fpr": "seedfpr",
         "index": 0,
-        "uids": ["User"],
-        "subkeys": [{"index": 0, "type": "e", "fingerprint": "A"}],
+        "key_type": "NIST P-256",
+        "uids": ["User <user@example.com>"],
+        "subkeys": [{"index": 0, "type": "ECDH NIST P-256", "fingerprint": "A"}],
         "revocations": ["A"],
     }
     file_path = tmp_path / "bip85.json"
@@ -501,6 +503,9 @@ def test_bip85_save_and_load(tmp_path):
     BIP85_DATA.clear()
     bip85_load_data(file_path)
     assert BIP85_DATA[fpr]["seed_fpr"] == "seedfpr"
+    assert BIP85_DATA[fpr]["key_type"] == "NIST P-256"
+    assert BIP85_DATA[fpr]["uids"][0] == "User <user@example.com>"
+    assert BIP85_DATA[fpr]["subkeys"][0]["type"] == "ECDH NIST P-256"
 
 
 def test_bip85_save_to_qr(monkeypatch):
@@ -514,6 +519,7 @@ def test_bip85_save_to_qr(monkeypatch):
         "primary_fpr": fpr,
         "seed_fpr": "S",
         "index": 0,
+        "key_type": "NIST P-256",
         "uids": [],
         "subkeys": [],
         "revocations": [],
@@ -540,14 +546,16 @@ def test_bip85_save_to_qr(monkeypatch):
     assert data["primary_fpr"] == fpr
 
 
-def test_bip85_save_to_file_logs_path(monkeypatch):
-    from seedsigner.gui.screens.screen import ButtonListScreen
+def test_bip85_save_to_microsd_logs_path(monkeypatch, tmp_path):
+    from seedsigner.gui.screens.screen import ButtonListScreen, WarningScreen
+    from seedsigner.hardware import microsd
 
     BIP85_DATA.clear()
     BIP85_DATA["F"] = {
         "primary_fpr": "F",
         "seed_fpr": "S",
         "index": 0,
+        "key_type": "NIST P-256",
         "uids": [],
         "subkeys": [],
         "revocations": [],
@@ -557,7 +565,9 @@ def test_bip85_save_to_file_logs_path(monkeypatch):
 
     def fake_run_screen(self, screen, *args, **kwargs):
         if screen == ButtonListScreen:
-            return 0  # select To File
+            return 0  # select To MicroSD
+        if screen == WarningScreen:
+            return 0
         return 0
 
     def fake_save(path):
@@ -571,12 +581,15 @@ def test_bip85_save_to_file_logs_path(monkeypatch):
     monkeypatch.setattr(tools_views.ToolsGPGSaveBip85DataView, "run_screen", fake_run_screen)
     monkeypatch.setattr(tools_views, "bip85_save_data", fake_save)
     monkeypatch.setattr(tools_views.logger, "info", fake_log)
+    monkeypatch.setattr(microsd.MicroSD, "get_microsd_dir", lambda: tmp_path)
 
     view = tools_views.ToolsGPGSaveBip85DataView()
+    view.controller.storage.seeds = []
     view.run()
 
-    assert captured["path"] == "bip85_data.json"
-    assert any("bip85_data.json" in entry for entry in logs)
+    expected_path = tmp_path / "microsd-images" / "bip85_data.json"
+    assert captured["path"] == expected_path
+    assert any(str(expected_path) in entry for entry in logs)
 
 
 def test_bip85_save_to_seedkeeper(monkeypatch):
@@ -605,6 +618,7 @@ def test_bip85_save_to_seedkeeper(monkeypatch):
         "primary_fpr": "F",
         "seed_fpr": "S",
         "index": 0,
+        "key_type": "NIST P-256",
         "uids": [],
         "subkeys": [],
         "revocations": [],
@@ -631,6 +645,7 @@ def test_bip85_seedkeeper_import_format():
                 "primary_fpr": "F",
                 "seed_fpr": "S",
                 "index": 0,
+                "key_type": "NIST P-256",
                 "uids": [],
                 "subkeys": [],
                 "revocations": [],
@@ -644,6 +659,7 @@ def test_bip85_seedkeeper_import_format():
     decoded = binascii.unhexlify(secret_hex)[2:]
     tools_views.bip85_import_json(decoded.decode())
     assert BIP85_DATA["F"]["seed_fpr"] == "S"
+    assert BIP85_DATA["F"]["key_type"] == "NIST P-256"
 
 
 def test_advanced_menu_has_bip85_data_options(monkeypatch):
@@ -872,11 +888,12 @@ def test_add_subkeys_auto_bip85_index(monkeypatch):
         "primary_fpr": "FPR",
         "seed_fpr": "seedfpr",
         "index": 0,
+        "key_type": "NIST P-256",
         "uids": ["User"],
         "subkeys": [
-            {"index": 0, "type": "e", "fingerprint": "A"},
-            {"index": 1, "type": "s", "fingerprint": "B"},
-            {"index": 2, "type": "e", "fingerprint": "C"},
+            {"index": 0, "type": "ECDH NIST P-256", "fingerprint": "A"},
+            {"index": 1, "type": "ECDSA NIST P-256", "fingerprint": "B"},
+            {"index": 2, "type": "ECDSA NIST P-256", "fingerprint": "C"},
         ],
         "revocations": [],
     }
@@ -977,6 +994,7 @@ def test_add_subkeys_registry_index_correction(monkeypatch):
         "primary_fpr": "FPR",
         "seed_fpr": "seedfpr",
         "index": 1,
+        "key_type": "NIST P-256",
         "uids": ["User"],
         "subkeys": [],
         "revocations": [],
@@ -1072,11 +1090,12 @@ def test_add_subkeys_mismatched_seed(monkeypatch):
         "primary_fpr": "FPR",
         "seed_fpr": "seedfpr",
         "index": 0,
+        "key_type": "NIST P-256",
         "uids": ["User"],
         "subkeys": [
-            {"index": 0, "type": "e", "fingerprint": "A"},
-            {"index": 1, "type": "s", "fingerprint": "B"},
-            {"index": 2, "type": "e", "fingerprint": "C"},
+            {"index": 0, "type": "ECDH NIST P-256", "fingerprint": "A"},
+            {"index": 1, "type": "ECDSA NIST P-256", "fingerprint": "B"},
+            {"index": 2, "type": "ECDSA NIST P-256", "fingerprint": "C"},
         ],
         "revocations": [],
     }
@@ -1165,11 +1184,24 @@ def test_delete_subkeys_bip85_only_latest(monkeypatch):
         "primary_fpr": "FPR",
         "seed_fpr": "seedfpr",
         "index": 0,
+        "key_type": "NIST P-256",
         "uids": ["User"],
         "subkeys": [
-            {"index": 0, "type": "e", "fingerprint": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"},
-            {"index": 1, "type": "s", "fingerprint": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"},
-            {"index": 2, "type": "e", "fingerprint": "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC"},
+            {
+                "index": 0,
+                "type": "ECDH NIST P-256",
+                "fingerprint": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            },
+            {
+                "index": 1,
+                "type": "ECDSA NIST P-256",
+                "fingerprint": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+            },
+            {
+                "index": 2,
+                "type": "ECDSA NIST P-256",
+                "fingerprint": "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
+            },
         ],
         "revocations": [],
     }

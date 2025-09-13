@@ -4308,7 +4308,7 @@ class ToolsGPGAdvancedMenuView(View):
 
 
 class ToolsGPGSaveBip85DataView(View):
-    TO_FILE = ButtonOption("To File")
+    TO_MICROSD = ButtonOption("To MicroSD")
     TO_QR = ButtonOption("To QR")
     TO_SEEDKEEPER = ButtonOption("To Seedkeeper")
 
@@ -4326,7 +4326,7 @@ class ToolsGPGSaveBip85DataView(View):
         from seedsigner.helpers.iso7816 import format_sw_error
         import time
 
-        button_data = [self.TO_FILE, self.TO_QR, self.TO_SEEDKEEPER]
+        button_data = [self.TO_MICROSD, self.TO_QR, self.TO_SEEDKEEPER]
         selected = self.run_screen(
             ButtonListScreen,
             title="Save BIP85 Data",
@@ -4337,15 +4337,31 @@ class ToolsGPGSaveBip85DataView(View):
             return Destination(BackStackView)
 
         choice = button_data[selected]
-        if choice == self.TO_FILE:
+        if choice == self.TO_MICROSD:
             from seedsigner.gui.screens import LargeIconStatusScreen, WarningScreen
+            from seedsigner.hardware.microsd import MicroSD
+            import os
 
-            path = "bip85_data.json"
+            if len(self.controller.storage.seeds) > 0:
+                ret = self.run_screen(
+                    WarningScreen,
+                    title="WARNING",
+                    status_headline=None,
+                    text="These tools write data to the microSD card and may expose loaded secrets.",
+                    show_back_button=True,
+                    button_data=[ButtonOption("Continue")],
+                )
+                if ret == RET_CODE__BACK_BUTTON:
+                    return Destination(BackStackView)
+
+            file_list_path = MicroSD.get_microsd_dir() / "microsd-images"
+            os.makedirs(file_list_path, exist_ok=True)
+            path = file_list_path / "bip85_data.json"
             try:
                 bip85_save_data(path)
                 logger.info("BIP85 data saved to %s", os.path.abspath(path))
                 screen = LargeIconStatusScreen
-                msg = "BIP85 data saved"
+                msg = f"Saved as {path.name}"
             except Exception:
                 screen = WarningScreen
                 msg = "Failed to save BIP85 data"
@@ -8469,6 +8485,12 @@ def bip85_verify_existing(
         pk.pkalg = PubKeyAlgorithm.EdDSA
         pk.keymaterial = bip85_ed25519_from_root(root, key_index)
     else:
+        logger.warning(
+            "Unsupported primary key params: algo=%s bits=%s curve=%s",
+            primary_algo,
+            primary_bits,
+            primary_curve,
+        )
         return False
     pk.created = created
     pk.update_hlen()
@@ -8512,6 +8534,13 @@ def bip85_verify_existing(
             alg_name = "EdDSA" if algo == "22" else "ECDH"
             subpkt.keymaterial = bip85_ed25519_from_root(root, group_idx, sub_index, alg_name)
         else:
+            logger.warning(
+                "Unsupported subkey params at idx=%s: algo=%s curve=%s bits=%s",
+                sk["idx"],
+                algo,
+                curve,
+                bits,
+            )
             return False
         subpkt.created = created
         subpkt.update_hlen()
@@ -8588,6 +8617,17 @@ def bip85_add_subkeys(
         return priv
 
     subkey_specs = _bip85_subkey_specs(alg)
+    type_map = {
+        "nistp256": "NIST P-256",
+        "p256": "NIST P-256",
+        "brainpoolP256r1": "Brainpool P-256",
+        "secp256k1": "secp256k1",
+        "ed25519": "Ed25519",
+        "rsa2048": "RSA 2048",
+        "rsa3072": "RSA 3072",
+        "rsa4096": "RSA 4096",
+    }
+    alg_label = type_map.get(alg, alg)
 
     added = []
     for offset, pkalg, usage, *alg_name in subkey_specs:
@@ -8618,7 +8658,8 @@ def bip85_add_subkeys(
             expires=expires,
         )
         alg_name_str = alg_name[0] if alg_name else pkalg.name
-        added.append({"index": sub_index, "type": alg_name_str, "fingerprint": subkey.fingerprint})
+        sub_type = alg_label if alg.startswith("rsa") else f"{alg_name_str} {alg_label}"
+        added.append({"index": sub_index, "type": sub_type, "fingerprint": subkey.fingerprint})
 
     armored = str(pgp_key)
     r = run(
@@ -8874,6 +8915,7 @@ class ToolsGPGLoadBIP85KeyView(View):
         )
         if selected_type == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
+        key_type_label = keytype_buttons[selected_type].button_label
         key_type = [
             "p256",
             "brainpoolp256r1",
@@ -9017,7 +9059,7 @@ class ToolsGPGLoadBIP85KeyView(View):
             pgp_key._key = pk
 
             uid = PGPUID.new(name, email=email)
-            uid_str = str(uid)
+            uid_str = uid.userid
             pgp_key.add_uid(
                 uid,
                 usage={KeyFlags.Certify, KeyFlags.Sign},
@@ -9077,10 +9119,13 @@ class ToolsGPGLoadBIP85KeyView(View):
                     created=created,
                 )
                 alg_name = alg[0] if alg else pkalg.name
+                sub_type = (
+                    key_type_label if key_type.startswith("rsa") else f"{alg_name} {key_type_label}"
+                )
                 subkey_info_list.append(
                     {
                         "index": sub_index,
-                        "type": alg_name,
+                        "type": sub_type,
                         "fingerprint": subkey.fingerprint,
                     }
                 )
@@ -9099,6 +9144,7 @@ class ToolsGPGLoadBIP85KeyView(View):
                 "primary_fpr": pgp_key.fingerprint,
                 "seed_fpr": seed_fpr,
                 "index": key_index,
+                "key_type": key_type_label,
                 "uids": [uid_str],
                 "subkeys": subkey_info_list,
                 "revocations": [],
