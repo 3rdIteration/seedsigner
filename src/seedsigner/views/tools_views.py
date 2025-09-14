@@ -4143,8 +4143,10 @@ def parse_subkey_list(colon_output: str):
     return subkeys
 
 
-# Matches the creation timestamp used by Krux
-BIP85_GPG_CREATED_TS = 1231005905
+# Matches the creation timestamp used by Krux. GnuPG applies a 10-minute
+# clock-skew "fudge" to new keys, so subtract it here to wind up with the
+# Bitcoin genesis block time (1231006505).
+BIP85_GPG_CREATED_TS = 1231006505 - 10 * 60
 
 # In-memory registry of BIP85-derived keys
 BIP85_DATA = {}
