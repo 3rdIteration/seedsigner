@@ -1,21 +1,38 @@
 import pytest
+import sys
+import base  # ensure hardware mocks
+import os
+import shutil
 from embit import bip32, bip85
 from seedsigner.models.seed import Seed
+from seedsigner.controller import Controller
+from seedsigner.gui.screens import RET_CODE__BACK_BUTTON
+from seedsigner.views import tools_views
 from seedsigner.views.tools_views import (
     bip85_brainpoolp256r1_from_root,
     bip85_ed25519_from_root,
     bip85_p256_from_root,
     bip85_rsa_from_root,
     bip85_secp256k1_from_root,
+    bip85_add_subkeys,
     _bip85_subkey_specs,
     parse_secret_key_list,
     parse_subkey_list,
     parse_uid_list,
     filter_deletable_subkeys,
     BIP85_GPG_CREATED_TS,
+    BIP85_DATA,
+    bip85_save_data,
+    bip85_load_data,
     _select_import_algo,
+    bip85_verify_existing,
 )
 from seedsigner.helpers.bip85_drng import BIP85DRNG
+
+pytestmark = pytest.mark.skipif(
+    sys.platform in ("darwin", "win32") or shutil.which("gpg") is None,
+    reason="requires working GnuPG2"
+)
 
 MNEMONIC = "resource timber firm banner horror pupil frozen main pear direct pioneer broken grid core insane begin sister pony end debate task silk empty curious".split()
 
@@ -112,6 +129,317 @@ def test_bip85_ed25519_sub_index_progression():
     assert int(later.s) == int(repeat.s)
 
 
+def test_bip85_gpg_mixed_subkeys_deterministic():
+    import datetime
+    from pgpy import PGPKey, PGPUID
+    from pgpy.pgp import PrivKeyV4, PrivSubKeyV4
+    from pgpy.constants import (
+        PubKeyAlgorithm,
+        KeyFlags,
+        HashAlgorithm,
+        SymmetricKeyAlgorithm,
+        CompressionAlgorithm,
+    )
+    from pgpy.packet import fields
+    from pgpy.packet.types import MPI
+    from Cryptodome.PublicKey import RSA
+
+    seed = Seed(mnemonic=MNEMONIC)
+    root = bip32.HDKey.from_seed(seed.seed_bytes)
+    created = datetime.datetime.fromtimestamp(
+        BIP85_GPG_CREATED_TS, tz=datetime.timezone.utc
+    )
+    pk = PrivKeyV4()
+    pk.pkalg = PubKeyAlgorithm.ECDSA
+    pk.keymaterial = bip85_p256_from_root(root, 0)
+    pk.created = created
+    pk.update_hlen()
+    pgp_key = PGPKey()
+    pgp_key._key = pk
+    uid = PGPUID.new("Test", email="test@example.com")
+    pgp_key.add_uid(
+        uid,
+        usage={KeyFlags.Certify, KeyFlags.Sign},
+        hashes=[HashAlgorithm.SHA256],
+        ciphers=[SymmetricKeyAlgorithm.AES256],
+        compression=[CompressionAlgorithm.ZLIB],
+        created=created,
+    )
+    for sub_index, pkalg, usage, alg in _bip85_subkey_specs("nistp256"):
+        subpkt = PrivSubKeyV4()
+        subpkt.pkalg = pkalg
+        subpkt.keymaterial = bip85_p256_from_root(root, 0, sub_index, alg)
+        subpkt.created = created
+        subpkt.update_hlen()
+        subkey = PGPKey()
+        subkey._key = subpkt
+        pgp_key.add_subkey(
+            subkey,
+            usage=usage,
+            hashes=[HashAlgorithm.SHA256],
+            ciphers=[SymmetricKeyAlgorithm.AES256],
+            compression=[CompressionAlgorithm.ZLIB],
+            created=created,
+        )
+
+    def rsa_to_privpacket(rsa_key: RSA.RsaKey):
+        priv = fields.RSAPriv()
+        priv.n = MPI(rsa_key.n)
+        priv.e = MPI(rsa_key.e)
+        priv.d = MPI(rsa_key.d)
+        priv.p = MPI(rsa_key.p)
+        priv.q = MPI(rsa_key.q)
+        priv.u = MPI(pow(rsa_key.p, -1, rsa_key.q))
+        priv._compute_chksum()
+        return priv
+
+    for sub_index, pkalg, usage in _bip85_subkey_specs("rsa2048"):
+        subpkt = PrivSubKeyV4()
+        subpkt.pkalg = pkalg
+        rsa_sub = bip85_rsa_from_root(root, 2048, 1, sub_index)
+        subpkt.keymaterial = rsa_to_privpacket(rsa_sub)
+        subpkt.created = created
+        subpkt.update_hlen()
+        subkey = PGPKey()
+        subkey._key = subpkt
+        pgp_key.add_subkey(
+            subkey,
+            usage=usage,
+            hashes=[HashAlgorithm.SHA256],
+            ciphers=[SymmetricKeyAlgorithm.AES256],
+            compression=[CompressionAlgorithm.ZLIB],
+            created=created,
+        )
+
+    assert pgp_key.fingerprint == "C3D00A15195ACB79B4E005F47F1FC06330DD29E8"
+    fingerprints = [str(sk.fingerprint).replace(" ", "") for sk in pgp_key.subkeys.values()]
+    assert fingerprints == [
+        "EC3CB24B98A4EC7826FB8945668FA7C1733EEF66",
+        "496620014571E7DF096B152BA62FC5AA818309FA",
+        "6794E5A72BCB5DFDB06128D36348CF6ADE1B20FD",
+        "94B95A5D0819D14081818F6736E949738C808C4D",
+        "1FE81246B46F88116F67C767EEB921D98693A6F8",
+        "F334F56CEF1202524663E6A57E629F51830EC837",
+    ]
+
+
+def test_bip85_load_key_deterministic(monkeypatch):
+    from pgpy import PGPKey
+
+    seed = Seed(mnemonic=MNEMONIC)
+
+    captured = {}
+
+    def fake_run(cmd, input=None, capture_output=False, text=False, **kwargs):
+        captured["armored"] = input
+        class R:
+            returncode = 0
+            stdout = ""
+            stderr = ""
+        return R()
+
+    monkeypatch.setattr("subprocess.run", fake_run)
+
+    from seedsigner.gui.screens import seed_screens, tools_screens
+
+    class DummyIndexScreen:
+        def __init__(self, *args, **kwargs):
+            pass
+        def display(self):
+            return "0"
+
+    monkeypatch.setattr(
+        seed_screens,
+        "SeedBIP85SelectChildIndexScreen",
+        DummyIndexScreen,
+    )
+
+    inputs = iter([
+        {"textToEncode": "Test"},
+        {"textToEncode": "t@example.com"},
+        {"textToEncode": ""},
+    ])
+
+    class DummyTextEntry:
+        def __init__(self, textToEncode="", title=""):
+            pass
+        def display(self):
+            return next(inputs)
+
+    monkeypatch.setattr(
+        tools_screens,
+        "ToolsTextQRTextEntryScreen",
+        DummyTextEntry,
+    )
+
+    class DummyLoading:
+        def __init__(self, text=""):
+            pass
+        def start(self):
+            pass
+        def stop(self):
+            pass
+
+    from seedsigner.gui.screens import screen as screen_mod
+    monkeypatch.setattr(screen_mod, "LoadingScreenThread", DummyLoading)
+
+    def fake_run_screen(self, screen, **kwargs):
+        if kwargs.get("title") == "Key Type":
+            return 0
+        return 0
+
+    monkeypatch.setattr(tools_views.ToolsGPGLoadBIP85KeyView, "run_screen", fake_run_screen)
+
+    controller = type(
+        "C",
+        (),
+        {
+            "storage": type("S", (), {"seeds": [seed]})(),
+            "get_seed": lambda self, idx: seed,
+        },
+    )()
+    from seedsigner.models.settings_definition import SettingsConstants
+    settings = type(
+        "S",
+        (),
+        {"get_value": lambda self, x: SettingsConstants.MAINNET},
+    )()
+
+    view = object.__new__(tools_views.ToolsGPGLoadBIP85KeyView)
+    view.controller = controller
+    view.settings = settings
+
+    tools_views.BIP85_DATA.clear()
+    tools_views.ToolsGPGLoadBIP85KeyView.run(view)
+    fpr1 = PGPKey.from_blob(captured["armored"])[0].fingerprint
+
+    inputs = iter([
+        {"textToEncode": "Test"},
+        {"textToEncode": "t@example.com"},
+        {"textToEncode": ""},
+    ])
+    class DummyTextEntry2:
+        def __init__(self, textToEncode="", title=""):
+            pass
+        def display(self):
+            return next(inputs)
+
+    monkeypatch.setattr(
+        tools_screens,
+        "ToolsTextQRTextEntryScreen",
+        DummyTextEntry2,
+    )
+    captured.clear()
+    tools_views.ToolsGPGLoadBIP85KeyView.run(view)
+    fpr2 = PGPKey.from_blob(captured["armored"])[0].fingerprint
+
+    assert fpr1 == fpr2
+
+
+def test_bip85_add_subkeys_index_sequential(monkeypatch):
+    import datetime, subprocess
+    from pgpy import PGPKey, PGPUID
+    from pgpy.pgp import PrivKeyV4
+    from pgpy.constants import (
+        PubKeyAlgorithm,
+        KeyFlags,
+        HashAlgorithm,
+        SymmetricKeyAlgorithm,
+        CompressionAlgorithm,
+    )
+
+    seed = Seed(mnemonic=MNEMONIC)
+    root = bip32.HDKey.from_seed(seed.seed_bytes)
+    created = datetime.datetime.fromtimestamp(
+        BIP85_GPG_CREATED_TS, tz=datetime.timezone.utc
+    )
+    pk = PrivKeyV4()
+    pk.pkalg = PubKeyAlgorithm.ECDSA
+    pk.keymaterial = bip85_p256_from_root(root, 0)
+    pk.created = created
+    pk.update_hlen()
+    pgp_key = PGPKey()
+    pgp_key._key = pk
+    uid = PGPUID.new("Test", email="t@example.com")
+    pgp_key.add_uid(
+        uid,
+        usage={KeyFlags.Certify, KeyFlags.Sign},
+        hashes=[HashAlgorithm.SHA256],
+        ciphers=[SymmetricKeyAlgorithm.AES256],
+        compression=[CompressionAlgorithm.ZLIB],
+        created=created,
+    )
+
+    def fake_run(cmd, capture_output=False, text=False, input=None):
+        class Result:
+            def __init__(self, stdout=""):
+                self.stdout = stdout
+                self.returncode = 0
+
+        if "--export-secret-keys" in cmd:
+            return Result(str(pgp_key))
+        return Result()
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    added1 = bip85_add_subkeys(pgp_key.fingerprint, "ed25519", 0, 0, seed)
+    added2 = bip85_add_subkeys(pgp_key.fingerprint, "secp256k1", 1, 3, seed)
+    assert [a["index"] for a in added1] == [0, 1, 2]
+    assert [a["index"] for a in added2] == [3, 4, 5]
+
+
+def test_bip85_verify_existing_supports_cv25519():
+    import datetime
+    from pgpy import PGPKey
+    from pgpy.pgp import PrivKeyV4, PrivSubKeyV4
+    from pgpy.constants import PubKeyAlgorithm
+
+    seed = Seed(mnemonic=MNEMONIC)
+    root = bip32.HDKey.from_seed(seed.seed_bytes)
+    created = datetime.datetime.fromtimestamp(
+        BIP85_GPG_CREATED_TS, tz=datetime.timezone.utc
+    )
+
+    pk = PrivKeyV4()
+    pk.pkalg = PubKeyAlgorithm.EdDSA
+    pk.keymaterial = bip85_ed25519_from_root(root, 0)
+    pk.created = created
+    pk.update_hlen()
+    primary = PGPKey()
+    primary._key = pk
+
+    subkeys = []
+    for sub_index, pkalg, usage, alg_name in _bip85_subkey_specs("ed25519"):
+        subpkt = PrivSubKeyV4()
+        subpkt.pkalg = pkalg
+        subpkt.keymaterial = bip85_ed25519_from_root(root, 0, sub_index, alg_name)
+        subpkt.created = created
+        subpkt.update_hlen()
+        subkey = PGPKey()
+        subkey._key = subpkt
+        curve = "cv25519" if alg_name == "ECDH" else "ed25519"
+        subkeys.append(
+            {
+                "idx": sub_index + 1,
+                "fpr": subkey.fingerprint,
+                "algo": str(pkalg.value),
+                "curve": curve,
+                "bits": "255",
+            }
+        )
+
+    assert bip85_verify_existing(
+        seed,
+        primary.fingerprint,
+        0,
+        BIP85_GPG_CREATED_TS,
+        "22",
+        "255",
+        "ed25519",
+        subkeys,
+    )
+
+
 def test_parse_secret_key_list_primary_fingerprint_only():
     output = "\n".join(
         [
@@ -129,20 +457,21 @@ def test_parse_secret_key_list_primary_fingerprint_only():
 def test_parse_secret_key_list_includes_created():
     output = "\n".join(
         [
-            "sec:-:0:0:KEYID:1231006505:0::::::23::0:",
+            f"sec:-:0:0:KEYID:{BIP85_GPG_CREATED_TS}:0::::::23::0:",
             "fpr:::::::::PRIMARYFPR:",
+            f"uid:u::::{BIP85_GPG_CREATED_TS}::HASH::Test User::::::::0:",
         ]
     )
     keys = parse_secret_key_list(output)
-    assert keys[0]["created"] == 1231006505
+    assert keys[0]["created"] == BIP85_GPG_CREATED_TS
 
 
 def test_parse_subkey_list_extracts_fingerprint():
     output = "\n".join(
         [
-            "ssb:-:0:0:::0::::::s::",
+            "ssb:-:2048:1:::0::::::s::",
             "fpr:::::::::SUBFPR1:",
-            "ssb:-:19:0:::0::::::e::::nistp256:",
+            "ssb:-:256:19:::0::::::e::::nistp256:",
             "fpr:::::::::SUBFPR2:",
         ]
     )
@@ -151,9 +480,11 @@ def test_parse_subkey_list_extracts_fingerprint():
     assert subs[1]["fpr"] == "SUBFPR2"
     assert subs[0]["idx"] == 1
     assert subs[1]["idx"] == 2
-    assert subs[0]["algo"] == "0"
+    assert subs[0]["algo"] == "1"
+    assert subs[0]["bits"] == "2048"
     assert subs[0]["curve"] == ""
     assert subs[1]["algo"] == "19"
+    assert subs[1]["bits"] == "256"
     assert subs[1]["curve"] == "nistp256"
 
 
@@ -173,15 +504,591 @@ def test_parse_uid_list_extracts_uids():
     assert uids[1]["idx"] == 2
 
 
+def test_add_uid_preserves_primary(tmp_path):
+    from subprocess import run
+
+    gnupg_home = tmp_path / "gnupg"
+    gnupg_home.mkdir()
+    os.chmod(gnupg_home, 0o700)
+    env = {**os.environ, "GNUPGHOME": str(gnupg_home)}
+
+    run(
+        [
+            "gpg",
+            "--batch",
+            "--passphrase",
+            "",
+            "--pinentry-mode",
+            "loopback",
+            "--quick-gen-key",
+            "tester@example.com",
+        ],
+        env=env,
+        check=True,
+    )
+
+    result = run(
+        ["gpg", "--list-secret-keys", "--with-colons"],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    keys = parse_secret_key_list(result.stdout)
+    fpr = keys[0]["fpr"]
+    primary = keys[0]["uid"]
+
+    run(
+        [
+            "gpg",
+            "--batch",
+            "--quick-add-uid",
+            fpr,
+            "Another User <alt@example.com>",
+        ],
+        env=env,
+        check=True,
+    )
+    run(
+        ["gpg", "--batch", "--quick-set-primary-uid", fpr, primary],
+        env=env,
+        check=True,
+    )
+
+    result = run(
+        ["gpg", "--list-secret-keys", "--with-colons", fpr],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    uids = parse_uid_list(result.stdout)
+    assert uids[0]["uid"] == primary
+
+
+def test_uid_menu_includes_set_primary_option(monkeypatch):
+    from seedsigner.views import tools_views
+
+    captured = {}
+
+    def fake_run_screen(self, screen, *args, **kwargs):
+        captured["labels"] = [b.button_label for b in kwargs.get("button_data", [])]
+        return RET_CODE__BACK_BUTTON
+
+    monkeypatch.setattr(tools_views.ToolsGPGUidMenuView, "run_screen", fake_run_screen)
+    view = tools_views.ToolsGPGUidMenuView()
+    view.run()
+    assert "Set Primary User ID" in captured["labels"]
+
+
+def test_set_primary_uid_sets_selected_uid(tmp_path, monkeypatch):
+    import subprocess
+    from seedsigner.views import tools_views
+
+    gnupg_home = tmp_path / "gnupg"
+    gnupg_home.mkdir()
+    os.chmod(gnupg_home, 0o700)
+    env = {**os.environ, "GNUPGHOME": str(gnupg_home)}
+
+    subprocess.run(
+        [
+            "gpg",
+            "--batch",
+            "--passphrase",
+            "",
+            "--pinentry-mode",
+            "loopback",
+            "--quick-gen-key",
+            "tester@example.com",
+        ],
+        env=env,
+        check=True,
+    )
+
+    result = subprocess.run(
+        ["gpg", "--list-secret-keys", "--with-colons"],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    keys = parse_secret_key_list(result.stdout)
+    fpr = keys[0]["fpr"]
+
+    subprocess.run(
+        ["gpg", "--batch", "--quick-add-uid", fpr, "Another <alt@example.com>"],
+        env=env,
+        check=True,
+    )
+
+    subprocess.run(
+        ["gpg", "--batch", "--quick-set-primary-uid", fpr, "tester@example.com"],
+        env=env,
+        check=True,
+    )
+
+    real_run = subprocess.run
+
+    def fake_run(cmd, *args, **kwargs):
+        kwargs.setdefault("env", env)
+        return real_run(cmd, *args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    def fake_run_screen(self, screen, *args, **kwargs):
+        title = kwargs.get("title")
+        if title == "Select Key":
+            return 0
+        if title == "Set Primary User ID":
+            return 1
+        return RET_CODE__BACK_BUTTON
+
+    monkeypatch.setattr(tools_views.ToolsGPGSetPrimaryUidView, "run_screen", fake_run_screen)
+
+    view = tools_views.ToolsGPGSetPrimaryUidView()
+    view.run()
+
+    result = real_run(
+        ["gpg", "--list-secret-keys", "--with-colons", fpr],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    uids = parse_uid_list(result.stdout)
+    assert uids[0]["uid"] == "Another <alt@example.com>"
+
+
+def test_load_bip85_key_selects_seed(monkeypatch):
+    from seedsigner.views import tools_views
+
+    controller = Controller.get_instance()
+    original = list(controller.storage.seeds)
+    controller.storage.seeds = [Seed(mnemonic=MNEMONIC), Seed(mnemonic=MNEMONIC)]
+
+    responses = iter([1, RET_CODE__BACK_BUTTON])
+    screens = []
+
+    def fake_run_screen(self, screen, *args, **kwargs):
+        screens.append(screen)
+        return next(responses)
+
+    class DummyIndexScreen:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def display(self):
+            return "0"
+
+    monkeypatch.setattr(tools_views.ToolsGPGLoadBIP85KeyView, "run_screen", fake_run_screen)
+    monkeypatch.setattr(
+        tools_views.seed_screens, "SeedBIP85SelectChildIndexScreen", DummyIndexScreen
+    )
+
+    captured = {}
+
+    def fake_get_seed(idx):
+        captured["idx"] = idx
+        return controller.storage.seeds[idx]
+
+    monkeypatch.setattr(controller, "get_seed", fake_get_seed)
+
+    view = tools_views.ToolsGPGLoadBIP85KeyView()
+    try:
+        view.run()
+    finally:
+        controller.storage.seeds = original
+
+    assert captured["idx"] == 1
+    assert screens[0] == tools_views.seed_screens.SeedSelectSeedScreen
+
+
 def test_filter_deletable_subkeys_bip85_only_latest():
-    subs = [
-        {"fpr": "A", "caps": "e", "idx": 1},
-        {"fpr": "B", "caps": "s", "idx": 2},
+    BIP85_DATA.clear()
+    fpr = "P"
+    BIP85_DATA[fpr] = {
+        "primary_fpr": fpr,
+        "seed_fpr": "S",
+        "index": 0,
+        "key_type": "NIST P-256",
+        "uids": [],
+        "subkeys": [
+            {"index": 0, "type": "ECDH NIST P-256", "fingerprint": "A"},
+            {"index": 1, "type": "ECDSA NIST P-256", "fingerprint": "B"},
+        ],
+        "revocations": [],
+    }
+    bip85_subs = [
+        {"fpr": "A", "caps": "e", "idx": 1, "created": 0},
+        {"fpr": "B", "caps": "s", "idx": 2, "created": 0},
     ]
-    filtered = filter_deletable_subkeys(BIP85_GPG_CREATED_TS, subs)
+    filtered = filter_deletable_subkeys(fpr, bip85_subs)
     assert len(filtered) == 1 and filtered[0]["idx"] == 2
-    filtered2 = filter_deletable_subkeys(0, subs)
+
+    BIP85_DATA.clear()
+    non_bip85 = [
+        {"fpr": "A", "caps": "e", "idx": 1, "created": 0},
+        {"fpr": "B", "caps": "s", "idx": 2, "created": 1},
+    ]
+    filtered2 = filter_deletable_subkeys("Z", non_bip85)
     assert len(filtered2) == 2
+
+
+def test_bip85_save_and_load(tmp_path):
+    BIP85_DATA.clear()
+    fpr = "F"
+    BIP85_DATA[fpr] = {
+        "primary_fpr": fpr,
+        "seed_fpr": "seedfpr",
+        "index": 0,
+        "key_type": "NIST P-256",
+        "uids": ["User <user@example.com>"],
+        "primary_uid": "User <user@example.com>",
+        "subkeys": [{"index": 0, "type": "ECDH NIST P-256", "fingerprint": "A"}],
+        "revocations": ["A"],
+    }
+    file_path = tmp_path / "bip85.json"
+    bip85_save_data(file_path)
+    BIP85_DATA.clear()
+    bip85_load_data(file_path)
+    assert BIP85_DATA[fpr]["seed_fpr"] == "seedfpr"
+    assert BIP85_DATA[fpr]["key_type"] == "NIST P-256"
+    assert BIP85_DATA[fpr]["uids"][0] == "User <user@example.com>"
+    assert BIP85_DATA[fpr]["primary_uid"] == "User <user@example.com>"
+    assert BIP85_DATA[fpr]["subkeys"][0]["type"] == "ECDH NIST P-256"
+
+
+def test_load_bip85_data_from_microsd(monkeypatch, tmp_path):
+    from pathlib import Path
+
+    captured = {}
+
+    def fake_bip85_load_data(path):
+        captured["path"] = Path(path)
+
+    monkeypatch.setattr(tools_views, "bip85_load_data", fake_bip85_load_data)
+    monkeypatch.setattr(
+        tools_views.MicroSD, "get_microsd_dir", lambda: tmp_path
+    )
+
+    def fake_run_screen(self, *args, **kwargs):
+        return 0  # Select "From MicroSD"
+
+    monkeypatch.setattr(
+        tools_views.ToolsGPGLoadBip85DataView, "run_screen", fake_run_screen
+    )
+
+    view = tools_views.ToolsGPGLoadBip85DataView()
+    view.run()
+
+    expected = tmp_path / "microsd-images" / "bip85_data.json"
+    assert captured["path"] == expected
+
+
+def test_bip85_save_to_qr(monkeypatch):
+    from seedsigner.gui.screens.screen import ButtonListScreen, QRDisplayScreen, WarningScreen
+    from seedsigner.models.encode_qr import UrBytesQrEncoder
+    import json
+
+    BIP85_DATA.clear()
+    fpr = "F"
+    BIP85_DATA[fpr] = {
+        "primary_fpr": fpr,
+        "seed_fpr": "S",
+        "index": 0,
+        "key_type": "NIST P-256",
+        "uids": [],
+        "subkeys": [],
+        "revocations": [],
+    }
+
+    captured = {}
+
+    def fake_run_screen(self, screen, *args, **kwargs):
+        if screen == ButtonListScreen:
+            return 1  # select To QR
+        if screen == WarningScreen:
+            return 0  # start QR display
+        if screen == QRDisplayScreen:
+            captured["encoder"] = kwargs["qr_encoder"]
+            return RET_CODE__BACK_BUTTON
+        return RET_CODE__BACK_BUTTON
+
+    monkeypatch.setattr(tools_views.ToolsGPGSaveBip85DataView, "run_screen", fake_run_screen)
+    view = tools_views.ToolsGPGSaveBip85DataView()
+    view.run()
+    encoder = captured["encoder"]
+    assert isinstance(encoder, UrBytesQrEncoder)
+    data = json.loads(encoder.data.decode())[0]
+    assert data["primary_fpr"] == fpr
+
+
+def test_bip85_save_to_microsd_logs_path(monkeypatch, tmp_path):
+    from seedsigner.gui.screens.screen import ButtonListScreen, WarningScreen
+    from seedsigner.hardware import microsd
+
+    BIP85_DATA.clear()
+    BIP85_DATA["F"] = {
+        "primary_fpr": "F",
+        "seed_fpr": "S",
+        "index": 0,
+        "key_type": "NIST P-256",
+        "uids": [],
+        "subkeys": [],
+        "revocations": [],
+    }
+
+    captured = {}
+
+    def fake_run_screen(self, screen, *args, **kwargs):
+        if screen == ButtonListScreen:
+            return 0  # select To MicroSD
+        if screen == WarningScreen:
+            return 0
+        return 0
+
+    def fake_save(path):
+        captured["path"] = path
+
+    logs = []
+
+    def fake_log(msg, *args):
+        logs.append(msg % args)
+
+    monkeypatch.setattr(tools_views.ToolsGPGSaveBip85DataView, "run_screen", fake_run_screen)
+    monkeypatch.setattr(tools_views, "bip85_save_data", fake_save)
+    monkeypatch.setattr(tools_views.logger, "info", fake_log)
+    monkeypatch.setattr(microsd.MicroSD, "get_microsd_dir", lambda: tmp_path)
+
+    view = tools_views.ToolsGPGSaveBip85DataView()
+    view.controller.storage.seeds = []
+    view.run()
+
+    expected_path = tmp_path / "microsd-images" / "bip85_data.json"
+    assert captured["path"] == expected_path
+    assert any(str(expected_path) in entry for entry in logs)
+
+
+def test_bip85_save_to_seedkeeper(monkeypatch):
+    from seedsigner.gui.screens.screen import ButtonListScreen
+
+    class DummyConnector:
+        def __init__(self):
+            self.saved = None
+
+        def card_get_status(self):
+            return (None, None, None, {"protocol_minor_version": 2})
+
+        def make_header(self, t, rights, label):
+            return {"label": label}
+
+        def seedkeeper_import_secret(self, secret_dic):
+            self.saved = secret_dic
+
+    dummy = DummyConnector()
+    monkeypatch.setattr(
+        tools_views.seedkeeper_utils, "init_satochip", lambda *a, **k: dummy
+    )
+
+    BIP85_DATA.clear()
+    BIP85_DATA["F"] = {
+        "primary_fpr": "F",
+        "seed_fpr": "S",
+        "index": 0,
+        "key_type": "NIST P-256",
+        "uids": [],
+        "subkeys": [],
+        "revocations": [],
+    }
+
+    def fake_run_screen(self, screen, *args, **kwargs):
+        if screen == ButtonListScreen:
+            return 2  # select To Seedkeeper
+        return 0
+
+    monkeypatch.setattr(tools_views.ToolsGPGSaveBip85DataView, "run_screen", fake_run_screen)
+    view = tools_views.ToolsGPGSaveBip85DataView()
+    view.run()
+    assert dummy.saved is not None
+    assert dummy.saved["header"]["label"].startswith("BIP85-GPG-")
+
+
+def test_bip85_seedkeeper_import_format():
+    import json, binascii
+
+    data_json = json.dumps(
+        [
+            {
+                "primary_fpr": "F",
+                "seed_fpr": "S",
+                "index": 0,
+                "key_type": "NIST P-256",
+                "uids": [],
+                "subkeys": [],
+                "revocations": [],
+            }
+        ]
+    )
+    secret_hex = (
+        len(data_json.encode()).to_bytes(2, "big") + data_json.encode()
+    ).hex()
+    BIP85_DATA.clear()
+    decoded = binascii.unhexlify(secret_hex)[2:]
+    tools_views.bip85_import_json(decoded.decode())
+    assert BIP85_DATA["F"]["seed_fpr"] == "S"
+    assert BIP85_DATA["F"]["key_type"] == "NIST P-256"
+
+
+def test_advanced_menu_has_bip85_data_options(monkeypatch):
+    buttons = {}
+
+    def fake_run_screen(*args, **kwargs):
+        buttons["labels"] = [b.button_label for b in kwargs["button_data"]]
+        return RET_CODE__BACK_BUTTON
+
+    monkeypatch.setattr(
+        tools_views.ToolsGPGAdvancedMenuView, "run_screen", fake_run_screen
+    )
+    view = tools_views.ToolsGPGAdvancedMenuView()
+    view.run()
+    assert "BIP85 Metadata" in buttons["labels"]
+
+
+def test_bip85_metadata_menu_has_options(monkeypatch):
+    buttons = {}
+
+    def fake_run_screen(*args, **kwargs):
+        buttons["labels"] = [b.button_label for b in kwargs["button_data"]]
+        return RET_CODE__BACK_BUTTON
+
+    monkeypatch.setattr(
+        tools_views.ToolsGPGBip85MetadataMenuView, "run_screen", fake_run_screen
+    )
+    view = tools_views.ToolsGPGBip85MetadataMenuView()
+    view.run()
+    assert "Save BIP85 Data" in buttons["labels"]
+    assert "Load BIP85 Data" in buttons["labels"]
+    assert "Rebuild BIP85 Key" in buttons["labels"]
+
+
+def test_rebuild_bip85_key(monkeypatch):
+    controller = Controller.get_instance()
+    seed = Seed(mnemonic=MNEMONIC)
+    original = controller.storage.seeds
+    controller.storage.seeds = [seed]
+    fpr = seed.get_fingerprint()
+    tools_views.BIP85_DATA.clear()
+    tools_views.BIP85_DATA["X"] = {
+        "primary_fpr": "X",
+        "seed_fpr": fpr,
+        "index": 1,
+        "key_type": "NIST P-256",
+        "uids": ["Other <o@b.com>", "Primary <a@b.com>"],
+        "primary_uid": "Primary <a@b.com>",
+        "subkeys": [
+            {"index": 0, "type": "ECDH NIST P-256", "fingerprint": "F0"},
+            {"index": 1, "type": "ECDSA NIST P-256", "fingerprint": "F1"},
+            {"index": 2, "type": "ECDSA NIST P-256", "fingerprint": "F2"},
+            {"index": 3, "type": "RSA 2048", "fingerprint": "F3"},
+            {"index": 4, "type": "RSA 2048", "fingerprint": "F4"},
+            {"index": 5, "type": "RSA 2048", "fingerprint": "F5"},
+        ],
+        "revocations": [],
+    }
+    # round-trip export/import
+    data_json = tools_views.bip85_export_json()
+    tools_views.BIP85_DATA.clear()
+    tools_views.bip85_import_json(data_json)
+
+    captured = {}
+
+    def fake_run_screen(self, *args, **kwargs):
+        if args[0].__name__ == "ButtonListScreen":
+            captured["labels"] = [b.button_label for b in kwargs["button_data"]]
+            return 0
+        return RET_CODE__BACK_BUTTON
+
+    monkeypatch.setattr(
+        tools_views.ToolsGPGRebuildBip85KeyView, "run_screen", fake_run_screen
+    )
+
+    def fake_run(cmd, input=None, capture_output=False):
+        captured["cmd"] = cmd
+        class Result:
+            returncode = 0
+        return Result()
+
+    monkeypatch.setattr(tools_views.subprocess, "run", fake_run)
+
+    added = []
+    import pgpy
+
+    real_add_uid = pgpy.PGPKey.add_uid
+
+    def fake_add_uid(self, uid, selfsign=True, **prefs):
+        label = uid.name
+        if uid.email:
+            label += f" <{uid.email}>"
+        added.append((label, prefs.get("primary", False)))
+        if len(self._uids) == 0:
+            return real_add_uid(self, uid, selfsign=selfsign, **prefs)
+        return None
+
+    monkeypatch.setattr(pgpy.PGPKey, "add_uid", fake_add_uid)
+
+    calls = []
+    real = tools_views.bip85_p256_from_root
+
+    def fake_p256(root, key_index, sub_index=None, alg=None):
+        calls.append(("p256", key_index, sub_index, alg))
+        return real(root, key_index, sub_index, alg)
+
+    monkeypatch.setattr(tools_views, "bip85_p256_from_root", fake_p256)
+
+    rsa_calls = []
+    real_rsa = tools_views.bip85_rsa_from_root
+
+    def fake_rsa(root, bits, key_index, sub_index=None):
+        rsa_calls.append((bits, key_index, sub_index))
+        return real_rsa(root, bits, key_index, sub_index)
+
+    monkeypatch.setattr(tools_views, "bip85_rsa_from_root", fake_rsa)
+
+    verify_called = {}
+
+    def fake_verify(seed, fingerprint, key_index, created_ts, primary_algo, primary_bits, primary_curve, subkeys):
+        verify_called["subkeys"] = subkeys
+        return True
+
+    monkeypatch.setattr(tools_views, "bip85_verify_existing", fake_verify)
+
+    view = tools_views.ToolsGPGRebuildBip85KeyView()
+    try:
+        view.run()
+    finally:
+        controller.storage.seeds = original
+
+    assert captured["cmd"] == ["gpg", "--batch", "--import"]
+    expected = [
+        ("p256", 1, None, None),
+        ("p256", 0, 0, "ECDH"),
+        ("p256", 0, 1, "ECDSA"),
+        ("p256", 0, 2, "ECDSA"),
+    ]
+    assert calls == expected
+    assert rsa_calls == [(2048, 1, 0), (2048, 1, 1), (2048, 1, 2)]
+    assert verify_called["subkeys"] == [
+        {"idx": 1, "algo": "18", "bits": "", "curve": "nistp256", "fpr": "F0"},
+        {"idx": 2, "algo": "19", "bits": "", "curve": "nistp256", "fpr": "F1"},
+        {"idx": 3, "algo": "19", "bits": "", "curve": "nistp256", "fpr": "F2"},
+        {"idx": 4, "algo": "1", "bits": "2048", "curve": "", "fpr": "F3"},
+        {"idx": 5, "algo": "1", "bits": "2048", "curve": "", "fpr": "F4"},
+        {"idx": 6, "algo": "1", "bits": "2048", "curve": "", "fpr": "F5"},
+    ]
+    assert added == [
+        ("Primary <a@b.com>", True),
+        ("Other <o@b.com>", False),
+    ]
 
 
 def test_bip85_subkey_specs_include_sign_for_auth():
@@ -376,25 +1283,51 @@ def test_add_subkeys_auto_bip85_index(monkeypatch):
         if cmd[:3] == ["gpg", "--list-secret-keys", "--with-colons"]:
             if len(cmd) == 3:
                 return R(
-                    f"sec:-:0:0:KEYID:{tools_views.BIP85_GPG_CREATED_TS}:0:::::::\n"
-                    "fpr:::::::::FPR:\n"
+                    "sec:-:0:0:KEYID:0:0:::::::\n"
+                    f"fpr:::::::::FPR:\n"
+                    f"uid:u::::{tools_views.BIP85_GPG_CREATED_TS}::H::User::::::::\n"
                 )
             else:
-                return R("ssb:-:0:0:::0:::::::\n" * 3)
+                return R(
+                    "sec:-:0:0:KEYID:0:::::::\n" + "ssb:-:0:0:::0:::::::\n" * 3
+                )
         return R()
 
     import subprocess
 
     monkeypatch.setattr(subprocess, "run", fake_run)
 
+    tools_views.BIP85_DATA["FPR"] = {
+        "primary_fpr": "FPR",
+        "seed_fpr": "seedfpr",
+        "index": 0,
+        "key_type": "NIST P-256",
+        "uids": ["User"],
+        "primary_uid": "User",
+        "subkeys": [
+            {"index": 0, "type": "ECDH NIST P-256", "fingerprint": "A"},
+            {"index": 1, "type": "ECDSA NIST P-256", "fingerprint": "B"},
+            {"index": 2, "type": "ECDSA NIST P-256", "fingerprint": "C"},
+        ],
+        "revocations": [],
+    }
+
     captured = {}
 
-    def fake_bip85_add_subkeys(fpr, alg, key_index, start_index):
+    def fake_bip85_add_subkeys(fpr, alg, key_index, start_index, seed):
         captured["key_index"] = key_index
         captured["start_index"] = start_index
-        return True
+        captured["seed"] = seed
+        return []
 
     monkeypatch.setattr(tools_views, "bip85_add_subkeys", fake_bip85_add_subkeys)
+
+    def fake_verify(seed, fingerprint, key_index, created_ts, primary_algo, primary_bits, primary_curve, subkeys):
+        captured["verified_seed"] = seed
+        captured["verified_key_index"] = key_index
+        return True
+
+    monkeypatch.setattr(tools_views, "bip85_verify_existing", fake_verify)
 
     class DummyLoading:
         def __init__(self, text=""):
@@ -410,8 +1343,15 @@ def test_add_subkeys_auto_bip85_index(monkeypatch):
         "seedsigner.gui.screens.screen.LoadingScreenThread", DummyLoading
     )
 
+    class SeedObj:
+        def get_fingerprint(self, network=None):
+            return "seedfpr"
+
+    seed_obj = SeedObj()
+
     # Simulate selecting the only key and NIST P-256 type
     def fake_run_screen(self, screen, **kwargs):
+        assert kwargs.get("text") != "Choose seed for BIP85 subkeys"
         if kwargs.get("title") == "Select Key":
             return 0
         if kwargs.get("title") == "Key Type":
@@ -421,10 +1361,337 @@ def test_add_subkeys_auto_bip85_index(monkeypatch):
     monkeypatch.setattr(tools_views.ToolsGPGAddSubkeysView, "run_screen", fake_run_screen)
 
     view = object.__new__(tools_views.ToolsGPGAddSubkeysView)
-    view.controller = type("C", (), {"storage": type("S", (), {"seeds": [object()]})()})()
+    ControllerClass = type(
+        "C",
+        (),
+        {
+            "storage": type("S", (), {"seeds": [seed_obj]})(),
+            "get_seed": lambda self, idx: seed_obj,
+        },
+    )
+    view.controller = ControllerClass()
+    view.settings = type("Set", (), {"get_value": lambda self, x: None})()
     tools_views.ToolsGPGAddSubkeysView.run(view)
     assert captured["key_index"] == 1
     assert captured["start_index"] == 3
+    assert captured["seed"] is seed_obj
+    assert captured["verified_seed"] is seed_obj
+    assert captured["verified_key_index"] == 0
+
+
+def test_add_subkeys_registry_index_correction(monkeypatch):
+    import seedsigner.views.tools_views as tools_views
+
+    class R:
+        def __init__(self, stdout=""):
+            self.stdout = stdout
+
+    def fake_run(cmd, capture_output=True, text=True):
+        if cmd[:3] == ["gpg", "--list-secret-keys", "--with-colons"]:
+            if len(cmd) == 3:
+                return R(
+                    "sec:-:0:0:KEYID:0:0:::::::\n"
+                    f"fpr:::::::::FPR:\n"
+                    f"uid:u::::{tools_views.BIP85_GPG_CREATED_TS}::H::User::::::::\n"
+                )
+            return R(
+                "sec:-:0:0:KEYID:0:::::::\n" + "ssb:-:0:0:::0:::::::\n" * 3
+            )
+        return R()
+
+    import subprocess
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    tools_views.BIP85_DATA["FPR"] = {
+        "primary_fpr": "FPR",
+        "seed_fpr": "seedfpr",
+        "index": 1,
+        "key_type": "NIST P-256",
+        "uids": ["User"],
+        "primary_uid": "User",
+        "subkeys": [],
+        "revocations": [],
+    }
+
+    calls = []
+
+    def fake_bip85_add_subkeys(fpr, alg, key_index, start_index, seed):
+        calls.append(("add", key_index, start_index))
+        return []
+
+    monkeypatch.setattr(tools_views, "bip85_add_subkeys", fake_bip85_add_subkeys)
+
+    def fake_verify(seed, fingerprint, key_index, created_ts, primary_algo, primary_bits, primary_curve, subkeys):
+        calls.append(("verify", key_index))
+        return key_index == 0
+
+    monkeypatch.setattr(tools_views, "bip85_verify_existing", fake_verify)
+
+    class DummyLoading:
+        def __init__(self, text=""):
+            pass
+
+        def start(self):
+            pass
+
+        def stop(self):
+            pass
+
+    monkeypatch.setattr(
+        "seedsigner.gui.screens.screen.LoadingScreenThread", DummyLoading
+    )
+
+    class SeedObj:
+        def get_fingerprint(self, network=None):
+            return "seedfpr"
+
+    seed_obj = SeedObj()
+
+    def fake_run_screen(self, screen, **kwargs):
+        assert kwargs.get("text") != "Choose seed for BIP85 subkeys"
+        if kwargs.get("title") == "Select Key":
+            return 0
+        if kwargs.get("title") == "Key Type":
+            return 0
+        return 0
+
+    monkeypatch.setattr(tools_views.ToolsGPGAddSubkeysView, "run_screen", fake_run_screen)
+
+    view = object.__new__(tools_views.ToolsGPGAddSubkeysView)
+    ControllerClass = type(
+        "C",
+        (),
+        {
+            "storage": type("S", (), {"seeds": [seed_obj]})(),
+            "get_seed": lambda self, idx: seed_obj,
+        },
+    )
+    view.controller = ControllerClass()
+    view.settings = type("Set", (), {"get_value": lambda self, x: None})()
+    tools_views.ToolsGPGAddSubkeysView.run(view)
+
+    assert calls[0] == ("verify", 1)
+    assert calls[1] == ("verify", 0)
+    assert calls[2] == ("add", 1, 3)
+    assert tools_views.BIP85_DATA["FPR"]["index"] == 0
+
+
+def test_add_subkeys_missing_seed(monkeypatch):
+    class R:
+        def __init__(self, stdout=""):
+            self.stdout = stdout
+
+    def fake_run(cmd, capture_output=True, text=True):
+        if cmd[:3] == ["gpg", "--list-secret-keys", "--with-colons"]:
+            if len(cmd) == 3:
+                return R(
+                    "sec:-:0:0:KEYID:0:0:::::::\n"
+                    + f"fpr:::::::::FPR:\n"
+                    + f"uid:u::::{tools_views.BIP85_GPG_CREATED_TS}::H::User::::::::\n"
+                )
+            return R(
+                    "sec:-:0:0:KEYID:0:::::::\n" + "ssb:-:0:0:::0:::::::\n" * 3
+            )
+        return R()
+
+    import subprocess
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    tools_views.BIP85_DATA["FPR"] = {
+        "primary_fpr": "FPR",
+        "seed_fpr": "seedfpr",
+        "index": 0,
+        "key_type": "NIST P-256",
+        "uids": ["User"],
+        "primary_uid": "User",
+        "subkeys": [
+            {"index": 0, "type": "ECDH NIST P-256", "fingerprint": "A"},
+            {"index": 1, "type": "ECDSA NIST P-256", "fingerprint": "B"},
+            {"index": 2, "type": "ECDSA NIST P-256", "fingerprint": "C"},
+        ],
+        "revocations": [],
+    }
+
+    called = {"add": False, "warning": None}
+
+    def fake_bip85_add_subkeys(*args, **kwargs):
+        called["add"] = True
+        return []
+
+    monkeypatch.setattr(tools_views, "bip85_add_subkeys", fake_bip85_add_subkeys)
+
+    class SeedObj:
+        def get_fingerprint(self, network=None):
+            return "other"
+
+    seed_obj = SeedObj()
+
+    def fake_run_screen(self, screen, **kwargs):
+        if kwargs.get("title") == "Select Key":
+            return 0
+        if kwargs.get("title") == "Key Type":
+            return 0
+        if kwargs.get("text") == "Required seed not loaded":
+            called["warning"] = kwargs.get("text")
+            return 0
+        assert kwargs.get("text") != "Choose seed for BIP85 subkeys"
+        return 0
+
+    monkeypatch.setattr(tools_views.ToolsGPGAddSubkeysView, "run_screen", fake_run_screen)
+
+    view = object.__new__(tools_views.ToolsGPGAddSubkeysView)
+    ControllerClass = type(
+        "C",
+        (),
+        {
+            "storage": type("S", (), {"seeds": [seed_obj]})(),
+        },
+    )
+    view.controller = ControllerClass()
+    view.settings = type("Set", (), {"get_value": lambda self, x: None})()
+    tools_views.ToolsGPGAddSubkeysView.run(view)
+    assert not called["add"]
+    assert called["warning"] == "Required seed not loaded"
+
+
+def test_delete_subkeys_bip85_only_latest(monkeypatch):
+    import subprocess
+    from seedsigner.views import tools_views
+
+    ts = tools_views.BIP85_GPG_CREATED_TS
+
+    def fake_run(cmd, *args, **kwargs):
+        class R:
+            returncode = 0
+
+            def __init__(self, stdout=""):
+                self.stdout = stdout
+
+        if cmd[:3] == ["gpg", "--list-secret-keys", "--with-colons"]:
+            if len(cmd) == 3:
+                return R(
+                    f"sec:-:0:0:KEYID:0:0:::::::\n"
+                    f"fpr:::::::::FPR:\n"
+                    f"uid:u::::{ts}::H::User::::::::\n"
+                )
+            return R(
+                "sec:-:0:0:KEYID:0:::::::\n"
+                f"ssb:-:0:0::{ts}::::::e:::::\n"
+                "fpr:::::::::AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA:\n"
+                f"ssb:-:0:0::{ts}::::::s:::::\n"
+                "fpr:::::::::BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB:\n"
+                f"ssb:-:0:0::{ts}::::::e:::::\n"
+                "fpr:::::::::CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC:\n"
+            )
+        return R()
+
+    tools_views.BIP85_DATA["FPR"] = {
+        "primary_fpr": "FPR",
+        "seed_fpr": "seedfpr",
+        "index": 0,
+        "key_type": "NIST P-256",
+        "uids": ["User"],
+        "primary_uid": "User",
+        "subkeys": [
+            {
+                "index": 0,
+                "type": "ECDH NIST P-256",
+                "fingerprint": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            },
+            {
+                "index": 1,
+                "type": "ECDSA NIST P-256",
+                "fingerprint": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+            },
+            {
+                "index": 2,
+                "type": "ECDSA NIST P-256",
+                "fingerprint": "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
+            },
+        ],
+        "revocations": [],
+    }
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    captured = {}
+
+    def fake_run_screen(self, screen, **kwargs):
+        if kwargs.get("title") == "WARNING":
+            return 0
+        if kwargs.get("title") == "Select Key":
+            return 0
+        if kwargs.get("title") == "Delete Subkeys":
+            captured["labels"] = [b.button_label for b in kwargs["button_data"]]
+            return RET_CODE__BACK_BUTTON
+        return RET_CODE__BACK_BUTTON
+
+    monkeypatch.setattr(tools_views.ToolsGPGDeleteSubkeysView, "run_screen", fake_run_screen)
+
+    view = object.__new__(tools_views.ToolsGPGDeleteSubkeysView)
+    tools_views.ToolsGPGDeleteSubkeysView.run(view)
+
+    assert captured["labels"] == ["CCCCCCCC [e]", "Done"]
+
+
+def test_delete_subkeys_non_bip85_lists_all(monkeypatch):
+    import subprocess
+    from seedsigner.views import tools_views
+
+    tools_views.BIP85_DATA.clear()
+
+    def fake_run(cmd, *args, **kwargs):
+        class R:
+            returncode = 0
+
+            def __init__(self, stdout=""):
+                self.stdout = stdout
+
+        if cmd[:3] == ["gpg", "--list-secret-keys", "--with-colons"]:
+            if len(cmd) == 3:
+                return R(
+                    "sec:-:0:0:KEYID:0:0:::::::\n"
+                    "fpr:::::::::FPR:\n"
+                    "uid:u::::0::H::User::::::::\n"
+                )
+            return R(
+                "sec:-:0:0:KEYID:0:::::::\n"
+                "ssb:-:0:0::1::::::e:::::\n"
+                "fpr:::::::::AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA:\n"
+                "ssb:-:0:0::2::::::s:::::\n"
+                "fpr:::::::::BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB:\n"
+                "ssb:-:0:0::3::::::e:::::\n"
+                "fpr:::::::::CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC:\n"
+            )
+        return R()
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    captured = {}
+
+    def fake_run_screen(self, screen, **kwargs):
+        if kwargs.get("title") == "WARNING":
+            return 0
+        if kwargs.get("title") == "Select Key":
+            return 0
+        if kwargs.get("title") == "Delete Subkeys":
+            captured["labels"] = [b.button_label for b in kwargs["button_data"]]
+            return RET_CODE__BACK_BUTTON
+        return RET_CODE__BACK_BUTTON
+
+    monkeypatch.setattr(tools_views.ToolsGPGDeleteSubkeysView, "run_screen", fake_run_screen)
+
+    view = object.__new__(tools_views.ToolsGPGDeleteSubkeysView)
+    tools_views.ToolsGPGDeleteSubkeysView.run(view)
+
+    assert captured["labels"] == [
+        "AAAAAAAA [e]",
+        "BBBBBBBB [s]",
+        "CCCCCCCC [e]",
+        "Done",
+    ]
 
 
 def test_smartpgp_import_filters_subkeys(monkeypatch):

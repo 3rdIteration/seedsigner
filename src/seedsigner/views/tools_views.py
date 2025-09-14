@@ -4124,14 +4124,18 @@ def parse_subkey_list(colon_output: str):
         parts = line.split(":")
         if parts[0] == "ssb":
             idx += 1
-            algo = parts[2]
+            bits = parts[2]
+            algo = parts[3] if len(parts) > 3 else ""
             curve = parts[16].lower() if len(parts) > 16 else ""
+            created = int(parts[5]) if len(parts) > 5 and parts[5] else None
             cur = {
                 "fpr": None,
                 "caps": parts[11].lower(),
                 "idx": idx,
                 "algo": algo,
+                "bits": bits,
                 "curve": curve,
+                "created": created,
             }
             subkeys.append(cur)
         elif parts[0] == "fpr" and cur is not None and cur.get("fpr") is None:
@@ -4139,7 +4143,42 @@ def parse_subkey_list(colon_output: str):
     return subkeys
 
 
-BIP85_GPG_CREATED_TS = 1231006505
+# Matches the creation timestamp used by Krux
+BIP85_GPG_CREATED_TS = 1231005905
+
+# In-memory registry of BIP85-derived keys
+BIP85_DATA = {}
+
+
+def bip85_export_json():
+    import json
+
+    return json.dumps(list(BIP85_DATA.values()), indent=2)
+
+
+def bip85_import_json(data: str):
+    import json
+
+    entries = json.loads(data)
+    BIP85_DATA.clear()
+    for entry in entries:
+        if "primary_fpr" in entry:
+            uids = entry.get("uids", [])
+            primary = entry.get("primary_uid")
+            if primary and primary in uids:
+                uids = [primary] + [u for u in uids if u != primary]
+                entry["uids"] = uids
+            BIP85_DATA[entry["primary_fpr"]] = entry
+
+
+def bip85_save_data(path):
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(bip85_export_json())
+
+
+def bip85_load_data(path):
+    with open(path, encoding="utf-8") as f:
+        bip85_import_json(f.read())
 
 
 def parse_uid_list(colon_output: str):
@@ -4154,10 +4193,19 @@ def parse_uid_list(colon_output: str):
     return uids
 
 
-def filter_deletable_subkeys(created_ts: int, subkeys):
-    if created_ts == BIP85_GPG_CREATED_TS and subkeys:
+def filter_deletable_subkeys(primary_fpr: str, subkeys):
+    bip85 = primary_fpr in BIP85_DATA
+    logger.info(
+        "filter_deletable_subkeys: fpr=%s bip85=%s subkey_count=%s",
+        primary_fpr,
+        bip85,
+        len(subkeys),
+    )
+    if bip85 and subkeys:
         max_idx = max(sk["idx"] for sk in subkeys)
+        logger.info("BIP85 key detected; allowing deletion of index %s only", max_idx)
         return [sk for sk in subkeys if sk["idx"] == max_idx]
+    logger.info("Non-BIP85 key or no subkeys; returning all subkeys")
     return subkeys
 
 
@@ -4234,9 +4282,10 @@ class ToolsGPGMenuView(View):
 class ToolsGPGAdvancedMenuView(View):
     SUBKEY_OPS = ButtonOption("Subkey Operations")
     UID_OPS = ButtonOption("User ID Operations")
+    BIP85_META = ButtonOption("BIP85 Metadata")
 
     def run(self):
-        button_data = [self.SUBKEY_OPS, self.UID_OPS]
+        button_data = [self.SUBKEY_OPS, self.UID_OPS, self.BIP85_META]
 
         selected_menu_num = self.run_screen(
             ButtonListScreen,
@@ -4247,9 +4296,726 @@ class ToolsGPGAdvancedMenuView(View):
 
         if selected_menu_num == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
-        if button_data[selected_menu_num] == self.SUBKEY_OPS:
+        choice = button_data[selected_menu_num]
+        if choice == self.SUBKEY_OPS:
             return Destination(ToolsGPGSubkeyMenuView)
-        return Destination(ToolsGPGUidMenuView)
+        if choice == self.UID_OPS:
+            return Destination(ToolsGPGUidMenuView)
+        if choice == self.BIP85_META:
+            return Destination(ToolsGPGBip85MetadataMenuView)
+        return Destination(ToolsGPGMenuView)
+
+
+class ToolsGPGBip85MetadataMenuView(View):
+    SAVE = ButtonOption("Save BIP85 Data")
+    LOAD = ButtonOption("Load BIP85 Data")
+    REBUILD = ButtonOption("Rebuild BIP85 Key")
+
+    def run(self):
+        button_data = [self.SAVE, self.LOAD, self.REBUILD]
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="BIP85 Metadata",
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        choice = button_data[selected]
+        if choice == self.SAVE:
+            return Destination(ToolsGPGSaveBip85DataView)
+        if choice == self.LOAD:
+            return Destination(ToolsGPGLoadBip85DataView)
+        return Destination(ToolsGPGRebuildBip85KeyView)
+
+
+class ToolsGPGSaveBip85DataView(View):
+    TO_MICROSD = ButtonOption("To MicroSD")
+    TO_QR = ButtonOption("To QR")
+    TO_SEEDKEEPER = ButtonOption("To Seedkeeper")
+
+    def run(self):
+        from seedsigner.gui.screens.screen import (
+            ButtonListScreen,
+            QRDisplayScreen,
+            LargeIconStatusScreen,
+            WarningScreen,
+            LoadingScreenThread,
+        )
+        from seedsigner.models.encode_qr import UrBytesQrEncoder
+        from seedsigner.helpers import seedkeeper_utils
+        from pysatochip.CardConnector import UnexpectedSW12Error
+        from seedsigner.helpers.iso7816 import format_sw_error
+        import time
+
+        button_data = [self.TO_MICROSD, self.TO_QR, self.TO_SEEDKEEPER]
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Save BIP85 Data",
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        choice = button_data[selected]
+        if choice == self.TO_MICROSD:
+            from seedsigner.gui.screens import LargeIconStatusScreen, WarningScreen
+            from seedsigner.hardware.microsd import MicroSD
+            import os
+
+            if len(self.controller.storage.seeds) > 0:
+                ret = self.run_screen(
+                    WarningScreen,
+                    title="WARNING",
+                    status_headline=None,
+                    text="These tools write data to the microSD card and may expose loaded secrets.",
+                    show_back_button=True,
+                    button_data=[ButtonOption("Continue")],
+                )
+                if ret == RET_CODE__BACK_BUTTON:
+                    return Destination(BackStackView)
+
+            file_list_path = MicroSD.get_microsd_dir() / "microsd-images"
+            os.makedirs(file_list_path, exist_ok=True)
+            path = file_list_path / "bip85_data.json"
+            try:
+                bip85_save_data(path)
+                logger.info("BIP85 data saved to %s", os.path.abspath(path))
+                screen = LargeIconStatusScreen
+                msg = f"Saved as {path.name}"
+            except Exception:
+                screen = WarningScreen
+                msg = "Failed to save BIP85 data"
+            self.run_screen(
+                screen,
+                title="Result",
+                status_headline=None,
+                text=msg,
+                show_back_button=False,
+                button_data=[ButtonOption("Done")],
+            )
+            return Destination(ToolsGPGMenuView)
+
+        if choice == self.TO_QR:
+            data = bip85_export_json().encode("utf-8")
+            loading = LoadingScreenThread(text="Encoding...")
+            loading.start()
+            try:
+                qr_encoder = UrBytesQrEncoder(
+                    data=data,
+                    qr_density=self.settings.get_value(SettingsConstants.SETTING__QR_DENSITY),
+                )
+            finally:
+                loading.stop()
+
+            num_codes = qr_encoder.seq_len()
+            ret = self.run_screen(
+                WarningScreen,
+                title="Animated QR",
+                status_headline=None,
+                text=f"This export requires {num_codes} QR code{'s' if num_codes > 1 else ''}.",
+                show_back_button=True,
+                button_data=[ButtonOption("Start")],
+            )
+            if ret == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+
+            self.run_screen(QRDisplayScreen, qr_encoder=qr_encoder)
+            return Destination(ToolsGPGMenuView)
+
+        # Seedkeeper export
+        Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["seedkeeper"])
+        if not Satochip_Connector:
+            return Destination(BackStackView)
+
+        data_bytes = bip85_export_json().encode("utf-8")
+        status = Satochip_Connector.card_get_status()[3]
+        if status["protocol_minor_version"] == 1:
+            if len(data_bytes) > 255:
+                self.run_screen(
+                    WarningScreen,
+                    title="Error",
+                    status_headline=None,
+                    text="BIP85 data too large for Seedkeeper v1",
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
+            secret_list = [len(data_bytes)] + list(data_bytes)
+        else:
+            secret_list = list(len(data_bytes).to_bytes(2, "big")) + list(data_bytes)
+
+        label = f"BIP85-GPG-{int(time.time())}"
+        header = Satochip_Connector.make_header(
+            "Data", "Plaintext export allowed", label
+        )
+        secret_dic = {"header": header, "secret_list": secret_list}
+
+        try:
+            loading = LoadingScreenThread(text="Saving Secret\n\n\n\n\n\n")
+            loading.start()
+            Satochip_Connector.seedkeeper_import_secret(secret_dic)
+            loading.stop()
+            screen = LargeIconStatusScreen
+            msg = "BIP85 data saved"
+        except UnexpectedSW12Error as e:
+            loading.stop()
+            if e.sw1 == 0x6A and e.sw2 == 0x84:
+                err_text = "Not enough space on Seedkeeper"
+            else:
+                err_text = format_sw_error(e.sw1, e.sw2)
+            screen = WarningScreen
+            msg = err_text
+        except Exception:
+            loading.stop()
+            screen = WarningScreen
+            msg = "Failed to save BIP85 data"
+
+        self.run_screen(
+            screen,
+            title="Result",
+            status_headline=None,
+            text=msg,
+            show_back_button=False,
+            button_data=[ButtonOption("Done")],
+        )
+        return Destination(ToolsGPGMenuView)
+
+
+class ToolsGPGLoadBip85DataView(View):
+    FROM_MICROSD = ButtonOption("From MicroSD")
+    FROM_QR = ButtonOption("From QR")
+    FROM_SEEDKEEPER = ButtonOption("From Seedkeeper")
+
+    def run(self):
+        from seedsigner.gui.screens.screen import (
+            ButtonListScreen,
+            QRDisplayScreen,
+            WarningScreen,
+            LargeIconStatusScreen,
+            LoadingScreenThread,
+        )
+        from seedsigner.gui.screens.scan_screens import ScanScreen
+        from seedsigner.models.decode_qr import DecodeQR, QRType
+        from seedsigner.helpers import seedkeeper_utils
+        from urtypes.bytes import Bytes
+        import time, binascii
+
+        button_data = [self.FROM_MICROSD, self.FROM_QR, self.FROM_SEEDKEEPER]
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Load BIP85 Data",
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        choice = button_data[selected]
+        if choice == self.FROM_MICROSD:
+            from seedsigner.gui.screens import LargeIconStatusScreen, WarningScreen
+            from seedsigner.hardware.microsd import MicroSD
+            import os
+
+            file_list_path = MicroSD.get_microsd_dir() / "microsd-images"
+            path = file_list_path / "bip85_data.json"
+            try:
+                bip85_load_data(path)
+                logger.info("BIP85 data loaded from %s", os.path.abspath(path))
+                screen = LargeIconStatusScreen
+                msg = "BIP85 data loaded"
+            except Exception:
+                screen = WarningScreen
+                msg = "Failed to load BIP85 data"
+            self.run_screen(
+                screen,
+                title="Result",
+                status_headline=None,
+                text=msg,
+                show_back_button=False,
+                button_data=[ButtonOption("Done")],
+            )
+            return Destination(ToolsGPGMenuView)
+
+        if choice == self.FROM_QR:
+            decoder = DecodeQR()
+            ScanScreen(decoder=decoder, instructions_text="Scan BIP85 data").display()
+            self.controller.reset_screensaver_timeout()
+            time.sleep(0.1)
+            if not decoder.is_complete:
+                return Destination(BackStackView)
+            if decoder.qr_type == QRType.BYTES__UR:
+                raw = Bytes.from_cbor(decoder.decoder.result_message().cbor).data
+                if isinstance(raw, memoryview):
+                    raw = raw.tobytes()
+                data_str = raw.decode("utf-8")
+            elif decoder.qr_type == QRType.TEXT:
+                data_str = decoder.get_text()
+            else:
+                self.run_screen(
+                    WarningScreen,
+                    title="Error",
+                    status_headline=None,
+                    text="Unsupported QR format",
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
+            bip85_import_json(data_str)
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Result",
+                status_headline=None,
+                text="BIP85 data loaded",
+                show_back_button=False,
+                button_data=[ButtonOption("Done")],
+            )
+            return Destination(ToolsGPGMenuView)
+
+        # Seedkeeper import
+        Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["seedkeeper"])
+        if not Satochip_Connector:
+            return Destination(BackStackView)
+
+        loading = LoadingScreenThread(text="Listing Secrets\n\n\n\n\n\n")
+        loading.start()
+        headers = Satochip_Connector.seedkeeper_list_secret_headers()
+        loading.stop()
+
+        entries = []
+        buttons = []
+        for header in headers:
+            stype = SEEDKEEPER_DIC_TYPE.get(header["type"], hex(header["type"]))
+            rights = SEEDKEEPER_DIC_EXPORT_RIGHTS.get(header["export_rights"], hex(header["export_rights"]))
+            label = header["label"]
+            if (
+                stype == "Data"
+                and rights == "Plaintext export allowed"
+                and label.startswith("BIP85-GPG-")
+            ):
+                entries.append(header)
+                buttons.append(ButtonOption(label))
+
+        if not entries:
+            self.run_screen(
+                WarningScreen,
+                title="No BIP85 Data",
+                status_headline=None,
+                text="No BIP85 data on Seedkeeper",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Select BIP85 Data",
+            is_button_text_centered=False,
+            button_data=buttons,
+            show_back_button=True,
+        )
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        loading = LoadingScreenThread(text="Loading BIP85 Data\n\n\n\n\n\n")
+        loading.start()
+        secret_dict = Satochip_Connector.seedkeeper_export_secret(entries[selected]["id"], None)
+        loading.stop()
+
+        data_bytes = binascii.unhexlify(secret_dict["secret"])[2:]
+        bip85_import_json(data_bytes.decode())
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Result",
+            status_headline=None,
+            text="BIP85 data loaded",
+            show_back_button=False,
+            button_data=[ButtonOption("Done")],
+        )
+        return Destination(ToolsGPGMenuView)
+
+
+class ToolsGPGRebuildBip85KeyView(View):
+    def run(self):
+        from embit import bip32
+        from pgpy import PGPKey, PGPUID
+        from pgpy.constants import (
+            PubKeyAlgorithm,
+            KeyFlags,
+            HashAlgorithm,
+            SymmetricKeyAlgorithm,
+            CompressionAlgorithm,
+        )
+        from pgpy.pgp import PrivKeyV4, PrivSubKeyV4
+        from pgpy.packet import fields
+        from pgpy.packet.types import MPI
+        from datetime import datetime, timezone, date
+        from subprocess import run
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+        from seedsigner.gui.screens import LargeIconStatusScreen, WarningScreen
+        import re
+
+        if not BIP85_DATA:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No BIP85 data loaded",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        entries = []
+        buttons = []
+        for entry in BIP85_DATA.values():
+            for seed in self.controller.storage.seeds:
+                fpr = seed.get_fingerprint(
+                    self.settings.get_value(SettingsConstants.SETTING__NETWORK)
+                )
+                if fpr == entry["seed_fpr"]:
+                    entries.append((entry, seed))
+                    label = entry["uids"][0] if entry.get("uids") else entry["primary_fpr"]
+                    buttons.append(ButtonOption(label))
+                    break
+
+        if not entries:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No matching seeds",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Rebuild BIP85 Key",
+            is_button_text_centered=False,
+            button_data=buttons,
+        )
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        entry, seed = entries[selected]
+
+        key_index = entry["index"]
+        key_type_label = entry["key_type"]
+        key_type = {
+            "NIST P-256": "p256",
+            "Brainpool P-256": "brainpoolp256r1",
+            "RSA 2048": "rsa2048",
+            "RSA 3072": "rsa3072",
+            "RSA 4096": "rsa4096",
+            "secp256k1": "secp256k1",
+            "Ed25519": "ed25519",
+        }[key_type_label]
+
+        uid_list = entry.get("uids", [])
+        if not uid_list:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="BIP85 data missing UIDs",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+        primary_uid = entry.get("primary_uid", uid_list[0])
+
+        def parse_uid(uid_str):
+            m = re.match(r"^(.*?)(?:\s*<([^>]+)>)?$", uid_str)
+            name = m.group(1).strip()
+            email = m.group(2)
+            return name, email
+
+        created = datetime.fromtimestamp(BIP85_GPG_CREATED_TS, tz=timezone.utc)
+        if key_type == "rsa2048":
+            expiration_dt = datetime(2029, 12, 31, tzinfo=timezone.utc)
+        else:
+            expiration_dt = datetime(2035, 12, 31, tzinfo=timezone.utc)
+        expires = expiration_dt - created
+
+        # Map primary key type to algorithm details for verification
+        algo_map = {
+            "Ed25519": ("22", "", "ed25519"),
+            "secp256k1": ("19", "", "secp256k1"),
+            "NIST P-256": ("19", "", "nistp256"),
+            "Brainpool P-256": ("19", "", "brainpoolp256r1"),
+            "RSA 2048": ("1", "2048", ""),
+            "RSA 3072": ("1", "3072", ""),
+            "RSA 4096": ("1", "4096", ""),
+        }
+        primary_algo, primary_bits, primary_curve = algo_map[key_type_label]
+
+        # Build subkey info for verification
+        verify_subkeys = []
+        curve_map = {
+            "nist p-256": "nistp256",
+            "brainpool p-256": "brainpoolp256r1",
+            "secp256k1": "secp256k1",
+            "ed25519": "ed25519",
+        }
+        for sk in entry.get("subkeys", []):
+            g_idx = sk["index"]
+            parts = sk["type"].split()
+            if parts[0] == "RSA":
+                algo = "1"
+                bits = parts[1]
+                curve = ""
+            else:
+                algo = {"ECDH": "18", "ECDSA": "19", "EdDSA": "22"}[parts[0]]
+                curve_label = " ".join(parts[1:]).lower()
+                curve = curve_map.get(curve_label, curve_label)
+                if parts[0] == "ECDH" and curve_label == "ed25519":
+                    curve = "cv25519"
+                bits = ""
+            verify_subkeys.append(
+                {
+                    "idx": g_idx + 1,
+                    "algo": algo,
+                    "bits": bits,
+                    "curve": curve,
+                    "fpr": sk.get("fingerprint", ""),
+                }
+            )
+
+        logger.info(
+            "Verifying BIP85 data for %s idx=%s", entry["primary_fpr"], key_index
+        )
+        if not bip85_verify_existing(
+            seed,
+            entry["primary_fpr"],
+            key_index,
+            BIP85_GPG_CREATED_TS,
+            primary_algo,
+            primary_bits,
+            primary_curve,
+            verify_subkeys,
+        ):
+            logger.warning(
+                "BIP85 verification failed for %s", entry["primary_fpr"]
+            )
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="Selected seed/index failed validation",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        root = bip32.HDKey.from_seed(seed.seed_bytes)
+        KEY_BITS = (
+            2048
+            if key_type == "rsa2048"
+            else 3072
+            if key_type == "rsa3072"
+            else 4096
+            if key_type == "rsa4096"
+            else None
+        )
+
+        def rsa_to_privpacket(rsa_key):
+            priv = fields.RSAPriv()
+            priv.n = MPI(rsa_key.n)
+            priv.e = MPI(rsa_key.e)
+            priv.d = MPI(rsa_key.d)
+            priv.p = MPI(rsa_key.p)
+            priv.q = MPI(rsa_key.q)
+            priv.u = MPI(pow(rsa_key.p, -1, rsa_key.q))
+            priv._compute_chksum()
+            return priv
+
+        loading = LoadingScreenThread(text="Rebuilding BIP85 GPG key\n\n\n\n\n\n")
+        loading.start()
+        try:
+            pk = PrivKeyV4()
+            if key_type == "secp256k1":
+                pk.pkalg = PubKeyAlgorithm.ECDSA
+                pk.keymaterial = bip85_secp256k1_from_root(root, key_index)
+            elif key_type == "p256":
+                pk.pkalg = PubKeyAlgorithm.ECDSA
+                pk.keymaterial = bip85_p256_from_root(root, key_index)
+            elif key_type == "brainpoolp256r1":
+                pk.pkalg = PubKeyAlgorithm.ECDSA
+                pk.keymaterial = bip85_brainpoolp256r1_from_root(root, key_index)
+            elif key_type == "ed25519":
+                pk.pkalg = PubKeyAlgorithm.EdDSA
+                pk.keymaterial = bip85_ed25519_from_root(root, key_index)
+            else:
+                rsa_main = bip85_rsa_from_root(root, KEY_BITS, key_index)
+                pk.pkalg = PubKeyAlgorithm.RSAEncryptOrSign
+                pk.keymaterial = rsa_to_privpacket(rsa_main)
+            pk.created = created
+            pk.update_hlen()
+
+            pgp_key = PGPKey()
+            pgp_key._key = pk
+
+            for uid_str in uid_list:
+                name, email = parse_uid(uid_str)
+                uid = PGPUID.new(name, email=email)
+                pgp_key.add_uid(
+                    uid,
+                    usage={KeyFlags.Certify, KeyFlags.Sign},
+                    hashes=[HashAlgorithm.SHA256],
+                    ciphers=[SymmetricKeyAlgorithm.AES256],
+                    compression=[CompressionAlgorithm.ZLIB],
+                    expires=expires,
+                    created=created,
+                    primary=(uid_str == primary_uid),
+                )
+
+            for sub in entry.get("subkeys", _bip85_subkey_specs("rsa")):
+                if isinstance(sub, int):
+                    g_idx = sub
+                    group_idx = g_idx // 3
+                    idx = g_idx % 3
+                    specs = _bip85_subkey_specs(
+                        {
+                            "p256": "nistp256",
+                            "brainpoolp256r1": "brainpoolP256r1",
+                            "secp256k1": "secp256k1",
+                            "ed25519": "ed25519",
+                        }.get(key_type, "rsa")
+                    )
+                    _, pkalg, usage, *alg = specs[idx]
+                    func_map = {
+                        "secp256k1": bip85_secp256k1_from_root,
+                        "p256": bip85_p256_from_root,
+                        "brainpoolp256r1": bip85_brainpoolp256r1_from_root,
+                        "ed25519": bip85_ed25519_from_root,
+                    }
+                    subpkt = PrivSubKeyV4()
+                    subpkt.pkalg = pkalg
+                    if key_type in func_map:
+                        subpkt.keymaterial = func_map[key_type](
+                            root, group_idx, idx, alg[0]
+                        )
+                    else:
+                        rsa_sub = bip85_rsa_from_root(root, KEY_BITS, group_idx, idx)
+                        subpkt.keymaterial = rsa_to_privpacket(rsa_sub)
+                else:
+                    g_idx = sub.get("index", 0)
+                    group_idx = g_idx // 3
+                    idx = g_idx % 3
+                    usage = (
+                        {KeyFlags.EncryptCommunications, KeyFlags.EncryptStorage}
+                        if idx == 0
+                        else {KeyFlags.Authentication}
+                        if idx == 1
+                        else {KeyFlags.Sign}
+                    )
+                    parts = sub.get("type", key_type_label).split()
+                    subpkt = PrivSubKeyV4()
+                    if parts[0] == "RSA":
+                        bits = int(parts[1])
+                        subpkt.pkalg = PubKeyAlgorithm.RSAEncryptOrSign
+                        rsa_sub = bip85_rsa_from_root(root, bits, group_idx, idx)
+                        subpkt.keymaterial = rsa_to_privpacket(rsa_sub)
+                    else:
+                        alg_name = parts[0]
+                        curve_label = " ".join(parts[1:]).lower()
+                        func_map = {
+                            "secp256k1": bip85_secp256k1_from_root,
+                            "nist p-256": bip85_p256_from_root,
+                            "brainpool p-256": bip85_brainpoolp256r1_from_root,
+                            "ed25519": bip85_ed25519_from_root,
+                        }
+                        pkalg_map = {
+                            "ECDH": PubKeyAlgorithm.ECDH,
+                            "ECDSA": PubKeyAlgorithm.ECDSA,
+                            "EdDSA": PubKeyAlgorithm.EdDSA,
+                        }
+                        subpkt.pkalg = pkalg_map[parts[0]]
+                        func = func_map[curve_label]
+                        subpkt.keymaterial = func(root, group_idx, idx, alg_name)
+                    subpkt.created = created
+                    subpkt.update_hlen()
+                    subkey = PGPKey()
+                    subkey._key = subpkt
+                    exp_fpr = sub.get("fingerprint")
+                    logger.info(
+                        "Derived subkey idx=%s fpr=%s expected=%s",
+                        g_idx,
+                        subkey.fingerprint,
+                        exp_fpr,
+                    )
+                    if exp_fpr and subkey.fingerprint != exp_fpr:
+                        logger.warning(
+                            "Subkey fingerprint mismatch at idx=%s: expected %s got %s",
+                            g_idx,
+                            exp_fpr,
+                            subkey.fingerprint,
+                        )
+                    pgp_key.add_subkey(
+                        subkey,
+                        usage=usage,
+                        hashes=[HashAlgorithm.SHA256],
+                        ciphers=[SymmetricKeyAlgorithm.AES256],
+                        compression=[CompressionAlgorithm.ZLIB],
+                        expires=expires,
+                        created=created,
+                    )
+                    continue
+
+                subpkt.created = created
+                subpkt.update_hlen()
+                subkey = PGPKey()
+                subkey._key = subpkt
+                exp_fpr = sub.get("fingerprint") if isinstance(sub, dict) else None
+                logger.info(
+                    "Derived subkey idx=%s fpr=%s expected=%s",
+                    g_idx,
+                    subkey.fingerprint,
+                    exp_fpr,
+                )
+                if exp_fpr and subkey.fingerprint != exp_fpr:
+                    logger.warning(
+                        "Subkey fingerprint mismatch at idx=%s: expected %s got %s",
+                        g_idx,
+                        exp_fpr,
+                        subkey.fingerprint,
+                    )
+                pgp_key.add_subkey(
+                    subkey,
+                    usage=usage,
+                    hashes=[HashAlgorithm.SHA256],
+                    ciphers=[SymmetricKeyAlgorithm.AES256],
+                    compression=[CompressionAlgorithm.ZLIB],
+                    expires=expires,
+                    created=created,
+                )
+
+            armored = str(pgp_key)
+            result = run(["gpg", "--batch", "--import"], input=armored.encode(), capture_output=True)
+        finally:
+            loading.stop()
+
+        if result.returncode == 0:
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Result",
+                status_headline=None,
+                text="BIP85 key rebuilt",
+                show_back_button=False,
+                button_data=[ButtonOption("Done")],
+            )
+        else:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="Failed to import key",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+        return Destination(ToolsGPGMenuView)
 
 
 class ToolsGPGSubkeyMenuView(View):
@@ -4351,6 +5117,8 @@ class ToolsGPGRevokeSubkeysView(View):
                 break
             sub = subkeys[sel]
             r = gpg_edit_subkey(fingerprint, sub["idx"], "revkey")
+            if r.returncode == 0 and fingerprint in BIP85_DATA:
+                BIP85_DATA[fingerprint]["revocations"].append(sub["fpr"])
             screen = LargeIconStatusScreen if r.returncode == 0 else WarningScreen
             msg = "Subkey revoked" if r.returncode == 0 else "Failed to revoke"
             self.run_screen(
@@ -4411,7 +5179,6 @@ class ToolsGPGDeleteSubkeysView(View):
             return Destination(BackStackView)
 
         fingerprint = keys[selected]["fpr"]
-        created_ts = keys[selected]["created"]
         result = run([
             "gpg",
             "--list-secret-keys",
@@ -4419,7 +5186,7 @@ class ToolsGPGDeleteSubkeysView(View):
             fingerprint,
         ], capture_output=True, text=True)
         subkeys = parse_subkey_list(result.stdout)
-        subkeys = filter_deletable_subkeys(created_ts, subkeys)
+        subkeys = filter_deletable_subkeys(fingerprint, subkeys)
         if not subkeys:
             self.run_screen(
                 WarningScreen,
@@ -4460,8 +5227,13 @@ class ToolsGPGDeleteSubkeysView(View):
                 "--with-colons",
                 fingerprint,
             ], capture_output=True, text=True)
+            if r.returncode == 0 and fingerprint in BIP85_DATA:
+                entry = BIP85_DATA[fingerprint]
+                entry["subkeys"] = [
+                    sk for sk in entry["subkeys"] if sk["fingerprint"] != sub["fpr"]
+                ]
             subkeys = parse_subkey_list(result.stdout)
-            subkeys = filter_deletable_subkeys(created_ts, subkeys)
+            subkeys = filter_deletable_subkeys(fingerprint, subkeys)
         return Destination(ToolsGPGMenuView)
 
 
@@ -4775,6 +5547,7 @@ class ToolsGPGExportSubkeySecretsView(View):
 class ToolsGPGUidMenuView(View):
     ADD_UID = ButtonOption("Add User ID")
     EDIT_UID = ButtonOption("Edit User IDs")
+    SET_PRIMARY_UID = ButtonOption("Set Primary User ID")
     REVOKE_UID = ButtonOption("Revoke User ID")
     DELETE_UID = ButtonOption("Delete User ID")
 
@@ -4782,6 +5555,7 @@ class ToolsGPGUidMenuView(View):
         button_data = [
             self.ADD_UID,
             self.EDIT_UID,
+            self.SET_PRIMARY_UID,
             self.REVOKE_UID,
             self.DELETE_UID,
         ]
@@ -4798,6 +5572,8 @@ class ToolsGPGUidMenuView(View):
             return Destination(ToolsGPGAddUidView)
         if choice == self.EDIT_UID:
             return Destination(ToolsGPGEditUidView)
+        if choice == self.SET_PRIMARY_UID:
+            return Destination(ToolsGPGSetPrimaryUidView)
         if choice == self.REVOKE_UID:
             return Destination(ToolsGPGRevokeUidView)
         return Destination(ToolsGPGDeleteUidView)
@@ -4839,6 +5615,17 @@ class ToolsGPGAddUidView(View):
 
         fingerprint = keys[selected]["fpr"]
 
+        # Preserve the key's original primary UID so that adding an
+        # additional UID does not change which one is displayed as primary.
+        result = run([
+            "gpg",
+            "--list-secret-keys",
+            "--with-colons",
+            fingerprint,
+        ], capture_output=True, text=True)
+        uids = parse_uid_list(result.stdout)
+        primary_uid = uids[0]["uid"] if uids else None
+
         def prompt_text(title: str):
             ret_dict = tools_screens.ToolsTextQRTextEntryScreen(textToEncode="", title=title).display()
             if "is_back_button" in ret_dict:
@@ -4862,6 +5649,18 @@ class ToolsGPGAddUidView(View):
         uid_str = f"{name} <{email}>" if email else name
 
         r = run(["gpg", "--batch", "--quick-add-uid", fingerprint, uid_str])
+        if r.returncode == 0 and primary_uid:
+            run([
+                "gpg",
+                "--batch",
+                "--quick-set-primary-uid",
+                fingerprint,
+                primary_uid,
+            ])
+        if r.returncode == 0 and fingerprint in BIP85_DATA:
+            entry = BIP85_DATA[fingerprint]
+            entry.setdefault("primary_uid", primary_uid)
+            entry["uids"].append(uid_str)
         screen = LargeIconStatusScreen if r.returncode == 0 else WarningScreen
         msg = "User ID added" if r.returncode == 0 else "Failed to add User ID"
         self.run_screen(
@@ -4962,6 +5761,85 @@ class ToolsGPGEditUidView(View):
             run(["gpg", "--batch", "--quick-revoke-uid", fingerprint, old_uid])
         screen = LargeIconStatusScreen if success else WarningScreen
         msg = "User ID updated" if success else "Failed to update User ID"
+        self.run_screen(
+            screen,
+            title="Result",
+            status_headline=None,
+            text=msg,
+            show_back_button=False,
+            button_data=[ButtonOption("Done")],
+        )
+        return Destination(ToolsGPGMenuView)
+
+
+class ToolsGPGSetPrimaryUidView(View):
+    def run(self):
+        from subprocess import run
+        from seedsigner.gui.screens import (
+            ButtonListScreen,
+            LargeIconStatusScreen,
+            WarningScreen,
+            seed_screens,
+        )
+
+        result = run(["gpg", "--list-secret-keys", "--with-colons"], capture_output=True, text=True)
+        keys = parse_secret_key_list(result.stdout)
+        if not keys:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No private keys found",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        buttons = [ButtonOption(k["uid"] if k["uid"] else k["fpr"][-8:]) for k in keys]
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Select Key",
+            is_button_text_centered=False,
+            button_data=buttons,
+        )
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        fingerprint = keys[selected]["fpr"]
+        result = run(["gpg", "--list-secret-keys", "--with-colons", fingerprint], capture_output=True, text=True)
+        uids = parse_uid_list(result.stdout)
+        if not uids:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No user IDs found",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        uid_buttons = [ButtonOption(u["uid"]) for u in uids]
+        sel = self.run_screen(
+            ButtonListScreen,
+            title="Set Primary User ID",
+            is_button_text_centered=False,
+            button_data=uid_buttons,
+        )
+        if sel == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        uid = uids[sel]["uid"]
+
+        r = run(["gpg", "--batch", "--quick-set-primary-uid", fingerprint, uid])
+        if r.returncode == 0 and fingerprint in BIP85_DATA:
+            entry = BIP85_DATA[fingerprint]
+            entry["primary_uid"] = uid
+            ulist = entry.get("uids", [])
+            if uid in ulist:
+                ulist.remove(uid)
+                ulist.insert(0, uid)
+        screen = LargeIconStatusScreen if r.returncode == 0 else WarningScreen
+        msg = "Primary UID set" if r.returncode == 0 else "Failed to set primary UID"
         self.run_screen(
             screen,
             title="Result",
@@ -5110,9 +5988,15 @@ class ToolsGPGDeleteUidView(View):
         )
         if sel == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
+        uid_str = uids[sel]["uid"]
         idx = uids[sel]["idx"]
 
         r = gpg_edit_uid(fingerprint, idx, "deluid")
+        if r.returncode == 0 and fingerprint in BIP85_DATA:
+            entry = BIP85_DATA[fingerprint]
+            entry["uids"] = [u for u in entry.get("uids", []) if u != uid_str]
+            if entry.get("primary_uid") == uid_str:
+                entry["primary_uid"] = entry["uids"][0] if entry["uids"] else None
         screen = LargeIconStatusScreen if r.returncode == 0 else WarningScreen
         msg = "User ID deleted" if r.returncode == 0 else "Failed to delete User ID"
         self.run_screen(
@@ -7969,7 +8853,152 @@ def _bip85_subkey_specs(alg):
     ]
 
 
-def bip85_add_subkeys(fingerprint: str, alg: str, key_index: int, start_index: int) -> bool:
+def bip85_verify_existing(
+    seed,
+    fingerprint: str,
+    key_index: int,
+    created_ts: int,
+    primary_algo: str,
+    primary_bits: str,
+    primary_curve: str,
+    subkeys,
+) -> bool:
+    from embit import bip32
+    from pgpy import PGPKey
+    from pgpy.pgp import PrivKeyV4, PrivSubKeyV4
+    from pgpy.constants import PubKeyAlgorithm
+    from pgpy.packet import fields
+    from pgpy.packet.types import MPI
+    from Cryptodome.PublicKey import RSA
+    from datetime import datetime, timezone
+
+    logger.info(
+        "bip85_verify_existing: fpr=%s index=%s", fingerprint, key_index
+    )
+    root = bip32.HDKey.from_seed(seed.seed_bytes)
+    created = datetime.fromtimestamp(created_ts, tz=timezone.utc)
+
+    def rsa_to_privpacket(rsa_key: RSA.RsaKey) -> fields.RSAPriv:
+        priv = fields.RSAPriv()
+        priv.n = MPI(rsa_key.n)
+        priv.e = MPI(rsa_key.e)
+        priv.d = MPI(rsa_key.d)
+        priv.p = MPI(rsa_key.p)
+        priv.q = MPI(rsa_key.q)
+        priv.u = MPI(pow(rsa_key.p, -1, rsa_key.q))
+        priv._compute_chksum()
+        return priv
+
+    pk = PrivKeyV4()
+    if primary_algo in ("1", "2", "3"):
+        pk.pkalg = PubKeyAlgorithm.RSAEncryptOrSign
+        bits = int(primary_bits) if primary_bits else 0
+        rsa_main = bip85_rsa_from_root(root, bits, key_index)
+        pk.keymaterial = rsa_to_privpacket(rsa_main)
+    elif primary_curve == "secp256k1":
+        pk.pkalg = PubKeyAlgorithm.ECDSA
+        pk.keymaterial = bip85_secp256k1_from_root(root, key_index)
+    elif primary_curve == "nistp256":
+        pk.pkalg = PubKeyAlgorithm.ECDSA
+        pk.keymaterial = bip85_p256_from_root(root, key_index)
+    elif primary_curve == "brainpoolp256r1":
+        pk.pkalg = PubKeyAlgorithm.ECDSA
+        pk.keymaterial = bip85_brainpoolp256r1_from_root(root, key_index)
+    elif primary_curve == "ed25519":
+        pk.pkalg = PubKeyAlgorithm.EdDSA
+        pk.keymaterial = bip85_ed25519_from_root(root, key_index)
+    else:
+        logger.warning(
+            "Unsupported primary key params: algo=%s bits=%s curve=%s",
+            primary_algo,
+            primary_bits,
+            primary_curve,
+        )
+        return False
+    pk.created = created
+    pk.update_hlen()
+    primary = PGPKey()
+    primary._key = pk
+    if primary.fingerprint != fingerprint:
+        logger.warning(
+            "Primary key fingerprint mismatch: expected %s got %s",
+            fingerprint,
+            primary.fingerprint,
+        )
+        return False
+
+    for sk in subkeys:
+        logger.info("Validating subkey idx=%s fpr=%s", sk["idx"], sk["fpr"])
+        j = sk["idx"] - 1
+        group_idx = j // 3
+        sub_index = j % 3
+        subpkt = PrivSubKeyV4()
+        algo = sk["algo"]
+        curve = sk["curve"]
+        bits = int(sk.get("bits", "0") or "0")
+        if algo in ("1", "2", "3"):
+            subpkt.pkalg = PubKeyAlgorithm.RSAEncryptOrSign
+            rsa_sub = bip85_rsa_from_root(root, bits, group_idx, sub_index)
+            subpkt.keymaterial = rsa_to_privpacket(rsa_sub)
+        elif curve == "secp256k1":
+            subpkt.pkalg = PubKeyAlgorithm.ECDH if algo == "18" else PubKeyAlgorithm.ECDSA
+            alg_name = "ECDH" if algo == "18" else "ECDSA"
+            subpkt.keymaterial = bip85_secp256k1_from_root(root, group_idx, sub_index, alg_name)
+        elif curve == "nistp256":
+            subpkt.pkalg = PubKeyAlgorithm.ECDH if algo == "18" else PubKeyAlgorithm.ECDSA
+            alg_name = "ECDH" if algo == "18" else "ECDSA"
+            subpkt.keymaterial = bip85_p256_from_root(root, group_idx, sub_index, alg_name)
+        elif curve == "brainpoolp256r1":
+            subpkt.pkalg = PubKeyAlgorithm.ECDH if algo == "18" else PubKeyAlgorithm.ECDSA
+            alg_name = "ECDH" if algo == "18" else "ECDSA"
+            subpkt.keymaterial = bip85_brainpoolp256r1_from_root(root, group_idx, sub_index, alg_name)
+        elif curve == "cv25519":
+            if algo != "18":
+                logger.warning(
+                    "Unsupported subkey params at idx=%s: algo=%s curve=%s bits=%s",
+                    sk["idx"],
+                    algo,
+                    curve,
+                    bits,
+                )
+                return False
+            subpkt.pkalg = PubKeyAlgorithm.ECDH
+            subpkt.keymaterial = bip85_ed25519_from_root(root, group_idx, sub_index, "ECDH")
+        elif curve == "ed25519":
+            subpkt.pkalg = PubKeyAlgorithm.EdDSA if algo == "22" else PubKeyAlgorithm.ECDH
+            alg_name = "EdDSA" if algo == "22" else "ECDH"
+            subpkt.keymaterial = bip85_ed25519_from_root(root, group_idx, sub_index, alg_name)
+        else:
+            logger.warning(
+                "Unsupported subkey params at idx=%s: algo=%s curve=%s bits=%s",
+                sk["idx"],
+                algo,
+                curve,
+                bits,
+            )
+            return False
+        subpkt.created = created
+        subpkt.update_hlen()
+        subkey = PGPKey()
+        subkey._key = subpkt
+        if subkey.fingerprint != sk["fpr"]:
+            logger.warning(
+                "Subkey fingerprint mismatch at idx=%s: expected %s got %s",
+                sk["idx"],
+                sk["fpr"],
+                subkey.fingerprint,
+            )
+            return False
+    logger.info("Primary and subkeys validated successfully")
+    return True
+
+
+from typing import Optional, List, Dict
+
+
+def bip85_add_subkeys(
+    fingerprint: str, alg: str, key_index: int, start_index: int, seed
+) -> Optional[List[Dict]]:
     from subprocess import run
     from embit import bip32
     from pgpy import PGPKey
@@ -7982,9 +9011,14 @@ def bip85_add_subkeys(fingerprint: str, alg: str, key_index: int, start_index: i
     from pgpy.packet import fields
     from pgpy.packet.types import MPI
     from Cryptodome.PublicKey import RSA
-    from seedsigner.controller import Controller
 
-    seed = Controller.get_instance().get_seed(0)
+    logger.info(
+        "bip85_add_subkeys: fpr=%s alg=%s key_index=%s start_index=%s",
+        fingerprint,
+        alg,
+        key_index,
+        start_index,
+    )
     root = bip32.HDKey.from_seed(seed.seed_bytes)
 
     export = run(
@@ -8018,9 +9052,22 @@ def bip85_add_subkeys(fingerprint: str, alg: str, key_index: int, start_index: i
         return priv
 
     subkey_specs = _bip85_subkey_specs(alg)
+    type_map = {
+        "nistp256": "NIST P-256",
+        "p256": "NIST P-256",
+        "brainpoolP256r1": "Brainpool P-256",
+        "secp256k1": "secp256k1",
+        "ed25519": "Ed25519",
+        "rsa2048": "RSA 2048",
+        "rsa3072": "RSA 3072",
+        "rsa4096": "RSA 4096",
+    }
+    alg_label = type_map.get(alg, alg)
 
+    added = []
     for offset, pkalg, usage, *alg_name in subkey_specs:
         sub_index = (start_index % 3) + offset
+        global_index = start_index + offset
         subpkt = PrivSubKeyV4()
         subpkt.pkalg = pkalg
         if alg == "secp256k1":
@@ -8046,6 +9093,9 @@ def bip85_add_subkeys(fingerprint: str, alg: str, key_index: int, start_index: i
             compression=[CompressionAlgorithm.ZLIB],
             expires=expires,
         )
+        alg_name_str = alg_name[0] if alg_name else pkalg.name
+        sub_type = alg_label if alg.startswith("rsa") else f"{alg_name_str} {alg_label}"
+        added.append({"index": global_index, "type": sub_type, "fingerprint": subkey.fingerprint})
 
     armored = str(pgp_key)
     r = run(
@@ -8053,7 +9103,7 @@ def bip85_add_subkeys(fingerprint: str, alg: str, key_index: int, start_index: i
         input=armored.encode(),
         capture_output=True,
     )
-    return r.returncode == 0
+    return added if r.returncode == 0 else None
 
 
 def loose_add_subkeys(fingerprint: str, alg: str) -> bool:
@@ -8253,6 +9303,32 @@ class ToolsGPGLoadBIP85KeyView(View):
             )
             return Destination(BackStackView)
 
+        if len(self.controller.storage.seeds) > 1:
+            seed_buttons = []
+            for seed in self.controller.storage.seeds:
+                button_str = seed.get_fingerprint(
+                    self.settings.get_value(SettingsConstants.SETTING__NETWORK)
+                )
+                seed_buttons.append(
+                    ButtonOption(
+                        button_str,
+                        SeedSignerIconConstants.FINGERPRINT,
+                        icon_color="blue",
+                    )
+                )
+            selected_seed = self.run_screen(
+                seed_screens.SeedSelectSeedScreen,
+                title="Select Seed",
+                text="Choose seed for BIP85 key",
+                is_button_text_centered=False,
+                button_data=seed_buttons,
+            )
+            if selected_seed == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+            seed = self.controller.get_seed(selected_seed)
+        else:
+            seed = self.controller.get_seed(0)
+
         ret = seed_screens.SeedBIP85SelectChildIndexScreen(title="Key Index").display()
         if ret == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
@@ -8275,6 +9351,7 @@ class ToolsGPGLoadBIP85KeyView(View):
         )
         if selected_type == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
+        key_type_label = keytype_buttons[selected_type].button_label
         key_type = [
             "p256",
             "brainpoolp256r1",
@@ -8337,7 +9414,7 @@ class ToolsGPGLoadBIP85KeyView(View):
         if email is None:
             return Destination(BackStackView)
 
-        created = datetime.fromtimestamp(1231005905, tz=timezone.utc)
+        created = datetime.fromtimestamp(BIP85_GPG_CREATED_TS, tz=timezone.utc)
         if key_type == "rsa2048":
             default_expiration = date(2029, 12, 31)
         else:
@@ -8369,8 +9446,6 @@ class ToolsGPGLoadBIP85KeyView(View):
                 button_data=[ButtonOption("I Understand")],
             )
             return Destination(BackStackView)
-
-        seed = self.controller.get_seed(0)
         root = bip32.HDKey.from_seed(seed.seed_bytes)
         KEY_BITS = (
             2048
@@ -8420,6 +9495,7 @@ class ToolsGPGLoadBIP85KeyView(View):
             pgp_key._key = pk
 
             uid = PGPUID.new(name, email=email)
+            uid_str = uid.userid
             pgp_key.add_uid(
                 uid,
                 usage={KeyFlags.Certify, KeyFlags.Sign},
@@ -8427,6 +9503,7 @@ class ToolsGPGLoadBIP85KeyView(View):
                 ciphers=[SymmetricKeyAlgorithm.AES256],
                 compression=[CompressionAlgorithm.ZLIB],
                 expires=expires,
+                created=created,
             )
 
             if key_type == "ed25519":
@@ -8448,6 +9525,7 @@ class ToolsGPGLoadBIP85KeyView(View):
                     (2, PubKeyAlgorithm.RSAEncryptOrSign, {KeyFlags.Sign}),
                 ]
 
+            subkey_info_list = []
             for spec in subkey_specs:
                 sub_index, pkalg, usage, *alg = spec
                 subpkt = PrivSubKeyV4()
@@ -8474,6 +9552,18 @@ class ToolsGPGLoadBIP85KeyView(View):
                     ciphers=[SymmetricKeyAlgorithm.AES256],
                     compression=[CompressionAlgorithm.ZLIB],
                     expires=expires,
+                    created=created,
+                )
+                alg_name = alg[0] if alg else pkalg.name
+                sub_type = (
+                    key_type_label if key_type.startswith("rsa") else f"{alg_name} {key_type_label}"
+                )
+                subkey_info_list.append(
+                    {
+                        "index": sub_index,
+                        "type": sub_type,
+                        "fingerprint": subkey.fingerprint,
+                    }
                 )
 
             armored = str(pgp_key)
@@ -8483,6 +9573,19 @@ class ToolsGPGLoadBIP85KeyView(View):
             self.loading_screen.stop()
 
         if result.returncode == 0:
+            seed_fpr = seed.get_fingerprint(
+                self.settings.get_value(SettingsConstants.SETTING__NETWORK)
+            )
+            BIP85_DATA[pgp_key.fingerprint] = {
+                "primary_fpr": pgp_key.fingerprint,
+                "seed_fpr": seed_fpr,
+                "index": key_index,
+                "key_type": key_type_label,
+                "uids": [uid_str],
+                "primary_uid": uid_str,
+                "subkeys": subkey_info_list,
+                "revocations": [],
+            }
             self.run_screen(
                 LargeIconStatusScreen,
                 title="Success",
@@ -8557,7 +9660,103 @@ class ToolsGPGAddSubkeysView(View):
             text=True,
         )
         start_index = sum(1 for line in result.stdout.splitlines() if line.startswith("ssb"))
+        created_ts = keys[selected]["created"]
+        entry = BIP85_DATA.get(fingerprint)
+        bip85 = entry is not None
+        logger.info(
+            "AddSubkeysView: fpr=%s bip85=%s start_index=%s",
+            fingerprint,
+            bip85,
+            start_index,
+        )
+        sec_line = next(l for l in result.stdout.splitlines() if l.startswith("sec"))
+        sec_parts = sec_line.split(":")
+        primary_bits = sec_parts[2] if len(sec_parts) > 2 else ""
+        primary_algo = sec_parts[3] if len(sec_parts) > 3 else ""
+        primary_curve = sec_parts[16].lower() if len(sec_parts) > 16 else ""
+        subkeys = parse_subkey_list(result.stdout)
 
+        seed = None
+        base_index = None
+        if bip85:
+            logger.info(
+                "BIP85 key detected; searching for seed fingerprint %s",
+                entry["seed_fpr"],
+            )
+            network = self.settings.get_value(SettingsConstants.SETTING__NETWORK)
+            seed = None
+            seed_index = None
+            for idx, seed_obj in enumerate(self.controller.storage.seeds):
+                if seed_obj.get_fingerprint(network) == entry["seed_fpr"]:
+                    seed = seed_obj
+                    seed_index = idx
+                    break
+            if seed is None:
+                self.run_screen(
+                    WarningScreen,
+                    title="Error",
+                    status_headline=None,
+                    text="Required seed not loaded",
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
+            logger.info("Seed matched at index=%s", seed_index)
+            base_index = entry["index"]
+            if not bip85_verify_existing(
+                seed,
+                fingerprint,
+                base_index,
+                created_ts,
+                primary_algo,
+                primary_bits,
+                primary_curve,
+                subkeys,
+            ):
+                logger.warning(
+                    "Selected seed/index failed validation for fingerprint %s",
+                    fingerprint,
+                )
+                corrected = None
+                for i in range(base_index - 1, -1, -1):
+                    if bip85_verify_existing(
+                        seed,
+                        fingerprint,
+                        i,
+                        created_ts,
+                        primary_algo,
+                        primary_bits,
+                        primary_curve,
+                        subkeys,
+                    ):
+                        corrected = i
+                        break
+                if corrected is None:
+                    self.run_screen(
+                        WarningScreen,
+                        title="Error",
+                        status_headline=None,
+                        text="Selected seed/index mismatch",
+                        show_back_button=False,
+                        button_data=[ButtonOption("I Understand")],
+                    )
+                    return Destination(BackStackView)
+                logger.warning(
+                    "Registry index %s mismatched; corrected to %s",
+                    base_index,
+                    corrected,
+                )
+                BIP85_DATA[fingerprint]["index"] = corrected
+                base_index = corrected
+            logger.info("Existing key validated successfully at index %s", base_index)
+
+        key_index = base_index + (start_index // 3) if bip85 else None
+        if bip85:
+            logger.info(
+                "AddSubkeysView: validated base_index=%s resulting key_index=%s",
+                base_index,
+                key_index,
+            )
         keytype_buttons = [
             ButtonOption("NIST P-256"),
             ButtonOption("Brainpool P-256"),
@@ -8597,29 +9796,18 @@ class ToolsGPGAddSubkeysView(View):
             "secp256k1",
             "ed25519",
         ][selected_type]
-
-        created_ts = keys[selected]["created"]
-        bip85 = created_ts == BIP85_GPG_CREATED_TS
-        key_index = start_index // 3 if bip85 else None
-        if bip85 and len(self.controller.storage.seeds) == 0:
-            self.run_screen(
-                WarningScreen,
-                title="Error",
-                status_headline=None,
-                text="Load a seed before using BIP85",
-                show_back_button=False,
-                button_data=[ButtonOption("I Understand")],
-            )
-            return Destination(BackStackView)
-
         self.loading_screen = LoadingScreenThread(
             text="Generating subkeys\n\n\n\n\n(This takes a while)"
         )
         self.loading_screen.start()
         success = True
+        added_info = None
         try:
             if bip85:
-                success = bip85_add_subkeys(fingerprint, alg, key_index, start_index)
+                added_info = bip85_add_subkeys(
+                    fingerprint, alg, key_index, start_index, seed
+                )
+                success = added_info is not None
             elif alg.startswith("rsa"):
                 for usage in ["encrypt", "sign,auth", "sign"]:
                     r = gpg_quick_addkey(fingerprint, alg, usage)
@@ -8643,6 +9831,8 @@ class ToolsGPGAddSubkeysView(View):
             self.loading_screen.stop()
 
         if success:
+            if bip85 and added_info is not None:
+                BIP85_DATA[fingerprint]["subkeys"].extend(added_info)
             self.run_screen(
                 LargeIconStatusScreen,
                 title="Success",
