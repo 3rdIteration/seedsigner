@@ -4144,7 +4144,8 @@ def parse_subkey_list(colon_output: str):
 
 
 # Retained for deterministic test vectors but no longer used for BIP85 detection
-BIP85_GPG_CREATED_TS = 1231006505
+# Matches the creation timestamp used by Krux
+BIP85_GPG_CREATED_TS = 1231005905
 
 # In-memory registry of BIP85-derived keys
 BIP85_DATA = {}
