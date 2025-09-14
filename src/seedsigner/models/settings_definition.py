@@ -296,13 +296,14 @@ class SettingsConstants:
     DEFAULT_SCARD_PIN_ATTEMPTS = 5
 
     # Satochip signing behavior
-    SATOCHIP_TIMEOUT_MIN = 0.5
-    SATOCHIP_TIMEOUT_MAX = 5
+    SATOCHIP_TIMEOUT_MIN = 0.25
+    SATOCHIP_TIMEOUT_MAX = 1
+
     ALL_SATOCHIP_TIMEOUTS = [
-        (i / 2, f"{i / 2:g}s")
-        for i in range(int(SATOCHIP_TIMEOUT_MIN * 2), int(SATOCHIP_TIMEOUT_MAX * 2) + 1)
+        (i, f"{i:g}s")
+        for i in [x * 0.25 for x in range(int(SATOCHIP_TIMEOUT_MIN / 0.25), int(SATOCHIP_TIMEOUT_MAX / 0.25) + 1)]
     ]
-    DEFAULT_SATOCHIP_TIMEOUT = 1
+    DEFAULT_SATOCHIP_TIMEOUT = 0.5
 
     SATOCHIP_PRE_DUMMY_MAX_MIN = 0
     SATOCHIP_PRE_DUMMY_MAX_MAX = 12
