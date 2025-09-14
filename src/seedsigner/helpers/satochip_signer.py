@@ -115,8 +115,14 @@ def sign_psbt_with_satochip(psbt: PSBT, connector) -> int:
             except Exception:
                 pass
 
-    # Now sign the actual PSBT inputs.
-    for i, inp in enumerate(psbt.inputs):
+    # Now sign the actual PSBT inputs. To avoid leaking the original
+    # ordering, process the inputs in a random sequence. Signatures are
+    # still written back to their original input index so the final PSBT
+    # ordering matches the caller's expectations.
+    indices = list(range(len(psbt.inputs)))
+    random.shuffle(indices)
+    for i in indices:
+        inp = psbt.inputs[i]
         if len(inp.bip32_derivations) == 0:
             continue
         for pubkey, deriv in inp.bip32_derivations.items():
