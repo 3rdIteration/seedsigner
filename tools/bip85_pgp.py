@@ -9,7 +9,9 @@ BIP85 and exports the result in ASCII-armoured format.
 from __future__ import annotations
 
 import argparse
+import sys
 from datetime import datetime, timezone, date
+from pathlib import Path
 from typing import List, Tuple
 
 from embit import bip32
@@ -25,6 +27,13 @@ from pgpy.pgp import PrivKeyV4, PrivSubKeyV4
 from pgpy.packet import fields
 from pgpy.packet.types import MPI
 from Cryptodome.PublicKey import RSA
+
+
+# Allow running without installing the project as a package.
+ROOT = Path(__file__).resolve().parents[1]
+SRC = ROOT / "src"
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
 
 from seedsigner.models.seed import Seed
 from seedsigner.helpers.bip85_drng import BIP85DRNG
