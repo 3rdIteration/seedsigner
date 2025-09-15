@@ -9305,6 +9305,18 @@ class ToolsGPGLoadBIP85KeyView(View):
             )
             return Destination(BackStackView)
 
+        self.run_screen(
+            WarningScreen,
+            title="WARNING",
+            status_headline=None,
+            text=(
+                "This feature extends BIP85 past current spec.\n"
+                "Record your SeedSigner Version."
+            ),
+            show_back_button=False,
+            button_data=[ButtonOption("I Understand")],
+        )
+
         if len(self.controller.storage.seeds) > 1:
             seed_buttons = []
             for seed in self.controller.storage.seeds:
