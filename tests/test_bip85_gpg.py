@@ -6,7 +6,7 @@ import shutil
 from embit import bip32, bip85
 from seedsigner.models.seed import Seed
 from seedsigner.controller import Controller
-from seedsigner.gui.screens import RET_CODE__BACK_BUTTON
+from seedsigner.gui.screens import RET_CODE__BACK_BUTTON, WarningScreen
 from seedsigner.views import tools_views
 from seedsigner.views.tools_views import (
     bip85_brainpoolp256r1_from_root,
@@ -666,7 +666,7 @@ def test_load_bip85_key_selects_seed(monkeypatch):
     original = list(controller.storage.seeds)
     controller.storage.seeds = [Seed(mnemonic=MNEMONIC), Seed(mnemonic=MNEMONIC)]
 
-    responses = iter([1, RET_CODE__BACK_BUTTON])
+    responses = iter([0, 1, RET_CODE__BACK_BUTTON])
     screens = []
 
     def fake_run_screen(self, screen, *args, **kwargs):
@@ -700,7 +700,8 @@ def test_load_bip85_key_selects_seed(monkeypatch):
         controller.storage.seeds = original
 
     assert captured["idx"] == 1
-    assert screens[0] == tools_views.seed_screens.SeedSelectSeedScreen
+    assert screens[0] == WarningScreen
+    assert screens[1] == tools_views.seed_screens.SeedSelectSeedScreen
 
 
 def test_filter_deletable_subkeys_bip85_only_latest():
