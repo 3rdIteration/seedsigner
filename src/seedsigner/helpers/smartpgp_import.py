@@ -1,4 +1,5 @@
 import logging
+from importlib import import_module
 from subprocess import run
 
 from typing import Iterable, Optional
@@ -6,7 +7,13 @@ from typing import Iterable, Optional
 import pgpy
 from pgpy.constants import KeyFlags, EllipticCurveOID
 
-from seedsigner.helpers.smartpgp.highlevel import CardConnectionContext, AdminPINFailed
+_highlevel = import_module('seedsigner.helpers.smartpgp.highlevel')
+CardConnectionContext = getattr(_highlevel, 'CardConnectionContext')
+AdminPINFailed = getattr(
+    _highlevel,
+    'AdminPINFailed',
+    type('AdminPINFailed', (Exception,), {}),
+)
 
 logger = logging.getLogger(__name__)
 
