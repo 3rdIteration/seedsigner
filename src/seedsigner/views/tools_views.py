@@ -9302,6 +9302,34 @@ def bip85_brainpoolp256r1_from_root(
     return priv
 
 
+def _bip85_key_type_choices(include_ecc: bool) -> list[tuple[str, str]]:
+    """Return available key type labels and identifiers for BIP85 GPG keys."""
+
+    choices: list[tuple[str, str]] = []
+    if include_ecc:
+        choices.extend(
+            [
+                ("NIST P-256", "p256"),
+                ("Brainpool P-256", "brainpoolp256r1"),
+            ]
+        )
+    choices.extend(
+        [
+            ("RSA 2048", "rsa2048"),
+            ("RSA 3072", "rsa3072"),
+            ("RSA 4096", "rsa4096"),
+        ]
+    )
+    if include_ecc:
+        choices.extend(
+            [
+                ("secp256k1", "secp256k1"),
+                ("Ed25519", "ed25519"),
+            ]
+        )
+    return choices
+
+
 class ToolsGPGLoadBIP85KeyView(View):
     def run(self):
         from embit import bip32
@@ -9334,17 +9362,23 @@ class ToolsGPGLoadBIP85KeyView(View):
             )
             return Destination(BackStackView)
 
-        self.run_screen(
-            WarningScreen,
-            title="WARNING",
-            status_headline=None,
-            text=(
-                "This feature extends BIP85 past current spec.\n"
-                "Record your SeedSigner Version."
-            ),
-            show_back_button=False,
-            button_data=[ButtonOption("I Understand")],
+        ecc_enabled = (
+            self.settings.get_value(SettingsConstants.SETTING__BIP85_ECC_KEYS)
+            == SettingsConstants.OPTION__ENABLED
         )
+
+        if ecc_enabled:
+            self.run_screen(
+                WarningScreen,
+                title="WARNING",
+                status_headline=None,
+                text=(
+                    "This feature extends BIP85 past current spec.\n"
+                    "Record your SeedSigner Version."
+                ),
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
 
         if len(self.controller.storage.seeds) > 1:
             seed_buttons = []
@@ -9377,15 +9411,8 @@ class ToolsGPGLoadBIP85KeyView(View):
             return Destination(BackStackView)
         key_index = int(ret)
 
-        keytype_buttons = [
-            ButtonOption("NIST P-256"),
-            ButtonOption("Brainpool P-256"),
-            ButtonOption("RSA 2048"),
-            ButtonOption("RSA 3072"),
-            ButtonOption("RSA 4096"),
-            ButtonOption("secp256k1"),
-            ButtonOption("Ed25519"),
-        ]
+        keytype_choices = _bip85_key_type_choices(ecc_enabled)
+        keytype_buttons = [ButtonOption(label) for label, _ in keytype_choices]
         selected_type = self.run_screen(
             ButtonListScreen,
             title="Key Type",
@@ -9395,15 +9422,7 @@ class ToolsGPGLoadBIP85KeyView(View):
         if selected_type == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
         key_type_label = keytype_buttons[selected_type].button_label
-        key_type = [
-            "p256",
-            "brainpoolp256r1",
-            "rsa2048",
-            "rsa3072",
-            "rsa4096",
-            "secp256k1",
-            "ed25519",
-        ][selected_type]
+        key_type = keytype_choices[selected_type][1]
 
         if key_type in ["secp256k1", "ed25519"]:
             ret = self.run_screen(
@@ -9801,15 +9820,12 @@ class ToolsGPGAddSubkeysView(View):
                 base_index,
                 key_index,
             )
-        keytype_buttons = [
-            ButtonOption("NIST P-256"),
-            ButtonOption("Brainpool P-256"),
-            ButtonOption("RSA 2048"),
-            ButtonOption("RSA 3072"),
-            ButtonOption("RSA 4096"),
-            ButtonOption("secp256k1"),
-            ButtonOption("Ed25519"),
-        ]
+        ecc_enabled = (
+            self.settings.get_value(SettingsConstants.SETTING__BIP85_ECC_KEYS)
+            == SettingsConstants.OPTION__ENABLED
+        )
+        keytype_choices = _bip85_key_type_choices(ecc_enabled)
+        keytype_buttons = [ButtonOption(label) for label, _ in keytype_choices]
         selected_type = self.run_screen(
             ButtonListScreen,
             title="Key Type",
@@ -9831,15 +9847,7 @@ class ToolsGPGAddSubkeysView(View):
             if ret == RET_CODE__BACK_BUTTON:
                 return Destination(BackStackView)
 
-        alg = [
-            "nistp256",
-            "brainpoolP256r1",
-            "rsa2048",
-            "rsa3072",
-            "rsa4096",
-            "secp256k1",
-            "ed25519",
-        ][selected_type]
+        alg = keytype_choices[selected_type][1]
         self.loading_screen = LoadingScreenThread(
             text="Generating subkeys\n\n\n\n\n(This takes a while)"
         )

@@ -27,6 +27,7 @@ from seedsigner.views.tools_views import (
     _select_import_algo,
     bip85_verify_existing,
 )
+from seedsigner.models.settings_definition import SettingsConstants
 from seedsigner.helpers.bip85_drng import BIP85DRNG
 
 pytestmark = pytest.mark.skipif(
@@ -732,11 +733,17 @@ def test_load_bip85_key_selects_seed(monkeypatch):
     original = list(controller.storage.seeds)
     controller.storage.seeds = [Seed(mnemonic=MNEMONIC), Seed(mnemonic=MNEMONIC)]
 
-    responses = iter([0, 1, RET_CODE__BACK_BUTTON])
+    responses = iter([1])
     screens = []
+    captured = {}
 
     def fake_run_screen(self, screen, *args, **kwargs):
         screens.append(screen)
+        if kwargs.get("title") == "Key Type":
+            captured["key_type_options"] = [
+                button.button_label for button in kwargs.get("button_data", [])
+            ]
+            return RET_CODE__BACK_BUTTON
         return next(responses)
 
     class DummyIndexScreen:
@@ -751,8 +758,6 @@ def test_load_bip85_key_selects_seed(monkeypatch):
         tools_views.seed_screens, "SeedBIP85SelectChildIndexScreen", DummyIndexScreen
     )
 
-    captured = {}
-
     def fake_get_seed(idx):
         captured["idx"] = idx
         return controller.storage.seeds[idx]
@@ -766,8 +771,73 @@ def test_load_bip85_key_selects_seed(monkeypatch):
         controller.storage.seeds = original
 
     assert captured["idx"] == 1
-    assert screens[0] == WarningScreen
-    assert screens[1] == tools_views.seed_screens.SeedSelectSeedScreen
+    assert screens[0] == tools_views.seed_screens.SeedSelectSeedScreen
+    assert WarningScreen not in screens
+    assert captured["key_type_options"] == ["RSA 2048", "RSA 3072", "RSA 4096"]
+
+
+def test_load_bip85_key_warning_when_ecc_enabled(monkeypatch):
+    from seedsigner.views import tools_views
+
+    controller = Controller.get_instance()
+    original = list(controller.storage.seeds)
+    controller.storage.seeds = [Seed(mnemonic=MNEMONIC)]
+
+    responses = iter([0])
+    screens = []
+    captured = {}
+
+    def fake_run_screen(self, screen, *args, **kwargs):
+        screens.append(screen)
+        if kwargs.get("title") == "Key Type":
+            captured["key_type_options"] = [
+                button.button_label for button in kwargs.get("button_data", [])
+            ]
+            return RET_CODE__BACK_BUTTON
+        return next(responses)
+
+    class DummyIndexScreen:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def display(self):
+            return "0"
+
+    monkeypatch.setattr(tools_views.ToolsGPGLoadBIP85KeyView, "run_screen", fake_run_screen)
+    monkeypatch.setattr(
+        tools_views.seed_screens, "SeedBIP85SelectChildIndexScreen", DummyIndexScreen
+    )
+
+    view = tools_views.ToolsGPGLoadBIP85KeyView()
+    base_settings = view.settings
+
+    class DummySettings:
+        def __init__(self, base):
+            self._base = base
+
+        def get_value(self, attr_name):
+            if attr_name == SettingsConstants.SETTING__BIP85_ECC_KEYS:
+                return SettingsConstants.OPTION__ENABLED
+            return self._base.get_value(attr_name)
+
+    view.settings = DummySettings(base_settings)
+
+    try:
+        view.run()
+    finally:
+        controller.storage.seeds = original
+        view.settings = base_settings
+
+    assert screens and screens[0] == WarningScreen
+    assert captured["key_type_options"] == [
+        "NIST P-256",
+        "Brainpool P-256",
+        "RSA 2048",
+        "RSA 3072",
+        "RSA 4096",
+        "secp256k1",
+        "Ed25519",
+    ]
 
 
 def test_filter_deletable_subkeys_bip85_only_latest():

@@ -44,7 +44,13 @@ from seedsigner.views.tools_views import (
     bip85_p256_from_root,
     bip85_brainpoolp256r1_from_root,
     _bip85_subkey_specs,
+    _bip85_key_type_choices,
 )
+
+
+# CLI test tool should expose every supported key type regardless of UI settings.
+CLI_KEY_TYPE_CHOICES = tuple(_bip85_key_type_choices(include_ecc=True))
+CLI_KEY_TYPE_CODES = tuple(code for _, code in CLI_KEY_TYPE_CHOICES)
 
 
 # ---------------------------------------------------------------------------
@@ -312,15 +318,7 @@ def main():
     parser.add_argument("--index", type=int, default=None, help="BIP85 key index")
     parser.add_argument(
         "--type",
-        choices=[
-            "p256",
-            "brainpoolp256r1",
-            "rsa2048",
-            "rsa3072",
-            "rsa4096",
-            "secp256k1",
-            "ed25519",
-        ],
+        choices=CLI_KEY_TYPE_CODES,
         help="Key type",
     )
     parser.add_argument("--name", help="User name")
@@ -328,15 +326,7 @@ def main():
     parser.add_argument("--expiration", help="Expiration date YYYY-MM-DD")
     parser.add_argument(
         "--subkey-type",
-        choices=[
-            "p256",
-            "brainpoolp256r1",
-            "rsa2048",
-            "rsa3072",
-            "rsa4096",
-            "secp256k1",
-            "ed25519",
-        ],
+        choices=CLI_KEY_TYPE_CODES,
         help="Generate three subkeys of this type",
     )
     parser.add_argument(
@@ -359,19 +349,11 @@ def main():
     if args.type:
         key_type = args.type
     else:
-        options = [
-            ("p256", "NIST P-256"),
-            ("brainpoolp256r1", "Brainpool P-256"),
-            ("rsa2048", "RSA 2048"),
-            ("rsa3072", "RSA 3072"),
-            ("rsa4096", "RSA 4096"),
-            ("secp256k1", "secp256k1"),
-            ("ed25519", "Ed25519"),
-        ]
-        for i, (_, label) in enumerate(options, 1):
+        options = CLI_KEY_TYPE_CHOICES
+        for i, (label, _) in enumerate(options, 1):
             print(f"{i}: {label}")
         sel = int(input("Select key type: ")) - 1
-        key_type = options[sel][0]
+        key_type = options[sel][1]
     name = args.name or input("Name: ")
     email = args.email or input("Email: ")
     expiration = args.expiration
@@ -384,19 +366,11 @@ def main():
     if subkey_type is None:
         gen = input("Generate trio of subkeys? [y/N]: ").strip().lower()
         if gen in {"y", "yes"}:
-            options = [
-                ("p256", "NIST P-256"),
-                ("brainpoolp256r1", "Brainpool P-256"),
-                ("rsa2048", "RSA 2048"),
-                ("rsa3072", "RSA 3072"),
-                ("rsa4096", "RSA 4096"),
-                ("secp256k1", "secp256k1"),
-                ("ed25519", "Ed25519"),
-            ]
-            for i, (_, label) in enumerate(options, 1):
+            options = CLI_KEY_TYPE_CHOICES
+            for i, (label, _) in enumerate(options, 1):
                 print(f"{i}: {label}")
             sel = int(input("Select subkey type: ")) - 1
-            subkey_type = options[sel][0]
+            subkey_type = options[sel][1]
             if additional is None:
                 additional = int(
                     input("Additional subkey sets (each adds three subkeys) [0]: ")
