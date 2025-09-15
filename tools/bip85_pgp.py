@@ -334,49 +334,56 @@ def _add_subkey_set(
         )
 
 
+def _key_bits(key_type: str | None) -> int | None:
+    """Return RSA bit length for ``key_type`` or ``None`` for EC types."""
+    return {
+        "rsa2048": 2048,
+        "rsa3072": 3072,
+        "rsa4096": 4096,
+    }.get(key_type)
+
+
 def create_bip85_pgp_key(
     mnemonic: str,
     key_index: int,
-    key_type: str,
+    primary_type: str,
     name: str,
     email: str,
     expiration: str | None = None,
+    subkey_type: str | None = None,
     additional_sets: int = 0,
 ) -> PGPKey:
-    """Generate a BIP85-derived PGP key."""
+    """Generate a BIP85-derived PGP key and optional subkeys."""
 
     seed = Seed(mnemonic.split())
     root = bip32.HDKey.from_seed(seed.seed_bytes)
     created = datetime.fromtimestamp(BIP85_GPG_CREATED_TS, tz=timezone.utc)
 
-    default_exp = date(2029, 12, 31) if key_type == "rsa2048" else date(2035, 12, 31)
+    default_exp = (
+        date(2029, 12, 31) if primary_type == "rsa2048" else date(2035, 12, 31)
+    )
     if expiration:
         expiration_dt = datetime.strptime(expiration, "%Y-%m-%d").date()
     else:
         expiration_dt = default_exp
-    expires = datetime.combine(expiration_dt, datetime.min.time(), tzinfo=timezone.utc) - created
-
-    key_bits = (
-        2048
-        if key_type == "rsa2048"
-        else 3072
-        if key_type == "rsa3072"
-        else 4096
-        if key_type == "rsa4096"
-        else None
+    expires = (
+        datetime.combine(expiration_dt, datetime.min.time(), tzinfo=timezone.utc)
+        - created
     )
 
+    key_bits = _key_bits(primary_type)
+
     pk = PrivKeyV4()
-    if key_type == "secp256k1":
+    if primary_type == "secp256k1":
         pk.pkalg = PubKeyAlgorithm.ECDSA
         pk.keymaterial = bip85_secp256k1_from_root(root, key_index)
-    elif key_type == "p256":
+    elif primary_type == "p256":
         pk.pkalg = PubKeyAlgorithm.ECDSA
         pk.keymaterial = bip85_p256_from_root(root, key_index)
-    elif key_type == "brainpoolp256r1":
+    elif primary_type == "brainpoolp256r1":
         pk.pkalg = PubKeyAlgorithm.ECDSA
         pk.keymaterial = bip85_brainpoolp256r1_from_root(root, key_index)
-    elif key_type == "ed25519":
+    elif primary_type == "ed25519":
         pk.pkalg = PubKeyAlgorithm.EdDSA
         pk.keymaterial = bip85_ed25519_from_root(root, key_index)
     else:
@@ -400,65 +407,80 @@ def create_bip85_pgp_key(
         created=created,
     )
 
-    # initial subkeys mirror graphical workflow
-    if key_type == "ed25519":
-        base_specs: List[Tuple] = [
-            (0, PubKeyAlgorithm.ECDH, {KeyFlags.EncryptCommunications, KeyFlags.EncryptStorage}, "ECDH"),
-            (1, PubKeyAlgorithm.EdDSA, {KeyFlags.Authentication}, "EdDSA"),
-            (2, PubKeyAlgorithm.EdDSA, {KeyFlags.Sign}, "EdDSA"),
-        ]
-    elif key_type in ["secp256k1", "p256", "brainpoolp256r1"]:
-        base_specs = [
-            (0, PubKeyAlgorithm.ECDH, {KeyFlags.EncryptCommunications, KeyFlags.EncryptStorage}, "ECDH"),
-            (1, PubKeyAlgorithm.ECDSA, {KeyFlags.Authentication}, "ECDSA"),
-            (2, PubKeyAlgorithm.ECDSA, {KeyFlags.Sign}, "ECDSA"),
-        ]
-    else:
-        base_specs = [
-            (0, PubKeyAlgorithm.RSAEncryptOrSign, {KeyFlags.EncryptCommunications, KeyFlags.EncryptStorage}),
-            (1, PubKeyAlgorithm.RSAEncryptOrSign, {KeyFlags.Authentication}),
-            (2, PubKeyAlgorithm.RSAEncryptOrSign, {KeyFlags.Sign}),
-        ]
+    if subkey_type:
+        sub_bits = _key_bits(subkey_type)
 
-    for sub_index, pkalg, usage, *name in base_specs:
-        alg_name = name[0] if name else None
-        _add_subkey(
-            pgp_key,
-            root,
-            key_type,
-            key_index,
-            sub_index,
-            pkalg,
-            usage,
-            created,
-            expires,
-            alg_name,
-            key_bits,
-        )
+        if subkey_type == "ed25519":
+            base_specs: List[Tuple] = [
+                (
+                    0,
+                    PubKeyAlgorithm.ECDH,
+                    {KeyFlags.EncryptCommunications, KeyFlags.EncryptStorage},
+                    "ECDH",
+                ),
+                (1, PubKeyAlgorithm.EdDSA, {KeyFlags.Authentication}, "EdDSA"),
+                (2, PubKeyAlgorithm.EdDSA, {KeyFlags.Sign}, "EdDSA"),
+            ]
+        elif subkey_type in ["secp256k1", "p256", "brainpoolp256r1"]:
+            base_specs = [
+                (
+                    0,
+                    PubKeyAlgorithm.ECDH,
+                    {KeyFlags.EncryptCommunications, KeyFlags.EncryptStorage},
+                    "ECDH",
+                ),
+                (1, PubKeyAlgorithm.ECDSA, {KeyFlags.Authentication}, "ECDSA"),
+                (2, PubKeyAlgorithm.ECDSA, {KeyFlags.Sign}, "ECDSA"),
+            ]
+        else:
+            base_specs = [
+                (
+                    0,
+                    PubKeyAlgorithm.RSAEncryptOrSign,
+                    {KeyFlags.EncryptCommunications, KeyFlags.EncryptStorage},
+                ),
+                (1, PubKeyAlgorithm.RSAEncryptOrSign, {KeyFlags.Authentication}),
+                (2, PubKeyAlgorithm.RSAEncryptOrSign, {KeyFlags.Sign}),
+            ]
 
-    # additional sets
-    alg_for_specs = {
-        "p256": "nistp256",
-        "brainpoolp256r1": "brainpoolP256r1",
-        "secp256k1": "secp256k1",
-        "ed25519": "ed25519",
-        "rsa2048": "rsa2048",
-        "rsa3072": "rsa3072",
-        "rsa4096": "rsa4096",
-    }[key_type]
-    start = 3
-    for _ in range(additional_sets):
-        _add_subkey_set(
-            pgp_key,
-            root,
-            alg_for_specs,
-            key_index,
-            start,
-            created,
-            expires,
-            key_bits,
-        )
-        start += 3
+        for sub_index, pkalg, usage, *name in base_specs:
+            alg_name = name[0] if name else None
+            _add_subkey(
+                pgp_key,
+                root,
+                subkey_type,
+                key_index,
+                sub_index,
+                pkalg,
+                usage,
+                created,
+                expires,
+                alg_name,
+                sub_bits,
+            )
+
+        alg_for_specs = {
+            "p256": "nistp256",
+            "brainpoolp256r1": "brainpoolP256r1",
+            "secp256k1": "secp256k1",
+            "ed25519": "ed25519",
+            "rsa2048": "rsa2048",
+            "rsa3072": "rsa3072",
+            "rsa4096": "rsa4096",
+        }[subkey_type]
+        start = 3
+        for _ in range(additional_sets):
+            _add_subkey_set(
+                pgp_key,
+                root,
+                alg_for_specs,
+                key_index,
+                start,
+                created,
+                expires,
+                sub_bits,
+            )
+            start += 3
 
     return pgp_key
 
@@ -497,9 +519,22 @@ def main():
     parser.add_argument("--email", help="User email")
     parser.add_argument("--expiration", help="Expiration date YYYY-MM-DD")
     parser.add_argument(
+        "--subkey-type",
+        choices=[
+            "p256",
+            "brainpoolp256r1",
+            "rsa2048",
+            "rsa3072",
+            "rsa4096",
+            "secp256k1",
+            "ed25519",
+        ],
+        help="Generate three subkeys of this type",
+    )
+    parser.add_argument(
         "--additional",
         type=int,
-        default=0,
+        default=None,
         help="Number of additional subkey sets (each adds three subkeys)",
     )
     parser.add_argument(
@@ -536,11 +571,34 @@ def main():
         expiration = input(
             "Expiration YYYY-MM-DD (leave blank for default): "
         ).strip() or None
+    subkey_type = args.subkey_type
     additional = args.additional
-    if args.additional == 0 and args.additional is None:
-        additional = int(
-            input("Additional subkey sets (each adds three subkeys) [0]: ") or 0
-        )
+    if subkey_type is None:
+        gen = input("Generate trio of subkeys? [y/N]: ").strip().lower()
+        if gen in {"y", "yes"}:
+            options = [
+                ("p256", "NIST P-256"),
+                ("brainpoolp256r1", "Brainpool P-256"),
+                ("rsa2048", "RSA 2048"),
+                ("rsa3072", "RSA 3072"),
+                ("rsa4096", "RSA 4096"),
+                ("secp256k1", "secp256k1"),
+                ("ed25519", "Ed25519"),
+            ]
+            for i, (_, label) in enumerate(options, 1):
+                print(f"{i}: {label}")
+            sel = int(input("Select subkey type: ")) - 1
+            subkey_type = options[sel][0]
+            if additional is None:
+                additional = int(
+                    input("Additional subkey sets (each adds three subkeys) [0]: ")
+                    or 0
+                )
+        else:
+            additional = 0
+    else:
+        if additional is None:
+            additional = 0
     export_type = args.export
 
     key = create_bip85_pgp_key(
@@ -550,6 +608,7 @@ def main():
         name,
         email,
         expiration,
+        subkey_type,
         additional,
     )
 

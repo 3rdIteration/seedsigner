@@ -13,9 +13,10 @@ def test_generate_pgp_key_and_export():
     key = bip85_pgp.create_bip85_pgp_key(
         mnemonic,
         key_index=0,
-        key_type="p256",
+        primary_type="p256",
         name="Tester",
         email="test@example.com",
+        subkey_type="p256",
         additional_sets=1,
     )
     assert key.fingerprint == "774AC53EC1414765F27F04AE58FD4133E660EE68"
