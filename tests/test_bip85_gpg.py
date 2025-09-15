@@ -830,13 +830,13 @@ def test_load_bip85_key_warning_when_ecc_enabled(monkeypatch):
 
     assert screens and screens[0] == WarningScreen
     assert captured["key_type_options"] == [
+        "ECC Ed25519",
         "ECC NIST P-256",
         "ECC Brainpool P-256",
         "RSA 2048",
         "RSA 3072",
         "RSA 4096",
         "ECC secp256k1",
-        "ECC Ed25519",
     ]
 
 

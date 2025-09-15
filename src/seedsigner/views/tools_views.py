@@ -9317,6 +9317,7 @@ def _bip85_key_type_choices(include_ecc: bool) -> list[tuple[str, str]]:
     if include_ecc:
         choices.extend(
             [
+                ("ECC Ed25519", "ed25519"),
                 ("ECC NIST P-256", "p256"),
                 ("ECC Brainpool P-256", "brainpoolp256r1"),
             ]
@@ -9329,12 +9330,7 @@ def _bip85_key_type_choices(include_ecc: bool) -> list[tuple[str, str]]:
         ]
     )
     if include_ecc:
-        choices.extend(
-            [
-                ("ECC secp256k1", "secp256k1"),
-                ("ECC Ed25519", "ed25519"),
-            ]
-        )
+        choices.append(("ECC secp256k1", "secp256k1"))
     return choices
 
 
@@ -9937,6 +9933,11 @@ class ToolsGPGGenerateKeyView(View):
 
         keytype_data = [
             (
+                "ECC Ed25519",
+                (PubKeyAlgorithm.EdDSA, EllipticCurveOID.Ed25519),
+                True,
+            ),
+            (
                 "ECC NIST P-256",
                 (PubKeyAlgorithm.ECDSA, EllipticCurveOID.NIST_P256),
                 False,
@@ -9964,11 +9965,6 @@ class ToolsGPGGenerateKeyView(View):
             (
                 "ECC secp256k1",
                 (PubKeyAlgorithm.ECDSA, EllipticCurveOID.SECP256K1),
-                True,
-            ),
-            (
-                "ECC Ed25519",
-                (PubKeyAlgorithm.EdDSA, EllipticCurveOID.Ed25519),
                 True,
             ),
         ]
