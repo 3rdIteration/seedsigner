@@ -4743,15 +4743,8 @@ class ToolsGPGRebuildBip85KeyView(View):
 
         key_index = entry["index"]
         key_type_label = entry["key_type"]
-        key_type = {
-            "NIST P-256": "p256",
-            "Brainpool P-256": "brainpoolp256r1",
-            "RSA 2048": "rsa2048",
-            "RSA 3072": "rsa3072",
-            "RSA 4096": "rsa4096",
-            "secp256k1": "secp256k1",
-            "Ed25519": "ed25519",
-        }[key_type_label]
+        key_type_lookup = dict(_bip85_key_type_choices(True))
+        key_type = key_type_lookup[key_type_label]
 
         uid_list = entry.get("uids", [])
         if not uid_list:
@@ -4781,15 +4774,15 @@ class ToolsGPGRebuildBip85KeyView(View):
 
         # Map primary key type to algorithm details for verification
         algo_map = {
-            "Ed25519": ("22", "", "ed25519"),
+            "ed25519": ("22", "", "ed25519"),
             "secp256k1": ("19", "", "secp256k1"),
-            "NIST P-256": ("19", "", "nistp256"),
-            "Brainpool P-256": ("19", "", "brainpoolp256r1"),
-            "RSA 2048": ("1", "2048", ""),
-            "RSA 3072": ("1", "3072", ""),
-            "RSA 4096": ("1", "4096", ""),
+            "p256": ("19", "", "nistp256"),
+            "brainpoolp256r1": ("19", "", "brainpoolp256r1"),
+            "rsa2048": ("1", "2048", ""),
+            "rsa3072": ("1", "3072", ""),
+            "rsa4096": ("1", "4096", ""),
         }
-        primary_algo, primary_bits, primary_curve = algo_map[key_type_label]
+        primary_algo, primary_bits, primary_curve = algo_map[key_type]
 
         # Build subkey info for verification
         verify_subkeys = []
@@ -4808,9 +4801,12 @@ class ToolsGPGRebuildBip85KeyView(View):
                 curve = ""
             else:
                 algo = {"ECDH": "18", "ECDSA": "19", "EdDSA": "22"}[parts[0]]
-                curve_label = " ".join(parts[1:]).lower()
-                curve = curve_map.get(curve_label, curve_label)
-                if parts[0] == "ECDH" and curve_label == "ed25519":
+                curve_label = " ".join(parts[1:])
+                if curve_label.startswith("ECC "):
+                    curve_label = curve_label[4:]
+                curve_label_lc = curve_label.lower()
+                curve = curve_map.get(curve_label_lc, curve_label_lc)
+                if parts[0] == "ECDH" and curve_label_lc == "ed25519":
                     curve = "cv25519"
                 bits = ""
             verify_subkeys.append(
@@ -4960,7 +4956,10 @@ class ToolsGPGRebuildBip85KeyView(View):
                         subpkt.keymaterial = rsa_to_privpacket(rsa_sub)
                     else:
                         alg_name = parts[0]
-                        curve_label = " ".join(parts[1:]).lower()
+                        curve_label = " ".join(parts[1:])
+                        if curve_label.startswith("ECC "):
+                            curve_label = curve_label[4:]
+                        curve_label_lc = curve_label.lower()
                         func_map = {
                             "secp256k1": bip85_secp256k1_from_root,
                             "nist p-256": bip85_p256_from_root,
@@ -4973,7 +4972,7 @@ class ToolsGPGRebuildBip85KeyView(View):
                             "EdDSA": PubKeyAlgorithm.EdDSA,
                         }
                         subpkt.pkalg = pkalg_map[parts[0]]
-                        func = func_map[curve_label]
+                        func = func_map[curve_label_lc]
                         subpkt.keymaterial = func(root, group_idx, idx, alg_name)
                     subpkt.created = created
                     subpkt.update_hlen()
@@ -9093,11 +9092,11 @@ def bip85_add_subkeys(
 
     subkey_specs = _bip85_subkey_specs(alg)
     type_map = {
-        "nistp256": "NIST P-256",
-        "p256": "NIST P-256",
-        "brainpoolP256r1": "Brainpool P-256",
-        "secp256k1": "secp256k1",
-        "ed25519": "Ed25519",
+        "nistp256": "ECC NIST P-256",
+        "p256": "ECC NIST P-256",
+        "brainpoolP256r1": "ECC Brainpool P-256",
+        "secp256k1": "ECC secp256k1",
+        "ed25519": "ECC Ed25519",
         "rsa2048": "RSA 2048",
         "rsa3072": "RSA 3072",
         "rsa4096": "RSA 4096",
@@ -9318,8 +9317,8 @@ def _bip85_key_type_choices(include_ecc: bool) -> list[tuple[str, str]]:
     if include_ecc:
         choices.extend(
             [
-                ("NIST P-256", "p256"),
-                ("Brainpool P-256", "brainpoolp256r1"),
+                ("ECC NIST P-256", "p256"),
+                ("ECC Brainpool P-256", "brainpoolp256r1"),
             ]
         )
     choices.extend(
@@ -9332,8 +9331,8 @@ def _bip85_key_type_choices(include_ecc: bool) -> list[tuple[str, str]]:
     if include_ecc:
         choices.extend(
             [
-                ("secp256k1", "secp256k1"),
-                ("Ed25519", "ed25519"),
+                ("ECC secp256k1", "secp256k1"),
+                ("ECC Ed25519", "ed25519"),
             ]
         )
     return choices
@@ -9382,7 +9381,7 @@ class ToolsGPGLoadBIP85KeyView(View):
                 title="WARNING",
                 status_headline=None,
                 text=(
-                    "This feature extends BIP85 past current spec.\n"
+                    "ECC Curves extend beyond current BIP85 spec..\n"
                     "Record your SeedSigner Version."
                 ),
                 show_back_button=False,
@@ -9844,7 +9843,9 @@ class ToolsGPGAddSubkeysView(View):
         if selected_type == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
 
-        if keytype_buttons[selected_type].button_label in ["secp256k1", "Ed25519"]:
+        _, alg = keytype_choices[selected_type]
+
+        if alg in ["secp256k1", "ed25519"]:
             ret = self.run_screen(
                 WarningScreen,
                 title="WARNING",
@@ -9856,7 +9857,6 @@ class ToolsGPGAddSubkeysView(View):
             if ret == RET_CODE__BACK_BUTTON:
                 return Destination(BackStackView)
 
-        alg = keytype_choices[selected_type][1]
         self.loading_screen = LoadingScreenThread(
             text="Generating subkeys\n\n\n\n\n(This takes a while)"
         )
@@ -9935,15 +9935,44 @@ class ToolsGPGGenerateKeyView(View):
             tools_screens,
         )
 
-        keytype_buttons = [
-            ButtonOption("NIST P-256"),
-            ButtonOption("Brainpool P-256"),
-            ButtonOption("RSA 2048"),
-            ButtonOption("RSA 3072"),
-            ButtonOption("RSA 4096"),
-            ButtonOption("secp256k1"),
-            ButtonOption("Ed25519"),
+        keytype_data = [
+            (
+                "ECC NIST P-256",
+                (PubKeyAlgorithm.ECDSA, EllipticCurveOID.NIST_P256),
+                False,
+            ),
+            (
+                "ECC Brainpool P-256",
+                (PubKeyAlgorithm.ECDSA, EllipticCurveOID.Brainpool_P256),
+                False,
+            ),
+            (
+                "RSA 2048",
+                (PubKeyAlgorithm.RSAEncryptOrSign, 2048),
+                False,
+            ),
+            (
+                "RSA 3072",
+                (PubKeyAlgorithm.RSAEncryptOrSign, 3072),
+                False,
+            ),
+            (
+                "RSA 4096",
+                (PubKeyAlgorithm.RSAEncryptOrSign, 4096),
+                False,
+            ),
+            (
+                "ECC secp256k1",
+                (PubKeyAlgorithm.ECDSA, EllipticCurveOID.SECP256K1),
+                True,
+            ),
+            (
+                "ECC Ed25519",
+                (PubKeyAlgorithm.EdDSA, EllipticCurveOID.Ed25519),
+                True,
+            ),
         ]
+        keytype_buttons = [ButtonOption(label) for label, _, _ in keytype_data]
         selected_type = self.run_screen(
             ButtonListScreen,
             title="Key Type",
@@ -9953,7 +9982,9 @@ class ToolsGPGGenerateKeyView(View):
         if selected_type == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
 
-        if keytype_buttons[selected_type].button_label in ["secp256k1", "Ed25519"]:
+        _, (alg, param), warn_export_blocked = keytype_data[selected_type]
+
+        if warn_export_blocked:
             ret = self.run_screen(
                 WarningScreen,
                 title="WARNING",
@@ -9964,16 +9995,6 @@ class ToolsGPGGenerateKeyView(View):
             )
             if ret == RET_CODE__BACK_BUTTON:
                 return Destination(BackStackView)
-
-        alg, param = [
-            (PubKeyAlgorithm.ECDSA, EllipticCurveOID.NIST_P256),
-            (PubKeyAlgorithm.ECDSA, EllipticCurveOID.Brainpool_P256),
-            (PubKeyAlgorithm.RSAEncryptOrSign, 2048),
-            (PubKeyAlgorithm.RSAEncryptOrSign, 3072),
-            (PubKeyAlgorithm.RSAEncryptOrSign, 4096),
-            (PubKeyAlgorithm.ECDSA, EllipticCurveOID.SECP256K1),
-            (PubKeyAlgorithm.EdDSA, EllipticCurveOID.Ed25519),
-        ][selected_type]
 
         if alg == PubKeyAlgorithm.RSAEncryptOrSign:
             warn_text = {
