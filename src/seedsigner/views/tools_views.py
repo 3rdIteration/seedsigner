@@ -10775,20 +10775,24 @@ class ToolsGPGImportKeyToCardView(View):
         primary_caps = ""
         subkeys = []
         cur = None
-        algo = None
+        algo = ""
+        primary_bits = ""
         curve = ""
         for line in result.stdout.splitlines():
             parts = line.split(":")
             if parts[0] == "sec":
                 primary_caps = parts[11].lower()
-                algo = parts[2]
+                primary_bits = parts[2] if len(parts) > 2 else ""
+                algo = parts[3] if len(parts) > 3 else ""
                 if len(parts) > 16:
                     curve = parts[16].lower()
             elif parts[0] == "ssb":
+                bits = parts[2] if len(parts) > 2 else ""
                 cur = {
                     "caps": parts[11].lower(),
                     "fpr": None,
-                    "algo": parts[2],
+                    "algo": parts[3] if len(parts) > 3 else "",
+                    "bits": bits,
                     "curve": parts[16].lower() if len(parts) > 16 else "",
                 }
                 subkeys.append(cur)
@@ -10811,8 +10815,9 @@ class ToolsGPGImportKeyToCardView(View):
             return Destination(BackStackView)
 
         logger.info(
-            "SmartPGP import selection: primary algo=%s curve=%s -> %s/%s",
+            "SmartPGP import selection: primary algo=%s bits=%s curve=%s -> %s/%s",
             algo,
+            primary_bits,
             curve,
             algo_to_check,
             curve_to_check,
