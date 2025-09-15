@@ -296,6 +296,7 @@ def test_bip85_load_key_deterministic(monkeypatch):
         {
             "storage": type("S", (), {"seeds": [seed]})(),
             "get_seed": lambda self, idx: seed,
+            "VERSION": Controller.VERSION,
         },
     )()
     from seedsigner.models.settings_definition import SettingsConstants
@@ -711,6 +712,7 @@ def test_filter_deletable_subkeys_bip85_only_latest():
         "seed_fpr": "S",
         "index": 0,
         "key_type": "NIST P-256",
+        "ss_version": Controller.VERSION,
         "uids": [],
         "subkeys": [
             {"index": 0, "type": "ECDH NIST P-256", "fingerprint": "A"},
@@ -742,15 +744,16 @@ def test_bip85_save_and_load(tmp_path):
         "seed_fpr": "seedfpr",
         "index": 0,
         "key_type": "NIST P-256",
+        "ss_version": Controller.VERSION,
         "uids": ["User <user@example.com>"],
         "primary_uid": "User <user@example.com>",
         "subkeys": [{"index": 0, "type": "ECDH NIST P-256", "fingerprint": "A"}],
         "revocations": ["A"],
     }
-    file_path = tmp_path / "bip85.json"
-    bip85_save_data(file_path)
+    bip85_save_data(tmp_path)
+    assert (tmp_path / "seedfpr.json").exists()
     BIP85_DATA.clear()
-    bip85_load_data(file_path)
+    bip85_load_data(tmp_path)
     assert BIP85_DATA[fpr]["seed_fpr"] == "seedfpr"
     assert BIP85_DATA[fpr]["key_type"] == "NIST P-256"
     assert BIP85_DATA[fpr]["uids"][0] == "User <user@example.com>"
@@ -781,7 +784,7 @@ def test_load_bip85_data_from_microsd(monkeypatch, tmp_path):
     view = tools_views.ToolsGPGLoadBip85DataView()
     view.run()
 
-    expected = tmp_path / "microsd-images" / "bip85_data.json"
+    expected = tmp_path / "microsd-images"
     assert captured["path"] == expected
 
 
@@ -797,6 +800,7 @@ def test_bip85_save_to_qr(monkeypatch):
         "seed_fpr": "S",
         "index": 0,
         "key_type": "NIST P-256",
+        "ss_version": Controller.VERSION,
         "uids": [],
         "subkeys": [],
         "revocations": [],
@@ -833,6 +837,7 @@ def test_bip85_save_to_microsd_logs_path(monkeypatch, tmp_path):
         "seed_fpr": "S",
         "index": 0,
         "key_type": "NIST P-256",
+        "ss_version": Controller.VERSION,
         "uids": [],
         "subkeys": [],
         "revocations": [],
@@ -864,7 +869,7 @@ def test_bip85_save_to_microsd_logs_path(monkeypatch, tmp_path):
     view.controller.storage.seeds = []
     view.run()
 
-    expected_path = tmp_path / "microsd-images" / "bip85_data.json"
+    expected_path = tmp_path / "microsd-images"
     assert captured["path"] == expected_path
     assert any(str(expected_path) in entry for entry in logs)
 
@@ -896,6 +901,7 @@ def test_bip85_save_to_seedkeeper(monkeypatch):
         "seed_fpr": "S",
         "index": 0,
         "key_type": "NIST P-256",
+        "ss_version": Controller.VERSION,
         "uids": [],
         "subkeys": [],
         "revocations": [],
@@ -983,6 +989,7 @@ def test_rebuild_bip85_key(monkeypatch):
         "seed_fpr": fpr,
         "index": 1,
         "key_type": "NIST P-256",
+        "ss_version": Controller.VERSION,
         "uids": ["Other <o@b.com>", "Primary <a@b.com>"],
         "primary_uid": "Primary <a@b.com>",
         "subkeys": [
@@ -1302,6 +1309,7 @@ def test_add_subkeys_auto_bip85_index(monkeypatch):
         "seed_fpr": "seedfpr",
         "index": 0,
         "key_type": "NIST P-256",
+        "ss_version": Controller.VERSION,
         "uids": ["User"],
         "primary_uid": "User",
         "subkeys": [
@@ -1408,6 +1416,7 @@ def test_add_subkeys_registry_index_correction(monkeypatch):
         "seed_fpr": "seedfpr",
         "index": 1,
         "key_type": "NIST P-256",
+        "ss_version": Controller.VERSION,
         "uids": ["User"],
         "primary_uid": "User",
         "subkeys": [],
@@ -1504,6 +1513,7 @@ def test_add_subkeys_missing_seed(monkeypatch):
         "seed_fpr": "seedfpr",
         "index": 0,
         "key_type": "NIST P-256",
+        "ss_version": Controller.VERSION,
         "uids": ["User"],
         "primary_uid": "User",
         "subkeys": [
@@ -1592,6 +1602,7 @@ def test_delete_subkeys_bip85_only_latest(monkeypatch):
         "seed_fpr": "seedfpr",
         "index": 0,
         "key_type": "NIST P-256",
+        "ss_version": Controller.VERSION,
         "uids": ["User"],
         "primary_uid": "User",
         "subkeys": [
