@@ -10810,6 +10810,14 @@ class ToolsGPGImportKeyToCardView(View):
             )
             return Destination(BackStackView)
 
+        logger.info(
+            "SmartPGP import selection: primary algo=%s curve=%s -> %s/%s",
+            algo,
+            curve,
+            algo_to_check,
+            curve_to_check,
+        )
+
         if algo_to_check not in ("1", "2", "3"):
             curve_map = {
                 "nistp256": "p256",
@@ -10821,6 +10829,9 @@ class ToolsGPGImportKeyToCardView(View):
             }
             cmd_suffix = curve_map.get(curve_to_check)
             if not cmd_suffix:
+                logger.error(
+                    "Unsupported SmartPGP key curve '%s' for algo %s", curve_to_check, algo_to_check
+                )
                 self.run_screen(
                     LargeIconStatusScreen,
                     title="Error",
@@ -10831,11 +10842,29 @@ class ToolsGPGImportKeyToCardView(View):
                 )
                 return Destination(BackStackView)
             try:
-                from seedsigner.helpers.smartpgp.highlevel import CardConnectionContext
+                from seedsigner.helpers.smartpgp.highlevel import (
+                    CardConnectionContext,
+                    AdminPINFailed,
+                )
 
                 ctx = CardConnectionContext()
                 ctx.admin_pin = admin_pin
+                logger.info(
+                    "Attempting to switch SmartPGP card to %s (%s)", cmd_suffix, curve_to_check
+                )
                 getattr(ctx, f"cmd_switch_{cmd_suffix}")()
+            except AdminPINFailed:
+                logger.warning("SmartPGP card rejected admin PIN during switch")
+                self.loading_screen.stop()
+                self.run_screen(
+                    LargeIconStatusScreen,
+                    title="Error",
+                    status_headline=None,
+                    text="Incorrect admin PIN",
+                    show_back_button=False,
+                    button_data=[ButtonOption("Continue")],
+                )
+                return Destination(BackStackView)
             except Exception as e:
                 logger.exception("SmartPGP switch failed: %s", e)
                 self.run_screen(
@@ -10926,12 +10955,18 @@ class ToolsGPGImportKeyToCardView(View):
             capture_output=True,
             text=True,
         )
+        logger.info("GPG edit-key import exited with code %s", result.returncode)
+        if result.stderr:
+            logger.debug("GPG stderr: %s", result.stderr)
         if result.returncode != 0:
             from seedsigner.helpers.smartpgp_import import (
                 import_keys_with_smartpgp,
                 SmartPGPAdminPinError,
             )
 
+            logger.info(
+                "Falling back to SmartPGP importer for %s", self.fingerprint
+            )
             try:
                 if import_keys_with_smartpgp(
                     self.fingerprint, admin_pin, self.selected_subkeys

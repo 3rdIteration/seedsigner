@@ -51,7 +51,17 @@ def import_keys_with_smartpgp(
     """
     try:
         if subkeys:
-            fprs = subkeys.values() if isinstance(subkeys, dict) else subkeys
+            if isinstance(subkeys, dict):
+                fprs = list(subkeys.values())
+                selection_repr = {k: v for k, v in subkeys.items() if v}
+            else:
+                fprs = list(subkeys)
+                selection_repr = fprs
+            logger.info(
+                'Exporting SmartPGP subkeys for %s: %s',
+                fingerprint,
+                selection_repr,
+            )
             keyids = [f[-16:] + "!" for f in fprs]
             cmd = [
                 'gpg',
@@ -62,7 +72,9 @@ def import_keys_with_smartpgp(
                 *keyids,
             ]
         else:
+            logger.info('Exporting full private key %s for SmartPGP import', fingerprint)
             cmd = ['gpg', '--export-secret-key', fingerprint]
+        logger.debug('Running command to export key material: %s', cmd)
         res = run(cmd, capture_output=True, check=True)
         key, _ = pgpy.PGPKey.from_blob(res.stdout)
     except Exception as e:
@@ -72,7 +84,9 @@ def import_keys_with_smartpgp(
     ctx = CardConnectionContext()
     ctx.admin_pin = admin_pin
     try:
+        logger.info('Connecting to SmartPGP card for fallback import')
         ctx.connect()
+        logger.info('Verifying SmartPGP admin PIN before import')
         ctx.verify_admin_pin()
     except AdminPINFailed as e:
         logger.warning('SmartPGP admin PIN verification failed')
@@ -88,6 +102,7 @@ def import_keys_with_smartpgp(
     # are present.  If a list of desired subkey fingerprints was supplied,
     # further trim the set to only those subkeys.
     all_keys = list(key.subkeys.values())
+    logger.info('Exported key contains %d subkeys', len(all_keys))
     if subkeys:
         if isinstance(subkeys, dict):
             selected = []
@@ -99,6 +114,7 @@ def import_keys_with_smartpgp(
                     if str(k.fingerprint).replace(' ', '').upper() == fpr.replace(' ', '').upper():
                         selected.append((flag, k))
                         break
+            logger.info('Subkey mapping for SmartPGP import: %s', selected)
             all_keys = selected
         else:
             wanted = {f.replace(' ', '').upper() for f in subkeys}
@@ -107,10 +123,12 @@ def import_keys_with_smartpgp(
                 for k in all_keys
                 if str(k.fingerprint).replace(' ', '').upper() in wanted
             ]
+            logger.info('Selected subkeys for SmartPGP import: %s', wanted)
     else:
         all_keys = [(None, k) for k in all_keys]
     if not all_keys:
         all_keys = [(None, key)]
+    logger.info('Preparing to import %d keys via SmartPGP', len(all_keys))
     fp_tags = {'sig': 0xC7, 'dec': 0xC8, 'auth': 0xC9}
     # Key generation timestamps are stored in individual DOs for each key
     # slot.  The previous implementation accidentally wrote the signature's
@@ -148,6 +166,11 @@ def import_keys_with_smartpgp(
             elif KeyFlags.Authentication in flags:
                 role = 'auth'
             if role is None:
+                logger.info(
+                    'Skipping subkey %s with unsupported key flags: %s',
+                    k.fingerprint,
+                    flags,
+                )
                 continue
         km = k._key.keymaterial
         try:
@@ -163,7 +186,21 @@ def import_keys_with_smartpgp(
                 priv = km.s.to_bytes(size, 'big')
                 point = km.p
                 pub = b'\x04' + point.x.to_bytes(size, 'big') + point.y.to_bytes(size, 'big')
+                logger.info(
+                    'Importing %s subkey %s as %s (size=%d bytes)',
+                    role,
+                    k.fingerprint,
+                    curve_name,
+                    size,
+                )
+                logger.info('Switching SmartPGP slot %s to %s', role, curve_name)
                 ctx.cmd_switch_crypto(curve_name, role)
+                logger.info(
+                    'Writing ECC key material to slot %s (pub=%d bytes, priv=%d bytes)',
+                    role,
+                    len(pub),
+                    len(priv),
+                )
                 ctx.cmd_put_key(role, pub, priv)
             elif hasattr(km, 'n') and hasattr(km, 'd'):
                 modulus_bits = km.n.bit_length()
@@ -197,13 +234,31 @@ def import_keys_with_smartpgp(
                     (0x96, dq_int.to_bytes(half_len, 'big')),
                     (0x97, int(km.n).to_bytes(modulus_len, 'big')),
                 ]
+                logger.info(
+                    'Importing %s subkey %s as RSA (%d bits)',
+                    role,
+                    k.fingerprint,
+                    modulus_bits,
+                )
+                logger.info('Switching SmartPGP slot %s to %s', role, alg)
                 ctx.cmd_switch_crypto(alg, role)
+                logger.info(
+                    'Writing RSA key material to slot %s (components=%d)',
+                    role,
+                    len(components),
+                )
                 ctx.cmd_put_key(role, components=components)
             else:
                 logger.error('Unsupported key type for SmartPGP import: %s', type(km))
                 return False
             fp = bytes.fromhex(str(k.fingerprint).replace(' ', ''))
             ts = int(k.created.timestamp()).to_bytes(4, 'big')
+            logger.info(
+                'Writing fingerprint %s and timestamp %s to slot %s',
+                k.fingerprint,
+                k.created.isoformat(),
+                role,
+            )
             ctx.cmd_put_data(fp_tags[role], fp)
             ctx.cmd_put_data(ts_tags[role], ts)
         except Exception as e:
