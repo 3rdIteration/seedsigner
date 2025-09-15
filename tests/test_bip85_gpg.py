@@ -1909,14 +1909,14 @@ def test_smartpgp_import_filters_subkeys(monkeypatch):
             pass
         def cmd_switch_crypto(self, curve, role):
             pass
-        def cmd_put_key(self, role, pub, priv):
+        def cmd_put_key(self, role, pub=None, priv=None, *, components=None):
             pass
         def cmd_put_data(self, tag, value):
             pass
 
     ctx_calls = {}
     class Ctx(DummyCtx):
-        def cmd_put_key(self, role, pub, priv):
+        def cmd_put_key(self, role, pub=None, priv=None, *, components=None):
             ctx_calls["role"] = role
     monkeypatch.setattr(smartpgp_import, "CardConnectionContext", lambda: Ctx())
 
@@ -1996,3 +1996,91 @@ def test_smartpgp_import_bad_admin_pin(monkeypatch):
 
     with pytest.raises(smartpgp_import.SmartPGPAdminPinError):
         smartpgp_import.import_keys_with_smartpgp("PRIFPR", "badpin", {"s": sk_fpr})
+
+
+def test_smartpgp_import_rsa_sets_key_type(monkeypatch):
+    import types, sys, datetime as dt
+    import pgpy
+    from pgpy.constants import KeyFlags, PubKeyAlgorithm
+
+    sc = types.ModuleType("smartcard")
+    sc_exc = types.ModuleType("smartcard.Exceptions")
+    class NoCardException(Exception):
+        pass
+    sc_exc.NoCardException = NoCardException
+    sc_sys = types.ModuleType("smartcard.System")
+    sc_sys.readers = lambda: []
+    sc_util = types.ModuleType("smartcard.util")
+    sc_util.toHexString = lambda data: ""
+    sc.Exceptions = sc_exc
+    sc.System = sc_sys
+    sc.util = sc_util
+    sys.modules.update({
+        "smartcard": sc,
+        "smartcard.Exceptions": sc_exc,
+        "smartcard.System": sc_sys,
+        "smartcard.util": sc_util,
+    })
+
+    from seedsigner.helpers import smartpgp_import
+
+    captured = {}
+
+    def fake_run(cmd, capture_output=True, check=True):
+        captured["cmd"] = cmd
+        class Res:
+            stdout = b"dummy"
+        return Res()
+
+    monkeypatch.setattr(smartpgp_import, "run", fake_run)
+
+    rsa_key = pgpy.PGPKey.new(PubKeyAlgorithm.RSAEncryptOrSign, 2048)
+    rsa_key.add_uid(pgpy.PGPUID.new("Test"), usage={KeyFlags.Sign})
+    km = rsa_key._key.keymaterial
+
+    sk_fpr = "A" * 40
+
+    class Sub:
+        def __init__(self):
+            self.key_flags = {KeyFlags.Sign}
+            self.fingerprint = sk_fpr
+            self.created = dt.datetime(2020, 1, 1)
+            self._key = type("K", (), {"keymaterial": km})()
+
+    class Key:
+        def __init__(self):
+            self.subkeys = {"s": Sub()}
+
+    monkeypatch.setattr(smartpgp_import.pgpy.PGPKey, "from_blob", lambda data: (Key(), None))
+
+    class DummyCtx:
+        def __init__(self):
+            self.admin_pin = None
+            self.switch_calls = []
+            self.put_calls = []
+        def connect(self):
+            pass
+        def verify_admin_pin(self):
+            pass
+        def cmd_switch_crypto(self, alg, role):
+            self.switch_calls.append((alg, role))
+        def cmd_put_key(self, role, pub=None, priv=None, *, components=None):
+            self.put_calls.append((role, components))
+        def cmd_put_data(self, tag, value):
+            pass
+
+    ctx = DummyCtx()
+    monkeypatch.setattr(smartpgp_import, "CardConnectionContext", lambda: ctx)
+
+    assert smartpgp_import.import_keys_with_smartpgp("PRIFPR", "1234", {"s": sk_fpr})
+    assert captured["cmd"][-1] == "AAAAAAAAAAAAAAAA!"
+    assert ctx.switch_calls == [("rsa2048", "sig")]
+    assert len(ctx.put_calls) == 1
+    role, components = ctx.put_calls[0]
+    assert role == "sig"
+    tags = [tag for tag, _ in components]
+    assert tags == [0x91, 0x92, 0x93, 0x94, 0x95, 0x96, 0x97]
+    lengths = [len(bytes(comp)) for _, comp in components]
+    assert lengths[0] == 3
+    assert lengths[1] == lengths[2] == lengths[3] == lengths[4] == lengths[5]
+    assert lengths[6] == lengths[1] * 2

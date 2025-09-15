@@ -19,6 +19,12 @@ _curve_map = {
     EllipticCurveOID.Brainpool_P512: 'brainpoolP512r1',
 }
 
+_rsa_alg_map = {
+    2048: 'rsa2048',
+    3072: 'rsa3072',
+    4096: 'rsa4096',
+}
+
 
 class SmartPGPAdminPinError(Exception):
     """Raised when SmartPGP admin PIN verification fails."""
@@ -144,20 +150,58 @@ def import_keys_with_smartpgp(
             if role is None:
                 continue
         km = k._key.keymaterial
-        curve_name = _curve_map.get(km.oid)
-        if not curve_name:
-            logger.error('Unsupported curve %s', km.oid)
-            return False
-        size = size_map.get(curve_name)
-        if not size:
-            logger.error('No size mapping for curve %s', curve_name)
-            return False
         try:
-            priv = km.s.to_bytes(size, 'big')
-            point = km.p
-            pub = b'\x04' + point.x.to_bytes(size, 'big') + point.y.to_bytes(size, 'big')
-            ctx.cmd_switch_crypto(curve_name, role)
-            ctx.cmd_put_key(role, pub, priv)
+            if hasattr(km, 'oid'):
+                curve_name = _curve_map.get(km.oid)
+                if not curve_name:
+                    logger.error('Unsupported curve %s', km.oid)
+                    return False
+                size = size_map.get(curve_name)
+                if not size:
+                    logger.error('No size mapping for curve %s', curve_name)
+                    return False
+                priv = km.s.to_bytes(size, 'big')
+                point = km.p
+                pub = b'\x04' + point.x.to_bytes(size, 'big') + point.y.to_bytes(size, 'big')
+                ctx.cmd_switch_crypto(curve_name, role)
+                ctx.cmd_put_key(role, pub, priv)
+            elif hasattr(km, 'n') and hasattr(km, 'd'):
+                modulus_bits = km.n.bit_length()
+                alg = _rsa_alg_map.get(modulus_bits)
+                if not alg:
+                    logger.error('Unsupported RSA modulus size %s bits', modulus_bits)
+                    return False
+                modulus_len = (modulus_bits + 7) // 8
+                if modulus_len % 2:
+                    logger.error('Unexpected odd RSA modulus length %s bytes', modulus_len)
+                    return False
+                half_len = modulus_len // 2
+                p_int = int(km.p)
+                q_int = int(km.q)
+                d_int = int(km.d)
+                e_int = int(km.e)
+                dp_int = d_int % (p_int - 1)
+                dq_int = d_int % (q_int - 1)
+                try:
+                    qinv_int = pow(q_int, -1, p_int)
+                except ValueError as exc:
+                    logger.error('Failed to compute RSA CRT coefficient: %s', exc)
+                    return False
+                exp_len = max(1, (e_int.bit_length() + 7) // 8)
+                components = [
+                    (0x91, e_int.to_bytes(exp_len, 'big')),
+                    (0x92, p_int.to_bytes(half_len, 'big')),
+                    (0x93, q_int.to_bytes(half_len, 'big')),
+                    (0x94, qinv_int.to_bytes(half_len, 'big')),
+                    (0x95, dp_int.to_bytes(half_len, 'big')),
+                    (0x96, dq_int.to_bytes(half_len, 'big')),
+                    (0x97, int(km.n).to_bytes(modulus_len, 'big')),
+                ]
+                ctx.cmd_switch_crypto(alg, role)
+                ctx.cmd_put_key(role, components=components)
+            else:
+                logger.error('Unsupported key type for SmartPGP import: %s', type(km))
+                return False
             fp = bytes.fromhex(str(k.fingerprint).replace(' ', ''))
             ts = int(k.created.timestamp()).to_bytes(4, 'big')
             ctx.cmd_put_data(fp_tags[role], fp)
