@@ -10927,10 +10927,15 @@ class ToolsGPGImportKeyToCardView(View):
             text=True,
         )
         if result.returncode != 0:
-            try:
-                from seedsigner.helpers.smartpgp_import import import_keys_with_smartpgp
+            from seedsigner.helpers.smartpgp_import import (
+                import_keys_with_smartpgp,
+                SmartPGPAdminPinError,
+            )
 
-                if import_keys_with_smartpgp(self.fingerprint, admin_pin, self.selected_subkeys):
+            try:
+                if import_keys_with_smartpgp(
+                    self.fingerprint, admin_pin, self.selected_subkeys
+                ):
                     self.loading_screen.stop()
                     self.run_screen(
                         LargeIconStatusScreen,
@@ -10941,6 +10946,17 @@ class ToolsGPGImportKeyToCardView(View):
                         button_data=[ButtonOption("Continue")],
                     )
                     return Destination(ToolsGPGMenuView)
+            except SmartPGPAdminPinError:
+                self.loading_screen.stop()
+                self.run_screen(
+                    LargeIconStatusScreen,
+                    title="Error",
+                    status_headline=None,
+                    text="Incorrect admin PIN",
+                    show_back_button=False,
+                    button_data=[ButtonOption("Continue")],
+                )
+                return Destination(BackStackView)
             except Exception as e:
                 logger.exception("SmartPGP fallback failed: %s", e)
             self.loading_screen.stop()

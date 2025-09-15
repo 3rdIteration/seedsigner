@@ -6,7 +6,7 @@ from typing import Iterable, Optional
 import pgpy
 from pgpy.constants import KeyFlags, EllipticCurveOID
 
-from seedsigner.helpers.smartpgp.highlevel import CardConnectionContext
+from seedsigner.helpers.smartpgp.highlevel import CardConnectionContext, AdminPINFailed
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +18,10 @@ _curve_map = {
     EllipticCurveOID.Brainpool_P384: 'brainpoolP384r1',
     EllipticCurveOID.Brainpool_P512: 'brainpoolP512r1',
 }
+
+
+class SmartPGPAdminPinError(Exception):
+    """Raised when SmartPGP admin PIN verification fails."""
 
 
 def import_keys_with_smartpgp(
@@ -64,6 +68,9 @@ def import_keys_with_smartpgp(
     try:
         ctx.connect()
         ctx.verify_admin_pin()
+    except AdminPINFailed as e:
+        logger.warning('SmartPGP admin PIN verification failed')
+        raise SmartPGPAdminPinError from e
     except Exception as e:
         logger.exception('SmartPGP connection failed: %s', e)
         return False
