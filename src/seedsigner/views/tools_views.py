@@ -4158,11 +4158,14 @@ def bip85_export_json():
     return json.dumps(list(BIP85_DATA.values()), indent=2)
 
 
-def bip85_import_json(data: str):
+def bip85_import_json(data: str, *, clear: bool = True):
     import json
 
     entries = json.loads(data)
-    BIP85_DATA.clear()
+    if isinstance(entries, dict):
+        entries = [entries]
+    if clear:
+        BIP85_DATA.clear()
     for entry in entries:
         if "primary_fpr" in entry:
             uids = entry.get("uids", [])
@@ -4174,13 +4177,41 @@ def bip85_import_json(data: str):
 
 
 def bip85_save_data(path):
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(bip85_export_json())
+    from pathlib import Path
+    import json
+
+    p = Path(path)
+    if p.is_dir():
+        for entry in BIP85_DATA.values():
+            fname = p / f"BIP85_{entry['seed_fpr']}.json"
+            with open(fname, "w", encoding="utf-8") as f:
+                json.dump(entry, f, indent=2)
+    else:
+        with open(p, "w", encoding="utf-8") as f:
+            f.write(bip85_export_json())
 
 
 def bip85_load_data(path):
-    with open(path, encoding="utf-8") as f:
-        bip85_import_json(f.read())
+    from pathlib import Path
+    import json
+
+    p = Path(path)
+    if p.is_dir():
+        entries = []
+        for file in p.glob("*.json"):
+            try:
+                with open(file, encoding="utf-8") as f:
+                    data = json.load(f)
+                if isinstance(data, list):
+                    entries.extend(data)
+                else:
+                    entries.append(data)
+            except Exception:
+                continue
+        bip85_import_json(json.dumps(entries))
+    else:
+        with open(p, encoding="utf-8") as f:
+            bip85_import_json(f.read())
 
 
 def parse_uid_list(colon_output: str):
@@ -4380,12 +4411,11 @@ class ToolsGPGSaveBip85DataView(View):
 
             file_list_path = MicroSD.get_microsd_dir() / "microsd-images"
             os.makedirs(file_list_path, exist_ok=True)
-            path = file_list_path / "bip85_data.json"
             try:
-                bip85_save_data(path)
-                logger.info("BIP85 data saved to %s", os.path.abspath(path))
+                bip85_save_data(file_list_path)
+                logger.info("BIP85 data saved to %s", os.path.abspath(file_list_path))
                 screen = LargeIconStatusScreen
-                msg = f"Saved as {path.name}"
+                msg = "BIP85 data saved"
             except Exception:
                 screen = WarningScreen
                 msg = "Failed to save BIP85 data"
@@ -4521,10 +4551,9 @@ class ToolsGPGLoadBip85DataView(View):
             import os
 
             file_list_path = MicroSD.get_microsd_dir() / "microsd-images"
-            path = file_list_path / "bip85_data.json"
             try:
-                bip85_load_data(path)
-                logger.info("BIP85 data loaded from %s", os.path.abspath(path))
+                bip85_load_data(file_list_path)
+                logger.info("BIP85 data loaded from %s", os.path.abspath(file_list_path))
                 screen = LargeIconStatusScreen
                 msg = "BIP85 data loaded"
             except Exception:
@@ -9595,6 +9624,7 @@ class ToolsGPGLoadBIP85KeyView(View):
                 "seed_fpr": seed_fpr,
                 "index": key_index,
                 "key_type": key_type_label,
+                "ss_version": self.controller.VERSION,
                 "uids": [uid_str],
                 "primary_uid": uid_str,
                 "subkeys": subkey_info_list,
