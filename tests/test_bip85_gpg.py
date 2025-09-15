@@ -116,7 +116,7 @@ def test_bip85_drng_vector():
 def test_bip85_rsa_entropy_vectors_match_libwally():
     root = bip32.HDKey.from_string(LIBWALLY_RSA_MASTER_XPRV)
     for expected, bits, index in BIP85_GPG_RSA_VECTORS:
-        entropy = bip85.derive_entropy(root, 828365, [bits, index])
+        entropy = bip85.derive_entropy(root, tools_views.BIP85_GPG_APP_RSA, [bits, index])
         assert entropy.hex() == expected
 
 
@@ -154,7 +154,7 @@ def test_bip85_secp256k1_deterministic():
     root = bip32.HDKey.from_seed(seed.seed_bytes)
     key = bip85_secp256k1_from_root(root, 0)
     assert int(key.s) == int(
-        "cefbb3197f44cbcd28ca548e7d6c22e2b67f497caeebb71fa91d1cc6ab78e502", 16
+        "f57c35cfe2bc7d15d847bb82951188d9b72c604cf052de9f9fd41dff545d5743", 16
     )
 
 
@@ -163,7 +163,7 @@ def test_bip85_p256_deterministic():
     root = bip32.HDKey.from_seed(seed.seed_bytes)
     key = bip85_p256_from_root(root, 0)
     assert int(key.s) == int(
-        "ef959a78fb241496d3b56bf1307f142a1c4b141b7bdb6ec95afc11f66eafad2f", 16
+        "236c5de595d7306949afe92f0f0086ef5fed541e4ca7e374eee414499a365f3f", 16
     )
 
 
@@ -172,7 +172,7 @@ def test_bip85_brainpoolp256r1_deterministic():
     root = bip32.HDKey.from_seed(seed.seed_bytes)
     key = bip85_brainpoolp256r1_from_root(root, 0)
     assert int(key.s) == int(
-        "6f48a0f8172149dd27c6d18e43017e2083e3dcf9ac58144ca054e4e86a7d3a24", 16
+        "6dedd2fd032d8153fbea2ec026e2df265897af0c070c544324a3c24a2964d755", 16
     )
 
 
@@ -181,7 +181,7 @@ def test_bip85_ed25519_deterministic():
     root = bip32.HDKey.from_seed(seed.seed_bytes)
     key = bip85_ed25519_from_root(root, 0)
     assert int(key.s) == int(
-        "7b947d4d726e678ce219948c837221b6712cdf74862b453921442d038f55040c", 16
+        "738a622e2b889989a272da3350053d42978c94e56cec646da180e206010924d3", 16
     )
 
 
@@ -277,12 +277,12 @@ def test_bip85_gpg_mixed_subkeys_deterministic():
             created=created,
         )
 
-    assert pgp_key.fingerprint == "E22DC9A7FDC9F51B7E795EA4134E37F3677DD798"
+    assert pgp_key.fingerprint == "662A9BF1670B7704A41C1FBC74054CC86CF4AB2C"
     fingerprints = [str(sk.fingerprint).replace(" ", "") for sk in pgp_key.subkeys.values()]
     assert fingerprints == [
-        "CF79EEF39935329B69CFCD6FD73018577F0CBE35",
-        "15BD8E20336AD1CFFA0B4363DEC612E5764867B6",
-        "BFD31BC4A4579ADD568D6C3B5FB00DCBCB25E073",
+        "71DD02A0E5E9033287EF85EA0E7275FA96AF991C",
+        "36B51EB5B9D11A2EEA976CF47D8B9EEB49E3B336",
+        "34599F081AA651F1A03EE7EF2F985087816EEBDA",
         "0938B62C0B8FE641FE528A8411A26272C153E6CF",
         "9696B4AAFCA808BFFDE2A04AD2CA980F3652A5D4",
         "07A435FD12E96F72C09B31966577C9E71A248706",

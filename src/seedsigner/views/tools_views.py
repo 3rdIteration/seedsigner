@@ -4148,6 +4148,15 @@ def parse_subkey_list(colon_output: str):
 # human-readable typo of "2009-01-03 18:05:05" UTC, which has propagated elsewhere.
 BIP85_GPG_CREATED_TS = 1231006505
 
+# BIP85 application numbers for supported GPG key types
+BIP85_GPG_APP_RSA = 828365
+BIP85_GPG_APP_CURVE25519 = 828366
+BIP85_GPG_APP_SECP256K1 = 828367
+BIP85_GPG_APP_NIST_P256 = 828368
+BIP85_GPG_APP_BRAINPOOL_P256 = 828369
+
+BIP85_GPG_ECC_KEY_BITS = 256
+
 # In-memory registry of BIP85-derived keys
 BIP85_DATA = {}
 
@@ -8720,7 +8729,7 @@ def bip85_rsa_from_root(root, bits: int, index: int, sub_index: int | None = Non
     path = [bits, index]
     if sub_index is not None:
         path.append(sub_index)
-    entropy = bip85.derive_entropy(root, 828365, path)
+    entropy = bip85.derive_entropy(root, BIP85_GPG_APP_RSA, path)
     drng = BIP85DRNG.new(entropy)
     return RSA.generate(bits, randfunc=drng.read)
 
@@ -8734,10 +8743,10 @@ def bip85_ed25519_from_root(
     from pgpy.constants import EllipticCurveOID
     from pgpy.packet import fields
 
-    path = [259, index]
+    path = [BIP85_GPG_ECC_KEY_BITS, index]
     if sub_index is not None:
         path.append(sub_index)
-    entropy = bip85.derive_entropy(root, 828365, path)
+    entropy = bip85.derive_entropy(root, BIP85_GPG_APP_CURVE25519, path)
     d_bytes = entropy[:32]
     if alg == "EdDSA":
         priv = fields.EdDSAPriv()
@@ -9197,10 +9206,10 @@ def bip85_secp256k1_from_root(
     from pgpy.constants import EllipticCurveOID
     from pgpy.packet import fields
 
-    path = [256, index]
+    path = [BIP85_GPG_ECC_KEY_BITS, index]
     if sub_index is not None:
         path.append(sub_index)
-    entropy = bip85.derive_entropy(root, 828365, path)
+    entropy = bip85.derive_entropy(root, BIP85_GPG_APP_SECP256K1, path)
     order = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
     d = int.from_bytes(entropy[:32], "big") % order
     if d == 0:
@@ -9233,10 +9242,10 @@ def bip85_p256_from_root(
     from pgpy.constants import EllipticCurveOID
     from pgpy.packet import fields
 
-    path = [257, index]
+    path = [BIP85_GPG_ECC_KEY_BITS, index]
     if sub_index is not None:
         path.append(sub_index)
-    entropy = bip85.derive_entropy(root, 828365, path)
+    entropy = bip85.derive_entropy(root, BIP85_GPG_APP_NIST_P256, path)
     # Avoid relying on cryptography's ``group_order`` attribute since
     # some versions (such as those bundled with seedsigner-os) do not
     # expose it. Instead, use the well-known group order for P-256.
@@ -9272,10 +9281,10 @@ def bip85_brainpoolp256r1_from_root(
     from pgpy.constants import EllipticCurveOID
     from pgpy.packet import fields
 
-    path = [258, index]
+    path = [BIP85_GPG_ECC_KEY_BITS, index]
     if sub_index is not None:
         path.append(sub_index)
-    entropy = bip85.derive_entropy(root, 828365, path)
+    entropy = bip85.derive_entropy(root, BIP85_GPG_APP_BRAINPOOL_P256, path)
     # Hardcode BrainpoolP256r1 group order to avoid relying on attributes
     # that may be missing in some cryptography builds.
     order = 0xA9FB57DBA1EEA9BC3E660A909D838D718C397AA3B561A6F7901E0E82974856A7
