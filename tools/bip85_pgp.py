@@ -78,18 +78,32 @@ class _DeterministicPGPKey(PGPKey):
 def _calculate_fingerprint(key: PGPKey) -> Fingerprint:
     """Return a deterministic fingerprint for ``key``'s primary packet."""
 
-    priv = key._key
-    plen = priv.keymaterial.publen()
-    length = 6 + plen
-    data = bytearray()
-    data.extend(b"\x99")
-    data.extend(length.to_bytes(2, "big"))
-    data.extend(b"\x04")
-    timestamp = calendar.timegm(priv.created.timetuple())
-    data.extend(timestamp.to_bytes(4, "big"))
-    data.append(int(priv.pkalg))
-    data.extend(priv.keymaterial.__bytearray__()[:plen])
-    return Fingerprint(hashlib.sha1(data).hexdigest().upper())
+    # ``pgpy`` already exposes a canonical fingerprint for the wrapped
+    # ``PrivKeyV4`` packet.  Prefer that value so we stay aligned with any
+    # upstream encoding tweaks (for example, the representation of EC public
+    # points changed between releases).  Older versions of ``pgpy`` may not
+    # expose ``fingerprint`` on the private packet, so fall back to a manual
+    # implementation in that scenario.
+    try:
+        primary = key._key
+        fp = primary.fingerprint  # type: ignore[attr-defined]
+    except AttributeError:
+        priv = key._key
+        plen = priv.keymaterial.publen()
+        length = 6 + plen
+        data = bytearray()
+        data.extend(b"\x99")
+        data.extend(length.to_bytes(2, "big"))
+        data.extend(b"\x04")
+        timestamp = calendar.timegm(priv.created.timetuple())
+        data.extend(timestamp.to_bytes(4, "big"))
+        data.append(int(priv.pkalg))
+        data.extend(priv.keymaterial.__bytearray__()[:plen])
+        fp_hex = hashlib.sha1(data).hexdigest().upper()
+    else:
+        fp_hex = str(fp)
+
+    return Fingerprint(fp_hex)
 
 
 def _rsa_to_privpacket(rsa_key: RSA.RsaKey) -> fields.RSAPriv:
