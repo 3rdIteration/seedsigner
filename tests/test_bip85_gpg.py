@@ -751,7 +751,7 @@ def test_bip85_save_and_load(tmp_path):
         "revocations": ["A"],
     }
     bip85_save_data(tmp_path)
-    assert (tmp_path / "seedfpr.json").exists()
+    assert (tmp_path / "BIP85_seedfpr.json").exists()
     BIP85_DATA.clear()
     bip85_load_data(tmp_path)
     assert BIP85_DATA[fpr]["seed_fpr"] == "seedfpr"

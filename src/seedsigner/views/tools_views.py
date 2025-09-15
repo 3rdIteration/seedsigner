@@ -4183,7 +4183,7 @@ def bip85_save_data(path):
     p = Path(path)
     if p.is_dir():
         for entry in BIP85_DATA.values():
-            fname = p / f"{entry['seed_fpr']}.json"
+            fname = p / f"BIP85_{entry['seed_fpr']}.json"
             with open(fname, "w", encoding="utf-8") as f:
                 json.dump(entry, f, indent=2)
     else:
