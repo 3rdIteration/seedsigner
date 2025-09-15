@@ -9,6 +9,8 @@ BIP85 and exports the result in ASCII-armoured format.
 from __future__ import annotations
 
 import argparse
+import calendar
+import hashlib
 import sys
 from datetime import datetime, timezone, date
 from pathlib import Path
@@ -26,6 +28,7 @@ from pgpy.constants import (
 from pgpy.pgp import PrivKeyV4, PrivSubKeyV4
 from pgpy.packet import fields
 from pgpy.packet.types import MPI
+from pgpy.types import Fingerprint
 from Cryptodome.PublicKey import RSA
 
 
@@ -56,6 +59,37 @@ CLI_KEY_TYPE_CODES = tuple(code for _, code in CLI_KEY_TYPE_CHOICES)
 # ---------------------------------------------------------------------------
 # Key generation
 # ---------------------------------------------------------------------------
+
+
+class _DeterministicPGPKey(PGPKey):
+    """PGP key wrapper that allows overriding the fingerprint calculation."""
+
+    def __init__(self):
+        super().__init__()
+        self._fingerprint_override: Fingerprint | None = None
+
+    @property
+    def fingerprint(self) -> Fingerprint:
+        if self._fingerprint_override is not None:
+            return self._fingerprint_override
+        return super().fingerprint
+
+
+def _calculate_fingerprint(key: PGPKey) -> Fingerprint:
+    """Return a deterministic fingerprint for ``key``'s primary packet."""
+
+    priv = key._key
+    plen = priv.keymaterial.publen()
+    length = 6 + plen
+    data = bytearray()
+    data.extend(b"\x99")
+    data.extend(length.to_bytes(2, "big"))
+    data.extend(b"\x04")
+    timestamp = calendar.timegm(priv.created.timetuple())
+    data.extend(timestamp.to_bytes(4, "big"))
+    data.append(int(priv.pkalg))
+    data.extend(priv.keymaterial.__bytearray__()[:plen])
+    return Fingerprint(hashlib.sha1(data).hexdigest().upper())
 
 
 def _rsa_to_privpacket(rsa_key: RSA.RsaKey) -> fields.RSAPriv:
@@ -207,7 +241,7 @@ def create_bip85_pgp_key(
     pk.created = created
     pk.update_hlen()
 
-    pgp_key = PGPKey()
+    pgp_key = _DeterministicPGPKey()
     pgp_key._key = pk
 
     uid = PGPUID.new(name, email=email)
@@ -296,6 +330,7 @@ def create_bip85_pgp_key(
             )
             start += 3
 
+    pgp_key._fingerprint_override = _calculate_fingerprint(pgp_key)
     return pgp_key
 
 

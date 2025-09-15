@@ -17,12 +17,80 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
-from .commands import *
-
 import binascii
 import pyasn1
 from pyasn1.type import univ
 from pyasn1.codec.der import encoder as der_encoder,decoder as der_decoder
+
+try:
+    from . import commands as _commands
+except ModuleNotFoundError as exc:  # pragma: no cover - exercised in CI without pyscard
+    _commands = None
+    _commands_import_error = exc
+else:  # pragma: no cover - exercised when pyscard is available
+    _commands_import_error = None
+
+
+def _require_commands():
+    if _commands is None:
+        raise ModuleNotFoundError(
+            "The 'pyscard' dependency is required for SmartPGP card operations."
+        ) from _commands_import_error
+    return _commands
+
+
+def _wrap_command(name):
+    def _call(*args, **kwargs):
+        return getattr(_require_commands(), name)(*args, **kwargs)
+
+    return _call
+
+
+def _wrap_attribute(name, default=None):
+    if _commands is None:
+        return default
+    return getattr(_commands, name)
+
+
+_COMMAND_SYMBOLS = {
+    'OID_ALGS': {},
+    'asOctets': _wrap_command('asOctets'),
+    'ascii_encode_pin': _wrap_command('ascii_encode_pin'),
+    'assemble_with_len': _wrap_command('assemble_with_len'),
+    'change_reference_data_pw1': _wrap_command('change_reference_data_pw1'),
+    'change_reference_data_pw3': _wrap_command('change_reference_data_pw3'),
+    'decrypt_aes': _wrap_command('decrypt_aes'),
+    'encrypt_aes': _wrap_command('encrypt_aes'),
+    'full_reset_card': _wrap_command('full_reset_card'),
+    'generate_sm_key': _wrap_command('generate_sm_key'),
+    'get_kdf_do': _wrap_command('get_kdf_do'),
+    'get_sm_certificate': _wrap_command('get_sm_certificate'),
+    'get_sm_curve_oid': _wrap_command('get_sm_curve_oid'),
+    'get_sm_key': _wrap_command('get_sm_key'),
+    'kdf_itersalted_s2k': _wrap_command('kdf_itersalted_s2k'),
+    'list_readers': _wrap_command('list_readers'),
+    'put_aes_key': _wrap_command('put_aes_key'),
+    'put_auth_certificate': _wrap_command('put_auth_certificate'),
+    'put_data': _wrap_command('put_data'),
+    'put_kdf_do': _wrap_command('put_kdf_do'),
+    'put_key': _wrap_command('put_key'),
+    'put_key_components': _wrap_command('put_key_components'),
+    'put_sign_certificate': _wrap_command('put_sign_certificate'),
+    'put_sm_certificate': _wrap_command('put_sm_certificate'),
+    'reset_card': _wrap_command('reset_card'),
+    'select_applet': _wrap_command('select_applet'),
+    'select_reader': _wrap_command('select_reader'),
+    'set_resetting_code': _wrap_command('set_resetting_code'),
+    'switch_crypto': _wrap_command('switch_crypto'),
+    'unblock_pin': _wrap_command('unblock_pin'),
+    'verif_admin_pin': _wrap_command('verif_admin_pin'),
+    'verif_user_pin': _wrap_command('verif_user_pin'),
+}
+
+
+for _name, _wrapper in list(_COMMAND_SYMBOLS.items()):
+    globals()[_name] = _wrap_attribute(_name, default=_wrapper)
+
 
 
 
