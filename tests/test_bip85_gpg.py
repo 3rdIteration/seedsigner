@@ -2066,10 +2066,15 @@ def test_import_key_to_card_view_reports_bad_admin_pin(monkeypatch):
         return DummyResult()
 
     monkeypatch.setattr(subprocess, "run", fake_run)
+    disconnect_calls = []
+
+    def fake_disconnect(controller):
+        disconnect_calls.append(controller)
+
     monkeypatch.setattr(
         tools_views.seedkeeper_utils,
         "disconnect_smartcard_connections",
-        lambda controller: None,
+        fake_disconnect,
     )
 
     class RejectingCtx:
@@ -2107,6 +2112,124 @@ def test_import_key_to_card_view_reports_bad_admin_pin(monkeypatch):
     assert isinstance(result, tools_views.Destination)
     assert result.View_cls is tools_views.BackStackView
     assert captured["kwargs"]["text"] == "Incorrect admin PIN"
+    assert view.controller.GPG_Admin_PIN is None
+    assert disconnect_calls
+    assert disconnect_calls[-1] is view.controller
+
+
+def test_import_key_to_card_view_fallback_bad_admin_pin(monkeypatch):
+    import subprocess
+    from types import MethodType, SimpleNamespace
+
+    from seedsigner.helpers import smartpgp_import
+
+    sec_parts = [
+        "sec",
+        "",
+        "3072",
+        "1",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "sca",
+        "",
+        "",
+        "",
+        "",
+        "",
+    ]
+    sub_parts = [
+        "ssb",
+        "",
+        "3072",
+        "1",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "sea",
+        "",
+        "",
+        "",
+        "",
+        "",
+    ]
+    fpr_primary = ["fpr", "", "", "", "", "", "", "", "", "PRIMARYFPR"]
+    fpr_sub = ["fpr", "", "", "", "", "", "", "", "", "SUBFPR"]
+    gpg_list_output = "\n".join(
+        ":".join(parts)
+        for parts in (sec_parts, fpr_primary, sub_parts, fpr_sub)
+    )
+
+    class DummyResult:
+        def __init__(self, stdout="", stderr="", returncode=0):
+            self.stdout = stdout
+            self.stderr = stderr
+            self.returncode = returncode
+
+    def fake_run(cmd, *args, capture_output=True, text=True, input=None, **kwargs):
+        cmd_tuple = tuple(cmd)
+        if len(cmd_tuple) >= 3 and cmd_tuple[0] == "gpgconf" and cmd_tuple[2] == "scdaemon":
+            return DummyResult()
+        if len(cmd_tuple) >= 2 and cmd_tuple[0] == "gpg" and cmd_tuple[1] == "--card-status":
+            return DummyResult(stdout="", stderr="", returncode=0)
+        if "--list-secret-keys" in cmd:
+            return DummyResult(stdout=gpg_list_output, stderr="", returncode=0)
+        if "--edit-key" in cmd:
+            return DummyResult(stdout="", stderr="Bad PIN", returncode=2)
+        return DummyResult()
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    disconnect_calls = []
+
+    def fake_disconnect(controller):
+        disconnect_calls.append(controller)
+
+    monkeypatch.setattr(
+        tools_views.seedkeeper_utils,
+        "disconnect_smartcard_connections",
+        fake_disconnect,
+    )
+
+    def raising_import(*args, **kwargs):
+        raise smartpgp_import.SmartPGPAdminPinError()
+
+    monkeypatch.setattr(
+        smartpgp_import,
+        "import_keys_with_smartpgp",
+        raising_import,
+    )
+
+    view = object.__new__(tools_views.ToolsGPGImportKeyToCardView)
+    view.fingerprint = "PRIMARYFPR"
+    view.selected_subkeys = {"s": "SUBFPR"}
+    view.controller = SimpleNamespace(GPG_Admin_PIN="badpin", Satochip_Connector=None)
+    view.loading_screen = None
+
+    captured = {}
+
+    def fake_run_screen(self, screen_cls, **kwargs):
+        captured["text"] = kwargs.get("text")
+        return 0
+
+    view.run_screen = MethodType(fake_run_screen, view)
+
+    result = tools_views.ToolsGPGImportKeyToCardView.run(view)
+
+    assert isinstance(result, tools_views.Destination)
+    assert result.View_cls is tools_views.BackStackView
+    assert captured.get("text") == "Incorrect admin PIN"
+    assert view.controller.GPG_Admin_PIN is None
+    assert len(disconnect_calls) >= 2
+    assert disconnect_calls[-1] is view.controller
 
 
 def test_smartpgp_import_rsa_sets_key_type(monkeypatch):

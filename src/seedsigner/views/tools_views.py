@@ -10650,6 +10650,17 @@ class ToolsGPGImportKeyToCardView(View):
             finally:
                 self.loading_screen = None
 
+    def _clear_cached_admin_pin(self):
+        controller = getattr(self, "controller", None)
+        if not controller:
+            return
+        if hasattr(controller, "GPG_Admin_PIN"):
+            controller.GPG_Admin_PIN = None
+        try:
+            seedkeeper_utils.disconnect_smartcard_connections(controller)
+        except Exception:
+            logger.debug("Failed to reset smartcard connections after admin PIN error", exc_info=True)
+
     def run(self):
         from subprocess import run
         from seedsigner.gui.screens.screen import LoadingScreenThread
@@ -10874,6 +10885,7 @@ class ToolsGPGImportKeyToCardView(View):
                 except AdminPINFailed:
                     logger.warning("SmartPGP card rejected admin PIN during verification")
                     self._stop_loading_screen()
+                    self._clear_cached_admin_pin()
                     self.run_screen(
                         LargeIconStatusScreen,
                         title="Error",
@@ -10903,6 +10915,7 @@ class ToolsGPGImportKeyToCardView(View):
             except AdminPINFailed:
                 logger.warning("SmartPGP card rejected admin PIN during switch")
                 self._stop_loading_screen()
+                self._clear_cached_admin_pin()
                 self.run_screen(
                     LargeIconStatusScreen,
                     title="Error",
@@ -11031,6 +11044,7 @@ class ToolsGPGImportKeyToCardView(View):
                     return Destination(ToolsGPGMenuView)
             except SmartPGPAdminPinError:
                 self._stop_loading_screen()
+                self._clear_cached_admin_pin()
                 self.run_screen(
                     LargeIconStatusScreen,
                     title="Error",

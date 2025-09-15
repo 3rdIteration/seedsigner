@@ -372,7 +372,9 @@ class Controller(Singleton):
                         self.Satochip_PIN = None
                         self.Satochip_Last_UID_SHA1 = None
                         self.Satochip_Connector = None
-                        self.GPG_Admin_PIN = None
+
+                    # Always drop any cached OpenPGP admin PIN when returning home
+                    self.GPG_Admin_PIN = None
                 
                 logger.info(f"\nback_stack: {self.back_stack}")
 
