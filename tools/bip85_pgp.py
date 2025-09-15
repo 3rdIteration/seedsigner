@@ -78,22 +78,56 @@ class _DeterministicPGPKey(PGPKey):
 def _calculate_fingerprint(key: PGPKey) -> Fingerprint:
     """Return a deterministic fingerprint for ``key``'s primary packet."""
 
-    # Compute the V4 fingerprint manually to ensure the result stays stable
-    # across ``pgpy`` releases.  Some versions expose a ``fingerprint``
-    # attribute on the private packet, but the implementation has produced
-    # different values across environments.  Hashing the canonical packet
-    # ourselves avoids those discrepancies.
-    priv = key._key
-    plen = priv.keymaterial.publen()
+    # ``pgpy`` already exposes the canonical fingerprint on public key packets,
+    # but the attribute moved across releases.  Prefer using the public packet
+    # directly when available and fall back to a manual hash so older versions
+    # remain supported.
+    pub_packet = None
+
+    try:
+        pub = key.pubkey
+    except AttributeError:
+        pub = None
+
+    if pub is not None:
+        pub_packet = getattr(pub, "_key", None)
+
+    if pub_packet is None:
+        priv = getattr(key, "_key", None)
+        if priv is not None:
+            bound_pub = getattr(priv, "pubkey", None)
+            if callable(bound_pub):
+                try:
+                    pub_packet = bound_pub()
+                except TypeError:
+                    pub_packet = None
+            elif bound_pub is not None:
+                pub_packet = bound_pub
+
+    if pub_packet is None:
+        raise ValueError("Unable to resolve public key packet for fingerprint calculation")
+
+    try:
+        fp = pub_packet.fingerprint  # type: ignore[attr-defined]
+    except AttributeError:
+        fp = None
+
+    if fp is not None:
+        return fp if isinstance(fp, Fingerprint) else Fingerprint(str(fp))
+
+    # Compute the V4 fingerprint manually using the public packet.  The logic
+    # mirrors :meth:`pgpy.packet.packets.PubKeyV4.fingerprint` so that the
+    # resulting digest matches ``pgpy`` regardless of the installed version.
+    plen = pub_packet.keymaterial.publen()
     length = 6 + plen
     data = bytearray()
     data.extend(b"\x99")
     data.extend(length.to_bytes(2, "big"))
     data.extend(b"\x04")
-    timestamp = calendar.timegm(priv.created.timetuple())
+    timestamp = calendar.timegm(pub_packet.created.timetuple())
     data.extend(timestamp.to_bytes(4, "big"))
-    data.append(int(priv.pkalg))
-    data.extend(priv.keymaterial.__bytearray__()[:plen])
+    data.append(int(pub_packet.pkalg))
+    data.extend(pub_packet.keymaterial.__bytearray__()[:plen])
     fp_hex = hashlib.sha1(data).hexdigest().upper()
 
     return Fingerprint(fp_hex)
