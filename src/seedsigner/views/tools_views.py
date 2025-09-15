@@ -4143,8 +4143,10 @@ def parse_subkey_list(colon_output: str):
     return subkeys
 
 
-# Matches the creation timestamp used by Krux
-BIP85_GPG_CREATED_TS = 1231005905
+# Bitcoin genesis block time: 2009-01-03 18:15:05 UTC.
+# NOTE: As of 2025-09-15, BIP85 on GitHub lists this timestamp with a
+# human-readable typo of "2009-01-03 18:05:05" UTC, which has propagated elsewhere.
+BIP85_GPG_CREATED_TS = 1231006505
 
 # In-memory registry of BIP85-derived keys
 BIP85_DATA = {}
