@@ -7,13 +7,38 @@ from typing import Iterable, Optional
 import pgpy
 from pgpy.constants import KeyFlags, EllipticCurveOID
 
-_highlevel = import_module('seedsigner.helpers.smartpgp.highlevel')
-CardConnectionContext = getattr(_highlevel, 'CardConnectionContext')
-AdminPINFailed = getattr(
-    _highlevel,
-    'AdminPINFailed',
-    type('AdminPINFailed', (Exception,), {}),
-)
+try:
+    _highlevel = import_module('seedsigner.helpers.smartpgp.highlevel')
+except ModuleNotFoundError as exc:  # pragma: no cover - exercised in CI without pyscard
+    _highlevel = None
+    _HIGHLEVEL_IMPORT_ERROR = exc
+
+    class AdminPINFailed(Exception):
+        """Fallback exception when SmartPGP highlevel helpers are unavailable."""
+
+    class _UnavailableCardConnectionContext:
+        def __init__(self, *args, **kwargs):
+            raise ModuleNotFoundError(
+                "SmartPGP card operations require the optional 'pyscard' dependency."
+            ) from exc
+
+    CardConnectionContext = _UnavailableCardConnectionContext
+else:  # pragma: no cover - exercised when pyscard is available
+    _HIGHLEVEL_IMPORT_ERROR = None
+    CardConnectionContext = getattr(
+        _highlevel,
+        'CardConnectionContext',
+        None,
+    )
+    if CardConnectionContext is None:
+        raise ImportError(
+            "seedsigner.helpers.smartpgp.highlevel is missing CardConnectionContext"
+        )
+    AdminPINFailed = getattr(
+        _highlevel,
+        'AdminPINFailed',
+        type('AdminPINFailed', (Exception,), {}),
+    )
 
 logger = logging.getLogger(__name__)
 

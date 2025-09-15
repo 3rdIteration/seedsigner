@@ -330,7 +330,9 @@ def create_bip85_pgp_key(
             )
             start += 3
 
-    pgp_key._fingerprint_override = _calculate_fingerprint(pgp_key)
+    fingerprint = _calculate_fingerprint(pgp_key)
+    pgp_key._fingerprint_override = fingerprint
+    pgp_key._fingerprint = fingerprint
     return pgp_key
 
 

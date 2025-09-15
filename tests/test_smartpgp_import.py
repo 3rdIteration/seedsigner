@@ -8,7 +8,10 @@ class DummyCardConnectionContext:
     pass
 
 dummy_highlevel.CardConnectionContext = DummyCardConnectionContext
+dummy_highlevel.AdminPINFailed = type("AdminPINFailed", (Exception,), {})
 sys.modules["seedsigner.helpers.smartpgp.highlevel"] = dummy_highlevel
+import seedsigner.helpers.smartpgp as smartpgp_pkg
+smartpgp_pkg.highlevel = dummy_highlevel
 
 from pgpy.constants import EllipticCurveOID
 from seedsigner.helpers.smartpgp_import import _curve_map
