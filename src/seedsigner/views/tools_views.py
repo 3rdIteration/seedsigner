@@ -10640,6 +10640,15 @@ class ToolsGPGImportKeyToCardView(View):
         super().__init__()
         self.fingerprint = fingerprint
         self.selected_subkeys = selected_subkeys
+        self.loading_screen = None
+
+    def _stop_loading_screen(self):
+        loading = getattr(self, "loading_screen", None)
+        if loading:
+            try:
+                loading.stop()
+            finally:
+                self.loading_screen = None
 
     def run(self):
         from subprocess import run
@@ -10852,15 +10861,48 @@ class ToolsGPGImportKeyToCardView(View):
                     AdminPINFailed,
                 )
 
-                ctx = CardConnectionContext()
-                ctx.admin_pin = admin_pin
+                try:
+                    ctx = CardConnectionContext()
+                    ctx.admin_pin = admin_pin
+                    logger.info(
+                        "Verifying SmartPGP admin PIN before switching to %s (%s)",
+                        cmd_suffix,
+                        curve_to_check,
+                    )
+                    ctx.connect()
+                    ctx.verify_admin_pin()
+                except AdminPINFailed:
+                    logger.warning("SmartPGP card rejected admin PIN during verification")
+                    self._stop_loading_screen()
+                    self.run_screen(
+                        LargeIconStatusScreen,
+                        title="Error",
+                        status_headline=None,
+                        text="Incorrect admin PIN",
+                        show_back_button=False,
+                        button_data=[ButtonOption("Continue")],
+                    )
+                    return Destination(BackStackView)
+                except Exception as e:
+                    logger.exception("SmartPGP admin PIN pre-check failed: %s", e)
+                    self._stop_loading_screen()
+                    self.run_screen(
+                        LargeIconStatusScreen,
+                        title="Error",
+                        status_headline=None,
+                        text="Failed to set card key type",
+                        show_back_button=False,
+                        button_data=[ButtonOption("Continue")],
+                    )
+                    return Destination(BackStackView)
+
                 logger.info(
                     "Attempting to switch SmartPGP card to %s (%s)", cmd_suffix, curve_to_check
                 )
                 getattr(ctx, f"cmd_switch_{cmd_suffix}")()
             except AdminPINFailed:
                 logger.warning("SmartPGP card rejected admin PIN during switch")
-                self.loading_screen.stop()
+                self._stop_loading_screen()
                 self.run_screen(
                     LargeIconStatusScreen,
                     title="Error",
@@ -10872,6 +10914,7 @@ class ToolsGPGImportKeyToCardView(View):
                 return Destination(BackStackView)
             except Exception as e:
                 logger.exception("SmartPGP switch failed: %s", e)
+                self._stop_loading_screen()
                 self.run_screen(
                     LargeIconStatusScreen,
                     title="Error",
@@ -10976,7 +11019,7 @@ class ToolsGPGImportKeyToCardView(View):
                 if import_keys_with_smartpgp(
                     self.fingerprint, admin_pin, self.selected_subkeys
                 ):
-                    self.loading_screen.stop()
+                    self._stop_loading_screen()
                     self.run_screen(
                         LargeIconStatusScreen,
                         title="Success",
@@ -10987,7 +11030,7 @@ class ToolsGPGImportKeyToCardView(View):
                     )
                     return Destination(ToolsGPGMenuView)
             except SmartPGPAdminPinError:
-                self.loading_screen.stop()
+                self._stop_loading_screen()
                 self.run_screen(
                     LargeIconStatusScreen,
                     title="Error",
@@ -10999,7 +11042,7 @@ class ToolsGPGImportKeyToCardView(View):
                 return Destination(BackStackView)
             except Exception as e:
                 logger.exception("SmartPGP fallback failed: %s", e)
-            self.loading_screen.stop()
+            self._stop_loading_screen()
             self.run_screen(
                 LargeIconStatusScreen,
                 title="Error",
@@ -11010,7 +11053,7 @@ class ToolsGPGImportKeyToCardView(View):
             )
             return Destination(BackStackView)
 
-        self.loading_screen.stop()
+        self._stop_loading_screen()
         self.run_screen(
             LargeIconStatusScreen,
             title="Success",
