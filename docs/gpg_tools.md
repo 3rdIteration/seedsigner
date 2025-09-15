@@ -2,6 +2,8 @@
 
 SeedSigner includes tools to interact with GPG. When `gpg2` is available on the host system, the Tools menu offers a **Load BIP85 Key** option. This feature deterministically derives a keypair (NIST P-256, Brainpool P-256, RSA 2048, RSA 3072, RSA 4096, or secp256k1) from a selected seed using [BIP85](https://github.com/bitcoin/bips/blob/master/bip-0085.mediawiki#user-content-RSA_GPG) and imports it into GPG. If multiple seeds are loaded, SeedSigner will prompt you to choose which seed to use. Selecting RSA 2048, RSA 3072, or RSA 4096 displays a warning that generation on a Pi Zero may take about 3 minutes, 15 minutes, or an hour respectively; NIST or Brainpool keys are faster and smaller.
 
+For environments without `gpg2`, a standalone console script is available at `tools/bip85_pgp.py`. It prompts for a mnemonic, derives a BIP85-based key, optionally adds a trio of subkeys of a chosen type, can add extra subkey sets, and prints the public or private key in ASCII-armored form.
+
 Within the **File Operations** submenu the **Sign** option offers two workflows. Selecting **File** prompts for a file on the microSD card and a private key from the local GPG keyring; a detached signature (`.sig`) is saved alongside the original file.
 
 The **Encrypt** and **Decrypt** options invoke the native ``gpg`` binary rather than the pure-Python ``pgpy`` library so large files are processed quickly.  Encryption can optionally sign the file before writing the ASCII-armored result, and decryption automatically verifies any embedded signature.
