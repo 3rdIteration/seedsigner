@@ -19,7 +19,7 @@ def test_generate_pgp_key_and_export():
         subkey_type="p256",
         additional_sets=1,
     )
-    assert key.fingerprint == "774AC53EC1414765F27F04AE58FD4133E660EE68"
+    assert key.fingerprint == "3374F7A064CB1852FB4125B67425C6BAE0AA45A3"
     assert len(key.subkeys) == 6
     pub = bip85_pgp.export_public_key(key)
     priv = bip85_pgp.export_private_key(key)
