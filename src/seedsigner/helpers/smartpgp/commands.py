@@ -300,7 +300,17 @@ def unblock_pin(connection, resetting_code, new_user_pin):
     apdu = assemble_with_len([0x00, 0x2C, 0x00, 0x81], data)
     _raw_send_apdu(connection,"Unblock user PIN with resetting code",apdu)
 
-def put_key(connection, role, pubkey, privkey):
+def _as_byte_list(value):
+    if isinstance(value, int):
+        return [value]
+    if isinstance(value, bytes):
+        return list(value)
+    if isinstance(value, bytearray):
+        return list(value)
+    return list(value)
+
+
+def put_key_components(connection, role, components):
     crt_tags = {
         'sig': 0xB6,
         'dec': 0xB8,
@@ -312,10 +322,17 @@ def put_key(connection, role, pubkey, privkey):
     except KeyError:
         raise WrongKeyRole
 
+    template = []
+    data = []
+    for comp_tag, comp_value in components:
+        comp_bytes = _as_byte_list(comp_value)
+        template.extend([comp_tag] + encode_len(comp_bytes))
+        data.extend(comp_bytes)
+
     ins_p1_p2 = [0xDB, 0x3F, 0xFF]
-    cdata = [0x92] + encode_len(privkey) + [0x99] + encode_len(pubkey)
+    cdata = template
     cdata = [tag, 0x00, 0x7F, 0x48] + encode_len(cdata) + cdata
-    cdata = cdata + [0x5F, 0x48] + encode_len(privkey + pubkey) + privkey + pubkey
+    cdata = cdata + [0x5F, 0x48] + encode_len(data) + data
     cdata = [0x4D] + encode_len(cdata) + cdata
     i = 0
     cl = 255
@@ -323,14 +340,22 @@ def put_key(connection, role, pubkey, privkey):
     while i < l:
         if (l - i) <= cl:
             cla = 0x00
-            data = cdata[i:]
+            data_chunk = cdata[i:]
             i = l
         else:
             cla = 0x10
-            data = cdata[i:i+cl]
+            data_chunk = cdata[i:i+cl]
             i = i + cl
-        apdu = assemble_with_len([cla] + ins_p1_p2, data)
+        apdu = assemble_with_len([cla] + ins_p1_p2, data_chunk)
         _raw_send_apdu(connection, "Sending key chunk", apdu)
+
+
+def put_key(connection, role, pubkey, privkey):
+    components = [
+        (0x92, privkey),
+        (0x99, pubkey),
+    ]
+    put_key_components(connection, role, components)
 
 
 def put_data(connection, tag, value):

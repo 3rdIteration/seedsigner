@@ -1909,14 +1909,14 @@ def test_smartpgp_import_filters_subkeys(monkeypatch):
             pass
         def cmd_switch_crypto(self, curve, role):
             pass
-        def cmd_put_key(self, role, pub, priv):
+        def cmd_put_key(self, role, pub=None, priv=None, *, components=None):
             pass
         def cmd_put_data(self, tag, value):
             pass
 
     ctx_calls = {}
     class Ctx(DummyCtx):
-        def cmd_put_key(self, role, pub, priv):
+        def cmd_put_key(self, role, pub=None, priv=None, *, components=None):
             ctx_calls["role"] = role
     monkeypatch.setattr(smartpgp_import, "CardConnectionContext", lambda: Ctx())
 
@@ -1926,3 +1926,395 @@ def test_smartpgp_import_filters_subkeys(monkeypatch):
     assert "--export-secret-key" not in cmd
     assert cmd[-1] == "FFFFFFFFFFFFFFFF!"
     assert ctx_calls["role"] == "sig"
+
+
+def test_smartpgp_import_bad_admin_pin(monkeypatch):
+    import types, sys, datetime as dt
+    from pgpy.constants import KeyFlags, EllipticCurveOID
+    import pytest
+
+    sc = types.ModuleType("smartcard")
+    sc_exc = types.ModuleType("smartcard.Exceptions")
+    class NoCardException(Exception):
+        pass
+    sc_exc.NoCardException = NoCardException
+    sc_sys = types.ModuleType("smartcard.System")
+    sc_sys.readers = lambda: []
+    sc_util = types.ModuleType("smartcard.util")
+    sc_util.toHexString = lambda data: ""
+    sc.Exceptions = sc_exc
+    sc.System = sc_sys
+    sc.util = sc_util
+    sys.modules.update({
+        "smartcard": sc,
+        "smartcard.Exceptions": sc_exc,
+        "smartcard.System": sc_sys,
+        "smartcard.util": sc_util,
+    })
+
+    from seedsigner.helpers import smartpgp_import
+
+    def fake_run(cmd, capture_output=True, check=True):
+        class Res:
+            stdout = b"dummy"
+        return Res()
+
+    monkeypatch.setattr(smartpgp_import, "run", fake_run)
+
+    sk_fpr = "F" * 40
+
+    class KM:
+        oid = EllipticCurveOID.NIST_P256
+        s = 1
+        class P:
+            x = 1
+            y = 1
+        p = P()
+
+    class Sub:
+        def __init__(self):
+            self.key_flags = {KeyFlags.Sign}
+            self.fingerprint = sk_fpr
+            self.created = dt.datetime(2020, 1, 1)
+            self._key = type("K", (), {"keymaterial": KM})()
+
+    class Key:
+        def __init__(self):
+            self.subkeys = {"a": Sub()}
+
+    monkeypatch.setattr(smartpgp_import.pgpy.PGPKey, "from_blob", lambda data: (Key(), None))
+
+    class BadCtx:
+        def __init__(self):
+            self.admin_pin = None
+        def connect(self):
+            pass
+        def verify_admin_pin(self):
+            raise smartpgp_import.AdminPINFailed
+
+    monkeypatch.setattr(smartpgp_import, "CardConnectionContext", lambda: BadCtx())
+
+    with pytest.raises(smartpgp_import.SmartPGPAdminPinError):
+        smartpgp_import.import_keys_with_smartpgp("PRIFPR", "badpin", {"s": sk_fpr})
+
+
+def test_import_key_to_card_view_reports_bad_admin_pin(monkeypatch):
+    import subprocess
+    from types import MethodType, SimpleNamespace
+
+    from seedsigner.helpers.smartpgp.highlevel import AdminPINFailed
+
+    sec_parts = [
+        "sec",
+        "",
+        "256",
+        "22",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "sca",
+        "",
+        "",
+        "",
+        "",
+        "nistp256",
+    ]
+    sub_parts = [
+        "ssb",
+        "",
+        "256",
+        "22",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "sea",
+        "",
+        "",
+        "",
+        "",
+        "nistp256",
+    ]
+    fpr_primary = ["fpr", "", "", "", "", "", "", "", "", "PRIMARYFPR"]
+    fpr_sub = ["fpr", "", "", "", "", "", "", "", "", "SUBFPR"]
+    gpg_list_output = "\n".join(
+        ":".join(parts)
+        for parts in (sec_parts, fpr_primary, sub_parts, fpr_sub)
+    )
+
+    class DummyResult:
+        def __init__(self, stdout="", stderr="", returncode=0):
+            self.stdout = stdout
+            self.stderr = stderr
+            self.returncode = returncode
+
+    def fake_run(cmd, *args, **kwargs):
+        cmd_tuple = tuple(cmd)
+        if len(cmd_tuple) >= 3 and cmd_tuple[0] == "gpgconf" and cmd_tuple[2] == "scdaemon":
+            return DummyResult()
+        if len(cmd_tuple) >= 2 and cmd_tuple[0] == "gpg" and cmd_tuple[1] == "--card-status":
+            return DummyResult(stdout="", stderr="", returncode=0)
+        if "--list-secret-keys" in cmd:
+            return DummyResult(stdout=gpg_list_output, stderr="", returncode=0)
+        return DummyResult()
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    disconnect_calls = []
+
+    def fake_disconnect(controller):
+        disconnect_calls.append(controller)
+
+    monkeypatch.setattr(
+        tools_views.seedkeeper_utils,
+        "disconnect_smartcard_connections",
+        fake_disconnect,
+    )
+
+    class RejectingCtx:
+        def __init__(self):
+            self.admin_pin = None
+
+        def connect(self):
+            pass
+
+        def verify_admin_pin(self):
+            raise AdminPINFailed()
+
+    monkeypatch.setattr(
+        "seedsigner.helpers.smartpgp.highlevel.CardConnectionContext",
+        RejectingCtx,
+    )
+
+    view = object.__new__(tools_views.ToolsGPGImportKeyToCardView)
+    view.fingerprint = "PRIMARYFPR"
+    view.selected_subkeys = ["SUBFPR"]
+    view.controller = SimpleNamespace(GPG_Admin_PIN="badpin", Satochip_Connector=None)
+    view.loading_screen = None
+
+    captured = {}
+
+    def fake_run_screen(self, screen_cls, **kwargs):
+        captured["screen"] = screen_cls
+        captured["kwargs"] = kwargs
+        return 0
+
+    view.run_screen = MethodType(fake_run_screen, view)
+
+    result = tools_views.ToolsGPGImportKeyToCardView.run(view)
+
+    assert isinstance(result, tools_views.Destination)
+    assert result.View_cls is tools_views.BackStackView
+    assert captured["kwargs"]["text"] == "Incorrect admin PIN"
+    assert view.controller.GPG_Admin_PIN is None
+    assert disconnect_calls
+    assert disconnect_calls[-1] is view.controller
+
+
+def test_import_key_to_card_view_fallback_bad_admin_pin(monkeypatch):
+    import subprocess
+    from types import MethodType, SimpleNamespace
+
+    from seedsigner.helpers import smartpgp_import
+
+    sec_parts = [
+        "sec",
+        "",
+        "3072",
+        "1",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "sca",
+        "",
+        "",
+        "",
+        "",
+        "",
+    ]
+    sub_parts = [
+        "ssb",
+        "",
+        "3072",
+        "1",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "sea",
+        "",
+        "",
+        "",
+        "",
+        "",
+    ]
+    fpr_primary = ["fpr", "", "", "", "", "", "", "", "", "PRIMARYFPR"]
+    fpr_sub = ["fpr", "", "", "", "", "", "", "", "", "SUBFPR"]
+    gpg_list_output = "\n".join(
+        ":".join(parts)
+        for parts in (sec_parts, fpr_primary, sub_parts, fpr_sub)
+    )
+
+    class DummyResult:
+        def __init__(self, stdout="", stderr="", returncode=0):
+            self.stdout = stdout
+            self.stderr = stderr
+            self.returncode = returncode
+
+    def fake_run(cmd, *args, capture_output=True, text=True, input=None, **kwargs):
+        cmd_tuple = tuple(cmd)
+        if len(cmd_tuple) >= 3 and cmd_tuple[0] == "gpgconf" and cmd_tuple[2] == "scdaemon":
+            return DummyResult()
+        if len(cmd_tuple) >= 2 and cmd_tuple[0] == "gpg" and cmd_tuple[1] == "--card-status":
+            return DummyResult(stdout="", stderr="", returncode=0)
+        if "--list-secret-keys" in cmd:
+            return DummyResult(stdout=gpg_list_output, stderr="", returncode=0)
+        if "--edit-key" in cmd:
+            return DummyResult(stdout="", stderr="Bad PIN", returncode=2)
+        return DummyResult()
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    disconnect_calls = []
+
+    def fake_disconnect(controller):
+        disconnect_calls.append(controller)
+
+    monkeypatch.setattr(
+        tools_views.seedkeeper_utils,
+        "disconnect_smartcard_connections",
+        fake_disconnect,
+    )
+
+    def raising_import(*args, **kwargs):
+        raise smartpgp_import.SmartPGPAdminPinError()
+
+    monkeypatch.setattr(
+        smartpgp_import,
+        "import_keys_with_smartpgp",
+        raising_import,
+    )
+
+    view = object.__new__(tools_views.ToolsGPGImportKeyToCardView)
+    view.fingerprint = "PRIMARYFPR"
+    view.selected_subkeys = {"s": "SUBFPR"}
+    view.controller = SimpleNamespace(GPG_Admin_PIN="badpin", Satochip_Connector=None)
+    view.loading_screen = None
+
+    captured = {}
+
+    def fake_run_screen(self, screen_cls, **kwargs):
+        captured["text"] = kwargs.get("text")
+        return 0
+
+    view.run_screen = MethodType(fake_run_screen, view)
+
+    result = tools_views.ToolsGPGImportKeyToCardView.run(view)
+
+    assert isinstance(result, tools_views.Destination)
+    assert result.View_cls is tools_views.BackStackView
+    assert captured.get("text") == "Incorrect admin PIN"
+    assert view.controller.GPG_Admin_PIN is None
+    assert len(disconnect_calls) >= 2
+    assert disconnect_calls[-1] is view.controller
+
+
+def test_smartpgp_import_rsa_sets_key_type(monkeypatch):
+    import types, sys, datetime as dt
+    import pgpy
+    from pgpy.constants import KeyFlags, PubKeyAlgorithm
+
+    sc = types.ModuleType("smartcard")
+    sc_exc = types.ModuleType("smartcard.Exceptions")
+    class NoCardException(Exception):
+        pass
+    sc_exc.NoCardException = NoCardException
+    sc_sys = types.ModuleType("smartcard.System")
+    sc_sys.readers = lambda: []
+    sc_util = types.ModuleType("smartcard.util")
+    sc_util.toHexString = lambda data: ""
+    sc.Exceptions = sc_exc
+    sc.System = sc_sys
+    sc.util = sc_util
+    sys.modules.update({
+        "smartcard": sc,
+        "smartcard.Exceptions": sc_exc,
+        "smartcard.System": sc_sys,
+        "smartcard.util": sc_util,
+    })
+
+    from seedsigner.helpers import smartpgp_import
+
+    captured = {}
+
+    def fake_run(cmd, capture_output=True, check=True):
+        captured["cmd"] = cmd
+        class Res:
+            stdout = b"dummy"
+        return Res()
+
+    monkeypatch.setattr(smartpgp_import, "run", fake_run)
+
+    rsa_key = pgpy.PGPKey.new(PubKeyAlgorithm.RSAEncryptOrSign, 2048)
+    rsa_key.add_uid(pgpy.PGPUID.new("Test"), usage={KeyFlags.Sign})
+    km = rsa_key._key.keymaterial
+
+    sk_fpr = "A" * 40
+
+    class Sub:
+        def __init__(self):
+            self.key_flags = {KeyFlags.Sign}
+            self.fingerprint = sk_fpr
+            self.created = dt.datetime(2020, 1, 1)
+            self._key = type("K", (), {"keymaterial": km})()
+
+    class Key:
+        def __init__(self):
+            self.subkeys = {"s": Sub()}
+
+    monkeypatch.setattr(smartpgp_import.pgpy.PGPKey, "from_blob", lambda data: (Key(), None))
+
+    class DummyCtx:
+        def __init__(self):
+            self.admin_pin = None
+            self.switch_calls = []
+            self.put_calls = []
+        def connect(self):
+            pass
+        def verify_admin_pin(self):
+            pass
+        def cmd_switch_crypto(self, alg, role):
+            self.switch_calls.append((alg, role))
+        def cmd_put_key(self, role, pub=None, priv=None, *, components=None):
+            self.put_calls.append((role, components))
+        def cmd_put_data(self, tag, value):
+            pass
+
+    ctx = DummyCtx()
+    monkeypatch.setattr(smartpgp_import, "CardConnectionContext", lambda: ctx)
+
+    assert smartpgp_import.import_keys_with_smartpgp("PRIFPR", "1234", {"s": sk_fpr})
+    assert captured["cmd"][-1] == "AAAAAAAAAAAAAAAA!"
+    assert ctx.switch_calls == [("rsa2048", "sig")]
+    assert len(ctx.put_calls) == 1
+    role, components = ctx.put_calls[0]
+    assert role == "sig"
+    tags = [tag for tag, _ in components]
+    assert tags == [0x91, 0x92, 0x93, 0x94, 0x95, 0x96, 0x97]
+    lengths = [len(bytes(comp)) for _, comp in components]
+    assert lengths[0] == 3
+    assert lengths[1] == lengths[2] == lengths[3] == lengths[4] == lengths[5]
+    assert lengths[6] == lengths[1] * 2

@@ -275,10 +275,15 @@ class CardConnectionContext:
         switch_crypto(self.connection, curve, 'sm')
         put_key(self.connection, 'sm', pubkey, privkey)
 
-    def cmd_put_key(self, role, pubkey, privkey):
+    def cmd_put_key(self, role, pubkey=None, privkey=None, *, components=None):
         self.connect()
         self.verify_admin_pin()
-        put_key(self.connection, role, list(pubkey), list(privkey))
+        if components is not None:
+            put_key_components(self.connection, role, components)
+        else:
+            if pubkey is None or privkey is None:
+                raise ValueError("pubkey and privkey are required when components is not provided")
+            put_key(self.connection, role, list(pubkey), list(privkey))
 
     def cmd_put_data(self, tag, value):
         self.connect()
