@@ -1,7 +1,10 @@
 import os
+from types import SimpleNamespace
+
 from embit import bip39
-from seedsigner.models.decode_qr import DecodeQR, DecodeQRStatus
+from seedsigner.models.decode_qr import DecodeQR, DecodeQRStatus, EncryptedQrDecoder
 from seedsigner.models.encode_qr import SeedQrEncoder, CompactSeedQrEncoder
+from seedsigner.models.encryptedqr import EncryptedQR
 from seedsigner.models.qr_type import QRType
 from seedsigner.helpers.qr import QR
 
@@ -161,3 +164,43 @@ def test_compact_seedqr_bytes_interpretable_as_str():
         entropy_bytes.decode()  # should not raise an exception
         mnemonic_length = 12 if len(entropy_bytes) == 16 else 24
         run_encode_decode_test(entropy_bytes, mnemonic_length=mnemonic_length, qr_type=QRType.SEED__COMPACTSEEDQR)
+
+
+def test_encrypted_qr_falls_back_to_text(monkeypatch):
+    class DummyStorage:
+        def __init__(self):
+            self._encryptedqr = None
+
+        @property
+        def encryptedqr(self):
+            return self._encryptedqr
+
+        def set_encryptedqr(self, encryptedqr):
+            self._encryptedqr = encryptedqr
+
+        def clear_encryptedqr(self):
+            self._encryptedqr = None
+
+    dummy_storage = DummyStorage()
+    dummy_controller = SimpleNamespace(storage2=dummy_storage)
+
+    monkeypatch.setattr(
+        "seedsigner.controller.Controller.get_instance",
+        lambda: dummy_controller,
+    )
+
+    class DummyEncryptedQRCode:
+        def decrypt(self, key):
+            assert key == "test-key"
+            return b"hello world"
+
+    dummy_storage.set_encryptedqr(EncryptedQR(encrypted_qr=DummyEncryptedQRCode(), public_data="info"))
+
+    decoder = EncryptedQrDecoder()
+    status = decoder.add(None, qr_type=QRType.SEED__ENCRYPTEDQR, encryption_key="test-key")
+
+    assert status == DecodeQRStatus.COMPLETE
+    assert decoder.get_seed_phrase() == []
+    assert decoder.get_decrypted_text() == "hello world"
+
+    dummy_storage.clear_encryptedqr()

@@ -5,6 +5,7 @@ import subprocess
 
 #from embit.descriptor import Descriptor
 
+from seedsigner.gui.components import GUIConstants
 from seedsigner.gui.screens.screen import RET_CODE__BACK_BUTTON, ButtonListScreen, WarningScreen, DireWarningScreen
 from seedsigner.gui.screens.scan_screens import ScanEncryptedQRScreen, ScanTypeEncryptionKeyScreen, ScanReviewEncryptionKeyScreen
 from seedsigner.gui.screens import LargeIconStatusScreen
@@ -638,15 +639,44 @@ class ScanDecryptEncryptedQRView(View):
 
         if status == DecodeQRStatus.COMPLETE:
             self.controller.storage2.clear_encryptedqr()
-            self.controller.storage.set_pending_seed(
-                Seed(mnemonic=decoder.get_seed_phrase(), wordlist_language_code=self.wordlist_language_code)
-            )
-            if self.settings.get_value(SettingsConstants.SETTING__PASSPHRASE) == SettingsConstants.OPTION__REQUIRED:
-                from seedsigner.views.seed_views import SeedAddPassphraseView
-                return Destination(SeedAddPassphraseView, skip_current_view=True)
-            else:
-                from .seed_views import SeedFinalizeView
-                return Destination(SeedFinalizeView, skip_current_view=True)
+            seed_phrase = decoder.get_seed_phrase()
+
+            if seed_phrase:
+                try:
+                    self.controller.storage.set_pending_seed(
+                        Seed(mnemonic=seed_phrase, wordlist_language_code=self.wordlist_language_code)
+                    )
+                except InvalidSeedException:
+                    seed_phrase = []
+                else:
+                    if self.settings.get_value(SettingsConstants.SETTING__PASSPHRASE) == SettingsConstants.OPTION__REQUIRED:
+                        from seedsigner.views.seed_views import SeedAddPassphraseView
+                        return Destination(SeedAddPassphraseView, skip_current_view=True)
+                    else:
+                        from .seed_views import SeedFinalizeView
+                        return Destination(SeedFinalizeView, skip_current_view=True)
+
+            decrypted_text = decoder.get_decrypted_text()
+            if decrypted_text is not None:
+                self.run_screen(
+                    LargeIconStatusScreen,
+                    title=_("Decrypted Text"),
+                    status_headline=None,
+                    text=decrypted_text,
+                    show_back_button=False,
+                    button_data=[ButtonOption(_("Done"))],
+                    status_icon_size=0,
+                    status_color=GUIConstants.BODY_FONT_COLOR,
+                )
+                return Destination(MainMenuView, skip_current_view=True)
+
+            WarningScreen(
+                title="Error",
+                show_back_button=False,
+                status_headline="decryption failure",
+                text="Unknown error",
+            ).display()
+            return Destination(BackStackView)
 
         elif status == DecodeQRStatus.WRONG_KEY:
             WarningScreen(

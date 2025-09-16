@@ -224,6 +224,10 @@ class DecodeQR:
         if self.is_seed:
             return self.decoder.get_seed_phrase()
 
+    def get_decrypted_text(self):
+        if self.is_encrypted_seedqr:
+            return self.decoder.get_decrypted_text()
+
     def get_slip39_share(self):
         if self.is_slip39_share:
             return self.decoder.get_share()
@@ -1399,6 +1403,7 @@ class EncryptedQrDecoder(BaseSingleFrameQrDecoder):
         super().__init__()
         self.public_data = None
         self.seed_phrase = []
+        self.decrypted_text = None
 
 
     def add(self, segment, qr_type=QRType.SEED__ENCRYPTEDQR, encryption_key=None):
@@ -1434,9 +1439,21 @@ class EncryptedQrDecoder(BaseSingleFrameQrDecoder):
                     word_bytes = encrypted_qr.decrypt(encryption_key)
                     if not word_bytes:
                         return DecodeQRStatus.WRONG_KEY
-                    self.seed_phrase = bip39.mnemonic_from_bytes(word_bytes).split()
+                    self.decrypted_text = None
+                    try:
+                        self.seed_phrase = bip39.mnemonic_from_bytes(word_bytes).split()
+                    except Exception:
+                        self.seed_phrase = []
+                        try:
+                            decoded_text = word_bytes.decode("utf-8")
+                        except UnicodeDecodeError:
+                            decoded_text = word_bytes.decode("utf-8", errors="replace")
+                        self.decrypted_text = decoded_text
+                    else:
+                        self.decrypted_text = None
                 else:
                     self.seed_phrase = []
+                    self.decrypted_text = None
 
                 self.complete = True
                 self.collected_segments = 1
@@ -1455,6 +1472,9 @@ class EncryptedQrDecoder(BaseSingleFrameQrDecoder):
     def get_seed_phrase(self):
         return self.seed_phrase[:]
 
+
+    def get_decrypted_text(self):
+        return self.decrypted_text
 
 
 class TextQrDecoder(BaseSingleFrameQrDecoder):
