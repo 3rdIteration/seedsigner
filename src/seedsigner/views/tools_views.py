@@ -8870,16 +8870,29 @@ def gpg_export_selected_subkeys(fingerprint: str, sub_fprs: list[str]):
     return subprocess.run(cmd, capture_output=True, text=True)
 
 
+def _normalize_bip85_alg(alg: str) -> str:
+    """Map user-facing algorithm identifiers to canonical values."""
+
+    if not alg:
+        return alg
+    alias = {
+        "p256": "nistp256",
+    }
+    alg_lower = alg.lower()
+    return alias.get(alg_lower, alg_lower)
+
+
 def _bip85_subkey_specs(alg):
     from pgpy.constants import PubKeyAlgorithm, KeyFlags
 
+    alg = _normalize_bip85_alg(alg)
     if alg == "ed25519":
         return [
             (0, PubKeyAlgorithm.ECDH, {KeyFlags.EncryptCommunications, KeyFlags.EncryptStorage}, "ECDH"),
             (1, PubKeyAlgorithm.EdDSA, {KeyFlags.Authentication, KeyFlags.Sign}, "EdDSA"),
             (2, PubKeyAlgorithm.EdDSA, {KeyFlags.Sign}, "EdDSA"),
         ]
-    if alg in ["secp256k1", "nistp256", "brainpoolP256r1"]:
+    if alg in ["secp256k1", "nistp256", "brainpoolp256r1"]:
         return [
             (0, PubKeyAlgorithm.ECDH, {KeyFlags.EncryptCommunications, KeyFlags.EncryptStorage}, "ECDH"),
             (1, PubKeyAlgorithm.ECDSA, {KeyFlags.Authentication, KeyFlags.Sign}, "ECDSA"),
@@ -8916,6 +8929,7 @@ def bip85_verify_existing(
     )
     root = bip32.HDKey.from_seed(seed.seed_bytes)
     created = datetime.fromtimestamp(created_ts, tz=timezone.utc)
+    primary_curve = _normalize_bip85_alg(primary_curve)
 
     def rsa_to_privpacket(rsa_key: RSA.RsaKey) -> fields.RSAPriv:
         priv = fields.RSAPriv()
@@ -8973,7 +8987,7 @@ def bip85_verify_existing(
         sub_index = j % 3
         subpkt = PrivSubKeyV4()
         algo = sk["algo"]
-        curve = sk["curve"]
+        curve = _normalize_bip85_alg(sk["curve"])
         bits = int(sk.get("bits", "0") or "0")
         if algo in ("1", "2", "3"):
             subpkt.pkalg = PubKeyAlgorithm.RSAEncryptOrSign
@@ -9090,10 +9104,12 @@ def bip85_add_subkeys(
         priv._compute_chksum()
         return priv
 
+    alg_canon = _normalize_bip85_alg(alg)
     subkey_specs = _bip85_subkey_specs(alg)
     type_map = {
         "nistp256": "ECC NIST P-256",
         "p256": "ECC NIST P-256",
+        "brainpoolp256r1": "ECC Brainpool P-256",
         "brainpoolP256r1": "ECC Brainpool P-256",
         "secp256k1": "ECC secp256k1",
         "ed25519": "ECC Ed25519",
@@ -9101,7 +9117,7 @@ def bip85_add_subkeys(
         "rsa3072": "RSA 3072",
         "rsa4096": "RSA 4096",
     }
-    alg_label = type_map.get(alg, alg)
+    alg_label = type_map.get(alg_canon, type_map.get(alg, alg))
 
     added = []
     for offset, pkalg, usage, *alg_name in subkey_specs:
@@ -9109,13 +9125,13 @@ def bip85_add_subkeys(
         global_index = start_index + offset
         subpkt = PrivSubKeyV4()
         subpkt.pkalg = pkalg
-        if alg == "secp256k1":
+        if alg_canon == "secp256k1":
             subpkt.keymaterial = bip85_secp256k1_from_root(root, key_index, sub_index, alg_name[0])
-        elif alg == "nistp256":
+        elif alg_canon == "nistp256":
             subpkt.keymaterial = bip85_p256_from_root(root, key_index, sub_index, alg_name[0])
-        elif alg == "brainpoolP256r1":
+        elif alg_canon == "brainpoolp256r1":
             subpkt.keymaterial = bip85_brainpoolp256r1_from_root(root, key_index, sub_index, alg_name[0])
-        elif alg == "ed25519":
+        elif alg_canon == "ed25519":
             subpkt.keymaterial = bip85_ed25519_from_root(root, key_index, sub_index, alg_name[0])
         else:
             rsa_sub = bip85_rsa_from_root(root, KEY_BITS, key_index, sub_index)
@@ -9133,7 +9149,7 @@ def bip85_add_subkeys(
             expires=expires,
         )
         alg_name_str = alg_name[0] if alg_name else pkalg.name
-        sub_type = alg_label if alg.startswith("rsa") else f"{alg_name_str} {alg_label}"
+        sub_type = alg_label if alg_canon.startswith("rsa") else f"{alg_name_str} {alg_label}"
         added.append({"index": global_index, "type": sub_type, "fingerprint": subkey.fingerprint})
 
     armored = str(pgp_key)
@@ -9157,12 +9173,13 @@ def loose_add_subkeys(fingerprint: str, alg: str) -> bool:
         EllipticCurveOID,
     )
 
+    alg_canon = _normalize_bip85_alg(alg)
     curve_map = {
         "secp256k1": EllipticCurveOID.SECP256K1,
         "nistp256": EllipticCurveOID.NIST_P256,
-        "brainpoolP256r1": EllipticCurveOID.Brainpool_P256,
+        "brainpoolp256r1": EllipticCurveOID.Brainpool_P256,
     }
-    curve = curve_map[alg]
+    curve = curve_map[alg_canon]
 
     export = run(
         ["gpg", "--armor", "--export-secret-keys", fingerprint],
