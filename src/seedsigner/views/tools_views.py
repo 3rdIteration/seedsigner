@@ -9193,7 +9193,7 @@ def bip85_secp256k1_from_root(
     root, index: int, sub_index: int | None = None, alg: str = "ECDSA"
 ):
     from embit import bip85
-    from cryptography.hazmat.primitives.asymmetric import ec
+    from ecdsa import curves, SigningKey
     from pgpy.constants import EllipticCurveOID
     from pgpy.packet import fields
 
@@ -9205,7 +9205,10 @@ def bip85_secp256k1_from_root(
     d = int.from_bytes(entropy[:32], "big") % order
     if d == 0:
         d = 1
-    pn = ec.derive_private_key(d, ec.SECP256K1()).public_key().public_numbers()
+    point = (
+        SigningKey.from_secret_exponent(d, curve=curves.SECP256k1)
+        .verifying_key.pubkey.point
+    )
     if alg == "ECDH":
         priv = fields.ECDHPriv()
         priv.oid = EllipticCurveOID.SECP256K1
@@ -9217,8 +9220,8 @@ def bip85_secp256k1_from_root(
     priv.p = fields.ECPoint.from_values(
         priv.oid.key_size,
         fields.ECPointFormat.Standard,
-        fields.MPI(pn.x),
-        fields.MPI(pn.y),
+        fields.MPI(point.x()),
+        fields.MPI(point.y()),
     )
     priv.s = fields.MPI(d)
     priv._compute_chksum()
@@ -9229,7 +9232,7 @@ def bip85_p256_from_root(
     root, index: int, sub_index: int | None = None, alg: str = "ECDSA"
 ):
     from embit import bip85
-    from cryptography.hazmat.primitives.asymmetric import ec
+    from ecdsa import curves, SigningKey
     from pgpy.constants import EllipticCurveOID
     from pgpy.packet import fields
 
@@ -9244,7 +9247,10 @@ def bip85_p256_from_root(
     d = int.from_bytes(entropy[:32], "big") % order
     if d == 0:
         d = 1
-    pn = ec.derive_private_key(d, ec.SECP256R1()).public_key().public_numbers()
+    point = (
+        SigningKey.from_secret_exponent(d, curve=curves.NIST256p)
+        .verifying_key.pubkey.point
+    )
     if alg == "ECDH":
         priv = fields.ECDHPriv()
         priv.oid = EllipticCurveOID.NIST_P256
@@ -9256,8 +9262,8 @@ def bip85_p256_from_root(
     priv.p = fields.ECPoint.from_values(
         priv.oid.key_size,
         fields.ECPointFormat.Standard,
-        fields.MPI(pn.x),
-        fields.MPI(pn.y),
+        fields.MPI(point.x()),
+        fields.MPI(point.y()),
     )
     priv.s = fields.MPI(d)
     priv._compute_chksum()
@@ -9268,7 +9274,7 @@ def bip85_brainpoolp256r1_from_root(
     root, index: int, sub_index: int | None = None, alg: str = "ECDSA",
 ):
     from embit import bip85
-    from cryptography.hazmat.primitives.asymmetric import ec
+    from ecdsa import curves, SigningKey
     from pgpy.constants import EllipticCurveOID
     from pgpy.packet import fields
 
@@ -9282,7 +9288,9 @@ def bip85_brainpoolp256r1_from_root(
     d = int.from_bytes(entropy[:32], "big") % order
     if d == 0:
         d = 1
-    pn = ec.derive_private_key(d, ec.BrainpoolP256R1()).public_key().public_numbers()
+    point = SigningKey.from_secret_exponent(
+        d, curve=curves.BRAINPOOLP256r1
+    ).verifying_key.pubkey.point
     if alg == "ECDH":
         priv = fields.ECDHPriv()
         priv.oid = EllipticCurveOID.Brainpool_P256
@@ -9294,8 +9302,8 @@ def bip85_brainpoolp256r1_from_root(
     priv.p = fields.ECPoint.from_values(
         priv.oid.key_size,
         fields.ECPointFormat.Standard,
-        fields.MPI(pn.x),
-        fields.MPI(pn.y),
+        fields.MPI(point.x()),
+        fields.MPI(point.y()),
     )
     priv.s = fields.MPI(d)
     priv._compute_chksum()
