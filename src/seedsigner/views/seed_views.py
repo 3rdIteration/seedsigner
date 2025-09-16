@@ -2609,6 +2609,7 @@ class SeedEncryptedQRReviewEncryptionKeyView(View):
         super().__init__()
         self.encryption_key = encryption_key
         self.seed_num = seed_num
+        self.mode_name = self.settings.get_value(SettingsConstants.SETTING__ENCRYPTION_MODE)
 
     def run(self):
         if len(self.encryption_key) > 200:
@@ -2637,15 +2638,15 @@ class SeedEncryptedQRReviewEncryptionKeyView(View):
             return Destination(BackStackView)
 
         elif button_data[selected_menu_num] == PROCEED:
-            if self.settings.get_value(SettingsConstants.SETTING__ENCRYPTION_MODE) == SettingsConstants.ENCRYPTION_MODE_CBC:
-                return Destination(
-                    SeedEncryptedQRCBCModeView,
-                    view_args=dict(encryption_key=self.encryption_key, seed_num=self.seed_num)
-                )
-            else:
+            if self.mode_name in (SettingsConstants.ENCRYPTION_MODE_ECB, SettingsConstants.ENCRYPTION_MODE_ECBV1):
                 return Destination(
                     SeedEncryptedQRMnemonicIDPromptView,
                     view_args=dict(encryption_key=self.encryption_key, i_vector=None, seed_num=self.seed_num)
+                )
+            else:
+                return Destination(
+                    SeedEncryptedQRnonECBModeView,
+                    view_args=dict(encryption_key=self.encryption_key, seed_num=self.seed_num, mode_name=self.mode_name)
                 )
 
         elif button_data[selected_menu_num] == EDIT:
@@ -2664,11 +2665,12 @@ class SeedEncryptedQRReviewEncryptionKeyView(View):
 
 
 
-class SeedEncryptedQRCBCModeView(View):
-    def __init__(self, encryption_key: str, seed_num: int):
+class SeedEncryptedQRnonECBModeView(View):
+    def __init__(self, encryption_key: str, seed_num: int, mode_name: str):
         super().__init__()
         self.encryption_key = encryption_key
         self.seed_num = seed_num
+        self.mode_name = mode_name
 
 
     def run(self):
@@ -2677,7 +2679,7 @@ class SeedEncryptedQRCBCModeView(View):
 
         selected_menu_num = self.run_screen(
             ButtonListScreen,
-            title=_("Additional Entropy for AES-CBC mode"),
+            title=f"Additional Entropy for {self.mode_name} mode",
             button_data=button_data
         )
 
@@ -2718,8 +2720,9 @@ class SeedEncryptedQRCBCModeView(View):
             return Destination(BackStackView)
 
         entropy_hash = hashlib.sha256(entropy_image.tobytes()).digest()
-        from seedsigner.models.encryption import AES_BLOCK_SIZE
-        i_vector = entropy_hash[:AES_BLOCK_SIZE]
+        from seedsigner.helpers import kef
+        iv_len = kef.MODE_IVS.get(kef.MODE_NUMBERS[self.mode_name], 0)
+        i_vector = entropy_hash[:iv_len]
 
         return Destination(
             SeedEncryptedQRMnemonicIDPromptView,
@@ -2739,9 +2742,9 @@ class SeedEncryptedQRMnemonicIDPromptView(View):
 
 
     def run(self):
-        CUSTOM_ID = ButtonOption("Assign custom ID")
         DEFAULT = ButtonOption("Use fingerprint")
-        button_data = [CUSTOM_ID, DEFAULT]
+        CUSTOM_ID = ButtonOption("Assign custom ID")
+        button_data = [DEFAULT, CUSTOM_ID]
 
         selected_menu_num = self.run_screen(
             ButtonListScreen,
@@ -2878,12 +2881,20 @@ class SeedEncryptedQRReviewMnemonicIDView(View):
 
             try:
                 from seedsigner.models.encryption import EncryptedQRCode
-                qr_data = EncryptedQRCode().create(
+                from seedsigner.helpers.base43 import base43_encode
+                encrypted_qr = EncryptedQRCode()
+                qr_data = encrypted_qr.create(
                                key=self.encryption_key,
                                mnemonic_id=self.mnemonic_id,
                                mnemonic=self.seed.mnemonic_str,
                                i_vector=self.i_vector
                            )
+                version_number = encrypted_qr.version
+                del encrypted_qr
+
+                if version_number > 1:
+                    qr_data = base43_encode(qr_data)
+
                 if not qr_data:
                     WarningScreen(
                         title=_("Error"),
