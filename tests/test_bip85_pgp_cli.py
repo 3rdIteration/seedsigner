@@ -27,6 +27,28 @@ def test_generate_pgp_key_and_export():
     assert priv.startswith("-----BEGIN PGP PRIVATE KEY BLOCK-----")
 
 
+def test_generate_pgp_key_and_export_secp256k1():
+    mnemonic = (
+        "abandon abandon abandon abandon abandon abandon "
+        "abandon abandon abandon abandon abandon about"
+    )
+    key = bip85_pgp.create_bip85_pgp_key(
+        mnemonic,
+        key_index=0,
+        primary_type="secp256k1",
+        name="Tester",
+        email="test@example.com",
+        subkey_type="secp256k1",
+        additional_sets=1,
+    )
+    assert key.fingerprint == "501587912640CB9C6CA3E4A0FAB3C5734A95416E"
+    assert len(key.subkeys) == 6
+    pub = bip85_pgp.export_public_key(key)
+    priv = bip85_pgp.export_private_key(key)
+    assert pub.startswith("-----BEGIN PGP PUBLIC KEY BLOCK-----")
+    assert priv.startswith("-----BEGIN PGP PRIVATE KEY BLOCK-----")
+
+
 def test_cli_key_type_choices_include_all_curves():
     expected = {
         "p256",
