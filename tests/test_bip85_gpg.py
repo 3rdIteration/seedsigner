@@ -451,8 +451,10 @@ def test_bip85_add_subkeys_index_sequential(monkeypatch):
 
     added1 = bip85_add_subkeys(pgp_key.fingerprint, "ed25519", 0, 0, seed)
     added2 = bip85_add_subkeys(pgp_key.fingerprint, "secp256k1", 1, 3, seed)
+    added3 = bip85_add_subkeys(pgp_key.fingerprint, "p256", 2, 6, seed)
     assert [a["index"] for a in added1] == [0, 1, 2]
     assert [a["index"] for a in added2] == [3, 4, 5]
+    assert [a["index"] for a in added3] == [6, 7, 8]
 
 
 def test_bip85_verify_existing_supports_cv25519():
@@ -1241,6 +1243,13 @@ def test_bip85_subkey_specs_include_sign_for_auth():
     auth_flags = specs[1][2]
     assert KeyFlags.Authentication in auth_flags
     assert KeyFlags.Sign in auth_flags
+
+
+def test_bip85_subkey_specs_aliases():
+    assert _bip85_subkey_specs("p256") == _bip85_subkey_specs("nistp256")
+    assert _bip85_subkey_specs("brainpoolP256r1") == _bip85_subkey_specs(
+        "brainpoolp256r1"
+    )
 
 
 def test_select_import_algo_uses_selected_subkeys():
