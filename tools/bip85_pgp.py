@@ -118,8 +118,8 @@ def _calculate_fingerprint(key: PGPKey) -> Fingerprint:
     # Compute the V4 fingerprint manually using the public packet.  The logic
     # mirrors :meth:`pgpy.packet.packets.PubKeyV4.fingerprint` so that the
     # resulting digest matches ``pgpy`` regardless of the installed version.
-    plen = pub_packet.keymaterial.publen()
-    length = 6 + plen
+    key_bytes = bytearray(pub_packet.keymaterial.__bytearray__())
+    length = 6 + len(key_bytes)
     data = bytearray()
     data.extend(b"\x99")
     data.extend(length.to_bytes(2, "big"))
@@ -127,7 +127,7 @@ def _calculate_fingerprint(key: PGPKey) -> Fingerprint:
     timestamp = calendar.timegm(pub_packet.created.timetuple())
     data.extend(timestamp.to_bytes(4, "big"))
     data.append(int(pub_packet.pkalg))
-    data.extend(pub_packet.keymaterial.__bytearray__()[:plen])
+    data.extend(key_bytes)
     fp_hex = hashlib.sha1(data).hexdigest().upper()
 
     return Fingerprint(fp_hex)
