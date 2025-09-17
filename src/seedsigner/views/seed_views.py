@@ -3373,8 +3373,6 @@ class SeedAddressVerificationView(View):
             # and resume displaying the screen. User won't even notice that the Screen is
             # being re-constructed.
             while True:
-                if max_iterations is not None and self.threadsafe_counter.cur_count >= max_iterations:
-                    break
                 selected_menu_num = self.run_screen(
                     seed_screens.SeedAddressVerificationScreen,
                     address=self.address,
@@ -3399,12 +3397,14 @@ class SeedAddressVerificationView(View):
                     # Only happens in the test suite; the screen isn't actually executed so
                     # it returns before the brute force thread has completed.
                     time.sleep(0.1)
-                    continue
+                else:
+                    if button_data[selected_menu_num] == self.SKIP_10:
+                        self.threadsafe_counter.increment(10)
 
-                if button_data[selected_menu_num] == self.SKIP_10:
-                    self.threadsafe_counter.increment(10)
+                    elif button_data[selected_menu_num] == self.CANCEL:
+                        break
 
-                elif button_data[selected_menu_num] == self.CANCEL:
+                if max_iterations is not None and self.threadsafe_counter.cur_count >= max_iterations:
                     break
 
             if self.verified_index.cur_count is not None:
