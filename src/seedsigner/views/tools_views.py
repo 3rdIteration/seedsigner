@@ -4368,7 +4368,6 @@ class ToolsGPGCrossCertifyView(View):
             LargeIconStatusScreen,
             WarningScreen,
         )
-        from seedsigner.gui.screens import tools_screens
 
         result = run(["gpg", "--list-secret-keys", "--with-colons"], capture_output=True, text=True)
         keys = parse_secret_key_list(result.stdout)
@@ -4409,30 +4408,10 @@ class ToolsGPGCrossCertifyView(View):
             return Destination(BackStackView)
         target = target_keys[target_sel]
 
-        ret_dict = tools_screens.ToolsTextQRTextEntryScreen(
-            textToEncode="",
-            title="Passphrase",
-        ).display()
-        if "is_back_button" in ret_dict:
-            return Destination(BackStackView)
-        try:
-            import re
-
-            passphrase = bytes(
-                re.sub(r"\\(?!u)", r"\\\\", ret_dict["textToEncode"]),
-                encoding="raw_unicode_escape",
-            ).decode("unicode_escape")
-        except UnicodeDecodeError:
-            passphrase = ret_dict["textToEncode"]
-
         cmd = [
             "gpg",
             "--batch",
             "--yes",
-            "--pinentry-mode",
-            "loopback",
-            "--passphrase",
-            passphrase,
             "--default-key",
             signer["fpr"],
             "--quick-sign-key",
@@ -4501,7 +4480,7 @@ class ToolsGPGExportBundleView(View):
             for key in keys:
                 label = key["uid"] if key["uid"] else key["fpr"][-8:]
                 if key["fpr"] in selected:
-                    label = "\u2713 " + label
+                    label = "* " + label
                 button_data.append(ButtonOption(label))
             button_data.extend([export_option, cancel_option])
 
