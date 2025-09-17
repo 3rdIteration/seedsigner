@@ -739,7 +739,11 @@ class SettingsDefinition:
                     type=SettingsConstants.TYPE__MULTISELECT,
                     visibility=SettingsConstants.VISIBILITY__HARDWARE,
                     selection_options=SettingsConstants.ALL_SMARTCARD_INTERFACES,
-                    default_value=[opt[0] for opt in SettingsConstants.ALL_SMARTCARD_INTERFACES]),
+                    default_value=[
+                        opt[0]
+                        for opt in SettingsConstants.ALL_SMARTCARD_INTERFACES
+                        if opt[0] != SettingsConstants.SMARTCARD_INTERFACE_PHOENIX
+                    ]),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__SYSTEM,
                     attr_name=SettingsConstants.SETTING__CACHE_SCARD_PIN,
