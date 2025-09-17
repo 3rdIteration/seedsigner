@@ -4324,10 +4324,18 @@ class ToolsGPGMenuView(View):
 class ToolsGPGAdvancedMenuView(View):
     SUBKEY_OPS = ButtonOption("Subkey Operations")
     UID_OPS = ButtonOption("User ID Operations")
+    CROSS_CERTIFY = ButtonOption("Cross Certify Keys")
+    EXPORT_BUNDLE = ButtonOption("Export Public Key Bundle")
     BIP85_META = ButtonOption("BIP85 Metadata")
 
     def run(self):
-        button_data = [self.SUBKEY_OPS, self.UID_OPS, self.BIP85_META]
+        button_data = [
+            self.SUBKEY_OPS,
+            self.UID_OPS,
+            self.CROSS_CERTIFY,
+            self.EXPORT_BUNDLE,
+            self.BIP85_META,
+        ]
 
         selected_menu_num = self.run_screen(
             ButtonListScreen,
@@ -4343,9 +4351,275 @@ class ToolsGPGAdvancedMenuView(View):
             return Destination(ToolsGPGSubkeyMenuView)
         if choice == self.UID_OPS:
             return Destination(ToolsGPGUidMenuView)
+        if choice == self.CROSS_CERTIFY:
+            return Destination(ToolsGPGCrossCertifyView)
+        if choice == self.EXPORT_BUNDLE:
+            return Destination(ToolsGPGExportBundleView)
         if choice == self.BIP85_META:
             return Destination(ToolsGPGBip85MetadataMenuView)
         return Destination(ToolsGPGMenuView)
+
+
+class ToolsGPGCrossCertifyView(View):
+    def run(self):
+        from subprocess import run
+        from seedsigner.gui.screens.screen import (
+            ButtonListScreen,
+            LargeIconStatusScreen,
+            WarningScreen,
+        )
+        from seedsigner.gui.screens import tools_screens
+
+        result = run(["gpg", "--list-secret-keys", "--with-colons"], capture_output=True, text=True)
+        keys = parse_secret_key_list(result.stdout)
+
+        if len(keys) < 2:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="At least two keys required",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        key_buttons = [ButtonOption(k["uid"] if k["uid"] else k["fpr"][-8:]) for k in keys]
+        signer_sel = self.run_screen(
+            ButtonListScreen,
+            title="Signing Key",
+            is_button_text_centered=False,
+            button_data=key_buttons,
+        )
+        if signer_sel == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        signer = keys[signer_sel]
+
+        target_keys = [k for idx, k in enumerate(keys) if idx != signer_sel]
+        target_buttons = [
+            ButtonOption(k["uid"] if k["uid"] else k["fpr"][-8:]) for k in target_keys
+        ]
+        target_sel = self.run_screen(
+            ButtonListScreen,
+            title="Target Key",
+            is_button_text_centered=False,
+            button_data=target_buttons,
+        )
+        if target_sel == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        target = target_keys[target_sel]
+
+        ret_dict = tools_screens.ToolsTextQRTextEntryScreen(
+            textToEncode="",
+            title="Passphrase",
+        ).display()
+        if "is_back_button" in ret_dict:
+            return Destination(BackStackView)
+        try:
+            import re
+
+            passphrase = bytes(
+                re.sub(r"\\(?!u)", r"\\\\", ret_dict["textToEncode"]),
+                encoding="raw_unicode_escape",
+            ).decode("unicode_escape")
+        except UnicodeDecodeError:
+            passphrase = ret_dict["textToEncode"]
+
+        cmd = [
+            "gpg",
+            "--batch",
+            "--yes",
+            "--pinentry-mode",
+            "loopback",
+            "--passphrase",
+            passphrase,
+            "--default-key",
+            signer["fpr"],
+            "--quick-sign-key",
+            target["fpr"],
+        ]
+        result = run(cmd, capture_output=True, text=True)
+
+        if result.returncode == 0:
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Success",
+                status_headline=None,
+                text="Key cross certified",
+                show_back_button=False,
+                button_data=[ButtonOption("Done")],
+            )
+            return Destination(ToolsGPGMenuView)
+
+        logger.error("Cross certification failed: %s", result.stderr.strip())
+        self.run_screen(
+            WarningScreen,
+            title="Error",
+            status_headline=None,
+            text="Failed to cross certify",
+            show_back_button=False,
+            button_data=[ButtonOption("I Understand")],
+        )
+        return Destination(BackStackView)
+
+
+class ToolsGPGExportBundleView(View):
+    def run(self):
+        from subprocess import run
+        import os
+        import time
+        from seedsigner.gui.screens.screen import (
+            ButtonListScreen,
+            LargeIconStatusScreen,
+            WarningScreen,
+            LoadingScreenThread,
+            QRDisplayScreen,
+        )
+        from seedsigner.hardware.microsd import MicroSD
+        from seedsigner.models.encode_qr import UrBytesQrEncoder
+
+        result = run(["gpg", "--list-secret-keys", "--with-colons"], capture_output=True, text=True)
+        keys = parse_secret_key_list(result.stdout)
+
+        if not keys:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No private keys found",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        export_option = ButtonOption("Export Bundle")
+        cancel_option = ButtonOption("Cancel")
+        selected = set()
+
+        while True:
+            button_data = []
+            for key in keys:
+                label = key["uid"] if key["uid"] else key["fpr"][-8:]
+                if key["fpr"] in selected:
+                    label = "\u2713 " + label
+                button_data.append(ButtonOption(label))
+            button_data.extend([export_option, cancel_option])
+
+            sel = self.run_screen(
+                ButtonListScreen,
+                title="Select Keys",
+                is_button_text_centered=False,
+                button_data=button_data,
+            )
+
+            if sel == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+
+            if sel < len(keys):
+                fpr = keys[sel]["fpr"]
+                if fpr in selected:
+                    selected.remove(fpr)
+                else:
+                    selected.add(fpr)
+                continue
+
+            choice = button_data[sel]
+            if choice is cancel_option:
+                return Destination(BackStackView)
+            if choice is export_option:
+                if len(selected) < 2:
+                    self.run_screen(
+                        WarningScreen,
+                        title="Error",
+                        status_headline=None,
+                        text="Select at least two keys",
+                        show_back_button=False,
+                        button_data=[ButtonOption("I Understand")],
+                    )
+                    continue
+                break
+
+        fingerprints = [k["fpr"] for k in keys if k["fpr"] in selected]
+
+        exported = run(["gpg", "--armor", "--export", *fingerprints], capture_output=True, text=True)
+        if exported.returncode != 0:
+            logger.error("Bundle export failed: %s", exported.stderr.strip())
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="Failed to export keys",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        dest_buttons = [ButtonOption("microSD"), ButtonOption("Animated QR")]
+        dest_sel = self.run_screen(
+            ButtonListScreen,
+            title="Export to",
+            is_button_text_centered=False,
+            button_data=dest_buttons,
+        )
+        if dest_sel == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        if dest_sel == 0:
+            if len(self.controller.storage.seeds) > 0:
+                ret = self.run_screen(
+                    WarningScreen,
+                    title="WARNING",
+                    status_headline=None,
+                    text="These tools write data to the microSD card and may expose loaded secrets.",
+                    show_back_button=True,
+                    button_data=[ButtonOption("Continue")],
+                )
+                if ret == RET_CODE__BACK_BUTTON:
+                    return Destination(BackStackView)
+
+            file_list_path = MicroSD.get_microsd_dir() / "microsd-images"
+            os.makedirs(file_list_path, exist_ok=True)
+
+            timestamp = time.strftime("%Y%m%d_%H%M%S")
+            filename = f"gpg_bundle_{timestamp}.asc"
+            filepath = os.path.join(file_list_path, filename)
+            with open(filepath, "w", encoding="utf-8") as f:
+                f.write(exported.stdout)
+
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Success",
+                status_headline=None,
+                text=f"Saved as {filename}",
+                show_back_button=False,
+                button_data=[ButtonOption("Continue")],
+            )
+            return Destination(MainMenuView)
+
+        loading = LoadingScreenThread(text="Encoding...")
+        loading.start()
+        try:
+            qr_encoder = UrBytesQrEncoder(
+                data=exported.stdout.encode("utf-8"),
+                qr_density=self.settings.get_value(SettingsConstants.SETTING__QR_DENSITY),
+            )
+        finally:
+            loading.stop()
+
+        num_codes = qr_encoder.seq_len()
+        ret = self.run_screen(
+            WarningScreen,
+            title="Animated QR",
+            status_headline=None,
+            text=f"This export requires {num_codes} QR code{'s' if num_codes > 1 else ''}.",
+            show_back_button=True,
+            button_data=[ButtonOption("Start")],
+        )
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        self.run_screen(QRDisplayScreen, qr_encoder=qr_encoder)
+        return Destination(MainMenuView)
 
 
 class ToolsGPGBip85MetadataMenuView(View):
