@@ -1797,6 +1797,7 @@ class ToolsSatochipChangeLabelView(View):
         return Destination(MainMenuView)
 
 class ToolsSeedkeeperView(View):
+    VIEW_FREE_SPACE = ButtonOption("View Free Space")
     VIEW_SECRETS = ButtonOption("View Secrets on Card")
     IMPORT_PASSWORD = ButtonOption("Save Password to Card")
     DELETE_SECRET = ButtonOption("Delete Secret from Card")
@@ -1804,7 +1805,14 @@ class ToolsSeedkeeperView(View):
     SAVE_DESCRIPTOR = ButtonOption("Save MultiSig Descriptor")
 
     def run(self):
-        button_data = [self.VIEW_SECRETS, self.IMPORT_PASSWORD, self.DELETE_SECRET, self.LOAD_DESCRIPTOR, self.SAVE_DESCRIPTOR]
+        button_data = [
+            self.VIEW_FREE_SPACE,
+            self.VIEW_SECRETS,
+            self.IMPORT_PASSWORD,
+            self.DELETE_SECRET,
+            self.LOAD_DESCRIPTOR,
+            self.SAVE_DESCRIPTOR,
+        ]
 
         selected_menu_num = self.run_screen(
             ButtonListScreen,
@@ -1815,6 +1823,9 @@ class ToolsSeedkeeperView(View):
 
         if selected_menu_num == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
+
+        elif button_data[selected_menu_num] == self.VIEW_FREE_SPACE:
+            return Destination(ToolsSeedkeeperFreeSpaceView)
 
         elif button_data[selected_menu_num] == self.VIEW_SECRETS:
             return Destination(ToolsSeedkeeperViewSecretsView)
@@ -1830,6 +1841,59 @@ class ToolsSeedkeeperView(View):
         
         elif button_data[selected_menu_num] == self.SAVE_DESCRIPTOR:
             return Destination(ToolsSeedkeeperSaveDescriptorView)
+
+
+class ToolsSeedkeeperFreeSpaceView(View):
+
+    def run(self):
+        connector = None
+        try:
+            connector = seedkeeper_utils.init_satochip(
+                self,
+                init_card_filter=["seedkeeper"],
+                require_pin=False,
+            )
+
+            if not connector:
+                return Destination(BackStackView)
+
+            try:
+                free_bytes = seedkeeper_utils.get_seedkeeper_free_memory(connector)
+            except Exception as exc:
+                self.run_screen(
+                    WarningScreen,
+                    title="Error",
+                    status_headline=None,
+                    text=str(exc),
+                    show_back_button=True,
+                )
+                return Destination(BackStackView)
+
+            free_kib = free_bytes / 1024
+            text = f"{free_bytes} bytes free\n({free_kib:.1f} KiB)"
+
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Seedkeeper Free Space",
+                status_headline=None,
+                text=text,
+                show_back_button=True,
+            )
+            return Destination(BackStackView)
+
+        except Exception as exc:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text=str(exc),
+                show_back_button=True,
+            )
+            return Destination(BackStackView)
+
+        finally:
+            if connector:
+                seedkeeper_utils.disconnect_smartcard_connections(self.controller)
 
 class ToolsSeedkeeperViewSecretsView(View):
 
