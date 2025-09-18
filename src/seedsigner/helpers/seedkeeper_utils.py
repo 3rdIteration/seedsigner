@@ -27,6 +27,78 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def calculate_seedkeeper_secret_size(secret_dic: dict) -> int:
+    """Estimate the number of bytes the secret will occupy on the Seedkeeper.
+
+    The Seedkeeper stores both the secret header (including the automatically
+    assigned id) and an AES-padded copy of the secret payload. This helper
+    mirrors :func:`CardConnector.seedkeeper_import_secret`'s padding behaviour
+    so that we can compare the required storage with the remaining free space
+    reported by the card before attempting an import.
+    """
+
+    header_hex = secret_dic.get("header")
+    if not header_hex:
+        raise ValueError("Secret dictionary missing Seedkeeper header data")
+
+    try:
+        header_length = len(bytes.fromhex(header_hex))
+    except ValueError as exc:
+        raise ValueError("Invalid Seedkeeper header encoding") from exc
+
+    if "secret_list" in secret_dic and secret_dic["secret_list"] is not None:
+        secret_length = len(secret_dic["secret_list"])
+        # Seedkeeper always pads to the next 16 byte boundary, even when the
+        # plaintext length already aligns with the block size.
+        padding = 16 - (secret_length % 16)
+        if padding == 0:
+            padding = 16
+        padded_secret_length = secret_length + padding
+    elif "secret_encrypted" in secret_dic and secret_dic["secret_encrypted"] is not None:
+        padded_secret_length = len(bytes.fromhex(secret_dic["secret_encrypted"]))
+    else:
+        raise ValueError("Secret dictionary missing Seedkeeper secret data")
+
+    return header_length + padded_secret_length
+
+
+def get_seedkeeper_free_memory(connector) -> int:
+    """Return the free memory (in bytes) currently reported by the Seedkeeper."""
+
+    _, _, _, status = connector.seedkeeper_get_status()
+    free_memory = status.get("free_memory")
+    if free_memory is None:
+        raise ValueError("Seedkeeper did not report available memory")
+    return free_memory
+
+
+def ensure_seedkeeper_capacity(connector, secret_dic: dict, free_memory: int | None = None):
+    """Check whether the Seedkeeper has enough space for the provided secret.
+
+    Returns a tuple ``(fits, required_bytes, available_bytes)``. When
+    ``free_memory`` is ``None`` the helper will query the Seedkeeper for the
+    latest free space value, otherwise the supplied ``free_memory`` will be used
+    for the comparison.
+    """
+
+    required_bytes = calculate_seedkeeper_secret_size(secret_dic)
+    available_bytes = free_memory
+    if available_bytes is None:
+        available_bytes = get_seedkeeper_free_memory(connector)
+
+    return required_bytes <= available_bytes, required_bytes, available_bytes
+
+
+def format_seedkeeper_space_error(required_bytes: int, free_bytes: int) -> str:
+    """Return a human-readable message describing a space shortfall."""
+
+    return (
+        "Not enough space on Seedkeeper\n"
+        f"Requires {required_bytes} bytes\n"
+        f"{free_bytes} bytes free"
+    )
+
+
 def prompt_for_pin(parent_view, title: str):
     """Prompt for a PIN and enforce length requirements."""
 

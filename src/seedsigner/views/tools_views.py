@@ -2089,6 +2089,32 @@ class ToolsSeedkeeperImportPasswordView(View):
         secret_text_list = list(bytes(secret_text['passphrase'], 'utf-8'))
         secret_list = [len(secret_text_list)] + secret_text_list
         secret_dic = {'header': header, 'secret_list': secret_list}
+
+        try:
+            fits, required_bytes, free_bytes = seedkeeper_utils.ensure_seedkeeper_capacity(
+                Satochip_Connector, secret_dic
+            )
+        except Exception as e:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text=str(e),
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        if not fits:
+            self.run_screen(
+                WarningScreen,
+                title="Not Enough Space",
+                status_headline=None,
+                text=seedkeeper_utils.format_seedkeeper_space_error(required_bytes, free_bytes),
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
         try:
             self.loading_screen = LoadingScreenThread(text="Saving Secret\n\n\n\n\n\n")
             self.loading_screen.start()
@@ -2467,10 +2493,35 @@ class ToolsSeedkeeperSaveDescriptorView(View):
                     secret_text_list = list(bytes(secret_text, 'utf-8'))
                     secret_list = list(len(secret_text_list).to_bytes(2,"big")) + secret_text_list
                 secret_dic = {'header': header, 'secret_list': secret_list}
+                try:
+                    fits, required_bytes, free_bytes = seedkeeper_utils.ensure_seedkeeper_capacity(
+                        Satochip_Connector, secret_dic
+                    )
+                except Exception as e:
+                    self.loading_screen.stop()
+                    self.run_screen(
+                        WarningScreen,
+                        title="Error",
+                        status_headline=None,
+                        text=str(e),
+                        show_back_button=True,
+                    )
+                    return Destination(BackStackView)
+
+                if not fits:
+                    self.loading_screen.stop()
+                    self.run_screen(
+                        WarningScreen,
+                        title="Not Enough Space",
+                        status_headline=None,
+                        text=seedkeeper_utils.format_seedkeeper_space_error(required_bytes, free_bytes),
+                        show_back_button=True,
+                    )
+                    return Destination(BackStackView)
                 (sid, fingerprint) = Satochip_Connector.seedkeeper_import_secret(secret_dic)
                 logger.info("Imported - SID:", sid, " Fingerprint:", fingerprint)
                 secrets_imported += 1
-                
+
             self.loading_screen.stop()
 
             self.run_screen(
@@ -4745,6 +4796,32 @@ class ToolsGPGSaveBip85DataView(View):
             "Data", "Plaintext export allowed", label
         )
         secret_dic = {"header": header, "secret_list": secret_list}
+
+        try:
+            fits, required_bytes, free_bytes = seedkeeper_utils.ensure_seedkeeper_capacity(
+                Satochip_Connector, secret_dic
+            )
+        except Exception as e:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text=str(e),
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        if not fits:
+            self.run_screen(
+                WarningScreen,
+                title="Not Enough Space",
+                status_headline=None,
+                text=seedkeeper_utils.format_seedkeeper_space_error(required_bytes, free_bytes),
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
 
         try:
             loading = LoadingScreenThread(text="Saving Secret\n\n\n\n\n\n")
@@ -7047,6 +7124,32 @@ class ToolsGPGDecryptMessageView(View):
                 "Data", "Plaintext export allowed", label
             )
             secret_dic = {"header": header, "secret_list": secret_list}
+
+            try:
+                fits, required_bytes, free_bytes = seedkeeper_utils.ensure_seedkeeper_capacity(
+                    Satochip_Connector, secret_dic
+                )
+            except Exception as e:
+                self.run_screen(
+                    WarningScreen,
+                    title="Error",
+                    status_headline=None,
+                    text=str(e),
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
+
+            if not fits:
+                self.run_screen(
+                    WarningScreen,
+                    title="Not Enough Space",
+                    status_headline=None,
+                    text=seedkeeper_utils.format_seedkeeper_space_error(required_bytes, free_bytes),
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
 
             try:
                 loading = LoadingScreenThread(text="Saving Secret\n\n\n\n\n\n")
@@ -10630,6 +10733,32 @@ class ToolsGPGExportPubkeyView(View):
             secret_dic = {"header": header, "secret_list": secret_list}
 
             try:
+                fits, required_bytes, free_bytes = seedkeeper_utils.ensure_seedkeeper_capacity(
+                    Satochip_Connector, secret_dic
+                )
+            except Exception as e:
+                self.run_screen(
+                    WarningScreen,
+                    title="Error",
+                    status_headline=None,
+                    text=str(e),
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
+
+            if not fits:
+                self.run_screen(
+                    WarningScreen,
+                    title="Not Enough Space",
+                    status_headline=None,
+                    text=seedkeeper_utils.format_seedkeeper_space_error(required_bytes, free_bytes),
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
+
+            try:
                 self.loading_screen = LoadingScreenThread(
                     text="Saving Secret\n\n\n\n\n\n",
                 )
@@ -10881,6 +11010,32 @@ class ToolsGPGExportPrivkeyView(View):
                 "Data", "Plaintext export allowed", label
             )
             secret_dic = {"header": header, "secret_list": secret_list}
+
+            try:
+                fits, required_bytes, free_bytes = seedkeeper_utils.ensure_seedkeeper_capacity(
+                    Satochip_Connector, secret_dic
+                )
+            except Exception as e:
+                self.run_screen(
+                    WarningScreen,
+                    title="Error",
+                    status_headline=None,
+                    text=str(e),
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
+
+            if not fits:
+                self.run_screen(
+                    WarningScreen,
+                    title="Not Enough Space",
+                    status_headline=None,
+                    text=seedkeeper_utils.format_seedkeeper_space_error(required_bytes, free_bytes),
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
 
             try:
                 self.loading_screen = LoadingScreenThread(
