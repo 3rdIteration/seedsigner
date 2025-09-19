@@ -1806,12 +1806,12 @@ class ToolsSeedkeeperView(View):
 
     def run(self):
         button_data = [
-            self.VIEW_FREE_SPACE,
             self.VIEW_SECRETS,
             self.IMPORT_PASSWORD,
             self.DELETE_SECRET,
             self.LOAD_DESCRIPTOR,
             self.SAVE_DESCRIPTOR,
+            self.VIEW_FREE_SPACE,
         ]
 
         selected_menu_num = self.run_screen(
@@ -1823,9 +1823,6 @@ class ToolsSeedkeeperView(View):
 
         if selected_menu_num == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
-
-        elif button_data[selected_menu_num] == self.VIEW_FREE_SPACE:
-            return Destination(ToolsSeedkeeperFreeSpaceView)
 
         elif button_data[selected_menu_num] == self.VIEW_SECRETS:
             return Destination(ToolsSeedkeeperViewSecretsView)
@@ -1842,6 +1839,9 @@ class ToolsSeedkeeperView(View):
         elif button_data[selected_menu_num] == self.SAVE_DESCRIPTOR:
             return Destination(ToolsSeedkeeperSaveDescriptorView)
 
+        elif button_data[selected_menu_num] == self.VIEW_FREE_SPACE:
+            return Destination(ToolsSeedkeeperFreeSpaceView)
+
 
 class ToolsSeedkeeperFreeSpaceView(View):
 
@@ -1851,7 +1851,7 @@ class ToolsSeedkeeperFreeSpaceView(View):
             connector = seedkeeper_utils.init_satochip(
                 self,
                 init_card_filter=["seedkeeper"],
-                require_pin=False,
+                require_pin=True,
             )
 
             if not connector:
