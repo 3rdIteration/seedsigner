@@ -195,7 +195,55 @@ def test_get_xpub():
         # call with named params
         print(f'  {func.__name__}(seed_bytes={args[0]}, derivation_path="{args[1]}", embit_network="{args[2]}") == "{expected}"')
         assert str(func(seed_bytes=args[0], derivation_path=args[1], embit_network=args[2])) == expected
-        
+
+
+def test_sign_message_vectors():
+    """Verify sign_message outputs match known-good signatures"""
+
+    from embit import bip39
+
+    seed = bip39.mnemonic_to_seed("abandon " * 11 + "about")
+
+    vectors = (
+        (
+            "m/84'/0'/0'/0/3",
+            "a test message with a colon ':' character.",
+            "IN/4LmcGRaI5sgvBP2mrTXQFvD6FecXd8La03SixPabsb/255ElRGTcXhicT3KFsNJbfQ9te909ZXeKMaqUcaPM=",
+            None,
+        ),
+        (
+            "m/84'/1'/0'/0/3",
+            "A test message.",
+            "ILc30ti8OPSpCtzfj7sNnftANBCuVpyRX7pnM3iAgOk9F9IUtnXNPus0+MF12y5HKYHAB6IVYr66sLmL3Vi3oEE=",
+            "test",
+        ),
+        (
+            "m/86'/0'/0'/0/3",
+            "a test message with a colon ':' character.",
+            "H3Z5VioeLaC0rpdI2CflUu34IANgGxum0Rr9lmCziQRfUQv+vFND+nHvxHmJZA0uvLLI1/mTEEHD2bBfN6Y2d6w=",
+            None,
+        ),
+        (
+            "m/44'/0'/0'/0/3",
+            "a test message with a colon ':' character.",
+            "IEpq8rUwSmDxO3GgwaZ75tw3DArtHtLi08kgQuRNXdteMI5KNEAWbpzsY8gRzGkspZN4YFiRu4RNCM+IsKkWys8=",
+            None,
+        ),
+        (
+            "m/49'/0'/0'/0/3",
+            "a test message with a colon ':' character.",
+            "HyH8898c2S6eF8hTPGhRqLC6UQrJrhw/fdguBeFG0cCrOFkbG8TCVURXOgxXaEV93vrFlHyxNGEvL10IcsLtvvI=",
+            None,
+        ),
+    )
+
+    for derivation, message, expected, network in vectors:
+        kwargs = {}
+        if network:
+            kwargs["embit_network"] = network
+        signature = embit_utils.sign_message(seed, derivation, message.encode(), **kwargs)
+        assert signature == expected
+
 
 def test_get_single_sig_address():
     """

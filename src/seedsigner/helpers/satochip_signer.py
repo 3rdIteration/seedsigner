@@ -13,6 +13,22 @@ from embit.util import secp256k1
 from seedsigner.helpers.iso7816 import format_sw_error
 from seedsigner.models.settings import Settings, SettingsConstants
 
+try:  # pragma: no cover - pysatochip optional at runtime
+    from pysatochip import ecc as pysatochip_ecc
+except ImportError:  # pragma: no cover - pysatochip not installed
+    pysatochip_ecc = None
+else:  # pragma: no cover - behaviour validated via unit tests
+    if not hasattr(pysatochip_ecc.ECPubkey, "_seedsigner_safe_eq"):
+        _orig_eq = pysatochip_ecc.ECPubkey.__eq__
+
+        def _safe_eq(self, other):
+            if not isinstance(other, pysatochip_ecc.ECPubkey):
+                return False
+            return _orig_eq(self, other)
+
+        pysatochip_ecc.ECPubkey.__eq__ = _safe_eq
+        pysatochip_ecc.ECPubkey._seedsigner_safe_eq = True
+
 try:
     # Constant introduced in newer embit versions
     from embit.bip32 import HARDENED_INDEX  # type: ignore

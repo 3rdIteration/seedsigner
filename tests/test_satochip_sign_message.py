@@ -1,5 +1,7 @@
 from binascii import b2a_base64
 
+import pytest
+
 from seedsigner.helpers.satochip_signer import sign_message_with_satochip
 
 
@@ -27,4 +29,14 @@ def test_sign_message_with_satochip_accepts_hardened_notation_without_m_prefix()
     connector = DummyConnector()
     sig = sign_message_with_satochip("84h/0h/0h/0/0", "hello", connector)
     assert sig == b2a_base64(b"\x01" * 65).strip().decode()
+
+
+def test_pysatochip_pubkey_equality_is_hardened():
+    try:
+        from pysatochip.ecc import ECPubkey
+    except ImportError:  # pragma: no cover - pysatochip not installed
+        pytest.skip("pysatochip not available")
+
+    pubkey = ECPubkey(b"\x02" + b"\x00" * 32)
+    assert not (pubkey == None)  # noqa: E711 - explicit None comparison for regression
 
