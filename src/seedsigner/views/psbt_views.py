@@ -146,12 +146,15 @@ class PSBTSelectSeedView(View):
             from seedsigner.gui.screens.screen import LoadingScreenThread
             loading = LoadingScreenThread(text=_("Parsing PSBT..."))
             loading.start()
+            loading_stopped = False
             try:
                 try:
                     account_xpub = connector.card_bip32_get_xpub(account_path_str, xtype, is_mainnet)
                     master_xpub = connector.card_bip32_get_xpub("", xtype, is_mainnet)
                 except Exception as e:
                     logger.exception("Failed to export xpub from Satochip card")
+                    loading.stop()
+                    loading_stopped = True
                     self.run_screen(
                         WarningScreen,
                         title="Failed",
@@ -174,6 +177,8 @@ class PSBTSelectSeedView(View):
                     )
                 except Exception as e:
                     logger.exception("Failed to parse PSBT with Satochip data")
+                    loading.stop()
+                    loading_stopped = True
                     self.run_screen(
                         WarningScreen,
                         title="Failed",
@@ -197,6 +202,8 @@ class PSBTSelectSeedView(View):
                     )
                     self.controller.psbt_parser = None
                     self.controller.psbt_sign_with_satochip = False
+                    loading.stop()
+                    loading_stopped = True
                     self.run_screen(
                         WarningScreen,
                         title=_("Fingerprint mismatch"),
@@ -208,7 +215,8 @@ class PSBTSelectSeedView(View):
                     )
                     return Destination(PSBTSelectSeedView, clear_history=True)
             finally:
-                loading.stop()
+                if not loading_stopped:
+                    loading.stop()
 
             self.controller.psbt_seed = None
             self.controller.psbt_sign_with_satochip = True
