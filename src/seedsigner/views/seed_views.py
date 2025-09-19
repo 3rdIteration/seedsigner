@@ -3999,6 +3999,30 @@ class SaveToSeedkeeperView(View):
                     header = Satochip_Connector.make_header(type, export_rights, label, subtype=subtype)
                     secret_dic = {'header': header, 'secret_list': secret_list}
 
+            try:
+                fits, required_bytes, free_bytes = seedkeeper_utils.ensure_seedkeeper_capacity(
+                    Satochip_Connector, secret_dic
+                )
+            except Exception as e:
+                self.run_screen(
+                    WarningScreen,
+                    title="Error",
+                    status_headline=None,
+                    text=str(e),
+                    show_back_button=True,
+                )
+                return Destination(BackStackView)
+
+            if not fits:
+                self.run_screen(
+                    WarningScreen,
+                    title="Not Enough Space",
+                    status_headline=None,
+                    text=seedkeeper_utils.format_seedkeeper_space_error(required_bytes, free_bytes),
+                    show_back_button=True,
+                )
+                return Destination(BackStackView)
+
             self.loading_screen = LoadingScreenThread(text="Saving Seed\n\n\n\n\n\n")
             self.loading_screen.start()
             (sid, fingerprint) = Satochip_Connector.seedkeeper_import_secret(secret_dic)

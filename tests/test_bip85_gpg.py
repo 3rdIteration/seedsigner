@@ -1018,15 +1018,20 @@ def test_bip85_save_to_seedkeeper(monkeypatch):
     class DummyConnector:
         def __init__(self):
             self.saved = None
+            self.last_label = None
 
         def card_get_status(self):
             return (None, None, None, {"protocol_minor_version": 2})
 
         def make_header(self, t, rights, label):
-            return {"label": label}
+            self.last_label = label
+            return "00" * 20
 
         def seedkeeper_import_secret(self, secret_dic):
             self.saved = secret_dic
+
+        def seedkeeper_get_status(self):
+            return (None, None, None, {"free_memory": 4096})
 
     dummy = DummyConnector()
     monkeypatch.setattr(
@@ -1054,7 +1059,8 @@ def test_bip85_save_to_seedkeeper(monkeypatch):
     view = tools_views.ToolsGPGSaveBip85DataView()
     view.run()
     assert dummy.saved is not None
-    assert dummy.saved["header"]["label"].startswith("BIP85-GPG-")
+    assert dummy.last_label is not None
+    assert dummy.last_label.startswith("BIP85-GPG-")
 
 
 def test_bip85_seedkeeper_import_format():
