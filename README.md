@@ -22,43 +22,60 @@ Support and discussion relating to this fork can happen via this [Telegram Group
    - Encrypted QR: Supports Krux compatible encrypted seeds
    - Passphrase QR: Supports loading a passphrase from a plain text QR code
    - Plaintext QR: Support Exporting Seed as Plaintext QR Code
+   - Split passphrase/encryption key QR support (Multi-Factor entry)
 * Saving and Loading Multisig Descriptors to Satochip Seedkeeper Cards 
    - Also changed default behavior to keep Descriptor loaded until manually cleared. (Including descriptor appearing in the Address Explorer when loaded)
    - Descriptors are split up into a template and xpubs before being saved to SeedKeeper.
    - Includes ability to load single-sig descriptor and use Address Browser
 * Saving and loading generic secrets to a Seedkeeper card
    - These secrets can be either viewed as text or displayed as a generic text QR code.
-* Initialising Satochip Cards with SeedSigner
-  - Load any Seed from the SeedSigner on to the Satochip Card
-  - Enable 2FA on the Satochip Card
 * General Satochip/Seedkeeper card operations
   - Initialise Card
   - Change Card PIN
   - Change Card Label
   - Set NFC Policy
   - Factory Reset Card
-* Flashing Java Applets to blank Javacards
-   - Firmware comes bundled with applets for SeedSigner, Satochip and Satodime (Releases from Satochip Github)
-   - Firmware is also bundled with the source code for all three projects, along with a modified varient for THD-89 based Javacards. (This can be built from source on-device at run-time)
-   - Firmware also comes bundled applets for Specter DIY, ApexTOTP, SmartPGP
-* Smartcard Hardware Troubleshooting (In the settings menu)
-   - Enable/Disable smartcard readers (All interfaces enabled by default)
-   - List Smartcard Readers
-   - Check Card Connection
-   - Test NFC connection
-   - Restart PCSC (This should generally not be required)
-* MicroSD Card Tools
+  - Smartcard info screen with card UID
+  - Genuineness check
+* Satochip Card features
+  - Load any Seed from the SeedSigner on to the Satochip Card
+  - Enable 2FA on the Satochip Card
+  - Export xpubs (single- and multisig) 
+  - PSBT verification and transaction signing directly on-card
+  - Message signing
+  - Address explorer integration for Satochip cards
+* SLIP39 seed support
+  - Create, import and extend SLIP39 seed shares (Can load from text, QR or Seedkeeper)
+  - Save SLIP39 shares to Seedkeeper
+  - Initialise Satochip card from reconstructed SLIP39 seed.
+  - Settings to toggle SLIP39 functionality
+* BIP85 Support
+   - Supports not only generating BIP85 seeds, but loading them and using them
+* WIF/BIP38 key signing support (disabled by default)
+* Wallet xpub export verification (Checks receive address for safety)
+* TextQR Tool
+   - Supports both generating and loading standard plaintext QR codes for arbitrary text.
+* Configurable seed word lengths (12, 15, 18, 21 and 24 word mnemonics)
+* Enhanced entropy and security features
+  - Live display of camera entropy quality
+  - Shannon Entropy checks for Dice and Camera seed generation
+  - Hardware RNG mixed with camera entropy
+  - Entropy quality indicators with optional 30-minute wipe timer
+* Extra Developer Tools
+  - All dev builds throw a warning on startup...
+  - Desktop simulation mode with system camera support (Useful for development)
+  - Dev builds allow running seedsigner source from a folder on microSD
+  - Dev builds have ability to enable networking and include extra tools like SSH, git and rsync (To make dev easier)
+* Compressed image files (The uncompressed files are large due to having extra free space to make the GPG verification feature useful)
+* * MicroSD Card Tools
    - Flashing MicroSD Cards with official SeedSigner Images (Bundled)
    - Verification of freshly flashed MicroSD cards against known images
    - Secure Wipe (Both with zeros and random data)
 * GPG Tools
    - GPG Signature verification & Sha256 Manifest check (Includes pubkey bundle the from Sparrow to verify Seedsigner, Sparrow, Electrum, plus many more)
-* BIP85 Support
-   - Supports not only generating BIP85 seeds, but loading them and using them
-* TextQR Tool
-   - Supports both generating and loading standard plaintext QR codes for arbitrary text.
-* Support for 18 word BIP39 Mnemonics
-* Compressed image files (The uncompressed files are large due to having extra free space to make the GPG verification feature useful)
+    - Load BIP85-derived GPG keys (NIST P-256 [default], Brainpool P-256, RSA 2048, RSA 3072, RSA 4096, or secp256k1) with prompts for key type, name, email, and expiration (defaulting to the end of 2029 for RSA 2048 keys and the end of 2035 for all other key types); when multiple seeds are loaded you can choose which seed to derive from, and metadata such as name, email, expiration, and deprecation/end-of-use dates can be modified later ([docs](./docs/gpg_tools.md))
+    - Manage User IDs: add, edit, revoke, delete, or set the primary UID
+    - Advanced submenu exposes Subkey Operations, User ID Operations, and a BIP85 Metadata menu to save/load BIP85 details or rebuild keys. BIP85-derived keys use deterministic BIP85 subkeys with successive indexes and only the latest subkey may be deleted. When adding subkeys to a BIP85 key SeedSigner automatically selects the corresponding seed and verifies the existing key before derivation, warning if the seed is unavailable. BIP85 derivation details are tracked in memory and can be saved or loaded as JSON via file, animated QR, or Seedkeeper from the BIP85 Metadata menu
 * Tested and working with the following hardware
    - Raspberry Pi Zero 1.3
    - Raspberry Pi Zero W
@@ -67,9 +84,7 @@ Support and discussion relating to this fork can happen via this [Telegram Group
    - Raspberry Pi 4
  
 ## Future Features & Improvements
-* Add ability to sign transactions on Satochip card directly
 * Add ability to lock/unlock/manage Javacards
-* Add ability to view additional sttings/information for the Satochip cards
 * Tidy up code and reduce re-use
 
 [Software Images along with verification instructions can be found on the releases page.](https://github.com/3rdIteration/seedsigner/releases) 
@@ -141,6 +156,7 @@ If you have specific questions about the project, our [Telegram Group](https://t
   * Scan a software wallet's receive or change address to verify that it's correct.
   * Address Explorer for single sig and multisig wallets.
   * Message signing to prove address ownership.
+  * Sync the system clock using a [GoPro Labs timecode QR](https://gopro.github.io/labs/control/) for camera alignment.
   * BIP85 child seed generation.
 
 * Compatible with:
@@ -433,3 +449,5 @@ See the [SeedSigner OS repo](https://github.com/SeedSigner/seedsigner-os/) for i
 
 # Developer Local Build Instructions
 Raspberry Pi OS is commonly used for development. See the [Raspberry Pi OS Build Instructions](docs/raspberry_pi_os_build_instructions.md)
+
+To experiment on a regular PC, a pygame‑based simulator is available. See the [Desktop Simulation guide](docs/desktop_simulation.md) for installation and usage instructions.

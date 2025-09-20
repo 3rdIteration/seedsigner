@@ -7,6 +7,12 @@ from seedsigner.helpers.l10n import mark_for_translation as _mft
 import logging
 logger = logging.getLogger(__name__)
 
+try:
+    import RPi.GPIO as _GPIO  # type: ignore  # noqa: F401
+    USING_MOCK_GPIO = getattr(_GPIO, "__file__", None) is None
+except ModuleNotFoundError:
+    USING_MOCK_GPIO = True
+
 
 
 class SettingsConstants:
@@ -234,6 +240,17 @@ class SettingsConstants:
         (CAMERA_ROTATION__270, _mft("270°")),
     ]
 
+    CAMERA_DEVICE__0 = 0
+    CAMERA_DEVICE__1 = 1
+    CAMERA_DEVICE__2 = 2
+    CAMERA_DEVICE__3 = 3
+    ALL_CAMERA_DEVICES = [
+        (CAMERA_DEVICE__0, _mft("Camera 0")),
+        (CAMERA_DEVICE__1, _mft("Camera 1")),
+        (CAMERA_DEVICE__2, _mft("Camera 2")),
+        (CAMERA_DEVICE__3, _mft("Camera 3")),
+    ]
+
     # QR code constants
     DENSITY__LOW = "L"
     DENSITY__MEDIUM = "M"
@@ -277,6 +294,49 @@ class SettingsConstants:
     SCARD_PIN_ATTEMPTS_MAX = 10
     ALL_SCARD_PIN_ATTEMPTS = [(i, str(i)) for i in range(SCARD_PIN_ATTEMPTS_MIN, SCARD_PIN_ATTEMPTS_MAX + 1)]
     DEFAULT_SCARD_PIN_ATTEMPTS = 5
+
+    # Satochip signing behavior
+    SATOCHIP_TIMEOUT_MIN = 0.25
+    SATOCHIP_TIMEOUT_MAX = 1
+
+    ALL_SATOCHIP_TIMEOUTS = [
+        (i, f"{i:g}s")
+        for i in [x * 0.25 for x in range(int(SATOCHIP_TIMEOUT_MIN / 0.25), int(SATOCHIP_TIMEOUT_MAX / 0.25) + 1)]
+    ]
+    DEFAULT_SATOCHIP_TIMEOUT = 0.5
+
+    SATOCHIP_PRE_DUMMY_MAX_MIN = 0
+    SATOCHIP_PRE_DUMMY_MAX_MAX = 12
+    ALL_SATOCHIP_PRE_DUMMY_MAX = [
+        (i, str(i))
+        for i in range(SATOCHIP_PRE_DUMMY_MAX_MIN, SATOCHIP_PRE_DUMMY_MAX_MAX + 1)
+    ]
+    DEFAULT_SATOCHIP_PRE_DUMMY_MAX = 6
+
+    SATOCHIP_POST_DUMMY_MAX_MIN = 0
+    SATOCHIP_POST_DUMMY_MAX_MAX = 12
+    ALL_SATOCHIP_POST_DUMMY_MAX = [
+        (i, str(i))
+        for i in range(
+            SATOCHIP_POST_DUMMY_MAX_MIN, SATOCHIP_POST_DUMMY_MAX_MAX + 1
+        )
+    ]
+    DEFAULT_SATOCHIP_POST_DUMMY_MAX = 6
+
+    SATOCHIP_IN_TX_DUMMY_MAX_MIN = 1
+    SATOCHIP_IN_TX_DUMMY_MAX_MAX = 5
+    ALL_SATOCHIP_IN_TX_DUMMY_MAX = [
+        (i, str(i))
+        for i in range(SATOCHIP_IN_TX_DUMMY_MAX_MIN, SATOCHIP_IN_TX_DUMMY_MAX_MAX + 1)
+    ]
+    DEFAULT_SATOCHIP_IN_TX_DUMMY_MAX = 3
+
+    SATOCHIP_DUMMY_PROB_MIN = 0
+    SATOCHIP_DUMMY_PROB_MAX = 100
+    ALL_SATOCHIP_DUMMY_PROB = [
+        (i, f"{i}%") for i in range(SATOCHIP_DUMMY_PROB_MIN, SATOCHIP_DUMMY_PROB_MAX + 1, 5)
+    ]
+    DEFAULT_SATOCHIP_DUMMY_PROB = 50
 
     @classmethod
     def map_network_to_embit(cls, network) -> str:
@@ -365,12 +425,15 @@ class SettingsConstants:
     SETTING__XPUB_EXPORT = "xpub_export"
     SETTING__SIG_TYPES = "sig_types"
     SETTING__SCRIPT_TYPES = "script_types"
+    SETTING__ACCOUNT_PROMPT = "account_prompt"
     SETTING__SEED_WORD_LENGTHS = "seed_word_lengths"
     SETTING__XPUB_DETAILS = "xpub_details"
     SETTING__PASSPHRASE = "passphrase"
     SETTING__CAMERA_ROTATION = "camera_rotation"
+    SETTING__CAMERA_DEVICE = "camera_device"
     SETTING__COMPACT_SEEDQR = "compact_seedqr"
     SETTING__BIP85_CHILD_SEEDS = "bip85_child_seeds"
+    SETTING__BIP85_ECC_KEYS = "bip85_ecc_keys"
     SETTING__SLIP39_SEEDS = "slip39_seeds"
     SETTING__SLIP39_EXTENDABLE = "slip39_extendable"
     SETTING__ELECTRUM_SEEDS = "electrum_seeds"
@@ -386,6 +449,12 @@ class SettingsConstants:
     SETTING__WIF_KEYS = "wif_keys"
     SETTING__BIP38_KEYS = "bip38_keys"
 
+    SETTING__SATOCHIP_SIGN_TIMEOUT = "satochip_sign_timeout"
+    SETTING__SATOCHIP_MAX_PRE_DUMMIES = "satochip_max_pre_dummies"
+    SETTING__SATOCHIP_MAX_POST_DUMMIES = "satochip_max_post_dummies"
+    SETTING__SATOCHIP_MAX_IN_TX_DUMMIES = "satochip_max_in_tx_dummies"
+    SETTING__SATOCHIP_DUMMY_PROBABILITY = "satochip_dummy_probability"
+
     SETTING__DEBUG = "debug"
 
 
@@ -394,12 +463,24 @@ class SettingsConstants:
     DISPLAY_CONFIGURATION__ST7789__320x240 = "st7789_320x240"    # natively portrait dimensions; we apply a 90° rotation
     DISPLAY_CONFIGURATION__ILI9341__320x240 = "ili9341_320x240"  # natively portrait dimensions; we apply a 90° rotation
     DISPLAY_CONFIGURATION__ILI9486__480x320 = "ili9486_480x320"  # natively portrait dimensions; we apply a 90° rotation
-    ALL_DISPLAY_CONFIGURATIONS = [
-        (DISPLAY_CONFIGURATION__ST7789__240x240, "st7789 240x240"),
-        (DISPLAY_CONFIGURATION__ST7789__320x240, "st7789 320x240"),
-        (DISPLAY_CONFIGURATION__ILI9341__320x240, "ili9341 320x240 (beta)"),
-        # (DISPLAY_CONFIGURATION__ILI9486__320x480, "ili9486 480x320"),  # TODO: Enable when ili9486 driver performance is improved
-    ]
+    DISPLAY_CONFIGURATION__DESKTOP__240x240 = "desktop_240x240"  # pygame-based desktop simulation
+    DISPLAY_CONFIGURATION__DESKTOP__320x240 = "desktop_320x240"
+    if USING_MOCK_GPIO:
+        ALL_DISPLAY_CONFIGURATIONS = [
+            (DISPLAY_CONFIGURATION__ST7789__240x240, "st7789 240x240"),
+            (DISPLAY_CONFIGURATION__ST7789__320x240, "st7789 320x240"),
+            (DISPLAY_CONFIGURATION__ILI9341__320x240, "ili9341 320x240 (beta)"),
+            (DISPLAY_CONFIGURATION__DESKTOP__240x240, "desktop 240x240"),
+            (DISPLAY_CONFIGURATION__DESKTOP__320x240, "desktop 320x240"),
+            # (DISPLAY_CONFIGURATION__ILI9486__320x480, "ili9486 480x320"),  # TODO: Enable when ili9486 driver performance is improved
+        ]
+    else:
+        ALL_DISPLAY_CONFIGURATIONS = [
+            (DISPLAY_CONFIGURATION__ST7789__240x240, "st7789 240x240"),
+            (DISPLAY_CONFIGURATION__ST7789__320x240, "st7789 320x240"),
+            (DISPLAY_CONFIGURATION__ILI9341__320x240, "ili9341 320x240 (beta)"),
+            # (DISPLAY_CONFIGURATION__ILI9486__320x480, "ili9486 480x320"),  # TODO: Enable when ili9486 driver performance is improved
+        ]
 
 
     # Hidden settings
@@ -658,7 +739,11 @@ class SettingsDefinition:
                     type=SettingsConstants.TYPE__MULTISELECT,
                     visibility=SettingsConstants.VISIBILITY__HARDWARE,
                     selection_options=SettingsConstants.ALL_SMARTCARD_INTERFACES,
-                    default_value=SettingsConstants.ALL_SMARTCARD_INTERFACES),
+                    default_value=[
+                        opt[0]
+                        for opt in SettingsConstants.ALL_SMARTCARD_INTERFACES
+                        if opt[0] != SettingsConstants.SMARTCARD_INTERFACE_PHOENIX
+                    ]),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__SYSTEM,
                     attr_name=SettingsConstants.SETTING__CACHE_SCARD_PIN,
@@ -741,6 +826,12 @@ class SettingsDefinition:
                       default_value=SettingsConstants.OPTION__ENABLED),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
+                      attr_name=SettingsConstants.SETTING__ACCOUNT_PROMPT,
+                      display_name=_mft("BIP32 account prompt"),
+                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
+                      default_value=SettingsConstants.OPTION__DISABLED),
+
+        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
                       attr_name=SettingsConstants.SETTING__PASSPHRASE,
                       display_name=_mft("BIP-39 passphrase"),
                       type=SettingsConstants.TYPE__SELECT_1,
@@ -794,13 +885,13 @@ class SettingsDefinition:
                       attr_name=SettingsConstants.SETTING__WIF_KEYS,
                       display_name="WIF keys",
                       visibility=SettingsConstants.VISIBILITY__ADVANCED,
-                      default_value=SettingsConstants.OPTION__ENABLED),
+                      default_value=SettingsConstants.OPTION__DISABLED),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
                       attr_name=SettingsConstants.SETTING__BIP38_KEYS,
                       display_name="BIP38 keys",
                       visibility=SettingsConstants.VISIBILITY__ADVANCED,
-                      default_value=SettingsConstants.OPTION__ENABLED),
+                      default_value=SettingsConstants.OPTION__DISABLED),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
                       attr_name=SettingsConstants.SETTING__BIP85_CHILD_SEEDS,
@@ -808,6 +899,13 @@ class SettingsDefinition:
                       display_name=_mft("BIP-85 child seeds"),
                       visibility=SettingsConstants.VISIBILITY__ADVANCED,
                       default_value=SettingsConstants.OPTION__ENABLED),
+
+        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
+                      attr_name=SettingsConstants.SETTING__BIP85_ECC_KEYS,
+                      abbreviated_name="bip85_ecc",
+                      display_name=_mft("BIP85 ECC curves"),
+                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
+                      default_value=SettingsConstants.OPTION__DISABLED),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
                       attr_name=SettingsConstants.SETTING__SLIP39_SEEDS,
@@ -871,6 +969,51 @@ class SettingsDefinition:
                       visibility=SettingsConstants.VISIBILITY__ADVANCED,
                       default_value=SettingsConstants.OPTION__ENABLED),
 
+        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
+                      attr_name=SettingsConstants.SETTING__SATOCHIP_SIGN_TIMEOUT,
+                      abbreviated_name="satotime",
+                      display_name="Satochip sign timeout",
+                      type=SettingsConstants.TYPE__SELECT_1,
+                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
+                      selection_options=SettingsConstants.ALL_SATOCHIP_TIMEOUTS,
+                      default_value=SettingsConstants.DEFAULT_SATOCHIP_TIMEOUT),
+
+        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
+                      attr_name=SettingsConstants.SETTING__SATOCHIP_MAX_PRE_DUMMIES,
+                      abbreviated_name="satopre",
+                      display_name="Satochip pre-sign dummies",
+                      type=SettingsConstants.TYPE__SELECT_1,
+                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
+                      selection_options=SettingsConstants.ALL_SATOCHIP_PRE_DUMMY_MAX,
+                      default_value=SettingsConstants.DEFAULT_SATOCHIP_PRE_DUMMY_MAX),
+
+        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
+                      attr_name=SettingsConstants.SETTING__SATOCHIP_MAX_POST_DUMMIES,
+                      abbreviated_name="satopost",
+                      display_name="Satochip post-sign dummies",
+                      type=SettingsConstants.TYPE__SELECT_1,
+                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
+                      selection_options=SettingsConstants.ALL_SATOCHIP_POST_DUMMY_MAX,
+                      default_value=SettingsConstants.DEFAULT_SATOCHIP_POST_DUMMY_MAX),
+
+        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
+                      attr_name=SettingsConstants.SETTING__SATOCHIP_MAX_IN_TX_DUMMIES,
+                      abbreviated_name="satointx",
+                      display_name="Satochip in-tx dummies",
+                      type=SettingsConstants.TYPE__SELECT_1,
+                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
+                      selection_options=SettingsConstants.ALL_SATOCHIP_IN_TX_DUMMY_MAX,
+                      default_value=SettingsConstants.DEFAULT_SATOCHIP_IN_TX_DUMMY_MAX),
+
+        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
+                      attr_name=SettingsConstants.SETTING__SATOCHIP_DUMMY_PROBABILITY,
+                      abbreviated_name="satoprob",
+                      display_name="Satochip dummy prob",
+                      type=SettingsConstants.TYPE__SELECT_1,
+                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
+                      selection_options=SettingsConstants.ALL_SATOCHIP_DUMMY_PROB,
+                      default_value=SettingsConstants.DEFAULT_SATOCHIP_DUMMY_PROB),
+
 
         # Hardware config
         SettingsEntry(category=SettingsConstants.CATEGORY__SYSTEM,
@@ -891,6 +1034,15 @@ class SettingsDefinition:
                       type=SettingsConstants.TYPE__ENABLED_DISABLED,
                       visibility=SettingsConstants.VISIBILITY__HARDWARE,
                       default_value=SettingsConstants.OPTION__DISABLED),
+
+        SettingsEntry(category=SettingsConstants.CATEGORY__SYSTEM,
+                      attr_name=SettingsConstants.SETTING__CAMERA_DEVICE,
+                      abbreviated_name="cam_dev",
+                      display_name=_mft("Camera source"),
+                      type=SettingsConstants.TYPE__SELECT_1,
+                      visibility=SettingsConstants.VISIBILITY__HARDWARE,
+                      selection_options=SettingsConstants.ALL_CAMERA_DEVICES,
+                      default_value=SettingsConstants.CAMERA_DEVICE__0),
 
 
         # Developer options
@@ -916,7 +1068,16 @@ class SettingsDefinition:
     def get_settings_entries(cls, visibility: str = SettingsConstants.VISIBILITY__GENERAL) -> List[SettingsEntry]:
         entries = []
         for entry in cls.settings_entries:
+            if entry.attr_name == SettingsConstants.SETTING__CAMERA_DEVICE and not USING_MOCK_GPIO:
+                continue
             if entry.visibility == visibility:
+                if entry.attr_name == SettingsConstants.SETTING__CAMERA_DEVICE:
+                    try:
+                        from seedsigner.hardware.camera import Camera
+
+                        entry.selection_options = Camera.list_cameras()
+                    except Exception:
+                        pass
                 entries.append(entry)
         return entries
     
@@ -925,12 +1086,23 @@ class SettingsDefinition:
     def get_settings_entry(cls, attr_name) -> SettingsEntry:
         for entry in cls.settings_entries:
             if entry.attr_name == attr_name:
+                if attr_name == SettingsConstants.SETTING__CAMERA_DEVICE:
+                    if not USING_MOCK_GPIO:
+                        return None
+                    try:
+                        from seedsigner.hardware.camera import Camera
+
+                        entry.selection_options = Camera.list_cameras()
+                    except Exception:
+                        pass
                 return entry
 
 
     @classmethod
     def get_settings_entry_by_abbreviated_name(cls, abbreviated_name: str) -> SettingsEntry:
         for entry in cls.settings_entries:
+            if entry.attr_name == SettingsConstants.SETTING__CAMERA_DEVICE and not USING_MOCK_GPIO:
+                continue
             if abbreviated_name in [entry.abbreviated_name, entry.attr_name]:
                 return entry
 

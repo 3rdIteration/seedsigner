@@ -1,6 +1,8 @@
 from gettext import gettext as _
 
 from binascii import hexlify
+from binascii import hexlify
+
 from embit import bip32
 import logging
 
@@ -144,12 +146,15 @@ class PSBTSelectSeedView(View):
             from seedsigner.gui.screens.screen import LoadingScreenThread
             loading = LoadingScreenThread(text=_("Parsing PSBT..."))
             loading.start()
+            loading_stopped = False
             try:
                 try:
                     account_xpub = connector.card_bip32_get_xpub(account_path_str, xtype, is_mainnet)
                     master_xpub = connector.card_bip32_get_xpub("", xtype, is_mainnet)
                 except Exception as e:
                     logger.exception("Failed to export xpub from Satochip card")
+                    loading.stop()
+                    loading_stopped = True
                     self.run_screen(
                         WarningScreen,
                         title="Failed",
@@ -172,6 +177,8 @@ class PSBTSelectSeedView(View):
                     )
                 except Exception as e:
                     logger.exception("Failed to parse PSBT with Satochip data")
+                    loading.stop()
+                    loading_stopped = True
                     self.run_screen(
                         WarningScreen,
                         title="Failed",
@@ -179,8 +186,37 @@ class PSBTSelectSeedView(View):
                         text=str(e),
                     )
                     return Destination(PSBTSelectSeedView, clear_history=True)
+
+                card_fingerprints = {hexlify(master_fp).decode()}
+                try:
+                    card_fingerprints.add(hexlify(root_key.child(0).fingerprint).decode())
+                except Exception:
+                    pass
+
+                psbt_fingerprints = set(PSBTParser.get_input_fingerprints(self.controller.psbt))
+                if not card_fingerprints.intersection(psbt_fingerprints):
+                    logger.warning(
+                        "Satochip fingerprint mismatch: card %s vs psbt %s",
+                        sorted(card_fingerprints),
+                        sorted(psbt_fingerprints),
+                    )
+                    self.controller.psbt_parser = None
+                    self.controller.psbt_sign_with_satochip = False
+                    loading.stop()
+                    loading_stopped = True
+                    self.run_screen(
+                        WarningScreen,
+                        title=_("Fingerprint mismatch"),
+                        status_icon_name=SeedSignerIconConstants.WARNING,
+                        status_headline=_("Card cannot sign PSBT"),
+                        text=_(
+                            "Card fingerprint ({}) not in PSBT signers."
+                        ).format(sorted(card_fingerprints)[0]),
+                    )
+                    return Destination(PSBTSelectSeedView, clear_history=True)
             finally:
-                loading.stop()
+                if not loading_stopped:
+                    loading.stop()
 
             self.controller.psbt_seed = None
             self.controller.psbt_sign_with_satochip = True

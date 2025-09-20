@@ -1,0 +1,1 @@
+"""Vendored SmartPGP helper module."""

@@ -249,25 +249,33 @@ class SettingsEntryUpdateSelectionView(View):
 
     def run(self):
         initial_value = self.settings.get_value(self.settings_entry.attr_name)
-        button_data = []
-        checked_buttons = []
-        for i, value in enumerate(self.settings_entry.selection_options):
-            if type(value) == tuple:
-                value, display_name = value
-            else:
-                display_name = value
-            button_data.append(ButtonOption(display_name))
+        button_data: list[ButtonOption] = []
+        checked_buttons: list[int] = []
 
-            if (type(initial_value) == list and value in initial_value) or value == initial_value:
-                checked_buttons.append(i)
-
-                if self.selected_button is None:
-                    # Highlight the selection (for multiselect highlight the first
-                    # selected option).
-                    self.selected_button = i
-        
-        if self.selected_button is None:
+        if not self.settings_entry.selection_options:
+            # Fallback for environments where no choices are available (e.g. no
+            # cameras detected). Provide a single placeholder option so the
+            # screen can render without triggering an IndexError.
+            button_data.append(ButtonOption(_("No options available")))
             self.selected_button = 0
+        else:
+            for i, value in enumerate(self.settings_entry.selection_options):
+                if type(value) == tuple:
+                    value, display_name = value
+                else:
+                    display_name = value
+                button_data.append(ButtonOption(display_name))
+
+                if (type(initial_value) == list and value in initial_value) or value == initial_value:
+                    checked_buttons.append(i)
+
+                    if self.selected_button is None:
+                        # Highlight the selection (for multiselect highlight the first
+                        # selected option).
+                        self.selected_button = i
+
+            if self.selected_button is None:
+                self.selected_button = 0
             
         ret_value = self.run_screen(
             settings_screens.SettingsEntryUpdateSelectionScreen,
@@ -636,8 +644,50 @@ class RestartPCSCView(View):
             os.system("sudo service pcscd stop")
             time.sleep(1)
             os.system("sudo service pcscd start")
-        self.loading_screen.stop()
 
+        # Drop and recreate the PC/SC context so pyscard can see readers again
+        try:
+            from smartcard.pcsc import PCSCContext
+
+            pcsc_ctx = PCSCContext.instance()
+            try:
+                pcsc_ctx.releaseContext()
+            except Exception:
+                # Context may already be invalid
+                pass
+            pcsc_ctx.establishContext()
+        except Exception:
+            # Older pyscard versions don't expose PCSCContext; fall back to the
+            # lower-level scard bindings.
+            try:
+                from smartcard.scard import (
+                    SCardEstablishContext,
+                    SCardReleaseContext,
+                    SCARD_SCOPE_USER,
+                    SCARD_S_SUCCESS,
+                )
+
+                hresult, hcontext = SCardEstablishContext(SCARD_SCOPE_USER)
+                if hresult == SCARD_S_SUCCESS:
+                    SCardReleaseContext(hcontext)
+                    SCardEstablishContext(SCARD_SCOPE_USER)
+            except Exception as e:
+                print(f"Failed to reset pyscard context: {e}")
+        # Drop any cached smartcard connections; restarting pcscd invalidates
+        # existing handles and they must be recreated. Otherwise, subsequent
+        # smartcard operations will continue to fail until the app is restarted.
+        try:
+            if getattr(self.controller, "Satochip_Connector", None):
+                try:
+                    self.controller.Satochip_Connector.card_disconnect()
+                except Exception:
+                    pass  # Ignore errors if already disconnected
+                self.controller.Satochip_Connector = None
+        except Exception:
+            # Controller may not be available in some contexts
+            pass
+
+        self.loading_screen.stop()
 
         return Destination(SettingsMenuView)
 

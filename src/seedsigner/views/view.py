@@ -196,6 +196,7 @@ class MainMenuView(View):
 
         controller = Controller.get_instance()
         controller.storage.discard_pending_slip39_shares()
+        controller.tools_common_card_filter = None
         if controller.auto_wiped:
             controller.auto_wiped = False
             controller.activate_toast(InfoToast(label_text=_("Data wiped after inactivity")))
@@ -280,6 +281,16 @@ class RestartView(View):
 class PowerOffView(View):
     def run(self):
         from seedsigner.gui.screens.screen import PowerOffNotRequiredScreen
+        from seedsigner.hardware.buttons import USING_GPIO
+        import os
+        import sys
+
+        if not USING_GPIO:
+            if "PYTEST_CURRENT_TEST" not in os.environ:
+                # In desktop mode, exiting the program is the safest way to "power off"
+                sys.exit(0)
+            return Destination(BackStackView)
+
         self.run_screen(PowerOffNotRequiredScreen)
         return Destination(BackStackView)
 

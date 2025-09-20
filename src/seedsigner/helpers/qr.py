@@ -1,8 +1,11 @@
+import os
+import subprocess
+import tempfile
+
 import qrcode
 from qrcode.image.styledpil import StyledPilImage
 from qrcode.image.styles.moduledrawers import CircleModuleDrawer, GappedSquareModuleDrawer
 from PIL import Image, ImageDraw
-import subprocess
 
 class QR:
     STYLE__DEFAULT = 1
@@ -112,22 +115,42 @@ class QR:
         else:
             border_str = "3"
 
-        if type(data) is str:
-            cmd = f"""qrencode -m {border_str} -s 3 -l L --foreground=000000 --background={background_color} -t PNG    -r "/tmp/data.in" -o "/tmp/qrcode.png" """
-            with open("/tmp/data.in", "w") as f:
-                f.write(data)
+        if isinstance(data, str):
+            encoded_data = data.encode()
+            mode_flag = ""
         else:
-            cmd = f"""qrencode -m {border_str} -s 3 -l L --foreground=000000 --background={background_color} -t PNG -8 -r "/tmp/data.in" -o "/tmp/qrcode.png" """
-            with open("/tmp/data.in", "wb") as f:
-                f.write(data)
+            encoded_data = data
+            mode_flag = "-8 "
 
-        rv = subprocess.call(cmd, shell=True)
+        data_path = None
+        output_path = None
 
-        # if qrencode fails, fall back to only encoder
-        if rv != 0:
-            return self.qrimage(data,width,height,border)
+        try:
+            with tempfile.NamedTemporaryFile(delete=False) as data_file:
+                data_file.write(encoded_data)
+                data_file.flush()
+                data_path = data_file.name
 
-        img = Image.open("/tmp/qrcode.png").resize((width,height), Image.Resampling.NEAREST).convert("RGBA")
-        rv = subprocess.call("rm -f /tmp/data.in /tmp/qrcode.png", shell=True)
+            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as output_file:
+                output_path = output_file.name
 
-        return img
+            cmd = (
+                f"qrencode -m {border_str} -s 3 -l L --foreground=000000 --background={background_color} "
+                f"-t PNG {mode_flag}-r \"{data_path}\" -o \"{output_path}\""
+            )
+
+            rv = subprocess.call(cmd, shell=True)
+
+            # if qrencode fails, fall back to only encoder
+            if rv != 0:
+                return self.qrimage(data, width, height, border)
+
+            with Image.open(output_path) as img_file:
+                img = img_file.resize((width, height), Image.Resampling.NEAREST).convert("RGBA")
+
+            return img
+        finally:
+            if data_path and os.path.exists(data_path):
+                os.remove(data_path)
+            if output_path and os.path.exists(output_path):
+                os.remove(output_path)

@@ -11,6 +11,7 @@ from embit.bip32 import HDKey
 from embit import bip39, networks
 from seedsigner.helpers import seedkeeper_utils
 from binascii import hexlify
+from unittest import mock
 
 
 
@@ -237,6 +238,9 @@ class TestToolsFlows(FlowTest):
                     return derived_xpub
                 raise ValueError("unexpected path")
 
+            def card_get_status(self):
+                return None, 0x90, 0x00, {"feature_schnorr_policy": 0}
+
         monkeypatch.setattr(seedkeeper_utils, "init_satochip", lambda *args, **kwargs: MockConnector())
 
         controller = Controller.get_instance()
@@ -327,3 +331,19 @@ class TestToolsFlows(FlowTest):
                 FlowStep(seed_views.SeedAddressVerificationView),
                 FlowStep(seed_views.SeedAddressVerificationSuccessView),
             ])
+
+    def test__seed_select_includes_satochip_for_verify_address(self):
+        """Seed picker should offer Satochip option when verifying an address."""
+
+        controller = Controller.get_instance()
+        controller.storage.seeds.clear()
+        view = seed_views.SeedSelectSeedView(flow=Controller.FLOW__VERIFY_SINGLESIG_ADDR)
+
+        def fake_run_screen(*args, **kwargs):
+            # Return immediately to inspect button_data
+            return RET_CODE__BACK_BUTTON
+
+        with mock.patch.object(view, "run_screen", side_effect=fake_run_screen) as mocked:
+            view.run()
+        button_data = mocked.call_args.kwargs["button_data"]
+        assert seed_views.SeedSelectSeedView.SATOCHIP in button_data

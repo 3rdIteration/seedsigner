@@ -3,18 +3,30 @@ import time
 
 from dataclasses import dataclass
 from gettext import gettext as _
-from typing import Any
+from typing import Any, List
 from PIL import Image, ImageDraw
 from seedsigner.helpers import mnemonic_generation
 from seedsigner.gui.renderer import Renderer
 from seedsigner.hardware.camera import Camera
 from seedsigner.helpers.qr import QR
-from seedsigner.gui.components import FontAwesomeIconConstants, Fonts, GUIConstants, IconTextLine, SeedSignerIconConstants, TextArea, Button, IconButton
+from seedsigner.gui.components import FontAwesomeIconConstants, Fonts, GUIConstants, IconTextLine, SeedSignerIconConstants, TextArea, Button, IconButton, CheckboxButton
 from seedsigner.gui.keyboard import Keyboard, TextEntryDisplay
 from seedsigner.gui.screens.screen import RET_CODE__BACK_BUTTON, BaseScreen, BaseTopNavScreen, ButtonListScreen, KeyboardScreen, WarningEdgesMixin, ButtonOption
 from seedsigner.hardware.buttons import HardwareButtonsConstants
 from seedsigner.models.settings_definition import SettingsConstants, SettingsDefinition
 
+
+
+@dataclass
+class ToolsCommonFilterScreen(ButtonListScreen):
+    checked_buttons: List[int] = None
+
+    def __post_init__(self):
+        self.title = _("Device Filter")
+        self.is_bottom_list = True
+        self.is_button_text_centered = False
+        self.Button_cls = CheckboxButton
+        super().__post_init__()
 
 
 @dataclass
@@ -36,6 +48,8 @@ class ToolsImageEntropyLivePreviewScreen(BaseScreen):
         preview_images = []
         max_entropy_frames = 50
         instructions_font = Fonts.get_font(GUIConstants.get_body_font_name(), GUIConstants.get_button_font_size())
+        last_entropy_check = 0
+        entropy_val = 0.0
 
         while True:
             if self.hw_inputs.check_for_low(HardwareButtonsConstants.KEY_LEFT):
@@ -77,8 +91,10 @@ class ToolsImageEntropyLivePreviewScreen(BaseScreen):
 
                 self.renderer.canvas.paste(frame.crop(box=box))
 
-                # Calculate and display Shannon entropy indicator
-                entropy_val = mnemonic_generation._shannon_entropy(frame.tobytes())
+                # Calculate and display Shannon entropy indicator (throttled to ~1s)
+                if time.time() - last_entropy_check >= 1:
+                    entropy_val = mnemonic_generation._shannon_entropy(frame.tobytes())
+                    last_entropy_check = time.time()
                 entropy_text = f"{entropy_val:.2f}"
                 indicator_size = 10
                 text_x = GUIConstants.EDGE_PADDING

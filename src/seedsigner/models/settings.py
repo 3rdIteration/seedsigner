@@ -7,7 +7,26 @@ import platform
 
 from typing import List
 
-import RPi.GPIO as GPIO
+try:
+    import RPi.GPIO as GPIO
+    USING_MOCK_GPIO = False
+except ModuleNotFoundError:  # Running on non-Raspberry Pi hardware
+    USING_MOCK_GPIO = True
+
+    class MockGPIO:
+        RPI_INFO = {"P1_REVISION": 3, "TYPE": "Unknown"}
+        BOARD = IN = OUT = PUD_UP = LOW = HIGH = None
+
+        def setmode(self, *args, **kwargs):
+            pass
+
+        def setup(self, *args, **kwargs):
+            pass
+
+        def input(self, *args, **kwargs):
+            return self.HIGH
+
+    GPIO = MockGPIO()
 
 from seedsigner.models.settings_definition import SettingsConstants, SettingsDefinition
 from seedsigner.models.singleton import Singleton
@@ -35,10 +54,13 @@ class Settings(Singleton):
 
             settings._data = SettingsDefinition.get_defaults()
 
-            # Read persistent settings file, if it exists
+            # Read persistent settings file, if it exists. Loading should not
+            # immediately write back to disk which can dramatically slow boot
+            # if the microSD card is present. ``persist=False`` ensures we only
+            # populate the in-memory data without triggering ``save()``.
             if os.path.exists(Settings.SETTINGS_FILENAME):
                 with open(Settings.SETTINGS_FILENAME) as settings_file:
-                    settings.update(json.load(settings_file))
+                    settings.update(json.load(settings_file), persist=False)
 
             # Setup multilanguage support
             path = os.path.join(
@@ -52,6 +74,11 @@ class Settings(Singleton):
 
             # Load default/persistent locale setting
             settings.load_locale()
+
+            if USING_MOCK_GPIO:
+                settings._data[SettingsConstants.SETTING__DISPLAY_CONFIGURATION] = (
+                    SettingsConstants.DISPLAY_CONFIGURATION__DESKTOP__240x240
+                )
 
         return cls._instance
 
@@ -83,16 +110,16 @@ class Settings(Singleton):
         for entry in data.split()[split_index:]:
             abbreviated_name, value = entry.split("=")
 
-            # Parse multi-value settings; integer-ize where needed
+            # Parse multi-value settings; numeric-ize where needed
             if "," in value:
                 values_updated = []
                 for v in value.split(","):
-                    if v.isdigit():
-                        v = int(v)
+                    if v.replace(".", "", 1).isdigit():
+                        v = float(v) if "." in v else int(v)
                     values_updated.append(v)
                 value = values_updated
-            elif value.isdigit():
-                value = int(value)
+            elif value.replace(".", "", 1).isdigit():
+                value = float(value) if "." in value else int(value)
             
             # Replace abbreviated name with full attr_name
             settings_entry = SettingsDefinition.get_settings_entry_by_abbreviated_name(abbreviated_name)
@@ -135,7 +162,7 @@ class Settings(Singleton):
                 os.fsync(settings_file.fileno())
 
 
-    def update(self, new_settings: dict):
+    def update(self, new_settings: dict, persist: bool = True):
         print("Updating Settings")
         print("Existing Settings:", self._data) 
         print()
@@ -162,13 +189,28 @@ class Settings(Singleton):
                     if type(new_settings[entry.attr_name]) == str:
                         # Break comma-separated SettingsQR input into List
                         new_settings[entry.attr_name] = new_settings[entry.attr_name].split(",")
+                    elif (
+                        type(new_settings[entry.attr_name]) == list
+                        and len(new_settings[entry.attr_name]) > 0
+                        and type(new_settings[entry.attr_name][0]) in [list, tuple]
+                    ):
+                        # Handle legacy format where selection options were stored
+                        # as [value, label] pairs.
+                        new_settings[entry.attr_name] = [v[0] for v in new_settings[entry.attr_name]]
 
         for key, value in new_settings.items():
-            self.set_value(key, value)
+            # Defer writing to disk until all values have been applied to avoid
+            # repeatedly touching the microSD card during initialization or
+            # bulk updates.
+            self.set_value(key, value, save=False)
+
+        # Persist once after all settings have been updated, if requested.
+        if persist:
+            self.save()
 
 
 
-    def set_value(self, attr_name: str, value: any):
+    def set_value(self, attr_name: str, value: any, save: bool = True):
         """
             Updates the attr's current value.
 
@@ -179,9 +221,27 @@ class Settings(Singleton):
             print(f"Setting {attr_name} not recognized. Ignoring.")
             return
 
-        if SettingsDefinition.get_settings_entry(attr_name).type == SettingsConstants.TYPE__MULTISELECT:
+        settings_entry = SettingsDefinition.get_settings_entry(attr_name)
+        if not settings_entry:
+            # Settings entry may be unavailable on this platform
+            print(f"Setting {attr_name} not found. Ignoring.")
+            return
+
+        if settings_entry.type == SettingsConstants.TYPE__MULTISELECT:
             if type(value) != list:
                 raise Exception(f"value must be a List for {attr_name}")
+
+        # Skip processing if the incoming value is identical to the current
+        # value. This prevents unnecessary side-effects (like restarting
+        # services) when loading persistent settings that match defaults.
+        if attr_name in self._data:
+            current_value = self._data[attr_name]
+            if settings_entry.type == SettingsConstants.TYPE__MULTISELECT:
+                if sorted(current_value) == sorted(value):
+                    return
+            else:
+                if current_value == value:
+                    return
         
         # Special handling for toggling persistence
         if attr_name == SettingsConstants.SETTING__PERSISTENT_SETTINGS and value == SettingsConstants.OPTION__DISABLED:
@@ -376,7 +436,12 @@ class Settings(Singleton):
                 pass
 
         self._data[attr_name] = value
-        self.save()
+
+        # Persist if requested. Skipping saves is useful during startup when
+        # settings are loaded from disk; saving each key individually could
+        # cause unnecessary microSD activity and long boot times on the Pi.
+        if save:
+            self.save()
 
         # Special handling for localization
         if attr_name == SettingsConstants.SETTING__LOCALE:
@@ -516,15 +581,14 @@ class Settings(Singleton):
                 entry.selection_options = SettingsConstants.OPTIONS__ENABLED_DISABLED
                 entry.help_text = SettingsConstants.PERSISTENT_SETTINGS__SD_INSERTED__HELP_TEXT
 
-                # TODO: Perhaps prompt the user if the current settings (not including persistent
-                # settings) should overwrite the settings on disk, if they differ:
-                # - Overwrite settings on the SD?
-                # - Load settings from SD?
-                # if Settings file exists (meaning persistent settings was previously enabled), write out current settings to disk
+                # If a settings file exists, load it without persisting again. This
+                # avoids unnecessary disk writes during boot and when cards are
+                # re-inserted.
                 if os.path.exists(Settings.SETTINGS_FILENAME):
-                    # enable persistent settings first, then save
-                    Settings.get_instance()._data[SettingsConstants.SETTING__PERSISTENT_SETTINGS] = SettingsConstants.OPTION__ENABLED
-                    Settings.get_instance().save()
+                    settings = Settings.get_instance()
+                    if settings.get_value(SettingsConstants.SETTING__PERSISTENT_SETTINGS) != SettingsConstants.OPTION__ENABLED:
+                        with open(Settings.SETTINGS_FILENAME) as settings_file:
+                            settings.update(json.load(settings_file), persist=False)
 
             elif action == MicroSD.ACTION__REMOVED:
                 # SD card was just removed.

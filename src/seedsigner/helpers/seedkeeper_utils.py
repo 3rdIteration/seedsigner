@@ -3,7 +3,7 @@ from pysatochip.JCconstants import (
     JCconstants,
     SEEDKEEPER_DIC_TYPE,
     SEEDKEEPER_DIC_ORIGIN,
-    SEEDKEEPER_DIC_EXPORT_RIGHTS
+    SEEDKEEPER_DIC_EXPORT_RIGHTS,
 )
 from seedsigner.gui.screens import (
     RET_CODE__BACK_BUTTON,
@@ -15,6 +15,7 @@ from seedsigner.gui.screens import (
     KeyboardScreen,
 )
 from seedsigner.gui.screens.screen import LoadingScreenThread
+from seedsigner.helpers.iso7816 import format_sw_error
 
 
 import os
@@ -24,6 +25,78 @@ import platform
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+def calculate_seedkeeper_secret_size(secret_dic: dict) -> int:
+    """Estimate the number of bytes the secret will occupy on the Seedkeeper.
+
+    The Seedkeeper stores both the secret header (including the automatically
+    assigned id) and an AES-padded copy of the secret payload. This helper
+    mirrors :func:`CardConnector.seedkeeper_import_secret`'s padding behaviour
+    so that we can compare the required storage with the remaining free space
+    reported by the card before attempting an import.
+    """
+
+    header_hex = secret_dic.get("header")
+    if not header_hex:
+        raise ValueError("Secret dictionary missing Seedkeeper header data")
+
+    try:
+        header_length = len(bytes.fromhex(header_hex))
+    except ValueError as exc:
+        raise ValueError("Invalid Seedkeeper header encoding") from exc
+
+    if "secret_list" in secret_dic and secret_dic["secret_list"] is not None:
+        secret_length = len(secret_dic["secret_list"])
+        # Seedkeeper always pads to the next 16 byte boundary, even when the
+        # plaintext length already aligns with the block size.
+        padding = 16 - (secret_length % 16)
+        if padding == 0:
+            padding = 16
+        padded_secret_length = secret_length + padding
+    elif "secret_encrypted" in secret_dic and secret_dic["secret_encrypted"] is not None:
+        padded_secret_length = len(bytes.fromhex(secret_dic["secret_encrypted"]))
+    else:
+        raise ValueError("Secret dictionary missing Seedkeeper secret data")
+
+    return header_length + padded_secret_length
+
+
+def get_seedkeeper_free_memory(connector) -> int:
+    """Return the free memory (in bytes) currently reported by the Seedkeeper."""
+
+    _, _, _, status = connector.seedkeeper_get_status()
+    free_memory = status.get("free_memory")
+    if free_memory is None:
+        raise ValueError("Seedkeeper did not report available memory")
+    return free_memory
+
+
+def ensure_seedkeeper_capacity(connector, secret_dic: dict, free_memory: int | None = None):
+    """Check whether the Seedkeeper has enough space for the provided secret.
+
+    Returns a tuple ``(fits, required_bytes, available_bytes)``. When
+    ``free_memory`` is ``None`` the helper will query the Seedkeeper for the
+    latest free space value, otherwise the supplied ``free_memory`` will be used
+    for the comparison.
+    """
+
+    required_bytes = calculate_seedkeeper_secret_size(secret_dic)
+    available_bytes = free_memory
+    if available_bytes is None:
+        available_bytes = get_seedkeeper_free_memory(connector)
+
+    return required_bytes <= available_bytes, required_bytes, available_bytes
+
+
+def format_seedkeeper_space_error(required_bytes: int, free_bytes: int) -> str:
+    """Return a human-readable message describing a space shortfall."""
+
+    return (
+        "Not enough space on Seedkeeper\n"
+        f"Requires {required_bytes} bytes\n"
+        f"{free_bytes} bytes free"
+    )
 
 
 def prompt_for_pin(parent_view, title: str):
@@ -45,6 +118,31 @@ def prompt_for_pin(parent_view, title: str):
             text=f"PIN must be between {JCconstants.PIN_MIN_SIZE} and {JCconstants.PIN_MAX_SIZE} characters.",
             show_back_button=True,
         )
+
+
+def disconnect_smartcard_connections(controller):
+    """Ensure no other smartcard connectors are holding the reader."""
+    try:
+        conn = getattr(controller, "Satochip_Connector", None)
+        if conn:
+            try:
+                conn.card_disconnect()
+            except Exception:
+                pass
+    finally:
+        try:
+            controller.Satochip_Connector = None
+        except Exception:
+            pass
+
+    # Ensure gpg's smartcard daemon releases the reader as well
+    try:
+        from subprocess import run
+        run(["gpgconf", "--kill", "scdaemon"], check=False)
+        # Immediately relaunch so external tools can detect the card
+        run(["gpgconf", "--launch", "scdaemon"], check=False)
+    except Exception:
+        pass
 
 
 def init_satochip(parentObject, init_card_filter=None, require_pin=True):
@@ -119,9 +217,20 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True):
                 len(status[3]) > 0
             ):  # Sometimes it's possible to end up with an invalid of zero length here...
                 break
+            else:
+                # Cleanup the connector and try again
+                try:
+                    Satochip_Connector.card_disconnect()
+                except Exception:
+                    pass
 
         except Exception as e:
             print("CardConnector Init Failed:" + str(e))
+            # Ensure the connector state is clean before trying again
+            try:
+                Satochip_Connector.card_disconnect()
+            except Exception:
+                pass
             time.sleep(0.1)  # Sleep for 100ms
 
         status = None  # Reset this every loop...
@@ -129,11 +238,23 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True):
     parentObject.loading_screen.stop()
 
     if not status:
+        # If we never connected, ensure the connector is reset for future attempts
+        try:
+            Satochip_Connector.card_disconnect()
+        except Exception:
+            pass
+        filter_txt = ""
+        if init_card_filter:
+            if isinstance(init_card_filter, (list, tuple)):
+                filter_str = ", ".join(init_card_filter)
+            else:
+                filter_str = str(init_card_filter)
+
         parentObject.run_screen(
             WarningScreen,
             title="Unable to Connect",
             status_headline=None,
-            text=f"Unable to find SeedKeeper Card \n(or Applet)\n\nTry Re-Inserting Card",
+            text=f"Unable to find {filter_str} \n(or Applet)\n\nTry Re-Inserting Card",
             show_back_button=True,
         )
         return None
@@ -178,7 +299,7 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True):
                         WarningScreen,
                         title="Failure",
                         status_headline=None,
-                        text=f"Failed, Code:" + str(sw1) + " " + str(sw2),
+                        text=format_sw_error(sw1, sw2),
                         show_back_button=True,
                     )
                     return None
@@ -188,6 +309,13 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True):
                 parentObject.loading_screen.stop()
                 time.sleep(0.1)  # Sleep for 100ms
                 logger.exception("Pin check failed")
+
+                # clear any cached PIN as it's obviously wrong and was mistakenly cached somewhere...
+                # (This can happen when the card UID is incorrectly read which happens sometimes)
+                try:
+                    parentObject.controller.Satochip_PIN = None
+                except:
+                    pass
 
                 parentObject.run_screen(
                     WarningScreen,
@@ -216,7 +344,9 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True):
         """Run the initial card setup process"""
         pin_0 = list(pin_str.encode("utf8"))
         # Allow configurable PIN attempt limit
-        pin_tries_0 = Settings.get_instance().get_value(SettingsConstants.SETTING__SCARD_PIN_ATTEMPTS)
+        pin_tries_0 = Settings.get_instance().get_value(
+            SettingsConstants.SETTING__SCARD_PIN_ATTEMPTS
+        )
         ublk_tries_0 = 0x01
         # PUK code can be used when PIN is unknown and the card is locked
         # We use a random value as the PUK is not used currently and is not user friendly
@@ -255,7 +385,7 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True):
                 WarningScreen,
                 title="Invalid PIN",
                 status_headline=None,
-                text=f"Invalid PIN entered, select another and try again.",
+                text=format_sw_error(sw1, sw2),
                 show_back_button=True,
             )
             return None
@@ -296,12 +426,16 @@ def run_globalplatform(
     parentObject.loading_screen = LoadingScreenThread(text=loadingText)
     parentObject.loading_screen.start()
 
-    if platform.uname()[1] == "seedsigner-os":
+    hostname = platform.uname()[1]
+    if hostname == "seedsigner-os":
         commandString = (
             "/mnt/diy/jdk/bin/java -jar /mnt/diy/Satochip-DIY/gp.jar " + command
         )
-    else:
+    elif os.path.exists("/home/pi/Satochip-DIY/gp.jar"):
         commandString = "java -jar /home/pi/Satochip-DIY/gp.jar " + command
+    else:
+        # Assume gp.jar is available in the current working directory
+        commandString = "java -jar gp.jar " + command
 
     data = run(commandString, capture_output=True, shell=True, text=True)
 

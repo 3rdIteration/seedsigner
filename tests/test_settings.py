@@ -1,7 +1,9 @@
+import json
 import pytest
 from base import BaseTest
 from seedsigner.models.settings import InvalidSettingsQRData, Settings
 from seedsigner.models.settings_definition import SettingsConstants
+from unittest.mock import patch
 
 
 
@@ -110,3 +112,63 @@ class TestSettings(BaseTest):
 
         # Accepts update with no Exceptions
         self.settings.update(new_settings=settings_update_dict)
+
+    def test_update_handles_legacy_multiselect_format(self):
+        """Updating from old list-of-lists format should normalize to list of values"""
+        legacy = [[opt[0], opt[1]] for opt in SettingsConstants.ALL_SMARTCARD_INTERFACES]
+
+        with patch("os.system"), patch("time.sleep"):
+            self.settings.update({
+                SettingsConstants.SETTING__SMARTCARD_INTERFACES: legacy
+            })
+
+        expected = [opt[0] for opt in SettingsConstants.ALL_SMARTCARD_INTERFACES]
+        assert self.settings.get_value(SettingsConstants.SETTING__SMARTCARD_INTERFACES) == expected
+
+    def test_update_skips_unchanged_smartcard_interfaces(self):
+        """Updating with identical smartcard interfaces should not restart pcscd"""
+        current = self.settings.get_value(SettingsConstants.SETTING__SMARTCARD_INTERFACES)
+        with patch("os.system") as mock_system, patch("time.sleep"):
+            self.settings.update({
+                SettingsConstants.SETTING__SMARTCARD_INTERFACES: current
+            })
+
+        mock_system.assert_not_called()
+
+    def test_update_can_skip_persist(self):
+        """Updating with persist=False should not trigger a save to disk"""
+        from unittest.mock import patch
+        with patch.object(Settings, "save") as mock_save:
+            self.settings.update(
+                {SettingsConstants.SETTING__BTC_DENOMINATION: SettingsConstants.BTC_DENOMINATION__THRESHOLD},
+                persist=False,
+            )
+            mock_save.assert_not_called()
+
+    def test_get_instance_loads_without_saving(self):
+        """Loading settings from disk should not immediately write them back"""
+        from unittest.mock import patch
+        BaseTest.reset_settings()
+        data = {SettingsConstants.SETTING__PERSISTENT_SETTINGS: SettingsConstants.OPTION__ENABLED}
+        with open(Settings.SETTINGS_FILENAME, "w") as f:
+            json.dump(data, f)
+
+        with patch.object(Settings, "save") as mock_save:
+            settings = Settings.get_instance()
+            mock_save.assert_not_called()
+            assert settings.get_value(SettingsConstants.SETTING__PERSISTENT_SETTINGS) == SettingsConstants.OPTION__ENABLED
+
+    def test_set_value_ignores_missing_settings_entry(self):
+        """set_value should not raise if the settings entry cannot be found"""
+        from seedsigner.models import settings_definition
+
+        # Force SettingsDefinition.get_settings_entry to return None for camera device
+        orig = settings_definition.USING_MOCK_GPIO
+        settings_definition.USING_MOCK_GPIO = False
+        try:
+            current = self.settings.get_value(SettingsConstants.SETTING__CAMERA_DEVICE)
+            # Should silently ignore without raising
+            self.settings.set_value(SettingsConstants.SETTING__CAMERA_DEVICE, current)
+            assert self.settings.get_value(SettingsConstants.SETTING__CAMERA_DEVICE) == current
+        finally:
+            settings_definition.USING_MOCK_GPIO = orig

@@ -122,7 +122,7 @@ class SeedSelectSeedView(View):
         for seed in seeds:
             button_str = seed.get_fingerprint(self.settings.get_value(SettingsConstants.SETTING__NETWORK))
             button_data.append(ButtonOption(button_str, SeedSignerIconConstants.FINGERPRINT, icon_color="blue"))
-        if self.flow == Controller.FLOW__SIGN_MESSAGE:
+        if self.flow in [Controller.FLOW__SIGN_MESSAGE, Controller.FLOW__VERIFY_SINGLESIG_ADDR]:
             button_data.append(self.SATOCHIP)
 
         button_data.append(self.SCAN_SEED)
@@ -164,6 +164,10 @@ class SeedSelectSeedView(View):
                 return Destination(SeedSignMessageConfirmMessageView)
 
         self.controller.resume_main_flow = self.flow
+
+        if self.flow == Controller.FLOW__VERIFY_SINGLESIG_ADDR and button_data[selected_menu_num] == self.SATOCHIP:
+            from seedsigner.views.tools_views import SatochipLoadDescriptorScriptTypeView
+            return Destination(SatochipLoadDescriptorScriptTypeView)
 
         if self.flow == Controller.FLOW__SIGN_MESSAGE and button_data[selected_menu_num] == self.SATOCHIP:
             connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satochip"])
@@ -1450,11 +1454,24 @@ class SeedExportXpubScriptTypeView(View):
             # Nothing to select; skip this screen
             args["script_type"] = script_types[0]
 
-            if self.controller.resume_main_flow == Controller.FLOW__ADDRESS_EXPLORER:
-                del args["sig_type"]
-                return Destination(ToolsAddressExplorerAddressTypeView, view_args=args, skip_current_view=True)
+            if args["script_type"] == SettingsConstants.CUSTOM_DERIVATION:
+                return Destination(SeedExportXpubCustomDerivationView, view_args=args, skip_current_view=True)
+
+            if (
+                self.settings.get_value(SettingsConstants.SETTING__ACCOUNT_PROMPT)
+                == SettingsConstants.OPTION__ENABLED
+            ):
+                if self.controller.resume_main_flow == Controller.FLOW__ADDRESS_EXPLORER:
+                    del args["sig_type"]
+                    return Destination(AccountNumberView, view_args=dict(next_view_cls=ToolsAddressExplorerAddressTypeView, next_view_args=args), skip_current_view=True)
+                else:
+                    return Destination(AccountNumberView, view_args=dict(next_view_cls=SeedExportXpubCoordinatorView, next_view_args=args), skip_current_view=True)
             else:
-                return Destination(SeedExportXpubCoordinatorView, view_args=args, skip_current_view=True)
+                if self.controller.resume_main_flow == Controller.FLOW__ADDRESS_EXPLORER:
+                    del args["sig_type"]
+                    return Destination(ToolsAddressExplorerAddressTypeView, view_args=args, skip_current_view=True)
+                else:
+                    return Destination(SeedExportXpubCoordinatorView, view_args=args, skip_current_view=True)
         
         title = _("Export Xpub")
         if self.controller.resume_main_flow == Controller.FLOW__ADDRESS_EXPLORER:
@@ -1485,11 +1502,21 @@ class SeedExportXpubScriptTypeView(View):
             if args["script_type"] == SettingsConstants.CUSTOM_DERIVATION:
                 return Destination(SeedExportXpubCustomDerivationView, view_args=args)
 
-            if self.controller.resume_main_flow == Controller.FLOW__ADDRESS_EXPLORER:
-                del args["sig_type"]
-                return Destination(ToolsAddressExplorerAddressTypeView, view_args=args)
+            if (
+                self.settings.get_value(SettingsConstants.SETTING__ACCOUNT_PROMPT)
+                == SettingsConstants.OPTION__ENABLED
+            ):
+                if self.controller.resume_main_flow == Controller.FLOW__ADDRESS_EXPLORER:
+                    del args["sig_type"]
+                    return Destination(AccountNumberView, view_args=dict(next_view_cls=ToolsAddressExplorerAddressTypeView, next_view_args=args))
+                else:
+                    return Destination(AccountNumberView, view_args=dict(next_view_cls=SeedExportXpubCoordinatorView, next_view_args=args))
             else:
-                return Destination(SeedExportXpubCoordinatorView, view_args=args)
+                if self.controller.resume_main_flow == Controller.FLOW__ADDRESS_EXPLORER:
+                    del args["sig_type"]
+                    return Destination(ToolsAddressExplorerAddressTypeView, view_args=args)
+                else:
+                    return Destination(SeedExportXpubCoordinatorView, view_args=args)
 
 
 
@@ -1531,13 +1558,34 @@ class SeedExportXpubCustomDerivationView(View):
 
 
 
+class AccountNumberView(View):
+    def __init__(self, next_view_cls, next_view_args: dict):
+        super().__init__()
+        self.next_view_cls = next_view_cls
+        self.next_view_args = next_view_args
+
+    def run(self):
+        ret = self.run_screen(
+            seed_screens.SeedExportXpubAccountNumberScreen,
+            initial_value="0",
+        )
+
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        self.next_view_args["account"] = int(ret)
+        return Destination(self.next_view_cls, view_args=self.next_view_args)
+
+
+
 class SeedExportXpubCoordinatorView(View):
-    def __init__(self, seed_num: int, sig_type: str, script_type: str, custom_derivation: str = None):
+    def __init__(self, seed_num: int, sig_type: str, script_type: str, custom_derivation: str = None, account: int = 0):
         super().__init__()
         self.seed_num = seed_num
         self.sig_type = sig_type
         self.script_type = script_type
         self.custom_derivation = custom_derivation
+        self.account = account
 
 
     def run(self):
@@ -1546,6 +1594,7 @@ class SeedExportXpubCoordinatorView(View):
             "sig_type": self.sig_type,
             "script_type": self.script_type,
             "custom_derivation": self.custom_derivation,
+            "account": self.account,
         }
         if len(self.settings.get_value(SettingsConstants.SETTING__COORDINATORS)) == 1:
             # Nothing to select; skip this screen
@@ -1579,7 +1628,7 @@ class SeedExportXpubCoordinatorView(View):
 
 
 class SeedExportXpubWarningView(View):
-    def __init__(self, seed_num: int, sig_type: str, script_type: str, coordinator: str, custom_derivation: str, coordinator_label: str):
+    def __init__(self, seed_num: int, sig_type: str, script_type: str, coordinator: str, custom_derivation: str, coordinator_label: str, account: int = 0):
         super().__init__()
         self.seed_num = seed_num
         self.sig_type = sig_type
@@ -1587,6 +1636,7 @@ class SeedExportXpubWarningView(View):
         self.coordinator = coordinator
         self.custom_derivation = custom_derivation
         self.coordinator_label = coordinator_label
+        self.account = account
 
 
     def run(self):
@@ -1599,6 +1649,7 @@ class SeedExportXpubWarningView(View):
                 "coordinator": self.coordinator,
                 "custom_derivation": self.custom_derivation,
                 "coordinator_label": self.coordinator_label,
+                "account": self.account,
             },
             skip_current_view=True,  # Prevent going BACK to WarningViews
         )
@@ -1627,14 +1678,15 @@ class SeedExportXpubDetailsView(View):
         Collects the user input from all the previous screens leading up to this and
         finally calculates the xpub and displays the summary view to the user.
     """
-    def __init__(self, seed_num: int, sig_type: str, script_type: str, coordinator: str, custom_derivation: str, coordinator_label: str):
+    def __init__(self, seed_num: int, sig_type: str, script_type: str, coordinator: str, custom_derivation: str, coordinator_label: str, account: int = 0):
         super().__init__()
         self.sig_type = sig_type
         self.script_type = script_type
         self.coordinator = coordinator
         self.custom_derivation = custom_derivation
         self.coordinator_label = coordinator_label
-        
+        self.account = account
+
         self.seed_num = seed_num
         self.seed = self.controller.get_seed(self.seed_num)
 
@@ -1650,7 +1702,8 @@ class SeedExportXpubDetailsView(View):
             derivation_path = embit_utils.get_standard_derivation_path(
                 network=self.settings.get_value(SettingsConstants.SETTING__NETWORK),
                 wallet_type=self.sig_type,
-                script_type=self.script_type
+                script_type=self.script_type,
+                account=self.account,
             )
 
         if self.settings.get_value(SettingsConstants.SETTING__XPUB_DETAILS) == SettingsConstants.OPTION__DISABLED:
@@ -3320,8 +3373,6 @@ class SeedAddressVerificationView(View):
             # and resume displaying the screen. User won't even notice that the Screen is
             # being re-constructed.
             while True:
-                if max_iterations is not None and self.threadsafe_counter.cur_count >= max_iterations:
-                    break
                 selected_menu_num = self.run_screen(
                     seed_screens.SeedAddressVerificationScreen,
                     address=self.address,
@@ -3346,12 +3397,14 @@ class SeedAddressVerificationView(View):
                     # Only happens in the test suite; the screen isn't actually executed so
                     # it returns before the brute force thread has completed.
                     time.sleep(0.1)
-                    continue
+                else:
+                    if button_data[selected_menu_num] == self.SKIP_10:
+                        self.threadsafe_counter.increment(10)
 
-                if button_data[selected_menu_num] == self.SKIP_10:
-                    self.threadsafe_counter.increment(10)
+                    elif button_data[selected_menu_num] == self.CANCEL:
+                        break
 
-                elif button_data[selected_menu_num] == self.CANCEL:
+                if max_iterations is not None and self.threadsafe_counter.cur_count >= max_iterations:
                     break
 
             if self.verified_index.cur_count is not None:
@@ -3712,9 +3765,15 @@ class SeedSignMessageConfirmAddressView(View):
                 xtype = "p2wpkh"
             is_mainnet = addr_format["network"] == SettingsConstants.MAINNET
             from seedsigner.helpers.satochip_signer import format_path_string
+            from seedsigner.gui.screens.screen import LoadingScreenThread
             wallet_path = format_path_string(addr_format["wallet_derivation_path"])
-            xpub_base58 = connector.card_bip32_get_xpub(wallet_path, xtype, is_mainnet)
-            xpub = bip32.HDKey.from_base58(xpub_base58)
+            loading = LoadingScreenThread(text=_("Exporting xpub..."))
+            loading.start()
+            try:
+                xpub_base58 = connector.card_bip32_get_xpub(wallet_path, xtype, is_mainnet)
+                xpub = bip32.HDKey.from_base58(xpub_base58)
+            finally:
+                loading.stop()
         else:
             if self.seed_num is None:
                 raise Exception("Routing error: sign_message_data hasn't been set")
@@ -3761,10 +3820,16 @@ class SeedSignMessageSignedMessageQRView(View):
 
         if self.controller.sign_message_with_satochip:
             from seedsigner.helpers.satochip_signer import sign_message_with_satochip
+            from seedsigner.gui.screens.screen import LoadingScreenThread
 
-            self.signed_message = sign_message_with_satochip(
-                derivation_path, message, self.controller.Satochip_Connector
-            )
+            loading = LoadingScreenThread(text=_("Signing message..."))
+            loading.start()
+            try:
+                self.signed_message = sign_message_with_satochip(
+                    derivation_path, message, self.controller.Satochip_Connector
+                )
+            finally:
+                loading.stop()
         else:
             self.seed_num = data["seed_num"]
             seed = self.controller.get_seed(self.seed_num)
@@ -3863,7 +3928,11 @@ class SaveToSeedkeeperView(View):
                     share_sel = self.share_index
 
                 share = seed.mnemonic_list[share_sel]
-                ret = seed_screens.SeedAddPassphraseScreen(title="Secret Label").display()
+                fingerprint = seed.get_fingerprint(network=self.settings.get_value(SettingsConstants.SETTING__NETWORK))
+                ret = seed_screens.SeedAddPassphraseScreen(
+                    title="Secret Label",
+                    passphrase=fingerprint,
+                ).display()
                 if "is_back_button" in ret:
                     return Destination(BackStackView)
 
@@ -3875,7 +3944,11 @@ class SaveToSeedkeeperView(View):
                 secret_dic = {'header': header, 'secret_list': secret_list}
 
             else:
-                ret = seed_screens.SeedAddPassphraseScreen(title="Seed Label").display()
+                fingerprint = seed.get_fingerprint(network=self.settings.get_value(SettingsConstants.SETTING__NETWORK))
+                ret = seed_screens.SeedAddPassphraseScreen(
+                    title="Seed Label",
+                    passphrase=fingerprint,
+                ).display()
                 if "is_back_button" in ret:
                     return Destination(BackStackView)
                 status = Satochip_Connector.card_get_status()[3]
@@ -3925,6 +3998,30 @@ class SaveToSeedkeeperView(View):
                                        )
                     header = Satochip_Connector.make_header(type, export_rights, label, subtype=subtype)
                     secret_dic = {'header': header, 'secret_list': secret_list}
+
+            try:
+                fits, required_bytes, free_bytes = seedkeeper_utils.ensure_seedkeeper_capacity(
+                    Satochip_Connector, secret_dic
+                )
+            except Exception as e:
+                self.run_screen(
+                    WarningScreen,
+                    title="Error",
+                    status_headline=None,
+                    text=str(e),
+                    show_back_button=True,
+                )
+                return Destination(BackStackView)
+
+            if not fits:
+                self.run_screen(
+                    WarningScreen,
+                    title="Not Enough Space",
+                    status_headline=None,
+                    text=seedkeeper_utils.format_seedkeeper_space_error(required_bytes, free_bytes),
+                    show_back_button=True,
+                )
+                return Destination(BackStackView)
 
             self.loading_screen = LoadingScreenThread(text="Saving Seed\n\n\n\n\n\n")
             self.loading_screen.start()

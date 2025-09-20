@@ -2,6 +2,7 @@ import base64
 import json
 import logging
 import re
+from datetime import datetime
 
 from binascii import a2b_base64, b2a_base64
 from enum import IntEnum
@@ -126,6 +127,9 @@ class DecodeQR:
             elif self.qr_type == QRType.BIP38:
                 self.decoder = Bip38QrDecoder()
 
+            elif self.qr_type == QRType.SET_TIME:
+                self.decoder = TimeQrDecoder()
+
             elif self.qr_type == QRType.TEXT:
                 self.decoder = TextQrDecoder()
 
@@ -238,6 +242,10 @@ class DecodeQR:
     def get_address_type(self):
         if self.is_address:
             return self.decoder.get_address_type()
+
+    def get_time(self):
+        if self.is_time:
+            return self.decoder.get_time()
 
 
     def get_passphrase(self):
@@ -367,6 +375,10 @@ class DecodeQR:
         return self.qr_type == QRType.SIGN_MESSAGE
 
     @property
+    def is_time(self):
+        return self.qr_type == QRType.SET_TIME
+
+    @property
     def is_wif(self):
         return self.qr_type == QRType.WIF
 
@@ -478,6 +490,10 @@ class DecodeQR:
             if s.startswith("settings::"):
                 return QRType.SETTINGS
 
+            # GoPro Labs precision time command
+            if re.match(r'^oT(\d{12}(\.\d{2})?|0)$', s):
+                return QRType.SET_TIME
+
             # Seed
             # create 4 letter wordlist only if not PSBT (performance gain)
             wordlist = Seed.get_wordlist(wordlist_language_code)
@@ -497,7 +513,7 @@ class DecodeQR:
                 # checks if all 4 letter words are in list are in 4 letter bip39 word list
                 return QRType.SEED__FOUR_LETTER_MNEMONIC
 
-            elif all(x in slip39_wordlist for x in s.strip().split(" ")):
+            elif all(x in slip39_wordlist for x in s.strip().lower().split(" ")):
                 return QRType.SEED__SLIP39
 
             elif DecodeQR.is_base43_psbt(s):
@@ -1009,6 +1025,7 @@ class Slip39ShareDecoder(BaseSingleFrameQrDecoder):
             try:
                 if isinstance(segment, bytes):
                     segment = segment.decode("utf-8")
+                segment = segment.lower()
                 from shamir_mnemonic import Share as Slip39Share
                 Slip39Share.from_mnemonic(segment)
                 self.share = segment
@@ -1461,4 +1478,41 @@ class TextQrDecoder(BaseSingleFrameQrDecoder):
 
     def get_text(self):
         return self.text
+
+
+class TimeQrDecoder(BaseSingleFrameQrDecoder):
+    def __init__(self):
+        super().__init__()
+        self.time_str = None
+
+    def add(self, segment, qr_type=QRType.SET_TIME):
+        if qr_type == QRType.SET_TIME:
+            try:
+                self.time_str = segment
+                self.complete = True
+                self.collected_segments = 1
+                return DecodeQRStatus.COMPLETE
+            except Exception as e:
+                logger.exception(repr(e))
+        return DecodeQRStatus.INVALID
+
+    def get_time(self):
+        if self.time_str is None:
+            return None
+        # strip prefix 'oT'
+        data = self.time_str[2:]
+        if data == "0":
+            return None
+        if "." in data:
+            data = data.split(".")[0]
+        try:
+            yy = int(data[0:2]) + 2000
+            mm = int(data[2:4])
+            dd = int(data[4:6])
+            hh = int(data[6:8])
+            mi = int(data[8:10])
+            ss = int(data[10:12])
+            return datetime(yy, mm, dd, hh, mi, ss)
+        except Exception:
+            return None
 

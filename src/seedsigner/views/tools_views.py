@@ -4,6 +4,8 @@ import os
 import time
 import platform
 import binascii
+import subprocess
+from embit.util import secp256k1
 
 from embit.descriptor import Descriptor
 from embit.descriptor.checksum import checksum
@@ -26,13 +28,12 @@ from seedsigner.gui.screens.tools_screens import (ToolsCalcFinalWordDoneScreen, 
     ToolsCalcFinalWordScreen, ToolsCoinFlipEntryScreen, ToolsDiceEntropyEntryScreen, ToolsImageEntropyFinalImageScreen,
     ToolsImageEntropyLivePreviewScreen, ToolsAddressExplorerAddressTypeScreen, ToolsTextQRTextEntryScreen, ToolsTextQRReviewTextScreen,
     ToolsTextQRTranscribeModePromptScreen, ToolsTranscribeTextQRWholeQRScreen, ToolsTranscribeTextQRZoomedInScreen,
-    ToolsTranscribeTextQRConfirmQRPromptScreen)
+    ToolsTranscribeTextQRConfirmQRPromptScreen, ToolsCommonFilterScreen)
 from seedsigner.helpers import embit_utils, mnemonic_generation
+from seedsigner.helpers.iso7816 import format_sw_error
 from seedsigner.models.decode_qr import DecodeQR
 from seedsigner.models.encode_qr import GenericStaticQrEncoder
-from seedsigner.gui.screens import RET_CODE__BACK_BUTTON, ButtonListScreen
 from seedsigner.gui.screens.screen import ButtonOption
-from seedsigner.helpers import mnemonic_generation
 from seedsigner.models.seed import Seed
 from seedsigner.models.settings_definition import SettingsConstants
 from seedsigner.views.seed_views import (
@@ -46,16 +47,23 @@ from seedsigner.views.seed_views import (
     LoadSeedView,
     SeedSlip39CreateFromBytesView,
     SeedSlip39RegenerateSharesView,
+    AccountNumberView,
+    SeedElectrumMnemonicStartView,
+    SeedSlip39MnemonicStartView,
+    SeedKeeperSelectView,
 )
 
 from .view import View, Destination, BackStackView, MainMenuView
+from .satochip_bias import ToolsSatochipBiasCheckView
 
+from seedsigner.hardware.microsd import MicroSD
 from seedsigner.helpers import seedkeeper_utils
-from seedsigner.gui.screens import (RET_CODE__BACK_BUTTON, ButtonListScreen,
-    WarningScreen, DireWarningScreen, seed_screens, LargeIconStatusScreen)
+from seedsigner.helpers.satochip_signer import _call_with_timeout
+from seedsigner.gui.screens import seed_screens
 logger = logging.getLogger(__name__)
 
 from pysatochip.JCconstants import SEEDKEEPER_DIC_TYPE, SEEDKEEPER_DIC_ORIGIN, SEEDKEEPER_DIC_EXPORT_RIGHTS, BIP39_WORDLIST_DIC
+from pysatochip.CardConnector import CardConnector, UnexpectedSW12Error
 from binascii import unhexlify, hexlify
 
 class ToolsMenuView(View):
@@ -81,7 +89,15 @@ class ToolsMenuView(View):
         if self.settings.get_value(SettingsConstants.SETTING__SMARTCARD_SUPPORT) == SettingsConstants.OPTION__ENABLED:
             button_data.append(self.SMARTCARD)
         
-        button_data.extend([self.KEYBOARD, self.ADDRESS_EXPLORER, self.VERIFY_ADDRESS, self.TEXTQRCODE, self.SMARTCARD, self.MICROSD, self.GPG, self.CLEAR_DESCRIPTOR])
+        button_data.extend([
+            self.KEYBOARD,
+            self.ADDRESS_EXPLORER,
+            self.VERIFY_ADDRESS,
+            self.TEXTQRCODE,
+            self.MICROSD,
+            self.GPG,
+            self.CLEAR_DESCRIPTOR,
+        ])
 
         selected_menu_num = self.run_screen(
             ButtonListScreen,
@@ -232,8 +248,12 @@ class ToolsImageEntropyMnemonicLengthView(View):
 
         if selected_menu_num == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
-        
+
         mnemonic_length = button_data[selected_menu_num].return_data
+
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+        loading_screen = LoadingScreenThread(text=_("Processing..."))
+        loading_screen.start()
 
         preview_images = self.controller.image_entropy_preview_frames
         seed_entropy_image = self.controller.image_entropy_final_image
@@ -271,21 +291,12 @@ class ToolsImageEntropyMnemonicLengthView(View):
 
         # Build in better entropy by chaining the preview frames
         for frame in preview_images:
-            print("Preview frame shannon entropy")
-            mnemonic_generation.byte_entropy_is_sufficient(frame.tobytes())
             img_hash = hashlib.sha256(hash_bytes + frame.tobytes())
             hash_bytes = img_hash.digest()
 
         # Finally build in our headline entropy via the new full-res image
-        print("Full image shannon entropy")
-        mnemonic_generation.byte_entropy_is_sufficient(seed_entropy_image.tobytes())
-        final_hash = hashlib.sha256(hash_bytes + seed_entropy_image.tobytes()).digest()
-
-        if mnemonic_length in mnemonic_generation.ENTROPY_BYTES_REQUIRED:
-            final_hash = final_hash[:mnemonic_generation.ENTROPY_BYTES_REQUIRED[mnemonic_length]]
-        
-        print("Final shannon entropy")
-        if not mnemonic_generation.byte_entropy_is_sufficient(final_hash):
+        if not mnemonic_generation.byte_entropy_is_sufficient(seed_entropy_image.tobytes()):
+            loading_screen.stop()
             self.run_screen(
                 ErrorScreen,
                 title=_("Poor Entropy"),
@@ -295,11 +306,17 @@ class ToolsImageEntropyMnemonicLengthView(View):
             self.controller.image_entropy_preview_frames = None
             self.controller.image_entropy_final_image = None
             return Destination(BackStackView)
+        final_hash = hashlib.sha256(hash_bytes + seed_entropy_image.tobytes()).digest()
+
+        if mnemonic_length in mnemonic_generation.ENTROPY_BYTES_REQUIRED:
+            final_hash = final_hash[:mnemonic_generation.ENTROPY_BYTES_REQUIRED[mnemonic_length]]
 
         if getattr(self.controller, "create_slip39", False):
             secret = final_hash
         else:
             mnemonic = mnemonic_generation.generate_mnemonic_from_bytes(final_hash)
+
+        loading_screen.stop()
 
         # Image should never get saved nor stick around in memory
         seed_entropy_image = None
@@ -398,15 +415,20 @@ class ToolsDiceEntropyEntryView(View):
                 text=_("Dice rolls didn't appear random enough. Please try again."),
             )
             return Destination(BackStackView)
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+        loading_screen = LoadingScreenThread(text=_("Processing..."))
+        loading_screen.start()
 
         if getattr(self.controller, "create_slip39", False):
             entropy_bytes = mnemonic_generation.generate_bytes_from_dice(ret)
             self.controller.create_slip39 = False
+            loading_screen.stop()
             return Destination(SeedSlip39CreateFromBytesView, view_args=dict(secret=entropy_bytes), clear_history=True)
         else:
             dice_seed_phrase = mnemonic_generation.generate_mnemonic_from_dice(ret)
             seed = Seed(dice_seed_phrase, wordlist_language_code=self.settings.get_value(SettingsConstants.SETTING__WORDLIST_LANGUAGE))
             self.controller.storage.set_pending_seed(seed)
+            loading_screen.stop()
             return Destination(SeedWordsWarningView, view_args={"seed_num": None}, clear_history=True)
 
 
@@ -731,7 +753,7 @@ class ToolsAddressExplorerAddressTypeView(View):
     CHANGE = ButtonOption("Change Addresses")
 
 
-    def __init__(self, seed_num: int = None, script_type: str = None, custom_derivation: str = None):
+    def __init__(self, seed_num: int = None, script_type: str = None, custom_derivation: str = None, account: int = 0):
         """
             If the explorer source is a seed, `seed_num` and `script_type` must be
             specified. `custom_derivation` can be specified as needed.
@@ -743,6 +765,7 @@ class ToolsAddressExplorerAddressTypeView(View):
         self.seed_num = seed_num
         self.script_type = script_type
         self.custom_derivation = custom_derivation
+        self.account = account
     
         network = self.settings.get_value(SettingsConstants.SETTING__NETWORK)
 
@@ -753,6 +776,7 @@ class ToolsAddressExplorerAddressTypeView(View):
             network=self.settings.get_value(SettingsConstants.SETTING__NETWORK),
             embit_network=SettingsConstants.map_network_to_embit(network),
             script_type=script_type,
+            account=account,
         )
         if self.seed_num is not None:
             self.seed = self.controller.storage.seeds[seed_num]
@@ -769,6 +793,7 @@ class ToolsAddressExplorerAddressTypeView(View):
                     network=self.settings.get_value(SettingsConstants.SETTING__NETWORK),
                     wallet_type=SettingsConstants.SINGLE_SIG,
                     script_type=self.script_type,
+                    account=self.account,
                 )
 
             data["derivation_path"] = derivation_path
@@ -988,6 +1013,9 @@ class ToolsSmartcardMenuView(View):
             return Destination(ToolsSatochipDIYView)
 
 class ToolsCommonView(View):
+    FILTER = ButtonOption("Device Filter")
+    INFO = ButtonOption("Card Info")
+    GENUINE = ButtonOption("Genuine Check")
     CHANGE_PIN = ButtonOption("Change PIN")
     CHANGE_LABEL = ButtonOption("Change Label")
     CHANGE_NFC = ButtonOption("Change NFC Policy")
@@ -995,7 +1023,15 @@ class ToolsCommonView(View):
 
     def run(self):
 
-        button_data = [self.CHANGE_PIN, self.CHANGE_LABEL, self.CHANGE_NFC, self.FACTORY_RESET]
+        button_data = [
+            self.FILTER,
+            self.INFO,
+            self.GENUINE,
+            self.CHANGE_PIN,
+            self.CHANGE_LABEL,
+            self.CHANGE_NFC,
+            self.FACTORY_RESET,
+        ]
 
         selected_menu_num = self.run_screen(
                 ButtonListScreen,
@@ -1006,6 +1042,15 @@ class ToolsCommonView(View):
 
         if selected_menu_num == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
+
+        elif button_data[selected_menu_num] == self.FILTER:
+            return Destination(ToolsCommonFilterView)
+
+        elif button_data[selected_menu_num] == self.INFO:
+            return Destination(ToolsSmartcardInfoView)
+
+        elif button_data[selected_menu_num] == self.GENUINE:
+            return Destination(ToolsSmartcardGenuineCheckView)
 
         elif button_data[selected_menu_num] == self.CHANGE_PIN:
             return Destination(ToolsSatochipChangePinView)
@@ -1019,10 +1064,178 @@ class ToolsCommonView(View):
         elif button_data[selected_menu_num] == self.FACTORY_RESET:
             return Destination(ToolsSatochipFactoryResetView)
 
+
+class ToolsCommonFilterView(View):
+    def run(self):
+        devices = [
+            ("satochip", "Satochip"),
+            ("seedkeeper", "Seedkeeper"),
+            ("satodime", "Satodime"),
+        ]
+
+        selected = self.controller.tools_common_card_filter or [d[0] for d in devices]
+
+        while True:
+            button_data = [ButtonOption(name) for _, name in devices]
+            checked = [i for i, (code, _) in enumerate(devices) if code in selected]
+
+            ret = self.run_screen(
+                ToolsCommonFilterScreen,
+                button_data=button_data,
+                checked_buttons=checked,
+            )
+
+            if ret == RET_CODE__BACK_BUTTON:
+                if len(selected) == len(devices):
+                    self.controller.tools_common_card_filter = None
+                else:
+                    self.controller.tools_common_card_filter = list(selected)
+                return Destination(BackStackView)
+
+            code = devices[ret][0]
+            if code in selected:
+                selected.remove(code)
+            else:
+                selected.append(code)
+
+class ToolsSmartcardInfoView(View):
+    def run(self):
+
+        allowed = ["satochip", "seedkeeper", "satodime"]
+        card_filter = self.controller.tools_common_card_filter or allowed
+        card_filter = [c for c in card_filter if c in allowed]
+
+        Satochip_Connector = seedkeeper_utils.init_satochip(
+            self, init_card_filter=card_filter, require_pin=False
+        )
+
+        if not Satochip_Connector:
+            return Destination(BackStackView)
+
+        _resp, _sw1, _sw2, status = Satochip_Connector.card_get_status()
+
+        info_lines = []
+
+        card_type = getattr(Satochip_Connector, "card_type", "Unknown")
+        info_lines.append(f"Type: {card_type}")
+
+        uid = getattr(Satochip_Connector, "UID_SHA1", None)
+        if not uid:
+            uid_raw = getattr(Satochip_Connector, "UID", None)
+            if uid_raw:
+                uid = bytes(uid_raw).hex()
+        if uid:
+            info_lines.append(f"UID: {uid}")
+
+        version = f"{status.get('protocol_major_version', 0)}.{status.get('protocol_minor_version', 0)}-" \
+                  f"{status.get('applet_major_version', 0)}.{status.get('applet_minor_version', 0)}"
+        info_lines.append(f"Version: {version}")
+
+        pin0 = status.get("PIN0_remaining_tries")
+        if pin0 is not None:
+            info_lines.append(f"Remaining PIN tries: {pin0}")
+
+        setup_done = status.get("setup_done")
+        if setup_done is not None:
+            setup_str = "Done" if setup_done else "Not done"
+            if card_type == "Satochip" and "is_seeded" in status:
+                setup_str += " (seeded)" if status["is_seeded"] else " (unseeded)"
+            info_lines.append(f"Setup: {setup_str}")
+
+        nfc_policy = status.get("nfc_policy")
+        if nfc_policy is not None:
+            nfc_map = {0: "Enabled", 1: "Disabled", 2: "Blocked"}
+            info_lines.append(f"NFC: {nfc_map.get(nfc_policy, str(nfc_policy))}")
+
+        text = "\n".join(info_lines)
+
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Card Info",
+            status_headline=None,
+            text=text,
+            status_icon_name="",
+            show_back_button=True,
+        )
+
+        return Destination(BackStackView)
+
+class ToolsSmartcardGenuineCheckView(View):
+    def run(self):
+
+        allowed = ["satochip", "seedkeeper", "satodime"]
+        card_filter = self.controller.tools_common_card_filter or allowed
+        card_filter = [c for c in card_filter if c in allowed]
+
+        Satochip_Connector = seedkeeper_utils.init_satochip(
+            self, init_card_filter=card_filter
+        )
+
+        if not Satochip_Connector:
+            return Destination(BackStackView)
+
+        try:
+            is_genuine, _, _, _, txt_error = Satochip_Connector.card_verify_authenticity()
+
+            # Workaround for occasional incorrect UID calculation in pysatochip
+            # basically just try to connect again, using the PIN entered on the first attempt
+            if not is_genuine or txt_error:
+                print("Initial genuine check failed, retrying...")
+                temp_pin = self.controller.Satochip_PIN
+                try:
+
+                    Satochip_Connector = seedkeeper_utils.init_satochip(
+                        self,
+                        init_card_filter=card_filter,
+                        require_pin=False,
+                    )
+                    Satochip_Connector.set_pin(0, temp_pin)
+                    if Satochip_Connector:
+                        is_genuine, _, _, _, txt_error = (
+                            Satochip_Connector.card_verify_authenticity()
+                        )
+                except Exception:
+                    pass
+
+            if txt_error:
+                self.run_screen(
+                    ErrorScreen,
+                    title="Genuine Check",
+                    status_headline=None,
+                    text=f"Genuine check failed: {txt_error}",
+                )
+            elif is_genuine:
+                self.run_screen(
+                    LargeIconStatusScreen,
+                    title="Genuine Check",
+                    status_headline=None,
+                    text="Card is genuine",
+                )
+            else:
+                self.run_screen(
+                    WarningScreen,
+                    title="Genuine Check",
+                    status_headline=None,
+                    text="Card is NOT genuine",
+                )
+        except Exception as e:
+            self.run_screen(
+                ErrorScreen,
+                title="Genuine Check",
+                status_headline=None,
+                text=f"Genuine: Error ({e})",
+            )
+
+        return Destination(BackStackView)
+
 class ToolsSatochipChangePinView(View):
     def run(self):
-        
-        Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satochip", "seedkeeper"])
+
+        allowed = ["satochip", "seedkeeper"]
+        card_filter = self.controller.tools_common_card_filter or ["satochip", "seedkeeper", "satodime"]
+        card_filter = [c for c in card_filter if c in allowed]
+
+        Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=card_filter)
 
         if not Satochip_Connector:
             return Destination(BackStackView)
@@ -1060,8 +1273,12 @@ class ToolsSatochipChangePinView(View):
     
 class ToolsSatochipChangeNFCView(View):
     def run(self):
-        
-        Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satochip", "seedkeeper"])
+
+        allowed = ["satochip", "seedkeeper"]
+        card_filter = self.controller.tools_common_card_filter or ["satochip", "seedkeeper", "satodime"]
+        card_filter = [c for c in card_filter if c in allowed]
+
+        Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=card_filter)
 
         if not Satochip_Connector:
             return Destination(BackStackView)
@@ -1107,13 +1324,18 @@ class ToolsSatochipChangeNFCView(View):
             return Destination(MainMenuView)
     
         else:
-            if (sw1 == 0x9C and sw2 == 0x48):
-                failed_string = "Cannot set the NFC policy through the NFC interface, use contact interface instead"
-            elif (sw1 == 0x9C and sw2 == 0x49):
-                failed_string = "Cannot set the NFC policy: NFC interface is BLOCKED, a factory reset is required to reenable NFC!"
-            else:
-                failed_string = "Failed to set NFC policy with error code: {hex(256*sw1+sw2)}"
-            logger.info("Failure: NFC Change Failed")
+            error_messages = {
+                0x9C48: "Cannot set the NFC policy through the NFC interface, use contact interface instead",
+                0x9C49: "Cannot set the NFC policy: NFC interface is BLOCKED, a factory reset is required to reenable NFC!",
+            }
+
+            status_word = (sw1 << 8) | sw2
+            failed_string = error_messages.get(status_word, format_sw_error(sw1, sw2))
+
+            logger.info(
+                "Failure: NFC Change Failed with status word %s",
+                hex(status_word),
+            )
             self.run_screen(
                 WarningScreen,
                 title="Failed",
@@ -1146,7 +1368,11 @@ class ToolsSatochipFactoryResetView(View):
         
         new version currently only implemented on SeedKeeper v0.2 and higher
         """
-        Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satochip", "seedkeeper"], require_pin = False)
+        allowed = ["satochip", "seedkeeper"]
+        card_filter = self.controller.tools_common_card_filter or ["satochip", "seedkeeper", "satodime"]
+        card_filter = [c for c in card_filter if c in allowed]
+
+        Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=card_filter, require_pin = False)
 
         if not Satochip_Connector:
             return Destination(BackStackView)
@@ -1225,102 +1451,178 @@ class ToolsSatochipFactoryResetView(View):
 
         print("WARNING: FACTORY RESET WITHOUT A WORKING BACKUP WILL LEAD TO UNRECOVERABLE LOSS OF FUNDS")
         logger.info("In common_reset_factory_legacy")
+
+        # If other smartcard workflows have previously interacted with the
+        # connector, it may still have an active connection which interferes
+        # with card removal detection during the factory reset sequence. Start
+        # from a clean state so that each removal/reinsertion is picked up
+        # correctly.
+        Satochip_Connector.card_disconnect()
+
+        # Purge all card observers and any lingering PCSC context so that no
+        # background task can automatically exchange APDUs with the card when
+        # it is reinserted. Any unexpected APDU would reset the legacy counter
+        # and prevent the factory reset sequence from completing. This also
+        # effectively disables the automatic card monitor for the duration of
+        # the legacy reset workflow.
+        try:
+            # deleteObservers() clears every registered observer on the
+            # underlying CardMonitor singleton.  Our previous approach of
+            # iterating over a non-existent "observers" attribute left the
+            # RemovalObserver active, which continued to automatically talk to
+            # the card on reinsertion and prevented the legacy reset counter
+            # from decrementing.  Explicitly drop all observers so no
+            # background APDUs are sent during the reset workflow.
+            Satochip_Connector.cardmonitor.deleteObservers()
+        except Exception:
+            pass
+        try:
+            from smartcard import scard
+            hresult, hcontext = scard.SCardEstablishContext(scard.SCARD_SCOPE_SYSTEM)
+            if hresult == scard.SCARD_S_SUCCESS:
+                scard.SCardReleaseContext(hcontext)
+        except Exception:
+            pass
+
+        # Enter the special factory reset mode only after ensuring we are in a
+        # clean, disconnected state.  This prevents any lingering connection
+        # from previous smartcard operations from automatically communicating
+        # with the card when it is re-inserted, which would otherwise keep the
+        # reset counter from decrementing.
         Satochip_Connector.set_mode_factory_reset(True)
+
         remaining_string = ""
-        while(True):
-            self.loading_screen = LoadingScreenThread(text="Sending Command")
-            ret = self.run_screen(
-                DireWarningScreen,
-                title="Warning",
-                status_headline=None,
-                text="Remove and re-insert the smartcard to continue factory reset." + remaining_string,
-                show_back_button=True,
-                button_data=[ButtonOption("Card Re-Inserted")]
-            )
-            if ret == RET_CODE__BACK_BUTTON:
-                return resetStatus
-            else:
-                self.loading_screen.start()
-                try:
-                    time.sleep(3)  # give some time to initialize reader after card insertion... (Takes a while on Pi0)
-                    (response, sw1, sw2) = Satochip_Connector.card_reset_factory_signal()
-                    self.loading_screen.stop()
-                except Exception as e:
-                    print("Exception:", str(e))
-                    self.loading_screen.stop()
-                    self.run_screen(
-                        WarningScreen,
-                        title="Exception",
-                        status_headline=None,
-                        text=str(e)[:100],
-                        show_back_button=True,
-                    )
-                    break # Just bail out of the workflow if there was an IO error
-                if sw1 == 0x9c and sw2 == 0x04:
-                    print("Factory Reset Failed (setup not done)")
-                    self.run_screen(
-                        WarningScreen,
-                        title="Failure",
-                        status_headline=None,
-                        text="Factory Reset Failed (setup not done)",
-                        show_back_button=True,
-                    )
-                    #print("In addition to the factory-reset command, you also need to add the '--enablefactoryreset' argument to enable it")
-                    break
-                if sw1 == 0x00 and sw2 == 0x00:
-                    print("Card Connection Failed!")
-                    self.run_screen(
-                        WarningScreen,
-                        title="Failure",
-                        status_headline=None,
-                        text="Card Connection Failed!",
-                        show_back_button=True,
-                    )
-                    break
-                if sw1 == 0xFF and sw2 == 0x00:
-                    Satochip_Connector.card_disconnect()
-                    print("CARD HAS BEEN RESET TO FACTORY!")
-                    resetStatus = True
-                    break
-                elif sw1 == 0xFF and sw2 == 0xFF:
-                    print("RESET ABORTED: you must remove card after each reset!")
-                    self.run_screen(
-                        WarningScreen,
-                        title="Failure",
-                        status_headline=None,
-                        text="RESET ABORTED: you must remove card after each reset!",
-                        show_back_button=True,
-                    )
-                    break
-                elif sw1 == 0xFF and sw2 > 0x00:
-                    remaining_string = "\nREMAINING COUNTER: " + str(sw2)
-                    print("Remaining counter: " + str(sw2))
-                    print("Please remove and reinsert card, then confirm that you want to continue...")
-                elif sw1 == 0x6F and sw2 == 0x00:
-                    print("The factory reset failed")
-                    print("Unknown error" + str(hex(256 * sw1 + sw2)))
-                    self.run_screen(
-                        WarningScreen,
-                        title="Failure",
-                        status_headline=None,
-                        text="Unknown error" + str(hex(256 * sw1 + sw2)),
-                        show_back_button=True,
-                    )
-                    break
-                elif sw1 == 0x6D and sw2 == 0x00:
-                    print("The factory reset failed")
-                    print("Instruction not supported - error code: " + str(hex(256 * sw1 + sw2)))
-                    self.run_screen(
-                        WarningScreen,
-                        title="Failure",
-                        status_headline=None,
-                        text="Instruction not supported - error code: " + str(hex(256 * sw1 + sw2)),
-                        show_back_button=True,
-                    )
-                    break
+        try:
+            while(True):
+                self.loading_screen = LoadingScreenThread(text="Sending Command")
+                ret = self.run_screen(
+                    DireWarningScreen,
+                    title="Warning",
+                    status_headline=None,
+                    text="Remove and re-insert the smartcard to continue factory reset." + remaining_string,
+                    show_back_button=True,
+                    button_data=[ButtonOption("Card Re-Inserted")]
+                )
+                if ret == RET_CODE__BACK_BUTTON:
+                    return resetStatus
                 else:
-                    print("The factory reset has been cancelled")
-                    break
+                    self.loading_screen.start()
+                    try:
+                        time.sleep(3)  # give some time to initialize reader after card insertion... (Takes a while on Pi0)
+
+                        # Establish a fresh connection to the newly inserted
+                        # card.  Since the automatic card monitor is disabled
+                        # we must explicitly wait for and connect to the card
+                        # ourselves before selecting it.
+                        Satochip_Connector.cardservice = (
+                            Satochip_Connector.cardrequest.waitforcard()
+                        )
+                        Satochip_Connector.cardservice.connection.connect()
+
+                        # Manually select the card's applet without using the
+                        # higher-level helpers which may issue additional
+                        # APDUs such as secure-channel setup. Extra commands
+                        # would reset the legacy counter.
+                        apdu = [0x00, 0xA4, 0x04, 0x00, len(CardConnector.SATOCHIP_AID)] + CardConnector.SATOCHIP_AID
+                        (response, sw1, sw2) = Satochip_Connector.cardservice.connection.transmit(apdu)
+                        if not (sw1 == 0x90 and sw2 == 0x00):
+                            apdu = [0x00, 0xA4, 0x04, 0x00, len(CardConnector.SEEDKEEPER_AID)] + CardConnector.SEEDKEEPER_AID
+                            (response, sw1, sw2) = Satochip_Connector.cardservice.connection.transmit(apdu)
+                            if not (sw1 == 0x90 and sw2 == 0x00):
+                                raise Exception("Card select failed")
+
+                        # Send the legacy factory-reset signal directly to
+                        # avoid any automatic retries or secure-channel
+                        # negotiation.
+                        apdu_reset = [0xB0, 0xFF, 0x00, 0x00, 0x00]
+                        (response, sw1, sw2) = Satochip_Connector.cardservice.connection.transmit(apdu_reset)
+                        self.loading_screen.stop()
+                    except Exception as e:
+                        print("Exception:", str(e))
+                        self.loading_screen.stop()
+                        self.run_screen(
+                            WarningScreen,
+                            title="Exception",
+                            status_headline=None,
+                            text=str(e)[:100],
+                            show_back_button=True,
+                        )
+                        break # Just bail out of the workflow if there was an IO error
+
+                    if sw1 == 0x9c and sw2 == 0x04:
+                        print("Factory Reset Failed (setup not done)")
+                        self.run_screen(
+                            WarningScreen,
+                            title="Failure",
+                            status_headline=None,
+                            text="Factory Reset Failed (setup not done)",
+                            show_back_button=True,
+                        )
+                        #print("In addition to the factory-reset command, you also need to add the '--enablefactoryreset' argument to enable it")
+                        break
+                    if sw1 == 0x00 and sw2 == 0x00:
+                        print("Card not found, retrying...")
+                        Satochip_Connector.card_disconnect()
+                        remaining_string = "\nCard not found. Please re-insert and try again."
+                        continue
+                    if sw1 == 0xFF and sw2 == 0x00:
+                        Satochip_Connector.card_disconnect()
+                        print("CARD HAS BEEN RESET TO FACTORY!")
+                        resetStatus = True
+                        break
+                    elif sw1 == 0xFF and sw2 == 0xFF:
+                        print("RESET ABORTED: you must remove card after each reset!")
+                        self.run_screen(
+                            WarningScreen,
+                            title="Failure",
+                            status_headline=None,
+                            text="RESET ABORTED: you must remove card after each reset!",
+                            show_back_button=True,
+                        )
+                        break
+                    elif sw1 == 0xFF and sw2 > 0x00:
+                        remaining_string = "\nREMAINING COUNTER: " + str(sw2)
+                        print("Remaining counter: " + str(sw2))
+                        print("Please remove and reinsert card, then confirm that you want to continue...")
+                        Satochip_Connector.card_disconnect()
+                    elif sw1 == 0x6F and sw2 == 0x00:
+                        print("The factory reset failed")
+                        print("Unknown error" + str(hex(256 * sw1 + sw2)))
+                        self.run_screen(
+                            WarningScreen,
+                            title="Failure",
+                            status_headline=None,
+                            text="Unknown error" + str(hex(256 * sw1 + sw2)),
+                            show_back_button=True,
+                        )
+                        break
+                    elif sw1 == 0x6D and sw2 == 0x00:
+                        print("The factory reset failed")
+                        print("Instruction not supported - error code: " + str(hex(256 * sw1 + sw2)))
+                        self.run_screen(
+                            WarningScreen,
+                            title="Failure",
+                            status_headline=None,
+                            text="Instruction not supported - error code: " + str(hex(256 * sw1 + sw2)),
+                            show_back_button=True,
+                        )
+                        break
+                    else:
+                        print("The factory reset has been cancelled")
+                        break
+        finally:
+            # Always reset the mode and disconnect to return the connector to a
+            # normal operating state for any subsequent smartcard operations.
+            Satochip_Connector.set_mode_factory_reset(False)
+            Satochip_Connector.card_disconnect()
+
+            # Re-enable the automatic card monitor for normal operations.
+            try:
+                Satochip_Connector.cardmonitor.addObserver(
+                    Satochip_Connector.cardobserver
+                )
+            except Exception:
+                pass
 
         return resetStatus
 
@@ -1351,10 +1653,11 @@ class ToolsSatochipFactoryResetView(View):
         while(doReset):
             ret = self.run_screen(
                 DireWarningScreen,
-                title="Warning",
+                title="Factory Reset",
                 status_headline=None,
-                text="Enter a wrong PIN multiple times to block the card, or the correct PIN to abort." + remaining_string,
+                text="Enter wrong PIN multiple times to continue Factory Reset." + remaining_string,
                 show_back_button=True,
+                button_data=[ButtonOption("Continue")],
             )
             if ret == RET_CODE__BACK_BUTTON:
                 return resetStatus
@@ -1390,9 +1693,9 @@ class ToolsSatochipFactoryResetView(View):
         while(doReset):
             ret = self.run_screen(
                 DireWarningScreen,
-                title="Warning",
+                title="Factory Reset",
                 status_headline=None,
-                text="Enter a wrong PUK multiple times to block the card, or the right PUK to abort." + remaining_string,
+                text="Enter wrong PUK to continue Factory Reset." + remaining_string,
                 show_back_button=True,
             )
             if ret == RET_CODE__BACK_BUTTON:
@@ -1444,8 +1747,12 @@ class ToolsSatochipFactoryResetView(View):
 
 class ToolsSatochipChangeLabelView(View):
     def run(self):
-        
-        Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satochip", "seedkeeper"])
+
+        allowed = ["satochip", "seedkeeper"]
+        card_filter = self.controller.tools_common_card_filter or ["satochip", "seedkeeper", "satodime"]
+        card_filter = [c for c in card_filter if c in allowed]
+
+        Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=card_filter)
 
         if not Satochip_Connector:
             return Destination(BackStackView)
@@ -1490,6 +1797,7 @@ class ToolsSatochipChangeLabelView(View):
         return Destination(MainMenuView)
 
 class ToolsSeedkeeperView(View):
+    VIEW_FREE_SPACE = ButtonOption("View Free Space")
     VIEW_SECRETS = ButtonOption("View Secrets on Card")
     IMPORT_PASSWORD = ButtonOption("Save Password to Card")
     DELETE_SECRET = ButtonOption("Delete Secret from Card")
@@ -1497,7 +1805,14 @@ class ToolsSeedkeeperView(View):
     SAVE_DESCRIPTOR = ButtonOption("Save MultiSig Descriptor")
 
     def run(self):
-        button_data = [self.VIEW_SECRETS, self.IMPORT_PASSWORD, self.DELETE_SECRET, self.LOAD_DESCRIPTOR, self.SAVE_DESCRIPTOR]
+        button_data = [
+            self.VIEW_SECRETS,
+            self.IMPORT_PASSWORD,
+            self.DELETE_SECRET,
+            self.LOAD_DESCRIPTOR,
+            self.SAVE_DESCRIPTOR,
+            self.VIEW_FREE_SPACE,
+        ]
 
         selected_menu_num = self.run_screen(
             ButtonListScreen,
@@ -1523,6 +1838,62 @@ class ToolsSeedkeeperView(View):
         
         elif button_data[selected_menu_num] == self.SAVE_DESCRIPTOR:
             return Destination(ToolsSeedkeeperSaveDescriptorView)
+
+        elif button_data[selected_menu_num] == self.VIEW_FREE_SPACE:
+            return Destination(ToolsSeedkeeperFreeSpaceView)
+
+
+class ToolsSeedkeeperFreeSpaceView(View):
+
+    def run(self):
+        connector = None
+        try:
+            connector = seedkeeper_utils.init_satochip(
+                self,
+                init_card_filter=["seedkeeper"],
+                require_pin=True,
+            )
+
+            if not connector:
+                return Destination(BackStackView)
+
+            try:
+                free_bytes = seedkeeper_utils.get_seedkeeper_free_memory(connector)
+            except Exception as exc:
+                self.run_screen(
+                    WarningScreen,
+                    title="Error",
+                    status_headline=None,
+                    text=str(exc),
+                    show_back_button=True,
+                )
+                return Destination(BackStackView)
+
+            free_kib = free_bytes / 1024
+            text = f"{free_bytes} bytes free\n({free_kib:.1f} KiB)"
+
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Seedkeeper Free Space",
+                status_headline=None,
+                text=text,
+                show_back_button=True,
+            )
+            return Destination(BackStackView)
+
+        except Exception as exc:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text=str(exc),
+                show_back_button=True,
+            )
+            return Destination(BackStackView)
+
+        finally:
+            if connector:
+                seedkeeper_utils.disconnect_smartcard_connections(self.controller)
 
 class ToolsSeedkeeperViewSecretsView(View):
 
@@ -1703,7 +2074,7 @@ class ToolsSeedkeeperViewSecretsView(View):
                 secret_dict['secret'] = secret_string
 
 
-            elif stype in ('Descriptor', 'Data'):
+            elif stype in ('Descriptor', 'Data', 'Public Key'):
                 secret_dict['secret'] = unhexlify(secret_dict['secret'])[2:].decode()
                 
             else:
@@ -1782,6 +2153,32 @@ class ToolsSeedkeeperImportPasswordView(View):
         secret_text_list = list(bytes(secret_text['passphrase'], 'utf-8'))
         secret_list = [len(secret_text_list)] + secret_text_list
         secret_dic = {'header': header, 'secret_list': secret_list}
+
+        try:
+            fits, required_bytes, free_bytes = seedkeeper_utils.ensure_seedkeeper_capacity(
+                Satochip_Connector, secret_dic
+            )
+        except Exception as e:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text=str(e),
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        if not fits:
+            self.run_screen(
+                WarningScreen,
+                title="Not Enough Space",
+                status_headline=None,
+                text=seedkeeper_utils.format_seedkeeper_space_error(required_bytes, free_bytes),
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
         try:
             self.loading_screen = LoadingScreenThread(text="Saving Secret\n\n\n\n\n\n")
             self.loading_screen.start()
@@ -2160,10 +2557,35 @@ class ToolsSeedkeeperSaveDescriptorView(View):
                     secret_text_list = list(bytes(secret_text, 'utf-8'))
                     secret_list = list(len(secret_text_list).to_bytes(2,"big")) + secret_text_list
                 secret_dic = {'header': header, 'secret_list': secret_list}
+                try:
+                    fits, required_bytes, free_bytes = seedkeeper_utils.ensure_seedkeeper_capacity(
+                        Satochip_Connector, secret_dic
+                    )
+                except Exception as e:
+                    self.loading_screen.stop()
+                    self.run_screen(
+                        WarningScreen,
+                        title="Error",
+                        status_headline=None,
+                        text=str(e),
+                        show_back_button=True,
+                    )
+                    return Destination(BackStackView)
+
+                if not fits:
+                    self.loading_screen.stop()
+                    self.run_screen(
+                        WarningScreen,
+                        title="Not Enough Space",
+                        status_headline=None,
+                        text=seedkeeper_utils.format_seedkeeper_space_error(required_bytes, free_bytes),
+                        show_back_button=True,
+                    )
+                    return Destination(BackStackView)
                 (sid, fingerprint) = Satochip_Connector.seedkeeper_import_secret(secret_dic)
                 logger.info("Imported - SID:", sid, " Fingerprint:", fingerprint)
                 secrets_imported += 1
-                
+
             self.loading_screen.stop()
 
             self.run_screen(
@@ -2189,12 +2611,17 @@ class ToolsSeedkeeperSaveDescriptorView(View):
 
 class ToolsSatochipView(View):
     IMPORT_SEED = ButtonOption("Initialise with Seed")
-    ENABLE_2FA = ButtonOption("Enable 2FA")
     EXPORT_XPUB = ButtonOption("Export Xpub")
     LOAD_DESCRIPTOR = ButtonOption("Load as Descriptor")
+    ADVANCED = ButtonOption("Advanced")
 
     def run(self):
-        button_data = [self.IMPORT_SEED, self.ENABLE_2FA, self.EXPORT_XPUB, self.LOAD_DESCRIPTOR]
+        button_data = [
+            self.IMPORT_SEED,
+            self.EXPORT_XPUB,
+            self.LOAD_DESCRIPTOR,
+            self.ADVANCED,
+        ]
         selected_menu_num = self.run_screen(
             ButtonListScreen,
             title="Satochip",
@@ -2208,15 +2635,99 @@ class ToolsSatochipView(View):
         elif button_data[selected_menu_num] == self.IMPORT_SEED:
             return Destination(ToolsSatochipImportSeedView)
 
-        elif button_data[selected_menu_num] == self.ENABLE_2FA:
-            return Destination(ToolsSatochipEnable2FAView)
-
         elif button_data[selected_menu_num] == self.EXPORT_XPUB:
             return Destination(SatochipExportXpubSigTypeView)
 
         elif button_data[selected_menu_num] == self.LOAD_DESCRIPTOR:
             return Destination(SatochipLoadDescriptorScriptTypeView)
-        
+        elif button_data[selected_menu_num] == self.ADVANCED:
+            return Destination(ToolsSatochipAdvancedView)
+
+class ToolsSatochipAdvancedView(View):
+    ENABLE_2FA = ButtonOption("Enable 2FA")
+    BENCHMARK = ButtonOption("Benchmark Signing")
+    BIAS_TEST = ButtonOption("Check signing bias")
+
+    def run(self):
+        button_data = [self.ENABLE_2FA, self.BENCHMARK, self.BIAS_TEST]
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title="Satochip Advanced",
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        elif button_data[selected_menu_num] == self.ENABLE_2FA:
+            return Destination(ToolsSatochipEnable2FAView)
+
+        elif button_data[selected_menu_num] == self.BENCHMARK:
+            return Destination(ToolsSatochipBenchmarkSignView)
+
+        elif button_data[selected_menu_num] == self.BIAS_TEST:
+            return Destination(ToolsSatochipBiasCheckView)
+
+class ToolsSatochipBenchmarkSignView(View):
+    """Benchmark Satochip signing performance."""
+
+    def run(self):
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+
+        connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satochip"])
+        if not connector:
+            return Destination(BackStackView)
+
+        timeout = self.settings.get_value(SettingsConstants.SETTING__SATOCHIP_SIGN_TIMEOUT)
+        durations: list[float] = []
+        loading = LoadingScreenThread(text="Benchmarking\n\n\n\n\n\n")
+        loading.start()
+        for _ in range(20):
+            tx_hash = os.urandom(32)
+            start = time.monotonic()
+            try:
+                _call_with_timeout(
+                    connector.card_sign_transaction_hash,
+                    timeout,
+                    0xFF,
+                    list(tx_hash),
+                    None,
+                )
+                durations.append(time.monotonic() - start)
+            except Exception as e:
+                logger.warning("Benchmark signing failed: %s", e)
+        loading.stop()
+
+        if durations:
+            avg = sum(durations) / len(durations)
+            min_time = min(durations)
+            max_time = max(durations)
+            logger.info(
+                "Benchmark signing results: min=%.3fs avg=%.3fs max=%.3fs over %d signatures",
+                min_time,
+                avg,
+                max_time,
+                len(durations),
+            )
+            text = (
+                "Min: {min_time:.3f}s\n"
+                "Avg: {avg:.3f}s\n"
+                "Max: {max_time:.3f}s"
+            ).format(min_time=min_time, avg=avg, max_time=max_time)
+        else:
+            text = "Benchmark signing failed"
+
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Benchmark",
+            status_headline=None,
+            text=text,
+            show_back_button=False,
+        )
+        return Destination(MainMenuView)
+
+
 class ToolsSatochipImportSeedView(View):
     SCAN_SEED = ButtonOption("Scan a seed", SeedSignerIconConstants.QRCODE)
     TYPE_12WORD = ButtonOption("Enter 12-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=12)
@@ -2224,6 +2735,10 @@ class ToolsSatochipImportSeedView(View):
     TYPE_18WORD = ButtonOption("Enter 18-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=18)
     TYPE_21WORD = ButtonOption("Enter 21-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=21)
     TYPE_24WORD = ButtonOption("Enter 24-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=24)
+    TYPE_ELECTRUM = ButtonOption("Enter Electrum seed", FontAwesomeIconConstants.KEYBOARD)
+    TYPE_SLIP39 = ButtonOption("SLIP-39 Shares", FontAwesomeIconConstants.KEYBOARD)
+    IMPORT_SEEDKEEPER = ButtonOption("From SeedKeeper", FontAwesomeIconConstants.LOCK)
+    CREATE = ButtonOption(" Create a seed", SeedSignerIconConstants.PLUS)
 
     def run(self):
         from seedsigner.gui.screens.screen import LoadingScreenThread
@@ -2231,6 +2746,21 @@ class ToolsSatochipImportSeedView(View):
 
         if not Satochip_Connector:
             return Destination(BackStackView)
+
+        # Prevent reseeding an already-initialized card. Attempting to import a new
+        # seed into a seeded Satochip results in a generic failure. Instead, check
+        # the card's status up front and inform the user so they can take
+        # appropriate action (like resetting the card) before proceeding.
+        _resp, _sw1, _sw2, status = Satochip_Connector.card_get_status()
+        if status.get("is_seeded"):
+            self.run_screen(
+                WarningScreen,
+                title=_("Already Seeded"),
+                status_headline=None,
+                text=_("Satochip card already contains a seed."),
+                show_back_button=False,
+            )
+            return Destination(MainMenuView)
 
         seeds = self.controller.storage.seeds
         button_data = []
@@ -2247,6 +2777,13 @@ class ToolsSatochipImportSeedView(View):
             24: self.TYPE_24WORD,
         }
         button_data = button_data + [self.SCAN_SEED] + [options[l] for l in seed_lengths]
+        if self.settings.get_value(SettingsConstants.SETTING__SMARTCARD_SUPPORT) == SettingsConstants.OPTION__ENABLED:
+            button_data.append(self.IMPORT_SEEDKEEPER)
+        if self.settings.get_value(SettingsConstants.SETTING__SLIP39_SEEDS) == SettingsConstants.OPTION__ENABLED:
+            button_data.append(self.TYPE_SLIP39)
+        button_data.append(self.CREATE)
+        if self.settings.get_value(SettingsConstants.SETTING__ELECTRUM_SEEDS) == SettingsConstants.OPTION__ENABLED:
+            button_data.append(self.TYPE_ELECTRUM)
         
         selected_menu_num = self.run_screen(
             ButtonListScreen,
@@ -2301,6 +2838,14 @@ class ToolsSatochipImportSeedView(View):
             from seedsigner.views.seed_views import SeedMnemonicEntryView
             self.controller.storage.init_pending_mnemonic(num_words=button_data[selected_menu_num].return_data)
             return Destination(SeedMnemonicEntryView)
+        elif button_data[selected_menu_num] == self.IMPORT_SEEDKEEPER:
+            return Destination(SeedKeeperSelectView)
+        elif button_data[selected_menu_num] == self.TYPE_SLIP39:
+            return Destination(SeedSlip39MnemonicStartView)
+        elif button_data[selected_menu_num] == self.CREATE:
+            return Destination(ToolsMenuView)
+        elif button_data[selected_menu_num] == self.TYPE_ELECTRUM:
+            return Destination(SeedElectrumMnemonicStartView)
         
         return Destination(MainMenuView)
 
@@ -2402,9 +2947,20 @@ class SatochipExportXpubScriptTypeView(View):
         self.script_type = script_type
 
     def run(self):
+        Satochip_Connector = seedkeeper_utils.init_satochip(
+            self, init_card_filter=["satochip"], require_pin=False
+        )
+        if not Satochip_Connector:
+            return Destination(BackStackView)
+
+        status = Satochip_Connector.card_get_status()[3]
+        schnorr_supported = status.get("feature_schnorr_policy") == 0
+
         button_data = []
         for script_type, display_name in SettingsConstants.ALL_SCRIPT_TYPES:
             if script_type in self.settings.get_value(SettingsConstants.SETTING__SCRIPT_TYPES):
+                if script_type == SettingsConstants.TAPROOT and not schnorr_supported:
+                    continue
                 button_data.append(ButtonOption(display_name, return_data=script_type))
 
         selected_menu_num = self.run_screen(
@@ -2423,6 +2979,14 @@ class SatochipExportXpubScriptTypeView(View):
             return Destination(
                 SatochipExportXpubCustomDerivationView,
                 view_args=dict(sig_type=self.sig_type, script_type=script_type),
+            )
+        if (
+            self.settings.get_value(SettingsConstants.SETTING__ACCOUNT_PROMPT)
+            == SettingsConstants.OPTION__ENABLED
+        ):
+            return Destination(
+                AccountNumberView,
+                view_args=dict(next_view_cls=SatochipExportXpubCoordinatorView, next_view_args=dict(sig_type=self.sig_type, script_type=script_type)),
             )
         return Destination(
             SatochipExportXpubCoordinatorView,
@@ -2453,11 +3017,12 @@ class SatochipExportXpubCustomDerivationView(View):
 
 
 class SatochipExportXpubCoordinatorView(View):
-    def __init__(self, sig_type: str, script_type: str, custom_derivation: str = ""):
+    def __init__(self, sig_type: str, script_type: str, custom_derivation: str = "", account: int = 0):
         super().__init__()
         self.sig_type = sig_type
         self.script_type = script_type
         self.custom_derivation = custom_derivation
+        self.account = account
 
     def run(self):
         button_data = []
@@ -2486,18 +3051,20 @@ class SatochipExportXpubCoordinatorView(View):
                 coordinator=coordinator,
                 custom_derivation=self.custom_derivation,
                 coordinator_label=coordinator_label,
+                account=self.account,
             ),
         )
 
 
 class SatochipExportXpubWarningView(View):
-    def __init__(self, sig_type: str, script_type: str, coordinator: str, custom_derivation: str, coordinator_label: str):
+    def __init__(self, sig_type: str, script_type: str, coordinator: str, custom_derivation: str, coordinator_label: str, account: int = 0):
         super().__init__()
         self.sig_type = sig_type
         self.script_type = script_type
         self.coordinator = coordinator
         self.custom_derivation = custom_derivation
         self.coordinator_label = coordinator_label
+        self.account = account
 
     def run(self):
         destination = Destination(
@@ -2508,6 +3075,7 @@ class SatochipExportXpubWarningView(View):
                 coordinator=self.coordinator,
                 custom_derivation=self.custom_derivation,
                 coordinator_label=self.coordinator_label,
+                account=self.account,
             ),
             skip_current_view=True,
         )
@@ -2529,13 +3097,14 @@ class SatochipExportXpubWarningView(View):
 
 
 class SatochipExportXpubDetailsView(View):
-    def __init__(self, sig_type: str, script_type: str, coordinator: str, custom_derivation: str, coordinator_label: str):
+    def __init__(self, sig_type: str, script_type: str, coordinator: str, custom_derivation: str, coordinator_label: str, account: int = 0):
         super().__init__()
         self.sig_type = sig_type
         self.script_type = script_type
         self.coordinator = coordinator
         self.custom_derivation = custom_derivation
         self.coordinator_label = coordinator_label
+        self.account = account
 
     def run(self):
         Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satochip"])
@@ -2549,6 +3118,7 @@ class SatochipExportXpubDetailsView(View):
                 network=self.settings.get_value(SettingsConstants.SETTING__NETWORK),
                 wallet_type=self.sig_type,
                 script_type=self.script_type,
+                account=self.account,
             )
 
         network = self.settings.get_value(SettingsConstants.SETTING__NETWORK)
@@ -2574,11 +3144,14 @@ class SatochipExportXpubDetailsView(View):
                 xtype = "standard"
             else:
                 xtype = "p2wpkh"
-
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+        loading = LoadingScreenThread(text=_("Exporting xpub..."))
+        loading.start()
         try:
             xpub_base58 = Satochip_Connector.card_bip32_get_xpub(derivation_path, xtype, is_mainnet)
             master_xpub = Satochip_Connector.card_bip32_get_xpub("", xtype, is_mainnet)
         except Exception as e:
+            loading.stop()
             self.run_screen(
                 WarningScreen,
                 title="Failed",
@@ -2586,6 +3159,8 @@ class SatochipExportXpubDetailsView(View):
                 text=str(e),
             )
             return Destination(BackStackView)
+        finally:
+            loading.stop()
 
         fingerprint = HDKey.from_string(master_xpub).my_fingerprint
         fingerprint_hex = hexlify(fingerprint).decode("utf-8")
@@ -2734,9 +3309,20 @@ class SatochipLoadDescriptorScriptTypeView(View):
         self.script_type = script_type
 
     def run(self):
+        Satochip_Connector = seedkeeper_utils.init_satochip(
+            self, init_card_filter=["satochip"], require_pin=False
+        )
+        if not Satochip_Connector:
+            return Destination(BackStackView)
+
+        status = Satochip_Connector.card_get_status()[3]
+        schnorr_supported = status.get("feature_schnorr_policy") == 0
+
         button_data = []
         for script_type, display_name in SettingsConstants.ALL_SCRIPT_TYPES:
             if script_type in self.settings.get_value(SettingsConstants.SETTING__SCRIPT_TYPES):
+                if script_type == SettingsConstants.TAPROOT and not schnorr_supported:
+                    continue
                 button_data.append(ButtonOption(display_name, return_data=script_type))
 
         selected_menu_num = self.run_screen(
@@ -2753,6 +3339,8 @@ class SatochipLoadDescriptorScriptTypeView(View):
         script_type = button_data[selected_menu_num].return_data
         if script_type == SettingsConstants.CUSTOM_DERIVATION:
             return Destination(SatochipLoadDescriptorCustomDerivationView, view_args=dict(script_type=script_type))
+        if self.settings.get_value(SettingsConstants.SETTING__ACCOUNT_PROMPT) == SettingsConstants.OPTION__ENABLED:
+            return Destination(AccountNumberView, view_args=dict(next_view_cls=SatochipLoadDescriptorDetailsView, next_view_args=dict(script_type=script_type)))
         return Destination(SatochipLoadDescriptorDetailsView, view_args=dict(script_type=script_type))
 
 
@@ -2778,10 +3366,11 @@ class SatochipLoadDescriptorCustomDerivationView(View):
 
 
 class SatochipLoadDescriptorDetailsView(View):
-    def __init__(self, script_type: str, custom_derivation: str = ""):
+    def __init__(self, script_type: str, custom_derivation: str = "", account: int = 0):
         super().__init__()
         self.script_type = script_type
         self.custom_derivation = custom_derivation
+        self.account = account
 
     def run(self):
         Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satochip"])
@@ -2795,6 +3384,7 @@ class SatochipLoadDescriptorDetailsView(View):
                 network=self.settings.get_value(SettingsConstants.SETTING__NETWORK),
                 wallet_type=SettingsConstants.SINGLE_SIG,
                 script_type=self.script_type,
+                account=self.account,
             )
 
         network = self.settings.get_value(SettingsConstants.SETTING__NETWORK)
@@ -2809,11 +3399,14 @@ class SatochipLoadDescriptorDetailsView(View):
             xtype = "standard"
         else:
             xtype = "p2wpkh"
-
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+        loading = LoadingScreenThread(text=_("Exporting xpub..."))
+        loading.start()
         try:
             xpub_base58 = Satochip_Connector.card_bip32_get_xpub(derivation_path, xtype, is_mainnet)
             master_xpub = Satochip_Connector.card_bip32_get_xpub("", xtype, is_mainnet)
         except Exception as e:
+            loading.stop()
             self.run_screen(
                 WarningScreen,
                 title="Failed",
@@ -2821,6 +3414,8 @@ class SatochipLoadDescriptorDetailsView(View):
                 text=str(e),
             )
             return Destination(BackStackView)
+        finally:
+            loading.stop()
 
         fingerprint = HDKey.from_string(master_xpub).my_fingerprint
         fingerprint_hex = hexlify(fingerprint).decode("utf-8")
@@ -2859,6 +3454,10 @@ class SatochipLoadDescriptorDetailsView(View):
         if self.controller.resume_main_flow == Controller.FLOW__ADDRESS_EXPLORER:
             from seedsigner.views.seed_views import MultisigWalletDescriptorView
             return Destination(MultisigWalletDescriptorView, skip_current_view=True)
+        elif self.controller.resume_main_flow == Controller.FLOW__VERIFY_SINGLESIG_ADDR:
+            from seedsigner.views.seed_views import SeedAddressVerificationView
+            self.controller.resume_main_flow = None
+            return Destination(SeedAddressVerificationView, skip_current_view=True)
 
         self.run_screen(
             LargeIconStatusScreen,
@@ -2877,10 +3476,15 @@ class ToolsSatochipDIYView(View):
 
     def run(self):
         # Check if GlobalPlatoform is available as a way of checking if the DIY tools we need are available
-        if platform.uname()[1] == "seedsigner-os":
+        from pathlib import Path
+        from seedsigner.models.settings import Settings
+
+        if Settings.HOSTNAME == Settings.SEEDSIGNER_OS:
             global_platform_path = "/mnt/diy/Satochip-DIY/gp.jar"
-        else:
+        elif os.path.exists("/home/pi"):
             global_platform_path = "/home/pi/Satochip-DIY/gp.jar"
+        else:
+            global_platform_path = str(Path.home() / "Satochip-DIY/gp.jar")
 
         if os.path.exists(global_platform_path):
             pass
@@ -2919,28 +3523,45 @@ class ToolsDIYBuildAppletsView(View):
     def run(self):
         from subprocess import run
         import os
+        import shutil
+        from pathlib import Path
         from seedsigner.gui.screens.screen import LoadingScreenThread
+        from seedsigner.hardware.microsd import MicroSD
+        from seedsigner.models.settings import Settings
 
         self.loading_screen = LoadingScreenThread(text="Building Applets\n\n\n\n\n\n(This takes a while)")
         self.loading_screen.start()
 
-        if platform.uname()[1] == "seedsigner-os":
-            if not os.path.exists("/mnt/microsd/javacard-build.xml"):
-                os.system("cp /opt/tools/javacard-build.xml.seedsigneros /mnt/microsd/javacard-build.xml")
+        microsd_dir = MicroSD.get_microsd_dir()
+        repo_root = Path(__file__).resolve().parents[3]
 
-            if not os.path.exists("/mnt/microsd/javacard-cap/"):
-                os.system("mkdir -p /mnt/microsd/javacard-cap/")
+        if Settings.HOSTNAME == Settings.SEEDSIGNER_OS:
+            if not os.path.exists(microsd_dir / "javacard-build.xml"):
+                os.system(f"cp /opt/tools/javacard-build.xml.seedsigneros {microsd_dir}/javacard-build.xml")
+
+            if not os.path.exists(microsd_dir / "javacard-cap/"):
+                os.system(f"mkdir -p {microsd_dir}/javacard-cap/")
 
             os.environ["JAVA_HOME"] = "/mnt/diy/jdk"
-            commandString = "/mnt/diy/ant/bin/ant -f /mnt/microsd/javacard-build.xml"
+            commandString = f"/mnt/diy/ant/bin/ant -f {microsd_dir}/javacard-build.xml"
+        elif os.path.exists("/home/pi"):
+            if not os.path.exists(microsd_dir / "javacard-build.xml"):
+                os.system(f"sudo cp {repo_root}/tools/javacard-build.xml.manual {microsd_dir}/javacard-build.xml")
+
+            if not os.path.exists(microsd_dir / "javacard-cap/"):
+                os.system(f"sudo mkdir -p {microsd_dir}/javacard-cap/")
+
+            commandString = f"sudo ant -f {microsd_dir}/javacard-build.xml"
         else:
-            if not os.path.exists("/boot/javacard-build.xml"):
-                os.system("sudo cp /home/pi/seedsigner/tools/javacard-build.xml.manual /boot/javacard-build.xml")
+            build_xml = microsd_dir / "javacard-build.xml"
+            if not build_xml.exists():
+                shutil.copy(repo_root / "tools" / "javacard-build.xml.manual", build_xml)
 
-            if not os.path.exists("/boot/javacard-cap/"):
-                os.system("sudo mkdir -p /boot/javacard-cap/")
+            cap_dir = microsd_dir / "javacard-cap"
+            if not cap_dir.exists():
+                os.makedirs(cap_dir)
 
-            commandString = "sudo ant -f /boot/javacard-build.xml"
+            commandString = f"ant -f {build_xml}"
 
         data = run(commandString, capture_output=True, shell=True, text=True)
 
@@ -2972,12 +3593,12 @@ class ToolsDIYInstallAppletView(View):
     def run(self):
         from subprocess import run
         import os
+        import secrets
         from seedsigner.gui.screens.screen import LoadingScreenThread
+        from seedsigner.hardware.microsd import MicroSD
 
-        if platform.uname()[1] == "seedsigner-os":
-            cap_files = os.listdir('/mnt/microsd/javacard-cap/')
-        else:
-            cap_files = os.listdir('/boot/javacard-cap/')
+        cap_dir = MicroSD.get_microsd_dir() / "javacard-cap"
+        cap_files = os.listdir(cap_dir)
 
         cap_file_buttons = []
         for file in cap_files:
@@ -2996,11 +3617,30 @@ class ToolsDIYInstallAppletView(View):
         applet_file = cap_files[selected_file_num]
         logger.info("Selected:", applet_file)
 
-        if platform.uname()[1] == "seedsigner-os":
-            installed_applets = seedkeeper_utils.run_globalplatform(self,
-                                                                    "--install /mnt/microsd/javacard-cap/" + applet_file, "Installing Applet", "Applet Installed")
+        if "smartpgp" in applet_file.lower():
+            serial_hex = secrets.token_bytes(4).hex().upper()
+            aid = f"D276000124010304C0FE{serial_hex}0000"
+            logger.info("SmartPGP AID: %s", aid)
+            installed_applets = seedkeeper_utils.run_globalplatform(
+                self,
+                f"--install {cap_dir}/{applet_file} --create {aid}",
+                "Installing Applet",
+                f"Applet Installed\nSerial: {serial_hex}",
+            )
+        elif "seedkeeper" in applet_file.lower():
+            installed_applets = seedkeeper_utils.run_globalplatform(
+                self,
+                f"--install {cap_dir}/{applet_file} --params 1FFF",
+                "Installing Applet",
+                "Applet Installed",
+            )
         else:
-            installed_applets = seedkeeper_utils.run_globalplatform(self,"--install /boot/javacard-cap/" + applet_file, "Installing Applet", "Applet Installed")
+            installed_applets = seedkeeper_utils.run_globalplatform(
+                self,
+                f"--install {cap_dir}/{applet_file}",
+                "Installing Applet",
+                "Applet Installed",
+            )
 
         # This process often kills IFD-NFC, so restart it if required
         scinterface = self.settings.get_value(SettingsConstants.SETTING__SMARTCARD_INTERFACES)
@@ -3105,15 +3745,6 @@ class ToolsMicroSDMenuView(View):
     WIPE_RANDOM = ButtonOption("Wipe (Random)")
 
     def run(self):
-        if len(self.controller.storage.seeds) > 0:
-            self.run_screen(
-                WarningScreen,
-                title="WARNING",
-                status_headline=None,
-                text="These tools read from the microSD card and may leak loaded secrets.",
-                show_back_button=False,
-                button_data=[ButtonOption("Continue")]
-            )
         button_data = [self.FLASH_IMAGE, self.VERIFY_IMAGE, self.WIPE_ZERO, self.WIPE_RANDOM]
 
         selected_menu_num = self.run_screen(
@@ -3126,9 +3757,21 @@ class ToolsMicroSDMenuView(View):
         if selected_menu_num == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
 
+        # All MicroSD operations require hardware access; block in desktop mode
+        if MicroSD.is_desktop_mode():
+            self.run_screen(
+                WarningScreen,
+                title="Unavailable",
+                status_headline=None,
+                text="MicroSD tools are not supported on desktop.",
+                show_back_button=False,
+                button_data=[ButtonOption("OK")],
+            )
+            return Destination(ToolsMicroSDMenuView, skip_current_view=True)
+
         elif button_data[selected_menu_num] == self.FLASH_IMAGE:
             return Destination(ToolsMicroSDFlashView)
-        
+
         elif button_data[selected_menu_num] == self.VERIFY_IMAGE:
             return Destination(ToolsMicroSDVerifyWarningView)
 
@@ -3141,7 +3784,23 @@ class ToolsMicroSDMenuView(View):
 class ToolsMicroSDFlashView(View):
     def run(self):
         from subprocess import run
+        import hashlib, shutil
         from seedsigner.gui.screens.screen import LoadingScreenThread
+        from seedsigner.hardware.microsd import MicroSD
+        from seedsigner.hardware.microsd import MicroSD
+        from seedsigner.models.settings import Settings
+
+        if len(self.controller.storage.seeds) > 0:
+            ret = self.run_screen(
+                WarningScreen,
+                title="WARNING",
+                status_headline=None,
+                text="These tools read from the microSD card and may leak loaded secrets.",
+                show_back_button=True,
+                button_data=[ButtonOption("Continue")]
+            )
+            if ret == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
 
         microsd_dev = find_sd_card_device()
 
@@ -3354,6 +4013,7 @@ class ToolsMicroSDWipeZeroView(View):
 
     def run(self):
         from subprocess import run
+        import hashlib, shutil
         from seedsigner.gui.screens.screen import LoadingScreenThread
 
         microsd_dev = find_sd_card_device()
@@ -3551,21 +4211,205 @@ class ToolsMicroSDWipeRandomView(View):
 """****************************************************************************
     GPG Views
 ****************************************************************************"""
+
+
+def parse_secret_key_list(colon_output: str):
+    """Parse `gpg --list-secret-keys --with-colons` output."""
+    keys = []
+    cur = None
+    for line in colon_output.splitlines():
+        parts = line.split(":")
+        if parts[0] == "sec":
+            created = int(parts[5]) if len(parts) > 5 and parts[5] else None
+            cur = {"fpr": None, "uid": None, "created": created}
+            keys.append(cur)
+        elif parts[0] == "fpr" and cur is not None and cur.get("fpr") is None:
+            cur["fpr"] = parts[9]
+        elif parts[0] == "uid" and cur is not None and cur.get("uid") is None:
+            cur["uid"] = parts[9]
+    return keys
+
+
+def parse_subkey_list(colon_output: str):
+    """Parse `gpg --list-secret-keys --with-colons` subkey data."""
+    subkeys = []
+    cur = None
+    idx = 0
+    for line in colon_output.splitlines():
+        parts = line.split(":")
+        if parts[0] == "ssb":
+            idx += 1
+            bits = parts[2]
+            algo = parts[3] if len(parts) > 3 else ""
+            curve = parts[16].lower() if len(parts) > 16 else ""
+            created = int(parts[5]) if len(parts) > 5 and parts[5] else None
+            cur = {
+                "fpr": None,
+                "caps": parts[11].lower(),
+                "idx": idx,
+                "algo": algo,
+                "bits": bits,
+                "curve": curve,
+                "created": created,
+            }
+            subkeys.append(cur)
+        elif parts[0] == "fpr" and cur is not None and cur.get("fpr") is None:
+            cur["fpr"] = parts[9]
+    return subkeys
+
+
+# Bitcoin genesis block time: 2009-01-03 18:15:05 UTC.
+# NOTE: As of 2025-09-15, BIP85 on GitHub lists this timestamp with a
+# human-readable typo of "2009-01-03 18:05:05" UTC, which has propagated elsewhere.
+BIP85_GPG_CREATED_TS = 1231006505
+
+# BIP85 application numbers for supported GPG key types
+BIP85_GPG_APP_RSA = 828365
+BIP85_GPG_APP_CURVE25519 = 828366
+BIP85_GPG_APP_SECP256K1 = 828367
+BIP85_GPG_APP_NIST_P256 = 828368
+BIP85_GPG_APP_BRAINPOOL_P256 = 828369
+
+BIP85_GPG_ECC_KEY_BITS = 256
+
+# In-memory registry of BIP85-derived keys
+BIP85_DATA = {}
+
+
+def bip85_export_json():
+    import json
+
+    return json.dumps(list(BIP85_DATA.values()), indent=2)
+
+
+def bip85_import_json(data: str, *, clear: bool = True):
+    import json
+
+    entries = json.loads(data)
+    if isinstance(entries, dict):
+        entries = [entries]
+    if clear:
+        BIP85_DATA.clear()
+    for entry in entries:
+        if "primary_fpr" in entry:
+            uids = entry.get("uids", [])
+            primary = entry.get("primary_uid")
+            if primary and primary in uids:
+                uids = [primary] + [u for u in uids if u != primary]
+                entry["uids"] = uids
+            BIP85_DATA[entry["primary_fpr"]] = entry
+
+
+def bip85_save_data(path):
+    from pathlib import Path
+    import json
+
+    p = Path(path)
+    if p.is_dir():
+        for entry in BIP85_DATA.values():
+            fname = p / f"BIP85_{entry['seed_fpr']}.json"
+            with open(fname, "w", encoding="utf-8") as f:
+                json.dump(entry, f, indent=2)
+    else:
+        with open(p, "w", encoding="utf-8") as f:
+            f.write(bip85_export_json())
+
+
+def bip85_load_data(path):
+    from pathlib import Path
+    import json
+
+    p = Path(path)
+    if p.is_dir():
+        entries = []
+        for file in p.glob("*.json"):
+            try:
+                with open(file, encoding="utf-8") as f:
+                    data = json.load(f)
+                if isinstance(data, list):
+                    entries.extend(data)
+                else:
+                    entries.append(data)
+            except Exception:
+                continue
+        bip85_import_json(json.dumps(entries))
+    else:
+        with open(p, encoding="utf-8") as f:
+            bip85_import_json(f.read())
+
+
+def parse_uid_list(colon_output: str):
+    """Parse `gpg --list-secret-keys --with-colons` UID data."""
+    uids = []
+    idx = 0
+    for line in colon_output.splitlines():
+        parts = line.split(":")
+        if parts[0] == "uid":
+            idx += 1
+            uids.append({"uid": parts[9], "idx": idx})
+    return uids
+
+
+def filter_deletable_subkeys(primary_fpr: str, subkeys):
+    bip85 = primary_fpr in BIP85_DATA
+    logger.info(
+        "filter_deletable_subkeys: fpr=%s bip85=%s subkey_count=%s",
+        primary_fpr,
+        bip85,
+        len(subkeys),
+    )
+    if bip85 and subkeys:
+        max_idx = max(sk["idx"] for sk in subkeys)
+        logger.info("BIP85 key detected; allowing deletion of index %s only", max_idx)
+        return [sk for sk in subkeys if sk["idx"] == max_idx]
+    logger.info("Non-BIP85 key or no subkeys; returning all subkeys")
+    return subkeys
+
+
+def _select_import_algo(primary_algo: str, primary_curve: str, subkeys, selected_fprs):
+    """Determine the algorithm/curve for card import based on selected subkeys."""
+    if selected_fprs:
+        fprs = selected_fprs.values() if isinstance(selected_fprs, dict) else selected_fprs
+        selected = [sk for sk in subkeys if sk["fpr"] in fprs]
+        if not selected:
+            return primary_algo, primary_curve
+        algos = {sk["algo"] for sk in selected}
+        if len(algos) != 1:
+            raise ValueError("Selected subkeys use different key types")
+        algo = algos.pop()
+        curve = ""
+        if algo not in ("1", "2", "3"):
+            curves = {sk["curve"] for sk in selected}
+            if len(curves) != 1:
+                raise ValueError("Selected subkeys use different key curves")
+            curve = curves.pop()
+        return algo, curve
+    return primary_algo, primary_curve
+
+
 class ToolsGPGMenuView(View):
-    VERIFY_FILE = ButtonOption("Verify File Sig")
-    IMPORT_PUBKEY = ButtonOption("Import Pubkey")
+    FILE_OPS = ButtonOption("File Operations")
+    IMPORT = ButtonOption("Import Keys")
+    EXPORT = ButtonOption("Export Keys")
+    MESSAGE = ButtonOption("Secure Messaging")
+    SMART_GPG = ButtonOption("SmartGPG")
+    ADVANCED = ButtonOption("Advanced")
 
     def run(self):
-        if len(self.controller.storage.seeds) > 0:
-            self.run_screen(
-                WarningScreen,
-                title="WARNING",
-                status_headline=None,
-                text="These tools load data from the microSD card and may expose loaded secrets.",
-                show_back_button=False,
-                button_data=[ButtonOption("Continue")]
-            )
-        button_data = [self.VERIFY_FILE, self.IMPORT_PUBKEY]
+        from seedsigner.controller import Controller
+
+        if self.controller.resume_main_flow == Controller.FLOW__GPG_MESSAGE:
+            self.controller.resume_main_flow = None
+            return Destination(ToolsGPGDecryptMessageView, skip_current_view=True)
+
+        button_data = [
+            self.FILE_OPS,
+            self.IMPORT,
+            self.EXPORT,
+            self.MESSAGE,
+            self.SMART_GPG,
+            self.ADVANCED,
+        ]
 
         selected_menu_num = self.run_screen(
             ButtonListScreen,
@@ -3577,22 +4421,3566 @@ class ToolsGPGMenuView(View):
         if selected_menu_num == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
 
-        elif button_data[selected_menu_num] == self.VERIFY_FILE:
-            return Destination(ToolsGPGVerifyFileView)
-        
-        elif button_data[selected_menu_num] == self.IMPORT_PUBKEY:
-            return Destination(ToolsGPGImportPubkeyView)
+        elif button_data[selected_menu_num] == self.FILE_OPS:
+            return Destination(ToolsGPGFileOpsMenuView)
+
+        elif button_data[selected_menu_num] == self.IMPORT:
+            return Destination(ToolsGPGImportMenuView)
+        elif button_data[selected_menu_num] == self.EXPORT:
+            return Destination(ToolsGPGExportMenuView)
+        elif button_data[selected_menu_num] == self.MESSAGE:
+            return Destination(ToolsGPGMessageMenuView)
+        elif button_data[selected_menu_num] == self.SMART_GPG:
+            return Destination(ToolsGPGSmartMenuView)
+        elif button_data[selected_menu_num] == self.ADVANCED:
+            return Destination(ToolsGPGAdvancedMenuView)
+
+
+class ToolsGPGAdvancedMenuView(View):
+    SUBKEY_OPS = ButtonOption("Subkey Operations")
+    UID_OPS = ButtonOption("User ID Operations")
+    CROSS_CERTIFY = ButtonOption("Cross Certify Keys")
+    EXPORT_BUNDLE = ButtonOption("Export Public Key Bundle")
+    BIP85_META = ButtonOption("BIP85 Metadata")
+
+    def run(self):
+        button_data = [
+            self.SUBKEY_OPS,
+            self.UID_OPS,
+            self.CROSS_CERTIFY,
+            self.EXPORT_BUNDLE,
+            self.BIP85_META,
+        ]
+
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title="Advanced",
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        choice = button_data[selected_menu_num]
+        if choice == self.SUBKEY_OPS:
+            return Destination(ToolsGPGSubkeyMenuView)
+        if choice == self.UID_OPS:
+            return Destination(ToolsGPGUidMenuView)
+        if choice == self.CROSS_CERTIFY:
+            return Destination(ToolsGPGCrossCertifyView)
+        if choice == self.EXPORT_BUNDLE:
+            return Destination(ToolsGPGExportBundleView)
+        if choice == self.BIP85_META:
+            return Destination(ToolsGPGBip85MetadataMenuView)
+        return Destination(ToolsGPGMenuView)
+
+
+class ToolsGPGCrossCertifyView(View):
+    def run(self):
+        from subprocess import run
+        from seedsigner.gui.screens.screen import (
+            ButtonListScreen,
+            LargeIconStatusScreen,
+            WarningScreen,
+        )
+
+        result = run(["gpg", "--list-secret-keys", "--with-colons"], capture_output=True, text=True)
+        keys = parse_secret_key_list(result.stdout)
+
+        if len(keys) < 2:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="At least two keys required",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        key_buttons = [ButtonOption(k["uid"] if k["uid"] else k["fpr"][-8:]) for k in keys]
+        signer_sel = self.run_screen(
+            ButtonListScreen,
+            title="Signing Key",
+            is_button_text_centered=False,
+            button_data=key_buttons,
+        )
+        if signer_sel == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        signer = keys[signer_sel]
+
+        target_keys = [k for idx, k in enumerate(keys) if idx != signer_sel]
+        target_buttons = [
+            ButtonOption(k["uid"] if k["uid"] else k["fpr"][-8:]) for k in target_keys
+        ]
+        target_sel = self.run_screen(
+            ButtonListScreen,
+            title="Target Key",
+            is_button_text_centered=False,
+            button_data=target_buttons,
+        )
+        if target_sel == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        target = target_keys[target_sel]
+
+        cmd = [
+            "gpg",
+            "--batch",
+            "--yes",
+            "--default-key",
+            signer["fpr"],
+            "--quick-sign-key",
+            target["fpr"],
+        ]
+        result = run(cmd, capture_output=True, text=True)
+
+        if result.returncode == 0:
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Success",
+                status_headline=None,
+                text="Key cross certified",
+                show_back_button=False,
+                button_data=[ButtonOption("Done")],
+            )
+            return Destination(ToolsGPGMenuView)
+
+        logger.error("Cross certification failed: %s", result.stderr.strip())
+        self.run_screen(
+            WarningScreen,
+            title="Error",
+            status_headline=None,
+            text="Failed to cross certify",
+            show_back_button=False,
+            button_data=[ButtonOption("I Understand")],
+        )
+        return Destination(BackStackView)
+
+
+class ToolsGPGExportBundleView(View):
+    def run(self):
+        from subprocess import run
+        import os
+        import time
+        from seedsigner.gui.screens.screen import (
+            ButtonListScreen,
+            LargeIconStatusScreen,
+            WarningScreen,
+            LoadingScreenThread,
+            QRDisplayScreen,
+        )
+        from seedsigner.hardware.microsd import MicroSD
+        from seedsigner.models.encode_qr import UrBytesQrEncoder
+
+        result = run(["gpg", "--list-secret-keys", "--with-colons"], capture_output=True, text=True)
+        keys = parse_secret_key_list(result.stdout)
+
+        if not keys:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No private keys found",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        export_option = ButtonOption("Export Bundle")
+        cancel_option = ButtonOption("Cancel")
+        selected = set()
+
+        while True:
+            button_data = []
+            for key in keys:
+                label = key["uid"] if key["uid"] else key["fpr"][-8:]
+                if key["fpr"] in selected:
+                    label = "* " + label
+                button_data.append(ButtonOption(label))
+            button_data.extend([export_option, cancel_option])
+
+            sel = self.run_screen(
+                ButtonListScreen,
+                title="Select Keys",
+                is_button_text_centered=False,
+                button_data=button_data,
+            )
+
+            if sel == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+
+            if sel < len(keys):
+                fpr = keys[sel]["fpr"]
+                if fpr in selected:
+                    selected.remove(fpr)
+                else:
+                    selected.add(fpr)
+                continue
+
+            choice = button_data[sel]
+            if choice is cancel_option:
+                return Destination(BackStackView)
+            if choice is export_option:
+                if len(selected) < 2:
+                    self.run_screen(
+                        WarningScreen,
+                        title="Error",
+                        status_headline=None,
+                        text="Select at least two keys",
+                        show_back_button=False,
+                        button_data=[ButtonOption("I Understand")],
+                    )
+                    continue
+                break
+
+        fingerprints = [k["fpr"] for k in keys if k["fpr"] in selected]
+
+        exported = run(["gpg", "--armor", "--export", *fingerprints], capture_output=True, text=True)
+        if exported.returncode != 0:
+            logger.error("Bundle export failed: %s", exported.stderr.strip())
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="Failed to export keys",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        dest_buttons = [ButtonOption("microSD"), ButtonOption("Animated QR")]
+        dest_sel = self.run_screen(
+            ButtonListScreen,
+            title="Export to",
+            is_button_text_centered=False,
+            button_data=dest_buttons,
+        )
+        if dest_sel == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        if dest_sel == 0:
+            if len(self.controller.storage.seeds) > 0:
+                ret = self.run_screen(
+                    WarningScreen,
+                    title="WARNING",
+                    status_headline=None,
+                    text="These tools write data to the microSD card and may expose loaded secrets.",
+                    show_back_button=True,
+                    button_data=[ButtonOption("Continue")],
+                )
+                if ret == RET_CODE__BACK_BUTTON:
+                    return Destination(BackStackView)
+
+            file_list_path = MicroSD.get_microsd_dir() / "microsd-images"
+            os.makedirs(file_list_path, exist_ok=True)
+
+            timestamp = time.strftime("%Y%m%d_%H%M%S")
+            filename = f"gpg_bundle_{timestamp}.asc"
+            filepath = os.path.join(file_list_path, filename)
+            with open(filepath, "w", encoding="utf-8") as f:
+                f.write(exported.stdout)
+
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Success",
+                status_headline=None,
+                text=f"Saved as {filename}",
+                show_back_button=False,
+                button_data=[ButtonOption("Continue")],
+            )
+            return Destination(MainMenuView)
+
+        loading = LoadingScreenThread(text="Encoding...")
+        loading.start()
+        try:
+            qr_encoder = UrBytesQrEncoder(
+                data=exported.stdout.encode("utf-8"),
+                qr_density=self.settings.get_value(SettingsConstants.SETTING__QR_DENSITY),
+            )
+        finally:
+            loading.stop()
+
+        num_codes = qr_encoder.seq_len()
+        ret = self.run_screen(
+            WarningScreen,
+            title="Animated QR",
+            status_headline=None,
+            text=f"This export requires {num_codes} QR code{'s' if num_codes > 1 else ''}.",
+            show_back_button=True,
+            button_data=[ButtonOption("Start")],
+        )
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        self.run_screen(QRDisplayScreen, qr_encoder=qr_encoder)
+        return Destination(MainMenuView)
+
+
+class ToolsGPGBip85MetadataMenuView(View):
+    SAVE = ButtonOption("Save BIP85 Data")
+    LOAD = ButtonOption("Load BIP85 Data")
+    REBUILD = ButtonOption("Rebuild BIP85 Key")
+
+    def run(self):
+        button_data = [self.SAVE, self.LOAD, self.REBUILD]
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="BIP85 Metadata",
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        choice = button_data[selected]
+        if choice == self.SAVE:
+            return Destination(ToolsGPGSaveBip85DataView)
+        if choice == self.LOAD:
+            return Destination(ToolsGPGLoadBip85DataView)
+        return Destination(ToolsGPGRebuildBip85KeyView)
+
+
+class ToolsGPGSaveBip85DataView(View):
+    TO_MICROSD = ButtonOption("To MicroSD")
+    TO_QR = ButtonOption("To QR")
+    TO_SEEDKEEPER = ButtonOption("To Seedkeeper")
+
+    def run(self):
+        from seedsigner.gui.screens.screen import (
+            ButtonListScreen,
+            QRDisplayScreen,
+            LargeIconStatusScreen,
+            WarningScreen,
+            LoadingScreenThread,
+        )
+        from seedsigner.models.encode_qr import UrBytesQrEncoder
+        from seedsigner.helpers import seedkeeper_utils
+        from pysatochip.CardConnector import UnexpectedSW12Error
+        from seedsigner.helpers.iso7816 import format_sw_error
+        import time
+
+        button_data = [self.TO_MICROSD, self.TO_QR, self.TO_SEEDKEEPER]
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Save BIP85 Data",
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        choice = button_data[selected]
+        if choice == self.TO_MICROSD:
+            from seedsigner.gui.screens import LargeIconStatusScreen, WarningScreen
+            from seedsigner.hardware.microsd import MicroSD
+            import os
+
+            if len(self.controller.storage.seeds) > 0:
+                ret = self.run_screen(
+                    WarningScreen,
+                    title="WARNING",
+                    status_headline=None,
+                    text="These tools write data to the microSD card and may expose loaded secrets.",
+                    show_back_button=True,
+                    button_data=[ButtonOption("Continue")],
+                )
+                if ret == RET_CODE__BACK_BUTTON:
+                    return Destination(BackStackView)
+
+            file_list_path = MicroSD.get_microsd_dir() / "microsd-images"
+            os.makedirs(file_list_path, exist_ok=True)
+            try:
+                bip85_save_data(file_list_path)
+                logger.info("BIP85 data saved to %s", os.path.abspath(file_list_path))
+                screen = LargeIconStatusScreen
+                msg = "BIP85 data saved"
+            except Exception:
+                screen = WarningScreen
+                msg = "Failed to save BIP85 data"
+            self.run_screen(
+                screen,
+                title="Result",
+                status_headline=None,
+                text=msg,
+                show_back_button=False,
+                button_data=[ButtonOption("Done")],
+            )
+            return Destination(ToolsGPGMenuView)
+
+        if choice == self.TO_QR:
+            data = bip85_export_json().encode("utf-8")
+            loading = LoadingScreenThread(text="Encoding...")
+            loading.start()
+            try:
+                qr_encoder = UrBytesQrEncoder(
+                    data=data,
+                    qr_density=self.settings.get_value(SettingsConstants.SETTING__QR_DENSITY),
+                )
+            finally:
+                loading.stop()
+
+            num_codes = qr_encoder.seq_len()
+            ret = self.run_screen(
+                WarningScreen,
+                title="Animated QR",
+                status_headline=None,
+                text=f"This export requires {num_codes} QR code{'s' if num_codes > 1 else ''}.",
+                show_back_button=True,
+                button_data=[ButtonOption("Start")],
+            )
+            if ret == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+
+            self.run_screen(QRDisplayScreen, qr_encoder=qr_encoder)
+            return Destination(ToolsGPGMenuView)
+
+        # Seedkeeper export
+        Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["seedkeeper"])
+        if not Satochip_Connector:
+            return Destination(BackStackView)
+
+        data_bytes = bip85_export_json().encode("utf-8")
+        status = Satochip_Connector.card_get_status()[3]
+        if status["protocol_minor_version"] == 1:
+            if len(data_bytes) > 255:
+                self.run_screen(
+                    WarningScreen,
+                    title="Error",
+                    status_headline=None,
+                    text="BIP85 data too large for Seedkeeper v1",
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
+            secret_list = [len(data_bytes)] + list(data_bytes)
+        else:
+            secret_list = list(len(data_bytes).to_bytes(2, "big")) + list(data_bytes)
+
+        label = f"BIP85-GPG-{int(time.time())}"
+        header = Satochip_Connector.make_header(
+            "Data", "Plaintext export allowed", label
+        )
+        secret_dic = {"header": header, "secret_list": secret_list}
+
+        try:
+            fits, required_bytes, free_bytes = seedkeeper_utils.ensure_seedkeeper_capacity(
+                Satochip_Connector, secret_dic
+            )
+        except Exception as e:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text=str(e),
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        if not fits:
+            self.run_screen(
+                WarningScreen,
+                title="Not Enough Space",
+                status_headline=None,
+                text=seedkeeper_utils.format_seedkeeper_space_error(required_bytes, free_bytes),
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        try:
+            loading = LoadingScreenThread(text="Saving Secret\n\n\n\n\n\n")
+            loading.start()
+            Satochip_Connector.seedkeeper_import_secret(secret_dic)
+            loading.stop()
+            screen = LargeIconStatusScreen
+            msg = "BIP85 data saved"
+        except UnexpectedSW12Error as e:
+            loading.stop()
+            if e.sw1 == 0x6A and e.sw2 == 0x84:
+                err_text = "Not enough space on Seedkeeper"
+            else:
+                err_text = format_sw_error(e.sw1, e.sw2)
+            screen = WarningScreen
+            msg = err_text
+        except Exception:
+            loading.stop()
+            screen = WarningScreen
+            msg = "Failed to save BIP85 data"
+
+        self.run_screen(
+            screen,
+            title="Result",
+            status_headline=None,
+            text=msg,
+            show_back_button=False,
+            button_data=[ButtonOption("Done")],
+        )
+        return Destination(ToolsGPGMenuView)
+
+
+class ToolsGPGLoadBip85DataView(View):
+    FROM_MICROSD = ButtonOption("From MicroSD")
+    FROM_QR = ButtonOption("From QR")
+    FROM_SEEDKEEPER = ButtonOption("From Seedkeeper")
+
+    def run(self):
+        from seedsigner.gui.screens.screen import (
+            ButtonListScreen,
+            QRDisplayScreen,
+            WarningScreen,
+            LargeIconStatusScreen,
+            LoadingScreenThread,
+        )
+        from seedsigner.gui.screens.scan_screens import ScanScreen
+        from seedsigner.models.decode_qr import DecodeQR, QRType
+        from seedsigner.helpers import seedkeeper_utils
+        from urtypes.bytes import Bytes
+        import time, binascii
+
+        button_data = [self.FROM_MICROSD, self.FROM_QR, self.FROM_SEEDKEEPER]
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Load BIP85 Data",
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        choice = button_data[selected]
+        if choice == self.FROM_MICROSD:
+            from seedsigner.gui.screens import LargeIconStatusScreen, WarningScreen
+            from seedsigner.hardware.microsd import MicroSD
+            import os
+
+            file_list_path = MicroSD.get_microsd_dir() / "microsd-images"
+            try:
+                bip85_load_data(file_list_path)
+                logger.info("BIP85 data loaded from %s", os.path.abspath(file_list_path))
+                screen = LargeIconStatusScreen
+                msg = "BIP85 data loaded"
+            except Exception:
+                screen = WarningScreen
+                msg = "Failed to load BIP85 data"
+            self.run_screen(
+                screen,
+                title="Result",
+                status_headline=None,
+                text=msg,
+                show_back_button=False,
+                button_data=[ButtonOption("Done")],
+            )
+            return Destination(ToolsGPGMenuView)
+
+        if choice == self.FROM_QR:
+            decoder = DecodeQR()
+            ScanScreen(decoder=decoder, instructions_text="Scan BIP85 data").display()
+            self.controller.reset_screensaver_timeout()
+            time.sleep(0.1)
+            if not decoder.is_complete:
+                return Destination(BackStackView)
+            if decoder.qr_type == QRType.BYTES__UR:
+                raw = Bytes.from_cbor(decoder.decoder.result_message().cbor).data
+                if isinstance(raw, memoryview):
+                    raw = raw.tobytes()
+                data_str = raw.decode("utf-8")
+            elif decoder.qr_type == QRType.TEXT:
+                data_str = decoder.get_text()
+            else:
+                self.run_screen(
+                    WarningScreen,
+                    title="Error",
+                    status_headline=None,
+                    text="Unsupported QR format",
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
+            bip85_import_json(data_str)
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Result",
+                status_headline=None,
+                text="BIP85 data loaded",
+                show_back_button=False,
+                button_data=[ButtonOption("Done")],
+            )
+            return Destination(ToolsGPGMenuView)
+
+        # Seedkeeper import
+        Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["seedkeeper"])
+        if not Satochip_Connector:
+            return Destination(BackStackView)
+
+        loading = LoadingScreenThread(text="Listing Secrets\n\n\n\n\n\n")
+        loading.start()
+        headers = Satochip_Connector.seedkeeper_list_secret_headers()
+        loading.stop()
+
+        entries = []
+        buttons = []
+        for header in headers:
+            stype = SEEDKEEPER_DIC_TYPE.get(header["type"], hex(header["type"]))
+            rights = SEEDKEEPER_DIC_EXPORT_RIGHTS.get(header["export_rights"], hex(header["export_rights"]))
+            label = header["label"]
+            if (
+                stype == "Data"
+                and rights == "Plaintext export allowed"
+                and label.startswith("BIP85-GPG-")
+            ):
+                entries.append(header)
+                buttons.append(ButtonOption(label))
+
+        if not entries:
+            self.run_screen(
+                WarningScreen,
+                title="No BIP85 Data",
+                status_headline=None,
+                text="No BIP85 data on Seedkeeper",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Select BIP85 Data",
+            is_button_text_centered=False,
+            button_data=buttons,
+            show_back_button=True,
+        )
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        loading = LoadingScreenThread(text="Loading BIP85 Data\n\n\n\n\n\n")
+        loading.start()
+        secret_dict = Satochip_Connector.seedkeeper_export_secret(entries[selected]["id"], None)
+        loading.stop()
+
+        data_bytes = binascii.unhexlify(secret_dict["secret"])[2:]
+        bip85_import_json(data_bytes.decode())
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Result",
+            status_headline=None,
+            text="BIP85 data loaded",
+            show_back_button=False,
+            button_data=[ButtonOption("Done")],
+        )
+        return Destination(ToolsGPGMenuView)
+
+
+class ToolsGPGRebuildBip85KeyView(View):
+    def run(self):
+        from embit import bip32
+        from pgpy import PGPKey, PGPUID
+        from pgpy.constants import (
+            PubKeyAlgorithm,
+            KeyFlags,
+            HashAlgorithm,
+            SymmetricKeyAlgorithm,
+            CompressionAlgorithm,
+        )
+        from pgpy.pgp import PrivKeyV4, PrivSubKeyV4
+        from pgpy.packet import fields
+        from pgpy.packet.types import MPI
+        from datetime import datetime, timezone, date
+        from subprocess import run
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+        from seedsigner.gui.screens import LargeIconStatusScreen, WarningScreen
+        import re
+
+        if not BIP85_DATA:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No BIP85 data loaded",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        entries = []
+        buttons = []
+        for entry in BIP85_DATA.values():
+            for seed in self.controller.storage.seeds:
+                fpr = seed.get_fingerprint(
+                    self.settings.get_value(SettingsConstants.SETTING__NETWORK)
+                )
+                if fpr == entry["seed_fpr"]:
+                    entries.append((entry, seed))
+                    label = entry["uids"][0] if entry.get("uids") else entry["primary_fpr"]
+                    buttons.append(ButtonOption(label))
+                    break
+
+        if not entries:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No matching seeds",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Rebuild BIP85 Key",
+            is_button_text_centered=False,
+            button_data=buttons,
+        )
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        entry, seed = entries[selected]
+
+        key_index = entry["index"]
+        key_type_label = entry["key_type"]
+        key_type_lookup = dict(_bip85_key_type_choices(True))
+        key_type = key_type_lookup[key_type_label]
+
+        uid_list = entry.get("uids", [])
+        if not uid_list:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="BIP85 data missing UIDs",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+        primary_uid = entry.get("primary_uid", uid_list[0])
+
+        def parse_uid(uid_str):
+            m = re.match(r"^(.*?)(?:\s*<([^>]+)>)?$", uid_str)
+            name = m.group(1).strip()
+            email = m.group(2)
+            return name, email
+
+        created = datetime.fromtimestamp(BIP85_GPG_CREATED_TS, tz=timezone.utc)
+        if key_type == "rsa2048":
+            expiration_dt = datetime(2029, 12, 31, tzinfo=timezone.utc)
+        else:
+            expiration_dt = datetime(2035, 12, 31, tzinfo=timezone.utc)
+        expires = expiration_dt - created
+
+        # Map primary key type to algorithm details for verification
+        algo_map = {
+            "ed25519": ("22", "", "ed25519"),
+            "secp256k1": ("19", "", "secp256k1"),
+            "p256": ("19", "", "nistp256"),
+            "brainpoolp256r1": ("19", "", "brainpoolp256r1"),
+            "rsa2048": ("1", "2048", ""),
+            "rsa3072": ("1", "3072", ""),
+            "rsa4096": ("1", "4096", ""),
+        }
+        primary_algo, primary_bits, primary_curve = algo_map[key_type]
+
+        # Build subkey info for verification
+        verify_subkeys = []
+        curve_map = {
+            "nist p-256": "nistp256",
+            "brainpool p-256": "brainpoolp256r1",
+            "secp256k1": "secp256k1",
+            "ed25519": "ed25519",
+        }
+        for sk in entry.get("subkeys", []):
+            g_idx = sk["index"]
+            parts = sk["type"].split()
+            if parts[0] == "RSA":
+                algo = "1"
+                bits = parts[1]
+                curve = ""
+            else:
+                algo = {"ECDH": "18", "ECDSA": "19", "EdDSA": "22"}[parts[0]]
+                curve_label = " ".join(parts[1:])
+                if curve_label.startswith("ECC "):
+                    curve_label = curve_label[4:]
+                curve_label_lc = curve_label.lower()
+                curve = curve_map.get(curve_label_lc, curve_label_lc)
+                if parts[0] == "ECDH" and curve_label_lc == "ed25519":
+                    curve = "cv25519"
+                bits = ""
+            verify_subkeys.append(
+                {
+                    "idx": g_idx + 1,
+                    "algo": algo,
+                    "bits": bits,
+                    "curve": curve,
+                    "fpr": sk.get("fingerprint", ""),
+                }
+            )
+
+        logger.info(
+            "Verifying BIP85 data for %s idx=%s", entry["primary_fpr"], key_index
+        )
+        if not bip85_verify_existing(
+            seed,
+            entry["primary_fpr"],
+            key_index,
+            BIP85_GPG_CREATED_TS,
+            primary_algo,
+            primary_bits,
+            primary_curve,
+            verify_subkeys,
+        ):
+            logger.warning(
+                "BIP85 verification failed for %s", entry["primary_fpr"]
+            )
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="Selected seed/index failed validation",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        root = bip32.HDKey.from_seed(seed.seed_bytes)
+        KEY_BITS = (
+            2048
+            if key_type == "rsa2048"
+            else 3072
+            if key_type == "rsa3072"
+            else 4096
+            if key_type == "rsa4096"
+            else None
+        )
+
+        def rsa_to_privpacket(rsa_key):
+            priv = fields.RSAPriv()
+            priv.n = MPI(rsa_key.n)
+            priv.e = MPI(rsa_key.e)
+            priv.d = MPI(rsa_key.d)
+            priv.p = MPI(rsa_key.p)
+            priv.q = MPI(rsa_key.q)
+            priv.u = MPI(pow(rsa_key.p, -1, rsa_key.q))
+            priv._compute_chksum()
+            return priv
+
+        loading = LoadingScreenThread(text="Rebuilding BIP85 GPG key\n\n\n\n\n\n")
+        loading.start()
+        try:
+            pk = PrivKeyV4()
+            if key_type == "secp256k1":
+                pk.pkalg = PubKeyAlgorithm.ECDSA
+                pk.keymaterial = bip85_secp256k1_from_root(root, key_index)
+            elif key_type == "p256":
+                pk.pkalg = PubKeyAlgorithm.ECDSA
+                pk.keymaterial = bip85_p256_from_root(root, key_index)
+            elif key_type == "brainpoolp256r1":
+                pk.pkalg = PubKeyAlgorithm.ECDSA
+                pk.keymaterial = bip85_brainpoolp256r1_from_root(root, key_index)
+            elif key_type == "ed25519":
+                pk.pkalg = PubKeyAlgorithm.EdDSA
+                pk.keymaterial = bip85_ed25519_from_root(root, key_index)
+            else:
+                rsa_main = bip85_rsa_from_root(root, KEY_BITS, key_index)
+                pk.pkalg = PubKeyAlgorithm.RSAEncryptOrSign
+                pk.keymaterial = rsa_to_privpacket(rsa_main)
+            pk.created = created
+            pk.update_hlen()
+
+            pgp_key = PGPKey()
+            pgp_key._key = pk
+
+            for uid_str in uid_list:
+                name, email = parse_uid(uid_str)
+                uid = PGPUID.new(name, email=email)
+                pgp_key.add_uid(
+                    uid,
+                    usage={KeyFlags.Certify, KeyFlags.Sign},
+                    hashes=[HashAlgorithm.SHA256],
+                    ciphers=[SymmetricKeyAlgorithm.AES256],
+                    compression=[CompressionAlgorithm.ZLIB],
+                    expires=expires,
+                    created=created,
+                    primary=(uid_str == primary_uid),
+                )
+
+            for sub in entry.get("subkeys", _bip85_subkey_specs("rsa")):
+                if isinstance(sub, int):
+                    g_idx = sub
+                    group_idx = g_idx // 3
+                    idx = g_idx % 3
+                    specs = _bip85_subkey_specs(
+                        {
+                            "p256": "nistp256",
+                            "brainpoolp256r1": "brainpoolP256r1",
+                            "secp256k1": "secp256k1",
+                            "ed25519": "ed25519",
+                        }.get(key_type, "rsa")
+                    )
+                    _, pkalg, usage, *alg = specs[idx]
+                    func_map = {
+                        "secp256k1": bip85_secp256k1_from_root,
+                        "p256": bip85_p256_from_root,
+                        "brainpoolp256r1": bip85_brainpoolp256r1_from_root,
+                        "ed25519": bip85_ed25519_from_root,
+                    }
+                    subpkt = PrivSubKeyV4()
+                    subpkt.pkalg = pkalg
+                    if key_type in func_map:
+                        subpkt.keymaterial = func_map[key_type](
+                            root, group_idx, idx, alg[0]
+                        )
+                    else:
+                        rsa_sub = bip85_rsa_from_root(root, KEY_BITS, group_idx, idx)
+                        subpkt.keymaterial = rsa_to_privpacket(rsa_sub)
+                else:
+                    g_idx = sub.get("index", 0)
+                    group_idx = g_idx // 3
+                    idx = g_idx % 3
+                    usage = (
+                        {KeyFlags.EncryptCommunications, KeyFlags.EncryptStorage}
+                        if idx == 0
+                        else {KeyFlags.Authentication}
+                        if idx == 1
+                        else {KeyFlags.Sign}
+                    )
+                    parts = sub.get("type", key_type_label).split()
+                    subpkt = PrivSubKeyV4()
+                    if parts[0] == "RSA":
+                        bits = int(parts[1])
+                        subpkt.pkalg = PubKeyAlgorithm.RSAEncryptOrSign
+                        rsa_sub = bip85_rsa_from_root(root, bits, group_idx, idx)
+                        subpkt.keymaterial = rsa_to_privpacket(rsa_sub)
+                    else:
+                        alg_name = parts[0]
+                        curve_label = " ".join(parts[1:])
+                        if curve_label.startswith("ECC "):
+                            curve_label = curve_label[4:]
+                        curve_label_lc = curve_label.lower()
+                        func_map = {
+                            "secp256k1": bip85_secp256k1_from_root,
+                            "nist p-256": bip85_p256_from_root,
+                            "brainpool p-256": bip85_brainpoolp256r1_from_root,
+                            "ed25519": bip85_ed25519_from_root,
+                        }
+                        pkalg_map = {
+                            "ECDH": PubKeyAlgorithm.ECDH,
+                            "ECDSA": PubKeyAlgorithm.ECDSA,
+                            "EdDSA": PubKeyAlgorithm.EdDSA,
+                        }
+                        subpkt.pkalg = pkalg_map[parts[0]]
+                        func = func_map[curve_label_lc]
+                        subpkt.keymaterial = func(root, group_idx, idx, alg_name)
+                    subpkt.created = created
+                    subpkt.update_hlen()
+                    subkey = PGPKey()
+                    subkey._key = subpkt
+                    exp_fpr = sub.get("fingerprint")
+                    logger.info(
+                        "Derived subkey idx=%s fpr=%s expected=%s",
+                        g_idx,
+                        subkey.fingerprint,
+                        exp_fpr,
+                    )
+                    if exp_fpr and subkey.fingerprint != exp_fpr:
+                        logger.warning(
+                            "Subkey fingerprint mismatch at idx=%s: expected %s got %s",
+                            g_idx,
+                            exp_fpr,
+                            subkey.fingerprint,
+                        )
+                    pgp_key.add_subkey(
+                        subkey,
+                        usage=usage,
+                        hashes=[HashAlgorithm.SHA256],
+                        ciphers=[SymmetricKeyAlgorithm.AES256],
+                        compression=[CompressionAlgorithm.ZLIB],
+                        expires=expires,
+                        created=created,
+                    )
+                    continue
+
+                subpkt.created = created
+                subpkt.update_hlen()
+                subkey = PGPKey()
+                subkey._key = subpkt
+                exp_fpr = sub.get("fingerprint") if isinstance(sub, dict) else None
+                logger.info(
+                    "Derived subkey idx=%s fpr=%s expected=%s",
+                    g_idx,
+                    subkey.fingerprint,
+                    exp_fpr,
+                )
+                if exp_fpr and subkey.fingerprint != exp_fpr:
+                    logger.warning(
+                        "Subkey fingerprint mismatch at idx=%s: expected %s got %s",
+                        g_idx,
+                        exp_fpr,
+                        subkey.fingerprint,
+                    )
+                pgp_key.add_subkey(
+                    subkey,
+                    usage=usage,
+                    hashes=[HashAlgorithm.SHA256],
+                    ciphers=[SymmetricKeyAlgorithm.AES256],
+                    compression=[CompressionAlgorithm.ZLIB],
+                    expires=expires,
+                    created=created,
+                )
+
+            armored = str(pgp_key)
+            result = run(["gpg", "--batch", "--import"], input=armored.encode(), capture_output=True)
+        finally:
+            loading.stop()
+
+        if result.returncode == 0:
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Result",
+                status_headline=None,
+                text="BIP85 key rebuilt",
+                show_back_button=False,
+                button_data=[ButtonOption("Done")],
+            )
+        else:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="Failed to import key",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+        return Destination(ToolsGPGMenuView)
+
+
+class ToolsGPGSubkeyMenuView(View):
+    ADD_SUBKEYS = ButtonOption("Add Subkeys")
+    REVOKE_SUBKEYS = ButtonOption("Revoke Subkeys")
+    DELETE_SUBKEYS = ButtonOption("Delete Subkeys")
+    CHANGE_EXPIRY = ButtonOption("Change Expiry")
+    EXPORT_SUBKEY_SECRETS = ButtonOption("Export Subkey Secrets")
+
+    def run(self):
+        button_data = [
+            self.ADD_SUBKEYS,
+            self.REVOKE_SUBKEYS,
+            self.DELETE_SUBKEYS,
+            self.CHANGE_EXPIRY,
+            self.EXPORT_SUBKEY_SECRETS,
+        ]
+
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Subkey Operations",
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        choice = button_data[selected]
+        if choice == self.ADD_SUBKEYS:
+            return Destination(ToolsGPGAddSubkeysView)
+        if choice == self.REVOKE_SUBKEYS:
+            return Destination(ToolsGPGRevokeSubkeysView)
+        if choice == self.DELETE_SUBKEYS:
+            return Destination(ToolsGPGDeleteSubkeysView)
+        if choice == self.CHANGE_EXPIRY:
+            return Destination(ToolsGPGChangeExpiryView)
+        return Destination(ToolsGPGExportSubkeySecretsView)
+
+
+class ToolsGPGRevokeSubkeysView(View):
+    def run(self):
+        from subprocess import run
+        from seedsigner.gui.screens import ButtonListScreen, LargeIconStatusScreen, WarningScreen
+
+        result = run(["gpg", "--list-secret-keys", "--with-colons"], capture_output=True, text=True)
+        keys = parse_secret_key_list(result.stdout)
+
+        if not keys:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No private keys found",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        buttons = [ButtonOption(k["uid"] if k["uid"] else k["fpr"][-8:]) for k in keys]
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Select Key",
+            is_button_text_centered=False,
+            button_data=buttons,
+        )
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        fingerprint = keys[selected]["fpr"]
+        result = run([
+            "gpg",
+            "--list-secret-keys",
+            "--with-colons",
+            fingerprint,
+        ], capture_output=True, text=True)
+        subkeys = parse_subkey_list(result.stdout)
+        if not subkeys:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No subkeys found",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        while subkeys:
+            sk_buttons = [ButtonOption(f"{sk['fpr'][-8:]} [{sk['caps']}]") for sk in subkeys]
+            sk_buttons.append(ButtonOption("Done"))
+            sel = self.run_screen(
+                ButtonListScreen,
+                title="Revoke Subkeys",
+                is_button_text_centered=False,
+                button_data=sk_buttons,
+            )
+            if sel == RET_CODE__BACK_BUTTON or sk_buttons[sel] == sk_buttons[-1]:
+                break
+            sub = subkeys[sel]
+            r = gpg_edit_subkey(fingerprint, sub["idx"], "revkey")
+            if r.returncode == 0 and fingerprint in BIP85_DATA:
+                BIP85_DATA[fingerprint]["revocations"].append(sub["fpr"])
+            screen = LargeIconStatusScreen if r.returncode == 0 else WarningScreen
+            msg = "Subkey revoked" if r.returncode == 0 else "Failed to revoke"
+            self.run_screen(
+                screen,
+                title="Result",
+                status_headline=None,
+                text=msg,
+                show_back_button=False,
+                button_data=[ButtonOption("Continue")],
+            )
+            result = run([
+                "gpg",
+                "--list-secret-keys",
+                "--with-colons",
+                fingerprint,
+            ], capture_output=True, text=True)
+            subkeys = parse_subkey_list(result.stdout)
+        return Destination(ToolsGPGMenuView)
+
+
+class ToolsGPGDeleteSubkeysView(View):
+    def run(self):
+        from subprocess import run
+        from seedsigner.gui.screens import ButtonListScreen, LargeIconStatusScreen, WarningScreen
+
+        ret = self.run_screen(
+            WarningScreen,
+            title="WARNING",
+            status_headline=None,
+            text="Revoking subkeys is usually preferred\nover deleting them.",
+            show_back_button=True,
+            button_data=[ButtonOption("I Understand")],
+        )
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        result = run(["gpg", "--list-secret-keys", "--with-colons"], capture_output=True, text=True)
+        keys = parse_secret_key_list(result.stdout)
+        if not keys:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No private keys found",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        buttons = [ButtonOption(k["uid"] if k["uid"] else k["fpr"][-8:]) for k in keys]
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Select Key",
+            is_button_text_centered=False,
+            button_data=buttons,
+        )
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        fingerprint = keys[selected]["fpr"]
+        result = run([
+            "gpg",
+            "--list-secret-keys",
+            "--with-colons",
+            fingerprint,
+        ], capture_output=True, text=True)
+        subkeys = parse_subkey_list(result.stdout)
+        subkeys = filter_deletable_subkeys(fingerprint, subkeys)
+        if not subkeys:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No subkeys found",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        while subkeys:
+            sk_buttons = [ButtonOption(f"{sk['fpr'][-8:]} [{sk['caps']}]") for sk in subkeys]
+            sk_buttons.append(ButtonOption("Done"))
+            sel = self.run_screen(
+                ButtonListScreen,
+                title="Delete Subkeys",
+                is_button_text_centered=False,
+                button_data=sk_buttons,
+            )
+            if sel == RET_CODE__BACK_BUTTON or sk_buttons[sel] == sk_buttons[-1]:
+                break
+            sub = subkeys[sel]
+            r = gpg_edit_subkey(fingerprint, sub["idx"], "delkey")
+            screen = LargeIconStatusScreen if r.returncode == 0 else WarningScreen
+            msg = "Subkey deleted" if r.returncode == 0 else "Failed to delete"
+            self.run_screen(
+                screen,
+                title="Result",
+                status_headline=None,
+                text=msg,
+                show_back_button=False,
+                button_data=[ButtonOption("Continue")],
+            )
+            result = run([
+                "gpg",
+                "--list-secret-keys",
+                "--with-colons",
+                fingerprint,
+            ], capture_output=True, text=True)
+            if r.returncode == 0 and fingerprint in BIP85_DATA:
+                entry = BIP85_DATA[fingerprint]
+                entry["subkeys"] = [
+                    sk for sk in entry["subkeys"] if sk["fingerprint"] != sub["fpr"]
+                ]
+            subkeys = parse_subkey_list(result.stdout)
+            subkeys = filter_deletable_subkeys(fingerprint, subkeys)
+        return Destination(ToolsGPGMenuView)
+
+
+class ToolsGPGChangeExpiryView(View):
+    def run(self):
+        from subprocess import run
+        from seedsigner.gui.screens import ButtonListScreen, LargeIconStatusScreen, WarningScreen
+
+        result = run(["gpg", "--list-secret-keys", "--with-colons"], capture_output=True, text=True)
+        keys = parse_secret_key_list(result.stdout)
+        if not keys:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No private keys found",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        buttons = [ButtonOption(k["uid"] if k["uid"] else k["fpr"][-8:]) for k in keys]
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Select Key",
+            is_button_text_centered=False,
+            button_data=buttons,
+        )
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        fingerprint = keys[selected]["fpr"]
+        result = run([
+            "gpg",
+            "--list-secret-keys",
+            "--with-colons",
+            fingerprint,
+        ], capture_output=True, text=True)
+        subkeys = parse_subkey_list(result.stdout)
+        if not subkeys:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No subkeys found",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        sk_buttons = [ButtonOption(f"{sk['fpr'][-8:]} [{sk['caps']}]") for sk in subkeys]
+        sel = self.run_screen(
+            ButtonListScreen,
+            title="Select Subkey",
+            is_button_text_centered=False,
+            button_data=sk_buttons,
+        )
+        if sel == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        sub_fpr = subkeys[sel]["fpr"]
+
+        exp_buttons = [
+            ButtonOption("1 year"),
+            ButtonOption("2 years"),
+            ButtonOption("5 years"),
+            ButtonOption("Never"),
+        ]
+        exp_vals = ["1y", "2y", "5y", "0"]
+        exp_sel = self.run_screen(
+            ButtonListScreen,
+            title="Set Expiry",
+            is_button_text_centered=False,
+            button_data=exp_buttons,
+        )
+        if exp_sel == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        expire = exp_vals[exp_sel]
+        r = run([
+            "gpg",
+            "--batch",
+            "--yes",
+            "--quick-set-expire",
+            fingerprint,
+            expire,
+            sub_fpr,
+        ])
+        screen = LargeIconStatusScreen if r.returncode == 0 else WarningScreen
+        msg = "Expiry changed" if r.returncode == 0 else "Failed to change expiry"
+        self.run_screen(
+            screen,
+            title="Result",
+            status_headline=None,
+            text=msg,
+            show_back_button=False,
+            button_data=[ButtonOption("Continue")],
+        )
+        return Destination(ToolsGPGMenuView)
+
+
+class ToolsGPGExportSubkeySecretsView(View):
+    def run(self):
+        from subprocess import run
+        import os
+        import logging
+        from seedsigner.hardware.microsd import MicroSD
+        from seedsigner.models.encode_qr import UrBytesQrEncoder
+        from seedsigner.gui.screens.screen import (
+            ButtonListScreen,
+            LargeIconStatusScreen,
+            WarningScreen,
+            LoadingScreenThread,
+            QRDisplayScreen,
+        )
+
+        result = run(["gpg", "--list-secret-keys", "--with-colons"], capture_output=True, text=True)
+        keys = parse_secret_key_list(result.stdout)
+        if not keys:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No private keys found",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        buttons = [ButtonOption(k["uid"] if k["uid"] else k["fpr"][-8:]) for k in keys]
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Select Key",
+            is_button_text_centered=False,
+            button_data=buttons,
+        )
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        fingerprint = keys[selected]["fpr"]
+        result = run([
+            "gpg",
+            "--list-secret-keys",
+            "--with-colons",
+            fingerprint,
+        ], capture_output=True, text=True)
+        subkeys = parse_subkey_list(result.stdout)
+        if not subkeys:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No subkeys found",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        selected_fprs: dict[str, str] = {}
+        for label, flag in [("Signing", "s"), ("Encryption", "e"), ("Auth", "a")]:
+            candidates = [
+                sk for sk in subkeys if flag in sk["caps"] and sk["fpr"] not in selected_fprs.values()
+            ]
+            if not candidates:
+                continue
+            sk_buttons = [ButtonOption(sk["fpr"][-8:]) for sk in candidates]
+            sk_buttons.append(ButtonOption("Skip"))
+            sel = self.run_screen(
+                ButtonListScreen,
+                title=f"{label} Subkey",
+                is_button_text_centered=False,
+                button_data=sk_buttons,
+            )
+            if sel == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+            if sk_buttons[sel].button_label != "Skip":
+                selected_fprs[flag] = candidates[sel]["fpr"]
+
+        if not selected_fprs:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No subkeys selected",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        dest_buttons = [
+            ButtonOption("File"),
+            ButtonOption("QR"),
+            ButtonOption("Smartcard"),
+        ]
+        dest_sel = self.run_screen(
+            ButtonListScreen,
+            title="Export As",
+            is_button_text_centered=False,
+            button_data=dest_buttons,
+        )
+        if dest_sel == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        if dest_buttons[dest_sel].button_label == "Smartcard":
+            return Destination(
+                ToolsGPGImportKeyToCardView,
+                view_args={"fingerprint": fingerprint, "selected_subkeys": selected_fprs},
+            )
+
+        exported = gpg_export_selected_subkeys(fingerprint, list(selected_fprs.values()))
+        if exported.returncode != 0:
+            logging.getLogger(__name__).error(
+                "gpg export failed: %s", exported.stderr.strip()
+            )
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="Failed to export",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        from seedsigner.gui.screens import tools_screens
+
+        ret_dict = tools_screens.ToolsTextQRTextEntryScreen(
+            textToEncode="", title="Passphrase"
+        ).display()
+        if "is_back_button" in ret_dict:
+            return Destination(BackStackView)
+        try:
+            import re
+
+            passphrase = bytes(
+                re.sub(r"\\(?!u)", r"\\\\", ret_dict["textToEncode"]),
+                encoding="raw_unicode_escape",
+            ).decode("unicode_escape")
+        except UnicodeDecodeError:
+            passphrase = ret_dict["textToEncode"]
+
+        protected = run(
+            [
+                "gpg",
+                "--armor",
+                "--batch",
+                "--yes",
+                "--pinentry-mode",
+                "loopback",
+                "--passphrase",
+                passphrase,
+                "--symmetric",
+                "--cipher-algo",
+                "AES256",
+            ],
+            input=exported.stdout,
+            capture_output=True,
+            text=True,
+        )
+        if protected.returncode != 0:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="Failed to protect export",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+        armored = protected.stdout
+
+        if dest_buttons[dest_sel].button_label == "File":
+            file_list_path = MicroSD.get_microsd_dir() / "microsd-images"
+            os.makedirs(file_list_path, exist_ok=True)
+            filename = fingerprint + "_subkey_secrets.asc"
+            filepath = os.path.join(file_list_path, filename)
+            with open(filepath, "w") as f:
+                f.write(armored)
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Success",
+                status_headline=None,
+                text=f"Saved as {filename}",
+                show_back_button=False,
+                button_data=[ButtonOption("Continue")],
+            )
+            return Destination(ToolsGPGMenuView)
+        if dest_buttons[dest_sel].button_label == "QR":
+            loading = LoadingScreenThread(text="Encoding...")
+            loading.start()
+            try:
+                qr_encoder = UrBytesQrEncoder(
+                    data=armored,
+                    qr_density=self.settings.get_value(SettingsConstants.SETTING__QR_DENSITY),
+                )
+            finally:
+                loading.stop()
+            num_codes = qr_encoder.seq_len()
+            ret = self.run_screen(
+                WarningScreen,
+                title="Animated QR",
+                status_headline=None,
+                text=f"This export requires {num_codes} QR code{'s' if num_codes > 1 else ''}.",
+                show_back_button=True,
+                button_data=[ButtonOption("Start")],
+            )
+            if ret == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+            self.run_screen(QRDisplayScreen, qr_encoder=qr_encoder)
+            return Destination(ToolsGPGMenuView)
+        return Destination(BackStackView)
+
+
+class ToolsGPGUidMenuView(View):
+    ADD_UID = ButtonOption("Add User ID")
+    EDIT_UID = ButtonOption("Edit User IDs")
+    SET_PRIMARY_UID = ButtonOption("Set Primary User ID")
+    REVOKE_UID = ButtonOption("Revoke User ID")
+    DELETE_UID = ButtonOption("Delete User ID")
+
+    def run(self):
+        button_data = [
+            self.ADD_UID,
+            self.EDIT_UID,
+            self.SET_PRIMARY_UID,
+            self.REVOKE_UID,
+            self.DELETE_UID,
+        ]
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="User ID Operations",
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        choice = button_data[selected]
+        if choice == self.ADD_UID:
+            return Destination(ToolsGPGAddUidView)
+        if choice == self.EDIT_UID:
+            return Destination(ToolsGPGEditUidView)
+        if choice == self.SET_PRIMARY_UID:
+            return Destination(ToolsGPGSetPrimaryUidView)
+        if choice == self.REVOKE_UID:
+            return Destination(ToolsGPGRevokeUidView)
+        return Destination(ToolsGPGDeleteUidView)
+
+
+class ToolsGPGAddUidView(View):
+    def run(self):
+        from subprocess import run
+        from seedsigner.gui.screens import (
+            ButtonListScreen,
+            LargeIconStatusScreen,
+            WarningScreen,
+            tools_screens,
+        )
+
+        result = run(["gpg", "--list-secret-keys", "--with-colons"], capture_output=True, text=True)
+        keys = parse_secret_key_list(result.stdout)
+
+        if not keys:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No private keys found",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        buttons = [ButtonOption(k["uid"] if k["uid"] else k["fpr"][-8:]) for k in keys]
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Select Key",
+            is_button_text_centered=False,
+            button_data=buttons,
+        )
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        fingerprint = keys[selected]["fpr"]
+
+        # Preserve the key's original primary UID so that adding an
+        # additional UID does not change which one is displayed as primary.
+        result = run([
+            "gpg",
+            "--list-secret-keys",
+            "--with-colons",
+            fingerprint,
+        ], capture_output=True, text=True)
+        uids = parse_uid_list(result.stdout)
+        primary_uid = uids[0]["uid"] if uids else None
+
+        def prompt_text(title: str):
+            ret_dict = tools_screens.ToolsTextQRTextEntryScreen(textToEncode="", title=title).display()
+            if "is_back_button" in ret_dict:
+                return None
+            try:
+                import re
+
+                return bytes(
+                    re.sub(r"\\(?!u)", r"\\\\", ret_dict["textToEncode"]),
+                    encoding="raw_unicode_escape",
+                ).decode("unicode_escape")
+            except UnicodeDecodeError:
+                return ret_dict["textToEncode"]
+
+        name = prompt_text("Name")
+        if name is None:
+            return Destination(BackStackView)
+        email = prompt_text("Email")
+        if email is None:
+            return Destination(BackStackView)
+        uid_str = f"{name} <{email}>" if email else name
+
+        r = run(["gpg", "--batch", "--quick-add-uid", fingerprint, uid_str])
+        if r.returncode == 0 and primary_uid:
+            run([
+                "gpg",
+                "--batch",
+                "--quick-set-primary-uid",
+                fingerprint,
+                primary_uid,
+            ])
+        if r.returncode == 0 and fingerprint in BIP85_DATA:
+            entry = BIP85_DATA[fingerprint]
+            entry.setdefault("primary_uid", primary_uid)
+            entry["uids"].append(uid_str)
+        screen = LargeIconStatusScreen if r.returncode == 0 else WarningScreen
+        msg = "User ID added" if r.returncode == 0 else "Failed to add User ID"
+        self.run_screen(
+            screen,
+            title="Result",
+            status_headline=None,
+            text=msg,
+            show_back_button=False,
+            button_data=[ButtonOption("Done")],
+        )
+        return Destination(ToolsGPGMenuView)
+
+
+class ToolsGPGEditUidView(View):
+    def run(self):
+        from subprocess import run
+        from seedsigner.gui.screens import (
+            ButtonListScreen,
+            LargeIconStatusScreen,
+            WarningScreen,
+            tools_screens,
+        )
+
+        result = run(["gpg", "--list-secret-keys", "--with-colons"], capture_output=True, text=True)
+        keys = parse_secret_key_list(result.stdout)
+        if not keys:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No private keys found",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        buttons = [ButtonOption(k["uid"] if k["uid"] else k["fpr"][-8:]) for k in keys]
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Select Key",
+            is_button_text_centered=False,
+            button_data=buttons,
+        )
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        fingerprint = keys[selected]["fpr"]
+        result = run(["gpg", "--list-secret-keys", "--with-colons", fingerprint], capture_output=True, text=True)
+        uids = parse_uid_list(result.stdout)
+        if not uids:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No user IDs found",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        uid_buttons = [ButtonOption(u["uid"]) for u in uids]
+        sel = self.run_screen(
+            ButtonListScreen,
+            title="Select User ID",
+            is_button_text_centered=False,
+            button_data=uid_buttons,
+        )
+        if sel == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        old_uid = uids[sel]["uid"]
+
+        def prompt_text(title: str, default: str = ""):
+            ret_dict = tools_screens.ToolsTextQRTextEntryScreen(textToEncode=default, title=title).display()
+            if "is_back_button" in ret_dict:
+                return None
+            try:
+                import re
+
+                return bytes(
+                    re.sub(r"\\(?!u)", r"\\\\", ret_dict["textToEncode"]),
+                    encoding="raw_unicode_escape",
+                ).decode("unicode_escape")
+            except UnicodeDecodeError:
+                return ret_dict["textToEncode"]
+
+        name = prompt_text("Name")
+        if name is None:
+            return Destination(BackStackView)
+        email = prompt_text("Email")
+        if email is None:
+            return Destination(BackStackView)
+        new_uid = f"{name} <{email}>" if email else name
+
+        r = run(["gpg", "--batch", "--quick-add-uid", fingerprint, new_uid])
+        success = r.returncode == 0
+        if success:
+            run(["gpg", "--batch", "--quick-set-primary-uid", fingerprint, new_uid])
+            run(["gpg", "--batch", "--quick-revoke-uid", fingerprint, old_uid])
+        screen = LargeIconStatusScreen if success else WarningScreen
+        msg = "User ID updated" if success else "Failed to update User ID"
+        self.run_screen(
+            screen,
+            title="Result",
+            status_headline=None,
+            text=msg,
+            show_back_button=False,
+            button_data=[ButtonOption("Done")],
+        )
+        return Destination(ToolsGPGMenuView)
+
+
+class ToolsGPGSetPrimaryUidView(View):
+    def run(self):
+        from subprocess import run
+        from seedsigner.gui.screens import (
+            ButtonListScreen,
+            LargeIconStatusScreen,
+            WarningScreen,
+            seed_screens,
+        )
+
+        result = run(["gpg", "--list-secret-keys", "--with-colons"], capture_output=True, text=True)
+        keys = parse_secret_key_list(result.stdout)
+        if not keys:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No private keys found",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        buttons = [ButtonOption(k["uid"] if k["uid"] else k["fpr"][-8:]) for k in keys]
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Select Key",
+            is_button_text_centered=False,
+            button_data=buttons,
+        )
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        fingerprint = keys[selected]["fpr"]
+        result = run(["gpg", "--list-secret-keys", "--with-colons", fingerprint], capture_output=True, text=True)
+        uids = parse_uid_list(result.stdout)
+        if not uids:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No user IDs found",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        uid_buttons = [ButtonOption(u["uid"]) for u in uids]
+        sel = self.run_screen(
+            ButtonListScreen,
+            title="Set Primary User ID",
+            is_button_text_centered=False,
+            button_data=uid_buttons,
+        )
+        if sel == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        uid = uids[sel]["uid"]
+
+        r = run(["gpg", "--batch", "--quick-set-primary-uid", fingerprint, uid])
+        if r.returncode == 0 and fingerprint in BIP85_DATA:
+            entry = BIP85_DATA[fingerprint]
+            entry["primary_uid"] = uid
+            ulist = entry.get("uids", [])
+            if uid in ulist:
+                ulist.remove(uid)
+                ulist.insert(0, uid)
+        screen = LargeIconStatusScreen if r.returncode == 0 else WarningScreen
+        msg = "Primary UID set" if r.returncode == 0 else "Failed to set primary UID"
+        self.run_screen(
+            screen,
+            title="Result",
+            status_headline=None,
+            text=msg,
+            show_back_button=False,
+            button_data=[ButtonOption("Done")],
+        )
+        return Destination(ToolsGPGMenuView)
+
+
+class ToolsGPGRevokeUidView(View):
+    def run(self):
+        from subprocess import run
+        from seedsigner.gui.screens import (
+            ButtonListScreen,
+            LargeIconStatusScreen,
+            WarningScreen,
+        )
+
+        result = run(["gpg", "--list-secret-keys", "--with-colons"], capture_output=True, text=True)
+        keys = parse_secret_key_list(result.stdout)
+        if not keys:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No private keys found",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        buttons = [ButtonOption(k["uid"] if k["uid"] else k["fpr"][-8:]) for k in keys]
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Select Key",
+            is_button_text_centered=False,
+            button_data=buttons,
+        )
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        fingerprint = keys[selected]["fpr"]
+        result = run(["gpg", "--list-secret-keys", "--with-colons", fingerprint], capture_output=True, text=True)
+        uids = parse_uid_list(result.stdout)
+        if not uids:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No user IDs found",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        uid_buttons = [ButtonOption(u["uid"]) for u in uids]
+        sel = self.run_screen(
+            ButtonListScreen,
+            title="Revoke User ID",
+            is_button_text_centered=False,
+            button_data=uid_buttons,
+        )
+        if sel == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        uid = uids[sel]["uid"]
+
+        r = run(["gpg", "--batch", "--quick-revoke-uid", fingerprint, uid])
+        screen = LargeIconStatusScreen if r.returncode == 0 else WarningScreen
+        msg = "User ID revoked" if r.returncode == 0 else "Failed to revoke User ID"
+        self.run_screen(
+            screen,
+            title="Result",
+            status_headline=None,
+            text=msg,
+            show_back_button=False,
+            button_data=[ButtonOption("Done")],
+        )
+        return Destination(ToolsGPGMenuView)
+
+
+class ToolsGPGDeleteUidView(View):
+    def run(self):
+        from subprocess import run
+        from seedsigner.gui.screens import (
+            ButtonListScreen,
+            LargeIconStatusScreen,
+            WarningScreen,
+        )
+
+        ret = self.run_screen(
+            WarningScreen,
+            title="WARNING",
+            status_headline=None,
+            text="Revocation is almost always\npreferable to deleting.",
+            show_back_button=True,
+            button_data=[ButtonOption("I Understand")],
+        )
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        result = run(["gpg", "--list-secret-keys", "--with-colons"], capture_output=True, text=True)
+        keys = parse_secret_key_list(result.stdout)
+        if not keys:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No private keys found",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        buttons = [ButtonOption(k["uid"] if k["uid"] else k["fpr"][-8:]) for k in keys]
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Select Key",
+            is_button_text_centered=False,
+            button_data=buttons,
+        )
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        fingerprint = keys[selected]["fpr"]
+        result = run(["gpg", "--list-secret-keys", "--with-colons", fingerprint], capture_output=True, text=True)
+        uids = parse_uid_list(result.stdout)
+        if not uids:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No user IDs found",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        uid_buttons = [ButtonOption(u["uid"]) for u in uids]
+        sel = self.run_screen(
+            ButtonListScreen,
+            title="Delete User ID",
+            is_button_text_centered=False,
+            button_data=uid_buttons,
+        )
+        if sel == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        uid_str = uids[sel]["uid"]
+        idx = uids[sel]["idx"]
+
+        r = gpg_edit_uid(fingerprint, idx, "deluid")
+        if r.returncode == 0 and fingerprint in BIP85_DATA:
+            entry = BIP85_DATA[fingerprint]
+            entry["uids"] = [u for u in entry.get("uids", []) if u != uid_str]
+            if entry.get("primary_uid") == uid_str:
+                entry["primary_uid"] = entry["uids"][0] if entry["uids"] else None
+        screen = LargeIconStatusScreen if r.returncode == 0 else WarningScreen
+        msg = "User ID deleted" if r.returncode == 0 else "Failed to delete User ID"
+        self.run_screen(
+            screen,
+            title="Result",
+            status_headline=None,
+            text=msg,
+            show_back_button=False,
+            button_data=[ButtonOption("Done")],
+        )
+        return Destination(ToolsGPGMenuView)
+
+
+class ToolsGPGFileOpsMenuView(View):
+    ENCRYPT = ButtonOption("Encrypt")
+    DECRYPT = ButtonOption("Decrypt")
+    SIGN = ButtonOption("Sign")
+    VERIFY = ButtonOption("Verify Signature")
+
+    def run(self):
+        button_data = [self.ENCRYPT, self.DECRYPT, self.SIGN, self.VERIFY]
+
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title="File Operations",
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        selected = button_data[selected_menu_num]
+        if selected == self.ENCRYPT:
+            return Destination(ToolsGPGEncryptFileView)
+        if selected == self.DECRYPT:
+            return Destination(ToolsGPGDecryptFileView)
+        if selected == self.SIGN:
+            return Destination(ToolsGPGSignMenuView)
+        return Destination(ToolsGPGVerifyFileView)
+
+
+class ToolsGPGMessageMenuView(View):
+    ENCRYPT = ButtonOption("Create Message")
+    DECRYPT = ButtonOption("Load Message")
+
+    def run(self):
+        button_data = [self.ENCRYPT, self.DECRYPT]
+
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title="Secure Messaging",
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        if button_data[selected_menu_num] == self.ENCRYPT:
+            return Destination(ToolsGPGEncryptMessageView)
+        return Destination(ToolsGPGDecryptMessageView)
+
+
+class ToolsGPGSignMenuView(View):
+    FILE = ButtonOption("File")
+    MANIFEST = ButtonOption("Manifest")
+
+    def run(self):
+        button_data = [self.FILE, self.MANIFEST]
+
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title="Sign",
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        if button_data[selected_menu_num] == self.FILE:
+            return Destination(ToolsGPGSignFileView)
+        return Destination(ToolsGPGSignManifestView)
+
+
+class ToolsGPGEncryptMessageView(View):
+    def run(self):
+        from subprocess import run
+        import time
+        from seedsigner.helpers import seedkeeper_utils
+        from seedsigner.helpers.gpg_message import encrypt_message
+        from seedsigner.gui.screens.screen import (
+            ButtonListScreen,
+            WarningScreen,
+            LoadingScreenThread,
+            QRDisplayScreen,
+        )
+        from seedsigner.gui.screens.scan_screens import ScanScreen
+        from seedsigner.gui.screens.tools_screens import ToolsTextQRTextEntryScreen
+        from seedsigner.models.decode_qr import DecodeQR
+        from seedsigner.models.encode_qr import UrBytesQrEncoder
+
+        result = run([
+            "gpg",
+            "--list-keys",
+            "--with-colons",
+        ], capture_output=True, text=True)
+
+        keys = []
+        cur = None
+        for line in result.stdout.splitlines():
+            parts = line.split(":")
+            if parts[0] == "pub":
+                cur = {"fpr": None, "uid": None}
+                keys.append(cur)
+            elif parts[0] == "fpr" and cur is not None and cur.get("fpr") is None:
+                cur["fpr"] = parts[9]
+            elif parts[0] == "uid" and cur is not None and cur.get("uid") is None:
+                cur["uid"] = parts[9]
+
+        SKIP = ButtonOption("Skip")
+        buttons = [SKIP]
+        for key in keys:
+            label = key["uid"] if key["uid"] else key["fpr"][-8:]
+            buttons.append(ButtonOption(label))
+
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Select Key",
+            is_button_text_centered=False,
+            button_data=buttons,
+        )
+
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        if buttons[selected] is SKIP:
+            key = None
+        else:
+            key = keys[selected - 1]
+
+        SRC_TYPE = ButtonOption("Type Message")
+        SRC_SEEDKEEPER = ButtonOption("Load Seedkeeper")
+        SRC_SCAN = ButtonOption("Scan QR")
+        src_buttons = [SRC_TYPE, SRC_SEEDKEEPER, SRC_SCAN]
+
+        src_selected = self.run_screen(
+            ButtonListScreen,
+            title="Message Source",
+            is_button_text_centered=False,
+            button_data=src_buttons,
+        )
+
+        if src_selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        if src_buttons[src_selected] == SRC_TYPE:
+            ret_dict = ToolsTextQRTextEntryScreen(textToEncode="", title="Message").display()
+            if "is_back_button" in ret_dict:
+                return Destination(BackStackView)
+            message = ret_dict["textToEncode"]
+        elif src_buttons[src_selected] == SRC_SCAN:
+            decoder = DecodeQR(is_text=True)
+            ScanScreen(decoder=decoder, instructions_text="Scan message").display()
+            self.controller.reset_screensaver_timeout()
+            time.sleep(0.1)
+            if not decoder.is_complete:
+                return Destination(BackStackView)
+            message = decoder.get_text()
+        else:
+            Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["seedkeeper"])
+            if not Satochip_Connector:
+                return Destination(BackStackView)
+
+            loading = LoadingScreenThread(text="Listing Secrets\n\n\n\n\n\n")
+            loading.start()
+            headers = Satochip_Connector.seedkeeper_list_secret_headers()
+            loading.stop()
+
+            headers_parsed = []
+            buttons = []
+            for header in headers:
+                stype = SEEDKEEPER_DIC_TYPE.get(header["type"], hex(header["type"]))
+                export_rights = SEEDKEEPER_DIC_EXPORT_RIGHTS.get(header["export_rights"], hex(header["export_rights"]))
+                if stype == "Data" and export_rights == "Plaintext export allowed":
+                    label = header["label"] or "Unnamed"
+                    headers_parsed.append((header["id"], label))
+                    buttons.append(ButtonOption(label))
+
+            if not headers_parsed:
+                self.run_screen(
+                    WarningScreen,
+                    title="Error",
+                    status_headline=None,
+                    text="No messages found",
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
+
+            selected_msg = self.run_screen(
+                ButtonListScreen,
+                title="Select Message",
+                is_button_text_centered=False,
+                button_data=buttons,
+            )
+            if selected_msg == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+
+            loading = LoadingScreenThread(text="Loading Secret\n\n\n\n\n\n")
+            loading.start()
+            secret_dict = Satochip_Connector.seedkeeper_export_secret(headers_parsed[selected_msg][0], None)
+            loading.stop()
+
+            secret_list = secret_dict["secret_list"]
+            status = Satochip_Connector.card_get_status()[3]
+            if status["protocol_minor_version"] == 1:
+                length = secret_list[0]
+                msg_bytes = bytes(secret_list[1:1 + length])
+            else:
+                length = (secret_list[0] << 8) + secret_list[1]
+                msg_bytes = bytes(secret_list[2:2 + length])
+            message = msg_bytes.decode("utf-8")
+        signkey_blob = None
+        result = run([
+            "gpg",
+            "--list-secret-keys",
+            "--with-colons",
+        ], capture_output=True, text=True)
+
+        sign_keys = []
+        cur = None
+        for line in result.stdout.splitlines():
+            parts = line.split(":")
+            if parts[0] == "sec":
+                cur = {"fpr": None, "uid": None}
+                sign_keys.append(cur)
+            elif parts[0] == "fpr" and cur is not None and cur.get("fpr") is None:
+                cur["fpr"] = parts[9]
+            elif parts[0] == "uid" and cur is not None and cur.get("uid") is None:
+                cur["uid"] = parts[9]
+
+        if sign_keys:
+            sign_buttons = [ButtonOption("Skip")]
+            for sk in sign_keys:
+                label = sk["uid"] if sk["uid"] else sk["fpr"][-8:]
+                sign_buttons.append(ButtonOption(label))
+
+            selected_sign = self.run_screen(
+                ButtonListScreen,
+                title="Signing Key",
+                is_button_text_centered=False,
+                button_data=sign_buttons,
+            )
+
+            if selected_sign == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+
+            if selected_sign > 0:
+                sign_key = sign_keys[selected_sign - 1]
+                exported_sign = run([
+                    "gpg",
+                    "--armor",
+                    "--export-secret-keys",
+                    sign_key["fpr"],
+                ], capture_output=True, text=True)
+                if exported_sign.returncode != 0:
+                    self.run_screen(
+                        WarningScreen,
+                        title="Error",
+                        status_headline=None,
+                        text="Failed to export signing key",
+                        show_back_button=False,
+                        button_data=[ButtonOption("I Understand")],
+                    )
+                    return Destination(BackStackView)
+                signkey_blob = exported_sign.stdout
+
+        if key is not None:
+            exported = run([
+                "gpg",
+                "--armor",
+                "--export",
+                key["fpr"],
+            ], capture_output=True, text=True)
+            if exported.returncode != 0:
+                self.run_screen(
+                    WarningScreen,
+                    title="Error",
+                    status_headline=None,
+                    text="Failed to export key",
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
+            pub_blob = exported.stdout
+        else:
+            pub_blob = None
+
+        try:
+            ciphertext = encrypt_message(pub_blob, message, signkey_blob=signkey_blob)
+        except ValueError:
+            ret_dict = ToolsTextQRTextEntryScreen(textToEncode="", title="Passphrase").display()
+            if "is_back_button" in ret_dict:
+                return Destination(BackStackView)
+            passphrase = ret_dict["textToEncode"]
+            ciphertext = encrypt_message(
+                pub_blob,
+                message,
+                signkey_blob=signkey_blob,
+                signkey_passphrase=passphrase,
+            )
+        except Exception:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="Failed to encrypt message",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+        DEST_QR = ButtonOption("Animated QR")
+        DEST_FILE = ButtonOption("microSD")
+        dest_buttons = [DEST_QR, DEST_FILE]
+
+        dest_selected = self.run_screen(
+            ButtonListScreen,
+            title="Export to",
+            is_button_text_centered=False,
+            button_data=dest_buttons,
+        )
+
+        if dest_selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        if dest_buttons[dest_selected] == DEST_FILE:
+            import os
+            from datetime import datetime
+
+            if len(self.controller.storage.seeds) > 0:
+                ret = self.run_screen(
+                    WarningScreen,
+                    title="WARNING",
+                    status_headline=None,
+                    text="These tools write data to the microSD card and may expose loaded secrets.",
+                    show_back_button=True,
+                    button_data=[ButtonOption("Continue")],
+                )
+                if ret == RET_CODE__BACK_BUTTON:
+                    return Destination(BackStackView)
+
+            file_list_path = MicroSD.get_microsd_dir() / "microsd-images"
+            os.makedirs(file_list_path, exist_ok=True)
+            filename = f"gpgmsg_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+            filepath = os.path.join(file_list_path, filename)
+            try:
+                with open(filepath, "w", encoding="utf-8") as f:
+                    f.write(ciphertext)
+            except Exception:
+                self.run_screen(
+                    WarningScreen,
+                    title="Error",
+                    status_headline=None,
+                    text="Failed to save file",
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Success",
+                status_headline=None,
+                text=f"Saved as {filename}",
+                show_back_button=False,
+                button_data=[ButtonOption("Continue")],
+            )
+            return Destination(MainMenuView)
+
+        loading = LoadingScreenThread(text="Encoding...")
+        loading.start()
+        try:
+            qr_encoder = UrBytesQrEncoder(
+                data=ciphertext.encode("utf-8"),
+                qr_density=self.settings.get_value(SettingsConstants.SETTING__QR_DENSITY),
+            )
+        finally:
+            loading.stop()
+
+        num_codes = qr_encoder.seq_len()
+        ret = self.run_screen(
+            WarningScreen,
+            title="Animated QR",
+            status_headline=None,
+            text=f"This export requires {num_codes} QR code{'s' if num_codes > 1 else ''}.",
+            show_back_button=True,
+            button_data=[ButtonOption("Start")],
+        )
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        self.run_screen(QRDisplayScreen, qr_encoder=qr_encoder)
+        return Destination(MainMenuView)
+
+
+class ToolsGPGDecryptMessageView(View):
+    def run(self):
+        from subprocess import run
+        from seedsigner.helpers.gpg_message import decrypt_message
+        from seedsigner.gui.screens.screen import (
+            ButtonListScreen,
+            WarningScreen,
+            LargeIconStatusScreen,
+            LoadingScreenThread,
+            QRDisplayScreen,
+        )
+        from seedsigner.gui.screens.scan_screens import ScanScreen
+        from seedsigner.gui.screens.tools_screens import (
+            ToolsTextQRTextEntryScreen,
+            ToolsTextQRReviewTextScreen,
+        )
+        from seedsigner.models.decode_qr import DecodeQR, QRType
+        from seedsigner.models.encode_qr import GenericStaticQrEncoder
+        from urtypes.bytes import Bytes
+        import time
+
+        result = run([
+            "gpg",
+            "--list-secret-keys",
+            "--with-colons",
+        ], capture_output=True, text=True)
+
+        keys = []
+        cur = None
+        for line in result.stdout.splitlines():
+            parts = line.split(":")
+            if parts[0] == "sec":
+                cur = {"fpr": None, "uid": None}
+                keys.append(cur)
+            elif parts[0] == "fpr" and cur is not None and cur.get("fpr") is None:
+                cur["fpr"] = parts[9]
+            elif parts[0] == "uid" and cur is not None and cur.get("uid") is None:
+                cur["uid"] = parts[9]
+
+        ciphertext = self.controller.gpg_pending_message
+        if ciphertext:
+            self.controller.gpg_pending_message = None
+        else:
+            SRC_SCAN = ButtonOption("Scan QR")
+            SRC_FILE = ButtonOption("Load File")
+            src_buttons = [SRC_SCAN, SRC_FILE]
+            src_selected = self.run_screen(
+                ButtonListScreen,
+                title="Message Source",
+                is_button_text_centered=False,
+                button_data=src_buttons,
+            )
+            if src_selected == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+
+            if src_buttons[src_selected] == SRC_FILE:
+                import os
+                if len(self.controller.storage.seeds) > 0:
+                    ret = self.run_screen(
+                        WarningScreen,
+                        title="WARNING",
+                        status_headline=None,
+                        text="These tools load data from the microSD card and may expose loaded secrets.",
+                        show_back_button=True,
+                        button_data=[ButtonOption("Continue")],
+                    )
+                    if ret == RET_CODE__BACK_BUTTON:
+                        return Destination(BackStackView)
+
+                file_list_path = MicroSD.get_microsd_dir() / "microsd-images"
+                os.makedirs(file_list_path, exist_ok=True)
+                file_list = [
+                    f
+                    for f in os.listdir(file_list_path)
+                    if (
+                        not f.startswith('.')
+                        and f != '__MACOSX'
+                        and os.path.isfile(os.path.join(file_list_path, f))
+                    )
+                ]
+                buttons = [ButtonOption(file) for file in file_list]
+                if not buttons:
+                    self.run_screen(
+                        WarningScreen,
+                        title="Error",
+                        status_headline=None,
+                        text="No files found in microsd-images.",
+                        show_back_button=False,
+                        button_data=[ButtonOption("OK")],
+                    )
+                    return Destination(BackStackView)
+                selected_file_num = self.run_screen(
+                    ButtonListScreen,
+                    title="Select File",
+                    is_button_text_centered=False,
+                    button_data=buttons,
+                )
+                if selected_file_num == RET_CODE__BACK_BUTTON:
+                    return Destination(BackStackView)
+                filename = file_list[selected_file_num]
+                filepath = os.path.join(file_list_path, filename)
+                try:
+                    with open(filepath, "r", encoding="utf-8") as f:
+                        ciphertext = f.read()
+                except Exception:
+                    self.run_screen(
+                        WarningScreen,
+                        title="Error",
+                        status_headline=None,
+                        text="Failed to load file",
+                        show_back_button=False,
+                        button_data=[ButtonOption("I Understand")],
+                    )
+                    return Destination(BackStackView)
+            else:
+                decoder = DecodeQR()
+                ScanScreen(decoder=decoder, instructions_text="Scan secure message").display()
+                self.controller.reset_screensaver_timeout()
+                time.sleep(0.1)
+                if not decoder.is_complete:
+                    return Destination(BackStackView)
+
+                if decoder.qr_type == QRType.BYTES__UR:
+                    raw = Bytes.from_cbor(
+                        decoder.decoder.result_message().cbor
+                    ).data
+                    if isinstance(raw, memoryview):
+                        raw = raw.tobytes()
+                    if isinstance(raw, (bytes, bytearray)):
+                        ciphertext = raw.decode("utf-8")
+                    else:
+                        ciphertext = raw
+                elif decoder.qr_type == QRType.TEXT:
+                    ciphertext = decoder.get_text()
+                else:
+                    self.run_screen(
+                        WarningScreen,
+                        title="Error",
+                        status_headline=None,
+                        text="Unsupported QR format",
+                        show_back_button=False,
+                        button_data=[ButtonOption("I Understand")],
+                    )
+                    return Destination(BackStackView)
+
+        # gather public keys for signature verification
+        pub_result = run([
+            "gpg",
+            "--list-keys",
+            "--with-colons",
+        ], capture_output=True, text=True)
+
+        pubkeys = []
+        cur = None
+        for line in pub_result.stdout.splitlines():
+            parts = line.split(":")
+            if parts[0] == "pub":
+                cur = {"fpr": None, "uid": None}
+                pubkeys.append(cur)
+            elif parts[0] == "fpr" and cur is not None and cur.get("fpr") is None:
+                cur["fpr"] = parts[9]
+            elif parts[0] == "uid" and cur is not None and cur.get("uid") is None:
+                cur["uid"] = parts[9]
+
+        for pk in pubkeys:
+            exp = run([
+                "gpg",
+                "--armor",
+                "--export",
+                pk["fpr"],
+            ], capture_output=True, text=True)
+            pk["blob"] = exp.stdout
+
+        # try without a private key first in case message is unencrypted
+        dec_key = None
+        try:
+            plaintext, signer_fpr, verified = decrypt_message(
+                None,
+                ciphertext,
+                pubkey_blobs=[pk["blob"] for pk in pubkeys],
+            )
+        except ValueError:
+            # message is encrypted; try each available private key
+            decrypted = False
+            for key in keys:
+                exported = run([
+                    "gpg",
+                    "--armor",
+                    "--export-secret-keys",
+                    key["fpr"],
+                ], capture_output=True, text=True)
+                if exported.returncode != 0:
+                    continue
+                try:
+                    plaintext, signer_fpr, verified = decrypt_message(
+                        exported.stdout,
+                        ciphertext,
+                        pubkey_blobs=[pk["blob"] for pk in pubkeys],
+                    )
+                    dec_key = key
+                    decrypted = True
+                    break
+                except ValueError as e:
+                    if "Passphrase required" in str(e):
+                        ret_dict = ToolsTextQRTextEntryScreen(
+                            textToEncode="", title="Passphrase"
+                        ).display()
+                        if "is_back_button" in ret_dict:
+                            return Destination(BackStackView)
+                        passphrase = ret_dict["textToEncode"]
+                        try:
+                            plaintext, signer_fpr, verified = decrypt_message(
+                                exported.stdout,
+                                ciphertext,
+                                passphrase=passphrase,
+                                pubkey_blobs=[pk["blob"] for pk in pubkeys],
+                            )
+                            dec_key = key
+                            decrypted = True
+                            break
+                        except Exception:
+                            continue
+                    else:
+                        continue
+                except Exception:
+                    continue
+
+            if not decrypted:
+                err_text = (
+                    "No private keys found" if not keys else "Failed to decrypt message"
+                )
+                load = ButtonOption("Load Key")
+                cont = ButtonOption("Continue")
+                selected = self.run_screen(
+                    WarningScreen,
+                    title="Error",
+                    status_headline=None,
+                    text=err_text,
+                    show_back_button=False,
+                    button_data=[load, cont],
+                )
+                if selected == 0:
+                    from seedsigner.controller import Controller
+                    self.controller.gpg_pending_message = ciphertext
+                    self.controller.resume_main_flow = Controller.FLOW__GPG_MESSAGE
+                    return Destination(ToolsGPGImportPrivkeyMenuView)
+                return Destination(BackStackView)
+
+        if isinstance(plaintext, (bytes, bytearray, memoryview)):
+            plaintext = plaintext.decode("utf-8")
+
+        # normalize line endings to avoid display issues on carriage returns
+        plaintext = plaintext.replace("\r\n", "\n").replace("\r", "\n")
+
+        if signer_fpr:
+            label = signer_fpr[-8:]
+            have_pub = False
+            for pk in pubkeys:
+                if pk["fpr"] == signer_fpr:
+                    have_pub = True
+                    label = pk["uid"] if pk["uid"] else pk["fpr"][-8:]
+                    break
+            if not verified and not have_pub:
+                load = ButtonOption("Load Key")
+                cont = ButtonOption("Continue")
+                selected = self.run_screen(
+                    WarningScreen,
+                    title="Warning",
+                    status_headline=None,
+                    text="Missing public key to verify signature",
+                    show_back_button=False,
+                    button_data=[load, cont],
+                )
+                if selected == 0:
+                    from seedsigner.controller import Controller
+                    self.controller.gpg_pending_message = ciphertext
+                    self.controller.resume_main_flow = Controller.FLOW__GPG_MESSAGE
+                    return Destination(ToolsGPGImportPubkeyMenuView)
+            if verified:
+                self.run_screen(
+                    LargeIconStatusScreen,
+                    title="Success",
+                    status_headline=None,
+                    text=f"Valid Signature from\n{label}",
+                    show_back_button=False,
+                    button_data=[ButtonOption("Next")],
+                )
+            else:
+                self.run_screen(
+                    LargeIconStatusScreen,
+                    title="Warning",
+                    status_icon_name=SeedSignerIconConstants.WARNING,
+                    status_color=GUIConstants.WARNING_COLOR,
+                    status_headline=None,
+                    text=f"Unverified Signature from\n{label}",
+                    show_back_button=False,
+                    button_data=[ButtonOption("Next")],
+                )
+
+        next_button = ButtonOption("Next")
+        self.run_screen(
+            ToolsTextQRReviewTextScreen,
+            textToEncode=plaintext,
+            title="Decrypted Message",
+            button_data=[next_button],
+            show_back_button=False,
+        )
+
+        SAVE = ButtonOption("Save to Seedkeeper")
+        SHOW = ButtonOption("Show as QR")
+        DONE = ButtonOption("Done")
+        button_data = [SAVE, SHOW, DONE]
+        selected_option = self.run_screen(
+            ButtonListScreen,
+            title="Decrypted Message",
+            is_button_text_centered=False,
+            button_data=button_data,
+            show_back_button=False,
+        )
+
+        if selected_option == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        if button_data[selected_option] == SAVE:
+            Satochip_Connector = seedkeeper_utils.init_satochip(
+                self, init_card_filter=["seedkeeper"]
+            )
+            if not Satochip_Connector:
+                return Destination(BackStackView)
+
+            msg_bytes = plaintext.encode("utf-8")
+            status = Satochip_Connector.card_get_status()[3]
+            if status['protocol_minor_version'] == 1:
+                if len(msg_bytes) > 255:
+                    self.run_screen(
+                        WarningScreen,
+                        title="Error",
+                        status_headline=None,
+                        text="Message too large for Seedkeeper v1",
+                        show_back_button=False,
+                        button_data=[ButtonOption("I Understand")],
+                    )
+                    return Destination(BackStackView)
+                secret_list = [len(msg_bytes)] + list(msg_bytes)
+            else:
+                secret_list = list(len(msg_bytes).to_bytes(2, "big")) + list(msg_bytes)
+
+            label = f"GPGMsg:{dec_key['fpr'][-8:]}" if dec_key else "GPGMsg"
+            header = Satochip_Connector.make_header(
+                "Data", "Plaintext export allowed", label
+            )
+            secret_dic = {"header": header, "secret_list": secret_list}
+
+            try:
+                fits, required_bytes, free_bytes = seedkeeper_utils.ensure_seedkeeper_capacity(
+                    Satochip_Connector, secret_dic
+                )
+            except Exception as e:
+                self.run_screen(
+                    WarningScreen,
+                    title="Error",
+                    status_headline=None,
+                    text=str(e),
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
+
+            if not fits:
+                self.run_screen(
+                    WarningScreen,
+                    title="Not Enough Space",
+                    status_headline=None,
+                    text=seedkeeper_utils.format_seedkeeper_space_error(required_bytes, free_bytes),
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
+
+            try:
+                loading = LoadingScreenThread(text="Saving Secret\n\n\n\n\n\n")
+                loading.start()
+                Satochip_Connector.seedkeeper_import_secret(secret_dic)
+                loading.stop()
+                self.run_screen(
+                    LargeIconStatusScreen,
+                    title="Success",
+                    status_headline=None,
+                    text="Message saved to Seedkeeper",
+                    show_back_button=False,
+                    button_data=[ButtonOption("Continue")],
+                )
+            except UnexpectedSW12Error as e:
+                loading.stop()
+                if e.sw1 == 0x6A and e.sw2 == 0x84:
+                    err_text = "Not enough space on Seedkeeper for message"
+                else:
+                    err_text = format_sw_error(e.sw1, e.sw2)
+                self.run_screen(
+                    WarningScreen,
+                    title="Error",
+                    status_headline=None,
+                    text=err_text,
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+            except Exception:
+                loading.stop()
+                self.run_screen(
+                    WarningScreen,
+                    title="Error",
+                    status_headline=None,
+                    text="Failed to save message",
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+            return Destination(MainMenuView)
+
+        if button_data[selected_option] == SHOW:
+            encoder = GenericStaticQrEncoder(data=plaintext)
+            self.run_screen(QRDisplayScreen, qr_encoder=encoder)
+            return Destination(MainMenuView)
+
+        return Destination(MainMenuView)
+
+
+class ToolsGPGImportMenuView(View):
+    PUBKEY = ButtonOption("Public Key")
+    PRIVKEY = ButtonOption("Private Key")
+
+    def run(self):
+        button_data = [self.PUBKEY, self.PRIVKEY]
+
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title="Import",
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        if button_data[selected_menu_num] == self.PUBKEY:
+            return Destination(ToolsGPGImportPubkeyMenuView)
+        return Destination(ToolsGPGImportPrivkeyMenuView)
+
+
+class ToolsGPGExportMenuView(View):
+    PUBKEY = ButtonOption("Public Key")
+    PRIVKEY = ButtonOption("Private Key")
+
+    def run(self):
+        button_data = [self.PUBKEY, self.PRIVKEY]
+
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title="Export",
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        if button_data[selected_menu_num] == self.PUBKEY:
+            return Destination(ToolsGPGExportPubkeyView)
+        return Destination(ToolsGPGExportPrivkeyView)
+
+
+class ToolsGPGSmartMenuView(View):
+    CARD_INFO = ButtonOption("View Card Info")
+    GENERATE_ON_CARD = ButtonOption("Generate On-Card Key")
+    CHANGE_ADMIN_PIN = ButtonOption("Change Admin PIN")
+    CHANGE_USER_PIN = ButtonOption("Change User PIN")
+
+    def run(self):
+        button_data = [
+            self.CARD_INFO,
+            self.GENERATE_ON_CARD,
+            self.CHANGE_ADMIN_PIN,
+            self.CHANGE_USER_PIN,
+        ]
+
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title="SmartGPG",
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        selected = button_data[selected_menu_num]
+        if selected == self.CARD_INFO:
+            return Destination(ToolsGPGCardInfoView)
+        elif selected == self.GENERATE_ON_CARD:
+            return Destination(ToolsGPGGenerateKeyOnCardView)
+        elif selected == self.CHANGE_ADMIN_PIN:
+            return Destination(ToolsGPGChangeAdminPinView)
+        elif selected == self.CHANGE_USER_PIN:
+            return Destination(ToolsGPGChangeUserPinView)
+
+
+class ToolsGPGCardInfoView(View):
+    def run(self):
+        from subprocess import run
+
+        data = run(["gpg", "--card-status"], capture_output=True, text=True)
+        text = data.stdout or data.stderr or "No card info"
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Card Info",
+            status_headline=None,
+            text=text[:400],
+            show_back_button=False,
+            button_data=[ButtonOption("Continue")],
+        )
+        return Destination(BackStackView)
+
+
+class ToolsGPGGenerateKeyOnCardView(View):
+    def run(self):
+        from subprocess import run
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+
+        self.loading_screen = LoadingScreenThread(text="Generating key\n\n\n(May take a while)")
+        self.loading_screen.start()
+        run(
+            ["gpg", "--batch", "--pinentry-mode", "loopback", "--status-fd", "1", "--command-fd", "0", "--edit-card"],
+            input="admin\ngenerate\ny\n",
+            text=True,
+        )
+        self.loading_screen.stop()
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Success",
+            status_headline=None,
+            text="Key generated on card",
+            show_back_button=False,
+            button_data=[ButtonOption("Continue")],
+        )
+        return Destination(MainMenuView)
+
+
+class ToolsGPGChangeAdminPinView(View):
+    def run(self):
+        from subprocess import run
+        from seedsigner.helpers import seedkeeper_utils
+
+        seedkeeper_utils.disconnect_smartcard_connections(self.controller)
+        run(["gpgconf", "--reload", "scdaemon"])
+
+        ret = self.run_screen(
+            WarningScreen,
+            title="Admin PIN Required",
+            status_headline=None,
+            text="Admin PIN is needed for changing keys and editing card settings.",
+            show_back_button=True,
+            button_data=[ButtonOption("Continue")],
+        )
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        old_pin = seedkeeper_utils.prompt_for_pin(self, "Current Admin PIN")
+        if old_pin is None:
+            return Destination(BackStackView)
+        new_pin = seedkeeper_utils.prompt_for_pin(self, "New Admin PIN")
+        if new_pin is None:
+            return Destination(BackStackView)
+        cmds = f"3\n{old_pin}\n{new_pin}\n{new_pin}\nQ\n"
+        result = run(
+            [
+                "gpg",
+                "--pinentry-mode",
+                "loopback",
+                "--status-fd",
+                "1",
+                "--command-fd",
+                "0",
+                "--change-pin",
+            ],
+            input=cmds,
+            capture_output=True,
+            text=True,
+        )
+        output = (result.stdout or "") + (result.stderr or "")
+        success = "PIN changed" in output or "SC_OP_SUCCESS" in result.stdout
+        failed = "SC_OP_FAILURE" in result.stdout or not success
+        if failed:
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Failed",
+                status_headline=None,
+                text="Admin PIN change failed",
+                show_back_button=False,
+                button_data=[ButtonOption("Continue")],
+            )
+            return Destination(MainMenuView)
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Success",
+            status_headline=None,
+            text="PIN updated. Please remove and re-insert the card.",
+            show_back_button=False,
+            button_data=[ButtonOption("Continue")],
+        )
+        return Destination(MainMenuView)
+
+
+class ToolsGPGChangeUserPinView(View):
+    def run(self):
+        from subprocess import run
+        from seedsigner.helpers import seedkeeper_utils
+
+        seedkeeper_utils.disconnect_smartcard_connections(self.controller)
+
+        ret = self.run_screen(
+            WarningScreen,
+            title="Insert Card",
+            status_headline=None,
+            text="Remove and re-insert the smartcard, then press Continue.",
+            show_back_button=True,
+            button_data=[ButtonOption("Continue")],
+        )
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        run(["gpgconf", "--reload", "scdaemon"])
+
+        ret = self.run_screen(
+            WarningScreen,
+            title="User PIN Required",
+            status_headline=None,
+            text="User PIN is needed for signing and using on-card keys.",
+            show_back_button=True,
+            button_data=[ButtonOption("Continue")],
+        )
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        old_pin = seedkeeper_utils.prompt_for_pin(self, "Current User PIN")
+        if old_pin is None:
+            return Destination(BackStackView)
+        new_pin = seedkeeper_utils.prompt_for_pin(self, "New User PIN")
+        if new_pin is None:
+            return Destination(BackStackView)
+        cmds = f"1\n{old_pin}\n{new_pin}\n{new_pin}\nQ\n"
+        result = run(
+            [
+                "gpg",
+                "--pinentry-mode",
+                "loopback",
+                "--status-fd",
+                "1",
+                "--command-fd",
+                "0",
+                "--change-pin",
+            ],
+            input=cmds,
+            capture_output=True,
+            text=True,
+        )
+        output = (result.stdout or "") + (result.stderr or "")
+        success = "PIN changed" in output or "SC_OP_SUCCESS" in result.stdout
+        failed = "SC_OP_FAILURE" in result.stdout or not success
+        if failed:
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Failed",
+                status_headline=None,
+                text="User PIN change failed",
+                show_back_button=False,
+                button_data=[ButtonOption("Continue")],
+            )
+            return Destination(MainMenuView)
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Success",
+            status_headline=None,
+            text="PIN updated. Please remove and re-insert the card.",
+            show_back_button=False,
+            button_data=[ButtonOption("Continue")],
+        )
+        return Destination(MainMenuView)
+
+
+class ToolsGPGEncryptFileView(View):
+    def run(self):
+        from subprocess import run
+        import os
+        from seedsigner.gui.screens.screen import (
+            ButtonListScreen,
+            WarningScreen,
+            LargeIconStatusScreen,
+            LoadingScreenThread,
+        )
+        from seedsigner.gui.screens.tools_screens import ToolsTextQRTextEntryScreen
+
+        if len(self.controller.storage.seeds) > 0:
+            ret = self.run_screen(
+                WarningScreen,
+                title="WARNING",
+                status_headline=None,
+                text="These tools load data from the microSD card and may expose loaded secrets.",
+                show_back_button=True,
+                button_data=[ButtonOption("Continue")],
+            )
+            if ret == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+
+        file_list_path = MicroSD.get_microsd_dir() / "microsd-images"
+        os.makedirs(file_list_path, exist_ok=True)
+        file_list = [
+            f
+            for f in os.listdir(file_list_path)
+            if (
+                not f.startswith('.')
+                and f != '__MACOSX'
+                and os.path.isfile(os.path.join(file_list_path, f))
+            )
+        ]
+        buttons = [ButtonOption(file) for file in file_list]
+        if not buttons:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No files found in microsd-images.",
+                show_back_button=False,
+                button_data=[ButtonOption("OK")],
+            )
+            return Destination(BackStackView)
+
+        selected_file = self.run_screen(
+            ButtonListScreen,
+            title="Select File",
+            is_button_text_centered=False,
+            button_data=buttons,
+        )
+        if selected_file == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        filename = file_list[selected_file]
+        filepath = os.path.join(file_list_path, filename)
+        try:
+            # Sanity-check that the file is readable before invoking gpg
+            with open(filepath, "rb"):
+                pass
+        except Exception as e:
+            logger.exception("Failed to load file %s", filepath)
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text=f"Failed to load file:\n{e}",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        result = run([
+            "gpg",
+            "--list-keys",
+            "--with-colons",
+        ], capture_output=True, text=True)
+        keys = []
+        cur = None
+        for line in result.stdout.splitlines():
+            parts = line.split(":")
+            if parts[0] == "pub":
+                cur = {"fpr": None, "uid": None}
+                keys.append(cur)
+            elif parts[0] == "fpr" and cur is not None:
+                cur["fpr"] = parts[9]
+            elif parts[0] == "uid" and cur is not None and cur.get("uid") is None:
+                cur["uid"] = parts[9]
+        if not keys:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No public keys found",
+                show_back_button=False,
+                button_data=[ButtonOption("OK")],
+            )
+            return Destination(BackStackView)
+        key_buttons = [ButtonOption(k["uid"] if k["uid"] else k["fpr"][-8:]) for k in keys]
+        selected_key = self.run_screen(
+            ButtonListScreen,
+            title="Select Recipient",
+            is_button_text_centered=False,
+            button_data=key_buttons,
+        )
+        if selected_key == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        rec_key = keys[selected_key]
+
+        result = run([
+            "gpg",
+            "--list-secret-keys",
+            "--with-colons",
+        ], capture_output=True, text=True)
+        skeys = []
+        cur = None
+        for line in result.stdout.splitlines():
+            parts = line.split(":")
+            if parts[0] == "sec":
+                cur = {"fpr": None, "uid": None}
+                skeys.append(cur)
+            elif parts[0] == "fpr" and cur is not None:
+                cur["fpr"] = parts[9]
+            elif parts[0] == "uid" and cur is not None and cur.get("uid") is None:
+                cur["uid"] = parts[9]
+        SKIP = ButtonOption("Skip")
+        sign_buttons = [SKIP]
+        for k in skeys:
+            label = k["uid"] if k["uid"] else k["fpr"][-8:]
+            sign_buttons.append(ButtonOption(label))
+        selected_sign = self.run_screen(
+            ButtonListScreen,
+            title="Sign with",
+            is_button_text_centered=False,
+            button_data=sign_buttons,
+        )
+        if selected_sign == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        sign_key = None
+        if sign_buttons[selected_sign] is not SKIP:
+            sign_key = skeys[selected_sign - 1]
+
+        outname = f"{filename}.gpg"
+
+        def gpg_encrypt(passphrase: str | None = None):
+            self.loading_screen = LoadingScreenThread(
+                text=_("Encrypting File") + "\n\n\n\n\n\n" + _("(May take a while)")
+            )
+            self.loading_screen.start()
+            cmd = [
+                "gpg",
+                "--batch",
+                "--yes",
+                "--trust-model",
+                "always",
+                "--output",
+                outname,
+                "--armor",
+            ]
+            if passphrase is not None:
+                cmd.extend(["--pinentry-mode", "loopback", "--passphrase", passphrase])
+            if sign_key is not None:
+                cmd.extend(["--local-user", sign_key["fpr"], "--sign"])
+            cmd.extend(["--recipient", rec_key["fpr"], "--encrypt", filename])
+            result = run(cmd, capture_output=True, text=True, cwd=file_list_path)
+            self.loading_screen.stop()
+            return result
+
+        result = gpg_encrypt()
+        if result.returncode != 0 and sign_key is not None:
+            # Likely needs a passphrase for the signing key
+            ret_dict = ToolsTextQRTextEntryScreen(textToEncode="", title="Passphrase").display()
+            if "is_back_button" in ret_dict:
+                return Destination(BackStackView)
+            passphrase = ret_dict["textToEncode"]
+            result = gpg_encrypt(passphrase)
+
+        if result.returncode != 0:
+            logger.warning("gpg encrypt failed: %s", result.stderr)
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="Failed to encrypt file",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Success",
+            status_headline=None,
+            text=f"Saved as {outname}",
+            show_back_button=False,
+            button_data=[ButtonOption("Done")],
+        )
+        return Destination(MainMenuView)
+
+
+class ToolsGPGDecryptFileView(View):
+    def run(self):
+        from subprocess import run
+        import os
+        from seedsigner.gui.screens.screen import (
+            ButtonListScreen,
+            WarningScreen,
+            LargeIconStatusScreen,
+            LoadingScreenThread,
+        )
+        from seedsigner.gui.screens.tools_screens import ToolsTextQRTextEntryScreen
+
+        if len(self.controller.storage.seeds) > 0:
+            ret = self.run_screen(
+                WarningScreen,
+                title="WARNING",
+                status_headline=None,
+                text="These tools load data from the microSD card and may expose loaded secrets.",
+                show_back_button=True,
+                button_data=[ButtonOption("Continue")],
+            )
+            if ret == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+
+        file_list_path = MicroSD.get_microsd_dir() / "microsd-images"
+        os.makedirs(file_list_path, exist_ok=True)
+        file_list = [
+            f
+            for f in os.listdir(file_list_path)
+            if (
+                not f.startswith('.')
+                and f != '__MACOSX'
+                and os.path.isfile(os.path.join(file_list_path, f))
+            )
+        ]
+        buttons = [ButtonOption(file) for file in file_list]
+        if not buttons:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No files found in microsd-images.",
+                show_back_button=False,
+                button_data=[ButtonOption("OK")],
+            )
+            return Destination(BackStackView)
+        selected_file = self.run_screen(
+            ButtonListScreen,
+            title="Select File",
+            is_button_text_centered=False,
+            button_data=buttons,
+        )
+        if selected_file == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        filename = file_list[selected_file]
+        filepath = os.path.join(file_list_path, filename)
+        try:
+            with open(filepath, "rb"):
+                pass
+        except Exception as e:
+            logger.exception("Failed to load file %s", filepath)
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text=f"Failed to load file:\n{e}",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        outname = f"{filename}.dec"
+
+        def gpg_decrypt(passphrase: str | None = None):
+            self.loading_screen = LoadingScreenThread(
+                text=_("Decrypting File") + "\n\n\n\n\n\n" + _("(May take a while)")
+            )
+            self.loading_screen.start()
+            cmd = [
+                "gpg",
+                "--batch",
+                "--yes",
+                "--output",
+                outname,
+                "--decrypt",
+                "--status-fd",
+                "1",
+            ]
+            if passphrase is not None:
+                cmd.extend(["--pinentry-mode", "loopback", "--passphrase", passphrase])
+            cmd.append(filename)
+            result = run(cmd, capture_output=True, text=True, cwd=file_list_path)
+            self.loading_screen.stop()
+            return result
+
+        def parse_status(output: str):
+            need_passphrase = False
+            missing_priv = False
+            signer_fpr = None
+            verified = False
+            missing_pub = False
+            for line in output.splitlines():
+                if not line.startswith("[GNUPG:]"):
+                    continue
+                parts = line[9:].split()
+                tag = parts[0]
+                if tag in {"NEED_PASSPHRASE", "MISSING_PASSPHRASE", "BAD_PASSPHRASE"}:
+                    need_passphrase = True
+                elif tag == "NO_SECKEY":
+                    missing_priv = True
+                elif tag == "NO_PUBKEY":
+                    missing_pub = True
+                    if len(parts) > 1:
+                        signer_fpr = parts[1]
+                elif tag == "BADSIG":
+                    signer_fpr = parts[1]
+                    verified = False
+                elif tag == "VALIDSIG":
+                    signer_fpr = parts[1]
+                    verified = True
+            return need_passphrase, missing_priv, signer_fpr, verified, missing_pub
+
+        result = gpg_decrypt()
+        need_pw, missing_priv, signer_fpr, verified, missing_pub = parse_status(result.stdout)
+
+        if result.returncode != 0 and need_pw:
+            ret_dict = ToolsTextQRTextEntryScreen(textToEncode="", title="Passphrase").display()
+            if "is_back_button" in ret_dict:
+                return Destination(BackStackView)
+            passphrase = ret_dict["textToEncode"]
+            result = gpg_decrypt(passphrase)
+            need_pw, missing_priv, signer_fpr, verified, missing_pub = parse_status(result.stdout)
+
+        if result.returncode != 0:
+            if missing_priv:
+                load = ButtonOption("Load Key")
+                cont = ButtonOption("Continue")
+                selected = self.run_screen(
+                    WarningScreen,
+                    title="Warning",
+                    status_headline=None,
+                    text="Missing private key to decrypt",
+                    show_back_button=False,
+                    button_data=[load, cont],
+                )
+                if selected == 0:
+                    return Destination(ToolsGPGImportPrivkeyMenuView)
+            logger.warning("gpg decrypt failed: %s", result.stderr)
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="Failed to decrypt file",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        if signer_fpr:
+            pub_result = run([
+                "gpg",
+                "--list-keys",
+                "--with-colons",
+            ], capture_output=True, text=True)
+            pubkeys = []
+            cur = None
+            for line in pub_result.stdout.splitlines():
+                parts = line.split(":")
+                if parts[0] == "pub":
+                    cur = {"fpr": None, "uid": None}
+                    pubkeys.append(cur)
+                elif parts[0] == "fpr" and cur is not None:
+                    cur["fpr"] = parts[9]
+                elif parts[0] == "uid" and cur is not None and cur.get("uid") is None:
+                    cur["uid"] = parts[9]
+            label = signer_fpr[-8:]
+            have_pub = False
+            for pk in pubkeys:
+                if pk["fpr"] == signer_fpr:
+                    have_pub = True
+                    label = pk["uid"] if pk["uid"] else pk["fpr"][-8:]
+                    break
+            if (not verified or missing_pub) and not have_pub:
+                load = ButtonOption("Load Key")
+                cont = ButtonOption("Continue")
+                selected = self.run_screen(
+                    WarningScreen,
+                    title="Warning",
+                    status_headline=None,
+                    text="Missing public key to verify signature",
+                    show_back_button=False,
+                    button_data=[load, cont],
+                )
+                if selected == 0:
+                    return Destination(ToolsGPGImportPubkeyMenuView)
+            if verified:
+                self.run_screen(
+                    LargeIconStatusScreen,
+                    title="Success",
+                    status_headline=None,
+                    text=f"Valid Signature from\n{label}",
+                    show_back_button=False,
+                    button_data=[ButtonOption("Next")],
+                )
+            else:
+                self.run_screen(
+                    LargeIconStatusScreen,
+                    title="Warning",
+                    status_icon_name=SeedSignerIconConstants.WARNING,
+                    status_color=GUIConstants.WARNING_COLOR,
+                    status_headline=None,
+                    text=f"Unverified Signature from\n{label}",
+                    show_back_button=False,
+                    button_data=[ButtonOption("Next")],
+                )
+
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Success",
+            status_headline=None,
+            text=f"Saved as {outname}",
+            show_back_button=False,
+            button_data=[ButtonOption("Done")],
+        )
+        return Destination(MainMenuView)
+
 
 class ToolsGPGVerifyFileView(View):
     CHECK_SHA256 = ButtonOption("Check SHA256Sum")
     def run(self):
         from subprocess import run
+        import hashlib, shutil
+        from pathlib import Path
         from seedsigner.gui.screens.screen import LoadingScreenThread
 
-        if platform.uname()[1] == "seedsigner-os":
-            file_list_path = '/mnt/microsd/microsd-images/'
-        else:
-            file_list_path= '/boot/microsd-images/'
+        if len(self.controller.storage.seeds) > 0:
+            ret = self.run_screen(
+                WarningScreen,
+                title="WARNING",
+                status_headline=None,
+                text="These tools load data from the microSD card and may expose loaded secrets.",
+                show_back_button=True,
+                button_data=[ButtonOption("Continue")]
+            )
+            if ret == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+
+        if not self.controller.gpg_keys_imported:
+            gpg_dir = Path(__file__).resolve().parent.parent.parent.parent / "gpg_keys"
+            self.loading_screen = LoadingScreenThread(text="Importing GPG Keys\n\n\n\n\n\n(May take a while)")
+            self.loading_screen.start()
+            key_files = [str(p) for p in gpg_dir.glob("*.asc")]
+            if key_files:
+                run(["gpg", "--import", *key_files])
+            self.loading_screen.stop()
+            self.controller.gpg_keys_imported = True
+
+        file_list_path = MicroSD.get_microsd_dir() / "microsd-images"
+        os.makedirs(file_list_path, exist_ok=True)
 
         # Get only the visible, valid files
         visible_file_list = [
@@ -3607,6 +7995,17 @@ class ToolsGPGVerifyFileView(View):
 
         # Build button options
         verify_file_buttons = [ButtonOption(f) for f in visible_file_list]
+
+        if not verify_file_buttons:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No files found in microsd-images.",
+                show_back_button=False,
+                button_data=[ButtonOption("OK")],
+            )
+            return Destination(BackStackView)
 
         # Show selection screen
         selected_file_num = self.run_screen(
@@ -3623,13 +8022,44 @@ class ToolsGPGVerifyFileView(View):
         # Use the same filtered list to get the selected filename
         verify_file_name = visible_file_list[selected_file_num]
         logger.info("Selected: %s", verify_file_name)
+        filechecked = verify_file_name[:-4] if verify_file_name.endswith(".sig") else verify_file_name
 
-        cmd = "cd " + file_list_path +" ; gpg --verify " + verify_file_name
-
-        self.loading_screen = LoadingScreenThread(text="Checking Signature\n\n\n\n\n\n(May take a while)")
+        self.loading_screen = LoadingScreenThread(
+            text="Checking Signature\n\n\n\n\n\n(May take a while)"
+        )
         self.loading_screen.start()
-        data = run(cmd, capture_output=True, shell=True, text=True)
-        print(cmd, " ", data)
+
+        cmd = ["gpg", "--verify"]
+        if verify_file_name.endswith(".sig"):
+            cmd.append(verify_file_name)
+            if (file_list_path / filechecked).exists():
+                cmd.append(filechecked)
+        else:
+            sig_candidate = verify_file_name + ".sig"
+            if (file_list_path / sig_candidate).exists():
+                cmd.extend([sig_candidate, verify_file_name])
+            else:
+                cmd.append(verify_file_name)
+
+        try:
+            data = run(
+                cmd,
+                capture_output=True,
+                text=True,
+                cwd=str(file_list_path),
+            )
+        except FileNotFoundError as exc:
+            self.loading_screen.stop()
+            logger.warning("gpg verify failed: %s", exc)
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="GPG not found",
+                show_back_button=False,
+                button_data=[ButtonOption("OK")],
+            )
+            return Destination(BackStackView)
 
         self.loading_screen.stop()
 
@@ -3641,7 +8071,6 @@ class ToolsGPGVerifyFileView(View):
         for line in result:
             if "gpg: assuming signed data in " in line:
                 filechecked = line[30:-1]
-                print(filechecked)
             elif "Primary key fingerprint:" in line:
                 valid_sig_keyid += "\n" + line[-20:]
             elif "Good signature from" in line:
@@ -3677,38 +8106,69 @@ class ToolsGPGVerifyFileView(View):
                 )
             
             if button_data[ret] == self.CHECK_SHA256:
-                if platform.uname()[1] == "seedsigner-os":
-                    cmd = "cd " + file_list_path + "; sha256sum -c " + filechecked
-                else:
-                    cmd = "cd " + file_list_path + "; sha256sum --check " + filechecked + " --ignore-missing"
-
-                self.loading_screen = LoadingScreenThread(text="Checking SHA256\n\n\n\n\n\n(This takes a while)")
-                self.loading_screen.start()
-
-                data = run(cmd, capture_output=True, shell=True, text=True)
-                print(cmd, " ", data)
-
-                self.loading_screen.stop()
-
-                result_stdout = data.stdout.split("\n")
-                result_stderr = data.stderr.split("\n")
-                matched = None
                 verified_files = []
                 failed_files = []
                 missing_files = []
-                for line in result_stdout:
-                    if ": OK" in line:
-                        verified_files.append(line[:-4])
-                    elif ": FAILED" in line:
-                        failed_files.append(line[:-8])
 
-                for line in result_stderr:
-                    if "No such file or directory" in line:
-                        missing_files.append(line[23:-28])
+                if shutil.which("sha256sum"):
+                    from seedsigner.models.settings import Settings
 
-                print("Verified:", verified_files)
-                print("Failed:", failed_files)
-                print("Missing:", missing_files)
+                    if Settings.HOSTNAME == Settings.SEEDSIGNER_OS:
+                        sha256_cmd = ["sha256sum", "-c", filechecked]
+                    else:
+                        sha256_cmd = ["sha256sum", "--check", filechecked, "--ignore-missing"]
+
+                    self.loading_screen = LoadingScreenThread(
+                        text="Checking SHA256\n\n\n\n\n\n(This takes a while)"
+                    )
+                    self.loading_screen.start()
+
+                    data = run(
+                        sha256_cmd,
+                        capture_output=True,
+                        text=True,
+                        cwd=file_list_path,
+                    )
+
+                    self.loading_screen.stop()
+
+                    result_stdout = data.stdout.split("\n")
+                    result_stderr = data.stderr.split("\n")
+                    for line in result_stdout:
+                        if ": OK" in line:
+                            verified_files.append(line[:-4])
+                        elif ": FAILED" in line:
+                            failed_files.append(line[:-8])
+
+                    for line in result_stderr:
+                        if "No such file or directory" in line:
+                            missing_files.append(line[23:-28])
+                else:
+                    self.loading_screen = LoadingScreenThread(text="Checking SHA256\n\n\n\n\n\n(This takes a while)")
+                    self.loading_screen.start()
+                    manifest_path = file_list_path / filechecked
+                    with open(manifest_path, "r") as mf:
+                        for line in mf:
+                            line = line.strip()
+                            if not line:
+                                continue
+                            parts = line.split()
+                            if len(parts) < 2:
+                                continue
+                            checksum, name = parts[0], parts[-1].lstrip("*")
+                            file_path = file_list_path / name
+                            if file_path.exists():
+                                h = hashlib.sha256()
+                                with open(file_path, "rb") as f:
+                                    for chunk in iter(lambda: f.read(65536), b""):
+                                        h.update(chunk)
+                                if h.hexdigest().lower() == checksum.lower():
+                                    verified_files.append(name)
+                                else:
+                                    failed_files.append(name)
+                            else:
+                                missing_files.append(name)
+                    self.loading_screen.stop()
 
                 for file in missing_files:
                     try:
@@ -3754,25 +8214,465 @@ class ToolsGPGVerifyFileView(View):
                 text=failed_reason,
                 show_back_button=True,
             )
-                
-        
+
+
         return Destination(MainMenuView)
 
-class ToolsGPGImportPubkeyView(View):
+
+class ToolsGPGSignFileView(View):
     def run(self):
         from subprocess import run
         from seedsigner.gui.screens.screen import LoadingScreenThread
 
-        if platform.uname()[1] == "seedsigner-os":
-            file_list_path = '/mnt/microsd/microsd-images/'
+        if len(self.controller.storage.seeds) > 0:
+            ret = self.run_screen(
+                WarningScreen,
+                title="WARNING",
+                status_headline=None,
+                text="These tools load data from the microSD card and may expose loaded secrets.",
+                show_back_button=True,
+                button_data=[ButtonOption("Continue")],
+            )
+            if ret == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+
+        file_list_path = MicroSD.get_microsd_dir() / "microsd-images"
+        os.makedirs(file_list_path, exist_ok=True)
+
+        file_list = [
+            f
+            for f in os.listdir(file_list_path)
+            if (
+                not f.startswith('.')
+                and f != '__MACOSX'
+                and os.path.isfile(os.path.join(file_list_path, f))
+            )
+        ]
+
+        buttons = [ButtonOption(file) for file in file_list]
+
+        if not buttons:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No files found in microsd-images.",
+                show_back_button=False,
+                button_data=[ButtonOption("OK")],
+            )
+            return Destination(BackStackView)
+
+        selected_file_num = self.run_screen(
+            ButtonListScreen,
+            title="Select File",
+            is_button_text_centered=False,
+            button_data=buttons,
+        )
+
+        if selected_file_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        filename = file_list[selected_file_num]
+
+        # Gather available private keys for signing
+        result = run(
+            ["gpg", "--list-secret-keys", "--with-colons"],
+            capture_output=True,
+            text=True,
+        )
+        keys = parse_secret_key_list(result.stdout)
+
+        if not keys:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No private keys found",
+                show_back_button=False,
+                button_data=[ButtonOption("OK")],
+            )
+            return Destination(BackStackView)
+
+        key_buttons = []
+        for key in keys:
+            label = key["uid"] if key["uid"] else key["fpr"][-8:]
+            key_buttons.append(ButtonOption(label))
+
+        selected_key = self.run_screen(
+            ButtonListScreen,
+            title="Select Key",
+            is_button_text_centered=False,
+            button_data=key_buttons,
+        )
+
+        if selected_key == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        key = keys[selected_key]
+
+        self.loading_screen = LoadingScreenThread(text="Signing File\n\n\n\n\n\n(May take a while)")
+        self.loading_screen.start()
+        result = run(
+            [
+                "gpg",
+                "--batch",
+                "--yes",
+                "--local-user",
+                key["fpr"],
+                "--output",
+                f"{filename}.sig",
+                "--armor",
+                "--detach-sign",
+                filename,
+            ],
+            cwd=file_list_path,
+            capture_output=True,
+            text=True,
+        )
+        self.loading_screen.stop()
+
+        if result.returncode != 0:
+            logger.warning("gpg sign failed: %s", result.stderr)
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="Failed to sign file",
+                show_back_button=False,
+            )
+            return Destination(BackStackView)
+
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Success",
+            status_headline=None,
+            text=f"Signature saved as {filename}.sig",
+            show_back_button=False,
+            button_data=[ButtonOption("Done")],
+        )
+
+        return Destination(MainMenuView)
+
+
+class ToolsGPGSignManifestView(View):
+    def run(self):
+        from subprocess import run
+        import hashlib, shutil
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+
+        if len(self.controller.storage.seeds) > 0:
+            ret = self.run_screen(
+                WarningScreen,
+                title="WARNING",
+                status_headline=None,
+                text="These tools load data from the microSD card and may expose loaded secrets.",
+                show_back_button=True,
+                button_data=[ButtonOption("Continue")],
+            )
+            if ret == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+
+        file_list_path = MicroSD.get_microsd_dir() / "microsd-images"
+        os.makedirs(file_list_path, exist_ok=True)
+
+        manifest_name = "sha256.txt"
+
+        file_list = [
+            f
+            for f in os.listdir(file_list_path)
+            if (
+                not f.startswith('.')
+                and f != '__MACOSX'
+                and os.path.isfile(os.path.join(file_list_path, f))
+                and not f.endswith('.sig')
+                and f != manifest_name
+            )
+        ]
+
+        file_list.sort()
+
+        if not file_list:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No files found in microsd-images.",
+                show_back_button=False,
+                button_data=[ButtonOption("OK")],
+            )
+            return Destination(BackStackView)
+
+        self.loading_screen = LoadingScreenThread(text="Generating Manifest\n\n\n\n\n\n(May take a while)")
+        self.loading_screen.start()
+
+        if shutil.which("sha256sum"):
+            result = run(
+                ["sha256sum", *file_list],
+                cwd=file_list_path,
+                capture_output=True,
+                text=True,
+            )
+            manifest_content = result.stdout
         else:
-            file_list_path= '/boot/microsd-images/'
+            lines = []
+            for fname in file_list:
+                h = hashlib.sha256()
+                with open(file_list_path / fname, "rb") as f:
+                    for chunk in iter(lambda: f.read(65536), b""):
+                        h.update(chunk)
+                lines.append(f"{h.hexdigest()}  {fname}")
+            manifest_content = "\n".join(lines) + "\n"
 
-        verify_file_list = os.listdir(file_list_path)
+        (file_list_path / manifest_name).write_text(manifest_content)
+        self.loading_screen.stop()
 
-        verify_file_buttons = []
-        for file in verify_file_list:
-            verify_file_buttons.append(ButtonOption(file))
+        key_result = run(
+            ["gpg", "--list-secret-keys", "--with-colons"],
+            capture_output=True,
+            text=True,
+        )
+        keys = []
+        cur = None
+        for line in key_result.stdout.splitlines():
+            parts = line.split(":")
+            if parts[0] == "sec":
+                cur = {"fpr": None, "uid": None}
+                keys.append(cur)
+            elif parts[0] == "fpr" and cur is not None and cur.get("fpr") is None:
+                cur["fpr"] = parts[9]
+            elif parts[0] == "uid" and cur is not None and cur.get("uid") is None:
+                cur["uid"] = parts[9]
+
+        if not keys:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No private keys found",
+                show_back_button=False,
+                button_data=[ButtonOption("OK")],
+            )
+            return Destination(BackStackView)
+
+        key_buttons = []
+        for key in keys:
+            label = key["uid"] if key["uid"] else key["fpr"][-8:]
+            key_buttons.append(ButtonOption(label))
+
+        selected_key = self.run_screen(
+            ButtonListScreen,
+            title="Select Key",
+            is_button_text_centered=False,
+            button_data=key_buttons,
+        )
+
+        if selected_key == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        key = keys[selected_key]
+
+        self.loading_screen = LoadingScreenThread(text="Signing File\n\n\n\n\n\n(May take a while)")
+        self.loading_screen.start()
+        result = run(
+            [
+                "gpg",
+                "--batch",
+                "--yes",
+                "--local-user",
+                key["fpr"],
+                "--output",
+                f"{manifest_name}.sig",
+                "--armor",
+                "--detach-sign",
+                manifest_name,
+            ],
+            cwd=file_list_path,
+            capture_output=True,
+            text=True,
+        )
+        self.loading_screen.stop()
+
+        if result.returncode != 0:
+            logger.warning("gpg sign failed: %s", result.stderr)
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="Failed to sign manifest",
+                show_back_button=False,
+            )
+            return Destination(BackStackView)
+
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Success",
+            status_headline=None,
+            text=f"Manifest saved as {manifest_name} and {manifest_name}.sig",
+            show_back_button=False,
+            button_data=[ButtonOption("Done")],
+        )
+
+        return Destination(MainMenuView)
+
+
+def _check_future_key_creation(view, key_blob: str) -> None:
+    """Warn if the key's creation date is in the future and offer to set system time."""
+    from subprocess import run
+    from pgpy import PGPKey
+
+    try:
+        key, _ = PGPKey.from_blob(key_blob)
+    except Exception:
+        return
+
+    import time
+
+    if key.created and key.created.timestamp() > time.time():
+        formatted = key.created.strftime("%Y-%m-%d %H:%M:%S")
+        ret = view.run_screen(
+            WarningScreen,
+            title="Future Date",
+            status_headline=None,
+            text=f"Key date {formatted} is in the future.\nUpdate system time?",
+            show_back_button=False,
+            button_data=[ButtonOption("Update"), ButtonOption("Skip")],
+        )
+        if ret == 0:
+            run(["date", "-s", formatted], capture_output=True)
+            # Reset activity-based timers since system time changed
+            view.controller.reset_screensaver_timeout()
+
+class ToolsGPGImportPubkeyMenuView(View):
+    LOAD_QR = ButtonOption("From QR")
+    LOAD_FILE = ButtonOption("From File")
+    LOAD_SEEDKEEPER = ButtonOption("From Seedkeeper")
+
+    def run(self):
+        button_data = [self.LOAD_QR, self.LOAD_FILE, self.LOAD_SEEDKEEPER]
+
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title="Import GPG Pubkey",
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        if button_data[selected_menu_num] == self.LOAD_QR:
+            return Destination(ToolsGPGLoadPubkeyQRView)
+        if button_data[selected_menu_num] == self.LOAD_FILE:
+            return Destination(ToolsGPGImportPubkeyFileView)
+        if button_data[selected_menu_num] == self.LOAD_SEEDKEEPER:
+            return Destination(ToolsGPGImportPubkeySeedkeeperView)
+
+
+class ToolsGPGLoadPubkeyQRView(View):
+    def run(self):
+        from subprocess import run
+        from urtypes.bytes import Bytes
+        from seedsigner.gui.screens.screen import WarningScreen, LargeIconStatusScreen
+        from seedsigner.gui.screens.scan_screens import ScanScreen
+        from seedsigner.models.decode_qr import DecodeQR, QRType
+        import time
+
+        decoder = DecodeQR()
+        ScanScreen(decoder=decoder, instructions_text="Scan public key").display()
+        self.controller.reset_screensaver_timeout()
+        time.sleep(0.1)
+        if not decoder.is_complete:
+            return Destination(BackStackView)
+
+        if decoder.qr_type == QRType.BYTES__UR:
+            raw = Bytes.from_cbor(decoder.decoder.result_message().cbor).data
+            if isinstance(raw, memoryview):
+                raw = raw.tobytes()
+            if isinstance(raw, (bytes, bytearray)):
+                key_blob = raw.decode("utf-8")
+            else:
+                key_blob = raw
+        elif decoder.qr_type == QRType.TEXT:
+            key_blob = decoder.get_text()
+        else:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="Unsupported QR format",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        _check_future_key_creation(self, key_blob)
+
+        imported = run(["gpg", "--import"], input=key_blob, capture_output=True, text=True)
+        if imported.returncode != 0:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="Failed to import key",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Success",
+            status_headline=None,
+            text="Pubkey imported",
+            show_back_button=False,
+            button_data=[ButtonOption("Continue")],
+        )
+
+        return Destination(ToolsGPGMenuView)
+
+
+class ToolsGPGImportPubkeyFileView(View):
+    def run(self):
+        from subprocess import run
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+
+        if len(self.controller.storage.seeds) > 0:
+            ret = self.run_screen(
+                WarningScreen,
+                title="WARNING",
+                status_headline=None,
+                text="These tools load data from the microSD card and may expose loaded secrets.",
+                show_back_button=True,
+                button_data=[ButtonOption("Continue")]
+            )
+            if ret == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+
+        file_list_path = MicroSD.get_microsd_dir() / "microsd-images"
+        os.makedirs(file_list_path, exist_ok=True)
+
+        verify_file_list = [
+            f
+            for f in os.listdir(file_list_path)
+            if (
+                not f.startswith('.')
+                and f != '__MACOSX'
+                and os.path.isfile(os.path.join(file_list_path, f))
+            )
+        ]
+
+        verify_file_buttons = [ButtonOption(file) for file in verify_file_list]
+
+        if not verify_file_buttons:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No files found in microsd-images.",
+                show_back_button=False,
+                button_data=[ButtonOption("OK")],
+            )
+            return Destination(BackStackView)
 
         selected_file_num = self.run_screen(
             ButtonListScreen,
@@ -3785,9 +8685,14 @@ class ToolsGPGImportPubkeyView(View):
             return Destination(BackStackView)
 
         verify_file_name = verify_file_list[selected_file_num]
-        logger.info("Selected:", verify_file_name)
+        logger.info("Selected: %s", verify_file_name)
+        filepath = os.path.join(file_list_path, verify_file_name)
+        with open(filepath, "r") as f:
+            key_blob = f.read()
 
-        cmd = "gpg --import " + file_list_path + verify_file_name
+        _check_future_key_creation(self, key_blob)
+
+        cmd = f"gpg --import {filepath}"
 
         data = run(cmd, capture_output=True, shell=True, text=True)
 
@@ -3796,13 +8701,12 @@ class ToolsGPGImportPubkeyView(View):
         certs_imported = 0
         certs_processed = 0
         for line in result:
-            if "not changed" in line: 
+            if "not changed" in line:
                 certs_not_changed += 1
                 certs_processed += 1
             elif " imported" in line:
                 certs_imported += 1
                 certs_processed += 1
-
 
         self.run_screen(
                 LargeIconStatusScreen,
@@ -3812,8 +8716,2883 @@ class ToolsGPGImportPubkeyView(View):
                 show_back_button=False,
                 button_data=[ButtonOption("Continue")]
             )
-        
+
+        return Destination(ToolsGPGMenuView)
+
+
+class ToolsGPGImportPubkeySeedkeeperView(View):
+    def run(self):
+        from subprocess import run
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+
+        Satochip_Connector = seedkeeper_utils.init_satochip(
+            self, init_card_filter=["seedkeeper"]
+        )
+        if not Satochip_Connector:
+            return Destination(BackStackView)
+
+        self.loading_screen = LoadingScreenThread(text="Listing Keys\n\n\n\n\n\n")
+        self.loading_screen.start()
+        headers = Satochip_Connector.seedkeeper_list_secret_headers()
+        self.loading_screen.stop()
+
+        status = Satochip_Connector.card_get_status()[3]
+
+        secret_ids = []
+        buttons = []
+        for header in headers:
+            stype = SEEDKEEPER_DIC_TYPE.get(header['type'], hex(header['type']))
+            label = header.get('label', '')
+            if stype == "Data" and label.startswith("GPGPub:"):
+                display_label = label[len("GPGPub:") :]
+                secret_ids.append(header['id'])
+                buttons.append(ButtonOption(display_label))
+
+        if not buttons:
+            self.run_screen(
+                WarningScreen,
+                title="No Keys",
+                status_headline=None,
+                text="No GPG public keys on Seedkeeper",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Select Key",
+            is_button_text_centered=False,
+            button_data=buttons,
+        )
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        sid = secret_ids[selected]
+
+        self.loading_screen = LoadingScreenThread(text="Loading Key\n\n\n\n\n\n")
+        self.loading_screen.start()
+        secret_dict = Satochip_Connector.seedkeeper_export_secret(sid, None)
+        self.loading_screen.stop()
+
+        raw = secret_dict['secret_list']
+        if status['protocol_minor_version'] == 1:
+            length = raw[0]
+            key_bytes = bytes(raw[1:1 + length])
+        else:
+            length = (raw[0] << 8) + raw[1]
+            key_bytes = bytes(raw[2:2 + length])
+        pubkey = key_bytes.decode("utf-8")
+
+        _check_future_key_creation(self, pubkey)
+
+        imported = run(
+            ["gpg", "--import"],
+            input=pubkey,
+            capture_output=True,
+            text=True,
+        )
+        if imported.returncode != 0:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="Failed to import key",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Success",
+            status_headline=None,
+            text="Pubkey imported",
+            show_back_button=False,
+            button_data=[ButtonOption("Continue")],
+        )
+
+        return Destination(ToolsGPGMenuView)
+
+
+class ToolsGPGImportPrivkeyMenuView(View):
+    GENERATE_NEW = ButtonOption("Generate New")
+    LOAD_BIP85_KEY = ButtonOption("Derive BIP85")
+    LOAD_QR = ButtonOption("From QR")
+    LOAD_FILE = ButtonOption("From File")
+    LOAD_SEEDKEEPER = ButtonOption("From Seedkeeper")
+
+    def run(self):
+        button_data = [
+            self.GENERATE_NEW,
+            self.LOAD_BIP85_KEY,
+            self.LOAD_QR,
+            self.LOAD_FILE,
+            self.LOAD_SEEDKEEPER,
+        ]
+
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title="Import GPG Privkey",
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        if button_data[selected_menu_num] == self.GENERATE_NEW:
+            return Destination(ToolsGPGGenerateKeyView)
+        if button_data[selected_menu_num] == self.LOAD_BIP85_KEY:
+            return Destination(ToolsGPGLoadBIP85KeyView)
+        if button_data[selected_menu_num] == self.LOAD_QR:
+            return Destination(ToolsGPGLoadPrivkeyQRView)
+        if button_data[selected_menu_num] == self.LOAD_FILE:
+            return Destination(ToolsGPGLoadPrivkeyFileView)
+        if button_data[selected_menu_num] == self.LOAD_SEEDKEEPER:
+            return Destination(ToolsGPGLoadPrivkeySeedkeeperView)
+
+
+class ToolsGPGLoadPrivkeyQRView(View):
+    def run(self):
+        from subprocess import run
+        from urtypes.bytes import Bytes
+        from seedsigner.gui.screens.screen import WarningScreen, LargeIconStatusScreen
+        from seedsigner.gui.screens.scan_screens import ScanScreen
+        from seedsigner.models.decode_qr import DecodeQR, QRType
+        import time
+
+        decoder = DecodeQR()
+        ScanScreen(decoder=decoder, instructions_text="Scan private key").display()
+        self.controller.reset_screensaver_timeout()
+        time.sleep(0.1)
+        if not decoder.is_complete:
+            return Destination(BackStackView)
+
+        if decoder.qr_type == QRType.BYTES__UR:
+            raw = Bytes.from_cbor(decoder.decoder.result_message().cbor).data
+            if isinstance(raw, memoryview):
+                raw = raw.tobytes()
+            if isinstance(raw, (bytes, bytearray)):
+                key_blob = raw.decode("utf-8")
+            else:
+                key_blob = raw
+        elif decoder.qr_type == QRType.TEXT:
+            key_blob = decoder.get_text()
+        else:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="Unsupported QR format",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        _check_future_key_creation(self, key_blob)
+
+        imported = run(["gpg", "--import"], input=key_blob, capture_output=True, text=True)
+        if imported.returncode != 0:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="Failed to import key",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Success",
+            status_headline=None,
+            text="Privkey imported",
+            show_back_button=False,
+            button_data=[ButtonOption("Continue")],
+        )
+
+        return Destination(ToolsGPGMenuView)
+
+
+class ToolsGPGLoadPrivkeyFileView(View):
+    def run(self):
+        from subprocess import run
+        from seedsigner.gui.screens import tools_screens
+
+        if len(self.controller.storage.seeds) > 0:
+            ret = self.run_screen(
+                WarningScreen,
+                title="WARNING",
+                status_headline=None,
+                text="These tools load data from the microSD card and may expose loaded secrets.",
+                show_back_button=True,
+                button_data=[ButtonOption("Continue")],
+            )
+            if ret == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+
+        file_list_path = MicroSD.get_microsd_dir() / "microsd-images"
+        os.makedirs(file_list_path, exist_ok=True)
+
+        file_list = [
+            f
+            for f in os.listdir(file_list_path)
+            if (
+                not f.startswith('.')
+                and f != '__MACOSX'
+                and os.path.isfile(os.path.join(file_list_path, f))
+            )
+        ]
+
+        buttons = [ButtonOption(file) for file in file_list]
+
+        if not buttons:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No files found in microsd-images.",
+                show_back_button=False,
+                button_data=[ButtonOption("OK")],
+            )
+            return Destination(BackStackView)
+
+        selected_file_num = self.run_screen(
+            ButtonListScreen,
+            title="Select File",
+            is_button_text_centered=False,
+            button_data=buttons,
+        )
+
+        if selected_file_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        filename = file_list[selected_file_num]
+        filepath = os.path.join(file_list_path, filename)
+
+        ret_dict = tools_screens.ToolsTextQRTextEntryScreen(
+            textToEncode="", title="Passphrase"
+        ).display()
+        if "is_back_button" in ret_dict:
+            return Destination(BackStackView)
+
+        try:
+            import re
+
+            passphrase = bytes(
+                re.sub(r"\\(?!u)", r"\\\\", ret_dict["textToEncode"]),
+                encoding="raw_unicode_escape",
+            ).decode("unicode_escape")
+        except UnicodeDecodeError:
+            passphrase = ret_dict["textToEncode"]
+
+        decrypted = run(
+            [
+                "gpg",
+                "--batch",
+                "--yes",
+                "--pinentry-mode",
+                "loopback",
+                "--passphrase",
+                passphrase,
+                "--decrypt",
+                filepath,
+            ],
+            capture_output=True,
+            text=True,
+        )
+        if decrypted.returncode != 0:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="Failed to decrypt key",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        _check_future_key_creation(self, decrypted.stdout)
+
+        imported = run(
+            ["gpg", "--import"],
+            input=decrypted.stdout,
+            capture_output=True,
+            text=True,
+        )
+        if imported.returncode != 0:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="Failed to import key",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Success",
+            status_headline=None,
+            text="Privkey imported",
+            show_back_button=False,
+            button_data=[ButtonOption("Continue")],
+        )
+
+        return Destination(ToolsGPGMenuView)
+
+
+class ToolsGPGLoadPrivkeySeedkeeperView(View):
+    def run(self):
+        from subprocess import run
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+
+        Satochip_Connector = seedkeeper_utils.init_satochip(
+            self, init_card_filter=["seedkeeper"]
+        )
+        if not Satochip_Connector:
+            return Destination(BackStackView)
+
+        self.loading_screen = LoadingScreenThread(text="Listing Keys\n\n\n\n\n\n")
+        self.loading_screen.start()
+        headers = Satochip_Connector.seedkeeper_list_secret_headers()
+        self.loading_screen.stop()
+
+        status = Satochip_Connector.card_get_status()[3]
+
+        secret_ids = []
+        buttons = []
+        for header in headers:
+            stype = SEEDKEEPER_DIC_TYPE.get(header['type'], hex(header['type']))
+            label = header.get('label', '')
+            if stype == "Data" and label.startswith("GPGPriv:"):
+                display_label = label[len("GPGPriv:") :]
+                secret_ids.append(header['id'])
+                buttons.append(ButtonOption(display_label))
+
+        if not buttons:
+            self.run_screen(
+                WarningScreen,
+                title="No Keys",
+                status_headline=None,
+                text="No GPG private keys on Seedkeeper",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Select Key",
+            is_button_text_centered=False,
+            button_data=buttons,
+        )
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        sid = secret_ids[selected]
+
+        self.loading_screen = LoadingScreenThread(text="Loading Key\n\n\n\n\n\n")
+        self.loading_screen.start()
+        secret_dict = Satochip_Connector.seedkeeper_export_secret(sid, None)
+        self.loading_screen.stop()
+
+        raw = secret_dict['secret_list']
+        if status['protocol_minor_version'] == 1:
+            length = raw[0]
+            key_bytes = bytes(raw[1:1 + length])
+        else:
+            length = (raw[0] << 8) + raw[1]
+            key_bytes = bytes(raw[2:2 + length])
+        privkey = key_bytes.decode("utf-8")
+
+        _check_future_key_creation(self, privkey)
+
+        imported = run(
+            ["gpg", "--import"],
+            input=privkey,
+            capture_output=True,
+            text=True,
+        )
+        if imported.returncode != 0:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="Failed to import key",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Success",
+            status_headline=None,
+            text="Privkey imported",
+            show_back_button=False,
+            button_data=[ButtonOption("Continue")],
+        )
+
+        return Destination(ToolsGPGMenuView)
+
+
+def bip85_rsa_from_root(root, bits: int, index: int, sub_index: int | None = None):
+    from embit import bip85
+    from Cryptodome.PublicKey import RSA
+    from seedsigner.helpers.bip85_drng import BIP85DRNG
+
+    path = [bits, index]
+    if sub_index is not None:
+        path.append(sub_index)
+    entropy = bip85.derive_entropy(root, BIP85_GPG_APP_RSA, path)
+    drng = BIP85DRNG.new(entropy)
+    return RSA.generate(bits, randfunc=drng.read)
+
+
+def bip85_ed25519_from_root(
+    root, index: int, sub_index: int | None = None, alg: str = "EdDSA"
+):
+    from embit import bip85
+    from cryptography.hazmat.primitives.asymmetric import ed25519, x25519
+    from cryptography.hazmat.primitives import serialization
+    from pgpy.constants import EllipticCurveOID
+    from pgpy.packet import fields
+
+    path = [BIP85_GPG_ECC_KEY_BITS, index]
+    if sub_index is not None:
+        path.append(sub_index)
+    entropy = bip85.derive_entropy(root, BIP85_GPG_APP_CURVE25519, path)
+    d_bytes = entropy[:32]
+    if alg == "EdDSA":
+        priv = fields.EdDSAPriv()
+        priv.oid = EllipticCurveOID.Ed25519
+        pub_bytes = (
+            ed25519.Ed25519PrivateKey.from_private_bytes(d_bytes)
+            .public_key()
+            .public_bytes(
+                encoding=serialization.Encoding.Raw,
+                format=serialization.PublicFormat.Raw,
+            )
+        )
+        priv.p = fields.ECPoint.from_values(
+            priv.oid.key_size,
+            fields.ECPointFormat.Native,
+            pub_bytes,
+        )
+        priv.s = fields.MPI(int.from_bytes(d_bytes, "big"))
+    else:
+        priv = fields.ECDHPriv()
+        priv.oid = EllipticCurveOID.Curve25519
+        priv.kdf.halg = priv.oid.kdf_halg
+        priv.kdf.encalg = priv.oid.kek_alg
+        pub_bytes = (
+            x25519.X25519PrivateKey.from_private_bytes(d_bytes)
+            .public_key()
+            .public_bytes(
+                encoding=serialization.Encoding.Raw,
+                format=serialization.PublicFormat.Raw,
+            )
+        )
+        priv.p = fields.ECPoint.from_values(
+            priv.oid.key_size,
+            fields.ECPointFormat.Native,
+            pub_bytes,
+        )
+        priv.s = fields.MPI(int.from_bytes(d_bytes, "big"))
+    priv._compute_chksum()
+    return priv
+
+
+def gpg_quick_addkey(fingerprint: str, alg: str, usage: str):
+    cmd = [
+        "gpg",
+        "--batch",
+        "--pinentry-mode",
+        "loopback",
+        "--passphrase",
+        "",
+        "--quick-addkey",
+        fingerprint,
+        alg,
+        usage,
+    ]
+    return subprocess.run(cmd)
+
+
+def gpg_edit_subkey(fingerprint: str, idx: int, action: str):
+    cmd = [
+        "gpg",
+        "--batch",
+        "--yes",
+        "--pinentry-mode",
+        "loopback",
+        "--passphrase",
+        "",
+        "--command-fd",
+        "0",
+        "--status-fd",
+        "2",
+        "--edit-key",
+        fingerprint,
+    ]
+    if action == "revkey":
+        # Confirm revocation, supply a default reason code of 0 (no reason),
+        # send an empty description, confirm the summary, then save.
+        script = f"key {idx}\nrevkey\ny\n0\n\ny\nsave\n"
+    else:
+        script = f"key {idx}\n{action}\ny\nsave\n"
+    return subprocess.run(cmd, input=script, text=True)
+
+
+def gpg_edit_uid(fingerprint: str, idx: int, action: str):
+    cmd = [
+        "gpg",
+        "--batch",
+        "--yes",
+        "--pinentry-mode",
+        "loopback",
+        "--passphrase",
+        "",
+        "--command-fd",
+        "0",
+        "--status-fd",
+        "2",
+        "--edit-key",
+        fingerprint,
+    ]
+    script = f"uid {idx}\n{action}\ny\nsave\n"
+    return subprocess.run(cmd, input=script, text=True)
+
+
+def gpg_export_selected_subkeys(fingerprint: str, sub_fprs: list[str]):
+    """Export selected secret subkeys with a stubbed primary key.
+
+    ``gpg --export-secret-subkeys`` strips the primary secret key material while
+    including the full secret data for the requested subkeys.  Older GPG
+    releases may not support the ``keep-subkey`` filter, but individual subkeys
+    can still be targeted by appending ``!`` to each desired key ID.  This
+    helper builds that command and returns the completed process.
+    """
+
+    keyids = [f[-16:] + "!" for f in sub_fprs]
+    cmd = [
+        "gpg",
+        "--armor",
+        "--export-options=export-minimal",
+        "--export-secret-subkeys",
+        fingerprint,
+        *keyids,
+    ]
+    return subprocess.run(cmd, capture_output=True, text=True)
+
+
+def _normalize_bip85_alg(alg: str) -> str:
+    """Map user-facing algorithm identifiers to canonical values."""
+
+    if not alg:
+        return alg
+    alias = {
+        "p256": "nistp256",
+    }
+    alg_lower = alg.lower()
+    return alias.get(alg_lower, alg_lower)
+
+
+def _bip85_subkey_specs(alg):
+    from pgpy.constants import PubKeyAlgorithm, KeyFlags
+
+    alg = _normalize_bip85_alg(alg)
+    if alg == "ed25519":
+        return [
+            (0, PubKeyAlgorithm.ECDH, {KeyFlags.EncryptCommunications, KeyFlags.EncryptStorage}, "ECDH"),
+            (1, PubKeyAlgorithm.EdDSA, {KeyFlags.Authentication, KeyFlags.Sign}, "EdDSA"),
+            (2, PubKeyAlgorithm.EdDSA, {KeyFlags.Sign}, "EdDSA"),
+        ]
+    if alg in ["secp256k1", "nistp256", "brainpoolp256r1"]:
+        return [
+            (0, PubKeyAlgorithm.ECDH, {KeyFlags.EncryptCommunications, KeyFlags.EncryptStorage}, "ECDH"),
+            (1, PubKeyAlgorithm.ECDSA, {KeyFlags.Authentication, KeyFlags.Sign}, "ECDSA"),
+            (2, PubKeyAlgorithm.ECDSA, {KeyFlags.Sign}, "ECDSA"),
+        ]
+    return [
+        (0, PubKeyAlgorithm.RSAEncryptOrSign, {KeyFlags.EncryptCommunications, KeyFlags.EncryptStorage}),
+        (1, PubKeyAlgorithm.RSAEncryptOrSign, {KeyFlags.Authentication, KeyFlags.Sign}),
+        (2, PubKeyAlgorithm.RSAEncryptOrSign, {KeyFlags.Sign}),
+    ]
+
+
+def bip85_verify_existing(
+    seed,
+    fingerprint: str,
+    key_index: int,
+    created_ts: int,
+    primary_algo: str,
+    primary_bits: str,
+    primary_curve: str,
+    subkeys,
+) -> bool:
+    from embit import bip32
+    from pgpy import PGPKey
+    from pgpy.pgp import PrivKeyV4, PrivSubKeyV4
+    from pgpy.constants import PubKeyAlgorithm
+    from pgpy.packet import fields
+    from pgpy.packet.types import MPI
+    from Cryptodome.PublicKey import RSA
+    from datetime import datetime, timezone
+
+    logger.info(
+        "bip85_verify_existing: fpr=%s index=%s", fingerprint, key_index
+    )
+    root = bip32.HDKey.from_seed(seed.seed_bytes)
+    created = datetime.fromtimestamp(created_ts, tz=timezone.utc)
+    primary_curve = _normalize_bip85_alg(primary_curve)
+
+    def rsa_to_privpacket(rsa_key: RSA.RsaKey) -> fields.RSAPriv:
+        priv = fields.RSAPriv()
+        priv.n = MPI(rsa_key.n)
+        priv.e = MPI(rsa_key.e)
+        priv.d = MPI(rsa_key.d)
+        priv.p = MPI(rsa_key.p)
+        priv.q = MPI(rsa_key.q)
+        priv.u = MPI(pow(rsa_key.p, -1, rsa_key.q))
+        priv._compute_chksum()
+        return priv
+
+    pk = PrivKeyV4()
+    if primary_algo in ("1", "2", "3"):
+        pk.pkalg = PubKeyAlgorithm.RSAEncryptOrSign
+        bits = int(primary_bits) if primary_bits else 0
+        rsa_main = bip85_rsa_from_root(root, bits, key_index)
+        pk.keymaterial = rsa_to_privpacket(rsa_main)
+    elif primary_curve == "secp256k1":
+        pk.pkalg = PubKeyAlgorithm.ECDSA
+        pk.keymaterial = bip85_secp256k1_from_root(root, key_index)
+    elif primary_curve == "nistp256":
+        pk.pkalg = PubKeyAlgorithm.ECDSA
+        pk.keymaterial = bip85_p256_from_root(root, key_index)
+    elif primary_curve == "brainpoolp256r1":
+        pk.pkalg = PubKeyAlgorithm.ECDSA
+        pk.keymaterial = bip85_brainpoolp256r1_from_root(root, key_index)
+    elif primary_curve == "ed25519":
+        pk.pkalg = PubKeyAlgorithm.EdDSA
+        pk.keymaterial = bip85_ed25519_from_root(root, key_index)
+    else:
+        logger.warning(
+            "Unsupported primary key params: algo=%s bits=%s curve=%s",
+            primary_algo,
+            primary_bits,
+            primary_curve,
+        )
+        return False
+    pk.created = created
+    pk.update_hlen()
+    primary = PGPKey()
+    primary._key = pk
+    if primary.fingerprint != fingerprint:
+        logger.warning(
+            "Primary key fingerprint mismatch: expected %s got %s",
+            fingerprint,
+            primary.fingerprint,
+        )
+        return False
+
+    for sk in subkeys:
+        logger.info("Validating subkey idx=%s fpr=%s", sk["idx"], sk["fpr"])
+        j = sk["idx"] - 1
+        group_idx = j // 3
+        sub_index = j % 3
+        subpkt = PrivSubKeyV4()
+        algo = sk["algo"]
+        curve = _normalize_bip85_alg(sk["curve"])
+        bits = int(sk.get("bits", "0") or "0")
+        if algo in ("1", "2", "3"):
+            subpkt.pkalg = PubKeyAlgorithm.RSAEncryptOrSign
+            rsa_sub = bip85_rsa_from_root(root, bits, group_idx, sub_index)
+            subpkt.keymaterial = rsa_to_privpacket(rsa_sub)
+        elif curve == "secp256k1":
+            subpkt.pkalg = PubKeyAlgorithm.ECDH if algo == "18" else PubKeyAlgorithm.ECDSA
+            alg_name = "ECDH" if algo == "18" else "ECDSA"
+            subpkt.keymaterial = bip85_secp256k1_from_root(root, group_idx, sub_index, alg_name)
+        elif curve == "nistp256":
+            subpkt.pkalg = PubKeyAlgorithm.ECDH if algo == "18" else PubKeyAlgorithm.ECDSA
+            alg_name = "ECDH" if algo == "18" else "ECDSA"
+            subpkt.keymaterial = bip85_p256_from_root(root, group_idx, sub_index, alg_name)
+        elif curve == "brainpoolp256r1":
+            subpkt.pkalg = PubKeyAlgorithm.ECDH if algo == "18" else PubKeyAlgorithm.ECDSA
+            alg_name = "ECDH" if algo == "18" else "ECDSA"
+            subpkt.keymaterial = bip85_brainpoolp256r1_from_root(root, group_idx, sub_index, alg_name)
+        elif curve == "cv25519":
+            if algo != "18":
+                logger.warning(
+                    "Unsupported subkey params at idx=%s: algo=%s curve=%s bits=%s",
+                    sk["idx"],
+                    algo,
+                    curve,
+                    bits,
+                )
+                return False
+            subpkt.pkalg = PubKeyAlgorithm.ECDH
+            subpkt.keymaterial = bip85_ed25519_from_root(root, group_idx, sub_index, "ECDH")
+        elif curve == "ed25519":
+            subpkt.pkalg = PubKeyAlgorithm.EdDSA if algo == "22" else PubKeyAlgorithm.ECDH
+            alg_name = "EdDSA" if algo == "22" else "ECDH"
+            subpkt.keymaterial = bip85_ed25519_from_root(root, group_idx, sub_index, alg_name)
+        else:
+            logger.warning(
+                "Unsupported subkey params at idx=%s: algo=%s curve=%s bits=%s",
+                sk["idx"],
+                algo,
+                curve,
+                bits,
+            )
+            return False
+        subpkt.created = created
+        subpkt.update_hlen()
+        subkey = PGPKey()
+        subkey._key = subpkt
+        if subkey.fingerprint != sk["fpr"]:
+            logger.warning(
+                "Subkey fingerprint mismatch at idx=%s: expected %s got %s",
+                sk["idx"],
+                sk["fpr"],
+                subkey.fingerprint,
+            )
+            return False
+    logger.info("Primary and subkeys validated successfully")
+    return True
+
+
+from typing import Optional, List, Dict
+
+
+def bip85_add_subkeys(
+    fingerprint: str, alg: str, key_index: int, start_index: int, seed
+) -> Optional[List[Dict]]:
+    from subprocess import run
+    from embit import bip32
+    from pgpy import PGPKey
+    from pgpy.constants import (
+        HashAlgorithm,
+        SymmetricKeyAlgorithm,
+        CompressionAlgorithm,
+    )
+    from pgpy.pgp import PrivSubKeyV4
+    from pgpy.packet import fields
+    from pgpy.packet.types import MPI
+    from Cryptodome.PublicKey import RSA
+
+    logger.info(
+        "bip85_add_subkeys: fpr=%s alg=%s key_index=%s start_index=%s",
+        fingerprint,
+        alg,
+        key_index,
+        start_index,
+    )
+    root = bip32.HDKey.from_seed(seed.seed_bytes)
+
+    export = run(
+        ["gpg", "--armor", "--export-secret-keys", fingerprint],
+        capture_output=True,
+        text=True,
+    )
+    pgp_key, _ = PGPKey.from_blob(export.stdout)
+    created = pgp_key._key.created
+    expires = pgp_key.expires_at
+
+    KEY_BITS = (
+        2048
+        if alg == "rsa2048"
+        else 3072
+        if alg == "rsa3072"
+        else 4096
+        if alg == "rsa4096"
+        else None
+    )
+
+    def rsa_to_privpacket(rsa_key: RSA.RsaKey) -> fields.RSAPriv:
+        priv = fields.RSAPriv()
+        priv.n = MPI(rsa_key.n)
+        priv.e = MPI(rsa_key.e)
+        priv.d = MPI(rsa_key.d)
+        priv.p = MPI(rsa_key.p)
+        priv.q = MPI(rsa_key.q)
+        priv.u = MPI(pow(rsa_key.p, -1, rsa_key.q))
+        priv._compute_chksum()
+        return priv
+
+    alg_canon = _normalize_bip85_alg(alg)
+    subkey_specs = _bip85_subkey_specs(alg)
+    type_map = {
+        "nistp256": "ECC NIST P-256",
+        "p256": "ECC NIST P-256",
+        "brainpoolp256r1": "ECC Brainpool P-256",
+        "brainpoolP256r1": "ECC Brainpool P-256",
+        "secp256k1": "ECC secp256k1",
+        "ed25519": "ECC Ed25519",
+        "rsa2048": "RSA 2048",
+        "rsa3072": "RSA 3072",
+        "rsa4096": "RSA 4096",
+    }
+    alg_label = type_map.get(alg_canon, type_map.get(alg, alg))
+
+    added = []
+    for offset, pkalg, usage, *alg_name in subkey_specs:
+        sub_index = (start_index % 3) + offset
+        global_index = start_index + offset
+        subpkt = PrivSubKeyV4()
+        subpkt.pkalg = pkalg
+        if alg_canon == "secp256k1":
+            subpkt.keymaterial = bip85_secp256k1_from_root(root, key_index, sub_index, alg_name[0])
+        elif alg_canon == "nistp256":
+            subpkt.keymaterial = bip85_p256_from_root(root, key_index, sub_index, alg_name[0])
+        elif alg_canon == "brainpoolp256r1":
+            subpkt.keymaterial = bip85_brainpoolp256r1_from_root(root, key_index, sub_index, alg_name[0])
+        elif alg_canon == "ed25519":
+            subpkt.keymaterial = bip85_ed25519_from_root(root, key_index, sub_index, alg_name[0])
+        else:
+            rsa_sub = bip85_rsa_from_root(root, KEY_BITS, key_index, sub_index)
+            subpkt.keymaterial = rsa_to_privpacket(rsa_sub)
+        subpkt.created = created
+        subpkt.update_hlen()
+        subkey = PGPKey()
+        subkey._key = subpkt
+        pgp_key.add_subkey(
+            subkey,
+            usage=usage,
+            hashes=[HashAlgorithm.SHA256],
+            ciphers=[SymmetricKeyAlgorithm.AES256],
+            compression=[CompressionAlgorithm.ZLIB],
+            expires=expires,
+        )
+        alg_name_str = alg_name[0] if alg_name else pkalg.name
+        sub_type = alg_label if alg_canon.startswith("rsa") else f"{alg_name_str} {alg_label}"
+        added.append({"index": global_index, "type": sub_type, "fingerprint": subkey.fingerprint})
+
+    armored = str(pgp_key)
+    r = run(
+        ["gpg", "--batch", "--import-options", "merge-only", "--import"],
+        input=armored.encode(),
+        capture_output=True,
+    )
+    return added if r.returncode == 0 else None
+
+
+def loose_add_subkeys(fingerprint: str, alg: str) -> bool:
+    """Generate and merge random subkeys for algorithms unsupported by GPG."""
+    from subprocess import run
+    from contextlib import nullcontext
+    from pgpy import PGPKey
+    from pgpy.constants import (
+        HashAlgorithm,
+        SymmetricKeyAlgorithm,
+        CompressionAlgorithm,
+        EllipticCurveOID,
+    )
+
+    alg_canon = _normalize_bip85_alg(alg)
+    curve_map = {
+        "secp256k1": EllipticCurveOID.SECP256K1,
+        "nistp256": EllipticCurveOID.NIST_P256,
+        "brainpoolp256r1": EllipticCurveOID.Brainpool_P256,
+    }
+    curve = curve_map[alg_canon]
+
+    export = run(
+        ["gpg", "--armor", "--export-secret-keys", fingerprint],
+        capture_output=True,
+        text=True,
+    )
+    pgp_key, _ = PGPKey.from_blob(export.stdout)
+    created = pgp_key._key.created
+    expires = pgp_key.expires_at
+
+    subkey_specs = _bip85_subkey_specs(alg)
+    ctx = pgp_key.unlock("") if pgp_key.is_protected else nullcontext()
+    with ctx:
+        for _, pkalg, usage, *rest in subkey_specs:
+            subkey = PGPKey.new(pkalg, curve)
+            subkey._key.created = created
+            subkey._key.update_hlen()
+            pgp_key.add_subkey(
+                subkey,
+                usage=usage,
+                hashes=[HashAlgorithm.SHA256],
+                ciphers=[SymmetricKeyAlgorithm.AES256],
+                compression=[CompressionAlgorithm.ZLIB],
+                expires=expires,
+            )
+
+    armored = str(pgp_key)
+    r = run(
+        ["gpg", "--batch", "--import-options", "merge-only", "--import"],
+        input=armored.encode(),
+        capture_output=True,
+    )
+    return r.returncode == 0
+
+def bip85_secp256k1_from_root(
+    root, index: int, sub_index: int | None = None, alg: str = "ECDSA"
+):
+    from embit import bip85
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from pgpy.constants import EllipticCurveOID
+    from pgpy.packet import fields
+
+    path = [BIP85_GPG_ECC_KEY_BITS, index]
+    if sub_index is not None:
+        path.append(sub_index)
+    entropy = bip85.derive_entropy(root, BIP85_GPG_APP_SECP256K1, path)
+    order = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
+    d = int.from_bytes(entropy[:32], "big") % order
+    if d == 0:
+        d = 1
+    pn = ec.derive_private_key(d, ec.SECP256K1()).public_key().public_numbers()
+    if alg == "ECDH":
+        priv = fields.ECDHPriv()
+        priv.oid = EllipticCurveOID.SECP256K1
+        priv.kdf.halg = priv.oid.kdf_halg
+        priv.kdf.encalg = priv.oid.kek_alg
+    else:
+        priv = fields.ECDSAPriv()
+        priv.oid = EllipticCurveOID.SECP256K1
+    priv.p = fields.ECPoint.from_values(
+        priv.oid.key_size,
+        fields.ECPointFormat.Standard,
+        fields.MPI(pn.x),
+        fields.MPI(pn.y),
+    )
+    priv.s = fields.MPI(d)
+    priv._compute_chksum()
+    return priv
+
+
+def bip85_p256_from_root(
+    root, index: int, sub_index: int | None = None, alg: str = "ECDSA"
+):
+    from embit import bip85
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from pgpy.constants import EllipticCurveOID
+    from pgpy.packet import fields
+
+    path = [BIP85_GPG_ECC_KEY_BITS, index]
+    if sub_index is not None:
+        path.append(sub_index)
+    entropy = bip85.derive_entropy(root, BIP85_GPG_APP_NIST_P256, path)
+    # Avoid relying on cryptography's ``group_order`` attribute since
+    # some versions (such as those bundled with seedsigner-os) do not
+    # expose it. Instead, use the well-known group order for P-256.
+    order = 0xFFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551
+    d = int.from_bytes(entropy[:32], "big") % order
+    if d == 0:
+        d = 1
+    pn = ec.derive_private_key(d, ec.SECP256R1()).public_key().public_numbers()
+    if alg == "ECDH":
+        priv = fields.ECDHPriv()
+        priv.oid = EllipticCurveOID.NIST_P256
+        priv.kdf.halg = priv.oid.kdf_halg
+        priv.kdf.encalg = priv.oid.kek_alg
+    else:
+        priv = fields.ECDSAPriv()
+        priv.oid = EllipticCurveOID.NIST_P256
+    priv.p = fields.ECPoint.from_values(
+        priv.oid.key_size,
+        fields.ECPointFormat.Standard,
+        fields.MPI(pn.x),
+        fields.MPI(pn.y),
+    )
+    priv.s = fields.MPI(d)
+    priv._compute_chksum()
+    return priv
+
+
+def bip85_brainpoolp256r1_from_root(
+    root, index: int, sub_index: int | None = None, alg: str = "ECDSA",
+):
+    from embit import bip85
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from pgpy.constants import EllipticCurveOID
+    from pgpy.packet import fields
+
+    path = [BIP85_GPG_ECC_KEY_BITS, index]
+    if sub_index is not None:
+        path.append(sub_index)
+    entropy = bip85.derive_entropy(root, BIP85_GPG_APP_BRAINPOOL_P256, path)
+    # Hardcode BrainpoolP256r1 group order to avoid relying on attributes
+    # that may be missing in some cryptography builds.
+    order = 0xA9FB57DBA1EEA9BC3E660A909D838D718C397AA3B561A6F7901E0E82974856A7
+    d = int.from_bytes(entropy[:32], "big") % order
+    if d == 0:
+        d = 1
+    pn = ec.derive_private_key(d, ec.BrainpoolP256R1()).public_key().public_numbers()
+    if alg == "ECDH":
+        priv = fields.ECDHPriv()
+        priv.oid = EllipticCurveOID.Brainpool_P256
+        priv.kdf.halg = priv.oid.kdf_halg
+        priv.kdf.encalg = priv.oid.kek_alg
+    else:
+        priv = fields.ECDSAPriv()
+        priv.oid = EllipticCurveOID.Brainpool_P256
+    priv.p = fields.ECPoint.from_values(
+        priv.oid.key_size,
+        fields.ECPointFormat.Standard,
+        fields.MPI(pn.x),
+        fields.MPI(pn.y),
+    )
+    priv.s = fields.MPI(d)
+    priv._compute_chksum()
+    return priv
+
+
+def _bip85_key_type_choices(include_ecc: bool) -> list[tuple[str, str]]:
+    """Return available key type labels and identifiers for BIP85 GPG keys."""
+
+    choices: list[tuple[str, str]] = []
+    if include_ecc:
+        choices.extend(
+            [
+                ("ECC Ed25519", "ed25519"),
+                ("ECC NIST P-256", "p256"),
+                ("ECC Brainpool P-256", "brainpoolp256r1"),
+            ]
+        )
+    choices.extend(
+        [
+            ("RSA 2048", "rsa2048"),
+            ("RSA 3072", "rsa3072"),
+            ("RSA 4096", "rsa4096"),
+        ]
+    )
+    if include_ecc:
+        choices.append(("ECC secp256k1", "secp256k1"))
+    return choices
+
+
+class ToolsGPGLoadBIP85KeyView(View):
+    def run(self):
+        from embit import bip32
+        from pgpy import PGPKey, PGPUID
+        from Cryptodome.PublicKey import RSA
+        from pgpy.constants import (
+            PubKeyAlgorithm,
+            KeyFlags,
+            HashAlgorithm,
+            SymmetricKeyAlgorithm,
+            CompressionAlgorithm,
+        )
+        from pgpy.pgp import PrivKeyV4, PrivSubKeyV4
+        from pgpy.packet import fields
+        from pgpy.packet.types import MPI
+        from datetime import datetime, timezone, date
+        from subprocess import run
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+        from seedsigner.gui.screens import LargeIconStatusScreen, WarningScreen
+        from seedsigner.gui.screens import seed_screens, tools_screens
+
+        if len(self.controller.storage.seeds) == 0:
+            self.run_screen(
+                WarningScreen,
+                title="WARNING",
+                status_headline=None,
+                text="Load a seed before using\nBIP85 GPG tools.",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        ecc_enabled = (
+            self.settings.get_value(SettingsConstants.SETTING__BIP85_ECC_KEYS)
+            == SettingsConstants.OPTION__ENABLED
+        )
+
+        if ecc_enabled:
+            self.run_screen(
+                WarningScreen,
+                title="WARNING",
+                status_headline=None,
+                text=(
+                    "ECC Curves extend beyond current BIP85 spec..\n"
+                    "Record your SeedSigner Version."
+                ),
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+
+        if len(self.controller.storage.seeds) > 1:
+            seed_buttons = []
+            for seed in self.controller.storage.seeds:
+                button_str = seed.get_fingerprint(
+                    self.settings.get_value(SettingsConstants.SETTING__NETWORK)
+                )
+                seed_buttons.append(
+                    ButtonOption(
+                        button_str,
+                        SeedSignerIconConstants.FINGERPRINT,
+                        icon_color="blue",
+                    )
+                )
+            selected_seed = self.run_screen(
+                seed_screens.SeedSelectSeedScreen,
+                title="Select Seed",
+                text="Choose seed for BIP85 key",
+                is_button_text_centered=False,
+                button_data=seed_buttons,
+            )
+            if selected_seed == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+            seed = self.controller.get_seed(selected_seed)
+        else:
+            seed = self.controller.get_seed(0)
+
+        ret = seed_screens.SeedBIP85SelectChildIndexScreen(title="Key Index").display()
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        key_index = int(ret)
+
+        keytype_choices = _bip85_key_type_choices(ecc_enabled)
+        keytype_buttons = [ButtonOption(label) for label, _ in keytype_choices]
+        selected_type = self.run_screen(
+            ButtonListScreen,
+            title="Key Type",
+            is_button_text_centered=False,
+            button_data=keytype_buttons,
+        )
+        if selected_type == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        key_type_label = keytype_buttons[selected_type].button_label
+        key_type = keytype_choices[selected_type][1]
+
+        if key_type in ["secp256k1", "ed25519"]:
+            ret = self.run_screen(
+                WarningScreen,
+                title="WARNING",
+                status_headline=None,
+                text="This key type can't be exported to SmartPGP cards.",
+                show_back_button=True,
+                button_data=[ButtonOption("I Understand")],
+            )
+            if ret == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+
+        if key_type.startswith("rsa"):
+            warn_text = {
+                "rsa2048": "Generating an RSA 2048 key can take around 3 minutes on a Pi Zero.\nNIST or Brainpool keys are faster and smaller.",
+                "rsa3072": "Generating an RSA 3072 key can take around 15 minutes on a Pi Zero.\nNIST or Brainpool keys are faster and smaller.",
+                "rsa4096": "Generating an RSA 4096 key can take around an hour on a Pi Zero.\nNIST or Brainpool keys are faster and smaller.",
+            }[key_type]
+            ret = self.run_screen(
+                WarningScreen,
+                title="WARNING",
+                status_headline=None,
+                text=warn_text,
+                show_back_button=True,
+                button_data=[ButtonOption("I Understand")],
+            )
+            if ret == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+
+        def prompt_text(title: str, default: str = ""):
+            ret_dict = tools_screens.ToolsTextQRTextEntryScreen(
+                textToEncode=default, title=title
+            ).display()
+            if "is_back_button" in ret_dict:
+                return None
+            try:
+                import re
+                return bytes(
+                    re.sub(r"\\(?!u)", r"\\\\", ret_dict["textToEncode"]),
+                    encoding="raw_unicode_escape",
+                ).decode("unicode_escape")
+            except UnicodeDecodeError:
+                return ret_dict["textToEncode"]
+
+        name = prompt_text("Name")
+        if name is None:
+            return Destination(BackStackView)
+
+        email = prompt_text("Email")
+        if email is None:
+            return Destination(BackStackView)
+
+        created = datetime.fromtimestamp(BIP85_GPG_CREATED_TS, tz=timezone.utc)
+        if key_type == "rsa2048":
+            default_expiration = date(2029, 12, 31)
+        else:
+            default_expiration = date(2035, 12, 31)
+        expiration_str = prompt_text(
+            "Expiration YYYY-MM-DD", default_expiration.isoformat()
+        )
+        if expiration_str is None:
+            return Destination(BackStackView)
+        try:
+            if expiration_str == "":
+                expiration_dt = datetime.combine(
+                    default_expiration, datetime.min.time(), tzinfo=timezone.utc
+                )
+            else:
+                expiration_dt = datetime.strptime(
+                    expiration_str, "%Y-%m-%d"
+                ).replace(tzinfo=timezone.utc)
+            if expiration_dt <= created:
+                raise ValueError
+            expires = expiration_dt - created
+        except ValueError:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="Invalid expiration date",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+        root = bip32.HDKey.from_seed(seed.seed_bytes)
+        KEY_BITS = (
+            2048
+            if key_type == "rsa2048"
+            else 3072
+            if key_type == "rsa3072"
+            else 4096
+            if key_type == "rsa4096"
+            else None
+        )
+
+        def rsa_to_privpacket(rsa_key: RSA.RsaKey) -> fields.RSAPriv:
+            priv = fields.RSAPriv()
+            priv.n = MPI(rsa_key.n)
+            priv.e = MPI(rsa_key.e)
+            priv.d = MPI(rsa_key.d)
+            priv.p = MPI(rsa_key.p)
+            priv.q = MPI(rsa_key.q)
+            priv.u = MPI(pow(rsa_key.p, -1, rsa_key.q))
+            priv._compute_chksum()
+            return priv
+
+        self.loading_screen = LoadingScreenThread(text="Generating BIP85 GPG key\n\n\n\n\n\n(This takes a while)")
+        self.loading_screen.start()
+        try:
+            pk = PrivKeyV4()
+            if key_type == "secp256k1":
+                pk.pkalg = PubKeyAlgorithm.ECDSA
+                pk.keymaterial = bip85_secp256k1_from_root(root, key_index)
+            elif key_type == "p256":
+                pk.pkalg = PubKeyAlgorithm.ECDSA
+                pk.keymaterial = bip85_p256_from_root(root, key_index)
+            elif key_type == "brainpoolp256r1":
+                pk.pkalg = PubKeyAlgorithm.ECDSA
+                pk.keymaterial = bip85_brainpoolp256r1_from_root(root, key_index)
+            elif key_type == "ed25519":
+                pk.pkalg = PubKeyAlgorithm.EdDSA
+                pk.keymaterial = bip85_ed25519_from_root(root, key_index)
+            else:
+                rsa_main = bip85_rsa_from_root(root, KEY_BITS, key_index)
+                pk.pkalg = PubKeyAlgorithm.RSAEncryptOrSign
+                pk.keymaterial = rsa_to_privpacket(rsa_main)
+            pk.created = created
+            pk.update_hlen()
+
+            pgp_key = PGPKey()
+            pgp_key._key = pk
+
+            uid = PGPUID.new(name, email=email)
+            uid_str = uid.userid
+            pgp_key.add_uid(
+                uid,
+                usage={KeyFlags.Certify, KeyFlags.Sign},
+                hashes=[HashAlgorithm.SHA256],
+                ciphers=[SymmetricKeyAlgorithm.AES256],
+                compression=[CompressionAlgorithm.ZLIB],
+                expires=expires,
+                created=created,
+            )
+
+            if key_type == "ed25519":
+                subkey_specs = [
+                    (0, PubKeyAlgorithm.ECDH, {KeyFlags.EncryptCommunications, KeyFlags.EncryptStorage}, "ECDH"),
+                    (1, PubKeyAlgorithm.EdDSA, {KeyFlags.Authentication}, "EdDSA"),
+                    (2, PubKeyAlgorithm.EdDSA, {KeyFlags.Sign}, "EdDSA"),
+                ]
+            elif key_type in ["secp256k1", "p256", "brainpoolp256r1"]:
+                subkey_specs = [
+                    (0, PubKeyAlgorithm.ECDH, {KeyFlags.EncryptCommunications, KeyFlags.EncryptStorage}, "ECDH"),
+                    (1, PubKeyAlgorithm.ECDSA, {KeyFlags.Authentication}, "ECDSA"),
+                    (2, PubKeyAlgorithm.ECDSA, {KeyFlags.Sign}, "ECDSA"),
+                ]
+            else:
+                subkey_specs = [
+                    (0, PubKeyAlgorithm.RSAEncryptOrSign, {KeyFlags.EncryptCommunications, KeyFlags.EncryptStorage}),
+                    (1, PubKeyAlgorithm.RSAEncryptOrSign, {KeyFlags.Authentication}),
+                    (2, PubKeyAlgorithm.RSAEncryptOrSign, {KeyFlags.Sign}),
+                ]
+
+            subkey_info_list = []
+            for spec in subkey_specs:
+                sub_index, pkalg, usage, *alg = spec
+                subpkt = PrivSubKeyV4()
+                subpkt.pkalg = pkalg
+                if key_type == "secp256k1":
+                    subpkt.keymaterial = bip85_secp256k1_from_root(root, key_index, sub_index, alg[0])
+                elif key_type == "p256":
+                    subpkt.keymaterial = bip85_p256_from_root(root, key_index, sub_index, alg[0])
+                elif key_type == "brainpoolp256r1":
+                    subpkt.keymaterial = bip85_brainpoolp256r1_from_root(root, key_index, sub_index, alg[0])
+                elif key_type == "ed25519":
+                    subpkt.keymaterial = bip85_ed25519_from_root(root, key_index, sub_index, alg[0])
+                else:
+                    rsa_sub = bip85_rsa_from_root(root, KEY_BITS, key_index, sub_index)
+                    subpkt.keymaterial = rsa_to_privpacket(rsa_sub)
+                subpkt.created = created
+                subpkt.update_hlen()
+                subkey = PGPKey()
+                subkey._key = subpkt
+                pgp_key.add_subkey(
+                    subkey,
+                    usage=usage,
+                    hashes=[HashAlgorithm.SHA256],
+                    ciphers=[SymmetricKeyAlgorithm.AES256],
+                    compression=[CompressionAlgorithm.ZLIB],
+                    expires=expires,
+                    created=created,
+                )
+                alg_name = alg[0] if alg else pkalg.name
+                sub_type = (
+                    key_type_label if key_type.startswith("rsa") else f"{alg_name} {key_type_label}"
+                )
+                subkey_info_list.append(
+                    {
+                        "index": sub_index,
+                        "type": sub_type,
+                        "fingerprint": subkey.fingerprint,
+                    }
+                )
+
+            armored = str(pgp_key)
+
+            result = run(["gpg", "--batch", "--import"], input=armored.encode(), capture_output=True)
+        finally:
+            self.loading_screen.stop()
+
+        if result.returncode == 0:
+            seed_fpr = seed.get_fingerprint(
+                self.settings.get_value(SettingsConstants.SETTING__NETWORK)
+            )
+            BIP85_DATA[pgp_key.fingerprint] = {
+                "primary_fpr": pgp_key.fingerprint,
+                "seed_fpr": seed_fpr,
+                "index": key_index,
+                "key_type": key_type_label,
+                "ss_version": self.controller.VERSION,
+                "uids": [uid_str],
+                "primary_uid": uid_str,
+                "subkeys": subkey_info_list,
+                "revocations": [],
+            }
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Success",
+                status_headline=None,
+                text="BIP85 GPG key imported",
+                show_back_button=False,
+                button_data=[ButtonOption("Done")],
+            )
+        else:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="Failed to import key",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+
+        return Destination(ToolsGPGMenuView)
+
+
+
+
+class ToolsGPGAddSubkeysView(View):
+    def run(self):
+        from subprocess import run
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+        from seedsigner.gui.screens import (
+            ButtonListScreen,
+            LargeIconStatusScreen,
+            WarningScreen,
+        )
+
+        result = run(
+            ["gpg", "--list-secret-keys", "--with-colons"],
+            capture_output=True,
+            text=True,
+        )
+        keys = parse_secret_key_list(result.stdout)
+
+        if not keys:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No private keys found",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        buttons = []
+        for key in keys:
+            label = key["uid"] if key["uid"] else key["fpr"][-8:]
+            buttons.append(ButtonOption(label))
+
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Select Key",
+            is_button_text_centered=False,
+            button_data=buttons,
+        )
+
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        fingerprint = keys[selected]["fpr"]
+
+        result = run(
+            ["gpg", "--list-secret-keys", "--with-colons", fingerprint],
+            capture_output=True,
+            text=True,
+        )
+        start_index = sum(1 for line in result.stdout.splitlines() if line.startswith("ssb"))
+        created_ts = keys[selected]["created"]
+        entry = BIP85_DATA.get(fingerprint)
+        bip85 = entry is not None
+        logger.info(
+            "AddSubkeysView: fpr=%s bip85=%s start_index=%s",
+            fingerprint,
+            bip85,
+            start_index,
+        )
+        sec_line = next(l for l in result.stdout.splitlines() if l.startswith("sec"))
+        sec_parts = sec_line.split(":")
+        primary_bits = sec_parts[2] if len(sec_parts) > 2 else ""
+        primary_algo = sec_parts[3] if len(sec_parts) > 3 else ""
+        primary_curve = sec_parts[16].lower() if len(sec_parts) > 16 else ""
+        subkeys = parse_subkey_list(result.stdout)
+
+        seed = None
+        base_index = None
+        if bip85:
+            logger.info(
+                "BIP85 key detected; searching for seed fingerprint %s",
+                entry["seed_fpr"],
+            )
+            network = self.settings.get_value(SettingsConstants.SETTING__NETWORK)
+            seed = None
+            seed_index = None
+            for idx, seed_obj in enumerate(self.controller.storage.seeds):
+                if seed_obj.get_fingerprint(network) == entry["seed_fpr"]:
+                    seed = seed_obj
+                    seed_index = idx
+                    break
+            if seed is None:
+                self.run_screen(
+                    WarningScreen,
+                    title="Error",
+                    status_headline=None,
+                    text="Required seed not loaded",
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
+            logger.info("Seed matched at index=%s", seed_index)
+            base_index = entry["index"]
+            if not bip85_verify_existing(
+                seed,
+                fingerprint,
+                base_index,
+                created_ts,
+                primary_algo,
+                primary_bits,
+                primary_curve,
+                subkeys,
+            ):
+                logger.warning(
+                    "Selected seed/index failed validation for fingerprint %s",
+                    fingerprint,
+                )
+                corrected = None
+                for i in range(base_index - 1, -1, -1):
+                    if bip85_verify_existing(
+                        seed,
+                        fingerprint,
+                        i,
+                        created_ts,
+                        primary_algo,
+                        primary_bits,
+                        primary_curve,
+                        subkeys,
+                    ):
+                        corrected = i
+                        break
+                if corrected is None:
+                    self.run_screen(
+                        WarningScreen,
+                        title="Error",
+                        status_headline=None,
+                        text="Selected seed/index mismatch",
+                        show_back_button=False,
+                        button_data=[ButtonOption("I Understand")],
+                    )
+                    return Destination(BackStackView)
+                logger.warning(
+                    "Registry index %s mismatched; corrected to %s",
+                    base_index,
+                    corrected,
+                )
+                BIP85_DATA[fingerprint]["index"] = corrected
+                base_index = corrected
+            logger.info("Existing key validated successfully at index %s", base_index)
+
+        key_index = base_index + (start_index // 3) if bip85 else None
+        if bip85:
+            logger.info(
+                "AddSubkeysView: validated base_index=%s resulting key_index=%s",
+                base_index,
+                key_index,
+            )
+        ecc_enabled = (
+            self.settings.get_value(SettingsConstants.SETTING__BIP85_ECC_KEYS)
+            == SettingsConstants.OPTION__ENABLED
+        )
+        keytype_choices = _bip85_key_type_choices(ecc_enabled)
+        keytype_buttons = [ButtonOption(label) for label, _ in keytype_choices]
+        selected_type = self.run_screen(
+            ButtonListScreen,
+            title="Key Type",
+            is_button_text_centered=False,
+            button_data=keytype_buttons,
+        )
+        if selected_type == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        _, alg = keytype_choices[selected_type]
+
+        if alg in ["secp256k1", "ed25519"]:
+            ret = self.run_screen(
+                WarningScreen,
+                title="WARNING",
+                status_headline=None,
+                text="This key type can't be exported to SmartPGP cards.",
+                show_back_button=True,
+                button_data=[ButtonOption("I Understand")],
+            )
+            if ret == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+
+        self.loading_screen = LoadingScreenThread(
+            text="Generating subkeys\n\n\n\n\n(This takes a while)"
+        )
+        self.loading_screen.start()
+        success = True
+        added_info = None
+        try:
+            if bip85:
+                added_info = bip85_add_subkeys(
+                    fingerprint, alg, key_index, start_index, seed
+                )
+                success = added_info is not None
+            elif alg.startswith("rsa"):
+                for usage in ["encrypt", "sign,auth", "sign"]:
+                    r = gpg_quick_addkey(fingerprint, alg, usage)
+                    if r.returncode != 0:
+                        success = False
+                        break
+            elif alg == "ed25519":
+                cmds = [
+                    ("cv25519", "encrypt"),
+                    ("ed25519", "sign,auth"),
+                    ("ed25519", "sign"),
+                ]
+                for sub_alg, usage in cmds:
+                    r = gpg_quick_addkey(fingerprint, sub_alg, usage)
+                    if r.returncode != 0:
+                        success = False
+                        break
+            else:
+                success = loose_add_subkeys(fingerprint, alg)
+        finally:
+            self.loading_screen.stop()
+
+        if success:
+            if bip85 and added_info is not None:
+                BIP85_DATA[fingerprint]["subkeys"].extend(added_info)
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Success",
+                status_headline=None,
+                text="Subkeys added",
+                show_back_button=False,
+                button_data=[ButtonOption("Done")],
+            )
+        else:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="Failed to add subkeys",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+
+        return Destination(ToolsGPGMenuView)
+
+
+class ToolsGPGGenerateKeyView(View):
+    def run(self):
+        from pgpy import PGPKey, PGPUID
+        from pgpy.constants import (
+            PubKeyAlgorithm,
+            KeyFlags,
+            HashAlgorithm,
+            SymmetricKeyAlgorithm,
+            CompressionAlgorithm,
+            EllipticCurveOID,
+        )
+        from datetime import datetime, timezone, date
+        from subprocess import run
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+        from seedsigner.gui.screens import (
+            LargeIconStatusScreen,
+            WarningScreen,
+            tools_screens,
+        )
+
+        keytype_data = [
+            (
+                "ECC Ed25519",
+                (PubKeyAlgorithm.EdDSA, EllipticCurveOID.Ed25519),
+                True,
+            ),
+            (
+                "ECC NIST P-256",
+                (PubKeyAlgorithm.ECDSA, EllipticCurveOID.NIST_P256),
+                False,
+            ),
+            (
+                "ECC Brainpool P-256",
+                (PubKeyAlgorithm.ECDSA, EllipticCurveOID.Brainpool_P256),
+                False,
+            ),
+            (
+                "RSA 2048",
+                (PubKeyAlgorithm.RSAEncryptOrSign, 2048),
+                False,
+            ),
+            (
+                "RSA 3072",
+                (PubKeyAlgorithm.RSAEncryptOrSign, 3072),
+                False,
+            ),
+            (
+                "RSA 4096",
+                (PubKeyAlgorithm.RSAEncryptOrSign, 4096),
+                False,
+            ),
+            (
+                "ECC secp256k1",
+                (PubKeyAlgorithm.ECDSA, EllipticCurveOID.SECP256K1),
+                True,
+            ),
+        ]
+        keytype_buttons = [ButtonOption(label) for label, _, _ in keytype_data]
+        selected_type = self.run_screen(
+            ButtonListScreen,
+            title="Key Type",
+            is_button_text_centered=False,
+            button_data=keytype_buttons,
+        )
+        if selected_type == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        _, (alg, param), warn_export_blocked = keytype_data[selected_type]
+
+        if warn_export_blocked:
+            ret = self.run_screen(
+                WarningScreen,
+                title="WARNING",
+                status_headline=None,
+                text="This key type can't be exported to SmartPGP cards.",
+                show_back_button=True,
+                button_data=[ButtonOption("I Understand")],
+            )
+            if ret == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+
+        if alg == PubKeyAlgorithm.RSAEncryptOrSign:
+            warn_text = {
+                2048: "Generating an RSA 2048 key can take around 3 minutes on a Pi Zero.\nNIST or Brainpool keys are faster and smaller.",
+                3072: "Generating an RSA 3072 key can take around 15 minutes on a Pi Zero.\nNIST or Brainpool keys are faster and smaller.",
+                4096: "Generating an RSA 4096 key can take around an hour on a Pi Zero.\nNIST or Brainpool keys are faster and smaller.",
+            }[param]
+            ret = self.run_screen(
+                WarningScreen,
+                title="WARNING",
+                status_headline=None,
+                text=warn_text,
+                show_back_button=True,
+                button_data=[ButtonOption("I Understand")],
+            )
+            if ret == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+
+        def prompt_text(title: str, default: str = ""):
+            ret_dict = tools_screens.ToolsTextQRTextEntryScreen(
+                textToEncode=default, title=title
+            ).display()
+            if "is_back_button" in ret_dict:
+                return None
+            try:
+                import re
+
+                return bytes(
+                    re.sub(r"\\(?!u)", r"\\\\", ret_dict["textToEncode"]),
+                    encoding="raw_unicode_escape",
+                ).decode("unicode_escape")
+            except UnicodeDecodeError:
+                return ret_dict["textToEncode"]
+
+        name = prompt_text("Name")
+        if name is None:
+            return Destination(BackStackView)
+
+        email = prompt_text("Email")
+        if email is None:
+            return Destination(BackStackView)
+
+        created = datetime.now(timezone.utc)
+        if alg == PubKeyAlgorithm.RSAEncryptOrSign and param == 2048:
+            default_expiration = date(2029, 12, 31)
+        else:
+            default_expiration = date(2035, 12, 31)
+        expiration_str = prompt_text(
+            "Expiration YYYY-MM-DD", default_expiration.isoformat()
+        )
+        if expiration_str is None:
+            return Destination(BackStackView)
+        try:
+            if expiration_str == "":
+                expiration_dt = datetime.combine(
+                    default_expiration, datetime.min.time(), tzinfo=timezone.utc
+                )
+            else:
+                expiration_dt = datetime.strptime(
+                    expiration_str, "%Y-%m-%d"
+                ).replace(tzinfo=timezone.utc)
+            if expiration_dt <= created:
+                raise ValueError
+            expires = expiration_dt - created
+        except ValueError:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="Invalid expiration date",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        self.loading_screen = LoadingScreenThread(
+            text="Generating GPG key\n\n\n\n\n\n(This takes a while)"
+        )
+        self.loading_screen.start()
+        try:
+            # PGPKey.new leverages the OS CSPRNG for secure entropy
+            master_key = PGPKey.new(alg, param)
+
+            uid = PGPUID.new(name, email=email)
+            master_key.add_uid(
+                uid,
+                usage={KeyFlags.Certify, KeyFlags.Sign},
+                hashes=[HashAlgorithm.SHA256],
+                ciphers=[SymmetricKeyAlgorithm.AES256],
+                compression=[CompressionAlgorithm.ZLIB],
+                expires=expires,
+            )
+
+            if alg == PubKeyAlgorithm.RSAEncryptOrSign:
+                sub_enc = PGPKey.new(PubKeyAlgorithm.RSAEncryptOrSign, param)
+                sub_auth = PGPKey.new(PubKeyAlgorithm.RSAEncryptOrSign, param)
+                sub_sign = PGPKey.new(PubKeyAlgorithm.RSAEncryptOrSign, param)
+            elif alg == PubKeyAlgorithm.EdDSA:
+                sub_enc = PGPKey.new(PubKeyAlgorithm.ECDH, EllipticCurveOID.Curve25519)
+                sub_auth = PGPKey.new(PubKeyAlgorithm.EdDSA, param)
+                sub_sign = PGPKey.new(PubKeyAlgorithm.EdDSA, param)
+            else:
+                curve = param
+                sub_enc = PGPKey.new(PubKeyAlgorithm.ECDH, curve)
+                sub_auth = PGPKey.new(PubKeyAlgorithm.ECDSA, curve)
+                sub_sign = PGPKey.new(PubKeyAlgorithm.ECDSA, curve)
+
+            master_key.add_subkey(
+                sub_enc,
+                usage={KeyFlags.EncryptCommunications, KeyFlags.EncryptStorage},
+                hashes=[HashAlgorithm.SHA256],
+                ciphers=[SymmetricKeyAlgorithm.AES256],
+                compression=[CompressionAlgorithm.ZLIB],
+                expires=expires,
+            )
+            master_key.add_subkey(
+                sub_auth,
+                usage={KeyFlags.Authentication},
+                hashes=[HashAlgorithm.SHA256],
+                ciphers=[SymmetricKeyAlgorithm.AES256],
+                compression=[CompressionAlgorithm.ZLIB],
+                expires=expires,
+            )
+            master_key.add_subkey(
+                sub_sign,
+                usage={KeyFlags.Sign},
+                hashes=[HashAlgorithm.SHA256],
+                ciphers=[SymmetricKeyAlgorithm.AES256],
+                compression=[CompressionAlgorithm.ZLIB],
+                expires=expires,
+            )
+
+            armored = str(master_key)
+            result = run(
+                ["gpg", "--batch", "--import"],
+                input=armored.encode(),
+                capture_output=True,
+            )
+        finally:
+            self.loading_screen.stop()
+
+        if result.returncode == 0:
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Success",
+                status_headline=None,
+                text="GPG key generated",
+                show_back_button=False,
+                button_data=[ButtonOption("Done")],
+            )
+        else:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="Failed to import key",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+
         return Destination(MainMenuView)
+
+
+class ToolsGPGExportPubkeyView(View):
+    def run(self):
+        from subprocess import run
+        import os
+        import platform
+        from seedsigner.models.encode_qr import UrBytesQrEncoder
+        from seedsigner.gui.screens.screen import (
+            ButtonListScreen,
+            LargeIconStatusScreen,
+            WarningScreen,
+            LoadingScreenThread,
+            QRDisplayScreen,
+        )
+
+        result = run(
+            ["gpg", "--list-secret-keys", "--with-colons"],
+            capture_output=True,
+            text=True,
+        )
+        keys = []
+        cur = None
+        for line in result.stdout.splitlines():
+            parts = line.split(":")
+            if parts[0] == "sec":
+                cur = {"fpr": None, "uid": None}
+                keys.append(cur)
+            elif parts[0] == "fpr" and cur is not None and cur.get("fpr") is None:
+                cur["fpr"] = parts[9]
+            elif parts[0] == "uid" and cur is not None and cur.get("uid") is None:
+                cur["uid"] = parts[9]
+
+        if not keys:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No private keys found",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        buttons = []
+        for key in keys:
+            label = key["uid"] if key["uid"] else key["fpr"][-8:]
+            buttons.append(ButtonOption(label))
+
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Select Key",
+            is_button_text_centered=False,
+            button_data=buttons,
+        )
+
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        key = keys[selected]
+        base_label = key["uid"] if key["uid"] else key["fpr"][-8:]
+
+        dest_buttons = [
+            ButtonOption("microSD"),
+            ButtonOption("Animated QR"),
+            ButtonOption("Seedkeeper"),
+            ButtonOption("OpenGPG Card"),
+        ]
+        dest_selected = self.run_screen(
+            ButtonListScreen,
+            title="Export to",
+            is_button_text_centered=False,
+            button_data=dest_buttons,
+        )
+
+        if dest_selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        if dest_selected == 0:
+            if len(self.controller.storage.seeds) > 0:
+                ret = self.run_screen(
+                    WarningScreen,
+                    title="WARNING",
+                    status_headline=None,
+                    text="These tools write data to the microSD card and may expose loaded secrets.",
+                    show_back_button=True,
+                    button_data=[ButtonOption("Continue")],
+                )
+                if ret == RET_CODE__BACK_BUTTON:
+                    return Destination(BackStackView)
+
+            file_list_path = MicroSD.get_microsd_dir() / "microsd-images"
+            os.makedirs(file_list_path, exist_ok=True)
+
+            filename = key["fpr"] + ".asc"
+            filepath = os.path.join(file_list_path, filename)
+            exported = run(
+                ["gpg", "--armor", "--output", filepath, "--export", key["fpr"]],
+                capture_output=True,
+                text=True,
+            )
+            if exported.returncode != 0:
+                self.run_screen(
+                    WarningScreen,
+                    title="Error",
+                    status_headline=None,
+                    text="Failed to export key",
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
+
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Success",
+                status_headline=None,
+                text=f"Saved as {filename}",
+                show_back_button=False,
+                button_data=[ButtonOption("Continue")],
+            )
+            return Destination(MainMenuView)
+        elif dest_selected == 1:
+            exported = run(
+                ["gpg", "--armor", "--export", key["fpr"]],
+                capture_output=True,
+            )
+            if exported.returncode != 0:
+                self.run_screen(
+                    WarningScreen,
+                    title="Error",
+                    status_headline=None,
+                    text="Failed to export key",
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
+
+            loading = LoadingScreenThread(text="Encoding...")
+            loading.start()
+            try:
+                qr_encoder = UrBytesQrEncoder(
+                    data=exported.stdout,
+                    qr_density=self.settings.get_value(SettingsConstants.SETTING__QR_DENSITY),
+                )
+            finally:
+                loading.stop()
+
+            num_codes = qr_encoder.seq_len()
+            ret = self.run_screen(
+                WarningScreen,
+                title="Animated QR",
+                status_headline=None,
+                text=f"This export requires {num_codes} QR code{'s' if num_codes > 1 else ''}.",
+                show_back_button=True,
+                button_data=[ButtonOption("Start")],
+            )
+            if ret == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+
+            self.run_screen(QRDisplayScreen, qr_encoder=qr_encoder)
+            return Destination(MainMenuView)
+        else:
+            exported = run(
+                ["gpg", "--armor", "--export", key["fpr"]],
+                capture_output=True,
+                text=True,
+            )
+            if exported.returncode != 0:
+                self.run_screen(
+                    WarningScreen,
+                    title="Error",
+                    status_headline=None,
+                    text="Failed to export key",
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
+
+            Satochip_Connector = seedkeeper_utils.init_satochip(
+                self, init_card_filter=["seedkeeper"]
+            )
+            if not Satochip_Connector:
+                return Destination(BackStackView)
+
+            pubkey_bytes = exported.stdout.encode("utf-8")
+            label = f"GPGPub:{base_label}"
+            status = Satochip_Connector.card_get_status()[3]
+            if status['protocol_minor_version'] == 1:
+                if len(pubkey_bytes) > 255:
+                    self.run_screen(
+                        WarningScreen,
+                        title="Error",
+                        status_headline=None,
+                        text="Pubkey too large for Seedkeeper v1",
+                        show_back_button=False,
+                        button_data=[ButtonOption("I Understand")],
+                    )
+                    return Destination(BackStackView)
+                secret_list = [len(pubkey_bytes)] + list(pubkey_bytes)
+            else:
+                secret_list = list(len(pubkey_bytes).to_bytes(2, "big")) + list(pubkey_bytes)
+
+            header = Satochip_Connector.make_header(
+                "Data", "Plaintext export allowed", label
+            )
+            secret_dic = {"header": header, "secret_list": secret_list}
+
+            try:
+                fits, required_bytes, free_bytes = seedkeeper_utils.ensure_seedkeeper_capacity(
+                    Satochip_Connector, secret_dic
+                )
+            except Exception as e:
+                self.run_screen(
+                    WarningScreen,
+                    title="Error",
+                    status_headline=None,
+                    text=str(e),
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
+
+            if not fits:
+                self.run_screen(
+                    WarningScreen,
+                    title="Not Enough Space",
+                    status_headline=None,
+                    text=seedkeeper_utils.format_seedkeeper_space_error(required_bytes, free_bytes),
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
+
+            try:
+                self.loading_screen = LoadingScreenThread(
+                    text="Saving Secret\n\n\n\n\n\n",
+                )
+                self.loading_screen.start()
+                Satochip_Connector.seedkeeper_import_secret(secret_dic)
+                self.loading_screen.stop()
+                self.run_screen(
+                    LargeIconStatusScreen,
+                    title="Success",
+                    status_headline=None,
+                    text="Pubkey saved to Seedkeeper",
+                    show_back_button=False,
+                    button_data=[ButtonOption("Continue")],
+                )
+                return Destination(MainMenuView)
+            except UnexpectedSW12Error as e:
+                self.loading_screen.stop()
+                if e.sw1 == 0x6A and e.sw2 == 0x84:
+                    error_text = "Not enough space on Seedkeeper for key"
+                else:
+                    error_text = format_sw_error(e.sw1, e.sw2)
+                self.run_screen(
+                    WarningScreen,
+                    title="Error",
+                    status_headline=None,
+                    text=error_text,
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
+            except Exception:
+                self.loading_screen.stop()
+                self.run_screen(
+                    WarningScreen,
+                    title="Error",
+                    status_headline=None,
+                    text="Failed to export key",
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
+
+
+class ToolsGPGExportPrivkeyView(View):
+    def run(self):
+        from subprocess import run
+        import os
+        import platform
+        from seedsigner.gui.screens.screen import (
+            ButtonListScreen,
+            LargeIconStatusScreen,
+            WarningScreen,
+            LoadingScreenThread,
+        )
+        from seedsigner.gui.screens import tools_screens
+
+        result = run(
+            ["gpg", "--list-secret-keys", "--with-colons"],
+            capture_output=True,
+            text=True,
+        )
+        keys = []
+        cur = None
+        for line in result.stdout.splitlines():
+            parts = line.split(":")
+            if parts[0] == "sec":
+                cur = {"fpr": None, "uid": None}
+                keys.append(cur)
+            elif parts[0] == "fpr" and cur is not None and cur.get("fpr") is None:
+                cur["fpr"] = parts[9]
+            elif parts[0] == "uid" and cur is not None and cur.get("uid") is None:
+                cur["uid"] = parts[9]
+
+        if not keys:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No private keys found",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        buttons = []
+        for key in keys:
+            label = key["uid"] if key["uid"] else key["fpr"][-8:]
+            buttons.append(ButtonOption(label))
+
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Select Key",
+            is_button_text_centered=False,
+            button_data=buttons,
+        )
+
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        key = keys[selected]
+        base_label = key["uid"] if key["uid"] else key["fpr"][-8:]
+
+        dest_buttons = [
+            ButtonOption("microSD"),
+            ButtonOption("Seedkeeper"),
+            ButtonOption("OpenGPG Card"),
+        ]
+        dest_selected = self.run_screen(
+            ButtonListScreen,
+            title="Export to",
+            is_button_text_centered=False,
+            button_data=dest_buttons,
+        )
+
+        if dest_selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        if dest_selected == 0:
+            if len(self.controller.storage.seeds) > 0:
+                ret = self.run_screen(
+                    WarningScreen,
+                    title="WARNING",
+                    status_headline=None,
+                    text="These tools write data to the microSD card and may expose loaded secrets.",
+                    show_back_button=True,
+                    button_data=[ButtonOption("Continue")],
+                )
+                if ret == RET_CODE__BACK_BUTTON:
+                    return Destination(BackStackView)
+
+            file_list_path = MicroSD.get_microsd_dir() / "microsd-images"
+            os.makedirs(file_list_path, exist_ok=True)
+
+            ret_dict = tools_screens.ToolsTextQRTextEntryScreen(
+                textToEncode="", title="Passphrase"
+            ).display()
+            if "is_back_button" in ret_dict:
+                return Destination(BackStackView)
+            try:
+                import re
+
+                passphrase = bytes(
+                    re.sub(r"\\(?!u)", r"\\\\", ret_dict["textToEncode"]),
+                    encoding="raw_unicode_escape",
+                ).decode("unicode_escape")
+            except UnicodeDecodeError:
+                passphrase = ret_dict["textToEncode"]
+
+            filename = key["fpr"] + "_private.gpg"
+            filepath = os.path.join(file_list_path, filename)
+            exported = run(
+                ["gpg", "--armor", "--export-secret-keys", key["fpr"]],
+                capture_output=True,
+                text=True,
+            )
+            if exported.returncode != 0:
+                self.run_screen(
+                    WarningScreen,
+                    title="Error",
+                    status_headline=None,
+                    text="Failed to export key",
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
+
+            protected = run(
+                [
+                    "gpg",
+                    "--armor",
+                    "--batch",
+                    "--yes",
+                    "--pinentry-mode",
+                    "loopback",
+                    "--passphrase",
+                    passphrase,
+                    "--symmetric",
+                    "--cipher-algo",
+                    "AES256",
+                    "--output",
+                    filepath,
+                ],
+                input=exported.stdout,
+                capture_output=True,
+                text=True,
+            )
+            if protected.returncode != 0:
+                self.run_screen(
+                    WarningScreen,
+                    title="Error",
+                    status_headline=None,
+                    text="Failed to protect key",
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
+
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Success",
+                status_headline=None,
+                text=f"Saved as {filename}",
+                show_back_button=False,
+                button_data=[ButtonOption("Continue")],
+            )
+            return Destination(MainMenuView)
+        elif dest_selected == 1:
+            exported = run(
+                ["gpg", "--armor", "--export-secret-keys", key["fpr"]],
+                capture_output=True,
+                text=True,
+            )
+            if exported.returncode != 0:
+                self.run_screen(
+                    WarningScreen,
+                    title="Error",
+                    status_headline=None,
+                    text="Failed to export key",
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
+
+            Satochip_Connector = seedkeeper_utils.init_satochip(
+                self, init_card_filter=["seedkeeper"]
+            )
+            if not Satochip_Connector:
+                return Destination(BackStackView)
+
+            privkey_bytes = exported.stdout.encode("utf-8")
+            label = f"GPGPriv:{base_label}"
+            status = Satochip_Connector.card_get_status()[3]
+            if status['protocol_minor_version'] == 1:
+                if len(privkey_bytes) > 255:
+                    self.run_screen(
+                        WarningScreen,
+                        title="Error",
+                        status_headline=None,
+                        text="Privkey too large for Seedkeeper v1",
+                        show_back_button=False,
+                        button_data=[ButtonOption("I Understand")],
+                    )
+                    return Destination(BackStackView)
+                secret_list = [len(privkey_bytes)] + list(privkey_bytes)
+            else:
+                secret_list = list(len(privkey_bytes).to_bytes(2, "big")) + list(privkey_bytes)
+
+            header = Satochip_Connector.make_header(
+                "Data", "Plaintext export allowed", label
+            )
+            secret_dic = {"header": header, "secret_list": secret_list}
+
+            try:
+                fits, required_bytes, free_bytes = seedkeeper_utils.ensure_seedkeeper_capacity(
+                    Satochip_Connector, secret_dic
+                )
+            except Exception as e:
+                self.run_screen(
+                    WarningScreen,
+                    title="Error",
+                    status_headline=None,
+                    text=str(e),
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
+
+            if not fits:
+                self.run_screen(
+                    WarningScreen,
+                    title="Not Enough Space",
+                    status_headline=None,
+                    text=seedkeeper_utils.format_seedkeeper_space_error(required_bytes, free_bytes),
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
+
+            try:
+                self.loading_screen = LoadingScreenThread(
+                    text="Saving Secret\n\n\n\n\n\n",
+                )
+                self.loading_screen.start()
+                Satochip_Connector.seedkeeper_import_secret(secret_dic)
+                self.loading_screen.stop()
+                self.run_screen(
+                    LargeIconStatusScreen,
+                    title="Success",
+                    status_headline=None,
+                    text="Privkey saved to Seedkeeper",
+                    show_back_button=False,
+                    button_data=[ButtonOption("Continue")],
+                )
+                return Destination(MainMenuView)
+            except UnexpectedSW12Error as e:
+                self.loading_screen.stop()
+                if e.sw1 == 0x6A and e.sw2 == 0x84:
+                    error_text = "Not enough space on Seedkeeper for key"
+                else:
+                    error_text = format_sw_error(e.sw1, e.sw2)
+                self.run_screen(
+                    WarningScreen,
+                    title="Error",
+                    status_headline=None,
+                    text=error_text,
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
+            except Exception:
+                self.loading_screen.stop()
+                self.run_screen(
+                    WarningScreen,
+                    title="Error",
+                    status_headline=None,
+                    text="Failed to export key",
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
+        else:
+            return Destination(
+                ToolsGPGImportKeyToCardView,
+                view_args={"fingerprint": key["fpr"]},
+            )
+
+
+class ToolsGPGImportKeyToCardView(View):
+    def __init__(self, fingerprint: str, selected_subkeys=None):
+        super().__init__()
+        self.fingerprint = fingerprint
+        self.selected_subkeys = selected_subkeys
+        self.loading_screen = None
+
+    def _stop_loading_screen(self):
+        loading = getattr(self, "loading_screen", None)
+        if loading:
+            try:
+                loading.stop()
+            finally:
+                self.loading_screen = None
+
+    def _clear_cached_admin_pin(self):
+        controller = getattr(self, "controller", None)
+        if not controller:
+            return
+        if hasattr(controller, "GPG_Admin_PIN"):
+            controller.GPG_Admin_PIN = None
+        try:
+            seedkeeper_utils.disconnect_smartcard_connections(controller)
+        except Exception:
+            logger.debug("Failed to reset smartcard connections after admin PIN error", exc_info=True)
+
+    def run(self):
+        from subprocess import run
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+        from seedsigner.helpers import seedkeeper_utils
+
+        seedkeeper_utils.disconnect_smartcard_connections(self.controller)
+        run(["gpgconf", "--reload", "scdaemon"])
+
+        card_status = run(["gpg", "--card-status"], capture_output=True, text=True)
+        status_out = (card_status.stdout or "") + (card_status.stderr or "")
+        admin_pin = self.controller.GPG_Admin_PIN
+        if "[none]" in status_out:
+            ret = self.run_screen(
+                WarningScreen,
+                title="Default PINs",
+                status_headline=None,
+                text="Card uses default PINs. You'll set new Admin and User PINs before import.",
+                show_back_button=True,
+                button_data=[ButtonOption("Continue")],
+            )
+            if ret == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+            ret = self.run_screen(
+                WarningScreen,
+                title="Admin PIN Required",
+                status_headline=None,
+                text="Admin PIN is needed for changing keys and editing card settings.",
+                show_back_button=True,
+                button_data=[ButtonOption("Continue")],
+            )
+            if ret == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+            new_admin = seedkeeper_utils.prompt_for_pin(self, "New Admin PIN")
+            if new_admin is None:
+                return Destination(BackStackView)
+            admin_cmds = f"3\n12345678\n{new_admin}\n{new_admin}\nQ\n"
+            admin_res = run(
+                [
+                    "gpg",
+                    "--pinentry-mode",
+                    "loopback",
+                    "--status-fd",
+                    "1",
+                    "--command-fd",
+                    "0",
+                    "--change-pin",
+                ],
+                input=admin_cmds,
+                capture_output=True,
+                text=True,
+            )
+            out = (admin_res.stdout or "") + (admin_res.stderr or "")
+            success = "PIN changed" in out or "SC_OP_SUCCESS" in admin_res.stdout
+            if "SC_OP_FAILURE" in admin_res.stdout or not success:
+                self.run_screen(
+                    LargeIconStatusScreen,
+                    title="Failed",
+                    status_headline=None,
+                    text="Admin PIN change failed",
+                    show_back_button=False,
+                    button_data=[ButtonOption("Continue")],
+                )
+                return Destination(BackStackView)
+            self.controller.GPG_Admin_PIN = new_admin
+            admin_pin = new_admin
+
+            ret = self.run_screen(
+                WarningScreen,
+                title="User PIN Required",
+                status_headline=None,
+                text="User PIN is needed for signing and using on-card keys.",
+                show_back_button=True,
+                button_data=[ButtonOption("Continue")],
+            )
+            if ret == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+            new_user = seedkeeper_utils.prompt_for_pin(self, "New User PIN")
+            if new_user is None:
+                return Destination(BackStackView)
+            user_cmds = f"1\n123456\n{new_user}\n{new_user}\nQ\n"
+            user_res = run(
+                [
+                    "gpg",
+                    "--pinentry-mode",
+                    "loopback",
+                    "--status-fd",
+                    "1",
+                    "--command-fd",
+                    "0",
+                    "--change-pin",
+                ],
+                input=user_cmds,
+                capture_output=True,
+                text=True,
+            )
+            out = (user_res.stdout or "") + (user_res.stderr or "")
+            success = "PIN changed" in out or "SC_OP_SUCCESS" in user_res.stdout
+            if "SC_OP_FAILURE" in user_res.stdout or not success:
+                self.run_screen(
+                    LargeIconStatusScreen,
+                    title="Failed",
+                    status_headline=None,
+                    text="User PIN change failed",
+                    show_back_button=False,
+                    button_data=[ButtonOption("Continue")],
+                )
+                return Destination(BackStackView)
+
+            run(["gpgconf", "--reload", "scdaemon"])
+
+        if admin_pin is None:
+            ret = self.run_screen(
+                WarningScreen,
+                title="Admin PIN Required",
+                status_headline=None,
+                text="Admin PIN is needed for changing keys and editing card settings.",
+                show_back_button=True,
+                button_data=[ButtonOption("Continue")],
+            )
+            if ret == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+            admin_pin = seedkeeper_utils.prompt_for_pin(self, "Admin PIN")
+            if admin_pin is None:
+                return Destination(BackStackView)
+            self.controller.GPG_Admin_PIN = admin_pin
+
+        result = run(
+            ["gpg", "--list-secret-keys", "--with-colons", self.fingerprint],
+            capture_output=True,
+            text=True,
+        )
+        primary_caps = ""
+        subkeys = []
+        cur = None
+        algo = ""
+        primary_bits = ""
+        curve = ""
+        for line in result.stdout.splitlines():
+            parts = line.split(":")
+            if parts[0] == "sec":
+                primary_caps = parts[11].lower()
+                primary_bits = parts[2] if len(parts) > 2 else ""
+                algo = parts[3] if len(parts) > 3 else ""
+                if len(parts) > 16:
+                    curve = parts[16].lower()
+            elif parts[0] == "ssb":
+                bits = parts[2] if len(parts) > 2 else ""
+                cur = {
+                    "caps": parts[11].lower(),
+                    "fpr": None,
+                    "algo": parts[3] if len(parts) > 3 else "",
+                    "bits": bits,
+                    "curve": parts[16].lower() if len(parts) > 16 else "",
+                }
+                subkeys.append(cur)
+            elif parts[0] == "fpr" and cur is not None and cur["fpr"] is None:
+                cur["fpr"] = parts[9]
+
+        try:
+            algo_to_check, curve_to_check = _select_import_algo(
+                algo, curve, subkeys, self.selected_subkeys
+            )
+        except ValueError as e:
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Error",
+                status_headline=None,
+                text=str(e),
+                show_back_button=False,
+                button_data=[ButtonOption("Continue")],
+            )
+            return Destination(BackStackView)
+
+        logger.info(
+            "SmartPGP import selection: primary algo=%s bits=%s curve=%s -> %s/%s",
+            algo,
+            primary_bits,
+            curve,
+            algo_to_check,
+            curve_to_check,
+        )
+
+        if algo_to_check not in ("1", "2", "3"):
+            curve_map = {
+                "nistp256": "p256",
+                "nistp384": "p384",
+                "nistp521": "p521",
+                "brainpoolp256r1": "bp256",
+                "brainpoolp384r1": "bp384",
+                "brainpoolp512r1": "bp512",
+            }
+            cmd_suffix = curve_map.get(curve_to_check)
+            if not cmd_suffix:
+                logger.error(
+                    "Unsupported SmartPGP key curve '%s' for algo %s", curve_to_check, algo_to_check
+                )
+                self.run_screen(
+                    LargeIconStatusScreen,
+                    title="Error",
+                    status_headline=None,
+                    text="Unsupported key type",
+                    show_back_button=False,
+                    button_data=[ButtonOption("Continue")],
+                )
+                return Destination(BackStackView)
+            try:
+                from seedsigner.helpers.smartpgp.highlevel import (
+                    CardConnectionContext,
+                    AdminPINFailed,
+                )
+
+                try:
+                    ctx = CardConnectionContext()
+                    ctx.admin_pin = admin_pin
+                    logger.info(
+                        "Verifying SmartPGP admin PIN before switching to %s (%s)",
+                        cmd_suffix,
+                        curve_to_check,
+                    )
+                    ctx.connect()
+                    ctx.verify_admin_pin()
+                except AdminPINFailed:
+                    logger.warning("SmartPGP card rejected admin PIN during verification")
+                    self._stop_loading_screen()
+                    self._clear_cached_admin_pin()
+                    self.run_screen(
+                        LargeIconStatusScreen,
+                        title="Error",
+                        status_headline=None,
+                        text="Incorrect admin PIN",
+                        show_back_button=False,
+                        button_data=[ButtonOption("Continue")],
+                    )
+                    return Destination(BackStackView)
+                except Exception as e:
+                    logger.exception("SmartPGP admin PIN pre-check failed: %s", e)
+                    self._stop_loading_screen()
+                    self.run_screen(
+                        LargeIconStatusScreen,
+                        title="Error",
+                        status_headline=None,
+                        text="Failed to set card key type",
+                        show_back_button=False,
+                        button_data=[ButtonOption("Continue")],
+                    )
+                    return Destination(BackStackView)
+
+                logger.info(
+                    "Attempting to switch SmartPGP card to %s (%s)", cmd_suffix, curve_to_check
+                )
+                getattr(ctx, f"cmd_switch_{cmd_suffix}")()
+            except AdminPINFailed:
+                logger.warning("SmartPGP card rejected admin PIN during switch")
+                self._stop_loading_screen()
+                self._clear_cached_admin_pin()
+                self.run_screen(
+                    LargeIconStatusScreen,
+                    title="Error",
+                    status_headline=None,
+                    text="Incorrect admin PIN",
+                    show_back_button=False,
+                    button_data=[ButtonOption("Continue")],
+                )
+                return Destination(BackStackView)
+            except Exception as e:
+                logger.exception("SmartPGP switch failed: %s", e)
+                self._stop_loading_screen()
+                self.run_screen(
+                    LargeIconStatusScreen,
+                    title="Error",
+                    status_headline=None,
+                    text="Failed to set card key type",
+                    show_back_button=False,
+                    button_data=[ButtonOption("Continue")],
+                )
+                return Destination(BackStackView)
+            run(["gpgconf", "--reload", "scdaemon"])
+
+        slot_map = {"s": "1", "e": "2", "a": "3"}
+        cmds = ["toggle\n"]
+        if isinstance(self.selected_subkeys, dict):
+            for flag in ("s", "e", "a"):
+                fpr = self.selected_subkeys.get(flag)
+                if not fpr:
+                    continue
+                idx = next(
+                    (i for i, sk in enumerate(subkeys, start=1) if sk["fpr"] == fpr),
+                    None,
+                )
+                if idx is None:
+                    continue
+                cmds.append(f"key {idx}\nkeytocard\n{slot_map[flag]}\nkey {idx}\n")
+        else:
+            used_slots = set()
+            sign_idx = next(
+                (
+                    i
+                    for i, sk in enumerate(subkeys, start=1)
+                    if "s" in sk["caps"]
+                    and (not self.selected_subkeys or sk["fpr"] in self.selected_subkeys)
+                ),
+                None,
+            )
+            if sign_idx is not None:
+                cmds.append(f"key {sign_idx}\nkeytocard\n1\nkey {sign_idx}\n")
+                used_slots.add("1")
+            elif "s" in primary_caps:
+                cmds.extend(["keytocard\n", "y\n", "1\n"])
+                used_slots.add("1")
+            for idx, sk in enumerate(subkeys, start=1):
+                caps = sk["caps"]
+                if idx == sign_idx:
+                    continue
+                if self.selected_subkeys and sk["fpr"] not in self.selected_subkeys:
+                    continue
+                slot = next(
+                    (
+                        slot_map[c]
+                        for c in "sea"
+                        if c in caps and slot_map[c] not in used_slots
+                    ),
+                    None,
+                )
+                if slot:
+                    cmds.append(f"key {idx}\nkeytocard\n{slot}\nkey {idx}\n")
+                    used_slots.add(slot)
+        cmds.append("quit\ny\n")
+        edit_commands = "".join(cmds)
+        logger.info("GPG edit commands:\n%s", edit_commands)
+
+        self.loading_screen = LoadingScreenThread(
+            text="Importing key to card\n\n\n(May take a while)",
+        )
+        self.loading_screen.start()
+
+        result = run(
+            [
+                "gpg",
+                "--batch",
+                "--pinentry-mode",
+                "loopback",
+                "--passphrase",
+                admin_pin,
+                "--command-fd",
+                "0",
+                "--status-fd",
+                "1",
+                "--expert",
+                "--edit-key",
+                self.fingerprint,
+            ],
+            input=edit_commands,
+            capture_output=True,
+            text=True,
+        )
+        logger.info("GPG edit-key import exited with code %s", result.returncode)
+        if result.stderr:
+            logger.debug("GPG stderr: %s", result.stderr)
+        if result.returncode != 0:
+            from seedsigner.helpers.smartpgp_import import (
+                import_keys_with_smartpgp,
+                SmartPGPAdminPinError,
+            )
+
+            logger.info(
+                "Falling back to SmartPGP importer for %s", self.fingerprint
+            )
+            try:
+                if import_keys_with_smartpgp(
+                    self.fingerprint, admin_pin, self.selected_subkeys
+                ):
+                    self._stop_loading_screen()
+                    self.run_screen(
+                        LargeIconStatusScreen,
+                        title="Success",
+                        status_headline=None,
+                        text="Key imported to card",
+                        show_back_button=False,
+                        button_data=[ButtonOption("Continue")],
+                    )
+                    return Destination(ToolsGPGMenuView)
+            except SmartPGPAdminPinError:
+                self._stop_loading_screen()
+                self._clear_cached_admin_pin()
+                self.run_screen(
+                    LargeIconStatusScreen,
+                    title="Error",
+                    status_headline=None,
+                    text="Incorrect admin PIN",
+                    show_back_button=False,
+                    button_data=[ButtonOption("Continue")],
+                )
+                return Destination(BackStackView)
+            except Exception as e:
+                logger.exception("SmartPGP fallback failed: %s", e)
+            self._stop_loading_screen()
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Error",
+                status_headline=None,
+                text="Failed to import key",
+                show_back_button=False,
+                button_data=[ButtonOption("Continue")],
+            )
+            return Destination(BackStackView)
+
+        self._stop_loading_screen()
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Success",
+            status_headline=None,
+            text="Key imported to card",
+            show_back_button=False,
+            button_data=[ButtonOption("Continue")],
+        )
+
+        return Destination(ToolsGPGMenuView)
 
 class ToolsTextQRTextEntryView(View):
     def __init__(self, textToEncode: str = ""):

@@ -161,9 +161,9 @@ Follow the guide here: https://github.com/3rdIteration/Satochip-DIY
 
 _The applet management (install/uninstall) in the SeedSigner menu assume that the Satochip-DIY repository was cloned into /home/pi/Satochip-DIY and built as per the guide in the repository._
 
-The commands that the menu items run are currently hardcoded to be:
+The commands that the menu items run are currently hardcoded to be (note the `--params 1FFF` which allocates 8KB of storage for the SeedKeeper applet):
 
-    java -jar /home/pi/Satochip-DIY/gp.jar --install /home/pi/Satochip-DIY/build/SeedKeeper-official-3.0.4.cap
+    java -jar /home/pi/Satochip-DIY/gp.jar --install /home/pi/Satochip-DIY/build/SeedKeeper-official-3.0.4.cap --params 1FFF
 
     java -jar /home/pi/Satochip-DIY/gp.jar --uninstall /home/pi/Satochip-DIY/build/SeedKeeper-official-3.0.4.cap
 

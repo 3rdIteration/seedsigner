@@ -120,7 +120,7 @@ class Controller(Singleton):
         rather than at the top in order avoid circular imports.
     """
     
-    VERSION = "0.8.6+Satochip+ERT-B3"
+    VERSION = "0.8.6+Satochip+ERT-B4"
 
     # Declare class member vars with type hints to enable richer IDE support throughout
     # the code.
@@ -146,11 +146,15 @@ class Controller(Singleton):
     address_explorer_data: dict = None
 
     sign_message_data: dict = None
+    gpg_keys_imported: bool = False
+    gpg_pending_message: str = None
     # TODO: end refactor section
 
     Satochip_Connector = None
     Satochip_PIN = None
     Satochip_Last_UID_SHA1 = None
+    GPG_Admin_PIN = None
+    tools_common_card_filter: list[str] = None
 
     # Destination placeholder for when we need to jump out to a side flow but intend to
     # return navigation to the main flow (e.g. PSBT flow, load multisig descriptor,
@@ -160,6 +164,7 @@ class Controller(Singleton):
     FLOW__VERIFY_SINGLESIG_ADDR = "singlesig_addr"
     FLOW__ADDRESS_EXPLORER = "address_explorer"
     FLOW__SIGN_MESSAGE = "sign_message"
+    FLOW__GPG_MESSAGE = "gpg_message"
     resume_main_flow: str = None
 
     back_stack: BackStack = None
@@ -296,9 +301,17 @@ class Controller(Singleton):
         """
         from seedsigner.views import MainMenuView, BackStackView
         from seedsigner.views.screensaver import OpeningSplashView
+        from seedsigner.models.settings_definition import SettingsConstants
+        from seedsigner.views.desktop_warning import DesktopWarningView
+        from seedsigner.views.developer_os_warning import DeveloperOSWarningView
+        from seedsigner.helpers.seedsigner_os import is_seedsigner_os_dev_build
         from seedsigner.gui.toast import RemoveSDCardToastManagerThread
 
         OpeningSplashView().run()
+        if is_seedsigner_os_dev_build():
+            DeveloperOSWarningView().run()
+        if self.settings.get_value(SettingsConstants.SETTING__DISPLAY_CONFIGURATION).startswith("desktop"):
+            DesktopWarningView().run()
 
         """ Class references can be stored as variables in python!
 
@@ -359,6 +372,9 @@ class Controller(Singleton):
                         self.Satochip_PIN = None
                         self.Satochip_Last_UID_SHA1 = None
                         self.Satochip_Connector = None
+
+                    # Always drop any cached OpenPGP admin PIN when returning home
+                    self.GPG_Admin_PIN = None
                 
                 logger.info(f"\nback_stack: {self.back_stack}")
 
@@ -514,6 +530,7 @@ class Controller(Singleton):
         self.Satochip_PIN = None
         self.Satochip_Last_UID_SHA1 = None
         self.Satochip_Connector = None
+        self.GPG_Admin_PIN = None
 
         # Return to main menu
         self.clear_back_stack()

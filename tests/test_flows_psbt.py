@@ -176,6 +176,9 @@ class TestPSBTFlows(FlowTest):
         from embit.transaction import Transaction, TransactionInput, TransactionOutput
         import os, base64
 
+        # Enable WIF signing for this test
+        self.settings.set_value(SettingsConstants.SETTING__WIF_KEYS, SettingsConstants.OPTION__ENABLED)
+
         priv = ec.PrivateKey(os.urandom(32))
         wif = priv.wif()
         pub = priv.get_public_key()
@@ -204,6 +207,9 @@ class TestPSBTFlows(FlowTest):
         from embit.transaction import Transaction, TransactionInput, TransactionOutput
         import base64
         from seedsigner.models.bip38 import BIP38Key
+
+        # Enable BIP38 signing for this test
+        self.settings.set_value(SettingsConstants.SETTING__BIP38_KEYS, SettingsConstants.OPTION__ENABLED)
 
         enc = "6PRVWUbkzzsbcVac2qwfssoUJAN1Xhrg6bNk8J7Nzm5H7kxEbn2Nh2ZoGg"
         passphrase = "TestingOneTwoThree"
@@ -256,3 +262,47 @@ class TestPSBTSatochip(FlowTest):
             FlowStep(psbt_views.PSBTSelectSeedView, button_data_selection=psbt_views.PSBTSelectSeedView.SATOCHIP),
             FlowStep(psbt_views.PSBTSelectSeedView),
         ])
+
+    def test_satochip_fingerprint_mismatch_shows_warning(self, monkeypatch):
+        """Mismatch between card fingerprint and PSBT should warn and return to selection."""
+        from embit.bip32 import HDKey
+        from embit import networks
+        from seedsigner.views import scan_views, psbt_views
+        from seedsigner.views.view import MainMenuView
+        from seedsigner.helpers import seedkeeper_utils
+
+        def load_psbt_into_decoder(view: scan_views.ScanView):
+            view.decoder.add_data(
+                "cHNidP8BAHECAAAAAX9/d6VyI7nvVTyhLBfqu05za2AJ2Z0dKMC0cUX+S2U7AQAAAAD9////AgeHAAAAAAAAFgAUOnNPuZMD1sQudt3+7LvHBUvGhyd//gAAAAAAABYAFGO9QLvu4V9/hz6ZjbIGMrqsEiIYAjQTAAABAR+ghgEAAAAAABYAFKawrgcT62jmIVQwyHPCV0thmJWbAQDBAQAAAAABAYeHL9UQlz/jEKUuNNY3LTeQRjudjBinsP2L0ppvgRt0AAAAAAD/////AnbP3rsPAAAAIlEgtgmCioGjfKwp6f8rOoI4OPb+ZV8db581J9IizZPskl2ghgEAAAAAABYAFKawrgcT62jmIVQwyHPCV0thmJWbAUDCBlMh9VjZN2NdU9Wabi0o3Ct1q9YHTsJRLAkLfUuIHB+BE+ucR4bdGAJG5nBhCWOmCXbpRwKP1INRYvkuQ2fHAAAAACIGA2+PEYHyVy6nhYwAx5SJKBIWXjsWgjhhf/2FEWqXgxnoEKNOC3gAAACAAAAAAAAAAAAAACICA0SBeeHxfHdny6rUnQJuteAnQ7shSydexjJCkSJarn3mEKNOC3gAAACAAQAAAAEAAAAA"
+            )
+
+        seed = b"\x01" * 32
+        root = HDKey.from_seed(seed, version=networks.NETWORKS["main"]["xprv"])
+        master_xpub = root.to_public().to_base58()
+        account_xpub = root.derive("m/84h/0h/0h").to_public().to_base58()
+
+        class MockConnector:
+            def card_bip32_get_xpub(self, path, xtype, is_mainnet):
+                if path == "":
+                    return master_xpub
+                if path == "m/84'/0'/0'":
+                    return account_xpub
+                raise ValueError("unexpected path")
+
+        monkeypatch.setattr(seedkeeper_utils, "init_satochip", lambda *args, **kwargs: MockConnector())
+
+        controller = Controller.get_instance()
+        controller.storage.seeds = []
+        controller.psbt_parser = None
+        controller.psbt_sign_with_satochip = False
+        controller.Satochip_Connector = None
+
+        self.run_sequence([
+            FlowStep(MainMenuView, button_data_selection=MainMenuView.SCAN),
+            FlowStep(scan_views.ScanView, before_run=load_psbt_into_decoder),
+            FlowStep(psbt_views.PSBTSelectSeedView, screen_return_value=0),
+            FlowStep(psbt_views.PSBTSelectSeedView),
+        ])
+
+        assert controller.psbt_parser is None
+        assert controller.psbt_sign_with_satochip is False

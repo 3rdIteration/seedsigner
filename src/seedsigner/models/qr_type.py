@@ -25,6 +25,8 @@ class QRType:
 
     SIGN_MESSAGE = "sign_message"
 
+    SET_TIME = "set_time"
+
     PASSPHRASE = "passphrase"
 
     WIF = "wif"

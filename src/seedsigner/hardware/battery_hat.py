@@ -1,7 +1,10 @@
 import logging
 import time
 
-from smbus2 import SMBus
+try:
+    from smbus2 import SMBus  # type: ignore
+except Exception:  # pragma: no cover - smbus2 isn't available on all platforms
+    SMBus = None
 
 
 class BusVoltageRange:
@@ -88,6 +91,9 @@ class BatteryHat(Singleton, BaseThread):
 
     def _open_bus(self):
         if self._bus is None:
+            if SMBus is None:
+                logger.warning("smbus2 not available")
+                return
             try:
                 self._bus = SMBus(self.I2C_BUS)
             except FileNotFoundError:
