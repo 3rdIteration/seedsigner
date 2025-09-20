@@ -20,6 +20,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
+import time
 import hashlib
 from embit import bip39
 from seedsigner.helpers import kef
@@ -37,6 +38,8 @@ class EncryptedQRCode:
         self.mnemonic_id = None
         self.version = None
         self.iterations = self.settings.get_value(SettingsConstants.SETTING__ENCRYPTION_ITER) * QR_CODE_ITER_MULTIPLE
+        max_delta = self.iterations // 10
+        self.iterations += int(time.time() * 1000) % max_delta
         self.encrypted_data = None
 
     def create(self, key, mnemonic_id, mnemonic, i_vector=None):
