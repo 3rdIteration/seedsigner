@@ -22,6 +22,44 @@ except ImportError:  # pragma: no cover - support older embit releases
 logger = logging.getLogger(__name__)
 
 
+_MISSING_AUTHENTIKEY_ERROR = (
+    "Satochip authentikey is unavailable. Verify the card PIN has been entered and "
+    "that the card has been initialised with current firmware."
+)
+
+
+def _ensure_satochip_authentikey(connector) -> None:
+    """Ensure the connector has loaded the authentikey into its parser."""
+
+    parser = getattr(connector, "parser", None)
+    if parser is None:
+        return
+
+    authentikey = getattr(parser, "authentikey", None)
+    if authentikey is not None:
+        return
+
+    get_authentikey = getattr(connector, "card_bip32_get_authentikey", None)
+    if get_authentikey is None:
+        return
+
+    authentikey = get_authentikey()
+    if getattr(parser, "authentikey", None) is None and authentikey is None:
+        raise Exception(_MISSING_AUTHENTIKEY_ERROR)
+
+
+def _get_extended_key(connector, path):
+    """Retrieve the extended key for ``path`` with helpful error reporting."""
+
+    _ensure_satochip_authentikey(connector)
+    try:
+        return connector.card_bip32_get_extendedkey(path)
+    except AttributeError as exc:
+        if "_pubkey" in str(exc):
+            raise Exception(_MISSING_AUTHENTIKEY_ERROR) from exc
+        raise
+
+
 def _call_with_timeout(func, timeout: float, *args):
     """Execute ``func`` with the provided timeout and log duration."""
     start = time.monotonic()
@@ -128,7 +166,7 @@ def sign_psbt_with_satochip(psbt: PSBT, connector) -> int:
         for pubkey, deriv in inp.bip32_derivations.items():
             path = _format_path(deriv.derivation)
             try:
-                key, _chaincode = connector.card_bip32_get_extendedkey(path)
+                key, _chaincode = _get_extended_key(connector, path)
                 card_pub = PublicKey.parse(
                     key.get_public_key_bytes(compressed=True)
                 )
@@ -233,7 +271,7 @@ def sign_message_with_satochip(derivation_path: str, message: str, connector) ->
     settings = Settings.get_instance()
     timeout = settings.get_value(SettingsConstants.SETTING__SATOCHIP_SIGN_TIMEOUT)
     path = format_path_string(derivation_path)
-    key, _chaincode = connector.card_bip32_get_extendedkey(path)
+    key, _chaincode = _get_extended_key(connector, path)
     try:
         _resp, sw1, sw2, compsig = _call_with_timeout(
             connector.card_sign_message, timeout, 0xFF, key, message
