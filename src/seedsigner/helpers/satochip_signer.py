@@ -324,7 +324,7 @@ def sign_message_with_satochip(derivation_path: str, message: str, connector) ->
     """
 
     settings = Settings.get_instance()
-    timeout = settings.get_value(SettingsConstants.SETTING__SATOCHIP_SIGN_TIMEOUT)
+    timeout = settings.get_value(SettingsConstants.SETTING__SATOCHIP_MSG_SIGN_TIMEOUT)
     path = format_path_string(derivation_path)
     key, _chaincode = _get_extended_key(connector, path)
     try:

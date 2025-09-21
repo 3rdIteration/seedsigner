@@ -2753,15 +2753,24 @@ class ToolsSatochipBenchmarkMessageSignView(View):
         if not connector:
             return Destination(BackStackView)
 
-        timeout_setting = self.settings.get_value(
+        tx_timeout_setting = self.settings.get_value(
             SettingsConstants.SETTING__SATOCHIP_SIGN_TIMEOUT
         )
+        msg_timeout_setting = self.settings.get_value(
+            SettingsConstants.SETTING__SATOCHIP_MSG_SIGN_TIMEOUT
+        )
         try:
-            timeout_value = float(timeout_setting)
+            tx_timeout_value = float(tx_timeout_setting)
         except (TypeError, ValueError):
-            timeout_value = 0.0
-        signing_timeout = max(timeout_value, 5.0)
-        timeout = max(signing_timeout * 2.0, 10.0)
+            tx_timeout_value = 0.0
+        try:
+            msg_timeout_value = float(msg_timeout_setting)
+        except (TypeError, ValueError):
+            msg_timeout_value = 0.0
+
+        signing_timeout = max(tx_timeout_value, 5.0)
+        message_timeout = max(msg_timeout_value, 5.0)
+        timeout = max(message_timeout, signing_timeout * 2.0, 10.0)
         network = self.settings.get_value(SettingsConstants.SETTING__NETWORK)
         coin_type = "0" if network == SettingsConstants.MAINNET else "1"
         derivation_path = f"m/84'/{coin_type}'/0'/0/0"
