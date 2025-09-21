@@ -2687,7 +2687,14 @@ class ToolsSatochipBenchmarkSignView(View):
         if not connector:
             return Destination(BackStackView)
 
-        timeout = self.settings.get_value(SettingsConstants.SETTING__SATOCHIP_SIGN_TIMEOUT)
+        timeout_setting = self.settings.get_value(
+            SettingsConstants.SETTING__SATOCHIP_SIGN_TIMEOUT
+        )
+        try:
+            timeout_value = float(timeout_setting)
+        except (TypeError, ValueError):
+            timeout_value = 0.0
+        timeout = max(timeout_value, 5.0)
         durations: list[float] = []
         loading = LoadingScreenThread(text="Benchmarking\n\n\n\n\n\n")
         loading.start()
@@ -2746,7 +2753,15 @@ class ToolsSatochipBenchmarkMessageSignView(View):
         if not connector:
             return Destination(BackStackView)
 
-        timeout = self.settings.get_value(SettingsConstants.SETTING__SATOCHIP_SIGN_TIMEOUT)
+        timeout_setting = self.settings.get_value(
+            SettingsConstants.SETTING__SATOCHIP_SIGN_TIMEOUT
+        )
+        try:
+            timeout_value = float(timeout_setting)
+        except (TypeError, ValueError):
+            timeout_value = 0.0
+        signing_timeout = max(timeout_value, 5.0)
+        timeout = max(signing_timeout * 2.0, 10.0)
         network = self.settings.get_value(SettingsConstants.SETTING__NETWORK)
         coin_type = "0" if network == SettingsConstants.MAINNET else "1"
         derivation_path = f"m/84'/{coin_type}'/0'/0/0"
@@ -2757,24 +2772,29 @@ class ToolsSatochipBenchmarkMessageSignView(View):
         loading = LoadingScreenThread(text="Benchmarking\n\n\n\n\n\n")
         loading.start()
         try:
-            for _ in range(20):
-                start = time.monotonic()
-                try:
-                    key, _ = _get_extended_key(connector, path)
+            try:
+                key, _ = _get_extended_key(connector, path)
+            except Exception as exc:
+                logger.warning("Benchmark message signing failed: %s", exc)
+                error = str(exc)
+            else:
+                for _ in range(20):
                     message = os.urandom(16).hex()
-                    _call_with_timeout(
-                        connector.card_sign_message,
-                        timeout,
-                        0xFF,
-                        key,
-                        message,
-                    )
-                except Exception as exc:
-                    logger.warning("Benchmark message signing failed: %s", exc)
-                    error = str(exc)
-                    break
-                else:
-                    durations.append(time.monotonic() - start)
+                    start = time.monotonic()
+                    try:
+                        _call_with_timeout(
+                            connector.card_sign_message,
+                            timeout,
+                            0xFF,
+                            key,
+                            message,
+                        )
+                    except Exception as exc:
+                        logger.warning("Benchmark message signing failed: %s", exc)
+                        error = str(exc)
+                        break
+                    else:
+                        durations.append(time.monotonic() - start)
         finally:
             loading.stop()
 
