@@ -30,8 +30,7 @@ _MISSING_AUTHENTIKEY_ERROR = (
 )
 
 _ADDRESS_MISMATCH_ERROR = (
-    "Selected address does not belong to the inserted Satochip card. Ensure you are "
-    "using the correct card for this wallet before signing."
+    "Address isn't on this Satochip card. Use the matching card before signing."
 )
 
 
