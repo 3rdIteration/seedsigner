@@ -2770,7 +2770,22 @@ class ToolsSatochipBenchmarkMessageSignView(View):
 
         signing_timeout = max(tx_timeout_value, 5.0)
         message_timeout = max(msg_timeout_value, 5.0)
-        timeout = max(message_timeout, signing_timeout * 2.0, 10.0)
+        timeout = max(message_timeout, signing_timeout * 2.0)
+
+        # When the user hasn't customised the timeouts, default the benchmark to
+        # five seconds instead of the doubled value so results reflect the new
+        # higher baseline requested for benchmarking specifically.
+        default_tx_timeout = SettingsConstants.DEFAULT_SATOCHIP_TIMEOUT
+        default_msg_timeout = SettingsConstants.DEFAULT_SATOCHIP_MSG_TIMEOUT
+        if (
+            (tx_timeout_setting is None
+            or abs(tx_timeout_value - float(default_tx_timeout)) < 1e-9)
+            and (
+                msg_timeout_setting is None
+                or abs(msg_timeout_value - float(default_msg_timeout)) < 1e-9
+            )
+        ):
+            timeout = 5.0
         network = self.settings.get_value(SettingsConstants.SETTING__NETWORK)
         coin_type = "0" if network == SettingsConstants.MAINNET else "1"
         derivation_path = f"m/84'/{coin_type}'/0'/0/0"
