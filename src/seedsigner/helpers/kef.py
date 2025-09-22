@@ -546,7 +546,7 @@ def _deflate(data):
 
     try:
         stream = io.BytesIO()
-        compressor = zlib.compressobj(wbits=-zlib.MAX_WBITS)
+        compressor = zlib.compressobj(wbits=-10)
         stream.write(compressor.compress(data) + compressor.flush())
         return stream.getvalue()
     except:
@@ -559,7 +559,7 @@ def _reinflate(data):
     import zlib
 
     try:
-        decompressor = zlib.decompressobj(-zlib.MAX_WBITS)
+        decompressor = zlib.decompressobj(wbits=-10)
         return decompressor.decompress(io.BytesIO(data).read()) + decompressor.flush()
     except:
         raise ValueError("Error decompressing")
