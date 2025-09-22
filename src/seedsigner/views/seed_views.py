@@ -2883,6 +2883,7 @@ class SeedEncryptedQRReviewMnemonicIDView(View):
                 from seedsigner.models.encryption import EncryptedQRCode
                 from seedsigner.helpers.base43 import base43_encode
                 encrypted_qr = EncryptedQRCode()
+                encrypted_qr.add_delta()
                 qr_data = encrypted_qr.create(
                                key=self.encryption_key,
                                mnemonic_id=self.mnemonic_id,

@@ -20,6 +20,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
+import time
 import hashlib
 from embit import bip39
 from seedsigner.helpers import kef
@@ -38,6 +39,14 @@ class EncryptedQRCode:
         self.version = None
         self.iterations = self.settings.get_value(SettingsConstants.SETTING__ENCRYPTION_ITER) * QR_CODE_ITER_MULTIPLE
         self.encrypted_data = None
+
+    def add_delta(self, delta = None) -> None:
+        """Add a small delta to the number of PBKDF2 iterations as extra bits of entropy"""
+        if (delta):
+            self.iterations += delta
+        else:
+            max_delta = self.iterations // 10
+            self.iterations += int(time.time() * 1000) % max_delta
 
     def create(self, key, mnemonic_id, mnemonic, i_vector=None):
         """encrypted mnemonic QR codes"""
