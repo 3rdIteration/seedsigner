@@ -305,6 +305,15 @@ class SettingsConstants:
     ]
     DEFAULT_SATOCHIP_TIMEOUT = 0.5
 
+    SATOCHIP_MSG_TIMEOUT_MIN = 0.5
+    SATOCHIP_MSG_TIMEOUT_MAX = 2
+
+    ALL_SATOCHIP_MSG_TIMEOUTS = [
+        (i / 4, f"{i / 4:g}s")
+        for i in range(int(SATOCHIP_MSG_TIMEOUT_MIN * 4), int(SATOCHIP_MSG_TIMEOUT_MAX * 4) + 1)
+    ]
+    DEFAULT_SATOCHIP_MSG_TIMEOUT = 1.25
+
     SATOCHIP_PRE_DUMMY_MAX_MIN = 0
     SATOCHIP_PRE_DUMMY_MAX_MAX = 12
     ALL_SATOCHIP_PRE_DUMMY_MAX = [
@@ -450,6 +459,7 @@ class SettingsConstants:
     SETTING__BIP38_KEYS = "bip38_keys"
 
     SETTING__SATOCHIP_SIGN_TIMEOUT = "satochip_sign_timeout"
+    SETTING__SATOCHIP_MSG_SIGN_TIMEOUT = "satochip_msg_sign_timeout"
     SETTING__SATOCHIP_MAX_PRE_DUMMIES = "satochip_max_pre_dummies"
     SETTING__SATOCHIP_MAX_POST_DUMMIES = "satochip_max_post_dummies"
     SETTING__SATOCHIP_MAX_IN_TX_DUMMIES = "satochip_max_in_tx_dummies"
@@ -972,11 +982,20 @@ class SettingsDefinition:
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
                       attr_name=SettingsConstants.SETTING__SATOCHIP_SIGN_TIMEOUT,
                       abbreviated_name="satotime",
-                      display_name="Satochip sign timeout",
+                      display_name="Satochip tx sign timeout",
                       type=SettingsConstants.TYPE__SELECT_1,
                       visibility=SettingsConstants.VISIBILITY__ADVANCED,
                       selection_options=SettingsConstants.ALL_SATOCHIP_TIMEOUTS,
                       default_value=SettingsConstants.DEFAULT_SATOCHIP_TIMEOUT),
+
+        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
+                      attr_name=SettingsConstants.SETTING__SATOCHIP_MSG_SIGN_TIMEOUT,
+                      abbreviated_name="satomsig",
+                      display_name="Satochip message sign timeout",
+                      type=SettingsConstants.TYPE__SELECT_1,
+                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
+                      selection_options=SettingsConstants.ALL_SATOCHIP_MSG_TIMEOUTS,
+                      default_value=SettingsConstants.DEFAULT_SATOCHIP_MSG_TIMEOUT),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
                       attr_name=SettingsConstants.SETTING__SATOCHIP_MAX_PRE_DUMMIES,

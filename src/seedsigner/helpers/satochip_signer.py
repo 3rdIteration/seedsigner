@@ -7,9 +7,11 @@ import random
 import time
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
 
+from embit import bip32
 from embit.ec import PublicKey
 from embit.psbt import PSBT
 from embit.util import secp256k1
+from seedsigner.helpers import embit_utils
 from seedsigner.helpers.iso7816 import format_sw_error
 from seedsigner.models.settings import Settings, SettingsConstants
 
@@ -20,6 +22,97 @@ except ImportError:  # pragma: no cover - support older embit releases
     HARDENED_INDEX = 0x80000000
 
 logger = logging.getLogger(__name__)
+
+
+_MISSING_AUTHENTIKEY_ERROR = (
+    "Satochip authentikey is unavailable. Verify the card PIN has been entered and "
+    "that the card has been initialised with current firmware."
+)
+
+_ADDRESS_MISMATCH_ERROR = (
+    "Address isn't on this Satochip card. Use the matching card before signing."
+)
+
+
+def _ensure_satochip_authentikey(connector) -> None:
+    """Ensure the connector has loaded the authentikey into its parser."""
+
+    parser = getattr(connector, "parser", None)
+    if parser is None:
+        return
+
+    authentikey = getattr(parser, "authentikey", None)
+    if authentikey is not None:
+        return
+
+    get_authentikey = getattr(connector, "card_bip32_get_authentikey", None)
+    if get_authentikey is None:
+        return
+
+    authentikey = get_authentikey()
+    if getattr(parser, "authentikey", None) is None and authentikey is None:
+        raise Exception(_MISSING_AUTHENTIKEY_ERROR)
+
+
+def _get_extended_key(connector, path):
+    """Retrieve the extended key for ``path`` with helpful error reporting."""
+
+    _ensure_satochip_authentikey(connector)
+    try:
+        return connector.card_bip32_get_extendedkey(path)
+    except AttributeError as exc:
+        if "_pubkey" in str(exc):
+            raise Exception(_MISSING_AUTHENTIKEY_ERROR) from exc
+        raise
+
+
+def verify_satochip_message_address(connector, addr_format: dict, expected_address: str) -> None:
+    """Ensure ``expected_address`` belongs to the Satochip wallet described by ``addr_format``."""
+
+    if not expected_address:
+        raise Exception("Missing address for Satochip message signing verification")
+
+    wallet_path = addr_format.get("wallet_derivation_path")
+    is_change = addr_format.get("is_change")
+    index = addr_format.get("index")
+    script_type = addr_format.get("script_type")
+    network = addr_format.get("network")
+
+    if wallet_path is None or is_change is None or index is None:
+        raise Exception(
+            "Sign message request must reference a standard receive or change path "
+            "(m/.../0/* or m/.../1/*)."
+        )
+
+    if script_type is None or network is None:
+        raise Exception("Unable to determine script type or network for address verification")
+
+    if script_type == SettingsConstants.NATIVE_SEGWIT:
+        xtype = "p2wpkh"
+    elif script_type == SettingsConstants.NESTED_SEGWIT:
+        xtype = "p2wpkh-p2sh"
+    elif script_type == SettingsConstants.LEGACY_P2PKH:
+        xtype = "standard"
+    elif script_type == SettingsConstants.TAPROOT:
+        xtype = "standard"
+    else:
+        raise Exception("Unsupported script type for Satochip message signing")
+
+    is_mainnet = network == SettingsConstants.MAINNET
+    path = format_path_string(wallet_path)
+    xpub_base58 = connector.card_bip32_get_xpub(path, xtype, is_mainnet)
+    xpub = bip32.HDKey.from_base58(xpub_base58)
+    embit_network = embit_utils.get_embit_network_name(network)
+    derived_address = embit_utils.get_single_sig_address(
+        xpub=xpub,
+        script_type=script_type,
+        index=index,
+        is_change=is_change,
+        embit_network=embit_network,
+    )
+
+    if derived_address != expected_address:
+        raise Exception(_ADDRESS_MISMATCH_ERROR)
 
 
 def _call_with_timeout(func, timeout: float, *args):
@@ -128,7 +221,7 @@ def sign_psbt_with_satochip(psbt: PSBT, connector) -> int:
         for pubkey, deriv in inp.bip32_derivations.items():
             path = _format_path(deriv.derivation)
             try:
-                key, _chaincode = connector.card_bip32_get_extendedkey(path)
+                key, _chaincode = _get_extended_key(connector, path)
                 card_pub = PublicKey.parse(
                     key.get_public_key_bytes(compressed=True)
                 )
@@ -231,9 +324,9 @@ def sign_message_with_satochip(derivation_path: str, message: str, connector) ->
     """
 
     settings = Settings.get_instance()
-    timeout = settings.get_value(SettingsConstants.SETTING__SATOCHIP_SIGN_TIMEOUT)
+    timeout = settings.get_value(SettingsConstants.SETTING__SATOCHIP_MSG_SIGN_TIMEOUT)
     path = format_path_string(derivation_path)
-    key, _chaincode = connector.card_bip32_get_extendedkey(path)
+    key, _chaincode = _get_extended_key(connector, path)
     try:
         _resp, sw1, sw2, compsig = _call_with_timeout(
             connector.card_sign_message, timeout, 0xFF, key, message

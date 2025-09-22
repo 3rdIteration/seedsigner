@@ -3780,6 +3780,7 @@ class SeedSignMessageConfirmAddressView(View):
             seed = self.controller.get_seed(self.seed_num)
             xpub = seed.get_xpub(wallet_path=addr_format["wallet_derivation_path"], network=addr_format["network"])
 
+        data["addr_format"] = addr_format
         embit_network = embit_utils.get_embit_network_name(addr_format["network"])
         self.address = embit_utils.get_single_sig_address(
             xpub=xpub,
@@ -3788,6 +3789,7 @@ class SeedSignMessageConfirmAddressView(View):
             is_change=addr_format["is_change"],
             embit_network=embit_network,
         )
+        data["address"] = self.address
 
 
     def run(self):
@@ -3819,17 +3821,37 @@ class SeedSignMessageSignedMessageQRView(View):
         message: str = data["message"]
 
         if self.controller.sign_message_with_satochip:
-            from seedsigner.helpers.satochip_signer import sign_message_with_satochip
+            from seedsigner.helpers.satochip_signer import (
+                sign_message_with_satochip,
+                verify_satochip_message_address,
+            )
             from seedsigner.gui.screens.screen import LoadingScreenThread
 
             loading = LoadingScreenThread(text=_("Signing message..."))
             loading.start()
+            error: str | None = None
             try:
+                verify_satochip_message_address(
+                    self.controller.Satochip_Connector,
+                    data.get("addr_format", {}),
+                    data.get("address"),
+                )
                 self.signed_message = sign_message_with_satochip(
                     derivation_path, message, self.controller.Satochip_Connector
                 )
+            except Exception as exc:
+                error = str(exc)
             finally:
                 loading.stop()
+            if error:
+                self.set_redirect(
+                    Destination(
+                        SeedSignMessageSatochipVerificationFailedView,
+                        view_args=dict(error=error),
+                        skip_current_view=True,
+                    )
+                )
+                return
         else:
             self.seed_num = data["seed_num"]
             seed = self.controller.get_seed(self.seed_num)
@@ -3855,6 +3877,30 @@ class SeedSignMessageSignedMessageQRView(View):
         self.controller.sign_message_with_satochip = False
 
         # Exiting/Canceling the QR display screen always returns Home
+        return Destination(MainMenuView, skip_current_view=True)
+
+
+class SeedSignMessageSatochipVerificationFailedView(View):
+    def __init__(self, error: str):
+        super().__init__()
+        self.error = error
+
+    def run(self):
+        from seedsigner.gui.screens.screen import WarningScreen, ButtonOption
+
+        self.run_screen(
+            WarningScreen,
+            title=_("Verification Failed"),
+            status_headline=None,
+            text=self.error,
+            button_data=[ButtonOption(_("OK"))],
+            show_back_button=False,
+        )
+
+        self.controller.resume_main_flow = None
+        self.controller.sign_message_data = None
+        self.controller.sign_message_with_satochip = False
+
         return Destination(MainMenuView, skip_current_view=True)
 
 

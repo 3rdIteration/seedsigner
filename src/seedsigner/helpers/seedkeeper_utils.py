@@ -154,21 +154,22 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True):
 
     # Check for existing card connector
     print("Checking existing card connector...")
-    try:
-        if parentObject.controller.Satochip_Connector is not None:
+    Satochip_Connector = getattr(parentObject.controller, "Satochip_Connector", None)
+    if Satochip_Connector is not None:
+        try:
             print("Found existing connector, try to use it...")
-            parentObject.controller.Satochip_Connector.card_get_label()
-
+            Satochip_Connector.card_get_label()
             print("Found Card:", Satochip_Connector.UID_SHA1)
-            print("Expecting Card:", parentObject.controller.Satochip_Last_UID_SHA1)
-
-            # If the card connector is still good, we will get to this line :)
-            return parentObject.controller.Satochip_Connector
-    except:
-        parentObject.controller.Satochip_Connector = None
+            print(
+                "Expecting Card:",
+                getattr(parentObject.controller, "Satochip_Last_UID_SHA1", None),
+            )
+        except Exception:
+            parentObject.controller.Satochip_Connector = None
+            Satochip_Connector = None
 
     try:
-        if parentObject.controller.Satochip_Connector is None:
+        if Satochip_Connector is None:
             print("No Working CardConnector, Connecting")
             print("Card Filter:", init_card_filter)
             Satochip_Connector = CardConnector(card_filter=init_card_filter)

@@ -58,7 +58,11 @@ from .satochip_bias import ToolsSatochipBiasCheckView
 
 from seedsigner.hardware.microsd import MicroSD
 from seedsigner.helpers import seedkeeper_utils
-from seedsigner.helpers.satochip_signer import _call_with_timeout
+from seedsigner.helpers.satochip_signer import (
+    _call_with_timeout,
+    _get_extended_key,
+    format_path_string,
+)
 from seedsigner.gui.screens import seed_screens
 logger = logging.getLogger(__name__)
 
@@ -2646,10 +2650,11 @@ class ToolsSatochipView(View):
 class ToolsSatochipAdvancedView(View):
     ENABLE_2FA = ButtonOption("Enable 2FA")
     BENCHMARK = ButtonOption("Benchmark Signing")
+    BENCHMARK_MESSAGE = ButtonOption("Benchmark Message Signing")
     BIAS_TEST = ButtonOption("Check signing bias")
 
     def run(self):
-        button_data = [self.ENABLE_2FA, self.BENCHMARK, self.BIAS_TEST]
+        button_data = [self.ENABLE_2FA, self.BENCHMARK, self.BENCHMARK_MESSAGE, self.BIAS_TEST]
         selected_menu_num = self.run_screen(
             ButtonListScreen,
             title="Satochip Advanced",
@@ -2666,6 +2671,9 @@ class ToolsSatochipAdvancedView(View):
         elif button_data[selected_menu_num] == self.BENCHMARK:
             return Destination(ToolsSatochipBenchmarkSignView)
 
+        elif button_data[selected_menu_num] == self.BENCHMARK_MESSAGE:
+            return Destination(ToolsSatochipBenchmarkMessageSignView)
+
         elif button_data[selected_menu_num] == self.BIAS_TEST:
             return Destination(ToolsSatochipBiasCheckView)
 
@@ -2679,7 +2687,7 @@ class ToolsSatochipBenchmarkSignView(View):
         if not connector:
             return Destination(BackStackView)
 
-        timeout = self.settings.get_value(SettingsConstants.SETTING__SATOCHIP_SIGN_TIMEOUT)
+        timeout = 5.0
         durations: list[float] = []
         loading = LoadingScreenThread(text="Benchmarking\n\n\n\n\n\n")
         loading.start()
@@ -2717,6 +2725,82 @@ class ToolsSatochipBenchmarkSignView(View):
             ).format(min_time=min_time, avg=avg, max_time=max_time)
         else:
             text = "Benchmark signing failed"
+
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Benchmark",
+            status_headline=None,
+            text=text,
+            show_back_button=False,
+        )
+        return Destination(MainMenuView)
+
+
+class ToolsSatochipBenchmarkMessageSignView(View):
+    """Benchmark Satochip message signing performance."""
+
+    def run(self):
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+
+        connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satochip"])
+        if not connector:
+            return Destination(BackStackView)
+
+        timeout = 5.0
+        network = self.settings.get_value(SettingsConstants.SETTING__NETWORK)
+        coin_type = "0" if network == SettingsConstants.MAINNET else "1"
+        derivation_path = f"m/84'/{coin_type}'/0'/0/0"
+        path = format_path_string(derivation_path)
+
+        durations: list[float] = []
+        error: str | None = None
+        loading = LoadingScreenThread(text="Benchmarking\n\n\n\n\n\n")
+        loading.start()
+        try:
+            try:
+                key, _ = _get_extended_key(connector, path)
+            except Exception as exc:
+                logger.warning("Benchmark message signing failed: %s", exc)
+                error = str(exc)
+            else:
+                for _ in range(20):
+                    message = os.urandom(16).hex()
+                    start = time.monotonic()
+                    try:
+                        _call_with_timeout(
+                            connector.card_sign_message,
+                            timeout,
+                            0xFF,
+                            key,
+                            message,
+                        )
+                    except Exception as exc:
+                        logger.warning("Benchmark message signing failed: %s", exc)
+                        error = str(exc)
+                        break
+                    else:
+                        durations.append(time.monotonic() - start)
+        finally:
+            loading.stop()
+
+        if durations:
+            avg = sum(durations) / len(durations)
+            min_time = min(durations)
+            max_time = max(durations)
+            logger.info(
+                "Benchmark message signing results: min=%.3fs avg=%.3fs max=%.3fs over %d signatures",
+                min_time,
+                avg,
+                max_time,
+                len(durations),
+            )
+            text = (
+                "Min: {min_time:.3f}s\n"
+                "Avg: {avg:.3f}s\n"
+                "Max: {max_time:.3f}s"
+            ).format(min_time=min_time, avg=avg, max_time=max_time)
+        else:
+            text = error or "Benchmark signing failed"
 
         self.run_screen(
             LargeIconStatusScreen,
