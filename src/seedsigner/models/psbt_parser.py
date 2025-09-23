@@ -67,11 +67,10 @@ class PSBTParser():
 
     @property
     def is_multisig(self):
-        print(self.policy)
         """
             Multisig psbts will have "m" and "n" defined in policy
         """
-        return "m" in self.policy
+        return isinstance(self.policy, dict) and "m" in self.policy
 
 
     @property
@@ -98,12 +97,15 @@ class PSBTParser():
             logger.info(f"self.psbt is None!!")
             return False
 
-        if self.root is None:
+        if self.seed is not None and self.root is None:
             self._set_root()
 
         rt = self._parse_inputs()
         if rt == False:
             return False
+
+        if self.root is None and self.seed is None and not self.is_multisig:
+            raise RuntimeError("No seed or root key available")
 
         rt = self._parse_outputs()
         if rt == False:

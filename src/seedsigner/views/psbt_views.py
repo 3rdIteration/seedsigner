@@ -117,6 +117,43 @@ class PSBTSelectSeedView(View):
             if not connector:
                 return Destination(PSBTSelectSeedView, clear_history=True)
 
+            psbt = self.controller.psbt
+            is_multisig_psbt = False
+            try:
+                if psbt and psbt.inputs:
+                    first_input = psbt.inputs[0]
+                    if first_input.witness_utxo:
+                        script_pubkey = first_input.witness_utxo.script_pubkey
+                    elif first_input.non_witness_utxo:
+                        script_pubkey = first_input.script_pubkey
+                    else:
+                        script_pubkey = None
+
+                    if script_pubkey is not None:
+                        policy = PSBTParser._get_policy(first_input, script_pubkey, psbt.xpubs)
+                        is_multisig_psbt = isinstance(policy, dict) and "m" in policy
+            except Exception as exc:
+                logger.debug("Unable to determine PSBT policy", exc_info=exc)
+
+            if is_multisig_psbt:
+                try:
+                    parser = PSBTParser(psbt)
+                    parser.parse()
+                except Exception as e:
+                    logger.exception("Failed to parse PSBT with Satochip data")
+                    self.run_screen(
+                        WarningScreen,
+                        title="Failed",
+                        status_headline=None,
+                        text=str(e),
+                    )
+                    return Destination(PSBTSelectSeedView, clear_history=True)
+
+                self.controller.psbt_parser = parser
+                self.controller.psbt_seed = None
+                self.controller.psbt_sign_with_satochip = True
+                return Destination(PSBTOverviewView)
+
             network = self.settings.get_value(SettingsConstants.SETTING__NETWORK)
             is_mainnet = network == SettingsConstants.MAINNET
             first_der = next(iter(self.controller.psbt.inputs[0].bip32_derivations.values())).derivation
@@ -572,22 +609,36 @@ class PSBTChangeDetailsView(View):
 
         # Single-sig verification is easy. We expect to find a single fingerprint
         # and derivation path.
+        fingerprints = change_data.get("fingerprint") or []
+        derivation_paths = change_data.get("derivation_path") or []
+
         if self.controller.psbt_seed:
             seed_fingerprint = self.controller.psbt_seed.get_fingerprint(
                 self.settings.get_value(SettingsConstants.SETTING__NETWORK)
             )
         else:
-            seed_fingerprint = hexlify(psbt_parser.master_fingerprint).decode()
+            master_fp = getattr(psbt_parser, "master_fingerprint", None)
+            seed_fingerprint = hexlify(master_fp).decode() if master_fp else None
 
-        if seed_fingerprint not in change_data.get("fingerprint"):
-            # TODO: Something is wrong with this psbt(?). Reroute to warning?
-            return Destination(NotYetImplementedView)
+        if seed_fingerprint:
+            if seed_fingerprint not in fingerprints:
+                # TODO: Something is wrong with this psbt(?). Reroute to warning?
+                return Destination(NotYetImplementedView)
+            index = fingerprints.index(seed_fingerprint)
+        else:
+            index = 0 if fingerprints else None
+            if index is not None:
+                seed_fingerprint = fingerprints[index]
 
-        i = change_data.get("fingerprint").index(seed_fingerprint)
-        derivation_path = change_data.get("derivation_path")[i]
+        derivation_path = ""
+        if index is not None and index < len(derivation_paths):
+            derivation_path = derivation_paths[index]
 
         # 'm/84h/1h/0h/1/0' would be a change addr while 'm/84h/1h/0h/0/0' is a self-receive
-        path_ints = bip32.parse_path(derivation_path)
+        if derivation_path:
+            path_ints = bip32.parse_path(derivation_path)
+        else:
+            path_ints = []
         is_change_derivation_path = len(path_ints) >= 2 and (path_ints[-2] & 0x7FFFFFFF) == 1
         derivation_path_addr_index = path_ints[-1] & 0x7FFFFFFF if path_ints else 0
 
@@ -605,11 +656,34 @@ class PSBTChangeDetailsView(View):
             print("isMultisig")
             # if the known-good multisig descriptor is already onboard:
             if self.controller.multisig_wallet_descriptor:
-                is_change_addr_verified = psbt_parser.verify_multisig_output(self.controller.multisig_wallet_descriptor, change_num=self.change_address_num)
+                is_change_addr_verified = psbt_parser.verify_multisig_output(
+                    self.controller.multisig_wallet_descriptor,
+                    change_num=self.change_address_num,
+                )
+                if not is_change_addr_verified:
+                    self.controller.multisig_wallet_descriptor = None
+                    self.run_screen(
+                        WarningScreen,
+                        title=_("Descriptor mismatch"),
+                        status_icon_name=SeedSignerIconConstants.WARNING,
+                        status_headline=_("Descriptor cleared"),
+                        text=_(
+                            "Loaded multisig wallet descriptor does not match this PSBT. "
+                            "Load the correct descriptor or skip verification to continue."
+                        ),
+                        show_back_button=False,
+                        button_data=[ButtonOption(_("OK"))],
+                    )
+                    return Destination(
+                        PSBTChangeDetailsView,
+                        view_args={"change_address_num": self.change_address_num},
+                        skip_current_view=True,
+                    )
+
                 button_data = [self.NEXT]
 
             else:
-                # Have the Screen offer to load in the multisig descriptor.            
+                # Have the Screen offer to load in the multisig descriptor.
                 button_data = [self.VERIFY_MULTISIG, self.SKIP_VERIFICATION]
 
         else:
@@ -686,8 +760,8 @@ class PSBTChangeDetailsView(View):
             address=change_data.get("address"),
             amount=change_data.get("amount"),
             is_multisig=psbt_parser.is_multisig,
-            fingerprint=seed_fingerprint,
-            derivation_path=derivation_path,
+            fingerprint=seed_fingerprint or "",
+            derivation_path=derivation_path or "",
             is_change_derivation_path=is_change_derivation_path,
             derivation_path_addr_index=derivation_path_addr_index,
             is_change_addr_verified=is_change_addr_verified,
