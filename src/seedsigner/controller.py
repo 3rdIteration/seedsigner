@@ -2,6 +2,7 @@ import logging
 import time
 import traceback
 from gettext import gettext as _
+from pathlib import Path
 
 from embit.descriptor import Descriptor
 from embit.psbt import PSBT
@@ -134,6 +135,9 @@ class Controller(Singleton):
     psbt_seed: Seed = None
     psbt_parser: PSBTParser = None
     psbt_sign_with_satochip: bool = False
+    psbt_from_microsd: bool = False
+    psbt_microsd_save_path: Path | None = None
+    psbt_microsd_seed_warning_shown: bool = False
     sign_message_with_satochip: bool = False
 
     unverified_address = None
@@ -222,6 +226,9 @@ class Controller(Singleton):
         controller.psbt = None
         controller.psbt_parser = None
         controller.psbt_sign_with_satochip = False
+        controller.psbt_from_microsd = False
+        controller.psbt_microsd_save_path = None
+        controller.psbt_microsd_seed_warning_shown = False
         controller.sign_message_with_satochip = False
 
         # Configure the Renderer

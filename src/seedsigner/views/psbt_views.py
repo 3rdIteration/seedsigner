@@ -9,8 +9,17 @@ import logging
 from seedsigner.models.psbt_parser import PSBTParser
 from seedsigner.models.settings import SettingsConstants
 from seedsigner.gui.components import FontAwesomeIconConstants, SeedSignerIconConstants
-from seedsigner.gui.screens.screen import (RET_CODE__BACK_BUTTON, ButtonListScreen, ButtonOption, WarningScreen, DireWarningScreen, QRDisplayScreen)
+from seedsigner.gui.screens.screen import (
+    RET_CODE__BACK_BUTTON,
+    ButtonListScreen,
+    ButtonOption,
+    WarningScreen,
+    DireWarningScreen,
+    QRDisplayScreen,
+    LargeIconStatusScreen,
+)
 from seedsigner.views.view import BackStackView, MainMenuView, NotYetImplementedView, View, Destination
+from seedsigner.hardware.microsd import MicroSD
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +42,24 @@ class PSBTSelectSeedView(View):
 
     def run(self):
         from seedsigner.controller import Controller
+
+        def ensure_microsd_seed_warning() -> bool:
+            if not getattr(self.controller, "psbt_from_microsd", False):
+                return True
+            if getattr(self.controller, "psbt_microsd_seed_warning_shown", False):
+                return True
+            ret = self.run_screen(
+                WarningScreen,
+                title="WARNING",
+                status_headline=None,
+                text="These tools load data from the microSD card and may expose loaded secrets.",
+                show_back_button=True,
+                button_data=[ButtonOption("Continue")],
+            )
+            if ret == RET_CODE__BACK_BUTTON:
+                return False
+            self.controller.psbt_microsd_seed_warning_shown = True
+            return True
 
         # Note: we can't just autoroute to the PSBT Overview because we might have a
         # multisig where we want to sign with more than one key on this device.
@@ -87,25 +114,37 @@ class PSBTSelectSeedView(View):
         )
 
         if selected_menu_num == RET_CODE__BACK_BUTTON:
+            if getattr(self.controller, "psbt_from_microsd", False):
+                self.controller.psbt_from_microsd = False
+                self.controller.psbt_microsd_save_path = None
+                self.controller.psbt_microsd_seed_warning_shown = False
             return Destination(BackStackView)
 
         if len(seeds) > 0 and selected_menu_num < len(seeds):
             # User selected one of the n seeds
+            if not ensure_microsd_seed_warning():
+                return Destination(PSBTSelectSeedView)
             self.controller.psbt_seed = self.controller.get_seed(selected_menu_num)
             return Destination(PSBTOverviewView)
-        
+
         # The remaining flows are a sub-flow; resume PSBT flow once the seed is loaded.
         self.controller.resume_main_flow = Controller.FLOW__PSBT
 
         if button_data[selected_menu_num] == self.SCAN_SEED:
+            if not ensure_microsd_seed_warning():
+                return Destination(PSBTSelectSeedView)
             from seedsigner.views.scan_views import ScanSeedQRView
             return Destination(ScanSeedQRView)
 
         elif button_data[selected_menu_num] == self.SCAN_WIF:
+            if not ensure_microsd_seed_warning():
+                return Destination(PSBTSelectSeedView)
             from seedsigner.views.scan_views import ScanWIFQRView
             return Destination(ScanWIFQRView)
 
         elif button_data[selected_menu_num] == self.SCAN_BIP38:
+            if not ensure_microsd_seed_warning():
+                return Destination(PSBTSelectSeedView)
             from seedsigner.views.scan_views import ScanBIP38QRView
             return Destination(ScanBIP38QRView)
 
@@ -260,18 +299,26 @@ class PSBTSelectSeedView(View):
             return Destination(PSBTOverviewView)
 
         elif button_data[selected_menu_num] in [self.TYPE_12WORD, self.TYPE_15WORD, self.TYPE_18WORD, self.TYPE_21WORD, self.TYPE_24WORD]:
+            if not ensure_microsd_seed_warning():
+                return Destination(PSBTSelectSeedView)
             from seedsigner.views.seed_views import SeedMnemonicEntryView
             self.controller.storage.init_pending_mnemonic(num_words=button_data[selected_menu_num].return_data)
             return Destination(SeedMnemonicEntryView)
 
         elif button_data[selected_menu_num] == self.TYPE_ELECTRUM:
+            if not ensure_microsd_seed_warning():
+                return Destination(PSBTSelectSeedView)
             from seedsigner.views.seed_views import SeedElectrumMnemonicStartView
             return Destination(SeedElectrumMnemonicStartView)
 
         elif button_data[selected_menu_num] == self.TYPE_WIF:
+            if not ensure_microsd_seed_warning():
+                return Destination(PSBTSelectSeedView)
             return Destination(PSBTWIFEntryView)
 
         elif button_data[selected_menu_num] == self.TYPE_BIP38:
+            if not ensure_microsd_seed_warning():
+                return Destination(PSBTSelectSeedView)
             return Destination(PSBTBIP38EntryView)
 
 
@@ -913,6 +960,39 @@ class PSBTSignedQRDisplayView(View):
         from seedsigner.models.encode_qr import UrPsbtQrEncoder, GenericStringEncoder
         from seedsigner.models.wif import WIFKey
         from seedsigner.gui.screens.screen import LoadingScreenThread
+
+        save_path = getattr(self.controller, "psbt_microsd_save_path", None)
+        if save_path:
+            signed_path = save_path.with_name(save_path.name + ".signed")
+            try:
+                signed_path.parent.mkdir(parents=True, exist_ok=True)
+                signed_path.write_bytes(self.controller.psbt.serialize())
+                try:
+                    display_path = str(signed_path.relative_to(MicroSD.get_microsd_dir()))
+                except ValueError:
+                    display_path = signed_path.name
+                self.run_screen(
+                    LargeIconStatusScreen,
+                    title=_("Success"),
+                    status_headline=None,
+                    text=_("Saved as {}.").format(display_path),
+                    show_back_button=False,
+                    button_data=[ButtonOption(_("Continue"))],
+                )
+            except Exception as e:
+                logger.exception("Failed to save signed PSBT", exc_info=e)
+                self.run_screen(
+                    WarningScreen,
+                    title=_("Error"),
+                    status_headline=None,
+                    text=_("Failed to save PSBT: {}").format(str(e)),
+                    show_back_button=False,
+                    button_data=[ButtonOption(_("OK"))],
+                )
+            finally:
+                self.controller.psbt_microsd_save_path = None
+                self.controller.psbt_from_microsd = False
+                self.controller.psbt_microsd_seed_warning_shown = False
 
         if isinstance(self.controller.psbt_seed, WIFKey) and getattr(self.controller, "signed_tx_hex", None):
             qr_encoder = GenericStringEncoder(self.controller.signed_tx_hex)
