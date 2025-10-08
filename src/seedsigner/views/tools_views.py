@@ -3718,7 +3718,6 @@ class ToolsDIYInstallAppletView(View):
                 ButtonOption("16 KB", return_data="3FFF"),
                 ButtonOption("32 KB", return_data="7FFF"),
                 ButtonOption("64 KB", return_data="FFFF"),
-                ButtonOption("128 KB", return_data="1FFFF"),
             ]
 
             selected_storage_num = self.run_screen(

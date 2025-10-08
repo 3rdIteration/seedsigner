@@ -48,7 +48,7 @@ def test_seedkeeper_install_defaults_to_8k(monkeypatch, tmp_path):
 
     storage_labels = [option.button_label for option in storage_screen_kwargs.get("button_data", [])]
     assert "64 KB" in storage_labels
-    assert "128 KB" in storage_labels
+    assert "128 KB" not in storage_labels
 
 
 def test_seedkeeper_install_respects_selected_storage(monkeypatch, tmp_path):
@@ -104,7 +104,7 @@ def test_seedkeeper_install_supports_largest_storage(monkeypatch, tmp_path):
     monkeypatch.setattr(seedkeeper_utils, "run_globalplatform", fake_run_globalplatform)
     monkeypatch.setattr(tools_views, "logger", SimpleNamespace(info=lambda *a, **k: None))
 
-    responses = iter([0, 5])
+    responses = iter([0, 4])
 
     def fake_run_screen(*args, **kwargs):
         try:
@@ -116,5 +116,5 @@ def test_seedkeeper_install_supports_largest_storage(monkeypatch, tmp_path):
 
     view.run()
 
-    assert "--params 1FFFF" in captured["cmd"]
+    assert "--params FFFF" in captured["cmd"]
 
