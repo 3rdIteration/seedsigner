@@ -3712,9 +3712,31 @@ class ToolsDIYInstallAppletView(View):
                 f"Applet Installed\nSerial: {serial_hex}",
             )
         elif "seedkeeper" in applet_file.lower():
+            storage_options = [
+                ButtonOption("4 KB", return_data="0FFF"),
+                ButtonOption("8 KB (default)", return_data="1FFF"),
+                ButtonOption("16 KB", return_data="3FFF"),
+                ButtonOption("32 KB", return_data="7FFF"),
+                ButtonOption("64 KB", return_data="FFFF"),
+            ]
+
+            selected_storage_num = self.run_screen(
+                ButtonListScreen,
+                title="Select Storage",
+                is_button_text_centered=False,
+                button_data=storage_options,
+                selected_button=1,
+            )
+
+            if selected_storage_num == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+
+            selected_option = storage_options[selected_storage_num]
+            storage_param = selected_option.return_data or "1FFF"
+
             installed_applets = seedkeeper_utils.run_globalplatform(
                 self,
-                f"--install {cap_dir}/{applet_file} --params 1FFF",
+                f"--install {cap_dir}/{applet_file} --params {storage_param}",
                 "Installing Applet",
                 "Applet Installed",
             )
