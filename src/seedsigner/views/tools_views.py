@@ -5,7 +5,9 @@ import time
 import platform
 import binascii
 import subprocess
+from pathlib import Path
 from embit.util import secp256k1
+from embit.psbt import PSBT
 
 from embit.descriptor import Descriptor
 from embit.descriptor.checksum import checksum
@@ -2617,6 +2619,7 @@ class ToolsSatochipView(View):
     IMPORT_SEED = ButtonOption("Initialise with Seed")
     EXPORT_XPUB = ButtonOption("Export Xpub")
     LOAD_DESCRIPTOR = ButtonOption("Load as Descriptor")
+    LOAD_PSBT = ButtonOption("Load PSBT")
     ADVANCED = ButtonOption("Advanced")
 
     def run(self):
@@ -2624,6 +2627,7 @@ class ToolsSatochipView(View):
             self.IMPORT_SEED,
             self.EXPORT_XPUB,
             self.LOAD_DESCRIPTOR,
+            self.LOAD_PSBT,
             self.ADVANCED,
         ]
         selected_menu_num = self.run_screen(
@@ -2644,8 +2648,104 @@ class ToolsSatochipView(View):
 
         elif button_data[selected_menu_num] == self.LOAD_DESCRIPTOR:
             return Destination(SatochipLoadDescriptorScriptTypeView)
+        elif button_data[selected_menu_num] == self.LOAD_PSBT:
+            return Destination(ToolsSatochipLoadPsbtView)
         elif button_data[selected_menu_num] == self.ADVANCED:
             return Destination(ToolsSatochipAdvancedView)
+
+
+class ToolsSatochipLoadPsbtView(View):
+    def run(self):
+        from seedsigner.views.psbt_views import PSBTSelectSeedView
+
+        # Reset microSD PSBT context before prompting the user.
+        self.controller.psbt_from_microsd = False
+        self.controller.psbt_microsd_save_path = None
+        self.controller.psbt_microsd_seed_warning_shown = False
+
+        if len(self.controller.storage.seeds) > 0:
+            ret = self.run_screen(
+                WarningScreen,
+                title="WARNING",
+                status_headline=None,
+                text="These tools load data from the microSD card and may expose loaded secrets.",
+                show_back_button=True,
+                button_data=[ButtonOption("Continue")],
+            )
+            if ret == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+            self.controller.psbt_microsd_seed_warning_shown = True
+
+        psbt_dir = MicroSD.get_microsd_dir() / "psbt"
+        try:
+            psbt_dir.mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            logger.exception("Failed to access PSBT directory", exc_info=e)
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text=str(e),
+                show_back_button=False,
+                button_data=[ButtonOption("OK")],
+            )
+            return Destination(BackStackView)
+
+        psbt_files = sorted(
+            [
+                p
+                for p in psbt_dir.iterdir()
+                if p.is_file() and not p.name.startswith(".") and p.suffix.lower() == ".psbt"
+            ],
+            key=lambda p: p.name.lower(),
+        )
+
+        if not psbt_files:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No PSBT files found in psbt/.",
+                show_back_button=False,
+                button_data=[ButtonOption("OK")],
+            )
+            return Destination(BackStackView)
+
+        button_data = [ButtonOption(path.name) for path in psbt_files]
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Select PSBT",
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        selected_path = psbt_files[selected]
+        try:
+            psbt_data = selected_path.read_bytes()
+            psbt = PSBT.parse(psbt_data)
+        except Exception as e:
+            logger.exception("Failed to load PSBT from microSD", exc_info=e)
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text=str(e),
+                show_back_button=False,
+                button_data=[ButtonOption("OK")],
+            )
+            return Destination(ToolsSatochipLoadPsbtView)
+
+        self.controller.psbt = psbt
+        self.controller.psbt_parser = None
+        self.controller.psbt_seed = None
+        self.controller.psbt_sign_with_satochip = False
+        self.controller.psbt_from_microsd = True
+        self.controller.psbt_microsd_save_path = selected_path
+
+        return Destination(PSBTSelectSeedView, skip_current_view=True)
 
 class ToolsSatochipAdvancedView(View):
     ENABLE_2FA = ButtonOption("Enable 2FA")
