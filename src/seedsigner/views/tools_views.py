@@ -1,11 +1,14 @@
 import hashlib
+import json
 import logging
 import os
+import re
 import time
 import platform
 import binascii
 import subprocess
 from pathlib import Path
+from typing import Optional
 from embit.util import secp256k1
 from embit.psbt import PSBT
 
@@ -26,18 +29,47 @@ from seedsigner.gui.screens import (
     ErrorScreen,
 )
 from seedsigner.gui.screens.scan_screens import ScanScreen
-from seedsigner.gui.screens.tools_screens import (ToolsCalcFinalWordDoneScreen, ToolsCalcFinalWordFinalizePromptScreen,
-    ToolsCalcFinalWordScreen, ToolsCoinFlipEntryScreen, ToolsDiceEntropyEntryScreen, ToolsImageEntropyFinalImageScreen,
-    ToolsImageEntropyLivePreviewScreen, ToolsAddressExplorerAddressTypeScreen, ToolsTextQRTextEntryScreen, ToolsTextQRReviewTextScreen,
-    ToolsTextQRTranscribeModePromptScreen, ToolsTranscribeTextQRWholeQRScreen, ToolsTranscribeTextQRZoomedInScreen,
-    ToolsTranscribeTextQRConfirmQRPromptScreen, ToolsCommonFilterScreen)
-from seedsigner.helpers import embit_utils, mnemonic_generation
+from seedsigner.gui.screens.tools_screens import (
+    ToolsCalcFinalWordDoneScreen,
+    ToolsCalcFinalWordFinalizePromptScreen,
+    ToolsCalcFinalWordScreen,
+    ToolsCoinFlipEntryScreen,
+    ToolsDiceEntropyEntryScreen,
+    ToolsImageEntropyFinalImageScreen,
+    ToolsImageEntropyLivePreviewScreen,
+    ToolsAddressExplorerAddressTypeScreen,
+    ToolsTextQRTextEntryScreen,
+    ToolsTextQRReviewTextScreen,
+    ToolsTextQRTranscribeModePromptScreen,
+    ToolsTranscribeTextQRWholeQRScreen,
+    ToolsTranscribeTextQRZoomedInScreen,
+    ToolsTranscribeTextQRConfirmQRPromptScreen,
+    ToolsCommonFilterScreen,
+    DatumContentScreen,
+)
+from seedsigner.helpers import embit_utils, mnemonic_generation, kef
 from seedsigner.helpers.iso7816 import format_sw_error
 from seedsigner.models.decode_qr import DecodeQR
 from seedsigner.models.encode_qr import GenericStaticQrEncoder
-from seedsigner.gui.screens.screen import ButtonOption
+from seedsigner.gui.screens.screen import ButtonOption, QRDisplayScreen
 from seedsigner.models.seed import Seed
 from seedsigner.models.settings_definition import SettingsConstants
+from seedsigner.models.qr_type import QRType
+from seedsigner.helpers.qr import QR
+from seedsigner.helpers.datum import (
+    DATUM_ADDRESS,
+    DATUM_DESCRIPTOR,
+    DATUM_PSBT,
+    DATUM_XPUB,
+    STATIC_QR_MAX_SIZE,
+    SLOW_ENCODING_MAX_SIZE,
+    analyze_contents,
+    convert_encoding,
+    DatumConversionError,
+    urobj_to_data,
+    unwrap_kef_envelope,
+    KEFMetadata,
+)
 from seedsigner.views.seed_views import (
     SeedDiscardView,
     SeedFinalizeView,
@@ -81,6 +113,7 @@ class ToolsMenuView(View):
     ADDRESS_EXPLORER = ButtonOption("Address Explorer")
     VERIFY_ADDRESS = ButtonOption("Verify address")
     TEXTQRCODE = ButtonOption("Text QR Code")
+    DATUM_TOOL = ButtonOption("Datum Tool")
     SMARTCARD = ButtonOption("Smartcard Tools", FontAwesomeIconConstants.LOCK)
     MICROSD = ButtonOption("MicroSD Tools")
     GPG = ButtonOption("GPG Tools")
@@ -100,6 +133,7 @@ class ToolsMenuView(View):
             self.ADDRESS_EXPLORER,
             self.VERIFY_ADDRESS,
             self.TEXTQRCODE,
+            self.DATUM_TOOL,
             self.MICROSD,
             self.GPG,
             self.CLEAR_DESCRIPTOR,
@@ -141,6 +175,9 @@ class ToolsMenuView(View):
 
         elif button_data[selected_menu_num] == self.TEXTQRCODE:
             return Destination(ToolsTextQRView)
+
+        elif button_data[selected_menu_num] == self.DATUM_TOOL:
+            return Destination(ToolsDatumMenuView)
 
         elif button_data[selected_menu_num] == self.SMARTCARD:
             return Destination(ToolsSmartcardMenuView)
@@ -957,6 +994,633 @@ class ToolsAddressExplorerAddressView(View):
     
         # Exiting/Cancelling the QR display screen always returns to the list
         return Destination(ToolsAddressExplorerAddressListView, view_args=dict(is_change=self.is_change, start_index=self.start_index, selected_button_index=self.index - self.start_index, initial_scroll=self.parent_initial_scroll), skip_current_view=True)
+
+"""****************************************************************************
+    Datum Tool Views
+****************************************************************************"""
+class ToolsDatumMenuView(View):
+    SCAN = ButtonOption(_("Scan QR code"))
+    MANUAL = ButtonOption(_("Manual input"))
+    MICROSD = ButtonOption(_("From microSD"))
+
+    def run(self):
+        button_data = [self.SCAN, self.MANUAL]
+        button_data.append(self.MICROSD)
+
+        selection = self.run_screen(
+            ButtonListScreen,
+            title=_("Datum Tool"),
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+
+        if selection == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        if button_data[selection] == self.SCAN:
+            result = self._scan_qr()
+        elif button_data[selection] == self.MANUAL:
+            result = self._manual_input()
+        else:
+            result = self._load_from_microsd()
+
+        if not result:
+            return Destination(BackStackView)
+
+        contents, title = result
+        return Destination(
+            ToolsDatumActionView,
+            view_args=dict(contents=contents, title=title),
+        )
+
+    def _scan_qr(self):
+        decoder = DecodeQR()
+        ScanScreen(decoder=decoder, instructions_text=_("Scan datum QR code")).display()
+
+        self.controller.reset_screensaver_timeout()
+        time.sleep(0.1)
+
+        if not decoder.is_complete:
+            if decoder.is_nonUTF8:
+                self._show_error(_("Non UTF-8 data detected."))
+            else:
+                self._show_error(_("Failed to load"))
+            return None
+
+        try:
+            contents = self._extract_decoder_contents(decoder)
+        except Exception as err:  # pragma: no cover - defensive logging
+            logger.exception("Datum tool failed to parse QR: %s", err)
+            contents = None
+
+        if contents is None:
+            self._show_error(_("Failed to load"))
+            return None
+
+        if isinstance(contents, list):
+            contents = " ".join(str(item) for item in contents)
+        if isinstance(contents, dict):
+            contents = json.dumps(contents, indent=2)
+
+        return contents, _("QR contents")
+
+    def _manual_input(self):
+        ret = ToolsTextQRTextEntryScreen(
+            textToEncode="",
+            title=_("Custom Text"),
+        ).display()
+
+        if ret.get("is_back_button"):
+            return None
+
+        text = ret.get("textToEncode", "")
+        if not text:
+            self._show_error(_("Failed to load"))
+            return None
+
+        return text, _("Custom Text")
+
+    def _load_from_microsd(self):
+        microsd = MicroSD.get_instance()
+        if not microsd.is_inserted:
+            self._show_error(_("SD card not detected."))
+            return None
+
+        files = self._list_microsd_files()
+        if not files:
+            self._show_error(_("No files found on microSD."))
+            return None
+
+        options = [ButtonOption(path.name, return_data=path) for path in files]
+        selection = self.run_screen(
+            ButtonListScreen,
+            title=_("Select file"),
+            is_button_text_centered=False,
+            button_data=options,
+        )
+
+        if selection == RET_CODE__BACK_BUTTON:
+            return None
+
+        file_path = options[selection].return_data
+        try:
+            with open(file_path, "rb") as file_handle:
+                data = file_handle.read()
+        except OSError as err:
+            logger.info("Failed to read microSD file %s: %s", file_path, err)
+            self._show_error(_("Failed to load"))
+            return None
+
+        try:
+            text = data.decode()
+            if text.endswith("\n"):
+                text = text[:-1]
+            contents = text
+        except UnicodeDecodeError:
+            contents = data
+
+        return contents, file_path.name
+
+    def _list_microsd_files(self, limit: int = 100):
+        microsd_dir = MicroSD.get_microsd_dir()
+        files = sorted(
+            [path for path in microsd_dir.iterdir() if path.is_file()],
+            key=lambda path: path.name.lower(),
+        )
+        return files[:limit]
+
+    def _extract_decoder_contents(self, decoder: DecodeQR):
+        impl = getattr(decoder, "decoder", None)
+        if impl is None:
+            return None
+
+        qr_type = decoder.qr_type
+        if qr_type in (
+            QRType.PSBT__UR2,
+            QRType.OUTPUT__UR,
+            QRType.ACCOUNT__UR,
+            QRType.BYTES__UR,
+        ):
+            try:
+                ur_obj = impl.result_message()
+            except Exception:
+                ur_obj = None
+            if ur_obj:
+                data = urobj_to_data(ur_obj)
+                if data is not None:
+                    return data
+                if hasattr(ur_obj, "cbor"):
+                    return ur_obj.cbor
+
+        for attr in ("get_data", "get_text", "get_address", "get_wallet_descriptor"):
+            if hasattr(impl, attr):
+                try:
+                    result = getattr(impl, attr)()
+                except Exception:
+                    continue
+                if result:
+                    if isinstance(result, dict):
+                        return json.dumps(result, indent=2)
+                    return result
+
+        if hasattr(impl, "get_qr_data"):
+            try:
+                qr_data = impl.get_qr_data()
+            except Exception:
+                qr_data = None
+            if qr_data:
+                if isinstance(qr_data, dict):
+                    return json.dumps(qr_data, indent=2)
+                return qr_data
+
+        try:
+            if decoder.is_psbt:
+                psbt_obj = decoder.get_psbt()
+                if psbt_obj:
+                    return psbt_obj.serialize()
+        except Exception:
+            pass
+
+        if decoder.is_text:
+            return decoder.get_text()
+
+        if getattr(decoder, "is_address", False):
+            try:
+                return impl.get_address()
+            except Exception:
+                pass
+
+        return None
+
+    def _show_error(self, message: str):
+        self.run_screen(
+            ErrorScreen,
+            title=_("Error"),
+            status_headline=None,
+            text=str(message),
+        )
+
+
+class ToolsDatumActionView(View):
+    def __init__(self, contents, title: str):
+        super().__init__()
+        self.contents = contents
+        self.title = title
+        self.history: list = []
+        self.analysis = analyze_contents(contents)
+        self.kef_metadata: Optional[KEFMetadata] = None
+        self._kef_ciphertext: Optional[bytes] = None
+
+    def run(self):
+        offer_convert = False
+        show_summary = True
+
+        while True:
+            self._update_analysis()
+
+            if show_summary:
+                if self._show_summary() == RET_CODE__BACK_BUTTON:
+                    return Destination(BackStackView)
+                show_summary = False
+
+            menu_options = self._build_menu(offer_convert)
+            if not menu_options:
+                return Destination(BackStackView)
+
+            selection = self.run_screen(
+                ButtonListScreen,
+                title=self.title or _("Datum Tool"),
+                is_button_text_centered=False,
+                button_data=menu_options,
+            )
+
+            if selection == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+
+            action = menu_options[selection].return_data
+
+            if action == "info":
+                show_summary = True
+            elif action == "view":
+                self._view_contents()
+            elif action == "convert":
+                offer_convert = True
+                show_summary = True
+            elif action == "convert_done":
+                offer_convert = False
+            elif action == "qr":
+                self._display_qr()
+            elif action == "save":
+                if self._save_to_sd():
+                    show_summary = True
+            elif action == "encrypt":
+                if self._encrypt_contents():
+                    offer_convert = False
+                    show_summary = True
+            elif action == "decrypt":
+                if self._decrypt_kef():
+                    offer_convert = False
+                    show_summary = True
+            elif action == "undo":
+                if self._undo_conversion():
+                    show_summary = True
+            elif action in ("hex", "HEX", "utf8", "shift_case", 32, 43, 58, 64):
+                if self._apply_conversion(action):
+                    show_summary = True
+
+    def _build_menu(self, offer_convert: bool):
+        options = []
+        if offer_convert:
+            for token in self._get_conversion_tokens():
+                options.append(ButtonOption(self._conversion_label(token), return_data=token))
+            if self.history:
+                options.append(ButtonOption(_("Undo last conversion"), return_data="undo"))
+            options.append(ButtonOption(_("Done converting"), return_data="convert_done"))
+            return options
+
+        options.append(ButtonOption(_("Show info"), return_data="info"))
+        options.append(ButtonOption(_("View contents"), return_data="view"))
+
+        if self._get_conversion_tokens():
+            options.append(ButtonOption(_("Convert datum"), return_data="convert"))
+
+        if self._can_display_qr():
+            options.append(ButtonOption(_("QR code"), return_data="qr"))
+
+        if not self.analysis.sensitive:
+            options.append(ButtonOption(_("Save to microSD"), return_data="save"))
+
+        if self.kef_metadata and self._kef_ciphertext is not None:
+            options.append(ButtonOption(_("Decrypt KEF envelope"), return_data="decrypt"))
+        elif isinstance(self.contents, (bytes, bytearray)):
+            options.append(ButtonOption(_("Encrypt (KEF)"), return_data="encrypt"))
+
+        return options
+
+    def _get_conversion_tokens(self):
+        tokens = []
+        if isinstance(self.contents, (bytes, bytearray)):
+            tokens.extend(["hex", "HEX", 32])
+            if len(self.contents) <= int(SLOW_ENCODING_MAX_SIZE * 5.42 / 8):
+                tokens.append(43)
+            tokens.extend([58, 64, "utf8"])
+        else:
+            encodings = set(self.analysis.encodings)
+            if "HEX" in encodings:
+                tokens.append("HEX")
+            if "hex" in encodings:
+                tokens.append("hex")
+            if 32 in encodings:
+                tokens.append(32)
+            if 43 in encodings:
+                tokens.append(43)
+            if 58 in encodings:
+                tokens.append(58)
+            if 64 in encodings:
+                tokens.append(64)
+            if "utf8" in encodings:
+                tokens.append("utf8")
+            if any(c.isalpha() for c in self.contents):
+                tokens.append("shift_case")
+
+        seen = []
+        for token in tokens:
+            if token not in seen:
+                seen.append(token)
+        return seen
+
+    def _conversion_label(self, token):
+        if isinstance(self.contents, (bytes, bytearray)):
+            if token == "hex":
+                return _("To hex")
+            if token == "HEX":
+                return _("To HEX")
+            if token == "utf8":
+                return _("To utf8 text")
+            if token == "shift_case":
+                return _("Shift case")
+            return _("To base{}" ).format(token)
+
+        if token == "hex":
+            return _("From hex")
+        if token == "HEX":
+            return _("From HEX")
+        if token == "utf8":
+            return _("From utf8")
+        if token == "shift_case":
+            return _("Shift case")
+        return _("From base{}" ).format(token)
+
+    def _apply_conversion(self, token):
+        try:
+            new_contents = convert_encoding(self.contents, token)
+        except DatumConversionError as err:
+            self._show_error(str(err))
+            return False
+        except Exception as err:  # pragma: no cover - defensive logging
+            logger.exception("Datum conversion failed: %s", err)
+            self._show_error(_("Failed to convert"))
+            return False
+
+        if new_contents is None:
+            self._show_error(_("Failed to convert"))
+            return False
+
+        self.history.append(self.contents)
+        self.contents = new_contents
+        return True
+
+    def _undo_conversion(self):
+        if not self.history:
+            self._show_error(_("Nothing to undo"))
+            return False
+        self.contents = self.history.pop()
+        return True
+
+    def _view_contents(self):
+        if isinstance(self.contents, (bytes, bytearray)):
+            hex_str = binascii.hexlify(bytes(self.contents)).decode()
+            formatted = " ".join(hex_str[i : i + 2] for i in range(0, len(hex_str), 2))
+            title = _("Hex data")
+            text = formatted
+        else:
+            title = self.title or _("Datum contents")
+            text = self.contents
+
+        self.run_screen(DatumContentScreen, text=text, title=title)
+
+    def _can_display_qr(self):
+        data = self.contents
+        if isinstance(data, bytearray):
+            data = bytes(data)
+
+        if not isinstance(data, (bytes, str)):
+            return False
+
+        try:
+            modules = QR().qrsize(data)
+        except Exception:
+            return False
+
+        return modules <= 37
+
+    def _display_qr(self):
+        if not self._can_display_qr():
+            self._show_error(_("Data is too large to encode as a static QR."))
+            return
+
+        data = self.contents if isinstance(self.contents, str) else bytes(self.contents)
+
+        try:
+            encoder = GenericStaticQrEncoder(data=data)
+            self.run_screen(QRDisplayScreen, qr_encoder=encoder)
+        except Exception as err:
+            logger.exception("Datum QR display failed: %s", err)
+            self._show_error(_("Failed to encode QR"))
+
+    def _save_to_sd(self):
+        microsd = MicroSD.get_instance()
+        if not microsd.is_inserted:
+            self._show_error(_("SD card not detected."))
+            return False
+
+        default_name = (self.title or _("datum")).strip()
+        default_name = re.sub(r"[^A-Za-z0-9._-]", "_", default_name) or "datum"
+        ext = "bin" if isinstance(self.contents, (bytes, bytearray)) else "txt"
+        default_name = f"{default_name}.{ext}"
+
+        ret = ToolsTextQRTextEntryScreen(
+            textToEncode=default_name,
+            title=_("Filename"),
+        ).display()
+
+        if ret.get("is_back_button"):
+            return False
+
+        filename = ret.get("textToEncode", "").strip()
+        if not filename:
+            self._show_error(_("Filename required."))
+            return False
+
+        filename = re.sub(r"[^A-Za-z0-9._-]", "_", filename)
+        if not filename.lower().endswith(f".{ext}"):
+            filename = f"{filename}.{ext}"
+
+        file_path = MicroSD.get_microsd_dir() / filename
+
+        try:
+            mode = "wb" if isinstance(self.contents, (bytes, bytearray)) else "w"
+            with open(file_path, mode) as file_handle:
+                if mode == "wb":
+                    file_handle.write(bytes(self.contents))
+                else:
+                    file_handle.write(self.contents)
+        except OSError as err:
+            logger.info("Failed to save datum to %s: %s", file_path, err)
+            self._show_error(_("Failed to save to microSD."))
+            return False
+
+        self._show_success(_("Saved to {}" ).format(file_path.name))
+        return True
+
+    def _prompt_encryption_key(self, existing: str = ""):
+        from seedsigner.gui.screens.scan_screens import ScanTypeEncryptionKeyScreen
+
+        result = self.run_screen(ScanTypeEncryptionKeyScreen, encryptionkey=existing)
+        encryption_key = result.get("encryptionkey", "")
+        if "is_back_button" in result:
+            return None
+        return encryption_key
+
+    def _prompt_label(self, default: str = ""):
+        ret = ToolsTextQRTextEntryScreen(
+            textToEncode=default,
+            title=_("Label"),
+        ).display()
+
+        if ret.get("is_back_button"):
+            return None
+
+        return ret.get("textToEncode", "")
+
+    def _encrypt_contents(self):
+        if not isinstance(self.contents, (bytes, bytearray)):
+            self._show_error(_("Convert data to bytes before encrypting."))
+            return False
+
+        key = self._prompt_encryption_key()
+        if key is None:
+            return False
+
+        label = self._prompt_label(default=self.analysis.datum or (self.title or ""))
+        if label is None:
+            return False
+
+        label_bytes = label.encode() if label else b""
+        iterations_setting = self.settings.get_value(SettingsConstants.SETTING__ENCRYPTION_ITER)
+        iterations = iterations_setting * 10000
+        mode_name = self.settings.get_value(SettingsConstants.SETTING__ENCRYPTION_MODE)
+        plaintext = bytes(self.contents)
+
+        try:
+            version = kef.suggest_versions(plaintext, mode_name)[0]
+            cipher = kef.Cipher(key, label_bytes, iterations)
+            ciphertext = cipher.encrypt(plaintext, version)
+            envelope = kef.wrap(label_bytes, version, iterations, ciphertext)
+        except Exception as err:
+            logger.exception("Datum encryption failed: %s", err)
+            self._show_error(_("Encryption failed."))
+            return False
+
+        self.contents = envelope
+        self.history.clear()
+        self.kef_metadata = None
+        self._kef_ciphertext = None
+        self.title = f"{label} KEF" if label else "KEF"
+        self._show_success(_("Created KEF envelope."))
+        return True
+
+    def _decrypt_kef(self):
+        if not self.kef_metadata or self._kef_ciphertext is None:
+            self._show_error(_("No KEF envelope detected."))
+            return False
+
+        key = self._prompt_encryption_key()
+        if key is None:
+            return False
+
+        try:
+            cipher = kef.Cipher(key, self.kef_metadata.label, self.kef_metadata.iterations)
+            plaintext = cipher.decrypt(self._kef_ciphertext, self.kef_metadata.version)
+        except Exception as err:
+            logger.info("Datum KEF decrypt failed: %s", err)
+            self._show_error(_("Failed to decrypt."))
+            return False
+
+        label_display = self.kef_metadata.display_label()
+        self.contents = plaintext
+        self.history.clear()
+        self.kef_metadata = None
+        self._kef_ciphertext = None
+        if label_display:
+            self.title = label_display
+        self._show_success(_("Decrypted KEF envelope."))
+        return True
+
+    def _update_analysis(self):
+        self.analysis = analyze_contents(self.contents)
+        self.kef_metadata = None
+        self._kef_ciphertext = None
+
+        if isinstance(self.contents, (bytes, bytearray)):
+            try:
+                metadata, ciphertext = unwrap_kef_envelope(bytes(self.contents))
+            except Exception:
+                return
+            self.kef_metadata = metadata
+            self._kef_ciphertext = ciphertext
+
+    def _summary_lines(self):
+        lines = []
+        headline = self.title or _("Datum")
+        lines.append(headline)
+        lines.append(self.analysis.about)
+
+        if self.analysis.encodings:
+            enc = ", ".join(str(item) for item in self.analysis.encodings)
+            lines.append(_("Encodings: {}" ).format(enc))
+
+        datum_map = {
+            DATUM_PSBT: _("Detected type: PSBT"),
+            DATUM_DESCRIPTOR: _("Detected type: Descriptor"),
+            DATUM_XPUB: _("Detected type: Extended key"),
+            DATUM_ADDRESS: _("Detected type: Address"),
+        }
+        if self.analysis.datum:
+            lines.append(datum_map.get(self.analysis.datum, _("Detected type: {}" ).format(self.analysis.datum)))
+
+        if self.analysis.sensitive:
+            lines.append(_("Sensitive data"))
+
+        if self.kef_metadata:
+            lines.append(_("KEF envelope: {}" ).format(self.kef_metadata.display_label()))
+
+        preview = self.analysis.preview()
+        if preview:
+            preview_text = preview.replace("\n", " ") if isinstance(self.contents, str) else preview
+            if len(preview_text) > 160:
+                preview_text = preview_text[:160] + "…"
+            lines.append(_("Preview: {}" ).format(preview_text))
+
+        return lines
+
+    def _show_summary(self):
+        return self.run_screen(
+            LargeIconStatusScreen,
+            title=self.title or _("Datum Tool"),
+            status_headline=None,
+            text="\n".join(self._summary_lines()),
+            button_data=[ButtonOption(_("Continue"))],
+            allow_text_overflow=True,
+        )
+
+    def _show_error(self, message: str):
+        self.run_screen(
+            ErrorScreen,
+            title=_("Error"),
+            status_headline=None,
+            text=str(message),
+        )
+
+    def _show_success(self, message: str):
+        self.run_screen(
+            LargeIconStatusScreen,
+            title=_("Success"),
+            status_headline=None,
+            text=message,
+            button_data=[ButtonOption(_("Continue"))],
+        )
+
 
 """****************************************************************************
     Text QR Code Views

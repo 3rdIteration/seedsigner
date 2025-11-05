@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from gettext import gettext as _
 from typing import Any, List
 from PIL import Image, ImageDraw
+import textwrap
 from seedsigner.helpers import mnemonic_generation
 from seedsigner.gui.renderer import Renderer
 from seedsigner.hardware.camera import Camera
@@ -27,6 +28,122 @@ class ToolsCommonFilterScreen(ButtonListScreen):
         self.is_button_text_centered = False
         self.Button_cls = CheckboxButton
         super().__post_init__()
+
+
+@dataclass
+class DatumContentScreen(BaseTopNavScreen):
+    text: str = ""
+    title: str = _("Datum contents")
+
+    def __post_init__(self):
+        if not self.title:
+            self.title = _("Datum contents")
+        super().__post_init__()
+
+        self.font = Fonts.get_font(GUIConstants.FIXED_WIDTH_FONT_NAME_JP, GUIConstants.get_body_font_size())
+        bbox = self.font.getbbox("M")
+        self.char_width = max(1, bbox[2] - bbox[0])
+        self.line_height = max(1, bbox[3] - bbox[1])
+
+        available_height = self.canvas_height - self.top_nav.height - GUIConstants.EDGE_PADDING
+        self.visible_lines = max(1, available_height // self.line_height)
+        text_width = self.canvas_width - 2 * GUIConstants.EDGE_PADDING
+        self.chars_per_line = max(1, text_width // self.char_width)
+
+        raw_lines = self.text.splitlines() or [""]
+        self.lines = []
+        for paragraph in raw_lines:
+            if not paragraph:
+                self.lines.append("")
+                continue
+            wrapped = textwrap.wrap(
+                paragraph,
+                width=self.chars_per_line,
+                break_long_words=False,
+                replace_whitespace=False,
+            )
+            self.lines.extend(wrapped if wrapped else [""])
+
+        if not self.lines:
+            self.lines = [""]
+
+        self.total_lines = len(self.lines)
+        self.top_index = 0
+
+        with self.renderer.lock:
+            self._render_page()
+
+    def _render_page(self):
+        self.clear_screen()
+        for component in self.components:
+            component.render()
+
+        y = self.top_nav.height + GUIConstants.EDGE_PADDING
+        bottom = self.canvas_height - GUIConstants.EDGE_PADDING
+        for line in self.lines[self.top_index : self.top_index + self.visible_lines]:
+            if y + self.line_height > bottom:
+                break
+            self.renderer.draw.text(
+                (GUIConstants.EDGE_PADDING, y),
+                line,
+                font=self.font,
+                fill=GUIConstants.BODY_FONT_COLOR,
+            )
+            y += self.line_height
+
+        if self.total_lines > self.visible_lines:
+            indicator = f"{self.top_index + 1}-{min(self.top_index + self.visible_lines, self.total_lines)}/{self.total_lines}"
+            indicator_font = Fonts.get_font(GUIConstants.get_button_font_name(), GUIConstants.get_button_font_size())
+            indicator_width = indicator_font.getlength(indicator)
+            indicator_height = indicator_font.getbbox("A")[3]
+            self.renderer.draw.text(
+                (
+                    self.canvas_width - GUIConstants.EDGE_PADDING - indicator_width,
+                    self.canvas_height - GUIConstants.EDGE_PADDING - indicator_height,
+                ),
+                indicator,
+                font=indicator_font,
+                fill=GUIConstants.SECONDARY_BODY_FONT_COLOR,
+            )
+
+        self.renderer.show_image()
+
+    def _run(self):
+        while True:
+            user_input = self.hw_inputs.wait_for(HardwareButtonsConstants.ALL_KEYS)
+
+            with self.renderer.lock:
+                if user_input in (
+                    HardwareButtonsConstants.KEY_LEFT,
+                    HardwareButtonsConstants.KEY_UP,
+                ) and not self.top_nav.is_selected:
+                    self.top_nav.is_selected = True
+                    self.top_nav.render_buttons()
+                    self.renderer.show_image()
+                    continue
+
+                if self.top_nav.is_selected:
+                    if user_input in (
+                        HardwareButtonsConstants.KEY_DOWN,
+                        HardwareButtonsConstants.KEY_RIGHT,
+                    ):
+                        self.top_nav.is_selected = False
+                        self.top_nav.render_buttons()
+                        self.renderer.show_image()
+                        continue
+                    if user_input == HardwareButtonsConstants.KEY_PRESS:
+                        return RET_CODE__BACK_BUTTON
+
+                if user_input == HardwareButtonsConstants.KEY_UP:
+                    if self.top_index > 0:
+                        self.top_index -= 1
+                        self._render_page()
+                elif user_input == HardwareButtonsConstants.KEY_DOWN:
+                    if self.top_index + self.visible_lines < self.total_lines:
+                        self.top_index += 1
+                        self._render_page()
+                elif user_input in HardwareButtonsConstants.KEYS__ANYCLICK:
+                    return RET_CODE__BACK_BUTTON
 
 
 @dataclass
