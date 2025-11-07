@@ -41,8 +41,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [ "${{ github.event_name == 'workflow_dispatch' && github.event.inputs.target || 'pi0' }}" ]
-        # Default target pi0 to keep within 500mb storage limit for Github free
+        target: ${{ fromJSON((github.event_name == 'workflow_dispatch' && github.event.inputs.target && github.event.inputs.target != '' && github.event.inputs.target != 'all')
+          && format('["{0}"]', github.event.inputs.target)
+          || '["pi0","pi2","pi02w","pi4"]') }}
+        # Build all targets by default; allow workflow_dispatch runs to limit via the target input
     steps:
       - name: checkout seedsigner-os
         uses: actions/checkout@v4
