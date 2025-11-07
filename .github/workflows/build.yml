@@ -15,6 +15,19 @@ on:
         description: The seedsigner-os ref (tag/branch/sha1) to use
         default: main
         required: true
+      source-ref:
+        description: The seedsigner ref (tag/branch/sha1) to use
+        default: dev
+        required: true
+      dev:
+        description: Build dev image
+        required: false
+        default: 'false'
+        type: boolean
+      target:
+        description: Build target profile (e.g., pi0, pi2, pi02w, pi4)
+        required: false
+        default: pi0
 
 # Increment this number as part of a PR to trigger an image build for the PR
 # trigger = 0
@@ -28,7 +41,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [ "pi0", "pi2", "pi02w", "pi4" ]
+        target: ${{ fromJSON((github.event_name == 'workflow_dispatch' && github.event.inputs.target && github.event.inputs.target != '' && github.event.inputs.target != 'all')
+          && format('["{0}"]', github.event.inputs.target)
+          || '["pi0","pi2","pi02w","pi4"]') }}
+        # Build all targets by default; allow workflow_dispatch runs to limit via the target input
     steps:
       - name: checkout seedsigner-os
         uses: actions/checkout@v4
@@ -44,7 +60,8 @@ jobs:
       - name: checkout source
         uses: actions/checkout@v4
         with:
-          # ref defaults to repo default-branch=dev (cron) or SHA of event (workflow_dispatch)
+          # ref defaults to source-ref input (workflow_dispatch) or SHA of event
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs['source-ref'] || github.sha }}
           path: "seedsigner-os/opt/rootfs-overlay/opt"
           # get full history + tags for "git describe"
           fetch-depth: 0
@@ -68,6 +85,10 @@ jobs:
             echo "img_version=${source_version}"| tee -a $GITHUB_ENV
           else
             echo "img_version=os${os_version}_sw${source_version}"| tee -a $GITHUB_ENV
+          fi
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.dev }}" = "true" ]; then
+            echo "DEV_FLAG=--dev" >> $GITHUB_ENV
           fi
 
       - name: delete unnecessary files
@@ -106,7 +127,7 @@ jobs:
             -v "$(pwd)/seedsigner-os/buildroot_dl:/buildroot_dl" \
             -v "${HOME}/.buildroot-ccache:/root/.buildroot-ccache" \
             seedsigner-os-build \
-            --${{ matrix.target }} --skip-repo --no-clean
+            --${{ matrix.target }} --skip-repo --no-clean $DEV_FLAG
           sudo chown -R $USER:$USER seedsigner-os/images seedsigner-os/buildroot_dl ~/.buildroot-ccache/
 
       - name: list image (before rename)
