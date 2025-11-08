@@ -38,6 +38,9 @@ jobs:
     runs-on: ubuntu-latest
     # Prevent resource consuming cron triggered runs in forks
     if: (!github.event.repository.fork || github.event_name == 'workflow_dispatch')
+    outputs:
+      app_commit: ${{ steps.metadata.outputs.app_commit }}
+      app_commit_short: ${{ steps.metadata.outputs.app_commit_short }}
     strategy:
       fail-fast: false
       matrix:
@@ -58,13 +61,14 @@ jobs:
       - name: checkout source
         uses: actions/checkout@v4
         with:
-          # ref defaults to source-ref input (workflow_dispatch) or SHA of event
-          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs['source-ref'] || github.sha }}
+          repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs['source-ref'] || github.event_name == 'pull_request' && github.event.pull_request.head.ref || github.sha }}
           path: "seedsigner-os/opt/rootfs-overlay/opt"
           # get full history + tags for "git describe"
           fetch-depth: 0
 
       - name: Get and set meta data
+        id: metadata
         run: |
           # The builder_hash (seedsigner-os hash) for the cache action step key
           echo "builder_hash=$(git -C seedsigner-os rev-parse --short HEAD)"| tee -a $GITHUB_ENV
@@ -89,12 +93,24 @@ jobs:
             echo "DEV_FLAG=--dev" >> $GITHUB_ENV
           fi
 
-      - name: delete unnecessary files
-        run: |
-          cd seedsigner-os/opt/rootfs-overlay/opt
-          find . -mindepth 1 -maxdepth 1 ! -name src -exec rm -rf {} +
-          ls -la .
-          ls -la src
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "APP_REPO=${{ github.event.pull_request.head.repo.clone_url }}" >> $GITHUB_ENV
+          else
+            echo "APP_REPO=https://github.com/${{ github.repository }}.git" >> $GITHUB_ENV
+          fi
+
+          app_commit="$(git -C seedsigner-os/opt/rootfs-overlay/opt rev-parse HEAD)"
+          echo "APP_COMMIT=${app_commit}" >> $GITHUB_ENV
+          echo "app_commit=${app_commit}" >> $GITHUB_OUTPUT
+          echo "app_commit_short=$(git -C seedsigner-os/opt/rootfs-overlay/opt rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "APP_BRANCH=${{ github.event.pull_request.head.ref }}" >> $GITHUB_ENV
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "APP_BRANCH=${{ github.event.inputs['source-ref'] }}" >> $GITHUB_ENV
+          else
+            echo "APP_BRANCH=${{ github.ref_name }}" >> $GITHUB_ENV
+          fi
 
       - name: restore build cache
         uses: actions/cache@v4
@@ -102,31 +118,32 @@ jobs:
         # while consuming ~850 MB storage space).
         with:
           path: |
-            ~/.buildroot-ccache/
+            seedsigner-os/.ccache
+            seedsigner-os/.buildroot-ccache
             seedsigner-os/buildroot_dl
           key: build-cache-${{ matrix.target }}-${{ env.builder_hash }}
           restore-keys: |
             build-cache-${{ matrix.target }}-
 
-      - name: Create build container
-        run: |
-          cd seedsigner-os
-          docker build -t seedsigner-os-build .
-
       - name: build
         run: |
-          mkdir -p \
-            ~/.buildroot-ccache \
-            seedsigner-os/buildroot_dl
-          docker run \
-            --rm \
-            -v "$(pwd)/seedsigner-os/opt:/opt" \
-            -v "$(pwd)/seedsigner-os/images:/images" \
-            -v "$(pwd)/seedsigner-os/buildroot_dl:/buildroot_dl" \
-            -v "${HOME}/.buildroot-ccache:/root/.buildroot-ccache" \
-            seedsigner-os-build \
-            --${{ matrix.target }} --skip-repo --no-clean --smartcard $DEV_FLAG
-          sudo chown -R $USER:$USER seedsigner-os/images seedsigner-os/buildroot_dl ~/.buildroot-ccache/
+          set -euo pipefail
+          cd seedsigner-os
+          mkdir -p .ccache .buildroot-ccache buildroot_dl images
+          cat <<'EOF' > docker-compose.override.yml
+services:
+  build-images:
+    volumes:
+      - ./buildroot_dl:/buildroot_dl
+EOF
+          export DOCKER_DEFAULT_PLATFORM=linux/amd64
+          export SS_ARGS="--${{ matrix.target }} --smartcard ${DEV_FLAG:-} --app-repo=${APP_REPO} --app-commit-id=${APP_COMMIT}"
+          if [ -n "${APP_BRANCH:-}" ]; then
+            export SS_ARGS="${SS_ARGS} --app-branch=${APP_BRANCH}"
+          fi
+          docker compose up --force-recreate --build --exit-code-from build-images
+          docker compose down --volumes --remove-orphans
+          sudo chown -R $USER:$USER images .ccache .buildroot-ccache buildroot_dl
 
       - name: list image (before rename)
         run: |
@@ -169,11 +186,9 @@ jobs:
         run: |
           ls -lRa images
 
-      - name: get seedsigner latest commit hash
-        id: get-seedsigner-hash
+      - name: set seedsigner commit hash
         run: |
-          git init
-          echo "source_hash=$(git rev-parse --short ${{ github.sha }})" >> $GITHUB_ENV
+          echo "source_hash=${{ needs.build.outputs.app_commit_short }}" >> $GITHUB_ENV
 
       - name: write sha256sum
         run: |
