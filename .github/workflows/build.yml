@@ -85,6 +85,20 @@ jobs:
             echo "img_version=os${os_version}_sw${source_version}"| tee -a $GITHUB_ENV
           fi
 
+          # Normalise build timestamps so Buildroot, Python and other tooling stay deterministic.
+          os_epoch="$(git -C seedsigner-os log -1 --pretty=%ct)"
+          source_epoch="$(git -C seedsigner-os/opt/rootfs-overlay/opt log -1 --pretty=%ct 2>/dev/null || true)"
+          if [ -z "${source_epoch}" ]; then
+            epoch="${os_epoch}"
+          elif [ "${os_epoch}" -gt "${source_epoch}" ]; then
+            epoch="${os_epoch}"
+          else
+            epoch="${source_epoch}"
+          fi
+
+          echo "SOURCE_DATE_EPOCH=${epoch}" | tee -a $GITHUB_ENV
+          echo "PYTHONHASHSEED=0" | tee -a $GITHUB_ENV
+
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.dev }}" = "true" ]; then
             echo "DEV_FLAG=--dev" >> $GITHUB_ENV
           fi
@@ -95,6 +109,18 @@ jobs:
           find . -mindepth 1 -maxdepth 1 ! -name src -exec rm -rf {} +
           ls -la .
           ls -la src
+
+      - name: Normalise overlay timestamps
+        run: |
+          set -euo pipefail
+          epoch="@${SOURCE_DATE_EPOCH}"
+          while IFS= read -r -d '' path; do
+            if [ -L "${path}" ]; then
+              touch -h -d "${epoch}" "${path}"
+            else
+              touch -d "${epoch}" "${path}"
+            fi
+          done < <(find seedsigner-os/opt/rootfs-overlay -print0)
 
       - name: restore build cache
         uses: actions/cache@v4
@@ -111,7 +137,7 @@ jobs:
       - name: Create build container
         run: |
           cd seedsigner-os
-          docker build -t seedsigner-os-build .
+          DOCKER_BUILDKIT=1 docker build --provenance=false -t seedsigner-os-build .
 
       - name: build
         run: |
@@ -124,6 +150,9 @@ jobs:
             -v "$(pwd)/seedsigner-os/images:/images" \
             -v "$(pwd)/seedsigner-os/buildroot_dl:/buildroot_dl" \
             -v "${HOME}/.buildroot-ccache:/root/.buildroot-ccache" \
+            -e SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH} \
+            -e PYTHONHASHSEED=${PYTHONHASHSEED} \
+            -e TZ=UTC \
             seedsigner-os-build \
             --${{ matrix.target }} --skip-repo --no-clean --smartcard $DEV_FLAG
           sudo chown -R $USER:$USER seedsigner-os/images seedsigner-os/buildroot_dl ~/.buildroot-ccache/
