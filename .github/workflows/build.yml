@@ -1,14 +1,7 @@
 name: Build
 
 on:
-  pull_request:
-    # Build on changes to this workflow files in PRs to test proposed changes
-    paths:
-      - '.github/workflows/build.yml'
-  push:
-    branches:
-      - main
-      - dev
+  # Allow maintainers to manually trigger reproducible builds with specific refs
   workflow_dispatch:
     inputs:
       os-ref:
@@ -28,6 +21,15 @@ on:
         description: Build target profile (e.g., pi0, pi2, pi02w, pi4)
         required: false
         default: pi0
+
+  pull_request:
+    # Build on changes to this workflow files in PRs to test proposed changes
+    paths:
+      - '.github/workflows/build.yml'
+  push:
+    branches:
+      - main
+      - dev
 
 # Increment this number as part of a PR to trigger an image build for the PR
 # trigger = 0
