@@ -6,21 +6,24 @@ on:
     inputs:
       os-ref:
         description: The seedsigner-os ref (tag/branch/sha1) to use
-        default: main
         required: true
+        default: main
+        type: string
       source-ref:
         description: The seedsigner ref (tag/branch/sha1) to use
-        default: dev
         required: true
+        default: dev
+        type: string
       dev:
         description: Build dev image
         required: false
-        default: 'false'
         type: boolean
+        default: false
       target:
         description: Build target profile (e.g., pi0, pi2, pi02w, pi4)
         required: false
         default: pi0
+        type: string
 
   pull_request:
     # Build on changes to this workflow files in PRs to test proposed changes
