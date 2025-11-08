@@ -62,14 +62,9 @@ jobs:
         with:
           # ref defaults to source-ref input (workflow_dispatch) or SHA of event
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs['source-ref'] || github.sha }}
-          path: "seedsigner-os/opt/rootfs-overlay/opt"
+          path: "seedsigner-os/opt/app"
           # get full history + tags for "git describe"
           fetch-depth: 0
-
-      - name: Prepare app repo checkout for builder
-        run: |
-          mkdir -p seedsigner-os/opt/app
-          rsync -a --delete seedsigner-os/opt/rootfs-overlay/opt/ seedsigner-os/opt/app/
 
       - name: Get and set meta data
         run: |
@@ -80,8 +75,8 @@ jobs:
           # or just e.g. 0.7.0, if we are exactly on a 0.7.0 tagged commit.
           # --always to fall back to commit sha, if no tag present like in partial forks of the repo
           os_version="$(git -C seedsigner-os describe --tags --always)"
-          source_version="$(git -C seedsigner-os/opt/rootfs-overlay/opt describe --tags --always)"
-          echo "source_commit=$(git -C seedsigner-os/opt/rootfs-overlay/opt rev-parse HEAD)" | tee -a $GITHUB_ENV
+          source_version="$(git -C seedsigner-os/opt/app describe --tags --always)"
+          echo "source_commit=$(git -C seedsigner-os/opt/app rev-parse HEAD)" | tee -a $GITHUB_ENV
 
           # Combine seedsigner and seedsigner-os version into one version string and squash the versions, if
           # they are identical: So os_version=0.7.0 + source_version=0.7.0 combine to just only "0.7.0",
@@ -185,11 +180,11 @@ jobs:
       - name: download images
         uses: actions/download-artifact@v4
         with:
-          path: seedsigner-os/images
+          path: images
 
       - name: list images
         run: |
-          ls -lRa seedsigner-os/images
+          ls -lRa images
 
       - name: get seedsigner latest commit hash
         id: get-seedsigner-hash
@@ -199,7 +194,7 @@ jobs:
 
       - name: write sha256sum
         run: |
-          cd seedsigner-os/images
+          cd images
           # each downloaded image is in its own subfolder
           find . -name "*.img.zip" -exec mv {} . \;
           sha256sum *.img.zip > seedsigner_os.${{ env.source_hash }}.sha256
@@ -208,7 +203,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: seedsigner_os_images_sha256
-          path: "seedsigner-os/images/*.sha256"
+          path: "images/*.sha256"
           if-no-files-found: error
           # maximum 90 days retention
           retention-days: 90
