@@ -1,4 +1,18 @@
 name: Build
+run-name: >-
+  Build${{ github.event_name == 'workflow_dispatch'
+    && format(
+      ' target {0} from {1}@{2} (os {3}, smartcard {4})',
+      github.event.inputs.target || 'pi0',
+      github.event.inputs['app-repo'] || github.repository,
+      github.event.inputs['source-ref'],
+      github.event.inputs['os-ref'],
+      (fromJSON(github.event.inputs.smartcard || 'true') && 'enabled') || 'disabled'
+    )
+    || github.event_name == 'push' && format(' push {0}', github.ref_name)
+    || github.event_name == 'pull_request' && format(' PR #{0}', github.event.pull_request.number)
+    || ''
+  }}
 
 on:
   pull_request:
@@ -43,7 +57,17 @@ on:
 
 jobs:
   build:
-    name: build
+    name: >-
+      build${{ github.event_name == 'workflow_dispatch'
+        && format(
+          ' ({0} from {1}@{2}, smartcard {3})',
+          github.event.inputs.target || 'pi0',
+          github.event.inputs['app-repo'] || github.repository,
+          github.event.inputs['source-ref'],
+          (fromJSON(github.event.inputs.smartcard || 'true') && 'enabled') || 'disabled'
+        )
+        || ''
+      }}
     runs-on: ubuntu-latest
     # Prevent resource consuming cron triggered runs in forks
     if: (!github.event.repository.fork || github.event_name == 'workflow_dispatch')
