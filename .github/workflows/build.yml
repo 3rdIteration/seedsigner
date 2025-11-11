@@ -1,4 +1,19 @@
 name: Build
+run-name: >-
+  Build${{ github.event_name == 'workflow_dispatch'
+    && format(
+      ' target {0} from {1}@{2} (os {3}@{4}, smartcard {5})',
+      github.event.inputs.target || 'pi0',
+      github.event.inputs['app-repo'] || github.repository,
+      github.event.inputs['source-ref'],
+      github.event.inputs['os-repo'] || '3rdIteration/seedsigner-os',
+      github.event.inputs['os-ref'],
+      (fromJSON(github.event.inputs.smartcard || 'true') && 'enabled') || 'disabled'
+    )
+    || github.event_name == 'push' && format(' push {0}', github.ref_name)
+    || github.event_name == 'pull_request' && format(' PR #{0}', github.event.pull_request.number)
+    || ''
+  }}
 
 on:
   pull_request:
@@ -11,30 +26,55 @@ on:
       - dev
   workflow_dispatch:
     inputs:
+      os-repo:
+        description: The repository containing the SeedSigner OS sources
+        required: false
+        default: 3rdIteration/seedsigner-os
       os-ref:
         description: The seedsigner-os ref (tag/branch/sha1) to use
         default: main
         required: true
+      app-repo:
+        description: The repository containing the SeedSigner application sources
+        required: false
+        default: 3rdIteration/seedsigner
       source-ref:
         description: The seedsigner ref (tag/branch/sha1) to use
         default: dev
         required: true
+      target:
+        description: Build target profile (e.g., pi0, pi2, pi02w, pi4)
+        required: false
+        default: pi0
+      smartcard:
+        description: Enable smartcard support for the build
+        required: false
+        default: 'true'
+        type: boolean
       dev:
         description: Build dev image
         required: false
         default: 'false'
         type: boolean
-      target:
-        description: Build target profile (e.g., pi0, pi2, pi02w, pi4)
-        required: false
-        default: pi0
 
 # Increment this number as part of a PR to trigger an image build for the PR
 # trigger = 0
 
 jobs:
   build:
-    name: build
+    name: >-
+      build${{ github.event_name == 'workflow_dispatch'
+        && format(
+          ' ({0} from {1}@{2}, os {3}@{4}, smartcard {5})',
+          github.event.inputs.target || 'pi0',
+          github.event.inputs['app-repo'] || github.repository,
+          github.event.inputs['source-ref'],
+          github.event.inputs['os-repo'] || '3rdIteration/seedsigner-os',
+          github.event.inputs['os-ref'],
+          (fromJSON(github.event.inputs.smartcard || 'true') && 'enabled') || 'disabled'
+        )
+        || ''
+      }}
     runs-on: ubuntu-latest
     # Prevent resource consuming cron triggered runs in forks
     if: (!github.event.repository.fork || github.event_name == 'workflow_dispatch')
@@ -47,7 +87,7 @@ jobs:
       - name: checkout seedsigner-os
         uses: actions/checkout@v4
         with:
-          repository: "3rditeration/seedsigner-os"
+          repository: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs['os-repo'] || '3rdIteration/seedsigner-os' }}
           # use the os-ref input parameter in case of workflow_dispatch or default to main in case of cron triggers
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.os-ref || 'main' }}
           submodules: true
@@ -58,6 +98,7 @@ jobs:
       - name: checkout source
         uses: actions/checkout@v4
         with:
+          repository: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs['app-repo'] || github.repository }}
           # ref defaults to source-ref input (workflow_dispatch) or SHA of event
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs['source-ref'] || github.sha }}
           path: "seedsigner-os/opt/rootfs-overlay/opt"
@@ -87,6 +128,16 @@ jobs:
 
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.dev }}" = "true" ]; then
             echo "DEV_FLAG=--dev" >> $GITHUB_ENV
+          fi
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            if [ "${{ github.event.inputs.smartcard }}" = "true" ]; then
+              echo "SMARTCARD_FLAG=--smartcard" >> $GITHUB_ENV
+            else
+              echo "SMARTCARD_FLAG=" >> $GITHUB_ENV
+            fi
+          else
+            echo "SMARTCARD_FLAG=--smartcard" >> $GITHUB_ENV
           fi
 
       - name: delete unnecessary files
@@ -125,7 +176,7 @@ jobs:
             -v "$(pwd)/seedsigner-os/buildroot_dl:/buildroot_dl" \
             -v "${HOME}/.buildroot-ccache:/root/.buildroot-ccache" \
             seedsigner-os-build \
-            --${{ matrix.target }} --skip-repo --no-clean --smartcard $DEV_FLAG
+            --${{ matrix.target }} --skip-repo --no-clean $SMARTCARD_FLAG $DEV_FLAG
           sudo chown -R $USER:$USER seedsigner-os/images seedsigner-os/buildroot_dl ~/.buildroot-ccache/
 
       - name: list image (before rename)
