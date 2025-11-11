@@ -31,7 +31,7 @@ on:
       app-repo:
         description: The repository containing the SeedSigner application sources
         required: false
-        default: SeedSigner/seedsigner
+        default: 3rdIteration/seedsigner
       smartcard:
         description: Enable smartcard support for the build
         required: false
