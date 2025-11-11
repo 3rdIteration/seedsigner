@@ -42,11 +42,6 @@ on:
         description: The seedsigner ref (tag/branch/sha1) to use
         default: dev
         required: true
-      dev:
-        description: Build dev image
-        required: false
-        default: 'false'
-        type: boolean
       target:
         description: Build target profile (e.g., pi0, pi2, pi02w, pi4)
         required: false
@@ -55,6 +50,11 @@ on:
         description: Enable smartcard support for the build
         required: false
         default: 'true'
+        type: boolean
+      dev:
+        description: Build dev image
+        required: false
+        default: 'false'
         type: boolean
 
 # Increment this number as part of a PR to trigger an image build for the PR
