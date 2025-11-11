@@ -26,14 +26,18 @@ on:
       - dev
   workflow_dispatch:
     inputs:
-      os-ref:
-        description: The seedsigner-os ref (tag/branch/sha1) to use
-        default: main
-        required: true
       os-repo:
         description: The repository containing the SeedSigner OS sources
         required: false
         default: 3rdIteration/seedsigner-os
+      os-ref:
+        description: The seedsigner-os ref (tag/branch/sha1) to use
+        default: main
+        required: true
+      app-repo:
+        description: The repository containing the SeedSigner application sources
+        required: false
+        default: 3rdIteration/seedsigner
       source-ref:
         description: The seedsigner ref (tag/branch/sha1) to use
         default: dev
@@ -47,10 +51,6 @@ on:
         description: Build target profile (e.g., pi0, pi2, pi02w, pi4)
         required: false
         default: pi0
-      app-repo:
-        description: The repository containing the SeedSigner application sources
-        required: false
-        default: 3rdIteration/seedsigner
       smartcard:
         description: Enable smartcard support for the build
         required: false
