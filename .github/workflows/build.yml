@@ -28,6 +28,15 @@ on:
         description: Build target profile (e.g., pi0, pi2, pi02w, pi4)
         required: false
         default: pi0
+      app-repo:
+        description: The repository containing the SeedSigner application sources
+        required: false
+        default: SeedSigner/seedsigner
+      smartcard:
+        description: Enable smartcard support for the build
+        required: false
+        default: 'true'
+        type: boolean
 
 # Increment this number as part of a PR to trigger an image build for the PR
 # trigger = 0
@@ -58,6 +67,7 @@ jobs:
       - name: checkout source
         uses: actions/checkout@v4
         with:
+          repository: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs['app-repo'] || github.repository }}
           # ref defaults to source-ref input (workflow_dispatch) or SHA of event
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs['source-ref'] || github.sha }}
           path: "seedsigner-os/opt/rootfs-overlay/opt"
@@ -87,6 +97,16 @@ jobs:
 
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.dev }}" = "true" ]; then
             echo "DEV_FLAG=--dev" >> $GITHUB_ENV
+          fi
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            if [ "${{ github.event.inputs.smartcard }}" = "true" ]; then
+              echo "SMARTCARD_FLAG=--smartcard" >> $GITHUB_ENV
+            else
+              echo "SMARTCARD_FLAG=" >> $GITHUB_ENV
+            fi
+          else
+            echo "SMARTCARD_FLAG=--smartcard" >> $GITHUB_ENV
           fi
 
       - name: delete unnecessary files
@@ -125,7 +145,7 @@ jobs:
             -v "$(pwd)/seedsigner-os/buildroot_dl:/buildroot_dl" \
             -v "${HOME}/.buildroot-ccache:/root/.buildroot-ccache" \
             seedsigner-os-build \
-            --${{ matrix.target }} --skip-repo --no-clean --smartcard $DEV_FLAG
+            --${{ matrix.target }} --skip-repo --no-clean $SMARTCARD_FLAG $DEV_FLAG
           sudo chown -R $USER:$USER seedsigner-os/images seedsigner-os/buildroot_dl ~/.buildroot-ccache/
 
       - name: list image (before rename)
