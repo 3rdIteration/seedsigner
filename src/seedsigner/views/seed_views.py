@@ -4,6 +4,7 @@ import time
 import hashlib
 import os
 import binascii
+from pathlib import Path
 
 from binascii import hexlify
 from gettext import gettext as _
@@ -19,6 +20,13 @@ from seedsigner.gui.components import FontAwesomeIconConstants, SeedSignerIconCo
 from seedsigner.gui.screens import (RET_CODE__BACK_BUTTON, ButtonListScreen,
     WarningScreen, DireWarningScreen, seed_screens, LargeIconStatusScreen)
 from seedsigner.gui.screens.screen import ButtonOption
+from seedsigner.hardware.microsd import MicroSD
+from seedsigner.helpers.bitbox02_backup import (
+    Bitbox02BackupDetails,
+    Bitbox02BackupError,
+    decode_bitbox02_backup,
+    format_timestamp,
+)
 from seedsigner.models.encode_qr import CompactSeedQrEncoder, GenericStaticQrEncoder, SeedQrEncoder, SpecterXPubQrEncoder, StaticXpubQrEncoder, UrXpubQrEncoder
 from seedsigner.models.qr_type import QRType
 from seedsigner.models.seed import Seed, Slip39Seed, ElectrumSeed, InvalidSeedException
@@ -84,6 +92,7 @@ class SeedSelectSeedView(View):
                 verify single sig addr or sign message).
     """
     SCAN_SEED = ButtonOption("Scan a seed", SeedSignerIconConstants.QRCODE)
+    BITBOX_BACKUP = ButtonOption("BitBox02 backup", SeedSignerIconConstants.MICROSD)
     SATOCHIP = ButtonOption("Use Satochip card", SeedSignerIconConstants.FINGERPRINT)
     TYPE_12WORD = ButtonOption("Enter 12-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=12)
     TYPE_15WORD = ButtonOption("Enter 15-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=15)
@@ -126,6 +135,8 @@ class SeedSelectSeedView(View):
             button_data.append(self.SATOCHIP)
 
         button_data.append(self.SCAN_SEED)
+        if self.settings.get_value(SettingsConstants.SETTING__BITBOX_BACKUP) == SettingsConstants.OPTION__ENABLED:
+            button_data.append(self.BITBOX_BACKUP)
         seed_lengths = self.settings.get_value(SettingsConstants.SETTING__SEED_WORD_LENGTHS)
         options = {
             12: self.TYPE_12WORD,
@@ -181,6 +192,9 @@ class SeedSelectSeedView(View):
             from seedsigner.views.scan_views import ScanView
             return Destination(ScanView)
 
+        if button_data[selected_menu_num] == self.BITBOX_BACKUP:
+            return Destination(SeedBitbox02BackupSelectView)
+
         elif button_data[selected_menu_num] in [self.TYPE_12WORD, self.TYPE_15WORD, self.TYPE_18WORD, self.TYPE_21WORD, self.TYPE_24WORD]:
             from seedsigner.views.seed_views import SeedMnemonicEntryView
             self.controller.storage.init_pending_mnemonic(num_words=button_data[selected_menu_num].return_data)
@@ -207,6 +221,7 @@ class LoadSeedView(View):
     TYPE_ELECTRUM = ButtonOption("Enter Electrum seed", FontAwesomeIconConstants.KEYBOARD)
     TYPE_SLIP39 = ButtonOption("SLIP-39 Shares", FontAwesomeIconConstants.KEYBOARD)
     IMPORT_SEEDKEEPER = ButtonOption("From SeedKeeper", FontAwesomeIconConstants.LOCK)
+    BITBOX_BACKUP = ButtonOption("BitBox02 backup", SeedSignerIconConstants.MICROSD)
     CREATE = ButtonOption(" Create a seed", SeedSignerIconConstants.PLUS)
 
     def run(self):
@@ -228,6 +243,9 @@ class LoadSeedView(View):
 
         if self.settings.get_value(SettingsConstants.SETTING__SLIP39_SEEDS) == SettingsConstants.OPTION__ENABLED:
             button_data.append(self.TYPE_SLIP39)
+
+        if self.settings.get_value(SettingsConstants.SETTING__BITBOX_BACKUP) == SettingsConstants.OPTION__ENABLED:
+            button_data.append(self.BITBOX_BACKUP)
 
         button_data.append(self.CREATE)
 
@@ -260,6 +278,9 @@ class LoadSeedView(View):
 
         elif button_data[selected_menu_num] == self.TYPE_SLIP39:
             return Destination(SeedSlip39MnemonicStartView)
+
+        elif button_data[selected_menu_num] == self.BITBOX_BACKUP:
+            return Destination(SeedBitbox02BackupSelectView)
 
         elif button_data[selected_menu_num] == self.CREATE:
             from .tools_views import ToolsMenuView
@@ -408,6 +429,144 @@ class SeedKeeperSelectView(View):
             self.seed = self.controller.storage.get_pending_seed()
             self.seed.set_passphrase(secret_passphrase)
             return Destination(SeedReviewPassphraseView)
+
+        return Destination(SeedFinalizeView)
+
+
+class SeedBitbox02BackupSelectView(View):
+    def __init__(self):
+        super().__init__()
+        self.microsd_dir: Path = MicroSD.get_microsd_dir()
+        self.extensions = {".bin", ".dat", ".bb02", ".backup"}
+
+    def _get_backup_files(self) -> list[Path]:
+        backup_files: list[Path] = []
+        if not self.microsd_dir.exists():
+            raise Bitbox02BackupError(_("microSD card not detected."))
+        for path in self.microsd_dir.rglob("*"):
+            if not path.is_file():
+                continue
+
+            try:
+                rel_parts = path.relative_to(self.microsd_dir).parts
+            except ValueError:
+                continue
+
+            if any(part.startswith(".") for part in rel_parts):
+                continue
+
+            if path.suffix.lower() in self.extensions:
+                backup_files.append(path)
+
+        backup_files.sort(key=lambda p: p.relative_to(self.microsd_dir).as_posix().lower())
+        return backup_files
+
+    def run(self):
+        if len(self.controller.storage.seeds) > 0:
+            ret = self.run_screen(
+                WarningScreen,
+                title="WARNING",
+                status_headline=None,
+                text="These tools load data from the microSD card and may expose loaded secrets.",
+                show_back_button=True,
+                button_data=[ButtonOption("Continue")],
+            )
+            if ret == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+
+        try:
+            backup_files = self._get_backup_files()
+        except Exception as e:
+            logger.exception("Failed to scan microSD for BitBox02 backups", exc_info=e)
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text=str(e),
+                show_back_button=False,
+                button_data=[ButtonOption("OK")],
+            )
+            return Destination(BackStackView)
+
+        if not backup_files:
+            self.run_screen(
+                WarningScreen,
+                title=_("No Backups Found"),
+                status_headline=None,
+                text=_("No BitBox02 backups (.bin, .bb02, .dat, .backup) were found on the microSD card."),
+                show_back_button=False,
+                button_data=[ButtonOption("OK")],
+            )
+            return Destination(BackStackView)
+
+        button_data = [
+            ButtonOption(path.relative_to(self.microsd_dir).as_posix(), SeedSignerIconConstants.MICROSD)
+            for path in backup_files
+        ]
+
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title=_("Select BitBox02 backup"),
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        selected_path = backup_files[selected_menu_num]
+
+        try:
+            details = decode_bitbox02_backup(selected_path.read_bytes())
+        except (OSError, Bitbox02BackupError, ValueError) as e:
+            logger.exception("Failed to load BitBox02 backup", exc_info=e)
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text=str(e),
+                show_back_button=False,
+                button_data=[ButtonOption("OK")],
+            )
+            return Destination(SeedBitbox02BackupSelectView)
+
+        try:
+            seed = Seed(details.mnemonic)
+        except InvalidSeedException:
+            return Destination(SeedMnemonicInvalidView)
+
+        self.controller.storage.set_pending_seed(seed)
+
+        return Destination(SeedBitbox02BackupSummaryView, view_args={"details": details})
+
+
+class SeedBitbox02BackupSummaryView(View):
+    CONTINUE = ButtonOption(_("Continue"))
+
+    def __init__(self, details: Bitbox02BackupDetails):
+        super().__init__()
+        self.details = details
+
+    def run(self):
+        text_lines = []
+        if self.details.name:
+            text_lines.append(_("Backup name: {}").format(self.details.name))
+        if self.details.timestamp:
+            text_lines.append(_("Created: {}").format(format_timestamp(self.details.timestamp)))
+        if self.details.generator:
+            text_lines.append(_("Firmware: {}").format(self.details.generator))
+        if self.details.birthdate:
+            text_lines.append(_("Birthdate: {}").format(format_timestamp(self.details.birthdate)))
+        text_lines.append(_("Seed length: {} words").format(len(self.details.mnemonic)))
+
+        self.run_screen(
+            LargeIconStatusScreen,
+            title=_("BitBox02 backup"),
+            status_headline=_("Seed loaded"),
+            text="\n".join(text_lines),
+            show_back_button=False,
+            button_data=[self.CONTINUE],
+        )
 
         return Destination(SeedFinalizeView)
 
