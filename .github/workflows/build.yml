@@ -147,6 +147,21 @@ jobs:
           ls -la .
           ls -la src
 
+      - name: free disk space
+        run: |
+          echo "Disk usage before cleanup:"
+          df -h
+
+          sudo rm -rf \
+            /opt/hostedtoolcache/CodeQL \
+            /usr/local/lib/android/sdk \
+            /usr/share/dotnet
+          sudo apt-get clean
+          docker system prune --all --force || true
+
+          echo "Disk usage after cleanup:"
+          df -h
+
       - name: restore build cache
         uses: actions/cache@v4
         # Caching reduces the build time to ~50% (currently: ~30 mins instead of ~1 hour,
