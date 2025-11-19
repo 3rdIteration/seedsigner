@@ -115,6 +115,16 @@ jobs:
             echo "DEV_FLAG=--dev" >> $GITHUB_ENV
           fi
 
+      - name: Free disk space on runner
+        run: |
+          echo "Disk usage before cleanup:"
+          df -h
+          sudo docker system prune --all --force --volumes || true
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android
+          sudo apt-get clean
+          echo "Disk usage after cleanup:"
+          df -h
+
       - name: delete unnecessary files
         run: |
           cd seedsigner-os/opt/rootfs-overlay/opt
