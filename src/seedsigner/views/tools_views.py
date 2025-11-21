@@ -1809,6 +1809,7 @@ class ToolsSeedkeeperView(View):
     DELETE_SECRET = ButtonOption("Delete Secret from Card")
     LOAD_DESCRIPTOR = ButtonOption("Load MultiSig Descriptor")
     SAVE_DESCRIPTOR = ButtonOption("Save MultiSig Descriptor")
+    CLONE_SECRETS = ButtonOption("Clone Card Secrets")
 
     def run(self):
         button_data = [
@@ -1817,6 +1818,7 @@ class ToolsSeedkeeperView(View):
             self.DELETE_SECRET,
             self.LOAD_DESCRIPTOR,
             self.SAVE_DESCRIPTOR,
+            self.CLONE_SECRETS,
             self.VIEW_FREE_SPACE,
         ]
 
@@ -1847,6 +1849,9 @@ class ToolsSeedkeeperView(View):
 
         elif button_data[selected_menu_num] == self.VIEW_FREE_SPACE:
             return Destination(ToolsSeedkeeperFreeSpaceView)
+
+        elif button_data[selected_menu_num] == self.CLONE_SECRETS:
+            return Destination(ToolsSeedkeeperCloneSecretsView)
 
 
 class ToolsSeedkeeperFreeSpaceView(View):
@@ -1900,6 +1905,260 @@ class ToolsSeedkeeperFreeSpaceView(View):
         finally:
             if connector:
                 seedkeeper_utils.disconnect_smartcard_connections(self.controller)
+
+
+class ToolsSeedkeeperCloneSecretsView(View):
+    def _collect_exportable_secrets(self):
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+
+        connector = None
+        loading_screen = None
+        try:
+            connector = seedkeeper_utils.init_satochip(
+                self,
+                init_card_filter=["seedkeeper"],
+                require_pin=True,
+            )
+
+            if not connector:
+                return None
+
+            loading_screen = LoadingScreenThread(text="Reading Source Card\n\n\n\n\n\n")
+            loading_screen.start()
+
+            headers = connector.seedkeeper_list_secret_headers()
+
+            exportable_secrets = []
+            skipped_unexportable = 0
+
+            for header in headers:
+                export_rights = SEEDKEEPER_DIC_EXPORT_RIGHTS.get(
+                    header.get("export_rights"), header.get("export_rights")
+                )
+
+                if export_rights != "Plaintext export allowed":
+                    skipped_unexportable += 1
+                    continue
+
+                try:
+                    secret = connector.seedkeeper_export_secret(header["id"], None)
+                except Exception:
+                    skipped_unexportable += 1
+                    continue
+
+                exportable_secrets.append({
+                    "header": header,
+                    "secret": secret,
+                })
+
+            loading_screen.stop()
+
+            if not exportable_secrets:
+                self.run_screen(
+                    WarningScreen,
+                    title="No Exportable Secrets",
+                    status_headline=None,
+                    text="Source card has no secrets that can be cloned.",
+                    show_back_button=False,
+                )
+                return None
+
+            summary_lines = [f"Secrets ready: {len(exportable_secrets)}"]
+            if skipped_unexportable:
+                summary_lines.append(f"Skipped (locked): {skipped_unexportable}")
+
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Source Ready",
+                status_headline=None,
+                text="\n".join(summary_lines),
+                show_back_button=False,
+            )
+
+            return exportable_secrets
+
+        except Exception as exc:
+            if loading_screen:
+                loading_screen.stop()
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text=str(exc),
+                show_back_button=True,
+            )
+            return None
+
+        finally:
+            if loading_screen:
+                loading_screen.stop()
+            if connector:
+                seedkeeper_utils.disconnect_smartcard_connections(self.controller)
+
+    def _clone_to_destination(self, secrets_to_clone):
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+
+        connector = None
+        loading_screen = None
+        try:
+            connector = seedkeeper_utils.init_satochip(
+                self,
+                init_card_filter=["seedkeeper"],
+                require_pin=True,
+            )
+
+            if not connector:
+                return None
+
+            loading_screen = LoadingScreenThread(text="Writing Destination Card\n\n\n\n\n\n")
+            loading_screen.start()
+
+            dest_headers = connector.seedkeeper_list_secret_headers()
+            existing_fingerprints = {
+                header.get("fingerprint")
+                for header in dest_headers
+                if header.get("fingerprint") is not None
+            }
+
+            imported = 0
+            skipped_existing = 0
+            skipped_unsupported = 0
+
+            for entry in secrets_to_clone:
+                header = entry.get("header", {})
+                secret = entry.get("secret", {})
+
+                fingerprint = header.get("fingerprint")
+                if fingerprint is not None and fingerprint in existing_fingerprints:
+                    skipped_existing += 1
+                    continue
+
+                secret_type = SEEDKEEPER_DIC_TYPE.get(header.get("type"))
+                export_rights = SEEDKEEPER_DIC_EXPORT_RIGHTS.get(header.get("export_rights"))
+                label = header.get("label", "")
+                subtype = header.get("subtype")
+
+                if not secret_type or not export_rights:
+                    skipped_unsupported += 1
+                    continue
+
+                try:
+                    if subtype is None:
+                        new_header = connector.make_header(secret_type, export_rights, label)
+                    else:
+                        new_header = connector.make_header(
+                            secret_type, export_rights, label, subtype=subtype
+                        )
+                except Exception:
+                    skipped_unsupported += 1
+                    continue
+
+                if secret.get("secret_list") is not None:
+                    secret_dic = {
+                        "header": new_header,
+                        "secret_list": secret["secret_list"],
+                    }
+                elif secret.get("secret_encrypted") is not None:
+                    secret_dic = {
+                        "header": new_header,
+                        "secret_encrypted": secret["secret_encrypted"],
+                    }
+                else:
+                    skipped_unsupported += 1
+                    continue
+
+                try:
+                    fits, required_bytes, free_bytes = seedkeeper_utils.ensure_seedkeeper_capacity(
+                        connector, secret_dic
+                    )
+                except Exception as exc:
+                    loading_screen.stop()
+                    self.run_screen(
+                        WarningScreen,
+                        title="Error",
+                        status_headline=None,
+                        text=str(exc),
+                        show_back_button=True,
+                    )
+                    return None
+
+                if not fits:
+                    loading_screen.stop()
+                    self.run_screen(
+                        WarningScreen,
+                        title="Not Enough Space",
+                        status_headline=None,
+                        text=seedkeeper_utils.format_seedkeeper_space_error(
+                            required_bytes, free_bytes
+                        ),
+                        show_back_button=False,
+                        button_data=[ButtonOption("I Understand")],
+                    )
+                    return None
+
+                connector.seedkeeper_import_secret(secret_dic)
+                imported += 1
+
+                if fingerprint is not None:
+                    existing_fingerprints.add(fingerprint)
+
+            loading_screen.stop()
+
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Clone Complete",
+                status_headline=None,
+                text=(
+                    f"Imported: {imported}\n"
+                    f"Skipped Existing: {skipped_existing}\n"
+                    f"Skipped Unsupported: {skipped_unsupported}"
+                ),
+                show_back_button=False,
+                button_data=[ButtonOption("Continue")],
+            )
+
+            return True
+
+        except Exception as exc:
+            if loading_screen:
+                loading_screen.stop()
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text=str(exc),
+                show_back_button=True,
+            )
+            return None
+
+        finally:
+            if loading_screen:
+                loading_screen.stop()
+            if connector:
+                seedkeeper_utils.disconnect_smartcard_connections(self.controller)
+
+    def run(self):
+        secrets_to_clone = self._collect_exportable_secrets()
+
+        if not secrets_to_clone:
+            return Destination(BackStackView)
+
+        while True:
+            result = self._clone_to_destination(secrets_to_clone)
+
+            if not result:
+                return Destination(BackStackView)
+
+            choice = self.run_screen(
+                ButtonListScreen,
+                title="Clone Another Card?",
+                is_button_text_centered=False,
+                button_data=[ButtonOption("Yes"), ButtonOption("No")],
+                show_back_button=True,
+            )
+
+            if choice != 0:
+                return Destination(BackStackView)
 
 class ToolsSeedkeeperViewSecretsView(View):
 
