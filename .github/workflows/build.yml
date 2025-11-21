@@ -201,7 +201,16 @@ jobs:
       - name: rename image
         run: |
           cd seedsigner-os/images
-          mv seedsigner_os*.img.zip seedsigner_os.${{ env.img_version }}.${{ matrix.target }}.img.zip
+          if compgen -G "seedsigner_os*.img.zip" > /dev/null; then
+            mv seedsigner_os*.img.zip seedsigner_os.${{ env.img_version }}.${{ matrix.target }}.img.zip
+          elif compgen -G "seedsigner_os*.img" > /dev/null; then
+            mv seedsigner_os*.img seedsigner_os.${{ env.img_version }}.${{ matrix.target }}.img
+            zip -j seedsigner_os.${{ env.img_version }}.${{ matrix.target }}.img.zip seedsigner_os.${{ env.img_version }}.${{ matrix.target }}.img
+            rm seedsigner_os.${{ env.img_version }}.${{ matrix.target }}.img
+          else
+            echo "No image file found to rename" >&2
+            exit 1
+          fi
 
       - name: print sha256sum
         run: |
