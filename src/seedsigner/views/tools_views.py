@@ -1914,6 +1914,21 @@ class ToolsSeedkeeperCloneSecretsView(View):
         connector = None
         loading_screen = None
         try:
+            insert_prompt = self.run_screen(
+                LargeIconStatusScreen,
+                title="Insert Source Card",
+                status_headline=None,
+                text=(
+                    "Insert the source Seedkeeper card to copy secrets from, "
+                    "then press Continue."
+                ),
+                show_back_button=True,
+                button_data=[ButtonOption("Continue")],
+            )
+
+            if insert_prompt == RET_CODE__BACK_BUTTON:
+                return None
+
             connector = seedkeeper_utils.init_satochip(
                 self,
                 init_card_filter=["seedkeeper"],
@@ -2001,6 +2016,21 @@ class ToolsSeedkeeperCloneSecretsView(View):
         connector = None
         loading_screen = None
         try:
+            insert_prompt = self.run_screen(
+                LargeIconStatusScreen,
+                title="Insert Destination Card",
+                status_headline=None,
+                text=(
+                    "Insert the destination Seedkeeper card to copy secrets to, "
+                    "then press Continue."
+                ),
+                show_back_button=True,
+                button_data=[ButtonOption("Continue")],
+            )
+
+            if insert_prompt == RET_CODE__BACK_BUTTON:
+                return None, None
+
             connector = seedkeeper_utils.init_satochip(
                 self,
                 init_card_filter=["seedkeeper"],
@@ -2008,7 +2038,7 @@ class ToolsSeedkeeperCloneSecretsView(View):
             )
 
             if not connector:
-                return None
+                return None, None
 
             loading_screen = LoadingScreenThread(text="Writing Destination Card\n\n\n\n\n\n")
             loading_screen.start()
@@ -2073,28 +2103,13 @@ class ToolsSeedkeeperCloneSecretsView(View):
                     )
                 except Exception as exc:
                     loading_screen.stop()
-                    self.run_screen(
-                        WarningScreen,
-                        title="Error",
-                        status_headline=None,
-                        text=str(exc),
-                        show_back_button=True,
-                    )
-                    return None
+                    return False, str(exc)
 
                 if not fits:
                     loading_screen.stop()
-                    self.run_screen(
-                        WarningScreen,
-                        title="Not Enough Space",
-                        status_headline=None,
-                        text=seedkeeper_utils.format_seedkeeper_space_error(
-                            required_bytes, free_bytes
-                        ),
-                        show_back_button=False,
-                        button_data=[ButtonOption("I Understand")],
+                    return False, seedkeeper_utils.format_seedkeeper_space_error(
+                        required_bytes, free_bytes
                     )
-                    return None
 
                 connector.seedkeeper_import_secret(secret_dic)
                 imported += 1
@@ -2117,19 +2132,12 @@ class ToolsSeedkeeperCloneSecretsView(View):
                 button_data=[ButtonOption("Continue")],
             )
 
-            return True
+            return True, None
 
         except Exception as exc:
             if loading_screen:
                 loading_screen.stop()
-            self.run_screen(
-                WarningScreen,
-                title="Error",
-                status_headline=None,
-                text=str(exc),
-                show_back_button=True,
-            )
-            return None
+            return False, str(exc)
 
         finally:
             if loading_screen:
@@ -2144,9 +2152,24 @@ class ToolsSeedkeeperCloneSecretsView(View):
             return Destination(BackStackView)
 
         while True:
-            result = self._clone_to_destination(secrets_to_clone)
+            result, error_message = self._clone_to_destination(secrets_to_clone)
 
-            if not result:
+            if result is False:
+                retry_choice = self.run_screen(
+                    WarningScreen,
+                    title="Clone Failed",
+                    status_headline=None,
+                    text=error_message or "Unable to write to destination card.",
+                    show_back_button=False,
+                    button_data=[ButtonOption("Try Again"), ButtonOption("Exit to Home")],
+                )
+
+                if retry_choice == 0:
+                    continue
+
+                return Destination(MainMenuView)
+
+            if result is not True:
                 return Destination(BackStackView)
 
             choice = self.run_screen(
