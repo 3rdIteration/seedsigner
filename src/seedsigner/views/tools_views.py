@@ -2038,7 +2038,10 @@ class ToolsSeedkeeperCloneSecretsView(View):
             )
 
             if not connector:
-                return None, None
+                return False, (
+                    "Destination Seedkeeper applet not found. "
+                    "Re-insert a Seedkeeper card to retry."
+                )
 
             loading_screen = LoadingScreenThread(text="Writing Destination Card\n\n\n\n\n\n")
             loading_screen.start()
