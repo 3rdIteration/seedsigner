@@ -47,3 +47,6 @@ smbus2==0.4.3 ; platform_system != "Windows" \
 shamir-mnemonic==0.3.0 \
     --hash=sha256:188c6b5bd00d5e756e12e2b186c3cb7c98ff7ff44df608d4c1d2077f6b6e730f \
     --hash=sha256:bc04886a1ddfe2a64d8a3ec51abf0f664d98d5b557cc7e78a8ad2d10a1d87438
+py7zr==1.0.0 \
+    --hash=sha256:6f42d2ff34c808e9026ad11b721c13b41b0673cf2b4e8f8fb34f9d65ae143dd1 \
+    --hash=sha256:f6bfee81637c9032f6a9f0eb045a4bfc7a7ff4138becfc42d7cb89b54ffbfef1

@@ -27,6 +27,12 @@ from seedsigner.helpers.bitbox02_backup import (
     decode_bitbox02_backup,
     format_timestamp,
 )
+from seedsigner.helpers.passport_backup import (
+    PassportBackupDetails,
+    PassportBackupError,
+    load_passport_backup_from_7z,
+    load_passport_backup_from_text,
+)
 from seedsigner.models.encode_qr import CompactSeedQrEncoder, GenericStaticQrEncoder, SeedQrEncoder, SpecterXPubQrEncoder, StaticXpubQrEncoder, UrXpubQrEncoder
 from seedsigner.models.qr_type import QRType
 from seedsigner.models.seed import Seed, Slip39Seed, ElectrumSeed, InvalidSeedException
@@ -93,6 +99,7 @@ class SeedSelectSeedView(View):
     """
     SCAN_SEED = ButtonOption("Scan a seed", SeedSignerIconConstants.QRCODE)
     BITBOX_BACKUP = ButtonOption("BitBox02 backup", SeedSignerIconConstants.MICROSD)
+    PASSPORT_BACKUP = ButtonOption("Passport backup", SeedSignerIconConstants.MICROSD)
     SATOCHIP = ButtonOption("Use Satochip card", SeedSignerIconConstants.FINGERPRINT)
     TYPE_12WORD = ButtonOption("Enter 12-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=12)
     TYPE_15WORD = ButtonOption("Enter 15-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=15)
@@ -137,6 +144,8 @@ class SeedSelectSeedView(View):
         button_data.append(self.SCAN_SEED)
         if self.settings.get_value(SettingsConstants.SETTING__BITBOX_BACKUP) == SettingsConstants.OPTION__ENABLED:
             button_data.append(self.BITBOX_BACKUP)
+        if self.settings.get_value(SettingsConstants.SETTING__PASSPORT_BACKUP) == SettingsConstants.OPTION__ENABLED:
+            button_data.append(self.PASSPORT_BACKUP)
         seed_lengths = self.settings.get_value(SettingsConstants.SETTING__SEED_WORD_LENGTHS)
         options = {
             12: self.TYPE_12WORD,
@@ -194,6 +203,8 @@ class SeedSelectSeedView(View):
 
         if button_data[selected_menu_num] == self.BITBOX_BACKUP:
             return Destination(SeedBitbox02BackupSelectView)
+        if button_data[selected_menu_num] == self.PASSPORT_BACKUP:
+            return Destination(SeedPassportBackupSelectView)
 
         elif button_data[selected_menu_num] in [self.TYPE_12WORD, self.TYPE_15WORD, self.TYPE_18WORD, self.TYPE_21WORD, self.TYPE_24WORD]:
             from seedsigner.views.seed_views import SeedMnemonicEntryView
@@ -222,6 +233,7 @@ class LoadSeedView(View):
     TYPE_SLIP39 = ButtonOption("SLIP-39 Shares", FontAwesomeIconConstants.KEYBOARD)
     IMPORT_SEEDKEEPER = ButtonOption("From SeedKeeper", FontAwesomeIconConstants.LOCK)
     BITBOX_BACKUP = ButtonOption("BitBox02 backup", SeedSignerIconConstants.MICROSD)
+    PASSPORT_BACKUP = ButtonOption("Passport backup", SeedSignerIconConstants.MICROSD)
     CREATE = ButtonOption(" Create a seed", SeedSignerIconConstants.PLUS)
 
     def run(self):
@@ -246,6 +258,8 @@ class LoadSeedView(View):
 
         if self.settings.get_value(SettingsConstants.SETTING__BITBOX_BACKUP) == SettingsConstants.OPTION__ENABLED:
             button_data.append(self.BITBOX_BACKUP)
+        if self.settings.get_value(SettingsConstants.SETTING__PASSPORT_BACKUP) == SettingsConstants.OPTION__ENABLED:
+            button_data.append(self.PASSPORT_BACKUP)
 
         button_data.append(self.CREATE)
 
@@ -281,6 +295,8 @@ class LoadSeedView(View):
 
         elif button_data[selected_menu_num] == self.BITBOX_BACKUP:
             return Destination(SeedBitbox02BackupSelectView)
+        elif button_data[selected_menu_num] == self.PASSPORT_BACKUP:
+            return Destination(SeedPassportBackupSelectView)
 
         elif button_data[selected_menu_num] == self.CREATE:
             from .tools_views import ToolsMenuView
@@ -562,6 +578,156 @@ class SeedBitbox02BackupSummaryView(View):
         self.run_screen(
             LargeIconStatusScreen,
             title=_("BitBox02 backup"),
+            status_headline=_("Seed loaded"),
+            text="\n".join(text_lines),
+            show_back_button=False,
+            button_data=[self.CONTINUE],
+        )
+
+        return Destination(SeedFinalizeView)
+
+
+class SeedPassportBackupSelectView(View):
+    def __init__(self):
+        super().__init__()
+        self.microsd_dir: Path = MicroSD.get_microsd_dir()
+        self.extensions = {".7z", ".txt"}
+
+    def _get_backup_files(self) -> list[Path]:
+        backup_files: list[Path] = []
+        if not self.microsd_dir.exists():
+            raise PassportBackupError(_("microSD card not detected."))
+        for path in self.microsd_dir.rglob("*"):
+            if not path.is_file():
+                continue
+
+            try:
+                rel_parts = path.relative_to(self.microsd_dir).parts
+            except ValueError:
+                continue
+
+            if any(part.startswith(".") for part in rel_parts):
+                continue
+
+            if path.suffix.lower() in self.extensions:
+                backup_files.append(path)
+
+        backup_files.sort(key=lambda p: p.relative_to(self.microsd_dir).as_posix().lower())
+        return backup_files
+
+    def _prompt_for_password(self) -> str | None:
+        from seedsigner.gui.screens.tools_screens import ToolsTextQRTextEntryScreen
+
+        ret_dict = ToolsTextQRTextEntryScreen(
+            textToEncode="",
+            title=_("Backup password"),
+        ).display()
+        if "is_back_button" in ret_dict:
+            return None
+        return ret_dict.get("textToEncode", "").strip()
+
+    def run(self):
+        if len(self.controller.storage.seeds) > 0:
+            ret = self.run_screen(
+                WarningScreen,
+                title="WARNING",
+                status_headline=None,
+                text="These tools load data from the microSD card and may expose loaded secrets.",
+                show_back_button=True,
+                button_data=[ButtonOption("Continue")],
+            )
+            if ret == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+
+        try:
+            backup_files = self._get_backup_files()
+        except Exception as e:
+            logger.exception("Failed to scan microSD for Passport backups", exc_info=e)
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text=str(e),
+                show_back_button=False,
+                button_data=[ButtonOption("OK")],
+            )
+            return Destination(BackStackView)
+
+        if not backup_files:
+            self.run_screen(
+                WarningScreen,
+                title=_("No Backups Found"),
+                status_headline=None,
+                text=_("No Passport backups (.7z, .txt) were found on the microSD card."),
+                show_back_button=False,
+                button_data=[ButtonOption("OK")],
+            )
+            return Destination(BackStackView)
+
+        button_data = [
+            ButtonOption(path.relative_to(self.microsd_dir).as_posix(), SeedSignerIconConstants.MICROSD)
+            for path in backup_files
+        ]
+
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title=_("Select Passport backup"),
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        selected_path = backup_files[selected_menu_num]
+        try:
+            if selected_path.suffix.lower() == ".7z":
+                password = self._prompt_for_password()
+                if password is None:
+                    return Destination(BackStackView)
+                details = load_passport_backup_from_7z(selected_path.read_bytes(), password)
+            else:
+                details = load_passport_backup_from_text(selected_path.read_text(encoding="utf-8"))
+        except (OSError, PassportBackupError, ValueError) as e:
+            logger.exception("Failed to load Passport backup", exc_info=e)
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text=str(e),
+                show_back_button=False,
+                button_data=[ButtonOption("OK")],
+            )
+            return Destination(SeedPassportBackupSelectView)
+
+        try:
+            seed = Seed(details.mnemonic)
+        except InvalidSeedException:
+            return Destination(SeedMnemonicInvalidView)
+
+        self.controller.storage.set_pending_seed(seed)
+
+        return Destination(SeedPassportBackupSummaryView, view_args={"details": details})
+
+
+class SeedPassportBackupSummaryView(View):
+    CONTINUE = ButtonOption(_("Continue"))
+
+    def __init__(self, details: PassportBackupDetails):
+        super().__init__()
+        self.details = details
+
+    def run(self):
+        text_lines = []
+        if self.details.firmware_version:
+            text_lines.append(_("Firmware: {}").format(self.details.firmware_version))
+        if self.details.firmware_date:
+            text_lines.append(_("Backup date: {}").format(self.details.firmware_date))
+        text_lines.append(_("Seed length: {} words").format(len(self.details.mnemonic)))
+
+        self.run_screen(
+            LargeIconStatusScreen,
+            title=_("Passport backup"),
             status_headline=_("Seed loaded"),
             text="\n".join(text_lines),
             show_back_button=False,
