@@ -101,6 +101,7 @@ jobs:
           repository: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs['app-repo'] || github.repository }}
           # ref defaults to source-ref input (workflow_dispatch) or SHA of event
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs['source-ref'] || github.sha }}
+          submodules: true
           path: "seedsigner-os/opt/rootfs-overlay/opt"
           # get full history + tags for "git describe"
           fetch-depth: 0
