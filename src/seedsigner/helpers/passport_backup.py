@@ -32,13 +32,13 @@ def _extract_backup_text(path: Path, password: str) -> str:
 
     try:
         proc = subprocess.run(
-            ["7z", "x", "-so", f"-p{password}", str(path)],
+            ["7za", "x", "-so", f"-p{password}", str(path)],
             check=False,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
     except FileNotFoundError as exc:
-        raise PassportBackupError("p7zip (7z) is not installed.") from exc
+        raise PassportBackupError("p7zip (7za) is not installed.") from exc
 
     if proc.returncode != 0:
         msg = proc.stderr.decode(errors="ignore").strip() or "Unable to decrypt backup."

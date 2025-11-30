@@ -12,7 +12,7 @@ from seedsigner.helpers.passport_backup import (
 )
 
 
-pytestmark = pytest.mark.skipif(shutil.which("7z") is None, reason="p7zip not installed")
+pytestmark = pytest.mark.skipif(shutil.which("7za") is None, reason="p7zip not installed")
 
 
 def _create_backup_archive(tmp_path: Path, password: str, mnemonic: str) -> Path:
@@ -33,7 +33,7 @@ def _create_backup_archive(tmp_path: Path, password: str, mnemonic: str) -> Path
     archive_path = tmp_path / "passport-backup.7z"
     subprocess.run(
         [
-            "7z",
+            "7za",
             "a",
             "-t7z",
             f"-p{password}",
