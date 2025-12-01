@@ -167,7 +167,21 @@ jobs:
       - name: print sha256sum
         run: |
           cd seedsigner-os/images
-          sha256sum *.img.zip
+          shopt -s nullglob
+          zip_files=(*.img.zip)
+
+          if ((${#zip_files[@]})); then
+            unzip -o "${zip_files[@]}"
+          fi
+
+          if ((${#zip_files[@]})); then
+            sha256sum "${zip_files[@]}"
+          fi
+
+          img_files=(*.img)
+          if ((${#img_files[@]})); then
+            sha256sum "${img_files[@]}"
+          fi
 
       - name: upload images
         uses: actions/upload-artifact@v4
@@ -203,7 +217,25 @@ jobs:
           cd images
           # each downloaded image is in its own subfolder
           find . -name "*.img.zip" -exec mv {} . \;
-          sha256sum *.img.zip > seedsigner_os.${{ env.source_hash }}.sha256
+          shopt -s nullglob
+          zip_files=(*.img.zip)
+
+          if ((${#zip_files[@]})); then
+            unzip -o "${zip_files[@]}"
+          fi
+
+          img_files=(*.img)
+
+          checksum_files=()
+          ((${#zip_files[@]})) && checksum_files+=("${zip_files[@]}")
+          ((${#img_files[@]})) && checksum_files+=("${img_files[@]}")
+
+          if ((${#checksum_files[@]})); then
+            sha256sum "${checksum_files[@]}" > seedsigner_os.${{ env.source_hash }}.sha256
+          else
+            echo "No image files found for checksums" >&2
+            exit 1
+          fi
 
       - name: upload checksums
         uses: actions/upload-artifact@v4
