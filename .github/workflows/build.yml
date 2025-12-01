@@ -164,6 +164,29 @@ jobs:
         run: |
           ls -la seedsigner-os/images
 
+      - name: normalize image archives for reproducibility
+        run: |
+          # The seedsigner-os build script stamps images with a fixed timestamp using
+          # "touch -d '2025-07-01 00:00:00'" before zipping. That call is interpreted in
+          # the host's local timezone, which shifts the stored mtime across systems and
+          # makes otherwise identical .img.zip files hash differently. Normalize here by
+          # re-zipping with a fixed UTC timestamp.
+          cd seedsigner-os/images
+          shopt -s nullglob
+          zip_files=(*.img.zip)
+
+          SOURCE_DATE_EPOCH=1751328000  # 2025-07-01 00:00:00 UTC
+          if ((${#zip_files[@]})); then
+            for zip in "${zip_files[@]}"; do
+              img_file="${zip%.zip}"
+              unzip -o "$zip"
+              TZ=UTC touch -d "@${SOURCE_DATE_EPOCH}" "$img_file"
+              rm -f "$zip"
+              TZ=UTC SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH} zip -X -j "$zip" "$img_file"
+              TZ=UTC touch -d "@${SOURCE_DATE_EPOCH}" "$zip"
+            done
+          fi
+
       - name: print sha256sum
         run: |
           cd seedsigner-os/images
