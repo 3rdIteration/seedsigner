@@ -183,6 +183,14 @@ jobs:
             sha256sum "${img_files[@]}"
           fi
 
+      - name: zip images for upload
+        run: |
+          cd seedsigner-os/images
+          shopt -s nullglob
+          for img in *.img; do
+            zip "${img}.zip" "$img"
+          done
+
       - name: upload images
         uses: actions/upload-artifact@v4
         with:
