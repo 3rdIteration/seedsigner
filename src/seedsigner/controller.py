@@ -471,7 +471,7 @@ class Controller(Singleton):
             if ", line " in traceback_line:
                 line_info = traceback_line.split("/")[-1].replace("\"", "").replace("line ", "")
                 break
-        
+
         error = [
             exception_type,
             line_info,
@@ -507,6 +507,19 @@ class Controller(Singleton):
                     # commit hash.
                     name = git_ref[:7]
 
+                    # Check the .git/refs/tags dir for a tag matching this commit hash
+                    git_refs_tags_dir = os.path.join(git_HEAD_dir, ".git", "refs", "tags")
+                    if os.path.exists(git_refs_tags_dir):
+                        for tag_filename in os.listdir(git_refs_tags_dir):
+                            tag_path = os.path.join(git_refs_tags_dir, tag_filename)
+                            with open(tag_path, "r") as tag_file:
+                                # Tag files just contain their associated commit hash
+                                tag_commit_hash = tag_file.read().strip()
+                                if tag_commit_hash.startswith(git_ref):
+                                    # Filename is the tag name
+                                    name = f"v{tag_filename}"
+                                    break
+
         return name
 
 
@@ -516,18 +529,19 @@ class Controller(Singleton):
         return it.
         """
         src_path = os.getcwd()
-        print(f"{src_path=}")
         if "src" not in src_path:
             # Screenshot generator runs from the project root
             src_path = os.path.join(src_path, "src")
-        
-        print(f"{src_path=}")
-        latest_mtime = 0
+
+        latest_edit = 0
         for dirpath, dirnames, filenames in os.walk(src_path):
+            if "__pycache__" in dirpath:
+                continue
             for filename in filenames:
                 if filename.endswith(".py"):
                     filepath = os.path.join(dirpath, filename)
                     mtime = os.path.getmtime(filepath)
-                    if mtime > latest_mtime:
-                        latest_mtime = mtime
-        return datetime.fromtimestamp(latest_mtime)
+                    if mtime > latest_edit:
+                        latest_edit = mtime
+
+        return datetime.fromtimestamp(latest_edit)
