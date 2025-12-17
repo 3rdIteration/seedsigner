@@ -1,3 +1,4 @@
+from datetime import datetime
 import logging
 import os
 import time
@@ -479,16 +480,23 @@ class Controller(Singleton):
         return Destination(UnhandledExceptionView, view_args={"error": error}, clear_history=True)
 
 
-    def get_display_version(self) -> str:
+    def get_version(self) -> str:
         """
-            Returns a user-friendly version string for display in the UI.
+            Returns either the hard-coded Controller.VERSION or a dynamically detected
+            version string for display in the UI. In local dev will return either the
+            current git branch name or commit hash.
         """
         name = f"v{VERSION}"
         if Settings.HOSTNAME == Settings.SEEDSIGNER_OS:
             return name
-        
+
         # We're in local dev; pull info from .git/HEAD if we can
-        git_HEAD_path = os.path.join(os.getcwd(), "..", ".git", "HEAD")
+        git_HEAD_dir = os.getcwd()
+
+        # Main app runs from src/ dir, tests and screenshot generator from project root
+        if "src" in git_HEAD_dir:
+            git_HEAD_dir = os.path.join(git_HEAD_dir, "..")
+        git_HEAD_path = os.path.join(git_HEAD_dir, ".git", "HEAD")
 
         if os.path.exists(git_HEAD_path):
             with open(git_HEAD_path, "r") as f:
@@ -501,3 +509,26 @@ class Controller(Singleton):
                     name = git_ref[:7]
 
         return name
+
+
+    def get_last_src_edit(self) -> datetime:
+        """
+        Recursively scan the src/ directory for the most recent python file edit time and
+        return it.
+        """
+        src_path = os.getcwd()
+        print(f"{src_path=}")
+        if "src" not in src_path:
+            # Screenshot generator runs from the project root
+            src_path = os.path.join(src_path, "src")
+        
+        print(f"{src_path=}")
+        latest_mtime = 0
+        for dirpath, dirnames, filenames in os.walk(src_path):
+            for filename in filenames:
+                if filename.endswith(".py"):
+                    filepath = os.path.join(dirpath, filename)
+                    mtime = os.path.getmtime(filepath)
+                    if mtime > latest_mtime:
+                        latest_mtime = mtime
+        return datetime.fromtimestamp(latest_mtime)

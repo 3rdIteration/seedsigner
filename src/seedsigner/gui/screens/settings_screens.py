@@ -1,3 +1,4 @@
+import datetime
 import time
 
 from dataclasses import dataclass
@@ -313,6 +314,7 @@ class DonateScreen(BaseTopNavScreen):
 @dataclass
 class VersionScreen(BaseTopNavScreen):
     version: str = None
+    last_edit: datetime = None
 
     def __post_init__(self):
         self.title = _("Version")
@@ -323,6 +325,7 @@ class VersionScreen(BaseTopNavScreen):
         font = Fonts.get_font(font_name, font_size)
         (left, char_height, char_width, bottom) = font.getbbox("X", anchor="ls")
 
+        num_version_lines = 1
         if len(self.version) * char_width > self.canvas_width - 2*GUIConstants.EDGE_PADDING:
             max_chars_width = int((self.canvas_width - 2*GUIConstants.EDGE_PADDING) / char_width)
             # Add as many line breaks as needed for the version string to fit
@@ -333,10 +336,14 @@ class VersionScreen(BaseTopNavScreen):
                 else:
                     wrapped_version.append(self.version[i:])
             self.version = "\n".join(wrapped_version)
+            num_version_lines = len(wrapped_version)
         
         # Center the version vertically
         char_height *= -1  # due to the "ls" (baseline) anchor, height is negative
-        screen_y = int((self.canvas_height - self.top_nav.height) / 2) + self.top_nav.height - char_height*len(wrapped_version)
+
+        # Note: we roughly account for the last edit display's vertical space by adding to
+        # num_version_lines.
+        screen_y = int((self.canvas_height - self.top_nav.height) / 2) + self.top_nav.height - char_height*(num_version_lines + 1)
 
         self.components.append(TextArea(
             text=self.version,
@@ -344,6 +351,13 @@ class VersionScreen(BaseTopNavScreen):
             font_size=font_size,
             font_color=GUIConstants.ACCENT_COLOR,
             screen_y=screen_y,
+        ))
+
+        last_edit_str = self.last_edit.strftime("%Y-%m-%d\n%H:%M:%S UTC")
+        self.components.append(TextArea(
+            text=last_edit_str,
+            is_text_centered=True,
+            screen_y=self.components[-1].screen_y + self.components[-1].height + 2*GUIConstants.COMPONENT_PADDING,
         ))
 
 

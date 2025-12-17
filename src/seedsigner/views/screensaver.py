@@ -97,7 +97,7 @@ class OpeningSplashScreen(LogoScreen):
 
         # Display version num below SeedSigner logo
         font = Fonts.get_font(GUIConstants.get_body_font_name(), GUIConstants.get_top_nav_title_font_size())
-        version = controller.get_display_version()
+        version = controller.get_version()
 
         # The logo png is 240x240, but the actual logo is 70px tall, vertically centered
         logo_height = 70
