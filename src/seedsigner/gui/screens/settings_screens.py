@@ -311,6 +311,44 @@ class DonateScreen(BaseTopNavScreen):
 
 
 @dataclass
+class VersionScreen(BaseTopNavScreen):
+    version: str = None
+
+    def __post_init__(self):
+        self.title = _("Version")
+        super().__post_init__()
+
+        font_name = GUIConstants.FIXED_WIDTH_FONT_NAME
+        font_size = GUIConstants.get_top_nav_title_font_size() + 6
+        font = Fonts.get_font(font_name, font_size)
+        (left, char_height, char_width, bottom) = font.getbbox("X", anchor="ls")
+
+        if len(self.version) * char_width > self.canvas_width - 2*GUIConstants.EDGE_PADDING:
+            max_chars_width = int((self.canvas_width - 2*GUIConstants.EDGE_PADDING) / char_width)
+            # Add as many line breaks as needed for the version string to fit
+            wrapped_version = []
+            for i in range(0, len(self.version), max_chars_width):
+                if i + max_chars_width < len(self.version):
+                    wrapped_version.append(self.version[i:i+max_chars_width])
+                else:
+                    wrapped_version.append(self.version[i:])
+            self.version = "\n".join(wrapped_version)
+        
+        # Center the version vertically
+        char_height *= -1  # due to the "ls" (baseline) anchor, height is negative
+        screen_y = int((self.canvas_height - self.top_nav.height) / 2) + self.top_nav.height - char_height*len(wrapped_version)
+
+        self.components.append(TextArea(
+            text=self.version,
+            font_name=font_name,
+            font_size=font_size,
+            font_color=GUIConstants.ACCENT_COLOR,
+            screen_y=screen_y,
+        ))
+
+
+
+@dataclass
 class SettingsQRConfirmationScreen(ButtonListScreen):
     config_name: str = None
     title: str = _mft("Settings QR")

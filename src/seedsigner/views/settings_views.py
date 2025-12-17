@@ -17,6 +17,7 @@ class SettingsMenuView(View):
     HARDWARE = ButtonOption("Hardware", right_icon_name=SeedSignerIconConstants.CHEVRON_RIGHT)
     IO_TEST = ButtonOption("I/O test")
     DONATE = ButtonOption("Donate")
+    VERSION = ButtonOption("Version")
 
     def __init__(self, visibility: str = SettingsConstants.VISIBILITY__GENERAL, selected_attr: str = None, initial_scroll: int = 0):
         super().__init__()
@@ -49,6 +50,7 @@ class SettingsMenuView(View):
 
             button_data.append(self.IO_TEST)
             button_data.append(self.DONATE)
+            button_data.append(self.VERSION)
 
         elif self.visibility == SettingsConstants.VISIBILITY__ADVANCED:
             title = _("Advanced")
@@ -96,6 +98,9 @@ class SettingsMenuView(View):
 
         elif button_data[selected_menu_num] == self.DONATE:
             return Destination(DonateView)
+        
+        elif button_data[selected_menu_num] == self.VERSION:
+            return Destination(VersionView)
 
         elif settings_entries[selected_menu_num].attr_name == SettingsConstants.SETTING__LOCALE:
             return Destination(LocaleSelectionView)
@@ -313,5 +318,20 @@ class IOTestView(View):
 class DonateView(View):
     def run(self):
         self.run_screen(settings_screens.DonateScreen)
+
+        return Destination(SettingsMenuView)
+
+
+
+class VersionView(View):
+    def run(self):
+        from seedsigner.controller import Controller
+        controller = Controller.get_instance()
+        version = controller.get_display_version()
+
+        self.run_screen(
+            settings_screens.VersionScreen,
+            version=version
+        )
 
         return Destination(SettingsMenuView)

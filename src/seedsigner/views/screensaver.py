@@ -97,13 +97,17 @@ class OpeningSplashScreen(LogoScreen):
 
         # Display version num below SeedSigner logo
         font = Fonts.get_font(GUIConstants.get_body_font_name(), GUIConstants.get_top_nav_title_font_size())
-        version = f"v{controller.VERSION}"
+        version = controller.get_display_version()
 
         # The logo png is 240x240, but the actual logo is 70px tall, vertically centered
         logo_height = 70
         version_x = int(self.renderer.canvas_width/2)
         version_y = int(self.canvas_height/2) + int(logo_height/2) + logo_offset_y + GUIConstants.COMPONENT_PADDING
-        self.renderer.draw.text(xy=(version_x, version_y), text=version, font=font, fill=GUIConstants.ACCENT_COLOR, anchor="mt")
+        version_max_chars = 20
+        self.renderer.draw.text(xy=(version_x, version_y), text=version[:version_max_chars], font=font, fill=GUIConstants.ACCENT_COLOR, anchor="mt")
+        if len(version) > version_max_chars:
+            # Squeeze a second version display line in if needed
+            self.renderer.draw.text(xy=(version_x, version_y + GUIConstants.get_top_nav_title_font_size()), text=version[version_max_chars:], font=font, fill=GUIConstants.ACCENT_COLOR, anchor="mt")
 
         if not self.renderer.is_screenshot_generator:
             self.renderer.show_image()

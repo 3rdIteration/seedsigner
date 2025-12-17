@@ -1,4 +1,5 @@
 import logging
+import os
 import time
 import traceback
 
@@ -19,6 +20,9 @@ from seedsigner.views.view import Destination
 
 
 logger = logging.getLogger(__name__)
+
+
+VERSION = "0.8.6"
 
 
 
@@ -99,8 +103,6 @@ class Controller(Singleton):
         Note: In many/most cases you'll need to do the Controller import within a method
         rather than at the top in order avoid circular imports.
     """
-
-    VERSION = "0.8.6"
 
     # Declare class member vars with type hints to enable richer IDE support throughout
     # the code.
@@ -475,3 +477,27 @@ class Controller(Singleton):
             exception_msg,
         ]
         return Destination(UnhandledExceptionView, view_args={"error": error}, clear_history=True)
+
+
+    def get_display_version(self) -> str:
+        """
+            Returns a user-friendly version string for display in the UI.
+        """
+        name = f"v{VERSION}"
+        if Settings.HOSTNAME == Settings.SEEDSIGNER_OS:
+            return name
+        
+        # We're in local dev; pull info from .git/HEAD if we can
+        git_HEAD_path = os.path.join(os.getcwd(), "..", ".git", "HEAD")
+
+        if os.path.exists(git_HEAD_path):
+            with open(git_HEAD_path, "r") as f:
+                git_ref = f.read().strip()
+                if git_ref.startswith("ref:"):
+                    # get the branch name
+                    name = git_ref.split("/")[-1]
+                else:
+                    # get the commit hash
+                    name = git_ref[:7]
+
+        return name
