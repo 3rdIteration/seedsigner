@@ -515,7 +515,7 @@ class Controller(Singleton):
                             with open(tag_path, "r") as tag_file:
                                 # Tag files just contain their associated commit hash
                                 tag_commit_hash = tag_file.read().strip()
-                                if tag_commit_hash.startswith(git_ref):
+                                if tag_commit_hash == git_ref:
                                     # Filename is the tag name
                                     name = f"v{tag_filename}"
                                     break
