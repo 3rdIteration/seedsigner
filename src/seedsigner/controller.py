@@ -482,15 +482,13 @@ class Controller(Singleton):
 
     def get_version(self) -> str:
         """
-            Returns either the hard-coded Controller.VERSION or a dynamically detected
-            version string for display in the UI. In local dev will return either the
-            current git branch name or commit hash.
+            Will attempt to read the current git branch name or commit hash from
+            .git/HEAD. But if there's no git info available, it will fall back to the
+            hard-coded Controller.VERSION.
         """
         name = f"v{VERSION}"
-        if Settings.HOSTNAME == Settings.SEEDSIGNER_OS:
-            return name
 
-        # We're in local dev; pull info from .git/HEAD if we can
+        # .git/HEAD will be in the project root, if it exists
         git_HEAD_dir = os.getcwd()
 
         # Main app runs from src/ dir, tests and screenshot generator from project root
@@ -502,10 +500,11 @@ class Controller(Singleton):
             with open(git_HEAD_path, "r") as f:
                 git_ref = f.read().strip()
                 if git_ref.startswith("ref:"):
-                    # get the branch name
+                    # HEAD format: "ref: refs/heads/some_branch_name"
                     name = git_ref.split("/")[-1]
                 else:
-                    # get the commit hash
+                    # If we're on a detached HEAD, the contents will just be the current
+                    # commit hash.
                     name = git_ref[:7]
 
         return name
