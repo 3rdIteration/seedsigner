@@ -211,6 +211,9 @@ def generate_screenshots(locale):
 
         # Add the top level "General" settings menu and entries
         settings_views_list.append(ScreenshotConfig(settings_views.SettingsMenuView))
+
+        # Scroll the general settings to the bottom
+        settings_views_list.append(ScreenshotConfig(settings_views.SettingsMenuView, dict(selected_button_option=settings_views.SettingsMenuView.VERSION), screenshot_name="SettingsMenuView_2"))
         add_settings_entries(SettingsConstants.VISIBILITY__GENERAL)
 
         # Add the "Advanced" menu...

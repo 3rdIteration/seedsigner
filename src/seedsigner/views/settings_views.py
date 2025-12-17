@@ -19,10 +19,11 @@ class SettingsMenuView(View):
     DONATE = ButtonOption("Donate")
     VERSION = ButtonOption("Version")
 
-    def __init__(self, visibility: str = SettingsConstants.VISIBILITY__GENERAL, selected_attr: str = None, initial_scroll: int = 0):
+    def __init__(self, visibility: str = SettingsConstants.VISIBILITY__GENERAL, selected_attr: str = None, selected_button_option: ButtonOption = None, initial_scroll: int = 0):
         super().__init__()
         self.visibility = visibility
         self.selected_attr = selected_attr
+        self.selected_button_option = selected_button_option
 
         # Used to preserve the rendering position in the list
         self.initial_scroll = initial_scroll
@@ -33,13 +34,6 @@ class SettingsMenuView(View):
             visibility=self.visibility
         )
         button_data: list[ButtonOption] = [ButtonOption(e.display_name) for e in settings_entries]
-
-        selected_button = 0
-        if self.selected_attr:
-            for i, entry in enumerate(settings_entries):
-                if entry.attr_name == self.selected_attr:
-                    selected_button = i
-                    break
 
         if self.visibility == SettingsConstants.VISIBILITY__GENERAL:
             title = _("Settings")
@@ -66,6 +60,15 @@ class SettingsMenuView(View):
         elif self.visibility == SettingsConstants.VISIBILITY__DEVELOPER:
             title = _("Dev Options")
             next_destination = None
+
+        selected_button = 0
+        if self.selected_button_option:
+            selected_button = button_data.index(self.selected_button_option)
+        elif self.selected_attr:
+            for i, entry in enumerate(settings_entries):
+                if entry.attr_name == self.selected_attr:
+                    selected_button = i
+                    break
 
         selected_menu_num = self.run_screen(
             ButtonListScreen,
