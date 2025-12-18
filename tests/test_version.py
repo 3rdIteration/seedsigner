@@ -1,5 +1,6 @@
-from datetime import datetime
 import os
+import pytest
+from datetime import datetime
 from unittest import mock
 
 # Must import this before any SeedSigner imports
@@ -35,8 +36,8 @@ class TestVersion(BaseTest):
             if os.path.exists(git_dot_dir):
                 assert Version.get_version() != f"v{fake_hardcoded_version}"
             else:
-                # if there's no .git dir, mark this test as skipped
-                self.skipTest(f"No .git dir found at {git_dot_dir}, skipping test.")
+                # If there's no .git dir, mark this test as skipped
+                pytest.skip(f"No .git dir found at {git_dot_dir}, skipping test.")
 
 
     def test_version_with_mocked_git_head(self):
