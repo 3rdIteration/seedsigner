@@ -353,12 +353,13 @@ class VersionScreen(BaseTopNavScreen):
             screen_y=screen_y,
         ))
 
-        last_edit_str = self.last_edit.strftime("%Y-%m-%d\n%H:%M:%S UTC")
-        self.components.append(TextArea(
-            text=last_edit_str,
-            is_text_centered=True,
-            screen_y=self.components[-1].screen_y + self.components[-1].height + 2*GUIConstants.COMPONENT_PADDING,
-        ))
+        if self.last_edit:
+            last_edit_str = self.last_edit.strftime("%Y-%m-%d\n%H:%M:%S UTC")
+            self.components.append(TextArea(
+                text=last_edit_str,
+                is_text_centered=True,
+                screen_y=self.components[-1].screen_y + self.components[-1].height + 2*GUIConstants.COMPONENT_PADDING,
+            ))
 
 
 

@@ -23,9 +23,6 @@ from seedsigner.views.view import Destination
 logger = logging.getLogger(__name__)
 
 
-VERSION = "0.8.6"
-
-
 
 class BackStack(list[Destination]):
     def __repr__(self):
@@ -478,70 +475,3 @@ class Controller(Singleton):
             exception_msg,
         ]
         return Destination(UnhandledExceptionView, view_args={"error": error}, clear_history=True)
-
-
-    def get_version(self) -> str:
-        """
-            Will attempt to read the current git branch name or commit hash from
-            .git/HEAD. But if there's no git info available, it will fall back to the
-            hard-coded Controller.VERSION.
-        """
-        name = f"v{VERSION}"
-
-        # .git/HEAD will be in the project root, if it exists
-        git_HEAD_dir = os.getcwd()
-
-        # Main app runs from src/ dir, tests and screenshot generator from project root
-        if "src" in git_HEAD_dir:
-            git_HEAD_dir = os.path.join(git_HEAD_dir, "..")
-        git_HEAD_path = os.path.join(git_HEAD_dir, ".git", "HEAD")
-
-        if os.path.exists(git_HEAD_path):
-            with open(git_HEAD_path, "r") as f:
-                git_ref = f.read().strip()
-                if git_ref.startswith("ref:"):
-                    # HEAD format: "ref: refs/heads/some_branch_name"
-                    name = git_ref.split("/")[-1]
-                else:
-                    # If we're on a detached HEAD, the contents will just be the current
-                    # commit hash.
-                    name = git_ref[:7]
-
-                    # Check the .git/refs/tags dir for a tag matching this commit hash
-                    git_refs_tags_dir = os.path.join(git_HEAD_dir, ".git", "refs", "tags")
-                    if os.path.exists(git_refs_tags_dir):
-                        for tag_filename in os.listdir(git_refs_tags_dir):
-                            tag_path = os.path.join(git_refs_tags_dir, tag_filename)
-                            with open(tag_path, "r") as tag_file:
-                                # Tag files just contain their associated commit hash
-                                tag_commit_hash = tag_file.read().strip()
-                                if tag_commit_hash == git_ref:
-                                    # Filename is the tag name
-                                    name = f"v{tag_filename}"
-                                    break
-
-        return name
-
-
-    def get_last_src_edit(self) -> datetime:
-        """
-        Recursively scan the src/ directory for the most recent python file edit time and
-        return it.
-        """
-        src_path = os.getcwd()
-        if "src" not in src_path:
-            # Screenshot generator runs from the project root
-            src_path = os.path.join(src_path, "src")
-
-        latest_edit = 0
-        for dirpath, dirnames, filenames in os.walk(src_path):
-            if "__pycache__" in dirpath:
-                continue
-            for filename in filenames:
-                if filename.endswith(".py"):
-                    filepath = os.path.join(dirpath, filename)
-                    mtime = os.path.getmtime(filepath)
-                    if mtime > latest_edit:
-                        latest_edit = mtime
-
-        return datetime.fromtimestamp(latest_edit)

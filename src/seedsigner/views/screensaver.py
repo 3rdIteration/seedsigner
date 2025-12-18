@@ -8,6 +8,7 @@ from gettext import gettext as _
 
 from seedsigner.gui.components import Fonts, GUIConstants, load_image
 from seedsigner.gui.screens.screen import BaseScreen
+from seedsigner.helpers.version import Version
 from seedsigner.models.settings import Settings
 from seedsigner.models.settings_definition import SettingsConstants
 from seedsigner.views.view import View
@@ -97,7 +98,7 @@ class OpeningSplashScreen(LogoScreen):
 
         # Display version num below SeedSigner logo
         font = Fonts.get_font(GUIConstants.get_body_font_name(), GUIConstants.get_top_nav_title_font_size())
-        version = controller.get_version()
+        version = Version.get_version()
 
         # The logo png is 240x240, but the actual logo is 70px tall, vertically centered
         logo_height = 70

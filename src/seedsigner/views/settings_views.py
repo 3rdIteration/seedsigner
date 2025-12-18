@@ -328,13 +328,12 @@ class DonateView(View):
 
 class VersionView(View):
     def run(self):
-        from seedsigner.controller import Controller
-        controller = Controller.get_instance()
+        from seedsigner.helpers.version import Version
 
         self.run_screen(
             settings_screens.VersionScreen,
-            version=controller.get_version(),
-            last_edit=controller.get_last_src_edit(),
+            version=Version.get_version(),
+            last_edit=Version.get_last_src_edit(),
         )
 
         return Destination(SettingsMenuView)
