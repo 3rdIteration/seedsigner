@@ -24,7 +24,9 @@ class Version:
     def _get_dot_git_dir(cls) -> str:
         # If it exists, the .git dir will be in the project root
         path = os.path.dirname(os.path.abspath(__file__))
-        project_root = path.rsplit("/src", 1)[0]
+
+        # Have to back out of "helpers" and "seedsigner" and "src" dirs
+        project_root = os.path.join(path, "..", "..", "..")
 
         return os.path.join(project_root, ".git")
 
@@ -94,7 +96,9 @@ class Version:
         """
         try:
             path = os.path.dirname(os.path.abspath(__file__))
-            src_path = path.rsplit("/src", 1)[0] + "/src"
+
+            # Have to back out of "helpers" and "seedsigner" dirs
+            src_path = os.path.join(path, "..", "..")
 
             last_modified = 0.0
             num_files = 0
