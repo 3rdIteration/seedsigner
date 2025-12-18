@@ -65,7 +65,7 @@ class TestVersion(BaseTest):
                 with mock.patch.object(Version, '_get_matching_tag', return_value=tag_name):
                     version = Version.get_version()
                     assert version == tag_name
-    
+
 
     def test_get_last_src_edit(self):
         """

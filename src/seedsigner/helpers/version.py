@@ -22,14 +22,11 @@ class Version:
 
     @classmethod
     def _get_dot_git_dir(cls) -> str:
-        # .git will be in the project root, if it exists
-        git_HEAD_dir = os.getcwd()
+        # If it exists, the .git dir will be in the project root
+        path = os.path.dirname(os.path.abspath(__file__))
+        project_root = path.rsplit("/src", 1)[0]
 
-        # Main app runs from src/ dir, tests and screenshot generator from project root
-        if "src" in git_HEAD_dir:
-            git_HEAD_dir = git_HEAD_dir.rsplit("src", 1)[0]
-
-        return os.path.join(git_HEAD_dir, ".git")
+        return os.path.join(project_root, ".git")
 
 
     @classmethod
@@ -96,10 +93,8 @@ class Version:
         Recursively scan the src/ directory for the most recent python file edit time.
         """
         try:
-            src_path = os.getcwd()
-            if "src" not in src_path:
-                # Screenshot generator runs from the project root
-                src_path = os.path.join(src_path, "src")
+            path = os.path.dirname(os.path.abspath(__file__))
+            src_path = path.rsplit("/src", 1)[0] + "/src"
 
             last_modified = 0.0
             num_files = 0
@@ -111,7 +106,7 @@ class Version:
                         num_files += 1
                         filepath = os.path.join(dirpath, filename)
 
-                        # getmtime 
+                        # getmtime returns the file's last modified time
                         file_mtime = os.path.getmtime(filepath)
                         last_modified = max(file_mtime, last_modified)
 
