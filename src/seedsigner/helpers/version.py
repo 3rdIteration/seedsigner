@@ -140,7 +140,7 @@ class Version:
 
 
     @classmethod
-    def get_last_src_edit(cls) -> datetime:
+    def get_last_edit(cls) -> datetime:
         """
         Recursively scan the src/ directory for the most recent python file edit time.
         """
@@ -194,11 +194,17 @@ if __name__ == "__main__":
     CLI to extract the current version and last edit time and write to `src/seedsigner/version.json`.
 
     Used by the SeedSigner OS build process to generate the version.json file.
+
+    Uses the last git commit time (via `git log`) as the last edit time.
     """
     version_info = dict(version=Version.get_version())
-    last_edit_dt = Version.get_last_src_edit()
-    if last_edit_dt:
-        version_info["last_src_edit"] = last_edit_dt.isoformat()
+
+    # Run `git log` in the shell to get the last commit time
+    try:
+        last_commit = os.popen("git log -1 --format=%cI").read().strip()
+        version_info["last_src_edit"] = last_commit
+    except Exception as e:
+        raise Exception("Could not get last commit time from git log.") from e
 
     version_file_path = Version._get_version_file_path()
     with open(version_file_path, "w") as f:
