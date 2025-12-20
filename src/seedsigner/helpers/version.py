@@ -107,8 +107,6 @@ class Version:
             if not version.startswith("v") and version.count(".") >= 1 and version.split(".")[0].isnumeric():
                 return f"v{version}"
             return version
-        
-        print(f"{Settings.HOSTNAME=}")
 
         if Settings.HOSTNAME == Settings.SEEDSIGNER_OS:
             # The SeedSigner OS build process generates the version.json file for the tag,
@@ -205,6 +203,15 @@ if __name__ == "__main__":
         version_info["last_src_edit"] = last_commit
     except Exception as e:
         raise Exception("Could not get last commit time from git log.") from e
+
+    try:
+        version_name = os.popen("git branch --show-current").read().strip()
+        if not version_name:
+            # If we're on a tag, there won't be a current branch. Instead, try to get the
+            # current tag.
+            version_name = os.popen("git describe --tags --abbrev=0").read().strip()
+    except Exception as e:
+        raise Exception("Could not get version name from git.") from e
 
     version_file_path = Version._get_version_file_path()
     with open(version_file_path, "w") as f:
