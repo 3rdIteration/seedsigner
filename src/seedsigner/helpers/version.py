@@ -1,7 +1,7 @@
 import json
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 
 from seedsigner.models.settings import Settings
 
@@ -200,18 +200,25 @@ if __name__ == "__main__":
     # Run `git log` in the shell to get the last commit time
     try:
         last_commit = os.popen("git log -1 --format=%cI").read().strip()
-        version_info["last_src_edit"] = last_commit
+        # Parse the timestamp, ensure that it's in UTC, and omit tz info
+        version_info["last_src_edit"] = datetime.fromisoformat(last_commit).astimezone(timezone.utc).replace(tzinfo=None).isoformat()
     except Exception as e:
         raise Exception("Could not get last commit time from git log.") from e
 
     try:
-        version_name = os.popen("git branch --show-current").read().strip()
+        version_name = None
+
+        # If we're currently building SeedSigner OS, check the env var
+        version_name = os.getenv("SEEDSIGNER_VERSION_NAME")
+
         if not version_name:
-            # If we're on a tag, there won't be a current branch. Instead, try to get the
-            # current tag.
-            version_name = os.popen("git describe --tags --abbrev=0").read().strip()
+            version_name = os.popen("git branch --show-current").read().strip()
+            if not version_name:
+                # If we're on a tag, there won't be a current branch. Instead, try to get the
+                # current tag.
+                version_name = os.popen("git describe --tags --abbrev=0").read().strip()
     except Exception as e:
-        raise Exception("Could not get version name from git.") from e
+        raise Exception("Could not get version name from SeedSigner OS env var nor git.") from e
 
     version_file_path = Version._get_version_file_path()
     with open(version_file_path, "w") as f:
