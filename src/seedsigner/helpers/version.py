@@ -140,7 +140,7 @@ class Version:
 
 
     @classmethod
-    def get_last_edit(cls) -> datetime:
+    def get_last_edit_timestamp(cls) -> datetime:
         """
         Recursively scan the src/ directory for the most recent python file edit time.
         """

@@ -68,12 +68,12 @@ class TestVersion(BaseTest):
                     assert version == tag_name
 
 
-    def test_get_last_src_edit(self):
+    def test_get_last_edit(self):
         """
         Test that get_last_src_edit returns a sane datetime object. Assumes the system
         running this test has a reasonably correct system time.
         """
-        last_edit = Version.get_last_src_edit()
+        last_edit = Version.get_last_edit_timestamp()
         assert isinstance(last_edit, datetime)
 
         # Has to be more recent than the first SeedSigner v0.0.1 release

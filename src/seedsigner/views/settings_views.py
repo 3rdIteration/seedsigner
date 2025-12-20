@@ -333,7 +333,7 @@ class VersionView(View):
         self.run_screen(
             settings_screens.VersionScreen,
             version=Version.get_version(),
-            last_edit=Version.get_last_src_edit(),
+            last_edit=Version.get_last_edit_timestamp(),
         )
 
         return Destination(SettingsMenuView)
