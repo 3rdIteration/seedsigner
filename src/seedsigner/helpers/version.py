@@ -3,6 +3,8 @@ import logging
 import os
 from datetime import datetime
 
+from seedsigner.models.settings import Settings
+
 
 logger = logging.getLogger(__name__)
 
@@ -17,9 +19,6 @@ class Version:
 
     Internal utility functions are separated out as class methods for easier mocking in tests.
     """
-
-    VERSION = "0.8.6"
-
     VERSION_FILENAME = "version.json"
 
 
@@ -98,6 +97,31 @@ class Version:
             hard-coded VERSION constant.
         """
         name = None
+
+        def _prefix_version_name(version: str) -> str:
+            """
+            Ensure version strings are prefixed with 'v' if they look like semantic
+            versions. Only checks that the first part is numeric in order to be compatible
+            with minor versions like an "rc1".
+            """
+            if not version.startswith("v") and version.count(".") >= 1 and version.split(".")[0].isnumeric():
+                return f"v{version}"
+            return version
+        
+        print(f"{Settings.HOSTNAME=}")
+
+        if Settings.HOSTNAME == Settings.SEEDSIGNER_OS:
+            # The SeedSigner OS build process generates the version.json file for the tag,
+            # branch, or commit hash the image is targeting.
+            try:
+                name = cls._get_version_file()["version"]
+            except Exception:
+                # Shouldn't be possible. Raise an exception to alert testers before this
+                # image goes out.
+                raise Exception("Could not read the version from the version.json file.")
+            return _prefix_version_name(name)
+
+        # In local dev we dynamically read from the .git/HEAD file
         branch_name, commit_hash = cls._read_HEAD_file()
         if branch_name:
             name = branch_name
@@ -108,18 +132,11 @@ class Version:
                 name = matching_tag
             else:
                 name = commit_hash[:7]  # short commit hash
-        
-        if name is None:
-            # Try reading from version.json file
-            version_file_data = cls._get_version_file()
-            if version_file_data:
-                name = version_file_data.get("version")
 
         if name is None:
-            # Fallback to hard-coded version
-            name = f"v{cls.VERSION}"
+            raise Exception("Could not determine version from git info.")
 
-        return name
+        return _prefix_version_name(name)
 
 
     @classmethod
@@ -127,6 +144,17 @@ class Version:
         """
         Recursively scan the src/ directory for the most recent python file edit time.
         """
+        if Settings.HOSTNAME == Settings.SEEDSIGNER_OS:
+            # The SeedSigner OS build process generates the version.json file which will
+            # already contain the last edit time.
+            try:
+                last_src_edit_str = cls._get_version_file()["last_src_edit"]
+                return datetime.fromisoformat(last_src_edit_str)
+            except Exception as e:
+                # Shouldn't be possible. Raise an exception to alert testers before this
+                # image goes out.
+                raise Exception("Could not read the last_src_edit from the version.json file.")
+
         try:
             path = os.path.dirname(os.path.abspath(__file__))
 
@@ -148,11 +176,8 @@ class Version:
                         last_modified = max(file_mtime, last_modified)
 
             if num_files == 0:
-                # Fallback to reading from the version file
-                version_file_data = cls._get_version_file()
-                if version_file_data:
-                    last_src_edit_str = version_file_data.get("last_src_edit")
-                    return datetime.fromisoformat(last_src_edit_str)
+                # Shouldn't be possible
+                raise Exception("No python source files found in src/ directory")
 
             return datetime.fromtimestamp(last_modified)
 
@@ -167,6 +192,8 @@ class Version:
 if __name__ == "__main__":
     """
     CLI to extract the current version and last edit time and write to `src/seedsigner/version.json`.
+
+    Used by the SeedSigner OS build process to generate the version.json file.
     """
     version_info = dict(version=Version.get_version())
     last_edit_dt = Version.get_last_src_edit()
