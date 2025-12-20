@@ -67,23 +67,27 @@ class Version:
                         # Filename is the tag name
                         return tag_filename
         return None
-    
+
+
+    @classmethod
+    def _get_version_file_path(cls) -> str:
+        # Have to back out of "helpers" dir to the main "seedsigner" dir
+        return os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", cls.VERSION_FILENAME)
+
 
     @classmethod
     def _get_version_file(cls) -> dict | None:
         """
         Attempts to read the VERSION_FILENAME and return its contents as a dict.
         """
-        version_file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", cls.VERSION_FILENAME)
-        if os.path.exists(version_file_path):
-            try:
-                with open(version_file_path, "r") as f:
-                    return json.load(f)
-            except Exception as e:
-                # In local dev we don't expect/want this file to exist
-                pass
+        version_file_path = cls._get_version_file_path()
+        try:
+            with open(version_file_path, "r") as f:
+                return json.load(f)
+        except Exception as e:
+            # In local dev we don't expect/want this file to exist
+            pass
         return None
-
 
 
     @classmethod
@@ -162,15 +166,15 @@ class Version:
 
 if __name__ == "__main__":
     """
-    CLI to extract the current version and last edit time and write to `src/version.json`.
+    CLI to extract the current version and last edit time and write to `src/seedsigner/version.json`.
     """
     version_info = dict(version=Version.get_version())
     last_edit_dt = Version.get_last_src_edit()
     if last_edit_dt:
         version_info["last_src_edit"] = last_edit_dt.isoformat()
 
-    with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", Version.VERSION_FILENAME), "w") as f:
+    with open(Version._get_version_file_path(), "w") as f:
         json.dump(version_info, f, indent=4)
 
-    print("Wrote version info to src/version.json:")
+    print("Wrote version info to src/seedsigner/version.json:")
     print(json.dumps(version_info, indent=4))
