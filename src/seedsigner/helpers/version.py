@@ -200,7 +200,7 @@ if __name__ == "__main__":
 
     Uses the last git commit time (via `git log`) as the last edit time.
     """
-    version_info = dict(version=Version.get_version())
+    version_info = dict()
 
     # Run `git log` in the shell to get the last commit time
     try:
@@ -211,18 +211,25 @@ if __name__ == "__main__":
         raise Exception("Could not get last commit time from git log.") from e
 
     try:
-        version_name = None
-
         # If we're currently building SeedSigner OS, check the env var
         version_name = os.getenv("SEEDSIGNER_VERSION_NAME")
-        print(f"SEEDSIGNER_VERSION_NAME={version_name}")
 
         if not version_name:
             version_name = os.popen("git branch --show-current").read().strip()
-            if not version_name:
-                # If we're on a tag, there won't be a current branch. Instead, try to get the
-                # current tag.
-                version_name = os.popen("git describe --tags --abbrev=0").read().strip()
+
+        if not version_name:
+            # If we're on a tag, there won't be a current branch. Instead, try to get the
+            # current tag.
+            version_name = os.popen("git describe --tags --abbrev=0").read().strip()
+        
+        if not version_name:
+            # Fallback to commit hash
+            version_name = os.popen("git rev-parse --short HEAD").read().strip()
+
+        if not version_name:
+            raise Exception("No git info found for version name.")
+
+        version_info["version"] = version_name
     except Exception as e:
         raise Exception("Could not get version name from SeedSigner OS env var nor git.") from e
 
