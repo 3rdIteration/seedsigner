@@ -215,6 +215,7 @@ if __name__ == "__main__":
 
         # If we're currently building SeedSigner OS, check the env var
         version_name = os.getenv("SEEDSIGNER_VERSION_NAME")
+        print(f"SEEDSIGNER_VERSION_NAME={version_name}")
 
         if not version_name:
             version_name = os.popen("git branch --show-current").read().strip()
