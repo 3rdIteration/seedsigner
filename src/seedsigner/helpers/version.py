@@ -132,7 +132,12 @@ class Version:
                 name = commit_hash[:7]  # short commit hash
 
         if name is None:
-            raise Exception("Could not determine version from git info.")
+            # If we're running in the Github Actions CI, we'll have env vars we can use
+            if os.getenv("CI") == "true":
+                name = os.getenv("GITHUB_REF_NAME") or os.getenv("GITHUB_SHA")[:7]
+            
+            if name is None:
+                raise Exception("Could not determine version from git info nor CI env vars.")
 
         return _prefix_version_name(name)
 
