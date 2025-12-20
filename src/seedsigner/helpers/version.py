@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 from datetime import datetime
@@ -18,6 +19,8 @@ class Version:
     """
 
     VERSION = "0.8.6"
+
+    VERSION_FILENAME = "version.json"
 
 
     @classmethod
@@ -64,6 +67,23 @@ class Version:
                         # Filename is the tag name
                         return tag_filename
         return None
+    
+
+    @classmethod
+    def _get_version_file(cls) -> dict | None:
+        """
+        Attempts to read the VERSION_FILENAME and return its contents as a dict.
+        """
+        version_file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", cls.VERSION_FILENAME)
+        if os.path.exists(version_file_path):
+            try:
+                with open(version_file_path, "r") as f:
+                    return json.load(f)
+            except Exception as e:
+                # In local dev we don't expect/want this file to exist
+                pass
+        return None
+
 
 
     @classmethod
@@ -73,8 +93,7 @@ class Version:
             .git/HEAD. But if there's no git info available, it will fall back to the
             hard-coded VERSION constant.
         """
-        name = f"v{cls.VERSION}"
-
+        name = None
         branch_name, commit_hash = cls._read_HEAD_file()
         if branch_name:
             name = branch_name
@@ -85,6 +104,16 @@ class Version:
                 name = matching_tag
             else:
                 name = commit_hash[:7]  # short commit hash
+        
+        if name is None:
+            # Try reading from version.json file
+            version_file_data = cls._get_version_file()
+            if version_file_data:
+                name = version_file_data.get("version")
+
+        if name is None:
+            # Fallback to hard-coded version
+            name = f"v{cls.VERSION}"
 
         return name
 
@@ -114,9 +143,12 @@ class Version:
                         file_mtime = os.path.getmtime(filepath)
                         last_modified = max(file_mtime, last_modified)
 
-            # Sanity check
             if num_files == 0:
-                raise Exception(f"No python source files found in {src_path}")
+                # Fallback to reading from the version file
+                version_file_data = cls._get_version_file()
+                if version_file_data:
+                    last_src_edit_str = version_file_data.get("last_src_edit")
+                    return datetime.fromisoformat(last_src_edit_str)
 
             return datetime.fromtimestamp(last_modified)
 
@@ -126,3 +158,19 @@ class Version:
             import traceback
             logger.error(traceback.format_exc())
             return None
+
+
+if __name__ == "__main__":
+    """
+    CLI to extract the current version and last edit time and write to `src/version.json`.
+    """
+    version_info = dict(version=Version.get_version())
+    last_edit_dt = Version.get_last_src_edit()
+    if last_edit_dt:
+        version_info["last_src_edit"] = last_edit_dt.isoformat()
+
+    with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", Version.VERSION_FILENAME), "w") as f:
+        json.dump(version_info, f, indent=4)
+
+    print("Wrote version info to src/version.json:")
+    print(json.dumps(version_info, indent=4))
