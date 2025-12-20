@@ -72,7 +72,7 @@ class Version:
     @classmethod
     def _get_version_file_path(cls) -> str:
         # Have to back out of "helpers" dir to the main "seedsigner" dir
-        return os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", cls.VERSION_FILENAME)
+        return os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", cls.VERSION_FILENAME))
 
 
     @classmethod
@@ -173,8 +173,9 @@ if __name__ == "__main__":
     if last_edit_dt:
         version_info["last_src_edit"] = last_edit_dt.isoformat()
 
-    with open(Version._get_version_file_path(), "w") as f:
+    version_file_path = Version._get_version_file_path()
+    with open(version_file_path, "w") as f:
         json.dump(version_info, f, indent=4)
 
-    print("Wrote version info to src/seedsigner/version.json:")
+    print(f"Wrote version info to: {version_file_path}")
     print(json.dumps(version_info, indent=4))
