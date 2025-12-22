@@ -13,6 +13,8 @@ from embit import compact
 from embit.psbt import PSBT, OutputScope
 from embit.script import Script
 
+from seedsigner.helpers.version import Version, VersionUtils
+
 # Prevent importing modules w/Raspi hardware dependencies.
 # These must precede any SeedSigner imports.
 sys.modules['seedsigner.hardware.displays.st7789_mpy'] = MagicMock()
@@ -195,6 +197,17 @@ def generate_screenshots(locale):
             value=SettingsConstants.OPTION__ENABLED
         )
 
+        # Initialize the Version data to the most recent release
+        (version_name, version_timestamp) = VersionUtils._fetch_latest_release_version()
+        if not version_name or not version_timestamp:
+            raise Exception("Could not fetch latest release version from GitHub")
+        Version.override_data(
+            version_name=version_name,
+            version_fork="SeedSigner",  # main repo; screenshot should hide fork and commit hash
+            version_timestamp=version_timestamp,
+            version_commit_hash="abcd1234"  # dummy value should be ignored
+        )
+
         # Automatically populate all Settings options Views
         settings_views_list = []
         def add_settings_entries(visibility = SettingsConstants.VISIBILITY__GENERAL):
@@ -297,6 +310,10 @@ def generate_screenshots(locale):
             decoder.add_data(BASE64_PSBT_WITH_OP_RETURN_RAW_BYTES)
             controller.psbt = decoder.get_psbt()
             controller.psbt_parser = PSBTParser(p=controller.psbt, seed=seed_12b)
+        
+
+        def reset_version_to_local_git_state_cb():
+            Version.reset_instance()
 
 
         screenshot_sections = {
@@ -429,6 +446,7 @@ def generate_screenshots(locale):
                 ScreenshotConfig(settings_views.IOTestView),
                 ScreenshotConfig(settings_views.DonateView),
                 ScreenshotConfig(settings_views.VersionView),
+                ScreenshotConfig(settings_views.VersionView, run_before=reset_version_to_local_git_state_cb, screenshot_name="VersionView_current_git_state"),
                 ScreenshotConfig(settings_views.SettingsIngestSettingsQRView, dict(data=settingsqr_data_persistent), screenshot_name="SettingsIngestSettingsQRView_persistent"),
                 ScreenshotConfig(settings_views.SettingsIngestSettingsQRView, dict(data=settingsqr_data_not_persistent), screenshot_name="SettingsIngestSettingsQRView_not_persistent"),
             ],

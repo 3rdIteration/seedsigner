@@ -313,53 +313,105 @@ class DonateScreen(BaseTopNavScreen):
 
 @dataclass
 class VersionScreen(BaseTopNavScreen):
-    version: str = None
-    last_edit: datetime = None
+    version_name: str = None
+    version_fork: str = None
+    version_timestamp: datetime = None
+    version_commit_hash: str = None
 
     def __post_init__(self):
         self.title = _("Version")
         super().__post_init__()
 
-        font_name = GUIConstants.FIXED_WIDTH_FONT_NAME
-        font_size = GUIConstants.get_top_nav_title_font_size() + 6
-        font = Fonts.get_font(font_name, font_size)
-        (left, char_height, char_width, bottom) = font.getbbox("X", anchor="ls")
+        version_name_font_name = GUIConstants.FIXED_WIDTH_FONT_NAME
+        version_name_font_size = GUIConstants.get_top_nav_title_font_size() + 6
+        version_name_font = Fonts.get_font(version_name_font_name, version_name_font_size)
+        (left, version_name_char_height, version_name_char_width, bottom) = version_name_font.getbbox("X", anchor="ls")
 
-        num_version_lines = 1
-        if len(self.version) * char_width > self.canvas_width - 2*GUIConstants.EDGE_PADDING:
-            max_chars_width = int((self.canvas_width - 2*GUIConstants.EDGE_PADDING) / char_width)
+        if len(self.version_name) * version_name_char_width > self.canvas_width - 2*GUIConstants.EDGE_PADDING:
+            max_chars_width = int((self.canvas_width - 2*GUIConstants.EDGE_PADDING) / version_name_char_width)
             # Add as many line breaks as needed for the version string to fit
             wrapped_version = []
-            for i in range(0, len(self.version), max_chars_width):
-                if i + max_chars_width < len(self.version):
-                    wrapped_version.append(self.version[i:i+max_chars_width])
+            for i in range(0, len(self.version_name), max_chars_width):
+                if i + max_chars_width < len(self.version_name):
+                    wrapped_version.append(self.version_name[i:i+max_chars_width])
                 else:
-                    wrapped_version.append(self.version[i:])
-            self.version = "\n".join(wrapped_version)
-            num_version_lines = len(wrapped_version)
-        
-        # Center the version vertically
-        char_height *= -1  # due to the "ls" (baseline) anchor, height is negative
+                    wrapped_version.append(self.version_name[i:])
+            self.version_name = "\n".join(wrapped_version)
 
-        # Note: we roughly account for the last edit display's vertical space by adding to
-        # num_version_lines.
-        screen_y = int((self.canvas_height - self.top_nav.height) / 2) + self.top_nav.height - char_height*(num_version_lines + 1)
+        timestamp_font_name = GUIConstants.get_body_font_name()
+        timestamp_font_size = GUIConstants.get_body_font_size()
+        timestamp_font = Fonts.get_font(timestamp_font_name, timestamp_font_size)
+        (left, timestamp_char_height, timestamp_char_width, bottom) = timestamp_font.getbbox("UTC", anchor="ls")
+
+        screen_y = self.top_nav.height + GUIConstants.COMPONENT_PADDING * 2
+        if not self.version_fork and not self.version_commit_hash:
+            # Center the version name if there's no fork/commit info
+            screen_y = int(self.canvas_height / 2) - (-1 * version_name_char_height)  # char_height is negative
 
         self.components.append(TextArea(
-            text=self.version,
-            font_name=font_name,
-            font_size=font_size,
+            text=self.version_name,
+            font_name=version_name_font_name,
+            font_size=version_name_font_size,
             font_color=GUIConstants.ACCENT_COLOR,
             screen_y=screen_y,
         ))
 
-        if self.last_edit:
-            last_edit_str = self.last_edit.strftime("%Y-%m-%d\n%H:%M:%S UTC")
+        screen_y = self.components[-1].screen_y + self.components[-1].height + 3*GUIConstants.COMPONENT_PADDING
+
+        label_font_name = GUIConstants.get_body_font_name()
+        label_font_size = GUIConstants.get_body_font_size()
+        label_font = Fonts.get_font(label_font_name, label_font_size)
+        (left, label_height, fork_label_width, bottom) = label_font.getbbox("fork: ", anchor="ls")
+        (left, label_height, commit_label_width, bottom) = label_font.getbbox("commit: ", anchor="ls")
+
+        if self.version_fork:
+            screen_x = 0
+            if self.version_commit_hash:
+                # right-align the labels
+                screen_x = commit_label_width - fork_label_width
             self.components.append(TextArea(
-                text=last_edit_str,
-                is_text_centered=True,
-                screen_y=self.components[-1].screen_y + self.components[-1].height + 2*GUIConstants.COMPONENT_PADDING,
+                text=f"fork: ",
+                is_text_centered=False,
+                font_color=GUIConstants.LABEL_FONT_COLOR,
+                screen_x=screen_x,
+                screen_y=screen_y,
             ))
+            self.components.append(TextArea(
+                text=self.version_fork,
+                is_text_centered=False,
+                font_name=GUIConstants.FIXED_WIDTH_EMPHASIS_FONT_NAME,
+                font_size=GUIConstants.get_top_nav_title_font_size(),
+                edge_padding=0,
+                screen_x=screen_x + fork_label_width + GUIConstants.COMPONENT_PADDING,
+                screen_y=screen_y,
+            ))
+            screen_y = self.components[-1].screen_y + self.components[-1].height + GUIConstants.COMPONENT_PADDING
+
+        if self.version_commit_hash:
+            self.components.append(TextArea(
+                text=f"commit: ",
+                is_text_centered=False,
+                font_color=GUIConstants.LABEL_FONT_COLOR,
+                screen_y=screen_y,
+            ))
+            self.components.append(TextArea(
+                text=self.version_commit_hash,
+                is_text_centered=False,
+                font_name=GUIConstants.FIXED_WIDTH_EMPHASIS_FONT_NAME,
+                font_size=GUIConstants.get_top_nav_title_font_size(),
+                edge_padding=0,
+                screen_x=commit_label_width + GUIConstants.COMPONENT_PADDING,
+                screen_y=screen_y,
+            ))
+
+        # Pin the timestamp centered to the bottom of the screen
+        last_edit_str = self.version_timestamp.strftime("%Y-%m-%d %H:%M:%S UTC")
+        self.components.append(TextArea(
+            text=last_edit_str,
+            font_name=timestamp_font_name,
+            font_size=timestamp_font_size,
+            screen_y=self.canvas_height - (-1 * timestamp_char_height) - GUIConstants.EDGE_PADDING,
+        ))
 
 
 

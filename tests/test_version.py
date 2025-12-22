@@ -50,7 +50,7 @@ class TestVersion(BaseTest):
             branch_name = "my_feature_branch"
             git_HEAD_content = f"ref: refs/heads/{branch_name}"
             with mock.patch("builtins.open", mock.mock_open(read_data=git_HEAD_content)):
-                version = Version.get_version()
+                version = Version.get_version_name()
                 assert version == branch_name
         
             # Mock the HEAD file read in _read_HEAD_file to return a fake commit hash
@@ -58,13 +58,13 @@ class TestVersion(BaseTest):
             with mock.patch("builtins.open", mock.mock_open(read_data=commit_hash)):
                 # Mock that there are no matching tags for this commit hash
                 with mock.patch.object(Version, '_get_matching_tag', return_value=None):
-                    version = Version.get_version()
+                    version = Version.get_version_name()
                     assert version == commit_hash[:7]  # short commit hash
                 
                 # Now mock that there is a matching tag for this commit hash
                 tag_name = "v1.2.3"
                 with mock.patch.object(Version, '_get_matching_tag', return_value=tag_name):
-                    version = Version.get_version()
+                    version = Version.get_version_name()
                     assert version == tag_name
 
 
@@ -73,7 +73,7 @@ class TestVersion(BaseTest):
         Test that get_last_src_edit returns a sane datetime object. Assumes the system
         running this test has a reasonably correct system time.
         """
-        last_edit = Version.get_last_edit_timestamp()
+        last_edit = Version.get_version_timestamp()
         assert isinstance(last_edit, datetime)
 
         # Has to be more recent than the first SeedSigner v0.0.1 release
