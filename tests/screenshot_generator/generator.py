@@ -198,7 +198,7 @@ def generate_screenshots(locale):
         )
 
         # Initialize the Version data to the most recent release
-        (version_name, version_timestamp) = VersionUtils._fetch_latest_release_version()
+        (version_name, version_timestamp) = VersionUtils._fetch_latest_seedsigner_release_tag()
         if not version_name or not version_timestamp:
             raise Exception("Could not fetch latest release version from GitHub")
         Version.override_data(

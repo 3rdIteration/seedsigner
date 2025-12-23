@@ -1,14 +1,10 @@
 import json
-import os
-from datetime import datetime, timezone
 
 from seedsigner.helpers.version import VersionUtils
-from seedsigner.models.settings import Settings
-
 
 
 """
-CLI utility to extract the current version and last edit time and write to
+CLI utility to extract the current version data and write to
 `src/seedsigner/version.json`. Primarily used by the SeedSigner OS build process.
 
 SeedSigner OS lifecycle:
@@ -16,21 +12,28 @@ SeedSigner OS lifecycle:
     * version.json is included in the SeedSigner OS image.
     * SeedSigner OS reads version.json at runtime.
 
-This script can also be run in local dev but `git` shell commands are required.
+Notes:
+    * The SeedSigner OS build environment already relies on `git` being installed.
+    * This script can also be run in local dev but `git` shell commands are required.
 
-version_name:
-    * Check for the SEEDSIGNER_VERSION_NAME env var (provided in SeedSigner OS build env).
-        * Will be the branch, tag, or commit hash being built.
-    * In local dev will fall back to (via `git` shell commands):
-        * Current git branch name
-        * Current git tag name
-        * Current git commit hash
+Version data:
+    * version_name:
+        * Check for the SEEDSIGNER_VERSION_NAME env var (provided in SeedSigner OS build
+          env).
+            * Will be the branch, tag, or commit hash being built.
+        * In local dev will fall back to using `git` shell commands:
+            * Current git branch name
+            * Current git tag name
+            * Current git commit hash
 
-version_timestamp:
-    * Pulls last git commit time from `git log`.    
+    * version_fork:
+        * Pulls the current repo owner from the `git remote` shell command.
 
-version_commit_hash:
-    * Pulls current git commit hash from `git` shell command.
+    * version_timestamp:
+        * Pulls last git commit time from `git log`.    
+
+    * version_commit_hash:
+        * Pulls current git commit hash from `git` shell command.
 """
 
 if __name__ == "__main__":
