@@ -48,15 +48,15 @@ if __name__ == "__main__":
             break
 
     version_timestamp = VersionUtils._get_version_timestamp_from_git_shell()
-    version_commit_hash = VersionUtils._get_version_commit_hash_from_git_shell()
+    version_commit_hash = VersionUtils._get_full_commit_hash_from_git_shell()
 
     if not version_name or not version_timestamp or not version_commit_hash:
         raise Exception("Could not determine version information from git.")
 
-    version_info[VersionUtils.ATTR__VERSION_NAME] = version_name
-    version_info[VersionUtils.ATTR__VERSION_FORK] = VersionUtils._get_version_fork_from_git_shell()
-    version_info[VersionUtils.ATTR__VERSION_TIMESTAMP] = version_timestamp.isoformat()
-    version_info[VersionUtils.ATTR__VERSION_COMMIT_HASH] = version_commit_hash[:7]  # short hash
+    version_info[VersionUtils.VERSIONFILE_ATTR__NAME] = version_name
+    version_info[VersionUtils.VERSIONFILE_ATTR__FORK] = VersionUtils._get_version_fork_from_git_shell()
+    version_info[VersionUtils.VERSIONFILE_ATTR__TIMESTAMP] = version_timestamp.isoformat()
+    version_info[VersionUtils.VERSIONFILE_ATTR__COMMIT_HASH] = version_commit_hash[:7]  # short hash
 
     version_file_path = VersionUtils._get_version_file_path()
     with open(version_file_path, "w") as f:
