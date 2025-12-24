@@ -300,6 +300,7 @@ class TestVersionUtils_GithubActions(VersionBaseTest):
             # TODO: I don't think this scenario ever happens.
             with mock.patch.dict(os.environ, {
                 VersionUtils.ENV_VAR__GITHUB_ACTIONS__IS_CI: "true",
+                VersionUtils.ENV_VAR__GITHUB_ACTIONS__REF_NAME: "",
                 VersionUtils.ENV_VAR__GITHUB_ACTIONS__SHA: TEST__FULL_COMMIT_HASH,
             }):
                 assert VersionUtils.get_version_name() == TEST__SHORT_COMMIT_HASH
@@ -310,6 +311,8 @@ class TestVersionUtils_GithubActions(VersionBaseTest):
             # 100% test coverage.
             with mock.patch.dict(os.environ, {
                 VersionUtils.ENV_VAR__GITHUB_ACTIONS__IS_CI: "true",
+                VersionUtils.ENV_VAR__GITHUB_ACTIONS__REF_NAME: "",
+                VersionUtils.ENV_VAR__GITHUB_ACTIONS__SHA: "",
             }):
                 with pytest.raises(Exception):
                     VersionUtils.get_version_name()
@@ -339,16 +342,23 @@ class TestVersionUtils_GithubActions(VersionBaseTest):
         env vars when set.
         """
         # Need to signal that we're in a GitHub Actions CI environment
-        with mock.patch.dict(os.environ, {VersionUtils.ENV_VAR__GITHUB_ACTIONS__IS_CI: "true"}):
-            assert os.environ.get(VersionUtils.ENV_VAR__GITHUB_ACTIONS__REF_NAME) is None
-            assert os.environ.get(VersionUtils.ENV_VAR__GITHUB_ACTIONS__SHA) is None
+        with mock.patch.dict(os.environ, {
+                VersionUtils.ENV_VAR__GITHUB_ACTIONS__IS_CI: "true",
+                VersionUtils.ENV_VAR__GITHUB_ACTIONS__REF_NAME: "",
+                VersionUtils.ENV_VAR__GITHUB_ACTIONS__SHA: "",
+            }):
             assert VersionUtils._get_version_name_from_github_actions_env_vars() is None
 
+            # REF_NAME should be passed straight through
             with mock.patch.dict(os.environ, {VersionUtils.ENV_VAR__GITHUB_ACTIONS__REF_NAME: TEST__VERSION_NAME}):
                 result = VersionUtils._get_version_name_from_github_actions_env_vars()
                 assert result == TEST__VERSION_NAME
 
-            with mock.patch.dict(os.environ, {VersionUtils.ENV_VAR__GITHUB_ACTIONS__SHA: TEST__FULL_COMMIT_HASH}):
+            # Unlikely scenario: no REF_NAME but SHA is set; should return short commit hash
+            with mock.patch.dict(os.environ, {
+                    VersionUtils.ENV_VAR__GITHUB_ACTIONS__REF_NAME: "",
+                    VersionUtils.ENV_VAR__GITHUB_ACTIONS__SHA: TEST__FULL_COMMIT_HASH,
+                }):
                 result = VersionUtils._get_version_name_from_github_actions_env_vars()
                 assert result == TEST__SHORT_COMMIT_HASH[:7]
 
