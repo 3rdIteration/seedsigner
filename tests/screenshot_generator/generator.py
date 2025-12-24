@@ -313,7 +313,9 @@ def generate_screenshots(locale):
         
 
         def reset_version_to_local_git_state_cb():
-            Version.reset_instance()
+            # Normally, directly manipulating the singleton's internal instance is not
+            # allowed, but the screnshot generator is an atypical use case.
+            Version._instance = None
 
 
         screenshot_sections = {
