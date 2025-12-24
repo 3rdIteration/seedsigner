@@ -62,6 +62,17 @@ class VersionBaseTest(BaseTest):
 
 
     @pytest.fixture(autouse=True)
+    def mock_GITHUB_ACTIONS__IS_CI(self):
+        """
+        Patch out the GITHUB_ACTIONS__IS_CI env var so that tests operate under the same
+        assumptions when running locally and when actually running in CI. Any test that
+        needs to simulate being in CI can override this env var as needed.
+        """
+        with mock.patch.dict(os.environ, {VersionUtils.ENV_VAR__GITHUB_ACTIONS__IS_CI: "false"}):
+            yield
+
+
+    @pytest.fixture(autouse=True)
     def mock_popen(self):
         """
         Prevent any os.popen calls from actually executing during tests.
@@ -263,59 +274,55 @@ class TestVersionUtils_GithubActions(VersionBaseTest):
                 VersionUtils.ENV_VAR__GITHUB_ACTIONS__SHA: TEST__FULL_COMMIT_HASH,
                 VersionUtils.ENV_VAR__GITHUB_ACTIONS__REPOSITORY_OWNER: TEST__VERSION_FORK,
             }):
-                assert Version.get_version_name() == TEST__VERSION_BRANCH
-                assert Version.get_version_fork() == TEST__VERSION_FORK
-                assert Version.get_version_commit_hash() == TEST__SHORT_COMMIT_HASH
-                assert Version.get_version_timestamp() == TEST__VERSION_TIMESTAMP
+                assert VersionUtils.get_version_name() == TEST__VERSION_BRANCH
+                assert VersionUtils.get_version_fork() == TEST__VERSION_FORK
+                assert VersionUtils.get_short_commit_hash() == TEST__SHORT_COMMIT_HASH
+                assert VersionUtils.get_version_timestamp() == TEST__VERSION_TIMESTAMP
 
             # When running CI on a semantic tag
-            self.reset_version_singleton()
             with mock.patch.dict(os.environ, {
                 VersionUtils.ENV_VAR__GITHUB_ACTIONS__IS_CI: "true",
                 VersionUtils.ENV_VAR__GITHUB_ACTIONS__REF_NAME: TEST__SEMANTIC_TAG,
             }):
                 # Should be prefixed with "v"
-                assert Version.get_version_name() == f"v{TEST__SEMANTIC_TAG}"
+                assert VersionUtils.get_version_name() == f"v{TEST__SEMANTIC_TAG}"
 
             # When running CI on a generic tag
-            self.reset_version_singleton()
             with mock.patch.dict(os.environ, {
                 VersionUtils.ENV_VAR__GITHUB_ACTIONS__IS_CI: "true",
                 VersionUtils.ENV_VAR__GITHUB_ACTIONS__REF_NAME: TEST__VERSION_TAG,
             }):
                 # Should NOT be prefixed with "v"
-                assert Version.get_version_name() == TEST__VERSION_TAG
+                assert VersionUtils.get_version_name() == TEST__VERSION_TAG
 
             # When running CI on a commit (detached HEAD) with no REF_NAME, the
             # version_name should be the short commit hash.
             # TODO: I don't think this scenario ever happens.
-            self.reset_version_singleton()
             with mock.patch.dict(os.environ, {
                 VersionUtils.ENV_VAR__GITHUB_ACTIONS__IS_CI: "true",
                 VersionUtils.ENV_VAR__GITHUB_ACTIONS__SHA: TEST__FULL_COMMIT_HASH,
             }):
-                assert Version.get_version_name() == TEST__SHORT_COMMIT_HASH
+                assert VersionUtils.get_version_name() == TEST__SHORT_COMMIT_HASH
 
             # When running CI on a commit (detached HEAD) with no REF_NAME and no SHA,
             # raise error.
             # Note: This scenario definitely would never happen. Just trying to get to
             # 100% test coverage.
-            self.reset_version_singleton()
             with mock.patch.dict(os.environ, {
                 VersionUtils.ENV_VAR__GITHUB_ACTIONS__IS_CI: "true",
             }):
                 with pytest.raises(Exception):
-                    Version.get_version_name()
+                    VersionUtils.get_version_name()
 
 
     def test_is_github_actions_ci(self):
         """
         is_github_actions_ci should return True only when the
         ENV_VAR__GITHUB_ACTIONS__IS_CI env var is set to "true".
-        """
-        # Default should be False
-        assert VersionUtils.is_github_actions_ci() is False
 
+        Note: Have to mock a value for ALL scenario variations here because this test will
+        actually run in Github Actions so the env var will already be present!
+        """
         with mock.patch.dict(os.environ, {VersionUtils.ENV_VAR__GITHUB_ACTIONS__IS_CI: "true"}):
             assert VersionUtils.is_github_actions_ci() is True
 
@@ -370,10 +377,10 @@ class TestVersionUtils_DotGitFiles(VersionBaseTest):
             _get_version_fork_from_git_config=Mock(return_value=TEST__VERSION_FORK),
             _get_version_timestamp_from_src_files=Mock(return_value=TEST__VERSION_TIMESTAMP),
         ):
-            assert Version.get_version_name() == TEST__VERSION_BRANCH
-            assert Version.get_version_fork() == TEST__VERSION_FORK
-            assert Version.get_version_timestamp() == TEST__VERSION_TIMESTAMP
-            assert Version.get_version_commit_hash() == TEST__SHORT_COMMIT_HASH
+            assert VersionUtils.get_version_name() == TEST__VERSION_BRANCH
+            assert VersionUtils.get_version_fork() == TEST__VERSION_FORK
+            assert VersionUtils.get_version_timestamp() == TEST__VERSION_TIMESTAMP
+            assert VersionUtils.get_short_commit_hash() == TEST__SHORT_COMMIT_HASH
 
         # If we're on a tag (detached HEAD), getting the commit hash requires
         # checking the refs/tags for a matching tag.
@@ -382,9 +389,8 @@ class TestVersionUtils_DotGitFiles(VersionBaseTest):
             _read_git_HEAD_file=Mock(return_value=(None, TEST__FULL_COMMIT_HASH)),
             _get_matching_tag_from_git_refs_tags=Mock(return_value=TEST__VERSION_TAG),
         ):
-            self.reset_version_singleton()
-            assert Version.get_version_name() == TEST__VERSION_TAG
-            assert Version.get_version_commit_hash() == TEST__SHORT_COMMIT_HASH
+            assert VersionUtils.get_version_name() == TEST__VERSION_TAG
+            assert VersionUtils.get_short_commit_hash() == TEST__SHORT_COMMIT_HASH
 
         # If we're on a commit hash (detached HEAD) with no matching tag, the
         # version name should be the short commit hash.
@@ -393,9 +399,8 @@ class TestVersionUtils_DotGitFiles(VersionBaseTest):
             _read_git_HEAD_file=Mock(return_value=(None, TEST__FULL_COMMIT_HASH)),
             _get_matching_tag_from_git_refs_tags=Mock(return_value=None),
         ):
-            self.reset_version_singleton()
-            assert Version.get_version_name() == TEST__SHORT_COMMIT_HASH
-            assert Version.get_version_commit_hash() == TEST__SHORT_COMMIT_HASH
+            assert VersionUtils.get_version_name() == TEST__SHORT_COMMIT_HASH
+            assert VersionUtils.get_short_commit_hash() == TEST__SHORT_COMMIT_HASH
 
 
     def test__get_dot_git_dir(self):
@@ -624,10 +629,10 @@ class TestVersionUtils_GitShell(VersionBaseTest):
             _get_version_timestamp_from_src_files=Mock(return_value=TEST__VERSION_TIMESTAMP),
             _get_full_commit_hash_from_git_shell=Mock(return_value=TEST__SHORT_COMMIT_HASH),
         ):
-            assert Version.get_version_name() == TEST__VERSION_BRANCH
-            assert Version.get_version_fork() == TEST__VERSION_FORK
-            assert Version.get_version_timestamp() == TEST__VERSION_TIMESTAMP
-            assert Version.get_version_commit_hash() == TEST__SHORT_COMMIT_HASH
+            assert VersionUtils.get_version_name() == TEST__VERSION_BRANCH
+            assert VersionUtils.get_version_fork() == TEST__VERSION_FORK
+            assert VersionUtils.get_version_timestamp() == TEST__VERSION_TIMESTAMP
+            assert VersionUtils.get_short_commit_hash() == TEST__SHORT_COMMIT_HASH
 
 
     def test__get_version_name_from_git_shell(self):
