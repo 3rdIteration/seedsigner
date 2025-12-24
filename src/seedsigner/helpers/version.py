@@ -124,6 +124,19 @@ class Version(Singleton):
         return cls.get_instance()._version_commit_hash
 
 
+    @classmethod
+    @not_allowed_in_seedsigner_os
+    def override_data(cls, version_name, version_fork, version_timestamp, version_commit_hash):
+        """
+        Only used by the screenshot generator.
+        """
+        instance = cls.get_instance()
+        instance._version_name = version_name
+        instance._version_fork = version_fork
+        instance._version_timestamp = version_timestamp
+        instance._version_commit_hash = version_commit_hash
+
+
 
 class VersionUtils:
     """ *********************************************************************************
