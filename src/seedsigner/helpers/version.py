@@ -200,7 +200,7 @@ class VersionUtils:
         else:
             # In local dev, we try the following methods in order:
             for get_version_name_method in [
-                VersionUtils._get_version_name_from_env_var,
+                VersionUtils._get_version_name_from_seedsigner_os_env_var,
                 VersionUtils._get_version_name_from_git_shell,
                 VersionUtils._get_version_name_from_git_HEAD,
             ]:
@@ -265,7 +265,7 @@ class VersionUtils:
 
         else:
             # In local dev we use the last modified time of the source python files
-            return VersionUtils._get_version_timestamp_from_src_files()
+            return VersionUtils._get_last_modified_timestamp_from_src_files()
 
 
     @classmethod
@@ -385,10 +385,10 @@ class VersionUtils:
 
 
     """ *************************************************************************************
-    Getting data from SeedSigner OS build env vars or Github Actions CI env vars.
+    Utilities used in the SeedSigner OS build environment and writing the version.json file.
     ************************************************************************************* """
     @classmethod
-    def _get_version_name_from_env_var(cls) -> str | None:
+    def _get_version_name_from_seedsigner_os_env_var(cls) -> str | None:
         """
         Primarily used during the SeedSigner OS build process to set the version name via env var.
 
@@ -398,6 +398,10 @@ class VersionUtils:
         return os.getenv(cls.ENV_VAR__SEEDSIGNER_OS_BUILDER__VERSION_NAME)
 
 
+
+    """ *************************************************************************************
+    Getting data from Github Actions CI env vars.
+    ************************************************************************************* """
     @classmethod
     def is_github_actions_ci(cls) -> bool:
         return os.getenv(cls.ENV_VAR__GITHUB_ACTIONS__IS_CI) == "true"
@@ -607,7 +611,7 @@ class VersionUtils:
 
     @classmethod
     @not_allowed_in_seedsigner_os
-    def _get_version_timestamp_from_src_files(cls) -> datetime | None:
+    def _get_last_modified_timestamp_from_src_files(cls) -> datetime | None:
         """
         Recursively scan the src/ directory for the most recent python file edit time.
         """

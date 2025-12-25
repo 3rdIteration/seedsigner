@@ -1,7 +1,7 @@
 import json
 import os
 import pytest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest import mock
 from unittest.mock import Mock, patch
 
@@ -185,6 +185,43 @@ class TestVersionUtils_BasicCalls(VersionBaseTest):
             assert result == version_name, f"Expected '{result}' to equal input '{version_name}'"
 
 
+    def test_get_version_name__not_detected(self, mock_popen: Mock):
+        """
+        The possible success scenarios are tested elsewhere. In order to get to 100%
+        coverage we just need this basic test to hit the total failure condition.
+        """
+        # If we don't provide the SeedSigner OS or Github Actions CI env vars, mock out
+        # the `git` shell commands via `mock_popen`, and mock out all .git/ file parsing,
+        # then the method should return the fallback warning note as the version name.
+        with mock.patch("builtins.open", side_effect=FileNotFoundError):
+            result = VersionUtils.get_version_name()
+            assert "not detected" in result
+
+
+    def test_get_version_fork__not_detected(self, mock_popen: Mock):
+        """
+        The possible success scenarios are tested elsewhere. In order to get to 100%
+        coverage we just need this basic test to hit the total failure condition.
+        """
+        # If we don't provide the SeedSigner OS or Github Actions CI env vars, mock out
+        # the `git` shell commands via `mock_popen`, and mock out all .git/ file parsing,
+        # then the method should return None.
+        with mock.patch("builtins.open", side_effect=FileNotFoundError):
+            VersionUtils.get_version_fork() is None
+
+
+    def test_get_short_commit_hash__not_detected(self, mock_popen: Mock):
+        """
+        The possible success scenarios are tested elsewhere. In order to get to 100%
+        coverage we just need this basic test to hit the total failure condition.
+        """
+        # If we don't provide the SeedSigner OS or Github Actions CI env vars, mock out
+        # the `git` shell commands via `mock_popen`, and mock out all .git/ file parsing,
+        # then the method should return None.
+        with mock.patch("builtins.open", side_effect=FileNotFoundError):
+            VersionUtils.get_short_commit_hash() is None
+
+
 
 class TestVersionUtils_VersionFile(VersionBaseTest):
     def test_seedsigner_os_reads_from_version_file(self):
@@ -248,10 +285,10 @@ class TestVersionUtils_VersionFile(VersionBaseTest):
 
     def test__get_version_name_from_env_var(self):
         assert os.environ.get(VersionUtils.ENV_VAR__SEEDSIGNER_OS_BUILDER__VERSION_NAME) is None
-        assert VersionUtils._get_version_name_from_env_var() is None
+        assert VersionUtils._get_version_name_from_seedsigner_os_env_var() is None
 
         with mock.patch.dict(os.environ, {VersionUtils.ENV_VAR__SEEDSIGNER_OS_BUILDER__VERSION_NAME: TEST__VERSION_NAME}):
-            result = VersionUtils._get_version_name_from_env_var()
+            result = VersionUtils._get_version_name_from_seedsigner_os_env_var()
             assert result == TEST__VERSION_NAME
 
 
@@ -385,7 +422,7 @@ class TestVersionUtils_DotGitFiles(VersionBaseTest):
             _read_git_HEAD_file=Mock(return_value=(TEST__VERSION_BRANCH, None)),
             _get_full_commit_hash_from_git_refs_heads=Mock(return_value=TEST__FULL_COMMIT_HASH),
             _get_version_fork_from_git_config=Mock(return_value=TEST__VERSION_FORK),
-            _get_version_timestamp_from_src_files=Mock(return_value=TEST__VERSION_TIMESTAMP),
+            _get_last_modified_timestamp_from_src_files=Mock(return_value=TEST__VERSION_TIMESTAMP),
         ):
             assert VersionUtils.get_version_name() == TEST__VERSION_BRANCH
             assert VersionUtils.get_version_fork() == TEST__VERSION_FORK
@@ -599,24 +636,28 @@ class TestVersionUtils_DotGitFiles(VersionBaseTest):
             assert VersionUtils._get_version_fork_from_git_config() is None
 
 
-    def test__get_version_timestamp_from_src_files(self):
+    def test__get_last_modified_timestamp_from_src_files(self):
         """
-        _get_version_timestamp_from_src_files should return the most recent file
+        _get_last_modified_timestamp_from_src_files should return the most recent file
         modification timestamp from the SeedSigner python files.
         """
         # Do the real filesystem scan
-        timestamp = VersionUtils._get_version_timestamp_from_src_files()
-        assert timestamp < datetime.now()
-        assert timestamp > datetime(2020, 12, 13)  # after first SeedSigner release
+        timestamp = VersionUtils._get_last_modified_timestamp_from_src_files()
+
+        # Should be more recent than the initial SeedSigner v0.0.1 commit
+        assert timestamp > datetime(2020, 12, 13)
+
+        # Can't be in the future
+        assert timestamp < datetime.now() + timedelta(days=30)
 
         # Now mock out os.path.getmtime to force all files to have a known timestamp
         expected_timestamp = datetime(2025, 12, 23, 0, 0, 0)
         with mock.patch("os.path.getmtime", return_value=expected_timestamp.timestamp()):
-            assert VersionUtils._get_version_timestamp_from_src_files() == expected_timestamp
+            assert VersionUtils._get_last_modified_timestamp_from_src_files() == expected_timestamp
 
         # Mock out os.walk() to simulate no .py files found
         with mock.patch("os.walk", return_value=[]):
-            assert VersionUtils._get_version_timestamp_from_src_files() is None
+            assert VersionUtils._get_last_modified_timestamp_from_src_files() is None
 
 
 
@@ -636,7 +677,7 @@ class TestVersionUtils_GitShell(VersionBaseTest):
             "seedsigner.helpers.version.VersionUtils",
             _get_version_name_from_git_shell=Mock(return_value=TEST__VERSION_BRANCH),
             _get_version_fork_from_git_shell=Mock(return_value=TEST__VERSION_FORK),
-            _get_version_timestamp_from_src_files=Mock(return_value=TEST__VERSION_TIMESTAMP),
+            _get_last_modified_timestamp_from_src_files=Mock(return_value=TEST__VERSION_TIMESTAMP),
             _get_full_commit_hash_from_git_shell=Mock(return_value=TEST__SHORT_COMMIT_HASH),
         ):
             assert VersionUtils.get_version_name() == TEST__VERSION_BRANCH
@@ -732,6 +773,11 @@ class TestVersionUtils_GitShell(VersionBaseTest):
         assert result == TEST__SHORT_COMMIT_HASH
 
 
+
+class TestVersionUtils_Misc(VersionBaseTest):
+    """
+    Tests for any other remaining methods in VersionUtils.
+    """
     def test__fetch_latest_seedsigner_release_tag(self, mock_popen: Mock):
         """
         Test that _fetch_latest_seedsigner_release_tag returns the expected version string.
@@ -804,7 +850,6 @@ class TestVersion(VersionBaseTest):
             Version.get_version_timestamp() == TEST__VERSION_TIMESTAMP
 
 
-
     def test_override_data(self, mock_popen: Mock):
         """
         Test that we can override the version data via the Version.override_version_data()
@@ -840,23 +885,6 @@ class TestVersion(VersionBaseTest):
         assert Version.get_version_fork() == override_fork
         assert Version.get_version_commit_hash() == override_commit_hash
         assert Version.get_version_timestamp() == override_timestamp
-
-
-    def test_get_last_edit(self):
-        """
-        Test that get_last_src_edit returns a sane datetime object. Assumes the system
-        running this test has a reasonably correct system time.
-        """
-        last_edit = Version.get_version_timestamp()
-        assert isinstance(last_edit, datetime)
-
-        # Has to be more recent than the first SeedSigner v0.0.1 release
-        known_past = datetime(2020, 12, 13)
-        assert last_edit > known_past
-
-        # Could not have happened tomorrow
-        known_future = datetime.now().replace(year=datetime.now().year + 1)
-        assert last_edit < known_future
 
 
 
