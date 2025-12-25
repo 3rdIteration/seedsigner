@@ -428,6 +428,72 @@ class VersionUtils:
 
 
     """ *************************************************************************************
+    Get data via shell `git` commands.
+
+    These calls shouldn't be dangerous, but we definitely don't want them being run in
+    SeedSigner OS regardless so we apply the decorator restriction.
+    ************************************************************************************* """
+    @classmethod
+    @not_allowed_in_seedsigner_os
+    def _get_version_name_from_git_shell_branch(cls) -> str | None:
+        branch_name = os.popen("git branch --show-current 2> /dev/null").read()
+        return branch_name.strip() if branch_name else None
+
+
+    @classmethod
+    @not_allowed_in_seedsigner_os
+    def _get_version_name_from_git_shell_tag(cls) -> str | None:
+        # Only return a value if the current commit exactly corresponds with a tag.
+        # (`--points-at` defaults to the current HEAD)
+        tag_name = os.popen(f"git tag --points-at 2> /dev/null").read()
+        return tag_name.strip() if tag_name else None
+
+
+    @classmethod
+    @not_allowed_in_seedsigner_os
+    def _get_full_commit_hash_from_git_shell(cls) -> str | None:
+        """
+        Attempts to get the current git commit hash via shell `git` commands.
+        """
+        commit_hash = os.popen("git rev-parse HEAD").read()
+        return commit_hash.strip() if commit_hash else None
+
+
+    @classmethod
+    @not_allowed_in_seedsigner_os
+    def _get_version_name_from_git_shell(cls) -> str | None:
+        """
+        Attempts to get the version name via shell `git` commands.
+        """
+        return (
+            cls._get_version_name_from_git_shell_branch() or
+            cls._get_version_name_from_git_shell_tag() or
+            cls._get_full_commit_hash_from_git_shell()
+        )
+
+
+    @classmethod
+    @not_allowed_in_seedsigner_os
+    def _get_version_fork_from_git_shell(cls) -> str | None:
+        """
+        Attempts to get the fork owner name via shell `git` commands.
+        """
+        # We expect to at least have a remote named "origin"
+        remote_url = os.popen("git remote get-url origin 2> /dev/null").read().strip()
+        return cls._parse_git_remote_url(remote_url) if remote_url else None
+
+
+    @classmethod
+    @not_allowed_in_seedsigner_os
+    def _get_version_timestamp_from_git_shell(cls) -> datetime | None:
+        version_timestamp = os.popen("git log -1 --format=%cI").read().strip()
+        if version_timestamp:
+            # Parse the timestamp, ensure that it's in UTC, and omit tz info
+            return datetime.fromisoformat(version_timestamp).astimezone(timezone.utc).replace(tzinfo=None)
+
+
+
+    """ *************************************************************************************
     Reading directly from local .git/ or src/ files.
 
     These operations aren't dangerous but aren't necessary when we're running in
@@ -644,72 +710,6 @@ class VersionUtils:
             # Catch and log any unexpected errors but this isn't a mission-critical
             # function so return gracefully.
             logger.error(traceback.format_exc())
-
-
-
-    """ *************************************************************************************
-    Get data via shell `git` commands.
-
-    These calls shouldn't be dangerous, but we definitely don't want them being run in
-    SeedSigner OS regardless so we apply the decorator restriction.
-    ************************************************************************************* """
-    @classmethod
-    @not_allowed_in_seedsigner_os
-    def _get_version_name_from_git_shell_branch(cls) -> str | None:
-        branch_name = os.popen("git branch --show-current 2> /dev/null").read()
-        return branch_name.strip() if branch_name else None
-
-
-    @classmethod
-    @not_allowed_in_seedsigner_os
-    def _get_version_name_from_git_shell_tag(cls) -> str | None:
-        # Only return a value if the current commit exactly corresponds with a tag.
-        # (`--points-at` defaults to the current HEAD)
-        tag_name = os.popen(f"git tag --points-at 2> /dev/null").read()
-        return tag_name.strip() if tag_name else None
-
-
-    @classmethod
-    @not_allowed_in_seedsigner_os
-    def _get_full_commit_hash_from_git_shell(cls) -> str | None:
-        """
-        Attempts to get the current git commit hash via shell `git` commands.
-        """
-        commit_hash = os.popen("git rev-parse HEAD").read()
-        return commit_hash.strip() if commit_hash else None
-
-
-    @classmethod
-    @not_allowed_in_seedsigner_os
-    def _get_version_name_from_git_shell(cls) -> str | None:
-        """
-        Attempts to get the version name via shell `git` commands.
-        """
-        return (
-            cls._get_version_name_from_git_shell_branch() or
-            cls._get_version_name_from_git_shell_tag() or
-            cls._get_full_commit_hash_from_git_shell()
-        )
-
-
-    @classmethod
-    @not_allowed_in_seedsigner_os
-    def _get_version_fork_from_git_shell(cls) -> str | None:
-        """
-        Attempts to get the fork owner name via shell `git` commands.
-        """
-        # We expect to at least have a remote named "origin"
-        remote_url = os.popen("git remote get-url origin 2> /dev/null").read().strip()
-        return cls._parse_git_remote_url(remote_url) if remote_url else None
-
-
-    @classmethod
-    @not_allowed_in_seedsigner_os
-    def _get_version_timestamp_from_git_shell(cls) -> datetime | None:
-        version_timestamp = os.popen("git log -1 --format=%cI").read().strip()
-        if version_timestamp:
-            # Parse the timestamp, ensure that it's in UTC, and omit tz info
-            return datetime.fromisoformat(version_timestamp).astimezone(timezone.utc).replace(tzinfo=None)
 
 
 
