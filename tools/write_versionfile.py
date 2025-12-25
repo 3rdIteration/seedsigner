@@ -40,7 +40,7 @@ if __name__ == "__main__":
     version_info = dict()
 
     for get_version_name_method in [
-        VersionUtils._get_version_name_from_env_var,
+        VersionUtils._get_version_name_from_seedsigner_os_env_var,
         VersionUtils._get_version_name_from_git_shell,
     ]:
         version_name = get_version_name_method()
