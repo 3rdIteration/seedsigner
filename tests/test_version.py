@@ -804,6 +804,44 @@ class TestVersion(VersionBaseTest):
             Version.get_version_timestamp() == TEST__VERSION_TIMESTAMP
 
 
+
+    def test_override_data(self, mock_popen: Mock):
+        """
+        Test that we can override the version data via the Version.override_version_data()
+        method.
+        """
+        override_name = "v9.9.9-test"
+        override_fork = "TestFork"
+        override_commit_hash = "abcd123"
+        override_timestamp = datetime(2030, 1, 1, 0, 0, 0)
+
+        # Initially the version data is pulled from the usual sources
+        self.write_test_version_file()
+        with patch("seedsigner.models.settings.Settings.HOSTNAME", Settings.SEEDSIGNER_OS):
+            assert Version.get_version_name() == f"v{TEST__VERSION_DICT[VersionUtils.VERSIONFILE_ATTR__NAME]}"
+            assert Version.get_version_fork() == TEST__VERSION_DICT[VersionUtils.VERSIONFILE_ATTR__FORK]
+            assert Version.get_version_commit_hash() == TEST__VERSION_DICT[VersionUtils.VERSIONFILE_ATTR__COMMIT_HASH]
+            assert Version.get_version_timestamp() == TEST__VERSION_TIMESTAMP
+
+            # While we're in the mocked SeedSigner OS environment, verify that the
+            # override is not allowed.
+            with pytest.raises(NotAllowedInSeedSignerOS):
+                Version.override_data()
+
+        # No longer in the mocked SeedSigner OS environment; should be allowed now.
+        Version.override_data(
+            version_name=override_name,
+            version_fork=override_fork,
+            version_commit_hash=override_commit_hash,
+            version_timestamp=override_timestamp,
+        )
+
+        assert Version.get_version_name() == override_name
+        assert Version.get_version_fork() == override_fork
+        assert Version.get_version_commit_hash() == override_commit_hash
+        assert Version.get_version_timestamp() == override_timestamp
+
+
     def test_get_last_edit(self):
         """
         Test that get_last_src_edit returns a sane datetime object. Assumes the system
