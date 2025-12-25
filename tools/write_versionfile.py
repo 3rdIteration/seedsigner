@@ -47,11 +47,7 @@ if __name__ == "__main__":
         # Temporarily set the env var
         os.environ[VersionUtils.ENV_VAR__SEEDSIGNER_OS_BUILDER__VERSION_NAME] = version_name
 
-    # When the `Version` singleton instantiates itself, it will determine for itself how to
-    # get the timestamp based on the SeedSigner OS builder env var being set or not.
-    version_instance = Version.get_instance()
-    version_info = version_instance.to_dict()
-
+    version_info = Version.get_instance().to_dict()
     version_file_path = VersionUtils._get_version_file_path()
     with open(version_file_path, "w") as f:
         json.dump(version_info, f, indent=4)
