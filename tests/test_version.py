@@ -27,7 +27,7 @@ TEST__SEMANTIC_TAG = "1.2.3-rc1"
 TEST__SHORT_COMMIT_HASH = "c5efda3"
 TEST__FULL_COMMIT_HASH = "c5efda306c60877191013a6093d92cd0bfcccec8"
 TEST__VERSION_DICT = {
-    VersionUtils.VERSIONFILE_ATTR__NAME: TEST__VERSION_NAME,
+    VersionUtils.VERSIONFILE_ATTR__NAME: VersionUtils._prefix_version_name(TEST__VERSION_NAME),
     VersionUtils.VERSIONFILE_ATTR__FORK: TEST__VERSION_FORK,
     VersionUtils.VERSIONFILE_ATTR__TIMESTAMP: TEST__VERSION_TIMESTAMP.isoformat(),
     VersionUtils.VERSIONFILE_ATTR__COMMIT_HASH: TEST__SHORT_COMMIT_HASH,
@@ -256,12 +256,14 @@ class TestVersionUtils_VersionFile(VersionBaseTest):
     def test__read_version_file(self):
         """
         Low-level test for reading the version.json file.
+
+        Note that the version.json file will already "v" prefix version_name as needed.
         """
         self.write_test_version_file()
 
         version_data = VersionUtils._read_version_file()
         assert version_data is not None
-        assert version_data[VersionUtils.VERSIONFILE_ATTR__NAME] == TEST__VERSION_NAME
+        assert version_data[VersionUtils.VERSIONFILE_ATTR__NAME] == VersionUtils._prefix_version_name(TEST__VERSION_NAME)
         assert version_data[VersionUtils.VERSIONFILE_ATTR__FORK] == TEST__VERSION_FORK
         assert version_data[VersionUtils.VERSIONFILE_ATTR__TIMESTAMP] == TEST__VERSION_TIMESTAMP.isoformat()
         assert version_data[VersionUtils.VERSIONFILE_ATTR__COMMIT_HASH] == TEST__SHORT_COMMIT_HASH
@@ -283,12 +285,12 @@ class TestVersionUtils_VersionFile(VersionBaseTest):
             assert VersionUtils._read_version_file() is None
 
 
-    def test__get_version_name_from_seedsigner_os_env_var(self):
+    def test__get_version_name_from_seedsigner_os_builder_env_var(self):
         assert os.environ.get(VersionUtils.ENV_VAR__SEEDSIGNER_OS_BUILDER__VERSION_NAME) is None
-        assert VersionUtils._get_version_name_from_seedsigner_os_env_var() is None
+        assert VersionUtils._get_version_name_from_seedsigner_os_builder_env_var() is None
 
         with mock.patch.dict(os.environ, {VersionUtils.ENV_VAR__SEEDSIGNER_OS_BUILDER__VERSION_NAME: TEST__VERSION_NAME}):
-            result = VersionUtils._get_version_name_from_seedsigner_os_env_var()
+            result = VersionUtils._get_version_name_from_seedsigner_os_builder_env_var()
             assert result == TEST__VERSION_NAME
 
 
@@ -398,6 +400,41 @@ class TestVersionUtils_GithubActions(VersionBaseTest):
                 }):
                 result = VersionUtils._get_version_name_from_github_actions_env_vars()
                 assert result == TEST__SHORT_COMMIT_HASH[:7]
+
+
+
+class TestVersionUtils_SeedSignerOSBuilder(VersionBaseTest):
+    def test_seed_signer_os_builder_env_var(self):
+        """
+        Test the high-level basic public calls. Does just the minimal necessary mocking
+        since all the downstream helper methods are tested in detail elsewhere.
+        """
+        # Simulate running in the SeedSigner OS build environment
+        with mock.patch.dict(os.environ, {VersionUtils.ENV_VAR__SEEDSIGNER_OS_BUILDER__VERSION_NAME: TEST__VERSION_NAME}):
+            # SeedSigner OS builder uses some limited `git` shell calls; mock out the
+            # associated calls.
+            with mock.patch.multiple(
+                "seedsigner.helpers.version.VersionUtils",
+                _get_version_timestamp_from_git_shell=Mock(return_value=TEST__VERSION_TIMESTAMP),
+                _get_version_fork_from_git_shell=Mock(return_value=TEST__VERSION_FORK),
+                _get_full_commit_hash_from_git_shell=Mock(return_value=TEST__FULL_COMMIT_HASH),
+            ):
+                assert VersionUtils.get_version_name() == VersionUtils._prefix_version_name(TEST__VERSION_NAME)
+                assert VersionUtils.get_version_fork() == TEST__VERSION_FORK
+                assert VersionUtils.get_short_commit_hash() == TEST__SHORT_COMMIT_HASH
+                assert VersionUtils.get_version_timestamp() == TEST__VERSION_TIMESTAMP
+
+
+    def test_is_seedsigner_os_builder_env(self):
+        """
+        is_seedsigner_os_builder_env should return True only when the
+        ENV_VAR__SEEDSIGNER_OS_BUILDER__VERSION_NAME env var is set.
+        """
+        with mock.patch.dict(os.environ, {}, clear=True):
+            assert VersionUtils._is_seedsigner_os_builder_env() is False
+
+        with mock.patch.dict(os.environ, {VersionUtils.ENV_VAR__SEEDSIGNER_OS_BUILDER__VERSION_NAME: TEST__VERSION_NAME}):
+            assert VersionUtils._is_seedsigner_os_builder_env() is True
 
 
 
@@ -847,7 +884,7 @@ class TestVersion(VersionBaseTest):
         with patch("seedsigner.models.settings.Settings.HOSTNAME", Settings.SEEDSIGNER_OS):
             Version.get_version_name() == TEST__VERSION_DICT[VersionUtils.VERSIONFILE_ATTR__NAME]
             Version.get_version_fork() == TEST__VERSION_DICT[VersionUtils.VERSIONFILE_ATTR__FORK]
-            Version.get_version_commit_hash() == TEST__VERSION_DICT[VersionUtils.VERSIONFILE_ATTR__COMMIT_HASH]
+            Version.get_short_commit_hash() == TEST__VERSION_DICT[VersionUtils.VERSIONFILE_ATTR__COMMIT_HASH]
             Version.get_version_timestamp() == TEST__VERSION_TIMESTAMP
 
 
@@ -864,9 +901,9 @@ class TestVersion(VersionBaseTest):
         # Initially the version data is pulled from the usual sources
         self.write_test_version_file()
         with patch("seedsigner.models.settings.Settings.HOSTNAME", Settings.SEEDSIGNER_OS):
-            assert Version.get_version_name() == f"v{TEST__VERSION_DICT[VersionUtils.VERSIONFILE_ATTR__NAME]}"
+            assert Version.get_version_name() == TEST__VERSION_DICT[VersionUtils.VERSIONFILE_ATTR__NAME]
             assert Version.get_version_fork() == TEST__VERSION_DICT[VersionUtils.VERSIONFILE_ATTR__FORK]
-            assert Version.get_version_commit_hash() == TEST__VERSION_DICT[VersionUtils.VERSIONFILE_ATTR__COMMIT_HASH]
+            assert Version.get_short_commit_hash() == TEST__VERSION_DICT[VersionUtils.VERSIONFILE_ATTR__COMMIT_HASH]
             assert Version.get_version_timestamp() == TEST__VERSION_TIMESTAMP
 
             # While we're in the mocked SeedSigner OS environment, verify that the
@@ -878,14 +915,23 @@ class TestVersion(VersionBaseTest):
         Version.override_data(
             version_name=override_name,
             version_fork=override_fork,
-            version_commit_hash=override_commit_hash,
+            short_commit_hash=override_commit_hash,
             version_timestamp=override_timestamp,
         )
 
         assert Version.get_version_name() == override_name
         assert Version.get_version_fork() == override_fork
-        assert Version.get_version_commit_hash() == override_commit_hash
+        assert Version.get_short_commit_hash() == override_commit_hash
         assert Version.get_version_timestamp() == override_timestamp
+
+
+    def test_to_dict(self):
+        """
+        Test that Version.to_dict() returns the expected dictionary.
+        """
+        self.write_test_version_file()
+        with patch("seedsigner.models.settings.Settings.HOSTNAME", Settings.SEEDSIGNER_OS):
+            assert Version.to_dict() == TEST__VERSION_DICT
 
 
 

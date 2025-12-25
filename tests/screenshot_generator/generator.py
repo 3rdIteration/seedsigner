@@ -205,7 +205,7 @@ def generate_screenshots(locale):
             version_name=version_name,
             version_fork="SeedSigner",  # main repo; screenshot should hide fork and commit hash
             version_timestamp=version_timestamp,
-            version_commit_hash="abcd1234"  # dummy value should be ignored
+            short_commit_hash="abcd1234"  # dummy value should be ignored
         )
 
         # Automatically populate all Settings options Views

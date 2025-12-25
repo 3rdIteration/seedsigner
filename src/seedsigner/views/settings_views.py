@@ -331,21 +331,21 @@ class VersionView(View):
         from seedsigner.helpers.version import Version
 
         version_fork = Version.get_version_fork()
-        version_commit_hash = Version.get_version_commit_hash()
+        short_commit_hash = Version.get_short_commit_hash()
 
-        print(f"{version_fork=}, {version_commit_hash=}")
+        print(f"{version_fork=}, {short_commit_hash=}")
 
         if version_fork and version_fork.lower() == "seedsigner":
             # Don't display fork name or commit hash for the main repo
             version_fork = None
-            version_commit_hash = None
+            short_commit_hash = None
 
         self.run_screen(
             settings_screens.VersionScreen,
             version_name=Version.get_version_name(),
             version_fork=version_fork,
             version_timestamp=Version.get_version_timestamp(),
-            version_commit_hash=version_commit_hash,
+            short_commit_hash=short_commit_hash,
         )
 
         return Destination(SettingsMenuView)

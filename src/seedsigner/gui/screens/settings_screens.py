@@ -316,7 +316,7 @@ class VersionScreen(BaseTopNavScreen):
     version_name: str = None
     version_fork: str = None
     version_timestamp: datetime = None
-    version_commit_hash: str = None
+    short_commit_hash: str = None
 
     def __post_init__(self):
         self.title = _("Version")
@@ -344,7 +344,7 @@ class VersionScreen(BaseTopNavScreen):
         (left, timestamp_char_height, timestamp_char_width, bottom) = timestamp_font.getbbox("UTC", anchor="ls")
 
         screen_y = self.top_nav.height + GUIConstants.COMPONENT_PADDING * 2
-        if not self.version_fork and not self.version_commit_hash:
+        if not self.version_fork and not self.short_commit_hash:
             # Center the version name if there's no fork/commit info
             screen_y = int(self.canvas_height / 2) - (-1 * version_name_char_height)  # char_height is negative
 
@@ -366,7 +366,7 @@ class VersionScreen(BaseTopNavScreen):
 
         if self.version_fork:
             screen_x = 0
-            if self.version_commit_hash:
+            if self.short_commit_hash:
                 # right-align the labels
                 screen_x = commit_label_width - fork_label_width
             self.components.append(TextArea(
@@ -387,7 +387,7 @@ class VersionScreen(BaseTopNavScreen):
             ))
             screen_y = self.components[-1].screen_y + self.components[-1].height + GUIConstants.COMPONENT_PADDING
 
-        if self.version_commit_hash:
+        if self.short_commit_hash:
             self.components.append(TextArea(
                 text=f"commit: ",
                 is_text_centered=False,
@@ -395,7 +395,7 @@ class VersionScreen(BaseTopNavScreen):
                 screen_y=screen_y,
             ))
             self.components.append(TextArea(
-                text=self.version_commit_hash,
+                text=self.short_commit_hash,
                 is_text_centered=False,
                 font_name=GUIConstants.FIXED_WIDTH_EMPHASIS_FONT_NAME,
                 font_size=GUIConstants.get_top_nav_title_font_size(),

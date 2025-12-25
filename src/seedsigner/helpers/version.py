@@ -85,7 +85,7 @@ class Version(Singleton):
     _version_name: str = None
     _version_fork: str = None
     _version_timestamp: datetime = None
-    _version_commit_hash: str = None
+    _short_commit_hash: str = None
 
 
     @classmethod
@@ -100,7 +100,7 @@ class Version(Singleton):
             version._version_name = VersionUtils.get_version_name()
             version._version_fork = VersionUtils.get_version_fork()
             version._version_timestamp = VersionUtils.get_version_timestamp()
-            version._version_commit_hash = VersionUtils.get_short_commit_hash()
+            version._short_commit_hash = VersionUtils.get_short_commit_hash()
         return cls._instance
 
 
@@ -120,13 +120,13 @@ class Version(Singleton):
 
 
     @classmethod
-    def get_version_commit_hash(cls) -> str | None:
-        return cls.get_instance()._version_commit_hash
+    def get_short_commit_hash(cls) -> str | None:
+        return cls.get_instance()._short_commit_hash
 
 
     @classmethod
     @not_allowed_in_seedsigner_os
-    def override_data(cls, version_name, version_fork, version_timestamp, version_commit_hash):
+    def override_data(cls, version_name, version_fork, version_timestamp, short_commit_hash):
         """
         Only used by the screenshot generator.
         """
@@ -134,8 +134,18 @@ class Version(Singleton):
         instance._version_name = version_name
         instance._version_fork = version_fork
         instance._version_timestamp = version_timestamp
-        instance._version_commit_hash = version_commit_hash
+        instance._short_commit_hash = short_commit_hash
 
+
+    @classmethod
+    def to_dict(cls) -> dict:
+        instance = cls.get_instance()
+        return {
+            VersionUtils.VERSIONFILE_ATTR__NAME: instance._version_name,
+            VersionUtils.VERSIONFILE_ATTR__FORK: instance._version_fork,
+            VersionUtils.VERSIONFILE_ATTR__TIMESTAMP: instance._version_timestamp.isoformat() if instance._version_timestamp else None,
+            VersionUtils.VERSIONFILE_ATTR__COMMIT_HASH: instance._short_commit_hash,
+        }
 
 
 class VersionUtils:
@@ -187,7 +197,11 @@ class VersionUtils:
                 # Shouldn't be possible. Raise an exception to alert testers before this
                 # image goes out.
                 raise Exception("Could not read the version from the version.json file.")
-            return VersionUtils._prefix_version_name(version_name)
+
+            # Note: the version.json file already contains any necessary pre-processing so
+            # if we're on a semantic version tag, version_name will already be prefixed
+            # with "v".
+            return version_name
 
         elif VersionUtils.is_github_actions_ci():
             # In Github Actions CI, try to get the version name from env vars
@@ -197,10 +211,18 @@ class VersionUtils:
             else:
                 raise Exception("Could not determine version from Github Actions env vars.")
 
+        elif VersionUtils._is_seedsigner_os_builder_env():
+            # In the SeedSigner OS build environment, get the version name from env var.
+            # Note: This get_version_name call will never fail because the env var that
+            # provides the version name is what defines whether we're in the SeedSigner OS
+            # builder in the first place.
+            version_name = VersionUtils._get_version_name_from_seedsigner_os_builder_env_var()
+            return VersionUtils._prefix_version_name(version_name)
+
         else:
             # In local dev, we try the following methods in order:
             for get_version_name_method in [
-                VersionUtils._get_version_name_from_seedsigner_os_env_var,
+                VersionUtils._get_version_name_from_seedsigner_os_builder_env_var,
                 VersionUtils._get_version_name_from_git_shell,
                 VersionUtils._get_version_name_from_git_HEAD,
             ]:
@@ -229,6 +251,10 @@ class VersionUtils:
         elif VersionUtils.is_github_actions_ci():
             # In Github Actions CI, try to get the version name from env vars
             return VersionUtils._get_version_fork_from_github_actions_env_vars()
+
+        elif VersionUtils._is_seedsigner_os_builder_env():
+            # In the SeedSigner OS build environment `git` shell call should be available
+            return VersionUtils._get_version_fork_from_git_shell()
 
         else:
             # In local dev we try to access the current git state via:
@@ -263,8 +289,13 @@ class VersionUtils:
             # In Github Actions CI `git` shell call should be available
             return VersionUtils._get_version_timestamp_from_git_shell()
 
+        elif VersionUtils._is_seedsigner_os_builder_env():
+            # In the SeedSigner OS build environment `git` shell call should be available
+            return VersionUtils._get_version_timestamp_from_git_shell()
+
         else:
-            # In local dev we use the last modified time of the source python files
+            # In local dev we change our approach and instead use the last modified time
+            # of the source python files.
             return VersionUtils._get_last_modified_timestamp_from_src_files()
 
 
@@ -283,6 +314,10 @@ class VersionUtils:
         if VersionUtils.is_github_actions_ci():
             # In Github Actions CI the "SHA" env var should always be available
             full_commit_hash = VersionUtils._get_full_commit_hash_from_github_actions_env_vars()
+
+        elif VersionUtils._is_seedsigner_os_builder_env():
+            # In the SeedSigner OS build environment `git` shell call should be available
+            full_commit_hash = VersionUtils._get_full_commit_hash_from_git_shell()
 
         else:
             # In local dev we try to access the current git state via:
@@ -388,7 +423,15 @@ class VersionUtils:
     Utilities used in the SeedSigner OS build environment and writing the version.json file.
     ************************************************************************************* """
     @classmethod
-    def _get_version_name_from_seedsigner_os_env_var(cls) -> str | None:
+    def _is_seedsigner_os_builder_env(cls) -> bool:
+        """
+        Simple check to see if we're running in the SeedSigner OS build environment.
+        """
+        return os.getenv(cls.ENV_VAR__SEEDSIGNER_OS_BUILDER__VERSION_NAME) is not None
+
+
+    @classmethod
+    def _get_version_name_from_seedsigner_os_builder_env_var(cls) -> str | None:
         """
         Primarily used during the SeedSigner OS build process to set the version name via env var.
 
