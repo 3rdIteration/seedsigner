@@ -29,8 +29,8 @@ TEST__FULL_COMMIT_HASH = "c5efda306c60877191013a6093d92cd0bfcccec8"
 TEST__VERSION_DICT = {
     VersionUtils.VERSIONFILE_ATTR__NAME: VersionUtils._prefix_version_name(TEST__VERSION_NAME),
     VersionUtils.VERSIONFILE_ATTR__FORK: TEST__VERSION_FORK,
+    VersionUtils.VERSIONFILE_ATTR__SHORT_COMMIT_HASH: TEST__SHORT_COMMIT_HASH,
     VersionUtils.VERSIONFILE_ATTR__TIMESTAMP: TEST__VERSION_TIMESTAMP.isoformat(),
-    VersionUtils.VERSIONFILE_ATTR__COMMIT_HASH: TEST__SHORT_COMMIT_HASH,
 }
 
 # Mimic result of reading from version.json
@@ -68,7 +68,7 @@ class VersionBaseTest(BaseTest):
         assumptions when running locally and when actually running in CI. Any test that
         needs to simulate being in CI can override this env var as needed.
         """
-        with mock.patch.dict(os.environ, {VersionUtils.ENV_VAR__GITHUB_ACTIONS__IS_CI: "false"}):
+        with patch.dict(os.environ, {VersionUtils.ENV_VAR__GITHUB_ACTIONS__IS_CI: "false"}):
             yield
 
 
@@ -193,7 +193,7 @@ class TestVersionUtils_BasicCalls(VersionBaseTest):
         # If we don't provide the SeedSigner OS or Github Actions CI env vars, mock out
         # the `git` shell commands via `mock_popen`, and mock out all .git/ file parsing,
         # then the method should return the fallback warning note as the version name.
-        with mock.patch("builtins.open", side_effect=FileNotFoundError):
+        with patch("builtins.open", side_effect=FileNotFoundError):
             result = VersionUtils.get_version_name()
             assert "not detected" in result
 
@@ -206,7 +206,7 @@ class TestVersionUtils_BasicCalls(VersionBaseTest):
         # If we don't provide the SeedSigner OS or Github Actions CI env vars, mock out
         # the `git` shell commands via `mock_popen`, and mock out all .git/ file parsing,
         # then the method should return None.
-        with mock.patch("builtins.open", side_effect=FileNotFoundError):
+        with patch("builtins.open", side_effect=FileNotFoundError):
             VersionUtils.get_version_fork() is None
 
 
@@ -218,7 +218,7 @@ class TestVersionUtils_BasicCalls(VersionBaseTest):
         # If we don't provide the SeedSigner OS or Github Actions CI env vars, mock out
         # the `git` shell commands via `mock_popen`, and mock out all .git/ file parsing,
         # then the method should return None.
-        with mock.patch("builtins.open", side_effect=FileNotFoundError):
+        with patch("builtins.open", side_effect=FileNotFoundError):
             VersionUtils.get_short_commit_hash() is None
 
 
@@ -238,19 +238,18 @@ class TestVersionUtils_VersionFile(VersionBaseTest):
         with patch("seedsigner.models.settings.Settings.HOSTNAME", Settings.SEEDSIGNER_OS):
             assert VersionUtils.get_version_name() == VersionUtils._prefix_version_name(TEST__VERSION_NAME)
             assert VersionUtils.get_version_fork() == TEST__VERSION_FORK
-            assert VersionUtils.get_version_timestamp() == TEST__VERSION_TIMESTAMP
             assert VersionUtils.get_short_commit_hash() == TEST__SHORT_COMMIT_HASH
+            assert VersionUtils.get_version_timestamp() == TEST__VERSION_TIMESTAMP
 
             # Expect errors if keys are missing from version.json
-            with mock.patch("builtins.open", mock.mock_open(read_data="{'some_key':'some_value'}")):
+            with patch("builtins.open", mock.mock_open(read_data="{'some_key':'some_value'}")):
                 with pytest.raises(Exception):
                     VersionUtils.get_version_name()
 
             # This time it's the timestamp that's missing
-            with mock.patch("builtins.open", mock.mock_open(read_data=str({VersionUtils.VERSIONFILE_ATTR__NAME: TEST__VERSION_NAME}).replace("'", '"'))):
+            with patch("builtins.open", mock.mock_open(read_data=str({VersionUtils.VERSIONFILE_ATTR__NAME: TEST__VERSION_NAME}).replace("'", '"'))):
                 with pytest.raises(Exception):
                     VersionUtils.get_version_timestamp()
-
 
 
     def test__read_version_file(self):
@@ -265,8 +264,8 @@ class TestVersionUtils_VersionFile(VersionBaseTest):
         assert version_data is not None
         assert version_data[VersionUtils.VERSIONFILE_ATTR__NAME] == VersionUtils._prefix_version_name(TEST__VERSION_NAME)
         assert version_data[VersionUtils.VERSIONFILE_ATTR__FORK] == TEST__VERSION_FORK
+        assert version_data[VersionUtils.VERSIONFILE_ATTR__SHORT_COMMIT_HASH] == TEST__SHORT_COMMIT_HASH
         assert version_data[VersionUtils.VERSIONFILE_ATTR__TIMESTAMP] == TEST__VERSION_TIMESTAMP.isoformat()
-        assert version_data[VersionUtils.VERSIONFILE_ATTR__COMMIT_HASH] == TEST__SHORT_COMMIT_HASH
 
 
     def test__read_version_file__missing(self):
@@ -277,21 +276,12 @@ class TestVersionUtils_VersionFile(VersionBaseTest):
         # The upstream dependent calls should also return None
         assert VersionUtils._get_version_name_from_version_file() is None
         assert VersionUtils._get_version_fork_from_version_file() is None
-        assert VersionUtils._get_version_timestamp_from_version_file() is None
         assert VersionUtils._get_short_commit_hash_from_version_file() is None
+        assert VersionUtils._get_version_timestamp_from_version_file() is None
 
         # Gracefully handle other unexpected exceptions
         with patch("builtins.open", side_effect=Exception("Unexpected error")):
             assert VersionUtils._read_version_file() is None
-
-
-    def test__get_version_name_from_seedsigner_os_builder_env_var(self):
-        assert os.environ.get(VersionUtils.ENV_VAR__SEEDSIGNER_OS_BUILDER__VERSION_NAME) is None
-        assert VersionUtils._get_version_name_from_seedsigner_os_builder_env_var() is None
-
-        with mock.patch.dict(os.environ, {VersionUtils.ENV_VAR__SEEDSIGNER_OS_BUILDER__VERSION_NAME: TEST__VERSION_NAME}):
-            result = VersionUtils._get_version_name_from_seedsigner_os_builder_env_var()
-            assert result == TEST__VERSION_NAME
 
 
 
@@ -305,9 +295,9 @@ class TestVersionUtils_GithubActions(VersionBaseTest):
         pulled from the appropriate env vars.
         """
         # CI uses some limited `git` shell calls; mock out the associated calls.
-        with mock.patch("seedsigner.helpers.version.VersionUtils._get_version_timestamp_from_git_shell", return_value=TEST__VERSION_TIMESTAMP):
+        with patch("seedsigner.helpers.version.VersionUtils._get_version_timestamp_from_git_shell", return_value=TEST__VERSION_TIMESTAMP):
             # When running CI on a branch
-            with mock.patch.dict(os.environ, {
+            with patch.dict(os.environ, {
                 VersionUtils.ENV_VAR__GITHUB_ACTIONS__IS_CI: "true",
                 VersionUtils.ENV_VAR__GITHUB_ACTIONS__REF_NAME: TEST__VERSION_BRANCH,
                 VersionUtils.ENV_VAR__GITHUB_ACTIONS__SHA: TEST__FULL_COMMIT_HASH,
@@ -319,7 +309,7 @@ class TestVersionUtils_GithubActions(VersionBaseTest):
                 assert VersionUtils.get_version_timestamp() == TEST__VERSION_TIMESTAMP
 
             # When running CI on a semantic tag
-            with mock.patch.dict(os.environ, {
+            with patch.dict(os.environ, {
                 VersionUtils.ENV_VAR__GITHUB_ACTIONS__IS_CI: "true",
                 VersionUtils.ENV_VAR__GITHUB_ACTIONS__REF_NAME: TEST__SEMANTIC_TAG,
             }):
@@ -327,7 +317,7 @@ class TestVersionUtils_GithubActions(VersionBaseTest):
                 assert VersionUtils.get_version_name() == f"v{TEST__SEMANTIC_TAG}"
 
             # When running CI on a generic tag
-            with mock.patch.dict(os.environ, {
+            with patch.dict(os.environ, {
                 VersionUtils.ENV_VAR__GITHUB_ACTIONS__IS_CI: "true",
                 VersionUtils.ENV_VAR__GITHUB_ACTIONS__REF_NAME: TEST__VERSION_TAG,
             }):
@@ -337,7 +327,7 @@ class TestVersionUtils_GithubActions(VersionBaseTest):
             # When running CI on a commit (detached HEAD) with no REF_NAME, the
             # version_name should be the short commit hash.
             # TODO: I don't think this scenario ever happens.
-            with mock.patch.dict(os.environ, {
+            with patch.dict(os.environ, {
                 VersionUtils.ENV_VAR__GITHUB_ACTIONS__IS_CI: "true",
                 VersionUtils.ENV_VAR__GITHUB_ACTIONS__REF_NAME: "",
                 VersionUtils.ENV_VAR__GITHUB_ACTIONS__SHA: TEST__FULL_COMMIT_HASH,
@@ -348,7 +338,7 @@ class TestVersionUtils_GithubActions(VersionBaseTest):
             # raise error.
             # Note: This scenario definitely would never happen. Just trying to get to
             # 100% test coverage.
-            with mock.patch.dict(os.environ, {
+            with patch.dict(os.environ, {
                 VersionUtils.ENV_VAR__GITHUB_ACTIONS__IS_CI: "true",
                 VersionUtils.ENV_VAR__GITHUB_ACTIONS__REF_NAME: "",
                 VersionUtils.ENV_VAR__GITHUB_ACTIONS__SHA: "",
@@ -365,13 +355,13 @@ class TestVersionUtils_GithubActions(VersionBaseTest):
         Note: Have to mock a value for ALL scenario variations here because this test will
         actually run in Github Actions so the env var will already be present!
         """
-        with mock.patch.dict(os.environ, {VersionUtils.ENV_VAR__GITHUB_ACTIONS__IS_CI: "true"}):
+        with patch.dict(os.environ, {VersionUtils.ENV_VAR__GITHUB_ACTIONS__IS_CI: "true"}):
             assert VersionUtils.is_github_actions_ci() is True
 
-        with mock.patch.dict(os.environ, {VersionUtils.ENV_VAR__GITHUB_ACTIONS__IS_CI: "false"}):
+        with patch.dict(os.environ, {VersionUtils.ENV_VAR__GITHUB_ACTIONS__IS_CI: "false"}):
             assert VersionUtils.is_github_actions_ci() is False
 
-        with mock.patch.dict(os.environ, {VersionUtils.ENV_VAR__GITHUB_ACTIONS__IS_CI: "1"}):
+        with patch.dict(os.environ, {VersionUtils.ENV_VAR__GITHUB_ACTIONS__IS_CI: "1"}):
             assert VersionUtils.is_github_actions_ci() is False
 
 
@@ -381,7 +371,7 @@ class TestVersionUtils_GithubActions(VersionBaseTest):
         env vars when set.
         """
         # Need to signal that we're in a GitHub Actions CI environment
-        with mock.patch.dict(os.environ, {
+        with patch.dict(os.environ, {
                 VersionUtils.ENV_VAR__GITHUB_ACTIONS__IS_CI: "true",
                 VersionUtils.ENV_VAR__GITHUB_ACTIONS__REF_NAME: "",
                 VersionUtils.ENV_VAR__GITHUB_ACTIONS__SHA: "",
@@ -389,12 +379,12 @@ class TestVersionUtils_GithubActions(VersionBaseTest):
             assert VersionUtils._get_version_name_from_github_actions_env_vars() is None
 
             # REF_NAME should be passed straight through
-            with mock.patch.dict(os.environ, {VersionUtils.ENV_VAR__GITHUB_ACTIONS__REF_NAME: TEST__VERSION_NAME}):
+            with patch.dict(os.environ, {VersionUtils.ENV_VAR__GITHUB_ACTIONS__REF_NAME: TEST__VERSION_NAME}):
                 result = VersionUtils._get_version_name_from_github_actions_env_vars()
                 assert result == TEST__VERSION_NAME
 
             # Unlikely scenario: no REF_NAME but SHA is set; should return short commit hash
-            with mock.patch.dict(os.environ, {
+            with patch.dict(os.environ, {
                     VersionUtils.ENV_VAR__GITHUB_ACTIONS__REF_NAME: "",
                     VersionUtils.ENV_VAR__GITHUB_ACTIONS__SHA: TEST__FULL_COMMIT_HASH,
                 }):
@@ -410,30 +400,40 @@ class TestVersionUtils_SeedSignerOSBuilder(VersionBaseTest):
         since all the downstream helper methods are tested in detail elsewhere.
         """
         # Simulate running in the SeedSigner OS build environment
-        with mock.patch.dict(os.environ, {VersionUtils.ENV_VAR__SEEDSIGNER_OS_BUILDER__VERSION_NAME: TEST__VERSION_NAME}):
+        with patch.dict(os.environ, {VersionUtils.ENV_VAR__IS_SEEDSIGNER_OS_BUILDER: "1"}):
             # SeedSigner OS builder uses some limited `git` shell calls; mock out the
             # associated calls.
-            with mock.patch.multiple(
+            with patch.multiple(
                 "seedsigner.helpers.version.VersionUtils",
-                _get_version_timestamp_from_git_shell=Mock(return_value=TEST__VERSION_TIMESTAMP),
+                _get_version_name_from_git_shell=Mock(return_value=TEST__VERSION_NAME),
                 _get_version_fork_from_git_shell=Mock(return_value=TEST__VERSION_FORK),
                 _get_full_commit_hash_from_git_shell=Mock(return_value=TEST__FULL_COMMIT_HASH),
+                _get_version_timestamp_from_git_shell=Mock(return_value=TEST__VERSION_TIMESTAMP),
             ):
-                assert VersionUtils.get_version_name() == VersionUtils._prefix_version_name(TEST__VERSION_NAME)
-                assert VersionUtils.get_version_fork() == TEST__VERSION_FORK
-                assert VersionUtils.get_short_commit_hash() == TEST__SHORT_COMMIT_HASH
-                assert VersionUtils.get_version_timestamp() == TEST__VERSION_TIMESTAMP
+                # Meanwhile, mock out the timestamp from source files and ensure it's NOT used
+                with patch.object(
+                    VersionUtils,
+                    "_get_last_modified_timestamp_from_src_files",
+                    Mock(return_value=datetime.now())
+                ):
+                    assert VersionUtils.get_version_name() == VersionUtils._prefix_version_name(TEST__VERSION_NAME)
+                    assert VersionUtils.get_version_fork() == TEST__VERSION_FORK
+                    assert VersionUtils.get_short_commit_hash() == TEST__SHORT_COMMIT_HASH
+                    assert VersionUtils.get_version_timestamp() == TEST__VERSION_TIMESTAMP
+
+                    # Verify that the source file timestamp method was NOT called
+                    VersionUtils._get_last_modified_timestamp_from_src_files.assert_not_called()
 
 
     def test_is_seedsigner_os_builder_env(self):
         """
         is_seedsigner_os_builder_env should return True only when the
-        ENV_VAR__SEEDSIGNER_OS_BUILDER__VERSION_NAME env var is set.
+        ENV_VAR__IS_SEEDSIGNER_OS_BUILDER env var is set.
         """
-        with mock.patch.dict(os.environ, {}, clear=True):
+        with patch.dict(os.environ, {}, clear=True):
             assert VersionUtils._is_seedsigner_os_builder_env() is False
 
-        with mock.patch.dict(os.environ, {VersionUtils.ENV_VAR__SEEDSIGNER_OS_BUILDER__VERSION_NAME: TEST__VERSION_NAME}):
+        with patch.dict(os.environ, {VersionUtils.ENV_VAR__IS_SEEDSIGNER_OS_BUILDER: "1"}):
             assert VersionUtils._is_seedsigner_os_builder_env() is True
 
 
@@ -450,17 +450,29 @@ class TestVersionUtils_GitShell(VersionBaseTest):
         Note that in local dev we use the last modified timestamp from the source files
         rather than from git.
         """
-        with mock.patch.multiple(
+        with patch.multiple(
             "seedsigner.helpers.version.VersionUtils",
             _get_version_name_from_git_shell=Mock(return_value=TEST__VERSION_BRANCH),
             _get_version_fork_from_git_shell=Mock(return_value=TEST__VERSION_FORK),
-            _get_last_modified_timestamp_from_src_files=Mock(return_value=TEST__VERSION_TIMESTAMP),
             _get_full_commit_hash_from_git_shell=Mock(return_value=TEST__SHORT_COMMIT_HASH),
+            _get_last_modified_timestamp_from_src_files=Mock(return_value=TEST__VERSION_TIMESTAMP),
         ):
-            assert VersionUtils.get_version_name() == TEST__VERSION_BRANCH
-            assert VersionUtils.get_version_fork() == TEST__VERSION_FORK
-            assert VersionUtils.get_version_timestamp() == TEST__VERSION_TIMESTAMP
-            assert VersionUtils.get_short_commit_hash() == TEST__SHORT_COMMIT_HASH
+            # Mock out the git shell call that retrieves the timestamp.
+            with patch(
+                "seedsigner.helpers.version.VersionUtils._get_version_timestamp_from_git_shell",
+                return_value=None
+            ) as mock_timestamp_from_git_shell:
+                # Verify that we're using the local dev code path
+                assert VersionUtils.is_github_actions_ci() is False
+                assert VersionUtils._is_seedsigner_os_builder_env() is False
+
+                assert VersionUtils.get_version_name() == TEST__VERSION_BRANCH
+                assert VersionUtils.get_version_fork() == TEST__VERSION_FORK
+                assert VersionUtils.get_short_commit_hash() == TEST__SHORT_COMMIT_HASH
+                assert VersionUtils.get_version_timestamp() == TEST__VERSION_TIMESTAMP
+
+                # Verify that the git shell timestamp method was NOT called
+                mock_timestamp_from_git_shell.assert_not_called()
 
 
     def test__get_version_name_from_git_shell(self):
@@ -474,34 +486,36 @@ class TestVersionUtils_GitShell(VersionBaseTest):
         assert result is None
 
         # If we're on a branch, should return the branch name
-        with mock.patch.multiple(
+        with patch.multiple(
             "seedsigner.helpers.version.VersionUtils",
-            _get_version_name_from_git_shell_branch=Mock(return_value=TEST__VERSION_BRANCH),
-            _get_version_name_from_git_shell_tag=Mock(return_value=TEST__VERSION_TAG),
+            _get_branch_name_from_git_shell=Mock(return_value=TEST__VERSION_BRANCH),
+            _get_tag_name_from_git_shell=Mock(return_value=TEST__VERSION_TAG),
             _get_full_commit_hash_from_git_shell=Mock(return_value=TEST__FULL_COMMIT_HASH),
         ):
             result = VersionUtils._get_version_name_from_git_shell()
             assert result == TEST__VERSION_BRANCH
 
         # If we're on a tag, the detached HEAD state wipes out the branch name
-        with mock.patch.multiple(
+        with patch.multiple(
             "seedsigner.helpers.version.VersionUtils",
-            _get_version_name_from_git_shell_branch=Mock(return_value=None),
-            _get_version_name_from_git_shell_tag=Mock(return_value=TEST__VERSION_TAG),
+            _get_branch_name_from_git_shell=Mock(return_value=None),
+            _get_tag_name_from_git_shell=Mock(return_value=TEST__VERSION_TAG),
             _get_full_commit_hash_from_git_shell=Mock(return_value=TEST__FULL_COMMIT_HASH),
         ):
             result = VersionUtils._get_version_name_from_git_shell()
             assert result == TEST__VERSION_TAG
 
-        # Similarly, if we're detached at a specific commit hash
-        with mock.patch.multiple(
+        # Similarly, if we're detached at a specific commit hash.
+        # Note: when falling back to the commit hash, we're expecting the SHORT commit
+        # hash.
+        with patch.multiple(
             "seedsigner.helpers.version.VersionUtils",
-            _get_version_name_from_git_shell_branch=Mock(return_value=None),
-            _get_version_name_from_git_shell_tag=Mock(return_value=None),
+            _get_branch_name_from_git_shell=Mock(return_value=None),
+            _get_tag_name_from_git_shell=Mock(return_value=None),
             _get_full_commit_hash_from_git_shell=Mock(return_value=TEST__FULL_COMMIT_HASH),
         ):
             result = VersionUtils._get_version_name_from_git_shell()
-            assert result == TEST__FULL_COMMIT_HASH
+            assert result == TEST__SHORT_COMMIT_HASH
 
 
     def test__get_version_fork_from_git_shell(self, mock_popen: Mock):
@@ -509,12 +523,32 @@ class TestVersionUtils_GitShell(VersionBaseTest):
         Test that _get_version_fork_from_git_shell returns the expected repo owner from
         the remote url.
         """
-        remote_url = "https://github.com/SeedSigner/seedsigner.git"
-        expected_fork = "SeedSigner"
+        for owner in ["SeedSigner", "seedsigner", "some-user"]:
+            remote_url = f"https://github.com/{owner}/seedsigner.git"
 
-        mock_popen.return_value.read.return_value = remote_url
-        result = VersionUtils._get_version_fork_from_git_shell()
-        assert result == expected_fork
+            mock_popen.return_value.read.return_value = remote_url
+            result = VersionUtils._get_version_fork_from_git_shell()
+            assert result == owner
+
+
+    def test__get_full_commit_hash_from_git_shell(self, mock_popen: Mock):
+        """
+        Test that _get_full_commit_hash_from_git_shell returns the expected full commit hash.
+        """
+        mock_popen.return_value.read.return_value = TEST__FULL_COMMIT_HASH
+
+        result = VersionUtils._get_full_commit_hash_from_git_shell()
+        assert result == TEST__FULL_COMMIT_HASH
+
+
+    def test__get_short_commit_hash_from_git_shell(self, mock_popen: Mock):
+        """
+        Test that _get_short_commit_hash_from_git_shell returns the expected short commit hash.
+        """
+        mock_popen.return_value.read.return_value = TEST__FULL_COMMIT_HASH
+
+        result = VersionUtils._get_short_commit_hash_from_git_shell()
+        assert result == TEST__SHORT_COMMIT_HASH
 
 
     def test__get_version_timestamp_from_git_shell(self, mock_popen: Mock):
@@ -540,16 +574,6 @@ class TestVersionUtils_GitShell(VersionBaseTest):
         assert VersionUtils._get_version_timestamp_from_git_shell() == expected_datetime
 
 
-    def test__get_full_commit_hash_from_git_shell(self, mock_popen: Mock):
-        """
-        Test that _get_full_commit_hash_from_git_shell returns the expected short commit hash.
-        """
-        mock_popen.return_value.read.return_value = TEST__SHORT_COMMIT_HASH
-
-        result = VersionUtils._get_full_commit_hash_from_git_shell()
-        assert result == TEST__SHORT_COMMIT_HASH
-
-
 
 class TestVersionUtils_DotGitFiles(VersionBaseTest):
     def test_local_dev_with_dot_git_dir_parsing(self, mock_popen: Mock):
@@ -567,37 +591,50 @@ class TestVersionUtils_DotGitFiles(VersionBaseTest):
         """
         # If we're on a branch, getting the commit hash requires the
         # .git/refs/heads/<branch> file.
-        with mock.patch.multiple(
+        with patch.multiple(
             "seedsigner.helpers.version.VersionUtils",
             _read_git_HEAD_file=Mock(return_value=(TEST__VERSION_BRANCH, None)),
             _get_full_commit_hash_from_git_refs_heads=Mock(return_value=TEST__FULL_COMMIT_HASH),
             _get_version_fork_from_git_config=Mock(return_value=TEST__VERSION_FORK),
             _get_last_modified_timestamp_from_src_files=Mock(return_value=TEST__VERSION_TIMESTAMP),
         ):
-            assert VersionUtils.get_version_name() == TEST__VERSION_BRANCH
-            assert VersionUtils.get_version_fork() == TEST__VERSION_FORK
-            assert VersionUtils.get_version_timestamp() == TEST__VERSION_TIMESTAMP
-            assert VersionUtils.get_short_commit_hash() == TEST__SHORT_COMMIT_HASH
+            # Mock out the git shell call that retrieves the timestamp.
+            with patch(
+                "seedsigner.helpers.version.VersionUtils._get_version_timestamp_from_git_shell",
+                return_value=None
+            ) as mock_timestamp_from_git_shell:
+                # Verify that we're using the local dev code path
+                assert VersionUtils.is_github_actions_ci() is False
+                assert VersionUtils._is_seedsigner_os_builder_env() is False
 
-        # If we're on a tag (detached HEAD), getting the commit hash requires
-        # checking the refs/tags for a matching tag.
-        with mock.patch.multiple(
-            "seedsigner.helpers.version.VersionUtils",
-            _read_git_HEAD_file=Mock(return_value=(None, TEST__FULL_COMMIT_HASH)),
-            _get_matching_tag_from_git_refs_tags=Mock(return_value=TEST__VERSION_TAG),
-        ):
-            assert VersionUtils.get_version_name() == TEST__VERSION_TAG
-            assert VersionUtils.get_short_commit_hash() == TEST__SHORT_COMMIT_HASH
+                assert VersionUtils.get_version_name() == TEST__VERSION_BRANCH
+                assert VersionUtils.get_version_fork() == TEST__VERSION_FORK
+                assert VersionUtils.get_version_timestamp() == TEST__VERSION_TIMESTAMP
+                assert VersionUtils.get_short_commit_hash() == TEST__SHORT_COMMIT_HASH
 
-        # If we're on a commit hash (detached HEAD) with no matching tag, the
-        # version name should be the short commit hash.
-        with mock.patch.multiple(
-            "seedsigner.helpers.version.VersionUtils",
-            _read_git_HEAD_file=Mock(return_value=(None, TEST__FULL_COMMIT_HASH)),
-            _get_matching_tag_from_git_refs_tags=Mock(return_value=None),
-        ):
-            assert VersionUtils.get_version_name() == TEST__SHORT_COMMIT_HASH
-            assert VersionUtils.get_short_commit_hash() == TEST__SHORT_COMMIT_HASH
+                # If we're on a tag (detached HEAD), getting the commit hash requires
+                # checking the refs/tags for a matching tag.
+                with patch.multiple(
+                    "seedsigner.helpers.version.VersionUtils",
+                    _read_git_HEAD_file=Mock(return_value=(None, TEST__FULL_COMMIT_HASH)),
+                    _get_matching_tag_from_git_refs_tags=Mock(return_value=TEST__VERSION_TAG),
+                ):
+                    assert VersionUtils.get_version_name() == TEST__VERSION_TAG
+                    assert VersionUtils.get_short_commit_hash() == TEST__SHORT_COMMIT_HASH
+
+                # If we're on a commit hash (detached HEAD) with no matching tag, the
+                # version name should be the short commit hash.
+                with patch.multiple(
+                    "seedsigner.helpers.version.VersionUtils",
+                    _read_git_HEAD_file=Mock(return_value=(None, TEST__FULL_COMMIT_HASH)),
+                    _get_matching_tag_from_git_refs_tags=Mock(return_value=None),
+                ):
+                    assert VersionUtils.get_version_name() == TEST__SHORT_COMMIT_HASH
+                    assert VersionUtils.get_short_commit_hash() == TEST__SHORT_COMMIT_HASH
+
+                # Verify that through all of this that the git shell timestamp method was
+                # NOT called.
+                mock_timestamp_from_git_shell.assert_not_called()
 
 
     def test__get_dot_git_dir(self):
@@ -677,17 +714,17 @@ class TestVersionUtils_DotGitFiles(VersionBaseTest):
 
         # We already tested _read_git_HEAD_file() above, so just mock scenarios here.
         # On a branch:
-        with mock.patch.object(VersionUtils, '_read_git_HEAD_file', return_value=(TEST__VERSION_BRANCH, None)):
+        with patch.object(VersionUtils, '_read_git_HEAD_file', return_value=(TEST__VERSION_BRANCH, None)):
             assert VersionUtils._get_version_name_from_git_HEAD() == TEST__VERSION_BRANCH
         
         # Detached HEAD at commit hash, with matching tag
-        with mock.patch.object(VersionUtils, '_read_git_HEAD_file', return_value=(None, TEST__FULL_COMMIT_HASH)):
-            with mock.patch.object(VersionUtils, '_get_matching_tag_from_git_refs_tags', return_value=TEST__VERSION_NAME):
+        with patch.object(VersionUtils, '_read_git_HEAD_file', return_value=(None, TEST__FULL_COMMIT_HASH)):
+            with patch.object(VersionUtils, '_get_matching_tag_from_git_refs_tags', return_value=TEST__VERSION_NAME):
                 assert VersionUtils._get_version_name_from_git_HEAD() == TEST__VERSION_NAME
         
         # Detached HEAD at commit hash, no matching tag; returns the short commit hash
-        with mock.patch.object(VersionUtils, '_read_git_HEAD_file', return_value=(None, TEST__FULL_COMMIT_HASH)):
-            with mock.patch.object(VersionUtils, '_get_matching_tag_from_git_refs_tags', return_value=None):
+        with patch.object(VersionUtils, '_read_git_HEAD_file', return_value=(None, TEST__FULL_COMMIT_HASH)):
+            with patch.object(VersionUtils, '_get_matching_tag_from_git_refs_tags', return_value=None):
                 assert VersionUtils._get_version_name_from_git_HEAD() == TEST__SHORT_COMMIT_HASH
 
 
@@ -695,7 +732,7 @@ class TestVersionUtils_DotGitFiles(VersionBaseTest):
         # _get_commit_hash_from_git_HEAD is a trivial convenience function that relies on
         # _read_git_HEAD_file which we've already tested. Just verify the expected outputs
         # here.
-        with mock.patch.object(VersionUtils, '_read_git_HEAD_file', return_value=(None, TEST__SHORT_COMMIT_HASH)):
+        with patch.object(VersionUtils, '_read_git_HEAD_file', return_value=(None, TEST__SHORT_COMMIT_HASH)):
             assert VersionUtils._get_full_commit_hash_from_git_HEAD() == TEST__SHORT_COMMIT_HASH
 
 
@@ -759,7 +796,7 @@ class TestVersionUtils_DotGitFiles(VersionBaseTest):
             [next_section]
                 next_key = next_value
             """
-        with mock.patch("builtins.open", mock.mock_open(read_data=git_config)):
+        with patch("builtins.open", mock.mock_open(read_data=git_config)):
             assert VersionUtils._get_version_fork_from_git_config() == expected_fork
 
         # Missing origin section should return None
@@ -769,7 +806,7 @@ class TestVersionUtils_DotGitFiles(VersionBaseTest):
             [next_section]
                 next_key = next_value
             """
-        with mock.patch("builtins.open", mock.mock_open(read_data=git_config_no_origin)):
+        with patch("builtins.open", mock.mock_open(read_data=git_config_no_origin)):
             assert VersionUtils._get_version_fork_from_git_config() is None
 
         # Handle malformed origin section (can't find url) should return None
@@ -779,11 +816,11 @@ class TestVersionUtils_DotGitFiles(VersionBaseTest):
             [next_section]
                 next_key = next_value
             """
-        with mock.patch("builtins.open", mock.mock_open(read_data=git_config_malformed_origin)):
+        with patch("builtins.open", mock.mock_open(read_data=git_config_malformed_origin)):
             assert VersionUtils._get_version_fork_from_git_config() is None
 
         # If the git config file is missing, should return None
-        with mock.patch("builtins.open", side_effect=FileNotFoundError):
+        with patch("builtins.open", side_effect=FileNotFoundError):
             assert VersionUtils._get_version_fork_from_git_config() is None
 
 
@@ -802,12 +839,13 @@ class TestVersionUtils_DotGitFiles(VersionBaseTest):
         assert timestamp < datetime.now() + timedelta(days=30)
 
         # Now mock out os.path.getmtime to force all files to have a known timestamp
-        expected_timestamp = datetime(2025, 12, 23, 0, 0, 0)
-        with mock.patch("os.path.getmtime", return_value=expected_timestamp.timestamp()):
-            assert VersionUtils._get_last_modified_timestamp_from_src_files() == expected_timestamp
+        local_timestamp = datetime(2025, 12, 23, 0, 0, 0)
+        with patch("os.path.getmtime", return_value=local_timestamp.timestamp()):
+            # Note that the result will be converted to UTC with no tzinfo
+            assert VersionUtils._get_last_modified_timestamp_from_src_files() == local_timestamp.astimezone(timezone.utc).replace(tzinfo=None)
 
         # Mock out os.walk() to simulate no .py files found
-        with mock.patch("os.walk", return_value=[]):
+        with patch("os.walk", return_value=[]):
             assert VersionUtils._get_last_modified_timestamp_from_src_files() is None
 
 
@@ -833,7 +871,7 @@ class TestVersionUtils_Misc(VersionBaseTest):
         fake_response.status = 200
         fake_response.read.return_value = json.dumps(latest_releases_response_dict).encode('utf-8')
 
-        with mock.patch("urllib.request.urlopen", return_value=fake_response):
+        with patch("urllib.request.urlopen", return_value=fake_response):
             release_tag, release_timestamp = VersionUtils._fetch_latest_seedsigner_release_tag()
 
             # mock_popen returns empty string, which mimics not having local git data to
@@ -859,13 +897,13 @@ class TestVersionUtils_Misc(VersionBaseTest):
         # Should gracefully handle HTTP errors
         fake_error_response = Mock()
         fake_error_response.status = 404
-        with mock.patch("urllib.request.urlopen", return_value=fake_error_response):
+        with patch("urllib.request.urlopen", return_value=fake_error_response):
             release_tag, release_timestamp = VersionUtils._fetch_latest_seedsigner_release_tag()
             assert release_tag is None
             assert release_timestamp is None
         
         # And other exceptions
-        with mock.patch("urllib.request.urlopen", side_effect=Exception("Network error")):
+        with patch("urllib.request.urlopen", side_effect=Exception("Network error")):
             release_tag, release_timestamp = VersionUtils._fetch_latest_seedsigner_release_tag()
             assert release_tag is None
             assert release_timestamp is None
@@ -884,7 +922,7 @@ class TestVersion(VersionBaseTest):
         with patch("seedsigner.models.settings.Settings.HOSTNAME", Settings.SEEDSIGNER_OS):
             Version.get_version_name() == TEST__VERSION_DICT[VersionUtils.VERSIONFILE_ATTR__NAME]
             Version.get_version_fork() == TEST__VERSION_DICT[VersionUtils.VERSIONFILE_ATTR__FORK]
-            Version.get_short_commit_hash() == TEST__VERSION_DICT[VersionUtils.VERSIONFILE_ATTR__COMMIT_HASH]
+            Version.get_short_commit_hash() == TEST__VERSION_DICT[VersionUtils.VERSIONFILE_ATTR__SHORT_COMMIT_HASH]
             Version.get_version_timestamp() == TEST__VERSION_TIMESTAMP
 
 
@@ -893,17 +931,12 @@ class TestVersion(VersionBaseTest):
         Test that we can override the version data via the Version.override_version_data()
         method.
         """
-        override_name = "v9.9.9-test"
-        override_fork = "TestFork"
-        override_commit_hash = "abcd123"
-        override_timestamp = datetime(2030, 1, 1, 0, 0, 0)
-
         # Initially the version data is pulled from the usual sources
         self.write_test_version_file()
         with patch("seedsigner.models.settings.Settings.HOSTNAME", Settings.SEEDSIGNER_OS):
             assert Version.get_version_name() == TEST__VERSION_DICT[VersionUtils.VERSIONFILE_ATTR__NAME]
             assert Version.get_version_fork() == TEST__VERSION_DICT[VersionUtils.VERSIONFILE_ATTR__FORK]
-            assert Version.get_short_commit_hash() == TEST__VERSION_DICT[VersionUtils.VERSIONFILE_ATTR__COMMIT_HASH]
+            assert Version.get_short_commit_hash() == TEST__VERSION_DICT[VersionUtils.VERSIONFILE_ATTR__SHORT_COMMIT_HASH]
             assert Version.get_version_timestamp() == TEST__VERSION_TIMESTAMP
 
             # While we're in the mocked SeedSigner OS environment, verify that the
@@ -911,18 +944,32 @@ class TestVersion(VersionBaseTest):
             with pytest.raises(NotAllowedInSeedSignerOS):
                 Version.override_data()
 
+        override_name = "v9.9.9-test"
+        override_fork = "TestFork"
+        override_commit_hash = "abcd123"
+        override_timestamp = datetime(2030, 1, 1, 0, 0, 0)
+        override_dict = {
+            VersionUtils.VERSIONFILE_ATTR__NAME: override_name,
+            VersionUtils.VERSIONFILE_ATTR__FORK: override_fork,
+            VersionUtils.VERSIONFILE_ATTR__SHORT_COMMIT_HASH: override_commit_hash,
+            VersionUtils.VERSIONFILE_ATTR__TIMESTAMP: override_timestamp,
+        }
+
         # No longer in the mocked SeedSigner OS environment; should be allowed now.
-        Version.override_data(
-            version_name=override_name,
-            version_fork=override_fork,
-            short_commit_hash=override_commit_hash,
-            version_timestamp=override_timestamp,
-        )
+        Version.override_data(**override_dict)
 
         assert Version.get_version_name() == override_name
         assert Version.get_version_fork() == override_fork
         assert Version.get_short_commit_hash() == override_commit_hash
         assert Version.get_version_timestamp() == override_timestamp
+
+        # No overrides specified should result in no values changed.
+        Version.override_data()
+        assert Version.get_version_name() == override_name
+        assert Version.get_version_fork() == override_fork
+        assert Version.get_short_commit_hash() == override_commit_hash
+        assert Version.get_version_timestamp() == override_timestamp
+
 
 
     def test_to_dict(self):
@@ -931,7 +978,24 @@ class TestVersion(VersionBaseTest):
         """
         self.write_test_version_file()
         with patch("seedsigner.models.settings.Settings.HOSTNAME", Settings.SEEDSIGNER_OS):
+            # In SeedSigner OS, the version data comes from the version file.
             assert Version.to_dict() == TEST__VERSION_DICT
+
+        extra_attr = "extra"
+        different_dict = {
+            VersionUtils.VERSIONFILE_ATTR__NAME: "v1.2.3-different",
+            VersionUtils.VERSIONFILE_ATTR__FORK: "DifferentFork",
+            VersionUtils.VERSIONFILE_ATTR__SHORT_COMMIT_HASH: "differenthash",
+            VersionUtils.VERSIONFILE_ATTR__TIMESTAMP: datetime(2026, 1, 1, 0, 0, 0),  # stored internally as a datetime
+            extra_attr: "should be ignored",
+        }
+        Version.override_data(**different_dict)
+        output_dict = Version.to_dict()
+        assert output_dict[VersionUtils.VERSIONFILE_ATTR__NAME] == different_dict[VersionUtils.VERSIONFILE_ATTR__NAME]
+        assert output_dict[VersionUtils.VERSIONFILE_ATTR__FORK] == different_dict[VersionUtils.VERSIONFILE_ATTR__FORK]
+        assert output_dict[VersionUtils.VERSIONFILE_ATTR__SHORT_COMMIT_HASH] == different_dict[VersionUtils.VERSIONFILE_ATTR__SHORT_COMMIT_HASH]
+        assert output_dict[VersionUtils.VERSIONFILE_ATTR__TIMESTAMP] == different_dict[VersionUtils.VERSIONFILE_ATTR__TIMESTAMP].isoformat()  # returned as a string
+        assert extra_attr not in output_dict
 
 
 
@@ -949,14 +1013,14 @@ class TestNotAllowedInSeedSignerOSDecorator(BaseTest):
         if we run a decorated function while in SeedSigner OS.
         """
         # Patch over the Settings.HOSTNAME value to simulate running in SeedSigner OS
-        with mock.patch("seedsigner.models.settings.Settings.HOSTNAME", Settings.SEEDSIGNER_OS):
+        with patch("seedsigner.models.settings.Settings.HOSTNAME", Settings.SEEDSIGNER_OS):
             with pytest.raises(NotAllowedInSeedSignerOS):
                 self.dummy_function()
 
 
     def test_allowed_outside_seedsigner_os(self):
         # Now try with any other HOSTNAME
-        with mock.patch("seedsigner.models.settings.Settings.HOSTNAME", "my_dev_machine"):
+        with patch("seedsigner.models.settings.Settings.HOSTNAME", "my_dev_machine"):
             assert self.dummy_function() == self.SUCCESS
 
 

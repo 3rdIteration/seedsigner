@@ -197,16 +197,19 @@ def generate_screenshots(locale):
             value=SettingsConstants.OPTION__ENABLED
         )
 
-        # Initialize the Version data to the most recent release
-        (version_name, version_timestamp) = VersionUtils._fetch_latest_seedsigner_release_tag()
-        if not version_name or not version_timestamp:
-            raise Exception("Could not fetch latest release version from GitHub")
-        Version.override_data(
-            version_name=version_name,
-            version_fork="SeedSigner",  # main repo; screenshot should hide fork and commit hash
-            version_timestamp=version_timestamp,
-            short_commit_hash="abcd1234"  # dummy value should be ignored
-        )
+        def reset_version_most_recent_release():
+            # Initialize the Version data to the most recent release
+            (version_name, version_timestamp) = VersionUtils._fetch_latest_seedsigner_release_tag()
+            if not version_name or not version_timestamp:
+                raise Exception("Could not fetch latest release version from GitHub")
+            new_values = {
+                VersionUtils.VERSIONFILE_ATTR__NAME: version_name,
+                VersionUtils.VERSIONFILE_ATTR__FORK: "SeedSigner",  # main repo; screenshot should hide fork and commit hash
+                VersionUtils.VERSIONFILE_ATTR__TIMESTAMP: version_timestamp,
+                VersionUtils.VERSIONFILE_ATTR__SHORT_COMMIT_HASH: "abcd1234"  # dummy value should be ignored
+            }
+            Version.override_data(**new_values)
+        reset_version_most_recent_release()
 
         # Automatically populate all Settings options Views
         settings_views_list = []
@@ -314,14 +317,19 @@ def generate_screenshots(locale):
 
         def reset_version_to_local_git_state_cb():
             # Normally, directly manipulating the singleton's internal instance is not
-            # allowed, but the screnshot generator is an atypical use case.
+            # allowed, but the screnshot generator is a special exception.
             Version._instance = None
+
+
+        def reset_version_to_most_recent_release_cb():
+            reset_version_most_recent_release()
 
 
         screenshot_sections = {
             "Main Menu Views": [
                 ScreenshotConfig(OpeningSplashView, dict(force_partner_logos=True)),
                 ScreenshotConfig(OpeningSplashView, dict(force_partner_logos=False), screenshot_name="OpeningSplashView_no_partner_logos"),
+                ScreenshotConfig(OpeningSplashView, dict(force_partner_logos=True), run_before=reset_version_to_local_git_state_cb, screenshot_name="OpeningSplashView_current_git_state"),
                 ScreenshotConfig(MainMenuView),
                 ScreenshotConfig(MainMenuView, screenshot_name='MainMenuView_SDCardStateChangeToast_removed',  toast_thread=SDCardStateChangeToastManagerThread(action=MicroSD.ACTION__REMOVED, activation_delay=0, duration=0)),
                 ScreenshotConfig(MainMenuView, screenshot_name='MainMenuView_SDCardStateChangeToast_inserted', toast_thread=SDCardStateChangeToastManagerThread(action=MicroSD.ACTION__INSERTED, activation_delay=0, duration=0)),
@@ -447,7 +455,7 @@ def generate_screenshots(locale):
             "Settings Views": settings_views_list + [
                 ScreenshotConfig(settings_views.IOTestView),
                 ScreenshotConfig(settings_views.DonateView),
-                ScreenshotConfig(settings_views.VersionView),
+                ScreenshotConfig(settings_views.VersionView, run_before=reset_version_to_most_recent_release_cb),
                 ScreenshotConfig(settings_views.VersionView, run_before=reset_version_to_local_git_state_cb, screenshot_name="VersionView_current_git_state"),
                 ScreenshotConfig(settings_views.SettingsIngestSettingsQRView, dict(data=settingsqr_data_persistent), screenshot_name="SettingsIngestSettingsQRView_persistent"),
                 ScreenshotConfig(settings_views.SettingsIngestSettingsQRView, dict(data=settingsqr_data_not_persistent), screenshot_name="SettingsIngestSettingsQRView_not_persistent"),

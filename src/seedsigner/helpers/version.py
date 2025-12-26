@@ -40,52 +40,70 @@ class Version(Singleton):
     around in the main code) and so that the version data is only determined once per
     runtime.
 
-    On SeedSigner OS:
-        * Version data is written to `src/seedsigner/version.json` during the build
-          process via tools/write_versionfile.py.
-        * version_name: copied from the command used to build the SeedSigner OS image:
-            --app-branch (the target git branch OR tag) or
-            --app-commit-id (target commit hash)
-        * version_fork: the git repo owner/fork name (e.g. "SeedSigner") targeted by the
-          build process.
-        * version_timestamp: the last git commit time for the target branch, tag, or
-          commit hash.
-        * commit_hash: the short commit hash for the specified build target.
+    SeedSigner OS lifecycle:
+        * The SeedSigner OS build process runs the tools/write_versionfile.py script to
+          generate version.json.
+        * The version.json file is included in the SeedSigner OS image.
+
+    The version data is fetched differently depending on the environment:
+
+    In SeedSigner OS:
+        * Version data is read exclusively from version.json at runtime.
+
+    In the SeedSigner OS builder:
+    - Note: the build process relies on `git` being installed so we leverage it here.
+        * version_name:
+            * read dynamically from `git` shell calls to retrieve, in order:
+                * Current git branch name
+                * Current git tag name
+                * Current git short commit hash
+        * version_fork:
+            * the git repo owner parsed out of the remote url.
+            * https://github.com/SeedSigner/seedsigner.git -> "SeedSigner"
+            * Read dynamically from shell `git` call to check the remote "origin" URL.
+        * short_commit_hash:
+            * the commit hash for the current branch / tag / detached HEAD.
+            * Read dynamically from shell `git` call.
+        * version_timestamp:
+            * the last git commit time for the current branch / tag / detached HEAD.
+            * Read dynamically from shell `git` call.
 
     In local dev:
-        * version_name: read dynamically from a few possible sources. In order:
-            * SEEDSIGNER_VERSION_NAME env var, if available.
-            * Shell `git` calls (e.g. `git branch --show-current`).
-            * Directly parsing the .git/HEAD file and possibly .git/refs/tags.
-            * Note: we avoid reading from the version.json file as it may be out of date
-                and could lead to confusion.
-        * version_fork: read dynamically from:
-            * Shell `git` call to check the remote "origin" URL.
-            * Parse the .git/config for the remote "origin" URL.
+    - Similar process as for the SeedSigner OS builder, but with additional fallbacks and
+      a different method for determining version_timestamp.
+    - If a local version.json is present, it will be ignored; it may be out of date and
+      could lead to confusion.
+        * version_name:
+            * `git` shell calls + directly parsing the .git/HEAD file and .git/refs/tags
+              when necessary.
+        * version_fork:
+            * `git` shell call + parse the .git/config for the remote "origin" URL.
+        * commit_hash:
+            * Shell `git` call + parse the .git/HEAD file and
+              .git/refs/heads/<branch_name> when necessary.
         * version_timestamp: determined by scanning the src/ directory for the most
           recently modified python file.
-        * commit_hash: read dynamically from:
-            * Shell `git` call.
-            * Parse the .git/HEAD file and possibly .git/refs/heads/<branch_name>.
 
     In Github Actions CI:
-        * version_name: read from GITHUB_REF_NAME or GITHUB_SHA env vars.
-        * version_fork: TODO
-        * version_timestamp: TODO
-        * commit_hash: TODO
+        * version_name: read from GITHUB_REF_NAME env var.
+        * version_fork: read from GITHUB_REPOSITORY_OWNER env var.
+        * version_timestamp: Shell `git` call to get the last commit time for the current
+          branch/tag/commit.
+        * commit_hash: read from GITHUB_SHA env var.
 
     This class defines the limited methods that are meant to be publicly accessible
     across the SeedSigner codebase.
 
-    The misc utility functions in `VersionUtils` were explicitly isolated because they
-    should NOT be used elsewhere in the codebase.
+    The utility functions in `VersionUtils` were explicitly isolated because they should
+    NOT be used elsewhere in the codebase.
     TODO: Should `VersionUtils` be an internal class within `Version` to further signal
     that it is not to be used externally?
+    TODO: Also pull git log history and display it in its own View?
     """
     _version_name: str = None
     _version_fork: str = None
-    _version_timestamp: datetime = None
     _short_commit_hash: str = None
+    _version_timestamp: datetime = None
 
 
     @classmethod
@@ -115,26 +133,30 @@ class Version(Singleton):
 
 
     @classmethod
-    def get_version_timestamp(cls) -> datetime | None:
-        return cls.get_instance()._version_timestamp
-
-
-    @classmethod
     def get_short_commit_hash(cls) -> str | None:
         return cls.get_instance()._short_commit_hash
 
 
     @classmethod
+    def get_version_timestamp(cls) -> datetime | None:
+        return cls.get_instance()._version_timestamp
+
+
+    @classmethod
     @not_allowed_in_seedsigner_os
-    def override_data(cls, version_name, version_fork, version_timestamp, short_commit_hash):
+    def override_data(cls, **kwargs):
         """
         Only used by the screenshot generator.
         """
         instance = cls.get_instance()
-        instance._version_name = version_name
-        instance._version_fork = version_fork
-        instance._version_timestamp = version_timestamp
-        instance._short_commit_hash = short_commit_hash
+        if VersionUtils.VERSIONFILE_ATTR__NAME in kwargs:
+            instance._version_name = kwargs[VersionUtils.VERSIONFILE_ATTR__NAME]
+        if VersionUtils.VERSIONFILE_ATTR__FORK in kwargs:
+            instance._version_fork = kwargs[VersionUtils.VERSIONFILE_ATTR__FORK]
+        if VersionUtils.VERSIONFILE_ATTR__SHORT_COMMIT_HASH in kwargs:
+            instance._short_commit_hash = kwargs[VersionUtils.VERSIONFILE_ATTR__SHORT_COMMIT_HASH]
+        if VersionUtils.VERSIONFILE_ATTR__TIMESTAMP in kwargs:
+            instance._version_timestamp = kwargs[VersionUtils.VERSIONFILE_ATTR__TIMESTAMP]
 
 
     @classmethod
@@ -143,9 +165,10 @@ class Version(Singleton):
         return {
             VersionUtils.VERSIONFILE_ATTR__NAME: instance._version_name,
             VersionUtils.VERSIONFILE_ATTR__FORK: instance._version_fork,
+            VersionUtils.VERSIONFILE_ATTR__SHORT_COMMIT_HASH: instance._short_commit_hash,
             VersionUtils.VERSIONFILE_ATTR__TIMESTAMP: instance._version_timestamp.isoformat() if instance._version_timestamp else None,
-            VersionUtils.VERSIONFILE_ATTR__COMMIT_HASH: instance._short_commit_hash,
         }
+
 
 
 class VersionUtils:
@@ -168,7 +191,7 @@ class VersionUtils:
         * One external http GET to github to get the most recent release tag.
     ********************************************************************************* """
 
-    ENV_VAR__SEEDSIGNER_OS_BUILDER__VERSION_NAME = "SEEDSIGNER_VERSION_NAME"
+    ENV_VAR__IS_SEEDSIGNER_OS_BUILDER = "SEEDSIGNER_OS_BUILDER"
     ENV_VAR__GITHUB_ACTIONS__IS_CI = "CI"
     ENV_VAR__GITHUB_ACTIONS__REF_NAME = "GITHUB_REF_NAME"
     ENV_VAR__GITHUB_ACTIONS__SHA = "GITHUB_SHA"
@@ -177,8 +200,8 @@ class VersionUtils:
     VERSIONFILE__FILENAME = "version.json"
     VERSIONFILE_ATTR__NAME = "name"
     VERSIONFILE_ATTR__FORK = "fork"
+    VERSIONFILE_ATTR__SHORT_COMMIT_HASH = "short_commit_hash"
     VERSIONFILE_ATTR__TIMESTAMP = "timestamp"
-    VERSIONFILE_ATTR__COMMIT_HASH = "commit_hash"
 
 
     """ *************************************************************************************
@@ -211,18 +234,10 @@ class VersionUtils:
             else:
                 raise Exception("Could not determine version from Github Actions env vars.")
 
-        elif VersionUtils._is_seedsigner_os_builder_env():
-            # In the SeedSigner OS build environment, get the version name from env var.
-            # Note: This get_version_name call will never fail because the env var that
-            # provides the version name is what defines whether we're in the SeedSigner OS
-            # builder in the first place.
-            version_name = VersionUtils._get_version_name_from_seedsigner_os_builder_env_var()
-            return VersionUtils._prefix_version_name(version_name)
-
         else:
-            # In local dev, we try the following methods in order:
+            # In the SeedSigner OS builder we know that we'll have the `git` shell
+            # commands available. We add extra fallbacks for local dev.
             for get_version_name_method in [
-                VersionUtils._get_version_name_from_seedsigner_os_builder_env_var,
                 VersionUtils._get_version_name_from_git_shell,
                 VersionUtils._get_version_name_from_git_HEAD,
             ]:
@@ -252,12 +267,9 @@ class VersionUtils:
             # In Github Actions CI, try to get the version name from env vars
             return VersionUtils._get_version_fork_from_github_actions_env_vars()
 
-        elif VersionUtils._is_seedsigner_os_builder_env():
-            # In the SeedSigner OS build environment `git` shell call should be available
-            return VersionUtils._get_version_fork_from_git_shell()
-
         else:
-            # In local dev we try to access the current git state via:
+            # In the SeedSigner OS builder we know that we'll have the `git` shell
+            # commands available. We add extra fallbacks for local dev.
             for get_version_fork_method in [
                 VersionUtils._get_version_fork_from_git_shell,
                 VersionUtils._get_version_fork_from_git_config,
@@ -266,6 +278,45 @@ class VersionUtils:
                 if version_fork is not None:
                     return version_fork
         return None
+
+
+    @classmethod
+    def get_short_commit_hash(cls) -> str | None:
+        """
+        Returns the short commit hash string.
+
+        Will be None if the local dev system has no git state available or if it only has
+        the .git/HEAD but is currently on a branch (not a tag or specific commit).
+        """
+        if Settings.HOSTNAME == Settings.SEEDSIGNER_OS:
+            return VersionUtils._get_short_commit_hash_from_version_file()
+
+        full_commit_hash = None
+        if VersionUtils.is_github_actions_ci():
+            # In Github Actions CI the "SHA" env var should always be available
+            full_commit_hash = VersionUtils._get_full_commit_hash_from_github_actions_env_vars()
+
+        else:
+            # In the SeedSigner OS builder we know that we'll have the `git` shell
+            # commands available. We add extra fallbacks for local dev.
+            for get_full_commit_hash_method in [
+                VersionUtils._get_full_commit_hash_from_git_shell,
+                VersionUtils._get_full_commit_hash_from_git_HEAD,
+            ]:
+                full_commit_hash = get_full_commit_hash_method()
+                if full_commit_hash is not None:
+                    break
+
+            if full_commit_hash is None:
+                # `git` shell calls didn't work and HEAD might be on a branch, so dig
+                # deeper into the .git files to look up the commit hash via the branch
+                # name.
+                branch_name, expect_full_commit_hash_to_be_none = VersionUtils._read_git_HEAD_file()
+                if branch_name:
+                    full_commit_hash = VersionUtils._get_full_commit_hash_from_git_refs_heads(branch_name)
+
+        if full_commit_hash is not None:
+            return full_commit_hash[:7]
 
 
     @classmethod
@@ -290,7 +341,10 @@ class VersionUtils:
             return VersionUtils._get_version_timestamp_from_git_shell()
 
         elif VersionUtils._is_seedsigner_os_builder_env():
-            # In the SeedSigner OS build environment `git` shell call should be available
+            # In the SeedSigner OS builder we know that we'll have the `git` shell
+            # commands available.
+            # Note: This is the only piece of version data that behaves differently
+            # between the SeedSigner OS builder and local dev.
             return VersionUtils._get_version_timestamp_from_git_shell()
 
         else:
@@ -299,48 +353,10 @@ class VersionUtils:
             return VersionUtils._get_last_modified_timestamp_from_src_files()
 
 
-    @classmethod
-    def get_short_commit_hash(cls) -> str | None:
-        """
-        Returns the short commit hash string.
 
-        Will be None if the local dev system has no git state available or if it only has
-        the .git/HEAD but is currently on a branch (not a tag or specific commit).
-        """
-        if Settings.HOSTNAME == Settings.SEEDSIGNER_OS:
-            return VersionUtils._get_short_commit_hash_from_version_file()
-
-        full_commit_hash = None
-        if VersionUtils.is_github_actions_ci():
-            # In Github Actions CI the "SHA" env var should always be available
-            full_commit_hash = VersionUtils._get_full_commit_hash_from_github_actions_env_vars()
-
-        elif VersionUtils._is_seedsigner_os_builder_env():
-            # In the SeedSigner OS build environment `git` shell call should be available
-            full_commit_hash = VersionUtils._get_full_commit_hash_from_git_shell()
-
-        else:
-            # In local dev we try to access the current git state via:
-            for get_full_commit_hash_method in [
-                VersionUtils._get_full_commit_hash_from_git_shell,
-                VersionUtils._get_full_commit_hash_from_git_HEAD,
-            ]:
-                full_commit_hash = get_full_commit_hash_method()
-                if full_commit_hash is not None:
-                    break
-
-            if full_commit_hash is None:
-                # `git` shell calls didn't work and HEAD might be on a branch, so dig
-                # deeper into the .git files to look up the commit hash via the branch
-                # name.
-                branch_name, expect_full_commit_hash_to_be_none = VersionUtils._read_git_HEAD_file()
-                if branch_name:
-                    full_commit_hash = VersionUtils._get_full_commit_hash_from_git_refs_heads(branch_name)
-
-        if full_commit_hash is not None:
-            return full_commit_hash[:7]
-
-
+    """ *************************************************************************************
+    Misc internal utility functions.
+    ************************************************************************************* """
     @classmethod
     def _prefix_version_name(cls, version_name: str) -> str:
         """
@@ -351,6 +367,7 @@ class VersionUtils:
         if not version_name.startswith("v") and version_name.count(".") >= 1 and version_name.split(".")[0].isnumeric():
             return f"v{version_name}"
         return version_name
+
 
 
     """ *************************************************************************************
@@ -399,6 +416,16 @@ class VersionUtils:
 
 
     @classmethod
+    def _get_short_commit_hash_from_version_file(cls) -> str | None:
+        """
+        Attempts to read the version.json and return the version commit hash.
+        """
+        version_data = cls._read_version_file()
+        if version_data:
+            return version_data.get(cls.VERSIONFILE_ATTR__SHORT_COMMIT_HASH)
+
+
+    @classmethod
     def _get_version_timestamp_from_version_file(cls) -> str | None:
         """
         Attempts to read the version.json and return the version timestamp.
@@ -408,16 +435,6 @@ class VersionUtils:
             return version_data.get(cls.VERSIONFILE_ATTR__TIMESTAMP)
 
 
-    @classmethod
-    def _get_short_commit_hash_from_version_file(cls) -> str | None:
-        """
-        Attempts to read the version.json and return the version commit hash.
-        """
-        version_data = cls._read_version_file()
-        if version_data:
-            return version_data.get(cls.VERSIONFILE_ATTR__COMMIT_HASH)
-
-
 
     """ *************************************************************************************
     Utilities used in the SeedSigner OS build environment and writing the version.json file.
@@ -425,20 +442,10 @@ class VersionUtils:
     @classmethod
     def _is_seedsigner_os_builder_env(cls) -> bool:
         """
-        Simple check to see if we're running in the SeedSigner OS build environment.
+        The `ENV_VAR__IS_SEEDSIGNER_OS_BUILDER` env var is set during the SeedSigner OS
+        build process.
         """
-        return os.getenv(cls.ENV_VAR__SEEDSIGNER_OS_BUILDER__VERSION_NAME) is not None
-
-
-    @classmethod
-    def _get_version_name_from_seedsigner_os_builder_env_var(cls) -> str | None:
-        """
-        Primarily used during the SeedSigner OS build process to set the version name via env var.
-
-        This env var can also be set manually in local dev when needed.
-        e.g. SEEDSIGNER_VERSION_NAME=some_name python main.py
-        """
-        return os.getenv(cls.ENV_VAR__SEEDSIGNER_OS_BUILDER__VERSION_NAME)
+        return os.getenv(cls.ENV_VAR__IS_SEEDSIGNER_OS_BUILDER) is not None
 
 
 
@@ -478,14 +485,14 @@ class VersionUtils:
     ************************************************************************************* """
     @classmethod
     @not_allowed_in_seedsigner_os
-    def _get_version_name_from_git_shell_branch(cls) -> str | None:
+    def _get_branch_name_from_git_shell(cls) -> str | None:
         branch_name = os.popen("git branch --show-current 2> /dev/null").read()
         return branch_name.strip() if branch_name else None
 
 
     @classmethod
     @not_allowed_in_seedsigner_os
-    def _get_version_name_from_git_shell_tag(cls) -> str | None:
+    def _get_tag_name_from_git_shell(cls) -> str | None:
         # Only return a value if the current commit exactly corresponds with a tag.
         # (`--points-at` defaults to the current HEAD)
         tag_name = os.popen(f"git tag --points-at 2> /dev/null").read()
@@ -496,7 +503,7 @@ class VersionUtils:
     @not_allowed_in_seedsigner_os
     def _get_full_commit_hash_from_git_shell(cls) -> str | None:
         """
-        Attempts to get the current git commit hash via shell `git` commands.
+        Attempts to get the current full commit hash via shell `git` commands.
         """
         commit_hash = os.popen("git rev-parse HEAD").read()
         return commit_hash.strip() if commit_hash else None
@@ -504,14 +511,26 @@ class VersionUtils:
 
     @classmethod
     @not_allowed_in_seedsigner_os
+    def _get_short_commit_hash_from_git_shell(cls) -> str | None:
+        """
+        Attempts to get the current short commit hash via shell `git` commands.
+        """
+        commit_hash = cls._get_full_commit_hash_from_git_shell()
+        return commit_hash[:7] if commit_hash else None
+
+
+    @classmethod
+    @not_allowed_in_seedsigner_os
     def _get_version_name_from_git_shell(cls) -> str | None:
         """
         Attempts to get the version name via shell `git` commands.
+
+        Note: If we have to fall back to the commit hash, we use the short version.
         """
         return (
-            cls._get_version_name_from_git_shell_branch() or
-            cls._get_version_name_from_git_shell_tag() or
-            cls._get_full_commit_hash_from_git_shell()
+            cls._get_branch_name_from_git_shell() or
+            cls._get_tag_name_from_git_shell() or
+            cls._get_short_commit_hash_from_git_shell()
         )
 
 
@@ -747,7 +766,7 @@ class VersionUtils:
                 # Shouldn't be possible
                 raise Exception("No python source files found in src/ directory")
 
-            return datetime.fromtimestamp(last_modified)
+            return datetime.fromtimestamp(last_modified).astimezone(timezone.utc).replace(tzinfo=None)
 
         except Exception as e:
             # Catch and log any unexpected errors but this isn't a mission-critical
