@@ -13,6 +13,10 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: true
 
+env:
+  # Used by the `Version` class so it can identify the current fork
+  PR_AUTHOR: ${{ github.event.pull_request.user.login || github.actor }}
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -39,7 +43,6 @@ jobs:
           pip install .
       - name: Test with pytest
         run: |
-          export PR_AUTHOR="${{ github.event.pull_request.user.login || github.actor }}"
           mkdir artifacts
           python -m pytest \
             --color=yes \
