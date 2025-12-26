@@ -17,6 +17,10 @@ env:
   # Used by the `Version` class so it can identify the current fork
   PR_AUTHOR: ${{ github.event.pull_request.user.login || github.actor }}
 
+  # Used by `Version`. We want the PR author's latest commit hash if this is a PR
+  # but the default SHA env var reflects a new commit into the target repo.
+  SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
 jobs:
   test:
     runs-on: ubuntu-latest

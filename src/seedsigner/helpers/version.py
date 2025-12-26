@@ -86,10 +86,10 @@ class Version(Singleton):
 
     In Github Actions CI:
         * version_name: read from GITHUB_REF_NAME env var.
-        * version_fork: read from GITHUB_REPOSITORY_OWNER env var.
+        * version_fork: read from PR_AUTHOR custom CI env var or GITHUB_REPOSITORY_OWNER.
         * version_timestamp: Shell `git` call to get the last commit time for the current
           branch/tag/commit.
-        * commit_hash: read from GITHUB_SHA env var.
+        * commit_hash: read from SOURCE_SHA custom CI env var or GITHUB_SHA.
 
     This class defines the limited methods that are meant to be publicly accessible
     across the SeedSigner codebase.
@@ -195,6 +195,7 @@ class VersionUtils:
     ENV_VAR__GITHUB_ACTIONS__IS_CI = "CI"
     ENV_VAR__GITHUB_ACTIONS__HEAD_REF = "GITHUB_HEAD_REF"
     ENV_VAR__GITHUB_ACTIONS__REF_NAME = "GITHUB_REF_NAME"
+    ENV_VAR__GITHUB_ACTIONS__SOURCE_SHA = "SOURCE_SHA"
     ENV_VAR__GITHUB_ACTIONS__SHA = "GITHUB_SHA"
     ENV_VAR__GITHUB_ACTIONS__PR_AUTHOR = "PR_AUTHOR"
     ENV_VAR__GITHUB_ACTIONS__REPOSITORY_OWNER = "GITHUB_REPOSITORY_OWNER"
@@ -465,16 +466,19 @@ class VersionUtils:
         HEAD_REF: head ref or source branch. But only present for PRs.
         REF_NAME: branch or tag name. But it is "<pr_number>/merge" for unmerged PRs (not
         what we want)
+        SOURCE_SHA is the full commit hash of the commit that triggered the workflow (if
+        it's a PR).
         SHA is the full commit hash; not expecting to ever need this fallback.
         """
         for env_var in [
             cls.ENV_VAR__GITHUB_ACTIONS__HEAD_REF,
             cls.ENV_VAR__GITHUB_ACTIONS__REF_NAME,
+            cls.ENV_VAR__GITHUB_ACTIONS__SOURCE_SHA,
             cls.ENV_VAR__GITHUB_ACTIONS__SHA
         ]:
             version_name = os.getenv(env_var)
             if version_name:
-                if env_var == cls.ENV_VAR__GITHUB_ACTIONS__SHA:
+                if env_var in [cls.ENV_VAR__GITHUB_ACTIONS__SOURCE_SHA, cls.ENV_VAR__GITHUB_ACTIONS__SHA]:
                     # Return the short version
                     version_name = version_name[:7]
                 return version_name
@@ -497,7 +501,13 @@ class VersionUtils:
 
     @classmethod
     def _get_full_commit_hash_from_github_actions_env_vars(cls) -> str | None:
-        return os.getenv(cls.ENV_VAR__GITHUB_ACTIONS__SHA)
+        for env_var in [
+            cls.ENV_VAR__GITHUB_ACTIONS__SOURCE_SHA,
+            cls.ENV_VAR__GITHUB_ACTIONS__SHA
+        ]:
+            commit_hash = os.getenv(env_var)
+            if commit_hash:
+                return commit_hash
 
 
 

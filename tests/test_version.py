@@ -296,12 +296,15 @@ class TestVersionUtils_GithubActions(VersionBaseTest):
         """
         # CI uses some limited `git` shell calls; mock out the associated calls.
         with patch("seedsigner.helpers.version.VersionUtils._get_version_timestamp_from_git_shell", return_value=TEST__VERSION_TIMESTAMP):
+            random_sha = "abcd1234ef567890abcd1234ef567890abcd1234"
+
             # When running CI on a branch
             with patch.dict(os.environ, {
                 VersionUtils.ENV_VAR__GITHUB_ACTIONS__IS_CI: "true",
                 VersionUtils.ENV_VAR__GITHUB_ACTIONS__HEAD_REF: TEST__VERSION_BRANCH,
                 VersionUtils.ENV_VAR__GITHUB_ACTIONS__PR_AUTHOR: TEST__VERSION_FORK,
-                VersionUtils.ENV_VAR__GITHUB_ACTIONS__SHA: TEST__FULL_COMMIT_HASH,
+                VersionUtils.ENV_VAR__GITHUB_ACTIONS__SOURCE_SHA: TEST__FULL_COMMIT_HASH,
+                VersionUtils.ENV_VAR__GITHUB_ACTIONS__SHA: random_sha,
             }):
                 assert VersionUtils.get_version_name() == TEST__VERSION_BRANCH
                 assert VersionUtils.get_version_fork() == TEST__VERSION_FORK
@@ -331,18 +334,20 @@ class TestVersionUtils_GithubActions(VersionBaseTest):
                 VersionUtils.ENV_VAR__GITHUB_ACTIONS__IS_CI: "true",
                 VersionUtils.ENV_VAR__GITHUB_ACTIONS__HEAD_REF: "",
                 VersionUtils.ENV_VAR__GITHUB_ACTIONS__REF_NAME: "",
-                VersionUtils.ENV_VAR__GITHUB_ACTIONS__SHA: TEST__FULL_COMMIT_HASH,
+                VersionUtils.ENV_VAR__GITHUB_ACTIONS__SOURCE_SHA: TEST__FULL_COMMIT_HASH,
+                VersionUtils.ENV_VAR__GITHUB_ACTIONS__SHA: random_sha,
             }):
                 assert VersionUtils.get_version_name() == TEST__SHORT_COMMIT_HASH
 
-            # When running CI on a commit (detached HEAD) with no HEAD_REF orREF_NAME and
-            # no SHA, raise error.
+            # When running CI on a commit (detached HEAD) with no HEAD_REF or REF_NAME and
+            # no SOURCE_SHA or SHA, raise error.
             # Note: This scenario definitely would never happen. Just trying to get to
             # 100% test coverage.
             with patch.dict(os.environ, {
                 VersionUtils.ENV_VAR__GITHUB_ACTIONS__IS_CI: "true",
                 VersionUtils.ENV_VAR__GITHUB_ACTIONS__HEAD_REF: "",
                 VersionUtils.ENV_VAR__GITHUB_ACTIONS__REF_NAME: "",
+                VersionUtils.ENV_VAR__GITHUB_ACTIONS__SOURCE_SHA: "",
                 VersionUtils.ENV_VAR__GITHUB_ACTIONS__SHA: "",
             }):
                 with pytest.raises(Exception):
@@ -375,12 +380,14 @@ class TestVersionUtils_GithubActions(VersionBaseTest):
         test_head_ref = "head_ref"
         test_ref_name = "ref_name"
         test_sha = TEST__FULL_COMMIT_HASH
+        random_sha = "abcd1234ef567890abcd1234ef567890abcd1234"
 
         # Need to signal that we're in a GitHub Actions CI environment
         with patch.dict(os.environ, {
                 VersionUtils.ENV_VAR__GITHUB_ACTIONS__IS_CI: "true",
                 VersionUtils.ENV_VAR__GITHUB_ACTIONS__HEAD_REF: "",
                 VersionUtils.ENV_VAR__GITHUB_ACTIONS__REF_NAME: "",
+                VersionUtils.ENV_VAR__GITHUB_ACTIONS__SOURCE_SHA: "",
                 VersionUtils.ENV_VAR__GITHUB_ACTIONS__SHA: "",
             }):
             # With none of the env vars set, should return None
@@ -390,7 +397,8 @@ class TestVersionUtils_GithubActions(VersionBaseTest):
             with patch.dict(os.environ, {
                     VersionUtils.ENV_VAR__GITHUB_ACTIONS__HEAD_REF: test_head_ref,
                     VersionUtils.ENV_VAR__GITHUB_ACTIONS__REF_NAME: test_ref_name,
-                    VersionUtils.ENV_VAR__GITHUB_ACTIONS__SHA: test_sha,
+                    VersionUtils.ENV_VAR__GITHUB_ACTIONS__SOURCE_SHA: test_sha,
+                    VersionUtils.ENV_VAR__GITHUB_ACTIONS__SHA: random_sha,
                 }):
                 result = VersionUtils._get_version_name_from_github_actions_env_vars()
                 assert result == test_head_ref
@@ -399,17 +407,29 @@ class TestVersionUtils_GithubActions(VersionBaseTest):
             with patch.dict(os.environ, {
                     VersionUtils.ENV_VAR__GITHUB_ACTIONS__HEAD_REF: "",
                     VersionUtils.ENV_VAR__GITHUB_ACTIONS__REF_NAME: test_ref_name,
-                    VersionUtils.ENV_VAR__GITHUB_ACTIONS__SHA: test_sha,
+                    VersionUtils.ENV_VAR__GITHUB_ACTIONS__SOURCE_SHA: test_sha,
+                    VersionUtils.ENV_VAR__GITHUB_ACTIONS__SHA: random_sha,
                 }):
                 result = VersionUtils._get_version_name_from_github_actions_env_vars()
                 assert result == test_ref_name
 
-            # Unlikely scenario: no HEAD_REF nor REF_NAME but SHA is set; should return
-            # short commit hash
+            # Unlikely scenario: no HEAD_REF nor REF_NAME but SOURCE_SHA is set; should return
+            # short commit hash.
             with patch.dict(os.environ, {
                     VersionUtils.ENV_VAR__GITHUB_ACTIONS__HEAD_REF: "",
                     VersionUtils.ENV_VAR__GITHUB_ACTIONS__REF_NAME: "",
-                    VersionUtils.ENV_VAR__GITHUB_ACTIONS__SHA: test_sha,
+                    VersionUtils.ENV_VAR__GITHUB_ACTIONS__SOURCE_SHA: test_sha,
+                }):
+                result = VersionUtils._get_version_name_from_github_actions_env_vars()
+                assert result == test_sha[:7]
+
+            # Unlikely scenario 2: no HEAD_REF nor REF_NAME and no SOURCE_SHA, but SHA is
+            # set; should return short commit hash.
+            with patch.dict(os.environ, {
+                    VersionUtils.ENV_VAR__GITHUB_ACTIONS__HEAD_REF: "",
+                    VersionUtils.ENV_VAR__GITHUB_ACTIONS__REF_NAME: "",
+                    VersionUtils.ENV_VAR__GITHUB_ACTIONS__SOURCE_SHA: "",
+                    VersionUtils.ENV_VAR__GITHUB_ACTIONS__SOURCE_SHA: test_sha,
                 }):
                 result = VersionUtils._get_version_name_from_github_actions_env_vars()
                 assert result == test_sha[:7]
