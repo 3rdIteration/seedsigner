@@ -365,31 +365,86 @@ class TestVersionUtils_GithubActions(VersionBaseTest):
             assert VersionUtils.is_github_actions_ci() is False
 
 
-    def test_get_version_name_from_github_actions_env_vars(self):
+    def test__get_version_name_from_github_actions_env_vars(self):
         """
-        get_version_name_from_github_actions_env_vars should return the REF_NAME or SHA
-        env vars when set.
+        _get_version_name_from_github_actions_env_vars should prioritize HEAD_REF, then
+        REF_NAME, then SHA env vars when set.
         """
+        test_head_ref = "head_ref"
+        test_ref_name = "ref_name"
+        test_sha = TEST__FULL_COMMIT_HASH
+
         # Need to signal that we're in a GitHub Actions CI environment
         with patch.dict(os.environ, {
                 VersionUtils.ENV_VAR__GITHUB_ACTIONS__IS_CI: "true",
+                VersionUtils.ENV_VAR__GITHUB_ACTIONS__HEAD_REF: "",
                 VersionUtils.ENV_VAR__GITHUB_ACTIONS__REF_NAME: "",
                 VersionUtils.ENV_VAR__GITHUB_ACTIONS__SHA: "",
             }):
+            # With none of the env vars set, should return None
             assert VersionUtils._get_version_name_from_github_actions_env_vars() is None
 
-            # REF_NAME should be passed straight through
-            with patch.dict(os.environ, {VersionUtils.ENV_VAR__GITHUB_ACTIONS__REF_NAME: TEST__VERSION_NAME}):
-                result = VersionUtils._get_version_name_from_github_actions_env_vars()
-                assert result == TEST__VERSION_NAME
-
-            # Unlikely scenario: no REF_NAME but SHA is set; should return short commit hash
+            # HEAD_REF should be passed straight through, ignoring other vars
             with patch.dict(os.environ, {
-                    VersionUtils.ENV_VAR__GITHUB_ACTIONS__REF_NAME: "",
-                    VersionUtils.ENV_VAR__GITHUB_ACTIONS__SHA: TEST__FULL_COMMIT_HASH,
+                    VersionUtils.ENV_VAR__GITHUB_ACTIONS__HEAD_REF: test_head_ref,
+                    VersionUtils.ENV_VAR__GITHUB_ACTIONS__REF_NAME: test_ref_name,
+                    VersionUtils.ENV_VAR__GITHUB_ACTIONS__SHA: test_sha,
                 }):
                 result = VersionUtils._get_version_name_from_github_actions_env_vars()
-                assert result == TEST__SHORT_COMMIT_HASH[:7]
+                assert result == test_head_ref
+
+            # REF_NAME is our next fallback
+            with patch.dict(os.environ, {
+                    VersionUtils.ENV_VAR__GITHUB_ACTIONS__HEAD_REF: "",
+                    VersionUtils.ENV_VAR__GITHUB_ACTIONS__REF_NAME: test_ref_name,
+                    VersionUtils.ENV_VAR__GITHUB_ACTIONS__SHA: test_sha,
+                }):
+                result = VersionUtils._get_version_name_from_github_actions_env_vars()
+                assert result == test_ref_name
+
+            # Unlikely scenario: no HEAD_REF nor REF_NAME but SHA is set; should return
+            # short commit hash
+            with patch.dict(os.environ, {
+                    VersionUtils.ENV_VAR__GITHUB_ACTIONS__HEAD_REF: "",
+                    VersionUtils.ENV_VAR__GITHUB_ACTIONS__REF_NAME: "",
+                    VersionUtils.ENV_VAR__GITHUB_ACTIONS__SHA: test_sha,
+                }):
+                result = VersionUtils._get_version_name_from_github_actions_env_vars()
+                assert result == test_sha[:7]
+
+
+    def test__get_version_fork_from_github_actions_env_vars(self):
+        """
+        _get_version_fork_from_github_actions_env_vars should return the PR_AUTHOR, then
+        fall back to REPOSITORY_OWNER.
+        """
+        test_pr_author = "some_pr_author"
+        test_repo_owner = "some_repo_owner"
+
+        # Need to signal that we're in a GitHub Actions CI environment
+        with patch.dict(os.environ, {
+                VersionUtils.ENV_VAR__GITHUB_ACTIONS__IS_CI: "true",
+                VersionUtils.ENV_VAR__GITHUB_ACTIONS__PR_AUTHOR: "",
+                VersionUtils.ENV_VAR__GITHUB_ACTIONS__REPOSITORY_OWNER: "",
+            }):
+            # With none of the env vars set, should return None
+            assert VersionUtils._get_version_fork_from_github_actions_env_vars() is None
+
+            # PR_AUTHOR should be passed straight through, ignoring REPOSITORY_OWNER
+            with patch.dict(os.environ, {
+                    VersionUtils.ENV_VAR__GITHUB_ACTIONS__PR_AUTHOR: test_pr_author,
+                    VersionUtils.ENV_VAR__GITHUB_ACTIONS__REPOSITORY_OWNER: test_repo_owner,
+                }):
+                result = VersionUtils._get_version_fork_from_github_actions_env_vars()
+                assert result == test_pr_author
+
+            # REPOSITORY_OWNER is our next fallback
+            with patch.dict(os.environ, {
+                    VersionUtils.ENV_VAR__GITHUB_ACTIONS__PR_AUTHOR: "",
+                    VersionUtils.ENV_VAR__GITHUB_ACTIONS__REPOSITORY_OWNER: test_repo_owner,
+                }):
+                result = VersionUtils._get_version_fork_from_github_actions_env_vars()
+                assert result == test_repo_owner
 
 
 

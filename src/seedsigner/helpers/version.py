@@ -193,8 +193,10 @@ class VersionUtils:
 
     ENV_VAR__IS_SEEDSIGNER_OS_BUILDER = "SEEDSIGNER_OS_BUILDER"
     ENV_VAR__GITHUB_ACTIONS__IS_CI = "CI"
+    ENV_VAR__GITHUB_ACTIONS__HEAD_REF = "GITHUB_HEAD_REF"
     ENV_VAR__GITHUB_ACTIONS__REF_NAME = "GITHUB_REF_NAME"
     ENV_VAR__GITHUB_ACTIONS__SHA = "GITHUB_SHA"
+    ENV_VAR__GITHUB_ACTIONS__PR_AUTHOR = "PR_AUTHOR"
     ENV_VAR__GITHUB_ACTIONS__REPOSITORY_OWNER = "GITHUB_REPOSITORY_OWNER"
     DOT_GIT_DIR_NAME = ".git"  # defined to facilitate mocking in tests
     VERSIONFILE__FILENAME = "version.json"
@@ -264,7 +266,7 @@ class VersionUtils:
             return VersionUtils._get_version_fork_from_version_file()
 
         elif VersionUtils.is_github_actions_ci():
-            # In Github Actions CI, try to get the version name from env vars
+            # In Github Actions CI, try to get the fork name from env vars.
             return VersionUtils._get_version_fork_from_github_actions_env_vars()
 
         else:
@@ -459,16 +461,38 @@ class VersionUtils:
 
     @classmethod
     def _get_version_name_from_github_actions_env_vars(cls) -> str | None:
-        # REF_NAME will be the branch or tag name; SHA is the full commit hash
-        # TODO: Will REF_NAME ever be missing?
-        ref_name = os.getenv(cls.ENV_VAR__GITHUB_ACTIONS__REF_NAME)
-        sha = os.getenv(cls.ENV_VAR__GITHUB_ACTIONS__SHA)
-        return ref_name or (sha[:7] if sha else None)
+        """
+        HEAD_REF: head ref or source branch. But only present for PRs.
+        REF_NAME: branch or tag name. But it is "<pr_number>/merge" for unmerged PRs (not
+        what we want)
+        SHA is the full commit hash; not expecting to ever need this fallback.
+        """
+        for env_var in [
+            cls.ENV_VAR__GITHUB_ACTIONS__HEAD_REF,
+            cls.ENV_VAR__GITHUB_ACTIONS__REF_NAME,
+            cls.ENV_VAR__GITHUB_ACTIONS__SHA
+        ]:
+            version_name = os.getenv(env_var)
+            if version_name:
+                if env_var == cls.ENV_VAR__GITHUB_ACTIONS__SHA:
+                    # Return the short version
+                    version_name = version_name[:7]
+                return version_name
 
 
     @classmethod
     def _get_version_fork_from_github_actions_env_vars(cls) -> str | None:
-        return os.getenv("GITHUB_REPOSITORY_OWNER")
+        """
+        PR_AUTHOR: Set by the .github/workflows/tests.yml workflow. Should be the PR author.
+        REPOSITORY_OWNER: the repo owner, usually the main "SeedSigner" org.
+        """
+        for env_var in [
+            cls.ENV_VAR__GITHUB_ACTIONS__PR_AUTHOR,
+            cls.ENV_VAR__GITHUB_ACTIONS__REPOSITORY_OWNER
+        ]:
+            fork_name = os.getenv(env_var)
+            if fork_name:
+                return fork_name
 
 
     @classmethod

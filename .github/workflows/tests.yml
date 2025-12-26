@@ -39,6 +39,7 @@ jobs:
           pip install .
       - name: Test with pytest
         run: |
+          export PR_AUTHOR="${{ github.event.pull_request.user.login || github.actor }}"
           mkdir artifacts
           python -m pytest \
             --color=yes \
