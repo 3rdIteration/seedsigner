@@ -299,9 +299,9 @@ class TestVersionUtils_GithubActions(VersionBaseTest):
             # When running CI on a branch
             with patch.dict(os.environ, {
                 VersionUtils.ENV_VAR__GITHUB_ACTIONS__IS_CI: "true",
-                VersionUtils.ENV_VAR__GITHUB_ACTIONS__REF_NAME: TEST__VERSION_BRANCH,
+                VersionUtils.ENV_VAR__GITHUB_ACTIONS__HEAD_REF: TEST__VERSION_BRANCH,
+                VersionUtils.ENV_VAR__GITHUB_ACTIONS__PR_AUTHOR: TEST__VERSION_FORK,
                 VersionUtils.ENV_VAR__GITHUB_ACTIONS__SHA: TEST__FULL_COMMIT_HASH,
-                VersionUtils.ENV_VAR__GITHUB_ACTIONS__REPOSITORY_OWNER: TEST__VERSION_FORK,
             }):
                 assert VersionUtils.get_version_name() == TEST__VERSION_BRANCH
                 assert VersionUtils.get_version_fork() == TEST__VERSION_FORK
@@ -311,7 +311,7 @@ class TestVersionUtils_GithubActions(VersionBaseTest):
             # When running CI on a semantic tag
             with patch.dict(os.environ, {
                 VersionUtils.ENV_VAR__GITHUB_ACTIONS__IS_CI: "true",
-                VersionUtils.ENV_VAR__GITHUB_ACTIONS__REF_NAME: TEST__SEMANTIC_TAG,
+                VersionUtils.ENV_VAR__GITHUB_ACTIONS__HEAD_REF: TEST__SEMANTIC_TAG,
             }):
                 # Should be prefixed with "v"
                 assert VersionUtils.get_version_name() == f"v{TEST__SEMANTIC_TAG}"
@@ -319,27 +319,29 @@ class TestVersionUtils_GithubActions(VersionBaseTest):
             # When running CI on a generic tag
             with patch.dict(os.environ, {
                 VersionUtils.ENV_VAR__GITHUB_ACTIONS__IS_CI: "true",
-                VersionUtils.ENV_VAR__GITHUB_ACTIONS__REF_NAME: TEST__VERSION_TAG,
+                VersionUtils.ENV_VAR__GITHUB_ACTIONS__HEAD_REF: TEST__VERSION_TAG,
             }):
                 # Should NOT be prefixed with "v"
                 assert VersionUtils.get_version_name() == TEST__VERSION_TAG
 
-            # When running CI on a commit (detached HEAD) with no REF_NAME, the
-            # version_name should be the short commit hash.
+            # When running CI on a commit (detached HEAD) with no HEAD_REF or REF_NAME,
+            # the version_name should be the short commit hash.
             # TODO: I don't think this scenario ever happens.
             with patch.dict(os.environ, {
                 VersionUtils.ENV_VAR__GITHUB_ACTIONS__IS_CI: "true",
+                VersionUtils.ENV_VAR__GITHUB_ACTIONS__HEAD_REF: "",
                 VersionUtils.ENV_VAR__GITHUB_ACTIONS__REF_NAME: "",
                 VersionUtils.ENV_VAR__GITHUB_ACTIONS__SHA: TEST__FULL_COMMIT_HASH,
             }):
                 assert VersionUtils.get_version_name() == TEST__SHORT_COMMIT_HASH
 
-            # When running CI on a commit (detached HEAD) with no REF_NAME and no SHA,
-            # raise error.
+            # When running CI on a commit (detached HEAD) with no HEAD_REF orREF_NAME and
+            # no SHA, raise error.
             # Note: This scenario definitely would never happen. Just trying to get to
             # 100% test coverage.
             with patch.dict(os.environ, {
                 VersionUtils.ENV_VAR__GITHUB_ACTIONS__IS_CI: "true",
+                VersionUtils.ENV_VAR__GITHUB_ACTIONS__HEAD_REF: "",
                 VersionUtils.ENV_VAR__GITHUB_ACTIONS__REF_NAME: "",
                 VersionUtils.ENV_VAR__GITHUB_ACTIONS__SHA: "",
             }):
