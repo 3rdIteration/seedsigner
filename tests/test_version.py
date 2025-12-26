@@ -573,6 +573,13 @@ class TestVersionUtils_GitShell(VersionBaseTest):
         mock_popen.return_value.read.return_value = expected_datetime.isoformat() + "+00:00"
         assert VersionUtils._get_version_timestamp_from_git_shell() == expected_datetime
 
+        # Github Actions CI timestamps return "Z" format
+        expected_utc_isoformat = "2025-12-26T19:41:49"
+        github_format = expected_utc_isoformat + "Z"
+        mock_popen.return_value.read.return_value = github_format
+        expected_datetime = datetime.fromisoformat(expected_utc_isoformat)
+        assert VersionUtils._get_version_timestamp_from_git_shell() == expected_datetime
+
 
 
 class TestVersionUtils_DotGitFiles(VersionBaseTest):

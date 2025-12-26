@@ -550,6 +550,13 @@ class VersionUtils:
     def _get_version_timestamp_from_git_shell(cls) -> datetime | None:
         version_timestamp = os.popen("git log -1 --format=%cI").read().strip()
         if version_timestamp:
+            if version_timestamp.endswith("Z"):
+                # Git outputs UTC time with a "Z" suffix; datetime.fromisoformat()
+                # doesn't like the "Z" so we replace it with "+00:00"
+                # TODO: Python 3.11+ has fromisoformat() support for "Z" suffixes so this
+                # can be removed once we drop python 3.10 support.
+                version_timestamp = version_timestamp.replace("Z", "+00:00")
+
             # Parse the timestamp, ensure that it's in UTC, and omit tz info
             return datetime.fromisoformat(version_timestamp).astimezone(timezone.utc).replace(tzinfo=None)
 
