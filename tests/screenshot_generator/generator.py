@@ -116,6 +116,11 @@ seed_24_w_passphrase = Seed(mnemonic=mnemonic_24, passphrase="some-PASS*phrase9"
 
 MULTISIG_WALLET_DESCRIPTOR = """wsh(sortedmulti(1,[22bde1a9/48h/1h/0h/2h]tpubDFfsBrmpj226ZYiRszYi2qK6iGvh2vkkghfGB2YiRUVY4rqqedHCFEgw12FwDkm7rUoVtq9wLTKc6BN2sxswvQeQgp7m8st4FP8WtP8go76/{0,1}/*,[73c5da0a/48h/1h/0h/2h]tpubDFH9dgzveyD8zTbPUFuLrGmCydNvxehyNdUXKJAQN8x4aZ4j6UZqGfnqFrD4NqyaTVGKbvEW54tsvPTK2UoSbCC1PJY8iCNiwTL3RWZEheQ/{0,1}/*))#3jhtf6yx"""
 
+# Grab the most recent release version info
+(latest_release_version_name, latest_release_version_timestamp) = VersionUtils._fetch_latest_seedsigner_release_tag()
+if not latest_release_version_name or not latest_release_version_timestamp:
+    print("Could not fetch latest release version from GitHub")
+
 
 # Wrap QRDisplayScreen's `render_brightness_tip` in a simple View + Screen so we
 # can call it outside of its child thread and generate a screenshot.
@@ -335,11 +340,25 @@ def generate_screenshots(locale):
                 yield
 
 
+        @contextmanager
+        def mock_version_to_most_recent_release():
+            # Patch the Version get_* calls to the most recent release
+            with patch.multiple(Version,
+                get_version_name=Mock(return_value=latest_release_version_name),
+                get_version_fork=Mock(return_value="SeedSigner"),
+                get_version_timestamp=Mock(return_value=latest_release_version_timestamp),
+                get_short_commit_hash=Mock(return_value="abcd1234")  # dummy value should be ignored
+            ):
+                # Also have to mock us into SeedSigner OS
+                with patch("seedsigner.models.settings.Settings.HOSTNAME", Settings.SEEDSIGNER_OS):
+                    yield
+
+
         screenshot_sections = {
             "Main Menu Views": [
-                ScreenshotConfig(OpeningSplashView, dict(force_partner_logos=True)),
-                ScreenshotConfig(OpeningSplashView, dict(force_partner_logos=False), screenshot_name="OpeningSplashView_no_partner_logos"),
-                ScreenshotConfig(OpeningSplashView, dict(force_partner_logos=True), run_before=reset_version_to_local_git_state_cb, screenshot_name="OpeningSplashView_current_git_state"),
+                ScreenshotConfig(OpeningSplashView, dict(force_partner_logos=True), mock_context_manager=mock_version_to_most_recent_release),
+                ScreenshotConfig(OpeningSplashView, dict(force_partner_logos=False), screenshot_name="OpeningSplashView_no_partner_logos", mock_context_manager=mock_version_to_most_recent_release),
+                ScreenshotConfig(OpeningSplashView, dict(force_partner_logos=True),  screenshot_name="OpeningSplashView_current_git_state"),
                 ScreenshotConfig(MainMenuView),
                 ScreenshotConfig(MainMenuView, screenshot_name='MainMenuView_SDCardStateChangeToast_removed',  toast_thread=SDCardStateChangeToastManagerThread(action=MicroSD.ACTION__REMOVED, activation_delay=0, duration=0)),
                 ScreenshotConfig(MainMenuView, screenshot_name='MainMenuView_SDCardStateChangeToast_inserted', toast_thread=SDCardStateChangeToastManagerThread(action=MicroSD.ACTION__INSERTED, activation_delay=0, duration=0)),
@@ -465,6 +484,8 @@ def generate_screenshots(locale):
             "Settings Views": settings_views_list + [
                 ScreenshotConfig(settings_views.IOTestView),
                 ScreenshotConfig(settings_views.DonateView),
+                ScreenshotConfig(settings_views.VersionView, mock_context_manager=mock_version_to_most_recent_release),
+                ScreenshotConfig(settings_views.VersionView, screenshot_name="VersionView_current_git_state"),
                 ScreenshotConfig(settings_views.SettingsIngestSettingsQRView, dict(data=settingsqr_data_persistent),     screenshot_name="SettingsIngestSettingsQRView_persistent"),
                 ScreenshotConfig(settings_views.SettingsIngestSettingsQRView, dict(data=settingsqr_data_not_persistent), screenshot_name="SettingsIngestSettingsQRView_not_persistent"),
             ],
