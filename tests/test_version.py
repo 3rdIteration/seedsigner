@@ -353,6 +353,10 @@ class TestVersionUtils_GithubActions(VersionBaseTest):
                 with pytest.raises(Exception):
                     VersionUtils.get_version_name()
 
+                # Github Actions CI logic should gracefully handle missing SHA data, even
+                # if it's an impossible / unlikely scenario.
+                assert VersionUtils.get_short_commit_hash() is None
+
 
     def test_is_github_actions_ci(self):
         """
@@ -1008,6 +1012,66 @@ class TestVersion(VersionBaseTest):
             Version.get_version_fork() == TEST__VERSION_DICT[VersionUtils.VERSIONFILE_ATTR__FORK]
             Version.get_short_commit_hash() == TEST__VERSION_DICT[VersionUtils.VERSIONFILE_ATTR__SHORT_COMMIT_HASH]
             Version.get_version_timestamp() == TEST__VERSION_TIMESTAMP
+
+
+    def test_is_release_image(self):
+        """
+        Should return True if the heuristic checks indicate this is a release image.
+        """
+        self.write_test_version_file()
+
+        def change_version_data(changes_dict):
+            # Can only call override_data() when NOT in SeedSigner OS; temporarily patch
+            # it out.
+            with patch("seedsigner.models.settings.Settings.HOSTNAME", "not-seedsigner-os"):
+                Version.override_data(**changes_dict)
+
+        # Must be running in SeedSigner OS
+        with patch("seedsigner.models.settings.Settings.HOSTNAME", "not-seedsigner-os"):
+            assert Version.is_release_image() is False
+
+        with patch("seedsigner.models.settings.Settings.HOSTNAME", Settings.SEEDSIGNER_OS):
+            # Not from the main repo
+            for fork_name in [
+                "some-fork",
+                "AnotherRepo",
+                "seedsigner-someone_else",
+                "seedsigner123"
+            ]:
+                change_version_data({
+                    VersionUtils.VERSIONFILE_ATTR__FORK: fork_name,
+                })
+                assert Version.is_release_image() is False
+
+            # Reset to the main repo
+            change_version_data({
+                VersionUtils.VERSIONFILE_ATTR__FORK: "SeedSigner",
+            })
+
+            # Non-semantic version names
+            for version_name in [
+                "some-branch-name",
+                "dev",
+                "name.with.dots",
+                "version_1_2_3",
+                "v1.hah.fooled.you",
+                "v1.2.3-rc1",  # only fully "clean" semantic versions count as releases
+            ]:
+                change_version_data({
+                    VersionUtils.VERSIONFILE_ATTR__NAME: version_name,
+                })
+                assert Version.is_release_image() is False
+
+            # Semantic versions pass
+            for version_name in [
+                "v0.8.5",
+                "v1.0",
+                "v10.20.30",
+            ]:
+                change_version_data({
+                    VersionUtils.VERSIONFILE_ATTR__NAME: version_name,
+                })
+                assert Version.is_release_image() is True
 
 
     def test_override_data(self, mock_popen: Mock):

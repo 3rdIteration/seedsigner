@@ -143,6 +143,39 @@ class Version(Singleton):
 
 
     @classmethod
+    def is_release_image(cls) -> bool:
+        """
+        Returns True if all of the following are true:
+        * We're running in SeedSigner OS.
+        * `version_fork` is the main "seedsigner" repo.
+        * `version_name` corresponds to a "clean" semantic version tag.
+            * e.g. "v0.8.5" but not "v0.8.5-rc1".
+        """
+        if Settings.HOSTNAME != Settings.SEEDSIGNER_OS:
+            return False
+        
+        fork = cls.get_version_fork()
+        if not fork or fork.lower() != "seedsigner":
+            return False
+
+        version = cls.get_version_name()
+        # Even though our release tags in git do not include "v", at this point in the
+        # code the "v" will already be prepended to `version_name` if it is a semantic
+        # version tag. If "v" is prepended to future release tags, logic further up the
+        # chain will already gracefully handle it.
+        if not version or not version.startswith("v"):
+            return False
+
+        # Is it a clean semantic version?
+        version = version[1:]  # strip the "v" prefix
+        for part in version.split("."):
+            if not part.isnumeric():
+                return False
+
+        return True
+
+
+    @classmethod
     @not_allowed_in_seedsigner_os
     def override_data(cls, **kwargs):
         """

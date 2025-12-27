@@ -333,10 +333,8 @@ class VersionView(View):
         version_fork = Version.get_version_fork()
         short_commit_hash = Version.get_short_commit_hash()
 
-        print(f"{version_fork=}, {short_commit_hash=}")
-
-        if version_fork and version_fork.lower() == "seedsigner":
-            # Don't display fork name or commit hash for the main repo
+        if Version.is_release_image():
+            # Don't display fork name or commit hash for release images
             version_fork = None
             short_commit_hash = None
 
