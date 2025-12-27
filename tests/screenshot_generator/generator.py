@@ -202,20 +202,6 @@ def generate_screenshots(locale):
             value=SettingsConstants.OPTION__ENABLED
         )
 
-        def reset_version_most_recent_release():
-            # Initialize the Version data to the most recent release
-            (version_name, version_timestamp) = VersionUtils._fetch_latest_seedsigner_release_tag()
-            if not version_name or not version_timestamp:
-                raise Exception("Could not fetch latest release version from GitHub")
-            new_values = {
-                VersionUtils.VERSIONFILE_ATTR__NAME: version_name,
-                VersionUtils.VERSIONFILE_ATTR__FORK: "SeedSigner",  # main repo; screenshot should hide fork and commit hash
-                VersionUtils.VERSIONFILE_ATTR__TIMESTAMP: version_timestamp,
-                VersionUtils.VERSIONFILE_ATTR__SHORT_COMMIT_HASH: "abcd1234"  # dummy value should be ignored
-            }
-            Version.override_data(**new_values)
-        reset_version_most_recent_release()
-
         # Automatically populate all Settings options Views
         settings_views_list = []
         def add_settings_entries(visibility = SettingsConstants.VISIBILITY__GENERAL):
