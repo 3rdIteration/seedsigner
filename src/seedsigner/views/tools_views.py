@@ -4498,7 +4498,7 @@ class ToolsJavacardUnlockCardView(View):
         if confirm == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
 
-        command = f"{_format_gp_key_args(keys, '--key')} --lock default"
+        command = f"{_format_gp_key_args(keys, '--key')} --unlock"
         seedkeeper_utils.run_globalplatform(
             self,
             command,
