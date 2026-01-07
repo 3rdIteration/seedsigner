@@ -465,8 +465,18 @@ class SCARDTestView(View):
         from smartcard.pcsc.PCSCExceptions import EstablishContextException
 
         try:
-            cardrequest = CardRequest(timeout=10, cardType=AnyCardType())
-            cardservice = cardrequest.waitforcard()
+            cardservice = None
+            for attempt in range(5):
+                try:
+                    cardrequest = CardRequest(timeout=2, cardType=AnyCardType())
+                    cardservice = cardrequest.waitforcard()
+                    break
+                except CardRequestTimeoutException:
+                    if attempt < 4:
+                        time.sleep(0.5)
+
+            if cardservice is None:
+                raise CardRequestTimeoutException("No Smartcard detected after retries")
 
             self.loading_screen.stop()
 
