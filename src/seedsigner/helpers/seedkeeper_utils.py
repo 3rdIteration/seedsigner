@@ -485,7 +485,10 @@ def run_globalplatform(
             failureText = "Multiple readers connected, please run with a single reader connected/activated."
 
         elif "Card cryptogram invalid" in errors_cleaned:
-            failureText = "Card is locked (DO NOT RETRY, may BRICK card). Refer to Satochip-DIY documentation."
+            failureText = (
+                "Incorrect keys. Repeated wrong attempts can brick the card. "
+                "Verify the keys before retrying."
+            )
 
         elif "SCARD_E_NO_SMARTCARD" in errors_cleaned:
             failureText = "Unable to detect Card and/or Reader."

@@ -4,6 +4,7 @@ import os
 import time
 import platform
 import binascii
+import re
 import subprocess
 from pathlib import Path
 from embit.util import secp256k1
@@ -4024,6 +4025,7 @@ class SatochipLoadDescriptorDetailsView(View):
         return Destination(MainMenuView)
 
 class ToolsSatochipDIYView(View):
+    MANAGE_KEYS = ButtonOption("Card Keys")
     BUILD_APPLETS = ButtonOption("Build Applets")
     INSTALL_APPLET = ButtonOption("Install Applet")
     UNINSTALL_APPLET = ButtonOption("Uninstall Applet")
@@ -4051,7 +4053,12 @@ class ToolsSatochipDIYView(View):
                 show_back_button=False,
             )
 
-        button_data = [self.BUILD_APPLETS, self.INSTALL_APPLET, self.UNINSTALL_APPLET]
+        button_data = [
+            self.BUILD_APPLETS,
+            self.INSTALL_APPLET,
+            self.UNINSTALL_APPLET,
+            self.MANAGE_KEYS,
+        ]
 
         selected_menu_num = self.run_screen(
             ButtonListScreen,
@@ -4071,6 +4078,621 @@ class ToolsSatochipDIYView(View):
 
         elif button_data[selected_menu_num] == self.UNINSTALL_APPLET:
             return Destination(ToolsDIYUninstallAppletView)
+
+        elif button_data[selected_menu_num] == self.MANAGE_KEYS:
+            return Destination(ToolsJavacardKeysView)
+
+
+JAVACARD_KEYS_MICROSD_FILENAME = "javacard-keys.txt"
+JAVACARD_KEYS_SEEDKEEPER_PREFIX = "jc_keys_"
+
+
+def _normalize_javacard_key(value: str) -> str:
+    cleaned = re.sub(r"\s+", "", value or "")
+    if cleaned.lower().startswith("0x"):
+        cleaned = cleaned[2:]
+    if len(cleaned) != 32:
+        raise ValueError("Key must be 32 hex characters")
+    if not re.fullmatch(r"[0-9a-fA-F]+", cleaned):
+        raise ValueError("Key must be 32 hex characters")
+    return cleaned.upper()
+
+
+def _parse_javacard_keys(text: str) -> dict:
+    if not text:
+        raise ValueError("No key data provided")
+
+    labels = {
+        "key": "key",
+        "single": "key",
+        "enc": "enc",
+        "key-enc": "enc",
+        "key_enc": "enc",
+        "mac": "mac",
+        "key-mac": "mac",
+        "key_mac": "mac",
+        "dek": "dek",
+        "key-dek": "dek",
+        "key_dek": "dek",
+    }
+
+    labeled = {}
+    tokens = []
+
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or line.startswith("//"):
+            continue
+
+        match = re.match(r"^([A-Za-z0-9_-]+)\s*[:=]\s*(.+)$", line)
+        if match:
+            label = match.group(1).strip().lower()
+            if label in labels:
+                labeled[labels[label]] = _normalize_javacard_key(match.group(2))
+                continue
+
+        parts = line.split()
+        if len(parts) == 2 and parts[0].lower() in labels:
+            labeled[labels[parts[0].lower()]] = _normalize_javacard_key(parts[1])
+        else:
+            tokens.extend(parts)
+
+    if labeled:
+        if "key" in labeled:
+            if any(k in labeled for k in ("enc", "mac", "dek")):
+                raise ValueError("Single key cannot be mixed with key set")
+            return {"type": "single", "key": labeled["key"]}
+        missing = [k for k in ("enc", "mac", "dek") if k not in labeled]
+        if missing:
+            raise ValueError("Key set requires ENC, MAC, and DEK")
+        return {
+            "type": "set",
+            "enc": labeled["enc"],
+            "mac": labeled["mac"],
+            "dek": labeled["dek"],
+        }
+
+    if len(tokens) == 1:
+        return {"type": "single", "key": _normalize_javacard_key(tokens[0])}
+    if len(tokens) == 3:
+        return {
+            "type": "set",
+            "enc": _normalize_javacard_key(tokens[0]),
+            "mac": _normalize_javacard_key(tokens[1]),
+            "dek": _normalize_javacard_key(tokens[2]),
+        }
+
+    raise ValueError("Unrecognized key format")
+
+
+def _format_javacard_keys(keys: dict) -> str:
+    if keys["type"] == "single":
+        return f"{keys['key']}\n"
+    return f"ENC={keys['enc']}\nMAC={keys['mac']}\nDEK={keys['dek']}\n"
+
+
+def _format_gp_key_args(keys: dict, flag: str) -> str:
+    if keys["type"] == "single":
+        return f"{flag} {keys['key']}"
+    return (
+        f"{flag}-enc {keys['enc']} "
+        f"{flag}-mac {keys['mac']} "
+        f"{flag}-dek {keys['dek']}"
+    )
+
+
+def _decode_seedkeeper_text(secret_dict: dict) -> str:
+    raw = binascii.unhexlify(secret_dict["secret"])
+    if len(raw) >= 2 and int.from_bytes(raw[:2], "big") == len(raw[2:]):
+        data = raw[2:]
+    elif len(raw) >= 1 and raw[0] == len(raw[1:]):
+        data = raw[1:]
+    else:
+        data = raw
+    return data.decode("utf-8")
+
+
+class ToolsJavacardKeysView(View):
+    LOAD_KEYS = ButtonOption("Load Keys")
+    SAVE_KEYS = ButtonOption("Save Keys")
+    UNLOCK_CARD = ButtonOption("Unlock Card")
+    LOCK_CARD = ButtonOption("Lock Card")
+    CLEAR_KEYS = ButtonOption("Clear Loaded Keys")
+
+    def run(self):
+        button_data = [
+            self.LOAD_KEYS,
+            self.SAVE_KEYS,
+            self.UNLOCK_CARD,
+            self.LOCK_CARD,
+            self.CLEAR_KEYS,
+        ]
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title="Javacard Keys",
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        choice = button_data[selected_menu_num]
+        if choice == self.LOAD_KEYS:
+            return Destination(ToolsJavacardLoadKeysView)
+        if choice == self.SAVE_KEYS:
+            return Destination(ToolsJavacardSaveKeysView)
+        if choice == self.UNLOCK_CARD:
+            return Destination(ToolsJavacardUnlockCardView)
+        if choice == self.LOCK_CARD:
+            return Destination(ToolsJavacardLockCardView)
+        return Destination(ToolsJavacardClearKeysView)
+
+
+class ToolsJavacardLoadKeysView(View):
+    ENTER_SINGLE = ButtonOption("Enter Single Key")
+    ENTER_SET = ButtonOption("Enter Key Set")
+    FROM_MICROSD = ButtonOption("From MicroSD")
+    FROM_SEEDKEEPER = ButtonOption("From Seedkeeper")
+    GENERATE_SINGLE = ButtonOption("Generate Single Key")
+    GENERATE_SET = ButtonOption("Generate Key Set")
+
+    def _show_loaded(self, key_type: str):
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Keys Loaded",
+            status_headline=None,
+            text=key_type,
+            show_back_button=False,
+        )
+
+    def _prompt_key(self, title: str) -> str | None:
+        ret_dict = ToolsTextQRTextEntryScreen(textToEncode="", title=title).display()
+        if "is_back_button" in ret_dict:
+            return None
+        try:
+            return _normalize_javacard_key(ret_dict["textToEncode"])
+        except ValueError as exc:
+            self.run_screen(
+                WarningScreen,
+                title="Invalid Key",
+                status_headline=None,
+                text=str(exc),
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return None
+
+    def run(self):
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+        import secrets
+
+        if self.controller.javacard_keys:
+            self.run_screen(
+                WarningScreen,
+                title="Keys Already Loaded",
+                status_headline=None,
+                text=(
+                    "Loading a key will overwrite the currently loaded key. "
+                    "Ensure it is backed up if you used it to lock cards."
+                ),
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+
+        button_data = [
+            self.FROM_MICROSD,
+            self.FROM_SEEDKEEPER,
+            self.GENERATE_SINGLE,
+            self.GENERATE_SET,
+            self.ENTER_SINGLE,
+            self.ENTER_SET,
+        ]
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Load Keys",
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        choice = button_data[selected]
+        if choice == self.ENTER_SINGLE:
+            key = self._prompt_key("Single Key")
+            if key is None:
+                return Destination(BackStackView)
+            self.controller.javacard_keys = {"type": "single", "key": key}
+            self._show_loaded("Single key loaded")
+            return Destination(BackStackView)
+
+        if choice == self.ENTER_SET:
+            enc = self._prompt_key("ENC Key")
+            if enc is None:
+                return Destination(BackStackView)
+            mac = self._prompt_key("MAC Key")
+            if mac is None:
+                return Destination(BackStackView)
+            dek = self._prompt_key("DEK Key")
+            if dek is None:
+                return Destination(BackStackView)
+            self.controller.javacard_keys = {"type": "set", "enc": enc, "mac": mac, "dek": dek}
+            self._show_loaded("Key set loaded")
+            return Destination(BackStackView)
+
+        if choice == self.FROM_MICROSD:
+            key_path = MicroSD.get_microsd_dir() / JAVACARD_KEYS_MICROSD_FILENAME
+            if not key_path.exists():
+                self.run_screen(
+                    WarningScreen,
+                    title="Missing File",
+                    status_headline=None,
+                    text=f"{JAVACARD_KEYS_MICROSD_FILENAME} not found on MicroSD",
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
+            try:
+                keys = _parse_javacard_keys(key_path.read_text())
+            except Exception as exc:
+                self.run_screen(
+                    WarningScreen,
+                    title="Invalid File",
+                    status_headline=None,
+                    text=str(exc),
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
+            self.controller.javacard_keys = keys
+            self._show_loaded("Keys loaded from MicroSD")
+            return Destination(BackStackView)
+
+        if choice == self.FROM_SEEDKEEPER:
+            Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["seedkeeper"])
+            if not Satochip_Connector:
+                return Destination(BackStackView)
+            loading = LoadingScreenThread(text="Listing Secrets\n\n\n\n\n\n")
+            loading.start()
+            headers = Satochip_Connector.seedkeeper_list_secret_headers()
+            loading.stop()
+
+            entries = []
+            buttons = []
+            for header in headers:
+                stype = SEEDKEEPER_DIC_TYPE.get(header["type"], hex(header["type"]))
+                rights = SEEDKEEPER_DIC_EXPORT_RIGHTS.get(header["export_rights"], hex(header["export_rights"]))
+                label = header["label"]
+                if (
+                    stype == "Data"
+                    and rights == "Plaintext export allowed"
+                    and label.startswith(JAVACARD_KEYS_SEEDKEEPER_PREFIX)
+                ):
+                    entries.append(header)
+                    display_label = label[len(JAVACARD_KEYS_SEEDKEEPER_PREFIX):] or label
+                    buttons.append(ButtonOption(display_label))
+
+            if not entries:
+                self.run_screen(
+                    WarningScreen,
+                    title="No Keys Found",
+                    status_headline=None,
+                    text="No javacard keys stored on Seedkeeper",
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
+
+            selected = self.run_screen(
+                ButtonListScreen,
+                title="Select Keys",
+                is_button_text_centered=False,
+                button_data=buttons,
+                show_back_button=True,
+            )
+            if selected == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+
+            loading = LoadingScreenThread(text="Loading Keys\n\n\n\n\n\n")
+            loading.start()
+            secret_dict = Satochip_Connector.seedkeeper_export_secret(entries[selected]["id"], None)
+            loading.stop()
+            try:
+                keys_text = _decode_seedkeeper_text(secret_dict)
+                keys = _parse_javacard_keys(keys_text)
+            except Exception as exc:
+                self.run_screen(
+                    WarningScreen,
+                    title="Invalid Keys",
+                    status_headline=None,
+                    text=str(exc),
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
+
+            self.controller.javacard_keys = keys
+            self._show_loaded("Keys loaded from Seedkeeper")
+            return Destination(BackStackView)
+
+        if choice == self.GENERATE_SINGLE:
+            key = secrets.token_bytes(16).hex().upper()
+            self.controller.javacard_keys = {"type": "single", "key": key}
+            self._show_loaded("Single key generated")
+            return Destination(BackStackView)
+
+        keys = {
+            "type": "set",
+            "enc": secrets.token_bytes(16).hex().upper(),
+            "mac": secrets.token_bytes(16).hex().upper(),
+            "dek": secrets.token_bytes(16).hex().upper(),
+        }
+        self.controller.javacard_keys = keys
+        self._show_loaded("Key set generated")
+        return Destination(BackStackView)
+
+
+class ToolsJavacardSaveKeysView(View):
+    TO_MICROSD = ButtonOption("To MicroSD")
+    TO_SEEDKEEPER = ButtonOption("To Seedkeeper")
+
+    def _require_keys(self):
+        if not self.controller.javacard_keys:
+            self.run_screen(
+                WarningScreen,
+                title="No Keys Loaded",
+                status_headline=None,
+                text="Load keys before saving.",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return False
+        return True
+
+    def run(self):
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+
+        if not self._require_keys():
+            return Destination(BackStackView)
+
+        button_data = [self.TO_MICROSD, self.TO_SEEDKEEPER]
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Save Keys",
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        keys_text = _format_javacard_keys(self.controller.javacard_keys)
+        choice = button_data[selected]
+
+        if choice == self.TO_MICROSD:
+            key_path = MicroSD.get_microsd_dir() / JAVACARD_KEYS_MICROSD_FILENAME
+            try:
+                key_path.write_text(keys_text)
+            except Exception as exc:
+                self.run_screen(
+                    WarningScreen,
+                    title="Save Failed",
+                    status_headline=None,
+                    text=str(exc),
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
+
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Saved",
+                status_headline=None,
+                text=f"Saved to {JAVACARD_KEYS_MICROSD_FILENAME}",
+                show_back_button=False,
+            )
+            return Destination(BackStackView)
+
+        Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["seedkeeper"])
+        if not Satochip_Connector:
+            return Destination(BackStackView)
+
+        data_bytes = keys_text.encode("utf-8")
+        status = Satochip_Connector.card_get_status()[3]
+        if status["protocol_minor_version"] == 1:
+            if len(data_bytes) > 255:
+                self.run_screen(
+                    WarningScreen,
+                    title="Error",
+                    status_headline=None,
+                    text="Key data too large for Seedkeeper v1",
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
+            secret_list = [len(data_bytes)] + list(data_bytes)
+        else:
+            secret_list = list(len(data_bytes).to_bytes(2, "big")) + list(data_bytes)
+
+        ret_dict = ToolsTextQRTextEntryScreen(textToEncode="", title="Secret Name").display()
+        if "is_back_button" in ret_dict:
+            return Destination(BackStackView)
+        entered_name = ret_dict["textToEncode"].strip()
+        if not entered_name:
+            self.run_screen(
+                WarningScreen,
+                title="Invalid Name",
+                status_headline=None,
+                text="Secret name cannot be empty.",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+        label = f"{JAVACARD_KEYS_SEEDKEEPER_PREFIX}{entered_name}"
+        header = Satochip_Connector.make_header(
+            "Data", "Plaintext export allowed", label
+        )
+        secret_dic = {"header": header, "secret_list": secret_list}
+
+        try:
+            fits, required_bytes, free_bytes = seedkeeper_utils.ensure_seedkeeper_capacity(
+                Satochip_Connector, secret_dic
+            )
+        except Exception as exc:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text=str(exc),
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        if not fits:
+            self.run_screen(
+                WarningScreen,
+                title="Not Enough Space",
+                status_headline=None,
+                text=seedkeeper_utils.format_seedkeeper_space_error(required_bytes, free_bytes),
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        try:
+            loading = LoadingScreenThread(text="Saving Keys\n\n\n\n\n\n")
+            loading.start()
+            Satochip_Connector.seedkeeper_import_secret(secret_dic)
+            loading.stop()
+            screen = LargeIconStatusScreen
+            msg = "Keys saved to Seedkeeper"
+        except UnexpectedSW12Error as exc:
+            loading.stop()
+            if exc.sw1 == 0x6A and exc.sw2 == 0x84:
+                err_text = "Not enough space on Seedkeeper"
+            else:
+                err_text = format_sw_error(exc.sw1, exc.sw2)
+            screen = WarningScreen
+            msg = err_text
+        except Exception:
+            loading.stop()
+            screen = WarningScreen
+            msg = "Failed to save keys"
+
+        self.run_screen(
+            screen,
+            title="Result",
+            status_headline=None,
+            text=msg,
+            show_back_button=False,
+            button_data=[ButtonOption("Done")],
+        )
+        return Destination(BackStackView)
+
+
+class ToolsJavacardUnlockCardView(View):
+    def run(self):
+        keys = self.controller.javacard_keys
+        if not keys:
+            self.run_screen(
+                WarningScreen,
+                title="No Keys Loaded",
+                status_headline=None,
+                text="Load keys before unlocking.",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        confirm = self.run_screen(
+            WarningScreen,
+            title="Unlock Card",
+            status_headline=None,
+            text="This will set the card back to the default dev key.",
+            show_back_button=True,
+            button_data=[ButtonOption("Continue")],
+        )
+        if confirm == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        command = f"{_format_gp_key_args(keys, '--key')} --unlock"
+        seedkeeper_utils.run_globalplatform(
+            self,
+            command,
+            "Unlocking Card",
+            "Card Unlocked",
+        )
+        return Destination(BackStackView)
+
+
+class ToolsJavacardLockCardView(View):
+    def run(self):
+        keys = self.controller.javacard_keys
+        if not keys:
+            self.run_screen(
+                WarningScreen,
+                title="No Keys Loaded",
+                status_headline=None,
+                text="Load keys before locking.",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        confirm = self.run_screen(
+            WarningScreen,
+            title="Lock Card",
+            status_headline=None,
+            text="Make sure you have saved these keys before locking.",
+            show_back_button=True,
+            button_data=[ButtonOption("Continue")],
+        )
+        if confirm == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        command = f"--key default {_format_gp_key_args(keys, '--lock')}"
+        seedkeeper_utils.run_globalplatform(
+            self,
+            command,
+            "Locking Card",
+            "Card Locked",
+        )
+        return Destination(BackStackView)
+
+
+class ToolsJavacardClearKeysView(View):
+    def run(self):
+        if not self.controller.javacard_keys:
+            self.run_screen(
+                WarningScreen,
+                title="No Keys Loaded",
+                status_headline=None,
+                text="No keys are currently loaded.",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        confirm = self.run_screen(
+            WarningScreen,
+            title="Clear Loaded Keys",
+            status_headline=None,
+            text="Ensure any keys used to lock a card are saved before clearing.",
+            show_back_button=True,
+            button_data=[ButtonOption("Continue")],
+        )
+        if confirm == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        self.controller.javacard_keys = None
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Cleared",
+            status_headline=None,
+            text="Loaded keys cleared.",
+            show_back_button=False,
+        )
+        return Destination(BackStackView)
 
 
 class ToolsDIYBuildAppletsView(View):
