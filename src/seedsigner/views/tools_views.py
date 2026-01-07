@@ -4006,10 +4006,10 @@ def _normalize_javacard_key(value: str) -> str:
     cleaned = re.sub(r"\s+", "", value or "")
     if cleaned.lower().startswith("0x"):
         cleaned = cleaned[2:]
-    if not cleaned or len(cleaned) % 2 != 0:
-        raise ValueError("Key must be an even-length hex string")
+    if len(cleaned) != 32:
+        raise ValueError("Key must be 32 hex characters")
     if not re.fullmatch(r"[0-9a-fA-F]+", cleaned):
-        raise ValueError("Key must be hex")
+        raise ValueError("Key must be 32 hex characters")
     return cleaned.upper()
 
 
