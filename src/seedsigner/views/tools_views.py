@@ -4179,12 +4179,12 @@ class ToolsJavacardLoadKeysView(View):
         import secrets
 
         button_data = [
-            self.ENTER_SINGLE,
-            self.ENTER_SET,
             self.FROM_MICROSD,
             self.FROM_SEEDKEEPER,
             self.GENERATE_SINGLE,
             self.GENERATE_SET,
+            self.ENTER_SINGLE,
+            self.ENTER_SET,
         ]
         selected = self.run_screen(
             ButtonListScreen,
