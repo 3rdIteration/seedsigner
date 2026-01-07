@@ -56,9 +56,10 @@ You will need to clone this repository in the place of the existing seedsigner f
 
 ### Javacard DIY Key Files
 The **Smartcard Tools → Javacard DIY → Card Keys** menu can load/save GlobalPlatform keys as plaintext.
-When saving to microSD, the file is stored at the card root as `javacard-keys.txt`. When saving to
-Seedkeeper, the entry label starts with `jc_keys` and the content is stored as the same text format,
-so the same parser can be used for both locations.
+The key file can include either a single key or an ENC/MAC/DEK key set. When saving to microSD, the
+file is stored at the card root as `javacard-keys.txt`. You can also save/load the same plaintext
+format on a Seedkeeper card; the entries are labeled with the `jc_keys` prefix so the same parser
+can be used for both locations.
 
 ### Smartcard Libraries
 
