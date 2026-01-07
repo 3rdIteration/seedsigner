@@ -4182,6 +4182,19 @@ class ToolsJavacardLoadKeysView(View):
         from seedsigner.gui.screens.screen import LoadingScreenThread
         import secrets
 
+        if self.controller.javacard_keys:
+            self.run_screen(
+                WarningScreen,
+                title="Keys Already Loaded",
+                status_headline=None,
+                text=(
+                    "Loading a key will overwrite the currently loaded key. "
+                    "Ensure it is backed up if you used it to lock cards."
+                ),
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+
         button_data = [
             self.FROM_MICROSD,
             self.FROM_SEEDKEEPER,
