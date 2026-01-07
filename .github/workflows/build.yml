@@ -110,7 +110,13 @@ jobs:
 
           APP_REF="${{ github.event_name == 'workflow_dispatch' && github.event.inputs['source-ref'] || github.sha }}"
 
-          SS_ARGS="--${{ matrix.target }} --app-repo=${APP_REPO_URL} --app-commit-id=${APP_REF}"
+          if [[ "${{ github.event_name }}" = "workflow_dispatch" ]] && ! [[ "${APP_REF}" =~ ^[0-9a-fA-F]{7,40}$ ]]; then
+            APP_REF_ARG="--app-branch=${APP_REF}"
+          else
+            APP_REF_ARG="--app-commit-id=${APP_REF}"
+          fi
+
+          SS_ARGS="--${{ matrix.target }} --app-repo=${APP_REPO_URL} ${APP_REF_ARG}"
 
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.dev }}" = "true" ]; then
             SS_ARGS+=" --dev"
