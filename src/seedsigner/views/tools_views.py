@@ -3999,7 +3999,7 @@ class ToolsSatochipDIYView(View):
 
 
 JAVACARD_KEYS_MICROSD_FILENAME = "javacard-keys.txt"
-JAVACARD_KEYS_SEEDKEEPER_PREFIX = "jc_keys"
+JAVACARD_KEYS_SEEDKEEPER_PREFIX = "jc_keys_"
 
 
 def _normalize_javacard_key(value: str) -> str:
@@ -4267,7 +4267,8 @@ class ToolsJavacardLoadKeysView(View):
                     and label.startswith(JAVACARD_KEYS_SEEDKEEPER_PREFIX)
                 ):
                     entries.append(header)
-                    buttons.append(ButtonOption(label))
+                    display_label = label[len(JAVACARD_KEYS_SEEDKEEPER_PREFIX):] or label
+                    buttons.append(ButtonOption(display_label))
 
             if not entries:
                 self.run_screen(
@@ -4410,7 +4411,21 @@ class ToolsJavacardSaveKeysView(View):
         else:
             secret_list = list(len(data_bytes).to_bytes(2, "big")) + list(data_bytes)
 
-        label = f"{JAVACARD_KEYS_SEEDKEEPER_PREFIX}_{int(time.time())}"
+        ret_dict = ToolsTextQRTextEntryScreen(textToEncode="", title="Secret Name").display()
+        if "is_back_button" in ret_dict:
+            return Destination(BackStackView)
+        entered_name = ret_dict["textToEncode"].strip()
+        if not entered_name:
+            self.run_screen(
+                WarningScreen,
+                title="Invalid Name",
+                status_headline=None,
+                text="Secret name cannot be empty.",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+        label = f"{JAVACARD_KEYS_SEEDKEEPER_PREFIX}{entered_name}"
         header = Satochip_Connector.make_header(
             "Data", "Plaintext export allowed", label
         )
