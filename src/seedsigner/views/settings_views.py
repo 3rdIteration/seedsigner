@@ -476,7 +476,15 @@ class SCARDTestView(View):
                         time.sleep(0.5)
 
             if cardservice is None:
-                raise CardRequestTimeoutException("No Smartcard detected after retries")
+                self.loading_screen.stop()
+                self.run_screen(
+                        WarningScreen,
+                        title="Failure",
+                        status_headline=None,
+                        text=f"No Smartcard detected...",
+                        show_back_button=True,
+                    )
+                return Destination(BackStackView)
 
             self.loading_screen.stop()
 
@@ -508,17 +516,6 @@ class SCARDTestView(View):
                     title="PCSC Failure",
                     status_headline=None,
                     text=f"Unable to establish PCSC context(A restart may help, possibly faulty reader)",
-                    show_back_button=True,
-                )
-            return Destination(BackStackView)
-        
-        except CardRequestTimeoutException:
-            self.loading_screen.stop()
-            self.run_screen(
-                    WarningScreen,
-                    title="Failure",
-                    status_headline=None,
-                    text=f"No Smartcard detected...",
                     show_back_button=True,
                 )
             return Destination(BackStackView)
