@@ -161,13 +161,6 @@ Follow the guide here: https://github.com/3rdIteration/Satochip-DIY
 
 _The applet management (install/uninstall) in the SeedSigner menu assume that the Satochip-DIY repository was cloned into /home/pi/Satochip-DIY and built as per the guide in the repository._
 
-### Seedkeeper Capacity
-The commands that the menu items run prompt you to choose how much storage to allocate (4KB, 8KB, 16KB, 32KB, or 64KB). The default selection remains 8KB, which corresponds to the `--params 1FFF` flag that will be passed to the installer:
-
-    java -jar /home/pi/Satochip-DIY/gp.jar --install /home/pi/Satochip-DIY/build/SeedKeeper-official-3.0.4.cap --params 1FFF
-
-    java -jar /home/pi/Satochip-DIY/gp.jar --uninstall /home/pi/Satochip-DIY/build/SeedKeeper-official-3.0.4.cap
-
 ### Javacard Build Environment (Optional: Needed to build SeedKeeper from Source)
 
 Follow the guide here: https://github.com/3rdIteration/Satochip-DIY
@@ -192,15 +185,6 @@ To Install and configure OpenCT
     sudo make install
     sudo ldconfig
     sudo mkdir -p /usr/local/var/run/openct/
-
-## Javacard Management
-
-### Javacard DIY Key Files
-The **Smartcard Tools → Javacard DIY → Card Keys** menu can load/save GlobalPlatform keys as plaintext.
-The key file can include either a single key or an ENC/MAC/DEK key set. When saving to microSD, the
-file is stored at the card root as `javacard-keys.txt`. You can also save/load the same plaintext
-format on a Seedkeeper card; the entries are labeled with the `jc_keys` prefix so the same parser
-can be used for both locations.
 
 Then Add configuration files to use it with PCSC tools
 
@@ -230,3 +214,19 @@ Once the device is started, go into `tools->seedkeeper>Start OpenCT(SIM)` and th
 It's possible that when you run `Start OpenCT(SIM)` that this command will fail and the device will go into a bugged state. During normal operation, the Red LED on the SIM reader will flash once or twice when you start OpenCT, but should then stay off unless you are performing operations on your SeedKeeper... If the red LED just flashes continiously after you have started OpenCT, disconnect the power, re-start the device and try again... (And if it keeps happening, try a different power supply)
 
 _Adapted from https://timesinker.blogspot.com/2016/04/using-cheap-sim-card-readers.html_
+
+### Seedkeeper Capacity
+The commands that the menu items run prompt you to choose how much storage to allocate (4KB, 8KB, 16KB, 32KB, or 64KB). The default selection remains 8KB, which corresponds to the `--params 1FFF` flag that will be passed to the installer:
+
+    java -jar /home/pi/Satochip-DIY/gp.jar --install /home/pi/Satochip-DIY/build/SeedKeeper-official-3.0.4.cap --params 1FFF
+
+    java -jar /home/pi/Satochip-DIY/gp.jar --uninstall /home/pi/Satochip-DIY/build/SeedKeeper-official-3.0.4.cap
+
+## Javacard Management
+
+### Javacard DIY Key Files
+The **Smartcard Tools → Javacard DIY → Card Keys** menu can load/save GlobalPlatform keys as plaintext.
+The key file can include either a single key or an ENC/MAC/DEK key set. When saving to microSD, the
+file is stored at the card root as `javacard-keys.txt`. You can also save/load the same plaintext
+format on a Seedkeeper card; the entries are labeled with the `jc_keys` prefix so the same parser
+can be used for both locations.
