@@ -30,6 +30,44 @@ class ToolsCommonFilterScreen(ButtonListScreen):
 
 
 @dataclass
+class ToolsNetworkInfoScreen(ButtonListScreen):
+    page_num: int = 0
+    paged_info: List[str] = None
+
+    def __post_init__(self):
+        renderer = Renderer.get_instance()
+        start_y = GUIConstants.TOP_NAV_HEIGHT + GUIConstants.COMPONENT_PADDING
+        end_y = renderer.canvas_height - GUIConstants.EDGE_PADDING - GUIConstants.BUTTON_HEIGHT - GUIConstants.COMPONENT_PADDING
+        info_height = end_y - start_y
+
+        if self.paged_info is None:
+            raise Exception("paged_info is required")
+
+        if self.page_num >= len(self.paged_info):
+            raise Exception("Bug in paged_info calculation")
+
+        if len(self.paged_info) == 1:
+            self.title = _("Network Info")
+        else:
+            self.title = f"""Network Info (pt {self.page_num + 1}/{len(self.paged_info)})"""
+
+        self.is_bottom_list = True
+        button_label = _("Next") if self.page_num < len(self.paged_info) - 1 else _("Done")
+        self.button_data = [ButtonOption(button_label)]
+        super().__post_init__()
+
+        message_display = TextArea(
+            text=self.paged_info[self.page_num],
+            is_text_centered=False,
+            allow_text_overflow=True,
+            font_name=GUIConstants.FIXED_WIDTH_FONT_NAME,
+            screen_y=start_y,
+            height=info_height,
+        )
+        self.components.append(message_display)
+
+
+@dataclass
 class ToolsImageEntropyLivePreviewScreen(BaseScreen):
     def __post_init__(self):
         super().__post_init__()
@@ -1354,4 +1392,3 @@ class ToolsAddressExplorerAddressListScreen(ButtonListScreen):
         self.button_data.append(ButtonOption(button_label, right_icon_name=SeedSignerIconConstants.CHEVRON_RIGHT))
 
         super().__post_init__()
-

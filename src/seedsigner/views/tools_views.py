@@ -16,7 +16,7 @@ from PIL import Image
 from PIL.ImageOps import autocontrast
 from gettext import gettext as _
 
-from seedsigner.gui.components import FontAwesomeIconConstants, GUIConstants, SeedSignerIconConstants, resize_image_to_fill
+from seedsigner.gui.components import FontAwesomeIconConstants, GUIConstants, SeedSignerIconConstants, resize_image_to_fill, reflow_text_into_pages
 from seedsigner.gui.screens import (
     RET_CODE__BACK_BUTTON,
     ButtonListScreen,
@@ -30,7 +30,7 @@ from seedsigner.gui.screens.tools_screens import (ToolsCalcFinalWordDoneScreen, 
     ToolsCalcFinalWordScreen, ToolsCoinFlipEntryScreen, ToolsDiceEntropyEntryScreen, ToolsImageEntropyFinalImageScreen,
     ToolsImageEntropyLivePreviewScreen, ToolsAddressExplorerAddressTypeScreen, ToolsTextQRTextEntryScreen, ToolsTextQRReviewTextScreen,
     ToolsTextQRTranscribeModePromptScreen, ToolsTranscribeTextQRWholeQRScreen, ToolsTranscribeTextQRZoomedInScreen,
-    ToolsTranscribeTextQRConfirmQRPromptScreen, ToolsCommonFilterScreen)
+    ToolsTranscribeTextQRConfirmQRPromptScreen, ToolsCommonFilterScreen, ToolsNetworkInfoScreen)
 from seedsigner.helpers import embit_utils, mnemonic_generation
 from seedsigner.helpers.iso7816 import format_sw_error
 from seedsigner.models.decode_qr import DecodeQR
@@ -85,6 +85,7 @@ class ToolsMenuView(View):
     MICROSD = ButtonOption("MicroSD Tools")
     GPG = ButtonOption("GPG Tools")
     CLEAR_DESCRIPTOR = ButtonOption("Clear Multisig Descriptor")
+    NETWORK_INFO = ButtonOption("Network Info")
 
     def run(self):
         button_data = [self.IMAGE, self.DICE]
@@ -101,9 +102,11 @@ class ToolsMenuView(View):
             self.VERIFY_ADDRESS,
             self.TEXTQRCODE,
             self.MICROSD,
+            self.NETWORK_INFO if Path("/usr/bin/network-info").is_file() else None,
             self.GPG,
             self.CLEAR_DESCRIPTOR,
         ])
+        button_data = [button for button in button_data if button is not None]
 
         selected_menu_num = self.run_screen(
             ButtonListScreen,
@@ -148,6 +151,9 @@ class ToolsMenuView(View):
         elif button_data[selected_menu_num] == self.MICROSD:
             return Destination(ToolsMicroSDMenuView)
 
+        elif button_data[selected_menu_num] == self.NETWORK_INFO:
+            return Destination(ToolsNetworkInfoView)
+
         elif button_data[selected_menu_num] == self.GPG:
             return Destination(ToolsGPGMenuView)
 
@@ -161,6 +167,85 @@ class ToolsMenuView(View):
                 show_back_button=False,
             )
             return Destination(BackStackView)
+
+
+
+class ToolsNetworkInfoView(View):
+    def __init__(self, page_num: int = 0, paged_info: list[str] | None = None):
+        super().__init__()
+        self.page_num = page_num
+        self.paged_info = paged_info
+
+
+    def _get_network_info(self) -> str | None:
+        try:
+            result = subprocess.run(
+                ["/usr/bin/network-info"],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=5,
+            )
+        except FileNotFoundError:
+            return None
+        except subprocess.TimeoutExpired:
+            return ""
+
+        if result.returncode != 0:
+            return ""
+
+        return result.stdout.strip()
+
+
+    def _prepare_pages(self) -> list[str] | None:
+        network_info = self._get_network_info()
+        if not network_info:
+            return None
+
+        start_y = GUIConstants.TOP_NAV_HEIGHT + GUIConstants.COMPONENT_PADDING
+        end_y = self.renderer.canvas_height - GUIConstants.EDGE_PADDING - GUIConstants.BUTTON_HEIGHT - GUIConstants.COMPONENT_PADDING
+        info_height = end_y - start_y
+
+        return reflow_text_into_pages(
+            text=network_info,
+            width=self.renderer.canvas_width - 2 * GUIConstants.EDGE_PADDING,
+            height=info_height,
+            font_name=GUIConstants.FIXED_WIDTH_FONT_NAME,
+            font_size=GUIConstants.get_body_font_size(),
+            allow_text_overflow=True,
+        )
+
+
+    def run(self):
+        if self.paged_info is None:
+            self.paged_info = self._prepare_pages()
+
+        if not self.paged_info:
+            self.run_screen(
+                ErrorScreen,
+                title=_("Network Info"),
+                status_headline=_("Unavailable"),
+                text=_("Unable to load network information."),
+                button_data=[ButtonOption("OK")],
+            )
+            return Destination(BackStackView)
+
+        selected_menu_num = self.run_screen(
+            ToolsNetworkInfoScreen,
+            page_num=self.page_num,
+            paged_info=self.paged_info,
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        if self.page_num >= len(self.paged_info) - 1:
+            return Destination(BackStackView)
+
+        return Destination(
+            ToolsNetworkInfoView,
+            view_args=dict(page_num=self.page_num + 1, paged_info=self.paged_info),
+        )
 
 
 
@@ -12433,4 +12518,3 @@ class ToolsTextQRReviewTextView2(View):
 
         elif button_data[selected_menu_num] == DONE:
             return Destination(BackStackView)
-
