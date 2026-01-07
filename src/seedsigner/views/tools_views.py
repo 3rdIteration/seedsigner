@@ -4112,6 +4112,7 @@ class ToolsJavacardKeysView(View):
     SAVE_KEYS = ButtonOption("Save Keys")
     UNLOCK_CARD = ButtonOption("Unlock Card")
     LOCK_CARD = ButtonOption("Lock Card")
+    CLEAR_KEYS = ButtonOption("Clear Loaded Keys")
 
     def run(self):
         button_data = [
@@ -4119,6 +4120,7 @@ class ToolsJavacardKeysView(View):
             self.SAVE_KEYS,
             self.UNLOCK_CARD,
             self.LOCK_CARD,
+            self.CLEAR_KEYS,
         ]
         selected_menu_num = self.run_screen(
             ButtonListScreen,
@@ -4137,7 +4139,9 @@ class ToolsJavacardKeysView(View):
             return Destination(ToolsJavacardSaveKeysView)
         if choice == self.UNLOCK_CARD:
             return Destination(ToolsJavacardUnlockCardView)
-        return Destination(ToolsJavacardLockCardView)
+        if choice == self.LOCK_CARD:
+            return Destination(ToolsJavacardLockCardView)
+        return Destination(ToolsJavacardClearKeysView)
 
 
 class ToolsJavacardLoadKeysView(View):
@@ -4554,6 +4558,41 @@ class ToolsJavacardLockCardView(View):
             command,
             "Locking Card",
             "Card Locked",
+        )
+        return Destination(BackStackView)
+
+
+class ToolsJavacardClearKeysView(View):
+    def run(self):
+        if not self.controller.javacard_keys:
+            self.run_screen(
+                WarningScreen,
+                title="No Keys Loaded",
+                status_headline=None,
+                text="No keys are currently loaded.",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        confirm = self.run_screen(
+            WarningScreen,
+            title="Clear Loaded Keys",
+            status_headline=None,
+            text="Ensure any keys used to lock a card are saved before clearing.",
+            show_back_button=True,
+            button_data=[ButtonOption("Continue")],
+        )
+        if confirm == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        self.controller.javacard_keys = None
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Cleared",
+            status_headline=None,
+            text="Loaded keys cleared.",
+            show_back_button=False,
         )
         return Destination(BackStackView)
 
