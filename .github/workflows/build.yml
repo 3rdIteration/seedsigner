@@ -61,6 +61,11 @@ on:
         required: false
         default: 'false'
         type: boolean
+      upload-release:
+        description: Upload built .img files to the matching GitHub release (if it exists)
+        required: false
+        default: 'false'
+        type: boolean
 
 # Increment this number as part of a PR to trigger an image build for the PR
 # trigger = 0
@@ -277,3 +282,93 @@ jobs:
           if-no-files-found: error
           # maximum 90 days retention
           retention-days: 90
+
+  upload_release:
+    name: upload images to release
+    runs-on: ubuntu-latest
+    needs: [build, sha256sum]
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.upload-release == 'true'
+    permissions:
+      contents: write
+    steps:
+      - name: download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: prepare release assets
+        id: prepare
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.event.inputs['source-ref'] }}
+        run: |
+          set -euo pipefail
+
+          if ! gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "release_exists=false" >> "$GITHUB_OUTPUT"
+            echo "has_files=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "release_exists=true" >> "$GITHUB_OUTPUT"
+
+          mkdir -p release-assets
+          find artifacts -name "*.img.zip" -exec cp {} release-assets/ \;
+
+          cd release-assets
+          shopt -s nullglob
+          zip_files=(*.img.zip)
+          if ((${#zip_files[@]})); then
+            unzip -o "${zip_files[@]}"
+            rm -f "${zip_files[@]}"
+          fi
+
+          existing_assets=$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')
+          for img in *.img; do
+            if echo "$existing_assets" | grep -Fxq "$img"; then
+              rm -f "$img"
+            fi
+          done
+
+          if ls *.img >/dev/null 2>&1; then
+            printf '%s\n' *.img > upload_list.txt
+            echo "has_files=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_files=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: upload images to release
+        if: steps.prepare.outputs.release_exists == 'true' && steps.prepare.outputs.has_files == 'true'
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          tag: ${{ github.event.inputs['source-ref'] }}
+          file: release-assets/*.img
+          file_glob: true
+          overwrite: false
+
+      - name: append sha256 to release notes
+        if: steps.prepare.outputs.release_exists == 'true' && steps.prepare.outputs.has_files == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.event.inputs['source-ref'] }}
+        run: |
+          set -euo pipefail
+          sha_file=$(ls artifacts/seedsigner_os_images_sha256/*.sha256 | head -n 1)
+          if [[ -z "${sha_file}" ]]; then
+            exit 0
+          fi
+
+          note_lines=""
+          while read -r hash filename; do
+            base_name=$(basename "$filename")
+            if grep -Fxq "$base_name" release-assets/upload_list.txt; then
+              note_lines+="- ${base_name}: ${hash}"$'\n'
+            fi
+          done < "$sha_file"
+
+          if [[ -n "${note_lines}" ]]; then
+            current_body=$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json body --jq '.body')
+            printf "%s\n\nUploaded images:\n%s" "$current_body" "$note_lines" > release-body.txt
+            gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --notes-file release-body.txt
+          fi
