@@ -56,6 +56,11 @@ on:
         required: false
         default: 'false'
         type: boolean
+      debug-rootfs:
+        description: Build and export the rootfs debug archive
+        required: false
+        default: 'false'
+        type: boolean
 
 # Increment this number as part of a PR to trigger an image build for the PR
 # trigger = 0
@@ -124,6 +129,10 @@ jobs:
 
           if [ "${{ github.event_name }}" != "workflow_dispatch" ] || [ "${{ github.event.inputs.smartcard }}" = "true" ]; then
             SS_ARGS+=" --smartcard"
+          fi
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.debug-rootfs }}" = "true" ]; then
+            SS_ARGS+=" --debug-rootfs"
           fi
 
           echo "SS_ARGS=${SS_ARGS}" | tee -a "$GITHUB_ENV"
@@ -203,6 +212,15 @@ jobs:
           name: seedsigner_os_images-${{ matrix.target }}
           path: "seedsigner-os/images/*.img.zip"
           if-no-files-found: error
+          # maximum 90 days retention
+          retention-days: 90
+
+      - name: upload rootfs debug archives
+        uses: actions/upload-artifact@v4
+        with:
+          name: seedsigner_os_rootfs-${{ matrix.target }}
+          path: "seedsigner-os/images/*.tar.gz"
+          if-no-files-found: warn
           # maximum 90 days retention
           retention-days: 90
 
