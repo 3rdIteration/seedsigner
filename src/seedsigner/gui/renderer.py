@@ -1,3 +1,5 @@
+import os
+from typing import Optional
 from PIL import Image, ImageDraw
 from threading import Lock
 
@@ -8,11 +10,89 @@ from seedsigner.hardware.displays.display_driver import (
     DISPLAY_TYPE__ILI9486,
     DISPLAY_TYPE__ST7789,
     DISPLAY_TYPE__DESKTOP,
+    DISPLAY_TYPE__DPI28,
     DisplayDriver,
 )
 from seedsigner.models.settings import Settings
 from seedsigner.models.settings_definition import SettingsConstants
 from seedsigner.models.singleton import ConfigurableSingleton
+
+
+def _detect_display_type() -> Optional[str]:
+    """
+    Auto-detect display type based on hardware.
+
+    Returns 'dpi28' if Waveshare 2.8" DPI LCD is detected.
+    Can be overridden by SEEDSIGNER_DISPLAY environment variable.
+    """
+    # Allow manual override
+    env_display = os.environ.get('SEEDSIGNER_DISPLAY')
+    if env_display:
+        return env_display
+
+    # Auto-detect DPI LCD by checking framebuffer
+    try:
+        # Check if framebuffer exists with expected size for DPI LCD (480x640)
+        if os.path.exists('/dev/fb0'):
+            with open('/sys/class/graphics/fb0/virtual_size', 'r') as f:
+                size = f.read().strip()
+                if size == '480,640':
+                    print("[Display] Auto-detected DPI28 framebuffer (480x640)")
+                    return 'dpi28'
+    except (IOError, FileNotFoundError):
+        pass
+
+    return None  # Let Settings decide
+
+
+def _detect_touch_mode() -> bool:
+    """
+    Auto-detect if touch input is available.
+
+    Returns True if capacitive touch device is found, False otherwise.
+    Can be overridden by SEEDSIGNER_TOUCH environment variable.
+    """
+    # Allow manual override
+    env_touch = os.environ.get("SEEDSIGNER_TOUCH")
+    if env_touch:
+        return env_touch == "1"
+
+    # If DPI28 display is detected, assume touch is available
+    # (the DPI28 Waveshare display includes integrated touch)
+    if _detect_display_type() == "dpi28":
+        print("[Touch] DPI28 display detected - enabling touch mode")
+        return True
+
+    # Auto-detect touch input device via sysfs (no evdev needed)
+    try:
+        for i in range(10):
+            name_path = f"/sys/class/input/event{i}/device/name"
+            try:
+                with open(name_path, "r") as f:
+                    name = f.read().strip()
+                    # Look for common touch device names
+                    if any(keyword in name.lower() for keyword in ["touch", "goodix", "ft5", "edt-ft5"]):
+                        print(f"[Touch] Auto-detected touch device: {name}")
+                        return True
+            except (IOError, FileNotFoundError):
+                continue
+    except Exception:
+        pass
+
+    return False
+
+
+# Auto-detect touch mode
+TOUCH_MODE = _detect_touch_mode()
+
+# Set environment variable so other modules can check it
+if TOUCH_MODE and 'SEEDSIGNER_TOUCH' not in os.environ:
+    os.environ['SEEDSIGNER_TOUCH'] = '1'
+
+# Check for auto-detected DPI28 display
+_auto_detected_display = _detect_display_type()
+if _auto_detected_display == 'dpi28' and 'SEEDSIGNER_DISPLAY' not in os.environ:
+    os.environ['SEEDSIGNER_DISPLAY'] = 'dpi28'
 
 
 
@@ -24,6 +104,10 @@ class Renderer(ConfigurableSingleton):
     draw: ImageDraw.ImageDraw = None
     disp = None
     lock = Lock()
+
+    @property
+    def is_screenshot_generator(self) -> bool:
+        return False
 
 
     @classmethod
@@ -40,7 +124,13 @@ class Renderer(ConfigurableSingleton):
         # prevent any other screen writes while we're changing the display driver.
         self.lock.acquire()
 
-        display_config = Settings.get_instance().get_value(SettingsConstants.SETTING__DISPLAY_CONFIGURATION, default_if_none=True)
+        # Check for auto-detected display first
+        env_display = os.environ.get("SEEDSIGNER_DISPLAY")
+        if env_display == "dpi28":
+            display_config = "dpi28_240x240"
+            print("[Display] Using auto-detected DPI28 display")
+        else:
+            display_config = Settings.get_instance().get_value(SettingsConstants.SETTING__DISPLAY_CONFIGURATION, default_if_none=True)
         self.display_type = display_config.split("_")[0]
         if self.display_type not in ALL_DISPLAY_TYPES:
             raise Exception(f"Invalid display type: {self.display_type}")
@@ -51,7 +141,7 @@ class Renderer(ConfigurableSingleton):
         if Settings.get_instance().get_value(SettingsConstants.SETTING__DISPLAY_COLOR_INVERTED, default_if_none=True) == SettingsConstants.OPTION__ENABLED:
             self.disp.invert()
 
-        if self.display_type in [DISPLAY_TYPE__ST7789, DISPLAY_TYPE__DESKTOP]:
+        if self.display_type in [DISPLAY_TYPE__ST7789, DISPLAY_TYPE__DESKTOP, DISPLAY_TYPE__DPI28]:
             self.canvas_width = self.disp.width
             self.canvas_height = self.disp.height
 
@@ -122,3 +212,14 @@ class Renderer(ConfigurableSingleton):
     def display_blank_screen(self):
         self.draw.rectangle((0, 0, self.canvas_width, self.canvas_height), outline=0, fill=0)
         self.show_image()
+
+
+    def set_touch_bar_labels(self, labels: tuple):
+        """
+        Set the touch bar labels for DPI28 display.
+
+        Args:
+            labels: Tuple from DPI28 touch bar presets (e.g., TOUCH_BAR_DEFAULT, TOUCH_BAR_KEYBOARD)
+        """
+        if self.display_type == DISPLAY_TYPE__DPI28 and hasattr(self.disp.display, 'set_touch_bar_labels'):
+            self.disp.display.set_touch_bar_labels(labels)

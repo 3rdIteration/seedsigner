@@ -481,6 +481,36 @@ class Keyboard:
         return key.code
 
 
+    def get_key_at_screen_coords(self, screen_x: int, screen_y: int):
+        """
+        Find which key (if any) is at the given screen coordinates.
+
+        Args:
+            screen_x, screen_y: Screen coordinates in native space (240x240)
+
+        Returns:
+            Key object if found and active, None otherwise
+        """
+        # Check if within keyboard rect
+        if not (self.rect[0] <= screen_x <= self.rect[2] and
+                self.rect[1] <= screen_y <= self.rect[3]):
+            return None
+
+        # Find the key at these coordinates
+        for row_keys in self.keys:
+            for key in row_keys:
+                key_right = key.screen_x + self.key_width * key.size
+                key_bottom = key.screen_y + self.key_height
+                if (key.screen_x <= screen_x <= key_right and
+                    key.screen_y <= screen_y <= key_bottom):
+                    # Only return active keys - greyed out keys should be ignored
+                    if key.is_active:
+                        return key
+                    return None
+
+        return None
+
+
     def set_selected_key(self, selected_letter):
         # De-select the current selected_key
         self.get_selected_key().is_selected = False
@@ -646,4 +676,3 @@ class TextEntryDisplay(TextEntryDisplayConstants):
 
         # Paste the display onto the main canvas
         self.canvas.paste(image, (self.rect[0], self.rect[1]))
-
