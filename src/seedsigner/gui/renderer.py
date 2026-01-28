@@ -136,6 +136,15 @@ class Renderer(ConfigurableSingleton):
             raise Exception(f"Invalid display type: {self.display_type}")
 
         width, height = display_config.split("_")[1].split("x")
+
+        # Fallback to DPI28 if SPI hardware is missing but a DPI framebuffer is present.
+        if self.display_type == DISPLAY_TYPE__ST7789:
+            spi_missing = not os.path.exists("/dev/spidev0.0")
+            if spi_missing and _detect_display_type() == "dpi28":
+                display_config = "dpi28_240x240"
+                self.display_type = DISPLAY_TYPE__DPI28
+                width, height = "240", "240"
+                print("[Display] SPI device missing; using DPI28 display instead")
         self.disp = DisplayDriver(self.display_type, width=int(width), height=int(height))
 
         if Settings.get_instance().get_value(SettingsConstants.SETTING__DISPLAY_COLOR_INVERTED, default_if_none=True) == SettingsConstants.OPTION__ENABLED:
