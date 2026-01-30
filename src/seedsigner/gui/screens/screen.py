@@ -1374,8 +1374,8 @@ class MainMenuScreen(LargeButtonScreen):
         from seedsigner.gui.components import BatteryIndicator
         self.battery_hat = BatteryHat.get_instance()
         self.battery_indicator = BatteryIndicator()
-        self.battery_indicator.screen_x = self.canvas_width - GUIConstants.EDGE_PADDING - self.battery_indicator.width
-        self.battery_indicator.screen_y = self.canvas_height - GUIConstants.EDGE_PADDING - self.battery_indicator.height
+        self.battery_indicator.screen_x = GUIConstants.EDGE_PADDING
+        self.battery_indicator.screen_y = GUIConstants.EDGE_PADDING
         self.last_battery_update = 0
         if self.battery_hat.detected:
             self.components.append(self.battery_indicator)
