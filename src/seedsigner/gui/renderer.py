@@ -57,27 +57,28 @@ def _detect_touch_mode() -> bool:
     if env_touch:
         return env_touch == "1"
 
-    # If DPI28 display is detected, assume touch is available
-    # (the DPI28 Waveshare display includes integrated touch)
-    if _detect_display_type() == "dpi28":
-        print("[Touch] DPI28 display detected - enabling touch mode")
-        return True
-
     # Auto-detect touch input device via sysfs (no evdev needed)
     try:
+        keywords = ["touch", "goodix", "ft5", "edt-ft5", "ft5406", "touchscreen", "stmpe", "raspberry pi"]
         for i in range(10):
             name_path = f"/sys/class/input/event{i}/device/name"
             try:
                 with open(name_path, "r") as f:
                     name = f.read().strip()
                     # Look for common touch device names
-                    if any(keyword in name.lower() for keyword in ["touch", "goodix", "ft5", "edt-ft5"]):
+                    if any(keyword in name.lower() for keyword in keywords):
                         print(f"[Touch] Auto-detected touch device: {name}")
                         return True
             except (IOError, FileNotFoundError):
                 continue
     except Exception:
         pass
+
+    # If DPI28 display is detected, assume touch is available
+    # (the DPI28 Waveshare display includes integrated touch)
+    if _detect_display_type() == "dpi28":
+        print("[Touch] DPI28 display detected - enabling touch mode")
+        return True
 
     return False
 

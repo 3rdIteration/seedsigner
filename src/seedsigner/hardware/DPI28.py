@@ -347,6 +347,7 @@ class DPI28:
             # Write to framebuffer
             self.fb.seek(0)
             self.fb.write(bgra.tobytes())
+            self.fb.flush()
         else:
             # Slow: Pure Python (~1 fps)
             self._write_32bit_python(image)
@@ -369,6 +370,7 @@ class DPI28:
         
         self.fb.seek(0)
         self.fb.write(bgra_data)
+        self.fb.flush()
 
     def _write_16bit(self, image: Image.Image):
         """Write 16-bit RGB565 to framebuffer (if needed)"""
@@ -380,6 +382,7 @@ class DPI28:
             rgb565 = (r << 11) | (g << 5) | b
             self.fb.seek(0)
             self.fb.write(rgb565.tobytes())
+            self.fb.flush()
         else:
             self._write_16bit_python(image)
 
@@ -399,6 +402,7 @@ class DPI28:
 
         self.fb.seek(0)
         self.fb.write(rgb565_data)
+        self.fb.flush()
 
     def clear(self):
         """Clear the display to black"""

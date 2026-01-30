@@ -47,13 +47,15 @@ class TouchInput:
 
     def _find_touch_device(self) -> Optional[str]:
         """Find touch input device by scanning /dev/input/"""
+        keywords = ["goodix", "touch", "ft5", "edt-ft5", "ft5406", "touchscreen", "stmpe", "raspberry pi"]
         for i in range(10):
             name_path = f"/sys/class/input/event{i}/device/name"
             if os.path.exists(name_path):
                 try:
                     with open(name_path, "r") as f:
                         name = f.read().strip()
-                        if "Goodix" in name or "touch" in name.lower():
+                        name_lower = name.lower()
+                        if any(keyword in name_lower for keyword in keywords):
                             return f"/dev/input/event{i}"
                 except OSError:
                     pass
