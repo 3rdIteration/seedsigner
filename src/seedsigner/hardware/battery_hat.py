@@ -53,7 +53,7 @@ class BatteryHat(Singleton, BaseThread):
     """Simple interface for the Waveshare UPS HAT (C) using INA219."""
 
     I2C_BUS = 1
-    I2C_ADDR = 0x40  # INA219 default address
+    I2C_ADDR = 0x43  # INA219 address for Waveshare UPS HAT (C)
 
     REG_CONFIG = 0x00
     REG_SHUNT_VOLTAGE = 0x01
