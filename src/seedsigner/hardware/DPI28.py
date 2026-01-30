@@ -117,6 +117,7 @@ class DPI28:
         self.stride = None
         self.length = None
         self.tty_fd = None  # For console mode control
+        self.color_order = "bgr"
 
         # Current touch bar labels
         self._current_labels = self.TOUCH_BAR_DEFAULT
@@ -139,6 +140,23 @@ class DPI28:
             print(f"[DPI28] Could not read {filename}: {e}")
             return []
 
+    def _detect_color_order(self):
+        """Detect framebuffer color channel order (rgb vs bgr)."""
+        format_path = os.path.join(self.config_dir, "format")
+        if not os.path.exists(format_path):
+            return
+
+        try:
+            with open(format_path, "r") as fp:
+                fmt = fp.read().strip().lower()
+        except OSError:
+            return
+
+        if "bgr" in fmt:
+            self.color_order = "bgr"
+        elif "rgb" in fmt:
+            self.color_order = "rgb"
+
     def _init_framebuffer(self):
         """Initialize framebuffer with mmap for fast access"""
         try:
@@ -158,10 +176,14 @@ class DPI28:
             
             # Calculate buffer length
             self.length = self.fb_size[0] * self.fb_size[1] * (self.bits_per_pixel // 8)
+
+            # Detect color order (rgb vs bgr) if available
+            self._detect_color_order()
             
             print(f"[DPI28] Framebuffer: {self.fb_path}")
             print(f"[DPI28] Size: {self.fb_size}, BPP: {self.bits_per_pixel}, Stride: {self.stride}")
             print(f"[DPI28] Using: {'Cython' if HAS_CYTHON else 'numpy' if HAS_NUMPY else 'Python'} conversion")
+            print(f"[DPI28] Color order: {self.color_order}")
             
             # Open and mmap the framebuffer
             self.fb_file = open(self.fb_path, "r+b")
@@ -331,7 +353,7 @@ class DPI28:
 
     def _write_32bit(self, image: Image.Image):
         """Write 32-bit BGRA to framebuffer"""
-        if HAS_CYTHON:
+        if HAS_CYTHON and self.color_order == "bgr":
             # Fastest: Cython (~17 fps)
             rgb_data = image.tobytes()
             num_pixels = image.width * image.height
@@ -340,8 +362,11 @@ class DPI28:
             # Fast: Numpy (~7 fps)
             # Convert PIL to numpy array
             arr = np.array(image)
-            # Swap R and B channels: RGB -> BGR
-            bgr = arr[:, :, ::-1]
+            if self.color_order == "bgr":
+                # Swap R and B channels: RGB -> BGR
+                bgr = arr[:, :, ::-1]
+            else:
+                bgr = arr
             # Add alpha channel (BGRA)
             bgra = np.dstack((bgr, np.full((image.height, image.width), 255, dtype=np.uint8)))
             # Write to framebuffer
@@ -361,10 +386,15 @@ class DPI28:
         for row in range(image.height):
             for col in range(image.width):
                 r, g, b = pixels[col, row]
-                # BGRA format (swap R and B)
-                bgra_data[idx] = b
-                bgra_data[idx + 1] = g
-                bgra_data[idx + 2] = r
+                if self.color_order == "bgr":
+                    # BGRA format (swap R and B)
+                    bgra_data[idx] = b
+                    bgra_data[idx + 1] = g
+                    bgra_data[idx + 2] = r
+                else:
+                    bgra_data[idx] = r
+                    bgra_data[idx + 1] = g
+                    bgra_data[idx + 2] = b
                 bgra_data[idx + 3] = 255  # Alpha
                 idx += 4
         
@@ -376,9 +406,14 @@ class DPI28:
         """Write 16-bit RGB565 to framebuffer (if needed)"""
         if HAS_NUMPY:
             arr = np.array(image)
-            r = (arr[:, :, 0] >> 3).astype(np.uint16)
-            g = (arr[:, :, 1] >> 2).astype(np.uint16)
-            b = (arr[:, :, 2] >> 3).astype(np.uint16)
+            if self.color_order == "bgr":
+                b = (arr[:, :, 0] >> 3).astype(np.uint16)
+                g = (arr[:, :, 1] >> 2).astype(np.uint16)
+                r = (arr[:, :, 2] >> 3).astype(np.uint16)
+            else:
+                r = (arr[:, :, 0] >> 3).astype(np.uint16)
+                g = (arr[:, :, 1] >> 2).astype(np.uint16)
+                b = (arr[:, :, 2] >> 3).astype(np.uint16)
             rgb565 = (r << 11) | (g << 5) | b
             self.fb.seek(0)
             self.fb.write(rgb565.tobytes())
@@ -395,6 +430,8 @@ class DPI28:
         for row in range(image.height):
             for col in range(image.width):
                 r, g, b = pixels[col, row]
+                if self.color_order == "bgr":
+                    r, b = b, r
                 rgb565 = ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)
                 rgb565_data[idx] = rgb565 & 0xFF
                 rgb565_data[idx + 1] = (rgb565 >> 8) & 0xFF
