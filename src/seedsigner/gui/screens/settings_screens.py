@@ -346,19 +346,19 @@ class BatteryInfoScreen(BaseTopNavScreen):
         self.battery_hat = BatteryHat.get_instance()
 
         start_y = self.top_nav.height + 2 * GUIConstants.COMPONENT_PADDING
-        self.voltage_text = TextArea(text="", is_text_centered=True, screen_y=start_y)
+        self.voltage_text = TextArea(text="Load Voltage: --", is_text_centered=True, screen_y=start_y)
         self.components.append(self.voltage_text)
 
         start_y += self.voltage_text.height + GUIConstants.COMPONENT_PADDING
-        self.current_text = TextArea(text="", is_text_centered=True, screen_y=start_y)
+        self.current_text = TextArea(text="Current: --", is_text_centered=True, screen_y=start_y)
         self.components.append(self.current_text)
 
         start_y += self.current_text.height + GUIConstants.COMPONENT_PADDING
-        self.power_text = TextArea(text="", is_text_centered=True, screen_y=start_y)
+        self.power_text = TextArea(text="Power: --", is_text_centered=True, screen_y=start_y)
         self.components.append(self.power_text)
 
         start_y += self.power_text.height + GUIConstants.COMPONENT_PADDING
-        self.percent_text = TextArea(text="", is_text_centered=True, screen_y=start_y)
+        self.percent_text = TextArea(text="Percent: --%", is_text_centered=True, screen_y=start_y)
         self.components.append(self.percent_text)
 
         self.threads.append(BatteryInfoScreen.UpdateThread(self))
@@ -373,31 +373,35 @@ class BatteryInfoScreen(BaseTopNavScreen):
             while self.keep_running:
                 if not self.battery_hat.detected:
                     self.battery_hat.detected = self.battery_hat.detect_hat()
+                voltage = None
+                current = None
+                power = None
+                percent = None
                 if self.battery_hat.detected:
                     voltage = self.battery_hat.get_voltage()
                     current = self.battery_hat.get_current()
                     power = self.battery_hat.get_power()
                     percent = self.battery_hat.get_percent()
-                    with self.screen.renderer.lock:
-                        if voltage is not None:
-                            self.screen.voltage_text.text = f"Load Voltage: {voltage:.3f} V"
-                        else:
-                            self.screen.voltage_text.text = "Load Voltage: --"
-                        if current is not None:
-                            self.screen.current_text.text = f"Current: {current/1000:.3f} A"
-                        else:
-                            self.screen.current_text.text = "Current: --"
-                        if power is not None:
-                            self.screen.power_text.text = f"Power: {power:.3f} W"
-                        else:
-                            self.screen.power_text.text = "Power: --"
-                        if percent is not None:
-                            self.screen.percent_text.text = f"Percent: {percent:.1f}%"
-                        else:
-                            self.screen.percent_text.text = "Percent: --%"
-                        for c in [self.screen.voltage_text, self.screen.current_text, self.screen.power_text, self.screen.percent_text]:
-                            c.render()
-                        self.screen.renderer.show_image()
+                with self.screen.renderer.lock:
+                    if voltage is not None:
+                        self.screen.voltage_text.text = f"Load Voltage: {voltage:.3f} V"
+                    else:
+                        self.screen.voltage_text.text = "Load Voltage: --"
+                    if current is not None:
+                        self.screen.current_text.text = f"Current: {current/1000:.3f} A"
+                    else:
+                        self.screen.current_text.text = "Current: --"
+                    if power is not None:
+                        self.screen.power_text.text = f"Power: {power:.3f} W"
+                    else:
+                        self.screen.power_text.text = "Power: --"
+                    if percent is not None:
+                        self.screen.percent_text.text = f"Percent: {percent:.1f}%"
+                    else:
+                        self.screen.percent_text.text = "Percent: --%"
+                    for c in [self.screen.voltage_text, self.screen.current_text, self.screen.power_text, self.screen.percent_text]:
+                        c.render()
+                    self.screen.renderer.show_image()
                 time.sleep(5)
 
 
