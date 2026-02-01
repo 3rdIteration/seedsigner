@@ -1,4 +1,5 @@
 import hashlib
+import json
 import logging
 import os
 import time
@@ -31,7 +32,8 @@ from seedsigner.gui.screens.tools_screens import (ToolsCalcFinalWordDoneScreen, 
     ToolsCalcFinalWordScreen, ToolsCoinFlipEntryScreen, ToolsDiceEntropyEntryScreen, ToolsImageEntropyFinalImageScreen,
     ToolsImageEntropyLivePreviewScreen, ToolsAddressExplorerAddressTypeScreen, ToolsTextQRTextEntryScreen, ToolsTextQRReviewTextScreen,
     ToolsTextQRTranscribeModePromptScreen, ToolsTranscribeTextQRWholeQRScreen, ToolsTranscribeTextQRZoomedInScreen,
-    ToolsTranscribeTextQRConfirmQRPromptScreen, ToolsCommonFilterScreen, ToolsNetworkInfoScreen)
+    ToolsTranscribeTextQRConfirmQRPromptScreen, ToolsCommonFilterScreen, ToolsNetworkInfoScreen,
+    ToolsBatteryCalibrationIntroScreen, ToolsBatteryCalibrationStartScreen, ToolsBatteryCalibrationRunningScreen)
 from seedsigner.helpers import embit_utils, mnemonic_generation
 from seedsigner.helpers.iso7816 import format_sw_error
 from seedsigner.models.decode_qr import DecodeQR
@@ -84,6 +86,7 @@ class ToolsMenuView(View):
     TEXTQRCODE = ButtonOption("Text QR Code")
     SMARTCARD = ButtonOption("Smartcard Tools", FontAwesomeIconConstants.LOCK)
     MICROSD = ButtonOption("MicroSD Tools")
+    BATTERY_CALIBRATION = ButtonOption("Battery Calibration")
     GPG = ButtonOption("GPG Tools")
     CLEAR_DESCRIPTOR = ButtonOption("Clear Multisig Descriptor")
     NETWORK_INFO = ButtonOption("Network Info")
@@ -103,6 +106,7 @@ class ToolsMenuView(View):
             self.VERIFY_ADDRESS,
             self.TEXTQRCODE,
             self.MICROSD,
+            self.BATTERY_CALIBRATION,
             self.NETWORK_INFO if Path("/usr/bin/network-info").is_file() else None,
             self.GPG,
             self.CLEAR_DESCRIPTOR,
@@ -152,6 +156,9 @@ class ToolsMenuView(View):
         elif button_data[selected_menu_num] == self.MICROSD:
             return Destination(ToolsMicroSDMenuView)
 
+        elif button_data[selected_menu_num] == self.BATTERY_CALIBRATION:
+            return Destination(ToolsBatteryCalibrationView)
+
         elif button_data[selected_menu_num] == self.NETWORK_INFO:
             return Destination(ToolsNetworkInfoView)
 
@@ -169,6 +176,118 @@ class ToolsMenuView(View):
             )
             return Destination(BackStackView)
 
+
+
+class ToolsBatteryCalibrationView(View):
+    CALIBRATION_STEP = 5
+
+    def _load_log_entries(self, log_path: Path) -> list[tuple[float, float]]:
+        entries: list[tuple[float, float]] = []
+        try:
+            with log_path.open("r", encoding="utf-8") as handle:
+                for line in handle:
+                    parts = line.strip().split(",")
+                    if len(parts) < 2:
+                        continue
+                    try:
+                        timestamp = float(parts[0])
+                        voltage = float(parts[1])
+                    except ValueError:
+                        continue
+                    entries.append((timestamp, voltage))
+        except OSError as exc:
+            logger.warning(f"Failed to read battery discharge log: {exc}")
+        return entries
+
+    def _generate_curve(self, entries: list[tuple[float, float]]) -> list[dict]:
+        entries.sort(key=lambda item: item[0])
+        start_time = entries[0][0]
+        end_time = entries[-1][0]
+        duration = end_time - start_time
+        if duration <= 0:
+            return []
+
+        curve: list[dict] = []
+        idx = 0
+        for percent in range(100, -1, -self.CALIBRATION_STEP):
+            target_time = start_time + (1 - percent / 100) * duration
+            while idx < len(entries) - 2 and entries[idx + 1][0] < target_time:
+                idx += 1
+            low_t, low_v = entries[idx]
+            high_t, high_v = entries[min(idx + 1, len(entries) - 1)]
+            if high_t == low_t:
+                voltage = low_v
+            else:
+                t = (target_time - low_t) / (high_t - low_t)
+                voltage = low_v + t * (high_v - low_v)
+            curve.append({"percent": percent, "voltage": round(voltage, 4)})
+        return curve
+
+    def _process_existing_log(self) -> None:
+        from seedsigner.hardware.battery_hat import BatteryHat
+
+        battery_hat = BatteryHat.get_instance()
+        log_path = battery_hat.get_discharge_log_path()
+        if not log_path.exists():
+            return
+
+        entries = self._load_log_entries(log_path)
+        if len(entries) < 2:
+            log_path.unlink(missing_ok=True)
+            return
+
+        curve = self._generate_curve(entries)
+        if not curve:
+            log_path.unlink(missing_ok=True)
+            return
+
+        curve_path = battery_hat.get_discharge_curve_path()
+        curve_path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "source_log": log_path.name,
+            "curve": curve,
+        }
+        try:
+            with curve_path.open("w", encoding="utf-8") as handle:
+                json.dump(payload, handle, indent=2)
+        except OSError as exc:
+            logger.warning(f"Failed to write discharge curve: {exc}")
+        log_path.unlink(missing_ok=True)
+
+    def run(self):
+        self._process_existing_log()
+
+        microsd = MicroSD.get_instance()
+        if not microsd.is_inserted:
+            self.run_screen(
+                WarningScreen,
+                title=_("microSD card not detected"),
+                text=_("Insert a microSD card to save the discharge log."),
+                button_data=[ButtonOption(_("Back"))],
+            )
+            return Destination(BackStackView)
+
+        ret = self.run_screen(ToolsBatteryCalibrationIntroScreen)
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        ret = self.run_screen(ToolsBatteryCalibrationStartScreen)
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        from seedsigner.hardware.battery_hat import BatteryHat
+
+        battery_hat = BatteryHat.get_instance()
+        log_path = battery_hat.get_discharge_log_path()
+        ret = ToolsBatteryCalibrationRunningScreen(
+            log_path=log_path,
+            battery_hat=battery_hat,
+        ).display()
+
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        return Destination(BackStackView)
 
 
 class ToolsNetworkInfoView(View):

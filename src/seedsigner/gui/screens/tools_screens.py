@@ -1,15 +1,17 @@
 import math
+import random
 import time
 
 from dataclasses import dataclass
 from gettext import gettext as _
+from pathlib import Path
 from typing import Any, List
 from PIL import Image, ImageDraw
 from seedsigner.helpers import mnemonic_generation
 from seedsigner.gui.renderer import Renderer
 from seedsigner.hardware.camera import Camera
 from seedsigner.helpers.qr import QR
-from seedsigner.gui.components import FontAwesomeIconConstants, Fonts, GUIConstants, IconTextLine, SeedSignerIconConstants, TextArea, Button, IconButton, CheckboxButton
+from seedsigner.gui.components import FontAwesomeIconConstants, Fonts, GUIConstants, IconTextLine, SeedSignerIconConstants, TextArea, Button, IconButton, CheckboxButton, load_image
 from seedsigner.gui.keyboard import Keyboard, TextEntryDisplay
 from seedsigner.gui.screens.screen import RET_CODE__BACK_BUTTON, BaseScreen, BaseTopNavScreen, ButtonListScreen, KeyboardScreen, WarningEdgesMixin, ButtonOption
 from seedsigner.hardware.buttons import HardwareButtonsConstants
@@ -66,6 +68,133 @@ class ToolsNetworkInfoScreen(ButtonListScreen):
         )
         self.components.append(message_display)
 
+
+@dataclass
+class ToolsBatteryCalibrationIntroScreen(ButtonListScreen):
+    def __post_init__(self):
+        self.title = _("Battery Calibration")
+        self.is_bottom_list = True
+        self.is_button_text_centered = True
+        self.button_data = [ButtonOption(_("Next"))]
+        super().__post_init__()
+
+        self.components.append(TextArea(
+            text=_("Charge the battery until it is full, then select Next to begin the discharge test."),
+            screen_y=self.top_nav.height + int(GUIConstants.COMPONENT_PADDING / 2),
+        ))
+
+
+@dataclass
+class ToolsBatteryCalibrationStartScreen(ButtonListScreen):
+    def __post_init__(self):
+        self.title = _("Battery Calibration")
+        self.is_bottom_list = True
+        self.is_button_text_centered = True
+        self.button_data = [ButtonOption(_("Start"))]
+        super().__post_init__()
+
+        self.components.append(TextArea(
+            text=_("This test will run until the battery is flat. Leave the device connected to nothing and allow it to fully discharge."),
+            screen_y=self.top_nav.height + int(GUIConstants.COMPONENT_PADDING / 2),
+        ))
+
+
+@dataclass
+class ToolsBatteryCalibrationRunningScreen(BaseScreen):
+    log_path: Path
+    battery_hat: Any
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.logo = load_image("logo_black_240.png")
+        self.image = Image.new(
+            "RGB",
+            (self.renderer.canvas_width + self.logo.width, self.renderer.canvas_height + self.logo.height),
+            (0, 0, 0),
+        )
+        logo_x = int((self.image.width - self.logo.width) / 2)
+        logo_y = int((self.image.height - self.logo.height) / 2)
+        self.image.paste(self.logo, (logo_x, logo_y))
+        self.min_coords = (0, 0)
+        self.max_coords = (self.renderer.canvas_width, self.renderer.canvas_height)
+        self.cur_x = int(self.logo.width / 2)
+        self.cur_y = int(self.logo.height / 2)
+        self.increment_x = self._rand_increment()
+        self.increment_y = self._rand_increment()
+        self.camera = Camera.get_instance()
+
+    def _rand_increment(self) -> float:
+        max_increment = 10.0
+        min_increment = 1.0
+        increment = random.uniform(min_increment, max_increment)
+        if random.uniform(-1.0, 1.0) < 0.0:
+            return -1.0 * increment
+        return increment
+
+    def _write_log_line(self, handle, timestamp: int) -> None:
+        voltage = self.battery_hat.get_voltage()
+        if voltage is None:
+            handle.write(f"{timestamp},\n")
+        else:
+            handle.write(f"{timestamp},{voltage:.4f}\n")
+        handle.flush()
+
+    def _run(self):
+        self.log_path.parent.mkdir(parents=True, exist_ok=True)
+        camera_started = False
+        try:
+            self.camera.start_video_stream_mode(resolution=(320, 240), framerate=30, format="rgb")
+            camera_started = True
+        except Exception:
+            camera_started = False
+        next_log_time = time.monotonic()
+        try:
+            with self.log_path.open("w", encoding="utf-8") as handle:
+                with self.renderer.lock:
+                    while True:
+                        if self.hw_inputs.has_any_input() or self.hw_inputs.override_ind:
+                            if self.log_path.exists():
+                                self.log_path.unlink()
+                            return RET_CODE__BACK_BUTTON
+
+                        now = time.monotonic()
+                        if now >= next_log_time:
+                            self._write_log_line(handle, int(time.time()))
+                            next_log_time = now + 60
+
+                        crop = self.image.crop((
+                            self.cur_x, self.cur_y,
+                            self.cur_x + self.renderer.canvas_width, self.cur_y + self.renderer.canvas_height,
+                        ))
+                        self.renderer.disp.show_image(crop, 0, 0)
+
+                        self.cur_x += self.increment_x
+                        self.cur_y += self.increment_y
+
+                        if self.cur_x < self.min_coords[0]:
+                            self.cur_x = self.min_coords[0]
+                            self.increment_x = self._rand_increment()
+                            if self.increment_x < 0.0:
+                                self.increment_x *= -1.0
+                        elif self.cur_x > self.max_coords[0]:
+                            self.cur_x = self.max_coords[0]
+                            self.increment_x = self._rand_increment()
+                            if self.increment_x > 0.0:
+                                self.increment_x *= -1.0
+
+                        if self.cur_y < self.min_coords[1]:
+                            self.cur_y = self.min_coords[1]
+                            self.increment_y = self._rand_increment()
+                            if self.increment_y < 0.0:
+                                self.increment_y *= -1.0
+                        elif self.cur_y > self.max_coords[1]:
+                            self.cur_y = self.max_coords[1]
+                            self.increment_y = self._rand_increment()
+                            if self.increment_y > 0.0:
+                                self.increment_y *= -1.0
+        finally:
+            if camera_started:
+                self.camera.stop_video_stream_mode()
 
 @dataclass
 class ToolsImageEntropyLivePreviewScreen(BaseScreen):

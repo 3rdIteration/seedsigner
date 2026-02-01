@@ -1,3 +1,4 @@
+import json
 import logging
 import time
 
@@ -87,7 +88,21 @@ class BatteryHat(Singleton, BaseThread):
             instance._bus = None
             instance.percent = None
             instance.detected = False
+            instance._curve_data = None
+            instance._curve_mtime = None
         return cls._instance
+
+    @classmethod
+    def get_discharge_log_path(cls):
+        from seedsigner.hardware.microsd import MicroSD
+
+        return MicroSD.get_microsd_dir() / "battery_discharge_log.csv"
+
+    @classmethod
+    def get_discharge_curve_path(cls):
+        from seedsigner.hardware.microsd import MicroSD
+
+        return MicroSD.get_microsd_dir() / "battery_discharge_curve.json"
 
     def _open_bus(self):
         if self._bus is None:
@@ -194,9 +209,68 @@ class BatteryHat(Singleton, BaseThread):
         voltage = self.read_voltage()
         if voltage is None:
             return None
+        curve = self._load_discharge_curve()
+        if curve:
+            pct = self._percent_from_curve(voltage, curve)
+            if pct is not None:
+                return max(0, min(100, pct))
         pct = (voltage - self.MIN_VOLTAGE) / (self.MAX_VOLTAGE - self.MIN_VOLTAGE) * 100
-        pct = max(0, min(100, pct))
-        return pct
+        return max(0, min(100, pct))
+
+    def _load_discharge_curve(self) -> list[dict] | None:
+        curve_path = self.get_discharge_curve_path()
+        if not curve_path.exists():
+            self._curve_data = None
+            self._curve_mtime = None
+            return None
+        try:
+            mtime = curve_path.stat().st_mtime
+        except OSError:
+            return None
+        if self._curve_data is not None and self._curve_mtime == mtime:
+            return self._curve_data
+        try:
+            with curve_path.open("r", encoding="utf-8") as handle:
+                data = json.load(handle)
+        except (OSError, json.JSONDecodeError) as exc:
+            logger.warning(f"Failed to load discharge curve: {exc}")
+            return None
+        curve = data.get("curve")
+        if not isinstance(curve, list):
+            return None
+        self._curve_data = curve
+        self._curve_mtime = mtime
+        return curve
+
+    def _percent_from_curve(self, voltage: float, curve: list[dict]) -> float | None:
+        points = []
+        for entry in curve:
+            try:
+                points.append((float(entry["voltage"]), float(entry["percent"])))
+            except (KeyError, TypeError, ValueError):
+                continue
+        if len(points) < 2:
+            return None
+        points.sort(key=lambda item: item[0])
+        if voltage <= points[0][0]:
+            return points[0][1]
+        if voltage >= points[-1][0]:
+            return points[-1][1]
+        for idx in range(1, len(points)):
+            low_v, low_p = points[idx - 1]
+            high_v, high_p = points[idx]
+            if voltage <= high_v:
+                if high_v == low_v:
+                    return low_p
+                t = (voltage - low_v) / (high_v - low_v)
+                return low_p + t * (high_p - low_p)
+        return None
+
+    def get_curve_label(self) -> str | None:
+        curve_path = self.get_discharge_curve_path()
+        if curve_path.exists():
+            return curve_path.name
+        return None
 
     def run(self):
         while self.keep_running:
