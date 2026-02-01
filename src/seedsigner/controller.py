@@ -221,8 +221,9 @@ class Controller(Singleton):
         controller.microsd.start_detection()
 
         controller.battery_hat = BatteryHat.get_instance()
-        controller.battery_hat.start()
         controller.battery_hat.process_discharge_log()
+        controller.battery_hat.load_discharge_curve()
+        controller.battery_hat.start()
 
         # Store one working psbt in memory
         controller.psbt = None

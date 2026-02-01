@@ -1387,9 +1387,12 @@ class MainMenuScreen(LargeButtonScreen):
             cur_time = time.time()
             if cur_time - self.last_battery_update > 60:
                 percent = self.battery_hat.get_percent()
-                if percent is not None:
+                current = self.battery_hat.get_current()
+                charging = current is not None and current > 0
+                if percent is not None or current is not None:
                     with self.renderer.lock:
                         self.battery_indicator.percent = percent
+                        self.battery_indicator.charging = charging
                         self.battery_indicator.render()
                         self.renderer.show_image()
                 self.last_battery_update = cur_time
