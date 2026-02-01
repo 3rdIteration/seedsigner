@@ -145,7 +145,7 @@ class ToolsBatteryCalibrationRunningScreen(BaseScreen):
                     voltage = self.battery_hat.get_voltage()
                     current = self.battery_hat.get_current()
 
-                    if current is not None and current < 0:
+                    if current is not None and current > 0:
                         if charging_start_time is None:
                             charging_start_time = now
                         elif now - charging_start_time >= 30:
@@ -156,7 +156,7 @@ class ToolsBatteryCalibrationRunningScreen(BaseScreen):
                         charging_start_time = None
 
                     if now >= next_log_time:
-                        if current is None or current >= 0:
+                        if current is None or current <= 0:
                             self._write_log_line(handle, int(time.time()), voltage)
                         next_log_time = now + 60
 
@@ -164,7 +164,7 @@ class ToolsBatteryCalibrationRunningScreen(BaseScreen):
                         elapsed_text = self._format_elapsed(int(now - start_time))
                         voltage_text = "--" if voltage is None else f"{voltage:.2f} V"
                         current_text = "--" if current is None else f"{current:.0f} mA"
-                        status_text = _("Charging detected") if current is not None and current < 0 else _("Discharging")
+                        status_text = _("Charging detected") if current is not None and current > 0 else _("Discharging")
 
                         with self.renderer.lock:
                             self.renderer.draw.rectangle(
