@@ -222,6 +222,7 @@ class Controller(Singleton):
 
         controller.battery_hat = BatteryHat.get_instance()
         controller.battery_hat.start()
+        controller.battery_hat.process_discharge_log()
 
         # Store one working psbt in memory
         controller.psbt = None
