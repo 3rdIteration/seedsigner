@@ -1,5 +1,4 @@
 import math
-import random
 import time
 
 from dataclasses import dataclass
@@ -106,33 +105,16 @@ class ToolsBatteryCalibrationRunningScreen(BaseScreen):
 
     def __post_init__(self):
         super().__post_init__()
-        self.logo = load_image("logo_black_240.png")
-        self.image = Image.new(
-            "RGB",
-            (self.renderer.canvas_width + self.logo.width, self.renderer.canvas_height + self.logo.height),
-            (0, 0, 0),
-        )
-        logo_x = int((self.image.width - self.logo.width) / 2)
-        logo_y = int((self.image.height - self.logo.height) / 2)
-        self.image.paste(self.logo, (logo_x, logo_y))
-        self.min_coords = (0, 0)
-        self.max_coords = (self.renderer.canvas_width, self.renderer.canvas_height)
-        self.cur_x = int(self.logo.width / 2)
-        self.cur_y = int(self.logo.height / 2)
-        self.increment_x = self._rand_increment()
-        self.increment_y = self._rand_increment()
+        self.status_font = Fonts.get_font(GUIConstants.get_body_font_name(), GUIConstants.get_body_font_size())
         self.camera = Camera.get_instance()
 
-    def _rand_increment(self) -> float:
-        max_increment = 10.0
-        min_increment = 1.0
-        increment = random.uniform(min_increment, max_increment)
-        if random.uniform(-1.0, 1.0) < 0.0:
-            return -1.0 * increment
-        return increment
+    def _format_elapsed(self, elapsed_seconds: int) -> str:
+        hours = elapsed_seconds // 3600
+        minutes = (elapsed_seconds % 3600) // 60
+        seconds = elapsed_seconds % 60
+        return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
 
-    def _write_log_line(self, handle, timestamp: int) -> None:
-        voltage = self.battery_hat.get_voltage()
+    def _write_log_line(self, handle, timestamp: int, voltage: float | None) -> None:
         if voltage is None:
             handle.write(f"{timestamp},\n")
         else:
@@ -147,51 +129,68 @@ class ToolsBatteryCalibrationRunningScreen(BaseScreen):
             camera_started = True
         except Exception:
             camera_started = False
+        start_time = time.monotonic()
+        last_render_time = 0.0
+        charging_start_time = None
         next_log_time = time.monotonic()
         try:
             with self.log_path.open("w", encoding="utf-8") as handle:
-                with self.renderer.lock:
-                    while True:
-                        if self.hw_inputs.has_any_input() or self.hw_inputs.override_ind:
+                while True:
+                    if self.hw_inputs.has_any_input() or self.hw_inputs.override_ind:
+                        if self.log_path.exists():
+                            self.log_path.unlink()
+                        return RET_CODE__BACK_BUTTON
+
+                    now = time.monotonic()
+                    voltage = self.battery_hat.get_voltage()
+                    current = self.battery_hat.get_current()
+
+                    if current is not None and current < 0:
+                        if charging_start_time is None:
+                            charging_start_time = now
+                        elif now - charging_start_time >= 30:
                             if self.log_path.exists():
                                 self.log_path.unlink()
                             return RET_CODE__BACK_BUTTON
+                    else:
+                        charging_start_time = None
 
-                        now = time.monotonic()
-                        if now >= next_log_time:
-                            self._write_log_line(handle, int(time.time()))
-                            next_log_time = now + 60
+                    if now >= next_log_time:
+                        if current is None or current >= 0:
+                            self._write_log_line(handle, int(time.time()), voltage)
+                        next_log_time = now + 60
 
-                        crop = self.image.crop((
-                            self.cur_x, self.cur_y,
-                            self.cur_x + self.renderer.canvas_width, self.cur_y + self.renderer.canvas_height,
-                        ))
-                        self.renderer.disp.show_image(crop, 0, 0)
+                    if now - last_render_time >= 0.5:
+                        elapsed_text = self._format_elapsed(int(now - start_time))
+                        voltage_text = "--" if voltage is None else f"{voltage:.2f} V"
+                        current_text = "--" if current is None else f"{current:.0f} mA"
+                        status_text = _("Charging detected") if current is not None and current < 0 else _("Discharging")
 
-                        self.cur_x += self.increment_x
-                        self.cur_y += self.increment_y
+                        with self.renderer.lock:
+                            self.renderer.draw.rectangle(
+                                (0, 0, self.renderer.canvas_width, self.renderer.canvas_height),
+                                fill=GUIConstants.BACKGROUND_COLOR,
+                            )
+                            y = GUIConstants.EDGE_PADDING
+                            line_spacing = self.status_font.size + GUIConstants.COMPONENT_PADDING
+                            for line in (
+                                _("Elapsed: ") + elapsed_text,
+                                _("Voltage: ") + voltage_text,
+                                _("Current: ") + current_text,
+                                _("Status: ") + status_text,
+                            ):
+                                self.renderer.draw.text(
+                                    (GUIConstants.EDGE_PADDING, y),
+                                    text=line,
+                                    fill=GUIConstants.BODY_FONT_COLOR,
+                                    font=self.status_font,
+                                    anchor="lt",
+                                )
+                                y += line_spacing
+                            self.renderer.show_image()
+                        last_render_time = now
 
-                        if self.cur_x < self.min_coords[0]:
-                            self.cur_x = self.min_coords[0]
-                            self.increment_x = self._rand_increment()
-                            if self.increment_x < 0.0:
-                                self.increment_x *= -1.0
-                        elif self.cur_x > self.max_coords[0]:
-                            self.cur_x = self.max_coords[0]
-                            self.increment_x = self._rand_increment()
-                            if self.increment_x > 0.0:
-                                self.increment_x *= -1.0
-
-                        if self.cur_y < self.min_coords[1]:
-                            self.cur_y = self.min_coords[1]
-                            self.increment_y = self._rand_increment()
-                            if self.increment_y < 0.0:
-                                self.increment_y *= -1.0
-                        elif self.cur_y > self.max_coords[1]:
-                            self.cur_y = self.max_coords[1]
-                            self.increment_y = self._rand_increment()
-                            if self.increment_y > 0.0:
-                                self.increment_y *= -1.0
+                    time.sleep(0.1)
         finally:
             if camera_started:
                 self.camera.stop_video_stream_mode()
