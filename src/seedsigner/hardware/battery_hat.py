@@ -333,7 +333,6 @@ class BatteryHat(Singleton, BaseThread):
         curve_path = self.get_discharge_curve_path()
         curve_path.parent.mkdir(parents=True, exist_ok=True)
         payload = {
-            "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "source_log": log_path.name,
             "curve": curve,
         }
