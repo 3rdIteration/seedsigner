@@ -79,7 +79,7 @@ class ToolsBatteryCalibrationIntroScreen(ButtonListScreen):
         super().__post_init__()
 
         self.components.append(TextArea(
-            text=_("Charge the battery until it is full, then select Next to begin the discharge test."),
+            text=_("Charge the battery fully. Select Next to start the discharge test."),
             screen_y=self.top_nav.height + int(GUIConstants.COMPONENT_PADDING / 2),
         ))
 
@@ -94,15 +94,15 @@ class ToolsBatteryCalibrationStartScreen(ButtonListScreen):
         super().__post_init__()
 
         self.components.append(TextArea(
-            text=_("This test will run until the battery is flat. Leave the device connected to nothing and allow it to fully discharge."),
+            text=_("Test runs until empty. Leave the device unplugged."),
             screen_y=self.top_nav.height + int(GUIConstants.COMPONENT_PADDING / 2),
         ))
 
 
 @dataclass
 class ToolsBatteryCalibrationRunningScreen(BaseScreen):
-    log_path: Path
-    battery_hat: Any
+    log_path: Path = None
+    battery_hat: Any = None
 
     def __post_init__(self):
         super().__post_init__()
