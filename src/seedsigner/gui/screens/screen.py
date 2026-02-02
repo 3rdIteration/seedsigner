@@ -1376,20 +1376,47 @@ class MainMenuScreen(LargeButtonScreen):
         self.battery_indicator = BatteryIndicator()
         self.battery_indicator.screen_x = GUIConstants.EDGE_PADDING
         self.battery_indicator.screen_y = GUIConstants.EDGE_PADDING
-        self.last_battery_update = 0
         if self.battery_hat.detected:
             self.components.append(self.battery_indicator)
+        self.threads.append(MainMenuScreen.UpdateThread(self))
 
     def _run_callback(self):
-        if self.battery_hat.detected:
-            if self.battery_indicator not in self.components:
-                self.components.append(self.battery_indicator)
-            cur_time = time.time()
-            if cur_time - self.last_battery_update > 60:
-                percent = self.battery_hat.get_percent()
-                if percent is not None:
-                    with self.renderer.lock:
-                        self.battery_indicator.percent = percent
-                        self.battery_indicator.render()
-                        self.renderer.show_image()
-                self.last_battery_update = cur_time
+        return None
+
+    class UpdateThread(BaseThread):
+        def __init__(self, screen):
+            super().__init__()
+            self.screen = screen
+            self.battery_hat = screen.battery_hat
+            self.last_percent = None
+            self.last_charging = None
+
+        def run(self):
+            while self.keep_running:
+                if not self.battery_hat.detected:
+                    self.battery_hat.detected = self.battery_hat.detect_hat()
+
+                if self.battery_hat.detected and self.screen.battery_indicator not in self.screen.components:
+                    with self.screen.renderer.lock:
+                        self.screen.components.append(self.screen.battery_indicator)
+                        self.screen.battery_indicator.render()
+                        self.screen.renderer.show_image()
+
+                percent = None
+                current = None
+                if self.battery_hat.detected:
+                    percent = self.battery_hat.get_percent()
+                    current = self.battery_hat.get_current()
+                charging = current is not None and current > 0
+                percent_display = int(percent) if percent is not None else None
+
+                if percent_display != self.last_percent or charging != self.last_charging:
+                    self.last_percent = percent_display
+                    self.last_charging = charging
+                    with self.screen.renderer.lock:
+                        self.screen.battery_indicator.percent = percent
+                        self.screen.battery_indicator.charging = charging
+                        self.screen.battery_indicator.render()
+                        self.screen.renderer.show_image()
+
+                time.sleep(1)

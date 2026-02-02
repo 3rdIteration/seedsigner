@@ -68,6 +68,29 @@ class BatteryHat(Singleton, BaseThread):
     MAX_VOLTAGE = 4.2
 
     UPDATE_PERIOD = 60  # seconds
+    DEFAULT_DISCHARGE_CURVE = [
+        {"percent": 100, "voltage": 4.032},
+        {"percent": 95, "voltage": 3.9804},
+        {"percent": 90, "voltage": 3.9676},
+        {"percent": 85, "voltage": 3.952},
+        {"percent": 80, "voltage": 3.936},
+        {"percent": 75, "voltage": 3.905},
+        {"percent": 70, "voltage": 3.8652},
+        {"percent": 65, "voltage": 3.8334},
+        {"percent": 60, "voltage": 3.8136},
+        {"percent": 55, "voltage": 3.7858},
+        {"percent": 50, "voltage": 3.7619},
+        {"percent": 45, "voltage": 3.732},
+        {"percent": 40, "voltage": 3.6927},
+        {"percent": 35, "voltage": 3.6356},
+        {"percent": 30, "voltage": 3.5775},
+        {"percent": 25, "voltage": 3.531},
+        {"percent": 20, "voltage": 3.4904},
+        {"percent": 15, "voltage": 3.4433},
+        {"percent": 10, "voltage": 3.3991},
+        {"percent": 5, "voltage": 3.3313},
+        {"percent": 0, "voltage": 2.98},
+    ]
 
     @classmethod
     def reset_instance(cls):
@@ -90,7 +113,7 @@ class BatteryHat(Singleton, BaseThread):
             instance.percent = None
             instance.detected = False
             instance._curve_data = None
-            instance._curve_mtime = None
+            instance._curve_label = None
         return cls._instance
 
     @classmethod
@@ -103,7 +126,7 @@ class BatteryHat(Singleton, BaseThread):
     def get_discharge_curve_path(cls):
         from seedsigner.hardware.microsd import MicroSD
 
-        return MicroSD.get_microsd_dir() / "battery_discharge_curve.json"
+        return MicroSD.get_microsd_dir() / "custom_battery_discharge_curve.json"
 
     def _open_bus(self):
         if self._bus is None:
@@ -218,18 +241,16 @@ class BatteryHat(Singleton, BaseThread):
         pct = (voltage - self.MIN_VOLTAGE) / (self.MAX_VOLTAGE - self.MIN_VOLTAGE) * 100
         return max(0, min(100, pct))
 
-    def _load_discharge_curve(self) -> list[dict] | None:
-        curve_path = self.get_discharge_curve_path()
+    def load_discharge_curve(self) -> None:
+        curve = self._load_curve_from_path(self.get_discharge_curve_path())
+        if curve:
+            return
+        self._curve_data = list(self.DEFAULT_DISCHARGE_CURVE)
+        self._curve_label = "default"
+
+    def _load_curve_from_path(self, curve_path: Path) -> list[dict] | None:
         if not curve_path.exists():
-            self._curve_data = None
-            self._curve_mtime = None
             return None
-        try:
-            mtime = curve_path.stat().st_mtime
-        except OSError:
-            return None
-        if self._curve_data is not None and self._curve_mtime == mtime:
-            return self._curve_data
         try:
             with curve_path.open("r", encoding="utf-8") as handle:
                 data = json.load(handle)
@@ -240,8 +261,13 @@ class BatteryHat(Singleton, BaseThread):
         if not isinstance(curve, list):
             return None
         self._curve_data = curve
-        self._curve_mtime = mtime
+        self._curve_label = curve_path.name
         return curve
+
+    def _load_discharge_curve(self) -> list[dict] | None:
+        if self._curve_data is None:
+            self.load_discharge_curve()
+        return self._curve_data
 
     def _percent_from_curve(self, voltage: float, curve: list[dict]) -> float | None:
         points = []
@@ -268,10 +294,7 @@ class BatteryHat(Singleton, BaseThread):
         return None
 
     def get_curve_label(self) -> str | None:
-        curve_path = self.get_discharge_curve_path()
-        if curve_path.exists():
-            return curve_path.name
-        return None
+        return self._curve_label
 
     def _load_discharge_log_entries(self, log_path: Path) -> list[tuple[float, float]]:
         entries: list[tuple[float, float]] = []
