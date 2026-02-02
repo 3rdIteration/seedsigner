@@ -3,13 +3,14 @@ import time
 
 from dataclasses import dataclass
 from gettext import gettext as _
+from pathlib import Path
 from typing import Any, List
 from PIL import Image, ImageDraw
 from seedsigner.helpers import mnemonic_generation
 from seedsigner.gui.renderer import Renderer
 from seedsigner.hardware.camera import Camera
 from seedsigner.helpers.qr import QR
-from seedsigner.gui.components import FontAwesomeIconConstants, Fonts, GUIConstants, IconTextLine, SeedSignerIconConstants, TextArea, Button, IconButton, CheckboxButton
+from seedsigner.gui.components import FontAwesomeIconConstants, Fonts, GUIConstants, IconTextLine, SeedSignerIconConstants, TextArea, Button, IconButton, CheckboxButton, load_image
 from seedsigner.gui.keyboard import Keyboard, TextEntryDisplay
 from seedsigner.gui.screens.screen import RET_CODE__BACK_BUTTON, BaseScreen, BaseTopNavScreen, ButtonListScreen, KeyboardScreen, WarningEdgesMixin, ButtonOption
 from seedsigner.hardware.buttons import HardwareButtonsConstants
@@ -66,6 +67,133 @@ class ToolsNetworkInfoScreen(ButtonListScreen):
         )
         self.components.append(message_display)
 
+
+@dataclass
+class ToolsBatteryCalibrationIntroScreen(ButtonListScreen):
+    def __post_init__(self):
+        self.title = _("Battery Calibration")
+        self.is_bottom_list = True
+        self.is_button_text_centered = True
+        self.button_data = [ButtonOption(_("Next"))]
+        super().__post_init__()
+
+        self.components.append(TextArea(
+            text=_("Charge the battery fully. Select Next to start the discharge test."),
+            screen_y=self.top_nav.height + int(GUIConstants.COMPONENT_PADDING / 2),
+        ))
+
+
+@dataclass
+class ToolsBatteryCalibrationStartScreen(ButtonListScreen):
+    def __post_init__(self):
+        self.title = _("Battery Calibration")
+        self.is_bottom_list = True
+        self.is_button_text_centered = True
+        self.button_data = [ButtonOption(_("Start"))]
+        super().__post_init__()
+
+        self.components.append(TextArea(
+            text=_("Test runs until empty. Leave the device unplugged."),
+            screen_y=self.top_nav.height + int(GUIConstants.COMPONENT_PADDING / 2),
+        ))
+
+
+@dataclass
+class ToolsBatteryCalibrationRunningScreen(BaseScreen):
+    log_path: Path = None
+    battery_hat: Any = None
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.status_font = Fonts.get_font(GUIConstants.get_body_font_name(), GUIConstants.get_body_font_size())
+        self.camera = Camera.get_instance()
+
+    def _format_elapsed(self, elapsed_seconds: int) -> str:
+        hours = elapsed_seconds // 3600
+        minutes = (elapsed_seconds % 3600) // 60
+        seconds = elapsed_seconds % 60
+        return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+
+    def _write_log_line(self, handle, timestamp: int, voltage: float | None) -> None:
+        if voltage is None:
+            handle.write(f"{timestamp},\n")
+        else:
+            handle.write(f"{timestamp},{voltage:.4f}\n")
+        handle.flush()
+
+    def _run(self):
+        self.log_path.parent.mkdir(parents=True, exist_ok=True)
+        camera_started = False
+        try:
+            self.camera.start_video_stream_mode(resolution=(320, 240), framerate=30, format="rgb")
+            camera_started = True
+        except Exception:
+            camera_started = False
+        start_time = time.monotonic()
+        last_render_time = 0.0
+        charging_start_time = None
+        next_log_time = time.monotonic()
+        try:
+            with self.log_path.open("w", encoding="utf-8") as handle:
+                while True:
+                    if self.hw_inputs.has_any_input() or self.hw_inputs.override_ind:
+                        if self.log_path.exists():
+                            self.log_path.unlink()
+                        return RET_CODE__BACK_BUTTON
+
+                    now = time.monotonic()
+                    voltage = self.battery_hat.get_voltage()
+                    current = self.battery_hat.get_current()
+
+                    if current is not None and current > 0:
+                        if charging_start_time is None:
+                            charging_start_time = now
+                        elif now - charging_start_time >= 30:
+                            if self.log_path.exists():
+                                self.log_path.unlink()
+                            return RET_CODE__BACK_BUTTON
+                    else:
+                        charging_start_time = None
+
+                    if now >= next_log_time:
+                        if current is None or current <= 0:
+                            self._write_log_line(handle, int(time.time()), voltage)
+                        next_log_time = now + 60
+
+                    if now - last_render_time >= 0.5:
+                        elapsed_text = self._format_elapsed(int(now - start_time))
+                        voltage_text = "--" if voltage is None else f"{voltage:.2f} V"
+                        current_text = "--" if current is None else f"{current:.0f} mA"
+                        status_text = _("Charging detected") if current is not None and current > 0 else _("Discharging")
+
+                        with self.renderer.lock:
+                            self.renderer.draw.rectangle(
+                                (0, 0, self.renderer.canvas_width, self.renderer.canvas_height),
+                                fill=GUIConstants.BACKGROUND_COLOR,
+                            )
+                            y = GUIConstants.EDGE_PADDING
+                            line_spacing = self.status_font.size + GUIConstants.COMPONENT_PADDING
+                            for line in (
+                                _("Elapsed: ") + elapsed_text,
+                                _("Voltage: ") + voltage_text,
+                                _("Current: ") + current_text,
+                                _("Status: ") + status_text,
+                            ):
+                                self.renderer.draw.text(
+                                    (GUIConstants.EDGE_PADDING, y),
+                                    text=line,
+                                    fill=GUIConstants.BODY_FONT_COLOR,
+                                    font=self.status_font,
+                                    anchor="lt",
+                                )
+                                y += line_spacing
+                            self.renderer.show_image()
+                        last_render_time = now
+
+                    time.sleep(0.1)
+        finally:
+            if camera_started:
+                self.camera.stop_video_stream_mode()
 
 @dataclass
 class ToolsImageEntropyLivePreviewScreen(BaseScreen):

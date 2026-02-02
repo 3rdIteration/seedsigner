@@ -1,5 +1,7 @@
+import json
 import logging
 import time
+from pathlib import Path
 
 try:
     from smbus2 import SMBus  # type: ignore
@@ -66,6 +68,29 @@ class BatteryHat(Singleton, BaseThread):
     MAX_VOLTAGE = 4.2
 
     UPDATE_PERIOD = 60  # seconds
+    DEFAULT_DISCHARGE_CURVE = [
+        {"percent": 100, "voltage": 4.032},
+        {"percent": 95, "voltage": 3.9804},
+        {"percent": 90, "voltage": 3.9676},
+        {"percent": 85, "voltage": 3.952},
+        {"percent": 80, "voltage": 3.936},
+        {"percent": 75, "voltage": 3.905},
+        {"percent": 70, "voltage": 3.8652},
+        {"percent": 65, "voltage": 3.8334},
+        {"percent": 60, "voltage": 3.8136},
+        {"percent": 55, "voltage": 3.7858},
+        {"percent": 50, "voltage": 3.7619},
+        {"percent": 45, "voltage": 3.732},
+        {"percent": 40, "voltage": 3.6927},
+        {"percent": 35, "voltage": 3.6356},
+        {"percent": 30, "voltage": 3.5775},
+        {"percent": 25, "voltage": 3.531},
+        {"percent": 20, "voltage": 3.4904},
+        {"percent": 15, "voltage": 3.4433},
+        {"percent": 10, "voltage": 3.3991},
+        {"percent": 5, "voltage": 3.3313},
+        {"percent": 0, "voltage": 2.98},
+    ]
 
     @classmethod
     def reset_instance(cls):
@@ -87,7 +112,21 @@ class BatteryHat(Singleton, BaseThread):
             instance._bus = None
             instance.percent = None
             instance.detected = False
+            instance._curve_data = None
+            instance._curve_label = None
         return cls._instance
+
+    @classmethod
+    def get_discharge_log_path(cls):
+        from seedsigner.hardware.microsd import MicroSD
+
+        return MicroSD.get_microsd_dir() / "battery_discharge_log.csv"
+
+    @classmethod
+    def get_discharge_curve_path(cls):
+        from seedsigner.hardware.microsd import MicroSD
+
+        return MicroSD.get_microsd_dir() / "custom_battery_discharge_curve.json"
 
     def _open_bus(self):
         if self._bus is None:
@@ -194,9 +233,140 @@ class BatteryHat(Singleton, BaseThread):
         voltage = self.read_voltage()
         if voltage is None:
             return None
+        curve = self._load_discharge_curve()
+        if curve:
+            pct = self._percent_from_curve(voltage, curve)
+            if pct is not None:
+                return max(0, min(100, pct))
         pct = (voltage - self.MIN_VOLTAGE) / (self.MAX_VOLTAGE - self.MIN_VOLTAGE) * 100
-        pct = max(0, min(100, pct))
-        return pct
+        return max(0, min(100, pct))
+
+    def load_discharge_curve(self) -> None:
+        curve = self._load_curve_from_path(self.get_discharge_curve_path())
+        if curve:
+            return
+        self._curve_data = list(self.DEFAULT_DISCHARGE_CURVE)
+        self._curve_label = "default"
+
+    def _load_curve_from_path(self, curve_path: Path) -> list[dict] | None:
+        if not curve_path.exists():
+            return None
+        try:
+            with curve_path.open("r", encoding="utf-8") as handle:
+                data = json.load(handle)
+        except (OSError, json.JSONDecodeError) as exc:
+            logger.warning(f"Failed to load discharge curve: {exc}")
+            return None
+        curve = data.get("curve")
+        if not isinstance(curve, list):
+            return None
+        self._curve_data = curve
+        self._curve_label = curve_path.name
+        return curve
+
+    def _load_discharge_curve(self) -> list[dict] | None:
+        if self._curve_data is None:
+            self.load_discharge_curve()
+        return self._curve_data
+
+    def _percent_from_curve(self, voltage: float, curve: list[dict]) -> float | None:
+        points = []
+        for entry in curve:
+            try:
+                points.append((float(entry["voltage"]), float(entry["percent"])))
+            except (KeyError, TypeError, ValueError):
+                continue
+        if len(points) < 2:
+            return None
+        points.sort(key=lambda item: item[0])
+        if voltage <= points[0][0]:
+            return points[0][1]
+        if voltage >= points[-1][0]:
+            return points[-1][1]
+        for idx in range(1, len(points)):
+            low_v, low_p = points[idx - 1]
+            high_v, high_p = points[idx]
+            if voltage <= high_v:
+                if high_v == low_v:
+                    return low_p
+                t = (voltage - low_v) / (high_v - low_v)
+                return low_p + t * (high_p - low_p)
+        return None
+
+    def get_curve_label(self) -> str | None:
+        return self._curve_label
+
+    def _load_discharge_log_entries(self, log_path: Path) -> list[tuple[float, float]]:
+        entries: list[tuple[float, float]] = []
+        try:
+            with log_path.open("r", encoding="utf-8") as handle:
+                for line in handle:
+                    parts = line.strip().split(",")
+                    if len(parts) < 2:
+                        continue
+                    try:
+                        timestamp = float(parts[0])
+                        voltage = float(parts[1])
+                    except ValueError:
+                        continue
+                    entries.append((timestamp, voltage))
+        except OSError as exc:
+            logger.warning(f"Failed to read battery discharge log: {exc}")
+        return entries
+
+    def _generate_discharge_curve(self, entries: list[tuple[float, float]], step: int) -> list[dict]:
+        entries.sort(key=lambda item: item[0])
+        start_time = entries[0][0]
+        end_time = entries[-1][0]
+        duration = end_time - start_time
+        if duration <= 0:
+            return []
+
+        curve: list[dict] = []
+        idx = 0
+        for percent in range(100, -1, -step):
+            target_time = start_time + (1 - percent / 100) * duration
+            while idx < len(entries) - 2 and entries[idx + 1][0] < target_time:
+                idx += 1
+            low_t, low_v = entries[idx]
+            high_t, high_v = entries[min(idx + 1, len(entries) - 1)]
+            if high_t == low_t:
+                voltage = low_v
+            else:
+                t = (target_time - low_t) / (high_t - low_t)
+                voltage = low_v + t * (high_v - low_v)
+            curve.append({"percent": percent, "voltage": round(voltage, 4)})
+        return curve
+
+    def process_discharge_log(self, step: int = 5) -> bool:
+        log_path = self.get_discharge_log_path()
+        if not log_path.exists():
+            return False
+
+        entries = self._load_discharge_log_entries(log_path)
+        if len(entries) < 2:
+            log_path.unlink(missing_ok=True)
+            return False
+
+        curve = self._generate_discharge_curve(entries, step)
+        if not curve:
+            log_path.unlink(missing_ok=True)
+            return False
+
+        curve_path = self.get_discharge_curve_path()
+        curve_path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "source_log": log_path.name,
+            "curve": curve,
+        }
+        try:
+            with curve_path.open("w", encoding="utf-8") as handle:
+                json.dump(payload, handle, indent=2)
+        except OSError as exc:
+            logger.warning(f"Failed to write discharge curve: {exc}")
+            return False
+        log_path.unlink(missing_ok=True)
+        return True
 
     def run(self):
         while self.keep_running:

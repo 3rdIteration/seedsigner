@@ -386,6 +386,15 @@ class BatteryInfoScreen(BaseTopNavScreen):
         )
         self.components.append(self.percent_text)
 
+        start_y += self.percent_text.height + GUIConstants.COMPONENT_PADDING
+        self.curve_text = TextArea(
+            text="Curve: --",
+            is_text_centered=True,
+            screen_y=start_y,
+            font_size=self.info_font_size,
+        )
+        self.components.append(self.curve_text)
+
         self.threads.append(BatteryInfoScreen.UpdateThread(self))
 
     def _replace_info_text(self, attribute: str, text: str) -> None:
@@ -443,10 +452,16 @@ class BatteryInfoScreen(BaseTopNavScreen):
                         percent_text = f"Percent: {percent:.1f}%"
                     else:
                         percent_text = "Percent: --%"
+                    curve_label = self.battery_hat.get_curve_label()
+                    if curve_label:
+                        curve_text = f"Curve: {curve_label}"
+                    else:
+                        curve_text = "Curve: default"
                     self.screen._replace_info_text("voltage_text", voltage_text)
                     self.screen._replace_info_text("current_text", current_text)
                     self.screen._replace_info_text("power_text", power_text)
                     self.screen._replace_info_text("percent_text", percent_text)
+                    self.screen._replace_info_text("curve_text", curve_text)
                     self.screen.renderer.show_image()
                 time.sleep(5)
 
