@@ -1806,6 +1806,7 @@ class BatteryIndicator(BaseComponent):
     def __post_init__(self):
         super().__post_init__()
         self.font = Fonts.get_font(GUIConstants.ICON_FONT_NAME__FONT_AWESOME, self.icon_size)
+        self.charging_font = Fonts.get_font(GUIConstants.ICON_FONT_NAME__FONT_AWESOME, max(10, self.icon_size - 6))
         self.text_font = Fonts.get_font(GUIConstants.get_body_font_name(), self.font_size)
         # Pre-calc height from icon/text
         (left, top, right, bottom) = self.font.getbbox(FontAwesomeIconConstants.BATTERY_FULL, anchor="ls")
@@ -1836,7 +1837,7 @@ class BatteryIndicator(BaseComponent):
             fill=GUIConstants.BACKGROUND_COLOR,
         )
 
-        icon = FontAwesomeIconConstants.BATTERY_CHARGING if self.charging else self._icon_from_percent()
+        icon = self._icon_from_percent()
         icon_color = GUIConstants.BODY_FONT_COLOR
         if self.percent is not None and self.percent < 20:
             icon_color = GUIConstants.ERROR_COLOR
@@ -1848,7 +1849,19 @@ class BatteryIndicator(BaseComponent):
             anchor="ls",
         )
 
-        if not self.charging:
+        if self.charging:
+            charging_icon = FontAwesomeIconConstants.BATTERY_CHARGING
+            icon_width = self.font.getlength(icon)
+            charging_width = self.charging_font.getlength(charging_icon)
+            overlay_x = self.screen_x + (icon_width - charging_width) / 2
+            self.image_draw.text(
+                (overlay_x, self.screen_y + self.height),
+                text=charging_icon,
+                font=self.charging_font,
+                fill=GUIConstants.BODY_FONT_COLOR,
+                anchor="ls",
+            )
+        else:
             if self.percent is not None:
                 pct_text = f"{int(self.percent)}%"
             else:
