@@ -1385,7 +1385,7 @@ class MainMenuScreen(LargeButtonScreen):
             if self.battery_indicator not in self.components:
                 self.components.append(self.battery_indicator)
             cur_time = time.time()
-            if cur_time - self.last_battery_update > 5:
+            if cur_time - self.last_battery_update > 1:
                 percent = self.battery_hat.get_percent()
                 current = self.battery_hat.get_current()
                 charging = current is not None and current > 0
