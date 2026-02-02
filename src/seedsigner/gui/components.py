@@ -1851,11 +1851,9 @@ class BatteryIndicator(BaseComponent):
 
         if self.charging:
             charging_icon = FontAwesomeIconConstants.BATTERY_CHARGING
-            icon_width = self.font.getlength(icon)
-            charging_width = self.charging_font.getlength(charging_icon)
-            overlay_x = self.screen_x + (icon_width - charging_width) / 2
+            text_x = self.screen_x + self.font.getlength(icon) + GUIConstants.COMPONENT_PADDING
             self.image_draw.text(
-                (overlay_x, self.screen_y + self.height),
+                (text_x, self.screen_y + self.height),
                 text=charging_icon,
                 font=self.charging_font,
                 fill=GUIConstants.BODY_FONT_COLOR,
