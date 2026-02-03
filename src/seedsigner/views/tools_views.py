@@ -1,3 +1,4 @@
+import base64
 import hashlib
 import json
 import logging
@@ -8,6 +9,7 @@ import binascii
 import re
 import subprocess
 from pathlib import Path
+import math
 from embit.util import secp256k1
 from embit.psbt import PSBT
 
@@ -35,6 +37,7 @@ from seedsigner.gui.screens.tools_screens import (ToolsCalcFinalWordDoneScreen, 
     ToolsTranscribeTextQRConfirmQRPromptScreen, ToolsCommonFilterScreen, ToolsNetworkInfoScreen,
     ToolsBatteryCalibrationIntroScreen, ToolsBatteryCalibrationStartScreen, ToolsBatteryCalibrationRunningScreen)
 from seedsigner.helpers import embit_utils, mnemonic_generation
+from seedsigner.helpers import diceware, password_generation
 from seedsigner.helpers.iso7816 import format_sw_error
 from seedsigner.models.decode_qr import DecodeQR
 from seedsigner.models.encode_qr import GenericStaticQrEncoder
@@ -75,6 +78,87 @@ from pysatochip.JCconstants import SEEDKEEPER_DIC_TYPE, SEEDKEEPER_DIC_ORIGIN, S
 from pysatochip.CardConnector import CardConnector, UnexpectedSW12Error
 from binascii import unhexlify, hexlify
 
+PASSWORD_TYPE_RANDOM = "random"
+PASSWORD_TYPE_DICEWARE_EFF_SHORT = "diceware_eff_short"
+PASSWORD_TYPE_DICEWARE_EFF_LONG = "diceware_eff_long"
+PASSWORD_TYPE_DICEWARE_BIP39 = "diceware_bip39"
+PASSWORD_TYPE_HEX = "hex"
+PASSWORD_TYPE_BASE64 = "base64"
+PASSWORD_TYPE_BASE85 = "base85"
+
+PASSWORD_ENTROPY_CAMERA = "camera"
+PASSWORD_ENTROPY_DICE = "dice"
+PASSWORD_ENTROPY_BIP85 = "bip85"
+
+BIP85_APP_HEX = 128169
+BIP85_APP_BASE64 = 707764
+BIP85_APP_BASE85 = 707785
+
+
+def _derive_camera_entropy_bytes(preview_images, final_image) -> bytes | None:
+    # Build in some hardware-level uniqueness via CPU unique Serial num
+    try:
+        stream = os.popen("cat /proc/cpuinfo | grep Serial")
+        output = stream.read()
+        serial_num = output.split(":")[-1].strip().encode("utf-8")
+        serial_hash = hashlib.sha256(serial_num)
+        hash_bytes = serial_hash.digest()
+    except Exception as e:
+        logger.info(repr(e), exc_info=True)
+        hash_bytes = b"0"
+
+    # Build in modest entropy via millis since power on
+    millis_hash = hashlib.sha256(hash_bytes + str(time.time()).encode("utf-8"))
+    hash_bytes = millis_hash.digest()
+
+    # Mix in entropy from hardware RNG or os.urandom fallback
+    rng_entropy = b""
+    for rng_path in ("/dev/hwrng", "/dev/random"):
+        try:
+            with open(rng_path, "rb") as rng:
+                rng_entropy = rng.read(32)
+                if rng_entropy:
+                    break
+        except Exception as e:
+            logger.info(repr(e), exc_info=True)
+    if not rng_entropy:
+        rng_entropy = os.urandom(32)
+
+    rng_hash = hashlib.sha256(hash_bytes + rng_entropy)
+    hash_bytes = rng_hash.digest()
+
+    # Build in better entropy by chaining the preview frames
+    for frame in preview_images:
+        img_hash = hashlib.sha256(hash_bytes + frame.tobytes())
+        hash_bytes = img_hash.digest()
+
+    # Finally build in our headline entropy via the new full-res image
+    if not mnemonic_generation.byte_entropy_is_sufficient(final_image.tobytes()):
+        return None
+    return hashlib.sha256(hash_bytes + final_image.tobytes()).digest()
+
+
+def _random_charset(random_options: dict) -> str:
+    keys_lower = "abcdefghijklmnopqrstuvwxyz"
+    keys_upper = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    keys_number = "0123456789"
+    keys_symbol_1 = """!@#$%&();:,.-+='"?"""
+    keys_symbol_2 = """^*[]{}_\\|<>/`~"""
+    charset = ""
+    if random_options.get("lower"):
+        charset += keys_lower
+    if random_options.get("upper"):
+        charset += keys_upper
+    if random_options.get("digits"):
+        charset += keys_number
+    if random_options.get("special"):
+        charset += keys_symbol_1 + keys_symbol_2
+    return charset
+
+
+def _bip85_supported_password_type(password_type: str) -> bool:
+    return password_type in {PASSWORD_TYPE_HEX, PASSWORD_TYPE_BASE64, PASSWORD_TYPE_BASE85}
+
 class ToolsMenuView(View):
     IMAGE = ButtonOption(" New seed", FontAwesomeIconConstants.CAMERA)
     DICE = ButtonOption("New seed", FontAwesomeIconConstants.DICE)
@@ -84,6 +168,7 @@ class ToolsMenuView(View):
     ADDRESS_EXPLORER = ButtonOption("Address Explorer")
     VERIFY_ADDRESS = ButtonOption("Verify address")
     TEXTQRCODE = ButtonOption("Text QR Code")
+    PASSWORD_GENERATOR = ButtonOption("Password Generator", FontAwesomeIconConstants.LOCK)
     SMARTCARD = ButtonOption("Smartcard Tools", FontAwesomeIconConstants.LOCK)
     MICROSD = ButtonOption("MicroSD Tools")
     BATTERY_CALIBRATION = ButtonOption("Battery Calibration")
@@ -105,6 +190,7 @@ class ToolsMenuView(View):
             self.ADDRESS_EXPLORER,
             self.VERIFY_ADDRESS,
             self.TEXTQRCODE,
+            self.PASSWORD_GENERATOR,
             self.MICROSD,
             self.BATTERY_CALIBRATION,
             self.NETWORK_INFO if Path("/usr/bin/network-info").is_file() else None,
@@ -149,6 +235,9 @@ class ToolsMenuView(View):
 
         elif button_data[selected_menu_num] == self.TEXTQRCODE:
             return Destination(ToolsTextQRView)
+
+        elif button_data[selected_menu_num] == self.PASSWORD_GENERATOR:
+            return Destination(ToolsPasswordGeneratorTypeView)
 
         elif button_data[selected_menu_num] == self.SMARTCARD:
             return Destination(ToolsSmartcardMenuView)
@@ -301,6 +390,11 @@ class ToolsNetworkInfoView(View):
     Image entropy Views
 ****************************************************************************"""
 class ToolsImageEntropyLivePreviewView(View):
+    def __init__(self, next_view: type = None, next_view_args: dict | None = None):
+        super().__init__()
+        self.next_view = next_view
+        self.next_view_args = next_view_args
+
     def run(self):
         from seedsigner.gui.screens.tools_screens import ToolsImageEntropyLivePreviewScreen
         self.controller.image_entropy_preview_frames = None
@@ -310,11 +404,19 @@ class ToolsImageEntropyLivePreviewView(View):
             return Destination(BackStackView)
         
         self.controller.image_entropy_preview_frames = ret
-        return Destination(ToolsImageEntropyFinalImageView)
+        return Destination(
+            ToolsImageEntropyFinalImageView,
+            view_args=dict(next_view=self.next_view, next_view_args=self.next_view_args),
+        )
 
 
 
 class ToolsImageEntropyFinalImageView(View):
+    def __init__(self, next_view: type = None, next_view_args: dict | None = None):
+        super().__init__()
+        self.next_view = next_view
+        self.next_view_args = next_view_args
+
     def run(self):
         from PIL import Image
         from PIL.ImageOps import autocontrast
@@ -353,7 +455,8 @@ class ToolsImageEntropyFinalImageView(View):
             self.controller.image_entropy_final_image = None
             return Destination(BackStackView)
         
-        return Destination(ToolsImageEntropyMnemonicLengthView)
+        next_view = self.next_view or ToolsImageEntropyMnemonicLengthView
+        return Destination(next_view, view_args=self.next_view_args)
 
 
 
@@ -397,44 +500,8 @@ class ToolsImageEntropyMnemonicLengthView(View):
         preview_images = self.controller.image_entropy_preview_frames
         seed_entropy_image = self.controller.image_entropy_final_image
 
-        # Build in some hardware-level uniqueness via CPU unique Serial num
-        try:
-            stream = os.popen("cat /proc/cpuinfo | grep Serial")
-            output = stream.read()
-            serial_num = output.split(":")[-1].strip().encode('utf-8')
-            serial_hash = hashlib.sha256(serial_num)
-            hash_bytes = serial_hash.digest()
-        except Exception as e:
-            logger.info(repr(e), exc_info=True)
-            hash_bytes = b'0'
-
-        # Build in modest entropy via millis since power on
-        millis_hash = hashlib.sha256(hash_bytes + str(time.time()).encode('utf-8'))
-        hash_bytes = millis_hash.digest()
-
-        # Mix in entropy from hardware RNG or os.urandom fallback
-        rng_entropy = b""
-        for rng_path in ("/dev/hwrng", "/dev/random"):
-            try:
-                with open(rng_path, "rb") as rng:
-                    rng_entropy = rng.read(32)
-                    if rng_entropy:
-                        break
-            except Exception as e:
-                logger.info(repr(e), exc_info=True)
-        if not rng_entropy:
-            rng_entropy = os.urandom(32)
-
-        rng_hash = hashlib.sha256(hash_bytes + rng_entropy)
-        hash_bytes = rng_hash.digest()
-
-        # Build in better entropy by chaining the preview frames
-        for frame in preview_images:
-            img_hash = hashlib.sha256(hash_bytes + frame.tobytes())
-            hash_bytes = img_hash.digest()
-
-        # Finally build in our headline entropy via the new full-res image
-        if not mnemonic_generation.byte_entropy_is_sufficient(seed_entropy_image.tobytes()):
+        final_hash = _derive_camera_entropy_bytes(preview_images, seed_entropy_image)
+        if final_hash is None:
             loading_screen.stop()
             self.run_screen(
                 ErrorScreen,
@@ -445,7 +512,6 @@ class ToolsImageEntropyMnemonicLengthView(View):
             self.controller.image_entropy_preview_frames = None
             self.controller.image_entropy_final_image = None
             return Destination(BackStackView)
-        final_hash = hashlib.sha256(hash_bytes + seed_entropy_image.tobytes()).digest()
 
         if mnemonic_length in mnemonic_generation.ENTROPY_BYTES_REQUIRED:
             final_hash = final_hash[:mnemonic_generation.ENTROPY_BYTES_REQUIRED[mnemonic_length]]
@@ -13187,3 +13253,687 @@ class ToolsTextQRReviewTextView2(View):
 
         elif button_data[selected_menu_num] == DONE:
             return Destination(BackStackView)
+
+
+"""****************************************************************************
+    Password Generator Views
+****************************************************************************"""
+class ToolsPasswordGeneratorTypeView(View):
+    def run(self):
+        options = [
+            (ButtonOption("Random"), PASSWORD_TYPE_RANDOM),
+            (ButtonOption("Diceware-EFF Short"), PASSWORD_TYPE_DICEWARE_EFF_SHORT),
+            (ButtonOption("Diceware-EFF Long"), PASSWORD_TYPE_DICEWARE_EFF_LONG),
+            (ButtonOption("Diceware-BIP39"), PASSWORD_TYPE_DICEWARE_BIP39),
+            (ButtonOption("Hex"), PASSWORD_TYPE_HEX),
+            (ButtonOption("Base64"), PASSWORD_TYPE_BASE64),
+            (ButtonOption("Base85"), PASSWORD_TYPE_BASE85),
+        ]
+        button_data = [button for button, _ in options]
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title=_("Password Type"),
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        password_type = options[selected_menu_num][1]
+        if password_type == PASSWORD_TYPE_RANDOM:
+            return Destination(
+                ToolsPasswordRandomOptionsView,
+                view_args=dict(password_type=password_type),
+            )
+        return Destination(
+            ToolsPasswordEntropySourceView,
+            view_args=dict(password_type=password_type),
+        )
+
+
+class ToolsPasswordRandomOptionsView(View):
+    def __init__(self, password_type: str):
+        super().__init__()
+        self.password_type = password_type
+
+    def _prompt_choice(self, title: str) -> bool | None:
+        yes = ButtonOption("Yes")
+        no = ButtonOption("No")
+        selected = self.run_screen(
+            ButtonListScreen,
+            title=title,
+            is_button_text_centered=True,
+            button_data=[yes, no],
+        )
+        if selected == RET_CODE__BACK_BUTTON:
+            return None
+        return selected == 0
+
+    def run(self):
+        while True:
+            lower = self._prompt_choice("Lowercase?")
+            if lower is None:
+                return Destination(BackStackView)
+            upper = self._prompt_choice("Uppercase?")
+            if upper is None:
+                return Destination(BackStackView)
+            digits = self._prompt_choice("Numbers?")
+            if digits is None:
+                return Destination(BackStackView)
+            special = self._prompt_choice("Specials?")
+            if special is None:
+                return Destination(BackStackView)
+            random_options = {
+                "lower": lower,
+                "upper": upper,
+                "digits": digits,
+                "special": special,
+            }
+            if any(random_options.values()):
+                return Destination(
+                    ToolsPasswordEntropySourceView,
+                    view_args=dict(
+                        password_type=self.password_type,
+                        random_options=random_options,
+                    ),
+                )
+            self.run_screen(
+                WarningScreen,
+                title=_("Select Options"),
+                status_headline=None,
+                text=_("Choose at least one character set."),
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+
+
+class ToolsPasswordEntropySourceView(View):
+    def __init__(self, password_type: str, random_options: dict | None = None):
+        super().__init__()
+        self.password_type = password_type
+        self.random_options = random_options or {}
+
+    def run(self):
+        camera = ButtonOption("Camera")
+        dice = ButtonOption("Dice")
+        bip85 = ButtonOption("BIP85")
+
+        if self.password_type in {
+            PASSWORD_TYPE_DICEWARE_EFF_SHORT,
+            PASSWORD_TYPE_DICEWARE_EFF_LONG,
+            PASSWORD_TYPE_DICEWARE_BIP39,
+        }:
+            button_data = [dice]
+        else:
+            button_data = [camera, dice, bip85]
+
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title=_("Entropy Source"),
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        selected = button_data[selected_menu_num]
+        if selected == bip85 and not _bip85_supported_password_type(self.password_type):
+            self.run_screen(
+                WarningScreen,
+                title=_("Not Supported"),
+                status_headline=None,
+                text=_("BIP85 supports Hex, Base64, and Base85 only."),
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(
+                ToolsPasswordEntropySourceView,
+                view_args=dict(
+                    password_type=self.password_type,
+                    random_options=self.random_options,
+                ),
+            )
+
+        if selected == camera:
+            return Destination(
+                ToolsImageEntropyLivePreviewView,
+                view_args=dict(
+                    next_view=ToolsPasswordLengthView,
+                    next_view_args=dict(
+                        password_type=self.password_type,
+                        entropy_source=PASSWORD_ENTROPY_CAMERA,
+                        random_options=self.random_options,
+                    ),
+                ),
+            )
+
+        if selected == dice:
+            return Destination(
+                ToolsPasswordDiceRollCountView,
+                view_args=dict(
+                    password_type=self.password_type,
+                    random_options=self.random_options,
+                ),
+            )
+
+        return Destination(
+            ToolsPasswordLengthView,
+            view_args=dict(
+                password_type=self.password_type,
+                entropy_source=PASSWORD_ENTROPY_BIP85,
+                random_options=self.random_options,
+            ),
+        )
+
+
+class ToolsPasswordDiceRollCountView(View):
+    def __init__(self, password_type: str, random_options: dict | None = None):
+        super().__init__()
+        self.password_type = password_type
+        self.random_options = random_options or {}
+
+    def run(self):
+        while True:
+            ret_dict = ToolsTextQRTextEntryScreen(
+                textToEncode="",
+                title=_("Dice Rolls"),
+            ).display()
+            if "is_back_button" in ret_dict:
+                return Destination(BackStackView)
+            try:
+                total_rolls = int(ret_dict["textToEncode"])
+                if total_rolls <= 0:
+                    raise ValueError
+            except ValueError:
+                self.run_screen(
+                    WarningScreen,
+                    title=_("Invalid Roll Count"),
+                    status_headline=None,
+                    text=_("Enter a positive number of rolls."),
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                continue
+
+            return Destination(
+                ToolsPasswordDiceEntryView,
+                view_args=dict(
+                    password_type=self.password_type,
+                    random_options=self.random_options,
+                    total_rolls=total_rolls,
+                ),
+            )
+
+
+class ToolsPasswordDiceEntryView(View):
+    def __init__(
+        self,
+        password_type: str,
+        total_rolls: int,
+        random_options: dict | None = None,
+    ):
+        super().__init__()
+        self.password_type = password_type
+        self.total_rolls = total_rolls
+        self.random_options = random_options or {}
+
+    def run(self):
+        ret = ToolsDiceEntropyEntryScreen(
+            return_after_n_chars=self.total_rolls,
+        ).display()
+
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        if not mnemonic_generation.dice_entropy_is_sufficient(ret):
+            self.run_screen(
+                ErrorScreen,
+                title=_("Poor Entropy"),
+                status_headline=None,
+                text=_("Dice rolls didn't appear random enough. Please try again."),
+            )
+            return Destination(BackStackView)
+
+        return Destination(
+            ToolsPasswordGenerateView,
+            view_args=dict(
+                password_type=self.password_type,
+                entropy_source=PASSWORD_ENTROPY_DICE,
+                random_options=self.random_options,
+                roll_data=ret,
+                roll_count=self.total_rolls,
+            ),
+        )
+
+
+class ToolsPasswordLengthView(View):
+    def __init__(
+        self,
+        password_type: str,
+        entropy_source: str,
+        random_options: dict | None = None,
+    ):
+        super().__init__()
+        self.password_type = password_type
+        self.entropy_source = entropy_source
+        self.random_options = random_options or {}
+
+    def run(self):
+        while True:
+            ret_dict = ToolsTextQRTextEntryScreen(
+                textToEncode="",
+                title=_("Length"),
+            ).display()
+            if "is_back_button" in ret_dict:
+                return Destination(BackStackView)
+            try:
+                length = int(ret_dict["textToEncode"])
+                if length <= 0:
+                    raise ValueError
+            except ValueError:
+                self.run_screen(
+                    WarningScreen,
+                    title=_("Invalid Length"),
+                    status_headline=None,
+                    text=_("Enter a positive length."),
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                continue
+
+            if self.entropy_source == PASSWORD_ENTROPY_BIP85:
+                return Destination(
+                    ToolsPasswordBIP85GenerateView,
+                    view_args=dict(
+                        password_type=self.password_type,
+                        random_options=self.random_options,
+                        length=length,
+                    ),
+                )
+
+            return Destination(
+                ToolsPasswordGenerateView,
+                view_args=dict(
+                    password_type=self.password_type,
+                    entropy_source=self.entropy_source,
+                    random_options=self.random_options,
+                    length=length,
+                ),
+            )
+
+
+class ToolsPasswordGenerateView(View):
+    def __init__(
+        self,
+        password_type: str,
+        entropy_source: str,
+        random_options: dict | None = None,
+        length: int | None = None,
+        roll_data: str | None = None,
+        roll_count: int | None = None,
+    ):
+        super().__init__()
+        self.password_type = password_type
+        self.entropy_source = entropy_source
+        self.random_options = random_options or {}
+        self.length = length
+        self.roll_data = roll_data
+        self.roll_count = roll_count
+
+    def _bip39_words_from_entropy(self, seed: bytes, word_count: int) -> list[str]:
+        wordlist = Seed.get_wordlist(
+            self.settings.get_value(SettingsConstants.SETTING__WORDLIST_LANGUAGE)
+        )
+        total_bits = word_count * 11
+        num_bytes = math.ceil(total_bits / 8)
+        data = password_generation.shake_stream(seed).read(num_bytes)
+        bit_string = "".join(f"{byte:08b}" for byte in data)
+        words = []
+        for i in range(word_count):
+            idx = int(bit_string[i * 11 : (i + 1) * 11], 2)
+            words.append(wordlist[idx])
+        return words
+
+    def _diceware_words(self) -> list[str]:
+        if self.password_type == PASSWORD_TYPE_DICEWARE_EFF_SHORT:
+            return diceware.diceware_words_from_rolls(
+                self.roll_data, diceware.eff_short_map(), 4
+            )
+        if self.password_type == PASSWORD_TYPE_DICEWARE_EFF_LONG:
+            return diceware.diceware_words_from_rolls(
+                self.roll_data, diceware.eff_large_map(), 5
+            )
+        entropy_bits = password_generation.dice_roll_entropy_bits(self.roll_count)
+        word_count = int(entropy_bits // 11)
+        if word_count < 1:
+            raise ValueError("Not enough entropy for words")
+        entropy_seed = mnemonic_generation._hash_dice_rolls(self.roll_data)
+        return self._bip39_words_from_entropy(entropy_seed, word_count)
+
+    def _dice_length_for_charset(self, alphabet_size: int) -> int:
+        entropy_bits = password_generation.dice_roll_entropy_bits(self.roll_count)
+        length = password_generation.length_from_entropy(entropy_bits, alphabet_size)
+        if length < 1:
+            raise ValueError("Not enough entropy for length")
+        return length
+
+    def run(self):
+        if self.entropy_source == PASSWORD_ENTROPY_CAMERA:
+            entropy_bytes = _derive_camera_entropy_bytes(
+                self.controller.image_entropy_preview_frames,
+                self.controller.image_entropy_final_image,
+            )
+            self.controller.image_entropy_preview_frames = None
+            self.controller.image_entropy_final_image = None
+            if entropy_bytes is None:
+                self.run_screen(
+                    ErrorScreen,
+                    title=_("Poor Entropy"),
+                    status_headline=None,
+                    text=_("Camera entropy didn't appear random enough. Please try again."),
+                )
+                return Destination(BackStackView)
+        else:
+            entropy_bytes = mnemonic_generation._hash_dice_rolls(self.roll_data)
+
+        try:
+            if self.password_type in {
+                PASSWORD_TYPE_DICEWARE_EFF_SHORT,
+                PASSWORD_TYPE_DICEWARE_EFF_LONG,
+                PASSWORD_TYPE_DICEWARE_BIP39,
+            }:
+                words = self._diceware_words()
+                password = " ".join(words)
+            elif self.password_type == PASSWORD_TYPE_RANDOM:
+                charset = _random_charset(self.random_options)
+                if self.entropy_source == PASSWORD_ENTROPY_DICE:
+                    length = self._dice_length_for_charset(len(charset))
+                else:
+                    length = self.length
+                password = password_generation.random_string_from_charset(
+                    entropy_bytes, length, charset
+                )
+            elif self.password_type == PASSWORD_TYPE_HEX:
+                if self.entropy_source == PASSWORD_ENTROPY_DICE:
+                    length = self._dice_length_for_charset(16)
+                else:
+                    length = self.length
+                password = password_generation.hex_password_from_seed(entropy_bytes, length)
+            elif self.password_type == PASSWORD_TYPE_BASE64:
+                if self.entropy_source == PASSWORD_ENTROPY_DICE:
+                    length = self._dice_length_for_charset(64)
+                else:
+                    length = self.length
+                password = password_generation.base64_password_from_seed(
+                    entropy_bytes, length
+                )
+            else:
+                if self.entropy_source == PASSWORD_ENTROPY_DICE:
+                    length = self._dice_length_for_charset(85)
+                else:
+                    length = self.length
+                password = password_generation.base85_password_from_seed(
+                    entropy_bytes, length
+                )
+        except ValueError as exc:
+            self.run_screen(
+                WarningScreen,
+                title=_("Invalid Input"),
+                status_headline=None,
+                text=str(exc),
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        return Destination(
+            ToolsPasswordReviewView,
+            view_args=dict(password=password),
+        )
+
+
+class ToolsPasswordBIP85GenerateView(View):
+    def __init__(self, password_type: str, length: int, random_options: dict | None = None):
+        super().__init__()
+        self.password_type = password_type
+        self.length = length
+        self.random_options = random_options or {}
+
+    def run(self):
+        from embit import bip32, bip85
+
+        if len(self.controller.storage.seeds) == 0:
+            self.run_screen(
+                WarningScreen,
+                title=_("WARNING"),
+                status_headline=None,
+                text=_("Load a seed before using BIP85."),
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        if len(self.controller.storage.seeds) > 1:
+            seed_buttons = []
+            for seed in self.controller.storage.seeds:
+                button_str = seed.get_fingerprint(
+                    self.settings.get_value(SettingsConstants.SETTING__NETWORK)
+                )
+                seed_buttons.append(
+                    ButtonOption(
+                        button_str,
+                        SeedSignerIconConstants.FINGERPRINT,
+                        icon_color="blue",
+                    )
+                )
+            selected_seed = self.run_screen(
+                seed_screens.SeedSelectSeedScreen,
+                title=_("Select Seed"),
+                text=_("Choose seed for BIP85"),
+                is_button_text_centered=False,
+                button_data=seed_buttons,
+            )
+            if selected_seed == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+            seed = self.controller.get_seed(selected_seed)
+        else:
+            seed = self.controller.get_seed(0)
+
+        ret = seed_screens.SeedBIP85SelectChildIndexScreen(title=_("BIP85 Index")).display()
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        index = int(ret)
+
+        root = bip32.HDKey.from_seed(seed.seed_bytes)
+
+        if self.password_type == PASSWORD_TYPE_HEX:
+            if self.length % 2 != 0:
+                self.run_screen(
+                    WarningScreen,
+                    title=_("Invalid Length"),
+                    status_headline=None,
+                    text=_("Hex length must be even."),
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
+            num_bytes = self.length // 2
+            if num_bytes < 16 or num_bytes > 64:
+                self.run_screen(
+                    WarningScreen,
+                    title=_("Invalid Length"),
+                    status_headline=None,
+                    text=_("Hex length must be 32-128."),
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
+            entropy = bip85.derive_entropy(root, BIP85_APP_HEX, [num_bytes, index])
+            password = entropy[:num_bytes].hex()
+        elif self.password_type == PASSWORD_TYPE_BASE64:
+            if self.length < 20 or self.length > 86:
+                self.run_screen(
+                    WarningScreen,
+                    title=_("Invalid Length"),
+                    status_headline=None,
+                    text=_("Base64 length must be 20-86."),
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
+            entropy = bip85.derive_entropy(root, BIP85_APP_BASE64, [self.length, index])
+            password = base64.b64encode(entropy).decode("ascii").replace("=", "")[: self.length]
+        else:
+            if self.length < 10 or self.length > 80:
+                self.run_screen(
+                    WarningScreen,
+                    title=_("Invalid Length"),
+                    status_headline=None,
+                    text=_("Base85 length must be 10-80."),
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
+            entropy = bip85.derive_entropy(root, BIP85_APP_BASE85, [self.length, index])
+            password = base64.b85encode(entropy).decode("ascii")[: self.length]
+
+        return Destination(
+            ToolsPasswordReviewView,
+            view_args=dict(password=password),
+        )
+
+
+class ToolsPasswordReviewView(View):
+    def __init__(self, password: str):
+        super().__init__()
+        self.password = password
+
+    def _save_to_seedkeeper(self) -> Destination:
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+
+        label = seed_screens.SeedAddPassphraseScreen(title=_("Password Name")).display()
+        if "is_back_button" in label:
+            return Destination(BackStackView)
+
+        Satochip_Connector = seedkeeper_utils.init_satochip(
+            self, init_card_filter=["seedkeeper"]
+        )
+        if not Satochip_Connector:
+            return Destination(BackStackView)
+
+        header = Satochip_Connector.make_header(
+            "Password",
+            "Plaintext export allowed",
+            label["passphrase"],
+        )
+        secret_text_list = list(self.password.encode("utf-8"))
+        secret_list = [len(secret_text_list)] + secret_text_list
+        secret_dic = {"header": header, "secret_list": secret_list}
+
+        try:
+            fits, required_bytes, free_bytes = seedkeeper_utils.ensure_seedkeeper_capacity(
+                Satochip_Connector, secret_dic
+            )
+        except Exception as e:
+            self.run_screen(
+                WarningScreen,
+                title=_("Error"),
+                status_headline=None,
+                text=str(e),
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        if not fits:
+            self.run_screen(
+                WarningScreen,
+                title=_("Not Enough Space"),
+                status_headline=None,
+                text=seedkeeper_utils.format_seedkeeper_space_error(required_bytes, free_bytes),
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        try:
+            loading = LoadingScreenThread(text=_("Saving Secret\n\n\n\n\n\n"))
+            loading.start()
+            Satochip_Connector.seedkeeper_import_secret(secret_dic)
+            loading.stop()
+            self.run_screen(
+                LargeIconStatusScreen,
+                title=_("Success"),
+                status_headline=None,
+                text=_("Password saved to Seedkeeper"),
+                show_back_button=False,
+                button_data=[ButtonOption("Continue")],
+            )
+        except UnexpectedSW12Error as e:
+            loading.stop()
+            if e.sw1 == 0x6A and e.sw2 == 0x84:
+                err_text = _("Not enough space on Seedkeeper for password")
+            else:
+                err_text = format_sw_error(e.sw1, e.sw2)
+            self.run_screen(
+                WarningScreen,
+                title=_("Error"),
+                status_headline=None,
+                text=err_text,
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+        except Exception as e:
+            logger.info(e)
+            loading.stop()
+            self.run_screen(
+                WarningScreen,
+                title=_("Failed"),
+                status_headline=None,
+                text=_("Password save failed"),
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+        return Destination(BackStackView)
+
+    def run(self):
+        while True:
+            show_qr = ButtonOption("Show as QR")
+            edit = ButtonOption("Edit")
+            save = ButtonOption("Save to Seedkeeper")
+            done = ButtonOption("Done")
+            button_data = [show_qr, edit, save, done]
+            selected_menu_num = self.run_screen(
+                ToolsTextQRReviewTextScreen,
+                textToEncode=self.password,
+                title=_("Password"),
+                button_data=button_data,
+                show_back_button=False,
+            )
+
+            if button_data[selected_menu_num] == show_qr:
+                from seedsigner.helpers.qr import QR
+                num_modules = QR().qrsize(data=self.password)
+                if num_modules <= 33:
+                    return Destination(
+                        ToolsTextQRTranscribeModePromptView,
+                        view_args=dict(text=self.password, num_modules=num_modules),
+                    )
+                return Destination(
+                    ToolsTextQRFullScreenModeView,
+                    view_args=dict(text=self.password),
+                )
+
+            if button_data[selected_menu_num] == edit:
+                ret_dict = ToolsTextQRTextEntryScreen(
+                    textToEncode=self.password,
+                    title=_("Password"),
+                ).display()
+                if "is_back_button" in ret_dict:
+                    continue
+                self.password = ret_dict["textToEncode"]
+                continue
+
+            if button_data[selected_menu_num] == save:
+                return self._save_to_seedkeeper()
+
+            return Destination(ToolsMenuView, clear_history=True)

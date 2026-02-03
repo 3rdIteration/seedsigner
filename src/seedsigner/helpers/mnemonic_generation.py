@@ -92,6 +92,10 @@ def generate_mnemonic_from_bytes(entropy_bytes, wordlist_language_code: str = Se
 
 
 
+def _hash_dice_rolls(roll_data: str) -> bytes:
+    return hashlib.sha256(roll_data.encode()).digest()
+
+
 def generate_mnemonic_from_dice(roll_data: str, wordlist_language_code: str = SettingsConstants.WORDLIST_LANGUAGE__ENGLISH) -> list[str]:
     """
         Takes a string of dice rolls and returns a mnemonic of the appropriate length.
@@ -102,7 +106,7 @@ def generate_mnemonic_from_dice(roll_data: str, wordlist_language_code: str = Se
 
         Important note: This method is NOT compatible with iancoleman's "Dice" mode.
     """
-    entropy_bytes = hashlib.sha256(roll_data.encode()).digest()
+    entropy_bytes = _hash_dice_rolls(roll_data)
 
     word_length = ROLL_COUNT_TO_LENGTH.get(len(roll_data), 24)
 
@@ -112,12 +116,13 @@ def generate_mnemonic_from_dice(roll_data: str, wordlist_language_code: str = Se
     return bip39.mnemonic_from_bytes(entropy_bytes, wordlist=Seed.get_wordlist(wordlist_language_code)).split()
 
 
-def generate_bytes_from_dice(roll_data: str) -> bytes:
+def generate_bytes_from_dice(roll_data: str, length_bytes: int | None = None) -> bytes:
     """Return entropy bytes from dice rolls without converting to mnemonic."""
-    entropy_bytes = hashlib.sha256(roll_data.encode()).digest()
-    word_length = ROLL_COUNT_TO_LENGTH.get(len(roll_data), 24)
-    entropy_bytes = entropy_bytes[:ENTROPY_BYTES_REQUIRED[word_length]]
-    return entropy_bytes
+    entropy_bytes = _hash_dice_rolls(roll_data)
+    if length_bytes is None:
+        word_length = ROLL_COUNT_TO_LENGTH.get(len(roll_data), 24)
+        length_bytes = ENTROPY_BYTES_REQUIRED[word_length]
+    return entropy_bytes[:length_bytes]
 
 
 
