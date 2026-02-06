@@ -281,6 +281,15 @@ def test_short_4_letter_mnemonic_qr():
     assert d.get_seed_phrase() == ["height", "demise", "useless", "trap", "grow", "lion", "found", "off", "key", "clown", "transfer", "enroll"]
 
 
+def test_xprv_qr():
+    xprv = "xprv9s21ZrQH143K2LBWUUQRFXhucrQqBpKdRRxNVq2zBqsx8HVqFk2uYo8kmbaLLHRdqtQpUm98uKfu3vca1LqdGhUtyoFnCNkfmXRyPXLjbKb"
+    d = DecodeQR()
+
+    assert d.add_data(xprv) == DecodeQRStatus.COMPLETE
+    assert d.qr_type == QRType.SEED__XPRV
+    assert d.get_xprv() == xprv
+
+
 # Test data for bitcoin address decoding. All generated from test key: ["abandon"] * 11 + ["about"]
 legacy_address_mainnet = "1LqBGSKuX5yYUonjxT5qGfpUsXKYYWeabA"
 legacy_address_testnet = "mkpZhYtJu2r87Js3pDiWJDmPte2NRZ8bJV"

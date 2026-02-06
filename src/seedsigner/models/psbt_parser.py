@@ -84,10 +84,7 @@ class PSBTParser():
                 # root is a simple private key
                 self.root = self.seed.privkey
             else:
-                self.root = bip32.HDKey.from_seed(
-                    self.seed.seed_bytes,
-                    version=NETWORKS[SettingsConstants.map_network_to_embit(self.network)]["xprv"],
-                )
+                self.root = self.seed.get_root(self.network)
         elif self.root is None:
             raise RuntimeError("No seed or root key available")
 

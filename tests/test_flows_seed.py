@@ -20,6 +20,12 @@ def load_seed_into_decoder(view: scan_views.ScanView):
     view.decoder.add_data("0000" * 11 + "0003")
 
 
+def load_xprv_into_decoder(view: scan_views.ScanView):
+    view.decoder.add_data(
+        "xprv9s21ZrQH143K2LBWUUQRFXhucrQqBpKdRRxNVq2zBqsx8HVqFk2uYo8kmbaLLHRdqtQpUm98uKfu3vca1LqdGhUtyoFnCNkfmXRyPXLjbKb"
+    )
+
+
 
 class TestSeedFlows(FlowTest):
 
@@ -31,6 +37,14 @@ class TestSeedFlows(FlowTest):
         self.run_sequence([
             FlowStep(MainMenuView, button_data_selection=MainMenuView.SCAN),
             FlowStep(scan_views.ScanView, before_run=load_seed_into_decoder),  # simulate read SeedQR; ret val is ignored
+            FlowStep(seed_views.SeedFinalizeView, button_data_selection=seed_views.SeedFinalizeView.FINALIZE),
+            FlowStep(seed_views.SeedOptionsView),
+        ])
+
+    def test_scan_xprv_flow(self):
+        self.run_sequence([
+            FlowStep(MainMenuView, button_data_selection=MainMenuView.SCAN),
+            FlowStep(scan_views.ScanView, before_run=load_xprv_into_decoder),
             FlowStep(seed_views.SeedFinalizeView, button_data_selection=seed_views.SeedFinalizeView.FINALIZE),
             FlowStep(seed_views.SeedOptionsView),
         ])
@@ -1154,4 +1168,3 @@ class TestSatochipImportSeedView(BaseTest):
         assert view.run_screen.call_args.args[0] is tools_views.WarningScreen
         assert "already" in view.run_screen.call_args.kwargs["text"].lower()
         assert destination.View_cls == tools_views.MainMenuView
-
