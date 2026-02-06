@@ -13502,7 +13502,6 @@ class ToolsPasswordDiceRollCountView(View):
         self.random_options = random_options or {}
 
     def run(self):
-        total_rolls = _dice_rolls_for_strength(self.strength_bits)
         word_count = None
         if self.password_type in {
             PASSWORD_TYPE_DICEWARE_EFF_SHORT,
@@ -13510,6 +13509,14 @@ class ToolsPasswordDiceRollCountView(View):
             PASSWORD_TYPE_DICEWARE_BIP39,
         }:
             word_count = _diceware_word_count(self.password_type, self.strength_bits)
+            if self.password_type == PASSWORD_TYPE_DICEWARE_EFF_SHORT:
+                total_rolls = word_count * 4
+            elif self.password_type == PASSWORD_TYPE_DICEWARE_EFF_LONG:
+                total_rolls = word_count * 5
+            else:
+                total_rolls = max(1, math.ceil(word_count * 11 / math.log2(6)))
+        else:
+            total_rolls = _dice_rolls_for_strength(self.strength_bits)
         return Destination(
             ToolsPasswordDiceEntryView,
             view_args=dict(
