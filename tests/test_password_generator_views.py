@@ -50,3 +50,32 @@ def test_password_generate_view_skips_itself_for_review_destination():
 
     assert dest.View_cls is tools_views.ToolsPasswordReviewView
     assert dest.skip_current_view is True
+
+
+def test_password_save_to_microsd_appends_lines(monkeypatch, tmp_path):
+    view = object.__new__(tools_views.ToolsPasswordSaveView)
+    view.password = "alpha"
+
+    responses = iter([1, 0])
+    monkeypatch.setattr(
+        tools_views.ToolsPasswordSaveView,
+        "run_screen",
+        lambda self, *_args, **_kwargs: next(responses),
+    )
+    monkeypatch.setattr(
+        tools_views.MicroSD,
+        "get_microsd_dir",
+        staticmethod(lambda: tmp_path),
+    )
+
+    dest = tools_views.ToolsPasswordSaveView.run(view)
+
+    assert dest.View_cls is tools_views.MainMenuView
+    assert (tmp_path / "generated_password.txt").read_text() == "alpha\n"
+
+    view.password = "beta"
+    responses = iter([1, 0])
+    dest = tools_views.ToolsPasswordSaveView.run(view)
+
+    assert dest.View_cls is tools_views.MainMenuView
+    assert (tmp_path / "generated_password.txt").read_text() == "alpha\nbeta\n"

@@ -14165,106 +14165,106 @@ class ToolsPasswordBIP85GenerateView(View):
             )
 
 
+def _save_password_to_seedkeeper(view: View, password: str) -> bool:
+    from seedsigner.gui.screens.screen import LoadingScreenThread
+
+    label = seed_screens.SeedAddPassphraseScreen(title=_("Password Name")).display()
+    if "is_back_button" in label:
+        return False
+
+    Satochip_Connector = seedkeeper_utils.init_satochip(
+        view, init_card_filter=["seedkeeper"]
+    )
+    if not Satochip_Connector:
+        return False
+
+    header = Satochip_Connector.make_header(
+        "Password",
+        "Plaintext export allowed",
+        label["passphrase"],
+    )
+    secret_text_list = list(password.encode("utf-8"))
+    secret_list = [len(secret_text_list)] + secret_text_list
+    secret_dic = {"header": header, "secret_list": secret_list}
+
+    try:
+        fits, required_bytes, free_bytes = seedkeeper_utils.ensure_seedkeeper_capacity(
+            Satochip_Connector, secret_dic
+        )
+    except Exception as e:
+        view.run_screen(
+            WarningScreen,
+            title=_("Error"),
+            status_headline=None,
+            text=str(e),
+            show_back_button=False,
+            button_data=[ButtonOption("I Understand")],
+        )
+        return False
+
+    if not fits:
+        view.run_screen(
+            WarningScreen,
+            title=_("Not Enough Space"),
+            status_headline=None,
+            text=seedkeeper_utils.format_seedkeeper_space_error(required_bytes, free_bytes),
+            show_back_button=False,
+            button_data=[ButtonOption("I Understand")],
+        )
+        return False
+
+    try:
+        loading = LoadingScreenThread(text=_("Saving Secret\n\n\n\n\n\n"))
+        loading.start()
+        Satochip_Connector.seedkeeper_import_secret(secret_dic)
+        loading.stop()
+        view.run_screen(
+            LargeIconStatusScreen,
+            title=_("Success"),
+            status_headline=None,
+            text=_("Password saved to Seedkeeper"),
+            show_back_button=False,
+            button_data=[ButtonOption("Continue")],
+        )
+        return True
+    except UnexpectedSW12Error as e:
+        loading.stop()
+        if e.sw1 == 0x6A and e.sw2 == 0x84:
+            err_text = _("Not enough space on Seedkeeper for password")
+        else:
+            err_text = format_sw_error(e.sw1, e.sw2)
+        view.run_screen(
+            WarningScreen,
+            title=_("Error"),
+            status_headline=None,
+            text=err_text,
+            show_back_button=False,
+            button_data=[ButtonOption("I Understand")],
+        )
+    except Exception as e:
+        logger.info(e)
+        loading.stop()
+        view.run_screen(
+            WarningScreen,
+            title=_("Failed"),
+            status_headline=None,
+            text=_("Password save failed"),
+            show_back_button=False,
+            button_data=[ButtonOption("I Understand")],
+        )
+    return False
+
+
 class ToolsPasswordReviewView(View):
     def __init__(self, password: str):
         super().__init__()
         self.password = password
 
-    def _save_to_seedkeeper(self) -> bool:
-        from seedsigner.gui.screens.screen import LoadingScreenThread
-
-        label = seed_screens.SeedAddPassphraseScreen(title=_("Password Name")).display()
-        if "is_back_button" in label:
-            return False
-
-        Satochip_Connector = seedkeeper_utils.init_satochip(
-            self, init_card_filter=["seedkeeper"]
-        )
-        if not Satochip_Connector:
-            return False
-
-        header = Satochip_Connector.make_header(
-            "Password",
-            "Plaintext export allowed",
-            label["passphrase"],
-        )
-        secret_text_list = list(self.password.encode("utf-8"))
-        secret_list = [len(secret_text_list)] + secret_text_list
-        secret_dic = {"header": header, "secret_list": secret_list}
-
-        try:
-            fits, required_bytes, free_bytes = seedkeeper_utils.ensure_seedkeeper_capacity(
-                Satochip_Connector, secret_dic
-            )
-        except Exception as e:
-            self.run_screen(
-                WarningScreen,
-                title=_("Error"),
-                status_headline=None,
-                text=str(e),
-                show_back_button=False,
-                button_data=[ButtonOption("I Understand")],
-            )
-            return False
-
-        if not fits:
-            self.run_screen(
-                WarningScreen,
-                title=_("Not Enough Space"),
-                status_headline=None,
-                text=seedkeeper_utils.format_seedkeeper_space_error(required_bytes, free_bytes),
-                show_back_button=False,
-                button_data=[ButtonOption("I Understand")],
-            )
-            return False
-
-        try:
-            loading = LoadingScreenThread(text=_("Saving Secret\n\n\n\n\n\n"))
-            loading.start()
-            Satochip_Connector.seedkeeper_import_secret(secret_dic)
-            loading.stop()
-            self.run_screen(
-                LargeIconStatusScreen,
-                title=_("Success"),
-                status_headline=None,
-                text=_("Password saved to Seedkeeper"),
-                show_back_button=False,
-                button_data=[ButtonOption("Continue")],
-            )
-            return True
-        except UnexpectedSW12Error as e:
-            loading.stop()
-            if e.sw1 == 0x6A and e.sw2 == 0x84:
-                err_text = _("Not enough space on Seedkeeper for password")
-            else:
-                err_text = format_sw_error(e.sw1, e.sw2)
-            self.run_screen(
-                WarningScreen,
-                title=_("Error"),
-                status_headline=None,
-                text=err_text,
-                show_back_button=False,
-                button_data=[ButtonOption("I Understand")],
-            )
-        except Exception as e:
-            logger.info(e)
-            loading.stop()
-            self.run_screen(
-                WarningScreen,
-                title=_("Failed"),
-                status_headline=None,
-                text=_("Password save failed"),
-                show_back_button=False,
-                button_data=[ButtonOption("I Understand")],
-            )
-        return False
-
     def run(self):
         while True:
             edit = ButtonOption("Edit")
-            show_qr = ButtonOption("Show as QR")
-            save = ButtonOption("Save to Seedkeeper")
-            button_data = [edit, show_qr, save]
+            next_button = ButtonOption("Next")
+            button_data = [edit, next_button]
             selected_menu_num = self.run_screen(
                 ToolsTextQRReviewTextScreen,
                 textToEncode=self.password,
@@ -14276,19 +14276,6 @@ class ToolsPasswordReviewView(View):
             if selected_menu_num == RET_CODE__BACK_BUTTON:
                 return Destination(BackStackView)
 
-            if button_data[selected_menu_num] == show_qr:
-                from seedsigner.helpers.qr import QR
-                num_modules = QR().qrsize(data=self.password)
-                if num_modules <= 33:
-                    return Destination(
-                        ToolsTextQRTranscribeModePromptView,
-                        view_args=dict(text=self.password, num_modules=num_modules, return_to_home=True),
-                    )
-                return Destination(
-                    ToolsTextQRFullScreenModeView,
-                    view_args=dict(text=self.password, return_to_home=True),
-                )
-
             if button_data[selected_menu_num] == edit:
                 ret_dict = ToolsTextQRTextEntryScreen(
                     textToEncode=self.password,
@@ -14299,9 +14286,77 @@ class ToolsPasswordReviewView(View):
                 self.password = ret_dict["textToEncode"]
                 continue
 
-            if button_data[selected_menu_num] == save:
-                if self._save_to_seedkeeper():
-                    return Destination(MainMenuView)
-                continue
+            return Destination(
+                ToolsPasswordSaveView,
+                view_args=dict(password=self.password),
+            )
 
-            return Destination(ToolsMenuView, clear_history=True)
+
+class ToolsPasswordSaveView(View):
+    def __init__(self, password: str):
+        super().__init__()
+        self.password = password
+
+    def _save_to_microsd(self) -> bool:
+        password_path = MicroSD.get_microsd_dir() / "generated_password.txt"
+        try:
+            with open(password_path, "a", encoding="utf-8") as outfile:
+                outfile.write(f"{self.password}\n")
+        except Exception as exc:
+            self.run_screen(
+                WarningScreen,
+                title=_("Save Failed"),
+                status_headline=None,
+                text=str(exc),
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return False
+
+        self.run_screen(
+            LargeIconStatusScreen,
+            title=_("Saved"),
+            status_headline=None,
+            text=_("Saved to generated_password.txt"),
+            show_back_button=False,
+            button_data=[ButtonOption("Continue")],
+        )
+        return True
+
+    def run(self):
+        show_qr = ButtonOption("Show as QR")
+        microsd = ButtonOption("Save to MicroSD")
+        seedkeeper = ButtonOption("Save to Seedkeeper")
+        button_data = [show_qr, microsd, seedkeeper]
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title=_("Save Password"),
+            is_button_text_centered=False,
+            button_data=button_data,
+            show_back_button=True,
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        if button_data[selected_menu_num] == show_qr:
+            from seedsigner.helpers.qr import QR
+            num_modules = QR().qrsize(data=self.password)
+            if num_modules <= 33:
+                return Destination(
+                    ToolsTextQRTranscribeModePromptView,
+                    view_args=dict(text=self.password, num_modules=num_modules, return_to_home=True),
+                )
+            return Destination(
+                ToolsTextQRFullScreenModeView,
+                view_args=dict(text=self.password, return_to_home=True),
+            )
+
+        if button_data[selected_menu_num] == microsd:
+            if self._save_to_microsd():
+                return Destination(MainMenuView)
+            return Destination(BackStackView)
+
+        if _save_password_to_seedkeeper(self, self.password):
+            return Destination(MainMenuView)
+        return Destination(BackStackView)
