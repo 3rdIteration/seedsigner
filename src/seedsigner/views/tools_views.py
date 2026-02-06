@@ -14001,6 +14001,7 @@ class ToolsPasswordGenerateView(View):
         return Destination(
             ToolsPasswordReviewView,
             view_args=dict(password=password),
+            skip_current_view=True,
         )
 
 

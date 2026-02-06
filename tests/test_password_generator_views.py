@@ -33,3 +33,20 @@ def test_dice_roll_count_view_skips_itself_for_camera_diceware():
 
     assert dest.View_cls is tools_views.ToolsPasswordGenerateView
     assert dest.skip_current_view is True
+
+
+def test_password_generate_view_skips_itself_for_review_destination():
+    view = object.__new__(tools_views.ToolsPasswordGenerateView)
+    view.password_type = tools_views.PASSWORD_TYPE_HEX
+    view.entropy_source = tools_views.PASSWORD_ENTROPY_BIP85
+    view.strength_bits = 64
+    view.random_options = {}
+    view.roll_data = b"\x01" * 32
+    view.roll_count = 0
+    view.word_count = None
+    view.word_separator = tools_views.PASSWORD_WORD_SEPARATOR_NONE
+
+    dest = tools_views.ToolsPasswordGenerateView.run(view)
+
+    assert dest.View_cls is tools_views.ToolsPasswordReviewView
+    assert dest.skip_current_view is True
