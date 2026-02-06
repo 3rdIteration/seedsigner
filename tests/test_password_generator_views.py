@@ -115,3 +115,58 @@ def test_diceware_eff_uses_fresh_entropy_seed(monkeypatch):
     assert captured["seed"] == entropy_seed
     assert captured["sides"] == 6
     assert captured["roll_count"] == 16
+
+
+def test_entropy_source_routes_diceware_dice_to_separator(monkeypatch):
+    view = object.__new__(tools_views.ToolsPasswordEntropySourceView)
+    view.password_type = tools_views.PASSWORD_TYPE_DICEWARE_EFF_SHORT
+    view.strength_bits = 64
+    view.random_options = {}
+
+    class C:
+        pass
+
+    view.controller = C()
+    view.controller.hardware_rng_is_healthy = True
+    view.controller.hardware_rng_failure_reason = None
+
+    monkeypatch.setattr(
+        tools_views.ToolsPasswordEntropySourceView,
+        "run_screen",
+        lambda self, *_args, **_kwargs: 1,
+    )
+
+    dest = tools_views.ToolsPasswordEntropySourceView.run(view)
+
+    assert dest.View_cls is tools_views.ToolsPasswordWordSeparatorView
+    assert dest.view_args["entropy_source"] == tools_views.PASSWORD_ENTROPY_DICE
+
+
+def test_separator_reuses_cached_entropy_without_recollect():
+    view = object.__new__(tools_views.ToolsPasswordWordSeparatorView)
+    view.password_type = tools_views.PASSWORD_TYPE_DICEWARE_EFF_SHORT
+    view.strength_bits = 64
+    view.random_options = {}
+    view.entropy_source = tools_views.PASSWORD_ENTROPY_HARDWARE_RNG
+
+    class C:
+        pass
+
+    view.controller = C()
+    view.controller.password_generator_entropy_cache = {
+        "password_type": tools_views.PASSWORD_TYPE_DICEWARE_EFF_SHORT,
+        "strength_bits": 64,
+        "entropy_source": tools_views.PASSWORD_ENTROPY_HARDWARE_RNG,
+        "word_count": 4,
+        "roll_data": None,
+        "entropy_bytes": b"cached",
+    }
+
+    view.run_screen = lambda *_args, **_kwargs: 2
+
+    dest = tools_views.ToolsPasswordWordSeparatorView.run(view)
+
+    assert dest.View_cls is tools_views.ToolsPasswordGenerateView
+    assert dest.skip_current_view is True
+    assert dest.view_args["entropy_bytes_override"] == b"cached"
+    assert dest.view_args["word_separator"] == tools_views.PASSWORD_WORD_SEPARATOR_SPACE

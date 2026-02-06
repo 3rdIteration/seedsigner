@@ -103,6 +103,34 @@ BIP85_APP_BASE85 = 707785
 BIP85_APP_DICE = 89101
 
 
+def _clear_password_entropy_cache(controller) -> None:
+    controller.password_generator_entropy_cache = None
+
+
+def _cache_password_entropy(
+    controller,
+    *,
+    password_type: str,
+    strength_bits: int,
+    entropy_source: str,
+    word_count: int | None,
+    roll_data: bytes | str | None = None,
+    entropy_bytes: bytes | None = None,
+) -> None:
+    controller.password_generator_entropy_cache = {
+        "password_type": password_type,
+        "strength_bits": strength_bits,
+        "entropy_source": entropy_source,
+        "word_count": word_count,
+        "roll_data": roll_data,
+        "entropy_bytes": entropy_bytes,
+    }
+
+
+def _get_password_entropy_cache(controller) -> dict | None:
+    return getattr(controller, "password_generator_entropy_cache", None)
+
+
 def _read_secure_rng_bytes(num_bytes: int = 64) -> bytes:
     return os.urandom(num_bytes)
 
@@ -183,8 +211,6 @@ def _system_entropy_salt() -> bytes:
     if not salt:
         salt = str(time.time_ns()).encode("utf-8")
     return salt
-
-
 def _derive_hardware_rng_entropy_bytes() -> bytes:
     rng_entropy = _read_secure_rng_bytes(64)
     _ensure_entropy_quality(
@@ -13552,6 +13578,8 @@ class ToolsPasswordEntropySourceView(View):
         return False
 
     def run(self):
+        _clear_password_entropy_cache(self.controller)
+
         camera = ButtonOption("Camera")
         dice = ButtonOption("Dice")
         hardware_rng = ButtonOption("System RNG")
@@ -13619,6 +13647,20 @@ class ToolsPasswordEntropySourceView(View):
             )
 
         if selected == dice:
+            if self.password_type in {
+                PASSWORD_TYPE_DICEWARE_EFF_SHORT,
+                PASSWORD_TYPE_DICEWARE_EFF_LONG,
+                PASSWORD_TYPE_DICEWARE_BIP39,
+            }:
+                return Destination(
+                    ToolsPasswordWordSeparatorView,
+                    view_args=dict(
+                        password_type=self.password_type,
+                        strength_bits=self.strength_bits,
+                        random_options=self.random_options,
+                        entropy_source=PASSWORD_ENTROPY_DICE,
+                    ),
+                )
             return Destination(
                 ToolsPasswordDiceRollCountView,
                 view_args=dict(
@@ -13680,6 +13722,8 @@ class ToolsPasswordWordSeparatorView(View):
         self.entropy_source = entropy_source
 
     def run(self):
+        cached_entropy = _get_password_entropy_cache(self.controller)
+
         separator_options = [
             (ButtonOption("None"), PASSWORD_WORD_SEPARATOR_NONE),
             (ButtonOption("Capitalise"), PASSWORD_WORD_SEPARATOR_CAPITALISE),
@@ -13695,13 +13739,33 @@ class ToolsPasswordWordSeparatorView(View):
         if selected_menu_num == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
 
+        word_separator = separator_options[selected_menu_num][1]
+
+        if cached_entropy and cached_entropy.get("password_type") == self.password_type \
+            and cached_entropy.get("strength_bits") == self.strength_bits \
+            and cached_entropy.get("entropy_source") == self.entropy_source:
+            return Destination(
+                ToolsPasswordGenerateView,
+                view_args=dict(
+                    password_type=self.password_type,
+                    entropy_source=self.entropy_source,
+                    random_options=self.random_options,
+                    strength_bits=self.strength_bits,
+                    word_count=cached_entropy.get("word_count"),
+                    word_separator=word_separator,
+                    roll_data=cached_entropy.get("roll_data"),
+                    entropy_bytes_override=cached_entropy.get("entropy_bytes"),
+                ),
+                skip_current_view=True,
+            )
+
         return Destination(
             ToolsPasswordDiceRollCountView,
             view_args=dict(
                 password_type=self.password_type,
                 strength_bits=self.strength_bits,
                 random_options=self.random_options,
-                word_separator=separator_options[selected_menu_num][1],
+                word_separator=word_separator,
                 entropy_source=self.entropy_source,
             ),
         )
@@ -13793,6 +13857,9 @@ class ToolsPasswordDiceEntryView(View):
         self.random_options = random_options or {}
         self.word_count = word_count
         self.word_separator = word_separator
+        self.entropy_bytes_override = entropy_bytes_override
+        self.entropy_bytes_override = entropy_bytes_override
+        self.entropy_bytes_override = entropy_bytes_override
         self.entropy_source = entropy_source
 
     def run(self):
@@ -13838,6 +13905,7 @@ class ToolsPasswordGenerateView(View):
         roll_count: int | None = None,
         word_count: int | None = None,
         word_separator: str = PASSWORD_WORD_SEPARATOR_NONE,
+        entropy_bytes_override: bytes | None = None,
     ):
         super().__init__()
         self.password_type = password_type
@@ -13920,7 +13988,10 @@ class ToolsPasswordGenerateView(View):
         return self._bip39_words_from_entropy(entropy_seed, word_count)
 
     def run(self):
-        if self.entropy_source == PASSWORD_ENTROPY_CAMERA:
+        entropy_bytes_override = getattr(self, "entropy_bytes_override", None)
+        if entropy_bytes_override is not None:
+            entropy_bytes = entropy_bytes_override
+        elif self.entropy_source == PASSWORD_ENTROPY_CAMERA:
             entropy_bytes = _derive_camera_entropy_bytes(
                 self.controller.image_entropy_preview_frames,
                 self.controller.image_entropy_final_image,
@@ -13949,6 +14020,21 @@ class ToolsPasswordGenerateView(View):
             entropy_bytes = _derive_hardware_rng_entropy_bytes()
         else:
             entropy_bytes = self.roll_data if self.entropy_source == PASSWORD_ENTROPY_BIP85 else mnemonic_generation._hash_dice_rolls(self.roll_data)
+
+        if self.password_type in {
+            PASSWORD_TYPE_DICEWARE_EFF_SHORT,
+            PASSWORD_TYPE_DICEWARE_EFF_LONG,
+            PASSWORD_TYPE_DICEWARE_BIP39,
+        }:
+            _cache_password_entropy(
+                self.controller,
+                password_type=self.password_type,
+                strength_bits=self.strength_bits,
+                entropy_source=self.entropy_source,
+                word_count=self.word_count,
+                roll_data=self.roll_data if self.entropy_source == PASSWORD_ENTROPY_DICE else None,
+                entropy_bytes=entropy_bytes if self.entropy_source != PASSWORD_ENTROPY_DICE else None,
+            )
 
         try:
             if self.password_type in {
