@@ -13705,6 +13705,7 @@ class ToolsPasswordDiceRollCountView(View):
                     word_count=_diceware_word_count(self.password_type, self.strength_bits),
                     word_separator=self.word_separator,
                 ),
+                skip_current_view=True,
             )
 
         word_count = None
@@ -13733,6 +13734,7 @@ class ToolsPasswordDiceRollCountView(View):
                 word_separator=self.word_separator,
                 entropy_source=self.entropy_source,
             ),
+            skip_current_view=True,
         )
 
 
