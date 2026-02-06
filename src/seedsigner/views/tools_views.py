@@ -14269,8 +14269,11 @@ class ToolsPasswordReviewView(View):
                 textToEncode=self.password,
                 title=_("Password"),
                 button_data=button_data,
-                show_back_button=False,
+                show_back_button=True,
             )
+
+            if selected_menu_num == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
 
             if button_data[selected_menu_num] == show_qr:
                 from seedsigner.helpers.qr import QR

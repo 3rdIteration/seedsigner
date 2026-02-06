@@ -14,7 +14,7 @@ def test_password_review_show_qr_small_routes_home_flow(monkeypatch):
     monkeypatch.setattr(
         tools_views.ToolsPasswordReviewView,
         "run_screen",
-        lambda self, *_args, **_kwargs: 0,
+        lambda self, *_args, **_kwargs: 1,
     )
 
     from seedsigner.helpers import qr as qr_mod
@@ -33,7 +33,7 @@ def test_password_review_show_qr_large_routes_home_flow(monkeypatch):
     monkeypatch.setattr(
         tools_views.ToolsPasswordReviewView,
         "run_screen",
-        lambda self, *_args, **_kwargs: 0,
+        lambda self, *_args, **_kwargs: 1,
     )
 
     from seedsigner.helpers import qr as qr_mod
@@ -43,3 +43,18 @@ def test_password_review_show_qr_large_routes_home_flow(monkeypatch):
 
     assert dest.View_cls is tools_views.ToolsTextQRFullScreenModeView
     assert dest.view_args["return_to_home"] is True
+
+
+def test_password_review_back_button_returns_backstack(monkeypatch):
+    view = object.__new__(tools_views.ToolsPasswordReviewView)
+    view.password = "abc123"
+
+    monkeypatch.setattr(
+        tools_views.ToolsPasswordReviewView,
+        "run_screen",
+        lambda self, *_args, **_kwargs: tools_views.RET_CODE__BACK_BUTTON,
+    )
+
+    dest = tools_views.ToolsPasswordReviewView.run(view)
+
+    assert dest.View_cls is tools_views.BackStackView
