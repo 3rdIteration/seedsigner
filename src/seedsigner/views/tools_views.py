@@ -103,24 +103,8 @@ BIP85_APP_BASE85 = 707785
 BIP85_APP_DICE = 89101
 
 
-def _read_secure_rng_bytes(num_bytes: int = 64, require_hwrng: bool = False) -> bytes:
-    rng_entropy = b""
-
-    try:
-        with open("/dev/hwrng", "rb") as rng:
-            rng_entropy = rng.read(num_bytes)
-    except Exception as e:
-        logger.info(repr(e), exc_info=True)
-
-    if require_hwrng:
-        if len(rng_entropy) < num_bytes:
-            raise ValueError(_("Hardware RNG unavailable."))
-        return rng_entropy
-
-    if len(rng_entropy) < num_bytes:
-        rng_entropy += os.urandom(num_bytes - len(rng_entropy))
-
-    return rng_entropy
+def _read_secure_rng_bytes(num_bytes: int = 64) -> bytes:
+    return os.urandom(num_bytes)
 
 
 def _system_entropy_salt() -> bytes:
@@ -190,10 +174,10 @@ def _system_entropy_salt() -> bytes:
 
 
 def _derive_hardware_rng_entropy_bytes() -> bytes:
-    rng_entropy = _read_secure_rng_bytes(64, require_hwrng=True)
+    rng_entropy = _read_secure_rng_bytes(64)
     entropy_score = HardwareRngHealthMonitor.shannon_entropy(rng_entropy)
     if entropy_score < 4.0:
-        raise ValueError(_("Hardware RNG entropy too low. Try again later."))
+        raise ValueError(_("System RNG entropy too low. Try again later."))
     salt = _system_entropy_salt()
     return hashlib.sha256(rng_entropy + salt).digest()
 
@@ -13525,10 +13509,10 @@ class ToolsPasswordEntropySourceView(View):
     def _hardware_rng_available(self) -> bool:
         if self.controller.hardware_rng_is_healthy:
             return True
-        reason = self.controller.hardware_rng_failure_reason or _("Hardware RNG health check failed.")
+        reason = self.controller.hardware_rng_failure_reason or _("System RNG health check failed.")
         self.run_screen(
             WarningScreen,
-            title=_("Hardware RNG Error"),
+            title=_("System RNG Error"),
             status_headline=None,
             text=reason,
             show_back_button=False,
@@ -13539,7 +13523,7 @@ class ToolsPasswordEntropySourceView(View):
     def run(self):
         camera = ButtonOption("Camera")
         dice = ButtonOption("Dice")
-        hardware_rng = ButtonOption("Hardware RNG")
+        hardware_rng = ButtonOption("System RNG")
         bip85 = ButtonOption("BIP85")
 
         button_data = [camera, dice, hardware_rng, bip85]
@@ -13922,9 +13906,9 @@ class ToolsPasswordGenerateView(View):
             if not self.controller.hardware_rng_is_healthy:
                 self.run_screen(
                     WarningScreen,
-                    title=_("Hardware RNG Error"),
+                    title=_("System RNG Error"),
                     status_headline=None,
-                    text=self.controller.hardware_rng_failure_reason or _("Hardware RNG health check failed."),
+                    text=self.controller.hardware_rng_failure_reason or _("System RNG health check failed."),
                     show_back_button=False,
                     button_data=[ButtonOption("I Understand")],
                 )

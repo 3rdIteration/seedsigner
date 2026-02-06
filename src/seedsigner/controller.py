@@ -290,7 +290,7 @@ class Controller(Singleton):
     @property
     def hardware_rng_failure_reason(self) -> str | None:
         if not self.hardware_rng_monitor:
-            return "Hardware RNG monitor unavailable"
+            return "System RNG monitor unavailable"
         return self.hardware_rng_monitor.failure_reason()
 
 

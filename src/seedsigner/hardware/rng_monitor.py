@@ -1,5 +1,6 @@
 import logging
 import math
+import os
 import threading
 import time
 from collections import deque
@@ -65,23 +66,23 @@ class HardwareRngHealthMonitor:
 
             if entropy < min_entropy:
                 self._failed = True
-                self._failure_reason = f"Low HW RNG entropy: {entropy:.2f}"
+                self._failure_reason = f"Low System RNG entropy: {entropy:.2f}"
                 return False
 
             if len(set(sample)) == 1:
                 self._failed = True
-                self._failure_reason = "HW RNG sample appears constant"
+                self._failure_reason = "System RNG sample appears constant"
                 return False
 
             samples = list(self._samples)
             if len(samples) >= 10 and len(set(samples)) == 1:
                 self._failed = True
-                self._failure_reason = "HW RNG repeated identical samples"
+                self._failure_reason = "System RNG repeated identical samples"
                 return False
 
             if self._detect_loop(samples):
                 self._failed = True
-                self._failure_reason = "HW RNG sample loop detected"
+                self._failure_reason = "System RNG sample loop detected"
                 return False
 
             return True
@@ -101,23 +102,22 @@ class HardwareRngMonitorThread(BaseThread):
         self.monitor = monitor
 
     @staticmethod
-    def _read_hwrng_bytes(num_bytes: int) -> bytes:
-        with open("/dev/hwrng", "rb") as rng:
-            data = rng.read(num_bytes)
+    def _read_system_rng_bytes(num_bytes: int) -> bytes:
+        data = os.urandom(num_bytes)
         if len(data) != num_bytes:
-            raise OSError(f"Expected {num_bytes} bytes from /dev/hwrng, got {len(data)}")
+            raise OSError(f"Expected {num_bytes} bytes from system RNG, got {len(data)}")
         return data
 
     def run(self):
         while self.keep_running:
             try:
-                sample = self._read_hwrng_bytes(32)
+                sample = self._read_system_rng_bytes(32)
                 healthy = self.monitor.add_sample(sample)
                 if not healthy:
-                    logger.error("Hardware RNG monitor failure: %s", self.monitor.failure_reason())
+                    logger.error("System RNG monitor failure: %s", self.monitor.failure_reason())
             except Exception as e:
-                self.monitor.note_failure(f"Hardware RNG read failed: {e}")
-                logger.error("Hardware RNG monitor read failed", exc_info=True)
+                self.monitor.note_failure(f"System RNG read failed: {e}")
+                logger.error("System RNG monitor read failed", exc_info=True)
 
             # Poll once per minute.
             for _ in range(60):
