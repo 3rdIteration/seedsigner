@@ -1148,6 +1148,12 @@ class ToolsTextQRReviewTextScreen(ButtonListScreen):
 
         if " " in self.textToEncode:
             self.textToEncode = self.textToEncode.replace(" ", "\u2589")
+
+        review_font_name = (
+            GUIConstants.FIXED_WIDTH_FONT_NAME
+            if self.textToEncode.isascii()
+            else GUIConstants.FIXED_WIDTH_FONT_NAME_JP
+        )
         available_height = self.buttons[0].screen_y - self.top_nav.height - GUIConstants.COMPONENT_PADDING
         max_font_size = GUIConstants.get_top_nav_title_font_size() + 8
         min_font_size = GUIConstants.get_top_nav_title_font_size() - 4
@@ -1158,7 +1164,7 @@ class ToolsTextQRReviewTextScreen(ButtonListScreen):
         for font_size in range(max_font_size, min_font_size-1, -2):
             if found_solution:
                 break
-            font = Fonts.get_font(font_name=GUIConstants.FIXED_WIDTH_FONT_NAME_JP, size=font_size)
+            font = Fonts.get_font(font_name=review_font_name, size=font_size)
             left, top, right, bottom  = font.getbbox("X")
             char_width, char_height = right - left, bottom
             for num_lines in range(1, max_lines+1):
@@ -1221,7 +1227,7 @@ class ToolsTextQRReviewTextScreen(ButtonListScreen):
         for line in textToEncode:
             self.components.append(TextArea(
                 text=line,
-                font_name=GUIConstants.FIXED_WIDTH_FONT_NAME_JP,
+                font_name=review_font_name,
                 font_size=font_size,
                 font_color="orange",
                 is_text_centered=True,

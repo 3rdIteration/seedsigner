@@ -210,7 +210,7 @@ class ToolsMenuView(View):
     NETWORK_INFO = ButtonOption("Network Info")
 
     def run(self):
-        button_data = [self.IMAGE, self.DICE]
+        button_data = [self.IMAGE, self.DICE, self.PASSWORD_GENERATOR]
         
         if self.settings.get_value(SettingsConstants.SETTING__SLIP39_SEEDS) == SettingsConstants.OPTION__ENABLED:
             button_data.extend([self.SLIP39_IMAGE, self.SLIP39_DICE])
@@ -223,7 +223,6 @@ class ToolsMenuView(View):
             self.ADDRESS_EXPLORER,
             self.VERIFY_ADDRESS,
             self.TEXTQRCODE,
-            self.PASSWORD_GENERATOR,
             self.MICROSD,
             self.BATTERY_CALIBRATION,
             self.NETWORK_INFO if Path("/usr/bin/network-info").is_file() else None,
