@@ -117,7 +117,7 @@ def test_diceware_eff_uses_fresh_entropy_seed(monkeypatch):
     assert captured["roll_count"] == 16
 
 
-def test_entropy_source_routes_diceware_dice_to_separator(monkeypatch):
+def test_entropy_source_routes_diceware_dice_to_roll_entry(monkeypatch):
     view = object.__new__(tools_views.ToolsPasswordEntropySourceView)
     view.password_type = tools_views.PASSWORD_TYPE_DICEWARE_EFF_SHORT
     view.strength_bits = 64
@@ -138,8 +138,7 @@ def test_entropy_source_routes_diceware_dice_to_separator(monkeypatch):
 
     dest = tools_views.ToolsPasswordEntropySourceView.run(view)
 
-    assert dest.View_cls is tools_views.ToolsPasswordWordSeparatorView
-    assert dest.view_args["entropy_source"] == tools_views.PASSWORD_ENTROPY_DICE
+    assert dest.View_cls is tools_views.ToolsPasswordDiceRollCountView
 
 
 def test_separator_reuses_cached_entropy_without_recollect():
@@ -170,3 +169,60 @@ def test_separator_reuses_cached_entropy_without_recollect():
     assert dest.skip_current_view is True
     assert dest.view_args["entropy_bytes_override"] == b"cached"
     assert dest.view_args["word_separator"] == tools_views.PASSWORD_WORD_SEPARATOR_SPACE
+
+
+def test_dice_entry_routes_diceware_to_separator_and_caches(monkeypatch):
+    view = object.__new__(tools_views.ToolsPasswordDiceEntryView)
+    view.password_type = tools_views.PASSWORD_TYPE_DICEWARE_EFF_SHORT
+    view.strength_bits = 64
+    view.total_rolls = 16
+    view.random_options = {}
+    view.word_count = 4
+    view.word_separator = tools_views.PASSWORD_WORD_SEPARATOR_NONE
+    view.entropy_source = tools_views.PASSWORD_ENTROPY_DICE
+
+    class C:
+        pass
+
+    view.controller = C()
+
+    class FakeDiceEntryScreen:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def display(self):
+            return "1234123412341234"
+
+    monkeypatch.setattr(tools_views, "ToolsDiceEntropyEntryScreen", FakeDiceEntryScreen)
+    monkeypatch.setattr(tools_views.mnemonic_generation, "dice_entropy_is_sufficient", lambda _ret: True)
+
+    dest = tools_views.ToolsPasswordDiceEntryView.run(view)
+
+    assert dest.View_cls is tools_views.ToolsPasswordWordSeparatorView
+    assert dest.skip_current_view is True
+    assert view.controller.password_generator_entropy_cache["roll_data"] == "1234123412341234"
+
+
+def test_separator_back_clears_cache_and_returns_entropy_source(monkeypatch):
+    view = object.__new__(tools_views.ToolsPasswordWordSeparatorView)
+    view.password_type = tools_views.PASSWORD_TYPE_DICEWARE_EFF_SHORT
+    view.strength_bits = 64
+    view.random_options = {}
+    view.entropy_source = tools_views.PASSWORD_ENTROPY_DICE
+
+    class C:
+        pass
+
+    view.controller = C()
+    view.controller.password_generator_entropy_cache = {"dummy": 1}
+
+    monkeypatch.setattr(
+        tools_views.ToolsPasswordWordSeparatorView,
+        "run_screen",
+        lambda self, *_args, **_kwargs: tools_views.RET_CODE__BACK_BUTTON,
+    )
+
+    dest = tools_views.ToolsPasswordWordSeparatorView.run(view)
+
+    assert dest.View_cls is tools_views.ToolsPasswordEntropySourceView
+    assert view.controller.password_generator_entropy_cache is None

@@ -297,6 +297,14 @@ def _dice_rolls_for_strength(entropy_bits: int) -> int:
     return max(1, math.ceil(entropy_bits / math.log2(6)))
 
 
+def _is_diceware_password_type(password_type: str) -> bool:
+    return password_type in {
+        PASSWORD_TYPE_DICEWARE_EFF_SHORT,
+        PASSWORD_TYPE_DICEWARE_EFF_LONG,
+        PASSWORD_TYPE_DICEWARE_BIP39,
+    }
+
+
 def _diceware_word_count(password_type: str, entropy_bits: int) -> int:
     if password_type == PASSWORD_TYPE_DICEWARE_EFF_SHORT:
         word_bits = math.log2(1296)
@@ -363,7 +371,16 @@ class ToolsMenuView(View):
         )
 
         if selected_menu_num == RET_CODE__BACK_BUTTON:
-            return Destination(BackStackView)
+            _clear_password_entropy_cache(self.controller)
+            return Destination(
+                ToolsPasswordEntropySourceView,
+                view_args=dict(
+                    password_type=self.password_type,
+                    strength_bits=self.strength_bits,
+                    random_options=self.random_options,
+                ),
+                skip_current_view=True,
+            )
 
         elif button_data[selected_menu_num] == self.IMAGE:
             return Destination(ToolsImageEntropyLivePreviewView)
@@ -530,7 +547,16 @@ class ToolsNetworkInfoView(View):
         )
 
         if selected_menu_num == RET_CODE__BACK_BUTTON:
-            return Destination(BackStackView)
+            _clear_password_entropy_cache(self.controller)
+            return Destination(
+                ToolsPasswordEntropySourceView,
+                view_args=dict(
+                    password_type=self.password_type,
+                    strength_bits=self.strength_bits,
+                    random_options=self.random_options,
+                ),
+                skip_current_view=True,
+            )
 
         if self.page_num >= len(self.paged_info) - 1:
             return Destination(BackStackView)
@@ -13647,20 +13673,6 @@ class ToolsPasswordEntropySourceView(View):
             )
 
         if selected == dice:
-            if self.password_type in {
-                PASSWORD_TYPE_DICEWARE_EFF_SHORT,
-                PASSWORD_TYPE_DICEWARE_EFF_LONG,
-                PASSWORD_TYPE_DICEWARE_BIP39,
-            }:
-                return Destination(
-                    ToolsPasswordWordSeparatorView,
-                    view_args=dict(
-                        password_type=self.password_type,
-                        strength_bits=self.strength_bits,
-                        random_options=self.random_options,
-                        entropy_source=PASSWORD_ENTROPY_DICE,
-                    ),
-                )
             return Destination(
                 ToolsPasswordDiceRollCountView,
                 view_args=dict(
@@ -13673,18 +13685,13 @@ class ToolsPasswordEntropySourceView(View):
         if selected == hardware_rng:
             if not self._hardware_rng_available():
                 return Destination(BackStackView)
-            if self.password_type in {
-                PASSWORD_TYPE_DICEWARE_EFF_SHORT,
-                PASSWORD_TYPE_DICEWARE_EFF_LONG,
-                PASSWORD_TYPE_DICEWARE_BIP39,
-            }:
+            if _is_diceware_password_type(getattr(self, "password_type", None)):
                 return Destination(
-                    ToolsPasswordWordSeparatorView,
+                    ToolsPasswordHardwareRngEntropyView,
                     view_args=dict(
                         password_type=self.password_type,
                         strength_bits=self.strength_bits,
                         random_options=self.random_options,
-                        entropy_source=PASSWORD_ENTROPY_HARDWARE_RNG,
                     ),
                 )
             return Destination(
@@ -13704,6 +13711,52 @@ class ToolsPasswordEntropySourceView(View):
                 strength_bits=self.strength_bits,
                 random_options=self.random_options,
             ),
+        )
+
+
+class ToolsPasswordHardwareRngEntropyView(View):
+    def __init__(
+        self,
+        password_type: str,
+        strength_bits: int,
+        random_options: dict | None = None,
+    ):
+        super().__init__()
+        self.password_type = password_type
+        self.strength_bits = strength_bits
+        self.random_options = random_options or {}
+
+    def run(self):
+        if not self.controller.hardware_rng_is_healthy:
+            self.run_screen(
+                WarningScreen,
+                title=_("System RNG Error"),
+                status_headline=None,
+                text=self.controller.hardware_rng_failure_reason or _("System RNG health check failed."),
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        entropy_bytes = _derive_hardware_rng_entropy_bytes()
+        _cache_password_entropy(
+            self.controller,
+            password_type=self.password_type,
+            strength_bits=self.strength_bits,
+            entropy_source=PASSWORD_ENTROPY_HARDWARE_RNG,
+            word_count=_diceware_word_count(self.password_type, self.strength_bits),
+            roll_data=None,
+            entropy_bytes=entropy_bytes,
+        )
+        return Destination(
+            ToolsPasswordWordSeparatorView,
+            view_args=dict(
+                password_type=self.password_type,
+                strength_bits=self.strength_bits,
+                random_options=self.random_options,
+                entropy_source=PASSWORD_ENTROPY_HARDWARE_RNG,
+            ),
+            skip_current_view=True,
         )
 
 
@@ -13737,7 +13790,16 @@ class ToolsPasswordWordSeparatorView(View):
             button_data=[button for button, _ in separator_options],
         )
         if selected_menu_num == RET_CODE__BACK_BUTTON:
-            return Destination(BackStackView)
+            _clear_password_entropy_cache(self.controller)
+            return Destination(
+                ToolsPasswordEntropySourceView,
+                view_args=dict(
+                    password_type=self.password_type,
+                    strength_bits=self.strength_bits,
+                    random_options=self.random_options,
+                ),
+                skip_current_view=True,
+            )
 
         word_separator = separator_options[selected_menu_num][1]
 
@@ -13857,9 +13919,6 @@ class ToolsPasswordDiceEntryView(View):
         self.random_options = random_options or {}
         self.word_count = word_count
         self.word_separator = word_separator
-        self.entropy_bytes_override = entropy_bytes_override
-        self.entropy_bytes_override = entropy_bytes_override
-        self.entropy_bytes_override = entropy_bytes_override
         self.entropy_source = entropy_source
 
     def run(self):
@@ -13878,6 +13937,27 @@ class ToolsPasswordDiceEntryView(View):
                 text=_("Dice rolls didn't appear random enough. Please try again."),
             )
             return Destination(BackStackView)
+
+        if _is_diceware_password_type(getattr(self, "password_type", None)):
+            _cache_password_entropy(
+                self.controller,
+                password_type=self.password_type,
+                strength_bits=self.strength_bits,
+                entropy_source=self.entropy_source,
+                word_count=self.word_count,
+                roll_data=ret,
+                entropy_bytes=None,
+            )
+            return Destination(
+                ToolsPasswordWordSeparatorView,
+                view_args=dict(
+                    password_type=self.password_type,
+                    strength_bits=self.strength_bits,
+                    random_options=self.random_options,
+                    entropy_source=self.entropy_source,
+                ),
+                skip_current_view=True,
+            )
 
         return Destination(
             ToolsPasswordGenerateView,
@@ -13916,6 +13996,7 @@ class ToolsPasswordGenerateView(View):
         self.roll_count = roll_count
         self.word_count = word_count
         self.word_separator = word_separator
+        self.entropy_bytes_override = entropy_bytes_override
 
     def _bip39_words_from_entropy(self, seed: bytes, word_count: int) -> list[str]:
         wordlist = Seed.get_wordlist(
@@ -14088,7 +14169,13 @@ class ToolsPasswordGenerateView(View):
 
         return Destination(
             ToolsPasswordReviewView,
-            view_args=dict(password=password),
+            view_args=dict(
+                password=password,
+                password_type=self.password_type,
+                strength_bits=self.strength_bits,
+                random_options=self.random_options,
+                entropy_source=self.entropy_source,
+            ),
             skip_current_view=True,
         )
 
@@ -14169,15 +14256,22 @@ class ToolsPasswordBIP85GenerateView(View):
             entropy = bip85.derive_entropy(root, BIP85_APP_DICE, [sides, rolls, index])
             drng = bip85_drng.BIP85DRNG.new(entropy)
             seed_bytes = drng.read(64)
+            _cache_password_entropy(
+                self.controller,
+                password_type=self.password_type,
+                strength_bits=self.strength_bits,
+                entropy_source=PASSWORD_ENTROPY_BIP85,
+                word_count=_diceware_word_count(self.password_type, self.strength_bits),
+                roll_data=None,
+                entropy_bytes=seed_bytes,
+            )
             return Destination(
-                ToolsPasswordGenerateView,
+                ToolsPasswordWordSeparatorView,
                 view_args=dict(
                     password_type=self.password_type,
-                    entropy_source=PASSWORD_ENTROPY_BIP85,
                     strength_bits=self.strength_bits,
                     random_options=self.random_options,
-                    roll_data=seed_bytes,
-                    word_count=_diceware_word_count(self.password_type, self.strength_bits),
+                    entropy_source=PASSWORD_ENTROPY_BIP85,
                 ),
             )
 
@@ -14344,9 +14438,20 @@ def _save_password_to_seedkeeper(view: View, password: str) -> bool:
 
 
 class ToolsPasswordReviewView(View):
-    def __init__(self, password: str):
+    def __init__(
+        self,
+        password: str,
+        password_type: str | None = None,
+        strength_bits: int | None = None,
+        random_options: dict | None = None,
+        entropy_source: str | None = None,
+    ):
         super().__init__()
         self.password = password
+        self.password_type = password_type
+        self.strength_bits = strength_bits
+        self.random_options = random_options or {}
+        self.entropy_source = entropy_source
 
     def run(self):
         while True:
@@ -14362,6 +14467,17 @@ class ToolsPasswordReviewView(View):
             )
 
             if selected_menu_num == RET_CODE__BACK_BUTTON:
+                if _is_diceware_password_type(getattr(self, "password_type", None)):
+                    return Destination(
+                        ToolsPasswordWordSeparatorView,
+                        view_args=dict(
+                            password_type=self.password_type,
+                            strength_bits=self.strength_bits,
+                            random_options=self.random_options,
+                            entropy_source=self.entropy_source,
+                        ),
+                        skip_current_view=True,
+                    )
                 return Destination(BackStackView)
 
             if button_data[selected_menu_num] == edit:

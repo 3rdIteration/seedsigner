@@ -74,3 +74,23 @@ def test_password_save_show_qr_large_routes_home_flow(monkeypatch):
 
     assert dest.View_cls is tools_views.ToolsTextQRFullScreenModeView
     assert dest.view_args["return_to_home"] is True
+
+
+def test_password_review_back_for_diceware_routes_to_separator(monkeypatch):
+    view = object.__new__(tools_views.ToolsPasswordReviewView)
+    view.password = "abc123"
+    view.password_type = tools_views.PASSWORD_TYPE_DICEWARE_EFF_SHORT
+    view.strength_bits = 64
+    view.random_options = {}
+    view.entropy_source = tools_views.PASSWORD_ENTROPY_DICE
+
+    monkeypatch.setattr(
+        tools_views.ToolsPasswordReviewView,
+        "run_screen",
+        lambda self, *_args, **_kwargs: tools_views.RET_CODE__BACK_BUTTON,
+    )
+
+    dest = tools_views.ToolsPasswordReviewView.run(view)
+
+    assert dest.View_cls is tools_views.ToolsPasswordWordSeparatorView
+    assert dest.skip_current_view is True
