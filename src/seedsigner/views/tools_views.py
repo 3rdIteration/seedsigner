@@ -65,6 +65,7 @@ from .view import View, Destination, BackStackView, MainMenuView
 from .satochip_bias import ToolsSatochipBiasCheckView
 
 from seedsigner.hardware.microsd import MicroSD
+from seedsigner.hardware.rng_monitor import HardwareRngHealthMonitor
 from seedsigner.helpers import seedkeeper_utils
 from seedsigner.helpers.satochip_signer import (
     _call_with_timeout,
@@ -102,17 +103,19 @@ BIP85_APP_BASE85 = 707785
 BIP85_APP_DICE = 89101
 
 
-def _read_secure_rng_bytes(num_bytes: int = 64) -> bytes:
+def _read_secure_rng_bytes(num_bytes: int = 64, require_hwrng: bool = False) -> bytes:
     rng_entropy = b""
 
-    for rng_path in ("/dev/hwrng", "/dev/random"):
-        try:
-            with open(rng_path, "rb") as rng:
-                rng_entropy = rng.read(num_bytes)
-                if rng_entropy:
-                    break
-        except Exception as e:
-            logger.info(repr(e), exc_info=True)
+    try:
+        with open("/dev/hwrng", "rb") as rng:
+            rng_entropy = rng.read(num_bytes)
+    except Exception as e:
+        logger.info(repr(e), exc_info=True)
+
+    if require_hwrng:
+        if len(rng_entropy) < num_bytes:
+            raise ValueError(_("Hardware RNG unavailable."))
+        return rng_entropy
 
     if len(rng_entropy) < num_bytes:
         rng_entropy += os.urandom(num_bytes - len(rng_entropy))
@@ -187,7 +190,10 @@ def _system_entropy_salt() -> bytes:
 
 
 def _derive_hardware_rng_entropy_bytes() -> bytes:
-    rng_entropy = _read_secure_rng_bytes(64)
+    rng_entropy = _read_secure_rng_bytes(64, require_hwrng=True)
+    entropy_score = HardwareRngHealthMonitor.shannon_entropy(rng_entropy)
+    if entropy_score < 4.0:
+        raise ValueError(_("Hardware RNG entropy too low. Try again later."))
     salt = _system_entropy_salt()
     return hashlib.sha256(rng_entropy + salt).digest()
 
@@ -13516,6 +13522,20 @@ class ToolsPasswordEntropySourceView(View):
         self.strength_bits = strength_bits
         self.random_options = random_options or {}
 
+    def _hardware_rng_available(self) -> bool:
+        if self.controller.hardware_rng_is_healthy:
+            return True
+        reason = self.controller.hardware_rng_failure_reason or _("Hardware RNG health check failed.")
+        self.run_screen(
+            WarningScreen,
+            title=_("Hardware RNG Error"),
+            status_headline=None,
+            text=reason,
+            show_back_button=False,
+            button_data=[ButtonOption("I Understand")],
+        )
+        return False
+
     def run(self):
         camera = ButtonOption("Camera")
         dice = ButtonOption("Dice")
@@ -13594,6 +13614,8 @@ class ToolsPasswordEntropySourceView(View):
             )
 
         if selected == hardware_rng:
+            if not self._hardware_rng_available():
+                return Destination(BackStackView)
             if self.password_type in {
                 PASSWORD_TYPE_DICEWARE_EFF_SHORT,
                 PASSWORD_TYPE_DICEWARE_EFF_LONG,
@@ -13897,6 +13919,16 @@ class ToolsPasswordGenerateView(View):
                 )
                 return Destination(BackStackView)
         elif self.entropy_source == PASSWORD_ENTROPY_HARDWARE_RNG:
+            if not self.controller.hardware_rng_is_healthy:
+                self.run_screen(
+                    WarningScreen,
+                    title=_("Hardware RNG Error"),
+                    status_headline=None,
+                    text=self.controller.hardware_rng_failure_reason or _("Hardware RNG health check failed."),
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
             entropy_bytes = _derive_hardware_rng_entropy_bytes()
         else:
             entropy_bytes = self.roll_data if self.entropy_source == PASSWORD_ENTROPY_BIP85 else mnemonic_generation._hash_dice_rolls(self.roll_data)

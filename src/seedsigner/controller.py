@@ -19,6 +19,7 @@ from seedsigner.models.threads import BaseThread
 from seedsigner.models.settings_definition import SettingsConstants
 from seedsigner.views.screensaver import ScreensaverScreen
 from seedsigner.views.view import Destination
+from seedsigner.hardware.rng_monitor import HardwareRngHealthMonitor, HardwareRngMonitorThread
 
 
 logger = logging.getLogger(__name__)
@@ -176,6 +177,8 @@ class Controller(Singleton):
     screensaver: ScreensaverScreen = None
     toast_notification_thread: BaseToastOverlayManagerThread = None
     wipe_timer_thread: BaseThread = None
+    rng_monitor_thread: BaseThread = None
+    hardware_rng_monitor: HardwareRngHealthMonitor = None
     wipe_timer_ms: int = None
     auto_wiped: bool = False
 
@@ -248,6 +251,10 @@ class Controller(Singleton):
         controller.wipe_timer_thread = WipeTimerThread()
         controller.wipe_timer_thread.start()
 
+        controller.hardware_rng_monitor = HardwareRngHealthMonitor()
+        controller.rng_monitor_thread = HardwareRngMonitorThread(controller.hardware_rng_monitor)
+        controller.rng_monitor_thread.start()
+
         return cls._instance
 
 
@@ -271,6 +278,20 @@ class Controller(Singleton):
         while not self._storage2:
             time.sleep(0.001)
         return self._storage2
+
+
+    @property
+    def hardware_rng_is_healthy(self) -> bool:
+        if not self.hardware_rng_monitor:
+            return False
+        return self.hardware_rng_monitor.is_healthy()
+
+
+    @property
+    def hardware_rng_failure_reason(self) -> str | None:
+        if not self.hardware_rng_monitor:
+            return "Hardware RNG monitor unavailable"
+        return self.hardware_rng_monitor.failure_reason()
 
 
     def get_seed(self, seed_num: int) -> Seed:
@@ -454,6 +475,9 @@ class Controller(Singleton):
 
             if self.wipe_timer_thread and self.wipe_timer_thread.is_alive():
                 self.wipe_timer_thread.stop()
+
+            if self.rng_monitor_thread and self.rng_monitor_thread.is_alive():
+                self.rng_monitor_thread.stop()
 
             # Clear the screen when exiting
             logger.info("Clearing screen, exiting")
