@@ -37,7 +37,7 @@ from seedsigner.gui.screens.tools_screens import (ToolsCalcFinalWordDoneScreen, 
     ToolsTranscribeTextQRConfirmQRPromptScreen, ToolsCommonFilterScreen, ToolsNetworkInfoScreen,
     ToolsBatteryCalibrationIntroScreen, ToolsBatteryCalibrationStartScreen, ToolsBatteryCalibrationRunningScreen)
 from seedsigner.helpers import embit_utils, mnemonic_generation
-from seedsigner.helpers import diceware, password_generation
+from seedsigner.helpers import bip85_drng, diceware, password_generation
 from seedsigner.helpers.iso7816 import format_sw_error
 from seedsigner.models.decode_qr import DecodeQR
 from seedsigner.models.encode_qr import GenericStaticQrEncoder
@@ -99,6 +99,7 @@ PASSWORD_ENTROPY_HARDWARE_RNG = "hardware_rng"
 BIP85_APP_HEX = 128169
 BIP85_APP_BASE64 = 707764
 BIP85_APP_BASE85 = 707785
+BIP85_APP_DICE = 89101
 
 
 def _read_secure_rng_bytes(num_bytes: int = 64) -> bytes:
@@ -243,7 +244,14 @@ def _random_charset(random_options: dict) -> str:
 
 
 def _bip85_supported_password_type(password_type: str) -> bool:
-    return password_type in {PASSWORD_TYPE_HEX, PASSWORD_TYPE_BASE64, PASSWORD_TYPE_BASE85}
+    return password_type in {
+        PASSWORD_TYPE_DICEWARE_EFF_SHORT,
+        PASSWORD_TYPE_DICEWARE_EFF_LONG,
+        PASSWORD_TYPE_DICEWARE_BIP39,
+        PASSWORD_TYPE_HEX,
+        PASSWORD_TYPE_BASE64,
+        PASSWORD_TYPE_BASE85,
+    }
 
 
 def _strength_to_length(entropy_bits: int, alphabet_size: int) -> int:
@@ -13514,14 +13522,7 @@ class ToolsPasswordEntropySourceView(View):
         hardware_rng = ButtonOption("Hardware RNG")
         bip85 = ButtonOption("BIP85")
 
-        if self.password_type in {
-            PASSWORD_TYPE_DICEWARE_EFF_SHORT,
-            PASSWORD_TYPE_DICEWARE_EFF_LONG,
-            PASSWORD_TYPE_DICEWARE_BIP39,
-        }:
-            button_data = [dice]
-        else:
-            button_data = [camera, dice, hardware_rng, bip85]
+        button_data = [camera, dice, hardware_rng, bip85]
 
         selected_menu_num = self.run_screen(
             ButtonListScreen,
@@ -13538,7 +13539,7 @@ class ToolsPasswordEntropySourceView(View):
                 WarningScreen,
                 title=_("Not Supported"),
                 status_headline=None,
-                text=_("BIP85 supports Hex, Base64, and Base85 only."),
+                text=_("BIP85 supports Diceware, Hex, Base64, and Base85."),
                 show_back_button=False,
                 button_data=[ButtonOption("I Understand")],
             )
@@ -13552,6 +13553,23 @@ class ToolsPasswordEntropySourceView(View):
             )
 
         if selected == camera:
+            if self.password_type in {
+                PASSWORD_TYPE_DICEWARE_EFF_SHORT,
+                PASSWORD_TYPE_DICEWARE_EFF_LONG,
+                PASSWORD_TYPE_DICEWARE_BIP39,
+            }:
+                return Destination(
+                    ToolsImageEntropyLivePreviewView,
+                    view_args=dict(
+                        next_view=ToolsPasswordWordSeparatorView,
+                        next_view_args=dict(
+                            password_type=self.password_type,
+                            strength_bits=self.strength_bits,
+                            random_options=self.random_options,
+                            entropy_source=PASSWORD_ENTROPY_CAMERA,
+                        ),
+                    ),
+                )
             return Destination(
                 ToolsImageEntropyLivePreviewView,
                 view_args=dict(
@@ -13566,6 +13584,16 @@ class ToolsPasswordEntropySourceView(View):
             )
 
         if selected == dice:
+            return Destination(
+                ToolsPasswordDiceRollCountView,
+                view_args=dict(
+                    password_type=self.password_type,
+                    strength_bits=self.strength_bits,
+                    random_options=self.random_options,
+                ),
+            )
+
+        if selected == hardware_rng:
             if self.password_type in {
                 PASSWORD_TYPE_DICEWARE_EFF_SHORT,
                 PASSWORD_TYPE_DICEWARE_EFF_LONG,
@@ -13577,18 +13605,9 @@ class ToolsPasswordEntropySourceView(View):
                         password_type=self.password_type,
                         strength_bits=self.strength_bits,
                         random_options=self.random_options,
+                        entropy_source=PASSWORD_ENTROPY_HARDWARE_RNG,
                     ),
                 )
-            return Destination(
-                ToolsPasswordDiceRollCountView,
-                view_args=dict(
-                    password_type=self.password_type,
-                    strength_bits=self.strength_bits,
-                    random_options=self.random_options,
-                ),
-            )
-
-        if selected == hardware_rng:
             return Destination(
                 ToolsPasswordGenerateView,
                 view_args=dict(
@@ -13615,11 +13634,13 @@ class ToolsPasswordWordSeparatorView(View):
         password_type: str,
         strength_bits: int,
         random_options: dict | None = None,
+        entropy_source: str = PASSWORD_ENTROPY_DICE,
     ):
         super().__init__()
         self.password_type = password_type
         self.strength_bits = strength_bits
         self.random_options = random_options or {}
+        self.entropy_source = entropy_source
 
     def run(self):
         separator_options = [
@@ -13644,6 +13665,7 @@ class ToolsPasswordWordSeparatorView(View):
                 strength_bits=self.strength_bits,
                 random_options=self.random_options,
                 word_separator=separator_options[selected_menu_num][1],
+                entropy_source=self.entropy_source,
             ),
         )
 
@@ -13655,14 +13677,36 @@ class ToolsPasswordDiceRollCountView(View):
         strength_bits: int,
         random_options: dict | None = None,
         word_separator: str = PASSWORD_WORD_SEPARATOR_NONE,
+        entropy_source: str = PASSWORD_ENTROPY_DICE,
     ):
         super().__init__()
         self.password_type = password_type
         self.strength_bits = strength_bits
         self.random_options = random_options or {}
         self.word_separator = word_separator
+        self.entropy_source = entropy_source
 
     def run(self):
+        if self.password_type in {
+            PASSWORD_TYPE_DICEWARE_EFF_SHORT,
+            PASSWORD_TYPE_DICEWARE_EFF_LONG,
+            PASSWORD_TYPE_DICEWARE_BIP39,
+        } and self.entropy_source in {
+            PASSWORD_ENTROPY_CAMERA,
+            PASSWORD_ENTROPY_HARDWARE_RNG,
+        }:
+            return Destination(
+                ToolsPasswordGenerateView,
+                view_args=dict(
+                    password_type=self.password_type,
+                    entropy_source=self.entropy_source,
+                    random_options=self.random_options,
+                    strength_bits=self.strength_bits,
+                    word_count=_diceware_word_count(self.password_type, self.strength_bits),
+                    word_separator=self.word_separator,
+                ),
+            )
+
         word_count = None
         if self.password_type in {
             PASSWORD_TYPE_DICEWARE_EFF_SHORT,
@@ -13687,6 +13731,7 @@ class ToolsPasswordDiceRollCountView(View):
                 total_rolls=total_rolls,
                 word_count=word_count,
                 word_separator=self.word_separator,
+                entropy_source=self.entropy_source,
             ),
         )
 
@@ -13700,6 +13745,7 @@ class ToolsPasswordDiceEntryView(View):
         random_options: dict | None = None,
         word_count: int | None = None,
         word_separator: str = PASSWORD_WORD_SEPARATOR_NONE,
+        entropy_source: str = PASSWORD_ENTROPY_DICE,
     ):
         super().__init__()
         self.password_type = password_type
@@ -13708,6 +13754,7 @@ class ToolsPasswordDiceEntryView(View):
         self.random_options = random_options or {}
         self.word_count = word_count
         self.word_separator = word_separator
+        self.entropy_source = entropy_source
 
     def run(self):
         ret = ToolsDiceEntropyEntryScreen(
@@ -13730,7 +13777,7 @@ class ToolsPasswordDiceEntryView(View):
             ToolsPasswordGenerateView,
             view_args=dict(
                 password_type=self.password_type,
-                entropy_source=PASSWORD_ENTROPY_DICE,
+                entropy_source=self.entropy_source,
                 random_options=self.random_options,
                 strength_bits=self.strength_bits,
                 roll_data=ret,
@@ -13748,7 +13795,7 @@ class ToolsPasswordGenerateView(View):
         entropy_source: str,
         strength_bits: int,
         random_options: dict | None = None,
-        roll_data: str | None = None,
+        roll_data: bytes | str | None = None,
         roll_count: int | None = None,
         word_count: int | None = None,
         word_separator: str = PASSWORD_WORD_SEPARATOR_NONE,
@@ -13777,26 +13824,61 @@ class ToolsPasswordGenerateView(View):
             words.append(wordlist[idx])
         return words
 
-    def _diceware_words(self) -> list[str]:
+    def _dice_length_for_charset(self, alphabet_size: int) -> int:
+        return _strength_to_length(self.strength_bits, alphabet_size)
+
+    def _diceware_rolls_from_entropy(self) -> str:
+        if self.word_count is None:
+            raise ValueError("Word count is required for diceware")
+        if self.password_type == PASSWORD_TYPE_DICEWARE_EFF_SHORT:
+            sides = 6
+            rolls_per_word = 4
+        elif self.password_type == PASSWORD_TYPE_DICEWARE_EFF_LONG:
+            sides = 6
+            rolls_per_word = 5
+        else:
+            sides = 2048
+            rolls_per_word = 1
+        roll_count = self.word_count * rolls_per_word
+        if self.entropy_source == PASSWORD_ENTROPY_BIP85:
+            return password_generation.dice_rolls_from_seed(self.roll_data, sides, roll_count, base=0)
+        return password_generation.dice_rolls_from_seed(self.roll_data, sides, roll_count)
+
+    def _diceware_words(self, entropy_bytes: bytes | None = None) -> list[str]:
+        if self.password_type == PASSWORD_TYPE_DICEWARE_BIP39 and self.entropy_source in {
+            PASSWORD_ENTROPY_CAMERA,
+            PASSWORD_ENTROPY_HARDWARE_RNG,
+            PASSWORD_ENTROPY_BIP85,
+        }:
+            if self.word_count is None:
+                raise ValueError("Word count is required for words")
+            return self._bip39_words_from_entropy(entropy_bytes, self.word_count)
+
+        roll_data = self.roll_data
+        if self.password_type in {PASSWORD_TYPE_DICEWARE_EFF_SHORT, PASSWORD_TYPE_DICEWARE_EFF_LONG} and self.entropy_source in {
+            PASSWORD_ENTROPY_CAMERA,
+            PASSWORD_ENTROPY_HARDWARE_RNG,
+            PASSWORD_ENTROPY_BIP85,
+        }:
+            roll_data = self._diceware_rolls_from_entropy()
+
         if self.password_type == PASSWORD_TYPE_DICEWARE_EFF_SHORT:
             return diceware.diceware_words_from_rolls(
-                self.roll_data, diceware.eff_short_map(), 4
+                roll_data, diceware.eff_short_map(), 4
             )
         if self.password_type == PASSWORD_TYPE_DICEWARE_EFF_LONG:
             return diceware.diceware_words_from_rolls(
-                self.roll_data, diceware.eff_large_map(), 5
+                roll_data, diceware.eff_large_map(), 5
             )
+
         word_count = self.word_count
         if word_count is None:
             entropy_bits = password_generation.dice_roll_entropy_bits(self.roll_count)
             word_count = int(entropy_bits // 11)
         if word_count < 1:
             raise ValueError("Not enough entropy for words")
-        entropy_seed = mnemonic_generation._hash_dice_rolls(self.roll_data)
+        entropy_seed = entropy_bytes if entropy_bytes is not None else mnemonic_generation._hash_dice_rolls(roll_data)
         return self._bip39_words_from_entropy(entropy_seed, word_count)
-
-    def _dice_length_for_charset(self, alphabet_size: int) -> int:
-        return _strength_to_length(self.strength_bits, alphabet_size)
 
     def run(self):
         if self.entropy_source == PASSWORD_ENTROPY_CAMERA:
@@ -13817,7 +13899,7 @@ class ToolsPasswordGenerateView(View):
         elif self.entropy_source == PASSWORD_ENTROPY_HARDWARE_RNG:
             entropy_bytes = _derive_hardware_rng_entropy_bytes()
         else:
-            entropy_bytes = mnemonic_generation._hash_dice_rolls(self.roll_data)
+            entropy_bytes = self.roll_data if self.entropy_source == PASSWORD_ENTROPY_BIP85 else mnemonic_generation._hash_dice_rolls(self.roll_data)
 
         try:
             if self.password_type in {
@@ -13825,7 +13907,7 @@ class ToolsPasswordGenerateView(View):
                 PASSWORD_TYPE_DICEWARE_EFF_LONG,
                 PASSWORD_TYPE_DICEWARE_BIP39,
             }:
-                words = self._diceware_words()
+                words = self._diceware_words(entropy_bytes=entropy_bytes)
                 password = _format_word_password(words, self.word_separator)
             elif self.password_type == PASSWORD_TYPE_RANDOM:
                 charset = _random_charset(self.random_options)
@@ -13934,6 +14016,36 @@ class ToolsPasswordBIP85GenerateView(View):
 
         root = bip32.HDKey.from_seed(seed.seed_bytes)
 
+        if self.password_type in {
+            PASSWORD_TYPE_DICEWARE_EFF_SHORT,
+            PASSWORD_TYPE_DICEWARE_EFF_LONG,
+            PASSWORD_TYPE_DICEWARE_BIP39,
+        }:
+            if self.password_type == PASSWORD_TYPE_DICEWARE_BIP39:
+                sides = 2048
+                rolls = _diceware_word_count(self.password_type, self.strength_bits)
+            elif self.password_type == PASSWORD_TYPE_DICEWARE_EFF_SHORT:
+                sides = 6
+                rolls = _diceware_word_count(self.password_type, self.strength_bits) * 4
+            else:
+                sides = 6
+                rolls = _diceware_word_count(self.password_type, self.strength_bits) * 5
+            entropy = bip85.derive_entropy(root, BIP85_APP_DICE, [sides, rolls, index])
+            drng = bip85_drng.BIP85DRNG.new(entropy)
+            seed_bytes = drng.read(64)
+            return Destination(
+                ToolsPasswordGenerateView,
+                view_args=dict(
+                    password_type=self.password_type,
+                    entropy_source=PASSWORD_ENTROPY_BIP85,
+                    strength_bits=self.strength_bits,
+                    random_options=self.random_options,
+                    roll_data=seed_bytes,
+                    word_count=_diceware_word_count(self.password_type, self.strength_bits),
+                ),
+            )
+
+
         if self.password_type == PASSWORD_TYPE_HEX:
             num_bytes = _strength_to_length(self.strength_bits, 256)
             if num_bytes < 16 or num_bytes > 64:
@@ -13947,7 +14059,16 @@ class ToolsPasswordBIP85GenerateView(View):
                 )
                 return Destination(BackStackView)
             entropy = bip85.derive_entropy(root, BIP85_APP_HEX, [num_bytes, index])
-            password = entropy[:num_bytes].hex()
+            return Destination(
+                ToolsPasswordGenerateView,
+                view_args=dict(
+                    password_type=self.password_type,
+                    entropy_source=PASSWORD_ENTROPY_BIP85,
+                    strength_bits=self.strength_bits,
+                    random_options=self.random_options,
+                    roll_data=entropy[:num_bytes],
+                ),
+            )
         elif self.password_type == PASSWORD_TYPE_BASE64:
             length = _strength_to_length(self.strength_bits, 64)
             if length < 20 or length > 86:
@@ -13961,7 +14082,16 @@ class ToolsPasswordBIP85GenerateView(View):
                 )
                 return Destination(BackStackView)
             entropy = bip85.derive_entropy(root, BIP85_APP_BASE64, [length, index])
-            password = base64.b64encode(entropy).decode("ascii").replace("=", "")[:length]
+            return Destination(
+                ToolsPasswordGenerateView,
+                view_args=dict(
+                    password_type=self.password_type,
+                    entropy_source=PASSWORD_ENTROPY_BIP85,
+                    strength_bits=self.strength_bits,
+                    random_options=self.random_options,
+                    roll_data=entropy,
+                ),
+            )
         else:
             length = _strength_to_length(self.strength_bits, 85)
             if length < 10 or length > 80:
@@ -13975,12 +14105,16 @@ class ToolsPasswordBIP85GenerateView(View):
                 )
                 return Destination(BackStackView)
             entropy = bip85.derive_entropy(root, BIP85_APP_BASE85, [length, index])
-            password = base64.b85encode(entropy).decode("ascii")[:length]
-
-        return Destination(
-            ToolsPasswordReviewView,
-            view_args=dict(password=password),
-        )
+            return Destination(
+                ToolsPasswordGenerateView,
+                view_args=dict(
+                    password_type=self.password_type,
+                    entropy_source=PASSWORD_ENTROPY_BIP85,
+                    strength_bits=self.strength_bits,
+                    random_options=self.random_options,
+                    roll_data=entropy,
+                ),
+            )
 
 
 class ToolsPasswordReviewView(View):
