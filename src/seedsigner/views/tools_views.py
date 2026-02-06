@@ -14169,18 +14169,18 @@ class ToolsPasswordReviewView(View):
         super().__init__()
         self.password = password
 
-    def _save_to_seedkeeper(self) -> Destination:
+    def _save_to_seedkeeper(self) -> bool:
         from seedsigner.gui.screens.screen import LoadingScreenThread
 
         label = seed_screens.SeedAddPassphraseScreen(title=_("Password Name")).display()
         if "is_back_button" in label:
-            return Destination(BackStackView)
+            return False
 
         Satochip_Connector = seedkeeper_utils.init_satochip(
             self, init_card_filter=["seedkeeper"]
         )
         if not Satochip_Connector:
-            return Destination(BackStackView)
+            return False
 
         header = Satochip_Connector.make_header(
             "Password",
@@ -14204,7 +14204,7 @@ class ToolsPasswordReviewView(View):
                 show_back_button=False,
                 button_data=[ButtonOption("I Understand")],
             )
-            return Destination(BackStackView)
+            return False
 
         if not fits:
             self.run_screen(
@@ -14215,7 +14215,7 @@ class ToolsPasswordReviewView(View):
                 show_back_button=False,
                 button_data=[ButtonOption("I Understand")],
             )
-            return Destination(BackStackView)
+            return False
 
         try:
             loading = LoadingScreenThread(text=_("Saving Secret\n\n\n\n\n\n"))
@@ -14230,6 +14230,7 @@ class ToolsPasswordReviewView(View):
                 show_back_button=False,
                 button_data=[ButtonOption("Continue")],
             )
+            return True
         except UnexpectedSW12Error as e:
             loading.stop()
             if e.sw1 == 0x6A and e.sw2 == 0x84:
@@ -14255,15 +14256,14 @@ class ToolsPasswordReviewView(View):
                 show_back_button=False,
                 button_data=[ButtonOption("I Understand")],
             )
-        return Destination(BackStackView)
+        return False
 
     def run(self):
         while True:
-            show_qr = ButtonOption("Show as QR")
             edit = ButtonOption("Edit")
+            show_qr = ButtonOption("Show as QR")
             save = ButtonOption("Save to Seedkeeper")
-            done = ButtonOption("Done")
-            button_data = [show_qr, edit, save, done]
+            button_data = [edit, show_qr, save]
             selected_menu_num = self.run_screen(
                 ToolsTextQRReviewTextScreen,
                 textToEncode=self.password,
@@ -14296,6 +14296,8 @@ class ToolsPasswordReviewView(View):
                 continue
 
             if button_data[selected_menu_num] == save:
-                return self._save_to_seedkeeper()
+                if self._save_to_seedkeeper():
+                    return Destination(MainMenuView)
+                continue
 
             return Destination(ToolsMenuView, clear_history=True)
