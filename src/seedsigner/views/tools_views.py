@@ -107,14 +107,29 @@ def _read_secure_rng_bytes(num_bytes: int = 64) -> bytes:
     return os.urandom(num_bytes)
 
 
+def _ensure_entropy_quality(entropy_bytes: bytes, error_text: str, min_entropy: float = 3.0) -> None:
+    if not entropy_bytes or len(set(entropy_bytes)) == 1:
+        raise ValueError(error_text)
+
+    entropy_score = HardwareRngHealthMonitor.shannon_entropy(entropy_bytes)
+    if entropy_score < min_entropy:
+        raise ValueError(error_text)
+
+
 def _system_entropy_salt() -> bytes:
     system_parts: list[bytes] = []
 
-    try:
-        with open("/proc/uptime", "r", encoding="utf-8") as f:
-            system_parts.append(f.read().strip().encode("utf-8"))
-    except Exception as e:
-        logger.info(repr(e), exc_info=True)
+    def _append_file(path: str):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                content = f.read().strip()
+            if content:
+                system_parts.append(content.encode("utf-8"))
+        except Exception:
+            # Graceful fallback for non-Linux or unavailable procfs/sysfs files.
+            pass
+
+    _append_file("/proc/uptime")
 
     try:
         with open("/proc/cpuinfo", "r", encoding="utf-8") as f:
@@ -122,8 +137,8 @@ def _system_entropy_salt() -> bytes:
         serial_line = next((line for line in cpuinfo.splitlines() if line.startswith("Serial")), "")
         if serial_line:
             system_parts.append(serial_line.encode("utf-8"))
-    except Exception as e:
-        logger.info(repr(e), exc_info=True)
+    except Exception:
+        pass
 
     try:
         mount_dev = None
@@ -138,48 +153,52 @@ def _system_entropy_salt() -> bytes:
             device = os.path.basename(mount_dev)
             parent_device = re.sub(r"p?\d+$", "", device)
             serial_path = f"/sys/class/block/{parent_device}/device/serial"
-            if os.path.exists(serial_path):
-                with open(serial_path, "r", encoding="utf-8") as f:
-                    system_parts.append(f.read().strip().encode("utf-8"))
-    except Exception as e:
-        logger.info(repr(e), exc_info=True)
+            _append_file(serial_path)
+    except Exception:
+        pass
 
-    try:
-        with open("/proc/meminfo", "r", encoding="utf-8") as f:
-            meminfo = f.read()
-        for key in ("MemTotal", "MemAvailable"):
-            for line in meminfo.splitlines():
-                if line.startswith(key):
-                    system_parts.append(line.encode("utf-8"))
-                    break
-    except Exception as e:
-        logger.info(repr(e), exc_info=True)
+    _append_file("/proc/meminfo")
 
     try:
         with open("/proc/stat", "r", encoding="utf-8") as f:
             cpu_line = f.readline().strip()
         if cpu_line:
             system_parts.append(cpu_line.encode("utf-8"))
-    except Exception as e:
-        logger.info(repr(e), exc_info=True)
+    except Exception:
+        pass
 
     try:
         load_avg = os.getloadavg()
         system_parts.append(f"{load_avg[0]:.4f},{load_avg[1]:.4f},{load_avg[2]:.4f}".encode("utf-8"))
-    except Exception as e:
-        logger.info(repr(e), exc_info=True)
+    except Exception:
+        # Windows and some environments do not implement getloadavg().
+        pass
 
+    # Always include cross-platform runtime variability.
     system_parts.append(str(time.time_ns()).encode("utf-8"))
-    return b"|".join(system_parts)
+    system_parts.append(str(time.perf_counter_ns()).encode("utf-8"))
+    system_parts.append(str(os.getpid()).encode("utf-8"))
+
+    salt = b"|".join(system_parts)
+    if not salt:
+        salt = str(time.time_ns()).encode("utf-8")
+    return salt
 
 
 def _derive_hardware_rng_entropy_bytes() -> bytes:
     rng_entropy = _read_secure_rng_bytes(64)
-    entropy_score = HardwareRngHealthMonitor.shannon_entropy(rng_entropy)
-    if entropy_score < 4.0:
-        raise ValueError(_("System RNG entropy too low. Try again later."))
+    _ensure_entropy_quality(
+        rng_entropy,
+        _("System RNG entropy too low. Try again later."),
+        min_entropy=4.0,
+    )
     salt = _system_entropy_salt()
-    return hashlib.sha256(rng_entropy + salt).digest()
+    derived_entropy = hashlib.sha256(rng_entropy + salt).digest()
+    _ensure_entropy_quality(
+        derived_entropy,
+        _("System RNG derived entropy failed health checks."),
+    )
+    return derived_entropy
 
 
 def _derive_camera_entropy_bytes(preview_images, final_image) -> bytes | None:
