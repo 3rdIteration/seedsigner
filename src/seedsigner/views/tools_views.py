@@ -13866,7 +13866,7 @@ class ToolsPasswordGenerateView(View):
     def _dice_length_for_charset(self, alphabet_size: int) -> int:
         return _strength_to_length(self.strength_bits, alphabet_size)
 
-    def _diceware_rolls_from_entropy(self) -> str:
+    def _diceware_rolls_from_entropy(self, entropy_seed: bytes) -> str:
         if self.word_count is None:
             raise ValueError("Word count is required for diceware")
         if self.password_type == PASSWORD_TYPE_DICEWARE_EFF_SHORT:
@@ -13879,7 +13879,7 @@ class ToolsPasswordGenerateView(View):
             sides = 2048
             rolls_per_word = 1
         roll_count = self.word_count * rolls_per_word
-        return password_generation.dice_rolls_from_seed(self.roll_data, sides, roll_count)
+        return password_generation.dice_rolls_from_seed(entropy_seed, sides, roll_count)
 
     def _diceware_words(self, entropy_bytes: bytes | None = None) -> list[str]:
         if self.password_type == PASSWORD_TYPE_DICEWARE_BIP39 and self.entropy_source in {
@@ -13897,7 +13897,9 @@ class ToolsPasswordGenerateView(View):
             PASSWORD_ENTROPY_HARDWARE_RNG,
             PASSWORD_ENTROPY_BIP85,
         }:
-            roll_data = self._diceware_rolls_from_entropy()
+            if entropy_bytes is None:
+                raise ValueError("Entropy is required for diceware")
+            roll_data = self._diceware_rolls_from_entropy(entropy_bytes)
 
         if self.password_type == PASSWORD_TYPE_DICEWARE_EFF_SHORT:
             return diceware.diceware_words_from_rolls(

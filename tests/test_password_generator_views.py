@@ -79,3 +79,39 @@ def test_password_save_to_microsd_appends_lines(monkeypatch, tmp_path):
 
     assert dest.View_cls is tools_views.MainMenuView
     assert (tmp_path / "generated_password.txt").read_text() == "alpha\nbeta\n"
+
+
+def test_diceware_eff_uses_fresh_entropy_seed(monkeypatch):
+    view = object.__new__(tools_views.ToolsPasswordGenerateView)
+    view.password_type = tools_views.PASSWORD_TYPE_DICEWARE_EFF_SHORT
+    view.entropy_source = tools_views.PASSWORD_ENTROPY_HARDWARE_RNG
+    view.strength_bits = 64
+    view.random_options = {}
+    view.roll_data = None
+    view.roll_count = None
+    view.word_count = 4
+    view.word_separator = tools_views.PASSWORD_WORD_SEPARATOR_NONE
+
+    captured = {}
+
+    def fake_rolls(seed, sides, roll_count, base=1):
+        captured["seed"] = seed
+        captured["sides"] = sides
+        captured["roll_count"] = roll_count
+        return "1111222233334444"
+
+    monkeypatch.setattr(tools_views.password_generation, "dice_rolls_from_seed", fake_rolls)
+    monkeypatch.setattr(tools_views.diceware, "eff_short_map", lambda: {})
+    monkeypatch.setattr(
+        tools_views.diceware,
+        "diceware_words_from_rolls",
+        lambda rolls, _word_map, _roll_len: [rolls],
+    )
+
+    entropy_seed = b"fresh-entropy-seed"
+    words = tools_views.ToolsPasswordGenerateView._diceware_words(view, entropy_bytes=entropy_seed)
+
+    assert words == ["1111222233334444"]
+    assert captured["seed"] == entropy_seed
+    assert captured["sides"] == 6
+    assert captured["roll_count"] == 16
