@@ -103,6 +103,34 @@ BIP85_APP_BASE85 = 707785
 BIP85_APP_DICE = 89101
 
 
+def _clear_password_entropy_cache(controller) -> None:
+    controller.password_generator_entropy_cache = None
+
+
+def _cache_password_entropy(
+    controller,
+    *,
+    password_type: str,
+    strength_bits: int,
+    entropy_source: str,
+    word_count: int | None,
+    roll_data: bytes | str | None = None,
+    entropy_bytes: bytes | None = None,
+) -> None:
+    controller.password_generator_entropy_cache = {
+        "password_type": password_type,
+        "strength_bits": strength_bits,
+        "entropy_source": entropy_source,
+        "word_count": word_count,
+        "roll_data": roll_data,
+        "entropy_bytes": entropy_bytes,
+    }
+
+
+def _get_password_entropy_cache(controller) -> dict | None:
+    return getattr(controller, "password_generator_entropy_cache", None)
+
+
 def _read_secure_rng_bytes(num_bytes: int = 64) -> bytes:
     return os.urandom(num_bytes)
 
@@ -183,8 +211,6 @@ def _system_entropy_salt() -> bytes:
     if not salt:
         salt = str(time.time_ns()).encode("utf-8")
     return salt
-
-
 def _derive_hardware_rng_entropy_bytes() -> bytes:
     rng_entropy = _read_secure_rng_bytes(64)
     _ensure_entropy_quality(
@@ -271,6 +297,14 @@ def _dice_rolls_for_strength(entropy_bits: int) -> int:
     return max(1, math.ceil(entropy_bits / math.log2(6)))
 
 
+def _is_diceware_password_type(password_type: str) -> bool:
+    return password_type in {
+        PASSWORD_TYPE_DICEWARE_EFF_SHORT,
+        PASSWORD_TYPE_DICEWARE_EFF_LONG,
+        PASSWORD_TYPE_DICEWARE_BIP39,
+    }
+
+
 def _diceware_word_count(password_type: str, entropy_bits: int) -> int:
     if password_type == PASSWORD_TYPE_DICEWARE_EFF_SHORT:
         word_bits = math.log2(1296)
@@ -337,7 +371,16 @@ class ToolsMenuView(View):
         )
 
         if selected_menu_num == RET_CODE__BACK_BUTTON:
-            return Destination(BackStackView)
+            _clear_password_entropy_cache(self.controller)
+            return Destination(
+                ToolsPasswordEntropySourceView,
+                view_args=dict(
+                    password_type=self.password_type,
+                    strength_bits=self.strength_bits,
+                    random_options=self.random_options,
+                ),
+                skip_current_view=True,
+            )
 
         elif button_data[selected_menu_num] == self.IMAGE:
             return Destination(ToolsImageEntropyLivePreviewView)
@@ -504,7 +547,16 @@ class ToolsNetworkInfoView(View):
         )
 
         if selected_menu_num == RET_CODE__BACK_BUTTON:
-            return Destination(BackStackView)
+            _clear_password_entropy_cache(self.controller)
+            return Destination(
+                ToolsPasswordEntropySourceView,
+                view_args=dict(
+                    password_type=self.password_type,
+                    strength_bits=self.strength_bits,
+                    random_options=self.random_options,
+                ),
+                skip_current_view=True,
+            )
 
         if self.page_num >= len(self.paged_info) - 1:
             return Destination(BackStackView)
@@ -13552,6 +13604,8 @@ class ToolsPasswordEntropySourceView(View):
         return False
 
     def run(self):
+        _clear_password_entropy_cache(self.controller)
+
         camera = ButtonOption("Camera")
         dice = ButtonOption("Dice")
         hardware_rng = ButtonOption("System RNG")
@@ -13631,18 +13685,13 @@ class ToolsPasswordEntropySourceView(View):
         if selected == hardware_rng:
             if not self._hardware_rng_available():
                 return Destination(BackStackView)
-            if self.password_type in {
-                PASSWORD_TYPE_DICEWARE_EFF_SHORT,
-                PASSWORD_TYPE_DICEWARE_EFF_LONG,
-                PASSWORD_TYPE_DICEWARE_BIP39,
-            }:
+            if _is_diceware_password_type(getattr(self, "password_type", None)):
                 return Destination(
-                    ToolsPasswordWordSeparatorView,
+                    ToolsPasswordHardwareRngEntropyView,
                     view_args=dict(
                         password_type=self.password_type,
                         strength_bits=self.strength_bits,
                         random_options=self.random_options,
-                        entropy_source=PASSWORD_ENTROPY_HARDWARE_RNG,
                     ),
                 )
             return Destination(
@@ -13665,6 +13714,52 @@ class ToolsPasswordEntropySourceView(View):
         )
 
 
+class ToolsPasswordHardwareRngEntropyView(View):
+    def __init__(
+        self,
+        password_type: str,
+        strength_bits: int,
+        random_options: dict | None = None,
+    ):
+        super().__init__()
+        self.password_type = password_type
+        self.strength_bits = strength_bits
+        self.random_options = random_options or {}
+
+    def run(self):
+        if not self.controller.hardware_rng_is_healthy:
+            self.run_screen(
+                WarningScreen,
+                title=_("System RNG Error"),
+                status_headline=None,
+                text=self.controller.hardware_rng_failure_reason or _("System RNG health check failed."),
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        entropy_bytes = _derive_hardware_rng_entropy_bytes()
+        _cache_password_entropy(
+            self.controller,
+            password_type=self.password_type,
+            strength_bits=self.strength_bits,
+            entropy_source=PASSWORD_ENTROPY_HARDWARE_RNG,
+            word_count=_diceware_word_count(self.password_type, self.strength_bits),
+            roll_data=None,
+            entropy_bytes=entropy_bytes,
+        )
+        return Destination(
+            ToolsPasswordWordSeparatorView,
+            view_args=dict(
+                password_type=self.password_type,
+                strength_bits=self.strength_bits,
+                random_options=self.random_options,
+                entropy_source=PASSWORD_ENTROPY_HARDWARE_RNG,
+            ),
+            skip_current_view=True,
+        )
+
+
 class ToolsPasswordWordSeparatorView(View):
     def __init__(
         self,
@@ -13680,6 +13775,8 @@ class ToolsPasswordWordSeparatorView(View):
         self.entropy_source = entropy_source
 
     def run(self):
+        cached_entropy = _get_password_entropy_cache(self.controller)
+
         separator_options = [
             (ButtonOption("None"), PASSWORD_WORD_SEPARATOR_NONE),
             (ButtonOption("Capitalise"), PASSWORD_WORD_SEPARATOR_CAPITALISE),
@@ -13693,7 +13790,36 @@ class ToolsPasswordWordSeparatorView(View):
             button_data=[button for button, _ in separator_options],
         )
         if selected_menu_num == RET_CODE__BACK_BUTTON:
-            return Destination(BackStackView)
+            _clear_password_entropy_cache(self.controller)
+            return Destination(
+                ToolsPasswordEntropySourceView,
+                view_args=dict(
+                    password_type=self.password_type,
+                    strength_bits=self.strength_bits,
+                    random_options=self.random_options,
+                ),
+                skip_current_view=True,
+            )
+
+        word_separator = separator_options[selected_menu_num][1]
+
+        if cached_entropy and cached_entropy.get("password_type") == self.password_type \
+            and cached_entropy.get("strength_bits") == self.strength_bits \
+            and cached_entropy.get("entropy_source") == self.entropy_source:
+            return Destination(
+                ToolsPasswordGenerateView,
+                view_args=dict(
+                    password_type=self.password_type,
+                    entropy_source=self.entropy_source,
+                    random_options=self.random_options,
+                    strength_bits=self.strength_bits,
+                    word_count=cached_entropy.get("word_count"),
+                    word_separator=word_separator,
+                    roll_data=cached_entropy.get("roll_data"),
+                    entropy_bytes_override=cached_entropy.get("entropy_bytes"),
+                ),
+                skip_current_view=True,
+            )
 
         return Destination(
             ToolsPasswordDiceRollCountView,
@@ -13701,7 +13827,7 @@ class ToolsPasswordWordSeparatorView(View):
                 password_type=self.password_type,
                 strength_bits=self.strength_bits,
                 random_options=self.random_options,
-                word_separator=separator_options[selected_menu_num][1],
+                word_separator=word_separator,
                 entropy_source=self.entropy_source,
             ),
         )
@@ -13812,6 +13938,27 @@ class ToolsPasswordDiceEntryView(View):
             )
             return Destination(BackStackView)
 
+        if _is_diceware_password_type(getattr(self, "password_type", None)):
+            _cache_password_entropy(
+                self.controller,
+                password_type=self.password_type,
+                strength_bits=self.strength_bits,
+                entropy_source=self.entropy_source,
+                word_count=self.word_count,
+                roll_data=ret,
+                entropy_bytes=None,
+            )
+            return Destination(
+                ToolsPasswordWordSeparatorView,
+                view_args=dict(
+                    password_type=self.password_type,
+                    strength_bits=self.strength_bits,
+                    random_options=self.random_options,
+                    entropy_source=self.entropy_source,
+                ),
+                skip_current_view=True,
+            )
+
         return Destination(
             ToolsPasswordGenerateView,
             view_args=dict(
@@ -13838,6 +13985,7 @@ class ToolsPasswordGenerateView(View):
         roll_count: int | None = None,
         word_count: int | None = None,
         word_separator: str = PASSWORD_WORD_SEPARATOR_NONE,
+        entropy_bytes_override: bytes | None = None,
     ):
         super().__init__()
         self.password_type = password_type
@@ -13848,6 +13996,7 @@ class ToolsPasswordGenerateView(View):
         self.roll_count = roll_count
         self.word_count = word_count
         self.word_separator = word_separator
+        self.entropy_bytes_override = entropy_bytes_override
 
     def _bip39_words_from_entropy(self, seed: bytes, word_count: int) -> list[str]:
         wordlist = Seed.get_wordlist(
@@ -13866,7 +14015,7 @@ class ToolsPasswordGenerateView(View):
     def _dice_length_for_charset(self, alphabet_size: int) -> int:
         return _strength_to_length(self.strength_bits, alphabet_size)
 
-    def _diceware_rolls_from_entropy(self) -> str:
+    def _diceware_rolls_from_entropy(self, entropy_seed: bytes) -> str:
         if self.word_count is None:
             raise ValueError("Word count is required for diceware")
         if self.password_type == PASSWORD_TYPE_DICEWARE_EFF_SHORT:
@@ -13879,7 +14028,7 @@ class ToolsPasswordGenerateView(View):
             sides = 2048
             rolls_per_word = 1
         roll_count = self.word_count * rolls_per_word
-        return password_generation.dice_rolls_from_seed(self.roll_data, sides, roll_count)
+        return password_generation.dice_rolls_from_seed(entropy_seed, sides, roll_count)
 
     def _diceware_words(self, entropy_bytes: bytes | None = None) -> list[str]:
         if self.password_type == PASSWORD_TYPE_DICEWARE_BIP39 and self.entropy_source in {
@@ -13897,7 +14046,9 @@ class ToolsPasswordGenerateView(View):
             PASSWORD_ENTROPY_HARDWARE_RNG,
             PASSWORD_ENTROPY_BIP85,
         }:
-            roll_data = self._diceware_rolls_from_entropy()
+            if entropy_bytes is None:
+                raise ValueError("Entropy is required for diceware")
+            roll_data = self._diceware_rolls_from_entropy(entropy_bytes)
 
         if self.password_type == PASSWORD_TYPE_DICEWARE_EFF_SHORT:
             return diceware.diceware_words_from_rolls(
@@ -13918,7 +14069,10 @@ class ToolsPasswordGenerateView(View):
         return self._bip39_words_from_entropy(entropy_seed, word_count)
 
     def run(self):
-        if self.entropy_source == PASSWORD_ENTROPY_CAMERA:
+        entropy_bytes_override = getattr(self, "entropy_bytes_override", None)
+        if entropy_bytes_override is not None:
+            entropy_bytes = entropy_bytes_override
+        elif self.entropy_source == PASSWORD_ENTROPY_CAMERA:
             entropy_bytes = _derive_camera_entropy_bytes(
                 self.controller.image_entropy_preview_frames,
                 self.controller.image_entropy_final_image,
@@ -13947,6 +14101,21 @@ class ToolsPasswordGenerateView(View):
             entropy_bytes = _derive_hardware_rng_entropy_bytes()
         else:
             entropy_bytes = self.roll_data if self.entropy_source == PASSWORD_ENTROPY_BIP85 else mnemonic_generation._hash_dice_rolls(self.roll_data)
+
+        if self.password_type in {
+            PASSWORD_TYPE_DICEWARE_EFF_SHORT,
+            PASSWORD_TYPE_DICEWARE_EFF_LONG,
+            PASSWORD_TYPE_DICEWARE_BIP39,
+        }:
+            _cache_password_entropy(
+                self.controller,
+                password_type=self.password_type,
+                strength_bits=self.strength_bits,
+                entropy_source=self.entropy_source,
+                word_count=self.word_count,
+                roll_data=self.roll_data if self.entropy_source == PASSWORD_ENTROPY_DICE else None,
+                entropy_bytes=entropy_bytes if self.entropy_source != PASSWORD_ENTROPY_DICE else None,
+            )
 
         try:
             if self.password_type in {
@@ -14000,7 +14169,14 @@ class ToolsPasswordGenerateView(View):
 
         return Destination(
             ToolsPasswordReviewView,
-            view_args=dict(password=password),
+            view_args=dict(
+                password=password,
+                password_type=self.password_type,
+                strength_bits=self.strength_bits,
+                random_options=self.random_options,
+                entropy_source=self.entropy_source,
+            ),
+            skip_current_view=True,
         )
 
 
@@ -14080,15 +14256,22 @@ class ToolsPasswordBIP85GenerateView(View):
             entropy = bip85.derive_entropy(root, BIP85_APP_DICE, [sides, rolls, index])
             drng = bip85_drng.BIP85DRNG.new(entropy)
             seed_bytes = drng.read(64)
+            _cache_password_entropy(
+                self.controller,
+                password_type=self.password_type,
+                strength_bits=self.strength_bits,
+                entropy_source=PASSWORD_ENTROPY_BIP85,
+                word_count=_diceware_word_count(self.password_type, self.strength_bits),
+                roll_data=None,
+                entropy_bytes=seed_bytes,
+            )
             return Destination(
-                ToolsPasswordGenerateView,
+                ToolsPasswordWordSeparatorView,
                 view_args=dict(
                     password_type=self.password_type,
-                    entropy_source=PASSWORD_ENTROPY_BIP85,
                     strength_bits=self.strength_bits,
                     random_options=self.random_options,
-                    roll_data=seed_bytes,
-                    word_count=_diceware_word_count(self.password_type, self.strength_bits),
+                    entropy_source=PASSWORD_ENTROPY_BIP85,
                 ),
             )
 
@@ -14164,126 +14347,138 @@ class ToolsPasswordBIP85GenerateView(View):
             )
 
 
+def _save_password_to_seedkeeper(view: View, password: str) -> bool:
+    from seedsigner.gui.screens.screen import LoadingScreenThread
+
+    label = seed_screens.SeedAddPassphraseScreen(title=_("Password Name")).display()
+    if "is_back_button" in label:
+        return False
+
+    Satochip_Connector = seedkeeper_utils.init_satochip(
+        view, init_card_filter=["seedkeeper"]
+    )
+    if not Satochip_Connector:
+        return False
+
+    header = Satochip_Connector.make_header(
+        "Password",
+        "Plaintext export allowed",
+        label["passphrase"],
+    )
+    secret_text_list = list(password.encode("utf-8"))
+    secret_list = [len(secret_text_list)] + secret_text_list
+    secret_dic = {"header": header, "secret_list": secret_list}
+
+    try:
+        fits, required_bytes, free_bytes = seedkeeper_utils.ensure_seedkeeper_capacity(
+            Satochip_Connector, secret_dic
+        )
+    except Exception as e:
+        view.run_screen(
+            WarningScreen,
+            title=_("Error"),
+            status_headline=None,
+            text=str(e),
+            show_back_button=False,
+            button_data=[ButtonOption("I Understand")],
+        )
+        return False
+
+    if not fits:
+        view.run_screen(
+            WarningScreen,
+            title=_("Not Enough Space"),
+            status_headline=None,
+            text=seedkeeper_utils.format_seedkeeper_space_error(required_bytes, free_bytes),
+            show_back_button=False,
+            button_data=[ButtonOption("I Understand")],
+        )
+        return False
+
+    try:
+        loading = LoadingScreenThread(text=_("Saving Secret\n\n\n\n\n\n"))
+        loading.start()
+        Satochip_Connector.seedkeeper_import_secret(secret_dic)
+        loading.stop()
+        view.run_screen(
+            LargeIconStatusScreen,
+            title=_("Success"),
+            status_headline=None,
+            text=_("Password saved to Seedkeeper"),
+            show_back_button=False,
+            button_data=[ButtonOption("Continue")],
+        )
+        return True
+    except UnexpectedSW12Error as e:
+        loading.stop()
+        if e.sw1 == 0x6A and e.sw2 == 0x84:
+            err_text = _("Not enough space on Seedkeeper for password")
+        else:
+            err_text = format_sw_error(e.sw1, e.sw2)
+        view.run_screen(
+            WarningScreen,
+            title=_("Error"),
+            status_headline=None,
+            text=err_text,
+            show_back_button=False,
+            button_data=[ButtonOption("I Understand")],
+        )
+    except Exception as e:
+        logger.info(e)
+        loading.stop()
+        view.run_screen(
+            WarningScreen,
+            title=_("Failed"),
+            status_headline=None,
+            text=_("Password save failed"),
+            show_back_button=False,
+            button_data=[ButtonOption("I Understand")],
+        )
+    return False
+
+
 class ToolsPasswordReviewView(View):
-    def __init__(self, password: str):
+    def __init__(
+        self,
+        password: str,
+        password_type: str | None = None,
+        strength_bits: int | None = None,
+        random_options: dict | None = None,
+        entropy_source: str | None = None,
+    ):
         super().__init__()
         self.password = password
-
-    def _save_to_seedkeeper(self) -> bool:
-        from seedsigner.gui.screens.screen import LoadingScreenThread
-
-        label = seed_screens.SeedAddPassphraseScreen(title=_("Password Name")).display()
-        if "is_back_button" in label:
-            return False
-
-        Satochip_Connector = seedkeeper_utils.init_satochip(
-            self, init_card_filter=["seedkeeper"]
-        )
-        if not Satochip_Connector:
-            return False
-
-        header = Satochip_Connector.make_header(
-            "Password",
-            "Plaintext export allowed",
-            label["passphrase"],
-        )
-        secret_text_list = list(self.password.encode("utf-8"))
-        secret_list = [len(secret_text_list)] + secret_text_list
-        secret_dic = {"header": header, "secret_list": secret_list}
-
-        try:
-            fits, required_bytes, free_bytes = seedkeeper_utils.ensure_seedkeeper_capacity(
-                Satochip_Connector, secret_dic
-            )
-        except Exception as e:
-            self.run_screen(
-                WarningScreen,
-                title=_("Error"),
-                status_headline=None,
-                text=str(e),
-                show_back_button=False,
-                button_data=[ButtonOption("I Understand")],
-            )
-            return False
-
-        if not fits:
-            self.run_screen(
-                WarningScreen,
-                title=_("Not Enough Space"),
-                status_headline=None,
-                text=seedkeeper_utils.format_seedkeeper_space_error(required_bytes, free_bytes),
-                show_back_button=False,
-                button_data=[ButtonOption("I Understand")],
-            )
-            return False
-
-        try:
-            loading = LoadingScreenThread(text=_("Saving Secret\n\n\n\n\n\n"))
-            loading.start()
-            Satochip_Connector.seedkeeper_import_secret(secret_dic)
-            loading.stop()
-            self.run_screen(
-                LargeIconStatusScreen,
-                title=_("Success"),
-                status_headline=None,
-                text=_("Password saved to Seedkeeper"),
-                show_back_button=False,
-                button_data=[ButtonOption("Continue")],
-            )
-            return True
-        except UnexpectedSW12Error as e:
-            loading.stop()
-            if e.sw1 == 0x6A and e.sw2 == 0x84:
-                err_text = _("Not enough space on Seedkeeper for password")
-            else:
-                err_text = format_sw_error(e.sw1, e.sw2)
-            self.run_screen(
-                WarningScreen,
-                title=_("Error"),
-                status_headline=None,
-                text=err_text,
-                show_back_button=False,
-                button_data=[ButtonOption("I Understand")],
-            )
-        except Exception as e:
-            logger.info(e)
-            loading.stop()
-            self.run_screen(
-                WarningScreen,
-                title=_("Failed"),
-                status_headline=None,
-                text=_("Password save failed"),
-                show_back_button=False,
-                button_data=[ButtonOption("I Understand")],
-            )
-        return False
+        self.password_type = password_type
+        self.strength_bits = strength_bits
+        self.random_options = random_options or {}
+        self.entropy_source = entropy_source
 
     def run(self):
         while True:
             edit = ButtonOption("Edit")
-            show_qr = ButtonOption("Show as QR")
-            save = ButtonOption("Save to Seedkeeper")
-            button_data = [edit, show_qr, save]
+            next_button = ButtonOption("Next")
+            button_data = [edit, next_button]
             selected_menu_num = self.run_screen(
                 ToolsTextQRReviewTextScreen,
                 textToEncode=self.password,
                 title=_("Password"),
                 button_data=button_data,
-                show_back_button=False,
+                show_back_button=True,
             )
 
-            if button_data[selected_menu_num] == show_qr:
-                from seedsigner.helpers.qr import QR
-                num_modules = QR().qrsize(data=self.password)
-                if num_modules <= 33:
+            if selected_menu_num == RET_CODE__BACK_BUTTON:
+                if _is_diceware_password_type(getattr(self, "password_type", None)):
                     return Destination(
-                        ToolsTextQRTranscribeModePromptView,
-                        view_args=dict(text=self.password, num_modules=num_modules, return_to_home=True),
+                        ToolsPasswordWordSeparatorView,
+                        view_args=dict(
+                            password_type=self.password_type,
+                            strength_bits=self.strength_bits,
+                            random_options=self.random_options,
+                            entropy_source=self.entropy_source,
+                        ),
+                        skip_current_view=True,
                     )
-                return Destination(
-                    ToolsTextQRFullScreenModeView,
-                    view_args=dict(text=self.password, return_to_home=True),
-                )
+                return Destination(BackStackView)
 
             if button_data[selected_menu_num] == edit:
                 ret_dict = ToolsTextQRTextEntryScreen(
@@ -14295,9 +14490,77 @@ class ToolsPasswordReviewView(View):
                 self.password = ret_dict["textToEncode"]
                 continue
 
-            if button_data[selected_menu_num] == save:
-                if self._save_to_seedkeeper():
-                    return Destination(MainMenuView)
-                continue
+            return Destination(
+                ToolsPasswordSaveView,
+                view_args=dict(password=self.password),
+            )
 
-            return Destination(ToolsMenuView, clear_history=True)
+
+class ToolsPasswordSaveView(View):
+    def __init__(self, password: str):
+        super().__init__()
+        self.password = password
+
+    def _save_to_microsd(self) -> bool:
+        password_path = MicroSD.get_microsd_dir() / "generated_password.txt"
+        try:
+            with open(password_path, "a", encoding="utf-8") as outfile:
+                outfile.write(f"{self.password}\n")
+        except Exception as exc:
+            self.run_screen(
+                WarningScreen,
+                title=_("Save Failed"),
+                status_headline=None,
+                text=str(exc),
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return False
+
+        self.run_screen(
+            LargeIconStatusScreen,
+            title=_("Saved"),
+            status_headline=None,
+            text=_("Saved to generated_password.txt"),
+            show_back_button=False,
+            button_data=[ButtonOption("Continue")],
+        )
+        return True
+
+    def run(self):
+        show_qr = ButtonOption("Show as QR")
+        microsd = ButtonOption("Save to MicroSD")
+        seedkeeper = ButtonOption("Save to Seedkeeper")
+        button_data = [show_qr, microsd, seedkeeper]
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title=_("Save Password"),
+            is_button_text_centered=False,
+            button_data=button_data,
+            show_back_button=True,
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        if button_data[selected_menu_num] == show_qr:
+            from seedsigner.helpers.qr import QR
+            num_modules = QR().qrsize(data=self.password)
+            if num_modules <= 33:
+                return Destination(
+                    ToolsTextQRTranscribeModePromptView,
+                    view_args=dict(text=self.password, num_modules=num_modules, return_to_home=True),
+                )
+            return Destination(
+                ToolsTextQRFullScreenModeView,
+                view_args=dict(text=self.password, return_to_home=True),
+            )
+
+        if button_data[selected_menu_num] == microsd:
+            if self._save_to_microsd():
+                return Destination(MainMenuView)
+            return Destination(BackStackView)
+
+        if _save_password_to_seedkeeper(self, self.password):
+            return Destination(MainMenuView)
+        return Destination(BackStackView)
