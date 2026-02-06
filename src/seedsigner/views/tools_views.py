@@ -13433,26 +13433,42 @@ class ToolsPasswordDiceRollCountView(View):
 
     def run(self):
         while True:
+            prompt_title = _("Dice Rolls")
+            if self.password_type in {
+                PASSWORD_TYPE_DICEWARE_EFF_SHORT,
+                PASSWORD_TYPE_DICEWARE_EFF_LONG,
+                PASSWORD_TYPE_DICEWARE_BIP39,
+            }:
+                prompt_title = _("Word Count")
             ret_dict = ToolsTextQRTextEntryScreen(
                 textToEncode="",
-                title=_("Dice Rolls"),
+                title=prompt_title,
             ).display()
             if "is_back_button" in ret_dict:
                 return Destination(BackStackView)
             try:
-                total_rolls = int(ret_dict["textToEncode"])
-                if total_rolls <= 0:
+                word_count = int(ret_dict["textToEncode"])
+                if word_count <= 0:
                     raise ValueError
             except ValueError:
                 self.run_screen(
                     WarningScreen,
-                    title=_("Invalid Roll Count"),
+                    title=_("Invalid Count"),
                     status_headline=None,
-                    text=_("Enter a positive number of rolls."),
+                    text=_("Enter a positive number."),
                     show_back_button=False,
                     button_data=[ButtonOption("I Understand")],
                 )
                 continue
+
+            if self.password_type == PASSWORD_TYPE_DICEWARE_EFF_SHORT:
+                total_rolls = word_count * 4
+            elif self.password_type == PASSWORD_TYPE_DICEWARE_EFF_LONG:
+                total_rolls = word_count * 5
+            elif self.password_type == PASSWORD_TYPE_DICEWARE_BIP39:
+                total_rolls = math.ceil(word_count * 11 / math.log2(6))
+            else:
+                total_rolls = word_count
 
             return Destination(
                 ToolsPasswordDiceEntryView,
@@ -13460,6 +13476,7 @@ class ToolsPasswordDiceRollCountView(View):
                     password_type=self.password_type,
                     random_options=self.random_options,
                     total_rolls=total_rolls,
+                    word_count=word_count,
                 ),
             )
 
@@ -13470,11 +13487,13 @@ class ToolsPasswordDiceEntryView(View):
         password_type: str,
         total_rolls: int,
         random_options: dict | None = None,
+        word_count: int | None = None,
     ):
         super().__init__()
         self.password_type = password_type
         self.total_rolls = total_rolls
         self.random_options = random_options or {}
+        self.word_count = word_count
 
     def run(self):
         ret = ToolsDiceEntropyEntryScreen(
@@ -13501,6 +13520,7 @@ class ToolsPasswordDiceEntryView(View):
                 random_options=self.random_options,
                 roll_data=ret,
                 roll_count=self.total_rolls,
+                word_count=self.word_count,
             ),
         )
 
@@ -13570,6 +13590,7 @@ class ToolsPasswordGenerateView(View):
         length: int | None = None,
         roll_data: str | None = None,
         roll_count: int | None = None,
+        word_count: int | None = None,
     ):
         super().__init__()
         self.password_type = password_type
@@ -13578,6 +13599,7 @@ class ToolsPasswordGenerateView(View):
         self.length = length
         self.roll_data = roll_data
         self.roll_count = roll_count
+        self.word_count = word_count
 
     def _bip39_words_from_entropy(self, seed: bytes, word_count: int) -> list[str]:
         wordlist = Seed.get_wordlist(
@@ -13602,8 +13624,10 @@ class ToolsPasswordGenerateView(View):
             return diceware.diceware_words_from_rolls(
                 self.roll_data, diceware.eff_large_map(), 5
             )
-        entropy_bits = password_generation.dice_roll_entropy_bits(self.roll_count)
-        word_count = int(entropy_bits // 11)
+        word_count = self.word_count
+        if word_count is None:
+            entropy_bits = password_generation.dice_roll_entropy_bits(self.roll_count)
+            word_count = int(entropy_bits // 11)
         if word_count < 1:
             raise ValueError("Not enough entropy for words")
         entropy_seed = mnemonic_generation._hash_dice_rolls(self.roll_data)

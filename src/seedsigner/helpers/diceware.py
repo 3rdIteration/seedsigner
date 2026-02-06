@@ -6,25 +6,13 @@ from typing import Dict, List
 _EFF_LARGE_PATH = (
     Path(__file__).resolve().parents[1] / "resources" / "diceware" / "eff_large_wordlist.txt"
 )
+_EFF_SHORT_PATH = (
+    Path(__file__).resolve().parents[1] / "resources" / "diceware" / "eff_short_wordlist_1.txt"
+)
 
 _eff_large_words: List[str] | None = None
 _eff_large_map: Dict[str, str] | None = None
 _eff_short_map: Dict[str, str] | None = None
-
-
-def _dice_codes(num_rolls: int) -> List[str]:
-    codes: List[str] = []
-    digits = ["1", "2", "3", "4", "5", "6"]
-
-    def _walk(prefix: str, depth: int) -> None:
-        if depth == num_rolls:
-            codes.append(prefix)
-            return
-        for digit in digits:
-            _walk(prefix + digit, depth + 1)
-
-    _walk("", 0)
-    return codes
 
 
 def _load_eff_large() -> None:
@@ -53,10 +41,15 @@ def eff_large_map() -> Dict[str, str]:
 def eff_short_map() -> Dict[str, str]:
     global _eff_short_map
     if _eff_short_map is None:
-        _load_eff_large()
-        codes = _dice_codes(4)
-        words = _eff_large_words[: len(codes)]
-        _eff_short_map = dict(zip(codes, words))
+        word_map: Dict[str, str] = {}
+        with _EFF_SHORT_PATH.open("r", encoding="utf-8") as handle:
+            for line in handle:
+                line = line.strip()
+                if not line:
+                    continue
+                key, word = line.split("\t", 1)
+                word_map[key] = word
+        _eff_short_map = word_map
     return dict(_eff_short_map)
 
 
