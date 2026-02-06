@@ -78,7 +78,6 @@ def dice_rolls_from_seed(seed: bytes, sides: int, roll_count: int, base: int = 1
 
     bits_per_roll = math.ceil(math.log2(sides))
     bytes_per_roll = math.ceil(bits_per_roll / 8)
-    max_value = 1 << bits_per_roll
     stream = shake_stream(seed)
 
     rolls: list[str] = []

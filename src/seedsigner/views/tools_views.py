@@ -13840,8 +13840,6 @@ class ToolsPasswordGenerateView(View):
             sides = 2048
             rolls_per_word = 1
         roll_count = self.word_count * rolls_per_word
-        if self.entropy_source == PASSWORD_ENTROPY_BIP85:
-            return password_generation.dice_rolls_from_seed(self.roll_data, sides, roll_count, base=0)
         return password_generation.dice_rolls_from_seed(self.roll_data, sides, roll_count)
 
     def _diceware_words(self, entropy_bytes: bytes | None = None) -> list[str]:
