@@ -100,13 +100,16 @@ class ToolsMenuView(View):
         if self.settings.get_value(SettingsConstants.SETTING__SMARTCARD_SUPPORT) == SettingsConstants.OPTION__ENABLED:
             button_data.append(self.SMARTCARD)
         
+        from seedsigner.hardware.battery_hat import BatteryHat
+        battery_calibration_button = self.BATTERY_CALIBRATION if BatteryHat.get_instance().is_enabled() else None
+
         button_data.extend([
             self.KEYBOARD,
             self.ADDRESS_EXPLORER,
             self.VERIFY_ADDRESS,
             self.TEXTQRCODE,
             self.MICROSD,
-            self.BATTERY_CALIBRATION,
+            battery_calibration_button,
             self.NETWORK_INFO if Path("/usr/bin/network-info").is_file() else None,
             self.GPG,
             self.CLEAR_DESCRIPTOR,
@@ -184,7 +187,11 @@ class ToolsBatteryCalibrationView(View):
     def run(self):
         from seedsigner.hardware.battery_hat import BatteryHat
 
-        BatteryHat.get_instance().process_discharge_log(step=self.CALIBRATION_STEP)
+        battery_hat = BatteryHat.get_instance()
+        if not battery_hat.is_enabled():
+            return Destination(BackStackView)
+
+        battery_hat.process_discharge_log(step=self.CALIBRATION_STEP)
 
         microsd = MicroSD.get_instance()
         if not microsd.is_inserted:
@@ -204,9 +211,6 @@ class ToolsBatteryCalibrationView(View):
         if ret == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
 
-        from seedsigner.hardware.battery_hat import BatteryHat
-
-        battery_hat = BatteryHat.get_instance()
         log_path = battery_hat.get_discharge_log_path()
         ret = ToolsBatteryCalibrationRunningScreen(
             log_path=log_path,

@@ -424,8 +424,9 @@ class BatteryInfoScreen(BaseTopNavScreen):
 
         def run(self):
             while self.keep_running:
-                if not self.battery_hat.detected:
-                    self.battery_hat.detected = self.battery_hat.detect_hat()
+                if not self.battery_hat.is_enabled():
+                    time.sleep(5)
+                    continue
                 voltage = None
                 current = None
                 power = None

@@ -62,6 +62,20 @@ class TestSettingsFlows(FlowTest):
             FlowStep(settings_views.SettingsMenuView),
         ])
 
+
+    def test_battery_info_unavailable(self):
+        """Battery info should show an unavailable message when no monitor is detected."""
+        with patch("seedsigner.hardware.battery_hat.BatteryHat") as battery_hat:
+            battery_hat.get_instance.return_value.is_enabled.return_value = False
+
+            self.run_sequence([
+                FlowStep(MainMenuView, button_data_selection=MainMenuView.SETTINGS),
+                FlowStep(settings_views.SettingsMenuView, button_data_selection=settings_views.SettingsMenuView.HARDWARE),
+                FlowStep(settings_views.SettingsMenuView, button_data_selection=settings_views.SettingsMenuView.BATTERY_INFO),
+                FlowStep(settings_views.BatteryInfoView),
+                FlowStep(settings_views.SettingsMenuView),
+            ])
+
     def test_hardware_menu_back_returns_to_main(self):
         """Ensure BACK from Hardware settings returns to main Settings menu."""
         def assert_general(view: settings_views.SettingsMenuView):

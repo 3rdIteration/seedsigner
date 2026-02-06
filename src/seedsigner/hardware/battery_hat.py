@@ -112,9 +112,21 @@ class BatteryHat(Singleton, BaseThread):
             instance._bus = None
             instance.percent = None
             instance.detected = False
+            instance.enabled = SMBus is not None
             instance._curve_data = None
             instance._curve_label = None
         return cls._instance
+
+    def initialize(self) -> bool:
+        if not self.enabled:
+            return False
+        self.detected = self.detect_hat()
+        if not self.detected:
+            self.enabled = False
+        return self.enabled
+
+    def is_enabled(self) -> bool:
+        return self.enabled
 
     @classmethod
     def get_discharge_log_path(cls):
@@ -129,15 +141,19 @@ class BatteryHat(Singleton, BaseThread):
         return MicroSD.get_microsd_dir() / "custom_battery_discharge_curve.json"
 
     def _open_bus(self):
+        if not self.enabled:
+            return
         if self._bus is None:
             if SMBus is None:
                 logger.warning("smbus2 not available")
+                self.enabled = False
                 return
             try:
                 self._bus = SMBus(self.I2C_BUS)
             except FileNotFoundError:
                 logger.warning("I2C bus not available")
                 self._bus = None
+                self.enabled = False
 
     def _read_register(self, reg: int) -> int:
         self._open_bus()
@@ -176,6 +192,7 @@ class BatteryHat(Singleton, BaseThread):
             self._bus.read_word_data(self.I2C_ADDR, self.REG_CONFIG)
             return True
         except Exception:
+            self.enabled = False
             return False
 
     def read_voltage(self) -> float:
