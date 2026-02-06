@@ -13150,11 +13150,18 @@ class ToolsTextQRReviewTextView(View):
 
 
 
+def _text_qr_done_destination(return_to_home: bool = False) -> Destination:
+    if return_to_home:
+        return Destination(ToolsMenuView, clear_history=True)
+    return Destination(ToolsTextQRView, clear_history=True)
+
+
 class ToolsTextQRTranscribeModePromptView(View):
-    def __init__(self, text: str, num_modules: int):
+    def __init__(self, text: str, num_modules: int, return_to_home: bool = False):
         super().__init__()
         self.text = text
         self.num_modules = num_modules
+        self.return_to_home = return_to_home
 
 
     def run(self):
@@ -13176,22 +13183,23 @@ class ToolsTextQRTranscribeModePromptView(View):
         elif button_data[selected_menu_num] == TRANSCRIBE:
             return Destination(
                 ToolsTextQRTranscribeModeView,
-                view_args=dict(text=self.text, num_modules=self.num_modules)
+                view_args=dict(text=self.text, num_modules=self.num_modules, return_to_home=self.return_to_home)
             )
 
         elif button_data[selected_menu_num] == FULLSCREEN:
             return Destination(
                 ToolsTextQRFullScreenModeView,
-                view_args=dict(text=self.text)
+                view_args=dict(text=self.text, return_to_home=self.return_to_home)
             )
 
 
 
 class ToolsTextQRTranscribeModeView(View):
-    def __init__(self, text: str, num_modules: int):
+    def __init__(self, text: str, num_modules: int, return_to_home: bool = False):
         super().__init__()
         self.text = text
         self.num_modules = num_modules
+        self.return_to_home = return_to_home
 
 
     def run(self):
@@ -13206,30 +13214,32 @@ class ToolsTextQRTranscribeModeView(View):
         else:
             return Destination(
                 ToolsTranscribeTextQRZoomedInView,
-                view_args=dict(text=self.text, num_modules=self.num_modules)
+                view_args=dict(text=self.text, num_modules=self.num_modules, return_to_home=self.return_to_home)
             )
 
 
 
 class ToolsTextQRFullScreenModeView(View):
-    def __init__(self, text: str):
+    def __init__(self, text: str, return_to_home: bool = False):
         super().__init__()
         self.text = text
+        self.return_to_home = return_to_home
 
     def run(self):
         from seedsigner.gui.screens.screen import QRDisplayScreen
         encoder_args = dict(data=self.text)
         e = GenericStaticQrEncoder(**encoder_args)
         QRDisplayScreen(qr_encoder=e).display()
-        return Destination(ToolsTextQRView, clear_history=True)
+        return _text_qr_done_destination(self.return_to_home)
 
 
 
 class ToolsTranscribeTextQRZoomedInView(View):
-    def __init__(self, text: str, num_modules: int):
+    def __init__(self, text: str, num_modules: int, return_to_home: bool = False):
         super().__init__()
         self.text = text
         self.num_modules = num_modules
+        self.return_to_home = return_to_home
 
 
     def run(self):
@@ -13241,15 +13251,16 @@ class ToolsTranscribeTextQRZoomedInView(View):
 
         return Destination(
             ToolsTranscribeTextQRConfirmQRPromptView,
-            view_args=dict(text=self.text)
+            view_args=dict(text=self.text, return_to_home=self.return_to_home)
         )
 
 
 
 class ToolsTranscribeTextQRConfirmQRPromptView(View):
-    def __init__(self, text: str):
+    def __init__(self, text: str, return_to_home: bool = False):
         super().__init__()
         self.text = text
+        self.return_to_home = return_to_home
 
 
     def run(self):
@@ -13266,17 +13277,18 @@ class ToolsTranscribeTextQRConfirmQRPromptView(View):
             return Destination(BackStackView)
 
         elif button_data[selected_menu_option] == SCAN:
-            return Destination(ToolsTranscribeTextQRConfirmScanView, view_args=dict(text=self.text))
+            return Destination(ToolsTranscribeTextQRConfirmScanView, view_args=dict(text=self.text, return_to_home=self.return_to_home))
 
         elif button_data[selected_menu_option] == DONE:
-            return Destination(ToolsTextQRView, clear_history=True)
+            return _text_qr_done_destination(self.return_to_home)
 
 
 
 class ToolsTranscribeTextQRConfirmScanView(View):
-    def __init__(self, text: str):
+    def __init__(self, text: str, return_to_home: bool = False):
         super().__init__()
         self.text = text
+        self.return_to_home = return_to_home
 
 
     def run(self):
@@ -13310,7 +13322,7 @@ class ToolsTranscribeTextQRConfirmScanView(View):
                     button_data=[ButtonOption("OK")],
                 ).display()
 
-                return Destination(ToolsTextQRView, clear_history=True)
+                return _text_qr_done_destination(self.return_to_home)
 
         else:
             DireWarningScreen(
@@ -14266,11 +14278,11 @@ class ToolsPasswordReviewView(View):
                 if num_modules <= 33:
                     return Destination(
                         ToolsTextQRTranscribeModePromptView,
-                        view_args=dict(text=self.password, num_modules=num_modules),
+                        view_args=dict(text=self.password, num_modules=num_modules, return_to_home=True),
                     )
                 return Destination(
                     ToolsTextQRFullScreenModeView,
-                    view_args=dict(text=self.password),
+                    view_args=dict(text=self.password, return_to_home=True),
                 )
 
             if button_data[selected_menu_num] == edit:
