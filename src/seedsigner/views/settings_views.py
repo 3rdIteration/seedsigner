@@ -711,6 +711,8 @@ class BatteryInfoView(View):
             self.run_screen(
                 WarningScreen,
                 title=_("Battery Info"),
+                status_icon_size=0,
+                status_headline=None,
                 text=_("No compatible battery monitor detected"),
                 button_data=[ButtonOption(_("Back"))],
             )
