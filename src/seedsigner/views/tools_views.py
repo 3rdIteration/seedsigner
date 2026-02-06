@@ -94,10 +94,101 @@ PASSWORD_WORD_SEPARATOR_DOT = "dot"
 PASSWORD_ENTROPY_CAMERA = "camera"
 PASSWORD_ENTROPY_DICE = "dice"
 PASSWORD_ENTROPY_BIP85 = "bip85"
+PASSWORD_ENTROPY_HARDWARE_RNG = "hardware_rng"
 
 BIP85_APP_HEX = 128169
 BIP85_APP_BASE64 = 707764
 BIP85_APP_BASE85 = 707785
+
+
+def _read_secure_rng_bytes(num_bytes: int = 64) -> bytes:
+    rng_entropy = b""
+
+    for rng_path in ("/dev/hwrng", "/dev/random"):
+        try:
+            with open(rng_path, "rb") as rng:
+                rng_entropy = rng.read(num_bytes)
+                if rng_entropy:
+                    break
+        except Exception as e:
+            logger.info(repr(e), exc_info=True)
+
+    if len(rng_entropy) < num_bytes:
+        rng_entropy += os.urandom(num_bytes - len(rng_entropy))
+
+    return rng_entropy
+
+
+def _system_entropy_salt() -> bytes:
+    system_parts: list[bytes] = []
+
+    try:
+        with open("/proc/uptime", "r", encoding="utf-8") as f:
+            system_parts.append(f.read().strip().encode("utf-8"))
+    except Exception as e:
+        logger.info(repr(e), exc_info=True)
+
+    try:
+        with open("/proc/cpuinfo", "r", encoding="utf-8") as f:
+            cpuinfo = f.read()
+        serial_line = next((line for line in cpuinfo.splitlines() if line.startswith("Serial")), "")
+        if serial_line:
+            system_parts.append(serial_line.encode("utf-8"))
+    except Exception as e:
+        logger.info(repr(e), exc_info=True)
+
+    try:
+        mount_dev = None
+        with open("/proc/mounts", "r", encoding="utf-8") as f:
+            for line in f:
+                parts = line.split()
+                if len(parts) >= 2 and parts[1] == MicroSD.MOUNT_POINT:
+                    mount_dev = parts[0]
+                    break
+        if mount_dev:
+            system_parts.append(mount_dev.encode("utf-8"))
+            device = os.path.basename(mount_dev)
+            parent_device = re.sub(r"p?\d+$", "", device)
+            serial_path = f"/sys/class/block/{parent_device}/device/serial"
+            if os.path.exists(serial_path):
+                with open(serial_path, "r", encoding="utf-8") as f:
+                    system_parts.append(f.read().strip().encode("utf-8"))
+    except Exception as e:
+        logger.info(repr(e), exc_info=True)
+
+    try:
+        with open("/proc/meminfo", "r", encoding="utf-8") as f:
+            meminfo = f.read()
+        for key in ("MemTotal", "MemAvailable"):
+            for line in meminfo.splitlines():
+                if line.startswith(key):
+                    system_parts.append(line.encode("utf-8"))
+                    break
+    except Exception as e:
+        logger.info(repr(e), exc_info=True)
+
+    try:
+        with open("/proc/stat", "r", encoding="utf-8") as f:
+            cpu_line = f.readline().strip()
+        if cpu_line:
+            system_parts.append(cpu_line.encode("utf-8"))
+    except Exception as e:
+        logger.info(repr(e), exc_info=True)
+
+    try:
+        load_avg = os.getloadavg()
+        system_parts.append(f"{load_avg[0]:.4f},{load_avg[1]:.4f},{load_avg[2]:.4f}".encode("utf-8"))
+    except Exception as e:
+        logger.info(repr(e), exc_info=True)
+
+    system_parts.append(str(time.time_ns()).encode("utf-8"))
+    return b"|".join(system_parts)
+
+
+def _derive_hardware_rng_entropy_bytes() -> bytes:
+    rng_entropy = _read_secure_rng_bytes(64)
+    salt = _system_entropy_salt()
+    return hashlib.sha256(rng_entropy + salt).digest()
 
 
 def _derive_camera_entropy_bytes(preview_images, final_image) -> bytes | None:
@@ -117,17 +208,7 @@ def _derive_camera_entropy_bytes(preview_images, final_image) -> bytes | None:
     hash_bytes = millis_hash.digest()
 
     # Mix in entropy from hardware RNG or os.urandom fallback
-    rng_entropy = b""
-    for rng_path in ("/dev/hwrng", "/dev/random"):
-        try:
-            with open(rng_path, "rb") as rng:
-                rng_entropy = rng.read(32)
-                if rng_entropy:
-                    break
-        except Exception as e:
-            logger.info(repr(e), exc_info=True)
-    if not rng_entropy:
-        rng_entropy = os.urandom(32)
+    rng_entropy = _read_secure_rng_bytes(32)
 
     rng_hash = hashlib.sha256(hash_bytes + rng_entropy)
     hash_bytes = rng_hash.digest()
@@ -13430,6 +13511,7 @@ class ToolsPasswordEntropySourceView(View):
     def run(self):
         camera = ButtonOption("Camera")
         dice = ButtonOption("Dice")
+        hardware_rng = ButtonOption("Hardware RNG")
         bip85 = ButtonOption("BIP85")
 
         if self.password_type in {
@@ -13439,7 +13521,7 @@ class ToolsPasswordEntropySourceView(View):
         }:
             button_data = [dice]
         else:
-            button_data = [camera, dice, bip85]
+            button_data = [camera, dice, hardware_rng, bip85]
 
         selected_menu_num = self.run_screen(
             ButtonListScreen,
@@ -13502,6 +13584,17 @@ class ToolsPasswordEntropySourceView(View):
                 view_args=dict(
                     password_type=self.password_type,
                     strength_bits=self.strength_bits,
+                    random_options=self.random_options,
+                ),
+            )
+
+        if selected == hardware_rng:
+            return Destination(
+                ToolsPasswordGenerateView,
+                view_args=dict(
+                    password_type=self.password_type,
+                    strength_bits=self.strength_bits,
+                    entropy_source=PASSWORD_ENTROPY_HARDWARE_RNG,
                     random_options=self.random_options,
                 ),
             )
@@ -13721,6 +13814,8 @@ class ToolsPasswordGenerateView(View):
                     text=_("Camera entropy didn't appear random enough. Please try again."),
                 )
                 return Destination(BackStackView)
+        elif self.entropy_source == PASSWORD_ENTROPY_HARDWARE_RNG:
+            entropy_bytes = _derive_hardware_rng_entropy_bytes()
         else:
             entropy_bytes = mnemonic_generation._hash_dice_rolls(self.roll_data)
 
