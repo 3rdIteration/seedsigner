@@ -130,13 +130,46 @@ class Destination:
     clear_history: bool = False         # Optionally clears the back_stack to prevent "back"
 
 
+    _SENSITIVE_ARG_NAMES = {
+        "password",
+        "passphrase",
+        "mnemonic",
+        "seed",
+        "seed_bytes",
+        "secret",
+        "secret_list",
+        "private_key",
+        "pin",
+    }
+
+    @classmethod
+    def _redact_for_repr(cls, value, key: str | None = None):
+        if isinstance(value, dict):
+            redacted = {}
+            for k, v in value.items():
+                key_name = str(k).lower()
+                redacted[k] = cls._redact_for_repr(v, key=key_name)
+            return redacted
+
+        if isinstance(value, list):
+            return [cls._redact_for_repr(item, key=key) for item in value]
+
+        if isinstance(value, tuple):
+            return tuple(cls._redact_for_repr(item, key=key) for item in value)
+
+        if key and key in cls._SENSITIVE_ARG_NAMES:
+            return "***redacted***"
+
+        return value
+
     def __repr__(self):
         if self.View_cls is None:
             out = "None"
         else:
             out = self.View_cls.__name__
         if self.view_args:
-            out += f"({self.view_args})"
+            safe_view_args = self._redact_for_repr(self.view_args)
+            out += f"({safe_view_args})"
         else:
             out += "()"
         if self.clear_history:
