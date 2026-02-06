@@ -86,6 +86,11 @@ PASSWORD_TYPE_HEX = "hex"
 PASSWORD_TYPE_BASE64 = "base64"
 PASSWORD_TYPE_BASE85 = "base85"
 
+PASSWORD_WORD_SEPARATOR_NONE = "none"
+PASSWORD_WORD_SEPARATOR_CAPITALISE = "capitalise"
+PASSWORD_WORD_SEPARATOR_SPACE = "space"
+PASSWORD_WORD_SEPARATOR_DOT = "dot"
+
 PASSWORD_ENTROPY_CAMERA = "camera"
 PASSWORD_ENTROPY_DICE = "dice"
 PASSWORD_ENTROPY_BIP85 = "bip85"
@@ -176,6 +181,16 @@ def _diceware_word_count(password_type: str, entropy_bits: int) -> int:
     else:
         word_bits = 11
     return max(1, math.ceil(entropy_bits / word_bits))
+
+
+def _format_word_password(words: list[str], separator: str) -> str:
+    if separator == PASSWORD_WORD_SEPARATOR_CAPITALISE:
+        return "".join(word.capitalize() for word in words)
+    if separator == PASSWORD_WORD_SEPARATOR_SPACE:
+        return " ".join(words)
+    if separator == PASSWORD_WORD_SEPARATOR_DOT:
+        return ".".join(words)
+    return "".join(words)
 
 class ToolsMenuView(View):
     IMAGE = ButtonOption(" New seed", FontAwesomeIconConstants.CAMERA)
@@ -13470,6 +13485,19 @@ class ToolsPasswordEntropySourceView(View):
             )
 
         if selected == dice:
+            if self.password_type in {
+                PASSWORD_TYPE_DICEWARE_EFF_SHORT,
+                PASSWORD_TYPE_DICEWARE_EFF_LONG,
+                PASSWORD_TYPE_DICEWARE_BIP39,
+            }:
+                return Destination(
+                    ToolsPasswordWordSeparatorView,
+                    view_args=dict(
+                        password_type=self.password_type,
+                        strength_bits=self.strength_bits,
+                        random_options=self.random_options,
+                    ),
+                )
             return Destination(
                 ToolsPasswordDiceRollCountView,
                 view_args=dict(
@@ -13489,7 +13517,7 @@ class ToolsPasswordEntropySourceView(View):
         )
 
 
-class ToolsPasswordDiceRollCountView(View):
+class ToolsPasswordWordSeparatorView(View):
     def __init__(
         self,
         password_type: str,
@@ -13500,6 +13528,47 @@ class ToolsPasswordDiceRollCountView(View):
         self.password_type = password_type
         self.strength_bits = strength_bits
         self.random_options = random_options or {}
+
+    def run(self):
+        separator_options = [
+            (ButtonOption("None"), PASSWORD_WORD_SEPARATOR_NONE),
+            (ButtonOption("Capitalise"), PASSWORD_WORD_SEPARATOR_CAPITALISE),
+            (ButtonOption("Space"), PASSWORD_WORD_SEPARATOR_SPACE),
+            (ButtonOption("."), PASSWORD_WORD_SEPARATOR_DOT),
+        ]
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title=_("Separator"),
+            is_button_text_centered=False,
+            button_data=[button for button, _ in separator_options],
+        )
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        return Destination(
+            ToolsPasswordDiceRollCountView,
+            view_args=dict(
+                password_type=self.password_type,
+                strength_bits=self.strength_bits,
+                random_options=self.random_options,
+                word_separator=separator_options[selected_menu_num][1],
+            ),
+        )
+
+
+class ToolsPasswordDiceRollCountView(View):
+    def __init__(
+        self,
+        password_type: str,
+        strength_bits: int,
+        random_options: dict | None = None,
+        word_separator: str = PASSWORD_WORD_SEPARATOR_NONE,
+    ):
+        super().__init__()
+        self.password_type = password_type
+        self.strength_bits = strength_bits
+        self.random_options = random_options or {}
+        self.word_separator = word_separator
 
     def run(self):
         word_count = None
@@ -13525,6 +13594,7 @@ class ToolsPasswordDiceRollCountView(View):
                 strength_bits=self.strength_bits,
                 total_rolls=total_rolls,
                 word_count=word_count,
+                word_separator=self.word_separator,
             ),
         )
 
@@ -13537,6 +13607,7 @@ class ToolsPasswordDiceEntryView(View):
         total_rolls: int,
         random_options: dict | None = None,
         word_count: int | None = None,
+        word_separator: str = PASSWORD_WORD_SEPARATOR_NONE,
     ):
         super().__init__()
         self.password_type = password_type
@@ -13544,6 +13615,7 @@ class ToolsPasswordDiceEntryView(View):
         self.total_rolls = total_rolls
         self.random_options = random_options or {}
         self.word_count = word_count
+        self.word_separator = word_separator
 
     def run(self):
         ret = ToolsDiceEntropyEntryScreen(
@@ -13572,6 +13644,7 @@ class ToolsPasswordDiceEntryView(View):
                 roll_data=ret,
                 roll_count=self.total_rolls,
                 word_count=self.word_count,
+                word_separator=self.word_separator,
             ),
         )
 
@@ -13586,6 +13659,7 @@ class ToolsPasswordGenerateView(View):
         roll_data: str | None = None,
         roll_count: int | None = None,
         word_count: int | None = None,
+        word_separator: str = PASSWORD_WORD_SEPARATOR_NONE,
     ):
         super().__init__()
         self.password_type = password_type
@@ -13595,6 +13669,7 @@ class ToolsPasswordGenerateView(View):
         self.roll_data = roll_data
         self.roll_count = roll_count
         self.word_count = word_count
+        self.word_separator = word_separator
 
     def _bip39_words_from_entropy(self, seed: bytes, word_count: int) -> list[str]:
         wordlist = Seed.get_wordlist(
@@ -13657,7 +13732,7 @@ class ToolsPasswordGenerateView(View):
                 PASSWORD_TYPE_DICEWARE_BIP39,
             }:
                 words = self._diceware_words()
-                password = " ".join(words)
+                password = _format_word_password(words, self.word_separator)
             elif self.password_type == PASSWORD_TYPE_RANDOM:
                 charset = _random_charset(self.random_options)
                 if self.entropy_source == PASSWORD_ENTROPY_DICE:
