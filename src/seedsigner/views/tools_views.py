@@ -14501,37 +14501,10 @@ class ToolsPasswordSaveView(View):
         super().__init__()
         self.password = password
 
-    def _save_to_microsd(self) -> bool:
-        password_path = MicroSD.get_microsd_dir() / "generated_password.txt"
-        try:
-            with open(password_path, "a", encoding="utf-8") as outfile:
-                outfile.write(f"{self.password}\n")
-        except Exception as exc:
-            self.run_screen(
-                WarningScreen,
-                title=_("Save Failed"),
-                status_headline=None,
-                text=str(exc),
-                show_back_button=False,
-                button_data=[ButtonOption("I Understand")],
-            )
-            return False
-
-        self.run_screen(
-            LargeIconStatusScreen,
-            title=_("Saved"),
-            status_headline=None,
-            text=_("Saved to generated_password.txt"),
-            show_back_button=False,
-            button_data=[ButtonOption("Continue")],
-        )
-        return True
-
     def run(self):
         show_qr = ButtonOption("Show as QR")
-        microsd = ButtonOption("Save to MicroSD")
         seedkeeper = ButtonOption("Save to Seedkeeper")
-        button_data = [show_qr, microsd, seedkeeper]
+        button_data = [show_qr, seedkeeper]
         selected_menu_num = self.run_screen(
             ButtonListScreen,
             title=_("Save Password"),
@@ -14555,11 +14528,6 @@ class ToolsPasswordSaveView(View):
                 ToolsTextQRFullScreenModeView,
                 view_args=dict(text=self.password, return_to_home=True),
             )
-
-        if button_data[selected_menu_num] == microsd:
-            if self._save_to_microsd():
-                return Destination(MainMenuView)
-            return Destination(BackStackView)
 
         if _save_password_to_seedkeeper(self, self.password):
             return Destination(MainMenuView)
