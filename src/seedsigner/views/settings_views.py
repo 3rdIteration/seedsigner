@@ -81,9 +81,7 @@ class SettingsMenuView(View):
 
         elif self.visibility == SettingsConstants.VISIBILITY__HARDWARE:
             title = "Hardware"
-            from seedsigner.hardware.battery_hat import BatteryHat
-            if BatteryHat.get_instance().detect_hat():
-                button_data.append(self.BATTERY_INFO)
+            button_data.append(self.BATTERY_INFO)
             button_data.append(self.IO_TEST)
             if self.settings.get_value(SettingsConstants.SETTING__SMARTCARD_SUPPORT) == SettingsConstants.OPTION__ENABLED:
                 button_data.append(self.LIST_READERS)
@@ -707,6 +705,19 @@ class DonateView(View):
 
 class BatteryInfoView(View):
     def run(self):
+        from seedsigner.hardware.battery_hat import BatteryHat
+
+        if not BatteryHat.get_instance().is_enabled():
+            self.run_screen(
+                WarningScreen,
+                title=_("Battery Info"),
+                status_icon_size=0,
+                status_headline=None,
+                text=_("No compatible battery monitor detected"),
+                button_data=[ButtonOption(_("Back"))],
+            )
+            return Destination(SettingsMenuView, view_args={"visibility": SettingsConstants.VISIBILITY__HARDWARE})
+
         self.run_screen(settings_screens.BatteryInfoScreen)
 
         return Destination(SettingsMenuView, view_args={"visibility": SettingsConstants.VISIBILITY__HARDWARE})

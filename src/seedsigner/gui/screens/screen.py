@@ -1376,7 +1376,7 @@ class MainMenuScreen(LargeButtonScreen):
         self.battery_indicator = BatteryIndicator()
         self.battery_indicator.screen_x = GUIConstants.EDGE_PADDING
         self.battery_indicator.screen_y = GUIConstants.EDGE_PADDING
-        if self.battery_hat.detected:
+        if self.battery_hat.is_enabled() and self.battery_hat.detected:
             self.components.append(self.battery_indicator)
         self.threads.append(MainMenuScreen.UpdateThread(self))
 
@@ -1393,8 +1393,9 @@ class MainMenuScreen(LargeButtonScreen):
 
         def run(self):
             while self.keep_running:
-                if not self.battery_hat.detected:
-                    self.battery_hat.detected = self.battery_hat.detect_hat()
+                if not self.battery_hat.is_enabled():
+                    time.sleep(1)
+                    continue
 
                 if self.battery_hat.detected and self.screen.battery_indicator not in self.screen.components:
                     with self.screen.renderer.lock:

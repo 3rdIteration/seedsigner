@@ -27,6 +27,12 @@ class DummyBatteryHat(MagicMock):
     def reset_instance(cls):
         cls._instance = None
 
+    def initialize(self):
+        return True
+
+    def is_enabled(self):
+        return True
+
     def start(self):
         pass
     def stop(self):
