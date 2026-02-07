@@ -961,6 +961,11 @@ class SettingsDefinition:
                       abbreviated_name="tapsigner",
                       display_name=_mft("TAPSIGNER backups"),
                       visibility=SettingsConstants.VISIBILITY__HIDDEN,
+                      type=SettingsConstants.TYPE__SELECT_1,
+                      selection_options=[
+                          (SettingsConstants.OPTION__DISABLED, _mft("Disabled")),
+                          (SettingsConstants.OPTION__ENABLED, _mft("Enabled")),
+                      ],
                       default_value=SettingsConstants.OPTION__DISABLED),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
