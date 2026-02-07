@@ -30,3 +30,15 @@ def test_bip85_dice_vector_matches_spec():
     )
 
     assert dice_rolls_from_seed(entropy, sides=6, roll_count=10, base=0) == "1002015524"
+
+
+def test_bip85_xprv_vector_matches_spec():
+    root = bip32.HDKey.from_string(MASTER_XPRV)
+    entropy = bip85.derive_entropy(root, 32, [0])
+
+    # BIP-0085 XPRV vector publishes the private-key half of the HMAC output.
+    assert entropy[32:].hex() == "ead0b33988a616cf6a497f1c169d9e92562604e38305ccd3fc96f2252c177682"
+    assert (
+        bip85.derive_xprv(root, 0).to_base58()
+        == "xprv9s21ZrQH143K2srSbCSg4m4kLvPMzcWydgmKEnMmoZUurYuBuYG46c6P71UGXMzmriLzCCBvKQWBUv3vPB3m1SATMhp3uEjXHJ42jFg7myX"
+    )
