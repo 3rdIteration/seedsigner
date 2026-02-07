@@ -14283,25 +14283,45 @@ class ToolsPasswordGenerateView(View):
             elif self.password_type == PASSWORD_TYPE_HEX:
                 if self.entropy_source == PASSWORD_ENTROPY_DICE:
                     length = self._dice_length_for_charset(16)
+                    password = password_generation.hex_password_from_seed(entropy_bytes, length)
+                elif self.entropy_source == PASSWORD_ENTROPY_BIP85:
+                    num_bytes = _strength_to_length(self.strength_bits, 256)
+                    password = password_generation.bip85_hex_password(entropy_bytes, num_bytes)
                 else:
                     length = _strength_to_length(self.strength_bits, 16)
-                password = password_generation.hex_password_from_seed(entropy_bytes, length)
+                    password = password_generation.hex_password_from_seed(entropy_bytes, length)
             elif self.password_type == PASSWORD_TYPE_BASE64:
                 if self.entropy_source == PASSWORD_ENTROPY_DICE:
                     length = self._dice_length_for_charset(64)
+                    password = password_generation.base64_password_from_seed(
+                        entropy_bytes, length
+                    )
+                elif self.entropy_source == PASSWORD_ENTROPY_BIP85:
+                    length = _strength_to_length(self.strength_bits, 64)
+                    password = password_generation.bip85_base64_password(
+                        entropy_bytes, length
+                    )
                 else:
                     length = _strength_to_length(self.strength_bits, 64)
-                password = password_generation.base64_password_from_seed(
-                    entropy_bytes, length
-                )
+                    password = password_generation.base64_password_from_seed(
+                        entropy_bytes, length
+                    )
             else:
                 if self.entropy_source == PASSWORD_ENTROPY_DICE:
                     length = self._dice_length_for_charset(85)
+                    password = password_generation.base85_password_from_seed(
+                        entropy_bytes, length
+                    )
+                elif self.entropy_source == PASSWORD_ENTROPY_BIP85:
+                    length = _strength_to_length(self.strength_bits, 85)
+                    password = password_generation.bip85_base85_password(
+                        entropy_bytes, length
+                    )
                 else:
                     length = _strength_to_length(self.strength_bits, 85)
-                password = password_generation.base85_password_from_seed(
-                    entropy_bytes, length
-                )
+                    password = password_generation.base85_password_from_seed(
+                        entropy_bytes, length
+                    )
         except ValueError as exc:
             self.run_screen(
                 WarningScreen,
@@ -14505,7 +14525,7 @@ class ToolsPasswordBIP85GenerateView(View):
                     entropy_source=PASSWORD_ENTROPY_BIP85,
                     strength_bits=self.strength_bits,
                     random_options=self.random_options,
-                    roll_data=entropy[:num_bytes],
+                    roll_data=entropy,
                 ),
             )
         elif self.password_type == PASSWORD_TYPE_BASE64:
