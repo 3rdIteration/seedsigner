@@ -457,3 +457,33 @@ def test_bip85_dice_rolls_uses_seed_root_not_seed_bytes_none(monkeypatch):
     review_dest = tools_views.ToolsPasswordGenerateView.run(gen)
     assert review_dest.View_cls is tools_views.ToolsPasswordReviewView
     assert review_dest.view_args["password"] == "1,0,0,2,0,1,5,5,2,4"
+
+
+def test_entropy_source_for_dice_rolls_excludes_dice_option(monkeypatch):
+    view = object.__new__(tools_views.ToolsPasswordEntropySourceView)
+    view.password_type = tools_views.PASSWORD_TYPE_DICE_ROLLS
+    view.strength_bits = 64
+    view.random_options = {}
+    view.dice_sides = 6
+    view.roll_count = 10
+
+    class C:
+        pass
+
+    view.controller = C()
+    view.controller.hardware_rng_is_healthy = True
+    view.controller.hardware_rng_failure_reason = None
+
+    # For Dice Rolls, index 1 should be System RNG (Dice option removed).
+    monkeypatch.setattr(
+        tools_views.ToolsPasswordEntropySourceView,
+        "run_screen",
+        lambda self, *_args, **_kwargs: 1,
+    )
+
+    dest = tools_views.ToolsPasswordEntropySourceView.run(view)
+
+    assert dest.View_cls is tools_views.ToolsPasswordGenerateView
+    assert dest.view_args["entropy_source"] == tools_views.PASSWORD_ENTROPY_HARDWARE_RNG
+    assert dest.view_args["dice_sides"] == 6
+    assert dest.view_args["roll_count"] == 10

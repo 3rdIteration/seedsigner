@@ -13627,7 +13627,10 @@ class ToolsPasswordEntropySourceView(View):
         hardware_rng = ButtonOption("System RNG")
         bip85 = ButtonOption("BIP85")
 
-        button_data = [camera, dice, hardware_rng, bip85]
+        if self.password_type == PASSWORD_TYPE_DICE_ROLLS:
+            button_data = [camera, hardware_rng, bip85]
+        else:
+            button_data = [camera, dice, hardware_rng, bip85]
 
         selected_menu_num = self.run_screen(
             ButtonListScreen,
