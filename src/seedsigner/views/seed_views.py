@@ -151,7 +151,7 @@ class SeedSelectSeedView(View):
         if self.settings.get_value(SettingsConstants.SETTING__PASSPORT_BACKUP) == SettingsConstants.OPTION__ENABLED:
             button_data.append(self.PASSPORT_BACKUP)
 
-        if self.settings.get_value(SettingsConstants.SETTING__BITBOX_BACKUP) == SettingsConstants.OPTION__ENABLED:
+        if self.settings.get_value(SettingsConstants.SETTING__TAPSIGNER_BACKUP) == SettingsConstants.OPTION__ENABLED:
             button_data.append(self.TAPSIGNER_BACKUP)
         seed_lengths = self.settings.get_value(SettingsConstants.SETTING__SEED_WORD_LENGTHS)
         options = {
@@ -214,6 +214,9 @@ class SeedSelectSeedView(View):
         if button_data[selected_menu_num] == self.PASSPORT_BACKUP:
             return Destination(SeedPassportBackupSelectView)
 
+        if button_data[selected_menu_num] == self.TAPSIGNER_BACKUP:
+            return Destination(SeedTapsignerBackupSelectView)
+
         elif button_data[selected_menu_num] in [self.TYPE_12WORD, self.TYPE_15WORD, self.TYPE_18WORD, self.TYPE_21WORD, self.TYPE_24WORD]:
             from seedsigner.views.seed_views import SeedMnemonicEntryView
             self.controller.storage.init_pending_mnemonic(num_words=button_data[selected_menu_num].return_data)
@@ -271,7 +274,7 @@ class LoadSeedView(View):
         if self.settings.get_value(SettingsConstants.SETTING__PASSPORT_BACKUP) == SettingsConstants.OPTION__ENABLED:
             button_data.append(self.PASSPORT_BACKUP)
 
-        if self.settings.get_value(SettingsConstants.SETTING__BITBOX_BACKUP) == SettingsConstants.OPTION__ENABLED:
+        if self.settings.get_value(SettingsConstants.SETTING__TAPSIGNER_BACKUP) == SettingsConstants.OPTION__ENABLED:
             button_data.append(self.TAPSIGNER_BACKUP)
 
         button_data.append(self.CREATE)
