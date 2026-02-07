@@ -60,8 +60,19 @@ class SeedsMenuView(View):
         self.seeds = []
         for seed in self.controller.storage.seeds:
             self.seeds.append({
-                "fingerprint": seed.get_fingerprint(self.settings.get_value(SettingsConstants.SETTING__NETWORK))
+                "fingerprint": seed.get_fingerprint(self.settings.get_value(SettingsConstants.SETTING__NETWORK)),
+                "seed_type": self.get_seed_type_label(seed),
             })
+
+    @staticmethod
+    def get_seed_type_label(seed: Seed) -> str:
+        if isinstance(seed, Slip39Seed):
+            return "SLIP39"
+        if isinstance(seed, XprvSeed):
+            return "XPRV"
+        if isinstance(seed, ElectrumSeed):
+            return "ELEC"
+        return "BIP39"
 
 
     def run(self):
@@ -71,7 +82,12 @@ class SeedsMenuView(View):
 
         button_data = []
         for seed in self.seeds:
-            button_data.append(ButtonOption(seed["fingerprint"], SeedSignerIconConstants.FINGERPRINT))
+            button_data.append(
+                ButtonOption(
+                    f"{seed['fingerprint']} ({seed['seed_type']})",
+                    SeedSignerIconConstants.FINGERPRINT,
+                )
+            )
         button_data.append(self.LOAD)
 
         selected_menu_num = self.run_screen(
