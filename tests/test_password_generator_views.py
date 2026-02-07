@@ -459,6 +459,65 @@ def test_bip85_dice_rolls_uses_seed_root_not_seed_bytes_none(monkeypatch):
     assert review_dest.view_args["password"] == "1,0,0,2,0,1,5,5,2,4"
 
 
+def test_bip85_diceware_short_uses_bip85_entropy_directly(monkeypatch):
+    master_xprv = "xprv9s21ZrQH143K2LBWUUQRFXhucrQqBpKdRRxNVq2zBqsx8HVqFk2uYo8kmbaLLHRdqtQpUm98uKfu3vca1LqdGhUtyoFnCNkfmXRyPXLjbKb"
+
+    view = object.__new__(tools_views.ToolsPasswordBIP85GenerateView)
+    view.password_type = tools_views.PASSWORD_TYPE_DICEWARE_EFF_SHORT
+    view.strength_bits = 32
+    view.random_options = {}
+    view.controller = None
+
+    class SeedObj:
+        @staticmethod
+        def get_root(_network=None):
+            return embit_bip32.HDKey.from_string(master_xprv)
+
+    class Storage:
+        seeds = [SeedObj()]
+
+    class Controller:
+        storage = Storage()
+
+        @staticmethod
+        def get_seed(_idx):
+            return SeedObj()
+
+    view.controller = Controller()
+
+    class S:
+        @staticmethod
+        def get_value(_key):
+            return "M"
+
+    view.settings = S()
+
+    class FakeIndexScreen:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def display(self):
+            return "0"
+
+    monkeypatch.setattr(
+        tools_views.seed_screens,
+        "SeedBIP85SelectChildIndexScreen",
+        FakeIndexScreen,
+    )
+
+    dest = tools_views.ToolsPasswordBIP85GenerateView.run(view)
+
+    assert dest.View_cls is tools_views.ToolsPasswordWordSeparatorView
+
+    cached = view.controller.password_generator_entropy_cache
+    assert cached["word_count"] == 4
+    assert cached["entropy_bytes"] == embit_bip85.derive_entropy(
+        embit_bip32.HDKey.from_string(master_xprv),
+        tools_views.BIP85_APP_DICE,
+        [6, 16, 0],
+    )
+
+
 def test_entropy_source_for_dice_rolls_excludes_dice_option(monkeypatch):
     view = object.__new__(tools_views.ToolsPasswordEntropySourceView)
     view.password_type = tools_views.PASSWORD_TYPE_DICE_ROLLS

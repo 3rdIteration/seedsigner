@@ -14426,8 +14426,6 @@ class ToolsPasswordBIP85GenerateView(View):
                 sides = 6
                 rolls = _diceware_word_count(self.password_type, self.strength_bits) * 5
             entropy = bip85.derive_entropy(root, BIP85_APP_DICE, [sides, rolls, index])
-            drng = bip85_drng.BIP85DRNG.new(entropy)
-            seed_bytes = drng.read(64)
             _cache_password_entropy(
                 self.controller,
                 password_type=self.password_type,
@@ -14435,7 +14433,7 @@ class ToolsPasswordBIP85GenerateView(View):
                 entropy_source=PASSWORD_ENTROPY_BIP85,
                 word_count=_diceware_word_count(self.password_type, self.strength_bits),
                 roll_data=None,
-                entropy_bytes=seed_bytes,
+                entropy_bytes=entropy,
             )
             return Destination(
                 ToolsPasswordWordSeparatorView,
