@@ -56,6 +56,32 @@ def base85_password_from_seed(seed: bytes, length: int) -> str:
     return encoded[:length]
 
 
+def bip85_hex_password(entropy: bytes, num_bytes: int) -> str:
+    if len(entropy) != 64:
+        raise ValueError("Entropy must be exactly 64 bytes")
+    if num_bytes < 16 or num_bytes > 64:
+        raise ValueError("num_bytes must be in [16, 64]")
+    return entropy[:num_bytes].hex()
+
+
+def bip85_base64_password(entropy: bytes, length: int) -> str:
+    if len(entropy) != 64:
+        raise ValueError("Entropy must be exactly 64 bytes")
+    if length < 20 or length > 86:
+        raise ValueError("length must be in [20, 86]")
+    encoded = base64.b64encode(entropy).decode("ascii").replace("=", "")
+    return encoded[:length]
+
+
+def bip85_base85_password(entropy: bytes, length: int) -> str:
+    if len(entropy) != 64:
+        raise ValueError("Entropy must be exactly 64 bytes")
+    if length < 10 or length > 80:
+        raise ValueError("length must be in [10, 80]")
+    encoded = base64.b85encode(entropy).decode("ascii")
+    return encoded[:length]
+
+
 def dice_roll_entropy_bits(roll_count: int) -> float:
     return roll_count * math.log2(6)
 

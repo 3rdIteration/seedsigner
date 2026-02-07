@@ -41,9 +41,9 @@ def test_password_generate_view_skips_itself_for_review_destination():
     view = object.__new__(tools_views.ToolsPasswordGenerateView)
     view.password_type = tools_views.PASSWORD_TYPE_HEX
     view.entropy_source = tools_views.PASSWORD_ENTROPY_BIP85
-    view.strength_bits = 64
+    view.strength_bits = 128
     view.random_options = {}
-    view.roll_data = b"\x01" * 32
+    view.roll_data = b"\x01" * 64
     view.roll_count = 0
     view.word_count = None
     view.word_separator = tools_views.PASSWORD_WORD_SEPARATOR_NONE
