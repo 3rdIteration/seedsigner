@@ -10842,7 +10842,10 @@ def bip85_verify_existing(
     logger.info(
         "bip85_verify_existing: fpr=%s index=%s", fingerprint, key_index
     )
-    root = seed.get_root(self.settings.get_value(SettingsConstants.SETTING__NETWORK))
+    if hasattr(seed, "get_root"):
+        root = seed.get_root()
+    else:
+        root = bip32.HDKey.from_seed(seed.seed_bytes)
     created = datetime.fromtimestamp(created_ts, tz=timezone.utc)
     primary_curve = _normalize_bip85_alg(primary_curve)
 
