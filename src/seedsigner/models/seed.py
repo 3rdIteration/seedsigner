@@ -467,3 +467,8 @@ class XprvSeed(Seed):
 
     def get_bip85_child_mnemonic(self, bip85_index: int, bip85_num_words: int, network: str = SettingsConstants.MAINNET):
         raise InvalidSeedException("BIP85 is not supported for xprv seeds")
+
+    def __eq__(self, other):
+        if isinstance(other, XprvSeed):
+            return self._xprv == other._xprv
+        return False
