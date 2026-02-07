@@ -924,19 +924,21 @@ class PSBTFinalizeView(View):
         if selected_menu_num == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
 
+        sig_cnt = PSBTParser.sig_count(psbt)
+
+        connector = None
+        if self.controller.psbt_sign_with_satochip:
+            from seedsigner.helpers import seedkeeper_utils
+            connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satochip"])
+            if not connector:
+                return Destination(PSBTFinalizeView)
+
         from seedsigner.gui.screens.screen import LoadingScreenThread
         loading = LoadingScreenThread(text=_("Signing PSBT..."))
         loading.start()
         try:
-            sig_cnt = PSBTParser.sig_count(psbt)
             if self.controller.psbt_sign_with_satochip:
-                from seedsigner.helpers import seedkeeper_utils
                 from seedsigner.helpers.satochip_signer import sign_psbt_with_satochip
-
-                connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satochip"])
-                if not connector:
-                    return Destination(PSBTSigningErrorView)
-
                 sign_psbt_with_satochip(psbt, connector)
             else:
                 psbt.sign_with(psbt_parser.root)
@@ -947,10 +949,17 @@ class PSBTFinalizeView(View):
                 self.controller.signed_tx_hex = None
 
             trimmed_psbt = PSBTParser.trim(psbt)
+        except Exception:
+            if self.controller.psbt_sign_with_satochip:
+                logger.exception("Failed to sign PSBT with Satochip")
+                return Destination(PSBTFinalizeView)
+            raise
         finally:
             loading.stop()
 
         if sig_cnt == PSBTParser.sig_count(trimmed_psbt):
+            if self.controller.psbt_sign_with_satochip:
+                return Destination(PSBTFinalizeView)
             return Destination(PSBTSigningErrorView)
 
         self.controller.psbt = trimmed_psbt
