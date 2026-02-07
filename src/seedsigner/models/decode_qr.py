@@ -6,7 +6,7 @@ from datetime import datetime
 
 from binascii import a2b_base64, b2a_base64
 from enum import IntEnum
-from embit import psbt, bip39, ec
+from embit import psbt, bip39, ec, bip32
 from pyzbar import pyzbar
 from pyzbar.pyzbar import ZBarSymbol
 from urtypes.crypto import PSBT as UR_PSBT
@@ -93,6 +93,9 @@ class DecodeQR:
 
             elif self.qr_type == QRType.SEED__SLIP39:
                 self.decoder = Slip39ShareDecoder()
+
+            elif self.qr_type == QRType.SEED__XPRV:
+                self.decoder = XprvQrDecoder()
 
             elif self.qr_type == QRType.SETTINGS:
                 self.decoder = SettingsQrDecoder()  # Settings config
@@ -223,6 +226,10 @@ class DecodeQR:
     def get_seed_phrase(self):
         if self.is_seed:
             return self.decoder.get_seed_phrase()
+
+    def get_xprv(self):
+        if self.is_xprv:
+            return self.decoder.get_xprv()
 
     def get_slip39_share(self):
         if self.is_slip39_share:
@@ -358,6 +365,10 @@ class DecodeQR:
     @property
     def is_slip39_share(self) -> bool:
         return self.qr_type == QRType.SEED__SLIP39
+
+    @property
+    def is_xprv(self) -> bool:
+        return self.qr_type == QRType.SEED__XPRV
     
 
     @property
@@ -523,6 +534,13 @@ class DecodeQR:
             try:
                 ec.PrivateKey.from_wif(s.strip())
                 return QRType.WIF
+            except Exception:
+                pass
+
+            try:
+                hdkey = bip32.HDKey.from_string(s.strip())
+                if hdkey.is_private:
+                    return QRType.SEED__XPRV
             except Exception:
                 pass
 
@@ -1040,6 +1058,29 @@ class Slip39ShareDecoder(BaseSingleFrameQrDecoder):
         return self.share
 
 
+class XprvQrDecoder(BaseSingleFrameQrDecoder):
+    def __init__(self):
+        super().__init__()
+        self.xprv = None
+
+    def add(self, segment, qr_type=QRType.SEED__XPRV):
+        if qr_type == QRType.SEED__XPRV:
+            try:
+                key = bip32.HDKey.from_string(segment.strip())
+                if not key.is_private:
+                    return DecodeQRStatus.INVALID
+                self.xprv = segment.strip()
+                self.complete = True
+                self.collected_segments = 1
+                return DecodeQRStatus.COMPLETE
+            except Exception:
+                return DecodeQRStatus.INVALID
+        return DecodeQRStatus.INVALID
+
+    def get_xprv(self):
+        return self.xprv
+
+
 
 class SettingsQrDecoder(BaseSingleFrameQrDecoder):
     """
@@ -1399,6 +1440,7 @@ class EncryptedQrDecoder(BaseSingleFrameQrDecoder):
         super().__init__()
         self.public_data = None
         self.seed_phrase = []
+        self.xprv = None
 
 
     def add(self, segment, qr_type=QRType.SEED__ENCRYPTEDQR, encryption_key=None):
@@ -1434,9 +1476,19 @@ class EncryptedQrDecoder(BaseSingleFrameQrDecoder):
                     word_bytes = encrypted_qr.decrypt(encryption_key)
                     if not word_bytes:
                         return DecodeQRStatus.WRONG_KEY
-                    self.seed_phrase = bip39.mnemonic_from_bytes(word_bytes).split()
+                    try:
+                        self.seed_phrase = bip39.mnemonic_from_bytes(word_bytes).split()
+                        self.xprv = None
+                    except Exception:
+                        candidate = word_bytes.decode("utf-8", errors="ignore").strip()
+                        hdkey = bip32.HDKey.from_string(candidate)
+                        if not hdkey.is_private:
+                            return DecodeQRStatus.INVALID
+                        self.seed_phrase = []
+                        self.xprv = candidate
                 else:
                     self.seed_phrase = []
+                    self.xprv = None
 
                 self.complete = True
                 self.collected_segments = 1
@@ -1454,6 +1506,9 @@ class EncryptedQrDecoder(BaseSingleFrameQrDecoder):
 
     def get_seed_phrase(self):
         return self.seed_phrase[:]
+
+    def get_xprv(self):
+        return self.xprv
 
 
 
@@ -1515,4 +1570,3 @@ class TimeQrDecoder(BaseSingleFrameQrDecoder):
             return datetime(yy, mm, dd, hh, mi, ss)
         except Exception:
             return None
-

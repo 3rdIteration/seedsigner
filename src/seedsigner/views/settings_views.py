@@ -24,6 +24,7 @@ class SettingsMenuView(View):
     DONATE = ButtonOption("Donate")
     RESTART_PCSC = ButtonOption("Restart PCSC")
     BATTERY_INFO = ButtonOption("Battery info")
+    LOAD_BACKUP_FILES = ButtonOption("Load Backup Files", right_icon_name=SeedSignerIconConstants.CHEVRON_RIGHT)
 
     def __init__(self, visibility: str = SettingsConstants.VISIBILITY__GENERAL, selected_attr: str = None, initial_scroll: int = 0):
         super().__init__()
@@ -72,7 +73,8 @@ class SettingsMenuView(View):
         elif self.visibility == SettingsConstants.VISIBILITY__ADVANCED:
             title = _("Advanced")
 
-            # The hardware options nest below "Advanced"
+            # Backup loaders and hardware options nest below "Advanced"
+            button_data.append(self.LOAD_BACKUP_FILES)
             button_data.append(self.HARDWARE)
             hardware_destination = Destination(
                 SettingsMenuView,
@@ -121,6 +123,9 @@ class SettingsMenuView(View):
         elif button_data[selected_menu_num] == self.HARDWARE:
             return hardware_destination
 
+        elif button_data[selected_menu_num] == self.LOAD_BACKUP_FILES:
+            return Destination(LoadBackupFilesSettingsView)
+
         elif button_data[selected_menu_num] == self.IO_TEST:
             return Destination(IOTestView)
         
@@ -151,6 +156,36 @@ class SettingsMenuView(View):
         else:
             return Destination(SettingsEntryUpdateSelectionView, view_args=dict(attr_name=settings_entries[selected_menu_num].attr_name, parent_initial_scroll=initial_scroll))
 
+
+
+class LoadBackupFilesSettingsView(View):
+    def run(self):
+        settings_entries = [
+            SettingsDefinition.get_settings_entry(SettingsConstants.SETTING__BITBOX_BACKUP),
+            SettingsDefinition.get_settings_entry(SettingsConstants.SETTING__PASSPORT_BACKUP),
+            SettingsDefinition.get_settings_entry(SettingsConstants.SETTING__TAPSIGNER_BACKUP),
+        ]
+        button_data = [ButtonOption(entry.display_name) for entry in settings_entries]
+
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title=_("Load Backup Files"),
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(SettingsMenuView, view_args={"visibility": SettingsConstants.VISIBILITY__ADVANCED})
+
+        selected_entry = settings_entries[selected_menu_num]
+        return Destination(
+            SettingsEntryUpdateSelectionView,
+            view_args={
+                "attr_name": selected_entry.attr_name,
+                "parent_initial_scroll": 0,
+                "parent_destination": Destination(LoadBackupFilesSettingsView),
+            },
+        )
 
 
 class SettingPBKDF2IterationsView(View):
@@ -240,11 +275,12 @@ class SettingsEntryUpdateSelectionView(View):
         Handles changes to all selection-type settings (Multiselect, SELECT_1,
         Enabled/Disabled, etc).
     """
-    def __init__(self, attr_name: str, parent_initial_scroll: int = 0, selected_button: int = None):
+    def __init__(self, attr_name: str, parent_initial_scroll: int = 0, selected_button: int = None, parent_destination: Destination = None):
         super().__init__()
         self.settings_entry = SettingsDefinition.get_settings_entry(attr_name)
         self.selected_button = selected_button
         self.parent_initial_scroll = parent_initial_scroll
+        self.parent_destination = parent_destination
 
 
     def run(self):
@@ -296,9 +332,10 @@ class SettingsEntryUpdateSelectionView(View):
                 "initial_scroll": self.parent_initial_scroll,
             }
         )
+        parent_destination = self.parent_destination or settings_menu_view_destination
 
         if ret_value == RET_CODE__BACK_BUTTON:
-            return settings_menu_view_destination
+            return parent_destination
 
         value = self.settings_entry.get_selection_option_value(ret_value)
 
@@ -319,7 +356,7 @@ class SettingsEntryUpdateSelectionView(View):
             # All other types are single selects (e.g. Enabled/Disabled, SELECT_1)
             if value == initial_value:
                 # No change, return to menu
-                return settings_menu_view_destination
+                return parent_destination
             else:
                 updated_value = value
 
@@ -340,7 +377,7 @@ class SettingsEntryUpdateSelectionView(View):
         # All selects stay in place; re-initialize where in the list we left off
         self.selected_button = ret_value
 
-        return Destination(SettingsEntryUpdateSelectionView, view_args=dict(attr_name=self.settings_entry.attr_name, parent_initial_scroll=self.parent_initial_scroll, selected_button=self.selected_button), skip_current_view=True)
+        return Destination(SettingsEntryUpdateSelectionView, view_args=dict(attr_name=self.settings_entry.attr_name, parent_initial_scroll=self.parent_initial_scroll, selected_button=self.selected_button, parent_destination=self.parent_destination), skip_current_view=True)
 
 
 

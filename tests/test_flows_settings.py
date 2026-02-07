@@ -85,6 +85,27 @@ class TestSettingsFlows(FlowTest):
         ])
 
 
+    def test_load_backup_files_submenu(self):
+        tapsigner_entry = SettingsDefinition.get_settings_entry(SettingsConstants.SETTING__TAPSIGNER_BACKUP)
+
+        self.run_sequence([
+            FlowStep(MainMenuView, button_data_selection=MainMenuView.SETTINGS),
+            FlowStep(settings_views.SettingsMenuView, button_data_selection=settings_views.SettingsMenuView.ADVANCED),
+            FlowStep(settings_views.SettingsMenuView, button_data_selection=settings_views.SettingsMenuView.LOAD_BACKUP_FILES),
+            FlowStep(settings_views.LoadBackupFilesSettingsView, button_data_selection=ButtonOption(tapsigner_entry.display_name)),
+            FlowStep(settings_views.SettingsEntryUpdateSelectionView, button_data_selection=ButtonOption(tapsigner_entry.get_selection_option_display_name_by_value(SettingsConstants.OPTION__ENABLED))),
+            FlowStep(settings_views.SettingsEntryUpdateSelectionView, screen_return_value=RET_CODE__BACK_BUTTON),
+            FlowStep(settings_views.LoadBackupFilesSettingsView, screen_return_value=RET_CODE__BACK_BUTTON),
+            FlowStep(settings_views.SettingsMenuView),
+        ])
+
+        assert self.settings.get_value(SettingsConstants.SETTING__TAPSIGNER_BACKUP) == SettingsConstants.OPTION__ENABLED
+
+
+    def test_tapsigner_backup_setting_default_disabled(self):
+        assert self.settings.get_value(SettingsConstants.SETTING__TAPSIGNER_BACKUP) == SettingsConstants.OPTION__DISABLED
+
+
     def test_settingsqr(self):
         """ 
         Scanning a SettingsQR should present the success screen and then return to

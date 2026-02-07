@@ -448,6 +448,7 @@ class SettingsConstants:
     SETTING__ELECTRUM_SEEDS = "electrum_seeds"
     SETTING__BITBOX_BACKUP = "bitbox_backup"
     SETTING__PASSPORT_BACKUP = "passport_backup"
+    SETTING__TAPSIGNER_BACKUP = "tapsigner_backup"
     SETTING__MESSAGE_SIGNING = "message_signing"
     SETTING__PRIVACY_WARNINGS = "privacy_warnings"
     SETTING__DIRE_WARNINGS = "dire_warnings"
@@ -945,14 +946,21 @@ class SettingsDefinition:
                       attr_name=SettingsConstants.SETTING__BITBOX_BACKUP,
                       abbreviated_name="bitbox",
                       display_name=_mft("BitBox02 backups"),
-                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
+                      visibility=SettingsConstants.VISIBILITY__HIDDEN,
                       default_value=SettingsConstants.OPTION__DISABLED),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
                       attr_name=SettingsConstants.SETTING__PASSPORT_BACKUP,
                       abbreviated_name="passport",
                       display_name=_mft("Passport backups"),
-                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
+                      visibility=SettingsConstants.VISIBILITY__HIDDEN,
+                      default_value=SettingsConstants.OPTION__DISABLED),
+
+        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
+                      attr_name=SettingsConstants.SETTING__TAPSIGNER_BACKUP,
+                      abbreviated_name="tapsigner",
+                      display_name=_mft("TAPSIGNER backups"),
+                      visibility=SettingsConstants.VISIBILITY__HIDDEN,
                       default_value=SettingsConstants.OPTION__DISABLED),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,

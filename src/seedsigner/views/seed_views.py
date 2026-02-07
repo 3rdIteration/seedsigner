@@ -32,9 +32,13 @@ from seedsigner.helpers.passport_backup import (
     PassportBackupError,
     decode_passport_backup,
 )
+from seedsigner.helpers.tapsigner_backup import (
+    TapsignerBackupError,
+    decode_tapsigner_backup,
+)
 from seedsigner.models.encode_qr import CompactSeedQrEncoder, GenericStaticQrEncoder, SeedQrEncoder, SpecterXPubQrEncoder, StaticXpubQrEncoder, UrXpubQrEncoder
 from seedsigner.models.qr_type import QRType
-from seedsigner.models.seed import Seed, Slip39Seed, ElectrumSeed, InvalidSeedException
+from seedsigner.models.seed import Seed, Slip39Seed, ElectrumSeed, XprvSeed, InvalidSeedException, SeedWordsUnavailableException
 from seedsigner.models.settings import Settings, SettingsConstants
 from seedsigner.models.settings_definition import SettingsDefinition
 from seedsigner.models.threads import BaseThread, ThreadsafeCounter
@@ -99,6 +103,7 @@ class SeedSelectSeedView(View):
     SCAN_SEED = ButtonOption("Scan a seed", SeedSignerIconConstants.QRCODE)
     BITBOX_BACKUP = ButtonOption("BitBox02 backup", SeedSignerIconConstants.MICROSD)
     PASSPORT_BACKUP = ButtonOption("Passport backup", SeedSignerIconConstants.MICROSD)
+    TAPSIGNER_BACKUP = ButtonOption("TAPSIGNER backup", SeedSignerIconConstants.MICROSD)
     SATOCHIP = ButtonOption("Use Satochip card", SeedSignerIconConstants.FINGERPRINT)
     TYPE_12WORD = ButtonOption("Enter 12-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=12)
     TYPE_15WORD = ButtonOption("Enter 15-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=15)
@@ -145,6 +150,9 @@ class SeedSelectSeedView(View):
             button_data.append(self.BITBOX_BACKUP)
         if self.settings.get_value(SettingsConstants.SETTING__PASSPORT_BACKUP) == SettingsConstants.OPTION__ENABLED:
             button_data.append(self.PASSPORT_BACKUP)
+
+        if self.settings.get_value(SettingsConstants.SETTING__TAPSIGNER_BACKUP) == SettingsConstants.OPTION__ENABLED:
+            button_data.append(self.TAPSIGNER_BACKUP)
         seed_lengths = self.settings.get_value(SettingsConstants.SETTING__SEED_WORD_LENGTHS)
         options = {
             12: self.TYPE_12WORD,
@@ -206,6 +214,9 @@ class SeedSelectSeedView(View):
         if button_data[selected_menu_num] == self.PASSPORT_BACKUP:
             return Destination(SeedPassportBackupSelectView)
 
+        if button_data[selected_menu_num] == self.TAPSIGNER_BACKUP:
+            return Destination(SeedTapsignerBackupSelectView)
+
         elif button_data[selected_menu_num] in [self.TYPE_12WORD, self.TYPE_15WORD, self.TYPE_18WORD, self.TYPE_21WORD, self.TYPE_24WORD]:
             from seedsigner.views.seed_views import SeedMnemonicEntryView
             self.controller.storage.init_pending_mnemonic(num_words=button_data[selected_menu_num].return_data)
@@ -234,6 +245,7 @@ class LoadSeedView(View):
     IMPORT_SEEDKEEPER = ButtonOption("From SeedKeeper", FontAwesomeIconConstants.LOCK)
     BITBOX_BACKUP = ButtonOption("BitBox02 backup", SeedSignerIconConstants.MICROSD)
     PASSPORT_BACKUP = ButtonOption("Passport backup", SeedSignerIconConstants.MICROSD)
+    TAPSIGNER_BACKUP = ButtonOption("TAPSIGNER backup", SeedSignerIconConstants.MICROSD)
     CREATE = ButtonOption(" Create a seed", SeedSignerIconConstants.PLUS)
 
     def run(self):
@@ -261,6 +273,9 @@ class LoadSeedView(View):
 
         if self.settings.get_value(SettingsConstants.SETTING__PASSPORT_BACKUP) == SettingsConstants.OPTION__ENABLED:
             button_data.append(self.PASSPORT_BACKUP)
+
+        if self.settings.get_value(SettingsConstants.SETTING__TAPSIGNER_BACKUP) == SettingsConstants.OPTION__ENABLED:
+            button_data.append(self.TAPSIGNER_BACKUP)
 
         button_data.append(self.CREATE)
 
@@ -299,6 +314,9 @@ class LoadSeedView(View):
 
         elif button_data[selected_menu_num] == self.PASSPORT_BACKUP:
             return Destination(SeedPassportBackupSelectView)
+
+        elif button_data[selected_menu_num] == self.TAPSIGNER_BACKUP:
+            return Destination(SeedTapsignerBackupSelectView)
 
         elif button_data[selected_menu_num] == self.CREATE:
             from .tools_views import ToolsMenuView
@@ -341,6 +359,7 @@ class SeedKeeperSelectView(View):
 
                 if ((stype == "BIP39 mnemonic" and export_rights == 'Plaintext export allowed') or
                         (stype == 'Masterseed' and subtype == 0x01) or
+                        (stype == 'Masterseed' and subtype == 0x00) or
                         (stype == 'Electrum mnemonic' and export_rights == 'Plaintext export allowed')):
 
                     if not label:
@@ -416,6 +435,13 @@ class SeedKeeperSelectView(View):
                 passphrase = passphrase_bytes.decode("utf-8")
                 secret_mnemonic = bip39_mnemonic
                 secret_passphrase = passphrase
+
+            elif stype == 'Masterseed' and subtype == 0x00:
+                secret_raw_bytes = bytes.fromhex(secret_dict['secret'])
+                xprv_size = secret_raw_bytes[0]
+                xprv = secret_raw_bytes[1:1 + xprv_size].decode("utf-8")
+                self.controller.storage.set_pending_seed(XprvSeed(xprv))
+                return Destination(SeedFinalizeView)
 
             else:
                 raise ValueError(f"Unsupported secret type: {stype}, subtype: {subtype}")
@@ -762,6 +788,117 @@ class SeedPassportBackupSummaryView(View):
         return Destination(SeedFinalizeView)
 
 
+class SeedTapsignerBackupSelectView(View):
+    def __init__(self):
+        super().__init__()
+        self.microsd_dir: Path = MicroSD.get_microsd_dir()
+
+    def _get_backup_files(self) -> list[Path]:
+        backup_files: list[Path] = []
+        if not self.microsd_dir.exists():
+            raise TapsignerBackupError(_("microSD card not detected."))
+
+        for path in self.microsd_dir.rglob("*"):
+            if not path.is_file():
+                continue
+            if path.suffix.lower() == ".aes":
+                backup_files.append(path)
+
+        backup_files.sort(key=lambda p: p.relative_to(self.microsd_dir).as_posix().lower())
+        return backup_files
+
+    def run(self):
+        try:
+            backup_files = self._get_backup_files()
+        except Exception as e:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text=str(e),
+                show_back_button=False,
+                button_data=[ButtonOption("OK")],
+            )
+            return Destination(BackStackView)
+
+        if not backup_files:
+            self.run_screen(
+                WarningScreen,
+                title=_("No Backups Found"),
+                status_headline=None,
+                text=_("No TAPSIGNER backups (.aes) were found on the microSD card."),
+                show_back_button=False,
+                button_data=[ButtonOption("OK")],
+            )
+            return Destination(BackStackView)
+
+        selected = self.run_screen(
+            ButtonListScreen,
+            title=_("Select TAPSIGNER backup"),
+            is_button_text_centered=False,
+            button_data=[ButtonOption(path.relative_to(self.microsd_dir).as_posix(), SeedSignerIconConstants.MICROSD) for path in backup_files],
+        )
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        return Destination(SeedTapsignerBackupKeyEntryView, view_args={"backup_path": backup_files[selected]})
+
+
+class SeedTapsignerBackupKeyEntryView(View):
+    def __init__(self, backup_path: Path):
+        super().__init__()
+        self.backup_path = backup_path
+
+    def run(self):
+        key_hex = self.run_screen(
+            KeyboardScreen,
+            title=_("Backup key (hex)"),
+            rows=4,
+            cols=8,
+            keys_charset="0123456789abcdef",
+            show_save_button=True,
+        )
+        if key_hex == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        try:
+            xprv, derivation_path = decode_tapsigner_backup(self.backup_path, str(key_hex))
+            self.controller.storage.set_pending_seed(XprvSeed(xprv))
+        except (OSError, TapsignerBackupError, InvalidSeedException) as e:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text=str(e),
+                show_back_button=False,
+                button_data=[ButtonOption("OK")],
+            )
+            return Destination(SeedTapsignerBackupKeyEntryView, view_args={"backup_path": self.backup_path})
+
+        return Destination(SeedTapsignerBackupSummaryView, view_args={"derivation_path": derivation_path})
+
+
+class SeedTapsignerBackupSummaryView(View):
+    def __init__(self, derivation_path: str | None):
+        super().__init__()
+        self.derivation_path = derivation_path
+
+    def run(self):
+        text = _("xprv loaded from TAPSIGNER backup.")
+        if self.derivation_path:
+            text = text + "\n" + _("Path: {}".format(self.derivation_path))
+
+        self.run_screen(
+            LargeIconStatusScreen,
+            title=_("TAPSIGNER backup"),
+            status_headline=_("Seed loaded"),
+            text=text,
+            show_back_button=False,
+            button_data=[ButtonOption(_("Continue"))],
+        )
+        return Destination(SeedFinalizeView)
+
+
 class SeedMnemonicEntryView(View):
     def __init__(self, cur_word_index: int = 0, is_calc_final_word: bool=False):
         super().__init__()
@@ -861,6 +998,10 @@ class SeedFinalizeView(View):
         super().__init__()
         self.seed = self.controller.storage.get_pending_seed()
 
+        if isinstance(self.seed, XprvSeed):
+            self.fingerprint = self.seed.get_fingerprint(network=self.settings.get_value(SettingsConstants.SETTING__NETWORK))
+            return
+
         if self.seed.get_fingerprint == "":
             # Expected normal user flow
             self.fingerprint = self.seed.get_fingerprint(network=self.settings.get_value(SettingsConstants.SETTING__NETWORK))
@@ -885,7 +1026,9 @@ class SeedFinalizeView(View):
     def run(self):
         button_data = [self.FINALIZE]
         #self.TYPE_PASSPHRASE.button_label = self.seed.passphrase_label
-        if self.settings.get_value(SettingsConstants.SETTING__PASSPHRASE) != SettingsConstants.OPTION__DISABLED:
+        if isinstance(self.seed, XprvSeed):
+            pass
+        elif self.settings.get_value(SettingsConstants.SETTING__PASSPHRASE) != SettingsConstants.OPTION__DISABLED:
             button_data.append(self.TYPE_PASSPHRASE)
             button_data.append(self.SCAN_PASSPHRASE)
             if self.settings.get_value(SettingsConstants.SETTING__SMARTCARD_SUPPORT) == SettingsConstants.OPTION__ENABLED:
@@ -2075,10 +2218,7 @@ class SeedExportXpubDetailsView(View):
                     self.settings.get_value(SettingsConstants.SETTING__NETWORK),
                     self.sig_type
                 )
-                root = HDKey.from_seed(
-                    self.seed.seed_bytes,
-                    version=embit_network["xprv"]
-                )
+                root = self.seed.get_root(self.settings.get_value(SettingsConstants.SETTING__NETWORK))
                 fingerprint = hexlify(root.child(0).fingerprint).decode('utf-8')
                 xprv = root.derive(derivation_path)
                 xpub = xprv.to_public()
@@ -2266,7 +2406,18 @@ class SeedWordsView(View):
             if isinstance(self.seed, Slip39Seed) and self.share_index is not None:
                 mnemonic = self.seed.mnemonic_list[self.share_index].split()
             else:
-                mnemonic = self.seed.mnemonic_display_list
+                try:
+                    mnemonic = self.seed.mnemonic_display_list
+                except SeedWordsUnavailableException as e:
+                    self.run_screen(
+                        WarningScreen,
+                        title=_("Seed Words"),
+                        status_headline=None,
+                        text=str(e),
+                        show_back_button=False,
+                        button_data=[ButtonOption(_("OK"))],
+                    )
+                    return Destination(BackStackView)
             title = _("Seed Words")
         words = mnemonic[self.page_index*words_per_page:(self.page_index + 1)*words_per_page]
 
@@ -4207,7 +4358,7 @@ class SeedSignMessageSignedMessageQRView(View):
             self.seed_num = data["seed_num"]
             seed = self.controller.get_seed(self.seed_num)
             self.signed_message = embit_utils.sign_message(
-                seed_bytes=seed.seed_bytes,
+                seed_bytes=seed.get_root().secret,
                 derivation=derivation_path,
                 msg=message.encode(),
             )
@@ -4362,6 +4513,16 @@ class SaveToSeedkeeperView(View):
                     header = Satochip_Connector.make_header(type, export_rights, label, subtype=subtype)
                     secret_dic = {'header': header, 'secret_list': secret_list}
                 else:
+                    if isinstance(seed, XprvSeed) and status['protocol_minor_version'] == 1:
+                        self.run_screen(
+                            WarningScreen,
+                            title="Error",
+                            status_headline=None,
+                            text="SeedKeeper v1 cannot store xprv seeds.",
+                            show_back_button=True,
+                        )
+                        return Destination(BackStackView)
+
                     if status['protocol_minor_version'] == 1:  # Seedkeeper v1
                         print("Saving to SeedKeeper V1")
                         label = ret['passphrase']
@@ -4377,22 +4538,28 @@ class SaveToSeedkeeperView(View):
                         print("Saving to SeedKeeper V2")
                         label = ret['passphrase']
                         export_rights = "Plaintext export allowed"
-                        type = "Masterseed"
-                        subtype = 0x01
-                        wordlist_byte = dict_swap_keys_values(BIP39_WORDLIST_DIC).get("english")
-                        bip39_entropy_bytes = self.mnemonic_to_entropy(seed.mnemonic_str, "english")
-                        bip39_entropy_list = list(bip39_entropy_bytes)
-                        bip39_passphrase_list = list(bytes(seed.passphrase, 'utf-8'))
-                        masterseed_bytes = seed.seed_bytes
-                        masterseed_list = list(masterseed_bytes)
-                        secret_list = ([len(masterseed_list)] +
-                                       masterseed_list +
-                                       [wordlist_byte] +
-                                       [len(bip39_entropy_list)] +
-                                       bip39_entropy_list +
-                                       [len(bip39_passphrase_list)] +
-                                       bip39_passphrase_list
-                                       )
+                        if isinstance(seed, XprvSeed):
+                            type = "Masterseed"
+                            subtype = 0x00
+                            xprv_list = list(bytes(seed.get_root().to_base58(), 'utf-8'))
+                            secret_list = [len(xprv_list)] + xprv_list
+                        else:
+                            type = "Masterseed"
+                            subtype = 0x01
+                            wordlist_byte = dict_swap_keys_values(BIP39_WORDLIST_DIC).get("english")
+                            bip39_entropy_bytes = self.mnemonic_to_entropy(seed.mnemonic_str, "english")
+                            bip39_entropy_list = list(bip39_entropy_bytes)
+                            bip39_passphrase_list = list(bytes(seed.passphrase, 'utf-8'))
+                            masterseed_bytes = seed.seed_bytes
+                            masterseed_list = list(masterseed_bytes)
+                            secret_list = ([len(masterseed_list)] +
+                                           masterseed_list +
+                                           [wordlist_byte] +
+                                           [len(bip39_entropy_list)] +
+                                           bip39_entropy_list +
+                                           [len(bip39_passphrase_list)] +
+                                           bip39_passphrase_list
+                                           )
                     header = Satochip_Connector.make_header(type, export_rights, label, subtype=subtype)
                     secret_dic = {'header': header, 'secret_list': secret_list}
 
