@@ -1,3 +1,4 @@
+import embit.bip32 as embit_bip32
 import embit.bip85 as embit_bip85
 from seedsigner.views import tools_views
 
@@ -284,6 +285,10 @@ def test_bip85_dice_rolls_uses_derived_entropy_directly(monkeypatch):
     class SeedObj:
         seed_bytes = b"\x11" * 64
 
+        @staticmethod
+        def get_root(_network=None):
+            return embit_bip32.HDKey.from_seed(SeedObj.seed_bytes)
+
     class Storage:
         seeds = [SeedObj()]
 
@@ -295,6 +300,13 @@ def test_bip85_dice_rolls_uses_derived_entropy_directly(monkeypatch):
             return SeedObj()
 
     view.controller = Controller()
+
+    class S:
+        @staticmethod
+        def get_value(_key):
+            return "M"
+
+    view.settings = S()
 
     calls = {"count": 0}
 
@@ -382,3 +394,66 @@ def test_password_generate_view_matches_bip85_dice_spec_vector_output():
 
     assert dest.View_cls is tools_views.ToolsPasswordReviewView
     assert dest.view_args["password"] == "1,0,0,2,0,1,5,5,2,4"
+
+
+def test_bip85_dice_rolls_uses_seed_root_not_seed_bytes_none(monkeypatch):
+    master_xprv = "xprv9s21ZrQH143K2LBWUUQRFXhucrQqBpKdRRxNVq2zBqsx8HVqFk2uYo8kmbaLLHRdqtQpUm98uKfu3vca1LqdGhUtyoFnCNkfmXRyPXLjbKb"
+
+    view = object.__new__(tools_views.ToolsPasswordBIP85GenerateView)
+    view.password_type = tools_views.PASSWORD_TYPE_DICE_ROLLS
+    view.strength_bits = 64
+    view.random_options = {}
+    view.dice_sides = 6
+    view.roll_count = 10
+
+    class SeedObj:
+        seed_bytes = None
+
+        @staticmethod
+        def get_root(_network=None):
+            return embit_bip32.HDKey.from_string(master_xprv)
+
+    class Storage:
+        seeds = [SeedObj()]
+
+    class Controller:
+        storage = Storage()
+
+        @staticmethod
+        def get_seed(_idx):
+            return SeedObj()
+
+    view.controller = Controller()
+
+    class S:
+        @staticmethod
+        def get_value(_key):
+            return "M"
+
+    view.settings = S()
+
+    class FakeIndexScreen:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def display(self):
+            return "0"
+
+    monkeypatch.setattr(
+        tools_views.seed_screens,
+        "SeedBIP85SelectChildIndexScreen",
+        FakeIndexScreen,
+    )
+
+    dest = tools_views.ToolsPasswordBIP85GenerateView.run(view)
+
+    assert dest.View_cls is tools_views.ToolsPasswordGenerateView
+
+    gen = object.__new__(tools_views.ToolsPasswordGenerateView)
+    for k, v in dest.view_args.items():
+        setattr(gen, k, v)
+    gen.entropy_bytes_override = None
+
+    review_dest = tools_views.ToolsPasswordGenerateView.run(gen)
+    assert review_dest.View_cls is tools_views.ToolsPasswordReviewView
+    assert review_dest.view_args["password"] == "1,0,0,2,0,1,5,5,2,4"

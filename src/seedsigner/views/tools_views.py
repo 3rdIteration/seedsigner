@@ -6734,7 +6734,7 @@ class ToolsGPGRebuildBip85KeyView(View):
             )
             return Destination(BackStackView)
 
-        root = bip32.HDKey.from_seed(seed.seed_bytes)
+        root = seed.get_root(self.settings.get_value(SettingsConstants.SETTING__NETWORK))
         KEY_BITS = (
             2048
             if key_type == "rsa2048"
@@ -10842,7 +10842,7 @@ def bip85_verify_existing(
     logger.info(
         "bip85_verify_existing: fpr=%s index=%s", fingerprint, key_index
     )
-    root = bip32.HDKey.from_seed(seed.seed_bytes)
+    root = seed.get_root(self.settings.get_value(SettingsConstants.SETTING__NETWORK))
     created = datetime.fromtimestamp(created_ts, tz=timezone.utc)
     primary_curve = _normalize_bip85_alg(primary_curve)
 
@@ -14362,7 +14362,7 @@ class ToolsPasswordBIP85GenerateView(View):
         return int(ret)
 
     def run(self):
-        from embit import bip32, bip85
+        from embit import bip85
 
         if len(self.controller.storage.seeds) == 0:
             self.run_screen(
@@ -14406,7 +14406,7 @@ class ToolsPasswordBIP85GenerateView(View):
             return Destination(BackStackView)
         index = int(ret)
 
-        root = bip32.HDKey.from_seed(seed.seed_bytes)
+        root = seed.get_root(self.settings.get_value(SettingsConstants.SETTING__NETWORK))
 
         if self.password_type in {
             PASSWORD_TYPE_DICEWARE_EFF_SHORT,
