@@ -14421,8 +14421,6 @@ class ToolsPasswordBIP85GenerateView(View):
                 return Destination(BackStackView)
 
             entropy = bip85.derive_entropy(root, BIP85_APP_DICE, [sides, rolls, index])
-            drng = bip85_drng.BIP85DRNG.new(entropy)
-            seed_bytes = drng.read(64)
             return Destination(
                 ToolsPasswordGenerateView,
                 view_args=dict(
@@ -14430,7 +14428,7 @@ class ToolsPasswordBIP85GenerateView(View):
                     entropy_source=PASSWORD_ENTROPY_BIP85,
                     strength_bits=self.strength_bits,
                     random_options=self.random_options,
-                    roll_data=seed_bytes,
+                    roll_data=entropy,
                     roll_count=rolls,
                     dice_sides=sides,
                 ),

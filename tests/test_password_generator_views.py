@@ -1,3 +1,4 @@
+import embit.bip85 as embit_bip85
 from seedsigner.views import tools_views
 
 
@@ -270,3 +271,62 @@ def test_dice_rolls_type_bypasses_strength_but_prompts_entropy_source(monkeypatc
     assert dest.View_cls is tools_views.ToolsPasswordEntropySourceView
     assert dest.view_args["password_type"] == tools_views.PASSWORD_TYPE_DICE_ROLLS
     assert dest.view_args["strength_bits"] == 64
+
+
+def test_bip85_dice_rolls_uses_derived_entropy_directly(monkeypatch):
+    view = object.__new__(tools_views.ToolsPasswordBIP85GenerateView)
+    view.password_type = tools_views.PASSWORD_TYPE_DICE_ROLLS
+    view.strength_bits = 64
+    view.random_options = {}
+
+    class SeedObj:
+        seed_bytes = b"\x11" * 64
+
+    class Storage:
+        seeds = [SeedObj()]
+
+    class Controller:
+        storage = Storage()
+
+        @staticmethod
+        def get_seed(_idx):
+            return SeedObj()
+
+    view.controller = Controller()
+
+    calls = {"count": 0}
+
+    class FakeIndexScreen:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def display(self):
+            calls["count"] += 1
+            return "0" if calls["count"] == 1 else "10"
+
+    monkeypatch.setattr(
+        tools_views.seed_screens,
+        "SeedBIP85SelectChildIndexScreen",
+        FakeIndexScreen,
+    )
+    monkeypatch.setattr(
+        tools_views.ToolsPasswordBIP85GenerateView,
+        "run_screen",
+        lambda self, *_args, **_kwargs: 0,
+    )
+
+    expected_entropy = bytes(range(64))
+
+    def fake_derive_entropy(_root, app_no, params):
+        assert app_no == tools_views.BIP85_APP_DICE
+        assert params == [6, 10, 0]
+        return expected_entropy
+
+    monkeypatch.setattr(embit_bip85, "derive_entropy", fake_derive_entropy)
+
+    dest = tools_views.ToolsPasswordBIP85GenerateView.run(view)
+
+    assert dest.View_cls is tools_views.ToolsPasswordGenerateView
+    assert dest.view_args["roll_data"] == expected_entropy
+    assert dest.view_args["roll_count"] == 10
+    assert dest.view_args["dice_sides"] == 6
