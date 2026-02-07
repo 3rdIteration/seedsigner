@@ -1,6 +1,7 @@
 import os
 import json
 import pytest
+from unittest.mock import patch
 from seedsigner.models.seed import InvalidSeedException, Seed, ElectrumSeed, Slip39Seed, SeedWordsUnavailableException, XprvSeed
 from seedsigner.models.decode_qr import DecodeQR, DecodeQRStatus
 import shamir_mnemonic
@@ -340,3 +341,66 @@ class TestSlip39ExtendableSetting(BaseTest):
         assert isinstance(seed, Slip39Seed)
         assert not seed.extendable
 
+
+
+def test_seed_storage_allows_multiple_xprvs():
+    from seedsigner.models.seed_storage import SeedStorage
+
+    storage = SeedStorage()
+
+    xprv_a = XprvSeed("xprv9s21ZrQH143K2LBWUUQRFXhucrQqBpKdRRxNVq2zBqsx8HVqFk2uYo8kmbaLLHRdqtQpUm98uKfu3vca1LqdGhUtyoFnCNkfmXRyPXLjbKb")
+    xprv_b = XprvSeed("xprv9s21ZrQH143K4QViKpwKCpS2zVbz8GrZgpEchMDg6KME9HZtjfL7iThE9w5muQA4YPHKN1u5VM1w8D4pvnjxa2BmpGMfXr7hnRrRHZ93awZ")
+
+    storage.set_pending_seed(xprv_a)
+    first_index = storage.finalize_pending_seed()
+
+    storage.set_pending_seed(xprv_b)
+    second_index = storage.finalize_pending_seed()
+
+    assert first_index == 0
+    assert second_index == 1
+    assert storage.num_seeds() == 2
+    assert storage.seeds[0] == xprv_a
+    assert storage.seeds[1] == xprv_b
+
+
+def test_seed_storage_import_multiple_seed_types_mix_and_match():
+    from seedsigner.models.seed_storage import SeedStorage
+
+    with patch("seedsigner.gui.screens.screen.LoadingScreenThread"):
+        storage = SeedStorage()
+
+        bip39_a = Seed(mnemonic="abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about".split())
+        bip39_b = Seed(mnemonic="obscure bone gas open exotic abuse virus bunker shuffle nasty ship dash".split())
+
+        electrum_a = ElectrumSeed(mnemonic="regular reject rare profit once math fringe chase until ketchup century escape".split())
+        electrum_b = ElectrumSeed(mnemonic="basket print toy noodle betray weird filter ticket insect copy force machine".split())
+
+        secret1 = bytes.fromhex("11" * 16)
+        shares1 = shamir_mnemonic.generate_mnemonics(1, [(2, 3)], secret1)[0]
+        slip39_a = Slip39Seed(mnemonics=[shares1[0], shares1[1]])
+
+        secret2 = bytes.fromhex("22" * 16)
+        shares2 = shamir_mnemonic.generate_mnemonics(1, [(2, 3)], secret2)[0]
+        slip39_b = Slip39Seed(mnemonics=[shares2[0], shares2[1]])
+
+        xprv_a = XprvSeed("xprv9s21ZrQH143K2LBWUUQRFXhucrQqBpKdRRxNVq2zBqsx8HVqFk2uYo8kmbaLLHRdqtQpUm98uKfu3vca1LqdGhUtyoFnCNkfmXRyPXLjbKb")
+        xprv_b = XprvSeed("xprv9s21ZrQH143K4QViKpwKCpS2zVbz8GrZgpEchMDg6KME9HZtjfL7iThE9w5muQA4YPHKN1u5VM1w8D4pvnjxa2BmpGMfXr7hnRrRHZ93awZ")
+
+        seeds_in_order = [
+            bip39_a,
+            xprv_a,
+            electrum_a,
+            slip39_a,
+            bip39_b,
+            xprv_b,
+            electrum_b,
+            slip39_b,
+        ]
+
+        for expected_index, seed in enumerate(seeds_in_order):
+            storage.set_pending_seed(seed)
+            assert storage.finalize_pending_seed() == expected_index
+
+        assert storage.num_seeds() == len(seeds_in_order)
+        assert storage.seeds == seeds_in_order
