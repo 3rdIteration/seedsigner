@@ -52,6 +52,44 @@ def test_xprv_seed_has_no_seed_words():
     with pytest.raises(SeedWordsUnavailableException, match="does not have seed words"):
         _ = seed.mnemonic_display_list
 
+
+def test_xprv_seed_supports_bip85_child_mnemonic_vectors():
+    """BIP85 vectors from BIP-0085 for application 39' (BIP39 mnemonics)."""
+    xprv = "xprv9s21ZrQH143K2LBWUUQRFXhucrQqBpKdRRxNVq2zBqsx8HVqFk2uYo8kmbaLLHRdqtQpUm98uKfu3vca1LqdGhUtyoFnCNkfmXRyPXLjbKb"
+    seed = XprvSeed(xprv)
+
+    assert seed.bip85_supported
+    assert seed.get_bip85_child_mnemonic(0, 12) == "girl mad pet galaxy egg matter matrix prison refuse sense ordinary nose"
+    assert seed.get_bip85_child_mnemonic(0, 18) == "near account window bike charge season chef number sketch tomorrow excuse sniff circle vital hockey outdoor supply token"
+    assert seed.get_bip85_child_mnemonic(0, 24) == "puppy ocean match cereal symbol another shed magic wrap hammer bulb intact gadget divorce twin tonight reason outdoor destroy simple truth cigar social volcano"
+
+
+def test_electrum_seed_supports_bip85_child_mnemonic():
+    seed = ElectrumSeed(mnemonic="regular reject rare profit once math fringe chase until ketchup century escape".split())
+
+    assert seed.bip85_supported
+    assert seed.get_bip85_child_mnemonic(0, 12) == "slender grass raw hundred skirt obey street sound swear fuel drastic dish"
+
+
+def test_slip39_seed_supports_bip85_child_mnemonic(monkeypatch):
+    class DummyLoadingScreenThread:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def start(self):
+            pass
+
+        def stop(self):
+            pass
+
+    monkeypatch.setattr("seedsigner.gui.screens.screen.LoadingScreenThread", DummyLoadingScreenThread)
+
+    share = "testify swimming academic academic column loyalty smear include exotic bedroom exotic wrist lobe cover grief golden smart junior estimate learn"
+    seed = Slip39Seed(mnemonics=[share])
+
+    assert seed.bip85_supported
+    assert seed.get_bip85_child_mnemonic(0, 12) == "unable jealous real gain balance armed wide sting alley float fiction engine"
+
 def test_electrum_seed():
     """
     ElectrumSeed should correctly parse a modern Electrum mnemonic.

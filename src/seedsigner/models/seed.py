@@ -268,7 +268,7 @@ class ElectrumSeed(Seed):
 
     @property
     def bip85_supported(self) -> bool:
-        return False
+        return True
 
 
 class Slip39Seed(Seed):
@@ -378,7 +378,7 @@ class Slip39Seed(Seed):
 
     @property
     def bip85_supported(self) -> bool:
-        return False
+        return True
 
     def regenerate_shares(self, threshold: int, num_shares: int) -> List[str]:
         """Generate new SLIP-39 shares from the original master secret."""
@@ -463,10 +463,11 @@ class XprvSeed(Seed):
 
     @property
     def bip85_supported(self) -> bool:
-        return False
+        return True
 
     def get_bip85_child_mnemonic(self, bip85_index: int, bip85_num_words: int, network: str = SettingsConstants.MAINNET):
-        raise InvalidSeedException("BIP85 is not supported for xprv seeds")
+        # TODO: Support other BIP-39 wordlist languages!
+        return bip85.derive_mnemonic(self.get_root(network), bip85_num_words, bip85_index)
 
     def __eq__(self, other):
         if isinstance(other, XprvSeed):
