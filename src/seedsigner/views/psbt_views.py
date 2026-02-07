@@ -930,10 +930,14 @@ class PSBTFinalizeView(View):
         try:
             sig_cnt = PSBTParser.sig_count(psbt)
             if self.controller.psbt_sign_with_satochip:
+                from seedsigner.helpers import seedkeeper_utils
                 from seedsigner.helpers.satochip_signer import sign_psbt_with_satochip
-                if not self.controller.Satochip_Connector:
+
+                connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satochip"])
+                if not connector:
                     return Destination(PSBTSigningErrorView)
-                sign_psbt_with_satochip(psbt, self.controller.Satochip_Connector)
+
+                sign_psbt_with_satochip(psbt, connector)
             else:
                 psbt.sign_with(psbt_parser.root)
             if isinstance(self.controller.psbt_seed, WIFKey):
