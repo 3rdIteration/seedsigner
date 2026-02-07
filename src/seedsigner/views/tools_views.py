@@ -13476,6 +13476,15 @@ class ToolsPasswordGeneratorTypeView(View):
         if selected_menu_num == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
         password_type = options[selected_menu_num][1]
+        if password_type == PASSWORD_TYPE_DICE_ROLLS:
+            return Destination(
+                ToolsPasswordDiceRollCountView,
+                view_args=dict(
+                    password_type=password_type,
+                    strength_bits=64,
+                    entropy_source=PASSWORD_ENTROPY_DICE,
+                ),
+            )
         return Destination(
             ToolsPasswordStrengthView,
             view_args=dict(password_type=password_type),
@@ -13918,32 +13927,16 @@ class ToolsPasswordDiceRollCountView(View):
                 )
                 return Destination(BackStackView)
 
-            if self.entropy_source == PASSWORD_ENTROPY_DICE:
-                return Destination(
-                    ToolsPasswordDiceEntryView,
-                    view_args=dict(
-                        password_type=self.password_type,
-                        random_options=self.random_options,
-                        strength_bits=self.strength_bits,
-                        total_rolls=roll_count,
-                        word_count=None,
-                        word_separator=self.word_separator,
-                        entropy_source=self.entropy_source,
-                        dice_sides=dice_sides,
-                    ),
-                    skip_current_view=True,
-                )
-
             return Destination(
-                ToolsPasswordGenerateView,
+                ToolsPasswordDiceEntryView,
                 view_args=dict(
                     password_type=self.password_type,
-                    entropy_source=self.entropy_source,
                     random_options=self.random_options,
                     strength_bits=self.strength_bits,
-                    roll_count=roll_count,
+                    total_rolls=roll_count,
                     word_count=None,
                     word_separator=self.word_separator,
+                    entropy_source=PASSWORD_ENTROPY_DICE,
                     dice_sides=dice_sides,
                 ),
                 skip_current_view=True,
