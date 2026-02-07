@@ -202,7 +202,7 @@ def test_separator_back_clears_cache_and_returns_entropy_source(monkeypatch):
 def test_dice_roll_count_view_prompts_for_sides_and_rolls(monkeypatch):
     view = _make_roll_count_view(
         tools_views.PASSWORD_TYPE_DICE_ROLLS,
-        tools_views.PASSWORD_ENTROPY_DICE,
+        tools_views.PASSWORD_ENTROPY_CAMERA,
     )
 
     class FakeRollCountScreen:
@@ -225,11 +225,11 @@ def test_dice_roll_count_view_prompts_for_sides_and_rolls(monkeypatch):
 
     dest = tools_views.ToolsPasswordDiceRollCountView.run(view)
 
-    assert dest.View_cls is tools_views.ToolsPasswordDiceEntryView
+    assert dest.View_cls is tools_views.ToolsPasswordGenerateView
     assert dest.skip_current_view is True
     assert dest.view_args["dice_sides"] == 6
-    assert dest.view_args["total_rolls"] == 12
-    assert dest.view_args["entropy_source"] == tools_views.PASSWORD_ENTROPY_DICE
+    assert dest.view_args["roll_count"] == 12
+    assert dest.view_args["entropy_source"] == tools_views.PASSWORD_ENTROPY_CAMERA
 
 
 def test_password_generate_view_formats_dice_rolls(monkeypatch):
@@ -257,7 +257,7 @@ def test_password_generate_view_formats_dice_rolls(monkeypatch):
     assert dest.view_args["password"] == "1,0,19,7,3"
 
 
-def test_dice_rolls_type_bypasses_strength_and_entropy_prompts(monkeypatch):
+def test_dice_rolls_type_bypasses_strength_but_prompts_entropy_source(monkeypatch):
     view = object.__new__(tools_views.ToolsPasswordGeneratorTypeView)
     monkeypatch.setattr(
         tools_views.ToolsPasswordGeneratorTypeView,
@@ -267,6 +267,6 @@ def test_dice_rolls_type_bypasses_strength_and_entropy_prompts(monkeypatch):
 
     dest = tools_views.ToolsPasswordGeneratorTypeView.run(view)
 
-    assert dest.View_cls is tools_views.ToolsPasswordDiceRollCountView
+    assert dest.View_cls is tools_views.ToolsPasswordEntropySourceView
     assert dest.view_args["password_type"] == tools_views.PASSWORD_TYPE_DICE_ROLLS
-    assert dest.view_args["entropy_source"] == tools_views.PASSWORD_ENTROPY_DICE
+    assert dest.view_args["strength_bits"] == 64
