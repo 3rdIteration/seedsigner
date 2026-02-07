@@ -1,7 +1,7 @@
 from embit import bip32, bip85
 
 from seedsigner.helpers.bip85_drng import BIP85DRNG
-from seedsigner.helpers.password_generation import dice_rolls_from_seed
+from seedsigner.helpers.password_generation import dice_rolls_from_seed, dice_roll_values_from_seed
 
 MASTER_XPRV = "xprv9s21ZrQH143K2LBWUUQRFXhucrQqBpKdRRxNVq2zBqsx8HVqFk2uYo8kmbaLLHRdqtQpUm98uKfu3vca1LqdGhUtyoFnCNkfmXRyPXLjbKb"
 
@@ -30,3 +30,4 @@ def test_bip85_dice_vector_matches_spec():
     )
 
     assert dice_rolls_from_seed(entropy, sides=6, roll_count=10, base=0) == "1002015524"
+    assert dice_roll_values_from_seed(entropy, sides=6, roll_count=10, base=0) == [1, 0, 0, 2, 0, 1, 5, 5, 2, 4]

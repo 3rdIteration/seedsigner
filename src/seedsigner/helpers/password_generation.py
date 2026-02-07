@@ -66,11 +66,8 @@ def length_from_entropy(entropy_bits: float, alphabet_size: int) -> int:
     return int(entropy_bits // math.log2(alphabet_size))
 
 
-def dice_rolls_from_seed(seed: bytes, sides: int, roll_count: int, base: int = 1) -> str:
-    """Generate ``roll_count`` unbiased rolls from a seed using rejection sampling.
-
-    Returns rolls as a string of decimal values, where each result is shifted by ``base``.
-    """
+def dice_roll_values_from_seed(seed: bytes, sides: int, roll_count: int, base: int = 1) -> list[int]:
+    """Generate ``roll_count`` unbiased rolls from a seed using rejection sampling."""
     if sides < 2:
         raise ValueError("Sides must be at least 2")
     if roll_count < 1:
@@ -80,13 +77,18 @@ def dice_rolls_from_seed(seed: bytes, sides: int, roll_count: int, base: int = 1
     bytes_per_roll = math.ceil(bits_per_roll / 8)
     stream = shake_stream(seed)
 
-    rolls: list[str] = []
+    rolls: list[int] = []
     while len(rolls) < roll_count:
         chunk = stream.read(bytes_per_roll)
         value = int.from_bytes(chunk, "big")
         value >>= bytes_per_roll * 8 - bits_per_roll
         if value >= sides:
             continue
-        rolls.append(str(value + base))
+        rolls.append(value + base)
 
-    return "".join(rolls)
+    return rolls
+
+
+def dice_rolls_from_seed(seed: bytes, sides: int, roll_count: int, base: int = 1) -> str:
+    """Generate ``roll_count`` unbiased rolls and concatenate them as a string."""
+    return "".join(str(v) for v in dice_roll_values_from_seed(seed, sides, roll_count, base))

@@ -197,3 +197,60 @@ def test_separator_back_clears_cache_and_returns_entropy_source(monkeypatch):
 
     assert dest.View_cls is tools_views.ToolsPasswordEntropySourceView
     assert view.controller.password_generator_entropy_cache is None
+
+
+def test_dice_roll_count_view_prompts_for_sides_and_rolls(monkeypatch):
+    view = _make_roll_count_view(
+        tools_views.PASSWORD_TYPE_DICE_ROLLS,
+        tools_views.PASSWORD_ENTROPY_CAMERA,
+    )
+
+    class FakeRollCountScreen:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def display(self):
+            return "12"
+
+    monkeypatch.setattr(
+        tools_views.seed_screens,
+        "SeedBIP85SelectChildIndexScreen",
+        FakeRollCountScreen,
+    )
+    monkeypatch.setattr(
+        tools_views.ToolsPasswordDiceRollCountView,
+        "run_screen",
+        lambda self, *_args, **_kwargs: 0,
+    )
+
+    dest = tools_views.ToolsPasswordDiceRollCountView.run(view)
+
+    assert dest.View_cls is tools_views.ToolsPasswordGenerateView
+    assert dest.skip_current_view is True
+    assert dest.view_args["dice_sides"] == 6
+    assert dest.view_args["roll_count"] == 12
+
+
+def test_password_generate_view_formats_dice_rolls(monkeypatch):
+    view = object.__new__(tools_views.ToolsPasswordGenerateView)
+    view.password_type = tools_views.PASSWORD_TYPE_DICE_ROLLS
+    view.entropy_source = tools_views.PASSWORD_ENTROPY_BIP85
+    view.strength_bits = 64
+    view.random_options = {}
+    view.roll_data = b"\x01" * 64
+    view.roll_count = 5
+    view.word_count = None
+    view.word_separator = tools_views.PASSWORD_WORD_SEPARATOR_NONE
+    view.entropy_bytes_override = None
+    view.dice_sides = 20
+
+    monkeypatch.setattr(
+        tools_views.password_generation,
+        "dice_roll_values_from_seed",
+        lambda *_args, **_kwargs: [1, 0, 19, 7, 3],
+    )
+
+    dest = tools_views.ToolsPasswordGenerateView.run(view)
+
+    assert dest.View_cls is tools_views.ToolsPasswordReviewView
+    assert dest.view_args["password"] == "1,0,19,7,3"
