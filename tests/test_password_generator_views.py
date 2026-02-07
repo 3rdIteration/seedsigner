@@ -94,6 +94,8 @@ def test_entropy_source_routes_diceware_dice_to_roll_entry(monkeypatch):
     view.password_type = tools_views.PASSWORD_TYPE_DICEWARE_EFF_SHORT
     view.strength_bits = 64
     view.random_options = {}
+    view.dice_sides = None
+    view.roll_count = None
 
     class C:
         pass
@@ -203,7 +205,7 @@ def test_separator_back_clears_cache_and_returns_entropy_source(monkeypatch):
 def test_dice_roll_count_view_prompts_for_sides_and_rolls(monkeypatch):
     view = _make_roll_count_view(
         tools_views.PASSWORD_TYPE_DICE_ROLLS,
-        tools_views.PASSWORD_ENTROPY_CAMERA,
+        None,
     )
 
     class FakeRollCountScreen:
@@ -226,11 +228,10 @@ def test_dice_roll_count_view_prompts_for_sides_and_rolls(monkeypatch):
 
     dest = tools_views.ToolsPasswordDiceRollCountView.run(view)
 
-    assert dest.View_cls is tools_views.ToolsPasswordGenerateView
+    assert dest.View_cls is tools_views.ToolsPasswordEntropySourceView
     assert dest.skip_current_view is True
     assert dest.view_args["dice_sides"] == 6
     assert dest.view_args["roll_count"] == 12
-    assert dest.view_args["entropy_source"] == tools_views.PASSWORD_ENTROPY_CAMERA
 
 
 def test_password_generate_view_formats_dice_rolls(monkeypatch):
@@ -258,7 +259,7 @@ def test_password_generate_view_formats_dice_rolls(monkeypatch):
     assert dest.view_args["password"] == "1,0,19,7,3"
 
 
-def test_dice_rolls_type_bypasses_strength_but_prompts_entropy_source(monkeypatch):
+def test_dice_rolls_type_prompts_sides_and_rolls_before_entropy_source(monkeypatch):
     view = object.__new__(tools_views.ToolsPasswordGeneratorTypeView)
     monkeypatch.setattr(
         tools_views.ToolsPasswordGeneratorTypeView,
@@ -268,9 +269,10 @@ def test_dice_rolls_type_bypasses_strength_but_prompts_entropy_source(monkeypatc
 
     dest = tools_views.ToolsPasswordGeneratorTypeView.run(view)
 
-    assert dest.View_cls is tools_views.ToolsPasswordEntropySourceView
+    assert dest.View_cls is tools_views.ToolsPasswordDiceRollCountView
     assert dest.view_args["password_type"] == tools_views.PASSWORD_TYPE_DICE_ROLLS
     assert dest.view_args["strength_bits"] == 64
+    assert dest.view_args["entropy_source"] is None
 
 
 def test_bip85_dice_rolls_uses_derived_entropy_directly(monkeypatch):
@@ -330,3 +332,53 @@ def test_bip85_dice_rolls_uses_derived_entropy_directly(monkeypatch):
     assert dest.view_args["roll_data"] == expected_entropy
     assert dest.view_args["roll_count"] == 10
     assert dest.view_args["dice_sides"] == 6
+
+
+def test_entropy_source_uses_precollected_dice_roll_config_for_camera(monkeypatch):
+    view = object.__new__(tools_views.ToolsPasswordEntropySourceView)
+    view.password_type = tools_views.PASSWORD_TYPE_DICE_ROLLS
+    view.strength_bits = 64
+    view.random_options = {}
+    view.dice_sides = 10
+    view.roll_count = 12
+
+    class C:
+        pass
+
+    view.controller = C()
+    view.controller.hardware_rng_is_healthy = True
+    view.controller.hardware_rng_failure_reason = None
+
+    monkeypatch.setattr(
+        tools_views.ToolsPasswordEntropySourceView,
+        "run_screen",
+        lambda self, *_args, **_kwargs: 0,
+    )
+
+    dest = tools_views.ToolsPasswordEntropySourceView.run(view)
+
+    assert dest.View_cls is tools_views.ToolsImageEntropyLivePreviewView
+    assert dest.view_args["next_view_args"]["dice_sides"] == 10
+    assert dest.view_args["next_view_args"]["roll_count"] == 12
+
+
+def test_password_generate_view_matches_bip85_dice_spec_vector_output():
+    view = object.__new__(tools_views.ToolsPasswordGenerateView)
+    view.password_type = tools_views.PASSWORD_TYPE_DICE_ROLLS
+    view.entropy_source = tools_views.PASSWORD_ENTROPY_BIP85
+    view.strength_bits = 64
+    view.random_options = {}
+    view.roll_data = bytes.fromhex(
+        "5e41f8f5d5d9ac09a20b8a5797a3172b28c806aead00d27e36609e2dd116a591"
+        "76a738804236586f668da8a51b90c708a4226d7f92259c69f64c51124b6f6cd2"
+    )
+    view.roll_count = 10
+    view.word_count = None
+    view.word_separator = tools_views.PASSWORD_WORD_SEPARATOR_NONE
+    view.entropy_bytes_override = None
+    view.dice_sides = 6
+
+    dest = tools_views.ToolsPasswordGenerateView.run(view)
+
+    assert dest.View_cls is tools_views.ToolsPasswordReviewView
+    assert dest.view_args["password"] == "1,0,0,2,0,1,5,5,2,4"

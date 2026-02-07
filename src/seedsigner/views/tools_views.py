@@ -13478,10 +13478,11 @@ class ToolsPasswordGeneratorTypeView(View):
         password_type = options[selected_menu_num][1]
         if password_type == PASSWORD_TYPE_DICE_ROLLS:
             return Destination(
-                ToolsPasswordEntropySourceView,
+                ToolsPasswordDiceRollCountView,
                 view_args=dict(
                     password_type=password_type,
                     strength_bits=64,
+                    entropy_source=None,
                 ),
             )
         return Destination(
@@ -13594,11 +13595,15 @@ class ToolsPasswordEntropySourceView(View):
         password_type: str,
         strength_bits: int,
         random_options: dict | None = None,
+        dice_sides: int | None = None,
+        roll_count: int | None = None,
     ):
         super().__init__()
         self.password_type = password_type
         self.strength_bits = strength_bits
         self.random_options = random_options or {}
+        self.dice_sides = dice_sides
+        self.roll_count = roll_count
 
     def _hardware_rng_available(self) -> bool:
         if self.controller.hardware_rng_is_healthy:
@@ -13679,17 +13684,34 @@ class ToolsPasswordEntropySourceView(View):
                         strength_bits=self.strength_bits,
                         entropy_source=PASSWORD_ENTROPY_CAMERA,
                         random_options=self.random_options,
+                        roll_count=self.roll_count,
+                        dice_sides=self.dice_sides or 6,
                     ),
                 ),
             )
 
         if selected == dice:
+            if self.password_type == PASSWORD_TYPE_DICE_ROLLS and self.dice_sides is not None and self.roll_count is not None:
+                return Destination(
+                    ToolsPasswordDiceEntryView,
+                    view_args=dict(
+                        password_type=self.password_type,
+                        random_options=self.random_options,
+                        strength_bits=self.strength_bits,
+                        total_rolls=self.roll_count,
+                        word_count=None,
+                        entropy_source=PASSWORD_ENTROPY_DICE,
+                        dice_sides=self.dice_sides,
+                    ),
+                    skip_current_view=True,
+                )
             return Destination(
                 ToolsPasswordDiceRollCountView,
                 view_args=dict(
                     password_type=self.password_type,
                     strength_bits=self.strength_bits,
                     random_options=self.random_options,
+                    entropy_source=PASSWORD_ENTROPY_DICE,
                 ),
             )
 
@@ -13712,6 +13734,8 @@ class ToolsPasswordEntropySourceView(View):
                     strength_bits=self.strength_bits,
                     entropy_source=PASSWORD_ENTROPY_HARDWARE_RNG,
                     random_options=self.random_options,
+                    roll_count=self.roll_count,
+                    dice_sides=self.dice_sides or 6,
                 ),
             )
 
@@ -13721,6 +13745,8 @@ class ToolsPasswordEntropySourceView(View):
                 password_type=self.password_type,
                 strength_bits=self.strength_bits,
                 random_options=self.random_options,
+                dice_sides=self.dice_sides,
+                roll_count=self.roll_count,
             ),
         )
 
@@ -13777,7 +13803,7 @@ class ToolsPasswordWordSeparatorView(View):
         password_type: str,
         strength_bits: int,
         random_options: dict | None = None,
-        entropy_source: str = PASSWORD_ENTROPY_DICE,
+        entropy_source: str | None = PASSWORD_ENTROPY_DICE,
     ):
         super().__init__()
         self.password_type = password_type
@@ -13925,6 +13951,19 @@ class ToolsPasswordDiceRollCountView(View):
                     button_data=[ButtonOption("I Understand")],
                 )
                 return Destination(BackStackView)
+
+            if self.entropy_source is None:
+                return Destination(
+                    ToolsPasswordEntropySourceView,
+                    view_args=dict(
+                        password_type=self.password_type,
+                        strength_bits=self.strength_bits,
+                        random_options=self.random_options,
+                        dice_sides=dice_sides,
+                        roll_count=roll_count,
+                    ),
+                    skip_current_view=True,
+                )
 
             if self.entropy_source == PASSWORD_ENTROPY_DICE:
                 return Destination(
@@ -14287,11 +14326,15 @@ class ToolsPasswordBIP85GenerateView(View):
         password_type: str,
         strength_bits: int,
         random_options: dict | None = None,
+        dice_sides: int | None = None,
+        roll_count: int | None = None,
     ):
         super().__init__()
         self.password_type = password_type
         self.strength_bits = strength_bits
         self.random_options = random_options or {}
+        self.dice_sides = dice_sides
+        self.roll_count = roll_count
 
     def _prompt_dice_sides(self) -> int | None:
         side_options = [
@@ -14403,12 +14446,16 @@ class ToolsPasswordBIP85GenerateView(View):
 
 
         if self.password_type == PASSWORD_TYPE_DICE_ROLLS:
-            sides = self._prompt_dice_sides()
+            sides = getattr(self, "dice_sides", None)
             if sides is None:
-                return Destination(BackStackView)
-            rolls = self._prompt_roll_count()
+                sides = self._prompt_dice_sides()
+                if sides is None:
+                    return Destination(BackStackView)
+            rolls = getattr(self, "roll_count", None)
             if rolls is None:
-                return Destination(BackStackView)
+                rolls = self._prompt_roll_count()
+                if rolls is None:
+                    return Destination(BackStackView)
             if rolls < 1:
                 self.run_screen(
                     WarningScreen,
