@@ -2384,7 +2384,7 @@ class ToolsSeedkeeperViewSecretsView(View):
                     headers_parsed.append((sid, label))
                     button_data.append(ButtonOption(label))
 
-            logger.info(headers_parsed)
+            logger.debug("headers_parsed: %s", headers_parsed)
             if len(headers_parsed) < 1:
                 self.run_screen(
                 WarningScreen,
@@ -2693,7 +2693,7 @@ class ToolsSeedkeeperDeleteSecretView(View):
                     headers_parsed.append((sid, label))
                     button_data.append(ButtonOption(label))
 
-            logger.info(headers_parsed)
+            logger.debug("headers_parsed: %s", headers_parsed)
             if len(headers_parsed) < 1:
                 self.run_screen(
                 WarningScreen,
@@ -2794,8 +2794,8 @@ class ToolsSeedkeeperLoadDescriptorView(View):
                         multisig_descriptor_secrets.append((sid, label))
                         button_data.append(ButtonOption(label))
 
-            logger.info("Multisig Descriptor Secrets:", multisig_descriptor_secrets)
-            logger.info("Xpub Secrets:",xpub_secrets)
+            logger.debug("Multisig Descriptor Secrets: %s", multisig_descriptor_secrets)
+            logger.debug("Xpub Secrets: %s", xpub_secrets)
 
             self.loading_screen.stop()
 
@@ -2835,7 +2835,7 @@ class ToolsSeedkeeperLoadDescriptorView(View):
 
                 for xpub_secret_id, xpub_secret_label in xpub_secrets: 
                     if xpub_secret_label in secret_template:
-                        logger.info("Matched on:", xpub_secret_label)
+                        logger.debug("Matched on: %s", xpub_secret_label)
                         secret_dict = Satochip_Connector.seedkeeper_export_secret(xpub_secret_id, None)
                         secret_dict['secret'] = unhexlify(secret_dict['secret'])[1:].decode()
                         secret_template = secret_template.replace(xpub_secret_label, secret_dict['secret'])
@@ -2885,7 +2885,7 @@ class ToolsSeedkeeperSaveDescriptorView(View):
             # Break up the descriptor for efficient storage on SeedKeeper Cards
             descriptor_string = descriptor.to_string()
 
-            logger.info(descriptor_string)
+            logger.debug("descriptor_string: %s", descriptor_string)
 
             # Prompt for Descriptor Name
             ret = seed_screens.SeedAddPassphraseScreen(title="Descriptor Label").display()
@@ -2955,8 +2955,8 @@ class ToolsSeedkeeperSaveDescriptorView(View):
                     if stype == "Descriptor": 
                         multisig_descriptor_secrets.append((sid, label))
 
-            logger.info("Multisig Descriptor Secrets:", multisig_descriptor_secrets)
-            logger.info("Xpub Secrets:",xpub_labels)
+            logger.debug("Multisig Descriptor Secrets: %s", multisig_descriptor_secrets)
+            logger.debug("Xpub Secrets: %s", xpub_labels)
 
             multisig_descriptor_templates = []
 
@@ -2967,14 +2967,14 @@ class ToolsSeedkeeperSaveDescriptorView(View):
 
                 multisig_descriptor_templates.append(secret_dict['secret'])
 
-            logger.info(multisig_descriptor_templates)
+            logger.debug("multisig_descriptor_templates: %s", multisig_descriptor_templates)
 
-            logger.info("Key Strings:", key_strings)
+            logger.debug("Key Strings: %s", key_strings)
 
             # Add required secrets to seedkeeper
             for secret_label, secret_text in key_strings:
                 if secret_text in multisig_descriptor_templates or secret_label in xpub_labels:
-                    logger.info("Mached Existing Secret, skipping:", secret_label)
+                    logger.debug("Matched Existing Secret, skipping: %s", secret_label)
                     secrets_skipped += 1
                     continue
                 header = Satochip_Connector.make_header(secret_type, "Plaintext export allowed", secret_label)

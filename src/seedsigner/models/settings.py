@@ -163,10 +163,6 @@ class Settings(Singleton):
 
 
     def update(self, new_settings: dict, persist: bool = True):
-        print("Updating Settings")
-        print("Existing Settings:", self._data) 
-        print()
-        print("New Settings:", new_settings)
         """
             Replaces the current settings with the incoming dict.
 
@@ -218,13 +214,13 @@ class Settings(Singleton):
         """
         if attr_name not in self._data:
             # Outdated settings
-            print(f"Setting {attr_name} not recognized. Ignoring.")
+            logger.debug("Setting %s not recognized. Ignoring.", attr_name)
             return
 
         settings_entry = SettingsDefinition.get_settings_entry(attr_name)
         if not settings_entry:
             # Settings entry may be unavailable on this platform
-            print(f"Setting {attr_name} not found. Ignoring.")
+            logger.debug("Setting %s not found. Ignoring.", attr_name)
             return
 
         if settings_entry.type == SettingsConstants.TYPE__MULTISELECT:
@@ -257,8 +253,8 @@ class Settings(Singleton):
             import seedsigner
             #from seedsigner.gui.screens.screen import LoadingScreenThread, WarningScreen
             
-            print("Smartcard Interface Changed")
-            print("Value:", value)
+            logger.debug("Smartcard Interface Changed")
+            logger.debug("Value: %s", value)
             # Update PCSC ignore list (Needed for IFD-NFC, but also add ability to disable SEC1210 or other readers if required)
             pcscd_ignore_devices = []
             if 'pn532' not in value:
@@ -270,7 +266,7 @@ class Settings(Singleton):
 
             # PCSC supports filtering unwanted devices, but this is done through an environment variable
             # and also requires a restart of PCSC (So it's pretty simple to just edit the init.d file)
-            print("Updating PCSC Ignore List to:", ':'.join(pcscd_ignore_devices))
+            logger.debug("Updating PCSC Ignore List to: %s", ':'.join(pcscd_ignore_devices))
 
             # Only do this on SeedSignerOS, not on dev environment
             if self.HOSTNAME == self.SEEDSIGNER_OS:
@@ -280,7 +276,7 @@ class Settings(Singleton):
 
             # Basically just check through a a bunch of possible USB hubs and ports and enable/disable them all (Should cover all RPi models, RPi4 has lots of USB ports...)
             if not any('usb' in d for d in value) and any('usb' in d for d in self._data[attr_name]):
-                print("Disabling USB")
+                logger.debug("Disabling USB")
                 try:
                     self.loading_screen = seedsigner.gui.screens.screen.LoadingScreenThread(text="Disabling USB Ports")
                     self.loading_screen.start()
@@ -307,7 +303,7 @@ class Settings(Singleton):
                     pass
 
             if any('usb' in d for d in value) and not any('usb' in d for d in self._data[attr_name]):
-                print("Enabling USB")
+                logger.debug("Enabling USB")
                 try:
                     self.loading_screen = seedsigner.gui.screens.screen.LoadingScreenThread(text="Enabling USB Ports")
                     self.loading_screen.start()
@@ -359,7 +355,7 @@ class Settings(Singleton):
 
             # Execution order matters here if swithing from Phoenix to PN532, basically we want to disable phoenix first and then enable PN532
             if "phoenix-usb" in value and "phoenix-usb" not in self._data[attr_name]:
-                print("Phoenix Enabled")
+                logger.debug("Phoenix Enabled")
                 try:
                     self.loading_screen = seedsigner.gui.screens.screen.LoadingScreenThread(text="Starting OpenCT")
                     self.loading_screen.start()
@@ -375,7 +371,7 @@ class Settings(Singleton):
                     pass
 
             if "phoenix-usb" not in value and "phoenix-usb" in self._data[attr_name]:
-                print("Phoenix Disabled")
+                logger.debug("Phoenix Disabled")
                 try:
                     self.loading_screen = seedsigner.gui.screens.screen.LoadingScreenThread(text="Stopping OpenCT")
                     self.loading_screen.start()
@@ -396,7 +392,7 @@ class Settings(Singleton):
                     self.loading_screen.start()
                 except:
                     pass
-                print("PN532 Enabled")
+                logger.debug("PN532 Enabled")
                 os.system("ifdnfc-activate yes")
                 try:
                     self.loading_screen.stop()
@@ -409,7 +405,7 @@ class Settings(Singleton):
                     self.loading_screen.start()
                 except:
                     pass
-                print("PN532 Disabled")
+                logger.debug("PN532 Disabled")
                 os.system("ifdnfc-activate no")
                 try:
                     self.loading_screen.stop()
@@ -491,7 +487,7 @@ class Settings(Singleton):
         with open(path, "w") as f:
             f.write(content)
 
-        print(f"Environment variable set in 'start()' and 'restart()', and removed from global scope.")
+        logger.debug("Environment variable set in 'start()' and 'restart()', and removed from global scope.")
 
     def get_value(self, attr_name: str, default_if_none: bool = None):
         """
@@ -550,7 +546,7 @@ class Settings(Singleton):
         os.environ['LANGUAGE'] = locale
 
         # Re-initialize with the new locale
-        print(f"Set LANGUAGE locale to {os.environ['LANGUAGE']}")
+        logger.debug("Set LANGUAGE locale to %s", os.environ.get('LANGUAGE', ''))
 
 
 
