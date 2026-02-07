@@ -155,6 +155,18 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True):
     # Check for existing card connector
     print("Checking existing card connector...")
     Satochip_Connector = getattr(parentObject.controller, "Satochip_Connector", None)
+
+    # If a specific applet/card filter is requested, do not reuse an existing
+    # connector that may still be attached to a previous flow/card type.
+    # Rebuild the connector with the requested filter to avoid stale state.
+    if Satochip_Connector is not None and init_card_filter:
+        try:
+            Satochip_Connector.card_disconnect()
+        except Exception:
+            pass
+        parentObject.controller.Satochip_Connector = None
+        Satochip_Connector = None
+
     if Satochip_Connector is not None:
         try:
             print("Found existing connector, try to use it...")
