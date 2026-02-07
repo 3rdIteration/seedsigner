@@ -83,6 +83,7 @@ PASSWORD_TYPE_RANDOM = "random"
 PASSWORD_TYPE_DICEWARE_EFF_SHORT = "diceware_eff_short"
 PASSWORD_TYPE_DICEWARE_EFF_LONG = "diceware_eff_long"
 PASSWORD_TYPE_DICEWARE_BIP39 = "diceware_bip39"
+PASSWORD_TYPE_DICE_ROLLS = "dice_rolls"
 PASSWORD_TYPE_HEX = "hex"
 PASSWORD_TYPE_BASE64 = "base64"
 PASSWORD_TYPE_BASE85 = "base85"
@@ -283,6 +284,7 @@ def _bip85_supported_password_type(password_type: str) -> bool:
         PASSWORD_TYPE_DICEWARE_EFF_SHORT,
         PASSWORD_TYPE_DICEWARE_EFF_LONG,
         PASSWORD_TYPE_DICEWARE_BIP39,
+        PASSWORD_TYPE_DICE_ROLLS,
         PASSWORD_TYPE_HEX,
         PASSWORD_TYPE_BASE64,
         PASSWORD_TYPE_BASE85,
@@ -6732,7 +6734,7 @@ class ToolsGPGRebuildBip85KeyView(View):
             )
             return Destination(BackStackView)
 
-        root = bip32.HDKey.from_seed(seed.seed_bytes)
+        root = seed.get_root(self.settings.get_value(SettingsConstants.SETTING__NETWORK))
         KEY_BITS = (
             2048
             if key_type == "rsa2048"
@@ -10840,7 +10842,7 @@ def bip85_verify_existing(
     logger.info(
         "bip85_verify_existing: fpr=%s index=%s", fingerprint, key_index
     )
-    root = bip32.HDKey.from_seed(seed.seed_bytes)
+    root = seed.get_root(self.settings.get_value(SettingsConstants.SETTING__NETWORK))
     created = datetime.fromtimestamp(created_ts, tz=timezone.utc)
     primary_curve = _normalize_bip85_alg(primary_curve)
 
@@ -13459,6 +13461,7 @@ class ToolsPasswordGeneratorTypeView(View):
             (ButtonOption("Diceware-EFF Short"), PASSWORD_TYPE_DICEWARE_EFF_SHORT),
             (ButtonOption("Diceware-EFF Long"), PASSWORD_TYPE_DICEWARE_EFF_LONG),
             (ButtonOption("Diceware-BIP39"), PASSWORD_TYPE_DICEWARE_BIP39),
+            (ButtonOption("Dice Rolls"), PASSWORD_TYPE_DICE_ROLLS),
             (ButtonOption("Hex"), PASSWORD_TYPE_HEX),
             (ButtonOption("Base64"), PASSWORD_TYPE_BASE64),
             (ButtonOption("Base85"), PASSWORD_TYPE_BASE85),
@@ -13473,6 +13476,15 @@ class ToolsPasswordGeneratorTypeView(View):
         if selected_menu_num == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
         password_type = options[selected_menu_num][1]
+        if password_type == PASSWORD_TYPE_DICE_ROLLS:
+            return Destination(
+                ToolsPasswordDiceRollCountView,
+                view_args=dict(
+                    password_type=password_type,
+                    strength_bits=64,
+                    entropy_source=None,
+                ),
+            )
         return Destination(
             ToolsPasswordStrengthView,
             view_args=dict(password_type=password_type),
@@ -13583,11 +13595,15 @@ class ToolsPasswordEntropySourceView(View):
         password_type: str,
         strength_bits: int,
         random_options: dict | None = None,
+        dice_sides: int | None = None,
+        roll_count: int | None = None,
     ):
         super().__init__()
         self.password_type = password_type
         self.strength_bits = strength_bits
         self.random_options = random_options or {}
+        self.dice_sides = dice_sides
+        self.roll_count = roll_count
 
     def _hardware_rng_available(self) -> bool:
         if self.controller.hardware_rng_is_healthy:
@@ -13611,7 +13627,10 @@ class ToolsPasswordEntropySourceView(View):
         hardware_rng = ButtonOption("System RNG")
         bip85 = ButtonOption("BIP85")
 
-        button_data = [camera, dice, hardware_rng, bip85]
+        if self.password_type == PASSWORD_TYPE_DICE_ROLLS:
+            button_data = [camera, hardware_rng, bip85]
+        else:
+            button_data = [camera, dice, hardware_rng, bip85]
 
         selected_menu_num = self.run_screen(
             ButtonListScreen,
@@ -13628,7 +13647,7 @@ class ToolsPasswordEntropySourceView(View):
                 WarningScreen,
                 title=_("Not Supported"),
                 status_headline=None,
-                text=_("BIP85 supports Diceware, Hex, Base64, and Base85."),
+                text=_("BIP85 supports Diceware, Dice Rolls, Hex, Base64, and Base85."),
                 show_back_button=False,
                 button_data=[ButtonOption("I Understand")],
             )
@@ -13668,17 +13687,34 @@ class ToolsPasswordEntropySourceView(View):
                         strength_bits=self.strength_bits,
                         entropy_source=PASSWORD_ENTROPY_CAMERA,
                         random_options=self.random_options,
+                        roll_count=self.roll_count,
+                        dice_sides=self.dice_sides or 6,
                     ),
                 ),
             )
 
         if selected == dice:
+            if self.password_type == PASSWORD_TYPE_DICE_ROLLS and self.dice_sides is not None and self.roll_count is not None:
+                return Destination(
+                    ToolsPasswordDiceEntryView,
+                    view_args=dict(
+                        password_type=self.password_type,
+                        random_options=self.random_options,
+                        strength_bits=self.strength_bits,
+                        total_rolls=self.roll_count,
+                        word_count=None,
+                        entropy_source=PASSWORD_ENTROPY_DICE,
+                        dice_sides=self.dice_sides,
+                    ),
+                    skip_current_view=True,
+                )
             return Destination(
                 ToolsPasswordDiceRollCountView,
                 view_args=dict(
                     password_type=self.password_type,
                     strength_bits=self.strength_bits,
                     random_options=self.random_options,
+                    entropy_source=PASSWORD_ENTROPY_DICE,
                 ),
             )
 
@@ -13701,6 +13737,8 @@ class ToolsPasswordEntropySourceView(View):
                     strength_bits=self.strength_bits,
                     entropy_source=PASSWORD_ENTROPY_HARDWARE_RNG,
                     random_options=self.random_options,
+                    roll_count=self.roll_count,
+                    dice_sides=self.dice_sides or 6,
                 ),
             )
 
@@ -13710,6 +13748,8 @@ class ToolsPasswordEntropySourceView(View):
                 password_type=self.password_type,
                 strength_bits=self.strength_bits,
                 random_options=self.random_options,
+                dice_sides=self.dice_sides,
+                roll_count=self.roll_count,
             ),
         )
 
@@ -13766,7 +13806,7 @@ class ToolsPasswordWordSeparatorView(View):
         password_type: str,
         strength_bits: int,
         random_options: dict | None = None,
-        entropy_source: str = PASSWORD_ENTROPY_DICE,
+        entropy_source: str | None = PASSWORD_ENTROPY_DICE,
     ):
         super().__init__()
         self.password_type = password_type
@@ -13849,6 +13889,31 @@ class ToolsPasswordDiceRollCountView(View):
         self.word_separator = word_separator
         self.entropy_source = entropy_source
 
+    def _prompt_dice_sides(self) -> int | None:
+        side_options = [
+            ButtonOption("6 sides", return_data=6),
+            ButtonOption("10 sides", return_data=10),
+            ButtonOption("20 sides", return_data=20),
+        ]
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title=_("Dice Sides"),
+            is_button_text_centered=False,
+            selected_button=0,
+            button_data=side_options,
+        )
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return None
+        return int(side_options[selected_menu_num].return_data)
+
+    def _prompt_roll_count(self) -> int | None:
+        ret = seed_screens.SeedBIP85SelectChildIndexScreen(title=_("Number of Rolls")).display()
+        if ret == RET_CODE__BACK_BUTTON:
+            return None
+        if not ret:
+            return 0
+        return int(ret)
+
     def run(self):
         if self.password_type in {
             PASSWORD_TYPE_DICEWARE_EFF_SHORT,
@@ -13867,6 +13932,69 @@ class ToolsPasswordDiceRollCountView(View):
                     strength_bits=self.strength_bits,
                     word_count=_diceware_word_count(self.password_type, self.strength_bits),
                     word_separator=self.word_separator,
+                ),
+                skip_current_view=True,
+            )
+
+        if self.password_type == PASSWORD_TYPE_DICE_ROLLS:
+            dice_sides = self._prompt_dice_sides()
+            if dice_sides is None:
+                return Destination(BackStackView)
+
+            roll_count = self._prompt_roll_count()
+            if roll_count is None:
+                return Destination(BackStackView)
+            if roll_count < 1:
+                self.run_screen(
+                    WarningScreen,
+                    title=_("Invalid Input"),
+                    status_headline=None,
+                    text=_("Number of rolls must be at least 1."),
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
+
+            if self.entropy_source is None:
+                return Destination(
+                    ToolsPasswordEntropySourceView,
+                    view_args=dict(
+                        password_type=self.password_type,
+                        strength_bits=self.strength_bits,
+                        random_options=self.random_options,
+                        dice_sides=dice_sides,
+                        roll_count=roll_count,
+                    ),
+                    skip_current_view=True,
+                )
+
+            if self.entropy_source == PASSWORD_ENTROPY_DICE:
+                return Destination(
+                    ToolsPasswordDiceEntryView,
+                    view_args=dict(
+                        password_type=self.password_type,
+                        random_options=self.random_options,
+                        strength_bits=self.strength_bits,
+                        total_rolls=roll_count,
+                        word_count=None,
+                        word_separator=self.word_separator,
+                        entropy_source=PASSWORD_ENTROPY_DICE,
+                        dice_sides=dice_sides,
+                    ),
+                    skip_current_view=True,
+                )
+
+            return Destination(
+                ToolsPasswordGenerateView,
+                view_args=dict(
+                    password_type=self.password_type,
+                    entropy_source=self.entropy_source,
+                    random_options=self.random_options,
+                    strength_bits=self.strength_bits,
+                    roll_count=roll_count,
+                    word_count=None,
+                    word_separator=self.word_separator,
+                    dice_sides=dice_sides,
                 ),
                 skip_current_view=True,
             )
@@ -13911,6 +14039,7 @@ class ToolsPasswordDiceEntryView(View):
         word_count: int | None = None,
         word_separator: str = PASSWORD_WORD_SEPARATOR_NONE,
         entropy_source: str = PASSWORD_ENTROPY_DICE,
+        dice_sides: int = 6,
     ):
         super().__init__()
         self.password_type = password_type
@@ -13920,6 +14049,7 @@ class ToolsPasswordDiceEntryView(View):
         self.word_count = word_count
         self.word_separator = word_separator
         self.entropy_source = entropy_source
+        self.dice_sides = dice_sides
 
     def run(self):
         ret = ToolsDiceEntropyEntryScreen(
@@ -13970,6 +14100,7 @@ class ToolsPasswordDiceEntryView(View):
                 roll_count=self.total_rolls,
                 word_count=self.word_count,
                 word_separator=self.word_separator,
+                dice_sides=self.dice_sides,
             ),
         )
 
@@ -13986,6 +14117,7 @@ class ToolsPasswordGenerateView(View):
         word_count: int | None = None,
         word_separator: str = PASSWORD_WORD_SEPARATOR_NONE,
         entropy_bytes_override: bytes | None = None,
+        dice_sides: int = 6,
     ):
         super().__init__()
         self.password_type = password_type
@@ -13997,6 +14129,7 @@ class ToolsPasswordGenerateView(View):
         self.word_count = word_count
         self.word_separator = word_separator
         self.entropy_bytes_override = entropy_bytes_override
+        self.dice_sides = dice_sides
 
     def _bip39_words_from_entropy(self, seed: bytes, word_count: int) -> list[str]:
         wordlist = Seed.get_wordlist(
@@ -14134,6 +14267,16 @@ class ToolsPasswordGenerateView(View):
                 password = password_generation.random_string_from_charset(
                     entropy_bytes, length, charset
                 )
+            elif self.password_type == PASSWORD_TYPE_DICE_ROLLS:
+                if self.roll_count is None:
+                    raise ValueError("Roll count is required")
+                rolls = password_generation.dice_roll_values_from_seed(
+                    entropy_bytes,
+                    sides=self.dice_sides,
+                    roll_count=self.roll_count,
+                    base=0,
+                )
+                password = ",".join(str(roll) for roll in rolls)
             elif self.password_type == PASSWORD_TYPE_HEX:
                 if self.entropy_source == PASSWORD_ENTROPY_DICE:
                     length = self._dice_length_for_charset(16)
@@ -14186,14 +14329,43 @@ class ToolsPasswordBIP85GenerateView(View):
         password_type: str,
         strength_bits: int,
         random_options: dict | None = None,
+        dice_sides: int | None = None,
+        roll_count: int | None = None,
     ):
         super().__init__()
         self.password_type = password_type
         self.strength_bits = strength_bits
         self.random_options = random_options or {}
+        self.dice_sides = dice_sides
+        self.roll_count = roll_count
+
+    def _prompt_dice_sides(self) -> int | None:
+        side_options = [
+            ButtonOption("6 sides", return_data=6),
+            ButtonOption("10 sides", return_data=10),
+            ButtonOption("20 sides", return_data=20),
+        ]
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title=_("Dice Sides"),
+            is_button_text_centered=False,
+            selected_button=0,
+            button_data=side_options,
+        )
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return None
+        return int(side_options[selected_menu_num].return_data)
+
+    def _prompt_roll_count(self) -> int | None:
+        ret = seed_screens.SeedBIP85SelectChildIndexScreen(title=_("Number of Rolls")).display()
+        if ret == RET_CODE__BACK_BUTTON:
+            return None
+        if not ret:
+            return 0
+        return int(ret)
 
     def run(self):
-        from embit import bip32, bip85
+        from embit import bip85
 
         if len(self.controller.storage.seeds) == 0:
             self.run_screen(
@@ -14237,7 +14409,7 @@ class ToolsPasswordBIP85GenerateView(View):
             return Destination(BackStackView)
         index = int(ret)
 
-        root = bip32.HDKey.from_seed(seed.seed_bytes)
+        root = seed.get_root(self.settings.get_value(SettingsConstants.SETTING__NETWORK))
 
         if self.password_type in {
             PASSWORD_TYPE_DICEWARE_EFF_SHORT,
@@ -14275,6 +14447,42 @@ class ToolsPasswordBIP85GenerateView(View):
                 ),
             )
 
+
+        if self.password_type == PASSWORD_TYPE_DICE_ROLLS:
+            sides = getattr(self, "dice_sides", None)
+            if sides is None:
+                sides = self._prompt_dice_sides()
+                if sides is None:
+                    return Destination(BackStackView)
+            rolls = getattr(self, "roll_count", None)
+            if rolls is None:
+                rolls = self._prompt_roll_count()
+                if rolls is None:
+                    return Destination(BackStackView)
+            if rolls < 1:
+                self.run_screen(
+                    WarningScreen,
+                    title=_("Invalid Input"),
+                    status_headline=None,
+                    text=_("Number of rolls must be at least 1."),
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
+
+            entropy = bip85.derive_entropy(root, BIP85_APP_DICE, [sides, rolls, index])
+            return Destination(
+                ToolsPasswordGenerateView,
+                view_args=dict(
+                    password_type=self.password_type,
+                    entropy_source=PASSWORD_ENTROPY_BIP85,
+                    strength_bits=self.strength_bits,
+                    random_options=self.random_options,
+                    roll_data=entropy,
+                    roll_count=rolls,
+                    dice_sides=sides,
+                ),
+            )
 
         if self.password_type == PASSWORD_TYPE_HEX:
             num_bytes = _strength_to_length(self.strength_bits, 256)
