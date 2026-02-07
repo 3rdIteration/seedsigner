@@ -7,6 +7,9 @@ class TapsignerBackupError(Exception):
     """Raised when a TAPSIGNER backup cannot be processed."""
 
 
+DECRYPTION_ERROR_TEXT = "Unable to decrypt backup. Check backup key."
+
+
 def decode_tapsigner_backup(path: Path, backup_key_hex: str) -> tuple[str, str | None]:
     if not path.is_file():
         raise TapsignerBackupError("Backup file not found.")
@@ -31,11 +34,11 @@ def decode_tapsigner_backup(path: Path, backup_key_hex: str) -> tuple[str, str |
     lines = [line.strip() for line in text.split("\n") if line.strip()]
 
     if not lines:
-        raise TapsignerBackupError("Backup decrypt failed.")
+        raise TapsignerBackupError(DECRYPTION_ERROR_TEXT)
 
     xprv = lines[0]
     if not xprv.startswith("xprv"):
-        raise TapsignerBackupError("Backup does not contain an xprv.")
+        raise TapsignerBackupError(DECRYPTION_ERROR_TEXT)
 
     derivation_path = lines[1] if len(lines) > 1 else None
     return xprv, derivation_path
