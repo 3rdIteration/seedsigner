@@ -1,7 +1,7 @@
 import os
 import json
 import pytest
-from seedsigner.models.seed import InvalidSeedException, Seed, ElectrumSeed, Slip39Seed
+from seedsigner.models.seed import InvalidSeedException, Seed, ElectrumSeed, Slip39Seed, SeedWordsUnavailableException, XprvSeed
 from seedsigner.models.decode_qr import DecodeQR, DecodeQRStatus
 import shamir_mnemonic
 
@@ -43,6 +43,14 @@ def test_seed():
     # assert seed.passphrase == "test"
 
     
+
+def test_xprv_seed_has_no_seed_words():
+    xprv = "xprv9s21ZrQH143K2LBWUUQRFXhucrQqBpKdRRxNVq2zBqsx8HVqFk2uYo8kmbaLLHRdqtQpUm98uKfu3vca1LqdGhUtyoFnCNkfmXRyPXLjbKb"
+    seed = XprvSeed(xprv)
+
+    with pytest.raises(SeedWordsUnavailableException, match="does not have seed words"):
+        _ = seed.mnemonic_display_list
+
 def test_electrum_seed():
     """
     ElectrumSeed should correctly parse a modern Electrum mnemonic.

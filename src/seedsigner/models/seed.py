@@ -18,6 +18,9 @@ class InvalidSeedException(Exception):
     pass
 
 
+class SeedWordsUnavailableException(Exception):
+    pass
+
 
 class Seed:
     def __init__(self,
@@ -177,6 +180,11 @@ class Seed:
 
         # TODO: Support other BIP-39 wordlist languages!
         return bip85.derive_mnemonic(root, bip85_num_words, bip85_index)
+
+
+    def ensure_seed_words_available(self):
+        """Raise if this seed type does not expose mnemonic words."""
+        return
         
 
     ### override operators    
@@ -433,6 +441,17 @@ class XprvSeed(Seed):
     @property
     def mnemonic_str(self) -> str:
         return ""
+
+    @property
+    def mnemonic_display_str(self) -> str:
+        self.ensure_seed_words_available()
+
+    @property
+    def mnemonic_display_list(self) -> List[str]:
+        self.ensure_seed_words_available()
+
+    def ensure_seed_words_available(self):
+        raise SeedWordsUnavailableException("This seed type does not have seed words.")
 
     @property
     def has_passphrase(self):

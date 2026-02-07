@@ -38,7 +38,7 @@ from seedsigner.helpers.tapsigner_backup import (
 )
 from seedsigner.models.encode_qr import CompactSeedQrEncoder, GenericStaticQrEncoder, SeedQrEncoder, SpecterXPubQrEncoder, StaticXpubQrEncoder, UrXpubQrEncoder
 from seedsigner.models.qr_type import QRType
-from seedsigner.models.seed import Seed, Slip39Seed, ElectrumSeed, XprvSeed, InvalidSeedException
+from seedsigner.models.seed import Seed, Slip39Seed, ElectrumSeed, XprvSeed, InvalidSeedException, SeedWordsUnavailableException
 from seedsigner.models.settings import Settings, SettingsConstants
 from seedsigner.models.settings_definition import SettingsDefinition
 from seedsigner.models.threads import BaseThread, ThreadsafeCounter
@@ -2406,7 +2406,18 @@ class SeedWordsView(View):
             if isinstance(self.seed, Slip39Seed) and self.share_index is not None:
                 mnemonic = self.seed.mnemonic_list[self.share_index].split()
             else:
-                mnemonic = self.seed.mnemonic_display_list
+                try:
+                    mnemonic = self.seed.mnemonic_display_list
+                except SeedWordsUnavailableException as e:
+                    self.run_screen(
+                        WarningScreen,
+                        title=_("Seed Words"),
+                        status_headline=None,
+                        text=str(e),
+                        show_back_button=False,
+                        button_data=[ButtonOption(_("OK"))],
+                    )
+                    return Destination(BackStackView)
             title = _("Seed Words")
         words = mnemonic[self.page_index*words_per_page:(self.page_index + 1)*words_per_page]
 

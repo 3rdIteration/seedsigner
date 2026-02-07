@@ -50,6 +50,23 @@ class TestSeedFlows(FlowTest):
         ])
 
 
+    def test_xprv_view_seed_words_shows_human_message(self):
+        self.settings.set_value(SettingsConstants.SETTING__DIRE_WARNINGS, SettingsConstants.OPTION__DISABLED)
+
+        self.run_sequence([
+            FlowStep(MainMenuView, button_data_selection=MainMenuView.SCAN),
+            FlowStep(scan_views.ScanView, before_run=load_xprv_into_decoder),
+            FlowStep(seed_views.SeedFinalizeView, button_data_selection=seed_views.SeedFinalizeView.FINALIZE),
+            FlowStep(seed_views.SeedOptionsView, button_data_selection=seed_views.SeedOptionsView.BACKUP),
+            FlowStep(seed_views.SeedBackupView, button_data_selection=seed_views.SeedBackupView.VIEW_WORDS),
+            FlowStep(seed_views.SeedWordsWarningView, is_redirect=True),
+            FlowStep(seed_views.SeedWordsView),
+            FlowStep(seed_views.SeedBackupView),
+        ])
+
+
+
+
     def test_passphrase_entry_flow(self):
         """
         Opting to add a bip39 passphrase on the Finalize Seed screen should enter the
