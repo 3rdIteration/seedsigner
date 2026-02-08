@@ -2794,8 +2794,8 @@ class ToolsSeedkeeperLoadDescriptorView(View):
                         multisig_descriptor_secrets.append((sid, label))
                         button_data.append(ButtonOption(label))
 
-            logger.debug("Multisig Descriptor Secrets: %s", multisig_descriptor_secrets)
-            logger.debug("Xpub Secrets: %s", xpub_secrets)
+            logger.debug("Found %d multisig descriptor secrets", len(multisig_descriptor_secrets))
+            logger.debug("Found %d xpub secrets", len(xpub_secrets))
 
             self.loading_screen.stop()
 
