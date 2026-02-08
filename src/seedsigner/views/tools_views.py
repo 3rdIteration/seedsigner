@@ -2955,8 +2955,8 @@ class ToolsSeedkeeperSaveDescriptorView(View):
                     if stype == "Descriptor": 
                         multisig_descriptor_secrets.append((sid, label))
 
-            logger.debug("Multisig Descriptor Secrets: %s", multisig_descriptor_secrets)
-            logger.debug("Xpub Secrets: %s", xpub_labels)
+            logger.debug("Found %d multisig descriptor secrets", len(multisig_descriptor_secrets))
+            logger.debug("Found %d xpub labels", len(xpub_labels))
 
             multisig_descriptor_templates = []
 
