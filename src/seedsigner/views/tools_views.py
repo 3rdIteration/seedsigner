@@ -10836,7 +10836,9 @@ def bip85_verify_existing(
     from datetime import datetime, timezone
 
     logger.info(
-        "bip85_verify_existing: fpr=%s index=%s", fingerprint, key_index
+        "bip85_verify_existing: fpr(last8)=%s index=%s",
+        fingerprint[-8:] if fingerprint else "None",
+        key_index,
     )
     if hasattr(seed, "get_root"):
         root = seed.get_root()
