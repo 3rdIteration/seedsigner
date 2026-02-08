@@ -2624,7 +2624,7 @@ class ToolsSeedkeeperViewSecretsView(View):
                     headers_parsed.append((sid, label))
                     button_data.append(ButtonOption(label))
 
-            logger.info(headers_parsed)
+            logger.debug("headers_parsed: %s", headers_parsed)
             if len(headers_parsed) < 1:
                 self.run_screen(
                 WarningScreen,
@@ -2933,7 +2933,7 @@ class ToolsSeedkeeperDeleteSecretView(View):
                     headers_parsed.append((sid, label))
                     button_data.append(ButtonOption(label))
 
-            logger.info(headers_parsed)
+            logger.debug("headers_parsed: %s", headers_parsed)
             if len(headers_parsed) < 1:
                 self.run_screen(
                 WarningScreen,
@@ -3034,8 +3034,8 @@ class ToolsSeedkeeperLoadDescriptorView(View):
                         multisig_descriptor_secrets.append((sid, label))
                         button_data.append(ButtonOption(label))
 
-            logger.info("Multisig Descriptor Secrets:", multisig_descriptor_secrets)
-            logger.info("Xpub Secrets:",xpub_secrets)
+            logger.debug("Found %d multisig descriptor secrets", len(multisig_descriptor_secrets))
+            logger.debug("Found %d xpub secrets", len(xpub_secrets))
 
             self.loading_screen.stop()
 
@@ -3073,9 +3073,9 @@ class ToolsSeedkeeperLoadDescriptorView(View):
                 secret_dict['secret'] = unhexlify(secret_dict['secret'])[1:].decode()
                 secret_template = secret_dict['secret']
 
-                for xpub_secret_id, xpub_secret_label in xpub_secrets: 
+                for idx, (xpub_secret_id, xpub_secret_label) in enumerate(xpub_secrets):
                     if xpub_secret_label in secret_template:
-                        logger.info("Matched on:", xpub_secret_label)
+                        logger.debug("Matched on an xpub secret label at index %d", idx)
                         secret_dict = Satochip_Connector.seedkeeper_export_secret(xpub_secret_id, None)
                         secret_dict['secret'] = unhexlify(secret_dict['secret'])[1:].decode()
                         secret_template = secret_template.replace(xpub_secret_label, secret_dict['secret'])
@@ -3125,7 +3125,7 @@ class ToolsSeedkeeperSaveDescriptorView(View):
             # Break up the descriptor for efficient storage on SeedKeeper Cards
             descriptor_string = descriptor.to_string()
 
-            logger.info(descriptor_string)
+            logger.debug("descriptor_string: %s", descriptor_string)
 
             # Prompt for Descriptor Name
             ret = seed_screens.SeedAddPassphraseScreen(title="Descriptor Label").display()
@@ -3195,8 +3195,8 @@ class ToolsSeedkeeperSaveDescriptorView(View):
                     if stype == "Descriptor": 
                         multisig_descriptor_secrets.append((sid, label))
 
-            logger.info("Multisig Descriptor Secrets:", multisig_descriptor_secrets)
-            logger.info("Xpub Secrets:",xpub_labels)
+            logger.debug("Found %d multisig descriptor secrets", len(multisig_descriptor_secrets))
+            logger.debug("Found %d xpub labels", len(xpub_labels))
 
             multisig_descriptor_templates = []
 
@@ -3207,14 +3207,16 @@ class ToolsSeedkeeperSaveDescriptorView(View):
 
                 multisig_descriptor_templates.append(secret_dict['secret'])
 
-            logger.info(multisig_descriptor_templates)
+            logger.debug("Loaded %d multisig descriptor templates from Seedkeeper", len(multisig_descriptor_templates))
 
-            logger.info("Key Strings:", key_strings)
+            # Do not log key_strings directly, as it may contain sensitive descriptor labels or passphrases
+            logger.debug("Prepared %d key strings for Seedkeeper import", len(key_strings))
 
             # Add required secrets to seedkeeper
-            for secret_label, secret_text in key_strings:
+            for idx, (secret_label, secret_text) in enumerate(key_strings):
                 if secret_text in multisig_descriptor_templates or secret_label in xpub_labels:
-                    logger.info("Mached Existing Secret, skipping:", secret_label)
+                    # Do not log secret labels directly, as they may contain sensitive information
+                    logger.debug("Matched existing secret at index %d; skipping import", idx)
                     secrets_skipped += 1
                     continue
                 header = Satochip_Connector.make_header(secret_type, "Plaintext export allowed", secret_label)
