@@ -2685,8 +2685,8 @@ class ToolsSeedkeeperViewSecretsView(View):
                 wordlist_byte = secret_raw_bytes[offset]
                 offset+=1
                 wordlist = BIP39_WORDLIST_DIC.get(wordlist_byte)
-                if wordlist == None:
-                    logger.info(f"Error: wordlist byte {wordlist_byte} unsupported!")
+                if wordlist is None:
+                    logger.info("Error: unsupported BIP39 wordlist identifier encountered")
                     exit()
                 
                 entropy_size = secret_raw_bytes[offset]
@@ -5844,8 +5844,7 @@ def parse_uid_list(colon_output: str):
 def filter_deletable_subkeys(primary_fpr: str, subkeys):
     bip85 = primary_fpr in BIP85_DATA
     logger.info(
-        "filter_deletable_subkeys: fpr=%s bip85=%s subkey_count=%s",
-        primary_fpr,
+        "filter_deletable_subkeys: bip85=%s subkey_count=%s",
         bip85,
         len(subkeys),
     )
@@ -10836,7 +10835,9 @@ def bip85_verify_existing(
     from datetime import datetime, timezone
 
     logger.info(
-        "bip85_verify_existing: fpr=%s index=%s", fingerprint, key_index
+        "bip85_verify_existing: fpr(last8)=%s index=%s",
+        "redacted" if fingerprint else "None",
+        key_index,
     )
     if hasattr(seed, "get_root"):
         root = seed.get_root()
@@ -10888,9 +10889,7 @@ def bip85_verify_existing(
     primary._key = pk
     if primary.fingerprint != fingerprint:
         logger.warning(
-            "Primary key fingerprint mismatch: expected %s got %s",
-            fingerprint,
-            primary.fingerprint,
+            "Primary key fingerprint mismatch during BIP85 verification"
         )
         return False
 
@@ -10979,9 +10978,11 @@ def bip85_add_subkeys(
     from pgpy.packet.types import MPI
     from Cryptodome.PublicKey import RSA
 
+    # Log only a shortened version of the fingerprint to avoid exposing the full value
+    fpr_short = fingerprint[-8:] if fingerprint else ""
     logger.info(
-        "bip85_add_subkeys: fpr=%s alg=%s key_index=%s start_index=%s",
-        fingerprint,
+        "bip85_add_subkeys: fpr_suffix=%s alg=%s key_index=%s start_index=%s",
+        fpr_short,
         alg,
         key_index,
         start_index,
@@ -11661,9 +11662,10 @@ class ToolsGPGAddSubkeysView(View):
         created_ts = keys[selected]["created"]
         entry = BIP85_DATA.get(fingerprint)
         bip85 = entry is not None
+        fingerprint_suffix = fingerprint[-8:] if isinstance(fingerprint, str) and len(fingerprint) >= 8 else fingerprint
         logger.info(
-            "AddSubkeysView: fpr=%s bip85=%s start_index=%s",
-            fingerprint,
+            "AddSubkeysView: fpr_suffix=%s bip85=%s start_index=%s",
+            fingerprint_suffix,
             bip85,
             start_index,
         )
@@ -11711,9 +11713,10 @@ class ToolsGPGAddSubkeysView(View):
                 primary_curve,
                 subkeys,
             ):
+                fingerprint_suffix = fingerprint[-8:] if fingerprint else "unknown"
                 logger.warning(
-                    "Selected seed/index failed validation for fingerprint %s",
-                    fingerprint,
+                    "Selected seed/index failed validation for fingerprint ending with %s",
+                    fingerprint_suffix,
                 )
                 corrected = None
                 for i in range(base_index - 1, -1, -1):
