@@ -2969,7 +2969,8 @@ class ToolsSeedkeeperSaveDescriptorView(View):
 
             logger.debug("Loaded %d multisig descriptor templates from Seedkeeper", len(multisig_descriptor_templates))
 
-            logger.debug("Key Strings: %s", key_strings)
+            # Do not log key_strings directly, as it may contain sensitive descriptor labels or passphrases
+            logger.debug("Prepared %d key strings for Seedkeeper import", len(key_strings))
 
             # Add required secrets to seedkeeper
             for idx, (secret_label, secret_text) in enumerate(key_strings):
