@@ -579,3 +579,40 @@ def test_entropy_source_for_dice_rolls_excludes_dice_option(monkeypatch):
     assert dest.view_args["entropy_source"] == tools_views.PASSWORD_ENTROPY_HARDWARE_RNG
     assert dest.view_args["dice_sides"] == 6
     assert dest.view_args["roll_count"] == 10
+
+
+def test_tools_menu_back_returns_back_stack(monkeypatch):
+    view = object.__new__(tools_views.ToolsMenuView)
+
+    class Settings:
+        @staticmethod
+        def get_value(_key):
+            return tools_views.SettingsConstants.OPTION__DISABLED
+
+    view.settings = Settings()
+
+    monkeypatch.setattr(
+        tools_views.ToolsMenuView,
+        "run_screen",
+        lambda self, *_args, **_kwargs: tools_views.RET_CODE__BACK_BUTTON,
+    )
+
+    dest = tools_views.ToolsMenuView.run(view)
+
+    assert dest.View_cls is tools_views.BackStackView
+
+
+def test_network_info_back_returns_back_stack(monkeypatch):
+    view = object.__new__(tools_views.ToolsNetworkInfoView)
+    view.page_num = 0
+    view.paged_info = ["page"]
+
+    monkeypatch.setattr(
+        tools_views.ToolsNetworkInfoView,
+        "run_screen",
+        lambda self, *_args, **_kwargs: tools_views.RET_CODE__BACK_BUTTON,
+    )
+
+    dest = tools_views.ToolsNetworkInfoView.run(view)
+
+    assert dest.View_cls is tools_views.BackStackView
