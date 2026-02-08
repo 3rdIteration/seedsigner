@@ -2967,7 +2967,7 @@ class ToolsSeedkeeperSaveDescriptorView(View):
 
                 multisig_descriptor_templates.append(secret_dict['secret'])
 
-            logger.debug("multisig_descriptor_templates: %s", multisig_descriptor_templates)
+            logger.debug("Loaded %d multisig descriptor templates from Seedkeeper", len(multisig_descriptor_templates))
 
             logger.debug("Key Strings: %s", key_strings)
 
