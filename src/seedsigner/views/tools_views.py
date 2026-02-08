@@ -373,16 +373,7 @@ class ToolsMenuView(View):
         )
 
         if selected_menu_num == RET_CODE__BACK_BUTTON:
-            _clear_password_entropy_cache(self.controller)
-            return Destination(
-                ToolsPasswordEntropySourceView,
-                view_args=dict(
-                    password_type=self.password_type,
-                    strength_bits=self.strength_bits,
-                    random_options=self.random_options,
-                ),
-                skip_current_view=True,
-            )
+            return Destination(BackStackView)
 
         elif button_data[selected_menu_num] == self.IMAGE:
             return Destination(ToolsImageEntropyLivePreviewView)
@@ -549,16 +540,7 @@ class ToolsNetworkInfoView(View):
         )
 
         if selected_menu_num == RET_CODE__BACK_BUTTON:
-            _clear_password_entropy_cache(self.controller)
-            return Destination(
-                ToolsPasswordEntropySourceView,
-                view_args=dict(
-                    password_type=self.password_type,
-                    strength_bits=self.strength_bits,
-                    random_options=self.random_options,
-                ),
-                skip_current_view=True,
-            )
+            return Destination(BackStackView)
 
         if self.page_num >= len(self.paged_info) - 1:
             return Destination(BackStackView)
