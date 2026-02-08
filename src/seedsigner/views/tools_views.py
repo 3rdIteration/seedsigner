@@ -11713,9 +11713,10 @@ class ToolsGPGAddSubkeysView(View):
                 primary_curve,
                 subkeys,
             ):
+                fingerprint_suffix = fingerprint[-8:] if fingerprint else "unknown"
                 logger.warning(
-                    "Selected seed/index failed validation for fingerprint %s",
-                    fingerprint,
+                    "Selected seed/index failed validation for fingerprint ending with %s",
+                    fingerprint_suffix,
                 )
                 corrected = None
                 for i in range(base_index - 1, -1, -1):
