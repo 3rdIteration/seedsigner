@@ -13501,7 +13501,6 @@ class ToolsPasswordStrengthView(View):
 
     def run(self):
         options = [
-            ButtonOption("32 bits", return_data=32),
             ButtonOption("64 bits", return_data=64),
             ButtonOption("128 bits", return_data=128),
             ButtonOption("256 bits", return_data=256),
