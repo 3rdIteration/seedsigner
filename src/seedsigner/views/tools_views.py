@@ -1550,6 +1550,7 @@ class ToolsSmartcardGenuineCheckView(View):
             return Destination(BackStackView)
 
         try:
+            initial_uid = getattr(Satochip_Connector, "UID_SHA1", None)
             is_genuine, _, _, _, txt_error = Satochip_Connector.card_verify_authenticity()
 
             # Workaround for occasional incorrect UID calculation in pysatochip
@@ -1564,8 +1565,15 @@ class ToolsSmartcardGenuineCheckView(View):
                         init_card_filter=card_filter,
                         require_pin=False,
                     )
-                    Satochip_Connector.set_pin(0, temp_pin)
-                    if Satochip_Connector:
+                    retry_uid = getattr(Satochip_Connector, "UID_SHA1", None)
+                    can_retry_authenticity = True
+                    if temp_pin and initial_uid == retry_uid:
+                        Satochip_Connector.set_pin(0, temp_pin)
+                    elif temp_pin:
+                        can_retry_authenticity = False
+                        txt_error = "Card changed during retry; re-enter PIN for this card."
+
+                    if Satochip_Connector and can_retry_authenticity:
                         is_genuine, _, _, _, txt_error = (
                             Satochip_Connector.card_verify_authenticity()
                         )
