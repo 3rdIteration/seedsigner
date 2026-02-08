@@ -2972,9 +2972,10 @@ class ToolsSeedkeeperSaveDescriptorView(View):
             logger.debug("Key Strings: %s", key_strings)
 
             # Add required secrets to seedkeeper
-            for secret_label, secret_text in key_strings:
+            for idx, (secret_label, secret_text) in enumerate(key_strings):
                 if secret_text in multisig_descriptor_templates or secret_label in xpub_labels:
-                    logger.debug("Matched Existing Secret, skipping: %s", secret_label)
+                    # Do not log secret labels directly, as they may contain sensitive information
+                    logger.debug("Matched existing secret at index %d; skipping import", idx)
                     secrets_skipped += 1
                     continue
                 header = Satochip_Connector.make_header(secret_type, "Plaintext export allowed", secret_label)
