@@ -13460,14 +13460,14 @@ class ToolsTextQRReviewTextView2(View):
 class ToolsPasswordGeneratorTypeView(View):
     def run(self):
         options = [
-            (ButtonOption("Random"), PASSWORD_TYPE_RANDOM),
+            (ButtonOption("Custom"), PASSWORD_TYPE_RANDOM),
             (ButtonOption("Diceware-EFF Short"), PASSWORD_TYPE_DICEWARE_EFF_SHORT),
             (ButtonOption("Diceware-EFF Long"), PASSWORD_TYPE_DICEWARE_EFF_LONG),
             (ButtonOption("Diceware-BIP39"), PASSWORD_TYPE_DICEWARE_BIP39),
-            (ButtonOption("Dice Rolls"), PASSWORD_TYPE_DICE_ROLLS),
-            (ButtonOption("Hex"), PASSWORD_TYPE_HEX),
-            (ButtonOption("Base64"), PASSWORD_TYPE_BASE64),
             (ButtonOption("Base85"), PASSWORD_TYPE_BASE85),
+            (ButtonOption("Base64"), PASSWORD_TYPE_BASE64),
+            (ButtonOption("Hex"), PASSWORD_TYPE_HEX),
+            (ButtonOption("Dice Rolls"), PASSWORD_TYPE_DICE_ROLLS),
         ]
         button_data = [button for button, _ in options]
         selected_menu_num = self.run_screen(
@@ -13830,6 +13830,7 @@ class ToolsPasswordWordSeparatorView(View):
             ButtonListScreen,
             title=_("Separator"),
             is_button_text_centered=False,
+            selected_button=1,
             button_data=[button for button, _ in separator_options],
         )
         if selected_menu_num == RET_CODE__BACK_BUTTON:
