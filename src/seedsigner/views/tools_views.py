@@ -10837,7 +10837,7 @@ def bip85_verify_existing(
 
     logger.info(
         "bip85_verify_existing: fpr(last8)=%s index=%s",
-        fingerprint[-8:] if fingerprint else "None",
+        "redacted" if fingerprint else "None",
         key_index,
     )
     if hasattr(seed, "get_root"):
