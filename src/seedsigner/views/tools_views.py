@@ -2833,9 +2833,9 @@ class ToolsSeedkeeperLoadDescriptorView(View):
                 secret_dict['secret'] = unhexlify(secret_dict['secret'])[1:].decode()
                 secret_template = secret_dict['secret']
 
-                for xpub_secret_id, xpub_secret_label in xpub_secrets: 
+                for idx, (xpub_secret_id, xpub_secret_label) in enumerate(xpub_secrets):
                     if xpub_secret_label in secret_template:
-                        logger.debug("Matched on: %s", xpub_secret_label)
+                        logger.debug("Matched on an xpub secret label at index %d", idx)
                         secret_dict = Satochip_Connector.seedkeeper_export_secret(xpub_secret_id, None)
                         secret_dict['secret'] = unhexlify(secret_dict['secret'])[1:].decode()
                         secret_template = secret_template.replace(xpub_secret_label, secret_dict['secret'])
