@@ -146,6 +146,32 @@ def test_separator_reuses_cached_entropy_without_recollect():
     assert dest.view_args["word_separator"] == tools_views.PASSWORD_WORD_SEPARATOR_SPACE
 
 
+def test_separator_defaults_to_capitalise(monkeypatch):
+    view = object.__new__(tools_views.ToolsPasswordWordSeparatorView)
+    view.password_type = tools_views.PASSWORD_TYPE_DICEWARE_EFF_SHORT
+    view.strength_bits = 64
+    view.random_options = {}
+    view.entropy_source = tools_views.PASSWORD_ENTROPY_DICE
+
+    class C:
+        pass
+
+    view.controller = C()
+    view.controller.password_generator_entropy_cache = None
+
+    captured = {}
+
+    def fake_run_screen(self, _screen_cls, **kwargs):
+        captured["selected_button"] = kwargs["selected_button"]
+        return tools_views.RET_CODE__BACK_BUTTON
+
+    monkeypatch.setattr(tools_views.ToolsPasswordWordSeparatorView, "run_screen", fake_run_screen)
+
+    tools_views.ToolsPasswordWordSeparatorView.run(view)
+
+    assert captured["selected_button"] == 1
+
+
 def test_dice_entry_routes_diceware_to_separator_and_caches(monkeypatch):
     view = object.__new__(tools_views.ToolsPasswordDiceEntryView)
     view.password_type = tools_views.PASSWORD_TYPE_DICEWARE_EFF_SHORT
@@ -262,10 +288,17 @@ def test_password_generate_view_formats_dice_rolls(monkeypatch):
 
 def test_dice_rolls_type_prompts_sides_and_rolls_before_entropy_source(monkeypatch):
     view = object.__new__(tools_views.ToolsPasswordGeneratorTypeView)
+
+    def fake_run_screen(self, _screen_cls, **kwargs):
+        button_labels = [button.button_label for button in kwargs["button_data"]]
+        assert button_labels[0] == "Custom"
+        assert button_labels[-3:] == ["Base64", "Hex", "Dice Rolls"]
+        return len(button_labels) - 1
+
     monkeypatch.setattr(
         tools_views.ToolsPasswordGeneratorTypeView,
         "run_screen",
-        lambda self, *_args, **_kwargs: 4,
+        fake_run_screen,
     )
 
     dest = tools_views.ToolsPasswordGeneratorTypeView.run(view)
