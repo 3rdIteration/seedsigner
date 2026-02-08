@@ -4,7 +4,7 @@ import base  # ensure hardware mocks
 import os
 import shutil
 from embit import bip32, bip85
-from seedsigner.models.seed import Seed
+from seedsigner.models.seed import Seed, XprvSeed
 from seedsigner.controller import Controller
 from seedsigner.gui.screens import RET_CODE__BACK_BUTTON, WarningScreen
 from seedsigner.views import tools_views
@@ -499,6 +499,61 @@ def test_bip85_verify_existing_supports_cv25519():
 
     assert bip85_verify_existing(
         seed,
+        primary.fingerprint,
+        0,
+        BIP85_GPG_CREATED_TS,
+        "22",
+        "255",
+        "ed25519",
+        subkeys,
+    )
+
+
+
+
+def test_bip85_verify_existing_supports_cv25519_with_xprv_seed():
+    import datetime
+    from pgpy import PGPKey
+    from pgpy.pgp import PrivKeyV4, PrivSubKeyV4
+    from pgpy.constants import PubKeyAlgorithm
+
+    seed = Seed(mnemonic=MNEMONIC)
+    root = bip32.HDKey.from_seed(seed.seed_bytes)
+    xprv_seed = XprvSeed(root.to_base58())
+    created = datetime.datetime.fromtimestamp(
+        BIP85_GPG_CREATED_TS, tz=datetime.timezone.utc
+    )
+
+    pk = PrivKeyV4()
+    pk.pkalg = PubKeyAlgorithm.EdDSA
+    pk.keymaterial = bip85_ed25519_from_root(root, 0)
+    pk.created = created
+    pk.update_hlen()
+    primary = PGPKey()
+    primary._key = pk
+
+    subkeys = []
+    for sub_index, pkalg, usage, alg_name in _bip85_subkey_specs("ed25519"):
+        subpkt = PrivSubKeyV4()
+        subpkt.pkalg = pkalg
+        subpkt.keymaterial = bip85_ed25519_from_root(root, 0, sub_index, alg_name)
+        subpkt.created = created
+        subpkt.update_hlen()
+        subkey = PGPKey()
+        subkey._key = subpkt
+        curve = "cv25519" if alg_name == "ECDH" else "ed25519"
+        subkeys.append(
+            {
+                "idx": sub_index + 1,
+                "fpr": subkey.fingerprint,
+                "algo": str(pkalg.value),
+                "curve": curve,
+                "bits": "255",
+            }
+        )
+
+    assert bip85_verify_existing(
+        xprv_seed,
         primary.fingerprint,
         0,
         BIP85_GPG_CREATED_TS,
