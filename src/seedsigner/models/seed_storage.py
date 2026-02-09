@@ -1,4 +1,5 @@
 from typing import List
+from seedsigner.helpers.secure_delete import wipe_bytes, wipe_list
 from seedsigner.models.seed import Seed, ElectrumSeed, Slip39Seed, InvalidSeedException
 from seedsigner.models.settings_definition import SettingsConstants
 
@@ -37,6 +38,8 @@ class SeedStorage:
 
 
     def clear_pending_seed(self):
+        if self.pending_seed is not None:
+            self.pending_seed.wipe()
         self.pending_seed = None
 
 
@@ -106,6 +109,7 @@ class SeedStorage:
     
 
     def discard_pending_mnemonic(self):
+        wipe_list(self._pending_mnemonic)
         self._pending_mnemonic = []
         self._pending_is_electrum = False
 
@@ -169,6 +173,9 @@ class SeedStorage:
         self.discard_pending_slip39_shares()
 
     def discard_pending_slip39_shares(self):
+        wipe_list(self._pending_slip39_share)
+        for share in self._pending_slip39_shares:
+            wipe_list(share)
         self._pending_slip39_share = []
         self._pending_slip39_shares = []
         self._pending_is_slip39 = False
