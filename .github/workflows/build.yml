@@ -70,6 +70,9 @@ on:
 # Increment this number as part of a PR to trigger an image build for the PR
 # trigger = 0
 
+permissions:
+  contents: read
+
 jobs:
   build:
     name: >-
