@@ -10890,9 +10890,7 @@ def bip85_verify_existing(
     primary._key = pk
     if primary.fingerprint != fingerprint:
         logger.warning(
-            "Primary key fingerprint mismatch: expected %s got %s",
-            fingerprint,
-            primary.fingerprint,
+            "Primary key fingerprint mismatch during BIP85 verification"
         )
         return False
 
