@@ -76,6 +76,17 @@ class TestSettingsFlows(FlowTest):
                 FlowStep(settings_views.SettingsMenuView),
             ])
 
+    def test_system_info(self):
+        """Basic flow from MainMenuView to System Info View."""
+        self.run_sequence([
+            FlowStep(MainMenuView, button_data_selection=MainMenuView.SETTINGS),
+            FlowStep(settings_views.SettingsMenuView, button_data_selection=settings_views.SettingsMenuView.HARDWARE),
+            FlowStep(settings_views.SettingsMenuView, button_data_selection=settings_views.SettingsMenuView.SYSTEM_INFO),
+            FlowStep(settings_views.SystemInfoView),
+            FlowStep(settings_views.SettingsMenuView),
+        ])
+
+
     def test_hardware_menu_back_returns_to_main(self):
         """Ensure BACK from Hardware settings returns to main Settings menu."""
         def assert_general(view: settings_views.SettingsMenuView):
