@@ -75,6 +75,9 @@ from seedsigner.helpers.satochip_signer import (
 from seedsigner.gui.screens import seed_screens
 logger = logging.getLogger(__name__)
 
+# Minimum RSA key size in bits to avoid weak keys.
+MIN_RSA_KEY_BITS = 2048
+
 from pysatochip.JCconstants import SEEDKEEPER_DIC_TYPE, SEEDKEEPER_DIC_ORIGIN, SEEDKEEPER_DIC_EXPORT_RIGHTS, BIP39_WORDLIST_DIC
 from pysatochip.CardConnector import CardConnector, UnexpectedSW12Error
 from binascii import unhexlify, hexlify
@@ -10637,9 +10640,9 @@ def bip85_rsa_from_root(root, bits: int, index: int, sub_index: int | None = Non
     from Cryptodome.PublicKey import RSA
     from seedsigner.helpers.bip85_drng import BIP85DRNG
 
-    # Enforce a minimum RSA key size of 2048 bits to avoid weak keys.
-    if bits < 2048:
-        bits = 2048
+    # Enforce a minimum RSA key size to avoid weak keys.
+    if bits < MIN_RSA_KEY_BITS:
+        bits = MIN_RSA_KEY_BITS
 
     path = [bits, index]
     if sub_index is not None:
@@ -10866,7 +10869,12 @@ def bip85_verify_existing(
     pk = PrivKeyV4()
     if primary_algo in ("1", "2", "3"):
         pk.pkalg = PubKeyAlgorithm.RSAEncryptOrSign
-        bits = int(primary_bits) if primary_bits else 0
+        try:
+            bits = int(primary_bits) if primary_bits else MIN_RSA_KEY_BITS
+        except (TypeError, ValueError):
+            bits = MIN_RSA_KEY_BITS
+        if bits < MIN_RSA_KEY_BITS:
+            bits = MIN_RSA_KEY_BITS
         rsa_main = bip85_rsa_from_root(root, bits, key_index)
         pk.keymaterial = rsa_to_privpacket(rsa_main)
     elif primary_curve == "secp256k1":
