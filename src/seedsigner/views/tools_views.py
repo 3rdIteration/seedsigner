@@ -10980,11 +10980,8 @@ def bip85_add_subkeys(
     from pgpy.packet.types import MPI
     from Cryptodome.PublicKey import RSA
 
-    # Log only a shortened version of the fingerprint to avoid exposing the full value
-    fpr_short = fingerprint[-8:] if fingerprint else ""
-    logger.info(
-        "bip85_add_subkeys: fpr_suffix=%s alg=%s key_index=%s start_index=%s",
-        fpr_short,
+    logger.debug(
+        "bip85_add_subkeys: alg=%s key_index=%s start_index=%s",
         alg,
         key_index,
         start_index,
@@ -11664,8 +11661,8 @@ class ToolsGPGAddSubkeysView(View):
         created_ts = keys[selected]["created"]
         entry = BIP85_DATA.get(fingerprint)
         bip85 = entry is not None
-        fingerprint_suffix = fingerprint[-8:] if isinstance(fingerprint, str) and len(fingerprint) >= 8 else fingerprint
-        logger.info(
+        fingerprint_suffix = fingerprint[-4:] if isinstance(fingerprint, str) and len(fingerprint) >= 4 else fingerprint
+        logger.debug(
             "AddSubkeysView: fpr_suffix=%s bip85=%s start_index=%s",
             fingerprint_suffix,
             bip85,
@@ -11681,9 +11678,9 @@ class ToolsGPGAddSubkeysView(View):
         seed = None
         base_index = None
         if bip85:
-            logger.info(
-                "BIP85 key detected; searching for seed fingerprint %s",
-                entry["seed_fpr"],
+            logger.debug(
+                "BIP85 key detected; searching for seed fingerprint suffix=%s",
+                entry["seed_fpr"][-4:] if isinstance(entry["seed_fpr"], str) and len(entry["seed_fpr"]) >= 4 else entry["seed_fpr"],
             )
             network = self.settings.get_value(SettingsConstants.SETTING__NETWORK)
             seed = None
@@ -11703,7 +11700,7 @@ class ToolsGPGAddSubkeysView(View):
                     button_data=[ButtonOption("I Understand")],
                 )
                 return Destination(BackStackView)
-            logger.info("Seed matched at index=%s", seed_index)
+            logger.debug("Seed matched at index=%s", seed_index)
             base_index = entry["index"]
             if not bip85_verify_existing(
                 seed,
@@ -11715,10 +11712,9 @@ class ToolsGPGAddSubkeysView(View):
                 primary_curve,
                 subkeys,
             ):
-                fingerprint_suffix = fingerprint[-8:] if fingerprint else "unknown"
-                logger.warning(
-                    "Selected seed/index failed validation for fingerprint ending with %s",
-                    fingerprint_suffix,
+                logger.debug(
+                    "Selected seed/index failed validation (base_index=%s)",
+                    base_index,
                 )
                 corrected = None
                 for i in range(base_index - 1, -1, -1):
