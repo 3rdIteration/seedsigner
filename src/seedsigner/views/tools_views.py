@@ -2685,8 +2685,8 @@ class ToolsSeedkeeperViewSecretsView(View):
                 wordlist_byte = secret_raw_bytes[offset]
                 offset+=1
                 wordlist = BIP39_WORDLIST_DIC.get(wordlist_byte)
-                if wordlist == None:
-                    logger.info(f"Error: wordlist byte {wordlist_byte} unsupported!")
+                if wordlist is None:
+                    logger.info("Error: unsupported BIP39 wordlist identifier encountered")
                     exit()
                 
                 entropy_size = secret_raw_bytes[offset]
