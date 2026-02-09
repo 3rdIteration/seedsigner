@@ -110,17 +110,23 @@ class QR:
 
 
     def qrimage_io(self, data, width=240, height=240, border=3, background_color="808080"):
+        import re
+
         if 1 <= border <= 10:
             border_str = str(border)
         else:
             border_str = "3"
 
+        # Validate background_color to prevent argument injection
+        if not re.fullmatch(r'[0-9A-Fa-f]{6}', background_color):
+            background_color = "808080"
+
         if isinstance(data, str):
             encoded_data = data.encode()
-            mode_flag = ""
+            is_binary = False
         else:
             encoded_data = data
-            mode_flag = "-8 "
+            is_binary = True
 
         data_path = None
         output_path = None
@@ -134,12 +140,20 @@ class QR:
             with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as output_file:
                 output_path = output_file.name
 
-            cmd = (
-                f"qrencode -m {border_str} -s 3 -l L --foreground=000000 --background={background_color} "
-                f"-t PNG {mode_flag}-r \"{data_path}\" -o \"{output_path}\""
-            )
+            cmd = [
+                "qrencode",
+                "-m", border_str,
+                "-s", "3",
+                "-l", "L",
+                f"--foreground=000000",
+                f"--background={background_color}",
+                "-t", "PNG",
+            ]
+            if is_binary:
+                cmd.append("-8")
+            cmd.extend(["-r", data_path, "-o", output_path])
 
-            rv = subprocess.call(cmd, shell=True)
+            rv = subprocess.call(cmd)
 
             # if qrencode fails, fall back to only encoder
             if rv != 0:

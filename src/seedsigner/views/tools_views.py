@@ -5014,18 +5014,18 @@ class ToolsDIYBuildAppletsView(View):
                 os.system(f"cp /opt/tools/javacard-build.xml.seedsigneros {microsd_dir}/javacard-build.xml")
 
             if not os.path.exists(microsd_dir / "javacard-cap/"):
-                os.system(f"mkdir -p {microsd_dir}/javacard-cap/")
+                os.makedirs(microsd_dir / "javacard-cap/", exist_ok=True)
 
             os.environ["JAVA_HOME"] = "/mnt/diy/jdk"
-            commandString = f"/mnt/diy/ant/bin/ant -f {microsd_dir}/javacard-build.xml"
+            commandString = ["/mnt/diy/ant/bin/ant", "-f", str(microsd_dir / "javacard-build.xml")]
         elif os.path.exists("/home/pi"):
             if not os.path.exists(microsd_dir / "javacard-build.xml"):
-                os.system(f"sudo cp {repo_root}/tools/javacard-build.xml.manual {microsd_dir}/javacard-build.xml")
+                run(["sudo", "cp", str(repo_root / "tools" / "javacard-build.xml.manual"), str(microsd_dir / "javacard-build.xml")], check=False)
 
             if not os.path.exists(microsd_dir / "javacard-cap/"):
-                os.system(f"sudo mkdir -p {microsd_dir}/javacard-cap/")
+                run(["sudo", "mkdir", "-p", str(microsd_dir / "javacard-cap/")], check=False)
 
-            commandString = f"sudo ant -f {microsd_dir}/javacard-build.xml"
+            commandString = ["sudo", "ant", "-f", str(microsd_dir / "javacard-build.xml")]
         else:
             build_xml = microsd_dir / "javacard-build.xml"
             if not build_xml.exists():
@@ -5035,9 +5035,9 @@ class ToolsDIYBuildAppletsView(View):
             if not cap_dir.exists():
                 os.makedirs(cap_dir)
 
-            commandString = f"ant -f {build_xml}"
+            commandString = ["ant", "-f", str(build_xml)]
 
-        data = run(commandString, capture_output=True, shell=True, text=True)
+        data = run(commandString, capture_output=True, text=True)
 
         logger.info(data)
 
@@ -5226,8 +5226,9 @@ class ToolsDIYUninstallAppletView(View):
     MicroSD Views
 ****************************************************************************"""
 def find_sd_card_device():
+    import re
     for device in os.listdir("/sys/block"):
-        if device.startswith("mmcblk"):
+        if device.startswith("mmcblk") and re.fullmatch(r'mmcblk\d+', device):
             partitions = os.listdir(f"/sys/block/{device}")
             # Only consider devices with partitions (e.g., mmcblk1p1)
             if any(p.startswith(device + "p") for p in partitions):
@@ -5353,27 +5354,24 @@ class ToolsMicroSDFlashView(View):
 
             # Unmount everything
             if platform.uname()[1] == "seedsigner-os":
-                cmd = "umount /mnt/diy"
-                data = run(cmd, capture_output=True, shell=True, text=True)
+                data = run(["umount", "/mnt/diy"], capture_output=True, text=True)
                 logger.info(data)
 
             if platform.uname()[1] == "seedsigner-os":
-                cmd = "umount /mnt/microsd"
-                data = run(cmd, capture_output=True, shell=True, text=True)
+                data = run(["umount", "/mnt/microsd"], capture_output=True, text=True)
                 logger.info(data)
 
             # Zero the MicroSD first (Makes sure that the verification step works correctly later)
             # Seedsigner images are currently 26MB or smaller
-            if platform.uname()[1] == "seedsigner-os":
-                cmd = "dd if=/dev/zero of=" + microsd_dev + " bs=1M count=26"
-            else:
-                cmd = "sudo dd if=/dev/zero of=" + microsd_dev + " bs=1M count=26"
+            dd_cmd = ["dd", f"if=/dev/zero", f"of={microsd_dev}", "bs=1M", "count=26"]
+            if platform.uname()[1] != "seedsigner-os":
+                dd_cmd = ["sudo"] + dd_cmd
 
-            data = run(cmd, capture_output=True, shell=True, text=True)
+            data = run(dd_cmd, capture_output=True, text=True)
             logger.info(data)
 
             # Then flash the image
-            data = run("dd if=/tmp/img.img of=" + microsd_dev, capture_output=True, shell=True, text=True)
+            data = run(["dd", "if=/tmp/img.img", f"of={microsd_dev}"], capture_output=True, text=True)
             logger.info(data)
 
             self.loading_screen.stop()
@@ -5465,12 +5463,12 @@ class ToolsMicroSDVerifyView(View):
 
         microsd_dev = find_sd_card_device()
 
-        if platform.uname()[1] == "seedsigner-os":
-            os.system("dd if=" + microsd_dev + " of=/tmp/img.img bs=1M count=26")
-        else:
-            os.system("sudo dd if=" + microsd_dev + " of=/tmp/img.img bs=1M count=26")
+        dd_cmd = ["dd", f"if={microsd_dev}", "of=/tmp/img.img", "bs=1M", "count=26"]
+        if platform.uname()[1] != "seedsigner-os":
+            dd_cmd = ["sudo"] + dd_cmd
+        run(dd_cmd, check=False)
 
-        data = run("sha256sum /tmp/img.img", capture_output=True, shell=True, text=True)
+        data = run(["sha256sum", "/tmp/img.img"], capture_output=True, text=True)
         logger.info(data)
 
         self.loading_screen.stop()
@@ -5552,21 +5550,18 @@ class ToolsMicroSDWipeZeroView(View):
 
         # Unmount everything
         if platform.uname()[1] == "seedsigner-os":
-            cmd = "umount /mnt/diy"
-            data = run(cmd, capture_output=True, shell=True, text=True)
+            data = run(["umount", "/mnt/diy"], capture_output=True, text=True)
             logger.info(data)
 
         if platform.uname()[1] == "seedsigner-os":
-            cmd = "umount /mnt/microsd"
-            data = run(cmd, capture_output=True, shell=True, text=True)
+            data = run(["umount", "/mnt/microsd"], capture_output=True, text=True)
             logger.info(data)
 
-        if platform.uname()[1] == "seedsigner-os":
-            cmd = "dd if=/dev/zero of=" + microsd_dev + " bs=1M" + wipesize_cmd_string
-        else:
-            cmd = "sudo dd if=/dev/zero of=" + microsd_dev + " bs=1M" + wipesize_cmd_string
+        dd_cmd = ["dd", f"if=/dev/zero", f"of={microsd_dev}", "bs=1M"] + wipesize_cmd_string.split()
+        if platform.uname()[1] != "seedsigner-os":
+            dd_cmd = ["sudo"] + dd_cmd
 
-        data = run(cmd, capture_output=True, shell=True, text=True)
+        data = run(dd_cmd, capture_output=True, text=True)
         logger.info(data)
 
         self.loading_screen.stop()
@@ -5655,12 +5650,11 @@ class ToolsMicroSDWipeRandomView(View):
         self.loading_screen = LoadingScreenThread(text="Wiping MicroSD\n\n\n\n\n\n(This takes a while)")
         self.loading_screen.start()
 
-        if platform.uname()[1] == "seedsigner-os":
-            cmd = "dd if=/dev/urandom of=" + microsd_dev + " bs=1M" + wipesize_cmd_string
-        else:
-            cmd = "sudo dd if=/dev/urandom of=" + microsd_dev + " bs=1M" + wipesize_cmd_string
+        dd_cmd = ["dd", f"if=/dev/urandom", f"of={microsd_dev}", "bs=1M"] + wipesize_cmd_string.split()
+        if platform.uname()[1] != "seedsigner-os":
+            dd_cmd = ["sudo"] + dd_cmd
 
-        data = run(cmd, capture_output=True, shell=True, text=True)
+        data = run(dd_cmd, capture_output=True, text=True)
         logger.info(data)
 
         self.loading_screen.stop()
@@ -10187,9 +10181,7 @@ class ToolsGPGImportPubkeyFileView(View):
 
         _check_future_key_creation(self, key_blob)
 
-        cmd = f"gpg --import {filepath}"
-
-        data = run(cmd, capture_output=True, shell=True, text=True)
+        data = run(["gpg", "--import", filepath], capture_output=True, text=True)
 
         result = data.stderr.split("\n")
         certs_not_changed = 0
