@@ -231,14 +231,16 @@ def _derive_hardware_rng_entropy_bytes() -> bytes:
 def _derive_camera_entropy_bytes(preview_images, final_image) -> bytes | None:
     # Build in some hardware-level uniqueness via CPU unique Serial num
     try:
-        stream = os.popen("cat /proc/cpuinfo | grep Serial")
-        output = stream.read()
-        serial_num = output.split(":")[-1].strip().encode("utf-8")
+        with open("/proc/cpuinfo", "r", encoding="utf-8") as f:
+            serial_line = next(
+                (line for line in f if line.startswith("Serial")), ""
+            )
+        serial_num = serial_line.split(":")[-1].strip().encode("utf-8")
         serial_hash = hashlib.sha256(serial_num)
         hash_bytes = serial_hash.digest()
     except Exception as e:
         logger.info(repr(e), exc_info=True)
-        hash_bytes = b"0"
+        hash_bytes = hashlib.sha256(os.urandom(32)).digest()
 
     # Build in modest entropy via millis since power on
     millis_hash = hashlib.sha256(hash_bytes + str(time.time()).encode("utf-8"))
