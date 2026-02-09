@@ -54,8 +54,8 @@ class Seed:
         try:
             self.seed_bytes = bip39.mnemonic_to_seed(self.mnemonic_str, password=self._passphrase, wordlist=self.wordlist)
         except Exception as e:
-            logger.info(repr(e), exc_info=True)
-            raise InvalidSeedException(repr(e))
+            logger.info("BIP-39 mnemonic_to_seed failed: %s", type(e).__name__)
+            raise InvalidSeedException(type(e).__name__)
 
 
     @property
@@ -332,8 +332,8 @@ class Slip39Seed(Seed):
                 self._initial_master_secret = secret
             self.seed_bytes = secret
         except Exception as e:
-            logger.info(repr(e), exc_info=True)
-            raise InvalidSeedException(repr(e))
+            logger.info("SLIP-39 secret recovery failed: %s", type(e).__name__)
+            raise InvalidSeedException(type(e).__name__)
         finally:
             self.loading_screen.stop()
 
