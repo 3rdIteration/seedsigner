@@ -1,4 +1,6 @@
 import logging
+import os
+import re
 from gettext import gettext as _
 
 #from seedsigner.gui.screens import (RET_CODE__BACK_BUTTON, ButtonListScreen, WarningScreen, settings_screens)
@@ -24,6 +26,7 @@ class SettingsMenuView(View):
     DONATE = ButtonOption("Donate")
     RESTART_PCSC = ButtonOption("Restart PCSC")
     BATTERY_INFO = ButtonOption("Battery info")
+    SYSTEM_INFO = ButtonOption("System info")
     LOAD_BACKUP_FILES = ButtonOption("Load Backup Files", right_icon_name=SeedSignerIconConstants.CHEVRON_RIGHT)
 
     def __init__(self, visibility: str = SettingsConstants.VISIBILITY__GENERAL, selected_attr: str = None, initial_scroll: int = 0):
@@ -83,6 +86,7 @@ class SettingsMenuView(View):
 
         elif self.visibility == SettingsConstants.VISIBILITY__HARDWARE:
             title = "Hardware"
+            button_data.append(self.SYSTEM_INFO)
             button_data.append(self.BATTERY_INFO)
             button_data.append(self.IO_TEST)
             if self.settings.get_value(SettingsConstants.SETTING__SMARTCARD_SUPPORT) == SettingsConstants.OPTION__ENABLED:
@@ -144,6 +148,9 @@ class SettingsMenuView(View):
 
         elif button_data[selected_menu_num] == self.BATTERY_INFO:
             return Destination(BatteryInfoView)
+
+        elif button_data[selected_menu_num] == self.SYSTEM_INFO:
+            return Destination(SystemInfoView)
 
         elif settings_entries[selected_menu_num].attr_name == SettingsConstants.SETTING__ENCRYPTION_ITER:
             return Destination(SettingPBKDF2IterationsView, view_args=dict(attr_name=settings_entries[selected_menu_num].attr_name, parent_initial_scroll=initial_scroll))
@@ -756,5 +763,75 @@ class BatteryInfoView(View):
             return Destination(SettingsMenuView, view_args={"visibility": SettingsConstants.VISIBILITY__HARDWARE})
 
         self.run_screen(settings_screens.BatteryInfoScreen)
+
+        return Destination(SettingsMenuView, view_args={"visibility": SettingsConstants.VISIBILITY__HARDWARE})
+
+
+class SystemInfoView(View):
+    def _read_text_file(self, path: str) -> str | None:
+        try:
+            with open(path, "r", encoding="utf-8") as file:
+                value = file.read().strip().replace("\x00", "")
+            return value or None
+        except Exception:
+            return None
+
+    def _get_pi_version(self) -> str:
+        model = self._read_text_file("/proc/device-tree/model")
+        if model:
+            return model
+
+        try:
+            with open("/proc/cpuinfo", "r", encoding="utf-8") as file:
+                for line in file:
+                    if line.startswith("Model"):
+                        return line.split(":", 1)[-1].strip()
+        except Exception:
+            pass
+
+        return _("Unavailable")
+
+    def _get_system_serial(self) -> str:
+        try:
+            with open("/proc/cpuinfo", "r", encoding="utf-8") as file:
+                for line in file:
+                    if line.startswith("Serial"):
+                        serial = line.split(":", 1)[-1].strip()
+                        return serial or _("Unavailable")
+        except Exception:
+            pass
+
+        return _("Unavailable")
+
+    def _get_microsd_serial(self) -> str:
+        from seedsigner.hardware.microsd import MicroSD
+
+        mount_device = None
+        try:
+            with open("/proc/mounts", "r", encoding="utf-8") as file:
+                for line in file:
+                    parts = line.split()
+                    if len(parts) >= 2 and parts[1] == MicroSD.MOUNT_POINT:
+                        mount_device = parts[0]
+                        break
+        except Exception:
+            return _("Unavailable")
+
+        if not mount_device:
+            return _("Unavailable")
+
+        block_device = os.path.basename(mount_device)
+        parent_device = re.sub(r"p?\d+$", "", block_device)
+        serial_path = f"/sys/class/block/{parent_device}/device/serial"
+        serial = self._read_text_file(serial_path)
+        return serial if serial else _("Unavailable")
+
+    def run(self):
+        self.run_screen(
+            settings_screens.SystemInfoScreen,
+            pi_version=self._get_pi_version(),
+            system_serial=self._get_system_serial(),
+            microsd_serial=self._get_microsd_serial(),
+        )
 
         return Destination(SettingsMenuView, view_args={"visibility": SettingsConstants.VISIBILITY__HARDWARE})

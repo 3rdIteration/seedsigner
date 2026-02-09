@@ -469,6 +469,38 @@ class BatteryInfoScreen(BaseTopNavScreen):
 
 
 @dataclass
+class SystemInfoScreen(BaseTopNavScreen):
+    pi_version: str = ""
+    system_serial: str = ""
+    microsd_serial: str = ""
+
+    def __post_init__(self):
+        self.title = _("System Info")
+        super().__post_init__()
+
+        info_lines = [
+            _("Pi: {pi_version}").format(pi_version=self.pi_version),
+            _("System: {system_serial}").format(system_serial=self.system_serial),
+            _("MicroSD: {microsd_serial}").format(microsd_serial=self.microsd_serial),
+        ]
+
+        start_y = self.top_nav.height + 2 * GUIConstants.COMPONENT_PADDING
+        line_spacing = GUIConstants.COMPONENT_PADDING
+
+        for line in info_lines:
+            text_area = TextArea(
+                text=line,
+                screen_x=GUIConstants.EDGE_PADDING,
+                width=self.canvas_width - 2 * GUIConstants.EDGE_PADDING,
+                is_text_centered=False,
+                auto_line_break=True,
+                screen_y=start_y,
+            )
+            self.components.append(text_area)
+            start_y += text_area.height + line_spacing
+
+
+@dataclass
 class SettingsQRConfirmationScreen(ButtonListScreen):
     config_name: str = None
     title: str = _mft("Settings QR")
