@@ -10637,6 +10637,10 @@ def bip85_rsa_from_root(root, bits: int, index: int, sub_index: int | None = Non
     from Cryptodome.PublicKey import RSA
     from seedsigner.helpers.bip85_drng import BIP85DRNG
 
+    # Enforce a minimum RSA key size of 2048 bits to avoid weak keys.
+    if bits < 2048:
+        bits = 2048
+
     path = [bits, index]
     if sub_index is not None:
         path.append(sub_index)
