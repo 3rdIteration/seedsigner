@@ -11663,9 +11663,10 @@ class ToolsGPGAddSubkeysView(View):
         created_ts = keys[selected]["created"]
         entry = BIP85_DATA.get(fingerprint)
         bip85 = entry is not None
+        fingerprint_suffix = fingerprint[-8:] if isinstance(fingerprint, str) and len(fingerprint) >= 8 else fingerprint
         logger.info(
-            "AddSubkeysView: fpr=%s bip85=%s start_index=%s",
-            fingerprint,
+            "AddSubkeysView: fpr_suffix=%s bip85=%s start_index=%s",
+            fingerprint_suffix,
             bip85,
             start_index,
         )
