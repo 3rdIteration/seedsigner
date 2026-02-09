@@ -9,6 +9,7 @@ import shamir_mnemonic
 from embit.networks import NETWORKS
 from typing import List
 
+from seedsigner.helpers.secure_delete import wipe_bytes, wipe_string, wipe_list
 from seedsigner.models.settings import SettingsConstants
 
 logger = logging.getLogger(__name__)
@@ -187,7 +188,18 @@ class Seed:
         return
         
 
-    ### override operators    
+    def wipe(self):
+        """Best-effort secure clearing of all sensitive fields."""
+        wipe_bytes(self.seed_bytes)
+        self.seed_bytes = None
+        wipe_bytes(self.master_secret)
+        self.master_secret = None
+        wipe_list(self._mnemonic)
+        self._mnemonic = []
+        wipe_string(self._passphrase)
+        self._passphrase = ""
+
+    ### override operators
     def __eq__(self, other):
         if isinstance(other, Seed):
             return self.seed_bytes == other.seed_bytes
@@ -380,6 +392,18 @@ class Slip39Seed(Seed):
     def bip85_supported(self) -> bool:
         return True
 
+    def wipe(self):
+        """Securely clear SLIP-39-specific fields, then delegate to parent."""
+        wipe_list(self._shares)
+        self._shares = []
+        wipe_string(self._slip39_passphrase)
+        self._slip39_passphrase = ""
+        wipe_bytes(self._initial_master_secret)
+        self._initial_master_secret = None
+        wipe_string(self._creation_passphrase)
+        self._creation_passphrase = ""
+        super().wipe()
+
     def regenerate_shares(self, threshold: int, num_shares: int) -> List[str]:
         """Generate new SLIP-39 shares from the original master secret."""
         if not self.extendable:
@@ -468,6 +492,13 @@ class XprvSeed(Seed):
     def get_bip85_child_mnemonic(self, bip85_index: int, bip85_num_words: int, network: str = SettingsConstants.MAINNET):
         # TODO: Support other BIP-39 wordlist languages!
         return bip85.derive_mnemonic(self.get_root(network), bip85_num_words, bip85_index)
+
+    def wipe(self):
+        """Securely clear xprv-specific fields, then delegate to parent."""
+        wipe_string(self._xprv)
+        self._xprv = ""
+        self._root = None
+        super().wipe()
 
     def __eq__(self, other):
         if isinstance(other, XprvSeed):
