@@ -427,9 +427,8 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True):
 
 
 def run_globalplatform(
-    parentObject, command, loadingText="Loading", successtext="Success"
+    parentObject, command_args, loadingText="Loading", successtext="Success"
 ):
-    import shlex
     from subprocess import run
     from seedsigner.models.settings import (
         Settings,
@@ -449,7 +448,7 @@ def run_globalplatform(
         # Assume gp.jar is available in the current working directory
         base_cmd = ["java", "-jar", "gp.jar"]
 
-    data = run(base_cmd + shlex.split(command), capture_output=True, text=True)
+    data = run(base_cmd + command_args, capture_output=True, text=True)
 
     # This process often kills IFD-NFC, so restart it if required
     scinterface = parentObject.settings.get_value(
@@ -537,7 +536,7 @@ def run_globalplatform(
         )
 
         if uninstall_required:
-            command = command.replace("--install", "--uninstall")
+            command = ["--uninstall" if arg == "--install" else arg for arg in command_args]
             data = run_globalplatform(
                 parentObject,
                 command,

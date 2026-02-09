@@ -4,6 +4,7 @@ import json
 import os
 import pathlib
 import platform
+import subprocess
 
 from typing import List
 
@@ -32,6 +33,13 @@ from seedsigner.models.settings_definition import SettingsConstants, SettingsDef
 from seedsigner.models.singleton import Singleton
 
 logger = logging.getLogger(__name__)
+
+
+def _run_cmd(command: list[str], use_sudo_prefix: bool = False) -> None:
+    cmd = command
+    if use_sudo_prefix:
+        cmd = ["sudo", *command]
+    subprocess.run(cmd, check=False)
 
 
 class InvalidSettingsQRData(Exception):
@@ -286,16 +294,16 @@ class Settings(Singleton):
                 # Different Raspberry Pi models have different port config, see
                 # https://github.com/mvp/uhubctl?tab=readme-ov-file#raspberry-pi-b2b3b
                 if "Zero" in GPIO.RPI_INFO['TYPE']: # For RPi0, 02w
-                    os.system(self.SU_COMMAND_PREFIX + "uhubctl -l 1 -a 0")
+                    _run_cmd(["uhubctl", "-l", "1", "-a", "0"], use_sudo_prefix=(self.SU_COMMAND_PREFIX == "sudo "))
                     
                 elif "Pi 4" in GPIO.RPI_INFO['TYPE']: # For RPi4 
-                    os.system(self.SU_COMMAND_PREFIX + "uhubctl -l 2 -a 0")
-                    os.system(self.SU_COMMAND_PREFIX + "uhubctl -l 3 -a 0")
-                    os.system(self.SU_COMMAND_PREFIX + "uhubctl -l 1-1 -a 0")
+                    _run_cmd(["uhubctl", "-l", "2", "-a", "0"], use_sudo_prefix=(self.SU_COMMAND_PREFIX == "sudo "))
+                    _run_cmd(["uhubctl", "-l", "3", "-a", "0"], use_sudo_prefix=(self.SU_COMMAND_PREFIX == "sudo "))
+                    _run_cmd(["uhubctl", "-l", "1-1", "-a", "0"], use_sudo_prefix=(self.SU_COMMAND_PREFIX == "sudo "))
                 
                 else:
                     # For Raspberry Pi B+,2B,3B, 3B+
-                    os.system(self.SU_COMMAND_PREFIX + "uhubctl -l 1-1 -p 2 -a 0")
+                    _run_cmd(["uhubctl", "-l", "1-1", "-p", "2", "-a", "0"], use_sudo_prefix=(self.SU_COMMAND_PREFIX == "sudo "))
                 
                 try:
                     self.loading_screen.stop()
@@ -314,16 +322,16 @@ class Settings(Singleton):
                 # https://github.com/mvp/uhubctl?tab=readme-ov-file#raspberry-pi-b2b3b
                  
                 if "Zero" in GPIO.RPI_INFO['TYPE']: # For RPi0, 02w
-                    os.system(self.SU_COMMAND_PREFIX + "uhubctl -l 1 -a 1")
+                    _run_cmd(["uhubctl", "-l", "1", "-a", "1"], use_sudo_prefix=(self.SU_COMMAND_PREFIX == "sudo "))
                     
                 elif "Pi 4" in GPIO.RPI_INFO['TYPE']: # For RPi4 
-                    os.system(self.SU_COMMAND_PREFIX + "uhubctl -l 2 -a 1")
-                    os.system(self.SU_COMMAND_PREFIX + "uhubctl -l 3 -a 1")
-                    os.system(self.SU_COMMAND_PREFIX + "uhubctl -l 1-1 -a 1")
+                    _run_cmd(["uhubctl", "-l", "2", "-a", "1"], use_sudo_prefix=(self.SU_COMMAND_PREFIX == "sudo "))
+                    _run_cmd(["uhubctl", "-l", "3", "-a", "1"], use_sudo_prefix=(self.SU_COMMAND_PREFIX == "sudo "))
+                    _run_cmd(["uhubctl", "-l", "1-1", "-a", "1"], use_sudo_prefix=(self.SU_COMMAND_PREFIX == "sudo "))
                 
                 else:
                     # For Raspberry Pi B+,2B,3B, 3B+
-                    os.system(self.SU_COMMAND_PREFIX + "uhubctl -l 1-1 -p 2 -a 1")
+                    _run_cmd(["uhubctl", "-l", "1-1", "-p", "2", "-a", "1"], use_sudo_prefix=(self.SU_COMMAND_PREFIX == "sudo "))
 
                 time.sleep(1)
                 # Restart PCSC at the end
@@ -362,7 +370,7 @@ class Settings(Singleton):
                 except:
                     pass
 
-                os.system(self.SU_COMMAND_PREFIX + "openct-control init") # OpenCT needs a bit of time to get going before restarting PCSCD (At least two seconds) to work reliabily
+                _run_cmd(["openct-control", "init"], use_sudo_prefix=(self.SU_COMMAND_PREFIX == "sudo ")) # OpenCT needs a bit of time to get going before restarting PCSCD (At least two seconds) to work reliabily
                 time.sleep(3)
 
                 try:
@@ -378,7 +386,7 @@ class Settings(Singleton):
                 except:
                     pass
                 
-                os.system(self.SU_COMMAND_PREFIX + "openct-control shutdown")
+                _run_cmd(["openct-control", "shutdown"], use_sudo_prefix=(self.SU_COMMAND_PREFIX == "sudo "))
                 time.sleep(3)
 
                 try:
@@ -393,7 +401,7 @@ class Settings(Singleton):
                 except:
                     pass
                 logger.debug("PN532 Enabled")
-                os.system("ifdnfc-activate yes")
+                _run_cmd(["ifdnfc-activate", "yes"])
                 try:
                     self.loading_screen.stop()
                 except:
@@ -406,7 +414,7 @@ class Settings(Singleton):
                 except:
                     pass
                 logger.debug("PN532 Disabled")
-                os.system("ifdnfc-activate no")
+                _run_cmd(["ifdnfc-activate", "no"])
                 try:
                     self.loading_screen.stop()
                 except:
@@ -419,13 +427,13 @@ class Settings(Singleton):
             except:
                 pass
             if self.HOSTNAME == self.SEEDSIGNER_OS:
-                os.system("/etc/init.d/S01pcscd stop")
+                _run_cmd(["/etc/init.d/S01pcscd", "stop"])
                 time.sleep(1)
-                os.system("/etc/init.d/S01pcscd start")
+                _run_cmd(["/etc/init.d/S01pcscd", "start"])
             else:
-                os.system("sudo service pcscd stop")
+                _run_cmd(["sudo", "service", "pcscd", "stop"])
                 time.sleep(1)
-                os.system("sudo service pcscd start")
+                _run_cmd(["sudo", "service", "pcscd", "start"])
             try:
                 self.loading_screen.stop()
             except:

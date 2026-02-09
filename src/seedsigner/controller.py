@@ -17,12 +17,28 @@ from seedsigner.models.settings import Settings
 from seedsigner.models.singleton import Singleton
 from seedsigner.models.threads import BaseThread
 from seedsigner.models.settings_definition import SettingsConstants
+from seedsigner.helpers.secure_delete import wipe_string, wipe_bytes
 from seedsigner.views.screensaver import ScreensaverScreen
 from seedsigner.views.view import Destination
 from seedsigner.hardware.rng_monitor import HardwareRngHealthMonitor, HardwareRngMonitorThread
 
 
 logger = logging.getLogger(__name__)
+
+
+def _wipe_controller_secret(value):
+    if isinstance(value, (bytes, bytearray)):
+        wipe_bytes(value)
+    elif isinstance(value, str):
+        wipe_string(value)
+
+
+def _clear_password_entropy_cache(controller):
+    cache = getattr(controller, "password_generator_entropy_cache", None)
+    if isinstance(cache, dict):
+        for key in ("roll_data", "entropy_bytes"):
+            _wipe_controller_secret(cache.get(key))
+    controller.password_generator_entropy_cache = None
 
 
 
@@ -406,12 +422,15 @@ class Controller(Singleton):
 
                     # Clear the whole Smartcard session if caching PIN is disabled (Same as removing the card)
                     if Settings.get_instance().get_value(SettingsConstants.SETTING__CACHE_SCARD_PIN) != "E":
+                        _wipe_controller_secret(self.Satochip_PIN)
                         self.Satochip_PIN = None
                         self.Satochip_Last_UID_SHA1 = None
                         self.Satochip_Connector = None
 
                     # Always drop any cached OpenPGP admin PIN when returning home
+                    _wipe_controller_secret(self.GPG_Admin_PIN)
                     self.GPG_Admin_PIN = None
+                    _clear_password_entropy_cache(self)
                 
                 logger.info(f"\nback_stack: {self.back_stack}")
 
@@ -552,6 +571,8 @@ class Controller(Singleton):
         logger.info("Controller: wipe timer triggered; wiping data")
 
         # Wipe sensitive in-memory data
+        for seed in self.storage.seeds:
+            seed.wipe()
         self.storage.seeds = []
         self.storage.clear_pending_seed()
         if self._storage2:
@@ -567,12 +588,15 @@ class Controller(Singleton):
         self.address_explorer_data = None
         self.sign_message_data = None
         self.resume_main_flow = None
+        _wipe_controller_secret(self.Satochip_PIN)
         self.Satochip_PIN = None
         self.Satochip_Last_UID_SHA1 = None
         self.Satochip_Connector = None
+        _wipe_controller_secret(self.GPG_Admin_PIN)
         self.GPG_Admin_PIN = None
         self.image_entropy_preview_frames = None
         self.image_entropy_final_image = None
+        _clear_password_entropy_cache(self)
 
         # Return to main menu
         self.clear_back_stack()

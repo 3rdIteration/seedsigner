@@ -43,7 +43,7 @@ def test_seedkeeper_install_defaults_to_8k(monkeypatch, tmp_path):
 
     view.run()
 
-    assert "--params 1FFF" in captured["cmd"]
+    assert captured["cmd"][-2:] == ["--params", "1FFF"]
     assert storage_screen_kwargs.get("selected_button") == 1
 
     storage_labels = [option.button_label for option in storage_screen_kwargs.get("button_data", [])]
@@ -82,7 +82,7 @@ def test_seedkeeper_install_respects_selected_storage(monkeypatch, tmp_path):
 
     view.run()
 
-    assert "--params 7FFF" in captured["cmd"]
+    assert captured["cmd"][-2:] == ["--params", "7FFF"]
 
 
 def test_seedkeeper_install_supports_largest_storage(monkeypatch, tmp_path):
@@ -116,5 +116,5 @@ def test_seedkeeper_install_supports_largest_storage(monkeypatch, tmp_path):
 
     view.run()
 
-    assert "--params FFFF" in captured["cmd"]
+    assert captured["cmd"][-2:] == ["--params", "FFFF"]
 

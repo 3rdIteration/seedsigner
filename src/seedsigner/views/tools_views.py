@@ -37,6 +37,7 @@ from seedsigner.gui.screens.tools_screens import (ToolsCalcFinalWordDoneScreen, 
     ToolsTranscribeTextQRConfirmQRPromptScreen, ToolsCommonFilterScreen, ToolsNetworkInfoScreen,
     ToolsBatteryCalibrationIntroScreen, ToolsBatteryCalibrationStartScreen, ToolsBatteryCalibrationRunningScreen)
 from seedsigner.helpers import embit_utils, mnemonic_generation
+from seedsigner.helpers.secure_delete import wipe_bytes, wipe_string
 from seedsigner.helpers import bip85_drng, diceware, password_generation
 from seedsigner.helpers.iso7816 import format_sw_error
 from seedsigner.models.decode_qr import DecodeQR
@@ -108,6 +109,14 @@ BIP85_APP_DICE = 89101
 
 
 def _clear_password_entropy_cache(controller) -> None:
+    cache = getattr(controller, "password_generator_entropy_cache", None)
+    if isinstance(cache, dict):
+        wipe_bytes(cache.get("entropy_bytes"))
+        roll_data = cache.get("roll_data")
+        if isinstance(roll_data, str):
+            wipe_string(roll_data)
+        else:
+            wipe_bytes(roll_data)
     controller.password_generator_entropy_cache = None
 
 
@@ -2704,7 +2713,7 @@ class ToolsSeedkeeperViewSecretsView(View):
 
                 except Exception as ex:
                     logger.info(f"Error during entropy conversion: {ex}")
-                    bip39_mnemonic = f"failed to convert entropy: {entropy_bytes.hex()}"
+                    bip39_mnemonic = "Unable to decode mnemonic"
 
                 passphrase_size= secret_raw_bytes[offset]
                 offset+=1
@@ -2715,9 +2724,12 @@ class ToolsSeedkeeperViewSecretsView(View):
                     passphrase = passphrase_bytes.decode("utf-8")
                 except Exception as ex:
                     logger.info(f"Error during passphrase decoding: {ex}")
-                    passphrase = f"failed to decode passphrase bytes: {passphrase_bytes.hex()}"
+                    passphrase = "Unable to decode passphrase"
 
-                secret_dict['secret']= f'BIP39 mnemonic: "{bip39_mnemonic}" \nPassphrase: "{passphrase}"'  
+                secret_dict['secret']= f'BIP39 mnemonic: "{bip39_mnemonic}" \nPassphrase: "{passphrase}"'
+                wipe_bytes(entropy_bytes)
+                wipe_bytes(passphrase_bytes)
+                wipe_bytes(secret_raw_bytes)
 
             elif stype == 'Password':
                 
@@ -4469,14 +4481,18 @@ def _format_javacard_keys(keys: dict) -> str:
     return f"ENC={keys['enc']}\nMAC={keys['mac']}\nDEK={keys['dek']}\n"
 
 
-def _format_gp_key_args(keys: dict, flag: str) -> str:
+def _format_gp_key_args(keys: dict, flag: str) -> list[str]:
     if keys["type"] == "single":
-        return f"{flag} {keys['key']}"
-    return (
-        f"{flag}-enc {keys['enc']} "
-        f"{flag}-mac {keys['mac']} "
-        f"{flag}-dek {keys['dek']}"
-    )
+        return [flag, keys["key"]]
+    return [
+        f"{flag}-enc", keys["enc"],
+        f"{flag}-mac", keys["mac"],
+        f"{flag}-dek", keys["dek"],
+    ]
+
+
+def _run_ifdnfc_activate(enabled: bool) -> None:
+    subprocess.run(["ifdnfc-activate", "yes" if enabled else "no"], check=False)
 
 
 def _decode_seedkeeper_text(secret_dict: dict) -> str:
@@ -4913,7 +4929,7 @@ class ToolsJavacardUnlockCardView(View):
         if confirm == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
 
-        command = f"{_format_gp_key_args(keys, '--key')} --unlock"
+        command = _format_gp_key_args(keys, "--key") + ["--unlock"]
         seedkeeper_utils.run_globalplatform(
             self,
             command,
@@ -4948,7 +4964,7 @@ class ToolsJavacardLockCardView(View):
         if confirm == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
 
-        command = f"--key default {_format_gp_key_args(keys, '--lock')}"
+        command = ["--key", "default"] + _format_gp_key_args(keys, "--lock")
         seedkeeper_utils.run_globalplatform(
             self,
             command,
@@ -5011,7 +5027,7 @@ class ToolsDIYBuildAppletsView(View):
 
         if Settings.HOSTNAME == Settings.SEEDSIGNER_OS:
             if not os.path.exists(microsd_dir / "javacard-build.xml"):
-                os.system(f"cp /opt/tools/javacard-build.xml.seedsigneros {microsd_dir}/javacard-build.xml")
+                run(["cp", "/opt/tools/javacard-build.xml.seedsigneros", str(microsd_dir / "javacard-build.xml")], check=False)
 
             if not os.path.exists(microsd_dir / "javacard-cap/"):
                 os.makedirs(microsd_dir / "javacard-cap/", exist_ok=True)
@@ -5097,7 +5113,7 @@ class ToolsDIYInstallAppletView(View):
             logger.info("SmartPGP AID: %s", aid)
             installed_applets = seedkeeper_utils.run_globalplatform(
                 self,
-                f"--install {cap_dir}/{applet_file} --create {aid}",
+                ["--install", f"{cap_dir}/{applet_file}", "--create", aid],
                 "Installing Applet",
                 f"Applet Installed\nSerial: {serial_hex}",
             )
@@ -5126,14 +5142,14 @@ class ToolsDIYInstallAppletView(View):
 
             installed_applets = seedkeeper_utils.run_globalplatform(
                 self,
-                f"--install {cap_dir}/{applet_file} --params {storage_param}",
+                ["--install", f"{cap_dir}/{applet_file}", "--params", storage_param],
                 "Installing Applet",
                 "Applet Installed",
             )
         else:
             installed_applets = seedkeeper_utils.run_globalplatform(
                 self,
-                f"--install {cap_dir}/{applet_file}",
+                ["--install", f"{cap_dir}/{applet_file}"],
                 "Installing Applet",
                 "Applet Installed",
             )
@@ -5141,9 +5157,9 @@ class ToolsDIYInstallAppletView(View):
         # This process often kills IFD-NFC, so restart it if required
         scinterface = self.settings.get_value(SettingsConstants.SETTING__SMARTCARD_INTERFACES)
         if "pn532" in scinterface:
-            os.system("ifdnfc-activate no")
+            _run_ifdnfc_activate(False)
             time.sleep(1)
-            os.system("ifdnfc-activate yes")
+            _run_ifdnfc_activate(True)
 
         return Destination(MainMenuView)
 
@@ -5164,7 +5180,7 @@ class ToolsDIYUninstallAppletView(View):
         if ret == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
 
-        installed_applets = seedkeeper_utils.run_globalplatform(self,"-l -v", "Checking Installed Applets", None)
+        installed_applets = seedkeeper_utils.run_globalplatform(self,["-l", "-v"], "Checking Installed Applets", None)
 
         if installed_applets:
             installed_applets = installed_applets.split('\n')
@@ -5201,7 +5217,7 @@ class ToolsDIYUninstallAppletView(View):
 
                 applet_aid = installed_applets_aids[selected_applet_num]
 
-                seedkeeper_utils.run_globalplatform(self,"--delete " + applet_aid + " -force", "Uninstalling Applet", "Applet Uninstalled")
+                seedkeeper_utils.run_globalplatform(self,["--delete", applet_aid, "-force"], "Uninstalling Applet", "Applet Uninstalled")
 
             else:
                 self.run_screen(
@@ -5216,9 +5232,9 @@ class ToolsDIYUninstallAppletView(View):
                 # This process often kills IFD-NFC, so restart it if required
         scinterface = self.settings.get_value(SettingsConstants.SETTING__SMARTCARD_INTERFACES)
         if "pn532" in scinterface:
-            os.system("ifdnfc-activate no")
+            _run_ifdnfc_activate(False)
             time.sleep(1)
-            os.system("ifdnfc-activate yes")
+            _run_ifdnfc_activate(True)
 
         return Destination(MainMenuView)
 

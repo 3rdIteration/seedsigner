@@ -117,7 +117,7 @@ class TestSettings(BaseTest):
         """Updating from old list-of-lists format should normalize to list of values"""
         legacy = [[opt[0], opt[1]] for opt in SettingsConstants.ALL_SMARTCARD_INTERFACES]
 
-        with patch("os.system"), patch("time.sleep"):
+        with patch("subprocess.run"), patch("time.sleep"):
             self.settings.update({
                 SettingsConstants.SETTING__SMARTCARD_INTERFACES: legacy
             })
@@ -128,12 +128,12 @@ class TestSettings(BaseTest):
     def test_update_skips_unchanged_smartcard_interfaces(self):
         """Updating with identical smartcard interfaces should not restart pcscd"""
         current = self.settings.get_value(SettingsConstants.SETTING__SMARTCARD_INTERFACES)
-        with patch("os.system") as mock_system, patch("time.sleep"):
+        with patch("subprocess.run") as mock_run, patch("time.sleep"):
             self.settings.update({
                 SettingsConstants.SETTING__SMARTCARD_INTERFACES: current
             })
 
-        mock_system.assert_not_called()
+        mock_run.assert_not_called()
 
     def test_update_can_skip_persist(self):
         """Updating with persist=False should not trigger a save to disk"""

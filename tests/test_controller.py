@@ -114,3 +114,39 @@ class TestController(BaseTest):
         # Hidden Settings defaults
         assert controller.settings.get_value(SettingsConstants.SETTING__QR_BRIGHTNESS) == 62
 
+
+
+    def test_handle_wipe_timeout_wipes_loaded_seeds_and_secret_caches(self, monkeypatch):
+        from unittest.mock import patch
+        from seedsigner.models.seed import Seed
+        from seedsigner.models.encryptedqr import EncryptedQR
+
+        controller = Controller.get_instance()
+        seed = Seed([
+            "abandon", "abandon", "abandon", "abandon", "abandon", "abandon",
+            "abandon", "abandon", "abandon", "abandon", "abandon", "about",
+        ])
+        controller.storage.seeds = [seed]
+        controller.storage2.set_encryptedqr(EncryptedQR())
+        controller.storage2.encryptedqr.set_encryption_key("top-secret")
+        controller.Satochip_PIN = "123456"
+        controller.GPG_Admin_PIN = "654321"
+        controller.password_generator_entropy_cache = {"roll_data": "1234512345", "entropy_bytes": b"A" * 32}
+
+        monkeypatch.setattr(controller, "activate_toast", lambda *_args, **_kwargs: None)
+
+        class _Buttons:
+            def trigger_override(self):
+                return None
+
+        with patch("seedsigner.hardware.buttons.HardwareButtons.get_instance", return_value=_Buttons()):
+            controller.handle_wipe_timeout()
+
+        assert controller.storage.seeds == []
+        assert seed.seed_bytes is None
+        assert seed.mnemonic_list == []
+        assert seed.passphrase == ""
+        assert controller.storage2.encryptedqr is None
+        assert controller.password_generator_entropy_cache is None
+        assert controller.Satochip_PIN is None
+        assert controller.GPG_Admin_PIN is None

@@ -1,4 +1,5 @@
 from seedsigner.models.encryption import EncryptedQRCode
+from seedsigner.helpers.secure_delete import wipe_string
 
 class EncryptedQR:
     def __init__(self, encrypted_qr: EncryptedQRCode=None, public_data: str=None):
@@ -26,6 +27,10 @@ class EncryptedQR:
         self._encryption_key = encryption_key
 
 
+    def wipe(self):
+        wipe_string(self._encryption_key)
+        self._encryption_key = None
+
 
 class EncryptedQRStorage:
     def __init__(self):
@@ -42,6 +47,8 @@ class EncryptedQRStorage:
 
 
     def clear_encryptedqr(self):
+        if self._encryptedqr:
+            self._encryptedqr.wipe()
         self._encryptedqr = None
 
 
