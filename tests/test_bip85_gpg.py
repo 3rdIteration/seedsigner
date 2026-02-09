@@ -9,6 +9,7 @@ from seedsigner.controller import Controller
 from seedsigner.gui.screens import RET_CODE__BACK_BUTTON, WarningScreen
 from seedsigner.views import tools_views
 from seedsigner.views.tools_views import (
+    MIN_RSA_KEY_BITS,
     bip85_brainpoolp256r1_from_root,
     bip85_ed25519_from_root,
     bip85_p256_from_root,
@@ -124,9 +125,9 @@ def test_bip85_rsa_deterministic():
     seed = Seed(mnemonic=MNEMONIC)
     root = bip32.HDKey.from_seed(seed.seed_bytes)
     key = bip85_rsa_from_root(root, 1024, 0)
-    assert key.size_in_bits() == 1024
+    assert key.size_in_bits() == MIN_RSA_KEY_BITS
     assert key.n == int(
-        "a3ec52b3ad61128b8253f0a34bfc9d19d01df9603acc8fac3eba3dda750421029d647122fbfc0384fdab97c44f6a7d0748819c46a33414217120daff2f0a471b234023897af78a7cb119df3c9f3b2b7690803587bff8016d14f5b91088201792569d745ff1d9c58235458faf706475242feb4fb699fccaf94b564398f57d921b",
+        "c50bee42220c0162164154c147b661aff9ac6b56e9f1a470db1fdba5ba82338113c5734135bb49d7a4e248b2927324dcd2d5493d385543145177a79cb0a7cdea8c8b31f493d24a7bdeb0cdd0c7ef3685e34c7f5776d2f86d6b3b935bf2d5d3edcbb5c338314444eba19c2c128e935cfaa217fde3fbcab3d2dfdc9a7d9dbf9ca5d1f9cd58f862d8158d0de7fb5c8935ea52547d662bbe1e484752b2104e8d337a4794f9c2b2b0b6c4afcb4bf88c304644c0b134355f39228619091fe7fbe612f0005216b441edce575dbf639710c73eab6da71f980bb2a412b19fbceeca3b56756a62d29e12cbfbb1a6025f4059a9ea5ce6b537e2f06bb589a5e24b22a6f77b95",
         16,
     )
 
