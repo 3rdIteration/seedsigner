@@ -399,6 +399,11 @@ class Controller(Singleton):
                     self.psbt_sign_with_satochip = False
                     self.sign_message_with_satochip = False
 
+                    # Clear camera entropy data so it cannot be used to
+                    # reconstruct seeds after the flow completes.
+                    self.image_entropy_preview_frames = None
+                    self.image_entropy_final_image = None
+
                     # Clear the whole Smartcard session if caching PIN is disabled (Same as removing the card)
                     if Settings.get_instance().get_value(SettingsConstants.SETTING__CACHE_SCARD_PIN) != "E":
                         self.Satochip_PIN = None
@@ -566,6 +571,8 @@ class Controller(Singleton):
         self.Satochip_Last_UID_SHA1 = None
         self.Satochip_Connector = None
         self.GPG_Admin_PIN = None
+        self.image_entropy_preview_frames = None
+        self.image_entropy_final_image = None
 
         # Return to main menu
         self.clear_back_stack()
