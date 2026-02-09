@@ -10981,9 +10981,11 @@ def bip85_add_subkeys(
     from pgpy.packet.types import MPI
     from Cryptodome.PublicKey import RSA
 
+    # Log only a shortened version of the fingerprint to avoid exposing the full value
+    fpr_short = fingerprint[-8:] if fingerprint else ""
     logger.info(
-        "bip85_add_subkeys: fpr=%s alg=%s key_index=%s start_index=%s",
-        fingerprint,
+        "bip85_add_subkeys: fpr_suffix=%s alg=%s key_index=%s start_index=%s",
+        fpr_short,
         alg,
         key_index,
         start_index,
