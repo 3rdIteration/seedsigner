@@ -429,6 +429,7 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True):
 def run_globalplatform(
     parentObject, command, loadingText="Loading", successtext="Success"
 ):
+    import shlex
     from subprocess import run
     from seedsigner.models.settings import (
         Settings,
@@ -441,25 +442,23 @@ def run_globalplatform(
 
     hostname = platform.uname()[1]
     if hostname == "seedsigner-os":
-        commandString = (
-            "/mnt/diy/jdk/bin/java -jar /mnt/diy/Satochip-DIY/gp.jar " + command
-        )
+        base_cmd = ["/mnt/diy/jdk/bin/java", "-jar", "/mnt/diy/Satochip-DIY/gp.jar"]
     elif os.path.exists("/home/pi/Satochip-DIY/gp.jar"):
-        commandString = "java -jar /home/pi/Satochip-DIY/gp.jar " + command
+        base_cmd = ["java", "-jar", "/home/pi/Satochip-DIY/gp.jar"]
     else:
         # Assume gp.jar is available in the current working directory
-        commandString = "java -jar gp.jar " + command
+        base_cmd = ["java", "-jar", "gp.jar"]
 
-    data = run(commandString, capture_output=True, shell=True, text=True)
+    data = run(base_cmd + shlex.split(command), capture_output=True, text=True)
 
     # This process often kills IFD-NFC, so restart it if required
     scinterface = parentObject.settings.get_value(
         SettingsConstants.SETTING__SMARTCARD_INTERFACES
     )
     if "pn532" in scinterface:
-        os.system("ifdnfc-activate no")
+        run(["ifdnfc-activate", "no"], check=False)
         time.sleep(1)
-        os.system("ifdnfc-activate yes")
+        run(["ifdnfc-activate", "yes"], check=False)
 
     parentObject.loading_screen.stop()
 
