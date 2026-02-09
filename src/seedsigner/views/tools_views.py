@@ -5844,8 +5844,7 @@ def parse_uid_list(colon_output: str):
 def filter_deletable_subkeys(primary_fpr: str, subkeys):
     bip85 = primary_fpr in BIP85_DATA
     logger.info(
-        "filter_deletable_subkeys: fpr=%s bip85=%s subkey_count=%s",
-        primary_fpr,
+        "filter_deletable_subkeys: bip85=%s subkey_count=%s",
         bip85,
         len(subkeys),
     )
