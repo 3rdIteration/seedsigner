@@ -83,12 +83,7 @@ class ToolsImageEntropyFinalImageView(View):
             from seedsigner.hardware.camera import Camera
             # Take the final full-res image
             camera = Camera.get_instance()
-            max_dim = max(self.canvas_width, self.canvas_height)
-
-            # Final image will be at least 4x the number of pixels the screen can
-            # actually display.
-            camera.start_single_frame_mode(resolution=(2*max_dim, 2*max_dim))
-
+            camera.start_single_frame_mode(resolution=(2304,1296))
             time.sleep(0.25)
             self.controller.image_entropy_final_image = camera.capture_frame()
             camera.stop_single_frame_mode()

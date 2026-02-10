@@ -1,53 +1,72 @@
-import spidev
-import RPi.GPIO as GPIO
-import time
 import array
+import os
+import time
 
+import spidev
+from periphery import GPIO
+
+
+def _detect_luckfox_profile() -> str:
+    profile = os.getenv("SEEDSIGNER_LUCKFOX_PROFILE", "").strip().lower()
+    if profile in {"mini", "max"}:
+        return profile
+
+    try:
+        with open("/proc/device-tree/model", "rb") as f:
+            model = f.read().decode("utf-8", errors="ignore").lower()
+        if "mini" in model:
+            return "mini"
+        if "max" in model:
+            return "max"
+    except FileNotFoundError:
+        pass
+
+    return "max"
 
 
 class ST7789(object):
-    """class for ST7789  240*240 1.3inch OLED displays."""
+    """class for ST7789 240*240 1.3inch OLED displays."""
+
+    # If mini wiring differs, override with env vars:
+    #   SEEDSIGNER_LCD_DC_PIN / SEEDSIGNER_LCD_RST_PIN
+    _PROFILE_PINS = {
+        "max": {"dc": 56, "rst": 57},
+        "mini": {"dc": 56, "rst": 57},
+    }
 
     def __init__(self):
         self.width = 240
         self.height = 240
 
-        #Initialize DC RST pin
-        self._dc = 22
-        self._rst = 13
-        self._bl = 18
+        profile = _detect_luckfox_profile()
+        pins = self._PROFILE_PINS[profile]
+        self._dc_pin = int(os.getenv("SEEDSIGNER_LCD_DC_PIN", pins["dc"]))
+        self._rst_pin = int(os.getenv("SEEDSIGNER_LCD_RST_PIN", pins["rst"]))
 
-        GPIO.setmode(GPIO.BOARD)
-        GPIO.setwarnings(False)
-        GPIO.setup(self._dc,GPIO.OUT)
-        GPIO.setup(self._rst,GPIO.OUT)
-        GPIO.setup(self._bl,GPIO.OUT)
-        GPIO.output(self._bl, GPIO.HIGH)
+        self._dc = GPIO(self._dc_pin, "out")
+        self._rst = GPIO(self._rst_pin, "out")
 
-        #Initialize SPI
         self._spi = spidev.SpiDev(0, 0)
         self._spi.max_speed_hz = 40000000
 
         self.init()
 
-
-    """    Write register address and data     """
     def command(self, cmd):
-        GPIO.output(self._dc, GPIO.LOW)
+        self._dc.write(False)
         self._spi.writebytes([cmd])
 
     def data(self, val):
-        GPIO.output(self._dc, GPIO.HIGH)
+        self._dc.write(True)
         self._spi.writebytes([val])
 
     def init(self):
-        """Initialize dispaly"""    
+        """Initialize display"""
         self.reset()
 
         self.command(0x36)
-        self.data(0x70)                 #self.data(0x00)
+        self.data(0x70)
 
-        self.command(0x3A) 
+        self.command(0x3A)
         self.data(0x05)
 
         self.command(0xB2)
@@ -58,7 +77,7 @@ class ST7789(object):
         self.data(0x33)
 
         self.command(0xB7)
-        self.data(0x35) 
+        self.data(0x35)
 
         self.command(0xBB)
         self.data(0x19)
@@ -70,13 +89,13 @@ class ST7789(object):
         self.data(0x01)
 
         self.command(0xC3)
-        self.data(0x12)   
+        self.data(0x12)
 
         self.command(0xC4)
         self.data(0x20)
 
         self.command(0xC6)
-        self.data(0x0F) 
+        self.data(0x0F)
 
         self.command(0xD0)
         self.data(0xA4)
@@ -113,61 +132,50 @@ class ST7789(object):
         self.data(0x1F)
         self.data(0x20)
         self.data(0x23)
-        
-        self.command(0x21)  # inversion ON; 0x20 = inversion OFF
 
+        self.command(0x21)
         self.command(0x11)
-
         self.command(0x29)
 
     def reset(self):
-        """Reset the display"""
-        GPIO.output(self._rst,GPIO.HIGH)
+        self._rst.write(True)
         time.sleep(0.01)
-        GPIO.output(self._rst,GPIO.LOW)
+        self._rst.write(False)
         time.sleep(0.01)
-        GPIO.output(self._rst,GPIO.HIGH)
+        self._rst.write(True)
         time.sleep(0.01)
-        
+
     def SetWindows(self, Xstart, Ystart, Xend, Yend):
-        #set the X coordinates
         self.command(0x2A)
-        self.data(0x00)               #Set the horizontal starting point to the high octet
-        self.data(Xstart & 0xff)      #Set the horizontal starting point to the low octet
-        self.data(0x00)               #Set the horizontal end to the high octet
-        self.data((Xend - 1) & 0xff) #Set the horizontal end to the low octet 
-        
-        #set the Y coordinates
+        self.data(0x00)
+        self.data(Xstart & 0xFF)
+        self.data(0x00)
+        self.data((Xend - 1) & 0xFF)
+
         self.command(0x2B)
         self.data(0x00)
-        self.data((Ystart & 0xff))
+        self.data(Ystart & 0xFF)
         self.data(0x00)
-        self.data((Yend - 1) & 0xff )
+        self.data((Yend - 1) & 0xFF)
 
-        self.command(0x2C)    
-    
-    def show_image(self,Image,Xstart,Ystart):
-        """Set buffer to value of Python Imaging Library image."""
-        """Write display buffer to physical display"""
+        self.command(0x2C)
+
+    def show_image(self, Image, Xstart, Ystart):
         imwidth, imheight = Image.size
         if imwidth != self.width or imheight != self.height:
-            raise ValueError('Image must be same dimensions as display \
-                ({0}x{1}).' .format(self.width, self.height))
-        # convert 24-bit RGB-8:8:8 to gBRG-3:5:5:3; then per-pixel byteswap to 16-bit RGB-5:6:5
+            raise ValueError(f"Image must be same dimensions as display ({self.width}x{self.height}).")
         arr = array.array("H", Image.convert("BGR;16").tobytes())
         arr.byteswap()
         pix = arr.tobytes()
-        self.SetWindows ( 0, 0, self.width, self.height)
-        GPIO.output(self._dc,GPIO.HIGH)
-        self._spi.writebytes2(pix)	
-        
+        self.SetWindows(0, 0, self.width, self.height)
+        self._dc.write(True)
+        self._spi.writebytes2(pix)
+
     def clear(self):
-        """Clear contents of image buffer"""
-        _buffer = [0xff]*(self.width * self.height * 2)
-        self.SetWindows ( 0, 0, self.width, self.height)
-        GPIO.output(self._dc,GPIO.HIGH)
+        _buffer = [0xFF] * (self.width * self.height * 2)
+        self.SetWindows(0, 0, self.width, self.height)
+        self._dc.write(True)
         self._spi.writebytes2(_buffer)
 
     def invert(self, enabled: bool = True):
-        """Invert how the display interprets colors"""
         self.command(0x21 if enabled else 0x20)
