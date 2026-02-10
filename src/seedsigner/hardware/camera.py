@@ -9,6 +9,7 @@ import io
 from PIL import Image
 from seedsigner.models.settings import Settings, SettingsConstants
 from seedsigner.models.singleton import Singleton
+from seedsigner.hardware.platform import is_luckfox
 
 
 class Camera(Singleton):
@@ -16,6 +17,7 @@ class Camera(Singleton):
 
     _video_stream = None
     _picamera = None
+    _single_frame_stream = None
     _camera_rotation = None
     _camera_index = 0
 
@@ -116,6 +118,9 @@ class Camera(Singleton):
                 self._picamera.close()
             else:
                 self._picamera.release()
+        if self._single_frame_stream is not None:
+            self._single_frame_stream.stop()
+            self._single_frame_stream = None
 
         try:
             from picamera import PiCamera
@@ -125,17 +130,28 @@ class Camera(Singleton):
         except Exception:
             try:
                 import cv2  # type: ignore
-            except Exception as e:
-                raise ModuleNotFoundError(
-                    "OpenCV is required for desktop camera support; install requirements-desktop.txt",
-                ) from e
-            self._picamera = cv2.VideoCapture(self._camera_index)
-            self._picamera.set(cv2.CAP_PROP_FRAME_WIDTH, resolution[0])
-            self._picamera.set(cv2.CAP_PROP_FRAME_HEIGHT, resolution[1])
+
+                self._picamera = cv2.VideoCapture(self._camera_index)
+                self._picamera.set(cv2.CAP_PROP_FRAME_WIDTH, resolution[0])
+                self._picamera.set(cv2.CAP_PROP_FRAME_HEIGHT, resolution[1])
+            except Exception:
+                if not is_luckfox():
+                    raise ModuleNotFoundError(
+                        "OpenCV is required for desktop camera support; install requirements-desktop.txt",
+                    )
+
+                from seedsigner.hardware.pivideostream import PiVideoStream
+
+                self._single_frame_stream = PiVideoStream(
+                    resolution=resolution,
+                    framerate=2,
+                    format="rgb",
+                    device_index=self._camera_index,
+                ).start()
 
     def capture_frame(self):
         """Capture a single frame from the camera as a PIL image."""
-        if self._picamera is None:
+        if self._picamera is None and self._single_frame_stream is None:
             raise Exception("Must call start_single_frame_mode first.")
 
         if hasattr(self._picamera, "capture"):
@@ -150,7 +166,8 @@ class Camera(Singleton):
             self._picamera.capture(stream, format="jpeg")
             stream.seek(0)
             return Image.open(stream).rotate(90 + self._camera_rotation)
-        else:
+
+        if self._picamera is not None:
             # OpenCV path
             ret, frame = self._picamera.read()
             if not ret:
@@ -158,6 +175,17 @@ class Camera(Singleton):
             return Image.fromarray(frame.astype("uint8"), "RGB").rotate(
                 90 + self._camera_rotation
             )
+
+        if self._single_frame_stream is not None:
+            for _ in range(20):
+                frame = self._single_frame_stream.read()
+                if frame is not None:
+                    return Image.fromarray(frame.astype("uint8"), "RGB").rotate(
+                        90 + self._camera_rotation
+                    )
+            return None
+
+        return None
 
     def stop_single_frame_mode(self):
         """Release any resources used for single-frame capture."""
@@ -167,4 +195,8 @@ class Camera(Singleton):
             else:
                 self._picamera.release()
             self._picamera = None
+
+        if self._single_frame_stream is not None:
+            self._single_frame_stream.stop()
+            self._single_frame_stream = None
 

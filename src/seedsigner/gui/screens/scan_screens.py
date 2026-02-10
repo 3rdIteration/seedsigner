@@ -10,6 +10,7 @@ from seedsigner.gui import renderer
 from seedsigner.gui.keyboard import Keyboard, TextEntryDisplay
 from seedsigner.hardware.buttons import HardwareButtonsConstants
 from seedsigner.hardware.camera import Camera
+from seedsigner.hardware.platform import is_luckfox
 from seedsigner.models.decode_qr import DecodeQR, DecodeQRStatus
 from seedsigner.models.threads import BaseThread, ThreadsafeCounter
 
@@ -54,8 +55,8 @@ class ScanScreen(BaseScreen):
     """
     decoder: DecodeQR = None
     instructions_text: str = None
-    resolution: tuple[int,int] = (480, 480)
-    framerate: int = 6  # TODO: alternate optimization for Pi Zero 2W?
+    resolution: tuple[int,int] = (240, 240) if is_luckfox() else (480, 480)
+    framerate: int = 2 if is_luckfox() else 6  # tuned lower for Luckfox CPU/camera path
     render_rect: tuple[int,int,int,int] = None
 
     FRAME__ADDED_PART = 1

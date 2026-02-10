@@ -7,6 +7,8 @@ import platform
 
 from typing import List
 
+from seedsigner.hardware.platform import is_luckfox
+
 try:
     import RPi.GPIO as GPIO
     USING_MOCK_GPIO = False
@@ -75,7 +77,7 @@ class Settings(Singleton):
             # Load default/persistent locale setting
             settings.load_locale()
 
-            if USING_MOCK_GPIO:
+            if USING_MOCK_GPIO and not is_luckfox():
                 settings._data[SettingsConstants.SETTING__DISPLAY_CONFIGURATION] = (
                     SettingsConstants.DISPLAY_CONFIGURATION__DESKTOP__240x240
                 )

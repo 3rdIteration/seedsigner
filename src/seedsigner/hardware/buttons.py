@@ -16,16 +16,35 @@ import logging
 import time
 from typing import Dict, List, Tuple
 
+from seedsigner.hardware.platform import get_luckfox_profile, is_luckfox
+
 try:
     import RPi.GPIO as GPIO
-    USING_GPIO = True
+    GPIO_BACKEND = "rpi"
 except ModuleNotFoundError:
-    USING_GPIO = False
     GPIO = None
+    if is_luckfox():
+        try:
+            from periphery import GPIO as PeripheryGPIO  # type: ignore
+
+            GPIO_BACKEND = "periphery"
+        except ModuleNotFoundError:
+            GPIO_BACKEND = "desktop"
+            PeripheryGPIO = None
+    else:
+        GPIO_BACKEND = "desktop"
+        PeripheryGPIO = None
+
+if GPIO_BACKEND == "desktop":
     try:
         import pygame  # type: ignore
     except ModuleNotFoundError:
         pygame = None
+else:
+    pygame = None
+
+USING_GPIO = GPIO_BACKEND in {"rpi", "periphery"}
+LUCKFOX_PROFILE = get_luckfox_profile() if GPIO_BACKEND == "periphery" else None
 
 from seedsigner.models.singleton import Singleton
 
@@ -57,7 +76,19 @@ class HardwareButtons(Singleton):
     events.
     """
 
-    if USING_GPIO and GPIO.RPI_INFO['P1_REVISION'] == 3:  # RPi with 40-pin GPIO
+    if GPIO_BACKEND == "periphery":
+        logger.info(f"Using Luckfox GPIO mapping for variant: {LUCKFOX_PROFILE.variant}")
+        KEY_UP_PIN = LUCKFOX_PROFILE.key_up_pin
+        KEY_DOWN_PIN = LUCKFOX_PROFILE.key_down_pin
+        KEY_LEFT_PIN = LUCKFOX_PROFILE.key_left_pin
+        KEY_RIGHT_PIN = LUCKFOX_PROFILE.key_right_pin
+        KEY_PRESS_PIN = LUCKFOX_PROFILE.key_press_pin
+
+        KEY1_PIN = LUCKFOX_PROFILE.key1_pin
+        KEY2_PIN = LUCKFOX_PROFILE.key2_pin
+        KEY3_PIN = LUCKFOX_PROFILE.key3_pin
+
+    elif GPIO_BACKEND == "rpi" and GPIO.RPI_INFO['P1_REVISION'] == 3:  # RPi with 40-pin GPIO
         # Raspberry Pi 2 and newer models share the same pin layout.
         logger.info("Detected 40pin GPIO (Rasbperry Pi 2 and above)")
         KEY_UP_PIN = 31
@@ -135,7 +166,7 @@ class HardwareButtons(Singleton):
         if cls._instance is None:
             cls._instance = cls.__new__(cls)
 
-            if USING_GPIO:
+            if GPIO_BACKEND == "rpi":
                 # Initialise the Raspberry Pi GPIO pins.
                 GPIO.setmode(GPIO.BOARD)
                 GPIO.setup(HardwareButtons.KEY_UP_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
@@ -148,6 +179,20 @@ class HardwareButtons(Singleton):
                 GPIO.setup(HardwareButtons.KEY3_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
                 cls._instance.GPIO = GPIO
+            elif GPIO_BACKEND == "periphery":
+                cls._instance.GPIO = {
+                    pin: PeripheryGPIO(pin, "in")
+                    for pin in (
+                        HardwareButtons.KEY_UP_PIN,
+                        HardwareButtons.KEY_DOWN_PIN,
+                        HardwareButtons.KEY_LEFT_PIN,
+                        HardwareButtons.KEY_RIGHT_PIN,
+                        HardwareButtons.KEY_PRESS_PIN,
+                        HardwareButtons.KEY1_PIN,
+                        HardwareButtons.KEY2_PIN,
+                        HardwareButtons.KEY3_PIN,
+                    )
+                }
             else:
                 if pygame is None:
                     raise ModuleNotFoundError(
@@ -223,7 +268,7 @@ class HardwareButtons(Singleton):
 
             if USING_GPIO:
                 for key in keys:
-                    if self.GPIO.input(key) == GPIO.LOW:
+                    if self._is_pressed(key):
                         if self.cur_input != key:
                             self.cur_input = key
                             self.cur_input_started = cur_time
@@ -285,7 +330,7 @@ class HardwareButtons(Singleton):
 
         if USING_GPIO:
             for key in keys:
-                if self.GPIO.input(key) == self.GPIO.LOW:
+                if self._is_pressed(key):
                     self.update_last_input_time()
                     return True
             return False
@@ -304,7 +349,7 @@ class HardwareButtons(Singleton):
         """Return ``True`` if any button is currently pressed."""
         if USING_GPIO:
             for key in HardwareButtonsConstants.ALL_KEYS:
-                if self.GPIO.input(key) == GPIO.LOW:
+                if self._is_pressed(key):
                     return True
             return False
         else:
@@ -315,6 +360,13 @@ class HardwareButtons(Singleton):
                 if pg_key and pressed[pg_key]:
                     return True
             return False
+
+
+    def _is_pressed(self, key: int) -> bool:
+        if GPIO_BACKEND == "rpi":
+            return self.GPIO.input(key) == GPIO.LOW
+        # Periphery ``read`` returns boolean high/low.
+        return self.GPIO[key].read() is False
 
 
 # Coordinates for clickable desktop buttons (unscaled)
@@ -389,7 +441,16 @@ _recalc_desktop_layout()
 class HardwareButtonsConstants:
     """Numeric codes representing each physical or simulated button."""
 
-    if USING_GPIO and GPIO.RPI_INFO['P1_REVISION'] == 3:
+    if GPIO_BACKEND == "periphery":
+        KEY_UP = HardwareButtons.KEY_UP_PIN
+        KEY_DOWN = HardwareButtons.KEY_DOWN_PIN
+        KEY_LEFT = HardwareButtons.KEY_LEFT_PIN
+        KEY_RIGHT = HardwareButtons.KEY_RIGHT_PIN
+        KEY_PRESS = HardwareButtons.KEY_PRESS_PIN
+        KEY1 = HardwareButtons.KEY1_PIN
+        KEY2 = HardwareButtons.KEY2_PIN
+        KEY3 = HardwareButtons.KEY3_PIN
+    elif GPIO_BACKEND == "rpi" and GPIO.RPI_INFO['P1_REVISION'] == 3:
         KEY_UP = 31
         KEY_DOWN = 35
         KEY_LEFT = 29
@@ -399,7 +460,7 @@ class HardwareButtonsConstants:
         KEY1 = 40
         KEY2 = 38
         KEY3 = 36
-    elif USING_GPIO:
+    elif GPIO_BACKEND == "rpi":
         KEY_UP = 5
         KEY_DOWN = 11
         KEY_LEFT = 3
