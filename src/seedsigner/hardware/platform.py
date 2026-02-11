@@ -16,8 +16,8 @@ PLATFORM__LUCKFOX = "luckfox"
 PLATFORM__DESKTOP = "desktop"
 
 LUCKFOX_VARIANT__UNKNOWN = "unknown"
-LUCKFOX_VARIANT__PICO_MINI = "pico-mini"
-LUCKFOX_VARIANT__PICO_MAX = "pico-max"
+LUCKFOX_VARIANT__PICO_MINI = "luckfox-22"
+LUCKFOX_VARIANT__PICO_MAX = "luckfox-40"
 
 
 @dataclass(frozen=True)
@@ -42,10 +42,8 @@ class LuckfoxHardwareProfile:
 
 
 # Both SeedSigner Luckfox carrier PCBs currently use the same wiring map.
-# Keep profiles split so per-variant pinouts can diverge later without changing
-# each backend module.
-_LUCKFOX_PROFILE_PICO_MINI = LuckfoxHardwareProfile(
-    variant=LUCKFOX_VARIANT__PICO_MINI,
+# Keep profiles split so per-variant values can diverge later.
+_LUCKFOX_BASE_PINS = dict(
     key_up_pin=58,
     key_down_pin=53,
     key_left_pin=59,
@@ -56,22 +54,19 @@ _LUCKFOX_PROFILE_PICO_MINI = LuckfoxHardwareProfile(
     key3_pin=42,
     st7789_dc_pin=56,
     st7789_rst_pin=57,
+)
+
+
+_LUCKFOX_PROFILE_PICO_MINI = LuckfoxHardwareProfile(
+    variant=LUCKFOX_VARIANT__PICO_MINI,
     video_devices=("/dev/video11", "/dev/video12", "/dev/video0"),
+    **_LUCKFOX_BASE_PINS,
 )
 
 _LUCKFOX_PROFILE_PICO_MAX = LuckfoxHardwareProfile(
     variant=LUCKFOX_VARIANT__PICO_MAX,
-    key_up_pin=58,
-    key_down_pin=53,
-    key_left_pin=59,
-    key_right_pin=54,
-    key_press_pin=52,
-    key1_pin=55,
-    key2_pin=43,
-    key3_pin=42,
-    st7789_dc_pin=56,
-    st7789_rst_pin=57,
     video_devices=("/dev/video12", "/dev/video11", "/dev/video0"),
+    **_LUCKFOX_BASE_PINS,
 )
 
 
@@ -125,6 +120,12 @@ def detect_platform() -> str:
 def detect_luckfox_variant() -> str:
     """Return detected Luckfox board variant when running on Luckfox."""
     forced = os.getenv("SEEDSIGNER_LUCKFOX_VARIANT", "").strip().lower()
+    # Backward-compat aliases.
+    if forced == "pico-mini":
+        forced = LUCKFOX_VARIANT__PICO_MINI
+    elif forced == "pico-max":
+        forced = LUCKFOX_VARIANT__PICO_MAX
+
     if forced in {LUCKFOX_VARIANT__PICO_MINI, LUCKFOX_VARIANT__PICO_MAX}:
         return forced
 

@@ -54,3 +54,12 @@ def test_luckfox_profiles_have_valid_pin_maps():
         assert profile.key_up_pin > 0
         assert profile.st7789_dc_pin > 0
         assert profile.video_devices
+
+
+def test_luckfox_profile_alias_is_supported(monkeypatch):
+    _clear_caches()
+    monkeypatch.setenv("SEEDSIGNER_PLATFORM", hw_platform.PLATFORM__LUCKFOX)
+    monkeypatch.setenv("SEEDSIGNER_LUCKFOX_VARIANT", "pico-mini")
+
+    profile = hw_platform.get_luckfox_profile()
+    assert profile.variant == hw_platform.LUCKFOX_VARIANT__PICO_MINI
