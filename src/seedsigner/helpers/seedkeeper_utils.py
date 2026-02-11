@@ -429,28 +429,18 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True):
 def run_globalplatform(
     parentObject, command, loadingText="Loading", successtext="Success"
 ):
-    from subprocess import run
-    from seedsigner.models.settings import (
-        Settings,
-        SettingsConstants,
-        SettingsDefinition,
-    )
+    from seedsigner.helpers.globalplatform_native import GlobalPlatformNativeRunner
+    from seedsigner.models.settings import SettingsConstants
 
     parentObject.loading_screen = LoadingScreenThread(text=loadingText)
     parentObject.loading_screen.start()
 
-    hostname = platform.uname()[1]
-    if hostname == "seedsigner-os":
-        commandString = (
-            "/mnt/diy/jdk/bin/java -jar /mnt/diy/Satochip-DIY/gp.jar " + command
-        )
-    elif os.path.exists("/home/pi/Satochip-DIY/gp.jar"):
-        commandString = "java -jar /home/pi/Satochip-DIY/gp.jar " + command
-    else:
-        # Assume gp.jar is available in the current working directory
-        commandString = "java -jar gp.jar " + command
-
-    data = run(commandString, capture_output=True, shell=True, text=True)
+    data_stdout = ""
+    errors_cleaned = ""
+    try:
+        data_stdout = GlobalPlatformNativeRunner().run(command)
+    except Exception as exc:
+        errors_cleaned = str(exc)
 
     # This process often kills IFD-NFC, so restart it if required
     scinterface = parentObject.settings.get_value(
@@ -463,28 +453,6 @@ def run_globalplatform(
 
     parentObject.loading_screen.stop()
 
-    print("StdOut:", data.stdout)
-    print("StdErr:", data.stderr)
-
-    # data.stderr = data.stderr.replace("Warning: no keys given, defaulting to 404142434445464748494A4B4C4D4E4F", "")
-
-    data.stderr = data.stderr.split("\n")
-
-    errors_cleaned = []
-    for errorLine in data.stderr:
-        if "[INFO]" in errorLine:
-            continue
-        elif "404142434445464748494A4B4C4D4E4F" in errorLine:
-            continue
-        elif len(errorLine) < 1:
-            continue
-
-        errors_cleaned.append(errorLine)
-
-    print("StdErr (Cleaned):", errors_cleaned)
-
-    errors_cleaned = " ".join(errors_cleaned)
-
     if len(errors_cleaned) > 1:
         uninstall_required = False
 
@@ -493,7 +461,7 @@ def run_globalplatform(
         if "is not present on card" in errors_cleaned:
             failureText = "Applet is not on the card, nothing to uninstall."
 
-        elif "Multiple readers, must choose one" in errors_cleaned:
+        elif "Multiple readers" in errors_cleaned:
             failureText = "Multiple readers connected, please run with a single reader connected/activated."
 
         elif "Card cryptogram invalid" in errors_cleaned:
@@ -528,6 +496,9 @@ def run_globalplatform(
         ):
             failureText = "Unable to complete secure connection... (App or reader may need restart)"
 
+        elif "pyGlobalPlatform is not installed" in errors_cleaned:
+            failureText = "Install pyGlobalPlatform/libglobalplatform to use native GP commands."
+
         logger.error(failureText)
         parentObject.run_screen(
             WarningScreen,
@@ -557,15 +528,14 @@ def run_globalplatform(
                 )
         return None
 
-    else:
-        if successtext:
-            print(successtext)
-            parentObject.run_screen(
-                LargeIconStatusScreen,
-                title="Success",
-                status_headline=None,
-                text=successtext,
-                show_back_button=False,
-            )
+    if successtext:
+        print(successtext)
+        parentObject.run_screen(
+            LargeIconStatusScreen,
+            title="Success",
+            status_headline=None,
+            text=successtext,
+            show_back_button=False,
+        )
 
-        return data.stdout
+    return data_stdout
