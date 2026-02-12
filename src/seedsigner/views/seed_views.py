@@ -4433,6 +4433,8 @@ class SeedExportPlaintextQRView(View):
     def run(self):
         from seedsigner.gui.screens.screen import QRDisplayScreen
         data = self.seed.mnemonic_str
+        if isinstance(self.seed, XprvSeed):
+            data = self.seed.get_root().to_base58()
         if isinstance(self.seed, Slip39Seed) and self.share_index is not None:
             data = self.seed.mnemonic_list[self.share_index]
         encoder_args = dict(data=data)
