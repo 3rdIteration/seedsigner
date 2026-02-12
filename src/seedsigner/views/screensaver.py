@@ -1,5 +1,4 @@
 import logging
-import os
 import random
 import time
 
@@ -22,22 +21,11 @@ class LogoScreen(BaseScreen):
         super().__init__()
         self.logo = load_image("logo_black_240.png")
 
-        self.partners = [
-            "hrf",
-        ]
-
-        self.partner_logos: dict = {}
-        for partner in self.partners:
-            logo_url = os.path.join("partners", f"{partner}_logo.png")
-            self.partner_logos[partner] = load_image(logo_url)
 
 
     def _run(self):
         pass
 
-
-    def get_random_partner(self) -> str:
-        return self.partners[random.randrange(len(self.partners))]
 
 
 
@@ -100,7 +88,7 @@ class OpeningSplashScreen(LogoScreen):
 
         # Display version num below SeedSigner logo
         font = Fonts.get_font(GUIConstants.get_body_font_name(), GUIConstants.get_top_nav_title_font_size())
-        version = f"v{controller.VERSION}"
+        version = controller.VERSION
 
         # The logo png is 240x240, but the actual logo is 70px tall, vertically centered
         logo_height = 70
@@ -116,23 +104,14 @@ class OpeningSplashScreen(LogoScreen):
                 # Hold on the version num for a moment
                 time.sleep(1)
 
-            # Set up the partner logo
-            partner_logo: Image.Image = self.partner_logos[self.get_random_partner()]
             font = Fonts.get_font(GUIConstants.get_top_nav_title_font_name(), GUIConstants.get_body_font_size())
-            # TRANSLATOR_NOTE: This is on the opening splash screen, displayed above the HRF logo
-            sponsor_text = _("With support from:")
+            # TRANSLATOR_NOTE: This is on the opening splash screen under the version number.
+            sponsor_text = _("An Unofficial Fork of")
             (left, top, tw, th) = font.getbbox(sponsor_text, anchor="lt")
 
             x = int((self.renderer.canvas_width) / 2)
-            y = self.canvas_height - GUIConstants.COMPONENT_PADDING - partner_logo.height - int(GUIConstants.COMPONENT_PADDING/2) - th
+            y = self.canvas_height - GUIConstants.COMPONENT_PADDING - th
             self.renderer.draw.text(xy=(x, y), text=sponsor_text, font=font, fill="#ccc", anchor="mt")
-            self.renderer.canvas.paste(
-                partner_logo,
-                (
-                    int((self.renderer.canvas_width - partner_logo.width) / 2),
-                    y + th + int(GUIConstants.COMPONENT_PADDING/2)
-                )
-            )
 
             self.renderer.show_image()
 
@@ -254,5 +233,4 @@ class ScreensaverScreen(LogoScreen):
 
     def stop(self):
         self._is_running = False
-
 
