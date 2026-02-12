@@ -153,7 +153,12 @@ class QR:
                 cmd.append("-8")
             cmd.extend(["-r", data_path, "-o", output_path])
 
-            rv = subprocess.call(cmd)
+            try:
+                rv = subprocess.call(cmd)
+            except FileNotFoundError:
+                # `qrencode` may be unavailable in some test/dev environments.
+                # Fall back to the pure-Python encoder path in that case.
+                rv = 1
 
             # if qrencode fails, fall back to only encoder
             if rv != 0:
