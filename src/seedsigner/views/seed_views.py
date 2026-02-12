@@ -348,6 +348,45 @@ class SeedKeeperSelectView(View):
 
         return mnemonic # str
 
+    @staticmethod
+    def _decode_seedkeeper_text(secret_hex: str) -> str:
+        """Decode a Seedkeeper UTF-8 payload with optional 1/2-byte length prefix."""
+        raw = bytes.fromhex(secret_hex)
+        if len(raw) >= 2 and int.from_bytes(raw[:2], "big") == len(raw[2:]):
+            return raw[2:].decode("utf-8")
+        if len(raw) >= 1 and raw[0] == len(raw[1:]):
+            return raw[1:].decode("utf-8")
+        return raw.decode("utf-8")
+
+    @staticmethod
+    def _extract_xprv_from_masterseed_secret(secret_hex: str) -> str:
+        """Load legacy xprv payloads stored in a Masterseed subtype 0 secret."""
+        secret_raw_bytes = bytes.fromhex(secret_hex)
+
+        candidates: list[str] = []
+        if secret_raw_bytes:
+            size = secret_raw_bytes[0]
+            if len(secret_raw_bytes) >= 1 + size:
+                try:
+                    candidates.append(secret_raw_bytes[1:1 + size].decode("utf-8"))
+                except UnicodeDecodeError:
+                    pass
+
+        for decode_attempt in (
+            lambda: SeedKeeperSelectView._decode_seedkeeper_text(secret_hex),
+            lambda: secret_raw_bytes.decode("utf-8"),
+        ):
+            try:
+                candidates.append(decode_attempt())
+            except UnicodeDecodeError:
+                continue
+
+        for candidate in candidates:
+            if candidate.startswith(("xprv", "tprv")):
+                return candidate
+
+        raise ValueError("Unsupported Masterseed subtype 0 payload")
+
 
     def run(self):
         from seedsigner.gui.screens.screen import LoadingScreenThread
@@ -376,6 +415,7 @@ class SeedKeeperSelectView(View):
                 if ((stype == "BIP39 mnemonic" and export_rights == 'Plaintext export allowed') or
                         (stype == 'Masterseed' and subtype == 0x01) or
                         (stype == 'Masterseed' and subtype == 0x00) or
+                        (stype == 'Data' and label.startswith('XPRV:') and export_rights == 'Plaintext export allowed') or
                         (stype == 'Electrum mnemonic' and export_rights == 'Plaintext export allowed')):
 
                     if not label:
@@ -453,9 +493,14 @@ class SeedKeeperSelectView(View):
                 secret_passphrase = passphrase
 
             elif stype == 'Masterseed' and subtype == 0x00:
-                secret_raw_bytes = bytes.fromhex(secret_dict['secret'])
-                xprv_size = secret_raw_bytes[0]
-                xprv = secret_raw_bytes[1:1 + xprv_size].decode("utf-8")
+                xprv = self._extract_xprv_from_masterseed_secret(secret_dict['secret'])
+                self.controller.storage.set_pending_seed(XprvSeed(xprv))
+                return Destination(SeedFinalizeView)
+
+            elif stype == 'Data':
+                xprv = self._decode_seedkeeper_text(secret_dict['secret']).strip()
+                if not xprv.startswith(("xprv", "tprv")):
+                    raise ValueError("Selected Seedkeeper data entry is not an xprv")
                 self.controller.storage.set_pending_seed(XprvSeed(xprv))
                 return Destination(SeedFinalizeView)
 
@@ -4557,10 +4602,10 @@ class SaveToSeedkeeperView(View):
                         label = ret['passphrase']
                         export_rights = "Plaintext export allowed"
                         if isinstance(seed, XprvSeed):
-                            type = "Masterseed"
-                            subtype = 0x00
+                            type = "Data"
+                            label = f"XPRV:{label}"
                             xprv_list = list(bytes(seed.get_root().to_base58(), 'utf-8'))
-                            secret_list = [len(xprv_list)] + xprv_list
+                            secret_list = list(len(xprv_list).to_bytes(2, "big")) + xprv_list
                         else:
                             type = "Masterseed"
                             subtype = 0x01
@@ -4578,7 +4623,10 @@ class SaveToSeedkeeperView(View):
                                            [len(bip39_passphrase_list)] +
                                            bip39_passphrase_list
                                            )
-                    header = Satochip_Connector.make_header(type, export_rights, label, subtype=subtype)
+                    if type == "Data":
+                        header = Satochip_Connector.make_header(type, export_rights, label)
+                    else:
+                        header = Satochip_Connector.make_header(type, export_rights, label, subtype=subtype)
                     secret_dic = {'header': header, 'secret_list': secret_list}
 
             try:
