@@ -1185,3 +1185,42 @@ class TestSatochipImportSeedView(BaseTest):
         assert view.run_screen.call_args.args[0] is tools_views.WarningScreen
         assert "already" in view.run_screen.call_args.kwargs["text"].lower()
         assert destination.View_cls == tools_views.MainMenuView
+
+    def test_xprv_seed_shows_unsupported_message(self, monkeypatch):
+        from seedsigner.views import tools_views
+        from seedsigner.helpers import seedkeeper_utils
+        from seedsigner.models.seed import XprvSeed
+
+        class MockConnector:
+            def card_get_status(self):
+                return (None, 0x90, 0x00, {"is_seeded": False})
+
+            def card_bip32_import_seed(self, _seed_bytes):
+                raise AssertionError("xprv should be blocked before import")
+
+        monkeypatch.setattr(
+            seedkeeper_utils, "init_satochip", lambda *a, **k: MockConnector()
+        )
+
+        self.controller.storage.seeds = [
+            XprvSeed(
+                "xprv9s21ZrQH143K2LBWUUQRFXhucrQqBpKdRRxNVq2zBqsx8HVqFk2uYo8kmbaLLHRdqtQpUm98uKfu3vca1LqdGhUtyoFnCNkfmXRyPXLjbKb"
+            )
+        ]
+
+        view = tools_views.ToolsSatochipImportSeedView()
+        responses = iter([0, 0])
+        captured = {}
+
+        def fake_run_screen(screen_cls, **kwargs):
+            if screen_cls is tools_views.WarningScreen:
+                captured["warning_text"] = kwargs.get("text")
+            return next(responses)
+
+        monkeypatch.setattr(view, "run_screen", fake_run_screen)
+        destination = view.run()
+
+        warning_text = captured["warning_text"].lower()
+        assert "xprv" in warning_text
+        assert "slip39" in warning_text
+        assert destination.View_cls == tools_views.BackStackView

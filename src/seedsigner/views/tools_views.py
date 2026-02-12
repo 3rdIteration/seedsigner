@@ -43,6 +43,7 @@ from seedsigner.models.decode_qr import DecodeQR
 from seedsigner.models.encode_qr import GenericStaticQrEncoder
 from seedsigner.gui.screens.screen import ButtonOption
 from seedsigner.models.seed import Seed
+from seedsigner.models.seed import XprvSeed
 from seedsigner.models.settings_definition import SettingsConstants
 from seedsigner.views.seed_views import (
     SeedDiscardView,
@@ -3656,6 +3657,16 @@ class ToolsSatochipImportSeedView(View):
 
         if len(seeds) > 0 and selected_menu_num < len(seeds):
             # User selected one of the n seeds
+            if isinstance(seeds[selected_menu_num], XprvSeed):
+                self.run_screen(
+                    WarningScreen,
+                    title="Unsupported",
+                    status_headline=None,
+                    text=_("xprv cannot init Satochip.\nUse BIP39, SLIP39, or Electrum."),
+                    show_back_button=False,
+                )
+                return Destination(BackStackView)
+
             try:
                 self.loading_screen = LoadingScreenThread(text="Importing Secret\n\n\n\n\n\n")
                 self.loading_screen.start()
