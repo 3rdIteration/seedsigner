@@ -38,18 +38,17 @@ class SettingsConstants:
     ]
 
     # User-facing selection options
-    XPUB_QR_FORMAT__UR_CRYPTO_ACCOUNT = "urca"
-    XPUB_QR_FORMAT__STATIC = "sta"
-    XPUB_QR_FORMAT__SPECTER_LEGACY = "spl"
-    ALL_XPUB_QR_FORMATS = [
-        # TRANSLATOR_NOTE: QR code format option; "default" = this is the format most wallets use
-        (XPUB_QR_FORMAT__UR_CRYPTO_ACCOUNT, _mft("Animated (default)")),
-
-        # TRANSLATOR_NOTE: QR code format option (static = single frame, not animated)
-        (XPUB_QR_FORMAT__STATIC, _mft("Static")),
-
-        # TRANSLATOR_NOTE: QR code format option: old format that Specter Desktop used to use
-        (XPUB_QR_FORMAT__SPECTER_LEGACY, _mft("Specter legacy")),
+    COORDINATOR__BLUE_WALLET = "bw"
+    COORDINATOR__NUNCHUK = "nun"
+    COORDINATOR__SPARROW = "spa"
+    COORDINATOR__SPECTER_DESKTOP = "spd"
+    COORDINATOR__KEEPER = "kpr"
+    ALL_COORDINATORS = [
+        (COORDINATOR__BLUE_WALLET, "BlueWallet"),
+        (COORDINATOR__NUNCHUK, "Nunchuk"),
+        (COORDINATOR__SPARROW, "Sparrow"),
+        (COORDINATOR__SPECTER_DESKTOP, "Specter Desktop"),
+        (COORDINATOR__KEEPER, "Keeper"),
     ]
 
     # Over-specifying current and possible future locales to reduce/eliminate main repo
@@ -125,20 +124,17 @@ class SettingsConstants:
         LOCALE__ENGLISH: "English",
         LOCALE__SPANISH: "Español",
         LOCALE__FRENCH: "Français",
-        LOCALE__ITALIAN: "Italiano",
         LOCALE__DUTCH: "Nederlands",
 
         # --------- Beta languages ------------------------------------------------------
         LOCALE__CHINESE_SIMPLIFIED: "(beta) 简体中文 (Chinese Simplified)",
-        LOCALE__HINDI: "(beta) हिन्दी (Hindi)",
         LOCALE__JAPANESE: "(beta) 日本語 (Japanese)",
         LOCALE__KOREAN: "(beta) 한국어 (Korean)",
-        LOCALE__THAI: "(beta) ไทย (Thai)",
 
         # --------- Placeholders / Coming soon ------------------------------------------
         # Commented out options require explicit additional font support.
         # -------------------------------------------------------------------------------
-        LOCALE__ARABIC: "العربية (Arabic)",
+        # LOCALE__ARABIC: "العربية (Arabic)",
         # LOCALE__BENGALI: "বাংলা (Bengali)",
         LOCALE__BULGARIAN: "български (Bulgarian)",  # OpenSans includes cyrillic chars
         LOCALE__CZECH: "čeština",
@@ -151,7 +147,9 @@ class SettingsConstants:
         # LOCALE__GUJARATI: "ગુજરાતી (Gujarati)",
         LOCALE__HAUSA: "Hausa",
         # LOCALE__HEBREW: "עברית (Hebrew)",
+        # LOCALE__HINDI: "हिन्दी (Hindi)",
         LOCALE__CROATIAN: "Hrvatski",
+        LOCALE__ITALIAN: "Italiano",
         LOCALE__INDONESIAN: "Indonesia",
         LOCALE__JAVANESE: "Jawa (Javanese)",
         # LOCALE__LAO: "ລາວ (Lao)",
@@ -162,7 +160,7 @@ class SettingsConstants:
         LOCALE__MALTESE: "Malti",
         # LOCALE__MARATHI: "मराठी (Marathi)",
         LOCALE__NORWEGIAN: "Norsk",
-        LOCALE__PERSIAN: "فارسی (Persian)",
+        # LOCALE__PERSIAN: "فارسی (Persian)",
         LOCALE__POLISH: "Polski",
         LOCALE__PORTUGUESE_BR: "Português (Brasil)",
         LOCALE__PORTUGUESE_PT: "Português (Portugal)",
@@ -176,6 +174,7 @@ class SettingsConstants:
         LOCALE__TAGALOG: "Tagalog",
         # LOCALE__TAMIL: "தமிழ் (Tamil)",
         # LOCALE__TELUGU: "తెలుగు (Telugu)",
+        # LOCALE__THAI: "ไทย (Thai)",
         LOCALE__TURKISH: "Türkçe",
         LOCALE__UKRANIAN: "українська (Ukranian)",   # OpenSans includes cyrillic chars
         # LOCALE__URDU: "اردو (Urdu)",
@@ -433,15 +432,6 @@ class SettingsConstants:
         (CUSTOM_DERIVATION, _mft("Custom Derivation")),
     ]
 
-    MICROSD_TOAST_TIMER_DISABLED = "D"
-    MICROSD_TOAST_TIMER_FIVE_SECONDS = "E"
-    MICROSD_TOAST_TIMER_FOREVER = "inf"
-    ALL_MICROSD_TOAST_TIMERS = [
-        (MICROSD_TOAST_TIMER_DISABLED, "Disabled"),
-        (MICROSD_TOAST_TIMER_FIVE_SECONDS, "5 seconds"),
-        (MICROSD_TOAST_TIMER_FOREVER, "Until SD removed")
-    ]
-
     WORDLIST_LANGUAGE__ENGLISH = "en"
     WORDLIST_LANGUAGE__CHINESE_SIMPLIFIED = "zh_Hans_CN"
     WORDLIST_LANGUAGE__CHINESE_TRADITIONAL = "zh_Hant_TW"
@@ -466,7 +456,7 @@ class SettingsConstants:
     SETTING__LOCALE = "locale"
     SETTING__WORDLIST_LANGUAGE = "wordlist_language"
     SETTING__PERSISTENT_SETTINGS = "persistent_settings"
-    SETTING__XPUB_QR_FORMAT = "xpub_qr"
+    SETTING__COORDINATORS = "coordinators"
     SETTING__BTC_DENOMINATION = "denomination"
 
     SETTING__DISPLAY_CONFIGURATION = "display_config"
@@ -475,6 +465,7 @@ class SettingsConstants:
 
     SETTING__NETWORK = "network"
     SETTING__QR_DENSITY = "qr_density"
+    SETTING__XPUB_EXPORT = "xpub_export"
     SETTING__SIG_TYPES = "sig_types"
     SETTING__SCRIPT_TYPES = "script_types"
     SETTING__XPUB_DETAILS = "xpub_details"
@@ -488,7 +479,6 @@ class SettingsConstants:
     SETTING__DIRE_WARNINGS = "dire_warnings"
     SETTING__QR_BRIGHTNESS_TIPS = "qr_brightness_tips"
     SETTING__PARTNER_LOGOS = "partner_logos"
-    SETTING__MICROSD_TOAST_TIMER = "microsd_toast_timer"
 
     SETTING__DEBUG = "debug"
 
@@ -545,7 +535,7 @@ class SettingsConstants:
 
     # Label strings
     LABEL__BIP39_PASSPHRASE = _mft("BIP-39 Passphrase")
-    # TRANSLATOR_NOTE: Terminology used by Electrum seeds; equivalent to BIP-39 passphrase
+    # TRANSLATOR_NOTE: Terminology used by Electrum seeds; equivalent to bip39 passphrase
     custom_extension = _mft("Custom Extension")
     LABEL__CUSTOM_EXTENSION = custom_extension
 
@@ -692,7 +682,7 @@ class SettingsDefinition:
                       selection_options=SettingsConstants.get_detected_languages(),
                       default_value=SettingsConstants.LOCALE__ENGLISH),
 
-        # TODO: Support other BIP-39 wordlist languages! Until then, type == HIDDEN
+        # TODO: Support other bip-39 wordlist languages! Until then, type == HIDDEN
         SettingsEntry(category=SettingsConstants.CATEGORY__SYSTEM,
                       attr_name=SettingsConstants.SETTING__WORDLIST_LANGUAGE,
                       abbreviated_name="wordlist_lang",
@@ -708,6 +698,19 @@ class SettingsDefinition:
                       display_name=_mft("Persistent settings"),
                       help_text=SettingsConstants.PERSISTENT_SETTINGS__SD_INSERTED__HELP_TEXT,
                       default_value=SettingsConstants.OPTION__DISABLED),
+
+        SettingsEntry(category=SettingsConstants.CATEGORY__WALLET,
+                      attr_name=SettingsConstants.SETTING__COORDINATORS,
+                      abbreviated_name="coords",
+                      display_name=_mft("Coordinator software"),
+                      type=SettingsConstants.TYPE__MULTISELECT,
+                      selection_options=SettingsConstants.ALL_COORDINATORS,
+                      default_value=[
+                          SettingsConstants.COORDINATOR__BLUE_WALLET,
+                          SettingsConstants.COORDINATOR__NUNCHUK,
+                          SettingsConstants.COORDINATOR__SPARROW,
+                          SettingsConstants.COORDINATOR__SPECTER_DESKTOP,
+                      ]),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__SYSTEM,
                       attr_name=SettingsConstants.SETTING__BTC_DENOMINATION,
@@ -736,6 +739,12 @@ class SettingsDefinition:
                       default_value=SettingsConstants.DENSITY__MEDIUM),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
+                      attr_name=SettingsConstants.SETTING__XPUB_EXPORT,
+                      display_name=_mft("Xpub export"),
+                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
+                      default_value=SettingsConstants.OPTION__ENABLED),
+
+        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
                       attr_name=SettingsConstants.SETTING__SIG_TYPES,
                       abbreviated_name="sigs",
                       display_name=_mft("Sig types"),
@@ -752,17 +761,6 @@ class SettingsDefinition:
                       visibility=SettingsConstants.VISIBILITY__ADVANCED,
                       selection_options=SettingsConstants.ALL_SCRIPT_TYPES,
                       default_value=[SettingsConstants.NATIVE_SEGWIT, SettingsConstants.NESTED_SEGWIT, SettingsConstants.TAPROOT]),
-
-        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
-                      attr_name=SettingsConstants.SETTING__XPUB_QR_FORMAT,
-                      display_name=_mft("Xpub QR format"),
-                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
-                      type=SettingsConstants.TYPE__MULTISELECT,
-                      selection_options=SettingsConstants.ALL_XPUB_QR_FORMATS,
-                      default_value=[
-                            SettingsConstants.XPUB_QR_FORMAT__UR_CRYPTO_ACCOUNT,
-                            SettingsConstants.XPUB_QR_FORMAT__STATIC,
-                      ]),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
                       attr_name=SettingsConstants.SETTING__XPUB_DETAILS,
@@ -807,14 +805,6 @@ class SettingsDefinition:
                       help_text=_mft("Native Segwit only"),
                       visibility=SettingsConstants.VISIBILITY__ADVANCED,
                       default_value=SettingsConstants.OPTION__DISABLED),
-        
-        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
-                      attr_name=SettingsConstants.SETTING__MICROSD_TOAST_TIMER,
-                      display_name="MicroSD toast timer",
-                      type=SettingsConstants.TYPE__SELECT_1,
-                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
-                      selection_options=SettingsConstants.ALL_MICROSD_TOAST_TIMERS,
-                      default_value=SettingsConstants.MICROSD_TOAST_TIMER_FIVE_SECONDS),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
                       attr_name=SettingsConstants.SETTING__MESSAGE_SIGNING,

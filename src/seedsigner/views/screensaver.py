@@ -43,18 +43,21 @@ class LogoScreen(BaseScreen):
 
 @dataclass
 class OpeningSplashView(View):
+    is_screenshot_renderer: bool = False
     force_partner_logos: bool|None = None
 
     def run(self):
         self.run_screen(
             OpeningSplashScreen,
+            is_screenshot_renderer=self.is_screenshot_renderer,
             force_partner_logos=self.force_partner_logos
         )
 
 
 
 class OpeningSplashScreen(LogoScreen):
-    def __init__(self, force_partner_logos=None):
+    def __init__(self, is_screenshot_renderer=False, force_partner_logos=None):
+        self.is_screenshot_renderer = is_screenshot_renderer
         self.force_partner_logos = force_partner_logos
         super().__init__()
 
@@ -82,7 +85,7 @@ class OpeningSplashScreen(LogoScreen):
             logo_offset_y = 0
 
         background = Image.new("RGBA", size=self.logo.size, color="black")
-        if not self.renderer.is_screenshot_generator:
+        if not self.is_screenshot_renderer:
             # Fade in alpha
             for i in range(250, -1, -25):
                 self.logo.putalpha(255 - i)
@@ -105,11 +108,11 @@ class OpeningSplashScreen(LogoScreen):
         version_y = int(self.canvas_height/2) + int(logo_height/2) + logo_offset_y + GUIConstants.COMPONENT_PADDING
         self.renderer.draw.text(xy=(version_x, version_y), text=version, font=font, fill=GUIConstants.ACCENT_COLOR, anchor="mt")
 
-        if not self.renderer.is_screenshot_generator:
+        if not self.is_screenshot_renderer:
             self.renderer.show_image()
 
         if show_partner_logos:
-            if not self.renderer.is_screenshot_generator:
+            if not self.is_screenshot_renderer:
                 # Hold on the version num for a moment
                 time.sleep(1)
 
@@ -133,7 +136,7 @@ class OpeningSplashScreen(LogoScreen):
 
             self.renderer.show_image()
 
-        if not self.renderer.is_screenshot_generator:
+        if not self.is_screenshot_renderer:
             # Hold on the splash screen for a moment
             time.sleep(2)
 

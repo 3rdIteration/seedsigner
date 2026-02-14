@@ -1,19 +1,13 @@
 import io
 
-from gettext import gettext as _
 from PIL import Image
 from seedsigner.hardware.pivideostream import PiVideoStream
 from seedsigner.models.settings import Settings, SettingsConstants
 from seedsigner.models.singleton import Singleton
 
 
-class CameraConnectionError(Exception):
-    pass
-
-
 class Camera(Singleton):
     _video_stream = None
-    _picamera = None
     _camera_rotation = None
 
     @classmethod

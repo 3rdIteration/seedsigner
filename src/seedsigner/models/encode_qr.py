@@ -238,11 +238,7 @@ class BaseSimpleAnimatedQREncoder(BaseQrEncoder):
 
 
 @dataclass
-class SpecterLegacyXPubQrEncoder(BaseSimpleAnimatedQREncoder, BaseXpubQrEncoder):
-    """
-    Legacy "pXofY" format. Included here for compatibility with much older versions of
-    Specter Desktop. Can probably eventually be removed.
-    """
+class SpecterXPubQrEncoder(BaseSimpleAnimatedQREncoder, BaseXpubQrEncoder):
     @property
     def qr_max_fragment_size(self):
         density_mapping = {
@@ -348,9 +344,6 @@ class UrXpubQrEncoder(BaseFountainQrEncoder, BaseXpubQrEncoder):
             return Keypath(arr, self.root.my_fingerprint, len(arr))
             
         origin = derivation_to_keypath(self.derivation)
-
-        # Implemts "use_info" member on HDKey class (urtypes/crypto packages-libs folder) construct, 
-        # so if working on TESTNET, Xpub can be exported accordingly. Default case, MAINNET: None value.
         self.use_info = None if self.network == SettingsConstants.MAINNET else CoinInfo(type=None, network=1)
         
         self.ur_hdkey = HDKey({ 'key': self.xpub.key.serialize(),
