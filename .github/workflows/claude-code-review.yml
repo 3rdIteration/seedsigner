@@ -31,6 +31,35 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: Prepare custom instructions
+        run: |
+          # Combine CLAUDE.md and AGENTS.md into a single instruction file
+          rm -f /tmp/combined_instructions.txt
+          touch /tmp/combined_instructions.txt
+          
+          # Add CLAUDE.md if it exists
+          if [ -f "CLAUDE.md" ]; then
+            cat CLAUDE.md >> /tmp/combined_instructions.txt
+            echo "" >> /tmp/combined_instructions.txt
+            echo "" >> /tmp/combined_instructions.txt
+          fi
+          
+          # Add AGENTS.md if it exists
+          if [ -f "AGENTS.md" ]; then
+            cat AGENTS.md >> /tmp/combined_instructions.txt
+          fi
+          
+          # Create a settings JSON file with the system prompt
+          # Use jq to properly escape the content
+          if [ -s /tmp/combined_instructions.txt ]; then
+            INSTRUCTIONS=$(cat /tmp/combined_instructions.txt)
+            jq -n --arg prompt "$INSTRUCTIONS" '{systemPrompt: $prompt}' > /tmp/claude_settings.json
+            echo "Created settings file with custom instructions from CLAUDE.md and AGENTS.md"
+          else
+            echo "{}" > /tmp/claude_settings.json
+            echo "No custom instructions found"
+          fi
+
       - name: Run Claude Code Review
         id: claude-review
         uses: anthropics/claude-code-action@v1
@@ -39,6 +68,7 @@ jobs:
           plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
           plugins: 'code-review@claude-code-plugins'
           prompt: '/code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }}'
-          # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
-          # or https://code.claude.com/docs/en/cli-reference for available options
+
+          # Automatically include custom instructions from CLAUDE.md and AGENTS.md
+          settings: /tmp/claude_settings.json
 
