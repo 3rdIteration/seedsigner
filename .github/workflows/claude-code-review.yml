@@ -50,7 +50,7 @@ jobs:
           fi
           
           # Create a settings JSON file with the system prompt
-          # Use jq to properly escape the content - jq --rawfile safely handles special characters
+          # Use jq --rawfile to safely read the file and properly encode it as JSON
           if [ -s /tmp/combined_instructions.txt ]; then
             jq -n --rawfile prompt /tmp/combined_instructions.txt '{systemPrompt: $prompt}' > /tmp/claude_settings.json
             echo "Created settings file with custom instructions from CLAUDE.md and AGENTS.md"
