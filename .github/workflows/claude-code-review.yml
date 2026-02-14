@@ -35,13 +35,11 @@ jobs:
         run: |
           # Combine CLAUDE.md and AGENTS.md into a single instruction file
           rm -f /tmp/combined_instructions.txt
-          touch /tmp/combined_instructions.txt
           
           # Add CLAUDE.md if it exists
           if [ -f "CLAUDE.md" ]; then
             cat CLAUDE.md >> /tmp/combined_instructions.txt
-            echo "" >> /tmp/combined_instructions.txt
-            echo "" >> /tmp/combined_instructions.txt
+            printf "\n\n" >> /tmp/combined_instructions.txt
           fi
           
           # Add AGENTS.md if it exists
