@@ -37,7 +37,7 @@ class Camera(Singleton):
 
     def read_video_stream(self, as_image=False):
         if not self._video_stream:
-            raise Exception("Must call start_video_stream first.")
+            raise Exception("Must call start_video_stream_mode first.")
 
         frame = self._video_stream.read()
         if frame is None:
@@ -100,13 +100,19 @@ class Camera(Singleton):
             return Image.open(stream).rotate(90 + self._camera_rotation)
         elif self._video_stream is not None:
             # Video stream mode (luckfox behavior)
-            # Capture a single frame
+            # Capture a single frame and convert to Image with rotation (same as PiCamera branch)
             frame = self._video_stream.read()
             if frame is None:
-                raise Exception("Failed to capture frame.")
-            return frame
+                raise CameraConnectionError("Failed to capture frame.")
+            
+            # Convert to Image and apply rotation, consistent with PiCamera mode
+            if isinstance(frame, Image.Image):
+                return frame.rotate(90 + self._camera_rotation)
+            else:
+                img = Image.frombytes('RGB', (self._video_stream.width, self._video_stream.height), frame)
+                return img.rotate(90 + self._camera_rotation)
         else:
-            raise Exception("Must call start_single_frame_mode or start_video_stream_mode first.")
+            raise CameraConnectionError("Must call start_single_frame_mode or start_video_stream_mode first.")
 
     def stop_single_frame_mode(self):
         if self._picamera is not None:
