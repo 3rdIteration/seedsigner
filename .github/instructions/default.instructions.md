@@ -1,1 +1,1 @@
-Be sure to follow the agent guidence in AGENTS.md that is in the repository root.
+Be sure to follow the agent guidance in AGENTS.md that is in the repository root.
