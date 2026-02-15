@@ -6,15 +6,13 @@ class QRType:
     PSBT__SPECTER = "psbt__specter"
     PSBT__BASE43 = "psbt__base43"
     PSBT__UR2 = "psbt__ur2"
+    PSBT__BBQR = "psbt__bbqr"
 
     SEED__SEEDQR = "seed__seedqr"
     SEED__COMPACTSEEDQR = "seed__compactseedqr"
     SEED__UR2 = "seed__ur2"
     SEED__MNEMONIC = "seed__mnemonic"
     SEED__FOUR_LETTER_MNEMONIC = "seed__four_letter_mnemonic"
-    SEED__ENCRYPTEDQR = "seed__encryptedqr"
-    SEED__SLIP39 = "seed__slip39"
-    SEED__XPRV = "seed__xprv"
 
     SETTINGS = "settings"
 
@@ -26,17 +24,6 @@ class QRType:
 
     SIGN_MESSAGE = "sign_message"
 
-    SET_TIME = "set_time"
-
-    PASSPHRASE = "passphrase"
-
-    WIF = "wif"
-    BIP38 = "bip38"
-
-    ENCRYPTION_KEY = "encryption_key"
-
-    TEXT = "text"
-
     WALLET__SPECTER = "wallet__specter"
     WALLET__UR = "wallet__ur"
     WALLET__CONFIGFILE = "wallet__configfile"
@@ -44,7 +31,5 @@ class QRType:
     OUTPUT__UR = "output__ur"
     ACCOUNT__UR = "account__ur"
     BYTES__UR = "bytes__ur"
-
-    GENERIC_STRING = "generic_string"
 
     INVALID = "invalid"

@@ -31,7 +31,7 @@ class SeedMnemonicEntryScreen(BaseTopNavScreen):
 
         self.possible_alphabet = "abcdefghijklmnopqrstuvwxyz"
 
-        # Measure the width required to display the longest word in the English bip39
+        # Measure the width required to display the longest word in the English BIP-39
         # wordlist.
         # TODO: If we ever support other wordlist languages, adjust accordingly.
         matches_list_highlight_font_name = GUIConstants.FIXED_WIDTH_EMPHASIS_FONT_NAME
@@ -48,7 +48,7 @@ class SeedMnemonicEntryScreen(BaseTopNavScreen):
         self.arrow_up_is_active = False
         self.arrow_down_is_active = False
 
-        # TODO: support other BIP39 languages/charsets
+        # TODO: support other BIP-39 languages/charsets
         self.keyboard = Keyboard(
             draw=self.image_draw,
             charset=self.possible_alphabet,
@@ -441,7 +441,6 @@ class SeedFinalizeScreen(ButtonListScreen):
 @dataclass
 class SeedOptionsScreen(ButtonListScreen):
     fingerprint: str = None
-    has_passphrase: bool = False
 
     def __post_init__(self):
         self.top_nav_icon_name = SeedSignerIconConstants.FINGERPRINT
@@ -451,24 +450,6 @@ class SeedOptionsScreen(ButtonListScreen):
         self.is_bottom_list = True
 
         super().__post_init__()
-
-
-
-@dataclass
-class SeedBackupScreen(ButtonListScreen):
-    has_passphrase: bool = False
-
-    def __post_init__(self):
-        self.title = _("Backup Seed")
-        self.is_bottom_list = True
-        super().__post_init__()
-
-        if self.has_passphrase:
-            self.components.append(TextArea(
-                # TRANSLATOR_NOTE: Additional explainer for the two seed backup options (mnemonic phrase and SeedQR).
-                text=_("Backups do not include your passphrase."),
-                screen_y=self.top_nav.height + GUIConstants.COMPONENT_PADDING,
-            ))
 
 
 
@@ -557,9 +538,8 @@ class SeedWordsScreen(WarningEdgesMixin, ButtonListScreen):
 
 @dataclass
 class SeedBIP85SelectChildIndexScreen(KeyboardScreen):
-    title: str = _("BIP-85 Index")
-
     def __post_init__(self):
+        self.title = _("BIP-85 Index")
         self.user_input = ""
 
         # Specify the keys in the keyboard
@@ -589,22 +569,6 @@ class SeedWordsBackupTestPromptScreen(ButtonListScreen):
 
 
 @dataclass
-class SeedExportXpubAccountNumberScreen(KeyboardScreen):
-    def __post_init__(self):
-        self.title = _("Account Number")
-        self.user_input = "0"
-
-        # Specify the keys in the keyboard
-        self.rows = 3
-        self.cols = 5
-        self.keys_charset = "0123456789"
-        self.show_save_button = True
-
-        super().__post_init__()
-
-
-
-@dataclass
 class SeedExportXpubCustomDerivationScreen(KeyboardScreen):
     def __post_init__(self):
         self.title = _("Derivation Path")
@@ -625,14 +589,12 @@ class SeedExportXpubDetailsScreen(WarningEdgesMixin, ButtonListScreen):
     # Customize defaults
     is_bottom_list: bool = True
     fingerprint: str = None
-    has_passphrase: bool = False
     derivation_path: str = "m/84'/0'/0'"
     xpub: str = "zpub6r..."
-    button_label: str = "Export Xpub"
 
     def __post_init__(self):
         # Programmatically set up other args
-        self.button_data = [ButtonOption(self.button_label)]
+        self.button_data = [ButtonOption("Export xpub")]
         self.title = _("Xpub Details")
 
         # Initialize the base class
@@ -642,7 +604,7 @@ class SeedExportXpubDetailsScreen(WarningEdgesMixin, ButtonListScreen):
         self.fingerprint_line = IconTextLine(
             icon_name=SeedSignerIconConstants.FINGERPRINT,
             icon_color=GUIConstants.INFO_COLOR,
-            # TRANSLATOR_NOTE: Short for "BIP32 Master Fingerprint"
+            # TRANSLATOR_NOTE: Short for "BIP-32 Master Fingerprint"
             label_text=_("Fingerprint"),
             value_text=self.fingerprint,
             screen_x=GUIConstants.COMPONENT_PADDING,
@@ -696,9 +658,7 @@ class SeedAddPassphraseScreen(BaseTopNavScreen):
 
 
     def __post_init__(self):
-        if not self.title:
-            self.title = _("BIP-39 Passphrase")
-            
+        self.title = _("BIP-39 Passphrase")
         super().__post_init__()
 
         keys_lower = "abcdefghijklmnopqrstuvwxyz"
@@ -832,7 +792,6 @@ class SeedAddPassphraseScreen(BaseTopNavScreen):
                 self.canvas_width - self.right_panel_buttons_width,
                 text_entry_display_y + text_entry_display_height
             ),
-            font_name=GUIConstants.FIXED_WIDTH_EMPHASIS_FONT_NAME_JP,
             cursor_mode=TextEntryDisplay.CURSOR_MODE__BAR,
             is_centered=False,
             cur_text=''.join(self.passphrase)
@@ -1097,7 +1056,6 @@ class SeedReviewPassphraseScreen(ButtonListScreen):
         # Customize defaults
         self.title = _("Verify Passphrase")
         self.is_bottom_list = True
-        self.num_display_buttons = 2
 
         super().__post_init__()
 
@@ -1111,70 +1069,30 @@ class SeedReviewPassphraseScreen(ButtonListScreen):
             screen_y = self.buttons[0].screen_y - GUIConstants.COMPONENT_PADDING - int(GUIConstants.get_body_font_size()*2.5)
         ))
 
-        if " " in self.passphrase:
+        if self.passphrase != self.passphrase.strip() or "  " in self.passphrase:
             self.passphrase = self.passphrase.replace(" ", "\u2589")
         available_height = self.components[-1].screen_y - self.top_nav.height + GUIConstants.COMPONENT_PADDING
         max_font_size = GUIConstants.get_top_nav_title_font_size() + 8
         min_font_size = GUIConstants.get_top_nav_title_font_size() - 4
         font_size = max_font_size
         max_lines = 3
-        max_chars_per_line = -1
+        passphrase = [self.passphrase]
         found_solution = False
-        for font_size in range(max_font_size, min_font_size-1, -2):
+        for font_size in range(max_font_size, min_font_size, -2):
             if found_solution:
                 break
-            font = Fonts.get_font(font_name=GUIConstants.FIXED_WIDTH_FONT_NAME_JP, size=font_size)
+            font = Fonts.get_font(font_name=GUIConstants.FIXED_WIDTH_FONT_NAME, size=font_size)
             left, top, right, bottom  = font.getbbox("X")
-            char_width, char_height = right - left, bottom
+            char_width, char_height = right - left, bottom - top
             for num_lines in range(1, max_lines+1):
                 # Break the passphrase into n lines
-                chars_per_line = math.ceil(textwidth(self.passphrase) / num_lines)
-                if font_size <= min_font_size + 1 and num_lines == max_lines:
-                    max_chars_per_line = math.floor((self.canvas_width - 2*GUIConstants.EDGE_PADDING) / char_width)
-                    chars_per_line = min(chars_per_line, max_chars_per_line)
+                chars_per_line = math.ceil(len(self.passphrase) / num_lines)
                 passphrase = []
-                k = 0
-                for i in range(0, num_lines):
-                    buffer = ""
-                    for j in range(k, len(self.passphrase)):
-                        c = self.passphrase[j]
-                        if textwidth(buffer + c) > chars_per_line:
-                            if (textwidth(self.passphrase[j:]) <= chars_per_line * (num_lines-1 - i) or
-                                chars_per_line == max_chars_per_line):
-                                passphrase.append(buffer)
-                                k = j
-                            else:
-                                chars_per_line += 1
-                                passphrase.append(buffer + c)
-                                k = j + 1
-                            break
-                        elif textwidth(buffer + c) == chars_per_line:
-                            passphrase.append(buffer + c)
-                            k = j + 1
-                            break
-                        elif j == len(self.passphrase) - 1:
-                            passphrase.append(buffer + c)
-                            break
-                        buffer += c
-
-                # Truncate the displayed passphrase to fit within the screen
-                if sum(len(x) for x in passphrase) != len(self.passphrase):
-                    buffer = ""
-                    for j in range(0, len(passphrase[-1])):
-                        c = passphrase[-1][j]
-                        if textwidth(buffer + c) <= chars_per_line - textwidth("\u2026"):
-                            buffer += c
-                        else:
-                            break
-                    buffer += "\u2026"
-                    passphrase[-1] = buffer
-
-                for i in range(0, num_lines):
-                    while textwidth(passphrase[i]) < chars_per_line:
-                        passphrase[i] += " "
-
+                for i in range(0, len(self.passphrase), chars_per_line):
+                    passphrase.append(self.passphrase[i:i+chars_per_line])
+                
                 # See if it fits in this configuration
-                if chars_per_line * char_width <= self.canvas_width - 2*GUIConstants.EDGE_PADDING:
+                if char_width * len(passphrase[0]) <= self.canvas_width - 2*GUIConstants.EDGE_PADDING:
                     # Width is good...
                     if num_lines * char_height <= available_height:
                         # And the height is good!
@@ -1186,68 +1104,42 @@ class SeedReviewPassphraseScreen(ButtonListScreen):
         for line in passphrase:
             self.components.append(TextArea(
                 text=line,
-                font_name=GUIConstants.FIXED_WIDTH_FONT_NAME_JP,
+                font_name=GUIConstants.FIXED_WIDTH_FONT_NAME,
                 font_size=font_size,
                 font_color="orange",
                 is_text_centered=True,
                 screen_y=screen_y,
-                allow_text_overflow=True
             ))
             screen_y += char_height + 2
 
-def textwidth(text: str):
-    import unicodedata
-    count = 0
-    for c in text:
-        if unicodedata.east_asian_width(c) in 'FW':
-            count += 2
-        else:
-            count += 1
-    return count
+
 
 @dataclass
 class SeedTranscribeSeedQRFormatScreen(ButtonListScreen):
-    is_compactqr: bool = False
-    is_encryptedqr: bool = False
-
     def __post_init__(self):
-        if not (self.is_compactqr and self.is_encryptedqr):
-            self.is_bottom_list = True
-
+        self.is_bottom_list = True
         super().__post_init__()
 
-        if not (self.is_compactqr and self.is_encryptedqr):
-            self.components.append(IconTextLine(
-              # TRANSLATOR_NOTE: Refers to the SeedQR type: Standard or Compact or encrypted
-                label_text=_("Standard"),
-              # TRANSLATOR_NOTE: Briefly explains the Standard SeedQR data format
-                value_text=_("BIP-39 wordlist indices"),
-                is_text_centered=False,
-                auto_line_break=True,
-                screen_x=GUIConstants.EDGE_PADDING,
-                screen_y=self.top_nav.height + GUIConstants.COMPONENT_PADDING,
-            ))
+        self.components.append(IconTextLine(
+            # TRANSLATOR_NOTE: Refers to the SeedQR type: Standard or Compact
+            label_text=_("Standard"),
+            # TRANSLATOR_NOTE: Briefly explains the Standard SeedQR data format
+            value_text=_("BIP-39 wordlist indices"),
+            is_text_centered=False,
+            auto_line_break=True,
+            screen_x=GUIConstants.EDGE_PADDING,
+            screen_y=self.top_nav.height + GUIConstants.COMPONENT_PADDING,
+        ))
+        self.components.append(IconTextLine(
+            # TRANSLATOR_NOTE: Refers to the SeedQR type: Standard or Compact
+            label_text=_("Compact"),
+            # TRANSLATOR_NOTE: Briefly explains the Compact SeedQR data format
+            value_text=_("Raw entropy bits"),
+            is_text_centered=False,
+            screen_x=GUIConstants.EDGE_PADDING,
+            screen_y=self.components[-1].screen_y + self.components[-1].height + 2*GUIConstants.COMPONENT_PADDING,
+        ))
 
-        if self.is_compactqr and not self.is_encryptedqr:
-            self.components.append(IconTextLine(
-              # TRANSLATOR_NOTE: Refers to the SeedQR type: Standard or Compact or encrypted
-                label_text=_("Compact"),
-              # TRANSLATOR_NOTE: Briefly explains the Compact SeedQR data format
-                value_text=_("Raw entropy bits"),
-                is_text_centered=False,
-                screen_x=GUIConstants.EDGE_PADDING,
-                screen_y=self.components[-1].screen_y + self.components[-1].height + 2*GUIConstants.COMPONENT_PADDING,
-            ))
-
-        if not self.is_compactqr and self.is_encryptedqr:
-            self.components.append(IconTextLine(
-              # TRANSLATOR_NOTE: Refers to the SeedQR type: Standard or Compact or encrypted
-                label_text=_("Encrypted"),
-                value_text=_("Encrypted entropy bits"),
-                is_text_centered=False,
-                screen_x=GUIConstants.EDGE_PADDING,
-                screen_y=self.components[-1].screen_y + self.components[-1].height + 2*GUIConstants.COMPONENT_PADDING,
-            ))
 
 
 @dataclass
@@ -1535,7 +1427,6 @@ class SeedAddressVerificationScreen(ButtonListScreen):
     is_mainnet: bool = None
     threadsafe_counter: ThreadsafeCounter = None
     verified_index: ThreadsafeCounter = None
-    max_iterations: int | None = None
 
 
     def __post_init__(self):
@@ -1569,7 +1460,6 @@ class SeedAddressVerificationScreen(ButtonListScreen):
             screen_y=self.components[-1].screen_y + self.components[-1].height + GUIConstants.COMPONENT_PADDING,
             threadsafe_counter=self.threadsafe_counter,
             verified_index=self.verified_index,
-            max_iterations=self.max_iterations,
         ))
     
 
@@ -1579,21 +1469,17 @@ class SeedAddressVerificationScreen(ButtonListScreen):
         if self.verified_index.cur_count is not None:
             # Note that the ProgressThread will have already exited on its own.
 
-            # Return a success value (anything other than None) to end the
+            # Return a success value (anything other than None) to end the 
             # ButtonListScreen._run() loop.
             return 1
 
-        if self.max_iterations is not None and self.threadsafe_counter.cur_count >= self.max_iterations:
-            return RET_CODE__BACK_BUTTON
-
 
     class ProgressThread(BaseThread):
-        def __init__(self, renderer: Renderer, screen_y: int, threadsafe_counter: ThreadsafeCounter, verified_index: ThreadsafeCounter, max_iterations: int | None = None):
+        def __init__(self, renderer: Renderer, screen_y: int, threadsafe_counter: ThreadsafeCounter, verified_index: ThreadsafeCounter):
             self.renderer = renderer
             self.screen_y = screen_y
             self.threadsafe_counter = threadsafe_counter
             self.verified_index = verified_index
-            self.max_iterations = max_iterations
             super().__init__()
         
 
@@ -1608,10 +1494,6 @@ class SeedAddressVerificationScreen(ButtonListScreen):
                     HardwareButtons.get_instance().trigger_override()
 
                     # Exit the loop and thereby end this thread
-                    return
-
-                if self.max_iterations is not None and self.threadsafe_counter.cur_count >= self.max_iterations:
-                    HardwareButtons.get_instance().trigger_override()
                     return
 
                 textarea = TextArea(
@@ -1738,7 +1620,6 @@ class SeedSignMessageConfirmMessageScreen(ButtonListScreen):
                 text=self.sign_message_data["message"],
                 width=renderer.canvas_width - 2*GUIConstants.EDGE_PADDING,
                 height=message_height,
-                allow_text_overflow=True,
             )
             self.sign_message_data["paged_message"] = paged
 
@@ -1757,7 +1638,6 @@ class SeedSignMessageConfirmMessageScreen(ButtonListScreen):
         message_display = TextArea(
             text=self.sign_message_data["paged_message"][self.page_num],
             is_text_centered=False,
-            allow_text_overflow=True,
             screen_y=start_y,
         )
         self.components.append(message_display)
@@ -1773,7 +1653,7 @@ class SeedSignMessageConfirmAddressScreen(ButtonListScreen):
         self.title = _("Confirm Address")
         self.is_bottom_list = True
         self.is_button_text_centered = True
-        self.button_data = [ButtonOption("Sign Message")]
+        self.button_data = [ButtonOption("Sign message")]
         super().__post_init__()
 
         derivation_path_display = IconTextLine(
@@ -1792,698 +1672,3 @@ class SeedSignMessageConfirmAddressScreen(ButtonListScreen):
             screen_y=derivation_path_display.screen_y + derivation_path_display.height + 2*GUIConstants.COMPONENT_PADDING,
         )
         self.components.append(address_display)
-
-
-
-@dataclass
-class SeedEncryptedQRMnemonicIDScreen(BaseTopNavScreen):
-    mnemonic_id: str = ""
-
-    # Only used by the screenshot generator
-    initial_keyboard: str = None
-
-    KEYBOARD__LOWERCASE_BUTTON_TEXT = "abc"
-    KEYBOARD__UPPERCASE_BUTTON_TEXT = "ABC"
-    KEYBOARD__DIGITS_BUTTON_TEXT = "123"
-    KEYBOARD__SYMBOLS_1_BUTTON_TEXT = "!@#"
-    KEYBOARD__SYMBOLS_2_BUTTON_TEXT = "*[]"
-
-
-    def __post_init__(self):
-        if not self.title:
-            self.title = _("Mnemonic ID")
-
-        super().__post_init__()
-
-        keys_lower = "abcdefghijklmnopqrstuvwxyz"
-        keys_upper = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-        keys_number = "0123456789"
-
-        # Present the most common/puncutation-related symbols & the most human-friendly
-        #   symbols first (limited to 18 chars).
-        keys_symbol_1 = """!@#$%&();:,.-+='"?"""
-
-        # Isolate the more math-oriented or just uncommon symbols
-        keys_symbol_2 = """^*[]{}_\\|<>/`~"""
-
-
-        # Set up the keyboard params
-        self.right_panel_buttons_width = 56
-
-        max_cols = 9
-        text_entry_display_y = self.top_nav.height
-        text_entry_display_height = 30
-
-        keyboard_start_y = text_entry_display_y + text_entry_display_height + GUIConstants.COMPONENT_PADDING
-        self.keyboard_abc = Keyboard(
-            draw=self.renderer.draw,
-            charset=keys_lower,
-            rows=4,
-            cols=max_cols,
-            rect=(
-                GUIConstants.COMPONENT_PADDING,
-                keyboard_start_y,
-                self.canvas_width - GUIConstants.COMPONENT_PADDING - self.right_panel_buttons_width,
-                self.canvas_height - GUIConstants.EDGE_PADDING
-            ),
-            additional_keys=[
-                Keyboard.KEY_SPACE_5,
-                Keyboard.KEY_CURSOR_LEFT,
-                Keyboard.KEY_CURSOR_RIGHT,
-                Keyboard.KEY_BACKSPACE
-            ],
-            auto_wrap=[Keyboard.WRAP_LEFT, Keyboard.WRAP_RIGHT]
-        )
-
-        self.keyboard_ABC = Keyboard(
-            draw=self.renderer.draw,
-            charset=keys_upper,
-            rows=4,
-            cols=max_cols,
-            rect=(
-                GUIConstants.COMPONENT_PADDING,
-                keyboard_start_y,
-                self.canvas_width - GUIConstants.COMPONENT_PADDING - self.right_panel_buttons_width,
-                self.canvas_height - GUIConstants.EDGE_PADDING
-            ),
-            additional_keys=[
-                Keyboard.KEY_SPACE_5,
-                Keyboard.KEY_CURSOR_LEFT,
-                Keyboard.KEY_CURSOR_RIGHT,
-                Keyboard.KEY_BACKSPACE
-            ],
-            auto_wrap=[Keyboard.WRAP_LEFT, Keyboard.WRAP_RIGHT],
-            render_now=False
-        )
-
-        self.keyboard_digits = Keyboard(
-            draw=self.renderer.draw,
-            charset=keys_number,
-            rows=3,
-            cols=5,
-            rect=(
-                GUIConstants.COMPONENT_PADDING,
-                keyboard_start_y,
-                self.canvas_width - GUIConstants.COMPONENT_PADDING - self.right_panel_buttons_width,
-                self.canvas_height - GUIConstants.EDGE_PADDING
-            ),
-            additional_keys=[
-                Keyboard.KEY_CURSOR_LEFT,
-                Keyboard.KEY_CURSOR_RIGHT,
-                Keyboard.KEY_BACKSPACE
-            ],
-            auto_wrap=[Keyboard.WRAP_LEFT, Keyboard.WRAP_RIGHT],
-            render_now=False
-        )
-
-        self.keyboard_symbols_1 = Keyboard(
-            draw=self.renderer.draw,
-            charset=keys_symbol_1,
-            rows=4,
-            cols=6,
-            rect=(
-                GUIConstants.COMPONENT_PADDING,
-                keyboard_start_y,
-                self.canvas_width - GUIConstants.COMPONENT_PADDING - self.right_panel_buttons_width,
-                self.canvas_height - GUIConstants.EDGE_PADDING
-            ),
-            additional_keys=[
-                Keyboard.KEY_SPACE_2,
-                Keyboard.KEY_CURSOR_LEFT,
-                Keyboard.KEY_CURSOR_RIGHT,
-                Keyboard.KEY_BACKSPACE
-            ],
-            auto_wrap=[Keyboard.WRAP_LEFT, Keyboard.WRAP_RIGHT],
-            render_now=False
-        )
-
-        self.keyboard_symbols_2 = Keyboard(
-            draw=self.renderer.draw,
-            charset=keys_symbol_2,
-            rows=4,
-            cols=6,
-            rect=(
-                GUIConstants.COMPONENT_PADDING,
-                keyboard_start_y,
-                self.canvas_width - GUIConstants.COMPONENT_PADDING - self.right_panel_buttons_width,
-                self.canvas_height - GUIConstants.EDGE_PADDING
-            ),
-            additional_keys=[
-                Keyboard.KEY_SPACE_2,
-                Keyboard.KEY_CURSOR_LEFT,
-                Keyboard.KEY_CURSOR_RIGHT,
-                Keyboard.KEY_BACKSPACE
-            ],
-            auto_wrap=[Keyboard.WRAP_LEFT, Keyboard.WRAP_RIGHT],
-            render_now=False
-        )
-
-        self.text_entry_display = TextEntryDisplay(
-            canvas=self.renderer.canvas,
-            rect=(
-                GUIConstants.EDGE_PADDING,
-                text_entry_display_y,
-                self.canvas_width - self.right_panel_buttons_width,
-                text_entry_display_y + text_entry_display_height
-            ),
-            font_name=GUIConstants.FIXED_WIDTH_EMPHASIS_FONT_NAME,
-            cursor_mode=TextEntryDisplay.CURSOR_MODE__BAR,
-            is_centered=False,
-            cur_text=''.join(self.mnemonic_id)
-        )
-
-        # Nudge the buttons off the right edge w/padding
-        hw_button_x = self.canvas_width - self.right_panel_buttons_width + GUIConstants.COMPONENT_PADDING
-
-        # Calc center button position first
-        hw_button_y = int((self.canvas_height - GUIConstants.BUTTON_HEIGHT)/2)
-
-        self.hw_button1 = Button(
-            text=self.KEYBOARD__UPPERCASE_BUTTON_TEXT,
-            is_text_centered=False,
-            font_name=GUIConstants.FIXED_WIDTH_EMPHASIS_FONT_NAME,
-            font_size=GUIConstants.get_button_font_size() + 4,
-            width=self.right_panel_buttons_width,
-            screen_x=hw_button_x,
-            screen_y=hw_button_y - 3*GUIConstants.COMPONENT_PADDING - GUIConstants.BUTTON_HEIGHT,
-            is_scrollable_text=False,
-        )
-
-        self.hw_button2 = Button(
-            text=self.KEYBOARD__DIGITS_BUTTON_TEXT,
-            is_text_centered=False,
-            font_name=GUIConstants.FIXED_WIDTH_EMPHASIS_FONT_NAME,
-            font_size=GUIConstants.get_button_font_size() + 4,
-            width=self.right_panel_buttons_width,
-            screen_x=hw_button_x,
-            screen_y=hw_button_y,
-            is_scrollable_text=False,
-        )
-
-        self.hw_button3 = IconButton(
-            icon_name=SeedSignerIconConstants.CHECK,
-            icon_color=GUIConstants.SUCCESS_COLOR,
-            width=self.right_panel_buttons_width,
-            screen_x=hw_button_x,
-            screen_y=hw_button_y + 3*GUIConstants.COMPONENT_PADDING + GUIConstants.BUTTON_HEIGHT,
-            is_scrollable_text=False,
-        )
-
-
-    def _render(self):
-        super()._render()
-
-        # Change from the default lowercase keyboard for the screenshot generator
-        if self.initial_keyboard == self.KEYBOARD__UPPERCASE_BUTTON_TEXT:
-            cur_keyboard = self.keyboard_ABC
-            self.hw_button1.text = self.KEYBOARD__LOWERCASE_BUTTON_TEXT
-
-        elif self.initial_keyboard == self.KEYBOARD__DIGITS_BUTTON_TEXT:
-            cur_keyboard = self.keyboard_digits
-            self.hw_button2.text = self.KEYBOARD__SYMBOLS_1_BUTTON_TEXT
-
-        elif self.initial_keyboard == self.KEYBOARD__SYMBOLS_1_BUTTON_TEXT:
-            cur_keyboard = self.keyboard_symbols_1
-            self.hw_button2.text = self.KEYBOARD__SYMBOLS_2_BUTTON_TEXT
-
-        elif self.initial_keyboard == self.KEYBOARD__SYMBOLS_2_BUTTON_TEXT:
-            cur_keyboard = self.keyboard_symbols_2
-            self.hw_button2.text = self.KEYBOARD__DIGITS_BUTTON_TEXT
-        
-        else:
-            cur_keyboard = self.keyboard_abc
-
-        self.text_entry_display.render()
-        self.hw_button1.render()
-        self.hw_button2.render()
-        self.hw_button3.render()
-        cur_keyboard.render_keys()
-
-        self.renderer.show_image()
-
-
-    def _run(self):
-        cursor_position = len(self.mnemonic_id)
-
-        cur_keyboard = self.keyboard_abc
-        cur_button1_text = self.KEYBOARD__UPPERCASE_BUTTON_TEXT
-        cur_button2_text = self.KEYBOARD__DIGITS_BUTTON_TEXT
-
-        # Start the interactive update loop
-        while True:
-            input = self.hw_inputs.wait_for(HardwareButtonsConstants.ALL_KEYS)
-
-            keyboard_swap = False
-
-            with self.renderer.lock:
-                # Check our two possible exit conditions
-                # TODO: note the unusual return value, consider refactoring to a Response object in the future
-                if input == HardwareButtonsConstants.KEY3:
-                    # Save!
-                    # First light up key3
-                    if len(self.mnemonic_id) > 0:
-                        self.hw_button3.is_selected = True
-                        self.hw_button3.render()
-                        self.renderer.show_image()
-                        return dict(mnemonic_id=self.mnemonic_id)
-
-                elif input == HardwareButtonsConstants.KEY_PRESS and self.top_nav.is_selected:
-                    # Back button clicked
-                    return dict(mnemonic_id=self.mnemonic_id, is_back_button=True)
-
-                # Check for keyboard swaps
-                if input == HardwareButtonsConstants.KEY1:
-                    # First light up key1
-                    self.hw_button1.is_selected = True
-                    self.hw_button1.render()
-
-                    # Return to the same button2 keyboard, if applicable
-                    if cur_keyboard == self.keyboard_digits:
-                        cur_button2_text = self.KEYBOARD__DIGITS_BUTTON_TEXT
-                    elif cur_keyboard == self.keyboard_symbols_1:
-                        cur_button2_text = self.KEYBOARD__SYMBOLS_1_BUTTON_TEXT
-                    elif cur_keyboard == self.keyboard_symbols_2:
-                        cur_button2_text = self.KEYBOARD__SYMBOLS_2_BUTTON_TEXT
-
-                    if cur_button1_text == self.KEYBOARD__LOWERCASE_BUTTON_TEXT:
-                        self.keyboard_abc.set_selected_key_indices(x=cur_keyboard.selected_key["x"], y=cur_keyboard.selected_key["y"])
-                        cur_keyboard = self.keyboard_abc
-                        cur_button1_text = self.KEYBOARD__UPPERCASE_BUTTON_TEXT
-                    else:
-                        self.keyboard_ABC.set_selected_key_indices(x=cur_keyboard.selected_key["x"], y=cur_keyboard.selected_key["y"])
-                        cur_keyboard = self.keyboard_ABC
-                        cur_button1_text = self.KEYBOARD__LOWERCASE_BUTTON_TEXT
-                    cur_keyboard.render_keys()
-
-                    # Show the changes; this loop will have two renders
-                    self.renderer.show_image()
-
-                    keyboard_swap = True
-                    ret_val = None
-
-                elif input == HardwareButtonsConstants.KEY2:
-                    # First light up key2
-                    self.hw_button2.is_selected = True
-                    self.hw_button2.render()
-                    self.renderer.show_image()
-
-                    # And reset for next redraw
-                    self.hw_button2.is_selected = False
-
-                    # Return to the same button1 keyboard, if applicable
-                    if cur_keyboard == self.keyboard_abc:
-                        cur_button1_text = self.KEYBOARD__LOWERCASE_BUTTON_TEXT
-                    elif cur_keyboard == self.keyboard_ABC:
-                        cur_button1_text = self.KEYBOARD__UPPERCASE_BUTTON_TEXT
-
-                    if cur_button2_text == self.KEYBOARD__DIGITS_BUTTON_TEXT:
-                        self.keyboard_digits.set_selected_key_indices(x=cur_keyboard.selected_key["x"], y=cur_keyboard.selected_key["y"])
-                        cur_keyboard = self.keyboard_digits
-                        cur_keyboard.render_keys()
-                        cur_button2_text = self.KEYBOARD__SYMBOLS_1_BUTTON_TEXT
-                    elif cur_button2_text == self.KEYBOARD__SYMBOLS_1_BUTTON_TEXT:
-                        self.keyboard_symbols_1.set_selected_key_indices(x=cur_keyboard.selected_key["x"], y=cur_keyboard.selected_key["y"])
-                        cur_keyboard = self.keyboard_symbols_1
-                        cur_keyboard.render_keys()
-                        cur_button2_text = self.KEYBOARD__SYMBOLS_2_BUTTON_TEXT
-                    elif cur_button2_text == self.KEYBOARD__SYMBOLS_2_BUTTON_TEXT:
-                        self.keyboard_symbols_2.set_selected_key_indices(x=cur_keyboard.selected_key["x"], y=cur_keyboard.selected_key["y"])
-                        cur_keyboard = self.keyboard_symbols_2
-                        cur_keyboard.render_keys()
-                        cur_button2_text = self.KEYBOARD__DIGITS_BUTTON_TEXT
-                    cur_keyboard.render_keys()
-
-                    # Show the changes; this loop will have two renders
-                    self.renderer.show_image()
-
-                    keyboard_swap = True
-                    ret_val = None
-
-                else:
-                    # Process normal input
-                    if input in [HardwareButtonsConstants.KEY_UP, HardwareButtonsConstants.KEY_DOWN] and self.top_nav.is_selected:
-                        # We're navigating off the previous button
-                        self.top_nav.is_selected = False
-                        self.top_nav.render_buttons()
-
-                        # Override the actual input w/an ENTER signal for the Keyboard
-                        if input == HardwareButtonsConstants.KEY_DOWN:
-                            input = Keyboard.ENTER_TOP
-                        else:
-                            input = Keyboard.ENTER_BOTTOM
-                    elif input in [HardwareButtonsConstants.KEY_LEFT, HardwareButtonsConstants.KEY_RIGHT] and self.top_nav.is_selected:
-                        # ignore
-                        continue
-
-                    ret_val = cur_keyboard.update_from_input(input)
-
-                # Now process the result from the keyboard
-                if ret_val in Keyboard.EXIT_DIRECTIONS:
-                    self.top_nav.is_selected = True
-                    self.top_nav.render_buttons()
-
-                elif ret_val in Keyboard.ADDITIONAL_KEYS and input == HardwareButtonsConstants.KEY_PRESS:
-                    if ret_val == Keyboard.KEY_BACKSPACE["code"]:
-                        if cursor_position == 0:
-                            pass
-                        elif cursor_position == len(self.mnemonic_id):
-                            self.mnemonic_id = self.mnemonic_id[:-1]
-                        else:
-                            self.mnemonic_id = self.mnemonic_id[:cursor_position - 1] + self.mnemonic_id[cursor_position:]
-
-                        cursor_position -= 1
-
-                    elif ret_val == Keyboard.KEY_CURSOR_LEFT["code"]:
-                        cursor_position -= 1
-                        if cursor_position < 0:
-                            cursor_position = 0
-
-                    elif ret_val == Keyboard.KEY_CURSOR_RIGHT["code"]:
-                        cursor_position += 1
-                        if cursor_position > len(self.mnemonic_id):
-                            cursor_position = len(self.mnemonic_id)
-
-                    elif ret_val == Keyboard.KEY_SPACE["code"]:
-                        if cursor_position == len(self.mnemonic_id):
-                            self.mnemonic_id += " "
-                        else:
-                            self.mnemonic_id = self.mnemonic_id[:cursor_position] + " " + self.mnemonic_id[cursor_position:]
-                        cursor_position += 1
-
-                    # Update the text entry display and cursor
-                    self.text_entry_display.render(self.mnemonic_id, cursor_position)
-
-                elif input == HardwareButtonsConstants.KEY_PRESS and ret_val not in Keyboard.ADDITIONAL_KEYS:
-                    # User has locked in the current letter
-                    if cursor_position == len(self.mnemonic_id):
-                        self.mnemonic_id += ret_val
-                    else:
-                        self.mnemonic_id = self.mnemonic_id[:cursor_position] + ret_val + self.mnemonic_id[cursor_position:]
-                    cursor_position += 1
-
-                    # Update the text entry display and cursor
-                    self.text_entry_display.render(self.mnemonic_id, cursor_position)
-
-                elif input in HardwareButtonsConstants.KEYS__LEFT_RIGHT_UP_DOWN or keyboard_swap:
-                    # Live joystick movement; haven't locked this new letter in yet.
-                    # Leave current spot blank for now. Only update the active keyboard keys
-                    # when a selection has been locked in (KEY_PRESS) or removed ("del").
-                    pass
-
-                if keyboard_swap:
-                    # Show the hw buttons' updated text and not active state
-                    self.hw_button1.text = cur_button1_text
-                    self.hw_button2.text = cur_button2_text
-                    self.hw_button1.is_selected = False
-                    self.hw_button2.is_selected = False
-                    self.hw_button1.render()
-                    self.hw_button2.render()
-
-                self.renderer.show_image()
-
-
-
-@dataclass
-class SeedEncryptedQRReviewMnemonicIDScreen(ButtonListScreen):
-    mnemonic_id: str = None
-
-    def __post_init__(self):
-        # Customize defaults
-        self.title = _("Review Mnemonic ID")
-        self.is_bottom_list = True
-
-        super().__post_init__()
-
-        time.sleep(0.1)
-
-        if self.mnemonic_id != self.mnemonic_id.strip() or "  " in self.mnemonic_id:
-            self.mnemonic_id = self.mnemonic_id.replace(" ", "\u2589")
-        available_height = self.buttons[0].screen_y - self.top_nav.height + GUIConstants.COMPONENT_PADDING
-        max_font_size = GUIConstants.get_top_nav_title_font_size() + 8
-        min_font_size = GUIConstants.get_top_nav_title_font_size() - 4
-        font_size = max_font_size
-        max_lines = 3
-        mnemonic_id = [self.mnemonic_id]
-        found_solution = False
-        for font_size in range(max_font_size, min_font_size, -2):
-            if found_solution:
-                break
-            font = Fonts.get_font(font_name=GUIConstants.FIXED_WIDTH_FONT_NAME, size=font_size)
-            left, top, right, bottom  = font.getbbox("X")
-            char_width, char_height = right - left, bottom
-            for num_lines in range(1, max_lines+1):
-                # Break the mnemonic id into n lines
-                chars_per_line = math.ceil(len(self.mnemonic_id) / num_lines)
-                mnemonic_id = []
-                for i in range(0, len(self.mnemonic_id), chars_per_line):
-                    mnemonic_id.append(self.mnemonic_id[i:i+chars_per_line])
-
-                # See if it fits in this configuration
-                if char_width * len(mnemonic_id[0]) <= self.canvas_width - 2*GUIConstants.EDGE_PADDING:
-                    # Width is good...
-                    if num_lines * char_height <= available_height:
-                        # And the height is good!
-                        found_solution = True
-                        break
-
-        # Set up each line of text
-        screen_y = self.top_nav.height + int((available_height - char_height*num_lines)/2) - GUIConstants.COMPONENT_PADDING
-        for line in mnemonic_id:
-            self.components.append(TextArea(
-                text=line,
-                font_name=GUIConstants.FIXED_WIDTH_FONT_NAME,
-                font_size=font_size,
-                is_text_centered=True,
-                screen_y=screen_y,
-                allow_text_overflow=True
-            ))
-            screen_y += char_height + 2
-
-
-
-@dataclass
-class SeedEncryptedQRTranscribeModePromptScreen(ButtonListScreen):
-    def __post_init__(self):
-        self.is_bottom_list = True
-        super().__post_init__()
-
-        self.components.append(TextArea(
-            text=_("The QR codes output in both modes may differ, but both are valid QR codes."),
-            screen_y=self.top_nav.height,
-            height=self.buttons[0].screen_y - self.top_nav.height,
-        ))
-
-
-
-@dataclass
-class SeedTranscribeEncryptedQRWholeQRScreen(WarningEdgesMixin, ButtonListScreen):
-    qr_data: bytes = None
-    num_modules: int = None
-
-    def __post_init__(self):
-        self.title = _("Transcribe Encrypted QR")
-        button_label = _("Begin {}x{}").format(self.num_modules, self.num_modules)
-        self.button_data = [ButtonOption(button_label)]
-        self.is_bottom_list = True
-        self.status_color = GUIConstants.DIRE_WARNING_COLOR
-        super().__post_init__()
-
-        qr_height = self.buttons[0].screen_y - self.top_nav.height - GUIConstants.COMPONENT_PADDING
-        qr_width = qr_height
-
-        qr = QR()
-        qr_image = qr.qrimage(
-            data=self.qr_data,
-            width=qr_width,
-            height=qr_height,
-            border=1,
-            style=QR.STYLE__ROUNDED
-        ).convert("RGBA")
-
-        self.paste_images.append((qr_image, (int((self.canvas_width - qr_width)/2), self.top_nav.height)))
-
-
-
-@dataclass
-class SeedTranscribeEncryptedQRZoomedInScreen(BaseScreen):
-    qr_data: bytes = None
-    num_modules: int = None
-
-    def __post_init__(self):
-        super().__post_init__()
-
-        # Render an oversized QR code that we can view up close
-        self.pixels_per_block = 24
-
-        # Border must accommodate the 3 blocks outside the center 5x5 mask plus up to
-        # 2 empty blocks inside the 5x5 mask (29x29 and 33x33 have 4 and 3-block final col/row).
-        self.qr_border = 5
-        if self.num_modules == 21:
-            # Optimize for 21x21
-            self.qr_blocks_per_zoom = 7
-        else:
-            self.qr_blocks_per_zoom = 5
-
-        self.qr_width = (self.qr_border + self.num_modules + self.qr_border) * self.pixels_per_block
-        self.height = self.qr_width
-        qr = QR()
-        self.qr_image = qr.qrimage(
-            self.qr_data,
-            width=self.qr_width,
-            height=self.height,
-            border=self.qr_border,
-            style=QR.STYLE__ROUNDED
-        ).convert("RGBA")
-
-        # Render gridlines but leave the 1-block border as-is
-        draw = ImageDraw.Draw(self.qr_image)
-        for i in range(self.qr_border, math.floor(self.qr_width/self.pixels_per_block) - self.qr_border):
-            draw.line((i * self.pixels_per_block, self.qr_border * self.pixels_per_block, i * self.pixels_per_block, self.height - self.qr_border * self.pixels_per_block), fill="#bbb")
-            draw.line((self.qr_border * self.pixels_per_block, i * self.pixels_per_block, self.qr_width - self.qr_border * self.pixels_per_block, i * self.pixels_per_block), fill="#bbb")
-
-        # Prep the semi-transparent mask overlay
-        # make a blank image for the overlay, initialized to transparent
-        self.block_mask = Image.new("RGBA", (self.canvas_width, self.canvas_height), (255,255,255,0))
-        draw = ImageDraw.Draw(self.block_mask)
-
-        self.mask_width = int((self.canvas_width - self.qr_blocks_per_zoom * self.pixels_per_block)/2)
-        self.mask_height = int((self.canvas_height - self.qr_blocks_per_zoom * self.pixels_per_block)/2)
-        mask_rgba = (0, 0, 0, 226)
-        draw.rectangle((0, 0, self.canvas_width, self.mask_height), fill=mask_rgba)
-        draw.rectangle((0, self.canvas_height - self.mask_height - 1, self.canvas_width, self.canvas_height), fill=mask_rgba)
-        draw.rectangle((0, self.mask_height, self.mask_width, self.canvas_height - self.mask_height), fill=mask_rgba)
-        draw.rectangle((self.canvas_width - self.mask_width - 1, self.mask_height, self.canvas_width, self.canvas_height - self.mask_height), fill=mask_rgba)
-
-        # Draw a box around the cutout portion of the mask for better visibility
-        draw.line((self.mask_width, self.mask_height, self.mask_width, self.canvas_height - self.mask_height), fill=GUIConstants.ACCENT_COLOR)
-        draw.line((self.canvas_width - self.mask_width, self.mask_height, self.canvas_width - self.mask_width, self.canvas_height - self.mask_height), fill=GUIConstants.ACCENT_COLOR)
-        draw.line((self.mask_width, self.mask_height, self.canvas_width - self.mask_width, self.mask_height), fill=GUIConstants.ACCENT_COLOR)
-        draw.line((self.mask_width, self.canvas_height - self.mask_height, self.canvas_width - self.mask_width, self.canvas_height - self.mask_height), fill=GUIConstants.ACCENT_COLOR)
-
-        msg = _("click to exit")
-        font = Fonts.get_font(GUIConstants.BODY_FONT_NAME['default'], GUIConstants.BODY_FONT_SIZE['default'])
-        (left, top, right, bottom) = font.getbbox(msg, anchor="ls")
-        msg_height = -1 * top
-        msg_width = right
-        # draw.rectangle(
-        #     (
-        #         int((self.canvas_width - msg_width)/2 - GUIConstants.COMPONENT_PADDING),
-        #         self.canvas_height - msg_height - GUIConstants.COMPONENT_PADDING,
-        #         int((self.canvas_width + msg_width)/2 + GUIConstants.COMPONENT_PADDING),
-        #         self.canvas_height
-        #     ),
-        #     fill=GUIConstants.BACKGROUND_COLOR,
-        # )
-        # draw.text(
-        #     (int(self.canvas_width/2), self.canvas_height - int(GUIConstants.COMPONENT_PADDING/2)),
-        #     msg,
-        #     fill=GUIConstants.BODY_FONT_COLOR,
-        #     font=font,
-        #     anchor="ms"  # Middle, baSeline
-        # )
-        TextArea(
-            canvas=self.block_mask,
-            image_draw=draw,
-            text=msg,
-            background_color=GUIConstants.BACKGROUND_COLOR,
-            is_text_centered=True,
-            screen_y=self.canvas_height - GUIConstants.BODY_FONT_SIZE['default'] - GUIConstants.COMPONENT_PADDING,
-            height=GUIConstants.BODY_FONT_SIZE['default'] + GUIConstants.COMPONENT_PADDING,
-        ).render()
-
-
-    def draw_block_labels(self, cur_block_x, cur_block_y):
-        # Create overlay for block labels (e.g. "D-5")
-        block_labels_x = ["1", "2", "3", "4", "5", "6", "7"]
-        block_labels_y = ["A", "B", "C", "D", "E", "F", "G"]
-
-        block_labels = Image.new("RGBA", (self.canvas_width, self.canvas_height), (255,255,255,0))
-        draw = ImageDraw.Draw(block_labels)
-        draw.rectangle((self.mask_width, 0, self.canvas_width - self.mask_width, self.pixels_per_block), fill=GUIConstants.ACCENT_COLOR)
-        draw.rectangle((0, self.mask_height, self.pixels_per_block, self.canvas_height - self.mask_height), fill=GUIConstants.ACCENT_COLOR)
-
-        label_font = Fonts.get_font(GUIConstants.FIXED_WIDTH_EMPHASIS_FONT_NAME, GUIConstants.TOP_NAV_TITLE_FONT_SIZE['default'] + 8)
-        x_label = block_labels_x[cur_block_x]
-        (left, top, right, bottom) = label_font.getbbox(x_label, anchor="ls")
-        x_label_height = -1 * top
-
-        draw.text(
-            (int(self.canvas_width/2), self.pixels_per_block - int((self.pixels_per_block - x_label_height)/2)),
-            text=x_label,
-            fill=GUIConstants.BUTTON_SELECTED_FONT_COLOR,
-            font=label_font,
-            anchor="ms",  # Middle, baSeline
-        )
-
-        y_label = block_labels_y[cur_block_y]
-        (left, top, right, bottom) = label_font.getbbox(y_label, anchor="ls")
-        y_label_height = -1 * top
-        draw.text(
-            (int(self.pixels_per_block/2), int((self.canvas_height + y_label_height) / 2)),
-            text=y_label,
-            fill=GUIConstants.BUTTON_SELECTED_FONT_COLOR,
-            font=label_font,
-            anchor="ms",  # Middle, baSeline
-        )
-
-        return block_labels
-
-
-    def _run(self):
-        # Track our current coordinates for the upper left corner of our view
-        cur_block_x = 0
-        cur_block_y = 0
-        cur_x = self.qr_border * self.pixels_per_block - self.mask_width
-        cur_y = self.qr_border * self.pixels_per_block - self.mask_height
-        next_x = cur_x
-        next_y = cur_y
-
-        block_labels = self.draw_block_labels(0, 0)
-
-        self.renderer.show_image(
-            self.qr_image.crop((cur_x, cur_y, cur_x + self.canvas_width, cur_y + self.canvas_height)),
-            alpha_overlay=Image.alpha_composite(self.block_mask, block_labels)
-        )
-
-        while True:
-            input = self.hw_inputs.wait_for(HardwareButtonsConstants.KEYS__LEFT_RIGHT_UP_DOWN + HardwareButtonsConstants.KEYS__ANYCLICK)
-            if input == HardwareButtonsConstants.KEY_RIGHT:
-                next_x = cur_x + self.qr_blocks_per_zoom * self.pixels_per_block
-                cur_block_x += 1
-                if next_x > self.qr_width - self.canvas_width:
-                    next_x = cur_x
-                    cur_block_x -= 1
-            elif input == HardwareButtonsConstants.KEY_LEFT:
-                next_x = cur_x - self.qr_blocks_per_zoom * self.pixels_per_block
-                cur_block_x -= 1
-                if next_x < 0:
-                    next_x = cur_x
-                    cur_block_x += 1
-            elif input == HardwareButtonsConstants.KEY_DOWN:
-                next_y = cur_y + self.qr_blocks_per_zoom * self.pixels_per_block
-                cur_block_y += 1
-                if next_y > self.height - self.canvas_height:
-                    next_y = cur_y
-                    cur_block_y -= 1
-            elif input == HardwareButtonsConstants.KEY_UP:
-                next_y = cur_y - self.qr_blocks_per_zoom * self.pixels_per_block
-                cur_block_y -= 1
-                if next_y < 0:
-                    next_y = cur_y
-                    cur_block_y += 1
-            elif input in HardwareButtonsConstants.KEYS__ANYCLICK:
-                return
-
-            # Create overlay for block labels (e.g. "D-5")
-            block_labels = self.draw_block_labels(cur_block_x, cur_block_y)
-
-            if cur_x != next_x or cur_y != next_y:
-                self.renderer.show_image_pan(
-                    self.qr_image,
-                    cur_x, cur_y, next_x, next_y,
-                    rate=self.pixels_per_block,
-                    alpha_overlay=Image.alpha_composite(self.block_mask, block_labels)
-                )
-                cur_x = next_x
-                cur_y = next_y
-

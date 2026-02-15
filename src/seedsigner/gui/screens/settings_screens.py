@@ -5,12 +5,10 @@ from gettext import gettext as _
 from PIL.ImageOps import autocontrast
 from typing import List
 
-
 from seedsigner.helpers.l10n import mark_for_translation as _mft
 from seedsigner.gui.components import Button, CheckboxButton, CheckedSelectionButton, FontAwesomeIconConstants, Fonts, GUIConstants, Icon, IconButton, IconTextLine, SeedSignerIconConstants, TextArea
 from seedsigner.gui.screens.scan_screens import ScanScreen
-from seedsigner.gui.screens.screen import BaseScreen, BaseTopNavScreen, ButtonListScreen, ButtonOption, KeyboardScreen
-from seedsigner.models.threads import BaseThread
+from seedsigner.gui.screens.screen import BaseScreen, BaseTopNavScreen, ButtonListScreen, ButtonOption
 from seedsigner.hardware.buttons import HardwareButtonsConstants
 from seedsigner.hardware.camera import Camera
 from seedsigner.models.settings import SettingsConstants
@@ -27,17 +25,10 @@ class SettingsEntryUpdateSelectionScreen(ButtonListScreen):
     def __post_init__(self):
         self.title = _("Settings")
         self.is_bottom_list = True
-        self.use_checked_selection_buttons = True
         if self.settings_entry_type == SettingsConstants.TYPE__MULTISELECT:
             self.Button_cls = CheckboxButton
         else:
             self.Button_cls = CheckedSelectionButton
-
-        if not self.button_data:
-            # Ensure at least one placeholder option so the screen can render
-            # even when no real selection choices are available.
-            self.button_data = [ButtonOption(_("No options available"))]
-
         super().__post_init__()
 
         self.components.append(TextArea(
@@ -57,22 +48,6 @@ class SettingsEntryUpdateSelectionScreen(ButtonListScreen):
                 screen_y=prev_component_bottom + GUIConstants.COMPONENT_PADDING,
                 auto_line_break=True,
             ))
-
-
-
-@dataclass
-class SettingPBFDK2IterationsScreen(KeyboardScreen):
-    def __post_init__(self):
-        self.title = "PBKDF2 Iter.(in units of 10k)"
-        self.user_input = ""
-
-        # Specify the keys in the keyboard
-        self.rows = 3
-        self.cols = 5
-        self.keys_charset = "0123456789"
-        self.show_save_button = True
-
-        super().__post_init__()
 
 
 
@@ -333,171 +308,6 @@ class DonateScreen(BaseTopNavScreen):
             screen_y=self.components[-1].screen_y + self.components[-1].height + GUIConstants.COMPONENT_PADDING
         ))
 
-
-@dataclass
-class BatteryInfoScreen(BaseTopNavScreen):
-    """Display live battery information from the UPS HAT."""
-
-    def __post_init__(self):
-        self.title = _("Battery Info")
-        super().__post_init__()
-
-        from seedsigner.hardware.battery_hat import BatteryHat
-        self.battery_hat = BatteryHat.get_instance()
-
-        self.info_font_size = min(
-            GUIConstants.get_body_font_size() + 4,
-            GUIConstants.BODY_FONT_MAX_SIZE,
-        )
-
-        start_y = self.top_nav.height + 2 * GUIConstants.COMPONENT_PADDING
-        self.voltage_text = TextArea(
-            text="Load Voltage: --",
-            is_text_centered=True,
-            screen_y=start_y,
-            font_size=self.info_font_size,
-        )
-        self.components.append(self.voltage_text)
-
-        start_y += self.voltage_text.height + GUIConstants.COMPONENT_PADDING
-        self.current_text = TextArea(
-            text="Current: --",
-            is_text_centered=True,
-            screen_y=start_y,
-            font_size=self.info_font_size,
-        )
-        self.components.append(self.current_text)
-
-        start_y += self.current_text.height + GUIConstants.COMPONENT_PADDING
-        self.power_text = TextArea(
-            text="Power: --",
-            is_text_centered=True,
-            screen_y=start_y,
-            font_size=self.info_font_size,
-        )
-        self.components.append(self.power_text)
-
-        start_y += self.power_text.height + GUIConstants.COMPONENT_PADDING
-        self.percent_text = TextArea(
-            text="Percent: --%",
-            is_text_centered=True,
-            screen_y=start_y,
-            font_size=self.info_font_size,
-        )
-        self.components.append(self.percent_text)
-
-        start_y += self.percent_text.height + GUIConstants.COMPONENT_PADDING
-        self.curve_text = TextArea(
-            text="Curve: --",
-            is_text_centered=True,
-            screen_y=start_y,
-            font_size=self.info_font_size,
-        )
-        self.components.append(self.curve_text)
-
-        self.threads.append(BatteryInfoScreen.UpdateThread(self))
-
-    def _replace_info_text(self, attribute: str, text: str) -> None:
-        text_area = getattr(self, attribute)
-        updated_area = TextArea(
-            text=text,
-            is_text_centered=True,
-            screen_y=text_area.screen_y,
-            font_size=self.info_font_size,
-        )
-        try:
-            index = self.components.index(text_area)
-        except ValueError:
-            index = None
-        if index is None:
-            self.components.append(updated_area)
-        else:
-            self.components[index] = updated_area
-        setattr(self, attribute, updated_area)
-        updated_area.render()
-
-    class UpdateThread(BaseThread):
-        def __init__(self, screen):
-            super().__init__()
-            self.screen = screen
-            self.battery_hat = screen.battery_hat
-
-        def run(self):
-            while self.keep_running:
-                if not self.battery_hat.is_enabled():
-                    time.sleep(5)
-                    continue
-                voltage = None
-                current = None
-                power = None
-                percent = None
-                if self.battery_hat.detected:
-                    voltage = self.battery_hat.get_voltage()
-                    current = self.battery_hat.get_current()
-                    power = self.battery_hat.get_power()
-                    percent = self.battery_hat.get_percent()
-                with self.screen.renderer.lock:
-                    if voltage is not None:
-                        voltage_text = f"Load Voltage: {voltage:.3f} V"
-                    else:
-                        voltage_text = "Load Voltage: --"
-                    if current is not None:
-                        current_text = f"Current: {current/1000:.3f} A"
-                    else:
-                        current_text = "Current: --"
-                    if power is not None:
-                        power_text = f"Power: {power:.3f} W"
-                    else:
-                        power_text = "Power: --"
-                    if percent is not None:
-                        percent_text = f"Percent: {percent:.1f}%"
-                    else:
-                        percent_text = "Percent: --%"
-                    curve_label = self.battery_hat.get_curve_label()
-                    if curve_label:
-                        curve_text = f"Curve: {curve_label}"
-                    else:
-                        curve_text = "Curve: default"
-                    self.screen._replace_info_text("voltage_text", voltage_text)
-                    self.screen._replace_info_text("current_text", current_text)
-                    self.screen._replace_info_text("power_text", power_text)
-                    self.screen._replace_info_text("percent_text", percent_text)
-                    self.screen._replace_info_text("curve_text", curve_text)
-                    self.screen.renderer.show_image()
-                time.sleep(5)
-
-
-
-@dataclass
-class SystemInfoScreen(BaseTopNavScreen):
-    pi_version: str = ""
-    system_serial: str = ""
-    microsd_serial: str = ""
-
-    def __post_init__(self):
-        self.title = _("System Info")
-        super().__post_init__()
-
-        info_lines = [
-            _("Pi: {pi_version}").format(pi_version=self.pi_version),
-            _("System: {system_serial}").format(system_serial=self.system_serial),
-            _("MicroSD: {microsd_serial}").format(microsd_serial=self.microsd_serial),
-        ]
-
-        start_y = self.top_nav.height + 2 * GUIConstants.COMPONENT_PADDING
-        line_spacing = GUIConstants.COMPONENT_PADDING
-
-        for line in info_lines:
-            text_area = TextArea(
-                text=line,
-                screen_x=GUIConstants.EDGE_PADDING,
-                width=self.canvas_width - 2 * GUIConstants.EDGE_PADDING,
-                is_text_centered=False,
-                auto_line_break=True,
-                screen_y=start_y,
-            )
-            self.components.append(text_area)
-            start_y += text_area.height + line_spacing
 
 
 @dataclass

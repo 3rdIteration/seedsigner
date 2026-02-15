@@ -1,96 +1,3 @@
-# SeedSigner + Satochip
-The question of how to store your private keys in a way that is both secure and resistant to loss or damage is a challenge.
-
-There are a number of different approaches that different hardware and software wallets use and one that has been gaining popularity, particularly with stateless wallets, is SeedQR… The thing is that while SeedQR is much quicker and easier than a standard seed phrase, storing and loading private keys via SeedQR all the time has it’s own issues relating to security, robustness and privacy… 
-
-That said, I think that saving secrets to a PIN protected Javacard addresses all of these issues in a really affordable and accessible way… I have been doing to integrate the Seedkeeper from Satochip with Seedsigner… Basically as a proof of concept… This is now at a point where it can be considered Beta software, in that it is mostly feature complete. (Though will still likely have other bugs and tweaks to come) [You can read more about the rationale, software and hardware being used here](./docs/smartcard_support_installation.md)
-
-All releases are now running SeedSigner-OS and are built via BuildRoot just like official builds, meaning that the MicroSD card can be removed for normal operation. (Though the MicroSD needs to be left in while building and flashing Java applets or flashing SeedSigner images to MicroSD) This also means that installation images are much smaller and are also reproducible. 
-
-[I have a video on my YouTube channel which covers the functionality below and also talks about the physical build side.](https://youtu.be/Rhs9z5uL7qg)
-
-Support and discussion relating to this fork can happen via this [Telegram Group](https://t.me/+mp3CIjCQuk0yMjUx)
-
-## Difference from Stock SeedSigner
-* Multiple Smartcard interface options… 
-   - Smartcard Hat (SEC1210 Connected via UART)
-   - Standard USB CCID/PCSC readers
-   - PN532 NFC Reader Connected via I2C
-   - USB Phoenix Type "Sim Reader" supported via OpenCT 
-* Saving and Loading Seeds & Passphrases in a number of ways
-   - Seedkeeper: Supports loading of Seed, Seed+Passphrase in one go, or loading passphrase independently. (Potentially from a different SeedKeeper)
-   - Encrypted QR: Supports Krux compatible encrypted seeds
-   - Passphrase QR: Supports loading a passphrase from a plain text QR code
-   - Plaintext QR: Support Exporting Seed as Plaintext QR Code
-   - Split passphrase/encryption key QR support (Multi-Factor entry)
-* Saving and Loading Multisig Descriptors to Satochip Seedkeeper Cards 
-   - Also changed default behavior to keep Descriptor loaded until manually cleared. (Including descriptor appearing in the Address Explorer when loaded)
-   - Descriptors are split up into a template and xpubs before being saved to SeedKeeper.
-   - Includes ability to load single-sig descriptor and use Address Browser
-* Saving and loading generic secrets to a Seedkeeper card
-   - These secrets can be either viewed as text or displayed as a generic text QR code.
-* General Satochip/Seedkeeper card operations
-  - Initialise Card
-  - Change Card PIN
-  - Change Card Label
-  - Set NFC Policy
-  - Factory Reset Card
-  - Smartcard info screen with card UID
-  - Genuineness check
-* Satochip Card features
-  - Load any Seed from the SeedSigner on to the Satochip Card
-  - Enable 2FA on the Satochip Card
-  - Export xpubs (single- and multisig) 
-  - PSBT verification and transaction signing directly on-card
-  - Message signing
-  - Address explorer integration for Satochip cards
-* SLIP39 seed support
-  - Create, import and extend SLIP39 seed shares (Can load from text, QR or Seedkeeper)
-  - Save SLIP39 shares to Seedkeeper
-  - Initialise Satochip card from reconstructed SLIP39 seed.
-  - Settings to toggle SLIP39 functionality
-* BIP85 Support
-   - Supports not only generating BIP85 seeds, but loading them and using them
-* WIF/BIP38 key signing support (disabled by default)
-* Wallet xpub export verification (Checks receive address for safety)
-* TextQR Tool
-   - Supports both generating and loading standard plaintext QR codes for arbitrary text.
-* Configurable seed word lengths (12, 15, 18, 21 and 24 word mnemonics)
-* Enhanced entropy and security features
-  - Live display of camera entropy quality
-  - Shannon Entropy checks for Dice and Camera seed generation
-  - Hardware RNG mixed with camera entropy
-  - Entropy quality indicators with optional 30-minute wipe timer
-* Extra Developer Tools
-  - All dev builds throw a warning on startup...
-  - Desktop simulation mode with system camera support (Useful for development)
-  - Dev builds allow running seedsigner source from a folder on microSD
-  - Dev builds have ability to enable networking and include extra tools like SSH, git and rsync (To make dev easier)
-* Compressed image files (The uncompressed files are large due to having extra free space to make the GPG verification feature useful)
-* * MicroSD Card Tools
-   - Flashing MicroSD Cards with official SeedSigner Images (Bundled)
-   - Verification of freshly flashed MicroSD cards against known images
-   - Secure Wipe (Both with zeros and random data)
-* GPG Tools
-   - GPG Signature verification & Sha256 Manifest check (Includes pubkey bundle the from Sparrow to verify Seedsigner, Sparrow, Electrum, plus many more)
-    - Load BIP85-derived GPG keys (NIST P-256 [default], Brainpool P-256, RSA 2048, RSA 3072, RSA 4096, or secp256k1) with prompts for key type, name, email, and expiration (defaulting to the end of 2029 for RSA 2048 keys and the end of 2035 for all other key types); when multiple seeds are loaded you can choose which seed to derive from, and metadata such as name, email, expiration, and deprecation/end-of-use dates can be modified later ([docs](./docs/gpg_tools.md))
-    - Manage User IDs: add, edit, revoke, delete, or set the primary UID
-    - Advanced submenu exposes Subkey Operations, User ID Operations, and a BIP85 Metadata menu to save/load BIP85 details or rebuild keys. BIP85-derived keys use deterministic BIP85 subkeys with successive indexes and only the latest subkey may be deleted. When adding subkeys to a BIP85 key SeedSigner automatically selects the corresponding seed and verifies the existing key before derivation, warning if the seed is unavailable. BIP85 derivation details are tracked in memory and can be saved or loaded as JSON via file, animated QR, or Seedkeeper from the BIP85 Metadata menu
-* Tested and working with the following hardware
-   - Raspberry Pi Zero 1.3
-   - Raspberry Pi Zero W
-   - Raspberry Pi Zero 2W (Raspberry Pi 3 has the same hardware, so should work too)
-   - Raspberry Pi 2
-   - Raspberry Pi 4
- 
-## Future Features & Improvements
-* Add ability to lock/unlock/manage Javacards
-* Tidy up code and reduce re-use
-
-[Software Images along with verification instructions can be found on the releases page.](https://github.com/3rdIteration/seedsigner/releases) 
-
-# -----------------Original Readme Continues Below-----------------
-
 # Build an offline, airgapped Bitcoin signing device for less than $50!
 
 ![Image of SeedSigners in Mini Pill Enclosures](docs/img/Mini_Pill_Main_Photo.jpg)
@@ -105,6 +12,7 @@ Support and discussion relating to this fork can happen via this [Telegram Group
 * [SeedQR Printable Templates](#seedqr-printable-templates)
 * [Build from Source](#build-from-source)
 * [Developer Local Build Instructions](#developer-local-build-instructions)
+
 
 ---------------
 
@@ -125,7 +33,7 @@ If you have specific questions about the project, our [Telegram Group](https://t
 * Stateless, air-gapped operation:
   * Temporarily stores seeds in memory while the device is powered; all memory is wiped when power is removed.
   * SD card removable after boot to ensure no secret data can be written to it.
-  * No wifi or Bluetooth hardware onboard.
+  * No WiFi or Bluetooth hardware onboard.
   * Can only receive data via reading QR codes with its camera.
   * Can only send data by displaying QR codes on its screen.
 
@@ -143,7 +51,7 @@ If you have specific questions about the project, our [Telegram Group](https://t
   * Import any existing seed phrase via an optimized seed word entry interface.
   * Partial support for Electrum Segwit seed phrases [(info)](docs/electrum.md).
 
-* Wallet setup and transaction signing
+* Wallet setup and transaction signing:
   * Script types: Taproot, native segwit, nested segwit, legacy (p2pkh).
   * Single sig and multisig xpub export.
   * Support for user-defined custom derivation paths.
@@ -151,12 +59,11 @@ If you have specific questions about the project, our [Telegram Group](https://t
   * Verify the PSBT's single sig or multisig change outputs or self-transfer outputs.
   * Mainnet, testnet, and regtest.
 
-* Additional utilities
+* Additional utilities:
   * [SettingsQR](https://github.com/SeedSigner/seedsigner-settings-generator) to instantly reconfigure a SeedSigner for beginners, advanced users, or tailored to your preferences.
   * Scan a software wallet's receive or change address to verify that it's correct.
   * Address Explorer for single sig and multisig wallets.
   * Message signing to prove address ownership.
-  * Sync the system clock using a [GoPro Labs timecode QR](https://gopro.github.io/labs/control/) for camera alignment.
   * BIP85 child seed generation.
 
 * Compatible with:
@@ -186,7 +93,7 @@ To build a SeedSigner, you will need:
 
 Notes:
 * You may need to solder the 40 GPIO pins (20 pins per row) to the Raspberry Pi Zero board. If you don't want to solder, most stores offer the board "with headers" already soldered on.
-* The Pi Zero "W" or "2W" is often easier to find but has wifi/Bluetooth hardware. You can still use these boards and can optionally [disable the wifi/Bluetooth hardware](https://github.com/DesobedienteTecnologico/rpi_disable_wifi_and_bt_by_hardware).
+* The Pi Zero "W" or "2W" is often easier to find but has WiFi/Bluetooth hardware. You can still use these boards and can optionally [disable the WiFi/Bluetooth hardware](https://github.com/DesobedienteTecnologico/rpi_disable_wifi_and_bt_by_hardware).
 * Other cameras with the above sensor module should work, but may not fit in the Orange Pill enclosure.
 * Choose the Waveshare screen carefully; they make a number of different boards that look very similar but ARE NOT COMPATIBLE! Make sure you purchase the model that has a resolution of 240x240 pixels.
 * Raspberry Pi 1 is also compatible, but will require a [hardware modification to the Waveshare LCD Hat](./docs/legacy_hardware.md).
@@ -205,23 +112,24 @@ Instructions to build a SeedSigner OS image (using precisely the same process th
 ## Downloading the Software
 
    
-Download the current Version (0.8.5) software image that is compatible with your  Raspberry Pi Hardware. The Pi Zero 1.3 is the most common and recommended board.
+Download the current Version (0.8.6) software image that is compatible with your  Raspberry Pi Hardware. The Pi Zero 1.3 is the most common and recommended board.
 | Board                 | Download Image Link/Name          |
 | --------------------- | --------------------------------- |
-|**[Raspberry Pi Zero 1.3](https://www.raspberrypi.com/products/raspberry-pi-zero/)**      |[`seedsigner_os.0.8.5.pi0.img`](https://github.com/SeedSigner/seedsigner/releases/download/0.8.5/seedsigner_os.0.8.5.pi0.img)      |
-|[Raspberry Pi Zero W](https://www.raspberrypi.com/products/raspberry-pi-zero-w/)    |[`seedsigner_os.0.8.5.pi0.img`](https://github.com/SeedSigner/seedsigner/releases/download/0.8.5/seedsigner_os.0.8.5.pi0.img)      |
-|[Raspberry Pi Zero 2 W](https://www.raspberrypi.com/products/raspberry-pi-zero-2-w/)  |[`seedsigner_os.0.8.5.pi02w.img`](https://github.com/SeedSigner/seedsigner/releases/download/0.8.5/seedsigner_os.0.8.5.pi02w.img)    |
-|[Raspberry Pi 1 Model B/B+](https://www.raspberrypi.com/products/raspberry-pi-1-model-b-plus/) |[`seedsigner_os.0.8.5.pi0.img`](https://github.com/SeedSigner/seedsigner/releases/download/0.8.5/seedsigner_os.0.8.5.pi0.img)      |
-|[Raspberry Pi 2 Model B](https://www.raspberrypi.com/products/raspberry-pi-2-model-b/) |[`seedsigner_os.0.8.5.pi2.img`](https://github.com/SeedSigner/seedsigner/releases/download/0.8.5/seedsigner_os.0.8.5.pi2.img)      |
-|[Raspberry Pi 3 Model B](https://www.raspberrypi.com/products/raspberry-pi-3-model-b/) |[`seedsigner_os.0.8.5.pi02w.img`](https://github.com/SeedSigner/seedsigner/releases/download/0.8.5/seedsigner_os.0.8.5.pi02w.img)    |
-|[Raspberry Pi 4 Model B](https://www.raspberrypi.com/products/raspberry-pi-4-model-b/) |[`seedsigner_os.0.8.5.pi4.img`](https://github.com/SeedSigner/seedsigner/releases/download/0.8.5/seedsigner_os.0.8.5.pi4.img)      |
-|[Raspberry Pi 400](https://www.raspberrypi.com/products/raspberry-pi-400-unit/) |[`seedsigner_os.0.8.5.pi4.img`](https://github.com/SeedSigner/seedsigner/releases/download/0.8.5/seedsigner_os.0.8.5.pi4.img)      |
+|**[Raspberry Pi Zero 1.3](https://www.raspberrypi.com/products/raspberry-pi-zero/)**      |[`seedsigner_os.0.8.6.pi0.img`](https://github.com/SeedSigner/seedsigner/releases/download/0.8.6/seedsigner_os.0.8.6.pi0.img)      |
+|[Raspberry Pi Zero W](https://www.raspberrypi.com/products/raspberry-pi-zero-w/)    |[`seedsigner_os.0.8.6.pi0.img`](https://github.com/SeedSigner/seedsigner/releases/download/0.8.6/seedsigner_os.0.8.6.pi0.img)      |
+|[Raspberry Pi Zero 2 W](https://www.raspberrypi.com/products/raspberry-pi-zero-2-w/)  |[`seedsigner_os.0.8.6.pi02w.img`](https://github.com/SeedSigner/seedsigner/releases/download/0.8.6/seedsigner_os.0.8.6.pi02w.img)    |
+|[Raspberry Pi 1 Model B/B+](https://www.raspberrypi.com/products/raspberry-pi-1-model-b-plus/) |[`seedsigner_os.0.8.6.pi0.img`](https://github.com/SeedSigner/seedsigner/releases/download/0.8.6/seedsigner_os.0.8.6.pi0.img)      |
+|[Raspberry Pi 2 Model B](https://www.raspberrypi.com/products/raspberry-pi-2-model-b/) |[`seedsigner_os.0.8.6.pi2.img`](https://github.com/SeedSigner/seedsigner/releases/download/0.8.6/seedsigner_os.0.8.6.pi2.img)      |
+|[Raspberry Pi 3 Model B](https://www.raspberrypi.com/products/raspberry-pi-3-model-b/) |[`seedsigner_os.0.8.6.pi02w.img`](https://github.com/SeedSigner/seedsigner/releases/download/0.8.6/seedsigner_os.0.8.6.pi02w.img)    |
+|[Raspberry Pi 4 Model B](https://www.raspberrypi.com/products/raspberry-pi-4-model-b/) |[`seedsigner_os.0.8.6.pi4.img`](https://github.com/SeedSigner/seedsigner/releases/download/0.8.6/seedsigner_os.0.8.6.pi4.img)      |
+|[Raspberry Pi 400](https://www.raspberrypi.com/products/raspberry-pi-400-unit/) |[`seedsigner_os.0.8.6.pi4.img`](https://github.com/SeedSigner/seedsigner/releases/download/0.8.6/seedsigner_os.0.8.6.pi4.img)      |
 
-Note: If you have physically removed the WiFi component from your board, you will still use the image file of the original(un-modified) hardware. (Our files are compiled/based on the *processor* architecture). Although it is better to spend a few minutes upfront to determine which specific Pi hardware/model you have, if you are still unsure which hardware you have, you can try using the pi0.img file. Making an incorrect choice here will not ruin your board, because this is software, not firmware. 
+Note: If you have physically removed the WiFi component from your board, you will still use the image file of the original (un-modified) hardware. (Our files are compiled/based on the *processor* architecture). Although it is better to spend a few minutes upfront to determine which specific Pi hardware/model you have, if you are still unsure which hardware you have, you can try using the pi0.img file. Making an incorrect choice here will not ruin your board, because this is software, not firmware. 
 
-**also download** these 2 signature verification files to the same folder  
-[The Plaintext manifest file](https://github.com/SeedSigner/seedsigner/releases/download/0.8.5/seedsigner.0.8.5.sha256.txt)  
-[The Signature of the manifest file](https://github.com/SeedSigner/seedsigner/releases/download/0.8.5/seedsigner.0.8.5.sha256.txt.sig)
+**Also download** these 2 signature verification files to the same folder  
+[The Plaintext manifest file](https://github.com/SeedSigner/seedsigner/releases/download/0.8.6/seedsigner.0.8.6.sha256.txt)  
+[The Signature of the manifest file](https://github.com/SeedSigner/seedsigner/releases/download/0.8.6/seedsigner.0.8.6.sha256.txt.sig)
+
 
 Users familiar with older versions of the SeedSigner software might be surprised with how fast their software downloads now are, because since version 0.6.0 the software image files are now 100x smaller! Each image file is now under 42 Megabytes so your downloads and verifications will be very quick now (and might even seem *too* quick)!  
 
@@ -240,7 +148,7 @@ We assume you are running the commands from a computer where both [GPG](https://
 
 ### Step 1. Verify that the signature (.sig) file is genuine:
 
-Run GPG's *fetch-keys* command to import the SeedSigner projects public key from the popular online keyserver called *Keybase.io*, into your computers *keychain*. 
+Run GPG's *fetch-keys* command to import the SeedSigner project's public key from the popular online keyserver called *Keybase.io*, into your computer's *keychain*. 
 
 
 ```
@@ -252,7 +160,7 @@ The result should confirm that 1 key was *either* imported or updated. *Ignore* 
 
 Next, you will run the *verify* command on the signature (.sig) file. (*Verify* must be run from inside the same folder that you downloaded the files into earlier.)   
 ```
-gpg --verify seedsigner.0.8.5.sha256.txt.sig
+gpg --verify seedsigner.0.8.6.sha256.txt.sig
 ```
 
 When the verify command completes successfully, it should display output like this:
@@ -262,7 +170,7 @@ The result must display "**Good signature**".  Ignore any email addresses - *onl
 <BR> 
 
 On the *last* output line, look at your *rightmost* 16 characters (the 4 blocks of 4).  
-**Crucially, we must now check WHO that Primary key fingerprint /ID belongs to.** We will start by looking at Keybase.io to see if it is the *SeedSigner project* 's public key or not.
+**Crucially, we must now check WHO that Primary key fingerprint /ID belongs to.** We will start by looking at Keybase.io to see if it is the *SeedSigner project*'s public key or not.
 
 <details><summary> About the warning message:</summary>
 <p>  Since you are about to match the outputted fingerprint/ID against the proofs at Keybase.io/SeedSigner, and thereby confirm who the pubkey really belongs to-, you can safely ignore this warning message:
@@ -277,16 +185,16 @@ On the *last* output line, look at your *rightmost* 16 characters (the 4 blocks 
 
 <details><summary> More about how the verify command works:</summary>
 <p>  
-The verify command will attempt to decrypt the signature file (sha256.sig) by trying each public key already imported into your computer. If the public key we just imported (via fetch-keys), manages to: (a) successfully decrypt the .sig file , and (b), that result matches exactly to the clear-text equivalent (.sha256) of the .sig file, then its "a good signature"!   
+The verify command will attempt to decrypt the signature file (sha256.sig) by trying each public key already imported into your computer. If the public key we just imported (via fetch-keys), manages to: (a) successfully decrypt the .sig file , and (b), that result matches exactly to the clear-text equivalent (.sha256) of the .sig file, then it's "a good signature"!   
 
-Crucially, we must still manually check who *exactly* owns the Key ID which gave us that "Good signature". Thats what the warning message means- Who does the matching key really belong to? We will start by looking at keybase.io to see if it is "The SeedSigner project"'s public Key or not. 
+Crucially, we must still manually check who *exactly* owns the Key ID which gave us that "Good signature". That's what the warning message means- Who does the matching key really belong to? We will start by looking at keybase.io to see if it is "The SeedSigner project"'s public Key or not. 
 Note that it is the file hashes of .sig and .sha256 that *verify* compares, not their raw contents.
 
 </p>
 </details>
 <br>
 
-Now to determine ***who*** the Public key ID belongs to: Goto [Keybase.io/SeedSigner](https://keybase.io/seedsigner)  
+Now to determine ***who*** the Public key ID belongs to: Go to [Keybase.io/SeedSigner](https://keybase.io/seedsigner)  
 <BR>
 ![SS - Keybase Website PubKey visual matching1_Cropped-80pct](https://user-images.githubusercontent.com/91296549/215326193-97c84e35-5570-4e52-bf3f-e86d367c8908.jpg)
 
@@ -300,13 +208,13 @@ Now to determine ***who*** the Public key ID belongs to: Goto [Keybase.io/SeedSi
 <details><summary>Learn more about how keybase.io helps you check that someone (online) is who they say they are:</summary>
 <p>
 Keybase.io allows you to independently verify that the public key saved on Keybase.io, is both authentic and that it belongs to the organization it claims to represent.  
- Keybase has already checked the three pubkey file locations  cryptographically when they were saved there. You can further verify the key publications if you would like:  
+ Keybase has already checked the three pubkey file locations cryptographically when they were saved there. You can further verify the key publications if you would like:  
  
  - *via Keybase*: By clicking on any of the three blue badges to see that the "proof" was published at that location. (The blue badge marked as tweet, is in the most human-readable form and it is also a bi-directional link on Twitter)    
 or, 
  - *without keybase (out-of-band)*: By using these 3 links directly: [Twitter](https://twitter.com/SeedSigner/status/1530555252373704707), [Github](https://gist.github.com/SeedSigner/5936fa1219b07e28a3672385b605b5d2) and [SeedSigner.com](https://seedsigner.com/keybase.txt). This method can be used if you would like to make an even deeper, independent inspection without relying on Keybase at all, or if the Keybase.io site is no longer valid or it is removed entirely. 
 
-Once you have used one of these methods, you will know if the Public Key stored on Keybase, is genuinely from the SeedSinger Project or not.
+Once you have used one of these methods, you will know if the Public Key stored on Keybase, is genuinely from the SeedSigner Project or not.
 </p>
 </details>
 <br>
@@ -317,29 +225,30 @@ If the two ID's do *not* match, then you must stop here immediately. Do not cont
 
 ### Step 2. Verifying that the *software images/binaries* are genuine
 
-Now that you have confirmed that you do have the real SeedSigner Project's Public Key (ie the 16 characters match) - you can return to your terminal window. Running  the *shasum* command, is the final verification step and will confirm (via file hashing) that the software code/image files, were also not altered since publication, or even during your download process.  
-(Prior to version 0.6.0  , your verify command will check the .zip file which contains the binary files.)
+Now that you have confirmed that you do have the real SeedSigner Project's Public Key (ie the 16 characters match) - you can return to your terminal window. Running the *shasum* command, is the final verification step and will confirm (via file hashing) that the software code/image files, were also not altered since publication, or even during your download process.  
+(Prior to version 0.6.0, your verify command will check the .zip file which contains the binary files.)
 
  **On Linux or OSX:** Run this command
 ```
-shasum -a 256 --ignore-missing --check seedsigner.0.8.5.sha256.txt  
+shasum -a 256 --ignore-missing --check seedsigner.0.8.6.sha256.txt  
 ```
+Note: macOS versions earlier than v11 (Big Sur) do not support the `--ignore-missing` flag. You can omit it and disregard any missing file warnings.
 
 **On Windows (inside Powershell):** Run this command
 ```
-CertUtil -hashfile  seedsigner_os.0.8.5.Insert_Your_Pi_Models_binary_here_For_Example_pi02w.img SHA256 
+CertUtil -hashfile  seedsigner_os.0.8.6.Insert_Your_Pi_Models_binary_here_For_Example_pi02w.img SHA256 
 ```
 On Windows, you must then manually compare the resulting file hash value to the corresponding hash value shown inside the .SHA256 cleartext file.
  <BR>
 
 Wait up to 30 seconds for the command to complete, and it should display:
 ```
-seedsigner_os.0.8.5.[Your_Pi_Model_For_Example:pi02w].img: OK
+seedsigner_os.0.8.6.[Your_Pi_Model_For_Example:pi02w].img: OK
 ```
-**If you receive the "OK" message** for your **seedsigner_os.0.8.5.[Your_Pi_Model_For_Example:pi02w].img file**, as shown above, then your verification is fully complete!  
+**If you receive the "OK" message** for your **seedsigner_os.0.8.6.[Your_Pi_Model_For_Example:pi02w].img file**, as shown above, then your verification is fully complete!  
 **All of your downloaded files have now been confirmed as both authentic and unaltered!** You can proceed to create/write your MicroSD card😄😄 !!     
 
-If your file result shows "FAILED", then you must stop here immediately. Do not continue. Contact us for assistance at  the Telegram group address above.
+If your file result shows "FAILED", then you must stop here immediately. Do not continue. Contact us for assistance at the Telegram group address above.
 
 <BR>
 
@@ -358,19 +267,19 @@ To write the SeedSigner software onto your MicroSD card, there are a few options
 | DD Command Line Utility  | Built-in to Linux and MacOS, the DD (Data Duplicator) is a tool for advanced users.  If not used carefully it can accidentally format the incorrect disk!   | Built-in to Linux and MacOS                                                        |
 
 Be sure to download the software from the genuine publisher.  
-Either of the Etcher or Pi Imager software is recommended.  Some SeedSigner users have reported a better experience with one or the other. So, if the one application doesn’t work well for your particular machine, then please try the other one. 
+Either of the Etcher or Pi Imager software is recommended.  Some SeedSigner users have reported a better experience with one or the other. So, if the one application doesn't work well for your particular machine, then please try the other one. 
 <BR>
 ### **General Considerations:** 
 The writing and verify steps are very quick from version 0.6.0 upwards, so please pay close attention to your screen. 
 Make sure to set any write-protection physical slider on the MicroSD Card Adapter to UN-locked.  
-You also don’t need to pre-format the MicroSD beforehand.  You *dont* need to unzip any .zip file beforehand.
-Current Etcher and Pi Imager software will perform a verify action (by default) to make sure the card was written successfully! Watching for that verify step to complete successfully, can save you a lot of headaches if you later need to troubleshoot issues where your SeedSigner device doesn’t boot up at power on.   
-Writing the MicroSd card is also known as flashing.  
+You also don't need to pre-format the MicroSD beforehand.  You *don't* need to unzip any .zip file beforehand.
+Current Etcher and Pi Imager software will perform a verify action (by default) to make sure the card was written successfully! Watching for that verify step to complete successfully, can save you a lot of headaches if you later need to troubleshoot issues where your SeedSigner device doesn't boot up at power on.   
+Writing the MicroSD card is also known as flashing.  
 It will overwrite everything on the MicroSD card.  
 If the one application fails for you, then please try again using our other recommended application.  
-Advanced users may want to try the Linux/MacOS *DD* command instead of using Etcher or Pi Imager, however, a reminder is given that DD can overwrite the wrong disk if you are not careful !
+Advanced users may want to try the Linux/MacOS *DD* command instead of using Etcher or Pi Imager, however, a reminder is given that DD can overwrite the wrong disk if you are not careful!
 #### **Specific considerations for Windows users:**
-Use the Pi imager software as your first choice on Windows. Windows can sometimes flag the writing of a MicroSD as risky behaviour and hence it may prevent this activity. If this happens, your writing/flashing will fail, hang or wont even begin, in which case you should to try to run the Etcher/Pi-Imager app "As administrator", (right-click and choose that option). It can also be blocked by windows security in some cases, so If you have the (non-default) *Controlled Folder Access* option set to active, try turning that *off* temporarily. 
+Use the Pi imager software as your first choice on Windows. Windows can sometimes flag the writing of a MicroSD as risky behaviour and hence it may prevent this activity. If this happens, your writing/flashing will fail, hang or won't even begin, in which case you should try to run the Etcher/Pi-Imager app "As administrator", (right-click and choose that option). It can also be blocked by windows security in some cases, so If you have the (non-default) *Controlled Folder Access* option set to active, try turning that *off* temporarily. 
 
 
 
@@ -381,7 +290,7 @@ Use the Pi imager software as your first choice on Windows. Windows can sometime
 
 ### Open Pill
 
-The Open Pill enclosure design is all about quick, simple and inexpensive depoloyment of a SeedSigner device. The design does not require any additional hardware and can be printed using a standard FDM 3D printer in about 2 hours, no supports necessary. A video demonstrating the assembly process can be found [here](https://youtu.be/gXPFJygZobEa). To access the design file and printable model, click [here](https://github.com/SeedSigner/seedsigner/tree/main/enclosures/open_pill).
+The Open Pill enclosure design is all about quick, simple and inexpensive deployment of a SeedSigner device. The design does not require any additional hardware and can be printed using a standard FDM 3D printer in about 2 hours, no supports necessary. A video demonstrating the assembly process can be found [here](https://youtu.be/gXPFJygZobEa). To access the design file and printable model, click [here](https://github.com/SeedSigner/seedsigner/tree/main/enclosures/open_pill).
 
 ### Orange Pill
 
@@ -449,5 +358,3 @@ See the [SeedSigner OS repo](https://github.com/SeedSigner/seedsigner-os/) for i
 
 # Developer Local Build Instructions
 Raspberry Pi OS is commonly used for development. See the [Raspberry Pi OS Build Instructions](docs/raspberry_pi_os_build_instructions.md)
-
-To experiment on a regular PC, a pygame‑based simulator is available. See the [Desktop Simulation guide](docs/desktop_simulation.md) for installation and usage instructions.

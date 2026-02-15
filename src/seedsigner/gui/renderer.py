@@ -2,14 +2,8 @@ from PIL import Image, ImageDraw
 from threading import Lock
 
 # from seedsigner.hardware.st7789_mpy import ST7789
-from seedsigner.hardware.displays.display_driver import (
-    ALL_DISPLAY_TYPES,
-    DISPLAY_TYPE__ILI9341,
-    DISPLAY_TYPE__ILI9486,
-    DISPLAY_TYPE__ST7789,
-    DISPLAY_TYPE__DESKTOP,
-    DisplayDriver,
-)
+from seedsigner.hardware.displays.display_driver import ALL_DISPLAY_TYPES, DISPLAY_TYPE__ILI9341, DISPLAY_TYPE__ILI9486, DISPLAY_TYPE__ST7789, DisplayDriver
+from seedsigner.hardware.displays.ili9341 import ILI9341, ILI9341_TFTWIDTH, ILI9341_TFTHEIGHT
 from seedsigner.models.settings import Settings
 from seedsigner.models.settings_definition import SettingsConstants
 from seedsigner.models.singleton import ConfigurableSingleton
@@ -24,6 +18,11 @@ class Renderer(ConfigurableSingleton):
     draw: ImageDraw.ImageDraw = None
     disp = None
     lock = Lock()
+
+
+    @property
+    def is_screenshot_generator(self) -> bool:
+        return False
 
 
     @classmethod
@@ -51,7 +50,7 @@ class Renderer(ConfigurableSingleton):
         if Settings.get_instance().get_value(SettingsConstants.SETTING__DISPLAY_COLOR_INVERTED, default_if_none=True) == SettingsConstants.OPTION__ENABLED:
             self.disp.invert()
 
-        if self.display_type in [DISPLAY_TYPE__ST7789, DISPLAY_TYPE__DESKTOP]:
+        if self.display_type == DISPLAY_TYPE__ST7789:
             self.canvas_width = self.disp.width
             self.canvas_height = self.disp.height
 

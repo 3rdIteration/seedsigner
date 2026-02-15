@@ -1,4 +1,3 @@
-
 import math
 import logging
 import time
@@ -285,13 +284,20 @@ class ButtonOption:
 
 
 @dataclass
+class ButtonOptionWithoutTranslation(ButtonOption):
+    """
+    Same as ButtonOption but does NOT translate button_label or active_button_label.
+    The labels are also not extracted for translation by babel.
+    """
+
+
+
+@dataclass
 class ButtonListScreen(BaseTopNavScreen):
     button_data: list[ButtonOption] = None
     selected_button: int = 0
     is_button_text_centered: bool = True
     is_bottom_list: bool = False
-    num_display_buttons: int = None
-    top_nav_height: int = None
 
     # Cannot define these class attrs w/the get_*_font_*() methods because the attrs will
     # not be dynamically reinterpreted after initial class import.
@@ -342,51 +348,24 @@ class ButtonListScreen(BaseTopNavScreen):
                 # height of the target button itself!
                 self.scroll_y_initial_offset = (button_height + GUIConstants.LIST_ITEM_PADDING) * (self.selected_button - num_buttons_pre_scroll + 1)
 
-            button_display_height = (num_buttons_pre_scroll * button_height) + (GUIConstants.LIST_ITEM_PADDING * (num_buttons_pre_scroll - 1))
-
-        self.top_nav_height = self.top_nav.height
-
-        if self.num_display_buttons and self.num_display_buttons > 0:
-            button_list_y = self.top_nav.height
-            self.has_scroll_arrows = True
-
-            # How many buttons fit on the screen before we need to start scrolling?
-            num_buttons_pre_scroll = math.floor((self.canvas_height - button_list_y - GUIConstants.EDGE_PADDING) / (button_height + GUIConstants.LIST_ITEM_PADDING))
-            num_buttons_pre_scroll = min(num_buttons_pre_scroll, self.num_display_buttons)
-
-            # Force a scroll offset when necessary if none was provided
-            if self.selected_button + 1 > num_buttons_pre_scroll and not self.scroll_y_initial_offset:
-                # Scroll far enough to expose the selected button; +1 to account for the
-                # height of the target button itself!
-                self.scroll_y_initial_offset = (button_height + GUIConstants.LIST_ITEM_PADDING) * (self.selected_button - num_buttons_pre_scroll + 1)
-
-            button_display_height = (num_buttons_pre_scroll * button_height) + (GUIConstants.LIST_ITEM_PADDING * (num_buttons_pre_scroll - 1))
-            if self.is_bottom_list:
-                self.top_nav_height = self.canvas_height - (button_display_height + GUIConstants.EDGE_PADDING) - 8
-                button_list_y = self.top_nav_height
-
         self.buttons: List[Button] = []
         for i, button_option in enumerate(self.button_data):
-            icon_name = None
-            icon_color = None
-            right_icon_name = None
-            button_label_color = None
-
-            if type(button_option) == ButtonOption:
-                button_label = button_option.button_label
-                icon_name = button_option.icon_name
-                icon_color = button_option.icon_color
-                right_icon_name = button_option.right_icon_name
-                button_label_color = button_option.button_label_color
-                active_button_label = button_option.active_button_label
-            
-            else:
+            if not isinstance(button_option, ButtonOption):
                 raise Exception("Refactor to ButtonOption approach needed!")
+
+            if isinstance(button_option, ButtonOptionWithoutTranslation):
+                # Don't wrap labels in _()
+                button_label = button_option.button_label
+                active_button_label = button_option.active_button_label
+            else:
+                # Wrap labels in _() for just-in-time translations
+                button_label = _(button_option.button_label)
+                active_button_label = _(button_option.active_button_label)
 
             # TODO: Refactor `Button` to optionally use ButtonOption directly?
             button_kwargs = dict(
-                text=_(button_option.button_label),  # Wrap here for just-in-time translations
-                active_text=_(button_option.active_button_label),  # Wrap here for just-in-time translations
+                text=button_label,
+                active_text=active_button_label,
                 icon_name=button_option.icon_name,
                 icon_color=button_option.icon_color if button_option.icon_color else GUIConstants.BUTTON_FONT_COLOR,
                 is_icon_inline=True,
@@ -410,15 +389,14 @@ class ButtonListScreen(BaseTopNavScreen):
 
         if self.has_scroll_arrows:
             self.arrow_half_width = 10
-            self.cur_scroll_y = self.scroll_y_initial_offset if self.scroll_y_initial_offset is not None else 0
             self.up_arrow_img = Image.new("RGBA", size=(2 * self.arrow_half_width, 8), color="black")
-            self.up_arrow_img_y = self.top_nav_height - 12
+            self.up_arrow_img_y = self.top_nav.height - 12
             arrow_draw = ImageDraw.Draw(self.up_arrow_img)
             arrow_draw.line((self.arrow_half_width, 1, 0, 7), fill=GUIConstants.BUTTON_FONT_COLOR)
             arrow_draw.line((self.arrow_half_width, 1, 2 * self.arrow_half_width, 7), fill=GUIConstants.BUTTON_FONT_COLOR)
 
             self.down_arrow_img = Image.new("RGBA", size=(2 * self.arrow_half_width, 8), color="black")
-            self.down_arrow_img_y = self.top_nav_height + button_display_height + 2
+            self.down_arrow_img_y = self.canvas_height - 16 + 2
             arrow_draw = ImageDraw.Draw(self.down_arrow_img)
             center_x = int(self.canvas_width / 2)
             arrow_draw.line((self.arrow_half_width, 7, 0, 1), fill=GUIConstants.BUTTON_FONT_COLOR)
@@ -455,7 +433,7 @@ class ButtonListScreen(BaseTopNavScreen):
                 continue
 
             button_position_y = button.screen_y - button.scroll_y
-            if button_position_y >= self.top_nav_height and button_position_y < self.down_arrow_img_y:
+            if button_position_y >= self.top_nav.height and button_position_y < self.down_arrow_img_y:
                 if i == 0:
                     # We rendered the top button; no more to scroll up for.
                     self._hide_up_arrow()
@@ -536,7 +514,7 @@ class ButtonListScreen(BaseTopNavScreen):
                         next_selected_button: Button = self.buttons[self.selected_button]
                         cur_selected_button.is_selected = False
                         next_selected_button.is_selected = True
-                        if self.has_scroll_arrows and next_selected_button.screen_y - next_selected_button.scroll_y + next_selected_button.height < self.top_nav_height:
+                        if self.has_scroll_arrows and next_selected_button.screen_y - next_selected_button.scroll_y + next_selected_button.height < self.top_nav.height:
                             # Selected a Button that's off the top of the screen
                             frame_scroll = cur_selected_button.screen_y - next_selected_button.screen_y
                             for button in self.buttons:
@@ -825,7 +803,6 @@ class QRDisplayScreen(BaseScreen):
                 width=int(rectangle_width/2),
                 screen_x=chevron_up_icon.screen_x + GUIConstants.ICON_INLINE_FONT_SIZE,
                 screen_y=chevron_up_icon.screen_y - 2,  # -2 to account for Icon's positioning
-                allow_text_overflow=False
             ).render()
 
             # TRANSLATOR_NOTE: Decrease QR code screen brightness
@@ -843,7 +820,6 @@ class QRDisplayScreen(BaseScreen):
                 width=int(rectangle_width/2),
                 screen_x=chevron_down_icon.screen_x + GUIConstants.ICON_INLINE_FONT_SIZE,
                 screen_y=chevron_down_icon.screen_y - 2,  # -2 to account for Icon's positioning
-                allow_text_overflow=False
             ).render()
 
             # Write our temp Image onto the main image
@@ -945,7 +921,6 @@ class LargeIconStatusScreen(ButtonListScreen):
     text: str = ""                          # The body text of the screen
     text_edge_padding: int = GUIConstants.EDGE_PADDING
     button_data: list = None
-    allow_text_overflow: bool = False
 
 
     def __post_init__(self):
@@ -954,21 +929,16 @@ class LargeIconStatusScreen(ButtonListScreen):
         self.is_bottom_list = True
         super().__post_init__()
 
-        if self.status_icon_size > 0:
-            self.status_icon = Icon(
-                icon_name=self.status_icon_name,
-                icon_size=self.status_icon_size,
-                icon_color=self.status_color,
-            )
-            self.status_icon.screen_y = self.top_nav.height - int(GUIConstants.COMPONENT_PADDING/2)
-            self.status_icon.screen_x = int((self.canvas_width - self.status_icon.width) / 2)
-            self.components.append(self.status_icon)
+        self.status_icon = Icon(
+            icon_name=self.status_icon_name,
+            icon_size=self.status_icon_size,
+            icon_color=self.status_color,
+        )
+        self.status_icon.screen_y = self.top_nav.height - int(GUIConstants.COMPONENT_PADDING/2)
+        self.status_icon.screen_x = int((self.canvas_width - self.status_icon.width) / 2)
+        self.components.append(self.status_icon)
 
-            next_y = self.status_icon.screen_y + self.status_icon.height + int(GUIConstants.COMPONENT_PADDING/2)
-        else:
-            # Allow callers to set status_icon_size=0 to render the screen without an icon
-            self.status_icon = None
-            next_y = self.top_nav.height + int(GUIConstants.COMPONENT_PADDING/2)
+        next_y = self.status_icon.screen_y + self.status_icon.height + int(GUIConstants.COMPONENT_PADDING/2)
         if self.status_headline:
             self.warning_headline_textarea = TextArea(
                 text=_(self.status_headline),  # Wrap here for just-in-time translations
@@ -987,7 +957,6 @@ class LargeIconStatusScreen(ButtonListScreen):
                 width=self.canvas_width,
                 edge_padding=self.text_edge_padding,  # Don't render all the way up to the far left/right edges
                 screen_y=next_y,
-                allow_text_overflow=self.allow_text_overflow,
             ))
 
 
@@ -1077,7 +1046,7 @@ class WarningScreen(WarningEdgesMixin, LargeIconStatusScreen):
     status_icon_name: str = SeedSignerIconConstants.WARNING
     status_color: str = GUIConstants.WARNING_COLOR
     status_headline: str = _mft("Privacy Leak!")     # The colored text under the alert icon
-    button_data: list = field(default_factory=lambda: [ButtonOption("I Understand")])
+    button_data: list = field(default_factory=lambda: [ButtonOption("I understand")])
 
 
 
@@ -1111,21 +1080,6 @@ class ResetScreen(BaseTopNavScreen):
 
         self.components.append(TextArea(
             text=_("SeedSigner is restarting.\n\nAll in-memory data will be wiped."),
-            screen_y=self.top_nav.height,
-            height=self.canvas_height - self.top_nav.height,
-        ))
-
-
-
-@dataclass
-class PowerOffScreen(BaseTopNavScreen):
-    def __post_init__(self):
-        self.title = _("Powering Off")
-        self.show_back_button = False
-        super().__post_init__()
-
-        self.components.append(TextArea(
-            text=_("Please wait about 30 seconds before disconnecting power."),
             screen_y=self.top_nav.height,
             height=self.canvas_height - self.top_nav.height,
         ))
@@ -1271,6 +1225,8 @@ class KeyboardScreen(BaseTopNavScreen):
             )
 
             with self.renderer.lock:
+                # Track if we need to update the title after input changes
+                title_needs_update = False
                 # Check possible exit conditions   
                 if self.top_nav.is_selected and input == HardwareButtonsConstants.KEY_PRESS:
                     return RET_CODE__BACK_BUTTON
@@ -1316,7 +1272,8 @@ class KeyboardScreen(BaseTopNavScreen):
                         if len(self.user_input) > 0:
                             self.user_input = self.user_input[:-1]
                             self.cursor_position -= 1
-
+                            title_needs_update = True
+                            
                 elif input == HardwareButtonsConstants.KEY_PRESS and ret_val not in Keyboard.ADDITIONAL_KEYS:
                     # User has locked in the current letter
                     if self.keys_to_values:
@@ -1324,19 +1281,20 @@ class KeyboardScreen(BaseTopNavScreen):
                         ret_val = self.keys_to_values[ret_val]
                     self.user_input += ret_val
                     self.cursor_position += 1
+                    title_needs_update = True
 
                     if self.cursor_position == self.return_after_n_chars:
                         return self.user_input
 
-                    # Render a new TextArea over the TopNav title bar
-                    if self.update_title():
-                        TextArea(
-                            text=self.title,
-                            font_name=GUIConstants.get_top_nav_title_font_name(),
-                            font_size=GUIConstants.get_top_nav_title_font_size(),
-                            height=self.top_nav.height,
-                        ).render()
-                        self.top_nav.render_buttons()
+                # Update the title if input changed (add or delete)
+                if title_needs_update and self.update_title():
+                    TextArea(
+                        text=self.title,
+                        font_name=GUIConstants.get_top_nav_title_font_name(),
+                        font_size=GUIConstants.get_top_nav_title_font_size(),
+                        height=self.top_nav.height,
+                    ).render()
+                    self.top_nav.render_buttons()
 
                 elif input in HardwareButtonsConstants.KEYS__LEFT_RIGHT_UP_DOWN:
                     # Live joystick movement; haven't locked this new letter in yet.
@@ -1367,57 +1325,3 @@ class MainMenuScreen(LargeButtonScreen):
     title_font_size: int = 26
     show_back_button: bool = False
     show_power_button: bool = True
-
-    def __post_init__(self):
-        super().__post_init__()
-        from seedsigner.hardware.battery_hat import BatteryHat
-        from seedsigner.gui.components import BatteryIndicator
-        self.battery_hat = BatteryHat.get_instance()
-        self.battery_indicator = BatteryIndicator()
-        self.battery_indicator.screen_x = GUIConstants.EDGE_PADDING
-        self.battery_indicator.screen_y = GUIConstants.EDGE_PADDING
-        if self.battery_hat.is_enabled() and self.battery_hat.detected:
-            self.components.append(self.battery_indicator)
-        self.threads.append(MainMenuScreen.UpdateThread(self))
-
-    def _run_callback(self):
-        return None
-
-    class UpdateThread(BaseThread):
-        def __init__(self, screen):
-            super().__init__()
-            self.screen = screen
-            self.battery_hat = screen.battery_hat
-            self.last_percent = None
-            self.last_charging = None
-
-        def run(self):
-            while self.keep_running:
-                if not self.battery_hat.is_enabled():
-                    time.sleep(1)
-                    continue
-
-                if self.battery_hat.detected and self.screen.battery_indicator not in self.screen.components:
-                    with self.screen.renderer.lock:
-                        self.screen.components.append(self.screen.battery_indicator)
-                        self.screen.battery_indicator.render()
-                        self.screen.renderer.show_image()
-
-                percent = None
-                current = None
-                if self.battery_hat.detected:
-                    percent = self.battery_hat.get_percent()
-                    current = self.battery_hat.get_current()
-                charging = current is not None and current > 0
-                percent_display = int(percent) if percent is not None else None
-
-                if percent_display != self.last_percent or charging != self.last_charging:
-                    self.last_percent = percent_display
-                    self.last_charging = charging
-                    with self.screen.renderer.lock:
-                        self.screen.battery_indicator.percent = percent
-                        self.screen.battery_indicator.charging = charging
-                        self.screen.battery_indicator.render()
-                        self.screen.renderer.show_image()
-
-                time.sleep(1)

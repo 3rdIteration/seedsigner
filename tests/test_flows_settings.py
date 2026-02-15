@@ -37,16 +37,35 @@ class TestSettingsFlows(FlowTest):
 
 
     def test_multiselect(self):
-        """ Multiselect Settings options should stay in-place; requires BACK to exit. """
+        """
+        Multiselect Settings options should stay in-place; requires BACK to exit. If no
+        selections are made, route to the warning screen and return the user to the
+        settings entry until at least one option is selected.
+        """
         # Which option are we testing?
-        settings_entry = SettingsDefinition.get_settings_entry(SettingsConstants.SETTING__COORDINATORS)
+        settings_entry = SettingsDefinition.get_settings_entry(SettingsConstants.SETTING__SIG_TYPES)
+
+        # Enable all options to start
+        self.settings.set_value(settings_entry.attr_name, [option[0] for option in settings_entry.selection_options])
+
+        # Sanity check, we only expect two options for this setting
+        assert len(settings_entry.selection_options) == 2
 
         self.run_sequence([
             FlowStep(MainMenuView, button_data_selection=MainMenuView.SETTINGS),
+            FlowStep(settings_views.SettingsMenuView, button_data_selection=settings_views.SettingsMenuView.ADVANCED),
             FlowStep(settings_views.SettingsMenuView, button_data_selection=ButtonOption(settings_entry.display_name)),
-            FlowStep(settings_views.SettingsEntryUpdateSelectionView, screen_return_value=0),  # select/deselect first option
-            FlowStep(settings_views.SettingsEntryUpdateSelectionView, screen_return_value=1),  # select/deselect second option
-            FlowStep(settings_views.SettingsEntryUpdateSelectionView, screen_return_value=1),  # select/deselect second option
+            FlowStep(settings_views.SettingsEntryUpdateSelectionView, screen_return_value=0),  # deselect first option
+            FlowStep(settings_views.SettingsEntryUpdateSelectionView, screen_return_value=1),  # deselect second option
+            FlowStep(settings_views.SettingsEntryUpdateSelectionView, screen_return_value=1),  # select second option
+            FlowStep(settings_views.SettingsEntryUpdateSelectionView, screen_return_value=1),  # deselect second option
+            FlowStep(settings_views.SettingsEntryUpdateSelectionView, screen_return_value=RET_CODE__BACK_BUTTON),  # BACK to exit
+
+            # Both options were deselected, should route to the warning screen
+            FlowStep(settings_views.SettingsSelectionRequiredWarningView),
+            FlowStep(settings_views.SettingsEntryUpdateSelectionView, screen_return_value=0),  # select first option
+
+            # Now we can exit
             FlowStep(settings_views.SettingsEntryUpdateSelectionView, screen_return_value=RET_CODE__BACK_BUTTON),  # BACK to exit
             FlowStep(settings_views.SettingsMenuView),
         ])
@@ -56,47 +75,9 @@ class TestSettingsFlows(FlowTest):
         """ Basic flow from MainMenuView to I/O Test View """
         self.run_sequence([
             FlowStep(MainMenuView, button_data_selection=MainMenuView.SETTINGS),
-            FlowStep(settings_views.SettingsMenuView, button_data_selection=settings_views.SettingsMenuView.HARDWARE),
             FlowStep(settings_views.SettingsMenuView, button_data_selection=settings_views.SettingsMenuView.IO_TEST),
             FlowStep(settings_views.IOTestView),
             FlowStep(settings_views.SettingsMenuView),
-        ])
-
-
-    def test_battery_info_unavailable(self):
-        """Battery info should show an unavailable message when no monitor is detected."""
-        with patch("seedsigner.hardware.battery_hat.BatteryHat") as battery_hat:
-            battery_hat.get_instance.return_value.is_enabled.return_value = False
-
-            self.run_sequence([
-                FlowStep(MainMenuView, button_data_selection=MainMenuView.SETTINGS),
-                FlowStep(settings_views.SettingsMenuView, button_data_selection=settings_views.SettingsMenuView.HARDWARE),
-                FlowStep(settings_views.SettingsMenuView, button_data_selection=settings_views.SettingsMenuView.BATTERY_INFO),
-                FlowStep(settings_views.BatteryInfoView),
-                FlowStep(settings_views.SettingsMenuView),
-            ])
-
-    def test_system_info(self):
-        """Basic flow from MainMenuView to System Info View."""
-        self.run_sequence([
-            FlowStep(MainMenuView, button_data_selection=MainMenuView.SETTINGS),
-            FlowStep(settings_views.SettingsMenuView, button_data_selection=settings_views.SettingsMenuView.HARDWARE),
-            FlowStep(settings_views.SettingsMenuView, button_data_selection=settings_views.SettingsMenuView.SYSTEM_INFO),
-            FlowStep(settings_views.SystemInfoView),
-            FlowStep(settings_views.SettingsMenuView),
-        ])
-
-
-    def test_hardware_menu_back_returns_to_main(self):
-        """Ensure BACK from Hardware settings returns to main Settings menu."""
-        def assert_general(view: settings_views.SettingsMenuView):
-            assert view.visibility == SettingsConstants.VISIBILITY__GENERAL
-
-        self.run_sequence([
-            FlowStep(MainMenuView, button_data_selection=MainMenuView.SETTINGS),
-            FlowStep(settings_views.SettingsMenuView, button_data_selection=settings_views.SettingsMenuView.HARDWARE),
-            FlowStep(settings_views.SettingsMenuView, screen_return_value=RET_CODE__BACK_BUTTON),
-            FlowStep(settings_views.SettingsMenuView, before_run=assert_general),
         ])
 
 
@@ -110,38 +91,17 @@ class TestSettingsFlows(FlowTest):
         ])
 
 
-    def test_load_backup_files_submenu(self):
-        tapsigner_entry = SettingsDefinition.get_settings_entry(SettingsConstants.SETTING__TAPSIGNER_BACKUP)
-
-        self.run_sequence([
-            FlowStep(MainMenuView, button_data_selection=MainMenuView.SETTINGS),
-            FlowStep(settings_views.SettingsMenuView, button_data_selection=settings_views.SettingsMenuView.ADVANCED),
-            FlowStep(settings_views.SettingsMenuView, button_data_selection=settings_views.SettingsMenuView.LOAD_BACKUP_FILES),
-            FlowStep(settings_views.LoadBackupFilesSettingsView, button_data_selection=ButtonOption(tapsigner_entry.display_name)),
-            FlowStep(settings_views.SettingsEntryUpdateSelectionView, button_data_selection=ButtonOption(tapsigner_entry.get_selection_option_display_name_by_value(SettingsConstants.OPTION__ENABLED))),
-            FlowStep(settings_views.SettingsEntryUpdateSelectionView, screen_return_value=RET_CODE__BACK_BUTTON),
-            FlowStep(settings_views.LoadBackupFilesSettingsView, screen_return_value=RET_CODE__BACK_BUTTON),
-            FlowStep(settings_views.SettingsMenuView),
-        ])
-
-        assert self.settings.get_value(SettingsConstants.SETTING__TAPSIGNER_BACKUP) == SettingsConstants.OPTION__ENABLED
-
-
-    def test_tapsigner_backup_setting_default_disabled(self):
-        assert self.settings.get_value(SettingsConstants.SETTING__TAPSIGNER_BACKUP) == SettingsConstants.OPTION__DISABLED
-
-
     def test_settingsqr(self):
         """ 
         Scanning a SettingsQR should present the success screen and then return to
         MainMenuView.
         """
         def load_persistent_settingsqr_into_decoder(view: scan_views.ScanView):
-            settingsqr_data_persistent: str = "settings::v1 name=Total_noob_mode persistent=E coords=spa,spd denom=thr network=M qr_density=M xpub_export=E sigs=ss scripts=nat xpub_details=E passphrase=E camera=0 compact_seedqr=E bip85=D priv_warn=E dire_warn=E partners=E"
+            settingsqr_data_persistent: str = "settings::v1 name=Total_noob_mode persistent=E xpub_qr=urca,sta denom=thr network=M qr_density=M sigs=ss scripts=nat xpub_details=E passphrase=E camera=0 compact_seedqr=E bip85=D priv_warn=E dire_warn=E partners=E"
             view.decoder.add_data(settingsqr_data_persistent)
 
         def load_not_persistent_settingsqr_into_decoder(view: scan_views.ScanView):
-            settingsqr_data_not_persistent: str = "settings::v1 name=Ephemeral_noob_mode persistent=D coords=spa,spd denom=thr network=M qr_density=M xpub_export=E sigs=ss scripts=nat xpub_details=E passphrase=E camera=0 compact_seedqr=E bip85=D priv_warn=E dire_warn=E partners=E"
+            settingsqr_data_not_persistent: str = "settings::v1 name=Ephemeral_noob_mode persistent=D xpub_qr=urca,sta denom=thr network=M qr_density=M sigs=ss scripts=nat xpub_details=E passphrase=E camera=0 compact_seedqr=E bip85=D priv_warn=E dire_warn=E partners=E"
             view.decoder.add_data(settingsqr_data_not_persistent)
 
         def _run_test(initial_setting_state: str, load_settingsqr_into_decoder: Callable, expected_setting_state: str):

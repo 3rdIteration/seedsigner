@@ -23,7 +23,7 @@ class LogoScreen(BaseScreen):
         self.logo = load_image("logo_black_240.png")
 
         self.partners = [
-            "sese",
+            "hrf",
         ]
 
         self.partner_logos: dict = {}
@@ -43,21 +43,18 @@ class LogoScreen(BaseScreen):
 
 @dataclass
 class OpeningSplashView(View):
-    is_screenshot_renderer: bool = False
     force_partner_logos: bool|None = None
 
     def run(self):
         self.run_screen(
             OpeningSplashScreen,
-            is_screenshot_renderer=self.is_screenshot_renderer,
             force_partner_logos=self.force_partner_logos
         )
 
 
 
 class OpeningSplashScreen(LogoScreen):
-    def __init__(self, is_screenshot_renderer=False, force_partner_logos=None):
-        self.is_screenshot_renderer = is_screenshot_renderer
+    def __init__(self, force_partner_logos=None):
         self.force_partner_logos = force_partner_logos
         super().__init__()
 
@@ -85,7 +82,7 @@ class OpeningSplashScreen(LogoScreen):
             logo_offset_y = 0
 
         background = Image.new("RGBA", size=self.logo.size, color="black")
-        if not self.is_screenshot_renderer:
+        if not self.renderer.is_screenshot_generator:
             # Fade in alpha
             for i in range(250, -1, -25):
                 self.logo.putalpha(255 - i)
@@ -100,7 +97,7 @@ class OpeningSplashScreen(LogoScreen):
 
         # Display version num below SeedSigner logo
         font = Fonts.get_font(GUIConstants.get_body_font_name(), GUIConstants.get_top_nav_title_font_size())
-        version = f"{controller.VERSION}"
+        version = f"v{controller.VERSION}"
 
         # The logo png is 240x240, but the actual logo is 70px tall, vertically centered
         logo_height = 70
@@ -108,19 +105,19 @@ class OpeningSplashScreen(LogoScreen):
         version_y = int(self.canvas_height/2) + int(logo_height/2) + logo_offset_y + GUIConstants.COMPONENT_PADDING
         self.renderer.draw.text(xy=(version_x, version_y), text=version, font=font, fill=GUIConstants.ACCENT_COLOR, anchor="mt")
 
-        if not self.is_screenshot_renderer:
+        if not self.renderer.is_screenshot_generator:
             self.renderer.show_image()
 
         if show_partner_logos:
-            if not self.is_screenshot_renderer:
+            if not self.renderer.is_screenshot_generator:
                 # Hold on the version num for a moment
                 time.sleep(1)
 
             # Set up the partner logo
             partner_logo: Image.Image = self.partner_logos[self.get_random_partner()]
             font = Fonts.get_font(GUIConstants.get_top_nav_title_font_name(), GUIConstants.get_body_font_size())
-            # TRANSLATOR_NOTE: This is on the opening splash screen, displayed above the Seedsigner logo
-            sponsor_text = _("An unofficial fork of:")
+            # TRANSLATOR_NOTE: This is on the opening splash screen, displayed above the HRF logo
+            sponsor_text = _("With support from:")
             (left, top, tw, th) = font.getbbox(sponsor_text, anchor="lt")
 
             x = int((self.renderer.canvas_width) / 2)
@@ -136,7 +133,7 @@ class OpeningSplashScreen(LogoScreen):
 
             self.renderer.show_image()
 
-        if not self.is_screenshot_renderer:
+        if not self.renderer.is_screenshot_generator:
             # Hold on the splash screen for a moment
             time.sleep(2)
 

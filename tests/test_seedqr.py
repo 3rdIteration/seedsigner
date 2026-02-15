@@ -1,9 +1,9 @@
 import os
 from embit import bip39
+from seedsigner.helpers.qr import QR
 from seedsigner.models.decode_qr import DecodeQR, DecodeQRStatus
 from seedsigner.models.encode_qr import SeedQrEncoder, CompactSeedQrEncoder
 from seedsigner.models.qr_type import QRType
-from seedsigner.helpers.qr import QR
 
 
 
@@ -19,77 +19,44 @@ def run_encode_decode_test(entropy: bytes, mnemonic_length, qr_type):
 
     data = e.next_part()
 
+    qr = QR()
+    image = qr.qrimage(
+        data=data,
+        width=240,
+        height=240,
+        border=3
+    )
+
     decoder = DecodeQR()
-    status = decoder.add_data(data)
+    status = decoder.add_image(image)
     assert status == DecodeQRStatus.COMPLETE
 
     decoded_seed_phrase = decoder.get_seed_phrase()
     assert mnemonic == decoded_seed_phrase
 
 
-def run_plaintext_decode_test(entropy: bytes, mnemonic_length):
-    mnemonic = bip39.mnemonic_from_bytes(entropy)
-    decoder = DecodeQR()
-    status = decoder.add_data(mnemonic)
-    assert status == DecodeQRStatus.COMPLETE
-    decoded_seed_phrase = decoder.get_seed_phrase()
-    assert mnemonic.split() == decoded_seed_phrase
-
-
 
 def test_standard_seedqr_encode_decode_():
-    """Should encode various mnemonic lengths to Standard SeedQR format and decode
-    them back again to their original mnemonic seed phrase."""
-
+    """ Should encode 24- and 12- word mnemonics to Standard SeedQR format and decode
+        them back again to their original mnemonic seed phrase.
+    """
+    # 24-word seed
     run_encode_decode_test(os.urandom(32), mnemonic_length=24, qr_type=QRType.SEED__SEEDQR)
-    run_encode_decode_test(os.urandom(28), mnemonic_length=21, qr_type=QRType.SEED__SEEDQR)
-    run_encode_decode_test(os.urandom(24), mnemonic_length=18, qr_type=QRType.SEED__SEEDQR)
-    run_encode_decode_test(os.urandom(20), mnemonic_length=15, qr_type=QRType.SEED__SEEDQR)
+
+    # 12-word seed
     run_encode_decode_test(os.urandom(16), mnemonic_length=12, qr_type=QRType.SEED__SEEDQR)
 
 
 
 def test_compact_seedqr_encode_decode():
-    """Should encode various mnemonic lengths to CompactSeedQR format and decode them
-    back again to their original mnemonic seed phrase."""
-
+    """ Should encode 24- and 12- word mnemonics to CompactSeedQR format and decode
+        them back again to their original mnemonic seed phrase.
+    """
+    # 24-word seed
     run_encode_decode_test(os.urandom(32), mnemonic_length=24, qr_type=QRType.SEED__COMPACTSEEDQR)
-    run_encode_decode_test(os.urandom(28), mnemonic_length=21, qr_type=QRType.SEED__COMPACTSEEDQR)
-    run_encode_decode_test(os.urandom(24), mnemonic_length=18, qr_type=QRType.SEED__COMPACTSEEDQR)
-    run_encode_decode_test(os.urandom(20), mnemonic_length=15, qr_type=QRType.SEED__COMPACTSEEDQR)
+
+    # 12-word seed
     run_encode_decode_test(os.urandom(16), mnemonic_length=12, qr_type=QRType.SEED__COMPACTSEEDQR)
-
-
-def test_plaintext_seed_mnemonic_decode():
-    """Should decode plaintext mnemonic QRs of all supported lengths."""
-    tests = [
-        (os.urandom(32), 24),
-        (os.urandom(28), 21),
-        (os.urandom(24), 18),
-        (os.urandom(20), 15),
-        (os.urandom(16), 12),
-    ]
-    for entropy, length in tests:
-        run_plaintext_decode_test(entropy, mnemonic_length=length)
-
-
-def test_seedqr_dimensions():
-    """SeedQR module dimensions should match expected values for each word count."""
-    qr_helper = QR()
-    standard_expected = {12: 25, 15: 25, 18: 25, 21: 29, 24: 29}
-    compact_expected = {12: 21, 15: 25, 18: 25, 21: 25, 24: 25}
-
-    for length, expected in standard_expected.items():
-        entropy = os.urandom(length // 3 * 4)
-        mnemonic = bip39.mnemonic_from_bytes(entropy).split()
-        e = SeedQrEncoder(mnemonic=mnemonic)
-        assert qr_helper.qrsize(e.next_part()) == expected
-
-    for length, expected in compact_expected.items():
-        entropy = os.urandom(length // 3 * 4)
-        mnemonic = bip39.mnemonic_from_bytes(entropy).split()
-        e = CompactSeedQrEncoder(mnemonic=mnemonic)
-        assert qr_helper.qrsize(e.next_part()) == expected
 
 
 
