@@ -84,42 +84,58 @@ class TestPygameGracefulAbsence:
 
     def test_hardware_buttons_clear_error_on_desktop_without_pygame(self):
         """HardwareButtons should give clear error on desktop systems without pygame."""
-        # This test simulates a desktop environment (no GPIO) without pygame
-        # by mocking pygame in sys.modules
+        # Reset the HardwareButtons singleton to test fresh initialization
+        from seedsigner.hardware import buttons as buttons_module
         
-        # Save the original to restore later
-        import seedsigner.hardware.buttons
-        original_instance = seedsigner.hardware.buttons.HardwareButtons._instance
-        original_using_gpio = seedsigner.hardware.buttons.USING_GPIO
-        original_pygame = getattr(seedsigner.hardware.buttons, 'pygame', None)
+        original_instance = buttons_module.HardwareButtons._instance
+        original_using_gpio = buttons_module.USING_GPIO
+        original_pygame = getattr(buttons_module, 'pygame', None)
         
         try:
-            # Reset singleton and simulate desktop without pygame
-            seedsigner.hardware.buttons.HardwareButtons._instance = None
-            seedsigner.hardware.buttons.USING_GPIO = False
-            seedsigner.hardware.buttons.pygame = None
+            # Simulate desktop environment without pygame
+            buttons_module.HardwareButtons._instance = None
+            buttons_module.USING_GPIO = False
+            buttons_module.pygame = None
             
+            # Attempting to get instance should raise clear error
             with pytest.raises(ModuleNotFoundError) as exc_info:
-                seedsigner.hardware.buttons.HardwareButtons.get_instance()
+                buttons_module.HardwareButtons.get_instance()
             
+            # Verify error message is helpful
             error_message = str(exc_info.value)
             assert "pygame" in error_message.lower()
             assert "requirements-desktop.txt" in error_message.lower()
+            
         finally:
-            # Restore original state
-            seedsigner.hardware.buttons.HardwareButtons._instance = original_instance
-            seedsigner.hardware.buttons.USING_GPIO = original_using_gpio
+            # Restore original state to avoid affecting other tests
+            buttons_module.HardwareButtons._instance = original_instance
+            buttons_module.USING_GPIO = original_using_gpio
             if original_pygame is not None:
-                seedsigner.hardware.buttons.pygame = original_pygame
+                buttons_module.pygame = original_pygame
+            # If pygame was None originally, leave it as None
 
     def test_raspi_mode_works_without_pygame(self):
         """On Raspberry Pi (with GPIO), pygame is not required."""
-        from seedsigner.hardware.buttons import USING_GPIO
+        # This test documents that when RPi.GPIO is available (Raspberry Pi),
+        # the system will use GPIO instead of pygame, and pygame is not required.
+        # 
+        # On actual Raspberry Pi hardware:
+        # - USING_GPIO = True
+        # - GPIO module is used for button input
+        # - pygame is not imported or needed
+        # 
+        # On desktop/test environments:
+        # - USING_GPIO = False (because RPi.GPIO is mocked)
+        # - pygame is required for desktop simulation
         
-        # This test documents that on Raspberry Pi hardware,
-        # USING_GPIO will be True and pygame is not needed
-        # (We can't actually test this without RPi.GPIO, but we document the behavior)
+        from seedsigner.hardware.buttons import USING_GPIO, GPIO
+        
+        # Verify the GPIO flag is set correctly based on availability
         assert isinstance(USING_GPIO, bool)
         
-        # When USING_GPIO is True, the system uses GPIO instead of pygame
-        # and all functionality works without pygame installed
+        # If GPIO is available, USING_GPIO should be True
+        # If GPIO is mocked (in tests), it will be a MagicMock
+        if USING_GPIO:
+            # On real hardware, GPIO would be the RPi.GPIO module
+            # In tests, it's mocked
+            assert GPIO is not None
