@@ -75,10 +75,15 @@ class Settings(Singleton):
             # Load default/persistent locale setting
             settings.load_locale()
 
+            # Force desktop display mode only when running on actual desktop systems.
+            # Don't force it on hardware platforms that don't have RPi.GPIO but still
+            # use hardware displays (e.g., Luckfox Pico uses gpiod instead of RPi.GPIO).
             if USING_MOCK_GPIO:
-                settings._data[SettingsConstants.SETTING__DISPLAY_CONFIGURATION] = (
-                    SettingsConstants.DISPLAY_CONFIGURATION__DESKTOP__240x240
-                )
+                from seedsigner.hardware.microsd import MicroSD
+                if MicroSD.is_desktop_mode():
+                    settings._data[SettingsConstants.SETTING__DISPLAY_CONFIGURATION] = (
+                        SettingsConstants.DISPLAY_CONFIGURATION__DESKTOP__240x240
+                    )
 
         return cls._instance
 
