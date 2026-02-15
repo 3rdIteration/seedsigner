@@ -2133,8 +2133,6 @@ class AccountNumberView(View):
 
 class SeedExportXpubCoordinatorView(View):
     def __init__(self, seed_num: int, sig_type: str, script_type: str, custom_derivation: str = None, account: int = 0):
-    def __init__(self, seed_num: int, sig_type: str, script_type: str, custom_derivation: str = None):
->>>>>>> origin/luckfox-pico-stock
         super().__init__()
         self.seed_num = seed_num
         self.sig_type = sig_type

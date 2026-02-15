@@ -424,7 +424,7 @@ class SettingsSelectionRequiredWarningView(View):
         )
 
         return Destination(SettingsEntryUpdateSelectionView, view_args=dict(attr_name=self.settings_entry.attr_name))
->>>>>>> origin/luckfox-pico-stock
+
 
 
 
