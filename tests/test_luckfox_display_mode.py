@@ -21,39 +21,35 @@ class TestLuckfoxDisplayMode:
         
         # Mock the environment
         with patch('seedsigner.models.settings.USING_MOCK_GPIO', True):
-            with patch('os.path.exists') as mock_exists:
+            # Reset settings instance to test fresh initialization
+            from seedsigner.models.settings import Settings
+            from seedsigner.models.settings_definition import SettingsConstants
+            
+            original_instance = Settings._instance
+            try:
+                Settings._instance = None
+                
                 # Simulate /home/pi exists (Luckfox/RPi dev board)
-                mock_exists.return_value = True
-                
-                # Reset settings instance to test fresh initialization
-                from seedsigner.models.settings import Settings
-                from seedsigner.models.settings_definition import SettingsConstants
-                
-                original_instance = Settings._instance
-                try:
-                    Settings._instance = None
-                    
-                    # Mock to prevent file I/O
-                    with patch('os.path.exists', side_effect=lambda p: p == "/home/pi"):
-                        with patch('builtins.open', MagicMock()):
-                            with patch('json.load', return_value={
-                                SettingsConstants.SETTING__DISPLAY_CONFIGURATION: "st7789_240x240"
-                            }):
-                                # Get settings instance - should not force desktop mode
-                                settings = Settings.get_instance()
-                                
-                                # Verify display config is NOT forced to desktop
-                                # It should use what was loaded from settings file
-                                display_config = settings.get_value(
-                                    SettingsConstants.SETTING__DISPLAY_CONFIGURATION
-                                )
-                                
-                                # Should NOT be desktop mode (should be st7789 from loaded settings)
-                                assert display_config != SettingsConstants.DISPLAY_CONFIGURATION__DESKTOP__240x240
-                                assert "st7789" in display_config
-                
-                finally:
-                    Settings._instance = original_instance
+                with patch('os.path.exists', side_effect=lambda p: p == "/home/pi"):
+                    with patch('builtins.open', MagicMock()):
+                        with patch('json.load', return_value={
+                            SettingsConstants.SETTING__DISPLAY_CONFIGURATION: "st7789_240x240"
+                        }):
+                            # Get settings instance - should not force desktop mode
+                            settings = Settings.get_instance()
+                            
+                            # Verify display config is NOT forced to desktop
+                            # It should use what was loaded from settings file
+                            display_config = settings.get_value(
+                                SettingsConstants.SETTING__DISPLAY_CONFIGURATION
+                            )
+                            
+                            # Should NOT be desktop mode (should be st7789 from loaded settings)
+                            assert display_config != SettingsConstants.DISPLAY_CONFIGURATION__DESKTOP__240x240
+                            assert "st7789" in display_config
+            
+            finally:
+                Settings._instance = original_instance
 
     def test_desktop_system_forces_desktop_mode(self):
         """True desktop systems (no /home/pi, no RPi.GPIO) should force desktop mode."""
@@ -121,24 +117,28 @@ class TestLuckfoxDisplayMode:
     def test_is_desktop_mode_detection(self):
         """Test MicroSD.is_desktop_mode() correctly identifies platforms."""
         from seedsigner.hardware.microsd import MicroSD
+        from collections import namedtuple
+        
+        # Create proper uname_result named tuple
+        UnameResult = namedtuple('uname_result', 
+                                 ['system', 'node', 'release', 'version', 'machine'])
         
         # Test 1: /home/pi exists -> Not desktop mode
         with patch('os.path.exists', return_value=True):
-            with patch('platform.uname', return_value=['', 'luckfox', '', '', '']):
+            uname_luckfox = UnameResult('Linux', 'luckfox', '', '', '')
+            with patch('platform.uname', return_value=uname_luckfox):
                 assert MicroSD.is_desktop_mode() == False
         
         # Test 2: SeedSignerOS hostname -> Not desktop mode
         with patch('os.path.exists', return_value=False):
-            with patch('platform.uname', return_value=['', 'seedsigner-os', '', '', '']):
+            uname_seedsigner = UnameResult('Linux', 'seedsigner-os', '', '', '')
+            with patch('platform.uname', return_value=uname_seedsigner):
                 from seedsigner.models.settings import Settings
-                original_hostname = Settings.HOSTNAME
-                try:
-                    Settings.HOSTNAME = 'seedsigner-os'
+                with patch.object(Settings, 'HOSTNAME', 'seedsigner-os'):
                     assert MicroSD.is_desktop_mode() == False
-                finally:
-                    Settings.HOSTNAME = original_hostname
         
         # Test 3: No /home/pi, different hostname -> Desktop mode
         with patch('os.path.exists', return_value=False):
-            with patch('platform.uname', return_value=['', 'my-laptop', '', '', '']):
+            uname_desktop = UnameResult('Linux', 'my-laptop', '', '', '')
+            with patch('platform.uname', return_value=uname_desktop):
                 assert MicroSD.is_desktop_mode() == True

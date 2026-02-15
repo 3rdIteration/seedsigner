@@ -11,6 +11,7 @@ This script simulates different platform environments and shows that:
 import sys
 import os
 from unittest.mock import patch, MagicMock
+from collections import namedtuple
 
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
@@ -28,9 +29,14 @@ def test_scenario(scenario_name, using_mock_gpio, has_home_pi, hostname, expecte
     import seedsigner.models.settings
     seedsigner.models.settings.Settings._instance = None
     
+    # Create proper uname_result named tuple
+    UnameResult = namedtuple('uname_result', 
+                             ['system', 'node', 'release', 'version', 'machine'])
+    uname_result = UnameResult('Linux', hostname, '', '', '')
+    
     # Mock the environment
     with patch('seedsigner.models.settings.USING_MOCK_GPIO', using_mock_gpio):
-        with patch('platform.uname', return_value=['', hostname, '', '', '']):
+        with patch('platform.uname', return_value=uname_result):
             with patch('os.path.exists', return_value=has_home_pi):
                 with patch('builtins.open', MagicMock()):
                     # Mock json.load to return settings with st7789 display
