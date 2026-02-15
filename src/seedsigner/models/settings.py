@@ -7,6 +7,8 @@ import platform
 
 from typing import List
 
+logger = logging.getLogger(__name__)
+
 try:
     import RPi.GPIO as GPIO
     USING_MOCK_GPIO = False
@@ -75,17 +77,59 @@ class Settings(Singleton):
             # Load default/persistent locale setting
             settings.load_locale()
 
-            # Force desktop display mode only when running on actual desktop systems.
-            # Don't force it on hardware platforms that don't have RPi.GPIO but still
-            # use hardware displays (e.g., Luckfox Pico uses gpiod instead of RPi.GPIO).
+            # Auto-configure hardware settings based on detected platform
+            # Only override if not already configured in settings file
+            cls._auto_configure_platform(settings)
+
+        return cls._instance
+
+    @classmethod
+    def _auto_configure_platform(cls, settings):
+        """Auto-configure hardware and display settings based on detected platform."""
+        from seedsigner.hardware.platform_detector import PlatformDetector
+        
+        try:
+            platform_info = PlatformDetector.detect()
+            
+            # Only auto-configure if settings are at defaults or not set
+            current_hw_config = settings._data.get(SettingsConstants.SETTING__HARDWARE_CONFIGURATION)
+            current_display_config = settings._data.get(SettingsConstants.SETTING__DISPLAY_CONFIGURATION)
+            
+            # Auto-set hardware configuration if platform provides one
+            if platform_info.hardware_config:
+                # Only override if current config is None or default
+                if not current_hw_config or current_hw_config == SettingsDefinition.get_defaults().get(
+                    SettingsConstants.SETTING__HARDWARE_CONFIGURATION
+                ):
+                    settings._data[SettingsConstants.SETTING__HARDWARE_CONFIGURATION] = (
+                        platform_info.hardware_config
+                    )
+                    logger.info(f"Auto-configured hardware: {platform_info.hardware_config}")
+            
+            # Auto-set display configuration if platform provides one
+            if platform_info.display_config:
+                # Only override if current config is None or if we should force desktop mode
+                if platform_info.display_config.startswith("desktop"):
+                    # Force desktop mode for desktop platforms
+                    settings._data[SettingsConstants.SETTING__DISPLAY_CONFIGURATION] = (
+                        platform_info.display_config
+                    )
+                elif not current_display_config or USING_MOCK_GPIO:
+                    # Set hardware display config for hardware platforms
+                    settings._data[SettingsConstants.SETTING__DISPLAY_CONFIGURATION] = (
+                        platform_info.display_config
+                    )
+                    logger.info(f"Auto-configured display: {platform_info.display_config}")
+                    
+        except Exception as e:
+            logger.warning(f"Failed to auto-configure platform: {e}")
+            # Fall back to legacy behavior
             if USING_MOCK_GPIO:
                 from seedsigner.hardware.microsd import MicroSD
                 if MicroSD.is_desktop_mode():
                     settings._data[SettingsConstants.SETTING__DISPLAY_CONFIGURATION] = (
                         SettingsConstants.DISPLAY_CONFIGURATION__DESKTOP__240x240
                     )
-
-        return cls._instance
 
 
     @classmethod

@@ -776,20 +776,28 @@ class SystemInfoView(View):
         except Exception:
             return None
 
-    def _get_pi_version(self) -> str:
-        model = self._read_text_file("/proc/device-tree/model")
-        if model:
-            return model
-
+    def _get_platform_info(self) -> str:
+        """Get platform information (Pi, Luckfox, Desktop, etc.)."""
+        from seedsigner.hardware.platform_detector import PlatformDetector
+        
         try:
-            with open("/proc/cpuinfo", "r", encoding="utf-8") as file:
-                for line in file:
-                    if line.startswith("Model"):
-                        return line.split(":", 1)[-1].strip()
+            platform_info = PlatformDetector.detect()
+            return platform_info.get_display_name()
         except Exception:
-            pass
-
-        return _("Unavailable")
+            # Fallback to legacy Pi detection
+            model = self._read_text_file("/proc/device-tree/model")
+            if model:
+                return model
+            
+            try:
+                with open("/proc/cpuinfo", "r", encoding="utf-8") as file:
+                    for line in file:
+                        if line.startswith("Model"):
+                            return line.split(":", 1)[-1].strip()
+            except Exception:
+                pass
+            
+            return _("Unavailable")
 
     def _get_system_serial(self) -> str:
         try:
@@ -829,7 +837,7 @@ class SystemInfoView(View):
     def run(self):
         self.run_screen(
             settings_screens.SystemInfoScreen,
-            pi_version=self._get_pi_version(),
+            platform_info=self._get_platform_info(),
             system_serial=self._get_system_serial(),
             microsd_serial=self._get_microsd_serial(),
         )

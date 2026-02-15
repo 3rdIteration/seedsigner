@@ -470,7 +470,7 @@ class BatteryInfoScreen(BaseTopNavScreen):
 
 @dataclass
 class SystemInfoScreen(BaseTopNavScreen):
-    pi_version: str = ""
+    platform_info: str = ""
     system_serial: str = ""
     microsd_serial: str = ""
 
@@ -479,7 +479,7 @@ class SystemInfoScreen(BaseTopNavScreen):
         super().__post_init__()
 
         info_lines = [
-            _("Pi: {pi_version}").format(pi_version=self.pi_version),
+            _("Platform: {platform_info}").format(platform_info=self.platform_info),
             _("System: {system_serial}").format(system_serial=self.system_serial),
             _("MicroSD: {microsd_serial}").format(microsd_serial=self.microsd_serial),
         ]
