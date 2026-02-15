@@ -11,6 +11,10 @@ from seedsigner.models.settings import Settings, SettingsConstants
 from seedsigner.models.singleton import Singleton
 
 
+class CameraConnectionError(Exception):
+    pass
+
+
 class Camera(Singleton):
     """Singleton wrapper around PiCamera or a system webcam."""
 
@@ -76,12 +80,18 @@ class Camera(Singleton):
         if self._video_stream is not None:
             self.stop_video_stream_mode()
 
-        self._video_stream = PiVideoStream(
-            resolution=resolution,
-            framerate=framerate,
-            format=format,
-            device_index=self._camera_index,
-        )
+        # PiVideoStream now handles platform detection internally
+        try:
+            self._video_stream = PiVideoStream(
+                resolution=resolution,
+                framerate=framerate,
+                format=format,
+                device_index=self._camera_index,
+            )
+        except TypeError:
+            # Luckfox path - PiVideoStream takes no arguments
+            self._video_stream = PiVideoStream()
+
         self._video_stream.start()
 
     def read_video_stream(self, as_image=False):
@@ -92,14 +102,27 @@ class Camera(Singleton):
         """
         if not self._video_stream:
             raise Exception("Must call start_video_stream first.")
+
         frame = self._video_stream.read()
-        if not as_image:
-            return frame
-        if frame is not None:
-            return Image.fromarray(frame.astype("uint8"), "RGB").convert("RGBA").rotate(
-                90 + self._camera_rotation
-            )
-        return None
+        if frame is None:
+            return None
+
+        if as_image:
+            # Check if frame is already an Image object (Luckfox path)
+            if isinstance(frame, Image.Image):
+                img = frame
+            else:
+                # Convert the raw frame to an image (RPi/OpenCV path)
+                if hasattr(self._video_stream, 'width') and hasattr(self._video_stream, 'height'):
+                    # Luckfox with raw bytes
+                    img = Image.frombytes('RGB', (self._video_stream.width, self._video_stream.height), frame)
+                else:
+                    # numpy array from picamera/OpenCV
+                    img = Image.fromarray(frame.astype("uint8"), "RGB").convert("RGBA")
+
+            return img.rotate(90 + self._camera_rotation)
+
+        return frame
 
     def stop_video_stream_mode(self):
         """Stop the live video stream."""
@@ -135,6 +158,17 @@ class Camera(Singleton):
 
     def capture_frame(self):
         """Capture a single frame from the camera as a PIL image."""
+        # If video stream is active, use it (Luckfox path)
+        if self._video_stream is not None:
+            frame = self._video_stream.read()
+            if frame is None:
+                raise Exception("Failed to capture frame.")
+            # Frame is already a PIL Image from Luckfox
+            if isinstance(frame, Image.Image):
+                return frame.rotate(90 + self._camera_rotation)
+            return frame
+
+        # Otherwise use picamera/OpenCV (RPi path)
         if self._picamera is None:
             raise Exception("Must call start_single_frame_mode first.")
 

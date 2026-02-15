@@ -44,17 +44,18 @@ class SettingsConstants:
     ]
 
     # User-facing selection options
-    COORDINATOR__BLUE_WALLET = "bw"
-    COORDINATOR__NUNCHUK = "nun"
-    COORDINATOR__SPARROW = "spa"
-    COORDINATOR__SPECTER_DESKTOP = "spd"
-    COORDINATOR__KEEPER = "kpr"
-    ALL_COORDINATORS = [
-        (COORDINATOR__BLUE_WALLET, "BlueWallet"),
-        (COORDINATOR__NUNCHUK, "Nunchuk"),
-        (COORDINATOR__SPARROW, "Sparrow"),
-        (COORDINATOR__SPECTER_DESKTOP, "Specter Desktop"),
-        (COORDINATOR__KEEPER, "Keeper"),
+    XPUB_QR_FORMAT__UR_CRYPTO_ACCOUNT = "urca"
+    XPUB_QR_FORMAT__STATIC = "sta"
+    XPUB_QR_FORMAT__SPECTER_LEGACY = "spl"
+    ALL_XPUB_QR_FORMATS = [
+        # TRANSLATOR_NOTE: QR code format option; "default" = this is the format most wallets use
+        (XPUB_QR_FORMAT__UR_CRYPTO_ACCOUNT, _mft("Animated (default)")),
+
+        # TRANSLATOR_NOTE: QR code format option (static = single frame, not animated)
+        (XPUB_QR_FORMAT__STATIC, _mft("Static")),
+
+        # TRANSLATOR_NOTE: QR code format option: old format that Specter Desktop used to use
+        (XPUB_QR_FORMAT__SPECTER_LEGACY, _mft("Specter legacy")),
     ]
 
     # Over-specifying current and possible future locales to reduce/eliminate main repo
@@ -130,17 +131,20 @@ class SettingsConstants:
         LOCALE__ENGLISH: "English",
         LOCALE__SPANISH: "Español",
         LOCALE__FRENCH: "Français",
+        LOCALE__ITALIAN: "Italiano",
         LOCALE__DUTCH: "Nederlands",
 
         # --------- Beta languages ------------------------------------------------------
         LOCALE__CHINESE_SIMPLIFIED: "(beta) 简体中文 (Chinese Simplified)",
+        LOCALE__HINDI: "(beta) हिन्दी (Hindi)",
         LOCALE__JAPANESE: "(beta) 日本語 (Japanese)",
         LOCALE__KOREAN: "(beta) 한국어 (Korean)",
+        LOCALE__THAI: "(beta) ไทย (Thai)",
 
         # --------- Placeholders / Coming soon ------------------------------------------
         # Commented out options require explicit additional font support.
         # -------------------------------------------------------------------------------
-        # LOCALE__ARABIC: "العربية (Arabic)",
+        LOCALE__ARABIC: "العربية (Arabic)",
         # LOCALE__BENGALI: "বাংলা (Bengali)",
         LOCALE__BULGARIAN: "български (Bulgarian)",  # OpenSans includes cyrillic chars
         LOCALE__CZECH: "čeština",
@@ -153,9 +157,7 @@ class SettingsConstants:
         # LOCALE__GUJARATI: "ગુજરાતી (Gujarati)",
         LOCALE__HAUSA: "Hausa",
         # LOCALE__HEBREW: "עברית (Hebrew)",
-        # LOCALE__HINDI: "हिन्दी (Hindi)",
         LOCALE__CROATIAN: "Hrvatski",
-        LOCALE__ITALIAN: "Italiano",
         LOCALE__INDONESIAN: "Indonesia",
         LOCALE__JAVANESE: "Jawa (Javanese)",
         # LOCALE__LAO: "ລາວ (Lao)",
@@ -166,7 +168,7 @@ class SettingsConstants:
         LOCALE__MALTESE: "Malti",
         # LOCALE__MARATHI: "मराठी (Marathi)",
         LOCALE__NORWEGIAN: "Norsk",
-        # LOCALE__PERSIAN: "فارسی (Persian)",
+        LOCALE__PERSIAN: "فارسی (Persian)",
         LOCALE__POLISH: "Polski",
         LOCALE__PORTUGUESE_BR: "Português (Brasil)",
         LOCALE__PORTUGUESE_PT: "Português (Portugal)",
@@ -180,7 +182,6 @@ class SettingsConstants:
         LOCALE__TAGALOG: "Tagalog",
         # LOCALE__TAMIL: "தமிழ் (Tamil)",
         # LOCALE__TELUGU: "తెలుగు (Telugu)",
-        # LOCALE__THAI: "ไทย (Thai)",
         LOCALE__TURKISH: "Türkçe",
         LOCALE__UKRANIAN: "українська (Ukranian)",   # OpenSans includes cyrillic chars
         # LOCALE__URDU: "اردو (Urdu)",
@@ -229,6 +230,7 @@ class SettingsConstants:
         (BTC_DENOMINATION__BTCSATSHYBRID, _mft("BTC | sats hybrid")),
     ]
 
+    # Camera rotation constants
     CAMERA_ROTATION__0 = 0
     CAMERA_ROTATION__90 = 90
     CAMERA_ROTATION__180 = 180
@@ -250,6 +252,144 @@ class SettingsConstants:
         (CAMERA_DEVICE__2, _mft("Camera 2")),
         (CAMERA_DEVICE__3, _mft("Camera 3")),
     ]
+
+    # Hardware config settings
+    HARDWARE__RPI_40 = "RPI_40"
+    HARDWARE__RPI_26 = "RPI_26"
+    HARDWARE__LUCKFOX_22 = "FOX_22"
+    HARDWARE__LUCKFOX_40 = "FOX_40"
+
+
+    # RPI Devices using BCM pin numbers
+    HARDWARE_PIN_CONFIG__RPI_40 = {
+        "display": {
+            "dc": ("/dev/gpiochip0", 25),
+            "rst": ("/dev/gpiochip0", 27),
+            "bl": ("/dev/gpiochip0", 24),
+            "spi_bus": 0,
+            "spi_device": 0
+        },
+        "buttons": {
+            "KEY_UP": ("/dev/gpiochip0", 6),
+            "KEY_DOWN": ("/dev/gpiochip0", 19),
+            "KEY_LEFT": ("/dev/gpiochip0", 5),
+            "KEY_RIGHT": ("/dev/gpiochip0", 26),
+            "KEY_PRESS": ("/dev/gpiochip0", 13),
+            "KEY1": ("/dev/gpiochip0", 21),
+            "KEY2": ("/dev/gpiochip0", 20),
+            "KEY3": ("/dev/gpiochip0", 16),
+        },
+        "camera": {
+            "device": "/dev/video0",
+            "resolution": (1280, 720),
+            "pixelformat": "YUYV",
+            "framerate": 4
+        }
+    }
+
+    HARDWARE_PIN_CONFIG__RPI_26 = {
+        "display": {
+            "dc": ("/dev/gpiochip0", 25),
+            "rst": ("/dev/gpiochip0", 27),
+            "bl": ("/dev/gpiochip0", 24),
+            "spi_bus": 0,
+            "spi_device": 0
+        },
+        "buttons": {
+            "up": ("/dev/gpiochip0", 17),
+            "down": ("/dev/gpiochip0", 27),
+            "left": ("/dev/gpiochip0", 22),
+            "right": ("/dev/gpiochip0", 23),
+            "press": ("/dev/gpiochip0", 4),
+            "key1": ("/dev/gpiochip0", 21),
+            "key2": ("/dev/gpiochip0", 20),
+            "key3": ("/dev/gpiochip0", 16),
+        },
+        "camera": {
+            "device": "/dev/video0",
+            "resolution": (2304, 1296),
+            "pixelformat": "NV12",
+            "framerate": 10
+        }
+    }
+
+
+    # PICO MINI
+    HARDWARE_PIN_CONFIG__FOX_22 = {
+        "display": {
+            "dc": ("/dev/gpiochip1", 20),
+            "rst": ("/dev/gpiochip1", 19),
+            "bl": ("/dev/gpiochip1", 11),
+            "spi_bus": 0,
+            "spi_device": 0
+        },
+        "buttons": {
+            "KEY_UP": ("/dev/gpiochip1", 25),
+            "KEY_DOWN": ("/dev/gpiochip1", 27),
+            "KEY_LEFT": ("/dev/gpiochip1", 24),
+            "KEY_RIGHT": ("/dev/gpiochip1", 22),
+            "KEY_PRESS": ("/dev/gpiochip1", 26),
+            "KEY1": ("/dev/gpiochip1", 23),
+            "KEY2": ("/dev/gpiochip0", 4),
+            "KEY3": ("/dev/gpiochip1", 21),
+        },
+        "camera": {
+            "device": "/dev/video12",
+            "resolution": (800, 600),
+            "pixelformat": "NV12",
+            "framerate": 10
+        }
+    }
+
+    # PICO & PICO PRO
+    HARDWARE_PIN_CONFIG__FOX_40 = {
+        "display": {
+            "dc": ("/dev/gpiochip1", 24),
+            "rst": ("/dev/gpiochip1", 25),
+            "bl": ("/dev/gpiochip2", 8),
+            "spi_bus": 0,
+            "spi_device": 0
+        },
+        "buttons": {
+            # "KEY_UP": ("/dev/gpiochip1", 28),
+            # "KEY_DOWN": ("/dev/gpiochip1", 21),
+            # "KEY_LEFT": ("/dev/gpiochip1", 27),
+            # "KEY_RIGHT": ("/dev/gpiochip1", 22),
+            # "KEY_PRESS": ("/dev/gpiochip1", 20),
+            # "KEY1": ("/dev/gpiochip1", 23),
+            # "KEY2": ("/dev/gpiochip1", 11),
+            # "KEY3": ("/dev/gpiochip1", 10),
+            "KEY_UP": (58,),
+            "KEY_DOWN": (53,),
+            "KEY_LEFT": (59,),
+            "KEY_RIGHT": (54,),
+            "KEY_PRESS": (52,),
+            "KEY1": (55,),
+            "KEY2": (43,),
+            "KEY3": (42,),
+        },
+        "camera": {
+            "device": "/dev/video12",
+            "resolution": (800, 600),
+            "pixelformat": "NV12",
+            "framerate": 10
+        }
+    }
+
+
+    ALL_HARDWARE_PIN_CONFIGS = [
+        (HARDWARE__RPI_40, "Raspberry Pi 40-pin"),
+        (HARDWARE__RPI_26, "Raspberry Pi 26-pin"),
+        (HARDWARE__LUCKFOX_22, "Luckfox Pico 22-pin"),
+        (HARDWARE__LUCKFOX_40, "Luckfox Pico 40-pin")
+    ]
+
+    ALL_HARDWARE_PIN_CONFIGS__PIN_DEFINITIONS = {
+        HARDWARE__RPI_40: HARDWARE_PIN_CONFIG__RPI_40,
+        HARDWARE__RPI_26: HARDWARE_PIN_CONFIG__RPI_26,
+        HARDWARE__LUCKFOX_22: HARDWARE_PIN_CONFIG__FOX_22,
+        HARDWARE__LUCKFOX_40: HARDWARE_PIN_CONFIG__FOX_40
+    }
 
     # QR code constants
     DENSITY__LOW = "L"
@@ -394,6 +534,15 @@ class SettingsConstants:
         (CUSTOM_DERIVATION, _mft("Custom Derivation")),
     ]
 
+    MICROSD_TOAST_TIMER_DISABLED = "D"
+    MICROSD_TOAST_TIMER_FIVE_SECONDS = "E"
+    MICROSD_TOAST_TIMER_FOREVER = "inf"
+    ALL_MICROSD_TOAST_TIMERS = [
+        (MICROSD_TOAST_TIMER_DISABLED, "Disabled"),
+        (MICROSD_TOAST_TIMER_FIVE_SECONDS, "5 seconds"),
+        (MICROSD_TOAST_TIMER_FOREVER, "Until SD removed")
+    ]
+
     WORDLIST_LANGUAGE__ENGLISH = "en"
     WORDLIST_LANGUAGE__CHINESE_SIMPLIFIED = "zh_Hans_CN"
     WORDLIST_LANGUAGE__CHINESE_TRADITIONAL = "zh_Hant_TW"
@@ -418,7 +567,7 @@ class SettingsConstants:
     SETTING__LOCALE = "locale"
     SETTING__WORDLIST_LANGUAGE = "wordlist_language"
     SETTING__PERSISTENT_SETTINGS = "persistent_settings"
-    SETTING__COORDINATORS = "coordinators"
+    SETTING__XPUB_QR_FORMAT = "xpub_qr"
     SETTING__BTC_DENOMINATION = "denomination"
     SETTING__SMARTCARD_INTERFACES = "smartcard_interfaces"
     SETTING__CACHE_SCARD_PIN = "cache_scard_pin"
@@ -428,10 +577,10 @@ class SettingsConstants:
 
     SETTING__DISPLAY_CONFIGURATION = "display_config"
     SETTING__DISPLAY_COLOR_INVERTED = "color_inverted"
+    SETTING__HARDWARE_CONFIG = "hardware_config"
 
     SETTING__NETWORK = "network"
     SETTING__QR_DENSITY = "qr_density"
-    SETTING__XPUB_EXPORT = "xpub_export"
     SETTING__SIG_TYPES = "sig_types"
     SETTING__SCRIPT_TYPES = "script_types"
     SETTING__ACCOUNT_PROMPT = "account_prompt"
@@ -467,6 +616,7 @@ class SettingsConstants:
     SETTING__SATOCHIP_MAX_POST_DUMMIES = "satochip_max_post_dummies"
     SETTING__SATOCHIP_MAX_IN_TX_DUMMIES = "satochip_max_in_tx_dummies"
     SETTING__SATOCHIP_DUMMY_PROBABILITY = "satochip_dummy_probability"
+    SETTING__MICROSD_TOAST_TIMER = "microsd_toast_timer"
 
     SETTING__DEBUG = "debug"
 
@@ -535,7 +685,7 @@ class SettingsConstants:
 
     # Label strings
     LABEL__BIP39_PASSPHRASE = _mft("BIP-39 Passphrase")
-    # TRANSLATOR_NOTE: Terminology used by Electrum seeds; equivalent to bip39 passphrase
+    # TRANSLATOR_NOTE: Terminology used by Electrum seeds; equivalent to BIP-39 passphrase
     custom_extension = _mft("Custom Extension")
     LABEL__CUSTOM_EXTENSION = custom_extension
 
@@ -707,7 +857,7 @@ class SettingsDefinition:
                       selection_options=SettingsConstants.get_detected_languages(),
                       default_value=SettingsConstants.LOCALE__ENGLISH),
 
-        # TODO: Support other bip-39 wordlist languages! Until then, type == HIDDEN
+        # TODO: Support other BIP-39 wordlist languages! Until then, type == HIDDEN
         SettingsEntry(category=SettingsConstants.CATEGORY__SYSTEM,
                       attr_name=SettingsConstants.SETTING__WORDLIST_LANGUAGE,
                       abbreviated_name="wordlist_lang",
@@ -723,19 +873,6 @@ class SettingsDefinition:
                       display_name=_mft("Persistent settings"),
                       help_text=SettingsConstants.PERSISTENT_SETTINGS__SD_INSERTED__HELP_TEXT,
                       default_value=SettingsConstants.OPTION__DISABLED),
-
-        SettingsEntry(category=SettingsConstants.CATEGORY__WALLET,
-                      attr_name=SettingsConstants.SETTING__COORDINATORS,
-                      abbreviated_name="coords",
-                      display_name=_mft("Coordinator software"),
-                      type=SettingsConstants.TYPE__MULTISELECT,
-                      selection_options=SettingsConstants.ALL_COORDINATORS,
-                      default_value=[
-                          SettingsConstants.COORDINATOR__BLUE_WALLET,
-                          SettingsConstants.COORDINATOR__NUNCHUK,
-                          SettingsConstants.COORDINATOR__SPARROW,
-                          SettingsConstants.COORDINATOR__SPECTER_DESKTOP,
-                      ]),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__SYSTEM,
                       attr_name=SettingsConstants.SETTING__BTC_DENOMINATION,
@@ -800,12 +937,6 @@ class SettingsDefinition:
                       default_value=SettingsConstants.DENSITY__MEDIUM),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
-                      attr_name=SettingsConstants.SETTING__XPUB_EXPORT,
-                      display_name=_mft("Xpub export"),
-                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
-                      default_value=SettingsConstants.OPTION__ENABLED),
-
-        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
                       attr_name=SettingsConstants.SETTING__SIG_TYPES,
                       abbreviated_name="sigs",
                       display_name=_mft("Sig types"),
@@ -831,6 +962,17 @@ class SettingsDefinition:
                       visibility=SettingsConstants.VISIBILITY__ADVANCED,
                       selection_options=SettingsConstants.ALL_SEED_WORD_LENGTHS,
                       default_value=[12, 24]),
+
+        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
+                      attr_name=SettingsConstants.SETTING__XPUB_QR_FORMAT,
+                      display_name=_mft("Xpub QR format"),
+                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
+                      type=SettingsConstants.TYPE__MULTISELECT,
+                      selection_options=SettingsConstants.ALL_XPUB_QR_FORMATS,
+                      default_value=[
+                            SettingsConstants.XPUB_QR_FORMAT__UR_CRYPTO_ACCOUNT,
+                            SettingsConstants.XPUB_QR_FORMAT__STATIC,
+                      ]),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
                       attr_name=SettingsConstants.SETTING__XPUB_DETAILS,
@@ -941,6 +1083,14 @@ class SettingsDefinition:
                       help_text=_mft("Native Segwit only"),
                       visibility=SettingsConstants.VISIBILITY__ADVANCED,
                       default_value=SettingsConstants.OPTION__DISABLED),
+        
+        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
+                      attr_name=SettingsConstants.SETTING__MICROSD_TOAST_TIMER,
+                      display_name="MicroSD toast timer",
+                      type=SettingsConstants.TYPE__SELECT_1,
+                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
+                      selection_options=SettingsConstants.ALL_MICROSD_TOAST_TIMERS,
+                      default_value=SettingsConstants.MICROSD_TOAST_TIMER_FIVE_SECONDS),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
                       attr_name=SettingsConstants.SETTING__BITBOX_BACKUP,
@@ -1068,6 +1218,15 @@ class SettingsDefinition:
                       visibility=SettingsConstants.VISIBILITY__HARDWARE,
                       selection_options=SettingsConstants.ALL_DISPLAY_CONFIGURATIONS,
                       default_value=SettingsConstants.DISPLAY_CONFIGURATION__ST7789__240x240),
+
+        SettingsEntry(category=SettingsConstants.CATEGORY__SYSTEM,
+                      attr_name=SettingsConstants.SETTING__HARDWARE_CONFIG,
+                      abbreviated_name="hw_conf",
+                      display_name=_mft("Hardware Configuration"),
+                      type=SettingsConstants.TYPE__SELECT_1,
+                      visibility=SettingsConstants.VISIBILITY__HARDWARE,
+                      selection_options=SettingsConstants.ALL_HARDWARE_PIN_CONFIGS,
+                      default_value=SettingsConstants.HARDWARE__RPI_40),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__SYSTEM,
                       attr_name=SettingsConstants.SETTING__DISPLAY_COLOR_INVERTED,
