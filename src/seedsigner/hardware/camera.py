@@ -1,8 +1,7 @@
 """Cross-platform camera abstraction used for scanning QR codes.
 
-This module wraps either the Raspberry Pi camera modules or any system webcam
-accessible via pygame or OpenCV. The :class:`Camera` class is implemented as a
-singleton so the rest of the codebase can grab a single shared instance.
+This module wraps system webcams via OpenCV. The :class:`Camera` class is 
+implemented as a singleton so the rest of the codebase can grab a single shared instance.
 """
 
 import io
@@ -12,10 +11,10 @@ from seedsigner.models.singleton import Singleton
 
 
 class Camera(Singleton):
-    """Singleton wrapper around PiCamera or a system webcam."""
+    """Singleton wrapper around OpenCV VideoCapture."""
 
     _video_stream = None
-    _picamera = None
+    _camera = None
     _camera_rotation = None
     _camera_index = 0
 
@@ -111,60 +110,36 @@ class Camera(Singleton):
         """Prepare the camera to capture a single still frame."""
         if self._video_stream is not None:
             self.stop_video_stream_mode()
-        if self._picamera is not None:
-            if hasattr(self._picamera, "close"):
-                self._picamera.close()
-            else:
-                self._picamera.release()
+        if self._camera is not None:
+            self._camera.release()
+            self._camera = None
 
         try:
-            from picamera import PiCamera
-
-            self._picamera = PiCamera(resolution=resolution, framerate=24)
-            self._picamera.start_preview()
-        except Exception:
-            try:
-                import cv2  # type: ignore
-            except Exception as e:
-                raise ModuleNotFoundError(
-                    "OpenCV is required for desktop camera support; install requirements-desktop.txt",
-                ) from e
-            self._picamera = cv2.VideoCapture(self._camera_index)
-            self._picamera.set(cv2.CAP_PROP_FRAME_WIDTH, resolution[0])
-            self._picamera.set(cv2.CAP_PROP_FRAME_HEIGHT, resolution[1])
+            import cv2  # type: ignore
+        except Exception as e:
+            raise ModuleNotFoundError(
+                "OpenCV is required for camera support; install opencv-python",
+            ) from e
+        
+        self._camera = cv2.VideoCapture(self._camera_index)
+        self._camera.set(cv2.CAP_PROP_FRAME_WIDTH, resolution[0])
+        self._camera.set(cv2.CAP_PROP_FRAME_HEIGHT, resolution[1])
 
     def capture_frame(self):
         """Capture a single frame from the camera as a PIL image."""
-        if self._picamera is None:
+        if self._camera is None:
             raise Exception("Must call start_single_frame_mode first.")
 
-        if hasattr(self._picamera, "capture"):
-            # PiCamera path
-            self._picamera.shutter_speed = self._picamera.exposure_speed
-            self._picamera.exposure_mode = "off"
-            g = self._picamera.awb_gains
-            self._picamera.awb_mode = "off"
-            self._picamera.awb_gains = g
-
-            stream = io.BytesIO()
-            self._picamera.capture(stream, format="jpeg")
-            stream.seek(0)
-            return Image.open(stream).rotate(90 + self._camera_rotation)
-        else:
-            # OpenCV path
-            ret, frame = self._picamera.read()
-            if not ret:
-                return None
-            return Image.fromarray(frame.astype("uint8"), "RGB").rotate(
-                90 + self._camera_rotation
-            )
+        ret, frame = self._camera.read()
+        if not ret:
+            return None
+        return Image.fromarray(frame.astype("uint8"), "RGB").rotate(
+            90 + self._camera_rotation
+        )
 
     def stop_single_frame_mode(self):
         """Release any resources used for single-frame capture."""
-        if self._picamera is not None:
-            if hasattr(self._picamera, "close"):
-                self._picamera.close()
-            else:
-                self._picamera.release()
-            self._picamera = None
+        if self._camera is not None:
+            self._camera.release()
+            self._camera = None
 
