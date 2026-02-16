@@ -10,6 +10,7 @@ from seedsigner.gui.components import GUIConstants, SeedSignerIconConstants
 from seedsigner.gui.screens import (RET_CODE__BACK_BUTTON, ButtonListScreen, WarningScreen, settings_screens)
 from seedsigner.gui.screens.screen import ButtonOption
 from seedsigner.models.settings import Settings, SettingsConstants, SettingsDefinition
+from seedsigner.hardware.io_config import get_hardware_profile_label
 
 from .view import View, Destination, MainMenuView, BackStackView
 
@@ -833,11 +834,9 @@ class SystemInfoView(View):
         variant = self._read_text_file("/proc/device-tree/model")
         if not variant:
             try:
-                hardware_config = Settings.get_instance().get_value(SettingsConstants.SETTING__HARDWARE_CONFIG)
-                for value, label in SettingsConstants.ALL_HARDWARE_PIN_CONFIGS:
-                    if value == hardware_config:
-                        variant = label
-                        break
+                hardware_config = Settings.get_platform_default_hardware_config()
+                if hardware_config:
+                    variant = get_hardware_profile_label(hardware_config)
             except Exception:
                 pass
 

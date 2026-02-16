@@ -35,7 +35,7 @@ from PIL import ImageDraw
 from periphery import GPIO, SPI
 
 from seedsigner.models.settings import Settings
-from seedsigner.models.settings_definition import SettingsConstants
+from seedsigner.hardware.io_config import get_hardware_pin_mapping
 
 logger = logging.getLogger(__name__)
 
@@ -143,8 +143,8 @@ class ILI9341(object):
         self.inverted = False
         self.CHUNK_SIZE = 4096 * 12
 
-        hardware_config = Settings.get_instance().get_value(SettingsConstants.SETTING__HARDWARE_CONFIG)
-        pin_mapping = SettingsConstants.ALL_HARDWARE_PIN_CONFIGS__PIN_DEFINITIONS[hardware_config]["display"]
+        hardware_config = Settings.get_platform_default_hardware_config()
+        pin_mapping = get_hardware_pin_mapping(hardware_config)["display"]
 
         # Initialize GPIO pins with periphery
         self._dc = GPIO(*pin_mapping["dc"], "out")

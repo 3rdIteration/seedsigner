@@ -8,6 +8,12 @@ import sys
 
 from typing import List
 
+from seedsigner.hardware.io_config import (
+    detect_runtime_profile,
+    get_hardware_pin_mapping,
+    get_hardware_profile_label,
+    runtime_profile_to_hardware_profile,
+)
 from seedsigner.models.settings_definition import SettingsConstants, SettingsDefinition
 from seedsigner.models.singleton import Singleton
 
@@ -31,16 +37,11 @@ def _detect_gpio_backend() -> str:
         return "mock"
 
 
-def _detect_runtime_profile(hostname: str) -> str:
+def _detect_runtime_profile(_hostname: str) -> str:
     model = _read_device_model()
-    if "luckfox" in model or "luckfox" in hostname.lower():
-        if "mini" in model or "22" in model:
-            return "luckfox_22"
-        return "luckfox_40"
-    if "raspberry pi" in model:
-        if "model b rev 1" in model or ("model a" in model and "zero" not in model):
-            return "rpi_26"
-        return "rpi_40"
+    detected_profile = detect_runtime_profile(model)
+    if detected_profile:
+        return detected_profile
     return "desktop"
 
 
@@ -66,9 +67,9 @@ def _get_system_type_and_variant(runtime_profile: str, hardware_config: str | No
         return system_type, model.title()
 
     if hardware_config:
-        for value, label in SettingsConstants.ALL_HARDWARE_PIN_CONFIGS:
-            if value == hardware_config:
-                return system_type, label
+        hardware_label = get_hardware_profile_label(hardware_config)
+        if hardware_label:
+            return system_type, hardware_label
 
     return system_type, "Unknown"
 
@@ -96,13 +97,7 @@ class Settings(Singleton):
 
     @classmethod
     def get_platform_default_hardware_config(cls) -> str | None:
-        profile_map = {
-            "rpi_26": SettingsConstants.HARDWARE__RPI_26,
-            "rpi_40": SettingsConstants.HARDWARE__RPI_40,
-            "luckfox_22": SettingsConstants.HARDWARE__LUCKFOX_22,
-            "luckfox_40": SettingsConstants.HARDWARE__LUCKFOX_40,
-        }
-        return profile_map.get(cls.RUNTIME_PROFILE)
+        return runtime_profile_to_hardware_profile(cls.RUNTIME_PROFILE)
 
     @classmethod
     def get_platform_default_display_config(cls) -> str:
@@ -166,35 +161,32 @@ class Settings(Singleton):
             settings._data[SettingsConstants.SETTING__DISPLAY_CONFIGURATION] = Settings.get_platform_default_display_config()
             settings._data[SettingsConstants.SETTING__CAMERA_ROTATION] = Settings.get_platform_default_camera_rotation()
             detected_hardware = Settings.get_platform_default_hardware_config()
-            if detected_hardware:
-                settings._data[SettingsConstants.SETTING__HARDWARE_CONFIG] = detected_hardware
 
             system_type, system_variant = _get_system_type_and_variant(
                 Settings.RUNTIME_PROFILE,
-                settings._data.get(SettingsConstants.SETTING__HARDWARE_CONFIG),
+                detected_hardware,
             )
             logger.info(
                 "System detection: type=%s variant=%s runtime_profile=%s hardware_profile=%s hostname=%s model=%s gpio_backend=%s",
                 system_type,
                 system_variant,
                 Settings.RUNTIME_PROFILE,
-                settings._data.get(SettingsConstants.SETTING__HARDWARE_CONFIG, "n/a"),
+                detected_hardware or "n/a",
                 Settings.HOSTNAME,
                 _read_device_model() or "unknown",
                 _detect_gpio_backend(),
             )
             logger.info(
                 "Auto-configured defaults: hardware=%s display=%s camera_rotation=%s",
-                settings._data.get(SettingsConstants.SETTING__HARDWARE_CONFIG, "n/a"),
+                detected_hardware or "n/a",
                 settings._data.get(SettingsConstants.SETTING__DISPLAY_CONFIGURATION, "n/a"),
                 settings._data.get(SettingsConstants.SETTING__CAMERA_ROTATION, "n/a"),
             )
-            hardware_config = settings._data.get(SettingsConstants.SETTING__HARDWARE_CONFIG)
-            if hardware_config in SettingsConstants.ALL_HARDWARE_PIN_CONFIGS__PIN_DEFINITIONS:
-                pin_mapping = SettingsConstants.ALL_HARDWARE_PIN_CONFIGS__PIN_DEFINITIONS[hardware_config]
+            if detected_hardware:
+                pin_mapping = get_hardware_pin_mapping(detected_hardware)
                 logger.info(
                     "GPIO map (%s): display=%s buttons=%s camera=%s",
-                    hardware_config,
+                    detected_hardware,
                     pin_mapping.get("display"),
                     pin_mapping.get("buttons"),
                     pin_mapping.get("camera"),
@@ -264,10 +256,6 @@ class Settings(Singleton):
 
             updated_settings[settings_entry.attr_name] = value
 
-        detected_hardware = cls.get_platform_default_hardware_config()
-        if detected_hardware:
-            updated_settings[SettingsConstants.SETTING__HARDWARE_CONFIG] = detected_hardware
-
         return (config_name, updated_settings)
 
 
@@ -318,10 +306,6 @@ class Settings(Singleton):
                         # as [value, label] pairs.
                         new_settings[entry.attr_name] = [v[0] for v in new_settings[entry.attr_name]]
 
-        detected_hardware = Settings.get_platform_default_hardware_config()
-        if detected_hardware:
-            new_settings[SettingsConstants.SETTING__HARDWARE_CONFIG] = detected_hardware
-
         for key, value in new_settings.items():
             # Defer writing to disk until all values have been applied to avoid
             # repeatedly touching the microSD card during initialization or
@@ -343,12 +327,6 @@ class Settings(Singleton):
         if attr_name not in self._data:
             # Outdated settings
             logger.debug("Setting %s not recognized. Ignoring.", attr_name)
-            return
-
-        if attr_name == SettingsConstants.SETTING__HARDWARE_CONFIG:
-            detected_hardware = self.get_platform_default_hardware_config()
-            if detected_hardware:
-                self._data[attr_name] = detected_hardware
             return
 
         settings_entry = SettingsDefinition.get_settings_entry(attr_name)
@@ -636,10 +614,6 @@ class Settings(Singleton):
                 return SettingsDefinition.get_settings_entry(attr_name).default_value
 
             raise Exception(f"Setting for {attr_name} not found")
-        if attr_name == SettingsConstants.SETTING__HARDWARE_CONFIG:
-            detected_hardware = self.get_platform_default_hardware_config()
-            if detected_hardware:
-                return detected_hardware
         return self._data[attr_name]
 
 

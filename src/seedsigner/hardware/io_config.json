@@ -1,0 +1,144 @@
+{
+  "models": [
+    {
+      "platform": "Raspberry Pi",
+      "variant": "40-pin",
+      "shortname": "RPI_40",
+      "runtime_profile": "rpi_40",
+      "regex": [
+        "raspberry pi model b plus rev 1\\.[0-9]+",
+        "raspberry pi model a plus rev 1\\.[0-9]+",
+        "raspberry pi 2 model b rev 1\\.[0-9]+",
+        "raspberry pi 3 model b rev 1\\.[0-9]+",
+        "raspberry pi 3 model b plus rev 1\\.[0-9]+",
+        "raspberry pi 3 model a plus rev 1\\.[0-9]+",
+        "raspberry pi 4 model b rev 1\\.[0-9]+",
+        "raspberry pi 5 model b rev 1\\.[0-9]+",
+        "raspberry pi zero rev 1\\.[0-9]+",
+        "raspberry pi zero w rev 1\\.[0-9]+",
+        "raspberry pi zero 2 w rev 1\\.[0-9]+",
+        "raspberry pi 400 rev 1\\.[0-9]+"
+      ],
+      "display": {
+        "dc": ["/dev/gpiochip0", 25],
+        "rst": ["/dev/gpiochip0", 27],
+        "bl": ["/dev/gpiochip0", 24],
+        "spi_bus": 0,
+        "spi_device": 0
+      },
+      "buttons": {
+        "KEY_UP": ["/dev/gpiochip0", 6],
+        "KEY_DOWN": ["/dev/gpiochip0", 19],
+        "KEY_LEFT": ["/dev/gpiochip0", 5],
+        "KEY_RIGHT": ["/dev/gpiochip0", 26],
+        "KEY_PRESS": ["/dev/gpiochip0", 13],
+        "KEY1": ["/dev/gpiochip0", 21],
+        "KEY2": ["/dev/gpiochip0", 20],
+        "KEY3": ["/dev/gpiochip0", 16]
+      },
+      "camera": {
+        "device": "/dev/video0",
+        "resolution": [1280, 720],
+        "pixelformat": "YUYV",
+        "framerate": 4
+      }
+    },
+    {
+      "platform": "Raspberry Pi",
+      "variant": "26-pin",
+      "shortname": "RPI_26",
+      "runtime_profile": "rpi_26",
+      "regex": [
+        "raspberry pi model b rev 1\\.[0-9]+",
+        "raspberry pi model a rev 1\\.[0-9]+"
+      ],
+      "display": {
+        "dc": ["/dev/gpiochip0", 25],
+        "rst": ["/dev/gpiochip0", 27],
+        "bl": ["/dev/gpiochip0", 24],
+        "spi_bus": 0,
+        "spi_device": 0
+      },
+      "buttons": {
+        "KEY_UP": ["/dev/gpiochip0", 3],
+        "KEY_DOWN": ["/dev/gpiochip0", 17],
+        "KEY_LEFT": ["/dev/gpiochip0", 2],
+        "KEY_RIGHT": ["/dev/gpiochip0", 22],
+        "KEY_PRESS": ["/dev/gpiochip0", 4],
+        "KEY1": ["/dev/gpiochip0", 23],
+        "KEY2": ["/dev/gpiochip0", 18],
+        "KEY3": ["/dev/gpiochip0", 14]
+      },
+      "camera": {
+        "device": "/dev/video0",
+        "resolution": [1280, 720],
+        "pixelformat": "YUYV",
+        "framerate": 4
+      }
+    },
+    {
+      "platform": "Luckfox Pico",
+      "variant": "22-pin",
+      "shortname": "FOX_22",
+      "runtime_profile": "luckfox_22",
+      "regex": [
+        "luckfox pico mini"
+      ],
+      "display": {
+        "dc": ["/dev/gpiochip1", 20],
+        "rst": ["/dev/gpiochip1", 19],
+        "bl": ["/dev/gpiochip1", 11],
+        "spi_bus": 0,
+        "spi_device": 0
+      },
+      "buttons": {
+        "KEY_UP": ["/dev/gpiochip1", 25],
+        "KEY_DOWN": ["/dev/gpiochip1", 27],
+        "KEY_LEFT": ["/dev/gpiochip1", 24],
+        "KEY_RIGHT": ["/dev/gpiochip1", 22],
+        "KEY_PRESS": ["/dev/gpiochip1", 26],
+        "KEY1": ["/dev/gpiochip1", 23],
+        "KEY2": ["/dev/gpiochip0", 4],
+        "KEY3": ["/dev/gpiochip1", 21]
+      },
+      "camera": {
+        "device": "/dev/video12",
+        "resolution": [800, 600],
+        "pixelformat": "NV12",
+        "framerate": 10
+      }
+    },
+    {
+      "platform": "Luckfox Pico",
+      "variant": "40-pin",
+      "shortname": "FOX_40",
+      "runtime_profile": "luckfox_40",
+      "regex": [
+        "luckfox pico pro max"
+      ],
+      "display": {
+        "dc": ["/dev/gpiochip1", 24],
+        "rst": ["/dev/gpiochip1", 25],
+        "bl": ["/dev/gpiochip2", 8],
+        "spi_bus": 0,
+        "spi_device": 0
+      },
+      "buttons": {
+        "KEY_UP": [58],
+        "KEY_DOWN": [53],
+        "KEY_LEFT": [59],
+        "KEY_RIGHT": [54],
+        "KEY_PRESS": [52],
+        "KEY1": [55],
+        "KEY2": [43],
+        "KEY3": [42]
+      },
+      "camera": {
+        "device": "/dev/video12",
+        "resolution": [800, 600],
+        "pixelformat": "NV12",
+        "framerate": 10
+      }
+    }
+  ]
+}

@@ -21,7 +21,7 @@ except ModuleNotFoundError:
 
 from seedsigner.models.singleton import Singleton
 from seedsigner.models.settings import Settings
-from seedsigner.models.settings_definition import SettingsConstants
+from seedsigner.hardware.io_config import get_hardware_pin_mapping
 
 logger = logging.getLogger(__name__)
 
@@ -84,8 +84,8 @@ class HardwareButtons(Singleton):
             cls._instance = cls.__new__(cls)
 
             if USING_GPIO:
-                hardware_config = Settings.get_instance().get_value(SettingsConstants.SETTING__HARDWARE_CONFIG)
-                pin_mapping = SettingsConstants.ALL_HARDWARE_PIN_CONFIGS__PIN_DEFINITIONS[hardware_config]["buttons"]
+                hardware_config = Settings.get_platform_default_hardware_config()
+                pin_mapping = get_hardware_pin_mapping(hardware_config)["buttons"]
                 cls._instance._gpio_pins = {}
                 for name in cls.BUTTON_NAMES:
                     pin_selector = pin_mapping.get(name) or pin_mapping.get(name.lower())

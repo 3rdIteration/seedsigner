@@ -56,7 +56,7 @@ import time
 from math import sin, cos
 
 from seedsigner.models.settings import Settings
-from seedsigner.models.settings_definition import SettingsConstants
+from seedsigner.hardware.io_config import get_hardware_pin_mapping
 
 #
 # This allows sphinx to build the docs
@@ -285,8 +285,8 @@ class ST7789:
                 f"Unsupported {width}x{height} display. Supported displays: {supported_displays}"
             )
 
-        hardware_config = Settings.get_instance().get_value(SettingsConstants.SETTING__HARDWARE_CONFIG)
-        pin_mapping = SettingsConstants.ALL_HARDWARE_PIN_CONFIGS__PIN_DEFINITIONS[hardware_config]["display"]
+        hardware_config = Settings.get_platform_default_hardware_config()
+        pin_mapping = get_hardware_pin_mapping(hardware_config)["display"]
 
         self.physical_width = self.width = width
         self.physical_height = self.height = height

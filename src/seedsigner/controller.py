@@ -21,6 +21,7 @@ from seedsigner.models.settings_definition import SettingsConstants
 from seedsigner.views.screensaver import ScreensaverScreen
 from seedsigner.views.view import Destination
 from seedsigner.hardware.rng_monitor import HardwareRngHealthMonitor, HardwareRngMonitorThread
+from seedsigner.hardware.io_config import get_hardware_pin_mapping, get_hardware_profile_label
 
 
 logger = logging.getLogger(__name__)
@@ -46,9 +47,9 @@ def _get_system_type_and_variant(runtime_profile: str, hardware_profile: str | N
         pass
 
     if hardware_profile:
-        for value, label in SettingsConstants.ALL_HARDWARE_PIN_CONFIGS:
-            if value == hardware_profile:
-                return system_type, label
+        hardware_label = get_hardware_profile_label(hardware_profile)
+        if hardware_label:
+            return system_type, hardware_label
 
     return system_type, "Unknown"
 
@@ -247,7 +248,7 @@ class Controller(Singleton):
 
         # models
         controller.settings = Settings.get_instance()
-        hardware_profile = controller.settings.get_value(SettingsConstants.SETTING__HARDWARE_CONFIG, default_if_none=True)
+        hardware_profile = Settings.get_platform_default_hardware_config()
         runtime_profile = Settings.RUNTIME_PROFILE
         system_type, system_variant = _get_system_type_and_variant(runtime_profile, hardware_profile)
         logger.info(
@@ -258,8 +259,8 @@ class Controller(Singleton):
             hardware_profile,
             controller.settings.get_value(SettingsConstants.SETTING__DISPLAY_CONFIGURATION, default_if_none=True),
         )
-        if hardware_profile in SettingsConstants.ALL_HARDWARE_PIN_CONFIGS__PIN_DEFINITIONS:
-            pin_mapping = SettingsConstants.ALL_HARDWARE_PIN_CONFIGS__PIN_DEFINITIONS[hardware_profile]
+        if hardware_profile:
+            pin_mapping = get_hardware_pin_mapping(hardware_profile)
             logger.info(
                 "Startup GPIO map (%s): display=%s buttons=%s camera=%s",
                 hardware_profile,
