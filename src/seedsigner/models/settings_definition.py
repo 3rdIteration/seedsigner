@@ -1,17 +1,5 @@
-import os
 from dataclasses import dataclass
 from typing import Any, List
-
-from seedsigner.helpers.l10n import mark_for_translation as _mft
-
-import logging
-logger = logging.getLogger(__name__)
-
-try:
-    import RPi.GPIO as _GPIO  # type: ignore  # noqa: F401
-    USING_MOCK_GPIO = getattr(_GPIO, "__file__", None) is None
-except ModuleNotFoundError:
-    USING_MOCK_GPIO = True
 
 
 
@@ -22,25 +10,25 @@ class SettingsConstants:
     OPTION__PROMPT = "P"
     OPTION__REQUIRED = "R"
     OPTIONS__ENABLED_DISABLED = [
-        (OPTION__ENABLED, _mft("Enabled")),
-        (OPTION__DISABLED, _mft("Disabled")),
+        (OPTION__ENABLED, "Enabled"),
+        (OPTION__DISABLED, "Disabled"),
     ]
     OPTIONS__ONLY_DISABLED = [
-        (OPTION__DISABLED, _mft("Disabled")),
+        (OPTION__DISABLED, "Disabled"),
     ]
     OPTIONS__PROMPT_REQUIRED_DISABLED = [
-        (OPTION__PROMPT, _mft("Prompt")),
-        (OPTION__REQUIRED, _mft("Required")),
-        (OPTION__DISABLED, _mft("Disabled")),
+        (OPTION__PROMPT, "Prompt"),
+        (OPTION__REQUIRED, "Required"),
+        (OPTION__DISABLED, "Disabled"),
     ]
     OPTIONS__ENABLED_DISABLED_REQUIRED = OPTIONS__ENABLED_DISABLED +[
-        (OPTION__REQUIRED, _mft("Required")),
+        (OPTION__REQUIRED, "Required"),
     ]
     OPTIONS__ENABLED_DISABLED_PROMPT = OPTIONS__ENABLED_DISABLED + [
-        (OPTION__PROMPT, _mft("Prompt")),
+        (OPTION__PROMPT, "Prompt"),
     ]
     ALL_OPTIONS = OPTIONS__ENABLED_DISABLED_PROMPT + [
-        (OPTION__REQUIRED, _mft("Required")),
+        (OPTION__REQUIRED, "Required"),
     ]
 
     # User-facing selection options
@@ -57,176 +45,20 @@ class SettingsConstants:
         (COORDINATOR__KEEPER, "Keeper"),
     ]
 
-    # Over-specifying current and possible future locales to reduce/eliminate main repo
-    # changes when adding/testing new languages.
-    LOCALE__ARABIC = "ar"
-    LOCALE__BENGALI = "bn"
-    LOCALE__BULGARIAN = "bg"
-    LOCALE__CATALAN = "ca"
-    LOCALE__CHINESE_SIMPLIFIED = "zh_Hans_CN"
-    LOCALE__CHINESE_TRADITIONAL = "zh_Hant_TW"
-    LOCALE__CROATIAN = "hr"
-    LOCALE__CZECH = "cs"
-    LOCALE__DANISH = "da"
-    LOCALE__DUTCH = "nl"
-    LOCALE__EGYPTIAN = "ar_EG"
-    LOCALE__ENGLISH = "en"
-    LOCALE__ESTONIAN = "et"
-    LOCALE__FINNISH = "fi"
-    LOCALE__FRENCH = "fr"
-    LOCALE__GAELIC = "gd"
-    LOCALE__GERMAN = "de"
-    LOCALE__GREEK = "el"
-    LOCALE__GUJARATI = "gu"
-    LOCALE__HAUSA = "ha"
-    LOCALE__HEBREW = "he"
-    LOCALE__HINDI = "hi"
-    LOCALE__HUNGARIAN = "hu"
-    LOCALE__INDONESIAN = "id"
-    LOCALE__ITALIAN = "it"
-    LOCALE__JAPANESE = "ja"
-    LOCALE__JAVANESE = "jv"
-    LOCALE__KOREAN = "ko"
-    LOCALE__LAO = "lo"
-    LOCALE__LATVIAN = "lv"
-    LOCALE__LITHUANIAN = "lt"
-    LOCALE__MALAY = "ms"
-    LOCALE__MALTESE = "mt"
-    LOCALE__MARATHI = "mr"
-    LOCALE__NORWEGIAN = "no"
-    LOCALE__PERSIAN = "fa"
-    LOCALE__POLISH = "pl"
-    LOCALE__PORTUGUESE_BR = "pt_BR"
-    LOCALE__PORTUGUESE_PT = "pt_PT"
-    LOCALE__PUNJABI = "pa"
-    LOCALE__ROMANIAN = "ro"
-    LOCALE__RUSSIAN = "ru"
-    LOCALE__SLOVAK = "sk"
-    LOCALE__SLOVENIAN = "sl"
-    LOCALE__SPANISH = "es"
-    LOCALE__SWEDISH = "sv"
-    LOCALE__TAGALOG = "tl"
-    LOCALE__TAMIL = "ta"
-    LOCALE__TELUGU = "te"
-    LOCALE__THAI = "th"
-    LOCALE__TURKISH = "tr"
-    LOCALE__UKRANIAN = "uk"
-    LOCALE__URDU = "ur"
-    LOCALE__VIETNAMESE = "vi"
-
-    # Do not wrap for translation. Present each language in its native form (i.e. either
-    # using its native chars or how they write it in Latin chars; e.g. Spanish is listed
-    # and sorted as "Español").
-    # Sort fully-vetted languages first, then beta languages, then the "placeholders /
-    # coming soon" languages.
-    # Sort by native form when written in Latin chars, otherwise sort by English name.
-    # Include English name in parens for languages that don't use Latin chars.
-    # Include region/country in parens for specific dialects (e.g. "Português (Brasil)").
-    # Note that dicts preserve insertion order as of Python 3.7.
-    ALL_LOCALES = {
-        # --------- Fully supported languages -------------------------------------------
-        LOCALE__CATALAN: "Català",
-        LOCALE__GERMAN: "Deutsch",
-        LOCALE__ENGLISH: "English",
-        LOCALE__SPANISH: "Español",
-        LOCALE__FRENCH: "Français",
-        LOCALE__DUTCH: "Nederlands",
-
-        # --------- Beta languages ------------------------------------------------------
-        LOCALE__CHINESE_SIMPLIFIED: "(beta) 简体中文 (Chinese Simplified)",
-        LOCALE__JAPANESE: "(beta) 日本語 (Japanese)",
-        LOCALE__KOREAN: "(beta) 한국어 (Korean)",
-
-        # --------- Placeholders / Coming soon ------------------------------------------
-        # Commented out options require explicit additional font support.
-        # -------------------------------------------------------------------------------
-        # LOCALE__ARABIC: "العربية (Arabic)",
-        # LOCALE__BENGALI: "বাংলা (Bengali)",
-        LOCALE__BULGARIAN: "български (Bulgarian)",  # OpenSans includes cyrillic chars
-        LOCALE__CZECH: "čeština",
-        # LOCALE__CHINESE_TRADITIONAL: "繁體中文 (Chinese Traditional)",
-        LOCALE__DANISH: "Dansk",
-        LOCALE__ESTONIAN: "Eesti",
-        # LOCALE__EGYPTIAN: "مصرى (Egyptian)",
-        LOCALE__GAELIC: "Gaeilge",
-        LOCALE__GREEK: "Ελληνικά (Greek)",  # OpenSans includes Greek chars
-        # LOCALE__GUJARATI: "ગુજરાતી (Gujarati)",
-        LOCALE__HAUSA: "Hausa",
-        # LOCALE__HEBREW: "עברית (Hebrew)",
-        # LOCALE__HINDI: "हिन्दी (Hindi)",
-        LOCALE__CROATIAN: "Hrvatski",
-        LOCALE__ITALIAN: "Italiano",
-        LOCALE__INDONESIAN: "Indonesia",
-        LOCALE__JAVANESE: "Jawa (Javanese)",
-        # LOCALE__LAO: "ລາວ (Lao)",
-        LOCALE__LATVIAN: "Latviešu",
-        LOCALE__LITHUANIAN: "Lietuvių",
-        LOCALE__HUNGARIAN: "Magyar",
-        LOCALE__MALAY: "Melayu",
-        LOCALE__MALTESE: "Malti",
-        # LOCALE__MARATHI: "मराठी (Marathi)",
-        LOCALE__NORWEGIAN: "Norsk",
-        # LOCALE__PERSIAN: "فارسی (Persian)",
-        LOCALE__POLISH: "Polski",
-        LOCALE__PORTUGUESE_BR: "Português (Brasil)",
-        LOCALE__PORTUGUESE_PT: "Português (Portugal)",
-        # LOCALE__PUNJABI: "ਪੰਜਾਬੀ (Punjabi)",
-        LOCALE__ROMANIAN: "Română",
-        LOCALE__RUSSIAN: "русский (Russian)",  # OpenSans includes cyrillic chars
-        LOCALE__SLOVAK: "Slovenčina",
-        LOCALE__SLOVENIAN: "Slovenščina",
-        LOCALE__FINNISH: "Suomi",
-        LOCALE__SWEDISH: "Svenska",
-        LOCALE__TAGALOG: "Tagalog",
-        # LOCALE__TAMIL: "தமிழ் (Tamil)",
-        # LOCALE__TELUGU: "తెలుగు (Telugu)",
-        # LOCALE__THAI: "ไทย (Thai)",
-        LOCALE__TURKISH: "Türkçe",
-        LOCALE__UKRANIAN: "українська (Ukranian)",   # OpenSans includes cyrillic chars
-        # LOCALE__URDU: "اردو (Urdu)",
-        LOCALE__VIETNAMESE: "Tiếng Việt (Vietnamese)",
-    }
-
-    @classmethod
-    def get_detected_languages(cls) -> list[tuple[str, str]]:
-        """
-        Return a list of tuples of language codes and their native names.
-
-        Scans the filesystem to autodiscover which language codes are onboard.
-        """
-        # Will normally be the launch dir (where main.py is located)...
-        cwd = os.getcwd()
-
-        # ...except when running the tests which happens one dir higher
-        if "src" not in cwd:
-            cwd = os.path.join(cwd, "src")
-
-        # Pre-load English since there's no "en" entry in the translations folder; also
-        # it should always appear first in the list anyway.
-        detected_languages = [(cls.LOCALE__ENGLISH, cls.ALL_LOCALES[cls.LOCALE__ENGLISH])]
-
-        locales_present = set()
-        for root, dirs, files in os.walk(os.path.join(cwd, "seedsigner", "resources", "seedsigner-translations", "l10n")):
-            for file in [f for f in files if f.endswith(".mo")]:
-                # `root` will be [...]seedsigner/resources/seedsigner-translations/l10n/pt_BR/LC_MESSAGES
-                locales_present.add(root.split(f"l10n{ os.sep }")[1].split(os.sep)[0])
-
-        for locale in cls.ALL_LOCALES.keys():
-            if locale in locales_present:
-                detected_languages.append((locale, cls.ALL_LOCALES[locale]))
-
-        return detected_languages
-
+    LANGUAGE__ENGLISH = "en"
+    ALL_LANGUAGES = [
+        (LANGUAGE__ENGLISH, "English"),
+    ]
 
     BTC_DENOMINATION__BTC = "btc"
     BTC_DENOMINATION__SATS = "sats"
     BTC_DENOMINATION__THRESHOLD = "thr"
     BTC_DENOMINATION__BTCSATSHYBRID = "hyb"
     ALL_BTC_DENOMINATIONS = [
-        (BTC_DENOMINATION__BTC, _mft("BTC")),
-        (BTC_DENOMINATION__SATS, _mft("sats")),
-        (BTC_DENOMINATION__THRESHOLD, _mft("Threshold at 0.01")),
-        (BTC_DENOMINATION__BTCSATSHYBRID, _mft("BTC | sats hybrid")),
+        (BTC_DENOMINATION__BTC, "BTC"),
+        (BTC_DENOMINATION__SATS, "sats"),
+        (BTC_DENOMINATION__THRESHOLD, "Threshold at 0.01"),
+        (BTC_DENOMINATION__BTCSATSHYBRID, "BTC | sats hybrid"),
     ]
 
     CAMERA_ROTATION__0 = 0
@@ -234,37 +66,20 @@ class SettingsConstants:
     CAMERA_ROTATION__180 = 180
     CAMERA_ROTATION__270 = 270
     ALL_CAMERA_ROTATIONS = [
-        (CAMERA_ROTATION__0, _mft("0°")),
-        (CAMERA_ROTATION__90, _mft("90°")),
-        (CAMERA_ROTATION__180, _mft("180°")),
-        (CAMERA_ROTATION__270, _mft("270°")),
-    ]
-
-    CAMERA_DEVICE__0 = 0
-    CAMERA_DEVICE__1 = 1
-    CAMERA_DEVICE__2 = 2
-    CAMERA_DEVICE__3 = 3
-    ALL_CAMERA_DEVICES = [
-        (CAMERA_DEVICE__0, _mft("Camera 0")),
-        (CAMERA_DEVICE__1, _mft("Camera 1")),
-        (CAMERA_DEVICE__2, _mft("Camera 2")),
-        (CAMERA_DEVICE__3, _mft("Camera 3")),
+        (CAMERA_ROTATION__0, "0°"),
+        (CAMERA_ROTATION__90, "90°"),
+        (CAMERA_ROTATION__180, "180°"),
+        (CAMERA_ROTATION__270, "270°"),
     ]
 
     # QR code constants
     DENSITY__LOW = "L"
     DENSITY__MEDIUM = "M"
     DENSITY__HIGH = "H"
-    # TRANSLATOR_NOTE: QR code density option: Low, Medium, High
-    density_low = _mft("Low")
-    # TRANSLATOR_NOTE: QR code density option: Low, Medium, High
-    density_medium = _mft("Medium")
-    # TRANSLATOR_NOTE: QR code density option: Low, Medium, High
-    density_high = _mft("High")
     ALL_DENSITIES = [
-        (DENSITY__LOW, density_low),
-        (DENSITY__MEDIUM, density_medium),
-        (DENSITY__HIGH, density_high),
+        (DENSITY__LOW, "Low"),
+        (DENSITY__MEDIUM, "Medium"),
+        (DENSITY__HIGH, "High"),
     ]
 
     # Seed-related constants
@@ -272,84 +87,13 @@ class SettingsConstants:
     TESTNET = "T"
     REGTEST = "R"
     ALL_NETWORKS = [
-        (MAINNET, _mft("Mainnet")),
-        (TESTNET, _mft("Testnet")),
-        (REGTEST, _mft("Regtest"))
+        (MAINNET, "Mainnet"),
+        (TESTNET, "Testnet"),
+        (REGTEST, "Regtest")
     ]
-
-    #Smartcard Related Constants
-    SMARTCARD_INTERFACE_USB = "usb"
-    SMARTCARD_INTERFACE_PN532 = "pn532"
-    SMARTCARD_INTERFACE_SEC1210 = "sec1210"
-    SMARTCARD_INTERFACE_PHOENIX = "phoenix-usb"
-    ALL_SMARTCARD_INTERFACES = [
-        (SMARTCARD_INTERFACE_USB, "USB PC/SC Reader"),
-        (SMARTCARD_INTERFACE_PN532, "PN532 via GPIO"),
-        (SMARTCARD_INTERFACE_SEC1210, "SEC1210 via GPIO"),
-        (SMARTCARD_INTERFACE_PHOENIX, "Phoenix via USB")
-    ]
-
-    # Smartcard PIN attempt limits
-    SCARD_PIN_ATTEMPTS_MIN = 2
-    SCARD_PIN_ATTEMPTS_MAX = 10
-    ALL_SCARD_PIN_ATTEMPTS = [(i, str(i)) for i in range(SCARD_PIN_ATTEMPTS_MIN, SCARD_PIN_ATTEMPTS_MAX + 1)]
-    DEFAULT_SCARD_PIN_ATTEMPTS = 5
-
-    # Satochip signing behavior
-    SATOCHIP_TIMEOUT_MIN = 0.25
-    SATOCHIP_TIMEOUT_MAX = 1
-
-    ALL_SATOCHIP_TIMEOUTS = [
-        (i, f"{i:g}s")
-        for i in [x * 0.25 for x in range(int(SATOCHIP_TIMEOUT_MIN / 0.25), int(SATOCHIP_TIMEOUT_MAX / 0.25) + 1)]
-    ]
-    DEFAULT_SATOCHIP_TIMEOUT = 0.5
-
-    SATOCHIP_MSG_TIMEOUT_MIN = 0.5
-    SATOCHIP_MSG_TIMEOUT_MAX = 2
-
-    ALL_SATOCHIP_MSG_TIMEOUTS = [
-        (i / 4, f"{i / 4:g}s")
-        for i in range(int(SATOCHIP_MSG_TIMEOUT_MIN * 4), int(SATOCHIP_MSG_TIMEOUT_MAX * 4) + 1)
-    ]
-    DEFAULT_SATOCHIP_MSG_TIMEOUT = 1.25
-
-    SATOCHIP_PRE_DUMMY_MAX_MIN = 0
-    SATOCHIP_PRE_DUMMY_MAX_MAX = 12
-    ALL_SATOCHIP_PRE_DUMMY_MAX = [
-        (i, str(i))
-        for i in range(SATOCHIP_PRE_DUMMY_MAX_MIN, SATOCHIP_PRE_DUMMY_MAX_MAX + 1)
-    ]
-    DEFAULT_SATOCHIP_PRE_DUMMY_MAX = 6
-
-    SATOCHIP_POST_DUMMY_MAX_MIN = 0
-    SATOCHIP_POST_DUMMY_MAX_MAX = 12
-    ALL_SATOCHIP_POST_DUMMY_MAX = [
-        (i, str(i))
-        for i in range(
-            SATOCHIP_POST_DUMMY_MAX_MIN, SATOCHIP_POST_DUMMY_MAX_MAX + 1
-        )
-    ]
-    DEFAULT_SATOCHIP_POST_DUMMY_MAX = 6
-
-    SATOCHIP_IN_TX_DUMMY_MAX_MIN = 1
-    SATOCHIP_IN_TX_DUMMY_MAX_MAX = 5
-    ALL_SATOCHIP_IN_TX_DUMMY_MAX = [
-        (i, str(i))
-        for i in range(SATOCHIP_IN_TX_DUMMY_MAX_MIN, SATOCHIP_IN_TX_DUMMY_MAX_MAX + 1)
-    ]
-    DEFAULT_SATOCHIP_IN_TX_DUMMY_MAX = 3
-
-    SATOCHIP_DUMMY_PROB_MIN = 0
-    SATOCHIP_DUMMY_PROB_MAX = 100
-    ALL_SATOCHIP_DUMMY_PROB = [
-        (i, f"{i}%") for i in range(SATOCHIP_DUMMY_PROB_MIN, SATOCHIP_DUMMY_PROB_MAX + 1, 5)
-    ]
-    DEFAULT_SATOCHIP_DUMMY_PROB = 50
 
     @classmethod
     def map_network_to_embit(cls, network) -> str:
-        # Note these are `embit` constants; do not wrap for translation
         if network == SettingsConstants.MAINNET:
             return "main"
         elif network == SettingsConstants.TESTNET:
@@ -357,28 +101,14 @@ class SettingsConstants:
         if network == SettingsConstants.REGTEST:
             return "regtest"
     
-    PERSISTENT_SETTINGS__SD_INSERTED__HELP_TEXT = _mft("Store Settings on SD card")
-    PERSISTENT_SETTINGS__SD_REMOVED__HELP_TEXT = _mft("Insert SD card to enable")
-
-    # Wipe timer constants (minutes)
-    WIPE_TIMER__DISABLED = 0
-    WIPE_TIMER__FIVE_MINUTES = 5
-    WIPE_TIMER__TEN_MINUTES = 10
-    WIPE_TIMER__FIFTEEN_MINUTES = 15
-    WIPE_TIMER__THIRTY_MINUTES = 30
-    ALL_WIPE_TIMERS = [
-        (WIPE_TIMER__DISABLED, _mft("Disabled")),
-        (WIPE_TIMER__FIVE_MINUTES, _mft("5 minutes")),
-        (WIPE_TIMER__TEN_MINUTES, _mft("10 minutes")),
-        (WIPE_TIMER__FIFTEEN_MINUTES, _mft("15 minutes")),
-        (WIPE_TIMER__THIRTY_MINUTES, _mft("30 minutes")),
-    ]
+    PERSISTENT_SETTINGS__SD_INSERTED__HELP_TEXT = "Store Settings on SD card"
+    PERSISTENT_SETTINGS__SD_REMOVED__HELP_TEXT = "Insert SD card to enable"
 
     SINGLE_SIG = "ss"
     MULTISIG = "ms"
     ALL_SIG_TYPES = [
-        (SINGLE_SIG, _mft("Single Sig")),
-        (MULTISIG, _mft("Multisig")),
+        (SINGLE_SIG, "Single Sig"),
+        (MULTISIG, "Multisig"),
     ]
 
     LEGACY_P2PKH = "leg"
@@ -387,11 +117,11 @@ class SettingsConstants:
     TAPROOT = "tr"
     CUSTOM_DERIVATION = "cus"
     ALL_SCRIPT_TYPES = [
-        (NATIVE_SEGWIT, _mft("Native Segwit")),
-        (NESTED_SEGWIT, _mft("Nested Segwit")),
-        (LEGACY_P2PKH, _mft("Legacy")),
-        (TAPROOT, _mft("Taproot")),
-        (CUSTOM_DERIVATION, _mft("Custom Derivation")),
+        (NATIVE_SEGWIT, "Native Segwit"),
+        (NESTED_SEGWIT, "Nested Segwit"),
+        (LEGACY_P2PKH, "Legacy"),
+        (TAPROOT, "Taproot"),
+        (CUSTOM_DERIVATION, "Custom Derivation"),
     ]
 
     WORDLIST_LANGUAGE__ENGLISH = "en"
@@ -413,88 +143,32 @@ class SettingsConstants:
         # (WORDLIST_LANGUAGE__PORTUGUESE, "Português"),
     ]
 
+    
     # Individual SettingsEntry attr_names
-    # Note: attr_names are internal constants; do not wrap for translation
-    SETTING__LOCALE = "locale"
+    SETTING__LANGUAGE = "language"
     SETTING__WORDLIST_LANGUAGE = "wordlist_language"
     SETTING__PERSISTENT_SETTINGS = "persistent_settings"
     SETTING__COORDINATORS = "coordinators"
     SETTING__BTC_DENOMINATION = "denomination"
-    SETTING__SMARTCARD_INTERFACES = "smartcard_interfaces"
-    SETTING__CACHE_SCARD_PIN = "cache_scard_pin"
-    SETTING__SCARD_PIN_ATTEMPTS = "scard_pin_attempts"
-    SETTING__SMARTCARD_SUPPORT = "smartcard_support"
-    SETTING__WIPE_TIMER = "wipe_timer"
-
-    SETTING__DISPLAY_CONFIGURATION = "display_config"
-    SETTING__DISPLAY_COLOR_INVERTED = "color_inverted"
 
     SETTING__NETWORK = "network"
     SETTING__QR_DENSITY = "qr_density"
     SETTING__XPUB_EXPORT = "xpub_export"
     SETTING__SIG_TYPES = "sig_types"
     SETTING__SCRIPT_TYPES = "script_types"
-    SETTING__ACCOUNT_PROMPT = "account_prompt"
-    SETTING__SEED_WORD_LENGTHS = "seed_word_lengths"
     SETTING__XPUB_DETAILS = "xpub_details"
     SETTING__PASSPHRASE = "passphrase"
     SETTING__CAMERA_ROTATION = "camera_rotation"
-    SETTING__CAMERA_DEVICE = "camera_device"
     SETTING__COMPACT_SEEDQR = "compact_seedqr"
     SETTING__BIP85_CHILD_SEEDS = "bip85_child_seeds"
-    SETTING__BIP85_ECC_KEYS = "bip85_ecc_keys"
-    SETTING__SLIP39_SEEDS = "slip39_seeds"
-    SETTING__SLIP39_EXTENDABLE = "slip39_extendable"
     SETTING__ELECTRUM_SEEDS = "electrum_seeds"
-    SETTING__BITBOX_BACKUP = "bitbox_backup"
-    SETTING__PASSPORT_BACKUP = "passport_backup"
-    SETTING__TAPSIGNER_BACKUP = "tapsigner_backup"
     SETTING__MESSAGE_SIGNING = "message_signing"
     SETTING__PRIVACY_WARNINGS = "privacy_warnings"
     SETTING__DIRE_WARNINGS = "dire_warnings"
     SETTING__QR_BRIGHTNESS_TIPS = "qr_brightness_tips"
     SETTING__PARTNER_LOGOS = "partner_logos"
-    SETTING__PLAINTEXTQR = "plaintextqr"
-    SETTING__ENCRYPTED_QR = "encrypted_qr"
-    SETTING__ENCRYPTION_MODE = "version"
-    SETTING__ENCRYPTION_ITER = "pbkdf2_iterations"
-    SETTING__WIF_KEYS = "wif_keys"
-    SETTING__BIP38_KEYS = "bip38_keys"
-
-    SETTING__SATOCHIP_SIGN_TIMEOUT = "satochip_sign_timeout"
-    SETTING__SATOCHIP_MSG_SIGN_TIMEOUT = "satochip_msg_sign_timeout"
-    SETTING__SATOCHIP_MAX_PRE_DUMMIES = "satochip_max_pre_dummies"
-    SETTING__SATOCHIP_MAX_POST_DUMMIES = "satochip_max_post_dummies"
-    SETTING__SATOCHIP_MAX_IN_TX_DUMMIES = "satochip_max_in_tx_dummies"
-    SETTING__SATOCHIP_DUMMY_PROBABILITY = "satochip_dummy_probability"
 
     SETTING__DEBUG = "debug"
-
-
-    # Hardware config settings
-    DISPLAY_CONFIGURATION__ST7789__240x240 = "st7789_240x240"  # default; original Waveshare 1.3" display hat
-    DISPLAY_CONFIGURATION__ST7789__320x240 = "st7789_320x240"    # natively portrait dimensions; we apply a 90° rotation
-    DISPLAY_CONFIGURATION__ILI9341__320x240 = "ili9341_320x240"  # natively portrait dimensions; we apply a 90° rotation
-    DISPLAY_CONFIGURATION__ILI9486__480x320 = "ili9486_480x320"  # natively portrait dimensions; we apply a 90° rotation
-    DISPLAY_CONFIGURATION__DESKTOP__240x240 = "desktop_240x240"  # pygame-based desktop simulation
-    DISPLAY_CONFIGURATION__DESKTOP__320x240 = "desktop_320x240"
-    if USING_MOCK_GPIO:
-        ALL_DISPLAY_CONFIGURATIONS = [
-            (DISPLAY_CONFIGURATION__ST7789__240x240, "st7789 240x240"),
-            (DISPLAY_CONFIGURATION__ST7789__320x240, "st7789 320x240"),
-            (DISPLAY_CONFIGURATION__ILI9341__320x240, "ili9341 320x240 (beta)"),
-            (DISPLAY_CONFIGURATION__DESKTOP__240x240, "desktop 240x240"),
-            (DISPLAY_CONFIGURATION__DESKTOP__320x240, "desktop 320x240"),
-            # (DISPLAY_CONFIGURATION__ILI9486__320x480, "ili9486 480x320"),  # TODO: Enable when ili9486 driver performance is improved
-        ]
-    else:
-        ALL_DISPLAY_CONFIGURATIONS = [
-            (DISPLAY_CONFIGURATION__ST7789__240x240, "st7789 240x240"),
-            (DISPLAY_CONFIGURATION__ST7789__320x240, "st7789 320x240"),
-            (DISPLAY_CONFIGURATION__ILI9341__320x240, "ili9341 320x240 (beta)"),
-            # (DISPLAY_CONFIGURATION__ILI9486__320x480, "ili9486 480x320"),  # TODO: Enable when ili9486 driver performance is improved
-        ]
-
 
     # Hidden settings
     SETTING__QR_BRIGHTNESS = "qr_background_color"
@@ -509,9 +183,8 @@ class SettingsConstants:
 
     VISIBILITY__GENERAL = "general"
     VISIBILITY__ADVANCED = "advanced"
-    VISIBILITY__HARDWARE = "hardware"
     VISIBILITY__DEVELOPER = "developer"
-    VISIBILITY__HIDDEN = "hidden"   # For data-only (e.g. custom_derivation)
+    VISIBILITY__HIDDEN = "hidden"   # For data-only (e.g. custom_derivation), not configurable by the user
 
     # TODO: Is there really a difference between ENABLED and PROMPT?
     TYPE__ENABLED_DISABLED = "enabled_disabled"
@@ -534,36 +207,9 @@ class SettingsConstants:
     ELECTRUM_PBKDF2_ROUNDS=2048
 
     # Label strings
-    LABEL__BIP39_PASSPHRASE = _mft("BIP-39 Passphrase")
-    # TRANSLATOR_NOTE: Terminology used by Electrum seeds; equivalent to bip39 passphrase
-    custom_extension = _mft("Custom Extension")
-    LABEL__CUSTOM_EXTENSION = custom_extension
+    LABEL__BIP39_PASSPHRASE = "BIP-39 Passphrase"
+    LABEL__CUSTOM_EXTENSION = "Custom Extension"   # Terminology used by Electrum seeds
 
-    # Encryption constants
-    ENCRYPTION_MODE_ECB   = "AES-ECB"
-    ENCRYPTION_MODE_CBC   = "AES-CBC"
-    ENCRYPTION_MODE_CTR   = "AES-CTR"
-    ENCRYPTION_MODE_GCM   = "AES-GCM"
-    ENCRYPTION_MODE_ECBV1 = "AES-ECB v1"
-    ENCRYPTION_MODE_CBCV1 = "AES-CBC v1"
-    ENCRYPTION_MODE       = ENCRYPTION_MODE_GCM
-    ENCRYPTION_ITERATIONS = 10
-    ALL_ENCRYPTION_MODES = [
-        ENCRYPTION_MODE_ECB,
-        ENCRYPTION_MODE_CBC,
-        ENCRYPTION_MODE_CTR,
-        ENCRYPTION_MODE_GCM,
-        ENCRYPTION_MODE_ECBV1,
-        ENCRYPTION_MODE_CBCV1,
-    ]
-
-    ALL_SEED_WORD_LENGTHS = [
-        (12, "12 words"),
-        (15, "15 words"),
-        (18, "18 words"),
-        (21, "21 words"),
-        (24, "24 words"),
-    ]
 
 
 @dataclass
@@ -633,7 +279,7 @@ class SettingsEntry:
                 option_value = option
                 display_name = option
             if option_value == value:
-                return _mft(display_name)
+                return display_name
 
 
     def get_selection_option_value_by_display_name(self, display_name: str):
@@ -699,19 +345,21 @@ class SettingsDefinition:
     settings_entries: List[SettingsEntry] = [
         # General options
 
+        # TODO: Full babel multilanguage support! Until then, type == HIDDEN
         SettingsEntry(category=SettingsConstants.CATEGORY__SYSTEM,
-                      attr_name=SettingsConstants.SETTING__LOCALE,
+                      attr_name=SettingsConstants.SETTING__LANGUAGE,
                       abbreviated_name="lang",
-                      display_name=_mft("Language"),
+                      display_name="Language",
                       type=SettingsConstants.TYPE__SELECT_1,
-                      selection_options=SettingsConstants.get_detected_languages(),
-                      default_value=SettingsConstants.LOCALE__ENGLISH),
+                      visibility=SettingsConstants.VISIBILITY__HIDDEN,
+                      selection_options=SettingsConstants.ALL_LANGUAGES,
+                      default_value=SettingsConstants.LANGUAGE__ENGLISH),
 
         # TODO: Support other bip-39 wordlist languages! Until then, type == HIDDEN
         SettingsEntry(category=SettingsConstants.CATEGORY__SYSTEM,
                       attr_name=SettingsConstants.SETTING__WORDLIST_LANGUAGE,
                       abbreviated_name="wordlist_lang",
-                      display_name=_mft("Mnemonic language"),
+                      display_name="Mnemonic language",
                       type=SettingsConstants.TYPE__SELECT_1,
                       visibility=SettingsConstants.VISIBILITY__HIDDEN,
                       selection_options=SettingsConstants.ALL_WORDLIST_LANGUAGES,
@@ -720,14 +368,14 @@ class SettingsDefinition:
         SettingsEntry(category=SettingsConstants.CATEGORY__SYSTEM,
                       attr_name=SettingsConstants.SETTING__PERSISTENT_SETTINGS,
                       abbreviated_name="persistent",
-                      display_name=_mft("Persistent settings"),
+                      display_name="Persistent settings",
                       help_text=SettingsConstants.PERSISTENT_SETTINGS__SD_INSERTED__HELP_TEXT,
                       default_value=SettingsConstants.OPTION__DISABLED),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__WALLET,
                       attr_name=SettingsConstants.SETTING__COORDINATORS,
                       abbreviated_name="coords",
-                      display_name=_mft("Coordinator software"),
+                      display_name="Coordinator software",
                       type=SettingsConstants.TYPE__MULTISELECT,
                       selection_options=SettingsConstants.ALL_COORDINATORS,
                       default_value=[
@@ -740,52 +388,16 @@ class SettingsDefinition:
         SettingsEntry(category=SettingsConstants.CATEGORY__SYSTEM,
                       attr_name=SettingsConstants.SETTING__BTC_DENOMINATION,
                       abbreviated_name="denom",
-                      display_name=_mft("Denomination display"),
+                      display_name="Denomination display",
                       type=SettingsConstants.TYPE__SELECT_1,
                       selection_options=SettingsConstants.ALL_BTC_DENOMINATIONS,
                       default_value=SettingsConstants.BTC_DENOMINATION__THRESHOLD),
-
-        SettingsEntry(category=SettingsConstants.CATEGORY__SYSTEM,
-                    attr_name=SettingsConstants.SETTING__SMARTCARD_INTERFACES,
-                    abbreviated_name="screaders",
-                    display_name="Smartcard Interfaces",
-                    type=SettingsConstants.TYPE__MULTISELECT,
-                    visibility=SettingsConstants.VISIBILITY__HARDWARE,
-                    selection_options=SettingsConstants.ALL_SMARTCARD_INTERFACES,
-                    default_value=[
-                        opt[0]
-                        for opt in SettingsConstants.ALL_SMARTCARD_INTERFACES
-                        if opt[0] != SettingsConstants.SMARTCARD_INTERFACE_PHOENIX
-                    ]),
-
-        SettingsEntry(category=SettingsConstants.CATEGORY__SYSTEM,
-                    attr_name=SettingsConstants.SETTING__CACHE_SCARD_PIN,
-                    abbreviated_name="cachepin",
-                    display_name="Cache Smartcard Pin",
-                    type=SettingsConstants.TYPE__SELECT_1,
-                    selection_options=SettingsConstants.OPTIONS__ENABLED_DISABLED,
-                    default_value=SettingsConstants.OPTION__DISABLED),
-
-        SettingsEntry(category=SettingsConstants.CATEGORY__SYSTEM,
-                    attr_name=SettingsConstants.SETTING__SCARD_PIN_ATTEMPTS,
-                    abbreviated_name="pintries",
-                    display_name=_mft("Smartcard PIN Attempts"),
-                    type=SettingsConstants.TYPE__SELECT_1,
-                    selection_options=SettingsConstants.ALL_SCARD_PIN_ATTEMPTS,
-                    default_value=SettingsConstants.DEFAULT_SCARD_PIN_ATTEMPTS),
-
-        SettingsEntry(category=SettingsConstants.CATEGORY__SYSTEM,
-                    attr_name=SettingsConstants.SETTING__WIPE_TIMER,
-                    abbreviated_name="wipe",
-                    display_name=_mft("Wipe Timer"),
-                    type=SettingsConstants.TYPE__SELECT_1,
-                    selection_options=SettingsConstants.ALL_WIPE_TIMERS,
-                    default_value=SettingsConstants.WIPE_TIMER__DISABLED),
+     
 
         # Advanced options
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
                       attr_name=SettingsConstants.SETTING__NETWORK,
-                      display_name=_mft("Bitcoin network"),
+                      display_name="Bitcoin network",
                       type=SettingsConstants.TYPE__SELECT_1,
                       visibility=SettingsConstants.VISIBILITY__ADVANCED,
                       selection_options=SettingsConstants.ALL_NETWORKS,
@@ -793,7 +405,7 @@ class SettingsDefinition:
 
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
                       attr_name=SettingsConstants.SETTING__QR_DENSITY,
-                      display_name=_mft("QR code density"),
+                      display_name="QR code density",
                       type=SettingsConstants.TYPE__SELECT_1,
                       visibility=SettingsConstants.VISIBILITY__ADVANCED,
                       selection_options=SettingsConstants.ALL_DENSITIES,
@@ -801,14 +413,14 @@ class SettingsDefinition:
 
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
                       attr_name=SettingsConstants.SETTING__XPUB_EXPORT,
-                      display_name=_mft("Xpub export"),
+                      display_name="Xpub export",
                       visibility=SettingsConstants.VISIBILITY__ADVANCED,
                       default_value=SettingsConstants.OPTION__ENABLED),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
                       attr_name=SettingsConstants.SETTING__SIG_TYPES,
                       abbreviated_name="sigs",
-                      display_name=_mft("Sig types"),
+                      display_name="Sig types",
                       type=SettingsConstants.TYPE__MULTISELECT,
                       visibility=SettingsConstants.VISIBILITY__ADVANCED,
                       selection_options=SettingsConstants.ALL_SIG_TYPES,
@@ -817,36 +429,21 @@ class SettingsDefinition:
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
                       attr_name=SettingsConstants.SETTING__SCRIPT_TYPES,
                       abbreviated_name="scripts",
-                      display_name=_mft("Script types"),
+                      display_name="Script types",
                       type=SettingsConstants.TYPE__MULTISELECT,
                       visibility=SettingsConstants.VISIBILITY__ADVANCED,
                       selection_options=SettingsConstants.ALL_SCRIPT_TYPES,
                       default_value=[SettingsConstants.NATIVE_SEGWIT, SettingsConstants.NESTED_SEGWIT, SettingsConstants.TAPROOT]),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
-                      attr_name=SettingsConstants.SETTING__SEED_WORD_LENGTHS,
-                      abbreviated_name="seedlen",
-                      display_name=_mft("Seed word lengths"),
-                      type=SettingsConstants.TYPE__MULTISELECT,
-                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
-                      selection_options=SettingsConstants.ALL_SEED_WORD_LENGTHS,
-                      default_value=[12, 24]),
-
-        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
                       attr_name=SettingsConstants.SETTING__XPUB_DETAILS,
-                      display_name=_mft("Show xpub details"),
+                      display_name="Show xpub details",
                       visibility=SettingsConstants.VISIBILITY__ADVANCED,
                       default_value=SettingsConstants.OPTION__ENABLED),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
-                      attr_name=SettingsConstants.SETTING__ACCOUNT_PROMPT,
-                      display_name=_mft("BIP32 account prompt"),
-                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
-                      default_value=SettingsConstants.OPTION__DISABLED),
-
-        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
                       attr_name=SettingsConstants.SETTING__PASSPHRASE,
-                      display_name=_mft("BIP-39 passphrase"),
+                      display_name="BIP-39 passphrase",
                       type=SettingsConstants.TYPE__SELECT_1,
                       visibility=SettingsConstants.VISIBILITY__ADVANCED,
                       selection_options=SettingsConstants.OPTIONS__ENABLED_DISABLED_REQUIRED,
@@ -855,7 +452,7 @@ class SettingsDefinition:
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
                       attr_name=SettingsConstants.SETTING__CAMERA_ROTATION,
                       abbreviated_name="camera",
-                      display_name=_mft("Camera rotation"),
+                      display_name="Camera rotation",
                       type=SettingsConstants.TYPE__SELECT_1,
                       visibility=SettingsConstants.VISIBILITY__ADVANCED,
                       selection_options=SettingsConstants.ALL_CAMERA_ROTATIONS,
@@ -863,230 +460,57 @@ class SettingsDefinition:
 
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
                       attr_name=SettingsConstants.SETTING__COMPACT_SEEDQR,
-                      display_name=_mft("Compact SeedQR"),
+                      display_name="CompactSeedQR",
                       visibility=SettingsConstants.VISIBILITY__ADVANCED,
                       default_value=SettingsConstants.OPTION__ENABLED),
-
-        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
-                      attr_name=SettingsConstants.SETTING__PLAINTEXTQR,
-                      display_name="PlaintextQR",
-                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
-                      default_value=SettingsConstants.OPTION__ENABLED),
-
-        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
-                      attr_name=SettingsConstants.SETTING__ENCRYPTED_QR,
-                      display_name="EncryptedQR",
-                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
-                      default_value=SettingsConstants.OPTION__ENABLED),
-
-        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
-                      attr_name=SettingsConstants.SETTING__ENCRYPTION_MODE,
-                      display_name="Encryption Mode",
-                      type=SettingsConstants.TYPE__SELECT_1,
-                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
-                      selection_options=SettingsConstants.ALL_ENCRYPTION_MODES,
-                      default_value=SettingsConstants.ENCRYPTION_MODE),
-
-        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
-                      attr_name=SettingsConstants.SETTING__ENCRYPTION_ITER,
-                      display_name="Encryption Iter.(PBKDF2)",
-                      type=SettingsConstants.TYPE__FREE_ENTRY,
-                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
-                      default_value=SettingsConstants.ENCRYPTION_ITERATIONS),
-
-        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
-                      attr_name=SettingsConstants.SETTING__WIF_KEYS,
-                      display_name="WIF keys",
-                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
-                      default_value=SettingsConstants.OPTION__DISABLED),
-
-        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
-                      attr_name=SettingsConstants.SETTING__BIP38_KEYS,
-                      display_name="BIP38 keys",
-                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
-                      default_value=SettingsConstants.OPTION__DISABLED),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
                       attr_name=SettingsConstants.SETTING__BIP85_CHILD_SEEDS,
                       abbreviated_name="bip85",
-                      display_name=_mft("BIP-85 child seeds"),
-                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
-                      default_value=SettingsConstants.OPTION__ENABLED),
-
-        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
-                      attr_name=SettingsConstants.SETTING__BIP85_ECC_KEYS,
-                      abbreviated_name="bip85_ecc",
-                      display_name=_mft("BIP85 ECC curves"),
+                      display_name="BIP-85 child seeds",
                       visibility=SettingsConstants.VISIBILITY__ADVANCED,
                       default_value=SettingsConstants.OPTION__DISABLED),
-
-        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
-                      attr_name=SettingsConstants.SETTING__SLIP39_SEEDS,
-                      abbreviated_name="slip39",
-                      display_name=_mft("SLIP39 seeds"),
-                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
-                      default_value=SettingsConstants.OPTION__DISABLED),
-
-        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
-                      attr_name=SettingsConstants.SETTING__SLIP39_EXTENDABLE,
-                      abbreviated_name="slip39ext",
-                      display_name=_mft("Extendable SLIP39 shares"),
-                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
-                      default_value=SettingsConstants.OPTION__ENABLED),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
                       attr_name=SettingsConstants.SETTING__ELECTRUM_SEEDS,
                       abbreviated_name="electrum",
-                      display_name=_mft("Electrum seeds"),
-                      help_text=_mft("Native Segwit only"),
+                      display_name="Electrum seeds",
+                      help_text="Native Segwit only",
                       visibility=SettingsConstants.VISIBILITY__ADVANCED,
-                      default_value=SettingsConstants.OPTION__DISABLED),
-
-        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
-                      attr_name=SettingsConstants.SETTING__BITBOX_BACKUP,
-                      abbreviated_name="bitbox",
-                      display_name=_mft("BitBox02 backups"),
-                      visibility=SettingsConstants.VISIBILITY__HIDDEN,
-                      default_value=SettingsConstants.OPTION__DISABLED),
-
-        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
-                      attr_name=SettingsConstants.SETTING__PASSPORT_BACKUP,
-                      abbreviated_name="passport",
-                      display_name=_mft("Passport backups"),
-                      visibility=SettingsConstants.VISIBILITY__HIDDEN,
-                      default_value=SettingsConstants.OPTION__DISABLED),
-
-        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
-                      attr_name=SettingsConstants.SETTING__TAPSIGNER_BACKUP,
-                      abbreviated_name="tapsigner",
-                      display_name=_mft("TAPSIGNER backups"),
-                      visibility=SettingsConstants.VISIBILITY__HIDDEN,
                       default_value=SettingsConstants.OPTION__DISABLED),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
                       attr_name=SettingsConstants.SETTING__MESSAGE_SIGNING,
-                      display_name=_mft("Message signing"),
+                      display_name="Message signing",
                       visibility=SettingsConstants.VISIBILITY__ADVANCED,
                       default_value=SettingsConstants.OPTION__DISABLED),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
-                      attr_name=SettingsConstants.SETTING__SMARTCARD_SUPPORT,
-                      abbreviated_name="smartcard",
-                      display_name=_mft("Smartcard support"),
-                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
-                      default_value=SettingsConstants.OPTION__ENABLED),
-
-        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
                       attr_name=SettingsConstants.SETTING__PRIVACY_WARNINGS,
                       abbreviated_name="priv_warn",
-                      display_name=_mft("Show privacy warnings"),
+                      display_name="Show privacy warnings",
                       visibility=SettingsConstants.VISIBILITY__ADVANCED,
                       default_value=SettingsConstants.OPTION__ENABLED),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
                       attr_name=SettingsConstants.SETTING__DIRE_WARNINGS,
                       abbreviated_name="dire_warn",
-                      display_name=_mft("Show dire warnings"),
+                      display_name="Show dire warnings",
                       visibility=SettingsConstants.VISIBILITY__ADVANCED,
                       default_value=SettingsConstants.OPTION__ENABLED),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
                       attr_name=SettingsConstants.SETTING__QR_BRIGHTNESS_TIPS,
-                      display_name=_mft("Show QR brightness tips"),
+                      display_name="Show QR brightness tips",
                       visibility=SettingsConstants.VISIBILITY__ADVANCED,
                       default_value=SettingsConstants.OPTION__ENABLED),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
                       attr_name=SettingsConstants.SETTING__PARTNER_LOGOS,
                       abbreviated_name="partners",
-                      display_name=_mft("Show partner logos"),
+                      display_name="Show partner logos",
                       visibility=SettingsConstants.VISIBILITY__ADVANCED,
                       default_value=SettingsConstants.OPTION__ENABLED),
-
-        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
-                      attr_name=SettingsConstants.SETTING__SATOCHIP_SIGN_TIMEOUT,
-                      abbreviated_name="satotime",
-                      display_name="Satochip tx sign timeout",
-                      type=SettingsConstants.TYPE__SELECT_1,
-                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
-                      selection_options=SettingsConstants.ALL_SATOCHIP_TIMEOUTS,
-                      default_value=SettingsConstants.DEFAULT_SATOCHIP_TIMEOUT),
-
-        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
-                      attr_name=SettingsConstants.SETTING__SATOCHIP_MSG_SIGN_TIMEOUT,
-                      abbreviated_name="satomsig",
-                      display_name="Satochip message sign timeout",
-                      type=SettingsConstants.TYPE__SELECT_1,
-                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
-                      selection_options=SettingsConstants.ALL_SATOCHIP_MSG_TIMEOUTS,
-                      default_value=SettingsConstants.DEFAULT_SATOCHIP_MSG_TIMEOUT),
-
-        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
-                      attr_name=SettingsConstants.SETTING__SATOCHIP_MAX_PRE_DUMMIES,
-                      abbreviated_name="satopre",
-                      display_name="Satochip pre-sign dummies",
-                      type=SettingsConstants.TYPE__SELECT_1,
-                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
-                      selection_options=SettingsConstants.ALL_SATOCHIP_PRE_DUMMY_MAX,
-                      default_value=SettingsConstants.DEFAULT_SATOCHIP_PRE_DUMMY_MAX),
-
-        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
-                      attr_name=SettingsConstants.SETTING__SATOCHIP_MAX_POST_DUMMIES,
-                      abbreviated_name="satopost",
-                      display_name="Satochip post-sign dummies",
-                      type=SettingsConstants.TYPE__SELECT_1,
-                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
-                      selection_options=SettingsConstants.ALL_SATOCHIP_POST_DUMMY_MAX,
-                      default_value=SettingsConstants.DEFAULT_SATOCHIP_POST_DUMMY_MAX),
-
-        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
-                      attr_name=SettingsConstants.SETTING__SATOCHIP_MAX_IN_TX_DUMMIES,
-                      abbreviated_name="satointx",
-                      display_name="Satochip in-tx dummies",
-                      type=SettingsConstants.TYPE__SELECT_1,
-                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
-                      selection_options=SettingsConstants.ALL_SATOCHIP_IN_TX_DUMMY_MAX,
-                      default_value=SettingsConstants.DEFAULT_SATOCHIP_IN_TX_DUMMY_MAX),
-
-        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
-                      attr_name=SettingsConstants.SETTING__SATOCHIP_DUMMY_PROBABILITY,
-                      abbreviated_name="satoprob",
-                      display_name="Satochip dummy prob",
-                      type=SettingsConstants.TYPE__SELECT_1,
-                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
-                      selection_options=SettingsConstants.ALL_SATOCHIP_DUMMY_PROB,
-                      default_value=SettingsConstants.DEFAULT_SATOCHIP_DUMMY_PROB),
-
-
-        # Hardware config
-        SettingsEntry(category=SettingsConstants.CATEGORY__SYSTEM,
-                      attr_name=SettingsConstants.SETTING__DISPLAY_CONFIGURATION,
-                      abbreviated_name="disp_conf",
-                      # TRANSLATOR_NOTE: Hardware settings option to specify the screen driver (e.g. st7789 vs ili9341)
-                      display_name=_mft("Display type"),
-                      type=SettingsConstants.TYPE__SELECT_1,
-                      visibility=SettingsConstants.VISIBILITY__HARDWARE,
-                      selection_options=SettingsConstants.ALL_DISPLAY_CONFIGURATIONS,
-                      default_value=SettingsConstants.DISPLAY_CONFIGURATION__ST7789__240x240),
-
-        SettingsEntry(category=SettingsConstants.CATEGORY__SYSTEM,
-                      attr_name=SettingsConstants.SETTING__DISPLAY_COLOR_INVERTED,
-                      abbreviated_name="rgb_inv",
-                      # TRANSLATOR_NOTE: Hardware settings option to invert how the screen driver displays colors.
-                      display_name=_mft("Invert colors"),
-                      type=SettingsConstants.TYPE__ENABLED_DISABLED,
-                      visibility=SettingsConstants.VISIBILITY__HARDWARE,
-                      default_value=SettingsConstants.OPTION__DISABLED),
-
-        SettingsEntry(category=SettingsConstants.CATEGORY__SYSTEM,
-                      attr_name=SettingsConstants.SETTING__CAMERA_DEVICE,
-                      abbreviated_name="cam_dev",
-                      display_name=_mft("Camera source"),
-                      type=SettingsConstants.TYPE__SELECT_1,
-                      visibility=SettingsConstants.VISIBILITY__HARDWARE,
-                      selection_options=SettingsConstants.ALL_CAMERA_DEVICES,
-                      default_value=SettingsConstants.CAMERA_DEVICE__0),
-
 
         # Developer options
         # TODO: No real Developer options needed yet. Disable for now.
@@ -1100,7 +524,7 @@ class SettingsDefinition:
         SettingsEntry(category=SettingsConstants.CATEGORY__SYSTEM,
                       attr_name=SettingsConstants.SETTING__QR_BRIGHTNESS,
                       abbreviated_name="qr_brightness",
-                      display_name=_mft("QR background color"),
+                      display_name="QR background color",
                       type=SettingsConstants.TYPE__FREE_ENTRY,
                       visibility=SettingsConstants.VISIBILITY__HIDDEN,
                       default_value=62),
@@ -1111,16 +535,7 @@ class SettingsDefinition:
     def get_settings_entries(cls, visibility: str = SettingsConstants.VISIBILITY__GENERAL) -> List[SettingsEntry]:
         entries = []
         for entry in cls.settings_entries:
-            if entry.attr_name == SettingsConstants.SETTING__CAMERA_DEVICE and not USING_MOCK_GPIO:
-                continue
             if entry.visibility == visibility:
-                if entry.attr_name == SettingsConstants.SETTING__CAMERA_DEVICE:
-                    try:
-                        from seedsigner.hardware.camera import Camera
-
-                        entry.selection_options = Camera.list_cameras()
-                    except Exception:
-                        pass
                 entries.append(entry)
         return entries
     
@@ -1129,23 +544,12 @@ class SettingsDefinition:
     def get_settings_entry(cls, attr_name) -> SettingsEntry:
         for entry in cls.settings_entries:
             if entry.attr_name == attr_name:
-                if attr_name == SettingsConstants.SETTING__CAMERA_DEVICE:
-                    if not USING_MOCK_GPIO:
-                        return None
-                    try:
-                        from seedsigner.hardware.camera import Camera
-
-                        entry.selection_options = Camera.list_cameras()
-                    except Exception:
-                        pass
                 return entry
 
 
     @classmethod
     def get_settings_entry_by_abbreviated_name(cls, abbreviated_name: str) -> SettingsEntry:
         for entry in cls.settings_entries:
-            if entry.attr_name == SettingsConstants.SETTING__CAMERA_DEVICE and not USING_MOCK_GPIO:
-                continue
             if abbreviated_name in [entry.abbreviated_name, entry.attr_name]:
                 return entry
 

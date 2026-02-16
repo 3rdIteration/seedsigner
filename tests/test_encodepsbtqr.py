@@ -1,18 +1,6 @@
-from seedsigner.models.encode_qr import (
-    CompactSeedQrEncoder,
-    SeedQrEncoder,
-    SpecterXPubQrEncoder,
-    StaticXpubQrEncoder,
-    UrPsbtQrEncoder,
-    UrXpubQrEncoder,
-    UrBytesQrEncoder,
-    UrTextQrEncoder,
-)
+from seedsigner.models.encode_qr import CompactSeedQrEncoder, SeedQrEncoder, SpecterXPubQrEncoder, StaticXpubQrEncoder, UrPsbtQrEncoder, UrXpubQrEncoder
 from embit import psbt
 from binascii import a2b_base64
-from seedsigner.helpers.ur2.ur_decoder import URDecoder
-from seedsigner.helpers.ur2.cbor_lite import CBORDecoder
-from urtypes.bytes import Bytes
 
 from seedsigner.models.settings import SettingsConstants
 from seedsigner.models.seed import Seed
@@ -80,75 +68,12 @@ def test_ur_xpub_qr():
     
     e = UrXpubQrEncoder(
         seed=Seed(mnemonic.split(), passphrase="pass"),
-        network=SettingsConstants.MAINNET,
-        derivation="m/48h/1h/0h/2h",
-        qr_density=SettingsConstants.DENSITY__MEDIUM
-    )
-
-    assert e.next_part() == "UR:CRYPTO-ACCOUNT/1-4/LPADAACSKPCYMOMNLGRYHDCKOEADCYSSMECPONAOLYTAADMETAADDLOXAXHDCLAOKSRLNLKPUEGYATHPMNSNIYMUECBY"
-    assert e.next_part() == "UR:CRYPTO-ACCOUNT/2-4/LPAOAACSKPCYMOMNLGRYHDCKKKGHZMLUZORPVDGUOTECSTTKTOLPCWPTNTLKZTTIZTBEAAHDCXVDTPMYRSTDMOPSCXFZ"
-    assert e.next_part() == "UR:CRYPTO-ACCOUNT/3-4/LPAXAACSKPCYMOMNLGRYHDCKSPZSBZSPGERLGDATUYNLPYBTGYIYYKBTWTAOSWKSVTSGCHBYDKYAVDAMTAADMONDGDFD"
-    assert e.next_part() == "UR:CRYPTO-ACCOUNT/4-4/LPAAAACSKPCYMOMNLGRYHDCKDYOTADLOCSDYYKADYKAEYKAOYKAOCYSSMECPONAXAAAYCYIOREKKJKAEAEAEWZWDMYON"    
-
-
-    e = UrXpubQrEncoder(
-        seed=Seed(mnemonic.split(), passphrase="pass"),
         network=SettingsConstants.TESTNET,
         derivation="m/48h/1h/0h/2h",
         qr_density=SettingsConstants.DENSITY__MEDIUM
     )
-
-    assert e.next_part() == "UR:CRYPTO-ACCOUNT/1-5/LPADAHCSKECYRTPEDKMOHDCFOEADCYSSMECPONAOLYTAADMETAADDLONAXHDCLAOKSRLNLKPUENSAHBTHS"
-    assert e.next_part() == "UR:CRYPTO-ACCOUNT/2-5/LPAOAHCSKECYRTPEDKMOHDCFGYATHPMNSNKKGHZMLUZORPVDGUOTECSTTKTOLPCWPTNTLKZTTIZTNDJSCF"
-    assert e.next_part() == "UR:CRYPTO-ACCOUNT/3-5/LPAXAHCSKECYRTPEDKMOHDCFZTBEAAHDCXVDTPMYRSTDSPZSBZSPGERLGDATUYNLPYBTGYIYYKBDFGWPKE"
-    assert e.next_part() == "UR:CRYPTO-ACCOUNT/4-5/LPAAAHCSKECYRTPEDKMOHDCFBTWTAOSWKSVTSGCHBYDKYAVDAHTAADEHOYAOADAMTAADDYOTADGYBKBWFE"
-    assert e.next_part() == "UR:CRYPTO-ACCOUNT/5-5/LPAHAHCSKECYRTPEDKMOHDCFLOCSDYYKADYKAEYKAOYKAOCYSSMECPONAXAAAYCYIOREKKJKAETODLFYWP"
-
-
-def test_ur_bytes_qr_roundtrip():
-    text = "hello world"
-    encoder = UrBytesQrEncoder(data=text.encode(), qr_density=SettingsConstants.DENSITY__MEDIUM)
-    part = encoder.next_part()
-    decoder = URDecoder()
-    assert decoder.receive_part(part)
-    assert decoder.is_complete()
-    ur = decoder.result_message()
-    assert ur.type == "bytes"
-    assert Bytes.from_cbor(ur.cbor).data.decode() == text
-
-
-def test_ur_bytes_qr_roundtrip_ascii_armored():
-    armored = "-----BEGIN PGP PUBLIC KEY BLOCK-----\nabc123\n-----END PGP PUBLIC KEY BLOCK-----\n"
-    encoder = UrBytesQrEncoder(data=armored.encode(), qr_density=SettingsConstants.DENSITY__MEDIUM)
-    decoder = URDecoder()
-    while not decoder.is_complete():
-        part = encoder.next_part()
-        assert decoder.receive_part(part)
-    ur = decoder.result_message()
-    assert ur.type == "bytes"
-    assert Bytes.from_cbor(ur.cbor).data.decode() == armored
-
-
-def test_ur_bytes_qr_seq_len_multiple():
-    data = b"a" * 200
-    encoder = UrBytesQrEncoder(data=data, qr_density=SettingsConstants.DENSITY__MEDIUM)
-    assert encoder.seq_len() > 1
-
-
-def test_ur_text_qr_roundtrip():
-    text = "hello world"
-    encoder = UrTextQrEncoder(text=text, qr_density=SettingsConstants.DENSITY__MEDIUM)
-    part = encoder.next_part()
-    decoder = URDecoder()
-    assert decoder.receive_part(part)
-    assert decoder.is_complete()
-    ur = decoder.result_message()
-    assert ur.type == "text"
-    decoded, _ = CBORDecoder(ur.cbor).decodeText()
-    assert decoded.decode("utf-8") == text
-
-
-def test_ur_text_qr_seq_len_multiple():
-    text = "a" * 200
-    encoder = UrTextQrEncoder(text=text, qr_density=SettingsConstants.DENSITY__MEDIUM)
-    assert encoder.seq_len() > 1
+    
+    assert e.next_part() == "UR:CRYPTO-ACCOUNT/1-4/LPADAACSKPCYMOMNLGRYHDCKOEADCYSSMECPONAOLYTAADMETAADDLOXAXHDCLAOKSRLNLKPUEGYATHPMNSNIYMUECBY"
+    assert e.next_part() == "UR:CRYPTO-ACCOUNT/2-4/LPAOAACSKPCYMOMNLGRYHDCKKKGHZMLUZORPVDGUOTECSTTKTOLPCWPTNTLKZTTIZTBEAAHDCXVDTPMYRSTDMOPSCXFZ"
+    assert e.next_part() == "UR:CRYPTO-ACCOUNT/3-4/LPAXAACSKPCYMOMNLGRYHDCKSPZSBZSPGERLGDATUYNLPYBTGYIYYKBTWTAOSWKSVTSGCHBYDKYAVDAMTAADMONDGDFD"
+    assert e.next_part() == "UR:CRYPTO-ACCOUNT/4-4/LPAAAACSKPCYMOMNLGRYHDCKDYOTADLOCSDYYKADYKAEYKAOYKAOCYSSMECPONAXAAAYCYIOREKKJKAEAEAEWZWDMYON"

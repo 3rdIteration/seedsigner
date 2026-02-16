@@ -115,8 +115,6 @@ class FountainEncoder:
         fragments = []
         while len(remaining) != 0:
             (fragment, remaining) = split(remaining, fragment_len)
-            # Convert to a mutable sequence so we can append padding bytes
-            fragment = bytearray(fragment)
             padding = fragment_len - len(fragment)
             while padding > 0:
                 fragment.append(0)

@@ -5,10 +5,6 @@ src/seedsigner.egg-info/
 .vscode
 src/seedsigner/models/settings_definition.json
 .idea
-.coverage*
-
-*.po
 *.mo
-jcardsim.jar
-settings.json
-/microsd
+.coverage
+seedsigner-screenshots

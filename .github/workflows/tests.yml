@@ -7,9 +7,6 @@ on:
       - main
   pull_request:
 
-permissions:
-  contents: read
-
 concurrency:
   # Concurrency group that uses the workflow name and PR number if available
   # or commit SHA as a fallback. If a new build is triggered under that
@@ -29,18 +26,14 @@ jobs:
         python-version: ["3.10", "3.12"]
 
     steps:
-      - uses: actions/checkout@v4
-        with:
-          # Needs to also pull the seedsigner-translations repo
-          submodules: recursive
+      - uses: actions/checkout@v3
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v4
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y gnupg2 pinentry-curses pinentry-tty libzbar0 libpcsclite-dev pcscd swig
+          sudo apt-get install libzbar0
           python -m pip install --upgrade pip
           pip install -r requirements.txt -r tests/requirements.txt
           pip install .
@@ -52,64 +45,22 @@ jobs:
             --cov=seedsigner \
             --cov-append \
             --cov-branch \
+            --cov-report term \
+            --cov-report html \
+            --cov-report html:./artifacts/cov_html \
+            --cov-report xml \
             --durations 5 \
             -vv
       - name: Generate screenshots
         run: |
-          python -m pytest tests/screenshot_generator/generator.py \
-            --color=yes \
-            --cov=seedsigner \
-            --cov-append \
-            --cov-branch \
-            --cov-report html:./artifacts/cov_html \
-            -vv
+          python -m pytest tests/screenshot_generator/generator.py
           cp -r ./seedsigner-screenshots ./artifacts/
-      - name: Coverage report
-        run: coverage report
       - name: Archive CI Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v3
         with:
-          name: ci-artifacts-${{ matrix.python-version }}
+          name: ci-artifacts
           path: artifacts/**
           retention-days: 10
         # Upload also when tests fail. The workflow result (red/green) will
         # be not effected by this.
         if: always()
-
-  desktop:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-        python-version: ["3.12"]
-    defaults:
-      run:
-        shell: bash
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-      - name: Install OS packages
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gnupg2 pinentry-curses pinentry-tty libzbar0 libpcsclite-dev pcscd swig
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt -r requirements-desktop.txt -r tests/requirements.txt
-          pip install .
-      - name: Test with pytest
-        run: |
-          python -m pytest \
-            --color=yes \
-            --cov=seedsigner \
-            --cov-append \
-            --cov-branch \
-            --durations 5 \
-            -vv

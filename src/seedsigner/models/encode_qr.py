@@ -10,14 +10,12 @@ from embit.networks import NETWORKS
 from embit.psbt import PSBT
 from seedsigner.helpers.ur2.ur_encoder import UREncoder
 from seedsigner.helpers.ur2.ur import UR
-from seedsigner.helpers.ur2.cbor_lite import CBOREncoder
-from urtypes.bytes import Bytes
 from seedsigner.helpers.qr import QR
 from seedsigner.models.seed import Seed
 from seedsigner.models.settings import SettingsConstants
 
 from urtypes.crypto import PSBT as UR_PSBT
-from urtypes.crypto import Account, HDKey, Output, Keypath, PathComponent, SCRIPT_EXPRESSION_TAG_MAP, CoinInfo
+from urtypes.crypto import Account, HDKey, Output, Keypath, PathComponent, SCRIPT_EXPRESSION_TAG_MAP
 
 
 
@@ -43,10 +41,10 @@ class BaseQrEncoder:
 
     def next_part(self) -> str:
         raise Exception("Not implemented in child class")
-
+    
     def cur_part(self) -> str:
         raise Exception("Not implemented in child class")
-
+    
     def restart(self):
         # only used by animated QR encoders
         pass
@@ -73,7 +71,7 @@ class BaseQrEncoder:
 class BaseStaticQrEncoder(BaseQrEncoder):
     def seq_len(self):
         return 1
-
+    
     def cur_part(self) -> str:
         """ static QRs only have a single part, which `next_part` always returns """
         return self.next_part()
@@ -100,7 +98,7 @@ class SeedQrEncoder(BaseStaticQrEncoder):
         for word in self.mnemonic:
             index = self.wordlist.index(word)
             self.data += str("%04d" % index)
-
+    
 
     def next_part(self):
         return self.data
@@ -118,10 +116,14 @@ class CompactSeedQrEncoder(SeedQrEncoder):
             # Convert index to binary, strip out '0b' prefix; zero-pad to 11 bits
             binary_str += bin(index).split('b')[1].zfill(11)
 
-        # Exclude the checksum bits at the end. The checksum length is
-        # entropy_bits / 32 which equates to `word_count / 3`.
-        checksum_bits = len(self.mnemonic) // 3
-        binary_str = binary_str[:-checksum_bits]
+        # We can exclude the checksum bits at the end
+        if len(self.mnemonic) == 24:
+            # 8 checksum bits in a 24-word seed
+            binary_str = binary_str[:-8]
+
+        elif len(self.mnemonic) == 12:
+            # 4 checksum bits in a 12-word seed
+            binary_str = binary_str[:-4]
 
         # Now convert to bytes, 8 bits at a time
         as_bytes = bytearray()
@@ -156,7 +158,7 @@ class BaseXpubQrEncoder(BaseQrEncoder):
     def prep_xpub(self):
             
         version = self.seed.detect_version(self.derivation, self.network, self.sig_type)
-        self.root = self.seed.get_root(self.network)
+        self.root = bip32.HDKey.from_seed(self.seed.seed_bytes, version=NETWORKS[SettingsConstants.map_network_to_embit(self.network)]["xprv"])
         self.fingerprint = self.root.child(0).fingerprint
         self.xprv = self.root.derive(self.derivation)
         self.xpub = self.xprv.to_public()
@@ -310,7 +312,7 @@ class BaseFountainQrEncoder(BaseQrEncoder):
 
     def cur_part(self) -> str:
         return self.ur2_encode.current_part().upper()
-
+    
 
     def restart(self):
         self.ur2_encode.fountain_encoder.restart()
@@ -322,7 +324,7 @@ class UrXpubQrEncoder(BaseFountainQrEncoder, BaseXpubQrEncoder):
     def __post_init__(self):
         super().__post_init__()
         self.prep_xpub()
-
+        
         def derivation_to_keypath(path: str) -> list:
             arr = path.split("/")
             if arr[0] == "m":
@@ -342,13 +344,11 @@ class UrXpubQrEncoder(BaseFountainQrEncoder, BaseXpubQrEncoder):
             return Keypath(arr, self.root.my_fingerprint, len(arr))
             
         origin = derivation_to_keypath(self.derivation)
-        self.use_info = None if self.network == SettingsConstants.MAINNET else CoinInfo(type=None, network=1)
         
         self.ur_hdkey = HDKey({ 'key': self.xpub.key.serialize(),
         'chain_code': self.xpub.chain_code,
         'origin': origin,
-        'parent_fingerprint': self.xpub.fingerprint,
-        'use_info': self.use_info })
+        'parent_fingerprint': self.xpub.fingerprint})
 
         ur_outputs = []
 
@@ -395,35 +395,3 @@ class UrPsbtQrEncoder(BaseFountainQrEncoder):
         super().__post_init__()
         qr_ur_bytes = UR("crypto-psbt", UR_PSBT(self.psbt.serialize()).to_cbor())
         self.ur2_encode = UREncoder(ur=qr_ur_bytes, max_fragment_len=self.qr_max_fragment_size)
-
-
-@dataclass
-class UrBytesQrEncoder(BaseFountainQrEncoder):
-    data: bytes = None
-
-    def __post_init__(self):
-        super().__post_init__()
-        qr_ur_bytes = UR("bytes", Bytes(self.data).to_cbor())
-        self.ur2_encode = UREncoder(ur=qr_ur_bytes, max_fragment_len=self.qr_max_fragment_size)
-
-
-@dataclass
-class UrTextQrEncoder(BaseFountainQrEncoder):
-    text: str = None
-
-    def __post_init__(self):
-        super().__post_init__()
-        cbor_encoder = CBOREncoder()
-        cbor_encoder.encodeText(self.text)
-        qr_ur_text = UR("text", cbor_encoder.get_bytes())
-        self.ur2_encode = UREncoder(ur=qr_ur_text, max_fragment_len=self.qr_max_fragment_size)
-
-
-class GenericStringEncoder(BaseStaticQrEncoder):
-    def __init__(self, generic_string: str):
-        super().__init__()
-        self.generic_string = generic_string
-
-
-    def next_part(self):
-        return self.generic_string

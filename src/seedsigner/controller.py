@@ -1,8 +1,6 @@
 import logging
 import time
 import traceback
-from gettext import gettext as _
-from pathlib import Path
 
 from embit.descriptor import Descriptor
 from embit.psbt import PSBT
@@ -12,14 +10,11 @@ from seedsigner.gui.toast import BaseToastOverlayManagerThread
 from seedsigner.models.psbt_parser import PSBTParser
 from seedsigner.models.seed import Seed
 from seedsigner.models.seed_storage import SeedStorage
-from seedsigner.models.encryptedqr import EncryptedQRStorage
 from seedsigner.models.settings import Settings
 from seedsigner.models.singleton import Singleton
 from seedsigner.models.threads import BaseThread
-from seedsigner.models.settings_definition import SettingsConstants
 from seedsigner.views.screensaver import ScreensaverScreen
 from seedsigner.views.view import Destination
-from seedsigner.hardware.rng_monitor import HardwareRngHealthMonitor, HardwareRngMonitorThread
 
 
 logger = logging.getLogger(__name__)
@@ -74,9 +69,6 @@ class BackgroundImportThread(BaseThread):
         time_import('seedsigner.models.seed_storage')
         from seedsigner.models.seed_storage import SeedStorage
         Controller.get_instance()._storage = SeedStorage()
-        time_import('seedsigner.models.encryptedqr')
-        from seedsigner.models.encryptedqr import EncryptedQRStorage
-        Controller.get_instance()._storage2 = EncryptedQRStorage()
 
         # Get MainMenuView ready to respond quickly
         time_import('seedsigner.views.scan_views')
@@ -87,21 +79,6 @@ class BackgroundImportThread(BaseThread):
 
         time_import('seedsigner.views.settings_views')
 
-
-class WipeTimerThread(BaseThread):
-    def run(self):
-        from seedsigner.hardware.buttons import HardwareButtons
-        controller = Controller.get_instance()
-        buttons = HardwareButtons.get_instance()
-        while self.keep_running:
-            wipe_minutes = controller.settings.get_value(SettingsConstants.SETTING__WIPE_TIMER)
-            if wipe_minutes and wipe_minutes != SettingsConstants.WIPE_TIMER__DISABLED:
-                controller.wipe_timer_ms = wipe_minutes * 60 * 1000
-                cur = int(time.time() * 1000)
-                if controller.wipe_timer_ms and cur - buttons.last_input_time > controller.wipe_timer_ms:
-                    controller.handle_wipe_timeout()
-                    buttons.update_last_input_time()
-            time.sleep(1)
 
 
 class Controller(Singleton):
@@ -121,13 +98,12 @@ class Controller(Singleton):
         Note: In many/most cases you'll need to do the Controller import within a method
         rather than at the top in order avoid circular imports.
     """
-    
-    VERSION = "SeSi-0.8.6+ShSi-B8"
+
+    VERSION = "0.8.0"
 
     # Declare class member vars with type hints to enable richer IDE support throughout
     # the code.
     _storage: SeedStorage = None   # TODO: Rename "storage" to something more indicative of its temp, in-memory state
-    _storage2: EncryptedQRStorage = None
     settings: Settings = None
 
     # TODO: Refactor these flow-related attrs that survive across multiple Screens.
@@ -135,11 +111,6 @@ class Controller(Singleton):
     psbt: PSBT = None
     psbt_seed: Seed = None
     psbt_parser: PSBTParser = None
-    psbt_sign_with_satochip: bool = False
-    psbt_from_microsd: bool = False
-    psbt_microsd_save_path: Path | None = None
-    psbt_microsd_seed_warning_shown: bool = False
-    sign_message_with_satochip: bool = False
 
     unverified_address = None
 
@@ -151,16 +122,7 @@ class Controller(Singleton):
     address_explorer_data: dict = None
 
     sign_message_data: dict = None
-    gpg_keys_imported: bool = False
-    gpg_pending_message: str = None
     # TODO: end refactor section
-
-    Satochip_Connector = None
-    Satochip_PIN = None
-    Satochip_Last_UID_SHA1 = None
-    GPG_Admin_PIN = None
-    tools_common_card_filter: list[str] = None
-    javacard_keys: dict | None = None
 
     # Destination placeholder for when we need to jump out to a side flow but intend to
     # return navigation to the main flow (e.g. PSBT flow, load multisig descriptor,
@@ -170,17 +132,11 @@ class Controller(Singleton):
     FLOW__VERIFY_SINGLESIG_ADDR = "singlesig_addr"
     FLOW__ADDRESS_EXPLORER = "address_explorer"
     FLOW__SIGN_MESSAGE = "sign_message"
-    FLOW__GPG_MESSAGE = "gpg_message"
     resume_main_flow: str = None
 
     back_stack: BackStack = None
     screensaver: ScreensaverScreen = None
     toast_notification_thread: BaseToastOverlayManagerThread = None
-    wipe_timer_thread: BaseThread = None
-    rng_monitor_thread: BaseThread = None
-    hardware_rng_monitor: HardwareRngHealthMonitor = None
-    wipe_timer_ms: int = None
-    auto_wiped: bool = False
 
 
     @classmethod
@@ -191,23 +147,22 @@ class Controller(Singleton):
         else:
             # Instantiate the one and only Controller instance
             return cls.configure_instance()
-    
-
-    @classmethod
-    def reset_instance(cls):
-        """
-            Currently used by the screenshot generator, but could potentially be used to
-            wipe and reset the state of the device.
-        """
-        cls._instance = None
-        cls.configure_instance()
 
 
     @classmethod
-    def configure_instance(cls):
+    def configure_instance(cls, disable_hardware=False):
+        """
+            - `disable_hardware` is only meant to be used by the test suite so that it
+            can keep re-initializing a Controller in however many tests it needs to. But
+            this is only possible if the hardware isn't already being reserved. Without
+            this you get:
+
+            RuntimeError: Conflicting edge detection already enabled for this GPIO channel
+
+            each time you try to re-initialize a Controller.
+        """
         from seedsigner.gui.renderer import Renderer
         from seedsigner.hardware.microsd import MicroSD
-        from seedsigner.hardware.battery_hat import BatteryHat
 
         # Must be called before the first get_instance() call
         if cls._instance:
@@ -223,20 +178,9 @@ class Controller(Singleton):
         controller.microsd = MicroSD.get_instance()
         controller.microsd.start_detection()
 
-        controller.battery_hat = BatteryHat.get_instance()
-        if controller.battery_hat.initialize():
-            controller.battery_hat.process_discharge_log()
-            controller.battery_hat.load_discharge_curve()
-            controller.battery_hat.start()
-
         # Store one working psbt in memory
         controller.psbt = None
         controller.psbt_parser = None
-        controller.psbt_sign_with_satochip = False
-        controller.psbt_from_microsd = False
-        controller.psbt_microsd_save_path = None
-        controller.psbt_microsd_seed_warning_shown = False
-        controller.sign_message_with_satochip = False
 
         # Configure the Renderer
         Renderer.configure_instance()
@@ -245,16 +189,9 @@ class Controller(Singleton):
 
         # Other behavior constants
         controller.screensaver_activation_ms = 2 * 60 * 1000  # two minutes
-
+    
         background_import_thread = BackgroundImportThread()
         background_import_thread.start()
-
-        controller.wipe_timer_thread = WipeTimerThread()
-        controller.wipe_timer_thread.start()
-
-        controller.hardware_rng_monitor = HardwareRngHealthMonitor()
-        controller.rng_monitor_thread = HardwareRngMonitorThread(controller.hardware_rng_monitor)
-        controller.rng_monitor_thread.start()
 
         return cls._instance
 
@@ -272,27 +209,6 @@ class Controller(Singleton):
             # This is a rare timing issue that likely only occurs in the test suite.
             time.sleep(0.001)
         return self._storage
-
-
-    @property
-    def storage2(self):
-        while not self._storage2:
-            time.sleep(0.001)
-        return self._storage2
-
-
-    @property
-    def hardware_rng_is_healthy(self) -> bool:
-        if not self.hardware_rng_monitor:
-            return False
-        return self.hardware_rng_monitor.is_healthy()
-
-
-    @property
-    def hardware_rng_failure_reason(self) -> str | None:
-        if not self.hardware_rng_monitor:
-            return "System RNG monitor unavailable"
-        return self.hardware_rng_monitor.failure_reason()
 
 
     def get_seed(self, seed_num: int) -> Seed:
@@ -332,18 +248,10 @@ class Controller(Singleton):
             used. Only used by the test suite.
         """
         from seedsigner.views import MainMenuView, BackStackView
-        from seedsigner.views.screensaver import OpeningSplashView
-        from seedsigner.models.settings_definition import SettingsConstants
-        from seedsigner.views.desktop_warning import DesktopWarningView
-        from seedsigner.views.developer_os_warning import DeveloperOSWarningView
-        from seedsigner.helpers.seedsigner_os import is_seedsigner_os_dev_build
+        from seedsigner.views.screensaver import OpeningSplashScreen
         from seedsigner.gui.toast import RemoveSDCardToastManagerThread
 
-        OpeningSplashView().run()
-        if is_seedsigner_os_dev_build():
-            DeveloperOSWarningView().run()
-        if self.settings.get_value(SettingsConstants.SETTING__DISPLAY_CONFIGURATION).startswith("desktop"):
-            DesktopWarningView().run()
+        OpeningSplashScreen().start()
 
         """ Class references can be stored as variables in python!
 
@@ -390,28 +298,12 @@ class Controller(Singleton):
                     
                     # Home always wipes the back_stack/state of temp vars
                     self.resume_main_flow = None
-                    # self.multisig_wallet_descriptor = None
+                    self.multisig_wallet_descriptor = None
                     self.unverified_address = None
                     self.address_explorer_data = None
                     self.psbt = None
                     self.psbt_parser = None
                     self.psbt_seed = None
-                    self.psbt_sign_with_satochip = False
-                    self.sign_message_with_satochip = False
-
-                    # Clear camera entropy data so it cannot be used to
-                    # reconstruct seeds after the flow completes.
-                    self.image_entropy_preview_frames = None
-                    self.image_entropy_final_image = None
-
-                    # Clear the whole Smartcard session if caching PIN is disabled (Same as removing the card)
-                    if Settings.get_instance().get_value(SettingsConstants.SETTING__CACHE_SCARD_PIN) != "E":
-                        self.Satochip_PIN = None
-                        self.Satochip_Last_UID_SHA1 = None
-                        self.Satochip_Connector = None
-
-                    # Always drop any cached OpenPGP admin PIN when returning home
-                    self.GPG_Admin_PIN = None
                 
                 logger.info(f"\nback_stack: {self.back_stack}")
 
@@ -476,15 +368,6 @@ class Controller(Singleton):
             if self.toast_notification_thread and self.toast_notification_thread.is_alive():
                 self.toast_notification_thread.stop()
 
-            if hasattr(self, "battery_hat") and self.battery_hat.is_alive():
-                self.battery_hat.stop()
-
-            if self.wipe_timer_thread and self.wipe_timer_thread.is_alive():
-                self.wipe_timer_thread.stop()
-
-            if self.rng_monitor_thread and self.rng_monitor_thread.is_alive():
-                self.rng_monitor_thread.stop()
-
             # Clear the screen when exiting
             logger.info("Clearing screen, exiting")
             Renderer.get_instance().display_blank_screen()
@@ -542,49 +425,6 @@ class Controller(Singleton):
         self.toast_notification_thread = toast_manager_thread
         logger.info(f"Controller: starting {self.toast_notification_thread.__class__.__name__}")
         self.toast_notification_thread.start()
-
-
-    def handle_wipe_timeout(self):
-        from seedsigner.gui.toast import InfoToast
-        from seedsigner.views import MainMenuView
-        from seedsigner.hardware.buttons import HardwareButtons
-
-        logger.info("Controller: wipe timer triggered; wiping data")
-
-        # Wipe sensitive in-memory data
-        self.storage.seeds = []
-        self.storage.clear_pending_seed()
-        if self._storage2:
-            self._storage2.clear_encryptedqr()
-
-        self.psbt = None
-        self.psbt_parser = None
-        self.psbt_seed = None
-        self.psbt_sign_with_satochip = False
-        self.sign_message_with_satochip = False
-        self.multisig_wallet_descriptor = None
-        self.unverified_address = None
-        self.address_explorer_data = None
-        self.sign_message_data = None
-        self.resume_main_flow = None
-        self.Satochip_PIN = None
-        self.Satochip_Last_UID_SHA1 = None
-        self.Satochip_Connector = None
-        self.GPG_Admin_PIN = None
-        self.image_entropy_preview_frames = None
-        self.image_entropy_final_image = None
-
-        # Return to main menu
-        self.clear_back_stack()
-        self.back_stack.append(Destination(MainMenuView))
-
-        self.auto_wiped = True
-
-        # Notify user
-        self.activate_toast(InfoToast(label_text=_("Data wiped after inactivity")))
-
-        # Ensure any running screens break out of wait loops
-        HardwareButtons.get_instance().trigger_override()
 
 
     def handle_exception(self, e) -> Destination:

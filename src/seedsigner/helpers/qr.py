@@ -1,11 +1,8 @@
-import os
-import subprocess
-import tempfile
-
 import qrcode
 from qrcode.image.styledpil import StyledPilImage
 from qrcode.image.styles.moduledrawers import CircleModuleDrawer, GappedSquareModuleDrawer
 from PIL import Image, ImageDraw
+import subprocess
 
 class QR:
     STYLE__DEFAULT = 1
@@ -14,18 +11,6 @@ class QR:
 
     def __init__(self) -> None:
         return
-
-
-    def qrsize(self, data) -> int:
-        box_size = 5
-        border = 3
-        qr = qrcode.QRCode( version=1, error_correction=qrcode.constants.ERROR_CORRECT_L, box_size=box_size, border=border )
-        qr.add_data(data)
-        qr_image = qr.make_image(image_factory=StyledPilImage)
-        qr_image_width, _ = qr_image.size
-        qr_code_dims = int(qr_image_width / box_size) - 2*border
-        return qr_code_dims
-
 
     def qrimage(self, data, width=240, height=240, border=3, style=None, background_color="#444"):
         box_size = 5
@@ -47,8 +32,8 @@ class QR:
                 qr_code_dims = int(qr_image_width / box_size) - 2*border
 
                 if qr_code_dims > 21:
-                    # The ROUNDED style mis-renders the small lower-right registration box in 25x25, 29x29,
-                    # and 33x33.
+                    # The ROUNDED style mis-renders the small lower-right registration box in 25x25
+                    # and 29x29.
                     draw = ImageDraw.Draw(qr_image)
                     if qr_code_dims == 25:
                         # registration block starts at 16, 16 and is 5x5
@@ -57,10 +42,6 @@ class QR:
                     elif qr_code_dims == 29:
                         # The registration block starts at 20,20 and is 5x5
                         starting_point = 20 + border
-                    
-                    elif qr_code_dims == 33:
-                        # The registration block starts at 24,24 and is 5x5
-                        starting_point = 24 + border
                     
                     else:
                         raise Exception(f"Unrecognized qrimage size: {qr_code_dims}")
@@ -110,66 +91,17 @@ class QR:
 
 
     def qrimage_io(self, data, width=240, height=240, border=3, background_color="808080"):
-        import re
-
         if 1 <= border <= 10:
             border_str = str(border)
         else:
             border_str = "3"
 
-        # Validate background_color to prevent argument injection
-        if not re.fullmatch(r'[0-9A-Fa-f]{6}', background_color):
-            background_color = "808080"
+        cmd = f"""qrencode -m {border_str} -s 3 -l L --foreground=000000 --background={background_color} -t PNG -o "/tmp/qrcode.png" "{str(data)}" """
+        rv = subprocess.call(cmd, shell=True)
 
-        if isinstance(data, str):
-            encoded_data = data.encode()
-            is_binary = False
-        else:
-            encoded_data = data
-            is_binary = True
+        # if qrencode fails, fall back to only encoder
+        if rv != 0:
+            return self.qrimage(data,width,height,border)
+        img = Image.open("/tmp/qrcode.png").resize((width,height), Image.NEAREST).convert("RGBA")
 
-        data_path = None
-        output_path = None
-
-        try:
-            with tempfile.NamedTemporaryFile(delete=False) as data_file:
-                data_file.write(encoded_data)
-                data_file.flush()
-                data_path = data_file.name
-
-            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as output_file:
-                output_path = output_file.name
-
-            cmd = [
-                "qrencode",
-                "-m", border_str,
-                "-s", "3",
-                "-l", "L",
-                f"--foreground=000000",
-                f"--background={background_color}",
-                "-t", "PNG",
-            ]
-            if is_binary:
-                cmd.append("-8")
-            cmd.extend(["-r", data_path, "-o", output_path])
-
-            try:
-                rv = subprocess.call(cmd)
-            except FileNotFoundError:
-                # `qrencode` may be unavailable in some test/dev environments.
-                # Fall back to the pure-Python encoder path in that case.
-                rv = 1
-
-            # if qrencode fails, fall back to only encoder
-            if rv != 0:
-                return self.qrimage(data, width, height, border)
-
-            with Image.open(output_path) as img_file:
-                img = img_file.resize((width, height), Image.Resampling.NEAREST).convert("RGBA")
-
-            return img
-        finally:
-            if data_path and os.path.exists(data_path):
-                os.remove(data_path)
-            if output_path and os.path.exists(output_path):
-                os.remove(output_path)
+        return img

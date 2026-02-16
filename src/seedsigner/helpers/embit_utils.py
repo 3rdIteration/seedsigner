@@ -20,7 +20,7 @@ from seedsigner.models.settings_definition import SettingsConstants
 
 
 # TODO: Refactor `wallet_type` to conform to our `sig_type` naming convention
-def get_standard_derivation_path(network: str = SettingsConstants.MAINNET, wallet_type: str = SettingsConstants.SINGLE_SIG, script_type: str = SettingsConstants.NATIVE_SEGWIT, account: int = 0) -> str:
+def get_standard_derivation_path(network: str = SettingsConstants.MAINNET, wallet_type: str = SettingsConstants.SINGLE_SIG, script_type: str = SettingsConstants.NATIVE_SEGWIT) -> str:
     if network == SettingsConstants.MAINNET:
         network_path = "0'"
     elif network == SettingsConstants.TESTNET:
@@ -32,13 +32,13 @@ def get_standard_derivation_path(network: str = SettingsConstants.MAINNET, walle
 
     if wallet_type == SettingsConstants.SINGLE_SIG:
         if script_type == SettingsConstants.LEGACY_P2PKH:
-            return f"m/44'/{network_path}/{account}'"
+            return f"m/44'/{network_path}/0'"
         elif script_type == SettingsConstants.NESTED_SEGWIT:
-            return f"m/49'/{network_path}/{account}'"
+            return f"m/49'/{network_path}/0'"
         elif script_type == SettingsConstants.NATIVE_SEGWIT:
-            return f"m/84'/{network_path}/{account}'"
+            return f"m/84'/{network_path}/0'"
         elif script_type == SettingsConstants.TAPROOT:
-            return f"m/86'/{network_path}/{account}'"
+            return f"m/86'/{network_path}/0'"
         else:
             raise Exception("Unexpected script type")
 
@@ -46,11 +46,11 @@ def get_standard_derivation_path(network: str = SettingsConstants.MAINNET, walle
         if script_type == SettingsConstants.LEGACY_P2PKH:
             return f"m/45'" #BIP45
         elif script_type == SettingsConstants.NESTED_SEGWIT:
-            return f"m/48'/{network_path}/{account}'/1'"
+            return f"m/48'/{network_path}/0'/1'"
         elif script_type == SettingsConstants.NATIVE_SEGWIT:
-            return f"m/48'/{network_path}/{account}'/2'"
+            return f"m/48'/{network_path}/0'/2'"
         elif script_type == SettingsConstants.TAPROOT:
-            raise Exception("Taproot multisig not yet supported")
+            raise Exception("Taproot multisig/musig not yet supported")
         else:
             raise Exception("Unexpected script type")
     else:
@@ -101,6 +101,7 @@ def get_multisig_address(descriptor: Descriptor, index: int = 0, is_change: bool
         raise Exception("Taproot verification not yet implemented!")
 
     raise Exception(f"{descriptor.script_pubkey().script_type()} address verification not yet implemented!")
+
 
 
 def get_embit_network_name(settings_name):

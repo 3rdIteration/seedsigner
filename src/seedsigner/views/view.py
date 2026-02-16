@@ -1,11 +1,9 @@
 from dataclasses import dataclass, field
-from gettext import gettext as _
 from typing import Type
 
-from seedsigner.helpers.l10n import mark_for_translation as _mft
-from seedsigner.gui.components import SeedSignerIconConstants
+from seedsigner.gui.components import FontAwesomeIconConstants, SeedSignerIconConstants
 from seedsigner.gui.screens import RET_CODE__POWER_BUTTON, RET_CODE__BACK_BUTTON
-from seedsigner.gui.screens.screen import BaseScreen, ButtonOption, LargeButtonScreen, WarningScreen, ErrorScreen
+from seedsigner.gui.screens.screen import BaseScreen, DireWarningScreen, LargeButtonScreen, PowerOffScreen, PowerOffNotRequiredScreen, ResetScreen, WarningScreen
 from seedsigner.models.settings import Settings, SettingsConstants
 from seedsigner.models.settings_definition import SettingsDefinition
 from seedsigner.models.threads import BaseThread
@@ -17,7 +15,6 @@ class BackStackView:
         the back_stack.
     """
     pass
-
 
 
 """
@@ -130,46 +127,13 @@ class Destination:
     clear_history: bool = False         # Optionally clears the back_stack to prevent "back"
 
 
-    _SENSITIVE_ARG_NAMES = {
-        "password",
-        "passphrase",
-        "mnemonic",
-        "seed",
-        "seed_bytes",
-        "secret",
-        "secret_list",
-        "private_key",
-        "pin",
-    }
-
-    @classmethod
-    def _redact_for_repr(cls, value, key: str | None = None):
-        if isinstance(value, dict):
-            redacted = {}
-            for k, v in value.items():
-                key_name = str(k).lower()
-                redacted[k] = cls._redact_for_repr(v, key=key_name)
-            return redacted
-
-        if isinstance(value, list):
-            return [cls._redact_for_repr(item, key=key) for item in value]
-
-        if isinstance(value, tuple):
-            return tuple(cls._redact_for_repr(item, key=key) for item in value)
-
-        if key and key in cls._SENSITIVE_ARG_NAMES:
-            return "***redacted***"
-
-        return value
-
     def __repr__(self):
         if self.View_cls is None:
             out = "None"
         else:
             out = self.View_cls.__name__
         if self.view_args:
-            safe_view_args = self._redact_for_repr(self.view_args)
-            out += f"({safe_view_args})"
+            out += f"({self.view_args})"
         else:
             out += "()"
         if self.clear_history:
@@ -217,29 +181,18 @@ class Destination:
 #
 #########################################################################################
 class MainMenuView(View):
-    SCAN = ButtonOption("Scan", SeedSignerIconConstants.SCAN)
-    SEEDS = ButtonOption("Seeds", SeedSignerIconConstants.SEEDS)
-    TOOLS = ButtonOption("Tools", SeedSignerIconConstants.TOOLS)
-    SETTINGS = ButtonOption("Settings", SeedSignerIconConstants.SETTINGS)
+    SCAN = ("Scan", SeedSignerIconConstants.SCAN)
+    SEEDS = ("Seeds", SeedSignerIconConstants.SEEDS)
+    TOOLS = ("Tools", SeedSignerIconConstants.TOOLS)
+    SETTINGS = ("Settings", SeedSignerIconConstants.SETTINGS)
+
 
     def run(self):
         from seedsigner.gui.screens.screen import MainMenuScreen
-        from seedsigner.controller import Controller
-        from seedsigner.gui.toast import InfoToast
-
-        controller = Controller.get_instance()
-        controller.storage.discard_pending_slip39_shares()
-        controller.tools_common_card_filter = None
-        controller.psbt_from_microsd = False
-        controller.psbt_microsd_save_path = None
-        controller.psbt_microsd_seed_warning_shown = False
-        if controller.auto_wiped:
-            controller.auto_wiped = False
-            controller.activate_toast(InfoToast(label_text=_("Data wiped after inactivity")))
         button_data = [self.SCAN, self.SEEDS, self.TOOLS, self.SETTINGS]
         selected_menu_num = self.run_screen(
             MainMenuScreen,
-            title=_("Home"),
+            title="Home",
             button_data=button_data,
         )
 
@@ -265,14 +218,14 @@ class MainMenuView(View):
 
 
 class PowerOptionsView(View):
-    RESET = ButtonOption("Restart", SeedSignerIconConstants.RESTART)
-    POWER_OFF = ButtonOption("Power Off", SeedSignerIconConstants.POWER)
+    RESET = ("Restart", SeedSignerIconConstants.RESTART)
+    POWER_OFF = ("Power Off", SeedSignerIconConstants.POWER)
 
     def run(self):
         button_data = [self.RESET, self.POWER_OFF]
         selected_menu_num = self.run_screen(
             LargeButtonScreen,
-            title=_("Reset / Power"),
+            title="Reset / Power",
             show_back_button=True,
             button_data=button_data
         )
@@ -290,7 +243,6 @@ class PowerOptionsView(View):
 
 class RestartView(View):
     def run(self):
-        from seedsigner.gui.screens.screen import ResetScreen
         thread = RestartView.DoResetThread()
         thread.start()
         self.run_screen(ResetScreen)
@@ -316,37 +268,38 @@ class RestartView(View):
 
 class PowerOffView(View):
     def run(self):
-        from seedsigner.gui.screens.screen import PowerOffNotRequiredScreen
-        from seedsigner.hardware.buttons import USING_GPIO
-        import os
-        import sys
-
-        if not USING_GPIO:
-            if "PYTEST_CURRENT_TEST" not in os.environ:
-                # In desktop mode, exiting the program is the safest way to "power off"
-                sys.exit(0)
+        if Settings.HOSTNAME == Settings.SEEDSIGNER_OS:
+            self.run_screen(PowerOffNotRequiredScreen)
             return Destination(BackStackView)
+        else:
+            thread = PowerOffView.PowerOffThread()
+            thread.start()
+            self.run_screen(PowerOffScreen)
 
-        self.run_screen(PowerOffNotRequiredScreen)
-        return Destination(BackStackView)
+
+    class PowerOffThread(BaseThread):
+        def run(self):
+            import time
+            from subprocess import call
+            while self.keep_running:
+                time.sleep(5)
+                call("sudo shutdown --poweroff now", shell=True)
 
 
 
 @dataclass
 class NotYetImplementedView(View):
+    text: str = "This is still on our to-do list!"
     """
         Temporary View to use during dev.
     """
-    text: str = _mft("This is still on our to-do list!")
-
-
     def run(self):
         self.run_screen(
             WarningScreen,
-            title=_("Work In Progress"),
-            status_headline=_("Not Yet Implemented"),
+            title="Work In Progress",
+            status_headline="Not Yet Implemented",
             text=self.text,
-            button_data=[ButtonOption("Back to Main Menu")],
+            button_data=["Back to Main Menu"],
         )
 
         return Destination(MainMenuView)
@@ -355,50 +308,44 @@ class NotYetImplementedView(View):
 
 @dataclass
 class ErrorView(View):
-    title: str = _mft("Error")
+    title: str = "Error"
     show_back_button: bool = True
-    status_icon_name: str = SeedSignerIconConstants.ERROR
     status_headline: str = None
     text: str = None
     button_text: str = None
-    next_destination: Destination = None
+    next_destination: Destination = field(default_factory=lambda: Destination(MainMenuView, clear_history=True))
+
 
     def run(self):
         self.run_screen(
-            ErrorScreen,
+            WarningScreen,
             title=self.title,
-            status_icon_name=self.status_icon_name,
             status_headline=self.status_headline,
             text=self.text,
-            button_data=[ButtonOption(self.button_text)],
+            button_data=[self.button_text],
             show_back_button=self.show_back_button,
         )
-        return self.next_destination if self.next_destination else Destination(MainMenuView, clear_history=True)
+
+        return self.next_destination
 
 
 
 @dataclass
 class NetworkMismatchErrorView(ErrorView):
-    derivation_path: str = None
+    title: str = "Network Mismatch"
+    show_back_button: bool = False
+    button_text: str = "Change Setting"
+    next_destination: Destination = None
+
 
     def __post_init__(self):
-        from seedsigner.views.settings_views import SettingsEntryUpdateSelectionView
-
-        # TRANSLATOR_NOTE: The network setting (mainnet/testnet/regtest) doesn't match the provided derivation path
-        self.title = _("Network Mismatch")
-        self.status_icon_name = SeedSignerIconConstants.WARNING
-        self.show_back_button = False
-
-        # TRANSLATOR_NOTE: Button option to alter a setting
-        self.button_text = _("Change Setting")
-        self.next_destination = Destination(SettingsEntryUpdateSelectionView, view_args=dict(attr_name=SettingsConstants.SETTING__NETWORK), clear_history=True)
         super().__post_init__()
+        if not self.text:
+            self.text = f"Current network setting ({self.settings.get_value_display_name(SettingsConstants.SETTING__NETWORK)}) doesn't match current action."
 
-        # TRANSLATOR_NOTE: Inserts mainnet/testnet/regtest and derivation path
-        self.text = _("Current network setting ({}) doesn't match {}.").format(
-            self.settings.get_value_display_name(SettingsConstants.SETTING__NETWORK),
-            self.derivation_path,
-        )
+        if not self.next_destination:
+            from seedsigner.views.settings_views import SettingsEntryUpdateSelectionView
+            self.next_destination = Destination(SettingsEntryUpdateSelectionView, view_args=dict(attr_name=SettingsConstants.SETTING__NETWORK), clear_history=True)
 
 
 
@@ -406,12 +353,15 @@ class NetworkMismatchErrorView(ErrorView):
 class UnhandledExceptionView(View):
     error: list[str]
 
+
     def run(self):
         self.run_screen(
-            ErrorScreen,
-            title=_("System Error"),
+            DireWarningScreen,
+            title="System Error",
             status_headline=self.error[0],
             text=self.error[1] + "\n" + self.error[2],
+            button_data=["OK"],
+            show_back_button=False,
             allow_text_overflow=True,  # Fit what we can, let the rest go off the edges
         )
         
@@ -421,25 +371,21 @@ class UnhandledExceptionView(View):
 
 @dataclass
 class OptionDisabledView(View):
-    UPDATE_SETTING = ButtonOption("Update Setting")
-    DONE = ButtonOption("Done")
+    UPDATE_SETTING = "Update Setting"
+    DONE = "Done"
     settings_attr: str
 
     def __post_init__(self):
         super().__post_init__()
         self.settings_entry = SettingsDefinition.get_settings_entry(self.settings_attr)
-
-        # TRANSLATOR_NOTE: Inserts the name of a settings option (e.g. "Persistent Settings" is currently...)
-        self.error_msg = _("\"{}\" is currently disabled in Settings.").format(
-            _(self.settings_entry.display_name),
-        )
+        self.error_msg = f"\"{self.settings_entry.display_name}\" is currently disabled in Settings."
 
 
     def run(self):
         button_data = [self.UPDATE_SETTING, self.DONE]
         selected_menu_num = self.run_screen(
             WarningScreen,
-            title=_("Option Disabled"),
+            title="Option Disabled",
             status_headline=None,
             text=self.error_msg,
             button_data=button_data,
@@ -452,3 +398,26 @@ class OptionDisabledView(View):
             return Destination(SettingsEntryUpdateSelectionView, view_args=dict(attr_name=self.settings_attr), clear_history=True)
         else:
             return Destination(MainMenuView, clear_history=True)
+
+
+
+class RemoveMicroSDWarningView(View):
+    """
+        Warning to remove the microsd
+    """
+    def __init__(self, next_view: View):
+        super().__init__()
+        self.next_view = next_view
+
+    def run(self):
+        self.run_screen(
+            WarningScreen,
+            title="Security Tip",
+            status_icon_name=FontAwesomeIconConstants.SDCARD,
+            status_headline="",
+            text="For maximum security,\nremove the MicroSD card\nbefore continuing.",
+            show_back_button=False,
+            button_data=["Continue"],
+        )
+
+        return Destination(self.next_view, clear_history=True)

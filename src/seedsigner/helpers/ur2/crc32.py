@@ -33,8 +33,4 @@ def crc32(buf):
 
 def crc32n(buf):
     n = crc32(buf)
-    # Always emit a full 4-byte big-endian CRC so downstream consumers can
-    # rely on a fixed-size checksum.  The previous implementation truncated
-    # leading null bytes which caused the Bytewords minimal encoder to drop
-    # payload bytes when the checksum happened to start with zeros.
-    return n.to_bytes(4, 'big')
+    return n.to_bytes((bit_length(n) + 7) // 8, 'big')

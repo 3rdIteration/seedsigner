@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import logging
 from binascii import hexlify
 from embit import psbt, script, ec, bip32
@@ -10,7 +8,6 @@ from io import BytesIO
 from typing import List
 
 from seedsigner.models.seed import Seed
-from seedsigner.models.wif import WIFKey
 from seedsigner.models.settings import SettingsConstants
 
 logger = logging.getLogger(__name__)
@@ -22,23 +19,10 @@ class OPCODES:
 
 
 class PSBTParser():
-    def __init__(
-        self,
-        p: PSBT,
-        seed: Seed | WIFKey | None = None,
-        *,
-        root: bip32.HDKey | None = None,
-        root_path: list[int] | None = None,
-        master_fingerprint: bytes | None = None,
-        network: str = SettingsConstants.MAINNET,
-    ):
+    def __init__(self, p: PSBT, seed: Seed, network: str = SettingsConstants.MAINNET):
         self.psbt: PSBT = p
         self.seed = seed
         self.network = network
-        self.root = root
-        self.root_path = root_path or []
-        self.root_path_str = bip32.path_to_str(self.root_path) if self.root_path else "m"
-        self.master_fingerprint = master_fingerprint
 
         self.policy = None
         self.spend_amount = 0
@@ -51,7 +35,9 @@ class PSBTParser():
         self.destination_amounts = []
         self.op_return_data: bytes = None
 
-        if self.seed is not None or self.root is not None:
+        self.root = None
+
+        if self.seed is not None:
             self.parse()
 
 
@@ -70,7 +56,7 @@ class PSBTParser():
         """
             Multisig psbts will have "m" and "n" defined in policy
         """
-        return isinstance(self.policy, dict) and "m" in self.policy
+        return "m" in self.policy
 
 
     @property
@@ -79,14 +65,7 @@ class PSBTParser():
 
 
     def _set_root(self):
-        if self.seed is not None:
-            if isinstance(self.seed, WIFKey):
-                # root is a simple private key
-                self.root = self.seed.privkey
-            else:
-                self.root = self.seed.get_root(self.network)
-        elif self.root is None:
-            raise RuntimeError("No seed or root key available")
+        self.root = bip32.HDKey.from_seed(self.seed.seed_bytes, version=NETWORKS[SettingsConstants.map_network_to_embit(self.network)]["xprv"])
 
 
     def parse(self):
@@ -94,15 +73,15 @@ class PSBTParser():
             logger.info(f"self.psbt is None!!")
             return False
 
-        if self.seed is not None and self.root is None:
-            self._set_root()
+        if not self.seed:
+            logger.info("self.seed is None!")
+            return False
+
+        self._set_root()
 
         rt = self._parse_inputs()
         if rt == False:
             return False
-
-        if self.root is None and self.seed is None and not self.is_multisig:
-            raise RuntimeError("No seed or root key available")
 
         rt = self._parse_outputs()
         if rt == False:
@@ -151,6 +130,7 @@ class PSBTParser():
 
                 # empty script by default
                 sc = script.Script(b"")
+
                 # if older multisig, just use existing script
                 if self.policy["type"] == "p2sh":
                     sc = script.p2sh(out.redeem_script)
@@ -171,15 +151,12 @@ class PSBTParser():
                     my_pubkey = None
 
                     # should be one or zero for single-key addresses
-                    if hasattr(self.root, "derive") and len(out.bip32_derivations.values()) > 0:
+                    if len(out.bip32_derivations.values()) > 0:
                         der = list(out.bip32_derivations.values())[0].derivation
-                        der = der[len(self.root_path):]
                         my_pubkey = self.root.derive(der)
 
                     if self.policy["type"] == "p2pkh" and my_pubkey is not None:
                         sc = script.p2pkh(my_pubkey)
-                    if self.policy["type"] == "p2wpkh" and my_pubkey is not None:
-                        sc = script.p2wpkh(my_pubkey)
 
                     elif self.policy["type"] == "p2sh-p2wpkh" and my_pubkey is not None:
                         sc = script.p2sh(script.p2wpkh(my_pubkey))
@@ -193,10 +170,10 @@ class PSBTParser():
                 elif "p2tr" in self.policy["type"]:
                     my_pubkey = None
                     # should have one or zero derivations for single-key addresses
-                    if hasattr(self.root, "derive") and len(out.taproot_bip32_derivations.values()) > 0:
+                    if len(out.taproot_bip32_derivations.values()) > 0:
                         # TODO: Support keys in taptree leaves
                         leaf_hashes, derivation = list(out.taproot_bip32_derivations.values())[0]
-                        der = derivation.derivation[len(self.root_path):]
+                        der = derivation.derivation
                         my_pubkey = self.root.derive(der)
                         sc = script.p2tr(my_pubkey)
 
@@ -309,7 +286,7 @@ class PSBTParser():
                     policy.update({"m": m, "n": n, "cosigners": cosigners})
                 except:
                     policy.update({"m": m, "n": n})
-
+        
         return policy
 
 
@@ -389,24 +366,12 @@ class PSBTParser():
 
 
     @staticmethod
-    def has_matching_input_fingerprint(
-        psbt: PSBT,
-        seed: Seed | None = None,
-        *,
-        root: bip32.HDKey | None = None,
-        network: str = SettingsConstants.MAINNET,
-    ):
+    def has_matching_input_fingerprint(psbt: PSBT, seed: Seed, network: str = SettingsConstants.MAINNET):
         """
             Extracts the fingerprint from each psbt input utxo. Returns True if any match
-            the current seed or root xpub.
+            the current seed.
         """
-        if seed is not None:
-            seed_fingerprint = seed.get_fingerprint(network)
-        elif root is not None:
-            seed_fingerprint = hexlify(root.child(0).fingerprint).decode()
-        else:
-            return False
-
+        seed_fingerprint = seed.get_fingerprint(network)
         for input in psbt.inputs:
             for pub, derivation_path in input.bip32_derivations.items():
                 if seed_fingerprint == hexlify(derivation_path.fingerprint).decode():

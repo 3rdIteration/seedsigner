@@ -11,55 +11,9 @@ sys.modules['seedsigner.gui.toast'] = MagicMock()
 sys.modules['seedsigner.views.screensaver'] = MagicMock()
 sys.modules['seedsigner.hardware.buttons'] = MagicMock()
 sys.modules['seedsigner.hardware.camera'] = MagicMock()
-sys.modules['seedsigner.hardware.st7789_mpy'] = MagicMock()
-sys.modules['seedsigner.hardware.ili9341'] = MagicMock()
-sys.modules['RPi'] = MagicMock()
-sys.modules['RPi.GPIO'] = MagicMock()
-sys.modules['pyzbar'] = MagicMock()
-sys.modules['pyzbar.pyzbar'] = MagicMock()
-sys.modules['pysatochip'] = MagicMock()
-sys.modules['pysatochip.JCconstants'] = MagicMock()
-sys.modules['pysatochip.util'] = MagicMock()
-sys.modules['pysatochip.CardConnector'] = MagicMock()
-sys.modules['smbus2'] = MagicMock()
-sys.modules['smartcard'] = MagicMock()
-sys.modules['smartcard.System'] = MagicMock()
-
-# Dummy BatteryHat to prevent hardware thread usage during tests
-class DummyBatteryHat(MagicMock):
-    @classmethod
-    def get_instance(cls):
-        if not getattr(cls, '_instance', None):
-            cls._instance = cls()
-            cls._instance.is_alive.return_value = False
-        return cls._instance
-
-    @classmethod
-    def reset_instance(cls):
-        cls._instance = None
-
-    def initialize(self):
-        return True
-
-    def is_enabled(self):
-        return True
-
-    def start(self):
-        pass
-
-    def stop(self):
-        pass
-
-    def join(self, *a, **k):
-        pass
-
-    def get_percent(self):
-        return None
-
-sys.modules['seedsigner.hardware.battery_hat'] = MagicMock(BatteryHat=DummyBatteryHat)
 
 from seedsigner.controller import Controller, FlowBasedTestException, StopFlowBasedTest
-from seedsigner.gui.screens.screen import RET_CODE__BACK_BUTTON, RET_CODE__POWER_BUTTON, ButtonOption
+from seedsigner.gui.screens.screen import RET_CODE__BACK_BUTTON, RET_CODE__POWER_BUTTON
 from seedsigner.hardware.microsd import MicroSD
 from seedsigner.models.settings import Settings
 from seedsigner.views.view import Destination, MainMenuView, UnhandledExceptionView, View
@@ -123,20 +77,7 @@ class BaseTest:
     @classmethod
     def reset_controller(cls):
         """ Wipe and re-initialize the Controller singleton """
-        controller = Controller._instance
-        if controller:
-            if getattr(controller, "battery_hat", None) and controller.battery_hat.is_alive():
-                controller.battery_hat.stop()
-                controller.battery_hat.join()
-            if getattr(controller, "wipe_timer_thread", None) and controller.wipe_timer_thread.is_alive():
-                controller.wipe_timer_thread.stop()
-                controller.wipe_timer_thread.join()
         Controller._instance = None
-        try:
-            from seedsigner.hardware.battery_hat import BatteryHat
-            BatteryHat.reset_instance()
-        except Exception:
-            pass
         Controller.configure_instance()
 
 
@@ -196,12 +137,6 @@ class FlowStep:
     def __post_init__(self):
         if self.screen_return_value is not None and self.button_data_selection is not None:
             raise Exception("Can't specify both `screen_return_value` and `button_data_selection`")
-
-
-
-class FlowTestInvalidButtonDataInstanceTypeException(FlowBasedTestException):
-    """ The button_data contained an item that was not a ButtonOption instance """
-    pass
 
 
 
@@ -314,12 +249,6 @@ class FlowTest(BaseTest):
                     Just returns the return value specified in the test sequence.
                     """
                     cur_flow_step = sequence[0]
-
-                    if "button_data" in kwargs:
-                        # Verify that they are all proper ButtonOption instances
-                        for button_option in kwargs.get("button_data"):
-                            if not isinstance(button_option, ButtonOption):
-                                raise FlowTestInvalidButtonDataInstanceTypeException(f"button_data must be a list of ButtonOption instances, not {type(button_option)}: {button_option}")
 
                     if cur_flow_step.button_data_selection:
                         # We're mocking out the View.run_screen() method, so we'll get all of the

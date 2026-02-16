@@ -2,16 +2,11 @@
 from base import FlowTest, FlowStep
 
 from seedsigner.controller import Controller
-from seedsigner.gui.screens.screen import RET_CODE__BACK_BUTTON, ButtonOption
+from seedsigner.gui.screens.screen import RET_CODE__BACK_BUTTON
 from seedsigner.models.seed import Seed
 from seedsigner.models.settings_definition import SettingsConstants, SettingsDefinition
 from seedsigner.views.view import ErrorView, MainMenuView
 from seedsigner.views import scan_views, seed_views, tools_views
-from embit.bip32 import HDKey
-from embit import bip39, networks
-from seedsigner.helpers import seedkeeper_utils
-from binascii import hexlify
-from unittest import mock
 
 
 
@@ -30,7 +25,7 @@ class TestToolsFlows(FlowTest):
             FlowStep(MainMenuView, button_data_selection=MainMenuView.TOOLS),
             FlowStep(tools_views.ToolsMenuView, button_data_selection=tools_views.ToolsMenuView.ADDRESS_EXPLORER),
             FlowStep(tools_views.ToolsAddressExplorerSelectSourceView, screen_return_value=0),  # ret 1st onboard seed
-            FlowStep(seed_views.SeedExportXpubScriptTypeView, button_data_selection=ButtonOption(SettingsDefinition.get_settings_entry(SettingsConstants.SETTING__SCRIPT_TYPES).get_selection_option_display_name_by_value(SettingsConstants.NATIVE_SEGWIT), return_data=SettingsConstants.NATIVE_SEGWIT)),
+            FlowStep(seed_views.SeedExportXpubScriptTypeView, button_data_selection=SettingsDefinition.get_settings_entry(SettingsConstants.SETTING__SCRIPT_TYPES).get_selection_option_display_name_by_value(SettingsConstants.NATIVE_SEGWIT)),
             FlowStep(tools_views.ToolsAddressExplorerAddressTypeView, button_data_selection=tools_views.ToolsAddressExplorerAddressTypeView.RECEIVE),
             FlowStep(tools_views.ToolsAddressExplorerAddressListView, screen_return_value=10),  # ret NEXT page of addrs
             FlowStep(tools_views.ToolsAddressExplorerAddressListView, screen_return_value=4),  # ret a specific addr from the list
@@ -67,7 +62,7 @@ class TestToolsFlows(FlowTest):
         # Finalize the new seed w/passphrase
         self.run_sequence(
             sequence=[
-                FlowStep(seed_views.SeedFinalizeView, button_data_selection=seed_views.SeedFinalizeView.TYPE_PASSPHRASE),
+                FlowStep(seed_views.SeedFinalizeView, button_data_selection=SettingsConstants.LABEL__BIP39_PASSPHRASE),
                 FlowStep(seed_views.SeedAddPassphraseView, screen_return_value=dict(passphrase="mypassphrase")),
                 FlowStep(seed_views.SeedReviewPassphraseView, button_data_selection=seed_views.SeedReviewPassphraseView.DONE),
                 FlowStep(seed_views.SeedOptionsView, is_redirect=True),
@@ -220,53 +215,6 @@ class TestToolsFlows(FlowTest):
         ])
 
 
-    def test__address_explorer__satochip_descriptor__flow(self, monkeypatch):
-        """Address Explorer should be able to load a descriptor from a Satochip card."""
-        seed_bytes = bip39.mnemonic_to_seed(
-            "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
-        )
-        root = HDKey.from_seed(seed_bytes, version=networks.NETWORKS["main"]["xprv"])
-        derived_xpub = root.derive("m/84h/0h/0h").to_public().to_string()
-        master_xpub = root.to_public().to_string()
-        master_fingerprint = hexlify(root.my_fingerprint).decode()
-
-        class MockConnector:
-            def card_bip32_get_xpub(self, path, xtype, is_mainnet):
-                if path == "":
-                    return master_xpub
-                elif path == "m/84'/0'/0'":
-                    return derived_xpub
-                raise ValueError("unexpected path")
-
-            def card_get_status(self):
-                return None, 0x90, 0x00, {"feature_schnorr_policy": 0}
-
-        monkeypatch.setattr(seedkeeper_utils, "init_satochip", lambda *args, **kwargs: MockConnector())
-
-        controller = Controller.get_instance()
-        controller.multisig_wallet_descriptor = None
-
-        self.run_sequence([
-            FlowStep(MainMenuView, button_data_selection=MainMenuView.TOOLS),
-            FlowStep(tools_views.ToolsMenuView, button_data_selection=tools_views.ToolsMenuView.ADDRESS_EXPLORER),
-            FlowStep(tools_views.ToolsAddressExplorerSelectSourceView, button_data_selection=tools_views.ToolsAddressExplorerSelectSourceView.SATOCHIP),
-            FlowStep(
-                tools_views.SatochipLoadDescriptorScriptTypeView,
-                button_data_selection=ButtonOption(
-                    SettingsDefinition.get_settings_entry(SettingsConstants.SETTING__SCRIPT_TYPES).get_selection_option_display_name_by_value(SettingsConstants.NATIVE_SEGWIT),
-                    return_data=SettingsConstants.NATIVE_SEGWIT,
-                ),
-            ),
-            FlowStep(tools_views.SatochipLoadDescriptorDetailsView, screen_return_value=0),
-            FlowStep(seed_views.MultisigWalletDescriptorView, button_data_selection=seed_views.MultisigWalletDescriptorView.ADDRESS_EXPLORER),
-            FlowStep(tools_views.ToolsAddressExplorerAddressTypeView, button_data_selection=tools_views.ToolsAddressExplorerAddressTypeView.RECEIVE),
-            FlowStep(tools_views.ToolsAddressExplorerAddressListView),
-        ])
-
-        descriptor = controller.multisig_wallet_descriptor
-        assert hexlify(descriptor.keys[0].fingerprint).decode() == master_fingerprint
-
-
     def test__verify_address__legacy_multisig_p2sh__flow(self):
         """
             Address Explorer should be able to scan a legacy multisig p2sh address and
@@ -294,56 +242,6 @@ class TestToolsFlows(FlowTest):
             FlowStep(scan_views.ScanWalletDescriptorView, before_run=load_descriptor_into_decoder),  # simulate read descriptor QR
             FlowStep(seed_views.MultisigWalletDescriptorView, screen_return_value=0),
             FlowStep(seed_views.SeedAddressVerificationView),
-            FlowStep(seed_views.SeedAddressVerificationSuccessView),
+            FlowStep(seed_views.AddressVerificationSuccessView),
         ])
 
-
-    def test__verify_address__singlesig__flow(self):
-        """
-            Address Explorer should be able to scan a singlesig address and
-            verify it against a loaded key.
-        """
-        controller = Controller.get_instance()
-        controller.storage.set_pending_seed(Seed(mnemonic=["abandon "* 11 + "about"]))
-        controller.storage.finalize_pending_seed()        
-        settings = controller.settings
-        settings.set_value(SettingsConstants.SETTING__NETWORK, SettingsConstants.REGTEST)
-
-        addrs = [
-            # Native segwit regtest receive addr @ index 6
-            "bcrt1q4e9q5taxnsvc6m0uxv6h75mkzvnkxeqk6l90u2",
-
-            # Taproot regtest change addr @ index 48
-            "bcrt1pj5v8ean2hc5lh2djsgfx4j9uc0n67942ngv6q9r49qv88ex5mrwsn3u4f7",
-        ]
-
-        for test_addr in addrs:
-            def load_address_into_decoder(view: scan_views.ScanView):
-                # Native segwit regtest receive addr @ index 6
-                view.decoder.add_data(test_addr)
-
-            self.run_sequence([
-                FlowStep(MainMenuView, button_data_selection=MainMenuView.TOOLS),
-                FlowStep(tools_views.ToolsMenuView, button_data_selection=tools_views.ToolsMenuView.VERIFY_ADDRESS),
-                FlowStep(scan_views.ScanAddressView, before_run=load_address_into_decoder),  # simulate read address QR
-                FlowStep(seed_views.AddressVerificationStartView, is_redirect=True),
-                FlowStep(seed_views.SeedSelectSeedView, screen_return_value=0),
-                FlowStep(seed_views.SeedAddressVerificationView),
-                FlowStep(seed_views.SeedAddressVerificationSuccessView),
-            ])
-
-    def test__seed_select_includes_satochip_for_verify_address(self):
-        """Seed picker should offer Satochip option when verifying an address."""
-
-        controller = Controller.get_instance()
-        controller.storage.seeds.clear()
-        view = seed_views.SeedSelectSeedView(flow=Controller.FLOW__VERIFY_SINGLESIG_ADDR)
-
-        def fake_run_screen(*args, **kwargs):
-            # Return immediately to inspect button_data
-            return RET_CODE__BACK_BUTTON
-
-        with mock.patch.object(view, "run_screen", side_effect=fake_run_screen) as mocked:
-            view.run()
-        button_data = mocked.call_args.kwargs["button_data"]
-        assert seed_views.SeedSelectSeedView.SATOCHIP in button_data
