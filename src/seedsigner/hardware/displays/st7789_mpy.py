@@ -53,6 +53,7 @@ This driver supports:
 import array
 from periphery import GPIO, SPI
 import time
+import errno
 from math import sin, cos
 
 from seedsigner.models.settings import Settings
@@ -360,9 +361,20 @@ class ST7789:
         if isinstance(data, list):
             data = bytes(data)
 
-        for i in range(0, len(data), self.CHUNK_SIZE):
-            chunk = data[i:i + self.CHUNK_SIZE]
-            self._spi.transfer(chunk)
+        i = 0
+        chunk_size = self.CHUNK_SIZE
+        while i < len(data):
+            chunk = data[i:i + chunk_size]
+            try:
+                self._spi.transfer(chunk)
+                i += len(chunk)
+            except Exception as e:
+                # Some kernels/drivers enforce smaller SPI message sizes.
+                if getattr(e, "errno", None) == errno.EMSGSIZE and chunk_size > 256:
+                    chunk_size = max(256, chunk_size // 2)
+                    self.CHUNK_SIZE = chunk_size
+                    continue
+                raise
 
     def _write(self, command=None, data=None):
         """SPI write to the device: commands and data."""
