@@ -1,5 +1,6 @@
 import logging
 import os
+import platform
 import re
 from gettext import gettext as _
 
@@ -776,21 +777,6 @@ class SystemInfoView(View):
         except Exception:
             return None
 
-    def _get_pi_version(self) -> str:
-        model = self._read_text_file("/proc/device-tree/model")
-        if model:
-            return model
-
-        try:
-            with open("/proc/cpuinfo", "r", encoding="utf-8") as file:
-                for line in file:
-                    if line.startswith("Model"):
-                        return line.split(":", 1)[-1].strip()
-        except Exception:
-            pass
-
-        return _("Unavailable")
-
     def _get_system_serial(self) -> str:
         try:
             with open("/proc/cpuinfo", "r", encoding="utf-8") as file:
@@ -826,12 +812,48 @@ class SystemInfoView(View):
         serial = self._read_text_file(serial_path)
         return serial if serial else _("Unavailable")
 
+    def _get_platform_info(self) -> tuple[str, str]:
+        profile = Settings.RUNTIME_PROFILE
+        platform_map = {
+            "desktop": "Desktop",
+            "rpi_26": "Raspberry Pi",
+            "rpi_40": "Raspberry Pi",
+            "luckfox_22": "Luckfox Pico",
+            "luckfox_40": "Luckfox Pico",
+        }
+        platform_name = platform_map.get(profile, "Unknown")
+
+        if profile == "desktop":
+            os_name = platform.system().strip()
+            if os_name:
+                return platform_name, os_name
+            return platform_name, _("Unavailable")
+
+        # Prefer actual board model (e.g. specific Raspberry Pi / Luckfox model).
+        variant = self._read_text_file("/proc/device-tree/model")
+        if not variant:
+            try:
+                hardware_config = Settings.get_instance().get_value(SettingsConstants.SETTING__HARDWARE_CONFIG)
+                for value, label in SettingsConstants.ALL_HARDWARE_PIN_CONFIGS:
+                    if value == hardware_config:
+                        variant = label
+                        break
+            except Exception:
+                pass
+
+        if not variant:
+            variant = _("Unavailable")
+
+        return platform_name, variant
+
     def run(self):
+        platform_name, platform_variant = self._get_platform_info()
         self.run_screen(
             settings_screens.SystemInfoScreen,
-            pi_version=self._get_pi_version(),
             system_serial=self._get_system_serial(),
             microsd_serial=self._get_microsd_serial(),
+            platform_name=platform_name,
+            platform_variant=platform_variant,
         )
 
         return Destination(SettingsMenuView, view_args={"visibility": SettingsConstants.VISIBILITY__HARDWARE})

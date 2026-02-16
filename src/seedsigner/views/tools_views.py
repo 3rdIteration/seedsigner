@@ -601,25 +601,23 @@ class ToolsImageEntropyFinalImageView(View):
             from seedsigner.hardware.camera import Camera
             # Take the final full-res image
             camera = Camera.get_instance()
-            max_dim = max(self.canvas_width, self.canvas_height)
+            img = None
+            try:
+                camera.start_video_stream_mode()
+                time.sleep(1.0)
+                for attempt in range(10):
+                    img = camera.read_video_stream(as_image=True)
+                    if img is not None:
+                        break
+                    logger.info(f"Attempt {attempt + 1} to capture entropy frame")
+                    time.sleep(0.2)
+            finally:
+                camera.stop_video_stream_mode()
 
-            # Final image will be at least 4x the number of pixels the screen can
-            # actually display.
-            camera.start_video_stream_mode()
-
-            # From testing, it take a while before the first frame is available
-            time.sleep(2)
-            img = camera.read_video_stream(as_image=True)
-            count = 0
-            while img is None and count < 10:
-                logger.info(f"Attempt {count} to read video stream frame")
-                img = camera.read_video_stream(as_image=True)
-                count += 1
-                time.sleep(0.2)
+            if img is None:
+                raise Exception("Failed to capture camera entropy image")
 
             self.controller.image_entropy_final_image = img
-            # camera.stop_single_frame_mode()
-            camera.stop_video_stream_mode()
 
         # Prep a copy of the image for display:
         #   * Boost the contrast for better presentation (but preserve the original pixels)

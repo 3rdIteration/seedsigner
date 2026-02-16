@@ -3260,10 +3260,20 @@ class SeedEncryptedQRnonECBModeView(View):
         # Take the final full-res image
         from seedsigner.hardware.camera import Camera
         camera = Camera.get_instance()
-        camera.start_single_frame_mode(resolution=(720, 480))
-        time.sleep(0.25)
-        entropy_image = camera.capture_frame()
-        camera.stop_single_frame_mode()
+        entropy_image = None
+        try:
+            camera.start_video_stream_mode()
+            time.sleep(1.0)
+            for attempt in range(10):
+                entropy_image = camera.read_video_stream(as_image=True)
+                if entropy_image is not None:
+                    break
+                time.sleep(0.2)
+        finally:
+            camera.stop_video_stream_mode()
+
+        if entropy_image is None:
+            raise Exception("Failed to capture additional entropy image")
 
         # A copy of the image for display. The actual image data is 720x480
         display_version = autocontrast(

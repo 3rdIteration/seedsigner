@@ -1,13 +1,15 @@
 import time
+import logging
 
 from dataclasses import dataclass
 from gettext import gettext as _
+from PIL import Image
 from PIL.ImageOps import autocontrast
 from typing import List
 
 
 from seedsigner.helpers.l10n import mark_for_translation as _mft
-from seedsigner.gui.components import Button, CheckboxButton, CheckedSelectionButton, FontAwesomeIconConstants, Fonts, GUIConstants, Icon, IconButton, IconTextLine, SeedSignerIconConstants, TextArea
+from seedsigner.gui.components import Button, CheckboxButton, CheckedSelectionButton, FontAwesomeIconConstants, Fonts, GUIConstants, Icon, IconButton, IconTextLine, SeedSignerIconConstants, TextArea, resize_image_to_fill
 from seedsigner.gui.screens.scan_screens import ScanScreen
 from seedsigner.gui.screens.screen import BaseScreen, BaseTopNavScreen, ButtonListScreen, ButtonOption, KeyboardScreen
 from seedsigner.models.threads import BaseThread
@@ -15,6 +17,7 @@ from seedsigner.hardware.buttons import HardwareButtonsConstants
 from seedsigner.hardware.camera import Camera
 from seedsigner.models.settings import SettingsConstants
 
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -195,6 +198,16 @@ class IOTestScreen(BaseTopNavScreen):
 
 
     def _run(self):
+        input_log_labels = {
+            HardwareButtonsConstants.KEY_UP: "KEY_UP",
+            HardwareButtonsConstants.KEY_DOWN: "KEY_DOWN",
+            HardwareButtonsConstants.KEY_LEFT: "KEY_LEFT",
+            HardwareButtonsConstants.KEY_RIGHT: "KEY_RIGHT",
+            HardwareButtonsConstants.KEY_PRESS: "KEY_PRESS",
+            HardwareButtonsConstants.KEY1: "KEY1",
+            HardwareButtonsConstants.KEY2: "KEY2",
+            HardwareButtonsConstants.KEY3: "KEY3",
+        }
         cur_selected_button = self.key1_button
         msg_height = GUIConstants.ICON_LARGE_BUTTON_SIZE + 2*GUIConstants.COMPONENT_PADDING
         camera_message = TextArea(
@@ -206,6 +219,7 @@ class IOTestScreen(BaseTopNavScreen):
         )
         while True:
             input = self.hw_inputs.wait_for(keys=HardwareButtonsConstants.ALL_KEYS)
+            logger.info("I/O test input: %s", input_log_labels.get(input, str(input)))
 
             if input == HardwareButtonsConstants.KEY1:
                 # Note that there are three distinct screen updates that happen at
@@ -232,19 +246,55 @@ class IOTestScreen(BaseTopNavScreen):
                 # Snap a pic, render it as the background, re-render all onscreen elements
                 camera = Camera.get_instance()
                 try:
-                    # camera.start_single_frame_mode(resolution=(self.canvas_width, self.canvas_height))
-                    camera.start_video_stream_mode()
-                    # Reset the button state
+                    # Different camera drivers accept different mode sets. Try a few
+                    # known-good profiles and use the first that yields a frame.
+                    capture_profiles = [
+                        {"resolution": (640, 480), "framerate": 12},
+                        {"resolution": (480, 480), "framerate": 6},
+                        {"resolution": (1280, 720), "framerate": 4},
+                        {"resolution": (320, 240), "framerate": 12},
+                    ]
+
+                    # Reset the button state once before attempting capture.
                     with self.renderer.lock:
                         cur_selected_button.is_selected = False
                         cur_selected_button.render()
                         self.renderer.show_image()
 
-                    time.sleep(0.25)
-                    background_frame = camera.capture_frame()
+                    background_frame = None
+                    for profile in capture_profiles:
+                        try:
+                            camera.start_video_stream_mode(
+                                resolution=profile["resolution"],
+                                framerate=profile["framerate"],
+                                format="bgr",
+                            )
+                            time.sleep(1.0)
+                            for attempt in range(10):
+                                background_frame = camera.read_video_stream(as_image=True)
+                                if background_frame is not None:
+                                    break
+                                time.sleep(0.2)
+                            if background_frame is not None:
+                                break
+                        except Exception as e:
+                            logger.info("I/O test camera profile failed (%s): %s", profile, e)
+                        finally:
+                            camera.stop_video_stream_mode()
+
+                    if background_frame is None:
+                        logger.warning("I/O test camera capture failed: no frame returned")
+                        continue
                     display_version = autocontrast(
                         background_frame,
                         cutoff=2
+                    )
+                    body_height = self.canvas_height - self.top_nav.height
+                    display_version = resize_image_to_fill(
+                        display_version,
+                        target_size_x=self.canvas_width,
+                        target_size_y=body_height,
+                        sampling_method=Image.Resampling.BICUBIC,
                     )
                     with self.renderer.lock:
                         self.canvas.paste(display_version, (0, self.top_nav.height))
@@ -252,9 +302,9 @@ class IOTestScreen(BaseTopNavScreen):
                         for component in self.components:
                             component.render()
                         self.renderer.show_image()
-                finally:
-                    # camera.stop_single_frame_mode()
-                    camera.stop_video_stream_mode()
+                except Exception as e:
+                    logger.warning("I/O test camera capture failed: %s", e)
+                    continue
 
                 continue
 
@@ -471,18 +521,20 @@ class BatteryInfoScreen(BaseTopNavScreen):
 
 @dataclass
 class SystemInfoScreen(BaseTopNavScreen):
-    pi_version: str = ""
     system_serial: str = ""
     microsd_serial: str = ""
+    platform_name: str = ""
+    platform_variant: str = ""
 
     def __post_init__(self):
         self.title = _("System Info")
         super().__post_init__()
 
         info_lines = [
-            _("Pi: {pi_version}").format(pi_version=self.pi_version),
-            _("System: {system_serial}").format(system_serial=self.system_serial),
-            _("MicroSD: {microsd_serial}").format(microsd_serial=self.microsd_serial),
+            _("Platform: {platform_name}").format(platform_name=self.platform_name),
+            _("Variant: {platform_variant}").format(platform_variant=self.platform_variant),
+            _("Serial (CPU): {system_serial}").format(system_serial=self.system_serial),
+            _("Serial (MicroSD): {microsd_serial}").format(microsd_serial=self.microsd_serial),
         ]
 
         start_y = self.top_nav.height + 2 * GUIConstants.COMPONENT_PADDING
