@@ -113,8 +113,8 @@ class Settings(Singleton):
     @classmethod
     def get_platform_default_camera_rotation(cls) -> int:
         profile_map = {
-            "rpi_26": 270,
-            "rpi_40": 270,
+            "rpi_26": 180,
+            "rpi_40": 180,
             "luckfox_22": 180,
             "luckfox_40": 180,
             "desktop": 180,
