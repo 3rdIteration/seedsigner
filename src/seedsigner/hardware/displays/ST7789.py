@@ -2,6 +2,7 @@ import logging
 from periphery import GPIO, SPI
 import time
 import array
+import errno
 
 from seedsigner.models.settings import Settings
 from seedsigner.hardware.io_config import get_hardware_pin_mapping
@@ -14,7 +15,8 @@ class ST7789(object):
     def __init__(self):
         self.width = 240
         self.height = 240
-        self.CHUNK_SIZE = 4096 * 12
+        # Keep SPI transfers within conservative per-message kernel limits.
+        self.CHUNK_SIZE = 4096
 
         hardware_config = Settings.get_platform_default_hardware_config()
         pin_mapping = get_hardware_pin_mapping(hardware_config)["display"]
@@ -37,10 +39,25 @@ class ST7789(object):
         """Transfer data in chunks to prevent buffer overflows"""
         if isinstance(data, list):
             data = bytes(data)
-        
-        for i in range(0, len(data), self.CHUNK_SIZE):
-            chunk = data[i:i + self.CHUNK_SIZE]
-            self._spi.transfer(chunk)
+
+        i = 0
+        chunk_size = self.CHUNK_SIZE
+        while i < len(data):
+            chunk = data[i:i + chunk_size]
+            try:
+                self._spi.transfer(chunk)
+                i += len(chunk)
+            except Exception as e:
+                # Some kernels/drivers enforce smaller SPI message sizes.
+                if getattr(e, "errno", None) == errno.EMSGSIZE and chunk_size > 256:
+                    chunk_size = max(256, chunk_size // 2)
+                    self.CHUNK_SIZE = chunk_size
+                    logger.warning(
+                        "SPI message too long; reducing chunk size to %d bytes",
+                        chunk_size,
+                    )
+                    continue
+                raise
 
     """    Write register address and data     """
     def command(self, cmd):
