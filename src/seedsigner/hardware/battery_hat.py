@@ -4,9 +4,9 @@ import time
 from pathlib import Path
 
 try:
-    from smbus2 import SMBus  # type: ignore
-except Exception:  # pragma: no cover - smbus2 isn't available on all platforms
-    SMBus = None
+    from periphery import I2C  # type: ignore
+except Exception:  # pragma: no cover - periphery isn't available on all platforms
+    I2C = None
 
 
 class BusVoltageRange:
@@ -112,7 +112,7 @@ class BatteryHat(Singleton, BaseThread):
             instance._bus = None
             instance.percent = None
             instance.detected = False
-            instance.enabled = SMBus is not None
+            instance.enabled = I2C is not None
             instance._curve_data = None
             instance._curve_label = None
         return cls._instance
@@ -144,30 +144,51 @@ class BatteryHat(Singleton, BaseThread):
         if not self.enabled:
             return
         if self._bus is None:
-            if SMBus is None:
-                logger.warning("smbus2 not available")
+            if I2C is None:
+                logger.warning("periphery I2C not available")
                 self.enabled = False
                 return
             try:
-                self._bus = SMBus(self.I2C_BUS)
+                self._bus = I2C(f"/dev/i2c-{self.I2C_BUS}")
             except FileNotFoundError:
                 logger.warning("I2C bus not available")
                 self._bus = None
                 self.enabled = False
 
     def _read_register(self, reg: int) -> int:
+        """Read 16-bit word from register using periphery I2C.
+        
+        Returns bytes in swapped order to match smbus2 behavior.
+        """
         self._open_bus()
         if not self._bus:
             return 0
-        raw = self._bus.read_word_data(self.I2C_ADDR, reg)
-        return ((raw & 0xFF) << 8) | (raw >> 8)
+        try:
+            # Write register address, then read 2 bytes
+            msgs = [
+                I2C.Message([reg]),  # Write register address
+                I2C.Message([0, 0], read=True)  # Read 2 bytes
+            ]
+            self._bus.transfer(self.I2C_ADDR, msgs)
+            # Swap bytes to match smbus2's read_word_data behavior
+            raw_bytes = bytes(msgs[1].data)
+            return (raw_bytes[0] << 8) | raw_bytes[1]
+        except Exception as e:
+            logger.warning(f"I2C read failed: {e}")
+            return 0
 
     def _write_register(self, reg: int, value: int) -> None:
+        """Write 16-bit word to register using periphery I2C."""
         self._open_bus()
         if not self._bus:
             return
-        data = [value >> 8 & 0xFF, value & 0xFF]
-        self._bus.write_i2c_block_data(self.I2C_ADDR, reg, data)
+        try:
+            # Write register address followed by 2 data bytes (MSB first)
+            data = [reg, (value >> 8) & 0xFF, value & 0xFF]
+            msgs = [I2C.Message(data)]
+            self._bus.transfer(self.I2C_ADDR, msgs)
+        except Exception as e:
+            logger.warning(f"I2C write failed: {e}")
 
     def set_calibration_16V_5A(self):
         self._current_lsb = 0.1524

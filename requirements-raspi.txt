@@ -1,2 +1,3 @@
+pyscard==2.3.1
 spidev==3.5
 python-periphery==2.4.1
