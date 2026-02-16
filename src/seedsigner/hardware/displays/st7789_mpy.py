@@ -1034,9 +1034,15 @@ class ST7789:
 
     def __del__(self):
         """Cleanup when object is destroyed"""
-        self._spi.close()
-        self._dc.close()
-        self._rst.close()
-        self._bl.close()
-        if self._cs:
-            self._cs.close()
+        self.close()
+
+    def close(self):
+        for attr_name in ["_spi", "_dc", "_rst", "_bl", "_cs"]:
+            resource = getattr(self, attr_name, None)
+            if resource is None:
+                continue
+            try:
+                resource.close()
+            except Exception:
+                pass
+            setattr(self, attr_name, None)

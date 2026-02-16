@@ -38,31 +38,37 @@ class Renderer(ConfigurableSingleton):
         # May be called while already running with a previous display driver; must
         # prevent any other screen writes while we're changing the display driver.
         self.lock.acquire()
+        try:
+            display_config = Settings.get_instance().get_value(SettingsConstants.SETTING__DISPLAY_CONFIGURATION, default_if_none=True)
+            self.display_type = display_config.split("_")[0]
+            if self.display_type not in ALL_DISPLAY_TYPES:
+                raise Exception(f"Invalid display type: {self.display_type}")
 
-        display_config = Settings.get_instance().get_value(SettingsConstants.SETTING__DISPLAY_CONFIGURATION, default_if_none=True)
-        self.display_type = display_config.split("_")[0]
-        if self.display_type not in ALL_DISPLAY_TYPES:
-            raise Exception(f"Invalid display type: {self.display_type}")
+            width, height = display_config.split("_")[1].split("x")
 
-        width, height = display_config.split("_")[1].split("x")
-        self.disp = DisplayDriver(self.display_type, width=int(width), height=int(height))
+            # Release GPIO/SPI resources from the previous display before opening
+            # a new display driver that may use the same lines.
+            if self.disp:
+                self.disp.close()
 
-        if Settings.get_instance().get_value(SettingsConstants.SETTING__DISPLAY_COLOR_INVERTED, default_if_none=True) == SettingsConstants.OPTION__ENABLED:
-            self.disp.invert()
+            self.disp = DisplayDriver(self.display_type, width=int(width), height=int(height))
 
-        if self.display_type in [DISPLAY_TYPE__ST7789, DISPLAY_TYPE__DESKTOP]:
-            self.canvas_width = self.disp.width
-            self.canvas_height = self.disp.height
+            if Settings.get_instance().get_value(SettingsConstants.SETTING__DISPLAY_COLOR_INVERTED, default_if_none=True) == SettingsConstants.OPTION__ENABLED:
+                self.disp.invert()
 
-        elif self.display_type in [DISPLAY_TYPE__ILI9341, DISPLAY_TYPE__ILI9486]:
-            # Swap for the natively portrait-oriented displays
-            self.canvas_width = self.disp.height
-            self.canvas_height = self.disp.width
+            if self.display_type in [DISPLAY_TYPE__ST7789, DISPLAY_TYPE__DESKTOP]:
+                self.canvas_width = self.disp.width
+                self.canvas_height = self.disp.height
 
-        self.canvas = Image.new('RGB', (self.canvas_width, self.canvas_height))
-        self.draw = ImageDraw.Draw(self.canvas)
+            elif self.display_type in [DISPLAY_TYPE__ILI9341, DISPLAY_TYPE__ILI9486]:
+                # Swap for the natively portrait-oriented displays
+                self.canvas_width = self.disp.height
+                self.canvas_height = self.disp.width
 
-        self.lock.release()
+            self.canvas = Image.new('RGB', (self.canvas_width, self.canvas_height))
+            self.draw = ImageDraw.Draw(self.canvas)
+        finally:
+            self.lock.release()
 
 
     def show_image(self, image=None, alpha_overlay=None, show_direct=False):
