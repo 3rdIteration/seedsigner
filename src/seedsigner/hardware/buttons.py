@@ -91,7 +91,7 @@ class HardwareButtons(Singleton):
                     pin_selector = pin_mapping.get(name) or pin_mapping.get(name.lower())
                     if pin_selector is None:
                         raise KeyError(f"Missing hardware button mapping for '{name}'")
-                    cls._instance._gpio_pins[name] = GPIO(*pin_selector, "in")
+                    cls._instance._gpio_pins[name] = GPIO(*pin_selector, "in", bias="pull_up")
             else:
                 if pygame is None:
                     raise ModuleNotFoundError(
