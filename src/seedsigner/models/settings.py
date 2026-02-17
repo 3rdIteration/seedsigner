@@ -115,8 +115,8 @@ class Settings(Singleton):
         profile_map = {
             "rpi_26": 180,
             "rpi_40": 180,
-            "luckfox_22": 180,
-            "luckfox_40": 180,
+            "luckfox_22": 270,
+            "luckfox_40": 270,
             "desktop": 180,
         }
         return profile_map.get(cls.RUNTIME_PROFILE, 180)

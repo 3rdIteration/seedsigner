@@ -12,7 +12,7 @@ from seedsigner.hardware.camera import Camera
 from seedsigner.helpers.qr import QR
 from seedsigner.gui.components import FontAwesomeIconConstants, Fonts, GUIConstants, IconTextLine, SeedSignerIconConstants, TextArea, Button, IconButton, CheckboxButton, load_image
 from seedsigner.gui.keyboard import Keyboard, TextEntryDisplay
-from seedsigner.gui.screens.screen import RET_CODE__BACK_BUTTON, BaseScreen, BaseTopNavScreen, ButtonListScreen, KeyboardScreen, WarningEdgesMixin, ButtonOption
+from seedsigner.gui.screens.screen import RET_CODE__BACK_BUTTON, BaseScreen, BaseTopNavScreen, ButtonListScreen, KeyboardScreen, WarningEdgesMixin, ButtonOption, LoadingScreenThread
 from seedsigner.hardware.buttons import HardwareButtonsConstants
 from seedsigner.models.settings_definition import SettingsConstants, SettingsDefinition
 
@@ -206,13 +206,20 @@ class ToolsImageEntropyLivePreviewScreen(BaseScreen):
         # sides). But passing in square dims gives us an edge-to-edge image.
         # TODO: Figure out why (camera expecting frame dims of multiples other than 16?)
         max_dimension = max(self.canvas_width, self.canvas_height)
-        self.camera.start_video_stream_mode()
+        loading_screen = LoadingScreenThread(text=_("Starting camera..."))
+        loading_screen.start()
+        try:
+            self.camera.start_video_stream_mode()
+        finally:
+            loading_screen.stop()
 
 
     def _run(self):
-        # save preview image frames to use as additional entropy below
+        # Save compact preview samples for entropy below. Storing full-resolution
+        # frames causes avoidable memory/CPU pressure on constrained devices.
         preview_images = []
-        max_entropy_frames = 50
+        max_entropy_frames = 5
+        preview_sample_size = (96, 96)
         instructions_font = Fonts.get_font(GUIConstants.get_body_font_name(), GUIConstants.get_button_font_size())
         last_entropy_check = 0
         entropy_val = 0.0
@@ -259,7 +266,8 @@ class ToolsImageEntropyLivePreviewScreen(BaseScreen):
 
                 # Calculate and display Shannon entropy indicator (throttled to ~1s)
                 if time.time() - last_entropy_check >= 1:
-                    entropy_val = mnemonic_generation._shannon_entropy(frame.tobytes())
+                    entropy_sample = frame.convert("L").resize(preview_sample_size, Image.Resampling.BILINEAR)
+                    entropy_val = mnemonic_generation._shannon_entropy(entropy_sample.tobytes())
                     last_entropy_check = time.time()
                 entropy_text = f"{entropy_val:.2f}"
                 indicator_size = 10
@@ -348,7 +356,9 @@ class ToolsImageEntropyLivePreviewScreen(BaseScreen):
                 # Keep a moving window of the last n preview frames; pop the oldest
                 # before we add the currest frame.
                 preview_images.pop(0)
-            preview_images.append(frame)
+            preview_images.append(
+                frame.convert("L").resize(preview_sample_size, Image.Resampling.BILINEAR)
+            )
 
 
 

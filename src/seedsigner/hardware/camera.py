@@ -9,6 +9,7 @@ import io
 
 from PIL import Image
 
+from seedsigner.hardware.io_config import get_hardware_pin_mapping, runtime_profile_to_hardware_profile
 from seedsigner.models.settings import Settings, SettingsConstants
 from seedsigner.models.singleton import Singleton
 
@@ -20,6 +21,31 @@ class Camera(Singleton):
     _capture = None
     _camera_rotation = None
     _camera_index = 0
+    _runtime_profile = "desktop"
+    _hardware_camera_config = None
+
+    @staticmethod
+    def _is_luckfox_profile(runtime_profile: str) -> bool:
+        return runtime_profile in {"luckfox_22", "luckfox_40"}
+
+    @classmethod
+    def _get_hardware_camera_config(cls):
+        runtime_profile = Settings.RUNTIME_PROFILE
+        hardware_profile = runtime_profile_to_hardware_profile(runtime_profile)
+        if not hardware_profile:
+            return None
+        try:
+            mapping = get_hardware_pin_mapping(hardware_profile)
+        except Exception:
+            return None
+        camera = mapping.get("camera")
+        if not camera:
+            return None
+        config = dict(camera)
+        resolution = config.get("resolution")
+        if isinstance(resolution, list) and len(resolution) == 2:
+            config["resolution"] = (int(resolution[0]), int(resolution[1]))
+        return config
 
     @staticmethod
     def list_cameras() -> list[tuple[int, str]]:
@@ -75,6 +101,8 @@ class Camera(Singleton):
             default_if_none=True,
         )
         cls._instance._camera_index = int(idx) if idx is not None else 0
+        cls._instance._runtime_profile = Settings.RUNTIME_PROFILE
+        cls._instance._hardware_camera_config = cls._get_hardware_camera_config()
         return cls._instance
 
     def start_video_stream_mode(self, resolution=(512, 384), framerate=12, format="bgr"):
@@ -84,11 +112,32 @@ class Camera(Singleton):
         if self._video_stream is not None:
             self.stop_video_stream_mode()
 
+        prefer_v4l2 = self._is_luckfox_profile(self._runtime_profile)
+        stream_resolution = resolution
+        stream_framerate = framerate
+        stream_camera_config = dict(self._hardware_camera_config or {})
+        if prefer_v4l2:
+            # Use io_config defaults for callers that do not request a specific mode.
+            # Explicit caller overrides (e.g. scan screen) are preserved.
+            default_resolution = (512, 384)
+            default_framerate = 12
+            if stream_camera_config.get("resolution") and tuple(stream_resolution) == default_resolution:
+                stream_resolution = tuple(stream_camera_config["resolution"])
+            if tuple(stream_resolution) != default_resolution:
+                stream_camera_config["resolution"] = tuple(stream_resolution)
+
+            if stream_camera_config.get("framerate") and int(stream_framerate) == default_framerate:
+                stream_framerate = int(stream_camera_config["framerate"])
+            stream_framerate = min(int(stream_framerate), 6)
+            stream_camera_config["framerate"] = int(stream_framerate)
+
         self._video_stream = VideoStream(
-            resolution=resolution,
-            framerate=framerate,
+            resolution=stream_resolution,
+            framerate=stream_framerate,
             format=format,
             device_index=self._camera_index,
+            camera_config=stream_camera_config,
+            prefer_v4l2=prefer_v4l2,
         )
         self._video_stream.start()
 
@@ -100,6 +149,8 @@ class Camera(Singleton):
         if not as_image:
             return frame
         if frame is not None:
+            if isinstance(frame, Image.Image):
+                return frame.rotate(90 + self._camera_rotation)
             return Image.fromarray(frame.astype("uint8"), "RGB").rotate(90 + self._camera_rotation)
         return None
 
@@ -118,7 +169,25 @@ class Camera(Singleton):
                 self._capture.close()
             elif hasattr(self._capture, "release"):
                 self._capture.release()
+            elif hasattr(self._capture, "stop"):
+                self._capture.stop()
             self._capture = None
+
+        if self._is_luckfox_profile(self._runtime_profile):
+            from seedsigner.hardware.pivideostream import VideoStream
+
+            luckfox_config = dict(self._hardware_camera_config or {})
+            luckfox_config["resolution"] = tuple(resolution)
+            luckfox_config["framerate"] = min(int(luckfox_config.get("framerate", 6)), 6)
+            self._capture = VideoStream(
+                resolution=luckfox_config["resolution"],
+                framerate=int(luckfox_config["framerate"]),
+                device_index=self._camera_index,
+                camera_config=luckfox_config,
+                prefer_v4l2=True,
+            )
+            self._capture.start()
+            return
 
         try:
             from picamera import PiCamera  # type: ignore
@@ -144,6 +213,14 @@ class Camera(Singleton):
         """Capture a single frame as a PIL image from the active backend."""
         if self._capture is None:
             raise Exception("Must call start_single_frame_mode first.")
+
+        if hasattr(self._capture, "read") and hasattr(self._capture, "stop"):
+            frame = self._capture.read()
+            if frame is None:
+                return None
+            if isinstance(frame, Image.Image):
+                return frame.rotate(90 + self._camera_rotation)
+            return Image.fromarray(frame.astype("uint8"), "RGB").rotate(90 + self._camera_rotation)
 
         if hasattr(self._capture, "capture"):
             self._capture.shutter_speed = self._capture.exposure_speed
@@ -172,4 +249,6 @@ class Camera(Singleton):
                 self._capture.close()
             elif hasattr(self._capture, "release"):
                 self._capture.release()
+            elif hasattr(self._capture, "stop"):
+                self._capture.stop()
             self._capture = None

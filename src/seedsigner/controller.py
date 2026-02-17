@@ -430,8 +430,11 @@ class Controller(Singleton):
             else:
                 next_destination = Destination(MainMenuView)
             
-            # Set up our one-time toast notification tip to remove the SD card
-            self.activate_toast(RemoveSDCardToastManagerThread())
+            # Skip the "remove SD card" tip on Luckfox, where removable media
+            # handling and expected workflows differ from SeedSigner OS defaults.
+            if Settings.RUNTIME_PROFILE not in {"luckfox_22", "luckfox_40", "desktop"}:
+                # Set up our one-time toast notification tip to remove the SD card
+                self.activate_toast(RemoveSDCardToastManagerThread())
 
             while True:
                 # Destination(None) is a special case; render the Home screen

@@ -13,7 +13,7 @@ from seedsigner.hardware.camera import Camera
 from seedsigner.models.decode_qr import DecodeQR, DecodeQRStatus
 from seedsigner.models.threads import BaseThread, ThreadsafeCounter
 
-from .screen import BaseScreen, BaseTopNavScreen, ButtonListScreen
+from .screen import BaseScreen, BaseTopNavScreen, ButtonListScreen, LoadingScreenThread
 from ..components import GUIConstants, Fonts, SeedSignerIconConstants, Button, IconButton, TextArea
 
 from seedsigner.gui.components import GUIConstants, Fonts, resize_image_to_fill
@@ -71,11 +71,16 @@ class ScanScreen(BaseScreen):
         self.instructions_text = "< " + _("back") + "  |  " + _(self.instructions_text)
 
         self.camera = Camera.get_instance()
-        self.camera.start_video_stream_mode(
-            resolution=self.resolution,
-            framerate=self.framerate,
-            format="bgr",
-        )
+        loading_screen = LoadingScreenThread(text=_("Starting camera..."))
+        loading_screen.start()
+        try:
+            self.camera.start_video_stream_mode(
+                resolution=self.resolution,
+                framerate=self.framerate,
+                format="bgr",
+            )
+        finally:
+            loading_screen.stop()
 
         self.frames_decode_status = ThreadsafeCounter()
         self.frames_decoded_counter = ThreadsafeCounter()
