@@ -27,14 +27,14 @@
         "spi_device": 0
       },
       "buttons": {
-        "KEY_UP": ["/dev/gpiochip0", 6],
-        "KEY_DOWN": ["/dev/gpiochip0", 19],
-        "KEY_LEFT": ["/dev/gpiochip0", 5],
-        "KEY_RIGHT": ["/dev/gpiochip0", 26],
-        "KEY_PRESS": ["/dev/gpiochip0", 13],
-        "KEY1": ["/dev/gpiochip0", 21],
-        "KEY2": ["/dev/gpiochip0", 20],
-        "KEY3": ["/dev/gpiochip0", 16]
+        "KEY_UP": ["/dev/gpiochip0", 6, "pull_up"],
+        "KEY_DOWN": ["/dev/gpiochip0", 19, "pull_up"],
+        "KEY_LEFT": ["/dev/gpiochip0", 5, "pull_up"],
+        "KEY_RIGHT": ["/dev/gpiochip0", 26, "pull_up"],
+        "KEY_PRESS": ["/dev/gpiochip0", 13, "pull_up"],
+        "KEY1": ["/dev/gpiochip0", 21, "pull_up"],
+        "KEY2": ["/dev/gpiochip0", 20, "pull_up"],
+        "KEY3": ["/dev/gpiochip0", 16, "pull_up"]
       },
       "camera": {
         "device": "/dev/video0",
@@ -60,14 +60,14 @@
         "spi_device": 0
       },
       "buttons": {
-        "KEY_UP": ["/dev/gpiochip0", 3],
-        "KEY_DOWN": ["/dev/gpiochip0", 17],
-        "KEY_LEFT": ["/dev/gpiochip0", 2],
-        "KEY_RIGHT": ["/dev/gpiochip0", 22],
-        "KEY_PRESS": ["/dev/gpiochip0", 4],
-        "KEY1": ["/dev/gpiochip0", 23],
-        "KEY2": ["/dev/gpiochip0", 18],
-        "KEY3": ["/dev/gpiochip0", 14]
+        "KEY_UP": ["/dev/gpiochip0", 3, "pull_up"],
+        "KEY_DOWN": ["/dev/gpiochip0", 17, "pull_up"],
+        "KEY_LEFT": ["/dev/gpiochip0", 2, "pull_up"],
+        "KEY_RIGHT": ["/dev/gpiochip0", 22, "pull_up"],
+        "KEY_PRESS": ["/dev/gpiochip0", 4, "pull_up"],
+        "KEY1": ["/dev/gpiochip0", 23, "pull_up"],
+        "KEY2": ["/dev/gpiochip0", 18, "pull_up"],
+        "KEY3": ["/dev/gpiochip0", 14, "pull_up"]
       },
       "camera": {
         "device": "/dev/video0",

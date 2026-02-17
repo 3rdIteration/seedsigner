@@ -85,13 +85,31 @@ class HardwareButtons(Singleton):
 
             if USING_GPIO:
                 hardware_config = Settings.get_platform_default_hardware_config()
-                pin_mapping = get_hardware_pin_mapping(hardware_config)["buttons"]
+                hardware_mapping = get_hardware_pin_mapping(hardware_config)
+                pin_mapping = hardware_mapping["buttons"]
                 cls._instance._gpio_pins = {}
                 for name in cls.BUTTON_NAMES:
                     pin_selector = pin_mapping.get(name) or pin_mapping.get(name.lower())
                     if pin_selector is None:
                         raise KeyError(f"Missing hardware button mapping for '{name}'")
-                    cls._instance._gpio_pins[name] = GPIO(*pin_selector, "in", bias="pull_up")
+                    pin_bias = None
+                    gpio_selector = pin_selector
+                    # io_config.json button entries support either:
+                    #   [chip, line]                -> no explicit bias
+                    #   [chip, line, "pull_up"]     -> apply periphery bias
+                    # and line-only selectors like [58] on platforms that expose
+                    # global GPIO numbering through periphery.
+                    if (
+                        isinstance(pin_selector, list)
+                        and len(pin_selector) > 2
+                        and isinstance(pin_selector[-1], str)
+                    ):
+                        pin_bias = pin_selector[-1]
+                        gpio_selector = pin_selector[:-1]
+                    if pin_bias:
+                        cls._instance._gpio_pins[name] = GPIO(*gpio_selector, "in", bias=pin_bias)
+                    else:
+                        cls._instance._gpio_pins[name] = GPIO(*gpio_selector, "in")
             else:
                 if pygame is None:
                     raise ModuleNotFoundError(
