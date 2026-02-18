@@ -82,6 +82,7 @@ def test_configure_v4l2_capture_selects_supported_node(monkeypatch):
     monkeypatch.setattr(stream, "_normalize_device_candidates", lambda: ["/dev/video12"])
     monkeypatch.setattr(stream, "_list_v4l2_formats", lambda device: {"NV12", "UYVY"})
     monkeypatch.setattr(stream, "_probe_v4l2_device", lambda *args, **kwargs: (True, True))
+    monkeypatch.setattr(stream, "_get_negotiated_v4l2_format", lambda *args, **kwargs: (800, 600, "NV12", None))
 
     stream._configure_v4l2_capture()
 
@@ -90,3 +91,25 @@ def test_configure_v4l2_capture_selects_supported_node(monkeypatch):
     assert stream._v4l2_pixelformat == "NV12"
     assert stream._v4l2_resolution == (800, 600)
     assert stream._v4l2_use_set_parm is True
+
+
+def test_configure_v4l2_capture_uses_negotiated_resolution(monkeypatch):
+    stream = VideoStream.__new__(VideoStream)
+    stream.use_v4l2 = False
+    stream._camera_config = {"resolution": (800, 600), "framerate": 10, "pixelformat": "NV12"}
+    stream.resolution = (320, 240)
+    stream.framerate = 12
+
+    monkeypatch.setattr("os.path.exists", lambda path: True)
+    monkeypatch.setattr(stream, "_normalize_device_candidates", lambda: ["/dev/video14"])
+    monkeypatch.setattr(stream, "_list_v4l2_formats", lambda device: {"NV12"})
+    monkeypatch.setattr(stream, "_probe_v4l2_device", lambda *args, **kwargs: (True, False))
+    monkeypatch.setattr(stream, "_get_negotiated_v4l2_format", lambda *args, **kwargs: (576, 324, "NV12", None))
+
+    stream._configure_v4l2_capture()
+
+    assert stream.use_v4l2 is True
+    assert stream._v4l2_device == "/dev/video14"
+    assert stream._v4l2_pixelformat == "NV12"
+    assert stream._v4l2_resolution == (576, 324)
+    assert stream._v4l2_frame_size == (576 * 324 * 3) // 2

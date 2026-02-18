@@ -5,6 +5,7 @@ differences between physical button input and desktop simulation input.
 """
 
 import logging
+import os
 import time
 from typing import Dict, List, Tuple
 
@@ -56,6 +57,29 @@ class HardwareButtons(Singleton):
         KEY3_PIN,
     ]
 
+    @staticmethod
+    def _resolve_global_line_to_chip(line: int) -> tuple[str, int] | None:
+        """Map a global GPIO line number to (gpiochip device path, line offset)."""
+        gpio_class_root = "/sys/class/gpio"
+        try:
+            chip_entries = [name for name in os.listdir(gpio_class_root) if name.startswith("gpiochip")]
+        except Exception:
+            return None
+
+        for chip in chip_entries:
+            chip_dir = os.path.join(gpio_class_root, chip)
+            try:
+                with open(os.path.join(chip_dir, "base"), "r", encoding="utf-8") as f_base:
+                    base = int(f_base.read().strip())
+                with open(os.path.join(chip_dir, "ngpio"), "r", encoding="utf-8") as f_ngpio:
+                    ngpio = int(f_ngpio.read().strip())
+            except Exception:
+                continue
+
+            if base <= line < (base + ngpio):
+                return f"/dev/{chip}", line - base
+        return None
+
     @classmethod
     def set_desktop_scale(cls, scale: int) -> None:
         global DESKTOP_SCALE
@@ -97,15 +121,34 @@ class HardwareButtons(Singleton):
                     # io_config.json button entries support either:
                     #   [chip, line]                -> no explicit bias
                     #   [chip, line, "pull_up"]     -> apply periphery bias
+                    #   [line, "pull_up"]           -> resolve global line to
+                    #                                  gpiochip+offset and apply bias
                     # and line-only selectors like [58] on platforms that expose
                     # global GPIO numbering through periphery.
                     if (
                         isinstance(pin_selector, list)
-                        and len(pin_selector) > 2
+                        and len(pin_selector) >= 2
                         and isinstance(pin_selector[-1], str)
                     ):
                         pin_bias = pin_selector[-1]
                         gpio_selector = pin_selector[:-1]
+                    if (
+                        pin_bias
+                        and isinstance(gpio_selector, list)
+                        and len(gpio_selector) == 1
+                        and isinstance(gpio_selector[0], int)
+                    ):
+                        resolved = cls._resolve_global_line_to_chip(gpio_selector[0])
+                        if resolved is not None:
+                            gpio_selector = list(resolved)
+                        else:
+                            logger.warning(
+                                "Unable to resolve global GPIO line %s for %s; using global selector without bias",
+                                gpio_selector[0],
+                                name,
+                            )
+                            pin_bias = None
+                            gpio_selector = gpio_selector[0]
                     if pin_bias:
                         cls._instance._gpio_pins[name] = GPIO(*gpio_selector, "in", bias=pin_bias)
                     else:
@@ -141,6 +184,8 @@ class HardwareButtons(Singleton):
             cls._instance.override_ind = False
             cls._instance.cur_input = None
             cls._instance.cur_input_started = None
+            cls._instance.debounce_threshold_ms = 10
+            cls._instance._low_since_ms = {name: None for name in cls.BUTTON_NAMES}
             cls._instance.last_input_time = int(time.time() * 1000)
             cls._instance.first_repeat_threshold = 225
             cls._instance.next_repeat_threshold = 250
@@ -172,7 +217,14 @@ class HardwareButtons(Singleton):
 
             if USING_GPIO:
                 for key in keys:
-                    if not self._gpio_pins[key].read():
+                    is_low = not self._gpio_pins[key].read()
+                    if is_low:
+                        low_since = self._low_since_ms.get(key)
+                        if low_since is None:
+                            self._low_since_ms[key] = cur_time
+                            continue
+                        if cur_time - low_since < self.debounce_threshold_ms:
+                            continue
                         if self.cur_input != key:
                             self.cur_input = key
                             self.cur_input_started = cur_time
@@ -186,6 +238,11 @@ class HardwareButtons(Singleton):
                             elif cur_time - self.cur_input_started > self.first_repeat_threshold:
                                 self.last_input_time = cur_time
                                 return key
+                    else:
+                        self._low_since_ms[key] = None
+                        if self.cur_input == key:
+                            self.cur_input = None
+                            self.cur_input_started = None
                 time.sleep(0.01)
             else:
                 for event in pygame.event.get():
@@ -228,9 +285,18 @@ class HardwareButtons(Singleton):
 
         if USING_GPIO:
             for key in keys:
-                if not self._gpio_pins[key].read():
+                cur_time = int(time.time() * 1000)
+                is_low = not self._gpio_pins[key].read()
+                if is_low:
+                    low_since = self._low_since_ms.get(key)
+                    if low_since is None:
+                        self._low_since_ms[key] = cur_time
+                        continue
+                    if cur_time - low_since < self.debounce_threshold_ms:
+                        continue
                     self.update_last_input_time()
                     return True
+                self._low_since_ms[key] = None
             return False
 
         pygame.event.pump()

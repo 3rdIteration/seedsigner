@@ -92,20 +92,18 @@
         "spi_device": 0
       },
       "buttons": {
-        "KEY_UP": ["/dev/gpiochip1", 25],
-        "KEY_DOWN": ["/dev/gpiochip1", 27],
-        "KEY_LEFT": ["/dev/gpiochip1", 24],
-        "KEY_RIGHT": ["/dev/gpiochip1", 22],
-        "KEY_PRESS": ["/dev/gpiochip1", 26],
-        "KEY1": ["/dev/gpiochip1", 23],
-        "KEY2": ["/dev/gpiochip0", 4],
-        "KEY3": ["/dev/gpiochip1", 21]
+        "KEY_UP": ["/dev/gpiochip1", 25, "pull_up"],
+        "KEY_DOWN": ["/dev/gpiochip1", 27, "pull_up"],
+        "KEY_LEFT": ["/dev/gpiochip1", 24, "pull_up"],
+        "KEY_RIGHT": ["/dev/gpiochip1", 22, "pull_up"],
+        "KEY_PRESS": ["/dev/gpiochip1", 26, "pull_up"],
+        "KEY1": ["/dev/gpiochip1", 23, "pull_up"],
+        "KEY2": ["/dev/gpiochip0", 4, "pull_up"],
+        "KEY3": ["/dev/gpiochip1", 21, "pull_up"]
       },
       "camera": {
         "device": "/dev/video12",
-        "resolution": [800, 600],
-        "pixelformat": "GREY",
-        "framerate": 6
+        "pixelformat": "GREY"
       }
     },
     {
@@ -124,20 +122,19 @@
         "spi_device": 0
       },
       "buttons": {
-        "KEY_UP": [58],
-        "KEY_DOWN": [53],
-        "KEY_LEFT": [59],
-        "KEY_RIGHT": [54],
-        "KEY_PRESS": [52],
-        "KEY1": [55],
-        "KEY2": [43],
-        "KEY3": [42]
+        "KEY_UP": ["/dev/gpiochip1", 26, "pull_up"],
+        "KEY_DOWN": ["/dev/gpiochip1", 21, "pull_up"],
+        "KEY_LEFT": ["/dev/gpiochip1", 27, "pull_up"],
+        "KEY_RIGHT": ["/dev/gpiochip1", 22, "pull_up"],
+        "KEY_PRESS": ["/dev/gpiochip1", 20, "pull_up"],
+        "KEY1": ["/dev/gpiochip1", 23, "pull_up"],
+        "KEY2": ["/dev/gpiochip1", 11, "pull_up"],
+        "KEY3": ["/dev/gpiochip1", 10, "pull_up"]
       },
       "camera": {
-        "device": "/dev/video12",
-        "resolution": [800, 600],
-        "pixelformat": "GREY",
-        "framerate": 6
+        "device": "/dev/video14",
+        "resolution": [576, 324],
+        "pixelformat": "GREY"
       }
     }
   ]
