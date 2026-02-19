@@ -336,7 +336,7 @@ class LoadSeedView(View):
 
         elif button_data[selected_menu_num] == self.CREATE:
             from .tools_views import ToolsMenuView
-            return Destination(ToolsMenuView)
+            return Destination(ToolsMenuView, view_args={"include_password_generator": False})
     
 class SeedKeeperSelectView(View):
     def entropy_to_mnemonic(self, entropy_bytes, wordlist):

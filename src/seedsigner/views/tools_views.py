@@ -349,8 +349,15 @@ class ToolsMenuView(View):
     CLEAR_DESCRIPTOR = ButtonOption("Clear Multisig Descriptor")
     NETWORK_INFO = ButtonOption("Network Info")
 
+    def __init__(self, include_password_generator: bool = True):
+        super().__init__()
+        self.include_password_generator = include_password_generator
+
     def run(self):
-        button_data = [self.IMAGE, self.DICE, self.PASSWORD_GENERATOR]
+        button_data = [self.IMAGE, self.DICE]
+
+        if getattr(self, "include_password_generator", True):
+            button_data.append(self.PASSWORD_GENERATOR)
         
         if self.settings.get_value(SettingsConstants.SETTING__SLIP39_SEEDS) == SettingsConstants.OPTION__ENABLED:
             button_data.extend([self.SLIP39_IMAGE, self.SLIP39_DICE])
@@ -3707,7 +3714,7 @@ class ToolsSatochipImportSeedView(View):
         elif button_data[selected_menu_num] == self.TYPE_SLIP39:
             return Destination(SeedSlip39MnemonicStartView)
         elif button_data[selected_menu_num] == self.CREATE:
-            return Destination(ToolsMenuView)
+            return Destination(ToolsMenuView, view_args={"include_password_generator": False})
         elif button_data[selected_menu_num] == self.TYPE_ELECTRUM:
             return Destination(SeedElectrumMnemonicStartView)
         
