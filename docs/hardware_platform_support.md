@@ -146,19 +146,19 @@ This is a quick reference summary of the mappings currently defined in
 ### `FOX_PI`
 
 - Display:
-  - `dc`: `["/dev/gpiochip1", 24]`
-  - `rst`: `["/dev/gpiochip1", 25]`
-  - `bl`: `["/dev/gpiochip2", 8]`
+  - `dc`: `[59]` (physical pin 22)
+  - `rst`: `[56]` (physical pin 13)
+  - `bl`: `[70]` (physical pin 18)
   - SPI: `bus 0`, `device 0`
 - Buttons:
-  - `KEY_UP`: `[58]`
-  - `KEY_DOWN`: `[53]`
-  - `KEY_LEFT`: `[59]`
-  - `KEY_RIGHT`: `[54]`
-  - `KEY_PRESS`: `[52]`
-  - `KEY1`: `[55]`
-  - `KEY2`: `[43]`
-  - `KEY3`: `[42]`
+  - `KEY_UP`: `[121]` (physical pin 31)
+  - `KEY_DOWN`: `[1]` (physical pin 35)
+  - `KEY_LEFT`: `[122]` (physical pin 29)
+  - `KEY_RIGHT`: `[0]` (physical pin 37)
+  - `KEY_PRESS`: `[52]` (physical pin 33)
+  - `KEY1`: `[145]` (physical pin 40)
+  - `KEY2`: `[123]` (physical pin 38)
+  - `KEY3`: `[55]` (physical pin 36)
 - Camera:
   - Device: `/dev/video12`
   - Resolution: `800x600`
