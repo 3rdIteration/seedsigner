@@ -59,6 +59,7 @@ def _get_system_type_and_variant(runtime_profile: str, hardware_config: str | No
         "rpi_40": "Raspberry Pi",
         "luckfox_22": "Luckfox Pico",
         "luckfox_40": "Luckfox Pico",
+        "luckfox_pi": "Luckfox Pico",
     }
     system_type = system_type_map.get(runtime_profile, "Unknown")
 
@@ -107,6 +108,7 @@ class Settings(Singleton):
             "rpi_40": SettingsConstants.DISPLAY_CONFIGURATION__ST7789__240x240,
             "luckfox_22": SettingsConstants.DISPLAY_CONFIGURATION__ST7789__240x240,
             "luckfox_40": SettingsConstants.DISPLAY_CONFIGURATION__ST7789__240x240,
+            "luckfox_pi": SettingsConstants.DISPLAY_CONFIGURATION__ST7789__240x240,
         }
         return profile_map.get(cls.RUNTIME_PROFILE, SettingsConstants.DISPLAY_CONFIGURATION__DESKTOP__240x240)
 
@@ -117,6 +119,7 @@ class Settings(Singleton):
             "rpi_40": 180,
             "luckfox_22": 270,
             "luckfox_40": 270,
+            "luckfox_pi": 270,
             "desktop": 180,
         }
         return profile_map.get(cls.RUNTIME_PROFILE, 180)
