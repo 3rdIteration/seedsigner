@@ -28,6 +28,7 @@ Current profiles in `io_config.json`:
 - `RPI_26` (legacy Raspberry Pi 26-pin variants)
 - `FOX_22` (Luckfox Pico 22-pin)
 - `FOX_40` (Luckfox Pico 40-pin)
+- `FOX_PI` (Luckfox Pico Pi)
 
 ## Button GPIO mapping format
 
@@ -141,3 +142,25 @@ This is a quick reference summary of the mappings currently defined in
   - Resolution: `800x600`
   - Pixel format: `NV12`
   - Framerate: `10`
+
+### `FOX_PI`
+
+- Display:
+  - `dc`: `["/dev/gpiochip1", 24]`
+  - `rst`: `["/dev/gpiochip1", 25]`
+  - `bl`: `["/dev/gpiochip2", 8]`
+  - SPI: `bus 0`, `device 0`
+- Buttons:
+  - `KEY_UP`: `[58]`
+  - `KEY_DOWN`: `[53]`
+  - `KEY_LEFT`: `[59]`
+  - `KEY_RIGHT`: `[54]`
+  - `KEY_PRESS`: `[52]`
+  - `KEY1`: `[55]`
+  - `KEY2`: `[43]`
+  - `KEY3`: `[42]`
+- Camera:
+  - Device: `/dev/video12`
+  - Resolution: `800x600`
+  - Pixel format: `GREY`
+  - Framerate: `6`

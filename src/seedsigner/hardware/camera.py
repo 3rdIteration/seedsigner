@@ -26,7 +26,7 @@ class Camera(Singleton):
 
     @staticmethod
     def _is_luckfox_profile(runtime_profile: str) -> bool:
-        return runtime_profile in {"luckfox_22", "luckfox_40"}
+        return runtime_profile in {"luckfox_22", "luckfox_40", "luckfox_pi"}
 
     @classmethod
     def _get_hardware_camera_config(cls):

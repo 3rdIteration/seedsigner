@@ -34,6 +34,7 @@ def _get_system_type_and_variant(runtime_profile: str, hardware_profile: str | N
         "rpi_40": "Raspberry Pi",
         "luckfox_22": "Luckfox Pico",
         "luckfox_40": "Luckfox Pico",
+        "luckfox_pi": "Luckfox Pico",
     }
     system_type = system_type_map.get(runtime_profile, "Unknown")
 
@@ -432,7 +433,7 @@ class Controller(Singleton):
             
             # Skip the "remove SD card" tip on Luckfox, where removable media
             # handling and expected workflows differ from SeedSigner OS defaults.
-            if Settings.RUNTIME_PROFILE not in {"luckfox_22", "luckfox_40", "desktop"}:
+            if Settings.RUNTIME_PROFILE not in {"luckfox_22", "luckfox_40", "luckfox_pi", "desktop"}:
                 # Set up our one-time toast notification tip to remove the SD card
                 self.activate_toast(RemoveSDCardToastManagerThread())
 

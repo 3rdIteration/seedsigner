@@ -139,6 +139,38 @@
         "pixelformat": "GREY",
         "framerate": 6
       }
+    },
+    {
+      "platform": "Luckfox Pico",
+      "variant": "Pi",
+      "shortname": "FOX_PI",
+      "runtime_profile": "luckfox_pi",
+      "regex": [
+        "luckfox pico pi"
+      ],
+      "display": {
+        "dc": ["/dev/gpiochip1", 24],
+        "rst": ["/dev/gpiochip1", 25],
+        "bl": ["/dev/gpiochip2", 8],
+        "spi_bus": 0,
+        "spi_device": 0
+      },
+      "buttons": {
+        "KEY_UP": [58],
+        "KEY_DOWN": [53],
+        "KEY_LEFT": [59],
+        "KEY_RIGHT": [54],
+        "KEY_PRESS": [52],
+        "KEY1": [55],
+        "KEY2": [43],
+        "KEY3": [42]
+      },
+      "camera": {
+        "device": "/dev/video12",
+        "resolution": [800, 600],
+        "pixelformat": "GREY",
+        "framerate": 6
+      }
     }
   ]
 }
