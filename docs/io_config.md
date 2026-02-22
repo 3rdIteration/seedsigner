@@ -20,11 +20,11 @@ The table below uses standard 40-pin physical numbering and highlights:
 | 7 | GPIO4 | │ │ | GPIO14 / TXD0 (`UART-TX`) | 8 |
 | 9 | GND | │ │ | GPIO15 / RXD0 (`UART-RX`) | 10 |
 | 11 | GPIO17 | │ │ | GPIO18 | 12 |
-| 13 | GPIO27 (`RST`, `LCD-RST`) | │ │ | GND | 14 |
+| 13 | GPIO27 (`LCD-RST`) | │ │ | GND | 14 |
 | 15 | GPIO22 | │ │ | GPIO23 | 16 |
-| 17 | 3V3 | │ │ | GPIO24 (`BL`, `LCD-BL`) | 18 |
+| 17 | 3V3 | │ │ | GPIO24 (`LCD-BL`) | 18 |
 | 19 | GPIO10 / MOSI (`LCD-MOSI`) | │ │ | GND | 20 |
-| 21 | GPIO9 / MISO | │ │ | GPIO25 (`DC`, `LCD-DC`) | 22 |
+| 21 | GPIO9 / MISO | │ │ | GPIO25 (`LCD-DC`) | 22 |
 | 23 | GPIO11 / SCLK (`LCD-SCLK`) | │ │ | GPIO8 / CE0 (`LCD-CS`) | 24 |
 | 25 | GND | │ │ | GPIO7 / CE1 | 26 |
 | 27 | GPIO0 / ID_SD (`I2C0-SDA`) | │ │ | GPIO1 / ID_SC (`I2C0-SCL`) | 28 |
@@ -62,9 +62,9 @@ Values shown are exactly how mappings are stored in `io_config.json`.
 |---|---|---|---|---|
 | `RPI_40` | `rpi_40` | `[25] / [27] / [24]` | `KEY_UP [6,"pull_up"]`, `KEY_DOWN [19,"pull_up"]`, `KEY_LEFT [5,"pull_up"]`, `KEY_RIGHT [26,"pull_up"]`, `KEY_PRESS [13,"pull_up"]`, `KEY1 [21,"pull_up"]`, `KEY2 [20,"pull_up"]`, `KEY3 [16,"pull_up"]` | `/dev/video0`, `1280x720`, `YUYV`, `4fps` |
 | `RPI_26` | `rpi_26` | `[25] / [27] / [24]` | `KEY_UP [3,"pull_up"]`, `KEY_DOWN [17,"pull_up"]`, `KEY_LEFT [2,"pull_up"]`, `KEY_RIGHT [22,"pull_up"]`, `KEY_PRESS [4,"pull_up"]`, `KEY1 [23,"pull_up"]`, `KEY2 [18,"pull_up"]`, `KEY3 [14,"pull_up"]` | `/dev/video0`, `1280x720`, `YUYV`, `4fps` |
-| `FOX_22` | `luckfox_22` | `[20] / [19] / [11]` | `KEY_UP [25]`, `KEY_DOWN [27]`, `KEY_LEFT [24]`, `KEY_RIGHT [22]`, `KEY_PRESS [26]`, `KEY1 [23]`, `KEY2 [4]`, `KEY3 [21]` | `/dev/video12`, `800x600`, `GREY`, `6fps` |
-| `FOX_40` | `luckfox_40` | `[24] / [25] / [8]` | `KEY_UP [58]`, `KEY_DOWN [53]`, `KEY_LEFT [59]`, `KEY_RIGHT [54]`, `KEY_PRESS [52]`, `KEY1 [55]`, `KEY2 [43]`, `KEY3 [42]` | `/dev/video12`, `800x600`, `GREY`, `6fps` |
-| `FOX_PI` | `luckfox_pi` | `[27] / [24] / [6]` | `KEY_UP [26,"pull_up"]`, `KEY_DOWN [20,"pull_up"]`, `KEY_LEFT [1,"pull_up"]`, `KEY_RIGHT [25,"pull_up"]`, `KEY_PRESS [0,"pull_up"]`, `KEY1 [17,"pull_up"]`, `KEY2 [27,"pull_up"]`, `KEY3 [23,"pull_up"]` | `/dev/video12`, `800x600`, `GREY`, `6fps` |
+| `FOX_22` | `luckfox_22` | `[20] / [19] / [11]` | `KEY_UP [25]`, `KEY_DOWN [27]`, `KEY_LEFT [24]`, `KEY_RIGHT [22]`, `KEY_PRESS [26]`, `KEY1 [23]`, `KEY2 [4]`, `KEY3 [21]` | `/dev/video12`, `GREY`, `6fps` |
+| `FOX_40` | `luckfox_40` | `[24] / [25] / [8]` | `KEY_UP [58]`, `KEY_DOWN [53]`, `KEY_LEFT [59]`, `KEY_RIGHT [54]`, `KEY_PRESS [52]`, `KEY1 [55]`, `KEY2 [43]`, `KEY3 [42]` | `/dev/video12`, `GREY`, `6fps` |
+| `FOX_PI` | `luckfox_pi` | `[27] / [24] / [6]` | `KEY_UP [26,"pull_up"]`, `KEY_DOWN [20,"pull_up"]`, `KEY_LEFT [1,"pull_up"]`, `KEY_RIGHT [25,"pull_up"]`, `KEY_PRESS [0,"pull_up"]`, `KEY1 [17,"pull_up"]`, `KEY2 [27,"pull_up"]`, `KEY3 [23,"pull_up"]` | `/dev/video12`, `GREY`, `6fps` |
 
 ---
 

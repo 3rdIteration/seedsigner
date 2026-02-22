@@ -122,7 +122,6 @@ This is a quick reference summary of the mappings currently defined in
   - `KEY3`: `["/dev/gpiochip1", 21]`
 - Camera:
   - Device: `/dev/video12`
-  - Resolution: `800x600`
   - Pixel format: `NV12`
   - Framerate: `10`
 
@@ -144,7 +143,6 @@ This is a quick reference summary of the mappings currently defined in
   - `KEY3`: `[42]` (`pin 1`, `GPIO1_B2_d`)
 - Camera:
   - Device: `/dev/video12`
-  - Resolution: `800x600`
   - Pixel format: `NV12`
   - Framerate: `10`
 
@@ -166,6 +164,5 @@ This is a quick reference summary of the mappings currently defined in
   - `KEY3`: `["/dev/gpiochip1", 23, "pull_up"]`
 - Camera:
   - Device: `/dev/video12`
-  - Resolution: `800x600`
   - Pixel format: `GREY`
   - Framerate: `6`

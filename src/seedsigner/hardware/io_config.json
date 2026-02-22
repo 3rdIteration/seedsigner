@@ -191,10 +191,6 @@
       },
       "camera": {
         "device": "/dev/video12",
-        "resolution": [
-          800,
-          600
-        ],
         "pixelformat": "GREY",
         "framerate": 6
       }
@@ -248,10 +244,6 @@
       },
       "camera": {
         "device": "/dev/video12",
-        "resolution": [
-          800,
-          600
-        ],
         "pixelformat": "GREY",
         "framerate": 6
       }
@@ -313,10 +305,6 @@
       },
       "camera": {
         "device": "/dev/video12",
-        "resolution": [
-          800,
-          600
-        ],
         "pixelformat": "GREY",
         "framerate": 6
       }
