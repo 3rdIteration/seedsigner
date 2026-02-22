@@ -6,8 +6,8 @@ This document summarizes the hardware mappings in `src/seedsigner/hardware/io_co
 
 The table below uses standard 40-pin physical numbering and highlights:
 - Waveshare 1.3" LCD HAT signals (`DC`, `RST`, `BL`, keys)
-- UART
-- I2C
+- UART (e.g., SEC1210 smart card reader)
+- I2C (e.g., NFC reader, battery monitor, or touchscreen interface)
 - Power / Ground
 
 <div align="center">
