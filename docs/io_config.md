@@ -20,12 +20,12 @@ The table below uses standard 40-pin physical numbering and highlights:
 | 7 | GPIO4 | │ │ | GPIO14 / TXD0 | 8 |
 | 9 | GND | │ │ | GPIO15 / RXD0 | 10 |
 | 11 | GPIO17 | │ │ | GPIO18 | 12 |
-| 13 | GPIO27 (`RST`) | │ │ | GND | 14 |
+| 13 | GPIO27 (`RST`, `LCD-RST`) | │ │ | GND | 14 |
 | 15 | GPIO22 | │ │ | GPIO23 | 16 |
-| 17 | 3V3 | │ │ | GPIO24 (`BL`) | 18 |
-| 19 | GPIO10 / MOSI | │ │ | GND | 20 |
-| 21 | GPIO9 / MISO | │ │ | GPIO25 (`DC`) | 22 |
-| 23 | GPIO11 / SCLK | │ │ | GPIO8 / CE0 | 24 |
+| 17 | 3V3 | │ │ | GPIO24 (`BL`, `LCD-BL`) | 18 |
+| 19 | GPIO10 / MOSI (`LCD-MOSI`) | │ │ | GND | 20 |
+| 21 | GPIO9 / MISO | │ │ | GPIO25 (`DC`, `LCD-DC`) | 22 |
+| 23 | GPIO11 / SCLK (`LCD-SCLK`) | │ │ | GPIO8 / CE0 (`LCD-CS`) | 24 |
 | 25 | GND | │ │ | GPIO7 / CE1 | 26 |
 | 27 | GPIO0 / ID_SD | │ │ | GPIO1 / ID_SC | 28 |
 | 29 | GPIO5 (`KEY_LEFT`) | │ │ | GND | 30 |
