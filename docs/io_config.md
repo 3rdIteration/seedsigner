@@ -6,7 +6,7 @@ This document summarizes the hardware mappings in `src/seedsigner/hardware/io_co
 
 The table below uses standard 40-pin physical numbering and highlights:
 - Waveshare 1.3" LCD HAT signals (`DC`, `RST`, `BL`, keys)
-- UART (e.g., SEC1210 smart card reader)
+- UART (`UART-TX`, `UART-RX`; e.g., SEC1210 smart card reader)
 - I2C (`I2C-SDA`, `I2C-SCL`; e.g., NFC reader, battery monitor, or touchscreen interface)
 - Power / Ground
 
@@ -17,8 +17,8 @@ The table below uses standard 40-pin physical numbering and highlights:
 | 1 | 3V3 | │ │ | 5V | 2 |
 | 3 | GPIO2 / SDA1 (`I2C-SDA`) | │ │ | 5V | 4 |
 | 5 | GPIO3 / SCL1 (`I2C-SCL`) | │ │ | GND | 6 |
-| 7 | GPIO4 | │ │ | GPIO14 / TXD0 | 8 |
-| 9 | GND | │ │ | GPIO15 / RXD0 | 10 |
+| 7 | GPIO4 | │ │ | GPIO14 / TXD0 (`UART-TX`) | 8 |
+| 9 | GND | │ │ | GPIO15 / RXD0 (`UART-RX`) | 10 |
 | 11 | GPIO17 | │ │ | GPIO18 | 12 |
 | 13 | GPIO27 (`RST`, `LCD-RST`) | │ │ | GND | 14 |
 | 15 | GPIO22 | │ │ | GPIO23 | 16 |
