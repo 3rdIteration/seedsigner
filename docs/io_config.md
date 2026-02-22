@@ -37,6 +37,21 @@ The table below uses standard 40-pin physical numbering and highlights:
 
 </div>
 
+
+## Waveshare SPI display pin notes
+
+For the Waveshare 1.3" LCD HAT on a GPIO40 header:
+- `SPI0_MOSI`: pin `19` (`GPIO10`)
+- `SPI0_SCLK`: pin `23` (`GPIO11`)
+- `SPI0_CE0`: pin `24` (`GPIO8`)
+- `DC`: pin `22` (`GPIO25`)
+- `RST`: pin `13` (`GPIO27`)
+- `BL`: pin `18` (`GPIO24`)
+- Power: pin `1` (`3V3`)
+- Ground: e.g. pin `6` (`GND`)
+
+These are the standard Waveshare/RPi-style assignments that the `RPI_40` profile follows.
+
 ---
 
 ## Hardware profile mapping summary
