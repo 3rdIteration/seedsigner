@@ -94,7 +94,7 @@ class HardwareButtons(Singleton):
                         raise KeyError(f"Missing hardware button mapping for '{name}'")
                     pin_bias = None
                     gpio_selector = pin_selector
-                    # io_config.json button entries support either:
+                    # io_config.py button entries support either:
                     #   [chip, line]                -> no explicit bias
                     #   [chip, line, "pull_up"]     -> apply periphery bias
                     # and line-only selectors like [58] on platforms that expose

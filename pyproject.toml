@@ -65,7 +65,6 @@ include-package-data = true
 
 [tool.setuptools.package-data]
 "seedsigner.resources" = ["**"]
-"seedsigner.hardware" = ["io_config.json"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -5,7 +5,7 @@ per-platform IO mappings.
 
 ## Where platform support is defined
 
-- `src/seedsigner/hardware/io_config.json`
+- `src/seedsigner/hardware/io_config.py`
   - Source of truth for supported models, detection regex patterns, and IO pin maps.
 - `src/seedsigner/hardware/io_config.py`
   - Loads platform definitions and resolves runtime profile to hardware profile.
@@ -16,13 +16,13 @@ per-platform IO mappings.
 ## How detection works
 
 1. Device model string is read from `/proc/device-tree/model`.
-2. Regex patterns in `io_config.json` are matched to select a `runtime_profile`.
+2. Regex patterns in `io_config.py` are matched to select a `runtime_profile`.
 3. Runtime profile is mapped to a hardware profile (`shortname`, e.g. `RPI_40`).
 4. Hardware profile pin mappings are used by hardware modules (display, buttons, camera).
 
 ## Supported platform profiles
 
-Current profiles in `io_config.json`:
+Current profiles in `io_config.py`:
 
 - `RPI_40` (Raspberry Pi 40-pin variants, includes Zero/Zero W/Zero 2 W and newer Pis)
 - `RPI_26` (legacy Raspberry Pi 26-pin variants)
@@ -53,7 +53,7 @@ with inline `"pull_up"` bias to match active-low button reads.
 ## IO mapping summary by profile
 
 This is a quick reference summary of the mappings currently defined in
-`src/seedsigner/hardware/io_config.json`.
+`src/seedsigner/hardware/io_config.py`.
 
 ### `RPI_40`
 
