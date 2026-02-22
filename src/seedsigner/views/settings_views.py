@@ -821,6 +821,7 @@ class SystemInfoView(View):
             "rpi_40": "Raspberry Pi",
             "luckfox_22": "Luckfox Pico",
             "luckfox_40": "Luckfox Pico",
+            "luckfox_pi": "Luckfox Pico",
         }
         platform_name = platform_map.get(profile, "Unknown")
 

@@ -149,6 +149,8 @@ class HardwareButtons(Singleton):
                             )
                             pin_bias = None
                             gpio_selector = gpio_selector[0]
+                    if isinstance(pin_selector, int):
+                        gpio_selector = [pin_selector]
                     if pin_bias:
                         cls._instance._gpio_pins[name] = GPIO(*gpio_selector, "in", bias=pin_bias)
                     else:

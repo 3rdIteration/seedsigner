@@ -6,6 +6,12 @@ For TextArea-based informational screens (especially ButtonListScreen flows), ke
 
 If additional detail is needed, prefer a second screen instead of longer text.
 
+
+## IO config consistency guidance
+
+- Keep `src/seedsigner/hardware/io_config.json` and `docs/io_config.md` consistent whenever pin mappings or profile details are changed.
+- If the JSON and documentation conflict and the correct source of truth is unclear, explicitly ask the user how they want the conflict resolved before finalizing changes.
+
 ## Security-first development guidance
 
 Because this project handles private key material for an air-gapped signer, **security takes precedence over convenience**. Treat all entropy and key-handling paths as high-risk code.
