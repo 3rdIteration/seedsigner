@@ -60,8 +60,8 @@ def test_camera_luckfox_stream_prefers_v4l2(monkeypatch):
     camera.start_video_stream_mode(resolution=(320, 240), framerate=12, format="rgb")
 
     assert captured["prefer_v4l2"] is True
-    assert captured["resolution"] == (320, 240)
-    assert captured["framerate"] == 6
+    assert captured["resolution"] == (800, 600)
+    assert captured["framerate"] == 12
     assert captured["camera_config"]["pixelformat"] == "NV12"
     assert captured["started"] is True
 
