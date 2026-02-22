@@ -257,6 +257,7 @@ class SettingsConstants:
     HARDWARE__RPI_26 = "RPI_26"
     HARDWARE__LUCKFOX_22 = "FOX_22"
     HARDWARE__LUCKFOX_40 = "FOX_40"
+    HARDWARE__LUCKFOX_PI = "FOX_PI"
 
 
     # QR code constants
