@@ -27,8 +27,9 @@ try:
 except Exception:
     cv2 = None
 
-V4L2_PREFERRED_FORMATS = ("XR24", "GREY", "NV12", "UYVY")
+V4L2_PREFERRED_FORMATS = ("NV12", "UYVY", "XR24", "GREY")
 LUCKFOX_DEVICE_FALLBACKS = ("/dev/video12", "/dev/video11", "/dev/video13", "/dev/video14", "/dev/video15")
+MIN_LUCKFOX_CAPTURE_AREA = 320 * 240
 
 
 class VideoStream:
@@ -61,6 +62,7 @@ class VideoStream:
         self._v4l2_resolution = None
         self._v4l2_frame_size = None
         self._v4l2_use_set_parm = False
+        self._v4l2_decode_as_grey = False
         self._camera_config = camera_config or {}
         self._prefer_v4l2 = bool(prefer_v4l2)
 
@@ -163,12 +165,49 @@ class VideoStream:
                 continue
         return False, False
 
+    def _get_negotiated_v4l2_format(
+        self,
+        device: str,
+        width: int,
+        height: int,
+        pixelformat: str,
+    ) -> tuple[int, int, str, int | None]:
+        """Query negotiated capture format after requesting width/height/pixelformat."""
+        cmd = [
+            "v4l2-ctl",
+            "-d",
+            device,
+            f"--set-fmt-video=width={width},height={height},pixelformat={pixelformat}",
+            "--get-fmt-video",
+        ]
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, check=False, timeout=3)
+        except Exception:
+            return width, height, pixelformat, None
+
+        if result.returncode != 0:
+            return width, height, pixelformat, None
+
+        out = result.stdout
+        wh_match = re.search(r"Width/Height\s*:\s*(\d+)\s*/\s*(\d+)", out)
+        fmt_match = re.search(r"Pixel Format\s*:\s*'([A-Z0-9]{4})'", out)
+        size_match = re.search(r"Size Image\s*:\s*(\d+)", out)
+
+        negotiated_w = int(wh_match.group(1)) if wh_match else width
+        negotiated_h = int(wh_match.group(2)) if wh_match else height
+        negotiated_fmt = fmt_match.group(1) if fmt_match else pixelformat
+        negotiated_size = int(size_match.group(1)) if size_match else None
+        return negotiated_w, negotiated_h, negotiated_fmt, negotiated_size
+
     def _configure_v4l2_capture(self):
         width, height = self._camera_config.get("resolution", self.resolution)
         width = int(width)
         height = int(height)
         framerate = int(self._camera_config.get("framerate", self.framerate))
+        configured_format = str(self._camera_config.get("pixelformat", "")).upper()
+        configured_device = str(self._camera_config.get("device", "")).strip()
         preferences = self._format_preferences()
+        small_mode_candidate = None
 
         for device in self._normalize_device_candidates():
             if not os.path.exists(device):
@@ -188,15 +227,90 @@ class VideoStream:
 
             probe_ok, use_set_parm = self._probe_v4l2_device(device, width, height, chosen_format)
             if probe_ok:
+                negotiated_w, negotiated_h, negotiated_fmt, negotiated_size = self._get_negotiated_v4l2_format(
+                    device=device,
+                    width=width,
+                    height=height,
+                    pixelformat=chosen_format,
+                )
+                # Skip thumbnail/scaled ISP nodes that can appear "live" but are not
+                # suitable for stable full-screen preview/decoding on Luckfox.
+                if negotiated_w * negotiated_h < MIN_LUCKFOX_CAPTURE_AREA and device != configured_device:
+                    logger.info(
+                        "Deferring V4L2 node %s due to small negotiated mode %sx%s",
+                        device,
+                        negotiated_w,
+                        negotiated_h,
+                    )
+                    if small_mode_candidate is None:
+                        small_mode_candidate = (
+                            device,
+                            negotiated_w,
+                            negotiated_h,
+                            negotiated_fmt,
+                            negotiated_size,
+                            use_set_parm,
+                        )
+                    continue
+
                 self.use_v4l2 = True
                 self._v4l2_device = device
-                self._v4l2_pixelformat = chosen_format
-                self._v4l2_resolution = (width, height)
-                self._v4l2_frame_size = self._calculate_v4l2_frame_size(width, height, chosen_format)
+                self._v4l2_pixelformat = negotiated_fmt
+                self._v4l2_resolution = (negotiated_w, negotiated_h)
+                self._v4l2_frame_size = self._calculate_v4l2_frame_size(
+                    negotiated_w,
+                    negotiated_h,
+                    negotiated_fmt,
+                )
                 self._v4l2_use_set_parm = use_set_parm
                 self.framerate = framerate
-                self.resolution = (width, height)
+                self.resolution = (negotiated_w, negotiated_h)
+                self._v4l2_decode_as_grey = configured_format == "GREY" and negotiated_fmt in {"NV12", "UYVY"}
+                logger.info(
+                    "Using V4L2 node %s at %sx%s (%s)",
+                    self._v4l2_device,
+                    negotiated_w,
+                    negotiated_h,
+                    negotiated_fmt,
+                )
                 return
+
+        # If only lower-resolution ISP nodes are available, use the first one rather
+        # than failing hard. This keeps camera functionality available on firmware
+        # variants where mainpath nodes are reserved by another service.
+        if small_mode_candidate is not None:
+            device, negotiated_w, negotiated_h, negotiated_fmt, negotiated_size, use_set_parm = small_mode_candidate
+            logger.info(
+                "Falling back to V4L2 node %s with negotiated mode %sx%s (%s)",
+                device,
+                negotiated_w,
+                negotiated_h,
+                negotiated_fmt,
+            )
+            self.use_v4l2 = True
+            self._v4l2_device = device
+            self._v4l2_pixelformat = negotiated_fmt
+            self._v4l2_resolution = (negotiated_w, negotiated_h)
+            if negotiated_size is not None and negotiated_size > 0:
+                self._v4l2_frame_size = negotiated_size
+            else:
+                self._v4l2_frame_size = self._calculate_v4l2_frame_size(
+                    negotiated_w,
+                    negotiated_h,
+                    negotiated_fmt,
+                )
+            self._v4l2_use_set_parm = use_set_parm
+            self.framerate = framerate
+            self.resolution = (negotiated_w, negotiated_h)
+            self._v4l2_decode_as_grey = configured_format == "GREY" and negotiated_fmt in {"NV12", "UYVY"}
+            logger.info(
+                "Using V4L2 node %s at %sx%s (%s)",
+                self._v4l2_device,
+                negotiated_w,
+                negotiated_h,
+                negotiated_fmt,
+            )
+            return
 
         raise Exception("Unable to open Luckfox camera device")
 
@@ -249,13 +363,13 @@ class VideoStream:
 
     def _open_v4l2_stream(self):
         width, height = self._v4l2_resolution
+        self._apply_v4l2_controls()
         cmd = [
             "v4l2-ctl",
             "-d",
             self._v4l2_device,
             f"--set-fmt-video=width={width},height={height},pixelformat={self._v4l2_pixelformat}",
             "--stream-mmap",
-            "--stream-count=0",
             "--stream-to=-",
         ]
         if self._v4l2_use_set_parm:
@@ -266,6 +380,27 @@ class VideoStream:
             stderr=subprocess.DEVNULL,
             bufsize=max(self._v4l2_frame_size * 2, 65536),
         )
+
+    def _apply_v4l2_controls(self):
+        """Apply optional V4L2 controls from camera config (best-effort)."""
+        controls = self._camera_config.get("v4l2_controls")
+        if not controls:
+            return
+        if isinstance(controls, str):
+            controls = [controls]
+        if not isinstance(controls, (list, tuple)):
+            return
+
+        for ctrl in controls:
+            if not isinstance(ctrl, str) or "=" not in ctrl:
+                continue
+            cmd = ["v4l2-ctl", "-d", self._v4l2_device, f"--set-ctrl={ctrl}"]
+            try:
+                result = subprocess.run(cmd, capture_output=True, text=True, check=False, timeout=2)
+                if result.returncode != 0:
+                    logger.info("Ignoring unsupported V4L2 control on %s: %s", self._v4l2_device, ctrl)
+            except Exception:
+                logger.info("Unable to apply V4L2 control on %s: %s", self._v4l2_device, ctrl)
 
     def _read_exact(self, size: int, timeout_s: float) -> bytes | None:
         if self._v4l2_process is None or self._v4l2_process.stdout is None:
@@ -310,16 +445,19 @@ class VideoStream:
                 u = uv_plane[uv_row + col] - 128
                 v = uv_plane[uv_row + col + 1] - 128
 
-                c_r = 359 * v
-                c_g = -88 * u - 183 * v
-                c_b = 454 * u
+                c0 = y0 - 16
+                c1 = y1 - 16
+                if c0 < 0:
+                    c0 = 0
+                if c1 < 0:
+                    c1 = 0
 
-                r0 = self._clamp_color(y0 + (c_r >> 8))
-                g0 = self._clamp_color(y0 + (c_g >> 8))
-                b0 = self._clamp_color(y0 + (c_b >> 8))
-                r1 = self._clamp_color(y1 + (c_r >> 8))
-                g1 = self._clamp_color(y1 + (c_g >> 8))
-                b1 = self._clamp_color(y1 + (c_b >> 8))
+                r0 = self._clamp_color((298 * c0 + 409 * v + 128) >> 8)
+                g0 = self._clamp_color((298 * c0 - 100 * u - 208 * v + 128) >> 8)
+                b0 = self._clamp_color((298 * c0 + 516 * u + 128) >> 8)
+                r1 = self._clamp_color((298 * c1 + 409 * v + 128) >> 8)
+                g1 = self._clamp_color((298 * c1 - 100 * u - 208 * v + 128) >> 8)
+                b1 = self._clamp_color((298 * c1 + 516 * u + 128) >> 8)
 
                 rgb_data[out : out + 6] = bytes((r0, g0, b0, r1, g1, b1))
                 out += 6
@@ -334,16 +472,19 @@ class VideoStream:
             v = frame_data[idx + 2] - 128
             y1 = frame_data[idx + 3]
 
-            c_r = 359 * v
-            c_g = -88 * u - 183 * v
-            c_b = 454 * u
+            c0 = y0 - 16
+            c1 = y1 - 16
+            if c0 < 0:
+                c0 = 0
+            if c1 < 0:
+                c1 = 0
 
-            r0 = self._clamp_color(y0 + (c_r >> 8))
-            g0 = self._clamp_color(y0 + (c_g >> 8))
-            b0 = self._clamp_color(y0 + (c_b >> 8))
-            r1 = self._clamp_color(y1 + (c_r >> 8))
-            g1 = self._clamp_color(y1 + (c_g >> 8))
-            b1 = self._clamp_color(y1 + (c_b >> 8))
+            r0 = self._clamp_color((298 * c0 + 409 * v + 128) >> 8)
+            g0 = self._clamp_color((298 * c0 - 100 * u - 208 * v + 128) >> 8)
+            b0 = self._clamp_color((298 * c0 + 516 * u + 128) >> 8)
+            r1 = self._clamp_color((298 * c1 + 409 * v + 128) >> 8)
+            g1 = self._clamp_color((298 * c1 - 100 * u - 208 * v + 128) >> 8)
+            b1 = self._clamp_color((298 * c1 + 516 * u + 128) >> 8)
             rgb_data[out : out + 6] = bytes((r0, g0, b0, r1, g1, b1))
             out += 6
         return Image.frombytes("RGB", (width, height), bytes(rgb_data))
@@ -356,8 +497,19 @@ class VideoStream:
         if fmt == "GREY":
             return Image.frombytes("L", (width, height), frame_data).convert("RGB")
         if fmt == "NV12":
+            if self._v4l2_decode_as_grey:
+                y_plane = frame_data[: width * height]
+                return Image.frombytes("L", (width, height), y_plane).convert("RGB")
             return self._nv12_to_image(frame_data, width, height)
         if fmt == "UYVY":
+            if self._v4l2_decode_as_grey:
+                y_plane = bytearray(width * height)
+                out = 0
+                for idx in range(0, len(frame_data), 4):
+                    y_plane[out] = frame_data[idx + 1]
+                    y_plane[out + 1] = frame_data[idx + 3]
+                    out += 2
+                return Image.frombytes("L", (width, height), bytes(y_plane)).convert("RGB")
             return self._uyvy_to_image(frame_data, width, height)
         raise ValueError(f"Unsupported V4L2 pixel format: {fmt}")
 

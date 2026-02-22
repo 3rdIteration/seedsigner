@@ -117,19 +117,11 @@ class Camera(Singleton):
         stream_framerate = framerate
         stream_camera_config = dict(self._hardware_camera_config or {})
         if prefer_v4l2:
-            # Use io_config defaults for callers that do not request a specific mode.
-            # Explicit caller overrides (e.g. scan screen) are preserved.
-            default_resolution = (512, 384)
-            default_framerate = 12
-            if stream_camera_config.get("resolution") and tuple(stream_resolution) == default_resolution:
+            # On Luckfox, prefer the board-specific io_config camera mode to avoid
+            # unstable/unsupported requests from generic caller defaults.
+            if stream_camera_config.get("resolution"):
                 stream_resolution = tuple(stream_camera_config["resolution"])
-            if tuple(stream_resolution) != default_resolution:
-                stream_camera_config["resolution"] = tuple(stream_resolution)
-
-            if stream_camera_config.get("framerate") and int(stream_framerate) == default_framerate:
-                stream_framerate = int(stream_camera_config["framerate"])
-            stream_framerate = min(int(stream_framerate), 6)
-            stream_camera_config["framerate"] = int(stream_framerate)
+            stream_camera_config["resolution"] = tuple(stream_resolution)
 
         self._video_stream = VideoStream(
             resolution=stream_resolution,
@@ -178,10 +170,9 @@ class Camera(Singleton):
 
             luckfox_config = dict(self._hardware_camera_config or {})
             luckfox_config["resolution"] = tuple(resolution)
-            luckfox_config["framerate"] = min(int(luckfox_config.get("framerate", 6)), 6)
             self._capture = VideoStream(
                 resolution=luckfox_config["resolution"],
-                framerate=int(luckfox_config["framerate"]),
+                framerate=6,
                 device_index=self._camera_index,
                 camera_config=luckfox_config,
                 prefer_v4l2=True,
