@@ -3,6 +3,8 @@
 SeedSigner supports multiple hardware platforms via runtime profile detection and
 per-platform IO mappings.
 
+For a consolidated per-profile mapping table and GPIO40 header reference, see `docs/io_config.md`.
+
 ## Where platform support is defined
 
 - `src/seedsigner/hardware/io_config.json`
@@ -28,6 +30,7 @@ Current profiles in `io_config.json`:
 - `RPI_26` (legacy Raspberry Pi 26-pin variants)
 - `FOX_22` (Luckfox Pico 22-pin)
 - `FOX_40` (Luckfox Pico 40-pin)
+- `FOX_PI` (Luckfox Pico Pi)
 
 ## Button GPIO mapping format
 
@@ -41,10 +44,13 @@ Accepted entry formats:
   - Example: `["/dev/gpiochip0", 6, "pull_up"]`
 - `[line]` (platforms using global line numbering with periphery)
   - Example: `[58]`
+- `[line, bias]`
+  - Example: `[6, "pull_up"]`
 
-`bias` is optional. When present and string-typed as the third element, it is
-passed to `periphery.GPIO(..., bias=<value>)`. When absent, input GPIO is
-opened without an explicit bias.
+`bias` is optional. When present as the last string element (e.g.
+`[chip, line, "pull_up"]` or `[line, "pull_up"]`), it is passed to
+`periphery.GPIO(..., bias=<value>)`. When absent, input GPIO is opened
+without an explicit bias.
 
 For Raspberry Pi profiles (`RPI_40`, `RPI_26`), button entries are configured
 with inline `"pull_up"` bias to match active-low button reads.
@@ -116,28 +122,47 @@ This is a quick reference summary of the mappings currently defined in
   - `KEY3`: `["/dev/gpiochip1", 21]`
 - Camera:
   - Device: `/dev/video12`
-  - Resolution: `800x600`
   - Pixel format: `NV12`
   - Framerate: `10`
 
 ### `FOX_40`
 
 - Display:
-  - `dc`: `["/dev/gpiochip1", 24]`
-  - `rst`: `["/dev/gpiochip1", 25]`
-  - `bl`: `["/dev/gpiochip2", 8]`
+  - `dc`: `["/dev/gpiochip1", 24]` (`pin 19`, `GPIO1_D0_d`)
+  - `rst`: `["/dev/gpiochip1", 25]` (`pin 20`, `GPIO1_D1_d`)
+  - `bl`: `["/dev/gpiochip2", 8]` (`pin 17`, `GPIO2_B0_d`)
   - SPI: `bus 0`, `device 0`
 - Buttons:
-  - `KEY_UP`: `[58]`
-  - `KEY_DOWN`: `[53]`
-  - `KEY_LEFT`: `[59]`
-  - `KEY_RIGHT`: `[54]`
-  - `KEY_PRESS`: `[52]`
-  - `KEY1`: `[55]`
-  - `KEY2`: `[43]`
-  - `KEY3`: `[42]`
+  - `KEY_UP`: `[58]` (`pin 9`, `GPIO1_D2_d`)
+  - `KEY_DOWN`: `[53]` (`pin 6`, `GPIO1_C5_d`)
+  - `KEY_LEFT`: `[59]` (`pin 10`, `GPIO1_D3_d`)
+  - `KEY_RIGHT`: `[54]` (`pin 5`, `GPIO1_C6_d`)
+  - `KEY_PRESS`: `[52]` (`pin 7`, `GPIO1_C4_d`)
+  - `KEY1`: `[55]` (`pin 4`, `GPIO1_C7_d`)
+  - `KEY2`: `[43]` (`pin 2`, `GPIO1_B3_d`)
+  - `KEY3`: `[42]` (`pin 1`, `GPIO1_B2_d`)
 - Camera:
   - Device: `/dev/video12`
-  - Resolution: `800x600`
   - Pixel format: `NV12`
   - Framerate: `10`
+
+### `FOX_PI`
+
+- Display:
+  - `dc`: `["/dev/gpiochip1", 27]`
+  - `rst`: `["/dev/gpiochip1", 24]`
+  - `bl`: `["/dev/gpiochip2", 6]`
+  - SPI: `bus 0`, `device 0`
+- Buttons (all with `"pull_up"`):
+  - `KEY_UP`: `["/dev/gpiochip3", 26, "pull_up"]`
+  - `KEY_DOWN`: `["/dev/gpiochip1", 20, "pull_up"]`
+  - `KEY_LEFT`: `["/dev/gpiochip0", 1, "pull_up"]`
+  - `KEY_RIGHT`: `["/dev/gpiochip3", 25, "pull_up"]`
+  - `KEY_PRESS`: `["/dev/gpiochip0", 0, "pull_up"]`
+  - `KEY1`: `["/dev/gpiochip4", 17, "pull_up"]`
+  - `KEY2`: `["/dev/gpiochip3", 27, "pull_up"]`
+  - `KEY3`: `["/dev/gpiochip1", 23, "pull_up"]`
+- Camera:
+  - Device: `/dev/video12`
+  - Pixel format: `GREY`
+  - Framerate: `6`

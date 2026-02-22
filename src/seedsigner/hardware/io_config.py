@@ -11,7 +11,7 @@ def _get_io_config_path() -> Path:
     return Path(__file__).resolve().parent / _IO_CONFIG_FILENAME
 
 
-def load_io_config() -> dict:
+def load_io_config() -> dict[str, Any]:
     io_config_path = _get_io_config_path()
     with io_config_path.open("r", encoding="utf-8") as io_config_file:
         return json.load(io_config_file)
@@ -51,7 +51,7 @@ def get_hardware_profile_label(profile: str) -> str | None:
     return f"{platform} {variant}".strip() or profile
 
 
-def get_hardware_pin_mapping(profile: str) -> dict:
+def get_hardware_pin_mapping(profile: str) -> dict[str, Any]:
     model = _get_model_by_shortname(profile)
     if not model:
         raise KeyError(f"Unknown hardware profile: {profile}")
