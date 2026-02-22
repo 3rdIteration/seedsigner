@@ -94,18 +94,21 @@ class HardwareButtons(Singleton):
                         raise KeyError(f"Missing hardware button mapping for '{name}'")
                     pin_bias = None
                     gpio_selector = pin_selector
-                    # io_config.json button entries support either:
-                    #   [chip, line]                -> no explicit bias
-                    #   [chip, line, "pull_up"]     -> apply periphery bias
-                    # and line-only selectors like [58] on platforms that expose
-                    # global GPIO numbering through periphery.
-                    if (
-                        isinstance(pin_selector, list)
-                        and len(pin_selector) > 2
-                        and isinstance(pin_selector[-1], str)
-                    ):
-                        pin_bias = pin_selector[-1]
-                        gpio_selector = pin_selector[:-1]
+                    # io_config.json button entries support any of:
+                    #   [chip, line]                 -> no explicit bias
+                    #   [chip, line, "pull_up"]      -> apply periphery bias
+                    #   [line]                       -> global line selector
+                    #   [line, "pull_up"]            -> global line + bias
+                    #   line                         -> global line selector
+                    if isinstance(pin_selector, int):
+                        gpio_selector = [pin_selector]
+                    elif isinstance(pin_selector, list):
+                        if len(pin_selector) == 2 and isinstance(pin_selector[1], str):
+                            pin_bias = pin_selector[1]
+                            gpio_selector = [pin_selector[0]]
+                        elif len(pin_selector) > 2 and isinstance(pin_selector[-1], str):
+                            pin_bias = pin_selector[-1]
+                            gpio_selector = pin_selector[:-1]
                     if pin_bias:
                         cls._instance._gpio_pins[name] = GPIO(*gpio_selector, "in", bias=pin_bias)
                     else:
