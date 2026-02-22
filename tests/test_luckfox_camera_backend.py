@@ -1,7 +1,17 @@
-from PIL import Image
+from importlib import import_module
+import sys
 
-from seedsigner.hardware.camera import Camera
+from PIL import Image
+from unittest.mock import MagicMock
+
 from seedsigner.hardware.pivideostream import VideoStream
+
+
+def _get_camera_class():
+    camera_module = sys.modules.get("seedsigner.hardware.camera")
+    if isinstance(camera_module, MagicMock):
+        del sys.modules["seedsigner.hardware.camera"]
+    return import_module("seedsigner.hardware.camera").Camera
 
 
 class DummyVideoStream:
@@ -13,7 +23,8 @@ class DummyVideoStream:
 
 
 def test_camera_read_video_stream_supports_pil_frames():
-    camera = Camera.__new__(Camera)
+    camera_class = _get_camera_class()
+    camera = camera_class.__new__(camera_class)
     camera._video_stream = DummyVideoStream(Image.new("RGB", (4, 4), color=(1, 2, 3)))
     camera._camera_rotation = 180
 
@@ -34,7 +45,8 @@ def test_camera_luckfox_stream_prefers_v4l2(monkeypatch):
 
     monkeypatch.setattr("seedsigner.hardware.pivideostream.VideoStream", FakeVideoStream)
 
-    camera = Camera.__new__(Camera)
+    camera_class = _get_camera_class()
+    camera = camera_class.__new__(camera_class)
     camera._video_stream = None
     camera._camera_index = 0
     camera._runtime_profile = "luckfox_22"
@@ -90,3 +102,8 @@ def test_configure_v4l2_capture_selects_supported_node(monkeypatch):
     assert stream._v4l2_pixelformat == "NV12"
     assert stream._v4l2_resolution == (800, 600)
     assert stream._v4l2_use_set_parm is True
+
+
+def test_camera_luckfox_profile_detection_includes_pico_pi():
+    camera_class = _get_camera_class()
+    assert camera_class._is_luckfox_profile("luckfox_pi") is True
