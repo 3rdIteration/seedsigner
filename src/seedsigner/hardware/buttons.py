@@ -6,6 +6,9 @@ differences between physical button input and desktop simulation input.
 
 import logging
 import os
+import re
+import stat
+import threading
 import time
 from typing import Dict, List, Tuple
 
@@ -37,6 +40,8 @@ BTN_SPACING = 10
 
 
 class HardwareButtons(Singleton):
+    _instance_lock = threading.Lock()
+
     KEY_UP_PIN = "KEY_UP"
     KEY_DOWN_PIN = "KEY_DOWN"
     KEY_LEFT_PIN = "KEY_LEFT"
@@ -77,7 +82,80 @@ class HardwareButtons(Singleton):
                 continue
 
             if base <= line < (base + ngpio):
-                return f"/dev/{chip}", line - base
+                chip_path = HardwareButtons._resolve_sysfs_chip_to_devnode(chip_dir, chip)
+                if chip_path is not None:
+                    return chip_path, line - base
+                return None
+        return None
+
+    @staticmethod
+    def _resolve_sysfs_chip_to_devnode(chip_dir: str, chip_name: str) -> str | None:
+        """Resolve a sysfs gpiochip entry to a real /dev/gpiochipN character device path."""
+        # Preferred: match the sysfs chip's major:minor to an actual char device in /dev.
+        try:
+            with open(os.path.join(chip_dir, "dev"), "r", encoding="utf-8") as f_dev:
+                major_minor = f_dev.read().strip()
+            major_str, minor_str = major_minor.split(":", 1)
+            target_major = int(major_str)
+            target_minor = int(minor_str)
+        except Exception:
+            target_major = None
+            target_minor = None
+
+        try:
+            dev_entries = [name for name in os.listdir("/dev") if name.startswith("gpiochip")]
+        except Exception:
+            dev_entries = []
+
+        if target_major is not None and target_minor is not None:
+            for dev_name in dev_entries:
+                dev_path = os.path.join("/dev", dev_name)
+                try:
+                    st = os.stat(dev_path)
+                except Exception:
+                    continue
+                if not stat.S_ISCHR(st.st_mode):
+                    continue
+                if os.major(st.st_rdev) == target_major and os.minor(st.st_rdev) == target_minor:
+                    return dev_path
+
+        # Fallback for environments where sysfs names already match /dev names.
+        direct_path = os.path.join("/dev", chip_name)
+        if os.path.exists(direct_path):
+            return direct_path
+
+        # Fallback: map by rank in ascending global base order when sysfs names
+        # are base-numbered (e.g., gpiochip32) but /dev nodes are index-numbered
+        # (e.g., gpiochip1).
+        try:
+            chip_entries = [name for name in os.listdir("/sys/class/gpio") if name.startswith("gpiochip")]
+            chips_with_base = []
+            for entry in chip_entries:
+                try:
+                    with open(
+                        os.path.join("/sys/class/gpio", entry, "base"),
+                        "r",
+                        encoding="utf-8",
+                    ) as f_base:
+                        base = int(f_base.read().strip())
+                except Exception:
+                    continue
+                chips_with_base.append((base, entry))
+            chips_with_base.sort(key=lambda item: item[0])
+            chip_rank = next((idx for idx, (_, name) in enumerate(chips_with_base) if name == chip_name), None)
+            if chip_rank is None:
+                return None
+
+            dev_candidates = []
+            for name in dev_entries:
+                match = re.fullmatch(r"gpiochip(\d+)", name)
+                if match:
+                    dev_candidates.append((int(match.group(1)), os.path.join("/dev", name)))
+            dev_candidates.sort(key=lambda item: item[0])
+            if chip_rank < len(dev_candidates):
+                return dev_candidates[chip_rank][1]
+        except Exception:
+            return None
         return None
 
     @classmethod
@@ -105,92 +183,122 @@ class HardwareButtons(Singleton):
     @classmethod
     def get_instance(cls):
         if cls._instance is None:
-            cls._instance = cls.__new__(cls)
+            with cls._instance_lock:
+                if cls._instance is not None:
+                    return cls._instance
+                instance = cls.__new__(cls)
 
-            if USING_GPIO:
-                hardware_config = Settings.get_platform_default_hardware_config()
-                hardware_mapping = get_hardware_pin_mapping(hardware_config)
-                pin_mapping = hardware_mapping["buttons"]
-                cls._instance._gpio_pins = {}
-                for name in cls.BUTTON_NAMES:
-                    pin_selector = pin_mapping.get(name) or pin_mapping.get(name.lower())
-                    if pin_selector is None:
-                        raise KeyError(f"Missing hardware button mapping for '{name}'")
-                    pin_bias = None
-                    gpio_selector = pin_selector
-                    # io_config.json button entries support either:
-                    #   [chip, line]                -> no explicit bias
-                    #   [chip, line, "pull_up"]     -> apply periphery bias
-                    #   [line, "pull_up"]           -> resolve global line to
-                    #                                  gpiochip+offset and apply bias
-                    # and line-only selectors like [58] on platforms that expose
-                    # global GPIO numbering through periphery.
-                    if (
-                        isinstance(pin_selector, list)
-                        and len(pin_selector) >= 2
-                        and isinstance(pin_selector[-1], str)
-                    ):
-                        pin_bias = pin_selector[-1]
-                        gpio_selector = pin_selector[:-1]
-                    if (
-                        pin_bias
-                        and isinstance(gpio_selector, list)
-                        and len(gpio_selector) == 1
-                        and isinstance(gpio_selector[0], int)
-                    ):
-                        resolved = cls._resolve_global_line_to_chip(gpio_selector[0])
-                        if resolved is not None:
-                            gpio_selector = list(resolved)
-                        else:
-                            logger.warning(
-                                "Unable to resolve global GPIO line %s for %s; using global selector without bias",
-                                gpio_selector[0],
-                                name,
-                            )
+                try:
+                    if USING_GPIO:
+                        hardware_config = Settings.get_platform_default_hardware_config()
+                        hardware_mapping = get_hardware_pin_mapping(hardware_config)
+                        pin_mapping = hardware_mapping["buttons"]
+                        instance._gpio_pins = {}
+                        for name in cls.BUTTON_NAMES:
+                            pin_selector = pin_mapping.get(name) or pin_mapping.get(name.lower())
+                            if pin_selector is None:
+                                raise KeyError(f"Missing hardware button mapping for '{name}'")
                             pin_bias = None
-                            gpio_selector = gpio_selector[0]
-                    if isinstance(pin_selector, int):
-                        gpio_selector = [pin_selector]
-                    if pin_bias:
-                        cls._instance._gpio_pins[name] = GPIO(*gpio_selector, "in", bias=pin_bias)
+                            gpio_selector = pin_selector
+                            # io_config.json button entries support either:
+                            #   [chip, line]                -> no explicit bias
+                            #   [chip, line, "pull_up"]     -> apply periphery bias
+                            #   [line, "pull_up"]           -> resolve global line to
+                            #                                  gpiochip+offset and apply bias
+                            # and line-only selectors like [58] on platforms that expose
+                            # global GPIO numbering through periphery.
+                            if (
+                                isinstance(pin_selector, list)
+                                and len(pin_selector) >= 2
+                                and isinstance(pin_selector[-1], str)
+                            ):
+                                pin_bias = pin_selector[-1]
+                                gpio_selector = pin_selector[:-1]
+                            if (
+                                pin_bias
+                                and isinstance(gpio_selector, list)
+                                and len(gpio_selector) == 1
+                                and isinstance(gpio_selector[0], int)
+                            ):
+                                resolved = cls._resolve_global_line_to_chip(gpio_selector[0])
+                                if resolved is not None:
+                                    gpio_selector = list(resolved)
+                                else:
+                                    logger.warning(
+                                        "Unable to resolve global GPIO line %s for %s; using global selector without bias",
+                                        gpio_selector[0],
+                                        name,
+                                    )
+                                    pin_bias = None
+                                    gpio_selector = [gpio_selector[0]]
+                            if isinstance(pin_selector, int):
+                                gpio_selector = [pin_selector]
+                            try:
+                                if pin_bias:
+                                    instance._gpio_pins[name] = GPIO(*gpio_selector, "in", bias=pin_bias)
+                                else:
+                                    instance._gpio_pins[name] = GPIO(*gpio_selector, "in")
+                            except Exception as exc:
+                                if pin_bias and (
+                                    "resource busy" in str(exc).lower()
+                                    or "invalid argument" in str(exc).lower()
+                                ):
+                                    logger.warning(
+                                        "GPIO open with bias failed for %s selector=%s bias=%s (%s); retrying without bias",
+                                        name,
+                                        gpio_selector,
+                                        pin_bias,
+                                        exc,
+                                    )
+                                    instance._gpio_pins[name] = GPIO(*gpio_selector, "in")
+                                else:
+                                    raise
                     else:
-                        cls._instance._gpio_pins[name] = GPIO(*gpio_selector, "in")
-            else:
-                if pygame is None:
-                    raise ModuleNotFoundError(
-                        "pygame is required for desktop input; install requirements-desktop.txt"
-                    )
-                pygame.init()
-                cls._instance.scale = DESKTOP_SCALE
-                cls._instance.key_map = {
-                    pygame.K_UP: HardwareButtons.KEY_UP_PIN,
-                    pygame.K_DOWN: HardwareButtons.KEY_DOWN_PIN,
-                    pygame.K_LEFT: HardwareButtons.KEY_LEFT_PIN,
-                    pygame.K_RIGHT: HardwareButtons.KEY_RIGHT_PIN,
-                    pygame.K_RETURN: HardwareButtons.KEY_PRESS_PIN,
-                    pygame.K_1: HardwareButtons.KEY1_PIN,
-                    pygame.K_2: HardwareButtons.KEY2_PIN,
-                    pygame.K_3: HardwareButtons.KEY3_PIN,
-                }
-                cls._instance.reverse_map = {v: k for k, v in cls._instance.key_map.items()}
-                cls._instance.button_rects = {
-                    key: pygame.Rect(
-                        x * cls._instance.scale,
-                        y * cls._instance.scale,
-                        w * cls._instance.scale,
-                        h * cls._instance.scale,
-                    )
-                    for key, (x, y, w, h) in DESKTOP_BUTTON_LAYOUT.items()
-                }
+                        if pygame is None:
+                            raise ModuleNotFoundError(
+                                "pygame is required for desktop input; install requirements-desktop.txt"
+                            )
+                        pygame.init()
+                        instance.scale = DESKTOP_SCALE
+                        instance.key_map = {
+                            pygame.K_UP: HardwareButtons.KEY_UP_PIN,
+                            pygame.K_DOWN: HardwareButtons.KEY_DOWN_PIN,
+                            pygame.K_LEFT: HardwareButtons.KEY_LEFT_PIN,
+                            pygame.K_RIGHT: HardwareButtons.KEY_RIGHT_PIN,
+                            pygame.K_RETURN: HardwareButtons.KEY_PRESS_PIN,
+                            pygame.K_1: HardwareButtons.KEY1_PIN,
+                            pygame.K_2: HardwareButtons.KEY2_PIN,
+                            pygame.K_3: HardwareButtons.KEY3_PIN,
+                        }
+                        instance.reverse_map = {v: k for k, v in instance.key_map.items()}
+                        instance.button_rects = {
+                            key: pygame.Rect(
+                                x * instance.scale,
+                                y * instance.scale,
+                                w * instance.scale,
+                                h * instance.scale,
+                            )
+                            for key, (x, y, w, h) in DESKTOP_BUTTON_LAYOUT.items()
+                        }
 
-            cls._instance.override_ind = False
-            cls._instance.cur_input = None
-            cls._instance.cur_input_started = None
-            cls._instance.debounce_threshold_ms = 10
-            cls._instance._low_since_ms = {name: None for name in cls.BUTTON_NAMES}
-            cls._instance.last_input_time = int(time.time() * 1000)
-            cls._instance.first_repeat_threshold = 225
-            cls._instance.next_repeat_threshold = 250
+                    instance.override_ind = False
+                    instance.cur_input = None
+                    instance.cur_input_started = None
+                    instance.debounce_threshold_ms = 10
+                    instance._low_since_ms = {name: None for name in cls.BUTTON_NAMES}
+                    instance.last_input_time = int(time.time() * 1000)
+                    instance.first_repeat_threshold = 225
+                    instance.next_repeat_threshold = 250
+                except Exception:
+                    if hasattr(instance, "_gpio_pins"):
+                        for pin in instance._gpio_pins.values():
+                            try:
+                                pin.close()
+                            except Exception:
+                                pass
+                    raise
+
+                cls._instance = instance
 
         return cls._instance
 
