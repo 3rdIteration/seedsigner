@@ -62,9 +62,9 @@ Values shown are exactly how mappings are stored in `io_config.json`.
 |---|---|---|---|---|
 | `RPI_40` | `rpi_40` | `[25] / [27] / [24]` | `KEY_UP [6,"pull_up"]`, `KEY_DOWN [19,"pull_up"]`, `KEY_LEFT [5,"pull_up"]`, `KEY_RIGHT [26,"pull_up"]`, `KEY_PRESS [13,"pull_up"]`, `KEY1 [21,"pull_up"]`, `KEY2 [20,"pull_up"]`, `KEY3 [16,"pull_up"]` | `/dev/video0`, `1280x720`, `YUYV`, `4fps` |
 | `RPI_26` | `rpi_26` | `[25] / [27] / [24]` | `KEY_UP [3,"pull_up"]`, `KEY_DOWN [17,"pull_up"]`, `KEY_LEFT [2,"pull_up"]`, `KEY_RIGHT [22,"pull_up"]`, `KEY_PRESS [4,"pull_up"]`, `KEY1 [23,"pull_up"]`, `KEY2 [18,"pull_up"]`, `KEY3 [14,"pull_up"]` | `/dev/video0`, `1280x720`, `YUYV`, `4fps` |
-| `FOX_22` | `luckfox_22` | `[20] / [19] / [11]` | `KEY_UP [25]`, `KEY_DOWN [27]`, `KEY_LEFT [24]`, `KEY_RIGHT [22]`, `KEY_PRESS [26]`, `KEY1 [23]`, `KEY2 [4]`, `KEY3 [21]` | `/dev/video12`, `GREY`, `6fps` |
-| `FOX_40` | `luckfox_40` | `[24] / [25] / [8]` | `KEY_UP [58]`, `KEY_DOWN [53]`, `KEY_LEFT [59]`, `KEY_RIGHT [54]`, `KEY_PRESS [52]`, `KEY1 [55]`, `KEY2 [43]`, `KEY3 [42]` | `/dev/video12`, `GREY`, `6fps` |
-| `FOX_PI` | `luckfox_pi` | `[27] / [24] / [6]` | `KEY_UP [26,"pull_up"]`, `KEY_DOWN [20,"pull_up"]`, `KEY_LEFT [1,"pull_up"]`, `KEY_RIGHT [25,"pull_up"]`, `KEY_PRESS [0,"pull_up"]`, `KEY1 [17,"pull_up"]`, `KEY2 [27,"pull_up"]`, `KEY3 [23,"pull_up"]` | `/dev/video12`, `GREY`, `6fps` |
+| `FOX_22` | `luckfox_22` | `[52] / [51] / [43]` | `KEY_UP [57,"pull_up"]`, `KEY_DOWN [59,"pull_up"]`, `KEY_LEFT [56,"pull_up"]`, `KEY_RIGHT [54,"pull_up"]`, `KEY_PRESS [58,"pull_up"]`, `KEY1 [55,"pull_up"]`, `KEY2 [4,"pull_up"]`, `KEY3 [53,"pull_up"]` | `/dev/video12`, `GREY`, `6fps` |
+| `FOX_40` | `luckfox_40` | `[56] / [57] / [72]` | `KEY_UP [58,"pull_up"]`, `KEY_DOWN [53,"pull_up"]`, `KEY_LEFT [59,"pull_up"]`, `KEY_RIGHT [54,"pull_up"]`, `KEY_PRESS [52,"pull_up"]`, `KEY1 [55,"pull_up"]`, `KEY2 [43,"pull_up"]`, `KEY3 [42,"pull_up"]` | `/dev/video12`, `GREY`, `6fps` |
+| `FOX_PI` | `luckfox_pi` | `[59] / [56] / [70]` | `KEY_UP [121,"pull_up"]`, `KEY_DOWN [1,"pull_up"]`, `KEY_LEFT [122,"pull_up"]`, `KEY_RIGHT [0,"pull_up"]`, `KEY_PRESS [52,"pull_up"]`, `KEY1 [145,"pull_up"]`, `KEY2 [123,"pull_up"]`, `KEY3 [55,"pull_up"]` | `/dev/video12`, `GREY`, `6fps` |
 
 ---
 

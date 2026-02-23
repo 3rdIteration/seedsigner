@@ -152,41 +152,49 @@
       ],
       "display": {
         "dc": [
-          20
+          52
         ],
         "rst": [
-          19
+          51
         ],
         "bl": [
-          11
+          43
         ],
         "spi_bus": 0,
         "spi_device": 0
       },
       "buttons": {
         "KEY_UP": [
-          25
+          57,
+          "pull_up"
         ],
         "KEY_DOWN": [
-          27
+          59,
+          "pull_up"
         ],
         "KEY_LEFT": [
-          24
+          56,
+          "pull_up"
         ],
         "KEY_RIGHT": [
-          22
+          54,
+          "pull_up"
         ],
         "KEY_PRESS": [
-          26
+          58,
+          "pull_up"
         ],
         "KEY1": [
-          23
+          55,
+          "pull_up"
         ],
         "KEY2": [
-          4
+          4,
+          "pull_up"
         ],
         "KEY3": [
-          21
+          53,
+          "pull_up"
         ]
       },
       "camera": {
@@ -205,41 +213,49 @@
       ],
       "display": {
         "dc": [
-          24
+          56
         ],
         "rst": [
-          25
+          57
         ],
         "bl": [
-          8
+          72
         ],
         "spi_bus": 0,
         "spi_device": 0
       },
       "buttons": {
         "KEY_UP": [
-          58
+          58,
+          "pull_up"
         ],
         "KEY_DOWN": [
-          53
+          53,
+          "pull_up"
         ],
         "KEY_LEFT": [
-          59
+          59,
+          "pull_up"
         ],
         "KEY_RIGHT": [
-          54
+          54,
+          "pull_up"
         ],
         "KEY_PRESS": [
-          52
+          52,
+          "pull_up"
         ],
         "KEY1": [
-          55
+          55,
+          "pull_up"
         ],
         "KEY2": [
-          43
+          43,
+          "pull_up"
         ],
         "KEY3": [
-          42
+          42,
+          "pull_up"
         ]
       },
       "camera": {
@@ -258,48 +274,48 @@
       ],
       "display": {
         "dc": [
-          27
+          59
         ],
         "rst": [
-          24
+          56
         ],
         "bl": [
-          6
+          70
         ],
         "spi_bus": 0,
         "spi_device": 0
       },
       "buttons": {
         "KEY_UP": [
-          26,
+          121,
           "pull_up"
         ],
         "KEY_DOWN": [
-          20,
-          "pull_up"
-        ],
-        "KEY_LEFT": [
           1,
           "pull_up"
         ],
-        "KEY_RIGHT": [
-          25,
+        "KEY_LEFT": [
+          122,
           "pull_up"
         ],
-        "KEY_PRESS": [
+        "KEY_RIGHT": [
           0,
           "pull_up"
         ],
+        "KEY_PRESS": [
+          52,
+          "pull_up"
+        ],
         "KEY1": [
-          17,
+          145,
           "pull_up"
         ],
         "KEY2": [
-          27,
+          123,
           "pull_up"
         ],
         "KEY3": [
-          23,
+          55,
           "pull_up"
         ]
       },
