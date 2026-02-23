@@ -265,6 +265,71 @@
       }
     },
     {
+      "platform": "Libre Computer",
+      "variant": "La Frite (AML-S805X-AC)",
+      "shortname": "LC_LAFRITE",
+      "runtime_profile": "lc_lafrite",
+      "regex": [
+        "libre computer aml-s805x-ac"
+      ],
+      "display": {
+        "dc": [
+          480
+        ],
+        "rst": [
+          510
+        ],
+        "bl": [
+          495
+        ],
+        "spi_bus": 0,
+        "spi_device": 0
+      },
+      "buttons": {
+        "KEY_UP": [
+          498,
+          "pull_up"
+        ],
+        "KEY_DOWN": [
+          487,
+          "pull_up"
+        ],
+        "KEY_LEFT": [
+          497,
+          "pull_up"
+        ],
+        "KEY_RIGHT": [
+          485,
+          "pull_up"
+        ],
+        "KEY_PRESS": [
+          486,
+          "pull_up"
+        ],
+        "KEY1": [
+          484,
+          "pull_up"
+        ],
+        "KEY2": [
+          483,
+          "pull_up"
+        ],
+        "KEY3": [
+          482,
+          "pull_up"
+        ]
+      },
+      "camera": {
+        "device": "/dev/video0",
+        "resolution": [
+          1280,
+          720
+        ],
+        "pixelformat": "YUYV",
+        "framerate": 4
+      }
+    },
+    {
       "platform": "Luckfox Pico",
       "variant": "Pi",
       "shortname": "FOX_PI",

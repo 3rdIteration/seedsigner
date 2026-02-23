@@ -9,6 +9,43 @@ def test_runtime_profile_to_hardware_profile_luckfox_pico_pi():
     assert runtime_profile_to_hardware_profile("luckfox_pi") == "FOX_PI"
 
 
+def test_detect_runtime_profile_libre_computer_lafrite():
+    assert detect_runtime_profile("Libre Computer AML-S805X-AC La Frite") == "lc_lafrite"
+
+
+def test_runtime_profile_to_hardware_profile_libre_computer_lafrite():
+    assert runtime_profile_to_hardware_profile("lc_lafrite") == "LC_LAFRITE"
+
+
+def test_lc_lafrite_display_control_lines():
+    mapping = get_hardware_pin_mapping("LC_LAFRITE")
+
+    assert mapping["display"]["dc"] == [480]
+    assert mapping["display"]["rst"] == [510]
+    assert mapping["display"]["bl"] == [495]
+
+
+def test_lc_lafrite_buttons_use_pull_up_mapping():
+    mapping = get_hardware_pin_mapping("LC_LAFRITE")
+
+    assert mapping["buttons"]["KEY_UP"] == [498, "pull_up"]
+    assert mapping["buttons"]["KEY_DOWN"] == [487, "pull_up"]
+    assert mapping["buttons"]["KEY_LEFT"] == [497, "pull_up"]
+    assert mapping["buttons"]["KEY_RIGHT"] == [485, "pull_up"]
+    assert mapping["buttons"]["KEY_PRESS"] == [486, "pull_up"]
+    assert mapping["buttons"]["KEY1"] == [484, "pull_up"]
+    assert mapping["buttons"]["KEY2"] == [483, "pull_up"]
+    assert mapping["buttons"]["KEY3"] == [482, "pull_up"]
+
+
+def test_lc_lafrite_camera_uses_usb_device():
+    mapping = get_hardware_pin_mapping("LC_LAFRITE")
+
+    assert mapping["camera"]["device"] == "/dev/video0"
+    assert mapping["camera"]["pixelformat"] == "YUYV"
+    assert mapping["camera"]["framerate"] == 4
+
+
 def test_fox_pi_display_control_lines_match_waveshare_hat_pins():
     mapping = get_hardware_pin_mapping("FOX_PI")
 

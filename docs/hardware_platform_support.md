@@ -31,6 +31,7 @@ Current profiles in `io_config.json`:
 - `FOX_22` (Luckfox Pico 22-pin)
 - `FOX_40` (Luckfox Pico 40-pin)
 - `FOX_PI` (Luckfox Pico Pi)
+- `LC_LAFRITE` (Libre Computer La Frite AML-S805X-AC, USB camera)
 
 ## Button GPIO mapping format
 
@@ -166,3 +167,25 @@ This is a quick reference summary of the mappings currently defined in
   - Device: `/dev/video12`
   - Pixel format: `GREY`
   - Framerate: `6`
+
+### `LC_LAFRITE`
+
+- Display (sysfs GPIO numbers; 7J1 header, Waveshare-compatible physical pin positions):
+  - `dc`: `[480]` (pin 22, GPIOX_0)
+  - `rst`: `[510]` (pin 13, GPIOAO_9)
+  - `bl`: `[495]` (pin 18, GPIOX_15)
+  - SPI: `bus 0`, `device 0`
+- Buttons (all with `"pull_up"`; sysfs GPIO numbers):
+  - `KEY_UP`: `[498, "pull_up"]` (pin 31, GPIOX_18)
+  - `KEY_DOWN`: `[487, "pull_up"]` (pin 35, GPIOX_7)
+  - `KEY_LEFT`: `[497, "pull_up"]` (pin 29, GPIOX_17)
+  - `KEY_RIGHT`: `[485, "pull_up"]` (pin 37, GPIOX_5)
+  - `KEY_PRESS`: `[486, "pull_up"]` (pin 33, GPIOX_6)
+  - `KEY1`: `[484, "pull_up"]` (pin 40, GPIOX_4)
+  - `KEY2`: `[483, "pull_up"]` (pin 38, GPIOX_3)
+  - `KEY3`: `[482, "pull_up"]` (pin 36, GPIOX_2)
+- Camera (USB):
+  - Device: `/dev/video0`
+  - Resolution: `1280x720`
+  - Pixel format: `YUYV`
+  - Framerate: `4`
