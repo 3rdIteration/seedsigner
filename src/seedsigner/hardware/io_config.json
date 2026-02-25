@@ -133,7 +133,7 @@
         ]
       },
       "camera": {
-        "device": "/dev/video0",
+        "device": "/dev/video1",
         "resolution": [
           1280,
           720
@@ -274,53 +274,64 @@
       ],
       "display": {
         "dc": [
-          480
+          "/dev/gpiochip1",
+          79
         ],
         "rst": [
-          510
+          "/dev/gpiochip1",
+          20
         ],
         "bl": [
-          495
+          "/dev/gpiochip1",
+          25
         ],
         "spi_bus": 0,
         "spi_device": 0
       },
       "buttons": {
         "KEY_UP": [
-          498,
+          "/dev/gpiochip0",
+          2,
           "pull_up"
         ],
         "KEY_DOWN": [
-          487,
+          "/dev/gpiochip1",
+          86,
           "pull_up"
         ],
         "KEY_LEFT": [
-          497,
+          "/dev/gpiochip1",
+          76,
           "pull_up"
         ],
         "KEY_RIGHT": [
-          485,
+          "/dev/gpiochip1",
+          84,
           "pull_up"
         ],
         "KEY_PRESS": [
-          486,
+          "/dev/gpiochip1",
+          85,
           "pull_up"
         ],
         "KEY1": [
-          484,
+          "/dev/gpiochip1",
+          83,
           "pull_up"
         ],
         "KEY2": [
-          483,
+          "/dev/gpiochip1",
+          82,
           "pull_up"
         ],
         "KEY3": [
-          482,
+          "/dev/gpiochip1",
+          81,
           "pull_up"
         ]
       },
       "camera": {
-        "device": "/dev/video0",
+        "device": "/dev/video1",
         "resolution": [
           1280,
           720

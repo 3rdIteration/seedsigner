@@ -22,28 +22,28 @@ def test_runtime_profile_to_hardware_profile_libre_computer_lafrite():
 def test_lc_lafrite_display_control_lines():
     mapping = get_hardware_pin_mapping("LC_LAFRITE")
 
-    assert mapping["display"]["dc"] == [480]
-    assert mapping["display"]["rst"] == [510]
-    assert mapping["display"]["bl"] == [495]
+    assert mapping["display"]["dc"] == ["/dev/gpiochip1", 79]
+    assert mapping["display"]["rst"] == ["/dev/gpiochip1", 20]
+    assert mapping["display"]["bl"] == ["/dev/gpiochip1", 25]
 
 
 def test_lc_lafrite_buttons_use_pull_up_mapping():
     mapping = get_hardware_pin_mapping("LC_LAFRITE")
 
-    assert mapping["buttons"]["KEY_UP"] == [498, "pull_up"]
-    assert mapping["buttons"]["KEY_DOWN"] == [487, "pull_up"]
-    assert mapping["buttons"]["KEY_LEFT"] == [497, "pull_up"]
-    assert mapping["buttons"]["KEY_RIGHT"] == [485, "pull_up"]
-    assert mapping["buttons"]["KEY_PRESS"] == [486, "pull_up"]
-    assert mapping["buttons"]["KEY1"] == [484, "pull_up"]
-    assert mapping["buttons"]["KEY2"] == [483, "pull_up"]
-    assert mapping["buttons"]["KEY3"] == [482, "pull_up"]
+    assert mapping["buttons"]["KEY_UP"] == ["/dev/gpiochip0", 2, "pull_up"]
+    assert mapping["buttons"]["KEY_DOWN"] == ["/dev/gpiochip1", 86, "pull_up"]
+    assert mapping["buttons"]["KEY_LEFT"] == ["/dev/gpiochip1", 76, "pull_up"]
+    assert mapping["buttons"]["KEY_RIGHT"] == ["/dev/gpiochip1", 84, "pull_up"]
+    assert mapping["buttons"]["KEY_PRESS"] == ["/dev/gpiochip1", 85, "pull_up"]
+    assert mapping["buttons"]["KEY1"] == ["/dev/gpiochip1", 83, "pull_up"]
+    assert mapping["buttons"]["KEY2"] == ["/dev/gpiochip1", 82, "pull_up"]
+    assert mapping["buttons"]["KEY3"] == ["/dev/gpiochip1", 81, "pull_up"]
 
 
 def test_lc_lafrite_camera_uses_usb_device():
     mapping = get_hardware_pin_mapping("LC_LAFRITE")
 
-    assert mapping["camera"]["device"] == "/dev/video0"
+    assert mapping["camera"]["device"] == "/dev/video1"
     assert mapping["camera"]["pixelformat"] == "YUYV"
     assert mapping["camera"]["framerate"] == 4
 
