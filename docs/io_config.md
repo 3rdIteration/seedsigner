@@ -65,7 +65,7 @@ Values shown are exactly how mappings are stored in `io_config.json`.
 | `FOX_22` | `luckfox_22` | `[52] / [51] / [43]` | `KEY_UP [57,"pull_up"]`, `KEY_DOWN [59,"pull_up"]`, `KEY_LEFT [56,"pull_up"]`, `KEY_RIGHT [54,"pull_up"]`, `KEY_PRESS [58,"pull_up"]`, `KEY1 [55,"pull_up"]`, `KEY2 [4,"pull_up"]`, `KEY3 [53,"pull_up"]` | `/dev/video12`, `GREY`, `6fps` |
 | `FOX_40` | `luckfox_40` | `[56] / [57] / [72]` | `KEY_UP [58,"pull_up"]`, `KEY_DOWN [53,"pull_up"]`, `KEY_LEFT [59,"pull_up"]`, `KEY_RIGHT [54,"pull_up"]`, `KEY_PRESS [52,"pull_up"]`, `KEY1 [55,"pull_up"]`, `KEY2 [43,"pull_up"]`, `KEY3 [42,"pull_up"]` | `/dev/video12`, `GREY`, `6fps` |
 | `FOX_PI` | `luckfox_pi` | `[59] / [56] / [70]` | `KEY_UP [121,"pull_up"]`, `KEY_DOWN [1,"pull_up"]`, `KEY_LEFT [122,"pull_up"]`, `KEY_RIGHT [0,"pull_up"]`, `KEY_PRESS [52,"pull_up"]`, `KEY1 [145,"pull_up"]`, `KEY2 [123,"pull_up"]`, `KEY3 [55,"pull_up"]` | `/dev/video12`, `GREY`, `6fps` |
-| `LC_LAFRITE` | `lc_lafrite` | `[480] / [510] / [495]` | `KEY_UP [498,"pull_up"]`, `KEY_DOWN [487,"pull_up"]`, `KEY_LEFT [497,"pull_up"]`, `KEY_RIGHT [485,"pull_up"]`, `KEY_PRESS [486,"pull_up"]`, `KEY1 [484,"pull_up"]`, `KEY2 [483,"pull_up"]`, `KEY3 [482,"pull_up"]` | `/dev/video0`, `1280x720`, `YUYV`, `4fps` |
+| `LC_LAFRITE` | `lc_lafrite` | `[480] / [421] / [426]` | `KEY_UP [503,"pull_up"]`, `KEY_DOWN [487,"pull_up"]`, `KEY_LEFT [477,"pull_up"]`, `KEY_RIGHT [485,"pull_up"]`, `KEY_PRESS [486,"pull_up"]`, `KEY1 [484,"pull_up"]`, `KEY2 [483,"pull_up"]`, `KEY3 [482,"pull_up"]` | `/dev/video0`, `1280x720`, `YUYV`, `4fps` |
 
 ---
 

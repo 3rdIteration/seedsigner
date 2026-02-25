@@ -277,17 +277,17 @@
           480
         ],
         "rst": [
-          510
+          421
         ],
         "bl": [
-          495
+          426
         ],
         "spi_bus": 0,
         "spi_device": 0
       },
       "buttons": {
         "KEY_UP": [
-          498,
+          503,
           "pull_up"
         ],
         "KEY_DOWN": [
@@ -295,7 +295,7 @@
           "pull_up"
         ],
         "KEY_LEFT": [
-          497,
+          477,
           "pull_up"
         ],
         "KEY_RIGHT": [

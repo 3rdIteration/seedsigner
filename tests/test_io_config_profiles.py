@@ -23,16 +23,16 @@ def test_lc_lafrite_display_control_lines():
     mapping = get_hardware_pin_mapping("LC_LAFRITE")
 
     assert mapping["display"]["dc"] == [480]
-    assert mapping["display"]["rst"] == [510]
-    assert mapping["display"]["bl"] == [495]
+    assert mapping["display"]["rst"] == [421]
+    assert mapping["display"]["bl"] == [426]
 
 
 def test_lc_lafrite_buttons_use_pull_up_mapping():
     mapping = get_hardware_pin_mapping("LC_LAFRITE")
 
-    assert mapping["buttons"]["KEY_UP"] == [498, "pull_up"]
+    assert mapping["buttons"]["KEY_UP"] == [503, "pull_up"]
     assert mapping["buttons"]["KEY_DOWN"] == [487, "pull_up"]
-    assert mapping["buttons"]["KEY_LEFT"] == [497, "pull_up"]
+    assert mapping["buttons"]["KEY_LEFT"] == [477, "pull_up"]
     assert mapping["buttons"]["KEY_RIGHT"] == [485, "pull_up"]
     assert mapping["buttons"]["KEY_PRESS"] == [486, "pull_up"]
     assert mapping["buttons"]["KEY1"] == [484, "pull_up"]
