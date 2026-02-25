@@ -1,4 +1,6 @@
 from seedsigner.hardware.io_config import detect_runtime_profile, get_hardware_pin_mapping, runtime_profile_to_hardware_profile
+from seedsigner.models.settings import Settings
+from seedsigner.models.settings_definition import SettingsConstants
 
 
 def test_detect_runtime_profile_luckfox_pico_pi():
@@ -107,3 +109,27 @@ def test_fox_40_buttons_use_pull_up_mapping():
     assert mapping["buttons"]["KEY1"] == [55, "pull_up"]
     assert mapping["buttons"]["KEY2"] == [43, "pull_up"]
     assert mapping["buttons"]["KEY3"] == [42, "pull_up"]
+
+
+def test_lc_lafrite_display_config_is_st7789():
+    """LC_LAFRITE platform should use the ST7789 display driver, not the desktop/pygame driver"""
+    orig = Settings.RUNTIME_PROFILE
+    try:
+        Settings.RUNTIME_PROFILE = "lc_lafrite"
+        display_config = Settings.get_platform_default_display_config()
+        assert display_config == SettingsConstants.DISPLAY_CONFIGURATION__ST7789__240x240
+        assert display_config != SettingsConstants.DISPLAY_CONFIGURATION__DESKTOP__240x240
+    finally:
+        Settings.RUNTIME_PROFILE = orig
+
+
+def test_desktop_runtime_profile_display_config_is_pygame():
+    """Desktop profile should use the desktop/pygame display driver, not ST7789"""
+    orig = Settings.RUNTIME_PROFILE
+    try:
+        Settings.RUNTIME_PROFILE = "desktop"
+        display_config = Settings.get_platform_default_display_config()
+        assert display_config == SettingsConstants.DISPLAY_CONFIGURATION__DESKTOP__240x240
+        assert display_config != SettingsConstants.DISPLAY_CONFIGURATION__ST7789__240x240
+    finally:
+        Settings.RUNTIME_PROFILE = orig
