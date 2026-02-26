@@ -11,7 +11,6 @@ from seedsigner.models.settings import SettingsConstants
 from seedsigner.views import seed_views
 
 
-
 def test_seed():
     seed = Seed(mnemonic="obscure bone gas open exotic abuse virus bunker shuffle nasty ship dash".split())
     
@@ -380,6 +379,63 @@ class TestSlip39ExtendableSetting(BaseTest):
         assert not seed.extendable
 
 
+def test_seed_storage_convert_pending_mnemonic_passes_wordlist_language(monkeypatch):
+    from seedsigner.models.seed_storage import SeedStorage
+    from seedsigner.models.settings_definition import SettingsConstants
+
+    captured = {}
+
+    class DummySeed:
+        def __init__(self, mnemonic, passphrase="", wordlist_language_code=SettingsConstants.WORDLIST_LANGUAGE__ENGLISH):
+            captured["mnemonic"] = list(mnemonic)
+            captured["wordlist_language_code"] = wordlist_language_code
+
+    monkeypatch.setattr("seedsigner.models.seed_storage.Seed", DummySeed)
+    monkeypatch.setattr("seedsigner.models.seed_storage.wipe_list", lambda values: None)
+
+    storage = SeedStorage()
+    storage.init_pending_mnemonic(num_words=12)
+    for i in range(12):
+        storage.update_pending_mnemonic("abandon", i)
+
+    storage.convert_pending_mnemonic_to_pending_seed(wordlist_language_code=SettingsConstants.WORDLIST_LANGUAGE__ENGLISH)
+
+    assert captured["mnemonic"] == ["abandon"] * 12
+    assert captured["wordlist_language_code"] == SettingsConstants.WORDLIST_LANGUAGE__ENGLISH
+
+
+def test_seed_storage_pending_mnemonic_fingerprint_passes_wordlist_language(monkeypatch):
+    from seedsigner.models.seed_storage import SeedStorage
+    from seedsigner.models.settings_definition import SettingsConstants
+
+    captured = {}
+
+    class DummySeed:
+        def __init__(self, mnemonic, passphrase="", wordlist_language_code=SettingsConstants.WORDLIST_LANGUAGE__ENGLISH):
+            captured["mnemonic"] = list(mnemonic)
+            captured["wordlist_language_code"] = wordlist_language_code
+
+        def get_fingerprint(self, network):
+            captured["network"] = network
+            return "deadbeef"
+
+    monkeypatch.setattr("seedsigner.models.seed_storage.Seed", DummySeed)
+    monkeypatch.setattr("seedsigner.models.seed_storage.wipe_list", lambda values: None)
+
+    storage = SeedStorage()
+    storage.init_pending_mnemonic(num_words=12)
+    for i in range(12):
+        storage.update_pending_mnemonic("abandon", i)
+
+    fingerprint = storage.get_pending_mnemonic_fingerprint(
+        network=SettingsConstants.TESTNET,
+        wordlist_language_code=SettingsConstants.WORDLIST_LANGUAGE__ENGLISH,
+    )
+
+    assert fingerprint == "deadbeef"
+    assert captured["mnemonic"] == ["abandon"] * 12
+    assert captured["wordlist_language_code"] == SettingsConstants.WORDLIST_LANGUAGE__ENGLISH
+    assert captured["network"] == SettingsConstants.TESTNET
 
 def test_seed_storage_allows_multiple_xprvs():
     from seedsigner.models.seed_storage import SeedStorage

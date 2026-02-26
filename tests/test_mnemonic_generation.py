@@ -6,7 +6,6 @@ from embit import bip39
 from seedsigner.helpers import mnemonic_generation
 
 
-
 def test_dice_rolls():
     """ Given random dice rolls, the resulting mnemonic should be valid. """
     for length, rolls in mnemonic_generation.DICE_ROLLS_REQUIRED.items():
@@ -14,7 +13,6 @@ def test_dice_rolls():
         mnemonic = mnemonic_generation.generate_mnemonic_from_dice(dice_rolls)
         assert len(mnemonic) == length
         assert bip39.mnemonic_is_valid(" ".join(mnemonic))
-
 
 
 def test_calculate_checksum_input_type():
@@ -54,8 +52,6 @@ def test_calculate_checksum_input_type():
         _try_all_input_formats(partial)
 
 
-
-
 def test_calculate_checksum_invalid_mnemonics():
     """
         Should raise an Exception on a mnemonic that is invalid due to length or using invalid words.
@@ -85,7 +81,6 @@ def test_calculate_checksum_invalid_mnemonics():
     assert "not in the dictionary" in str(e)
 
 
-
 def test_calculate_checksum_with_default_final_word():
     """ 11-word and 23-word mnemonics use word `0000` as a temp final word to complete
         the mnemonic.
@@ -104,6 +99,37 @@ def test_calculate_checksum_with_default_final_word():
     mnemonic2 = mnemonic_generation.calculate_checksum(partial_mnemonic)
     assert mnemonic1 == mnemonic2
 
+
+def test_calculate_checksum_uses_configured_wordlist(monkeypatch):
+    from seedsigner.models.settings_definition import SettingsConstants
+
+    called = {}
+
+    def fake_get_wordlist(code):
+        called.setdefault("get_wordlist", []).append(code)
+        return ["abandon"] * 2048
+
+    def fake_mnemonic_to_bytes(_mnemonic, ignore_checksum, wordlist):
+        assert ignore_checksum is True
+        called["to_bytes_wordlist"] = wordlist
+        return b"\x00" * 16
+
+    def fake_mnemonic_from_bytes(entropy, wordlist):
+        called["from_bytes_entropy_len"] = len(entropy)
+        called["from_bytes_wordlist"] = wordlist
+        return "abandon " * 11 + "about"
+
+    monkeypatch.setattr(mnemonic_generation.Seed, "get_wordlist", fake_get_wordlist)
+    monkeypatch.setattr(mnemonic_generation.bip39, "mnemonic_to_bytes", fake_mnemonic_to_bytes)
+    monkeypatch.setattr(mnemonic_generation.bip39, "mnemonic_from_bytes", fake_mnemonic_from_bytes)
+
+    mnemonic_generation.calculate_checksum(
+        "abandon " * 11 + "abandon",
+        wordlist_language_code=SettingsConstants.WORDLIST_LANGUAGE__ENGLISH,
+    )
+
+    assert called["get_wordlist"] == [SettingsConstants.WORDLIST_LANGUAGE__ENGLISH, SettingsConstants.WORDLIST_LANGUAGE__ENGLISH]
+    assert called["from_bytes_entropy_len"] == 16
 
 def test_generate_mnemonic_from_bytes():
     """
@@ -137,7 +163,6 @@ def test_generate_mnemonic_from_bytes():
     assert bip39.mnemonic_is_valid(" ".join(mnemonic))
 
 
-
 def test_verify_against_coldcard_sample():
     """ https://coldcard.com/docs/verifying-dice-roll-math """
     dice_rolls = "123456"
@@ -155,7 +180,6 @@ def test_entropy_checks():
 
     assert mnemonic_generation.byte_entropy_is_sufficient(os.urandom(16))
     assert not mnemonic_generation.byte_entropy_is_sufficient(b"\x00" * 16)
-
 
 
 def test_known_dice_rolls():
@@ -183,7 +207,6 @@ def test_known_dice_rolls():
     actual = " ".join(mnemonic)
     assert bip39.mnemonic_is_valid(actual)
     assert actual == expected
-
 
 
 def test_50_dice_rolls():
