@@ -813,7 +813,10 @@ class ToolsDiceEntropyEntryView(View):
             loading_screen.stop()
             return Destination(SeedSlip39CreateFromBytesView, view_args=dict(secret=entropy_bytes), clear_history=True)
         else:
-            dice_seed_phrase = mnemonic_generation.generate_mnemonic_from_dice(ret)
+            dice_seed_phrase = mnemonic_generation.generate_mnemonic_from_dice(
+                ret,
+                wordlist_language_code=self.settings.get_value(SettingsConstants.SETTING__WORDLIST_LANGUAGE),
+            )
             seed = Seed(dice_seed_phrase, wordlist_language_code=self.settings.get_value(SettingsConstants.SETTING__WORDLIST_LANGUAGE))
             self.controller.storage.set_pending_seed(seed)
             loading_screen.stop()
@@ -1019,14 +1022,19 @@ class ToolsCalcFinalWordDoneView(View):
         selected_menu_num = ToolsCalcFinalWordDoneScreen(
             final_word=final_word,
             mnemonic_word_length=mnemonic_word_length,
-            fingerprint=self.controller.storage.get_pending_mnemonic_fingerprint(self.settings.get_value(SettingsConstants.SETTING__NETWORK)),
+            fingerprint=self.controller.storage.get_pending_mnemonic_fingerprint(
+                self.settings.get_value(SettingsConstants.SETTING__NETWORK),
+                wordlist_language_code=self.settings.get_value(SettingsConstants.SETTING__WORDLIST_LANGUAGE),
+            ),
             button_data=button_data,
         ).display()
 
         if selected_menu_num == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
         
-        self.controller.storage.convert_pending_mnemonic_to_pending_seed()
+        self.controller.storage.convert_pending_mnemonic_to_pending_seed(
+            wordlist_language_code=self.settings.get_value(SettingsConstants.SETTING__WORDLIST_LANGUAGE),
+        )
 
         if button_data[selected_menu_num] == self.LOAD:
             return Destination(SeedFinalizeView)

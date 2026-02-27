@@ -83,7 +83,10 @@ def calculate_checksum(mnemonic: list | str, wordlist_language_code: str = Setti
     # calculate the proper checksum bits while doing so. For a 12-word seed it will just
     # overwrite the last 4 bits from the above result with the checksum; for a 24-word
     # seed it'll overwrite the last 8 bits.
-    return bip39.mnemonic_from_bytes(mnemonic_bytes).split()
+    return bip39.mnemonic_from_bytes(
+        mnemonic_bytes,
+        wordlist=Seed.get_wordlist(wordlist_language_code),
+    ).split()
 
 
 

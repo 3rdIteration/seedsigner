@@ -526,7 +526,9 @@ class SeedKeeperSelectView(View):
 
         from seedsigner.models.seed import InvalidSeedException
         try:
-            self.controller.storage.convert_pending_mnemonic_to_pending_seed()
+            self.controller.storage.convert_pending_mnemonic_to_pending_seed(
+                wordlist_language_code=self.settings.get_value(SettingsConstants.SETTING__WORDLIST_LANGUAGE),
+            )
         except InvalidSeedException:
             return Destination(SeedMnemonicInvalidView)
 
@@ -1011,7 +1013,9 @@ class SeedMnemonicEntryView(View):
             # Attempt to finalize the mnemonic
             from seedsigner.models.seed import InvalidSeedException
             try:
-                self.controller.storage.convert_pending_mnemonic_to_pending_seed()
+                self.controller.storage.convert_pending_mnemonic_to_pending_seed(
+                    wordlist_language_code=self.settings.get_value(SettingsConstants.SETTING__WORDLIST_LANGUAGE),
+                )
             except InvalidSeedException:
                 return Destination(SeedMnemonicInvalidView)
 
