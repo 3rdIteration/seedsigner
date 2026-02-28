@@ -67,7 +67,12 @@ class VideoStream:
         self._prefer_v4l2 = bool(prefer_v4l2)
 
         if PICAMERA_AVAILABLE and not self._prefer_v4l2:
-            self.camera = PiCamera(resolution=resolution, framerate=framerate, **kwargs)
+            try:
+                self.camera = PiCamera(resolution=resolution, framerate=framerate, **kwargs)
+            except Exception:
+                logger.warning("PiCamera init failed; retrying once after brief delay")
+                time.sleep(0.5)
+                self.camera = PiCamera(resolution=resolution, framerate=framerate, **kwargs)
             self.raw_capture = PiRGBArray(self.camera, size=resolution)
             self.stream = self.camera.capture_continuous(
                 self.raw_capture,

@@ -1,8 +1,9 @@
 from importlib import import_module
 import sys
 
+import pytest
 from PIL import Image
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch, call
 
 from seedsigner.hardware.pivideostream import VideoStream
 
@@ -130,3 +131,56 @@ def test_configure_v4l2_capture_uses_negotiated_resolution(monkeypatch):
     assert stream._v4l2_pixelformat == "NV12"
     assert stream._v4l2_resolution == (576, 324)
     assert stream._v4l2_frame_size == (576 * 324 * 3) // 2
+
+
+def test_picamera_retry_on_init_failure(monkeypatch):
+    """PiCamera init retries once when the first attempt raises."""
+    mock_camera = MagicMock()
+    mock_raw = MagicMock()
+    mock_picamera = MagicMock(side_effect=[Exception("mmal error"), mock_camera])
+    mock_pirgb = MagicMock(return_value=mock_raw)
+    mock_camera.capture_continuous.return_value = iter([])
+
+    monkeypatch.setattr("seedsigner.hardware.pivideostream.PICAMERA_AVAILABLE", True)
+    monkeypatch.setattr("seedsigner.hardware.pivideostream.PiCamera", mock_picamera)
+    monkeypatch.setattr("seedsigner.hardware.pivideostream.PiRGBArray", mock_pirgb)
+    monkeypatch.setattr("time.sleep", lambda _: None)
+
+    stream = VideoStream(resolution=(320, 240), framerate=12, format="bgr")
+
+    assert stream.use_picamera is True
+    assert stream.camera is mock_camera
+    assert mock_picamera.call_count == 2
+
+
+def test_picamera_no_retry_on_success(monkeypatch):
+    """PiCamera init does not retry when the first attempt succeeds."""
+    mock_camera = MagicMock()
+    mock_raw = MagicMock()
+    mock_picamera = MagicMock(return_value=mock_camera)
+    mock_pirgb = MagicMock(return_value=mock_raw)
+    mock_camera.capture_continuous.return_value = iter([])
+
+    monkeypatch.setattr("seedsigner.hardware.pivideostream.PICAMERA_AVAILABLE", True)
+    monkeypatch.setattr("seedsigner.hardware.pivideostream.PiCamera", mock_picamera)
+    monkeypatch.setattr("seedsigner.hardware.pivideostream.PiRGBArray", mock_pirgb)
+
+    stream = VideoStream(resolution=(320, 240), framerate=12, format="bgr")
+
+    assert stream.use_picamera is True
+    assert stream.camera is mock_camera
+    assert mock_picamera.call_count == 1
+
+
+def test_picamera_retry_still_raises_on_second_failure(monkeypatch):
+    """If both PiCamera init attempts fail, the exception propagates."""
+    mock_picamera = MagicMock(side_effect=[Exception("mmal error"), Exception("mmal error again")])
+
+    monkeypatch.setattr("seedsigner.hardware.pivideostream.PICAMERA_AVAILABLE", True)
+    monkeypatch.setattr("seedsigner.hardware.pivideostream.PiCamera", mock_picamera)
+    monkeypatch.setattr("time.sleep", lambda _: None)
+
+    with pytest.raises(Exception, match="mmal error again"):
+        VideoStream(resolution=(320, 240), framerate=12, format="bgr")
+
+    assert mock_picamera.call_count == 2
