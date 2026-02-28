@@ -31,7 +31,6 @@ Current profiles in `io_config.json`:
 - `FOX_22` (Luckfox Pico 22-pin)
 - `FOX_40` (Luckfox Pico 40-pin)
 - `FOX_PI` (Luckfox Pico Pi)
-- `LC_LAFRITE` (Libre Computer La Frite AML-S805X-AC, USB camera)
 
 ## Button GPIO mapping format
 
@@ -167,25 +166,3 @@ This is a quick reference summary of the mappings currently defined in
   - Device: `/dev/video12`
   - Pixel format: `GREY`
   - Framerate: `6`
-
-### `LC_LAFRITE`
-
-- Display (explicit gpiochip + line selectors; 7J1 header, Waveshare-compatible physical pin positions):
-  - `dc`: `["/dev/gpiochip1", 79]` (pin 22, sysfs 480, GPIOX_0)
-  - `rst`: `["/dev/gpiochip1", 20]` (pin 13, sysfs 421, GPIOH_4)
-  - `bl`: `["/dev/gpiochip1", 25]` (pin 18, sysfs 426, GPIOH_9)
-  - SPI: `bus 0`, `device 0`
-- Buttons (all with `"pull_up"`; explicit gpiochip + line mappings):
-  - `KEY_UP`: `["/dev/gpiochip0", 2, "pull_up"]` (pin 31, sysfs 503, GPIOAO_2)
-  - `KEY_DOWN`: `["/dev/gpiochip1", 86, "pull_up"]` (pin 35, sysfs 487, GPIOX_7)
-  - `KEY_LEFT`: `["/dev/gpiochip1", 76, "pull_up"]` (pin 29, sysfs 477, GPIODV_27)
-  - `KEY_RIGHT`: `["/dev/gpiochip1", 84, "pull_up"]` (pin 37, sysfs 485, GPIOX_5)
-  - `KEY_PRESS`: `["/dev/gpiochip1", 85, "pull_up"]` (pin 33, sysfs 486, GPIOX_6)
-  - `KEY1`: `["/dev/gpiochip1", 83, "pull_up"]` (pin 40, sysfs 484, GPIOX_4)
-  - `KEY2`: `["/dev/gpiochip1", 82, "pull_up"]` (pin 38, sysfs 483, GPIOX_3)
-  - `KEY3`: `["/dev/gpiochip1", 81, "pull_up"]` (pin 36, sysfs 482, GPIOX_2)
-- Camera (USB):
-  - Device: `/dev/video1`
-  - Resolution: `1280x720`
-  - Pixel format: `YUYV`
-  - Framerate: `4`

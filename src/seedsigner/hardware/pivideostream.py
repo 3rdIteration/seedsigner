@@ -332,23 +332,6 @@ class VideoStream:
         capture.set(cv2.CAP_PROP_FPS, self.framerate)
 
     def _open_cv_capture(self):
-        configured_device = str(self._camera_config.get("device", "")).strip()
-        if configured_device and os.name != "nt":
-            capture = None
-            try:
-                # Prefer explicit io_config device paths on Linux SBCs where
-                # /dev/video0 may be a decoder node instead of the USB camera.
-                capture = cv2.VideoCapture(configured_device, cv2.CAP_V4L2)
-                if capture is not None and capture.isOpened():
-                    logger.info("Using configured camera device %s", configured_device)
-                    self._configure_capture(capture)
-                    return capture
-            except Exception:
-                if capture is not None:
-                    capture.release()
-            if capture is not None:
-                capture.release()
-
         candidates = [self.device_index]
         for idx in (0, 1, 2, 3):
             if idx not in candidates:
