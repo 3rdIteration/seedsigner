@@ -112,40 +112,40 @@ This is a quick reference summary of the mappings currently defined in
   - `rst`: `["/dev/gpiochip1", 19]`
   - `bl`: `["/dev/gpiochip1", 11]`
   - SPI: `bus 0`, `device 0`
-- Buttons:
-  - `KEY_UP`: `["/dev/gpiochip1", 25]`
-  - `KEY_DOWN`: `["/dev/gpiochip1", 27]`
-  - `KEY_LEFT`: `["/dev/gpiochip1", 24]`
-  - `KEY_RIGHT`: `["/dev/gpiochip1", 22]`
-  - `KEY_PRESS`: `["/dev/gpiochip1", 26]`
-  - `KEY1`: `["/dev/gpiochip1", 23]`
-  - `KEY2`: `["/dev/gpiochip0", 4]`
-  - `KEY3`: `["/dev/gpiochip1", 21]`
+- Buttons (all with `"pull_up"`):
+  - `KEY_UP`: `["/dev/gpiochip1", 25, "pull_up"]`
+  - `KEY_DOWN`: `["/dev/gpiochip1", 27, "pull_up"]`
+  - `KEY_LEFT`: `["/dev/gpiochip1", 24, "pull_up"]`
+  - `KEY_RIGHT`: `["/dev/gpiochip1", 22, "pull_up"]`
+  - `KEY_PRESS`: `["/dev/gpiochip1", 26, "pull_up"]`
+  - `KEY1`: `["/dev/gpiochip1", 23, "pull_up"]`
+  - `KEY2`: `["/dev/gpiochip0", 4, "pull_up"]`
+  - `KEY3`: `["/dev/gpiochip1", 21, "pull_up"]`
 - Camera:
   - Device: `/dev/video12`
-  - Pixel format: `NV12`
-  - Framerate: `10`
+  - Pixel format: `GREY`
+  - Framerate: `6`
 
 ### `FOX_40`
 
 - Display:
-  - `dc`: `["/dev/gpiochip1", 24]` (`pin 19`, `GPIO1_D0_d`)
-  - `rst`: `["/dev/gpiochip1", 25]` (`pin 20`, `GPIO1_D1_d`)
-  - `bl`: `["/dev/gpiochip2", 8]` (`pin 17`, `GPIO2_B0_d`)
+  - `dc`: `["/dev/gpiochip1", 24]`
+  - `rst`: `["/dev/gpiochip1", 25]`
+  - `bl`: `["/dev/gpiochip2", 8]`
   - SPI: `bus 0`, `device 0`
-- Buttons:
-  - `KEY_UP`: `[58]` (`pin 9`, `GPIO1_D2_d`)
-  - `KEY_DOWN`: `[53]` (`pin 6`, `GPIO1_C5_d`)
-  - `KEY_LEFT`: `[59]` (`pin 10`, `GPIO1_D3_d`)
-  - `KEY_RIGHT`: `[54]` (`pin 5`, `GPIO1_C6_d`)
-  - `KEY_PRESS`: `[52]` (`pin 7`, `GPIO1_C4_d`)
-  - `KEY1`: `[55]` (`pin 4`, `GPIO1_C7_d`)
-  - `KEY2`: `[43]` (`pin 2`, `GPIO1_B3_d`)
-  - `KEY3`: `[42]` (`pin 1`, `GPIO1_B2_d`)
+- Buttons (all with `"pull_up"`):
+  - `KEY_UP`: `["/dev/gpiochip1", 26, "pull_up"]`
+  - `KEY_DOWN`: `["/dev/gpiochip1", 21, "pull_up"]`
+  - `KEY_LEFT`: `["/dev/gpiochip1", 27, "pull_up"]`
+  - `KEY_RIGHT`: `["/dev/gpiochip1", 22, "pull_up"]`
+  - `KEY_PRESS`: `["/dev/gpiochip1", 20, "pull_up"]`
+  - `KEY1`: `["/dev/gpiochip1", 23, "pull_up"]`
+  - `KEY2`: `["/dev/gpiochip1", 11, "pull_up"]`
+  - `KEY3`: `["/dev/gpiochip1", 10, "pull_up"]`
 - Camera:
   - Device: `/dev/video12`
-  - Pixel format: `NV12`
-  - Framerate: `10`
+  - Pixel format: `GREY`
+  - Framerate: `6`
 
 ### `FOX_PI`
 
@@ -155,11 +155,11 @@ This is a quick reference summary of the mappings currently defined in
   - `bl`: `["/dev/gpiochip2", 6]`
   - SPI: `bus 0`, `device 0`
 - Buttons (all with `"pull_up"`):
-  - `KEY_UP`: `["/dev/gpiochip3", 26, "pull_up"]`
-  - `KEY_DOWN`: `["/dev/gpiochip1", 20, "pull_up"]`
-  - `KEY_LEFT`: `["/dev/gpiochip0", 1, "pull_up"]`
-  - `KEY_RIGHT`: `["/dev/gpiochip3", 25, "pull_up"]`
-  - `KEY_PRESS`: `["/dev/gpiochip0", 0, "pull_up"]`
+  - `KEY_UP`: `["/dev/gpiochip3", 25, "pull_up"]`
+  - `KEY_DOWN`: `["/dev/gpiochip0", 1, "pull_up"]`
+  - `KEY_LEFT`: `["/dev/gpiochip3", 26, "pull_up"]`
+  - `KEY_RIGHT`: `["/dev/gpiochip0", 0, "pull_up"]`
+  - `KEY_PRESS`: `["/dev/gpiochip1", 20, "pull_up"]`
   - `KEY1`: `["/dev/gpiochip4", 17, "pull_up"]`
   - `KEY2`: `["/dev/gpiochip3", 27, "pull_up"]`
   - `KEY3`: `["/dev/gpiochip1", 23, "pull_up"]`
