@@ -30,8 +30,7 @@ buttons_module = importlib.import_module("seedsigner.hardware.buttons")
 if isinstance(_saved_buttons_entry, MagicMock):
     sys.modules["seedsigner.hardware.buttons"] = _saved_buttons_entry
     if isinstance(_saved_hw_buttons_attr, MagicMock):
-        import seedsigner.hardware as _hw_pkg
-        setattr(_hw_pkg, "buttons", _saved_hw_buttons_attr)
+        setattr(seedsigner.hardware, "buttons", _saved_hw_buttons_attr)
 
 
 @pytest.fixture(autouse=True)
