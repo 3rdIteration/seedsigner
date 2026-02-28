@@ -116,8 +116,8 @@ class Camera(Singleton):
         stream_resolution = resolution
         stream_framerate = framerate
         stream_camera_config = dict(self._hardware_camera_config or {})
-        # Prefer the board-specific io_config camera mode to avoid
-        # unstable/unsupported requests from generic caller defaults.
+        # Prefer board-specific io_config camera settings over generic caller
+        # defaults when available (applies to all profiles with camera config).
         if stream_camera_config.get("resolution"):
             stream_resolution = tuple(stream_camera_config["resolution"])
         if stream_camera_config.get("framerate"):
