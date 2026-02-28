@@ -78,7 +78,7 @@ class VideoStream:
             self.raw_capture = PiRGBArray(self.camera, size=resolution)
             self.stream = self.camera.capture_continuous(
                 self.raw_capture,
-                format=format,
+                format="rgb",
                 use_video_port=True,
             )
             self.use_picamera = True

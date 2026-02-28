@@ -224,3 +224,24 @@ def test_picamera_retry_still_raises_on_second_failure(monkeypatch):
         VideoStream(resolution=(320, 240), framerate=12, format="bgr")
 
     assert mock_picamera.call_count == 2
+
+
+def test_picamera_always_captures_rgb(monkeypatch):
+    """PiCamera capture_continuous is called with format='rgb' regardless of caller format."""
+    mock_camera = MagicMock()
+    mock_raw = MagicMock()
+    mock_picamera = MagicMock(return_value=mock_camera)
+    mock_pirgb = MagicMock(return_value=mock_raw)
+    mock_camera.capture_continuous.return_value = iter([])
+
+    monkeypatch.setattr("seedsigner.hardware.pivideostream.PICAMERA_AVAILABLE", True)
+    monkeypatch.setattr("seedsigner.hardware.pivideostream.PiCamera", mock_picamera)
+    monkeypatch.setattr("seedsigner.hardware.pivideostream.PiRGBArray", mock_pirgb)
+
+    VideoStream(resolution=(320, 240), framerate=12, format="bgr")
+
+    mock_camera.capture_continuous.assert_called_once_with(
+        mock_raw,
+        format="rgb",
+        use_video_port=True,
+    )
