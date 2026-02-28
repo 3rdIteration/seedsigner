@@ -42,7 +42,11 @@ from seedsigner.views.tools_views import (
     bip85_ed25519_from_root,
     bip85_secp256k1_from_root,
     bip85_p256_from_root,
+    bip85_p384_from_root,
+    bip85_p521_from_root,
     bip85_brainpoolp256r1_from_root,
+    bip85_brainpoolp384r1_from_root,
+    bip85_brainpoolp512r1_from_root,
     _bip85_subkey_specs,
     _bip85_key_type_choices,
 )
@@ -89,8 +93,16 @@ def _add_subkey(
         subpkt.keymaterial = bip85_secp256k1_from_root(root, key_index, sub_index, alg_name)
     elif alg in ["p256", "nistp256"]:
         subpkt.keymaterial = bip85_p256_from_root(root, key_index, sub_index, alg_name)
+    elif alg in ["p384", "nistp384"]:
+        subpkt.keymaterial = bip85_p384_from_root(root, key_index, sub_index, alg_name)
+    elif alg in ["p521", "nistp521"]:
+        subpkt.keymaterial = bip85_p521_from_root(root, key_index, sub_index, alg_name)
     elif alg in ["brainpoolp256r1", "brainpoolP256r1"]:
         subpkt.keymaterial = bip85_brainpoolp256r1_from_root(root, key_index, sub_index, alg_name)
+    elif alg in ["brainpoolp384r1", "brainpoolP384r1"]:
+        subpkt.keymaterial = bip85_brainpoolp384r1_from_root(root, key_index, sub_index, alg_name)
+    elif alg in ["brainpoolp512r1", "brainpoolP512r1"]:
+        subpkt.keymaterial = bip85_brainpoolp512r1_from_root(root, key_index, sub_index, alg_name)
     elif alg == "ed25519":
         subpkt.keymaterial = bip85_ed25519_from_root(root, key_index, sub_index, alg_name)
     else:
@@ -194,9 +206,21 @@ def create_bip85_pgp_key(
     elif primary_type == "p256":
         pk.pkalg = PubKeyAlgorithm.ECDSA
         pk.keymaterial = bip85_p256_from_root(root, key_index)
+    elif primary_type == "p384":
+        pk.pkalg = PubKeyAlgorithm.ECDSA
+        pk.keymaterial = bip85_p384_from_root(root, key_index)
+    elif primary_type == "p521":
+        pk.pkalg = PubKeyAlgorithm.ECDSA
+        pk.keymaterial = bip85_p521_from_root(root, key_index)
     elif primary_type == "brainpoolp256r1":
         pk.pkalg = PubKeyAlgorithm.ECDSA
         pk.keymaterial = bip85_brainpoolp256r1_from_root(root, key_index)
+    elif primary_type == "brainpoolp384r1":
+        pk.pkalg = PubKeyAlgorithm.ECDSA
+        pk.keymaterial = bip85_brainpoolp384r1_from_root(root, key_index)
+    elif primary_type == "brainpoolp512r1":
+        pk.pkalg = PubKeyAlgorithm.ECDSA
+        pk.keymaterial = bip85_brainpoolp512r1_from_root(root, key_index)
     elif primary_type == "ed25519":
         pk.pkalg = PubKeyAlgorithm.EdDSA
         pk.keymaterial = bip85_ed25519_from_root(root, key_index)
@@ -235,7 +259,7 @@ def create_bip85_pgp_key(
                 (1, PubKeyAlgorithm.EdDSA, {KeyFlags.Authentication}, "EdDSA"),
                 (2, PubKeyAlgorithm.EdDSA, {KeyFlags.Sign}, "EdDSA"),
             ]
-        elif subkey_type in ["secp256k1", "p256", "brainpoolp256r1"]:
+        elif subkey_type in ["secp256k1", "p256", "p384", "p521", "brainpoolp256r1", "brainpoolp384r1", "brainpoolp512r1"]:
             base_specs = [
                 (
                     0,
@@ -275,7 +299,11 @@ def create_bip85_pgp_key(
 
         alg_for_specs = {
             "p256": "nistp256",
+            "p384": "nistp384",
+            "p521": "nistp521",
             "brainpoolp256r1": "brainpoolP256r1",
+            "brainpoolp384r1": "brainpoolP384r1",
+            "brainpoolp512r1": "brainpoolP512r1",
             "secp256k1": "secp256k1",
             "ed25519": "ed25519",
             "rsa2048": "rsa2048",

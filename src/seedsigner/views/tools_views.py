@@ -5779,14 +5779,19 @@ def parse_subkey_list(colon_output: str):
 # human-readable typo of "2009-01-03 18:05:05" UTC, which has propagated elsewhere.
 BIP85_GPG_CREATED_TS = 1231006505
 
-# BIP85 application numbers for supported GPG key types
-BIP85_GPG_APP_RSA = 828365
-BIP85_GPG_APP_CURVE25519 = 828366
-BIP85_GPG_APP_SECP256K1 = 828367
-BIP85_GPG_APP_NIST_P256 = 828368
-BIP85_GPG_APP_BRAINPOOL_P256 = 828369
+# Single BIP85 GPG application number per updated spec.
+# Derivation path: m/83696968'/828365'/{key_type}'/{key_bits}'/{key_index}'[/{sub_key}']
+BIP85_GPG_APP = 828365
 
-BIP85_GPG_ECC_KEY_BITS = 256
+# Legacy per-curve application numbers (kept for backward compatibility references).
+BIP85_GPG_APP_RSA = BIP85_GPG_APP
+
+# BIP85 GPG key_type codes
+BIP85_GPG_KEY_TYPE_RSA = 0
+BIP85_GPG_KEY_TYPE_CURVE25519 = 1
+BIP85_GPG_KEY_TYPE_SECP256K1 = 2
+BIP85_GPG_KEY_TYPE_NIST = 3
+BIP85_GPG_KEY_TYPE_BRAINPOOL = 4
 
 # In-memory registry of BIP85-derived keys
 BIP85_DATA = {}
@@ -6786,9 +6791,21 @@ class ToolsGPGRebuildBip85KeyView(View):
             elif key_type == "p256":
                 pk.pkalg = PubKeyAlgorithm.ECDSA
                 pk.keymaterial = bip85_p256_from_root(root, key_index)
+            elif key_type == "p384":
+                pk.pkalg = PubKeyAlgorithm.ECDSA
+                pk.keymaterial = bip85_p384_from_root(root, key_index)
+            elif key_type == "p521":
+                pk.pkalg = PubKeyAlgorithm.ECDSA
+                pk.keymaterial = bip85_p521_from_root(root, key_index)
             elif key_type == "brainpoolp256r1":
                 pk.pkalg = PubKeyAlgorithm.ECDSA
                 pk.keymaterial = bip85_brainpoolp256r1_from_root(root, key_index)
+            elif key_type == "brainpoolp384r1":
+                pk.pkalg = PubKeyAlgorithm.ECDSA
+                pk.keymaterial = bip85_brainpoolp384r1_from_root(root, key_index)
+            elif key_type == "brainpoolp512r1":
+                pk.pkalg = PubKeyAlgorithm.ECDSA
+                pk.keymaterial = bip85_brainpoolp512r1_from_root(root, key_index)
             elif key_type == "ed25519":
                 pk.pkalg = PubKeyAlgorithm.EdDSA
                 pk.keymaterial = bip85_ed25519_from_root(root, key_index)
@@ -6824,7 +6841,11 @@ class ToolsGPGRebuildBip85KeyView(View):
                     specs = _bip85_subkey_specs(
                         {
                             "p256": "nistp256",
+                            "p384": "nistp384",
+                            "p521": "nistp521",
                             "brainpoolp256r1": "brainpoolP256r1",
+                            "brainpoolp384r1": "brainpoolP384r1",
+                            "brainpoolp512r1": "brainpoolP512r1",
                             "secp256k1": "secp256k1",
                             "ed25519": "ed25519",
                         }.get(key_type, "rsa")
@@ -6833,7 +6854,11 @@ class ToolsGPGRebuildBip85KeyView(View):
                     func_map = {
                         "secp256k1": bip85_secp256k1_from_root,
                         "p256": bip85_p256_from_root,
+                        "p384": bip85_p384_from_root,
+                        "p521": bip85_p521_from_root,
                         "brainpoolp256r1": bip85_brainpoolp256r1_from_root,
+                        "brainpoolp384r1": bip85_brainpoolp384r1_from_root,
+                        "brainpoolp512r1": bip85_brainpoolp512r1_from_root,
                         "ed25519": bip85_ed25519_from_root,
                     }
                     subpkt = PrivSubKeyV4()
@@ -6872,7 +6897,11 @@ class ToolsGPGRebuildBip85KeyView(View):
                         func_map = {
                             "secp256k1": bip85_secp256k1_from_root,
                             "nist p-256": bip85_p256_from_root,
+                            "nist p-384": bip85_p384_from_root,
+                            "nist p-521": bip85_p521_from_root,
                             "brainpool p-256": bip85_brainpoolp256r1_from_root,
+                            "brainpool p-384": bip85_brainpoolp384r1_from_root,
+                            "brainpool p-512": bip85_brainpoolp512r1_from_root,
                             "ed25519": bip85_ed25519_from_root,
                         }
                         pkalg_map = {
@@ -10662,10 +10691,10 @@ def bip85_rsa_from_root(root, bits: int, index: int, sub_index: int | None = Non
     if bits < MIN_RSA_KEY_BITS:
         bits = MIN_RSA_KEY_BITS
 
-    path = [bits, index]
+    path = [BIP85_GPG_KEY_TYPE_RSA, bits, index]
     if sub_index is not None:
         path.append(sub_index)
-    entropy = bip85.derive_entropy(root, BIP85_GPG_APP_RSA, path)
+    entropy = bip85.derive_entropy(root, BIP85_GPG_APP, path)
     drng = BIP85DRNG.new(entropy)
     return RSA.generate(bits, randfunc=drng.read)
 
@@ -10679,10 +10708,10 @@ def bip85_ed25519_from_root(
     from pgpy.constants import EllipticCurveOID
     from pgpy.packet import fields
 
-    path = [BIP85_GPG_ECC_KEY_BITS, index]
+    path = [BIP85_GPG_KEY_TYPE_CURVE25519, 256, index]
     if sub_index is not None:
         path.append(sub_index)
-    entropy = bip85.derive_entropy(root, BIP85_GPG_APP_CURVE25519, path)
+    entropy = bip85.derive_entropy(root, BIP85_GPG_APP, path)
     d_bytes = entropy[:32]
     if alg == "EdDSA":
         priv = fields.EdDSAPriv()
@@ -10814,6 +10843,8 @@ def _normalize_bip85_alg(alg: str) -> str:
         return alg
     alias = {
         "p256": "nistp256",
+        "p384": "nistp384",
+        "p521": "nistp521",
     }
     alg_lower = alg.lower()
     return alias.get(alg_lower, alg_lower)
@@ -10829,7 +10860,7 @@ def _bip85_subkey_specs(alg):
             (1, PubKeyAlgorithm.EdDSA, {KeyFlags.Authentication, KeyFlags.Sign}, "EdDSA"),
             (2, PubKeyAlgorithm.EdDSA, {KeyFlags.Sign}, "EdDSA"),
         ]
-    if alg in ["secp256k1", "nistp256", "brainpoolp256r1"]:
+    if alg in ["secp256k1", "nistp256", "nistp384", "nistp521", "brainpoolp256r1", "brainpoolp384r1", "brainpoolp512r1"]:
         return [
             (0, PubKeyAlgorithm.ECDH, {KeyFlags.EncryptCommunications, KeyFlags.EncryptStorage}, "ECDH"),
             (1, PubKeyAlgorithm.ECDSA, {KeyFlags.Authentication, KeyFlags.Sign}, "ECDSA"),
@@ -10901,9 +10932,21 @@ def bip85_verify_existing(
     elif primary_curve == "nistp256":
         pk.pkalg = PubKeyAlgorithm.ECDSA
         pk.keymaterial = bip85_p256_from_root(root, key_index)
+    elif primary_curve == "nistp384":
+        pk.pkalg = PubKeyAlgorithm.ECDSA
+        pk.keymaterial = bip85_p384_from_root(root, key_index)
+    elif primary_curve == "nistp521":
+        pk.pkalg = PubKeyAlgorithm.ECDSA
+        pk.keymaterial = bip85_p521_from_root(root, key_index)
     elif primary_curve == "brainpoolp256r1":
         pk.pkalg = PubKeyAlgorithm.ECDSA
         pk.keymaterial = bip85_brainpoolp256r1_from_root(root, key_index)
+    elif primary_curve == "brainpoolp384r1":
+        pk.pkalg = PubKeyAlgorithm.ECDSA
+        pk.keymaterial = bip85_brainpoolp384r1_from_root(root, key_index)
+    elif primary_curve == "brainpoolp512r1":
+        pk.pkalg = PubKeyAlgorithm.ECDSA
+        pk.keymaterial = bip85_brainpoolp512r1_from_root(root, key_index)
     elif primary_curve == "ed25519":
         pk.pkalg = PubKeyAlgorithm.EdDSA
         pk.keymaterial = bip85_ed25519_from_root(root, key_index)
@@ -10946,10 +10989,26 @@ def bip85_verify_existing(
             subpkt.pkalg = PubKeyAlgorithm.ECDH if algo == "18" else PubKeyAlgorithm.ECDSA
             alg_name = "ECDH" if algo == "18" else "ECDSA"
             subpkt.keymaterial = bip85_p256_from_root(root, group_idx, sub_index, alg_name)
+        elif curve == "nistp384":
+            subpkt.pkalg = PubKeyAlgorithm.ECDH if algo == "18" else PubKeyAlgorithm.ECDSA
+            alg_name = "ECDH" if algo == "18" else "ECDSA"
+            subpkt.keymaterial = bip85_p384_from_root(root, group_idx, sub_index, alg_name)
+        elif curve == "nistp521":
+            subpkt.pkalg = PubKeyAlgorithm.ECDH if algo == "18" else PubKeyAlgorithm.ECDSA
+            alg_name = "ECDH" if algo == "18" else "ECDSA"
+            subpkt.keymaterial = bip85_p521_from_root(root, group_idx, sub_index, alg_name)
         elif curve == "brainpoolp256r1":
             subpkt.pkalg = PubKeyAlgorithm.ECDH if algo == "18" else PubKeyAlgorithm.ECDSA
             alg_name = "ECDH" if algo == "18" else "ECDSA"
             subpkt.keymaterial = bip85_brainpoolp256r1_from_root(root, group_idx, sub_index, alg_name)
+        elif curve == "brainpoolp384r1":
+            subpkt.pkalg = PubKeyAlgorithm.ECDH if algo == "18" else PubKeyAlgorithm.ECDSA
+            alg_name = "ECDH" if algo == "18" else "ECDSA"
+            subpkt.keymaterial = bip85_brainpoolp384r1_from_root(root, group_idx, sub_index, alg_name)
+        elif curve == "brainpoolp512r1":
+            subpkt.pkalg = PubKeyAlgorithm.ECDH if algo == "18" else PubKeyAlgorithm.ECDSA
+            alg_name = "ECDH" if algo == "18" else "ECDSA"
+            subpkt.keymaterial = bip85_brainpoolp512r1_from_root(root, group_idx, sub_index, alg_name)
         elif curve == "cv25519":
             if algo != "18":
                 logger.warning(
@@ -11053,8 +11112,16 @@ def bip85_add_subkeys(
     type_map = {
         "nistp256": "ECC NIST P-256",
         "p256": "ECC NIST P-256",
+        "nistp384": "ECC NIST P-384",
+        "p384": "ECC NIST P-384",
+        "nistp521": "ECC NIST P-521",
+        "p521": "ECC NIST P-521",
         "brainpoolp256r1": "ECC Brainpool P-256",
         "brainpoolP256r1": "ECC Brainpool P-256",
+        "brainpoolp384r1": "ECC Brainpool P-384",
+        "brainpoolP384r1": "ECC Brainpool P-384",
+        "brainpoolp512r1": "ECC Brainpool P-512",
+        "brainpoolP512r1": "ECC Brainpool P-512",
         "secp256k1": "ECC secp256k1",
         "ed25519": "ECC Ed25519",
         "rsa2048": "RSA 2048",
@@ -11073,8 +11140,16 @@ def bip85_add_subkeys(
             subpkt.keymaterial = bip85_secp256k1_from_root(root, key_index, sub_index, alg_name[0])
         elif alg_canon == "nistp256":
             subpkt.keymaterial = bip85_p256_from_root(root, key_index, sub_index, alg_name[0])
+        elif alg_canon == "nistp384":
+            subpkt.keymaterial = bip85_p384_from_root(root, key_index, sub_index, alg_name[0])
+        elif alg_canon == "nistp521":
+            subpkt.keymaterial = bip85_p521_from_root(root, key_index, sub_index, alg_name[0])
         elif alg_canon == "brainpoolp256r1":
             subpkt.keymaterial = bip85_brainpoolp256r1_from_root(root, key_index, sub_index, alg_name[0])
+        elif alg_canon == "brainpoolp384r1":
+            subpkt.keymaterial = bip85_brainpoolp384r1_from_root(root, key_index, sub_index, alg_name[0])
+        elif alg_canon == "brainpoolp512r1":
+            subpkt.keymaterial = bip85_brainpoolp512r1_from_root(root, key_index, sub_index, alg_name[0])
         elif alg_canon == "ed25519":
             subpkt.keymaterial = bip85_ed25519_from_root(root, key_index, sub_index, alg_name[0])
         else:
@@ -11121,7 +11196,11 @@ def loose_add_subkeys(fingerprint: str, alg: str) -> bool:
     curve_map = {
         "secp256k1": EllipticCurveOID.SECP256K1,
         "nistp256": EllipticCurveOID.NIST_P256,
+        "nistp384": EllipticCurveOID.NIST_P384,
+        "nistp521": EllipticCurveOID.NIST_P521,
         "brainpoolp256r1": EllipticCurveOID.Brainpool_P256,
+        "brainpoolp384r1": EllipticCurveOID.Brainpool_P384,
+        "brainpoolp512r1": EllipticCurveOID.Brainpool_P512,
     }
     curve = curve_map[alg_canon]
 
@@ -11166,10 +11245,10 @@ def bip85_secp256k1_from_root(
     from pgpy.constants import EllipticCurveOID
     from pgpy.packet import fields
 
-    path = [BIP85_GPG_ECC_KEY_BITS, index]
+    path = [BIP85_GPG_KEY_TYPE_SECP256K1, 256, index]
     if sub_index is not None:
         path.append(sub_index)
-    entropy = bip85.derive_entropy(root, BIP85_GPG_APP_SECP256K1, path)
+    entropy = bip85.derive_entropy(root, BIP85_GPG_APP, path)
     order = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
     d = int.from_bytes(entropy[:32], "big") % order
     if d == 0:
@@ -11202,10 +11281,10 @@ def bip85_p256_from_root(
     from pgpy.constants import EllipticCurveOID
     from pgpy.packet import fields
 
-    path = [BIP85_GPG_ECC_KEY_BITS, index]
+    path = [BIP85_GPG_KEY_TYPE_NIST, 256, index]
     if sub_index is not None:
         path.append(sub_index)
-    entropy = bip85.derive_entropy(root, BIP85_GPG_APP_NIST_P256, path)
+    entropy = bip85.derive_entropy(root, BIP85_GPG_APP, path)
     # Avoid relying on cryptography's ``group_order`` attribute since
     # some versions (such as those bundled with seedsigner-os) do not
     # expose it. Instead, use the well-known group order for P-256.
@@ -11241,10 +11320,10 @@ def bip85_brainpoolp256r1_from_root(
     from pgpy.constants import EllipticCurveOID
     from pgpy.packet import fields
 
-    path = [BIP85_GPG_ECC_KEY_BITS, index]
+    path = [BIP85_GPG_KEY_TYPE_BRAINPOOL, 256, index]
     if sub_index is not None:
         path.append(sub_index)
-    entropy = bip85.derive_entropy(root, BIP85_GPG_APP_BRAINPOOL_P256, path)
+    entropy = bip85.derive_entropy(root, BIP85_GPG_APP, path)
     # Hardcode BrainpoolP256r1 group order to avoid relying on attributes
     # that may be missing in some cryptography builds.
     order = 0xA9FB57DBA1EEA9BC3E660A909D838D718C397AA3B561A6F7901E0E82974856A7
@@ -11271,6 +11350,154 @@ def bip85_brainpoolp256r1_from_root(
     return priv
 
 
+def bip85_p384_from_root(
+    root, index: int, sub_index: int | None = None, alg: str = "ECDSA"
+):
+    from embit import bip85
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from pgpy.constants import EllipticCurveOID
+    from pgpy.packet import fields
+
+    path = [BIP85_GPG_KEY_TYPE_NIST, 384, index]
+    if sub_index is not None:
+        path.append(sub_index)
+    entropy = bip85.derive_entropy(root, BIP85_GPG_APP, path)
+    order = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC7634D81F4372DDF581A0DB248B0A77AECEC196ACCC52973
+    d = int.from_bytes(entropy[:48], "big") % order
+    if d == 0:
+        d = 1
+    pn = ec.derive_private_key(d, ec.SECP384R1()).public_key().public_numbers()
+    if alg == "ECDH":
+        priv = fields.ECDHPriv()
+        priv.oid = EllipticCurveOID.NIST_P384
+        priv.kdf.halg = priv.oid.kdf_halg
+        priv.kdf.encalg = priv.oid.kek_alg
+    else:
+        priv = fields.ECDSAPriv()
+        priv.oid = EllipticCurveOID.NIST_P384
+    priv.p = fields.ECPoint.from_values(
+        priv.oid.key_size,
+        fields.ECPointFormat.Standard,
+        fields.MPI(pn.x),
+        fields.MPI(pn.y),
+    )
+    priv.s = fields.MPI(d)
+    priv._compute_chksum()
+    return priv
+
+
+def bip85_p521_from_root(
+    root, index: int, sub_index: int | None = None, alg: str = "ECDSA"
+):
+    from embit import bip85
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from pgpy.constants import EllipticCurveOID
+    from pgpy.packet import fields
+    from seedsigner.helpers.bip85_drng import BIP85DRNG
+
+    path = [BIP85_GPG_KEY_TYPE_NIST, 521, index]
+    if sub_index is not None:
+        path.append(sub_index)
+    entropy = bip85.derive_entropy(root, BIP85_GPG_APP, path)
+    # P-521 needs 66 bytes which exceeds the 64-byte HMAC output; use DRNG.
+    drng = BIP85DRNG.new(entropy)
+    d_bytes = drng.read(66)
+    order = 0x01FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFA51868783BF2F966B7FCC0148F709A5D03BB5C9B8899C47AEBB6FB71E91386409
+    d = int.from_bytes(d_bytes, "big") % order
+    if d == 0:
+        d = 1
+    pn = ec.derive_private_key(d, ec.SECP521R1()).public_key().public_numbers()
+    if alg == "ECDH":
+        priv = fields.ECDHPriv()
+        priv.oid = EllipticCurveOID.NIST_P521
+        priv.kdf.halg = priv.oid.kdf_halg
+        priv.kdf.encalg = priv.oid.kek_alg
+    else:
+        priv = fields.ECDSAPriv()
+        priv.oid = EllipticCurveOID.NIST_P521
+    priv.p = fields.ECPoint.from_values(
+        priv.oid.key_size,
+        fields.ECPointFormat.Standard,
+        fields.MPI(pn.x),
+        fields.MPI(pn.y),
+    )
+    priv.s = fields.MPI(d)
+    priv._compute_chksum()
+    return priv
+
+
+def bip85_brainpoolp384r1_from_root(
+    root, index: int, sub_index: int | None = None, alg: str = "ECDSA",
+):
+    from embit import bip85
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from pgpy.constants import EllipticCurveOID
+    from pgpy.packet import fields
+
+    path = [BIP85_GPG_KEY_TYPE_BRAINPOOL, 384, index]
+    if sub_index is not None:
+        path.append(sub_index)
+    entropy = bip85.derive_entropy(root, BIP85_GPG_APP, path)
+    order = 0x8CB91E82A3386D280F5D6F7E50E641DF152F7109ED5456B31F166E6CAC0425A7CF3AB6AF6B7FC3103B883202E9046565
+    d = int.from_bytes(entropy[:48], "big") % order
+    if d == 0:
+        d = 1
+    pn = ec.derive_private_key(d, ec.BrainpoolP384R1()).public_key().public_numbers()
+    if alg == "ECDH":
+        priv = fields.ECDHPriv()
+        priv.oid = EllipticCurveOID.Brainpool_P384
+        priv.kdf.halg = priv.oid.kdf_halg
+        priv.kdf.encalg = priv.oid.kek_alg
+    else:
+        priv = fields.ECDSAPriv()
+        priv.oid = EllipticCurveOID.Brainpool_P384
+    priv.p = fields.ECPoint.from_values(
+        priv.oid.key_size,
+        fields.ECPointFormat.Standard,
+        fields.MPI(pn.x),
+        fields.MPI(pn.y),
+    )
+    priv.s = fields.MPI(d)
+    priv._compute_chksum()
+    return priv
+
+
+def bip85_brainpoolp512r1_from_root(
+    root, index: int, sub_index: int | None = None, alg: str = "ECDSA",
+):
+    from embit import bip85
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from pgpy.constants import EllipticCurveOID
+    from pgpy.packet import fields
+
+    path = [BIP85_GPG_KEY_TYPE_BRAINPOOL, 512, index]
+    if sub_index is not None:
+        path.append(sub_index)
+    entropy = bip85.derive_entropy(root, BIP85_GPG_APP, path)
+    order = 0xAADD9DB8DBE9C48B3FD4E6AE33C9FC07CB308DB3B3C9D20ED6639CCA70330870553E5C414CA92619418661197FAC10471DB1D381085DDADDB58796829CA90069
+    d = int.from_bytes(entropy[:64], "big") % order
+    if d == 0:
+        d = 1
+    pn = ec.derive_private_key(d, ec.BrainpoolP512R1()).public_key().public_numbers()
+    if alg == "ECDH":
+        priv = fields.ECDHPriv()
+        priv.oid = EllipticCurveOID.Brainpool_P512
+        priv.kdf.halg = priv.oid.kdf_halg
+        priv.kdf.encalg = priv.oid.kek_alg
+    else:
+        priv = fields.ECDSAPriv()
+        priv.oid = EllipticCurveOID.Brainpool_P512
+    priv.p = fields.ECPoint.from_values(
+        priv.oid.key_size,
+        fields.ECPointFormat.Standard,
+        fields.MPI(pn.x),
+        fields.MPI(pn.y),
+    )
+    priv.s = fields.MPI(d)
+    priv._compute_chksum()
+    return priv
+
+
 def _bip85_key_type_choices(include_ecc: bool) -> list[tuple[str, str]]:
     """Return available key type labels and identifiers for BIP85 GPG keys."""
 
@@ -11280,7 +11507,11 @@ def _bip85_key_type_choices(include_ecc: bool) -> list[tuple[str, str]]:
             [
                 ("ECC Ed25519", "ed25519"),
                 ("ECC NIST P-256", "p256"),
+                ("ECC NIST P-384", "p384"),
+                ("ECC NIST P-521", "p521"),
                 ("ECC Brainpool P-256", "brainpoolp256r1"),
+                ("ECC Brainpool P-384", "brainpoolp384r1"),
+                ("ECC Brainpool P-512", "brainpoolp512r1"),
             ]
         )
     choices.extend(
@@ -11338,7 +11569,7 @@ class ToolsGPGLoadBIP85KeyView(View):
                 title="WARNING",
                 status_headline=None,
                 text=(
-                    "ECC Curves extend beyond current BIP85 spec..\n"
+                    "ECC key derivation follows BIP85.\n"
                     "Record your SeedSigner Version."
                 ),
                 show_back_button=False,
@@ -11505,9 +11736,21 @@ class ToolsGPGLoadBIP85KeyView(View):
             elif key_type == "p256":
                 pk.pkalg = PubKeyAlgorithm.ECDSA
                 pk.keymaterial = bip85_p256_from_root(root, key_index)
+            elif key_type == "p384":
+                pk.pkalg = PubKeyAlgorithm.ECDSA
+                pk.keymaterial = bip85_p384_from_root(root, key_index)
+            elif key_type == "p521":
+                pk.pkalg = PubKeyAlgorithm.ECDSA
+                pk.keymaterial = bip85_p521_from_root(root, key_index)
             elif key_type == "brainpoolp256r1":
                 pk.pkalg = PubKeyAlgorithm.ECDSA
                 pk.keymaterial = bip85_brainpoolp256r1_from_root(root, key_index)
+            elif key_type == "brainpoolp384r1":
+                pk.pkalg = PubKeyAlgorithm.ECDSA
+                pk.keymaterial = bip85_brainpoolp384r1_from_root(root, key_index)
+            elif key_type == "brainpoolp512r1":
+                pk.pkalg = PubKeyAlgorithm.ECDSA
+                pk.keymaterial = bip85_brainpoolp512r1_from_root(root, key_index)
             elif key_type == "ed25519":
                 pk.pkalg = PubKeyAlgorithm.EdDSA
                 pk.keymaterial = bip85_ed25519_from_root(root, key_index)
@@ -11539,7 +11782,7 @@ class ToolsGPGLoadBIP85KeyView(View):
                     (1, PubKeyAlgorithm.EdDSA, {KeyFlags.Authentication}, "EdDSA"),
                     (2, PubKeyAlgorithm.EdDSA, {KeyFlags.Sign}, "EdDSA"),
                 ]
-            elif key_type in ["secp256k1", "p256", "brainpoolp256r1"]:
+            elif key_type in ["secp256k1", "p256", "p384", "p521", "brainpoolp256r1", "brainpoolp384r1", "brainpoolp512r1"]:
                 subkey_specs = [
                     (0, PubKeyAlgorithm.ECDH, {KeyFlags.EncryptCommunications, KeyFlags.EncryptStorage}, "ECDH"),
                     (1, PubKeyAlgorithm.ECDSA, {KeyFlags.Authentication}, "ECDSA"),
@@ -11561,8 +11804,16 @@ class ToolsGPGLoadBIP85KeyView(View):
                     subpkt.keymaterial = bip85_secp256k1_from_root(root, key_index, sub_index, alg[0])
                 elif key_type == "p256":
                     subpkt.keymaterial = bip85_p256_from_root(root, key_index, sub_index, alg[0])
+                elif key_type == "p384":
+                    subpkt.keymaterial = bip85_p384_from_root(root, key_index, sub_index, alg[0])
+                elif key_type == "p521":
+                    subpkt.keymaterial = bip85_p521_from_root(root, key_index, sub_index, alg[0])
                 elif key_type == "brainpoolp256r1":
                     subpkt.keymaterial = bip85_brainpoolp256r1_from_root(root, key_index, sub_index, alg[0])
+                elif key_type == "brainpoolp384r1":
+                    subpkt.keymaterial = bip85_brainpoolp384r1_from_root(root, key_index, sub_index, alg[0])
+                elif key_type == "brainpoolp512r1":
+                    subpkt.keymaterial = bip85_brainpoolp512r1_from_root(root, key_index, sub_index, alg[0])
                 elif key_type == "ed25519":
                     subpkt.keymaterial = bip85_ed25519_from_root(root, key_index, sub_index, alg[0])
                 else:
