@@ -62,8 +62,40 @@ def test_camera_luckfox_stream_prefers_v4l2(monkeypatch):
 
     assert captured["prefer_v4l2"] is True
     assert captured["resolution"] == (800, 600)
-    assert captured["framerate"] == 12
+    assert captured["framerate"] == 10
     assert captured["camera_config"]["pixelformat"] == "NV12"
+    assert captured["started"] is True
+
+
+def test_camera_rpi_stream_uses_io_config(monkeypatch):
+    captured = {}
+
+    class FakeVideoStream:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+        def start(self):
+            captured["started"] = True
+
+    monkeypatch.setattr("seedsigner.hardware.pivideostream.VideoStream", FakeVideoStream)
+
+    camera_class = _get_camera_class()
+    camera = camera_class.__new__(camera_class)
+    camera._video_stream = None
+    camera._camera_index = 0
+    camera._runtime_profile = "rpi_40"
+    camera._hardware_camera_config = {
+        "device": "/dev/video0",
+        "resolution": (1280, 720),
+        "pixelformat": "YUYV",
+        "framerate": 4,
+    }
+
+    camera.start_video_stream_mode(resolution=(512, 384), framerate=12, format="bgr")
+
+    assert captured["prefer_v4l2"] is False
+    assert captured["resolution"] == (1280, 720)
+    assert captured["framerate"] == 4
     assert captured["started"] is True
 
 
