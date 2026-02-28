@@ -14,8 +14,8 @@ import pytest
 # Other test modules (via base.py) replace seedsigner.hardware.buttons in
 # sys.modules with a MagicMock to avoid hardware dependencies.  We need the
 # real module here, so pop any mock and force-import the real implementation.
-_saved_buttons_mock = sys.modules.pop("seedsigner.hardware.buttons", None)
-if isinstance(_saved_buttons_mock, MagicMock):
+_saved_buttons_entry = sys.modules.pop("seedsigner.hardware.buttons", None)
+if isinstance(_saved_buttons_entry, MagicMock):
     # Also clear the attribute on the parent package so the real module can
     # be re-attached by the import machinery.
     import seedsigner.hardware
