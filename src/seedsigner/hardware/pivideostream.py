@@ -15,12 +15,14 @@ logger = logging.getLogger(__name__)
 try:
     from picamera.array import PiRGBArray
     from picamera import PiCamera
+    from picamera.exc import PiCameraMMALError
 
     PICAMERA_AVAILABLE = True
 except Exception:
     PICAMERA_AVAILABLE = False
     PiRGBArray = None
     PiCamera = None
+    PiCameraMMALError = None
 
 try:
     import cv2  # type: ignore
@@ -67,11 +69,16 @@ class VideoStream:
         self._prefer_v4l2 = bool(prefer_v4l2)
 
         if PICAMERA_AVAILABLE and not self._prefer_v4l2:
-            self.camera = PiCamera(resolution=resolution, framerate=framerate, **kwargs)
+            try:
+                self.camera = PiCamera(resolution=resolution, framerate=framerate, **kwargs)
+            except PiCameraMMALError:
+                logger.warning("PiCamera init failed; retrying once after brief delay")
+                time.sleep(0.5)
+                self.camera = PiCamera(resolution=resolution, framerate=framerate, **kwargs)
             self.raw_capture = PiRGBArray(self.camera, size=resolution)
             self.stream = self.camera.capture_continuous(
                 self.raw_capture,
-                format=format,
+                format="rgb",
                 use_video_port=True,
             )
             self.use_picamera = True

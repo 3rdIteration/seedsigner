@@ -1,6 +1,7 @@
 from importlib import import_module
 import sys
 
+import pytest
 from PIL import Image
 from unittest.mock import MagicMock
 
@@ -61,8 +62,39 @@ def test_camera_luckfox_stream_prefers_v4l2(monkeypatch):
 
     assert captured["prefer_v4l2"] is True
     assert captured["resolution"] == (800, 600)
-    assert captured["framerate"] == 12
+    assert captured["framerate"] == 10
     assert captured["camera_config"]["pixelformat"] == "NV12"
+    assert captured["started"] is True
+
+
+def test_camera_rpi_stream_uses_io_config(monkeypatch):
+    captured = {}
+
+    class FakeVideoStream:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+        def start(self):
+            captured["started"] = True
+
+    monkeypatch.setattr("seedsigner.hardware.pivideostream.VideoStream", FakeVideoStream)
+
+    camera_class = _get_camera_class()
+    camera = camera_class.__new__(camera_class)
+    camera._video_stream = None
+    camera._camera_index = 0
+    camera._runtime_profile = "rpi_40"
+    camera._hardware_camera_config = {
+        "device": "/dev/video0",
+        "resolution": (1280, 720),
+        "framerate": 4,
+    }
+
+    camera.start_video_stream_mode(resolution=(512, 384), framerate=12, format="bgr")
+
+    assert captured["prefer_v4l2"] is False
+    assert captured["resolution"] == (1280, 720)
+    assert captured["framerate"] == 4
     assert captured["started"] is True
 
 
@@ -130,3 +162,85 @@ def test_configure_v4l2_capture_uses_negotiated_resolution(monkeypatch):
     assert stream._v4l2_pixelformat == "NV12"
     assert stream._v4l2_resolution == (576, 324)
     assert stream._v4l2_frame_size == (576 * 324 * 3) // 2
+
+
+class _MockPiCameraMMALError(Exception):
+    """Stand-in for picamera.exc.PiCameraMMALError in tests."""
+
+
+def test_picamera_retry_on_init_failure(monkeypatch):
+    """PiCamera init retries once when the first attempt raises PiCameraMMALError."""
+    mock_camera = MagicMock()
+    mock_raw = MagicMock()
+    mock_picamera = MagicMock(side_effect=[_MockPiCameraMMALError("mmal error"), mock_camera])
+    mock_pirgb = MagicMock(return_value=mock_raw)
+    mock_camera.capture_continuous.return_value = iter([])
+
+    monkeypatch.setattr("seedsigner.hardware.pivideostream.PICAMERA_AVAILABLE", True)
+    monkeypatch.setattr("seedsigner.hardware.pivideostream.PiCamera", mock_picamera)
+    monkeypatch.setattr("seedsigner.hardware.pivideostream.PiCameraMMALError", _MockPiCameraMMALError)
+    monkeypatch.setattr("seedsigner.hardware.pivideostream.PiRGBArray", mock_pirgb)
+    monkeypatch.setattr("time.sleep", lambda _: None)
+
+    stream = VideoStream(resolution=(320, 240), framerate=12, format="bgr")
+
+    assert stream.use_picamera is True
+    assert stream.camera is mock_camera
+    assert mock_picamera.call_count == 2
+
+
+def test_picamera_no_retry_on_success(monkeypatch):
+    """PiCamera init does not retry when the first attempt succeeds."""
+    mock_camera = MagicMock()
+    mock_raw = MagicMock()
+    mock_picamera = MagicMock(return_value=mock_camera)
+    mock_pirgb = MagicMock(return_value=mock_raw)
+    mock_camera.capture_continuous.return_value = iter([])
+
+    monkeypatch.setattr("seedsigner.hardware.pivideostream.PICAMERA_AVAILABLE", True)
+    monkeypatch.setattr("seedsigner.hardware.pivideostream.PiCamera", mock_picamera)
+    monkeypatch.setattr("seedsigner.hardware.pivideostream.PiRGBArray", mock_pirgb)
+
+    stream = VideoStream(resolution=(320, 240), framerate=12, format="bgr")
+
+    assert stream.use_picamera is True
+    assert stream.camera is mock_camera
+    assert mock_picamera.call_count == 1
+
+
+def test_picamera_retry_still_raises_on_second_failure(monkeypatch):
+    """If both PiCamera init attempts fail, the exception propagates."""
+    mock_picamera = MagicMock(
+        side_effect=[_MockPiCameraMMALError("mmal error"), _MockPiCameraMMALError("mmal error again")]
+    )
+
+    monkeypatch.setattr("seedsigner.hardware.pivideostream.PICAMERA_AVAILABLE", True)
+    monkeypatch.setattr("seedsigner.hardware.pivideostream.PiCamera", mock_picamera)
+    monkeypatch.setattr("seedsigner.hardware.pivideostream.PiCameraMMALError", _MockPiCameraMMALError)
+    monkeypatch.setattr("time.sleep", lambda _: None)
+
+    with pytest.raises(_MockPiCameraMMALError, match="mmal error again"):
+        VideoStream(resolution=(320, 240), framerate=12, format="bgr")
+
+    assert mock_picamera.call_count == 2
+
+
+def test_picamera_always_captures_rgb(monkeypatch):
+    """PiCamera capture_continuous is called with format='rgb' regardless of caller format."""
+    mock_camera = MagicMock()
+    mock_raw = MagicMock()
+    mock_picamera = MagicMock(return_value=mock_camera)
+    mock_pirgb = MagicMock(return_value=mock_raw)
+    mock_camera.capture_continuous.return_value = iter([])
+
+    monkeypatch.setattr("seedsigner.hardware.pivideostream.PICAMERA_AVAILABLE", True)
+    monkeypatch.setattr("seedsigner.hardware.pivideostream.PiCamera", mock_picamera)
+    monkeypatch.setattr("seedsigner.hardware.pivideostream.PiRGBArray", mock_pirgb)
+
+    VideoStream(resolution=(320, 240), framerate=12, format="bgr")
+
+    mock_camera.capture_continuous.assert_called_once_with(
+        mock_raw,
+        format="rgb",
+        use_video_port=True,
+    )
