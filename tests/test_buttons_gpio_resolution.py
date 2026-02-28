@@ -65,14 +65,14 @@ def test_resolve_global_line_maps_sysfs_base_chip_to_real_devnode(monkeypatch):
 
 def test_singleton_not_poisoned_when_gpio_init_fails(monkeypatch):
     button_map = {
-        "KEY_UP": [57, "pull_up"],
-        "KEY_DOWN": [59, "pull_up"],
-        "KEY_LEFT": [56, "pull_up"],
-        "KEY_RIGHT": [54, "pull_up"],
-        "KEY_PRESS": [58, "pull_up"],
-        "KEY1": [55, "pull_up"],
-        "KEY2": [4, "pull_up"],
-        "KEY3": [53, "pull_up"],
+        "KEY_UP": ["/dev/gpiochip1", 25, "pull_up"],
+        "KEY_DOWN": ["/dev/gpiochip1", 27, "pull_up"],
+        "KEY_LEFT": ["/dev/gpiochip1", 24, "pull_up"],
+        "KEY_RIGHT": ["/dev/gpiochip1", 22, "pull_up"],
+        "KEY_PRESS": ["/dev/gpiochip1", 26, "pull_up"],
+        "KEY1": ["/dev/gpiochip1", 23, "pull_up"],
+        "KEY2": ["/dev/gpiochip0", 4, "pull_up"],
+        "KEY3": ["/dev/gpiochip1", 21, "pull_up"],
     }
 
     monkeypatch.setattr(buttons_module, "USING_GPIO", True)
@@ -147,14 +147,14 @@ def test_resolve_sysfs_chip_to_devnode_falls_back_to_base_rank(monkeypatch):
 
 def test_get_instance_is_thread_safe_single_initializer(monkeypatch):
     button_map = {
-        "KEY_UP": [57, "pull_up"],
-        "KEY_DOWN": [59, "pull_up"],
-        "KEY_LEFT": [56, "pull_up"],
-        "KEY_RIGHT": [54, "pull_up"],
-        "KEY_PRESS": [58, "pull_up"],
-        "KEY1": [55, "pull_up"],
-        "KEY2": [4, "pull_up"],
-        "KEY3": [53, "pull_up"],
+        "KEY_UP": ["/dev/gpiochip1", 25, "pull_up"],
+        "KEY_DOWN": ["/dev/gpiochip1", 27, "pull_up"],
+        "KEY_LEFT": ["/dev/gpiochip1", 24, "pull_up"],
+        "KEY_RIGHT": ["/dev/gpiochip1", 22, "pull_up"],
+        "KEY_PRESS": ["/dev/gpiochip1", 26, "pull_up"],
+        "KEY1": ["/dev/gpiochip1", 23, "pull_up"],
+        "KEY2": ["/dev/gpiochip0", 4, "pull_up"],
+        "KEY3": ["/dev/gpiochip1", 21, "pull_up"],
     }
 
     monkeypatch.setattr(buttons_module, "USING_GPIO", True)
