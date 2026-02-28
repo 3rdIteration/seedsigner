@@ -72,7 +72,6 @@
           1280,
           720
         ],
-        "pixelformat": "YUYV",
         "framerate": 4
       }
     },
@@ -138,7 +137,6 @@
           1280,
           720
         ],
-        "pixelformat": "YUYV",
         "framerate": 4
       }
     },

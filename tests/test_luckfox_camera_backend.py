@@ -87,7 +87,6 @@ def test_camera_rpi_stream_uses_io_config(monkeypatch):
     camera._hardware_camera_config = {
         "device": "/dev/video0",
         "resolution": (1280, 720),
-        "pixelformat": "YUYV",
         "framerate": 4,
     }
 

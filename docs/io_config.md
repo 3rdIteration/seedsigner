@@ -60,12 +60,18 @@ Values shown are exactly how mappings are stored in `io_config.json`.
 
 | Profile | Runtime profile | Display (`dc/rst/bl`) | Buttons | Camera |
 |---|---|---|---|---|
-| `RPI_40` | `rpi_40` | `[25] / [27] / [24]` | `KEY_UP [6,"pull_up"]`, `KEY_DOWN [19,"pull_up"]`, `KEY_LEFT [5,"pull_up"]`, `KEY_RIGHT [26,"pull_up"]`, `KEY_PRESS [13,"pull_up"]`, `KEY1 [21,"pull_up"]`, `KEY2 [20,"pull_up"]`, `KEY3 [16,"pull_up"]` | `/dev/video0`, `1280x720`, `YUYV`, `4fps` |
-| `RPI_26` | `rpi_26` | `[25] / [27] / [24]` | `KEY_UP [3,"pull_up"]`, `KEY_DOWN [17,"pull_up"]`, `KEY_LEFT [2,"pull_up"]`, `KEY_RIGHT [22,"pull_up"]`, `KEY_PRESS [4,"pull_up"]`, `KEY1 [23,"pull_up"]`, `KEY2 [18,"pull_up"]`, `KEY3 [14,"pull_up"]` | `/dev/video0`, `1280x720`, `YUYV`, `4fps` |
+| `RPI_40` | `rpi_40` | `[25] / [27] / [24]` | `KEY_UP [6,"pull_up"]`, `KEY_DOWN [19,"pull_up"]`, `KEY_LEFT [5,"pull_up"]`, `KEY_RIGHT [26,"pull_up"]`, `KEY_PRESS [13,"pull_up"]`, `KEY1 [21,"pull_up"]`, `KEY2 [20,"pull_up"]`, `KEY3 [16,"pull_up"]` | `/dev/video0`, `1280x720`, `4fps` |
+| `RPI_26` | `rpi_26` | `[25] / [27] / [24]` | `KEY_UP [3,"pull_up"]`, `KEY_DOWN [17,"pull_up"]`, `KEY_LEFT [2,"pull_up"]`, `KEY_RIGHT [22,"pull_up"]`, `KEY_PRESS [4,"pull_up"]`, `KEY1 [23,"pull_up"]`, `KEY2 [18,"pull_up"]`, `KEY3 [14,"pull_up"]` | `/dev/video0`, `1280x720`, `4fps` |
 | `FOX_22` | `luckfox_22` | `["/dev/gpiochip1",20] / ["/dev/gpiochip1",19] / ["/dev/gpiochip1",11]` | `KEY_UP ["/dev/gpiochip1",25,"pull_up"]`, `KEY_DOWN ["/dev/gpiochip1",27,"pull_up"]`, `KEY_LEFT ["/dev/gpiochip1",24,"pull_up"]`, `KEY_RIGHT ["/dev/gpiochip1",22,"pull_up"]`, `KEY_PRESS ["/dev/gpiochip1",26,"pull_up"]`, `KEY1 ["/dev/gpiochip1",23,"pull_up"]`, `KEY2 ["/dev/gpiochip0",4,"pull_up"]`, `KEY3 ["/dev/gpiochip1",21,"pull_up"]` | `/dev/video12`, `GREY`, `6fps` |
 | `FOX_40` | `luckfox_40` | `["/dev/gpiochip1",24] / ["/dev/gpiochip1",25] / ["/dev/gpiochip2",8]` | `KEY_UP ["/dev/gpiochip1",26,"pull_up"]`, `KEY_DOWN ["/dev/gpiochip1",21,"pull_up"]`, `KEY_LEFT ["/dev/gpiochip1",27,"pull_up"]`, `KEY_RIGHT ["/dev/gpiochip1",22,"pull_up"]`, `KEY_PRESS ["/dev/gpiochip1",20,"pull_up"]`, `KEY1 ["/dev/gpiochip1",23,"pull_up"]`, `KEY2 ["/dev/gpiochip1",11,"pull_up"]`, `KEY3 ["/dev/gpiochip1",10,"pull_up"]` | `/dev/video12`, `GREY`, `6fps` |
 | `FOX_PI` | `luckfox_pi` | `["/dev/gpiochip1",27] / ["/dev/gpiochip1",24] / ["/dev/gpiochip2",6]` | `KEY_UP ["/dev/gpiochip3",25,"pull_up"]`, `KEY_DOWN ["/dev/gpiochip0",1,"pull_up"]`, `KEY_LEFT ["/dev/gpiochip3",26,"pull_up"]`, `KEY_RIGHT ["/dev/gpiochip0",0,"pull_up"]`, `KEY_PRESS ["/dev/gpiochip1",20,"pull_up"]`, `KEY1 ["/dev/gpiochip4",17,"pull_up"]`, `KEY2 ["/dev/gpiochip3",27,"pull_up"]`, `KEY3 ["/dev/gpiochip1",23,"pull_up"]` | `/dev/video12`, `GREY`, `6fps` |
 | `LC_LAFRITE` | `lc_lafrite` | `["/dev/gpiochip1",79] / ["/dev/gpiochip1",20] / ["/dev/gpiochip1",25]` | `KEY_UP ["/dev/gpiochip0",2,"pull_up"]`, `KEY_DOWN ["/dev/gpiochip1",86,"pull_up"]`, `KEY_LEFT ["/dev/gpiochip1",76,"pull_up"]`, `KEY_RIGHT ["/dev/gpiochip1",84,"pull_up"]`, `KEY_PRESS ["/dev/gpiochip1",85,"pull_up"]`, `KEY1 ["/dev/gpiochip1",83,"pull_up"]`, `KEY2 ["/dev/gpiochip1",82,"pull_up"]`, `KEY3 ["/dev/gpiochip1",81,"pull_up"]` | `/dev/video1`, `1280x720`, `YUYV`, `4fps` |
+
+> **Note:** Raspberry Pi profiles do not include a `pixelformat` camera setting.
+> PiCamera uses its own capture format (always RGB) and the OpenCV fallback
+> handles pixel format conversion internally, so a V4L2-style `pixelformat`
+> field is not applicable. The `pixelformat` setting is only used by Luckfox
+> and other V4L2-based camera backends.
 
 ---
 
