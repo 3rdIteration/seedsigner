@@ -5783,9 +5783,6 @@ BIP85_GPG_CREATED_TS = 1231006505
 # Derivation path: m/83696968'/828365'/{key_type}'/{key_bits}'/{key_index}'[/{sub_key}']
 BIP85_GPG_APP = 828365
 
-# Legacy per-curve application numbers (kept for backward compatibility references).
-BIP85_GPG_APP_RSA = BIP85_GPG_APP
-
 # BIP85 GPG key_type codes
 BIP85_GPG_KEY_TYPE_RSA = 0
 BIP85_GPG_KEY_TYPE_CURVE25519 = 1
