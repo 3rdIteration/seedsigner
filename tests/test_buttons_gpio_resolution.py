@@ -13,18 +13,25 @@ import pytest
 
 # Other test modules (via base.py) replace seedsigner.hardware.buttons in
 # sys.modules with a MagicMock to avoid hardware dependencies.  We need the
-# real module here, so pop any mock and force-import the real implementation.
+# real module here, so pop any mock, force-import the real implementation,
+# then **restore** the mock so the rest of the test suite is unaffected.
 _saved_buttons_entry = sys.modules.pop("seedsigner.hardware.buttons", None)
+_saved_hw_buttons_attr = None
 if isinstance(_saved_buttons_entry, MagicMock):
-    # Also clear the attribute on the parent package so the real module can
-    # be re-attached by the import machinery.
     import seedsigner.hardware
-    if hasattr(seedsigner.hardware, "buttons") and isinstance(
-        getattr(seedsigner.hardware, "buttons"), MagicMock
-    ):
+    _saved_hw_buttons_attr = getattr(seedsigner.hardware, "buttons", None)
+    if isinstance(_saved_hw_buttons_attr, MagicMock):
         delattr(seedsigner.hardware, "buttons")
 
 buttons_module = importlib.import_module("seedsigner.hardware.buttons")
+
+# Restore the mock so other tests that rely on it (e.g. PowerOffView importing
+# USING_GPIO) continue to see the MagicMock instead of the real module.
+if isinstance(_saved_buttons_entry, MagicMock):
+    sys.modules["seedsigner.hardware.buttons"] = _saved_buttons_entry
+    if isinstance(_saved_hw_buttons_attr, MagicMock):
+        import seedsigner.hardware as _hw_pkg
+        setattr(_hw_pkg, "buttons", _saved_hw_buttons_attr)
 
 
 @pytest.fixture(autouse=True)
