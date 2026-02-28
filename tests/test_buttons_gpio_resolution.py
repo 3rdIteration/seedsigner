@@ -1,14 +1,30 @@
 import builtins
+import importlib
 import io
 import os
 import stat
+import sys
 import threading
 import time
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
 
-from seedsigner.hardware import buttons as buttons_module
+# Other test modules (via base.py) replace seedsigner.hardware.buttons in
+# sys.modules with a MagicMock to avoid hardware dependencies.  We need the
+# real module here, so pop any mock and force-import the real implementation.
+_saved_buttons_mock = sys.modules.pop("seedsigner.hardware.buttons", None)
+if isinstance(_saved_buttons_mock, MagicMock):
+    # Also clear the attribute on the parent package so the real module can
+    # be re-attached by the import machinery.
+    import seedsigner.hardware
+    if hasattr(seedsigner.hardware, "buttons") and isinstance(
+        getattr(seedsigner.hardware, "buttons"), MagicMock
+    ):
+        delattr(seedsigner.hardware, "buttons")
+
+buttons_module = importlib.import_module("seedsigner.hardware.buttons")
 
 
 @pytest.fixture(autouse=True)
