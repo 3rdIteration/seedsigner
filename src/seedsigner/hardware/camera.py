@@ -183,6 +183,19 @@ class Camera(Singleton):
             return
 
         try:
+            from picamera2 import Picamera2  # type: ignore
+
+            self._capture = Picamera2()
+            config = self._capture.create_still_configuration(
+                main={"size": resolution, "format": "RGB888"}
+            )
+            self._capture.configure(config)
+            self._capture.start()
+            return
+        except Exception:
+            pass
+
+        try:
             from picamera import PiCamera  # type: ignore
 
             self._capture = PiCamera(resolution=resolution, framerate=24)
@@ -213,6 +226,10 @@ class Camera(Singleton):
                 return None
             if isinstance(frame, Image.Image):
                 return frame.rotate(90 + self._camera_rotation)
+            return Image.fromarray(frame.astype("uint8"), "RGB").rotate(90 + self._camera_rotation)
+
+        if hasattr(self._capture, "capture_array"):
+            frame = self._capture.capture_array()
             return Image.fromarray(frame.astype("uint8"), "RGB").rotate(90 + self._camera_rotation)
 
         if hasattr(self._capture, "capture"):

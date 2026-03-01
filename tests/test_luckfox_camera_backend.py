@@ -176,6 +176,7 @@ def test_picamera_retry_on_init_failure(monkeypatch):
     mock_pirgb = MagicMock(return_value=mock_raw)
     mock_camera.capture_continuous.return_value = iter([])
 
+    monkeypatch.setattr("seedsigner.hardware.pivideostream.PICAMERA2_AVAILABLE", False)
     monkeypatch.setattr("seedsigner.hardware.pivideostream.PICAMERA_AVAILABLE", True)
     monkeypatch.setattr("seedsigner.hardware.pivideostream.PiCamera", mock_picamera)
     monkeypatch.setattr("seedsigner.hardware.pivideostream.PiCameraMMALError", _MockPiCameraMMALError)
@@ -197,6 +198,7 @@ def test_picamera_no_retry_on_success(monkeypatch):
     mock_pirgb = MagicMock(return_value=mock_raw)
     mock_camera.capture_continuous.return_value = iter([])
 
+    monkeypatch.setattr("seedsigner.hardware.pivideostream.PICAMERA2_AVAILABLE", False)
     monkeypatch.setattr("seedsigner.hardware.pivideostream.PICAMERA_AVAILABLE", True)
     monkeypatch.setattr("seedsigner.hardware.pivideostream.PiCamera", mock_picamera)
     monkeypatch.setattr("seedsigner.hardware.pivideostream.PiRGBArray", mock_pirgb)
@@ -214,6 +216,7 @@ def test_picamera_retry_still_raises_on_second_failure(monkeypatch):
         side_effect=[_MockPiCameraMMALError("mmal error"), _MockPiCameraMMALError("mmal error again")]
     )
 
+    monkeypatch.setattr("seedsigner.hardware.pivideostream.PICAMERA2_AVAILABLE", False)
     monkeypatch.setattr("seedsigner.hardware.pivideostream.PICAMERA_AVAILABLE", True)
     monkeypatch.setattr("seedsigner.hardware.pivideostream.PiCamera", mock_picamera)
     monkeypatch.setattr("seedsigner.hardware.pivideostream.PiCameraMMALError", _MockPiCameraMMALError)
@@ -233,6 +236,7 @@ def test_picamera_always_captures_rgb(monkeypatch):
     mock_pirgb = MagicMock(return_value=mock_raw)
     mock_camera.capture_continuous.return_value = iter([])
 
+    monkeypatch.setattr("seedsigner.hardware.pivideostream.PICAMERA2_AVAILABLE", False)
     monkeypatch.setattr("seedsigner.hardware.pivideostream.PICAMERA_AVAILABLE", True)
     monkeypatch.setattr("seedsigner.hardware.pivideostream.PiCamera", mock_picamera)
     monkeypatch.setattr("seedsigner.hardware.pivideostream.PiRGBArray", mock_pirgb)
@@ -244,3 +248,88 @@ def test_picamera_always_captures_rgb(monkeypatch):
         format="rgb",
         use_video_port=True,
     )
+
+
+def test_picamera2_used_when_available(monkeypatch):
+    """Picamera2 is selected over picamera when PICAMERA2_AVAILABLE is True."""
+    mock_picam2 = MagicMock()
+    mock_picamera2_cls = MagicMock(return_value=mock_picam2)
+    mock_picam2.create_video_configuration.return_value = {}
+
+    monkeypatch.setattr("seedsigner.hardware.pivideostream.PICAMERA2_AVAILABLE", True)
+    monkeypatch.setattr("seedsigner.hardware.pivideostream.Picamera2", mock_picamera2_cls)
+    monkeypatch.setattr("seedsigner.hardware.pivideostream.PICAMERA_AVAILABLE", False)
+
+    stream = VideoStream(resolution=(320, 240), framerate=12, format="bgr")
+
+    assert stream.use_picamera2 is True
+    assert stream.use_picamera is False
+    assert stream.camera is mock_picam2
+    mock_picam2.configure.assert_called_once()
+    mock_picam2.start.assert_called_once()
+
+
+def test_picamera2_video_config_uses_rgb888(monkeypatch):
+    """Picamera2 video configuration requests RGB888 format."""
+    mock_picam2 = MagicMock()
+    mock_picamera2_cls = MagicMock(return_value=mock_picam2)
+    mock_picam2.create_video_configuration.return_value = {}
+
+    monkeypatch.setattr("seedsigner.hardware.pivideostream.PICAMERA2_AVAILABLE", True)
+    monkeypatch.setattr("seedsigner.hardware.pivideostream.Picamera2", mock_picamera2_cls)
+    monkeypatch.setattr("seedsigner.hardware.pivideostream.PICAMERA_AVAILABLE", False)
+
+    VideoStream(resolution=(640, 480), framerate=15, format="bgr")
+
+    call_kwargs = mock_picam2.create_video_configuration.call_args
+    assert call_kwargs.kwargs["main"]["size"] == (640, 480)
+    assert call_kwargs.kwargs["main"]["format"] == "RGB888"
+    assert call_kwargs.kwargs["controls"]["FrameRate"] == 15.0
+
+
+def test_picamera_fallback_when_picamera2_unavailable(monkeypatch):
+    """Picamera is used when picamera2 is not available."""
+    mock_camera = MagicMock()
+    mock_raw = MagicMock()
+    mock_picamera = MagicMock(return_value=mock_camera)
+    mock_pirgb = MagicMock(return_value=mock_raw)
+    mock_camera.capture_continuous.return_value = iter([])
+
+    monkeypatch.setattr("seedsigner.hardware.pivideostream.PICAMERA2_AVAILABLE", False)
+    monkeypatch.setattr("seedsigner.hardware.pivideostream.PICAMERA_AVAILABLE", True)
+    monkeypatch.setattr("seedsigner.hardware.pivideostream.PiCamera", mock_picamera)
+    monkeypatch.setattr("seedsigner.hardware.pivideostream.PiRGBArray", mock_pirgb)
+
+    stream = VideoStream(resolution=(320, 240), framerate=12, format="bgr")
+
+    assert stream.use_picamera is True
+    assert stream.use_picamera2 is False
+    assert stream.camera is mock_camera
+
+
+def test_picamera2_not_used_for_v4l2_profile(monkeypatch):
+    """Picamera2 is skipped when prefer_v4l2 is True (e.g. Luckfox profiles)."""
+    mock_picam2 = MagicMock()
+    mock_picamera2_cls = MagicMock(return_value=mock_picam2)
+
+    monkeypatch.setattr("seedsigner.hardware.pivideostream.PICAMERA2_AVAILABLE", True)
+    monkeypatch.setattr("seedsigner.hardware.pivideostream.Picamera2", mock_picamera2_cls)
+
+    stream = VideoStream.__new__(VideoStream)
+    stream._prefer_v4l2 = True
+    stream._camera_config = {"resolution": (800, 600), "framerate": 10, "pixelformat": "NV12"}
+    stream.resolution = (320, 240)
+    stream.framerate = 12
+    stream.use_picamera2 = False
+    stream.use_v4l2 = False
+
+    monkeypatch.setattr("os.path.exists", lambda path: True)
+    monkeypatch.setattr(stream, "_normalize_device_candidates", lambda: ["/dev/video12"])
+    monkeypatch.setattr(stream, "_list_v4l2_formats", lambda device: {"NV12"})
+    monkeypatch.setattr(stream, "_probe_v4l2_device", lambda *args, **kwargs: (True, True))
+    monkeypatch.setattr(stream, "_get_negotiated_v4l2_format", lambda *args, **kwargs: (800, 600, "NV12", None))
+
+    stream._configure_v4l2_capture()
+
+    mock_picamera2_cls.assert_not_called()
+    assert stream.use_v4l2 is True

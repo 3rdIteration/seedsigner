@@ -13,6 +13,14 @@ from PIL import Image
 logger = logging.getLogger(__name__)
 
 try:
+    from picamera2 import Picamera2  # type: ignore
+
+    PICAMERA2_AVAILABLE = True
+except Exception:
+    PICAMERA2_AVAILABLE = False
+    Picamera2 = None
+
+try:
     from picamera.array import PiRGBArray
     from picamera import PiCamera
     from picamera.exc import PiCameraMMALError
@@ -54,6 +62,7 @@ class VideoStream:
         self.resolution = resolution
         self.framerate = framerate
         self.use_picamera = False
+        self.use_picamera2 = False
         self.use_v4l2 = False
         self.camera = None
         self.stream = None
@@ -67,6 +76,17 @@ class VideoStream:
         self._v4l2_decode_as_grey = False
         self._camera_config = camera_config or {}
         self._prefer_v4l2 = bool(prefer_v4l2)
+
+        if PICAMERA2_AVAILABLE and not self._prefer_v4l2:
+            self.camera = Picamera2()
+            config = self.camera.create_video_configuration(
+                main={"size": resolution, "format": "RGB888"},
+                controls={"FrameRate": float(framerate)},
+            )
+            self.camera.configure(config)
+            self.camera.start()
+            self.use_picamera2 = True
+            return
 
         if PICAMERA_AVAILABLE and not self._prefer_v4l2:
             try:
@@ -575,7 +595,7 @@ class VideoStream:
             if self.frame is None:
                 self._terminate_v4l2_process()
                 raise Exception("Unable to read frames from Luckfox camera device")
-        elif not self.use_picamera:
+        elif not self.use_picamera and not self.use_picamera2:
             if self.camera is None or not self.camera.isOpened():
                 raise Exception("Unable to open camera device")
             # Fail fast if the backend opened but cannot produce frames.
@@ -597,6 +617,18 @@ class VideoStream:
         return self
 
     def update(self):
+        if self.use_picamera2:
+            # capture_array() blocks until the camera hardware delivers a new
+            # frame, so this loop is naturally throttled to the camera's
+            # framerate and does not busy-spin the CPU.
+            while not self.should_stop:
+                self.frame = self.camera.capture_array()
+            self.camera.stop()
+            self.camera.close()
+            self.should_stop = False
+            self.is_stopped = True
+            return
+
         if self.use_picamera:
             for f in self.stream:
                 self.frame = f.array
