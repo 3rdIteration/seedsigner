@@ -12,10 +12,11 @@ from seedsigner.models.singleton import Singleton
 
 
 class Camera(Singleton):
-    """Singleton wrapper around PiCamera or a system webcam."""
+    """Singleton wrapper around PiCamera2, PiCamera, or a system webcam."""
 
     _video_stream = None
     _picamera = None
+    _using_picamera2 = False
     _camera_rotation = None
     _camera_index = 0
 
@@ -112,33 +113,47 @@ class Camera(Singleton):
         if self._video_stream is not None:
             self.stop_video_stream_mode()
         if self._picamera is not None:
-            if hasattr(self._picamera, "close"):
-                self._picamera.close()
-            else:
-                self._picamera.release()
+            self.stop_single_frame_mode()
 
         try:
-            from picamera import PiCamera
+            from picamera2 import Picamera2  # type: ignore
 
-            self._picamera = PiCamera(resolution=resolution, framerate=24)
-            self._picamera.start_preview()
+            picam2 = Picamera2()
+            config = picam2.create_still_configuration(main={"size": resolution})
+            picam2.configure(config)
+            picam2.start()
+            self._picamera = picam2
+            self._using_picamera2 = True
         except Exception:
+            self._using_picamera2 = False
             try:
-                import cv2  # type: ignore
-            except Exception as e:
-                raise ModuleNotFoundError(
-                    "OpenCV is required for desktop camera support; install requirements-desktop.txt",
-                ) from e
-            self._picamera = cv2.VideoCapture(self._camera_index)
-            self._picamera.set(cv2.CAP_PROP_FRAME_WIDTH, resolution[0])
-            self._picamera.set(cv2.CAP_PROP_FRAME_HEIGHT, resolution[1])
+                from picamera import PiCamera
+
+                self._picamera = PiCamera(resolution=resolution, framerate=24)
+                self._picamera.start_preview()
+            except Exception:
+                try:
+                    import cv2  # type: ignore
+                except Exception as e:
+                    raise ModuleNotFoundError(
+                        "OpenCV is required for desktop camera support; install requirements-desktop.txt",
+                    ) from e
+                self._picamera = cv2.VideoCapture(self._camera_index)
+                self._picamera.set(cv2.CAP_PROP_FRAME_WIDTH, resolution[0])
+                self._picamera.set(cv2.CAP_PROP_FRAME_HEIGHT, resolution[1])
 
     def capture_frame(self):
         """Capture a single frame from the camera as a PIL image."""
         if self._picamera is None:
             raise Exception("Must call start_single_frame_mode first.")
 
-        if hasattr(self._picamera, "capture"):
+        if self._using_picamera2:
+            # picamera2 (libcamera) path
+            frame = self._picamera.capture_array()
+            return Image.fromarray(frame.astype("uint8"), "RGB").rotate(
+                90 + self._camera_rotation
+            )
+        elif hasattr(self._picamera, "capture"):
             # PiCamera path
             self._picamera.shutter_speed = self._picamera.exposure_speed
             self._picamera.exposure_mode = "off"
@@ -162,9 +177,13 @@ class Camera(Singleton):
     def stop_single_frame_mode(self):
         """Release any resources used for single-frame capture."""
         if self._picamera is not None:
-            if hasattr(self._picamera, "close"):
+            if self._using_picamera2:
+                self._picamera.stop()
+                self._picamera.close()
+            elif hasattr(self._picamera, "close"):
                 self._picamera.close()
             else:
                 self._picamera.release()
             self._picamera = None
+            self._using_picamera2 = False
 

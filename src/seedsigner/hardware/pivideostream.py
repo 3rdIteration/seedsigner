@@ -1,4 +1,4 @@
-"""Threaded video capture that works with both PiCamera and OpenCV webcams."""
+"""Threaded video capture that works with PiCamera2, PiCamera, and OpenCV webcams."""
 
 import logging
 import time
@@ -7,15 +7,24 @@ from threading import Thread
 logger = logging.getLogger(__name__)
 
 try:
-    from picamera.array import PiRGBArray
-    from picamera import PiCamera
-    PICAMERA_AVAILABLE = True
+    from picamera2 import Picamera2  # type: ignore
+    PICAMERA2_AVAILABLE = True
 except Exception:  # ModuleNotFoundError, ImportError, etc.
-    PICAMERA_AVAILABLE = False
+    PICAMERA2_AVAILABLE = False
+
+if not PICAMERA2_AVAILABLE:
     try:
-        import cv2  # type: ignore
-    except Exception:
-        cv2 = None
+        from picamera.array import PiRGBArray
+        from picamera import PiCamera
+        PICAMERA_AVAILABLE = True
+    except Exception:  # ModuleNotFoundError, ImportError, etc.
+        PICAMERA_AVAILABLE = False
+        try:
+            import cv2  # type: ignore
+        except Exception:
+            cv2 = None
+else:
+    PICAMERA_AVAILABLE = False
 
 
 class PiVideoStream:
@@ -24,21 +33,30 @@ class PiVideoStream:
     def __init__(self, resolution=(320, 240), framerate=32, format="bgr", device_index=0, **kwargs):
         """Initialize the video stream.
 
-        When running on a Pi with the ``picamera`` library available we use that;
-        otherwise we fall back to OpenCV's ``VideoCapture`` on the given
-        ``device_index``.
+        When running on a Pi with the ``picamera2`` library (libcamera) available
+        we use that; otherwise we fall back to ``picamera`` and finally to
+        OpenCV's ``VideoCapture`` on the given ``device_index``.
         """
         self.should_stop = False
         self.is_stopped = True
         self.frame = None
         self.device_index = device_index
 
-        if PICAMERA_AVAILABLE:
+        if PICAMERA2_AVAILABLE:
+            self.camera = Picamera2()
+            config = self.camera.create_video_configuration(
+                main={"size": resolution, "format": "RGB888"}
+            )
+            self.camera.configure(config)
+            self.use_picamera2 = True
+            self.use_picamera = False
+        elif PICAMERA_AVAILABLE:
             self.camera = PiCamera(resolution=resolution, framerate=framerate, **kwargs)
             self.rawCapture = PiRGBArray(self.camera, size=resolution)
             self.stream = self.camera.capture_continuous(
                 self.rawCapture, format=format, use_video_port=True
             )
+            self.use_picamera2 = False
             self.use_picamera = True
         else:
             if cv2 is None:
@@ -48,6 +66,7 @@ class PiVideoStream:
             self.camera = cv2.VideoCapture(self.device_index)
             self.camera.set(cv2.CAP_PROP_FRAME_WIDTH, resolution[0])
             self.camera.set(cv2.CAP_PROP_FRAME_HEIGHT, resolution[1])
+            self.use_picamera2 = False
             self.use_picamera = False
 
     def start(self):
@@ -60,7 +79,16 @@ class PiVideoStream:
 
     def update(self):
         """Continuously read frames until :meth:`stop` is called."""
-        if self.use_picamera:
+        if self.use_picamera2:
+            self.camera.start()
+            while not self.should_stop:
+                self.frame = self.camera.capture_array()
+                time.sleep(0.001)
+            self.camera.stop()
+            self.camera.close()
+            self.should_stop = False
+            self.is_stopped = True
+        elif self.use_picamera:
             for f in self.stream:
                 self.frame = f.array
                 self.rawCapture.truncate(0)
