@@ -85,23 +85,36 @@ class ScanView(View):
 
             if self.decoder.is_seed:
                 seed_mnemonic = self.decoder.get_seed_phrase()
+                seed_type = self.decoder.get_seed_type()
 
                 if not seed_mnemonic:
                     # seed is not valid, Exit if not valid with message
                     return Destination(NotYetImplementedView)
-                else:
-                    # Found a valid mnemonic seed! All new seeds should be considered
-                    #   pending (might set a passphrase, SeedXOR, etc) until finalized.
-                    from seedsigner.models.seed import Seed
-                    from .seed_views import SeedFinalizeView
-                    self.controller.storage.set_pending_seed(
-                        Seed(mnemonic=seed_mnemonic, wordlist_language_code=self.wordlist_language_code)
+
+                if seed_type == "aezeed":
+                    return Destination(
+                        ErrorView,
+                        view_args=dict(
+                            title="Error",
+                            status_headline=_("Unsupported Seed Type"),
+                            text=_("Aezeed scanning was detected but decoding is not fully supported yet."),
+                            button_text=_("Back"),
+                            next_destination=Destination(BackStackView, skip_current_view=True),
+                        ),
                     )
-                    if self.settings.get_value(SettingsConstants.SETTING__PASSPHRASE) == SettingsConstants.OPTION__REQUIRED:
-                        from seedsigner.views.seed_views import SeedAddPassphraseView
-                        return Destination(SeedAddPassphraseView)
-                    else:
-                        return Destination(SeedFinalizeView)
+
+                # Found a valid mnemonic seed! All new seeds should be considered
+                #   pending (might set a passphrase, SeedXOR, etc) until finalized.
+                from seedsigner.models.seed import Seed
+                from .seed_views import SeedFinalizeView
+                self.controller.storage.set_pending_seed(
+                    Seed(mnemonic=seed_mnemonic, wordlist_language_code=self.wordlist_language_code)
+                )
+                if self.settings.get_value(SettingsConstants.SETTING__PASSPHRASE) == SettingsConstants.OPTION__REQUIRED:
+                    from seedsigner.views.seed_views import SeedAddPassphraseView
+                    return Destination(SeedAddPassphraseView)
+                else:
+                    return Destination(SeedFinalizeView)
 
             elif self.decoder.is_slip39_share:
                 share = self.decoder.get_slip39_share()
