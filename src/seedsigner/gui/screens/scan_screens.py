@@ -131,7 +131,7 @@ class ScanScreen(BaseScreen):
             debug = False
             show_framerate = False  # enable for debugging / testing
             while self.keep_running:
-                frame = self.camera.read_video_stream(as_image=True)
+                frame = self.camera.read_video_stream(as_image=True, preview=True)
                 if frame is not None:
                     num_frames += 1
                     cur_time = time.time()

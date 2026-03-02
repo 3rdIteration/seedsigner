@@ -116,13 +116,13 @@ class Camera(Singleton):
         stream_resolution = resolution
         stream_framerate = framerate
         stream_camera_config = dict(self._hardware_camera_config or {})
+        # Prefer board-specific io_config camera settings over generic caller
+        # defaults when present so profile tuning stays centralized.
+        if stream_camera_config.get("resolution"):
+            stream_resolution = tuple(stream_camera_config["resolution"])
+        if stream_camera_config.get("framerate"):
+            stream_framerate = int(stream_camera_config["framerate"])
         if prefer_v4l2:
-            # On Luckfox, prefer the board-specific io_config camera mode to
-            # avoid unstable/unsupported requests from generic caller defaults.
-            if stream_camera_config.get("resolution"):
-                stream_resolution = tuple(stream_camera_config["resolution"])
-            if stream_camera_config.get("framerate"):
-                stream_framerate = int(stream_camera_config["framerate"])
             stream_camera_config["resolution"] = tuple(stream_resolution)
 
         self._video_stream = VideoStream(
@@ -135,11 +135,11 @@ class Camera(Singleton):
         )
         self._video_stream.start()
 
-    def read_video_stream(self, as_image=False):
+    def read_video_stream(self, as_image=False, preview=False):
         """Read the most recent frame from stream mode."""
         if not self._video_stream:
             raise Exception("Must call start_video_stream_mode first.")
-        frame = self._video_stream.read()
+        frame = self._video_stream.read(preview=preview)
         if not as_image:
             return frame
         if frame is not None:

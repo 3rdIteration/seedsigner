@@ -40,6 +40,7 @@ except Exception:
 V4L2_PREFERRED_FORMATS = ("NV12", "UYVY", "XR24", "GREY")
 LUCKFOX_DEVICE_FALLBACKS = ("/dev/video12", "/dev/video11", "/dev/video13", "/dev/video14", "/dev/video15")
 MIN_LUCKFOX_CAPTURE_AREA = 320 * 240
+PICAMERA2_PREVIEW_RESOLUTION = (240, 240)
 
 
 class VideoStream:
@@ -58,6 +59,7 @@ class VideoStream:
         self.should_stop = False
         self.is_stopped = True
         self.frame = None
+        self.preview_frame = None
         self.device_index = int(device_index)
         self.resolution = resolution
         self.framerate = framerate
@@ -76,19 +78,32 @@ class VideoStream:
         self._v4l2_decode_as_grey = False
         self._camera_config = camera_config or {}
         self._prefer_v4l2 = bool(prefer_v4l2)
+        self._picamera2_has_lores = False
 
         if PICAMERA2_AVAILABLE and not self._prefer_v4l2:
-            if resolution == (480, 480):
-                # libcamera prefers standard 4:3 modes on Raspberry Pi. Keep the
-                # scan workload close to the legacy Pi Zero target while avoiding
-                # a square mode request that can negotiate poorly.
-                resolution = (640, 480)
-                self.resolution = resolution
             self.camera = Picamera2()
-            config = self.camera.create_video_configuration(
-                main={"size": resolution, "format": "RGB888"},
-                controls={"FrameRate": float(framerate)},
-            )
+            config_kwargs = {
+                "main": {"size": resolution, "format": "RGB888"},
+                "controls": {"FrameRate": float(framerate)},
+            }
+            if resolution[0] >= PICAMERA2_PREVIEW_RESOLUTION[0] and resolution[1] >= PICAMERA2_PREVIEW_RESOLUTION[1]:
+                # Keep decode on the main stream, but expose a smaller luma-only
+                # preview stream to reduce UI update cost on slow Pi models.
+                config_kwargs["lores"] = {
+                    "size": PICAMERA2_PREVIEW_RESOLUTION,
+                    "format": "YUV420",
+                }
+                self._picamera2_has_lores = True
+            try:
+                config = self.camera.create_video_configuration(**config_kwargs)
+            except Exception:
+                if self._picamera2_has_lores:
+                    logger.exception("Picamera2 lores stream unavailable; falling back to main stream only")
+                    self._picamera2_has_lores = False
+                    del config_kwargs["lores"]
+                    config = self.camera.create_video_configuration(**config_kwargs)
+                else:
+                    raise
             self.camera.configure(config)
             self.camera.start()
             self.use_picamera2 = True
@@ -628,7 +643,25 @@ class VideoStream:
             # frame, so this loop is naturally throttled to the camera's
             # framerate and does not busy-spin the CPU.
             while not self.should_stop:
+                if self._picamera2_has_lores:
+                    try:
+                        captured = self.camera.capture_arrays(["main", "lores"])
+                        arrays = captured
+                        if (
+                            isinstance(captured, tuple)
+                            and len(captured) == 2
+                            and isinstance(captured[0], (list, tuple))
+                        ):
+                            arrays = captured[0]
+                        if isinstance(arrays, (list, tuple)) and len(arrays) >= 2:
+                            self.frame = arrays[0]
+                            self.preview_frame = self._picamera2_lores_to_image(arrays[1])
+                            continue
+                    except Exception:
+                        self._picamera2_has_lores = False
+                        logger.exception("Picamera2 lores capture failed; falling back to main stream only")
                 self.frame = self.camera.capture_array()
+                self.preview_frame = None
             self.camera.stop()
             self.camera.close()
             self.should_stop = False
@@ -669,7 +702,22 @@ class VideoStream:
         self.camera.release()
         self.is_stopped = True
 
-    def read(self):
+    def _picamera2_lores_to_image(self, frame_data):
+        width, height = PICAMERA2_PREVIEW_RESOLUTION
+        try:
+            luminance = frame_data[:height, :width]
+        except Exception:
+            expected = width * height
+            try:
+                luminance = frame_data.reshape(-1)[:expected].reshape((height, width))
+            except Exception:
+                logger.exception("Unable to decode Picamera2 lores frame")
+                return None
+        return Image.fromarray(luminance.astype("uint8"), "L").convert("RGB")
+
+    def read(self, preview=False):
+        if preview and self.preview_frame is not None:
+            return self.preview_frame
         return self.frame
 
     def stop(self):

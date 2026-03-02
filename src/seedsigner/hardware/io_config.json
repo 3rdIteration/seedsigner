@@ -69,8 +69,8 @@
       "camera": {
         "device": "/dev/video0",
         "resolution": [
-          1280,
-          720
+          480,
+          480
         ],
         "framerate": 4
       }
@@ -134,8 +134,8 @@
       "camera": {
         "device": "/dev/video1",
         "resolution": [
-          1280,
-          720
+          480,
+          480
         ],
         "framerate": 4
       }
