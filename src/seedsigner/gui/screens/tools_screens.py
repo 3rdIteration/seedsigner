@@ -303,6 +303,7 @@ class ToolsImageEntropyLivePreviewScreen(BaseScreen):
             if self.hw_inputs.check_for_low(keys=HardwareButtonsConstants.KEYS__ANYCLICK):
                 # Have to manually update last input time since we're not in a wait_for loop
                 self.hw_inputs.update_last_input_time()
+                final_image = self.camera.read_video_stream(as_image=True, greyscale=False)
                 self.camera.stop_video_stream_mode()
 
                 with self.renderer.lock:
@@ -320,7 +321,7 @@ class ToolsImageEntropyLivePreviewScreen(BaseScreen):
                     )
                     self.renderer.show_image()
 
-                return preview_images
+                return (preview_images, final_image)
 
             # If we're still here, it's just another preview frame loop
             with self.renderer.lock:
