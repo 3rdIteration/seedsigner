@@ -1452,7 +1452,7 @@ class SeedAezeedMnemonicStartView(View):
                 show_back_button=False,
         )
 
-        self.controller.storage.init_pending_mnemonic(num_words=24)
+        self.controller.storage.init_pending_mnemonic(num_words=24, is_aezeed=True)
 
         return Destination(SeedMnemonicEntryView)
 

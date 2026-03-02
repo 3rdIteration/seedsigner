@@ -11,6 +11,7 @@ class SeedStorage:
         self.pending_seed: Seed = None
         self._pending_mnemonic: List[str] = []
         self._pending_is_electrum: bool = False
+        self._pending_is_aezeed: bool = False
         self._pending_is_slip39: bool = False
         self._pending_slip39_share: List[str] = []
         self._pending_slip39_shares: List[List[str]] = []
@@ -67,9 +68,10 @@ class SeedStorage:
         return len(self._pending_mnemonic)
 
 
-    def init_pending_mnemonic(self, num_words:int = 12, is_electrum:bool = False):
+    def init_pending_mnemonic(self, num_words:int = 12, is_electrum:bool = False, is_aezeed:bool = False):
         self._pending_mnemonic = [None] * num_words
         self._pending_is_electrum = is_electrum
+        self._pending_is_aezeed = is_aezeed
 
 
     def update_pending_mnemonic(self, word: str, index: int):
@@ -97,6 +99,8 @@ class SeedStorage:
         try:
             if self._pending_is_electrum:
                 seed = ElectrumSeed(self._pending_mnemonic)
+            elif self._pending_is_aezeed:
+                return None
             else:
                 seed = Seed(self._pending_mnemonic, wordlist_language_code=wordlist_language_code)
             return seed.get_fingerprint(network)
@@ -110,6 +114,8 @@ class SeedStorage:
     ):
         if self._pending_is_electrum:
             self.pending_seed = ElectrumSeed(self._pending_mnemonic)
+        elif self._pending_is_aezeed:
+            raise InvalidSeedException("Aezeed decoding is not yet supported")
         else:
             self.pending_seed = Seed(self._pending_mnemonic, wordlist_language_code=wordlist_language_code)
         self.discard_pending_mnemonic()
@@ -119,6 +125,7 @@ class SeedStorage:
         wipe_list(self._pending_mnemonic)
         self._pending_mnemonic = []
         self._pending_is_electrum = False
+        self._pending_is_aezeed = False
 
     """Slip39 share handling"""
 
