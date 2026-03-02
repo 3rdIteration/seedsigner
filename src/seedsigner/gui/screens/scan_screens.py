@@ -16,7 +16,7 @@ from seedsigner.models.threads import BaseThread, ThreadsafeCounter
 from .screen import BaseScreen, BaseTopNavScreen, ButtonListScreen, LoadingScreenThread
 from ..components import GUIConstants, Fonts, SeedSignerIconConstants, Button, IconButton, TextArea
 
-from seedsigner.gui.components import GUIConstants, Fonts, resize_image_to_fill
+from seedsigner.gui.components import GUIConstants, Fonts, resize_image_to_fit
 
 from seedsigner.models.decode_qr import DecodeQR
 from seedsigner.models.threads import BaseThread, ThreadsafeCounter
@@ -154,7 +154,7 @@ class ScanScreen(BaseScreen):
 
                     with self.renderer.lock:
                         # Use nearest neighbor resizing for max speed
-                        frame = resize_image_to_fill(frame, self.render_width, self.render_height, sampling_method=Image.Resampling.NEAREST)
+                        frame = resize_image_to_fit(frame, self.render_width, self.render_height, sampling_method=Image.Resampling.NEAREST)
 
                         if scan_text:
                             # Note: shadowed text (adding a 'stroke' outline) can

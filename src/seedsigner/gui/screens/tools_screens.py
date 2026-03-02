@@ -10,7 +10,7 @@ from seedsigner.helpers import mnemonic_generation
 from seedsigner.gui.renderer import Renderer
 from seedsigner.hardware.camera import Camera
 from seedsigner.helpers.qr import QR
-from seedsigner.gui.components import FontAwesomeIconConstants, Fonts, GUIConstants, IconTextLine, SeedSignerIconConstants, TextArea, Button, IconButton, CheckboxButton, load_image
+from seedsigner.gui.components import FontAwesomeIconConstants, Fonts, GUIConstants, IconTextLine, SeedSignerIconConstants, TextArea, Button, IconButton, CheckboxButton, load_image, resize_image_to_fit
 from seedsigner.gui.keyboard import Keyboard, TextEntryDisplay
 from seedsigner.gui.screens.screen import RET_CODE__BACK_BUTTON, BaseScreen, BaseTopNavScreen, ButtonListScreen, KeyboardScreen, WarningEdgesMixin, ButtonOption, LoadingScreenThread
 from seedsigner.hardware.buttons import HardwareButtonsConstants
@@ -232,7 +232,7 @@ class ToolsImageEntropyLivePreviewScreen(BaseScreen):
                 self.camera.stop_video_stream_mode()
                 return RET_CODE__BACK_BUTTON
 
-            frame: Image = self.camera.read_video_stream(as_image=True)
+            frame: Image = self.camera.read_video_stream(as_image=True, preview=True)
 
             if frame is None:
                 # Camera probably isn't ready yet
@@ -240,29 +240,14 @@ class ToolsImageEntropyLivePreviewScreen(BaseScreen):
                 continue
 
             with self.renderer.lock:
-                # Account for the possibly different aspect ratio of the camera frame
-                # vs the display; crop any excess.
-                # TODO: This cropping may be unnecessary if the above TODO about the
-                # camera resolution is solved.
-                box = None
-                if self.canvas_width != frame.width:
-                    half_width_diff = int(abs(self.canvas_width - frame.width)/2)
-                    box = (
-                        half_width_diff,
-                        0,
-                        frame.width - half_width_diff,
-                        frame.height
+                self.renderer.canvas.paste(
+                    resize_image_to_fit(
+                        frame,
+                        self.canvas_width,
+                        self.canvas_height,
+                        sampling_method=Image.Resampling.NEAREST,
                     )
-                elif self.canvas_height != frame.height:
-                    half_height_diff = int(abs(self.canvas_height - frame.height)/2)
-                    box = (
-                        0,
-                        half_height_diff,
-                        frame.width,
-                        frame.height - half_height_diff
-                    )
-
-                self.renderer.canvas.paste(frame.crop(box=box))
+                )
 
                 # Calculate and display Shannon entropy indicator (throttled to ~1s)
                 if time.time() - last_entropy_check >= 1:
