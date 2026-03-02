@@ -16,6 +16,7 @@ from urtypes.bytes import Bytes
 from seedsigner.helpers.ur2.ur_decoder import URDecoder
 from seedsigner.models.qr_type import QRType
 from seedsigner.models.seed import Seed
+from seedsigner.models.aezeed import has_valid_checksum as aezeed_has_valid_checksum
 from seedsigner.models.settings import SettingsConstants
 
 logger = logging.getLogger(__name__)
@@ -226,6 +227,10 @@ class DecodeQR:
     def get_seed_phrase(self):
         if self.is_seed:
             return self.decoder.get_seed_phrase()
+
+    def get_seed_type(self):
+        if self.is_seed:
+            return self.decoder.get_seed_type()
 
     def get_xprv(self):
         if self.is_xprv:
@@ -941,6 +946,8 @@ class SeedQrDecoder(BaseSingleFrameQrDecoder):
         self.seed_phrase = []
         self.wordlist_language_code = wordlist_language_code
         self.wordlist = Seed.get_wordlist(wordlist_language_code)
+        self.word_to_index = {word: idx for idx, word in enumerate(self.wordlist)}
+        self.seed_type = "bip39"
 
 
     def add(self, segment, qr_type=QRType.SEED__SEEDQR):
@@ -960,6 +967,7 @@ class SeedQrDecoder(BaseSingleFrameQrDecoder):
                 if len(self.seed_phrase) > 0:
                     if not self.has_valid_word_count():
                         return DecodeQRStatus.INVALID
+                    self.seed_type = "bip39"
                     self.complete = True
                     self.collected_segments = 1
                     return DecodeQRStatus.COMPLETE
@@ -974,6 +982,7 @@ class SeedQrDecoder(BaseSingleFrameQrDecoder):
                 self.seed_phrase = bip39.mnemonic_from_bytes(segment).split()
                 if not self.has_valid_word_count():
                     return DecodeQRStatus.INVALID
+                self.seed_type = "bip39"
                 self.complete = True
                 self.collected_segments = 1
                 return DecodeQRStatus.COMPLETE
@@ -984,18 +993,28 @@ class SeedQrDecoder(BaseSingleFrameQrDecoder):
         elif qr_type == QRType.SEED__MNEMONIC:
             try:
                 seed_phrase_list = self.seed_phrase = segment.strip().split(" ")
-
-                # embit mnemonic code to validate
-                seed = Seed(seed_phrase_list, passphrase="", wordlist_language_code=self.wordlist_language_code)
-                if not seed:
-                    return DecodeQRStatus.INVALID
-                self.seed_phrase = seed_phrase_list
                 if not self.has_valid_word_count():
                     return DecodeQRStatus.INVALID
+
+                is_valid_bip39 = False
+                try:
+                    Seed(seed_phrase_list, passphrase="", wordlist_language_code=self.wordlist_language_code)
+                    is_valid_bip39 = True
+                except Exception:
+                    is_valid_bip39 = False
+
+                if is_valid_bip39:
+                    self.seed_type = "bip39"
+                elif len(seed_phrase_list) == 24 and aezeed_has_valid_checksum(seed_phrase_list, self.word_to_index):
+                    self.seed_type = "aezeed"
+                else:
+                    return DecodeQRStatus.INVALID
+
+                self.seed_phrase = seed_phrase_list
                 self.complete = True
                 self.collected_segments = 1
                 return DecodeQRStatus.COMPLETE
-            except Exception as e:
+            except Exception:
                 return DecodeQRStatus.INVALID
 
         elif qr_type == QRType.SEED__FOUR_LETTER_MNEMONIC:
@@ -1014,6 +1033,7 @@ class SeedQrDecoder(BaseSingleFrameQrDecoder):
                 self.seed_phrase = words
                 if not self.has_valid_word_count():
                     return DecodeQRStatus.INVALID
+                self.seed_type = "bip39"
                 self.complete = True
                 self.collected_segments = 1
                 return DecodeQRStatus.COMPLETE
@@ -1027,6 +1047,11 @@ class SeedQrDecoder(BaseSingleFrameQrDecoder):
         if self.complete:
             return self.seed_phrase[:]
         return []
+
+    def get_seed_type(self):
+        if self.complete:
+            return self.seed_type
+        return None
 
     def has_valid_word_count(self):
         return len(self.seed_phrase) in (12, 15, 18, 21, 24)

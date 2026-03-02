@@ -281,6 +281,30 @@ def test_short_4_letter_mnemonic_qr():
     assert d.get_seed_phrase() == ["height", "demise", "useless", "trap", "grow", "lion", "found", "off", "key", "clown", "transfer", "enroll"]
 
 
+
+
+def test_mnemonic_qr_detects_aezeed_checksum_when_bip39_invalid():
+    aezeed_mnemonic = (
+        "absorb original enlist once climb erode kid thrive kitchen giant define tube "
+        "orange leader harbor comfort olive fatal success suggest drink penalty chimney ritual"
+    )
+    d = DecodeQR()
+
+    assert d.add_data(aezeed_mnemonic) == DecodeQRStatus.COMPLETE
+    assert d.get_seed_phrase() == aezeed_mnemonic.split()
+    assert d.get_seed_type() == "aezeed"
+
+
+def test_mnemonic_qr_prefers_bip39_over_aezeed_for_valid_bip39_24_word():
+    bip39_24 = (
+        "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon "
+        "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art"
+    )
+    d = DecodeQR()
+
+    assert d.add_data(bip39_24) == DecodeQRStatus.COMPLETE
+    assert d.get_seed_type() == "bip39"
+
 def test_xprv_qr():
     xprv = "xprv9s21ZrQH143K2LBWUUQRFXhucrQqBpKdRRxNVq2zBqsx8HVqFk2uYo8kmbaLLHRdqtQpUm98uKfu3vca1LqdGhUtyoFnCNkfmXRyPXLjbKb"
     d = DecodeQR()
