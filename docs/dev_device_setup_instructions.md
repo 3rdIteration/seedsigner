@@ -18,7 +18,7 @@ For the following steps you'll need to either connect a keyboard & monitor to th
 
 ### Flash the OS image
 
-Use [Raspberry Pi Imager](https://www.raspberrypi.com/software/) to write a recent Raspberry Pi OS (or Raspberry Pi OS Lite) image to a microSD card (4 GB or larger). The 64-bit (arm64) image is recommended.
+Use [Raspberry Pi Imager](https://www.raspberrypi.com/software/) to write a recent Raspberry Pi OS (or Raspberry Pi OS Lite) image to a microSD card (4 GB or larger). Either the 32-bit or 64-bit image will work, but older devices like the Pi Zero, Pi1 or Pi2 will require a 32-bit Raspberry Pi OS image.
 
 ### Configure the Pi
 
