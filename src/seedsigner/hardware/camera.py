@@ -7,7 +7,7 @@ OpenCV. All callers use the same `Camera` interface.
 
 import io
 
-from PIL import Image
+from PIL import Image, ImageOps
 
 from seedsigner.hardware.io_config import get_hardware_pin_mapping, runtime_profile_to_hardware_profile
 from seedsigner.models.settings import Settings, SettingsConstants
@@ -144,7 +144,7 @@ class Camera(Singleton):
         if not self._video_stream:
             raise Exception("Must call start_video_stream_mode first.")
         frame = self._video_stream.read(preview=preview)
-        if frame is not None and self._is_raspberry_pi_profile(self._runtime_profile):
+        if frame is not None and not as_image and self._is_raspberry_pi_profile(self._runtime_profile):
             if isinstance(frame, Image.Image):
                 frame = frame.convert("L").convert("RGB")
             elif getattr(frame, "ndim", None) == 3:
@@ -155,14 +155,26 @@ class Camera(Singleton):
         if frame is not None:
             if isinstance(frame, Image.Image):
                 image = frame
+                if self._is_raspberry_pi_profile(self._runtime_profile):
+                    image = image.convert("L").convert("RGB")
             elif getattr(frame, "ndim", None) == 2:
                 image = Image.fromarray(frame.astype("uint8"), "L").convert("RGB")
+            elif self._is_raspberry_pi_profile(self._runtime_profile):
+                # Preserve the faster single-channel shortcut for non-image
+                # consumers, but use a proper luminance conversion for display
+                # and stored image captures.
+                image = Image.fromarray(frame.astype("uint8"), "RGB").convert("L").convert("RGB")
             else:
                 image = Image.fromarray(frame.astype("uint8"), "RGB")
             if preview and not self._is_raspberry_pi_profile(self._runtime_profile):
                 # Keep preview rendering cheap and consistent even when the
                 # backend falls back to the main stream.
                 image = image.convert("L").convert("RGB")
+            elif preview and self._is_raspberry_pi_profile(self._runtime_profile):
+                # The Pi grayscale fast path can look too dim in preview-only
+                # screens. Stretch contrast for display without changing the
+                # underlying frame data used elsewhere.
+                image = ImageOps.autocontrast(image, cutoff=2)
             return image.rotate(90 + self._camera_rotation)
         return None
 
