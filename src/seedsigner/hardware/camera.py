@@ -28,6 +28,10 @@ class Camera(Singleton):
     def _is_luckfox_profile(runtime_profile: str) -> bool:
         return runtime_profile in {"luckfox_22", "luckfox_40", "luckfox_pi"}
 
+    @staticmethod
+    def _is_raspberry_pi_profile(runtime_profile: str) -> bool:
+        return runtime_profile in {"rpi_26", "rpi_40"}
+
     @classmethod
     def _get_hardware_camera_config(cls):
         runtime_profile = Settings.RUNTIME_PROFILE
@@ -140,6 +144,12 @@ class Camera(Singleton):
         if not self._video_stream:
             raise Exception("Must call start_video_stream_mode first.")
         frame = self._video_stream.read(preview=preview)
+        if frame is not None and self._is_raspberry_pi_profile(self._runtime_profile):
+            if isinstance(frame, Image.Image):
+                frame = frame.convert("L").convert("RGB")
+            elif getattr(frame, "ndim", None) == 3:
+                # Collapse to a single channel to reduce CPU/memory pressure on Pi.
+                frame = frame[:, :, 1]
         if not as_image:
             return frame
         if frame is not None:
@@ -149,7 +159,7 @@ class Camera(Singleton):
                 image = Image.fromarray(frame.astype("uint8"), "L").convert("RGB")
             else:
                 image = Image.fromarray(frame.astype("uint8"), "RGB")
-            if preview:
+            if preview and not self._is_raspberry_pi_profile(self._runtime_profile):
                 # Keep preview rendering cheap and consistent even when the
                 # backend falls back to the main stream.
                 image = image.convert("L").convert("RGB")
@@ -228,19 +238,26 @@ class Camera(Singleton):
         if self._capture is None:
             raise Exception("Must call start_single_frame_mode first.")
 
+        image = None
         if hasattr(self._capture, "read") and hasattr(self._capture, "stop"):
             frame = self._capture.read()
             if frame is None:
                 return None
             if isinstance(frame, Image.Image):
-                return frame.rotate(90 + self._camera_rotation)
-            return Image.fromarray(frame.astype("uint8"), "RGB").rotate(90 + self._camera_rotation)
+                image = frame
+            elif getattr(frame, "ndim", None) == 2:
+                image = Image.fromarray(frame.astype("uint8"), "L").convert("RGB")
+            else:
+                image = Image.fromarray(frame.astype("uint8"), "RGB")
 
-        if hasattr(self._capture, "capture_array"):
+        elif hasattr(self._capture, "capture_array"):
             frame = self._capture.capture_array()
-            return Image.fromarray(frame.astype("uint8"), "RGB").rotate(90 + self._camera_rotation)
+            if getattr(frame, "ndim", None) == 2:
+                image = Image.fromarray(frame.astype("uint8"), "L").convert("RGB")
+            else:
+                image = Image.fromarray(frame.astype("uint8"), "RGB")
 
-        if hasattr(self._capture, "capture"):
+        elif hasattr(self._capture, "capture"):
             self._capture.shutter_speed = self._capture.exposure_speed
             self._capture.exposure_mode = "off"
             gains = self._capture.awb_gains
@@ -250,15 +267,20 @@ class Camera(Singleton):
             stream = io.BytesIO()
             self._capture.capture(stream, format="jpeg")
             stream.seek(0)
-            return Image.open(stream).rotate(90 + self._camera_rotation)
+            image = Image.open(stream)
 
-        import cv2  # type: ignore
+        else:
+            import cv2  # type: ignore
 
-        ret, frame = self._capture.read()
-        if not ret:
-            return None
-        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        return Image.fromarray(frame.astype("uint8"), "RGB").rotate(90 + self._camera_rotation)
+            ret, frame = self._capture.read()
+            if not ret:
+                return None
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            image = Image.fromarray(frame.astype("uint8"), "RGB")
+
+        if self._is_raspberry_pi_profile(self._runtime_profile):
+            image = image.convert("L").convert("RGB")
+        return image.rotate(90 + self._camera_rotation)
 
     def stop_single_frame_mode(self):
         """Release single-frame backend resources."""
