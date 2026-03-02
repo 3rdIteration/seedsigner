@@ -7,7 +7,7 @@ OpenCV. All callers use the same `Camera` interface.
 
 import io
 
-from PIL import Image
+from PIL import Image, ImageOps
 
 from seedsigner.hardware.io_config import get_hardware_pin_mapping, runtime_profile_to_hardware_profile
 from seedsigner.models.settings import Settings, SettingsConstants
@@ -27,6 +27,10 @@ class Camera(Singleton):
     @staticmethod
     def _is_luckfox_profile(runtime_profile: str) -> bool:
         return runtime_profile in {"luckfox_22", "luckfox_40", "luckfox_pi"}
+
+    @staticmethod
+    def _is_raspberry_pi_profile(runtime_profile: str) -> bool:
+        return runtime_profile in {"rpi_26", "rpi_40"}
 
     @classmethod
     def _get_hardware_camera_config(cls):
@@ -117,7 +121,7 @@ class Camera(Singleton):
         stream_framerate = framerate
         stream_camera_config = dict(self._hardware_camera_config or {})
         # Prefer board-specific io_config camera settings over generic caller
-        # defaults when available (applies to all profiles with camera config).
+        # defaults when present so profile tuning stays centralized.
         if stream_camera_config.get("resolution"):
             stream_resolution = tuple(stream_camera_config["resolution"])
         if stream_camera_config.get("framerate"):
@@ -135,17 +139,53 @@ class Camera(Singleton):
         )
         self._video_stream.start()
 
-    def read_video_stream(self, as_image=False):
+    def read_video_stream(self, as_image=False, preview=False, greyscale=True):
         """Read the most recent frame from stream mode."""
         if not self._video_stream:
             raise Exception("Must call start_video_stream_mode first.")
-        frame = self._video_stream.read()
+        try:
+            frame = self._video_stream.read(preview=preview, display=as_image and not preview)
+        except TypeError:
+            # Preserve compatibility with simple test doubles/backends that
+            # still expose the legacy no-argument read() signature.
+            frame = self._video_stream.read()
+        if (
+            frame is not None
+            and not as_image
+            and greyscale
+            and self._is_raspberry_pi_profile(self._runtime_profile)
+        ):
+            if isinstance(frame, Image.Image):
+                frame = frame.convert("L").convert("RGB")
+            elif getattr(frame, "ndim", None) == 3:
+                # Collapse to a single channel to reduce CPU/memory pressure on Pi.
+                frame = frame[:, :, 1]
         if not as_image:
             return frame
         if frame is not None:
             if isinstance(frame, Image.Image):
-                return frame.rotate(90 + self._camera_rotation)
-            return Image.fromarray(frame.astype("uint8"), "RGB").rotate(90 + self._camera_rotation)
+                image = frame
+                if greyscale and self._is_raspberry_pi_profile(self._runtime_profile):
+                    image = image.convert("L").convert("RGB")
+            elif getattr(frame, "ndim", None) == 2:
+                image = Image.fromarray(frame.astype("uint8"), "L").convert("RGB")
+            elif greyscale and self._is_raspberry_pi_profile(self._runtime_profile):
+                # Preserve the faster single-channel shortcut for non-image
+                # consumers, but use a proper luminance conversion for display
+                # and stored image captures.
+                image = Image.fromarray(frame.astype("uint8"), "RGB").convert("L").convert("RGB")
+            else:
+                image = Image.fromarray(frame.astype("uint8"), "RGB")
+            if preview and not self._is_raspberry_pi_profile(self._runtime_profile):
+                # Keep preview rendering cheap and consistent even when the
+                # backend falls back to the main stream.
+                image = image.convert("L").convert("RGB")
+            elif preview and greyscale and self._is_raspberry_pi_profile(self._runtime_profile):
+                # The Pi grayscale fast path can look too dim in preview-only
+                # screens. Stretch contrast for display without changing the
+                # underlying frame data used elsewhere.
+                image = ImageOps.autocontrast(image, cutoff=2)
+            return image.rotate(90 + self._camera_rotation)
         return None
 
     def stop_video_stream_mode(self):
@@ -183,6 +223,19 @@ class Camera(Singleton):
             return
 
         try:
+            from picamera2 import Picamera2  # type: ignore
+
+            self._capture = Picamera2()
+            config = self._capture.create_still_configuration(
+                main={"size": resolution, "format": "RGB888"}
+            )
+            self._capture.configure(config)
+            self._capture.start()
+            return
+        except Exception:
+            pass
+
+        try:
             from picamera import PiCamera  # type: ignore
 
             self._capture = PiCamera(resolution=resolution, framerate=24)
@@ -207,15 +260,26 @@ class Camera(Singleton):
         if self._capture is None:
             raise Exception("Must call start_single_frame_mode first.")
 
+        image = None
         if hasattr(self._capture, "read") and hasattr(self._capture, "stop"):
             frame = self._capture.read()
             if frame is None:
                 return None
             if isinstance(frame, Image.Image):
-                return frame.rotate(90 + self._camera_rotation)
-            return Image.fromarray(frame.astype("uint8"), "RGB").rotate(90 + self._camera_rotation)
+                image = frame
+            elif getattr(frame, "ndim", None) == 2:
+                image = Image.fromarray(frame.astype("uint8"), "L").convert("RGB")
+            else:
+                image = Image.fromarray(frame.astype("uint8"), "RGB")
 
-        if hasattr(self._capture, "capture"):
+        elif hasattr(self._capture, "capture_array"):
+            frame = self._capture.capture_array()
+            if getattr(frame, "ndim", None) == 2:
+                image = Image.fromarray(frame.astype("uint8"), "L").convert("RGB")
+            else:
+                image = Image.fromarray(frame.astype("uint8"), "RGB")
+
+        elif hasattr(self._capture, "capture"):
             self._capture.shutter_speed = self._capture.exposure_speed
             self._capture.exposure_mode = "off"
             gains = self._capture.awb_gains
@@ -225,15 +289,20 @@ class Camera(Singleton):
             stream = io.BytesIO()
             self._capture.capture(stream, format="jpeg")
             stream.seek(0)
-            return Image.open(stream).rotate(90 + self._camera_rotation)
+            image = Image.open(stream)
 
-        import cv2  # type: ignore
+        else:
+            import cv2  # type: ignore
 
-        ret, frame = self._capture.read()
-        if not ret:
-            return None
-        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        return Image.fromarray(frame.astype("uint8"), "RGB").rotate(90 + self._camera_rotation)
+            ret, frame = self._capture.read()
+            if not ret:
+                return None
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            image = Image.fromarray(frame.astype("uint8"), "RGB")
+
+        if self._is_raspberry_pi_profile(self._runtime_profile):
+            image = image.convert("L").convert("RGB")
+        return image.rotate(90 + self._camera_rotation)
 
     def stop_single_frame_mode(self):
         """Release single-frame backend resources."""

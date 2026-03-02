@@ -9,7 +9,7 @@ from typing import List
 
 
 from seedsigner.helpers.l10n import mark_for_translation as _mft
-from seedsigner.gui.components import Button, CheckboxButton, CheckedSelectionButton, FontAwesomeIconConstants, Fonts, GUIConstants, Icon, IconButton, IconTextLine, SeedSignerIconConstants, TextArea, resize_image_to_fill
+from seedsigner.gui.components import Button, CheckboxButton, CheckedSelectionButton, FontAwesomeIconConstants, Fonts, GUIConstants, Icon, IconButton, IconTextLine, SeedSignerIconConstants, TextArea, resize_image_to_fit
 from seedsigner.gui.screens.scan_screens import ScanScreen
 from seedsigner.gui.screens.screen import BaseScreen, BaseTopNavScreen, ButtonListScreen, ButtonOption, KeyboardScreen
 from seedsigner.models.threads import BaseThread
@@ -271,7 +271,7 @@ class IOTestScreen(BaseTopNavScreen):
                             )
                             time.sleep(1.0)
                             for attempt in range(10):
-                                background_frame = camera.read_video_stream(as_image=True)
+                                background_frame = camera.read_video_stream(as_image=True, preview=True)
                                 if background_frame is not None:
                                     break
                                 time.sleep(0.2)
@@ -290,7 +290,7 @@ class IOTestScreen(BaseTopNavScreen):
                         cutoff=2
                     )
                     body_height = self.canvas_height - self.top_nav.height
-                    display_version = resize_image_to_fill(
+                    display_version = resize_image_to_fit(
                         display_version,
                         target_size_x=self.canvas_width,
                         target_size_y=body_height,

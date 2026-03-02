@@ -16,7 +16,7 @@ from seedsigner.models.threads import BaseThread, ThreadsafeCounter
 from .screen import BaseScreen, BaseTopNavScreen, ButtonListScreen, LoadingScreenThread
 from ..components import GUIConstants, Fonts, SeedSignerIconConstants, Button, IconButton, TextArea
 
-from seedsigner.gui.components import GUIConstants, Fonts, resize_image_to_fill
+from seedsigner.gui.components import GUIConstants, Fonts, resize_image_to_fit
 
 from seedsigner.models.decode_qr import DecodeQR
 from seedsigner.models.threads import BaseThread, ThreadsafeCounter
@@ -131,7 +131,7 @@ class ScanScreen(BaseScreen):
             debug = False
             show_framerate = False  # enable for debugging / testing
             while self.keep_running:
-                frame = self.camera.read_video_stream(as_image=True)
+                frame = self.camera.read_video_stream(as_image=True, preview=True)
                 if frame is not None:
                     num_frames += 1
                     cur_time = time.time()
@@ -154,7 +154,7 @@ class ScanScreen(BaseScreen):
 
                     with self.renderer.lock:
                         # Use nearest neighbor resizing for max speed
-                        frame = resize_image_to_fill(frame, self.render_width, self.render_height, sampling_method=Image.Resampling.NEAREST)
+                        frame = resize_image_to_fit(frame, self.render_width, self.render_height, sampling_method=Image.Resampling.NEAREST)
 
                         if scan_text:
                             # Note: shadowed text (adding a 'stroke' outline) can

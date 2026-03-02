@@ -574,12 +574,16 @@ class ToolsImageEntropyLivePreviewView(View):
     def run(self):
         from seedsigner.gui.screens.tools_screens import ToolsImageEntropyLivePreviewScreen
         self.controller.image_entropy_preview_frames = None
+        self.controller.image_entropy_final_image = None
         ret = ToolsImageEntropyLivePreviewScreen().display()
 
         if ret == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
-        
-        self.controller.image_entropy_preview_frames = ret
+
+        if isinstance(ret, tuple) and len(ret) == 2:
+            self.controller.image_entropy_preview_frames, self.controller.image_entropy_final_image = ret
+        else:
+            self.controller.image_entropy_preview_frames = ret
         return Destination(
             ToolsImageEntropyFinalImageView,
             view_args=dict(next_view=self.next_view, next_view_args=self.next_view_args),
