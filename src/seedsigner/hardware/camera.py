@@ -143,7 +143,7 @@ class Camera(Singleton):
         """Read the most recent frame from stream mode."""
         if not self._video_stream:
             raise Exception("Must call start_video_stream_mode first.")
-        frame = self._video_stream.read(preview=preview)
+        frame = self._video_stream.read(preview=preview, display=as_image and not preview)
         if frame is not None and not as_image and self._is_raspberry_pi_profile(self._runtime_profile):
             if isinstance(frame, Image.Image):
                 frame = frame.convert("L").convert("RGB")

@@ -59,6 +59,7 @@ class VideoStream:
         self.should_stop = False
         self.is_stopped = True
         self.frame = None
+        self.display_frame = None
         self.preview_frame = None
         self.device_index = int(device_index)
         self.resolution = resolution
@@ -654,13 +655,15 @@ class VideoStream:
                         ):
                             arrays = captured[0]
                         if isinstance(arrays, (list, tuple)) and len(arrays) >= 2:
-                            self.frame = self._picamera2_main_to_greyscale(arrays[0])
+                            self.display_frame = arrays[0]
+                            self.frame = self._picamera2_main_to_greyscale(self.display_frame)
                             self.preview_frame = self._picamera2_lores_to_image(arrays[1])
                             continue
                     except Exception:
                         self._picamera2_has_lores = False
                         logger.exception("Picamera2 lores capture failed; falling back to main stream only")
-                self.frame = self._picamera2_main_to_greyscale(self.camera.capture_array())
+                self.display_frame = self.camera.capture_array()
+                self.frame = self._picamera2_main_to_greyscale(self.display_frame)
                 self.preview_frame = None
             self.camera.stop()
             self.camera.close()
@@ -724,9 +727,11 @@ class VideoStream:
             logger.exception("Unable to convert Picamera2 main frame to greyscale")
         return frame_data
 
-    def read(self, preview=False):
+    def read(self, preview=False, display=False):
         if preview and self.preview_frame is not None:
             return self.preview_frame
+        if display and self.display_frame is not None:
+            return self.display_frame
         return self.frame
 
     def stop(self):
