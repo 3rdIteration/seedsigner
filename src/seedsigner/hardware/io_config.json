@@ -67,7 +67,6 @@
         ]
       },
       "camera": {
-        "device": "/dev/video0",
         "resolution": [
           480,
           480
@@ -132,7 +131,6 @@
         ]
       },
       "camera": {
-        "device": "/dev/video1",
         "resolution": [
           480,
           480
