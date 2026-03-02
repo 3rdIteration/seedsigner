@@ -21,12 +21,15 @@
       ],
       "display": {
         "dc": [
+          "/dev/gpiochip0",
           25
         ],
         "rst": [
+          "/dev/gpiochip0",
           27
         ],
         "bl": [
+          "/dev/gpiochip0",
           24
         ],
         "spi_bus": 0,
@@ -34,34 +37,42 @@
       },
       "buttons": {
         "KEY_UP": [
+          "/dev/gpiochip0",
           6,
           "pull_up"
         ],
         "KEY_DOWN": [
+          "/dev/gpiochip0",
           19,
           "pull_up"
         ],
         "KEY_LEFT": [
+          "/dev/gpiochip0",
           5,
           "pull_up"
         ],
         "KEY_RIGHT": [
+          "/dev/gpiochip0",
           26,
           "pull_up"
         ],
         "KEY_PRESS": [
+          "/dev/gpiochip0",
           13,
           "pull_up"
         ],
         "KEY1": [
+          "/dev/gpiochip0",
           21,
           "pull_up"
         ],
         "KEY2": [
+          "/dev/gpiochip0",
           20,
           "pull_up"
         ],
         "KEY3": [
+          "/dev/gpiochip0",
           16,
           "pull_up"
         ]
@@ -85,12 +96,15 @@
       ],
       "display": {
         "dc": [
+          "/dev/gpiochip0",
           25
         ],
         "rst": [
+          "/dev/gpiochip0",
           27
         ],
         "bl": [
+          "/dev/gpiochip0",
           24
         ],
         "spi_bus": 0,
@@ -98,34 +112,42 @@
       },
       "buttons": {
         "KEY_UP": [
+          "/dev/gpiochip0",
           3,
           "pull_up"
         ],
         "KEY_DOWN": [
+          "/dev/gpiochip0",
           17,
           "pull_up"
         ],
         "KEY_LEFT": [
+          "/dev/gpiochip0",
           2,
           "pull_up"
         ],
         "KEY_RIGHT": [
+          "/dev/gpiochip0",
           22,
           "pull_up"
         ],
         "KEY_PRESS": [
+          "/dev/gpiochip0",
           4,
           "pull_up"
         ],
         "KEY1": [
+          "/dev/gpiochip0",
           23,
           "pull_up"
         ],
         "KEY2": [
+          "/dev/gpiochip0",
           18,
           "pull_up"
         ],
         "KEY3": [
+          "/dev/gpiochip0",
           14,
           "pull_up"
         ]
