@@ -71,6 +71,59 @@ python src/main.py
 ```
 
 
+## Configure auto-start at boot
+
+To have SeedSigner start automatically when the Raspberry Pi boots, create a `systemd` service:
+```bash
+sudo nano /etc/systemd/system/seedsigner.service
+```
+
+Add the following contents. If you are not using the username `pi`, replace `pi` in the three places below with your username:
+```ini
+[Unit]
+Description=Seedsigner
+
+[Service]
+User=pi
+WorkingDirectory=/home/pi/seedsigner
+ExecStart=/usr/bin/python3 src/main.py
+StandardOutput=null
+StandardError=null
+Restart=no
+
+[Install]
+WantedBy=multi-user.target
+```
+
+_Note: `Restart=no` ensures that if the code crashes, systemd will not keep restarting it._
+
+Use `CTRL-X` and `y` to exit and save changes.
+
+Enable the service to start at boot:
+```bash
+sudo systemctl enable seedsigner.service
+```
+
+Now reboot the Raspberry Pi:
+```bash
+sudo reboot
+```
+
+After the Raspberry Pi reboots, the SeedSigner splash screen should appear on the LCD display (it may take up to 60 seconds).
+
+#### Optional: kill the auto-start process on SSH login
+When testing new code on the device, you may want to automatically kill the running SeedSigner instance each time you SSH in. Add the following to `~/.profile`:
+```bash
+nano ~/.profile
+```
+
+Add at the end:
+```bash
+# Find the SeedSigner process and kill it
+kill $(ps aux | grep '[m]ain.py' | awk '{print $2}') 2>/dev/null || true
+```
+
+
 ## Local testing and development
 
 ### Run specific branches or PRs
