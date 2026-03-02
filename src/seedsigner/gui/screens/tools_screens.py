@@ -233,7 +233,7 @@ class ToolsImageEntropyLivePreviewScreen(BaseScreen):
                 return RET_CODE__BACK_BUTTON
 
             frame: Image = self.camera.read_video_stream(as_image=True, preview=True)
-            entropy_frame: Image = self.camera.read_video_stream(as_image=True, greyscale=False)
+            entropy_frame: Image = self.camera.read_video_stream(as_image=True)
 
             if frame is None or entropy_frame is None:
                 # Camera probably isn't ready yet
@@ -303,7 +303,7 @@ class ToolsImageEntropyLivePreviewScreen(BaseScreen):
             if self.hw_inputs.check_for_low(keys=HardwareButtonsConstants.KEYS__ANYCLICK):
                 # Have to manually update last input time since we're not in a wait_for loop
                 self.hw_inputs.update_last_input_time()
-                final_image = self.camera.read_video_stream(as_image=True, greyscale=False)
+                final_image = self.camera.read_video_stream(as_image=True)
                 self.camera.stop_video_stream_mode()
 
                 with self.renderer.lock:

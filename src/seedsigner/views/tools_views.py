@@ -610,7 +610,7 @@ class ToolsImageEntropyFinalImageView(View):
                 camera.start_video_stream_mode()
                 time.sleep(1.0)
                 for attempt in range(10):
-                    img = camera.read_video_stream(as_image=True, greyscale=False)
+                    img = camera.read_video_stream(as_image=True)
                     if img is not None:
                         break
                     logger.info(f"Attempt {attempt + 1} to capture entropy frame")
