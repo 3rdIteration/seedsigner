@@ -127,6 +127,7 @@ class SeedSelectSeedView(View):
     TYPE_21WORD = ButtonOption("Enter 21-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=21)
     TYPE_24WORD = ButtonOption("Enter 24-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=24)
     TYPE_ELECTRUM = ButtonOption("Enter Electrum seed", FontAwesomeIconConstants.KEYBOARD)
+    TYPE_AEZEED = ButtonOption("Enter Aezeed seed", FontAwesomeIconConstants.KEYBOARD)
     TYPE_SLIP39 = ButtonOption("SLIP-39 Shares", FontAwesomeIconConstants.KEYBOARD)
 
     def __init__(self, flow: str):
@@ -182,6 +183,8 @@ class SeedSelectSeedView(View):
 
         if self.settings.get_value(SettingsConstants.SETTING__ELECTRUM_SEEDS) == SettingsConstants.OPTION__ENABLED:
             button_data.append(self.TYPE_ELECTRUM)
+        if self.settings.get_value(SettingsConstants.SETTING__AEZEED_SEEDS) == SettingsConstants.OPTION__ENABLED:
+            button_data.append(self.TYPE_AEZEED)
         if self.settings.get_value(SettingsConstants.SETTING__SLIP39_SEEDS) == SettingsConstants.OPTION__ENABLED:
             button_data.append(self.TYPE_SLIP39)
 
@@ -241,6 +244,9 @@ class SeedSelectSeedView(View):
         elif button_data[selected_menu_num] == self.TYPE_ELECTRUM:
             return Destination(SeedElectrumMnemonicStartView)
 
+        elif button_data[selected_menu_num] == self.TYPE_AEZEED:
+            return Destination(SeedAezeedMnemonicStartView)
+
         elif button_data[selected_menu_num] == self.TYPE_SLIP39:
             return Destination(SeedSlip39MnemonicStartView)
 
@@ -257,6 +263,7 @@ class LoadSeedView(View):
     TYPE_21WORD = ButtonOption("Enter 21-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=21)
     TYPE_24WORD = ButtonOption("Enter 24-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=24)
     TYPE_ELECTRUM = ButtonOption("Enter Electrum seed", FontAwesomeIconConstants.KEYBOARD)
+    TYPE_AEZEED = ButtonOption("Enter Aezeed seed", FontAwesomeIconConstants.KEYBOARD)
     TYPE_SLIP39 = ButtonOption("SLIP-39 Shares", FontAwesomeIconConstants.KEYBOARD)
     IMPORT_SEEDKEEPER = ButtonOption("From SeedKeeper", FontAwesomeIconConstants.LOCK)
     BITBOX_BACKUP = ButtonOption("BitBox02 backup", SeedSignerIconConstants.MICROSD)
@@ -283,6 +290,9 @@ class LoadSeedView(View):
 
         if self.settings.get_value(SettingsConstants.SETTING__SLIP39_SEEDS) == SettingsConstants.OPTION__ENABLED:
             button_data.append(self.TYPE_SLIP39)
+
+        if self.settings.get_value(SettingsConstants.SETTING__AEZEED_SEEDS) == SettingsConstants.OPTION__ENABLED:
+            button_data.append(self.TYPE_AEZEED)
 
         if self.settings.get_value(SettingsConstants.SETTING__BITBOX_BACKUP) == SettingsConstants.OPTION__ENABLED:
             button_data.append(self.BITBOX_BACKUP)
@@ -321,6 +331,9 @@ class LoadSeedView(View):
 
         elif button_data[selected_menu_num] == self.TYPE_ELECTRUM:
             return Destination(SeedElectrumMnemonicStartView)
+
+        elif button_data[selected_menu_num] == self.TYPE_AEZEED:
+            return Destination(SeedAezeedMnemonicStartView)
 
         elif button_data[selected_menu_num] == self.TYPE_SLIP39:
             return Destination(SeedSlip39MnemonicStartView)
@@ -1425,6 +1438,23 @@ class SeedDiscardView(View):
                 self.controller.storage.clear_pending_seed()
             return Destination(MainMenuView, clear_history=True)
 
+
+
+
+
+class SeedAezeedMnemonicStartView(View):
+    def run(self):
+        self.run_screen(
+                WarningScreen,
+                title=_("Aezeed support"),
+                status_headline=None,
+                text=_("Aezeed entry is experimental.\nUse only with known-good backups."),
+                show_back_button=False,
+        )
+
+        self.controller.storage.init_pending_mnemonic(num_words=24)
+
+        return Destination(SeedMnemonicEntryView)
 
 
 class SeedElectrumMnemonicStartView(View):

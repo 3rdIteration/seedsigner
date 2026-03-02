@@ -444,6 +444,7 @@ class SettingsConstants:
     SETTING__BIP85_CHILD_SEEDS = "bip85_child_seeds"
     SETTING__BIP85_ECC_KEYS = "bip85_ecc_keys"
     SETTING__SLIP39_SEEDS = "slip39_seeds"
+    SETTING__AEZEED_SEEDS = "aezeed_seeds"
     SETTING__SLIP39_EXTENDABLE = "slip39_extendable"
     SETTING__ELECTRUM_SEEDS = "electrum_seeds"
     SETTING__BITBOX_BACKUP = "bitbox_backup"
@@ -924,6 +925,14 @@ class SettingsDefinition:
                       attr_name=SettingsConstants.SETTING__SLIP39_SEEDS,
                       abbreviated_name="slip39",
                       display_name=_mft("SLIP39 seeds"),
+                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
+                      default_value=SettingsConstants.OPTION__DISABLED),
+
+        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
+                      attr_name=SettingsConstants.SETTING__AEZEED_SEEDS,
+                      abbreviated_name="aezeed",
+                      display_name=_mft("Aezeed seeds"),
+                      help_text=_mft("LND-compatible, 24 words"),
                       visibility=SettingsConstants.VISIBILITY__ADVANCED,
                       default_value=SettingsConstants.OPTION__DISABLED),
 
