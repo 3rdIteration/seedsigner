@@ -78,6 +78,12 @@ class VideoStream:
         self._prefer_v4l2 = bool(prefer_v4l2)
 
         if PICAMERA2_AVAILABLE and not self._prefer_v4l2:
+            if resolution == (480, 480):
+                # libcamera prefers standard 4:3 modes on Raspberry Pi. Keep the
+                # scan workload close to the legacy Pi Zero target while avoiding
+                # a square mode request that can negotiate poorly.
+                resolution = (640, 480)
+                self.resolution = resolution
             self.camera = Picamera2()
             config = self.camera.create_video_configuration(
                 main={"size": resolution, "format": "RGB888"},
