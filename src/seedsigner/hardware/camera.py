@@ -143,7 +143,12 @@ class Camera(Singleton):
         """Read the most recent frame from stream mode."""
         if not self._video_stream:
             raise Exception("Must call start_video_stream_mode first.")
-        frame = self._video_stream.read(preview=preview, display=as_image and not preview)
+        try:
+            frame = self._video_stream.read(preview=preview, display=as_image and not preview)
+        except TypeError:
+            # Preserve compatibility with simple test doubles/backends that
+            # still expose the legacy no-argument read() signature.
+            frame = self._video_stream.read()
         if (
             frame is not None
             and not as_image
