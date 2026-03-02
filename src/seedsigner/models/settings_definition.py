@@ -536,6 +536,7 @@ class SettingsConstants:
 
     # Label strings
     LABEL__BIP39_PASSPHRASE = _mft("BIP-39 Passphrase")
+    LABEL__AEZEED_PASSPHRASE = _mft("Aezeed Passphrase")
     # TRANSLATOR_NOTE: Terminology used by Electrum seeds; equivalent to bip39 passphrase
     custom_extension = _mft("Custom Extension")
     LABEL__CUSTOM_EXTENSION = custom_extension

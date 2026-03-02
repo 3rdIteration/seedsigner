@@ -2,7 +2,7 @@ import os
 import json
 import pytest
 from unittest.mock import patch
-from seedsigner.models.seed import InvalidSeedException, Seed, ElectrumSeed, Slip39Seed, SeedWordsUnavailableException, XprvSeed
+from seedsigner.models.seed import InvalidSeedException, Seed, AezeedSeed, ElectrumSeed, Slip39Seed, SeedWordsUnavailableException, XprvSeed
 from seedsigner.models.decode_qr import DecodeQR, DecodeQRStatus
 import shamir_mnemonic
 
@@ -43,6 +43,27 @@ def test_seed():
     # assert seed.passphrase == "test"
 
     
+
+
+
+def test_aezeed_seed_default_passphrase_vector():
+    mnemonic = (
+        "absorb original enlist once climb erode kid thrive kitchen giant define tube "
+        "orange leader harbor comfort olive fatal success suggest drink penalty chimney ritual"
+    ).split()
+    seed = AezeedSeed(mnemonic=mnemonic)
+
+    assert seed.seed_bytes == bytes.fromhex("81b637d86359e6960de795e41e0b4cfd")
+
+
+def test_aezeed_seed_custom_passphrase_vector():
+    mnemonic = (
+        "above gap bronze point damp name group actress idea festival cream during "
+        "bid blanket dumb wage foster merit success suggest drink protect autumn box"
+    ).split()
+    seed = AezeedSeed(mnemonic=mnemonic, passphrase="!very_safe_55345_password*")
+
+    assert seed.seed_bytes == bytes.fromhex("81b637d86359e6960de795e41e0b4cfd")
 
 def test_xprv_seed_has_no_seed_words():
     xprv = "xprv9s21ZrQH143K2LBWUUQRFXhucrQqBpKdRRxNVq2zBqsx8HVqFk2uYo8kmbaLLHRdqtQpUm98uKfu3vca1LqdGhUtyoFnCNkfmXRyPXLjbKb"

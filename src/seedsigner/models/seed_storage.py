@@ -1,6 +1,6 @@
 from typing import List
 from seedsigner.helpers.secure_delete import wipe_bytes, wipe_list
-from seedsigner.models.seed import Seed, ElectrumSeed, Slip39Seed, InvalidSeedException
+from seedsigner.models.seed import Seed, ElectrumSeed, AezeedSeed, Slip39Seed, InvalidSeedException
 from seedsigner.models.settings_definition import SettingsConstants
 
 
@@ -100,7 +100,7 @@ class SeedStorage:
             if self._pending_is_electrum:
                 seed = ElectrumSeed(self._pending_mnemonic)
             elif self._pending_is_aezeed:
-                return None
+                seed = AezeedSeed(self._pending_mnemonic)
             else:
                 seed = Seed(self._pending_mnemonic, wordlist_language_code=wordlist_language_code)
             return seed.get_fingerprint(network)
@@ -115,7 +115,7 @@ class SeedStorage:
         if self._pending_is_electrum:
             self.pending_seed = ElectrumSeed(self._pending_mnemonic)
         elif self._pending_is_aezeed:
-            raise InvalidSeedException("Aezeed decoding is not yet supported")
+            self.pending_seed = AezeedSeed(self._pending_mnemonic)
         else:
             self.pending_seed = Seed(self._pending_mnemonic, wordlist_language_code=wordlist_language_code)
         self.discard_pending_mnemonic()

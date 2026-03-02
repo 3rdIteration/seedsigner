@@ -9,7 +9,7 @@ from seedsigner.gui.screens.screen import RET_CODE__BACK_BUTTON, ButtonListScree
 from seedsigner.gui.screens.scan_screens import ScanEncryptedQRScreen, ScanTypeEncryptionKeyScreen, ScanReviewEncryptionKeyScreen
 from seedsigner.gui.screens import LargeIconStatusScreen
 from seedsigner.models.decode_qr import DecodeQR, DecodeQRStatus
-from seedsigner.models.seed import Seed, XprvSeed, InvalidSeedException
+from seedsigner.models.seed import Seed, AezeedSeed, XprvSeed, InvalidSeedException
 
 from gettext import gettext as _
 from seedsigner.helpers.l10n import mark_for_translation as _mft
@@ -91,25 +91,16 @@ class ScanView(View):
                     # seed is not valid, Exit if not valid with message
                     return Destination(NotYetImplementedView)
 
-                if seed_type == "aezeed":
-                    return Destination(
-                        ErrorView,
-                        view_args=dict(
-                            title="Error",
-                            status_headline=_("Unsupported Seed Type"),
-                            text=_("Aezeed scanning was detected but decoding is not fully supported yet."),
-                            button_text=_("Back"),
-                            next_destination=Destination(BackStackView, skip_current_view=True),
-                        ),
-                    )
-
                 # Found a valid mnemonic seed! All new seeds should be considered
                 #   pending (might set a passphrase, SeedXOR, etc) until finalized.
                 from seedsigner.models.seed import Seed
                 from .seed_views import SeedFinalizeView
-                self.controller.storage.set_pending_seed(
-                    Seed(mnemonic=seed_mnemonic, wordlist_language_code=self.wordlist_language_code)
-                )
+                if seed_type == "aezeed":
+                    self.controller.storage.set_pending_seed(AezeedSeed(mnemonic=seed_mnemonic))
+                else:
+                    self.controller.storage.set_pending_seed(
+                        Seed(mnemonic=seed_mnemonic, wordlist_language_code=self.wordlist_language_code)
+                    )
                 if self.settings.get_value(SettingsConstants.SETTING__PASSPHRASE) == SettingsConstants.OPTION__REQUIRED:
                     from seedsigner.views.seed_views import SeedAddPassphraseView
                     return Destination(SeedAddPassphraseView)
