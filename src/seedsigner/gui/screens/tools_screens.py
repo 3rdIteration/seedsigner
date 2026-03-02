@@ -233,8 +233,9 @@ class ToolsImageEntropyLivePreviewScreen(BaseScreen):
                 return RET_CODE__BACK_BUTTON
 
             frame: Image = self.camera.read_video_stream(as_image=True, preview=True)
+            entropy_frame: Image = self.camera.read_video_stream(as_image=True, greyscale=False)
 
-            if frame is None:
+            if frame is None or entropy_frame is None:
                 # Camera probably isn't ready yet
                 time.sleep(0.01)
                 continue
@@ -251,7 +252,7 @@ class ToolsImageEntropyLivePreviewScreen(BaseScreen):
 
                 # Calculate and display Shannon entropy indicator (throttled to ~1s)
                 if time.time() - last_entropy_check >= 1:
-                    entropy_sample = frame.convert("L").resize(preview_sample_size, Image.Resampling.BILINEAR)
+                    entropy_sample = entropy_frame.convert("L").resize(preview_sample_size, Image.Resampling.BILINEAR)
                     entropy_val = mnemonic_generation._shannon_entropy(entropy_sample.tobytes())
                     last_entropy_check = time.time()
                 entropy_text = f"{entropy_val:.2f}"
@@ -342,7 +343,7 @@ class ToolsImageEntropyLivePreviewScreen(BaseScreen):
                 # before we add the currest frame.
                 preview_images.pop(0)
             preview_images.append(
-                frame.convert("L").resize(preview_sample_size, Image.Resampling.BILINEAR)
+                entropy_frame.convert("L").resize(preview_sample_size, Image.Resampling.BILINEAR)
             )
 
 

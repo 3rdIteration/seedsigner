@@ -139,12 +139,17 @@ class Camera(Singleton):
         )
         self._video_stream.start()
 
-    def read_video_stream(self, as_image=False, preview=False):
+    def read_video_stream(self, as_image=False, preview=False, greyscale=True):
         """Read the most recent frame from stream mode."""
         if not self._video_stream:
             raise Exception("Must call start_video_stream_mode first.")
         frame = self._video_stream.read(preview=preview, display=as_image and not preview)
-        if frame is not None and not as_image and self._is_raspberry_pi_profile(self._runtime_profile):
+        if (
+            frame is not None
+            and not as_image
+            and greyscale
+            and self._is_raspberry_pi_profile(self._runtime_profile)
+        ):
             if isinstance(frame, Image.Image):
                 frame = frame.convert("L").convert("RGB")
             elif getattr(frame, "ndim", None) == 3:
@@ -155,11 +160,11 @@ class Camera(Singleton):
         if frame is not None:
             if isinstance(frame, Image.Image):
                 image = frame
-                if self._is_raspberry_pi_profile(self._runtime_profile):
+                if greyscale and self._is_raspberry_pi_profile(self._runtime_profile):
                     image = image.convert("L").convert("RGB")
             elif getattr(frame, "ndim", None) == 2:
                 image = Image.fromarray(frame.astype("uint8"), "L").convert("RGB")
-            elif self._is_raspberry_pi_profile(self._runtime_profile):
+            elif greyscale and self._is_raspberry_pi_profile(self._runtime_profile):
                 # Preserve the faster single-channel shortcut for non-image
                 # consumers, but use a proper luminance conversion for display
                 # and stored image captures.
@@ -170,7 +175,7 @@ class Camera(Singleton):
                 # Keep preview rendering cheap and consistent even when the
                 # backend falls back to the main stream.
                 image = image.convert("L").convert("RGB")
-            elif preview and self._is_raspberry_pi_profile(self._runtime_profile):
+            elif preview and greyscale and self._is_raspberry_pi_profile(self._runtime_profile):
                 # The Pi grayscale fast path can look too dim in preview-only
                 # screens. Stretch contrast for display without changing the
                 # underlying frame data used elsewhere.
