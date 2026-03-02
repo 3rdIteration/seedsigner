@@ -144,8 +144,16 @@ class Camera(Singleton):
             return frame
         if frame is not None:
             if isinstance(frame, Image.Image):
-                return frame.rotate(90 + self._camera_rotation)
-            return Image.fromarray(frame.astype("uint8"), "RGB").rotate(90 + self._camera_rotation)
+                image = frame
+            elif getattr(frame, "ndim", None) == 2:
+                image = Image.fromarray(frame.astype("uint8"), "L").convert("RGB")
+            else:
+                image = Image.fromarray(frame.astype("uint8"), "RGB")
+            if preview:
+                # Keep preview rendering cheap and consistent even when the
+                # backend falls back to the main stream.
+                image = image.convert("L").convert("RGB")
+            return image.rotate(90 + self._camera_rotation)
         return None
 
     def stop_video_stream_mode(self):

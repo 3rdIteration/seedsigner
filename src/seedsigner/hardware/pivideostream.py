@@ -654,13 +654,13 @@ class VideoStream:
                         ):
                             arrays = captured[0]
                         if isinstance(arrays, (list, tuple)) and len(arrays) >= 2:
-                            self.frame = arrays[0]
+                            self.frame = self._picamera2_main_to_greyscale(arrays[0])
                             self.preview_frame = self._picamera2_lores_to_image(arrays[1])
                             continue
                     except Exception:
                         self._picamera2_has_lores = False
                         logger.exception("Picamera2 lores capture failed; falling back to main stream only")
-                self.frame = self.camera.capture_array()
+                self.frame = self._picamera2_main_to_greyscale(self.camera.capture_array())
                 self.preview_frame = None
             self.camera.stop()
             self.camera.close()
@@ -714,6 +714,15 @@ class VideoStream:
                 logger.exception("Unable to decode Picamera2 lores frame")
                 return None
         return Image.fromarray(luminance.astype("uint8"), "L").convert("RGB")
+
+    def _picamera2_main_to_greyscale(self, frame_data):
+        try:
+            if len(frame_data.shape) >= 3:
+                # Use a single channel to avoid extra per-frame math on slow Pi models.
+                return frame_data[:, :, 1]
+        except Exception:
+            logger.exception("Unable to convert Picamera2 main frame to greyscale")
+        return frame_data
 
     def read(self, preview=False):
         if preview and self.preview_frame is not None:
