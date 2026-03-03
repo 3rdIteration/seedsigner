@@ -347,3 +347,77 @@ class TestToolsFlows(FlowTest):
             view.run()
         button_data = mocked.call_args.kwargs["button_data"]
         assert seed_views.SeedSelectSeedView.SATOCHIP in button_data
+
+
+    def test__verify_address__expanded_search__button_present_for_singlesig(self):
+        """Expanded Search button should be available for singlesig address verification."""
+        controller = Controller.get_instance()
+        controller.storage.set_pending_seed(Seed(mnemonic=["abandon " * 11 + "about"]))
+        controller.storage.finalize_pending_seed()
+        settings = controller.settings
+        settings.set_value(SettingsConstants.SETTING__NETWORK, SettingsConstants.REGTEST)
+
+        controller.unverified_address = dict(
+            address="bcrt1q4e9q5taxnsvc6m0uxv6h75mkzvnkxeqk6l90u2",
+            script_type=SettingsConstants.NATIVE_SEGWIT,
+            network=SettingsConstants.REGTEST,
+            sig_type=SettingsConstants.SINGLE_SIG,
+            derivation_path="m/84'/1'/0'",
+        )
+
+        view = seed_views.SeedAddressVerificationView(seed_num=0)
+
+        def fake_run_screen(*args, **kwargs):
+            return RET_CODE__BACK_BUTTON
+
+        with mock.patch.object(view, "run_screen", side_effect=fake_run_screen) as mocked:
+            view.run()
+
+        button_data = mocked.call_args.kwargs["button_data"]
+        assert seed_views.SeedAddressVerificationView.EXPANDED_SEARCH in button_data
+        assert seed_views.SeedAddressVerificationView.SKIP_10 in button_data
+        assert seed_views.SeedAddressVerificationView.CANCEL in button_data
+
+
+    def test__verify_address__expanded_search__flow(self, monkeypatch):
+        """
+            Expanded search should find an address derived from a non-standard
+            derivation path (BIP44 path but native segwit script type).
+        """
+        from seedsigner.helpers import embit_utils
+
+        # Use a small number of addresses per path to keep the test fast
+        monkeypatch.setattr(seed_views.SeedAddressVerificationView, "EXPANDED_ADDRS_PER_PATH", 5)
+
+        controller = Controller.get_instance()
+        seed = Seed(mnemonic=["abandon " * 11 + "about"])
+        controller.storage.set_pending_seed(seed)
+        controller.storage.finalize_pending_seed()
+        settings = controller.settings
+        settings.set_value(SettingsConstants.SETTING__NETWORK, SettingsConstants.REGTEST)
+
+        # Generate a native segwit address from BIP44 (legacy) derivation path.
+        # Normal search on m/84'/1'/0' would NOT find this address.
+        non_standard_path = "m/44'/1'/0'"
+        xpub = seed.get_xpub(wallet_path=non_standard_path, network=SettingsConstants.REGTEST)
+        embit_network = SettingsConstants.map_network_to_embit(SettingsConstants.REGTEST)
+        test_addr = embit_utils.get_single_sig_address(
+            xpub=xpub, script_type=SettingsConstants.NATIVE_SEGWIT,
+            index=2, is_change=False, embit_network=embit_network,
+        )
+
+        def load_address_into_decoder(view: scan_views.ScanView):
+            view.decoder.add_data(test_addr)
+
+        self.run_sequence([
+            FlowStep(MainMenuView, button_data_selection=MainMenuView.TOOLS),
+            FlowStep(tools_views.ToolsMenuView, button_data_selection=tools_views.ToolsMenuView.VERIFY_ADDRESS),
+            FlowStep(scan_views.ScanAddressView, before_run=load_address_into_decoder),
+            FlowStep(seed_views.AddressVerificationStartView, is_redirect=True),
+            FlowStep(seed_views.SeedSelectSeedView, screen_return_value=0),
+            # Normal search; select Expanded Search
+            FlowStep(seed_views.SeedAddressVerificationView, button_data_selection=seed_views.SeedAddressVerificationView.EXPANDED_SEARCH),
+            # Expanded search finds the address on the non-standard path
+            FlowStep(seed_views.SeedAddressVerificationView),
+            FlowStep(seed_views.SeedAddressVerificationSuccessView),
+        ])

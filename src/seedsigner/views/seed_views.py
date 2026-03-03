@@ -3863,17 +3863,25 @@ class SeedAddressVerificationView(View):
 
         Performs single sig verification on `seed_num` if specified, otherwise assumes
         multisig.
+
+        When `expanded=True`, searches all standard derivation paths (BIP44/49/84/86)
+        across accounts 0-9 and non-standard paths (BRD, Coldcard), checking 100
+        addresses per path.
     """
     # TRANSLATOR_NOTE: Option when scanning for a matching address; skips ten addresses ahead
     SKIP_10 = ButtonOption("Skip 10")
+    # TRANSLATOR_NOTE: Option to search all standard derivation paths and the first 10 accounts
+    EXPANDED_SEARCH = ButtonOption("Expanded Search")
     CANCEL = ButtonOption("Cancel")
 
     MAX_ITERATIONS_EXPORT_XPUB = 1000
+    EXPANDED_ADDRS_PER_PATH = 100
 
-    def __init__(self, seed_num: int = None, export_for_xpub: bool = False):
+    def __init__(self, seed_num: int = None, export_for_xpub: bool = False, expanded: bool = False):
         super().__init__()
         self.seed_num = seed_num
         self.export_for_xpub = export_for_xpub
+        self.expanded = expanded
         self.is_multisig = self.controller.unverified_address["sig_type"] == SettingsConstants.MULTISIG
         self.seed_derivation_override = ""
         if not self.is_multisig:
@@ -3902,26 +3910,53 @@ class SeedAddressVerificationView(View):
         self.verified_index = ThreadsafeCounter(initial_value=None)
         self.verified_index_is_change = ThreadsafeCounter(initial_value=None)
 
-        # Create the brute-force calculation thread that will run in the background
-        self.addr_verification_thread = self.BruteForceAddressVerificationThread(
-            address=self.address,
-            seed=self.seed,
-            descriptor=self.controller.multisig_wallet_descriptor,
-            script_type=self.script_type,
-            embit_network=embit_network,
-            derivation_path=self.derivation_path,
-            threadsafe_counter=self.threadsafe_counter,
-            verified_index=self.verified_index,
-            verified_index_is_change=self.verified_index_is_change,
-        )
+        if self.expanded and self.seed:
+            from seedsigner.helpers import embit_utils
+            derivation_paths = embit_utils.get_expanded_search_derivation_paths(
+                network=self.network,
+            )
+            self.addr_verification_thread = self.ExpandedBruteForceAddressVerificationThread(
+                address=self.address,
+                seed=self.seed,
+                script_type=self.script_type,
+                embit_network=embit_network,
+                network=self.network,
+                derivation_paths=derivation_paths,
+                addrs_per_path=self.EXPANDED_ADDRS_PER_PATH,
+                threadsafe_counter=self.threadsafe_counter,
+                verified_index=self.verified_index,
+                verified_index_is_change=self.verified_index_is_change,
+            )
+        else:
+            # Create the brute-force calculation thread that will run in the background
+            self.addr_verification_thread = self.BruteForceAddressVerificationThread(
+                address=self.address,
+                seed=self.seed,
+                descriptor=self.controller.multisig_wallet_descriptor,
+                script_type=self.script_type,
+                embit_network=embit_network,
+                derivation_path=self.derivation_path,
+                threadsafe_counter=self.threadsafe_counter,
+                verified_index=self.verified_index,
+                verified_index_is_change=self.verified_index_is_change,
+            )
 
 
     def run(self):
+        expanded_selected = False
+
         # Start brute-force calculations from the zero-th index
         try:
             self.addr_verification_thread.start()
 
-            button_data = [self.SKIP_10, self.CANCEL]
+            # Build button list based on mode
+            if self.expanded:
+                button_data = [self.CANCEL]
+            else:
+                button_data = [self.SKIP_10]
+                if self.seed and not self.export_for_xpub:
+                    button_data.append(self.EXPANDED_SEARCH)
+                button_data.append(self.CANCEL)
 
             script_type_settings_entry = SettingsDefinition.get_settings_entry(SettingsConstants.SETTING__SCRIPT_TYPES)
             script_type_display = script_type_settings_entry.get_selection_option_display_name_by_value(self.script_type)
@@ -3933,7 +3968,16 @@ class SeedAddressVerificationView(View):
             network_display = network_settings_entry.get_selection_option_display_name_by_value(self.network)
             mainnet = network_settings_entry.get_selection_option_display_name_by_value(SettingsConstants.MAINNET)
 
-            max_iterations = self.MAX_ITERATIONS_EXPORT_XPUB if self.export_for_xpub else None
+            if self.export_for_xpub:
+                max_iterations = self.MAX_ITERATIONS_EXPORT_XPUB
+            elif self.expanded:
+                from seedsigner.helpers import embit_utils
+                num_paths = len(embit_utils.get_expanded_search_derivation_paths(
+                    network=self.network,
+                ))
+                max_iterations = num_paths * self.EXPANDED_ADDRS_PER_PATH
+            else:
+                max_iterations = None
 
             # Display the Screen to show the brute-forcing progress.
             # Using a loop here to handle the SKIP_10 button presses to increment the counter
@@ -3968,6 +4012,10 @@ class SeedAddressVerificationView(View):
                     if button_data[selected_menu_num] == self.SKIP_10:
                         self.threadsafe_counter.increment(10)
 
+                    elif button_data[selected_menu_num] == self.EXPANDED_SEARCH:
+                        expanded_selected = True
+                        break
+
                     elif button_data[selected_menu_num] == self.CANCEL:
                         break
 
@@ -3978,12 +4026,17 @@ class SeedAddressVerificationView(View):
                 # Successfully verified the addr; update the data
                 self.controller.unverified_address["verified_index"] = self.verified_index.cur_count
                 self.controller.unverified_address["verified_index_is_change"] = self.verified_index_is_change.cur_count == 1
+                if hasattr(self.addr_verification_thread, 'matched_derivation_path') and self.addr_verification_thread.matched_derivation_path:
+                    self.controller.unverified_address["derivation_path"] = self.addr_verification_thread.matched_derivation_path
                 if self.export_for_xpub:
                     return Destination(SeedExportXpubVerificationSuccessView)
                 return Destination(SeedAddressVerificationSuccessView, view_args=dict(seed_num=self.seed_num))
 
             if self.export_for_xpub and max_iterations is not None and self.threadsafe_counter.cur_count >= max_iterations:
                 return Destination(SeedExportXpubVerificationFailedView, view_args=dict(reason="no_match"))
+
+            if expanded_selected:
+                return Destination(SeedAddressVerificationView, view_args=dict(seed_num=self.seed_num, expanded=True))
 
         finally:
             # Halt the thread if the user gave up (will already be stopped if it verified the
@@ -4048,6 +4101,72 @@ class SeedAddressVerificationView(View):
 
                 # Increment our index counter
                 self.threadsafe_counter.increment()
+
+
+
+    class ExpandedBruteForceAddressVerificationThread(BaseThread):
+        """
+            Searches all standard derivation paths (BIP44/49/84/86) across accounts
+            0-9 and non-standard paths, checking a fixed number of addresses per path.
+            The script type used for address generation is inferred from the scanned
+            address.
+        """
+        def __init__(self, address: str, seed: Seed, script_type: str, embit_network: str, network: str, derivation_paths: list, addrs_per_path: int, threadsafe_counter: ThreadsafeCounter, verified_index: ThreadsafeCounter, verified_index_is_change: ThreadsafeCounter):
+            super().__init__()
+            self.address = address
+            self.seed = seed
+            self.script_type = script_type
+            self.embit_network = embit_network
+            self.network = network
+            self.derivation_paths = derivation_paths
+            self.addrs_per_path = addrs_per_path
+            self.threadsafe_counter = threadsafe_counter
+            self.verified_index = verified_index
+            self.verified_index_is_change = verified_index_is_change
+            self.matched_derivation_path = None
+
+
+        def run(self):
+            from seedsigner.helpers import embit_utils
+            for path in self.derivation_paths:
+                if not self.keep_running:
+                    return
+
+                try:
+                    xpub = self.seed.get_xpub(wallet_path=path, network=self.network)
+                except Exception:
+                    # Skip paths that can't be derived for this seed type
+                    self.threadsafe_counter.increment(self.addrs_per_path)
+                    continue
+
+                for i in range(self.addrs_per_path):
+                    if not self.keep_running:
+                        return
+
+                    receive_address = embit_utils.get_single_sig_address(
+                        xpub=xpub, script_type=self.script_type,
+                        index=i, is_change=False, embit_network=self.embit_network,
+                    )
+                    change_address = embit_utils.get_single_sig_address(
+                        xpub=xpub, script_type=self.script_type,
+                        index=i, is_change=True, embit_network=self.embit_network,
+                    )
+
+                    if self.address == receive_address:
+                        self.matched_derivation_path = path
+                        self.verified_index.set_value(i)
+                        self.verified_index_is_change.set_value(0)
+                        self.keep_running = False
+                        return
+
+                    elif self.address == change_address:
+                        self.matched_derivation_path = path
+                        self.verified_index.set_value(i)
+                        self.verified_index_is_change.set_value(1)
+                        self.keep_running = False
+                        return
+
+                    self.threadsafe_counter.increment()
 
 
 

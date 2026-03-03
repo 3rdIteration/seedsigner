@@ -58,6 +58,38 @@ def get_standard_derivation_path(network: str = SettingsConstants.MAINNET, walle
 
 
 
+def get_expanded_search_derivation_paths(network: str = SettingsConstants.MAINNET) -> list:
+    """
+    Returns a list of derivation paths for expanded address search.
+    Includes all standard single sig paths (BIP44/49/84/86) for accounts
+    0-9 and non-standard paths used by various wallets.
+    """
+    paths = []
+    script_types = [
+        SettingsConstants.NATIVE_SEGWIT,
+        SettingsConstants.NESTED_SEGWIT,
+        SettingsConstants.LEGACY_P2PKH,
+        SettingsConstants.TAPROOT,
+    ]
+
+    # Standard BIP paths for accounts 0-9
+    for script_type in script_types:
+        for account in range(10):
+            paths.append(get_standard_derivation_path(
+                network=network,
+                wallet_type=SettingsConstants.SINGLE_SIG,
+                script_type=script_type,
+                account=account,
+            ))
+
+    # Non-standard paths used by various wallets
+    paths.append("m/0'/0")  # BRD Wallet
+    paths.append("m/0")     # Coldcard Address Explorer Default Legacy
+
+    return paths
+
+
+
 def get_xpub(seed_bytes, derivation_path: str, embit_network: str = "main") -> HDKey:
     root = bip32.HDKey.from_seed(seed_bytes, version=NETWORKS[embit_network]["xprv"])
     xprv = root.derive(derivation_path)

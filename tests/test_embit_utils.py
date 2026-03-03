@@ -491,3 +491,38 @@ def test_parse_derivation_path():
             assert actual_result["index"] == expected_result[3]
         else:
             assert actual_result["index"] == int(derivation_path.split("/")[-1])
+
+
+def test_get_expanded_search_derivation_paths():
+    """Verify expanded search returns correct paths for all networks."""
+    # Mainnet
+    paths = embit_utils.get_expanded_search_derivation_paths(SC.MAINNET)
+
+    # 4 script types × 10 accounts + 2 non-standard = 42
+    assert len(paths) == 42
+
+    # Standard BIP paths should be present for account 0
+    assert "m/84'/0'/0'" in paths  # Native Segwit
+    assert "m/49'/0'/0'" in paths  # Nested Segwit
+    assert "m/44'/0'/0'" in paths  # Legacy
+    assert "m/86'/0'/0'" in paths  # Taproot
+
+    # Account 9 should be present
+    assert "m/84'/0'/9'" in paths
+    assert "m/49'/0'/9'" in paths
+    assert "m/44'/0'/9'" in paths
+    assert "m/86'/0'/9'" in paths
+
+    # Non-standard paths
+    assert "m/0'/0" in paths    # BRD Wallet
+    assert "m/0" in paths       # Coldcard
+
+    # Testnet
+    testnet_paths = embit_utils.get_expanded_search_derivation_paths(SC.TESTNET)
+    assert len(testnet_paths) == 42
+    assert "m/84'/1'/0'" in testnet_paths
+    assert "m/44'/1'/0'" in testnet_paths
+
+    # Non-standard paths should be same regardless of network
+    assert "m/0'/0" in testnet_paths
+    assert "m/0" in testnet_paths
