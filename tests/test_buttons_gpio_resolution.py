@@ -223,3 +223,73 @@ def test_get_instance_is_thread_safe_single_initializer(monkeypatch):
     assert len(results) == 2
     assert results[0] is results[1]
     assert CountingGPIO.count == len(buttons_module.HardwareButtons.BUTTON_NAMES)
+
+
+def test_disabled_button_skips_gpio_init(monkeypatch):
+    button_map = {
+        "KEY_UP": ["/dev/gpiochip1", 25, "pull_up"],
+        "KEY_DOWN": ["/dev/gpiochip1", 27, "pull_up"],
+        "KEY_LEFT": ["/dev/gpiochip1", 24, "pull_up"],
+        "KEY_RIGHT": ["/dev/gpiochip1", 22, "pull_up"],
+        "KEY_PRESS": ["/dev/gpiochip1", 26, "pull_up"],
+        "KEY1": "disabled",
+        "KEY2": "disabled",
+        "KEY3": ["/dev/gpiochip1", 21, "pull_up"],
+    }
+
+    monkeypatch.setattr(buttons_module, "USING_GPIO", True)
+    monkeypatch.setattr(buttons_module.Settings, "get_platform_default_hardware_config", lambda: "FOX_22")
+    monkeypatch.setattr(buttons_module, "get_hardware_pin_mapping", lambda _: {"buttons": button_map})
+
+    class TrackingGPIO:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def close(self):
+            pass
+
+        def read(self):
+            return True
+
+    monkeypatch.setattr(buttons_module, "GPIO", TrackingGPIO)
+
+    instance = buttons_module.HardwareButtons.get_instance()
+    assert "KEY1" not in instance._gpio_pins
+    assert "KEY2" not in instance._gpio_pins
+    assert "KEY_UP" in instance._gpio_pins
+    assert "KEY3" in instance._gpio_pins
+
+
+def test_disabled_button_never_reports_low(monkeypatch):
+    button_map = {
+        "KEY_UP": ["/dev/gpiochip1", 25, "pull_up"],
+        "KEY_DOWN": ["/dev/gpiochip1", 27, "pull_up"],
+        "KEY_LEFT": ["/dev/gpiochip1", 24, "pull_up"],
+        "KEY_RIGHT": ["/dev/gpiochip1", 22, "pull_up"],
+        "KEY_PRESS": ["/dev/gpiochip1", 26, "pull_up"],
+        "KEY1": "disabled",
+        "KEY2": ["/dev/gpiochip0", 4, "pull_up"],
+        "KEY3": ["/dev/gpiochip1", 21, "pull_up"],
+    }
+
+    monkeypatch.setattr(buttons_module, "USING_GPIO", True)
+    monkeypatch.setattr(buttons_module.Settings, "get_platform_default_hardware_config", lambda: "FOX_22")
+    monkeypatch.setattr(buttons_module, "get_hardware_pin_mapping", lambda _: {"buttons": button_map})
+
+    class HighGPIO:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def close(self):
+            pass
+
+        def read(self):
+            return True
+
+    monkeypatch.setattr(buttons_module, "GPIO", HighGPIO)
+
+    instance = buttons_module.HardwareButtons.get_instance()
+    # Disabled button should never register as low
+    assert not instance.check_for_low(key="KEY1")
+    # has_any_input should not crash when some buttons are disabled
+    assert not instance.has_any_input()

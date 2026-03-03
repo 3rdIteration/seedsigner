@@ -198,6 +198,9 @@ class HardwareButtons(Singleton):
                             pin_selector = pin_mapping.get(name) or pin_mapping.get(name.lower())
                             if pin_selector is None:
                                 raise KeyError(f"Missing hardware button mapping for '{name}'")
+                            if pin_selector == "disabled":
+                                logger.info("Button %s is disabled via io_config", name)
+                                continue
                             pin_bias = None
                             gpio_selector = pin_selector
                             # io_config.json button entries support either:
@@ -327,6 +330,8 @@ class HardwareButtons(Singleton):
 
             if USING_GPIO:
                 for key in keys:
+                    if key not in self._gpio_pins:
+                        continue
                     is_low = not self._gpio_pins[key].read()
                     if is_low:
                         low_since = self._low_since_ms.get(key)
@@ -395,6 +400,8 @@ class HardwareButtons(Singleton):
 
         if USING_GPIO:
             for key in keys:
+                if key not in self._gpio_pins:
+                    continue
                 cur_time = int(time.time() * 1000)
                 is_low = not self._gpio_pins[key].read()
                 if is_low:
@@ -421,6 +428,8 @@ class HardwareButtons(Singleton):
     def has_any_input(self) -> bool:
         if USING_GPIO:
             for key in HardwareButtonsConstants.ALL_KEYS:
+                if key not in self._gpio_pins:
+                    continue
                 if not self._gpio_pins[key].read():
                     return True
             return False
