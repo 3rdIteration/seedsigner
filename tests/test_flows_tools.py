@@ -381,8 +381,9 @@ class TestToolsFlows(FlowTest):
 
     def test__verify_address__expanded_search__flow(self, monkeypatch):
         """
-            Expanded search should find an address derived from a non-standard
-            derivation path (BIP44 path but native segwit script type).
+            Expanded search should find an address derived from a mismatched
+            derivation path/script type combination (BIP44 path with native
+            segwit addresses instead of the standard BIP84 path).
         """
         from seedsigner.helpers import embit_utils
 

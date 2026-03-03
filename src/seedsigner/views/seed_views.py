@@ -4026,7 +4026,7 @@ class SeedAddressVerificationView(View):
                 # Successfully verified the addr; update the data
                 self.controller.unverified_address["verified_index"] = self.verified_index.cur_count
                 self.controller.unverified_address["verified_index_is_change"] = self.verified_index_is_change.cur_count == 1
-                if hasattr(self.addr_verification_thread, 'matched_derivation_path') and self.addr_verification_thread.matched_derivation_path:
+                if self.expanded and self.addr_verification_thread.matched_derivation_path:
                     self.controller.unverified_address["derivation_path"] = self.addr_verification_thread.matched_derivation_path
                 if self.export_for_xpub:
                     return Destination(SeedExportXpubVerificationSuccessView)
