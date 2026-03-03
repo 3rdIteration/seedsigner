@@ -4,12 +4,14 @@ DISPLAY_TYPE__ST7789 = "st7789"
 DISPLAY_TYPE__ILI9341 = "ili9341"
 DISPLAY_TYPE__ILI9486 = "ili9486"
 DISPLAY_TYPE__DESKTOP = "desktop"
+DISPLAY_TYPE__DPI28 = "dpi28"
 
 ALL_DISPLAY_TYPES = [
     DISPLAY_TYPE__ST7789,
     DISPLAY_TYPE__ILI9341,
     DISPLAY_TYPE__ILI9486,
     DISPLAY_TYPE__DESKTOP,
+    DISPLAY_TYPE__DPI28,
 ]
 
 
@@ -56,6 +58,10 @@ class DisplayDriver:
 
             # Desktop display can support arbitrary sizes; defaults are handled by caller
             self.display = DesktopDisplay(width=width, height=height)
+
+        elif self.display_type == DISPLAY_TYPE__DPI28:
+            from seedsigner.hardware.DPI28 import DPI28
+            self.display = DPI28()
     
 
     def __str__(self):

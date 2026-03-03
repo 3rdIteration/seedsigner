@@ -427,6 +427,94 @@ class ToolsDiceEntropyEntryScreen(KeyboardScreen):
         self.title = _("Dice Roll {}/{}").format(self.cursor_position + 1, self.return_after_n_chars)
         return True
 
+    def _run(self):
+        # Initialize cursor position (normally done in parent _run())
+        self.cursor_position = len(self.user_input)
+
+        # Check for touch support
+        touch_buttons = None
+        if hasattr(self, 'hw_inputs') and hasattr(self.hw_inputs, 'touch'):
+            touch_buttons = self.hw_inputs
+
+        if not touch_buttons:
+            # Non-touch fallback - use parent class behavior
+            return super()._run()
+
+        # Clear touch bar buttons and hide touch bar - dice screen doesn't use bottom bar
+        if hasattr(touch_buttons, 'clear_buttons'):
+            touch_buttons.clear_buttons()
+        disp = self.renderer.disp
+        if hasattr(disp, 'display') and hasattr(disp.display, 'set_touch_bar_labels'):
+            from seedsigner.hardware.DPI28 import DPI28
+            disp.display.set_touch_bar_labels(DPI28.TOUCH_BAR_HIDDEN)
+
+        while True:
+            # Handle touch input for dice - only KEY_PRESS for direct taps, not KEY1/2/3
+            input_result = touch_buttons.wait_for(
+                [HardwareButtonsConstants.KEY_PRESS] + [HardwareButtonsConstants.KEY_UP, HardwareButtonsConstants.KEY_DOWN, HardwareButtonsConstants.KEY_LEFT, HardwareButtonsConstants.KEY_RIGHT]
+            )
+
+            # Check for back button (top-left tap)
+            if hasattr(touch_buttons, 'was_back_button_tapped') and touch_buttons.was_back_button_tapped():
+                return RET_CODE__BACK_BUTTON
+
+            # Check if it was a touch and get coordinates for direct key tap
+            key = None
+            if hasattr(touch_buttons, 'get_last_tap_native_coords'):
+                x, y = touch_buttons.get_last_tap_native_coords()
+                if x >= 0 and y >= 0:
+                    key = self.keyboard.get_key_at_screen_coords(x, y)
+
+            # If no direct key tap, check if it was a press on selected key
+            if key is None and input_result == HardwareButtonsConstants.KEY_PRESS:
+                key = self.keyboard.get_selected_key()
+
+            # If we have a valid key, process it
+            if key:
+                # Select the key visually
+                self.keyboard.set_selected_key_indices(key.index_x, key.index_y)
+
+                # Check if it's the DEL/backspace key
+                if key.code == "DEL":
+                    if len(self.user_input) > 0:
+                        self.user_input = self.user_input[:-1]
+                        self.cursor_position -= 1
+                        if self.update_title():
+                            # Render new TextArea over title (like parent class does)
+                            TextArea(
+                                text=self.title,
+                                font_name=GUIConstants.get_top_nav_title_font_name(),
+                                font_size=GUIConstants.get_top_nav_title_font_size(),
+                                height=self.top_nav.height,
+                            ).render()
+                            self.top_nav.render_buttons()
+                        self.text_entry_display.render(self.user_input)
+                        self.renderer.show_image()
+                    continue
+
+                # Get the value and record it
+                char = key.letter
+                self.user_input += char
+                self.cursor_position += 1
+
+                # Update title
+                if self.update_title():
+                    TextArea(
+                        text=self.title,
+                        font_name=GUIConstants.get_top_nav_title_font_name(),
+                        font_size=GUIConstants.get_top_nav_title_font_size(),
+                        height=self.top_nav.height,
+                    ).render()
+                    self.top_nav.render_buttons()
+
+                # Update text entry display
+                self.text_entry_display.render(self.user_input)
+                self.renderer.show_image()
+
+                # Return if done
+                if self.cursor_position == self.return_after_n_chars:
+                    return self.user_input
+
 
 
 @dataclass
@@ -483,6 +571,94 @@ class ToolsCoinFlipEntryScreen(KeyboardScreen):
         # l10n_note already done.
         self.title = _("Coin Flip {}/{}").format(self.cursor_position + 1, self.return_after_n_chars)
         return True
+
+    def _run(self):
+        # Initialize cursor position (normally done in parent _run())
+        self.cursor_position = len(self.user_input)
+
+        # Check for touch support
+        touch_buttons = None
+        if hasattr(self, 'hw_inputs') and hasattr(self.hw_inputs, 'touch'):
+            touch_buttons = self.hw_inputs
+
+        if not touch_buttons:
+            # Non-touch fallback - use parent class behavior
+            return super()._run()
+
+        # Clear touch bar buttons and hide touch bar - coin flip screen doesn't use bottom bar
+        if hasattr(touch_buttons, 'clear_buttons'):
+            touch_buttons.clear_buttons()
+        disp = self.renderer.disp
+        if hasattr(disp, 'display') and hasattr(disp.display, 'set_touch_bar_labels'):
+            from seedsigner.hardware.DPI28 import DPI28
+            disp.display.set_touch_bar_labels(DPI28.TOUCH_BAR_HIDDEN)
+
+        while True:
+            # Handle touch input for coin flip - only KEY_PRESS for direct taps, not KEY1/2/3
+            input_result = touch_buttons.wait_for(
+                [HardwareButtonsConstants.KEY_PRESS] + [HardwareButtonsConstants.KEY_UP, HardwareButtonsConstants.KEY_DOWN, HardwareButtonsConstants.KEY_LEFT, HardwareButtonsConstants.KEY_RIGHT]
+            )
+
+            # Check for back button (top-left tap)
+            if hasattr(touch_buttons, 'was_back_button_tapped') and touch_buttons.was_back_button_tapped():
+                return RET_CODE__BACK_BUTTON
+
+            # Check if it was a touch and get coordinates for direct key tap
+            key = None
+            if hasattr(touch_buttons, 'get_last_tap_native_coords'):
+                x, y = touch_buttons.get_last_tap_native_coords()
+                if x >= 0 and y >= 0:
+                    key = self.keyboard.get_key_at_screen_coords(x, y)
+
+            # If no direct key tap, check if it was a press on selected key
+            if key is None and input_result == HardwareButtonsConstants.KEY_PRESS:
+                key = self.keyboard.get_selected_key()
+
+            # If we have a key, process it
+            if key:
+                # Select the key visually
+                self.keyboard.set_selected_key_indices(key.index_x, key.index_y)
+
+                # Check if it's the DEL/backspace key
+                if key.code == "DEL":
+                    if len(self.user_input) > 0:
+                        self.user_input = self.user_input[:-1]
+                        self.cursor_position -= 1
+                        if self.update_title():
+                            # Render new TextArea over title (like parent class does)
+                            TextArea(
+                                text=self.title,
+                                font_name=GUIConstants.get_top_nav_title_font_name(),
+                                font_size=GUIConstants.get_top_nav_title_font_size(),
+                                height=self.top_nav.height,
+                            ).render()
+                            self.top_nav.render_buttons()
+                        self.text_entry_display.render(self.user_input)
+                        self.renderer.show_image()
+                    continue
+
+                # Get the value and record it
+                char = key.letter
+                self.user_input += char
+                self.cursor_position += 1
+
+                # Update title
+                if self.update_title():
+                    TextArea(
+                        text=self.title,
+                        font_name=GUIConstants.get_top_nav_title_font_name(),
+                        font_size=GUIConstants.get_top_nav_title_font_size(),
+                        height=self.top_nav.height,
+                    ).render()
+                    self.top_nav.render_buttons()
+
+                # Update text entry display
+                self.text_entry_display.render(self.user_input)
+                self.renderer.show_image()
+
+                # Return if done
+                if self.cursor_position == self.return_after_n_chars:
+                    return self.user_input
 
 
 

@@ -21,6 +21,15 @@ from seedsigner.models.threads import BaseThread, ThreadsafeCounter
 logger = logging.getLogger(__name__)
 
 
+def _get_input_handler():
+    """Get the appropriate input handler (touch or hardware buttons)"""
+    import os
+    if os.environ.get('SEEDSIGNER_TOUCH') == '1':
+        from seedsigner.hardware.touchbuttons import TouchButtons
+        return TouchButtons.get_instance()
+    return HardwareButtons.get_instance()
+
+
 # Must be huge numbers to avoid conflicting with the selected_button returned by the
 #   screens with buttons.
 RET_CODE__BACK_BUTTON = 1000
@@ -32,8 +41,8 @@ RET_CODE__POWER_BUTTON = 1001
 class BaseScreen(BaseComponent):
     def __post_init__(self):
         super().__post_init__()
-        
-        self.hw_inputs = HardwareButtons.get_instance()
+
+        self.hw_inputs = _get_input_handler()
 
         # Implementation classes can add their own BaseThread to run in parallel with the
         # main execution thread.
@@ -240,6 +249,12 @@ class BaseTopNavScreen(BaseScreen):
 
             user_input = self.hw_inputs.wait_for(HardwareButtonsConstants.ALL_KEYS)
 
+            # Check for direct back button tap (touchscreen)
+            if hasattr(self.hw_inputs, 'was_back_button_tapped'):
+                if self.hw_inputs.was_back_button_tapped():
+                    if self.top_nav.show_back_button:
+                        return RET_CODE__BACK_BUTTON
+
             with self.renderer.lock:
                 if not self.top_nav.is_selected and user_input in [
                         HardwareButtonsConstants.KEY_LEFT,
@@ -427,6 +442,35 @@ class ButtonListScreen(BaseTopNavScreen):
         cur_selected_button = self.buttons[self.selected_button]
         cur_selected_button.is_selected = True
 
+        # Reset touch bar to default (▲/SELECT/▼) for list screens
+        self._set_touch_bar_default()
+
+
+    def _set_touch_bar_default(self):
+        """Reset touch bar to default with scroll arrows"""
+        self._update_touch_bar_for_list_position()
+
+
+    def _update_touch_bar_for_list_position(self):
+        """Update touch bar based on current list scroll position"""
+        import os
+        if os.environ.get('SEEDSIGNER_TOUCH') == '1':
+            disp = self.renderer.disp
+            if hasattr(disp, 'display') and hasattr(disp.display, 'TOUCH_BAR_DEFAULT'):
+                # Check if we're at top or bottom of list
+                at_top = self.selected_button == 0
+                at_bottom = self.selected_button == len(self.buttons) - 1
+
+                if at_top and at_bottom:
+                    # Single item list - both disabled
+                    disp.display.set_touch_bar_labels(disp.display.TOUCH_BAR_SELECT_ONLY)
+                elif at_top:
+                    disp.display.set_touch_bar_labels(disp.display.TOUCH_BAR_UP_DISABLED)
+                elif at_bottom:
+                    disp.display.set_touch_bar_labels(disp.display.TOUCH_BAR_DOWN_DISABLED)
+                else:
+                    disp.display.set_touch_bar_labels(disp.display.TOUCH_BAR_DEFAULT)
+
 
     def get_threads(self) -> List[BaseThread]:
         threads = super().get_threads()
@@ -440,11 +484,22 @@ class ButtonListScreen(BaseTopNavScreen):
         super()._render()
         self._render_visible_buttons()
 
+        # Register buttons for direct touch tap detection
+        if hasattr(self.hw_inputs, 'register_buttons'):
+            self.hw_inputs.register_buttons(self.buttons)
+
         # Write the screen updates
         self.renderer.show_image()
 
 
-    def _render_visible_buttons(self):
+    def _render_visible_buttons(self, clear_first=False):
+        # Optionally clear the button area before re-rendering (for scroll operations)
+        if clear_first and self.has_scroll_arrows:
+            self.image_draw.rectangle(
+                (0, self.top_nav_height, self.canvas_width, self.canvas_height),
+                fill="black"
+            )
+
         if self.has_scroll_arrows:
             self._render_up_arrow()
             self._render_down_arrow()
@@ -454,8 +509,13 @@ class ButtonListScreen(BaseTopNavScreen):
                 button.render()
                 continue
 
-            button_position_y = button.screen_y - button.scroll_y
-            if button_position_y >= self.top_nav_height and button_position_y < self.down_arrow_img_y:
+            button_top = button.screen_y - button.scroll_y
+            button_bottom = button_top + button.height
+
+            # Check if any part of the button is visible (between top_nav and down_arrow)
+            is_visible = button_bottom > self.top_nav_height and button_top < self.down_arrow_img_y
+
+            if is_visible:
                 if i == 0:
                     # We rendered the top button; no more to scroll up for.
                     self._hide_up_arrow()
@@ -494,20 +554,30 @@ class ButtonListScreen(BaseTopNavScreen):
 
 
     def _run(self):
+        # Clear any pending touch input from previous screen
+        if hasattr(self.hw_inputs, 'clear_pending_input'):
+            self.hw_inputs.clear_pending_input()
+
         while True:
             ret = self._run_callback()
             if ret is not None:
                 logging.info("Exiting ButtonListScreen due to _run_callback")
                 return ret
 
-            user_input = self.hw_inputs.wait_for(
-                [
-                    HardwareButtonsConstants.KEY_UP,
-                    HardwareButtonsConstants.KEY_DOWN,
-                    HardwareButtonsConstants.KEY_LEFT,
-                    HardwareButtonsConstants.KEY_RIGHT,
-                ] + HardwareButtonsConstants.KEYS__ANYCLICK
-            )
+            import os
+            is_touch = os.environ.get('SEEDSIGNER_TOUCH') == '1'
+            input_keys = [
+                HardwareButtonsConstants.KEY_UP,
+                HardwareButtonsConstants.KEY_DOWN,
+                HardwareButtonsConstants.KEY_LEFT,
+                HardwareButtonsConstants.KEY_RIGHT,
+            ] + HardwareButtonsConstants.KEYS__ANYCLICK
+            if is_touch:
+                input_keys += [HardwareButtonsConstants.KEY1, HardwareButtonsConstants.KEY3]
+
+            user_input = self.hw_inputs.wait_for(input_keys)
+            up_keys = [HardwareButtonsConstants.KEY_UP, HardwareButtonsConstants.KEY1] if is_touch else [HardwareButtonsConstants.KEY_UP]
+            down_keys = [HardwareButtonsConstants.KEY_DOWN, HardwareButtonsConstants.KEY3] if is_touch else [HardwareButtonsConstants.KEY_DOWN]
 
             with self.renderer.lock:
                 if not self.top_nav.is_selected and (
@@ -526,9 +596,12 @@ class ButtonListScreen(BaseTopNavScreen):
                         self.top_nav.is_selected = True
                         self.top_nav.render_buttons()
 
-                elif user_input == HardwareButtonsConstants.KEY_UP:
+                elif user_input in up_keys:
                     if self.top_nav.is_selected:
                         # Can't go up any further
+                        pass
+                    elif self.selected_button == 0:
+                        # Already at top, can't go up (KEY1 shouldn't go to top_nav)
                         pass
                     else:
                         cur_selected_button: Button = self.buttons[self.selected_button]
@@ -541,12 +614,17 @@ class ButtonListScreen(BaseTopNavScreen):
                             frame_scroll = cur_selected_button.screen_y - next_selected_button.screen_y
                             for button in self.buttons:
                                 button.scroll_y -= frame_scroll
-                            self._render_visible_buttons()
+                            self._render_visible_buttons(clear_first=True)
+                            # Re-register buttons with updated positions
+                            if hasattr(self.hw_inputs, 'register_buttons'):
+                                self.hw_inputs.register_buttons(self.buttons)
                         else:
                             cur_selected_button.render()
                             next_selected_button.render()
+                        # Update touch bar to show which arrows are active
+                        self._update_touch_bar_for_list_position()
 
-                elif user_input == HardwareButtonsConstants.KEY_DOWN or (
+                elif user_input in down_keys or (
                         self.top_nav.is_selected and user_input == HardwareButtonsConstants.KEY_RIGHT
                     ):
                     if self.selected_button == len(self.buttons) - 1:
@@ -578,16 +656,84 @@ class ButtonListScreen(BaseTopNavScreen):
                         frame_scroll = next_selected_button.screen_y - cur_selected_button.screen_y
                         for button in self.buttons:
                             button.scroll_y += frame_scroll
-                        self._render_visible_buttons()
+                        self._render_visible_buttons(clear_first=True)
+                        # Re-register buttons with updated positions
+                        if hasattr(self.hw_inputs, 'register_buttons'):
+                            self.hw_inputs.register_buttons(self.buttons)
                     else:
                         if cur_selected_button:
                             cur_selected_button.render()
                         next_selected_button.render()
+                    # Update touch bar to show which arrows are active
+                    self._update_touch_bar_for_list_position()
 
-                elif user_input in HardwareButtonsConstants.KEYS__ANYCLICK:
+                elif user_input in [HardwareButtonsConstants.KEY2, HardwareButtonsConstants.KEY_PRESS]:
                     if self.top_nav.is_selected:
                         return self.top_nav.selected_button
+
+                    # Check for back button tap (touchscreen)
+                    if hasattr(self.hw_inputs, 'was_back_button_tapped'):
+                        if self.hw_inputs.was_back_button_tapped():
+                            if self.top_nav.show_back_button:
+                                return RET_CODE__BACK_BUTTON
+
+                    # Check for direct tap on a button (touchscreen)
+                    if hasattr(self.hw_inputs, 'get_tapped_button_index'):
+                        tapped_idx = self.hw_inputs.get_tapped_button_index()
+                        if tapped_idx >= 0 and tapped_idx < len(self.buttons):
+                            if tapped_idx == self.selected_button:
+                                # Tapped already-selected button - toggle/select it
+                                return tapped_idx
+                            else:
+                                # Tapped different button - move selection and scroll if needed
+                                cur_selected_button = self.buttons[self.selected_button]
+                                cur_selected_button.is_selected = False
+                                self.selected_button = tapped_idx
+                                next_selected_button = self.buttons[self.selected_button]
+                                next_selected_button.is_selected = True
+
+                                # Check if we need to scroll to show the tapped button
+                                if self.has_scroll_arrows:
+                                    button_top = next_selected_button.screen_y - next_selected_button.scroll_y
+                                    button_bottom = button_top + next_selected_button.height
+
+                                    if button_bottom > self.down_arrow_img_y:
+                                        # Button is below visible area - scroll down
+                                        scroll_amount = button_bottom - self.down_arrow_img_y + 8
+                                        for button in self.buttons:
+                                            button.scroll_y += scroll_amount
+                                        self._render_visible_buttons(clear_first=True)
+                                        # Re-register buttons with updated positions
+                                        if hasattr(self.hw_inputs, 'register_buttons'):
+                                            self.hw_inputs.register_buttons(self.buttons)
+                                    elif button_top < self.top_nav_height:
+                                        # Button is above visible area - scroll up
+                                        scroll_amount = self.top_nav_height - button_top + 8
+                                        for button in self.buttons:
+                                            button.scroll_y -= scroll_amount
+                                        self._render_visible_buttons(clear_first=True)
+                                        # Re-register buttons with updated positions
+                                        if hasattr(self.hw_inputs, 'register_buttons'):
+                                            self.hw_inputs.register_buttons(self.buttons)
+                                    else:
+                                        cur_selected_button.render()
+                                        next_selected_button.render()
+                                else:
+                                    cur_selected_button.render()
+                                    next_selected_button.render()
+
+                                self.renderer.show_image()
+                                continue
+                        elif user_input == HardwareButtonsConstants.KEY_PRESS:
+                            # KEY_PRESS but didn't tap a button - ignore (require tapping actual button)
+                            continue
+
+                    # KEY2 (SELECT on touch bar) or KEY_PRESS (non-touch) returns current selection
                     return self.selected_button
+
+                else:
+                    # Nothing to do with this input
+                    continue
 
                 # Write the screen updates
                 self.renderer.show_image()
@@ -677,8 +823,41 @@ class LargeButtonScreen(BaseTopNavScreen):
 
         self.buttons[self.selected_button].is_selected = True
 
+        # Register buttons for direct touch tap detection
+        if hasattr(self.hw_inputs, 'register_buttons'):
+            self.hw_inputs.register_buttons(self.buttons)
+
+        # Set touch bar based on screen type
+        # Hide touch bar for Reset/Power screen (all buttons are single-tap)
+        if self.title == "Reset / Power":
+            self._set_touch_bar_hidden()
+        else:
+            self._set_touch_bar_select_only()
+
+
+    def _set_touch_bar_select_only(self):
+        """Set touch bar to show only SELECT button (for grid layouts)"""
+        import os
+        if os.environ.get('SEEDSIGNER_TOUCH') == '1':
+            disp = self.renderer.disp
+            if hasattr(disp, 'display') and hasattr(disp.display, 'TOUCH_BAR_SELECT_ONLY'):
+                disp.display.set_touch_bar_labels(disp.display.TOUCH_BAR_SELECT_ONLY)
+
+
+    def _set_touch_bar_hidden(self):
+        """Hide all touch bar buttons"""
+        import os
+        if os.environ.get('SEEDSIGNER_TOUCH') == '1':
+            disp = self.renderer.disp
+            if hasattr(disp, 'display') and hasattr(disp.display, 'TOUCH_BAR_HIDDEN'):
+                disp.display.set_touch_bar_labels(disp.display.TOUCH_BAR_HIDDEN)
+
 
     def _run(self):
+        # Clear any pending touch input from previous screen
+        if hasattr(self.hw_inputs, 'clear_pending_input'):
+            self.hw_inputs.clear_pending_input()
+
         def swap_selected_button(new_selected_button: int):
             self.buttons[self.selected_button].is_selected = False
             self.buttons[self.selected_button].render()
@@ -754,6 +933,36 @@ class LargeButtonScreen(BaseTopNavScreen):
                 elif user_input in HardwareButtonsConstants.KEYS__ANYCLICK:
                     if self.top_nav.is_selected:
                         return self.top_nav.selected_button
+
+                    # Check for back button tap (touchscreen)
+                    if hasattr(self.hw_inputs, 'was_back_button_tapped'):
+                        if self.hw_inputs.was_back_button_tapped():
+                            if self.top_nav.show_back_button:
+                                return RET_CODE__BACK_BUTTON
+
+                    # Check for power button tap (touchscreen) - single tap
+                    if hasattr(self.hw_inputs, 'was_power_button_tapped'):
+                        if self.hw_inputs.was_power_button_tapped():
+                            if self.top_nav.show_power_button:
+                                return RET_CODE__POWER_BUTTON
+
+                    # Check for direct tap on a button (touchscreen)
+                    if hasattr(self.hw_inputs, 'get_tapped_button_index'):
+                        tapped_idx = self.hw_inputs.get_tapped_button_index()
+                        if tapped_idx >= 0 and tapped_idx < len(self.buttons):
+                            # Get button label to check for single-tap buttons
+                            button_label = self.buttons[tapped_idx].text.lower() if hasattr(self.buttons[tapped_idx], 'text') else ""
+                            # Power Off and Cancel have confirmation dialogs, so single-tap
+                            is_single_tap_button = button_label in ['power off', 'cancel']
+
+                            if tapped_idx == self.selected_button or is_single_tap_button:
+                                # Tapped already-selected button OR single-tap button - confirm
+                                return tapped_idx
+                            # Tapped different button - just move selection to it
+                            swap_selected_button(tapped_idx)
+                            self.renderer.show_image()
+                            continue
+
                     return self.selected_button
 
                 # Write the screen updates
@@ -1115,6 +1324,17 @@ class ResetScreen(BaseTopNavScreen):
             height=self.canvas_height - self.top_nav.height,
         ))
 
+        # Hide touch bar on reset screen
+        self._set_touch_bar_hidden()
+
+    def _set_touch_bar_hidden(self):
+        """Hide all touch bar buttons"""
+        import os
+        if os.environ.get('SEEDSIGNER_TOUCH') == '1':
+            disp = self.renderer.disp
+            if hasattr(disp, 'display') and hasattr(disp.display, 'TOUCH_BAR_HIDDEN'):
+                disp.display.set_touch_bar_labels(disp.display.TOUCH_BAR_HIDDEN)
+
 
 
 @dataclass
@@ -1130,6 +1350,17 @@ class PowerOffScreen(BaseTopNavScreen):
             height=self.canvas_height - self.top_nav.height,
         ))
 
+        # Hide touch bar on power off screen
+        self._set_touch_bar_hidden()
+
+    def _set_touch_bar_hidden(self):
+        """Hide all touch bar buttons"""
+        import os
+        if os.environ.get('SEEDSIGNER_TOUCH') == '1':
+            disp = self.renderer.disp
+            if hasattr(disp, 'display') and hasattr(disp.display, 'TOUCH_BAR_HIDDEN'):
+                disp.display.set_touch_bar_labels(disp.display.TOUCH_BAR_HIDDEN)
+
 
 
 @dataclass
@@ -1144,6 +1375,17 @@ class PowerOffNotRequiredScreen(BaseTopNavScreen):
             screen_y=self.top_nav.height,
             height=self.canvas_height - self.top_nav.height,
         ))
+
+        # Hide touch bar on power off screen
+        self._set_touch_bar_hidden()
+
+    def _set_touch_bar_hidden(self):
+        """Hide all touch bar buttons"""
+        import os
+        if os.environ.get('SEEDSIGNER_TOUCH') == '1':
+            disp = self.renderer.disp
+            if hasattr(disp, 'display') and hasattr(disp.display, 'TOUCH_BAR_HIDDEN'):
+                disp.display.set_touch_bar_labels(disp.display.TOUCH_BAR_HIDDEN)
 
 
 
@@ -1262,6 +1504,10 @@ class KeyboardScreen(BaseTopNavScreen):
 
 
     def _run(self):
+        # Clear any pending touch input from previous screen
+        if hasattr(self.hw_inputs, 'clear_pending_input'):
+            self.hw_inputs.clear_pending_input()
+
         self.cursor_position = len(self.user_input)
 
         # Start the interactive update loop
@@ -1271,6 +1517,8 @@ class KeyboardScreen(BaseTopNavScreen):
             )
 
             with self.renderer.lock:
+                # Track if we need to update the title after input changes
+                title_needs_update = False
                 # Check possible exit conditions   
                 if self.top_nav.is_selected and input == HardwareButtonsConstants.KEY_PRESS:
                     return RET_CODE__BACK_BUTTON
@@ -1316,6 +1564,7 @@ class KeyboardScreen(BaseTopNavScreen):
                         if len(self.user_input) > 0:
                             self.user_input = self.user_input[:-1]
                             self.cursor_position -= 1
+                            title_needs_update = True
 
                 elif input == HardwareButtonsConstants.KEY_PRESS and ret_val not in Keyboard.ADDITIONAL_KEYS:
                     # User has locked in the current letter
@@ -1324,19 +1573,20 @@ class KeyboardScreen(BaseTopNavScreen):
                         ret_val = self.keys_to_values[ret_val]
                     self.user_input += ret_val
                     self.cursor_position += 1
+                    title_needs_update = True
 
                     if self.cursor_position == self.return_after_n_chars:
                         return self.user_input
 
-                    # Render a new TextArea over the TopNav title bar
-                    if self.update_title():
-                        TextArea(
-                            text=self.title,
-                            font_name=GUIConstants.get_top_nav_title_font_name(),
-                            font_size=GUIConstants.get_top_nav_title_font_size(),
-                            height=self.top_nav.height,
-                        ).render()
-                        self.top_nav.render_buttons()
+                # Update the title if input changed (add or delete)
+                if title_needs_update and self.update_title():
+                    TextArea(
+                        text=self.title,
+                        font_name=GUIConstants.get_top_nav_title_font_name(),
+                        font_size=GUIConstants.get_top_nav_title_font_size(),
+                        height=self.top_nav.height,
+                    ).render()
+                    self.top_nav.render_buttons()
 
                 elif input in HardwareButtonsConstants.KEYS__LEFT_RIGHT_UP_DOWN:
                     # Live joystick movement; haven't locked this new letter in yet.
