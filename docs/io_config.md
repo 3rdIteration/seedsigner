@@ -83,6 +83,7 @@ Values shown are exactly how mappings are stored in `io_config.json`.
 - `[line]`
 - `[line, "pull_up"]`
 - `line`
+- `"disabled"` — the button will not be initialized and will never register as pressed
 
 `display` selectors are consumed directly by `periphery.GPIO(...)` and therefore can be either chip/line or a global line selector.
 
