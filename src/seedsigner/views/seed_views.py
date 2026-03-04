@@ -1216,6 +1216,16 @@ class SeedAddPassphraseView(View):
             return Destination(SeedReviewPassphraseView)
 
         else:
+            if isinstance(self.seed, AezeedSeed) and self.seed.seed_bytes is None:
+                self.run_screen(
+                    WarningScreen,
+                    title=_("Invalid passphrase"),
+                    status_headline=None,
+                    text=_("Aezeed passphrase required.\nTry again."),
+                    show_back_button=False,
+                    button_data=[ButtonOption("OK")],
+                )
+                return Destination(SeedAddPassphraseView)
             return Destination(SeedFinalizeView)
 
 
