@@ -38,7 +38,7 @@ from seedsigner.helpers.tapsigner_backup import (
 )
 from seedsigner.models.encode_qr import CompactSeedQrEncoder, GenericStaticQrEncoder, SeedQrEncoder, SpecterXPubQrEncoder, StaticXpubQrEncoder, UrXpubQrEncoder
 from seedsigner.models.qr_type import QRType
-from seedsigner.models.seed import Seed, Slip39Seed, ElectrumSeed, XprvSeed, InvalidSeedException, SeedWordsUnavailableException
+from seedsigner.models.seed import Seed, AezeedSeed, Slip39Seed, ElectrumSeed, XprvSeed, InvalidSeedException, SeedWordsUnavailableException
 from seedsigner.models.settings import Settings, SettingsConstants
 from seedsigner.models.settings_definition import SettingsDefinition
 from seedsigner.models.threads import BaseThread, ThreadsafeCounter
@@ -72,6 +72,8 @@ class SeedsMenuView(View):
             return "XPRV"
         if isinstance(seed, ElectrumSeed):
             return "ELEC"
+        if isinstance(seed, AezeedSeed):
+            return "AEZE"
         return "BIP39"
 
 
@@ -1029,7 +1031,9 @@ class SeedMnemonicEntryView(View):
                 self.controller.storage.convert_pending_mnemonic_to_pending_seed(
                     wordlist_language_code=self.settings.get_value(SettingsConstants.SETTING__WORDLIST_LANGUAGE),
                 )
-            except InvalidSeedException:
+            except InvalidSeedException as e:
+                if self.controller.storage.pending_is_aezeed and str(e) == "InvalidPassphraseError":
+                    return Destination(SeedAddPassphraseView)
                 return Destination(SeedMnemonicInvalidView)
 
             return Destination(SeedFinalizeView)
@@ -1104,7 +1108,7 @@ class SeedFinalizeView(View):
     def run(self):
         button_data = [self.FINALIZE]
         #self.TYPE_PASSPHRASE.button_label = self.seed.passphrase_label
-        if isinstance(self.seed, XprvSeed):
+        if isinstance(self.seed, (XprvSeed, AezeedSeed)):
             pass
         elif self.settings.get_value(SettingsConstants.SETTING__PASSPHRASE) != SettingsConstants.OPTION__DISABLED:
             button_data.append(self.TYPE_PASSPHRASE)
@@ -1156,11 +1160,24 @@ class SeedAddPassphraseView(View):
         )
 
         passphrase = ret_dict["passphrase"]
-        if isinstance(self.seed, Slip39Seed):
-            self.seed.set_slip39_passphrase(passphrase)
-        else:
-            # The new passphrase will be the return value; it might be empty.
-            self.seed.set_passphrase(passphrase)
+        try:
+            if isinstance(self.seed, Slip39Seed):
+                self.seed.set_slip39_passphrase(passphrase)
+            else:
+                # The new passphrase will be the return value; it might be empty.
+                self.seed.set_passphrase(passphrase)
+        except InvalidSeedException as e:
+            if isinstance(self.seed, AezeedSeed) and str(e) == "InvalidPassphraseError":
+                self.run_screen(
+                    WarningScreen,
+                    title=_("Invalid passphrase"),
+                    status_headline=None,
+                    text=_("Wrong Aezeed passphrase.\nTry again."),
+                    show_back_button=False,
+                    button_data=[ButtonOption("OK")],
+                )
+                return Destination(SeedAddPassphraseView)
+            raise
 
         if "is_back_button" in ret_dict:
             if len(self.seed.passphrase) > 0:

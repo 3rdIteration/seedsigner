@@ -101,7 +101,7 @@ class ScanView(View):
                     self.controller.storage.set_pending_seed(
                         Seed(mnemonic=seed_mnemonic, wordlist_language_code=self.wordlist_language_code)
                     )
-                if self.settings.get_value(SettingsConstants.SETTING__PASSPHRASE) == SettingsConstants.OPTION__REQUIRED:
+                if seed_type != "aezeed" and self.settings.get_value(SettingsConstants.SETTING__PASSPHRASE) == SettingsConstants.OPTION__REQUIRED:
                     from seedsigner.views.seed_views import SeedAddPassphraseView
                     return Destination(SeedAddPassphraseView)
                 else:

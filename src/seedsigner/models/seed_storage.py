@@ -121,6 +121,11 @@ class SeedStorage:
         self.discard_pending_mnemonic()
     
 
+
+    @property
+    def pending_is_aezeed(self) -> bool:
+        return self._pending_is_aezeed
+
     def discard_pending_mnemonic(self):
         wipe_list(self._pending_mnemonic)
         self._pending_mnemonic = []
