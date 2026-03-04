@@ -76,6 +76,28 @@ de-asserting any chip-select GPIO.  The display is always selected via the
 hardwired ground connection, and the RST line is used for the hardware reset
 during initialisation.
 
+### Silent failure when CE pin is unconnected
+
+When `"cs"` is **not** set to `"disabled"` the kernel manages the CE GPIO
+(e.g. CE0/GPIO8 for `spi_device: 0`) as a pure output: it drives the pin
+low before each transfer and high afterwards.
+
+> **The kernel has no way to detect whether the CE pin is physically wired to
+> the LCD CS input.**  If the CE pin is left unconnected or mis-wired:
+> - Every `SPI.transfer()` call **succeeds** (no exception, no `errno`).
+> - The LCD CS input is never asserted, so the LCD ignores every byte.
+> - The display remains blank with no error message.
+>
+> The startup log will emit a `WARNING` describing this risk when
+> kernel-managed CS is active.
+
+If the display is blank and you are using kernel-managed CS, check:
+1. The CE pin is physically connected to the LCD CS pin.
+2. The correct `spi_device` index matches the CE pin used (e.g. `0` → CE0/GPIO8,
+   `1` → CE1/GPIO7 on a Raspberry Pi).
+3. If there is only one device on the bus and you can tie LCD CS to GND, use
+   `"cs": "disabled"` to eliminate the failure mode entirely.
+
 ---
 
 ## Hardware profile mapping summary

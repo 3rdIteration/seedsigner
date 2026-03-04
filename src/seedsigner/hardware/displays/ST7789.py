@@ -36,8 +36,29 @@ class ST7789(object):
         spi_extra_flags = 0
         if pin_mapping.get("cs") == "disabled":
             spi_extra_flags = 0x40  # SPI_NO_CS
+            logger.info(
+                "SPI CS mode: SPI_NO_CS (0x40) — kernel will not manage any CE GPIO; "
+                "LCD CS pin must be tied to GND."
+            )
+        else:
+            # The kernel will drive the CE GPIO (e.g. CE0/GPIO8 for spi_device=0)
+            # low before each transfer and high afterwards.  This is a pure GPIO
+            # output: the kernel has no way to confirm the pin is physically
+            # connected to the LCD's CS input.  If the CE pin is unconnected or
+            # mis-wired the LCD will ignore every SPI transfer and the display
+            # will remain blank — no exception or error code is raised by the
+            # kernel.  If the display does not respond, verify CE wiring or add
+            # '"cs": "disabled"' to the display config and tie LCD CS to GND.
+            logger.warning(
+                "SPI CS mode: kernel-managed CE%d GPIO — if the CE pin is not "
+                "wired to the LCD CS input, SPI transfers will silently succeed "
+                "but the display will not respond (no error is raised). "
+                "Set '\"cs\": \"disabled\"' in the display config and tie LCD CS "
+                "to GND to eliminate this failure mode.",
+                pin_mapping.get("spi_device", 0),
+            )
 
-        logger.info(f"Initializing SPI: bus={spi_bus} at {spi_hz/1_000_000} MHz, SPI_NO_CS={bool(spi_extra_flags)}")
+        logger.info("Initializing SPI: bus=%s at %.1f MHz", spi_bus, spi_hz / 1_000_000)
         self._spi = SPI(spi_bus, spi_mode, spi_hz, extra_flags=spi_extra_flags)
         self.init()
 

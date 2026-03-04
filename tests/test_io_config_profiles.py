@@ -177,31 +177,60 @@ def test_cs_disabled_field_is_readable_from_pin_mapping():
         _io_cfg.load_io_config = orig_loader
 
 
-def test_st7789_spi_extra_flags_when_cs_disabled():
-    """ST7789.__init__ must pass extra_flags=0x40 (SPI_NO_CS) to periphery.SPI
-    when the display config contains 'cs': 'disabled'."""
-    from unittest.mock import MagicMock, patch
-
-    pin_mapping = {
+def _make_st7789_pin_mapping(cs=None):
+    """Return a minimal display pin mapping for ST7789 tests."""
+    mapping = {
         "display": {
             "dc":  ["/dev/gpiochip0", 25],
             "rst": ["/dev/gpiochip0", 27],
             "bl":  ["/dev/gpiochip0", 24],
             "spi_bus": 0,
             "spi_device": 0,
-            "cs": "disabled",
         }
     }
+    if cs is not None:
+        mapping["display"]["cs"] = cs
+    return mapping
 
-    with patch("seedsigner.hardware.displays.ST7789.GPIO"), \
-         patch("seedsigner.hardware.displays.ST7789.SPI") as mock_spi_cls, \
-         patch("seedsigner.hardware.displays.ST7789.Settings") as mock_settings, \
-         patch("seedsigner.hardware.displays.ST7789.get_hardware_pin_mapping", return_value=pin_mapping):
+
+def _import_st7789_with_mocked_periphery():
+    """Import the ST7789 module with the `periphery` hardware library mocked out.
+
+    `periphery` is only available on actual hardware.  We stub it in
+    sys.modules so that the module-level ``from periphery import GPIO, SPI``
+    succeeds in a CI/test environment.
+    """
+    import sys
+    import types
+    from unittest.mock import MagicMock
+
+    if "periphery" not in sys.modules:
+        fake_periphery = types.ModuleType("periphery")
+        fake_periphery.GPIO = MagicMock()
+        fake_periphery.SPI = MagicMock()
+        sys.modules["periphery"] = fake_periphery
+
+    # Force a fresh import so the module picks up the mocked periphery.
+    sys.modules.pop("seedsigner.hardware.displays.ST7789", None)
+    import seedsigner.hardware.displays.ST7789 as st7789_module
+    return st7789_module
+
+
+def test_st7789_spi_extra_flags_when_cs_disabled():
+    """ST7789.__init__ must pass extra_flags=0x40 (SPI_NO_CS) to periphery.SPI
+    when the display config contains 'cs': 'disabled'."""
+    from unittest.mock import patch
+
+    st7789_module = _import_st7789_with_mocked_periphery()
+    pin_mapping = _make_st7789_pin_mapping(cs="disabled")
+
+    with patch.object(st7789_module, "GPIO"), \
+         patch.object(st7789_module, "SPI") as mock_spi_cls, \
+         patch.object(st7789_module, "Settings") as mock_settings, \
+         patch.object(st7789_module, "get_hardware_pin_mapping", return_value=pin_mapping), \
+         patch.object(st7789_module.ST7789, "init"):
         mock_settings.get_platform_default_hardware_config.return_value = "RPI_40"
-        from seedsigner.hardware.displays import ST7789 as st7789_module
-        # Prevent the full init sequence (reset + display commands) from running.
-        with patch.object(st7789_module.ST7789, "init"):
-            st7789_module.ST7789()
+        st7789_module.ST7789()
 
     mock_spi_cls.assert_called_once_with(
         "/dev/spidev0.0",
@@ -214,31 +243,70 @@ def test_st7789_spi_extra_flags_when_cs_disabled():
 def test_st7789_spi_extra_flags_default_when_cs_not_disabled():
     """ST7789.__init__ must pass extra_flags=0 to periphery.SPI when no 'cs'
     key is present in the display config (normal CE GPIO-managed CS)."""
-    from unittest.mock import MagicMock, patch
+    from unittest.mock import patch
 
-    pin_mapping = {
-        "display": {
-            "dc":  ["/dev/gpiochip0", 25],
-            "rst": ["/dev/gpiochip0", 27],
-            "bl":  ["/dev/gpiochip0", 24],
-            "spi_bus": 0,
-            "spi_device": 0,
-            # no 'cs' key → normal kernel CS management
-        }
-    }
+    st7789_module = _import_st7789_with_mocked_periphery()
+    pin_mapping = _make_st7789_pin_mapping()  # no cs key
 
-    with patch("seedsigner.hardware.displays.ST7789.GPIO"), \
-         patch("seedsigner.hardware.displays.ST7789.SPI") as mock_spi_cls, \
-         patch("seedsigner.hardware.displays.ST7789.Settings") as mock_settings, \
-         patch("seedsigner.hardware.displays.ST7789.get_hardware_pin_mapping", return_value=pin_mapping):
+    with patch.object(st7789_module, "GPIO"), \
+         patch.object(st7789_module, "SPI") as mock_spi_cls, \
+         patch.object(st7789_module, "Settings") as mock_settings, \
+         patch.object(st7789_module, "get_hardware_pin_mapping", return_value=pin_mapping), \
+         patch.object(st7789_module.ST7789, "init"):
         mock_settings.get_platform_default_hardware_config.return_value = "RPI_40"
-        from seedsigner.hardware.displays import ST7789 as st7789_module
-        with patch.object(st7789_module.ST7789, "init"):
-            st7789_module.ST7789()
+        st7789_module.ST7789()
 
     mock_spi_cls.assert_called_once_with(
         "/dev/spidev0.0",
         0,
         40_000_000,
         extra_flags=0,
+    )
+
+
+def test_st7789_warns_on_kernel_managed_cs(caplog):
+    """ST7789.__init__ must emit a WARNING when kernel-managed CE CS is active
+    (cs not 'disabled'), because a disconnected CE pin fails silently."""
+    import logging
+    from unittest.mock import patch
+
+    st7789_module = _import_st7789_with_mocked_periphery()
+    pin_mapping = _make_st7789_pin_mapping()  # no cs key → kernel manages CE
+
+    with patch.object(st7789_module, "GPIO"), \
+         patch.object(st7789_module, "SPI"), \
+         patch.object(st7789_module, "Settings") as mock_settings, \
+         patch.object(st7789_module, "get_hardware_pin_mapping", return_value=pin_mapping), \
+         patch.object(st7789_module.ST7789, "init"), \
+         caplog.at_level(logging.WARNING, logger="seedsigner.hardware.displays.ST7789"):
+        mock_settings.get_platform_default_hardware_config.return_value = "RPI_40"
+        st7789_module.ST7789()
+
+    warning_messages = [r.message for r in caplog.records if r.levelno == logging.WARNING]
+    assert any("silently" in msg for msg in warning_messages), (
+        "Expected a warning about silent CS failure risk, got: " + str(warning_messages)
+    )
+
+
+def test_st7789_no_warning_when_cs_disabled(caplog):
+    """ST7789.__init__ must NOT emit a WARNING when 'cs': 'disabled' is set —
+    the SPI_NO_CS path is the explicitly safe configuration."""
+    import logging
+    from unittest.mock import patch
+
+    st7789_module = _import_st7789_with_mocked_periphery()
+    pin_mapping = _make_st7789_pin_mapping(cs="disabled")
+
+    with patch.object(st7789_module, "GPIO"), \
+         patch.object(st7789_module, "SPI"), \
+         patch.object(st7789_module, "Settings") as mock_settings, \
+         patch.object(st7789_module, "get_hardware_pin_mapping", return_value=pin_mapping), \
+         patch.object(st7789_module.ST7789, "init"), \
+         caplog.at_level(logging.WARNING, logger="seedsigner.hardware.displays.ST7789"):
+        mock_settings.get_platform_default_hardware_config.return_value = "RPI_40"
+        st7789_module.ST7789()
+
+    warning_messages = [r.message for r in caplog.records if r.levelno == logging.WARNING]
+    assert not warning_messages, (
+        "Unexpected WARNING when cs='disabled': " + str(warning_messages)
     )
