@@ -73,6 +73,12 @@ Values shown are exactly how mappings are stored in `io_config.json`.
 > field is not applicable. The `pixelformat` setting is only used by Luckfox
 > and other V4L2-based camera backends.
 
+> **Luckfox Pico note:** GPIO pins on Luckfox Pico boards often require
+> additional configuration beyond what is possible in python-periphery or
+> standard Linux GPIO tools. See the
+> [Luckfox startup workflow — GPIO button configuration](https://github.com/3rdIteration/seedsigner-luckfox-pico/blob/master/docs/LUCKFOX_STARTUP_WORKFLOW.md#gpio-button-configuration)
+> documentation for details.
+
 ---
 
 ## Supported pin selector formats
