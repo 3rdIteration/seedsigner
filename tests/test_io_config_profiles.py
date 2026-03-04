@@ -414,3 +414,67 @@ def test_st7789_init_called_on_first_clear():
         display.clear()
         assert mock_init.call_count == 1
         assert display._display_initialized is True
+
+
+def test_st7789_init_sleeps_after_slpout():
+    """init() must sleep at least 120 ms between SLPOUT (0x11) and DISPON (0x29).
+
+    The ST7789 datasheet requires ≥120 ms after SLPOUT before any subsequent
+    command.  Without this delay the display ignores DISPON and stays blank,
+    which is the root cause of the 'no image when CS is at GND from boot'
+    failure: lazy init calls init() immediately before the first frame, so
+    there is no accidental startup delay to compensate.
+    """
+    import time
+    from unittest.mock import patch
+
+    # ST7789 command codes relevant to this test.
+    ST7789_SLPOUT = 0x11  # Sleep Out — wake the panel from post-reset sleep
+    ST7789_DISPON = 0x29  # Display On — turn on the pixel output
+
+    st7789_module = _import_st7789_with_mocked_periphery()
+    pin_mapping = _make_st7789_pin_mapping(cs="disabled")
+
+    commands_in_order = []
+
+    def fake_command(self_inner, cmd):
+        commands_in_order.append(("cmd", cmd, time.monotonic()))
+
+    def fake_data(self_inner, val):
+        # Data bytes carry no timing significance for this test; record
+        # without a timestamp so the list stays compact.
+        commands_in_order.append(("data", val, None))
+
+    def fake_reset(self_inner):
+        pass  # skip RST toggling
+
+    with patch.object(st7789_module, "GPIO"), \
+         patch.object(st7789_module, "SPI"), \
+         patch.object(st7789_module, "Settings") as mock_settings, \
+         patch.object(st7789_module, "get_hardware_pin_mapping", return_value=pin_mapping), \
+         patch.object(st7789_module.ST7789, "reset", fake_reset), \
+         patch.object(st7789_module.ST7789, "command", fake_command), \
+         patch.object(st7789_module.ST7789, "data", fake_data):
+        mock_settings.get_platform_default_hardware_config.return_value = "RPI_40"
+        display = st7789_module.ST7789()
+        display.init()
+
+    # Find the timestamps for SLPOUT and DISPON commands.
+    slpout_t = next(
+        (e[2] for e in commands_in_order if e[0] == "cmd" and e[1] == ST7789_SLPOUT),
+        None,
+    )
+    dispon_t = next(
+        (e[2] for e in commands_in_order if e[0] == "cmd" and e[1] == ST7789_DISPON),
+        None,
+    )
+
+    assert slpout_t is not None, "SLPOUT (0x11) command not found in init() sequence"
+    assert dispon_t is not None, "DISPON (0x29) command not found in init() sequence"
+    assert dispon_t > slpout_t, "DISPON must be sent after SLPOUT"
+
+    delay_ms = (dispon_t - slpout_t) * 1000
+    assert delay_ms >= 120, (
+        f"Must sleep ≥120 ms between SLPOUT and DISPON (ST7789 datasheet); "
+        f"actual delay was {delay_ms:.1f} ms"
+    )

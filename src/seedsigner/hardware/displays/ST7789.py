@@ -202,9 +202,18 @@ class ST7789(object):
         
         self.command(0x21)  # inversion ON; 0x20 = inversion OFF
 
+        # SLPOUT (Sleep Out): wake the display from its post-reset sleep state.
+        # The ST7789 datasheet requires at least 120 ms between SLPOUT and any
+        # subsequent command (including DISPON).  Without this delay the display
+        # ignores DISPON and stays blank.  In the original code the long
+        # application-startup path between __init__() and the first show_image()
+        # call accidentally provided enough time; with lazy initialisation
+        # (init() called immediately before the first frame) that accidental delay
+        # is gone, so the sleep must be explicit.
         self.command(0x11)
+        time.sleep(0.12)  # ≥120 ms required by ST7789 datasheet after SLPOUT
 
-        self.command(0x29)
+        self.command(0x29)  # DISPON (Display On)
 
     def reset(self):
         """Reset the display"""
