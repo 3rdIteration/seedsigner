@@ -1097,16 +1097,21 @@ class SeedFinalizeView(View):
             # just-loaded seed would be naked, but this is special handling for the
             # screenshot generator which creates a pending seed w/a passphrase already
             # set.
-            passphrase = self.seed.passphrase
-            if isinstance(self.seed, Slip39Seed):
-                self.seed.set_slip39_passphrase("")
+            if isinstance(self.seed, AezeedSeed):
+                # Aezeed passphrase is part of mnemonic decryption. Show current
+                # loaded fingerprint rather than a hypothetical "no passphrase" one.
+                self.fingerprint = self.seed.get_fingerprint(network=self.settings.get_value(SettingsConstants.SETTING__NETWORK))
             else:
-                self.seed.set_passphrase("")
-            self.fingerprint = self.seed.get_fingerprint(network=self.settings.get_value(SettingsConstants.SETTING__NETWORK))
-            if isinstance(self.seed, Slip39Seed):
-                self.seed.set_slip39_passphrase(passphrase)
-            else:
-                self.seed.set_passphrase(passphrase)
+                passphrase = self.seed.passphrase
+                if isinstance(self.seed, Slip39Seed):
+                    self.seed.set_slip39_passphrase("")
+                else:
+                    self.seed.set_passphrase("")
+                self.fingerprint = self.seed.get_fingerprint(network=self.settings.get_value(SettingsConstants.SETTING__NETWORK))
+                if isinstance(self.seed, Slip39Seed):
+                    self.seed.set_slip39_passphrase(passphrase)
+                else:
+                    self.seed.set_passphrase(passphrase)
 
 
     def run(self):
@@ -1172,6 +1177,8 @@ class SeedAddPassphraseView(View):
                 self.seed.set_passphrase(passphrase)
         except InvalidSeedException as e:
             if isinstance(self.seed, AezeedSeed) and str(e) == "InvalidPassphraseError":
+                # Clear incorrect passphrase so user can back out cleanly.
+                self.seed.set_passphrase("")
                 self.run_screen(
                     WarningScreen,
                     title=_("Invalid passphrase"),
