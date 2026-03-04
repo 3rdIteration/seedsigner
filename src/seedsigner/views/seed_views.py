@@ -534,8 +534,17 @@ class SeedKeeperSelectView(View):
             )
             return Destination(BackStackView)
 
+        is_aezeed = False
+        if secret_mnemonic.startswith("aezeed:"):
+            is_aezeed = True
+            secret_mnemonic = secret_mnemonic[len("aezeed:"):]
+
         mnemonic = secret_mnemonic.split(" ")
-        self.controller.storage.init_pending_mnemonic(num_words=len(mnemonic), is_electrum=(stype == 'Electrum mnemonic'))
+        self.controller.storage.init_pending_mnemonic(
+            num_words=len(mnemonic),
+            is_electrum=(stype == 'Electrum mnemonic' and not is_aezeed),
+            is_aezeed=is_aezeed,
+        )
         for i, word in enumerate(mnemonic):
             self.controller.storage.update_pending_mnemonic(word, i)
 
@@ -550,6 +559,8 @@ class SeedKeeperSelectView(View):
         if len(secret_passphrase) > 0:
             self.seed = self.controller.storage.get_pending_seed()
             self.seed.set_passphrase(secret_passphrase)
+            if isinstance(self.seed, AezeedSeed):
+                return Destination(SeedFinalizeView)
             return Destination(SeedReviewPassphraseView)
 
         return Destination(SeedFinalizeView)
@@ -1974,7 +1985,9 @@ class SeedBackupView(View):
 
     def run(self):
 
-        button_data = [self.VIEW_WORDS]
+        button_data = []
+        if not isinstance(self.seed, AezeedSeed):
+            button_data.append(self.VIEW_WORDS)
         if self.settings.get_value(SettingsConstants.SETTING__SMARTCARD_SUPPORT) == SettingsConstants.OPTION__ENABLED:
             button_data.append(self.TO_SEEDKEEPER)
         if isinstance(self.seed, Slip39Seed):
@@ -4545,6 +4558,8 @@ class SeedExportPlaintextQRView(View):
     def run(self):
         from seedsigner.gui.screens.screen import QRDisplayScreen
         data = self.seed.mnemonic_str
+        if isinstance(self.seed, AezeedSeed):
+            data = f"aezeed:{self.seed.mnemonic_str}\npassphrase:{self.seed.passphrase}"
         if isinstance(self.seed, XprvSeed):
             data = self.seed.get_root().to_base58()
         if isinstance(self.seed, Slip39Seed) and self.share_index is not None:
@@ -4640,6 +4655,18 @@ class SaveToSeedkeeperView(View):
                     electrum_mnemonic_list = list(bytes(seed.mnemonic_str, 'utf-8'))
                     electrum_passphrase_list = list(bytes(seed.passphrase, 'utf-8'))
                     secret_list = [len(electrum_mnemonic_list)] + electrum_mnemonic_list + [len(electrum_passphrase_list)] + electrum_passphrase_list
+                    header = Satochip_Connector.make_header(type, export_rights, label, subtype=subtype)
+                    secret_dic = {'header': header, 'secret_list': secret_list}
+                elif isinstance(seed, AezeedSeed):
+                    print("Saving Aezeed seed")
+                    label = f"aezeed:{ret['passphrase']}"
+                    export_rights = "Plaintext export allowed"
+                    type = "Electrum mnemonic"
+                    subtype = 0
+                    aezeed_mnemonic = f"aezeed:{seed.mnemonic_str}"
+                    aezeed_mnemonic_list = list(bytes(aezeed_mnemonic, 'utf-8'))
+                    aezeed_passphrase_list = list(bytes(seed.passphrase, 'utf-8'))
+                    secret_list = [len(aezeed_mnemonic_list)] + aezeed_mnemonic_list + [len(aezeed_passphrase_list)] + aezeed_passphrase_list
                     header = Satochip_Connector.make_header(type, export_rights, label, subtype=subtype)
                     secret_dic = {'header': header, 'secret_list': secret_list}
                 else:
