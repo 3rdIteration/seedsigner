@@ -51,6 +51,10 @@ class Renderer(ConfigurableSingleton):
         if Settings.get_instance().get_value(SettingsConstants.SETTING__DISPLAY_COLOR_INVERTED, default_if_none=True) == SettingsConstants.OPTION__ENABLED:
             self.disp.invert()
 
+        brightness_level = Settings.get_instance().get_value(SettingsConstants.SETTING__SCREEN_BRIGHTNESS, default_if_none=True)
+        duty_cycle = SettingsConstants.BRIGHTNESS_DUTY_CYCLE.get(brightness_level, 100)
+        self.disp.set_brightness(duty_cycle)
+
         if self.display_type in [DISPLAY_TYPE__ST7789, DISPLAY_TYPE__DESKTOP]:
             self.canvas_width = self.disp.width
             self.canvas_height = self.disp.height

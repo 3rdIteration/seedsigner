@@ -428,6 +428,7 @@ class SettingsConstants:
 
     SETTING__DISPLAY_CONFIGURATION = "display_config"
     SETTING__DISPLAY_COLOR_INVERTED = "color_inverted"
+    SETTING__SCREEN_BRIGHTNESS = "screen_brightness"
 
     SETTING__NETWORK = "network"
     SETTING__QR_DENSITY = "qr_density"
@@ -494,6 +495,25 @@ class SettingsConstants:
             (DISPLAY_CONFIGURATION__ILI9341__320x240, "ili9341 320x240 (beta)"),
             # (DISPLAY_CONFIGURATION__ILI9486__320x480, "ili9486 480x320"),  # TODO: Enable when ili9486 driver performance is improved
         ]
+
+
+    # Screen brightness options (PWM duty cycle percentages)
+    BRIGHTNESS__DIM = "dim"
+    BRIGHTNESS__MEDIUM = "medium"
+    BRIGHTNESS__BRIGHT = "bright"
+    BRIGHTNESS__FULL = "full"
+    ALL_BRIGHTNESS_LEVELS = [
+        (BRIGHTNESS__DIM, "Dim"),
+        (BRIGHTNESS__MEDIUM, "Medium"),
+        (BRIGHTNESS__BRIGHT, "Bright"),
+        (BRIGHTNESS__FULL, "Full"),
+    ]
+    BRIGHTNESS_DUTY_CYCLE = {
+        BRIGHTNESS__DIM: 25,
+        BRIGHTNESS__MEDIUM: 50,
+        BRIGHTNESS__BRIGHT: 75,
+        BRIGHTNESS__FULL: 100,
+    }
 
 
     # Hidden settings
@@ -1077,6 +1097,16 @@ class SettingsDefinition:
                       type=SettingsConstants.TYPE__ENABLED_DISABLED,
                       visibility=SettingsConstants.VISIBILITY__HARDWARE,
                       default_value=SettingsConstants.OPTION__DISABLED),
+
+        SettingsEntry(category=SettingsConstants.CATEGORY__SYSTEM,
+                      attr_name=SettingsConstants.SETTING__SCREEN_BRIGHTNESS,
+                      abbreviated_name="brightness",
+                      # TRANSLATOR_NOTE: Hardware settings option to adjust screen backlight brightness via PWM.
+                      display_name=_mft("Screen brightness"),
+                      type=SettingsConstants.TYPE__SELECT_1,
+                      visibility=SettingsConstants.VISIBILITY__HARDWARE,
+                      selection_options=SettingsConstants.ALL_BRIGHTNESS_LEVELS,
+                      default_value=SettingsConstants.BRIGHTNESS__FULL),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__SYSTEM,
                       attr_name=SettingsConstants.SETTING__CAMERA_DEVICE,

@@ -376,6 +376,10 @@ class SettingsEntryUpdateSelectionView(View):
         elif self.settings_entry.attr_name == SettingsConstants.SETTING__DISPLAY_COLOR_INVERTED:
             self.renderer.disp.invert(enabled=updated_value == SettingsConstants.OPTION__ENABLED)
 
+        elif self.settings_entry.attr_name == SettingsConstants.SETTING__SCREEN_BRIGHTNESS:
+            duty_cycle = SettingsConstants.BRIGHTNESS_DUTY_CYCLE.get(updated_value, 100)
+            self.renderer.disp.set_brightness(duty_cycle)
+
         if destination:
             return destination
 

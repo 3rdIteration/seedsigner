@@ -22,7 +22,8 @@ class ST7789(object):
         GPIO.setup(self._dc,GPIO.OUT)
         GPIO.setup(self._rst,GPIO.OUT)
         GPIO.setup(self._bl,GPIO.OUT)
-        GPIO.output(self._bl, GPIO.HIGH)
+        self._bl_pwm = GPIO.PWM(self._bl, 1000)
+        self._bl_pwm.start(100)
 
         #Initialize SPI
         self._spi = spidev.SpiDev(0, 0)
@@ -171,3 +172,7 @@ class ST7789(object):
     def invert(self, enabled: bool = True):
         """Invert how the display interprets colors"""
         self.command(0x21 if enabled else 0x20)
+
+    def set_brightness(self, duty_cycle: int):
+        """Set backlight brightness via PWM duty cycle (0-100)."""
+        self._bl_pwm.ChangeDutyCycle(max(0, min(100, duty_cycle)))

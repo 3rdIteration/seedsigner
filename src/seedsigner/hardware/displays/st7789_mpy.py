@@ -282,6 +282,7 @@ class ST7789:
         GPIO.setup(dc,GPIO.OUT)
         GPIO.setup(reset,GPIO.OUT)
         GPIO.setup(backlight,GPIO.OUT)
+        self._bl_pwm = GPIO.PWM(backlight, 1000)
 
         #Initialize SPI
         spi = spidev.SpiDev(0, 0)
@@ -323,7 +324,7 @@ class ST7789:
         self.fill(0x0)
 
         if backlight is not None:
-            GPIO.output(backlight, GPIO.HIGH)
+            self._bl_pwm.start(100)
             # backlight.value(1)
 
     @staticmethod
@@ -343,6 +344,10 @@ class ST7789:
 
     def invert(self, enabled: bool = True):
         self.inversion_mode(enabled)
+
+    def set_brightness(self, duty_cycle: int):
+        """Set backlight brightness via PWM duty cycle (0-100)."""
+        self._bl_pwm.ChangeDutyCycle(max(0, min(100, duty_cycle)))
 
     def show_image(self, image, x_start: int = 0, y_start: int = 0):
         """Set buffer to value of Python Imaging Library image."""

@@ -159,7 +159,8 @@ class ILI9341(object):
         GPIO.setup(self._dc, GPIO.OUT)
         GPIO.output(self._dc, GPIO.HIGH)
         GPIO.setup(led, GPIO.OUT)
-        GPIO.output(led, GPIO.HIGH)
+        self._bl_pwm = GPIO.PWM(led, 1000)
+        self._bl_pwm.start(100)
         if self._rst is not None:
             GPIO.setup(self._rst, GPIO.OUT)
             GPIO.output(self._rst, GPIO.HIGH)
@@ -320,6 +321,10 @@ class ILI9341(object):
             self.command(ILI9341_INVOFF)
         self.inverted = state
         return self
+
+    def set_brightness(self, duty_cycle: int):
+        """Set backlight brightness via PWM duty cycle (0-100)."""
+        self._bl_pwm.ChangeDutyCycle(max(0, min(100, duty_cycle)))
 
     def set_window(self, x0=0, y0=0, x1=None, y1=None):
         """Set the pixel address window for proceeding drawing commands. x0 and

@@ -55,6 +55,10 @@ class DesktopDisplay:
         """Placeholder to match hardware API; no-op for desktop."""
         pass
 
+    def set_brightness(self, duty_cycle: int):
+        """Placeholder to match hardware API; no-op for desktop."""
+        pass
+
     def show_image(self, image: Image.Image, x_start: int = 0, y_start: int = 0):
         """Render a PIL image to the pygame window."""
         if image.mode != "RGB":

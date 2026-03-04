@@ -77,5 +77,10 @@ class DisplayDriver:
         self.display.invert(enabled)
 
 
+    def set_brightness(self, duty_cycle: int):
+        """Set backlight brightness via PWM duty cycle (0-100)."""
+        self.display.set_brightness(duty_cycle)
+
+
     def show_image(self, image, x_start: int = 0, y_start: int = 0):
         self.display.show_image(image, x_start, y_start)
