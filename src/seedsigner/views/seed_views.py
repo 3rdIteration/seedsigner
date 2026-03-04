@@ -433,7 +433,8 @@ class SeedKeeperSelectView(View):
                         (stype == 'Masterseed' and subtype == 0x01) or
                         (stype == 'Masterseed' and subtype == 0x00) or
                         (stype == 'Data' and label.startswith('XPRV:') and export_rights == 'Plaintext export allowed') or
-                        (stype == 'Electrum mnemonic' and export_rights == 'Plaintext export allowed')):
+                        (stype == 'Electrum mnemonic' and export_rights == 'Plaintext export allowed') or
+                        (stype == 'Password' and label.startswith('aezeed:') and export_rights == 'Plaintext export allowed')):
 
                     if not label:
                         label = "Unnamed Secret"
@@ -474,6 +475,7 @@ class SeedKeeperSelectView(View):
             sid = selected_header["sid"]
             stype = selected_header["stype"]
             subtype = selected_header["subtype"]
+            label = selected_header["label"]
 
             self.loading_screen = LoadingScreenThread(text="Loading Seed\n\n\n\n\n\n")
             self.loading_screen.start()
@@ -489,6 +491,19 @@ class SeedKeeperSelectView(View):
                 secret_size = secret_dict['secret_list'][0]
                 secret_mnemonic = bip39_secret[:secret_size]
                 secret_passphrase = bip39_secret[secret_size + 1:]
+
+            elif stype == 'Password' and label.startswith('aezeed:'):
+                aezeed_secret = self._decode_seedkeeper_text(secret_dict['secret']).strip()
+                secret_mnemonic = aezeed_secret
+                secret_passphrase = ""
+                if "\n" in aezeed_secret:
+                    lines = [line.strip() for line in aezeed_secret.splitlines() if line.strip()]
+                    if len(lines) > 0:
+                        secret_mnemonic = lines[0]
+                    for line in lines[1:]:
+                        if line.startswith("passphrase:"):
+                            secret_passphrase = line[len("passphrase:"):]
+                            break
 
             elif stype == 'Masterseed' and subtype == 0x01:
                 secret_raw_bytes = bytes.fromhex(secret_dict['secret'])
@@ -565,6 +580,14 @@ class SeedKeeperSelectView(View):
         self.seed = self.controller.storage.get_pending_seed()
 
         if isinstance(self.seed, AezeedSeed):
+            if len(secret_passphrase) > 0:
+                try:
+                    self.seed.set_passphrase(secret_passphrase)
+                except InvalidSeedException as e:
+                    if str(e) == "InvalidPassphraseError":
+                        self.seed.set_passphrase("")
+                        return Destination(SeedAezeedPassphraseModeView)
+                    raise
             if self.seed.seed_bytes is None:
                 return Destination(SeedAezeedPassphraseModeView)
             return Destination(SeedFinalizeView)
@@ -4788,13 +4811,13 @@ class SaveToSeedkeeperView(View):
                     print("Saving Aezeed seed")
                     label = f"aezeed:{ret['passphrase']}"
                     export_rights = "Plaintext export allowed"
-                    type = "Electrum mnemonic"
-                    subtype = 0
-                    aezeed_mnemonic = f"aezeed:{seed.mnemonic_str}"
-                    aezeed_mnemonic_list = list(bytes(aezeed_mnemonic, 'utf-8'))
-                    aezeed_passphrase_list = list(bytes(seed.passphrase, 'utf-8'))
-                    secret_list = [len(aezeed_mnemonic_list)] + aezeed_mnemonic_list + [len(aezeed_passphrase_list)] + aezeed_passphrase_list
-                    header = Satochip_Connector.make_header(type, export_rights, label, subtype=subtype)
+                    type = "Password"
+                    aezeed_secret = f"aezeed:{seed.mnemonic_str}"
+                    if seed.passphrase:
+                        aezeed_secret += f"\npassphrase:{seed.passphrase}"
+                    aezeed_secret_list = list(bytes(aezeed_secret, 'utf-8'))
+                    secret_list = [len(aezeed_secret_list)] + aezeed_secret_list
+                    header = Satochip_Connector.make_header(type, export_rights, label)
                     secret_dic = {'header': header, 'secret_list': secret_list}
                 else:
                     if isinstance(seed, XprvSeed) and status['protocol_minor_version'] == 1:

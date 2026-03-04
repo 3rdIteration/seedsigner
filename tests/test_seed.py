@@ -508,6 +508,8 @@ class TestAezeedPassphraseMode(BaseTest):
         destination = view.run()
         assert destination.View_cls == seed_views.SeedAezeedPassphraseModeView
 
+
+
 class TestSlip39ExtendableSetting(BaseTest):
     def test_create_nonextendable_slip39_seed(self, monkeypatch):
         self.settings.set_value(
