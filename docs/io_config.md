@@ -52,6 +52,30 @@ For the Waveshare 1.3" LCD HAT on a GPIO40 header:
 
 These are the standard Waveshare/RPi-style assignments that the `RPI_40` profile follows.
 
+### CS tied to ground (no GPIO chip-select)
+
+If there are no other devices on the SPI bus and you want to save a GPIO output,
+the LCD CS pin can be tied permanently to ground instead of connecting it to a
+GPIO CE pin.  In this case, add `"cs": "disabled"` to the `display` section of
+the profile:
+
+```json
+"display": {
+  "dc":  ["/dev/gpiochip0", 25],
+  "rst": ["/dev/gpiochip0", 27],
+  "bl":  ["/dev/gpiochip0", 24],
+  "spi_bus": 0,
+  "spi_device": 0,
+  "cs": "disabled"
+}
+```
+
+When `"cs": "disabled"` is present the driver opens the SPI device with the
+`SPI_NO_CS` kernel flag (`0x40`), which prevents the kernel from asserting or
+de-asserting any chip-select GPIO.  The display is always selected via the
+hardwired ground connection, and the RST line is used for the hardware reset
+during initialisation.
+
 ---
 
 ## Hardware profile mapping summary

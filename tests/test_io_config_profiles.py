@@ -1,4 +1,7 @@
-from seedsigner.hardware.io_config import detect_runtime_profile, get_hardware_pin_mapping, runtime_profile_to_hardware_profile
+import json
+import copy
+
+from seedsigner.hardware.io_config import detect_runtime_profile, get_hardware_pin_mapping, load_io_config, runtime_profile_to_hardware_profile
 from seedsigner.models.settings import Settings
 from seedsigner.models.settings_definition import SettingsConstants
 
@@ -133,3 +136,109 @@ def test_desktop_runtime_profile_display_config_is_pygame():
         assert display_config != SettingsConstants.DISPLAY_CONFIGURATION__ST7789__240x240
     finally:
         Settings.RUNTIME_PROFILE = orig
+
+
+# ---------------------------------------------------------------------------
+# CS "disabled" (SPI_NO_CS) support
+# ---------------------------------------------------------------------------
+
+def test_existing_profiles_have_no_cs_field_by_default():
+    """Profiles without an explicit 'cs' field should not have the key at all,
+    so that the driver defaults to normal kernel CS management."""
+    config = load_io_config()
+    for model in config["models"]:
+        cs_value = model.get("display", {}).get("cs")
+        # Only profiles that explicitly disable CS should have this field set.
+        assert cs_value is None, (
+            f"Profile {model.get('shortname', '')!r} unexpectedly has 'cs': {cs_value!r} in its display config"
+        )
+
+
+def test_cs_disabled_field_is_readable_from_pin_mapping():
+    """When a profile has 'cs': 'disabled' in its display block the field
+    must survive the get_hardware_pin_mapping() round-trip unchanged."""
+    config = load_io_config()
+    # Inject a temporary model with cs disabled to verify the round-trip.
+    test_model = copy.deepcopy(config["models"][0])
+    test_model["shortname"] = "_TEST_CS_DISABLED"
+    test_model["runtime_profile"] = "_test_cs_disabled"
+    test_model["regex"] = []
+    test_model["display"]["cs"] = "disabled"
+    config["models"].append(test_model)
+
+    # Patch the in-memory config so get_hardware_pin_mapping can see it.
+    import seedsigner.hardware.io_config as _io_cfg
+    orig_loader = _io_cfg.load_io_config
+    _io_cfg.load_io_config = lambda: config
+    try:
+        mapping = get_hardware_pin_mapping("_TEST_CS_DISABLED")
+        assert mapping["display"].get("cs") == "disabled"
+    finally:
+        _io_cfg.load_io_config = orig_loader
+
+
+def test_st7789_spi_extra_flags_when_cs_disabled():
+    """ST7789.__init__ must pass extra_flags=0x40 (SPI_NO_CS) to periphery.SPI
+    when the display config contains 'cs': 'disabled'."""
+    from unittest.mock import MagicMock, patch
+
+    pin_mapping = {
+        "display": {
+            "dc":  ["/dev/gpiochip0", 25],
+            "rst": ["/dev/gpiochip0", 27],
+            "bl":  ["/dev/gpiochip0", 24],
+            "spi_bus": 0,
+            "spi_device": 0,
+            "cs": "disabled",
+        }
+    }
+
+    with patch("seedsigner.hardware.displays.ST7789.GPIO"), \
+         patch("seedsigner.hardware.displays.ST7789.SPI") as mock_spi_cls, \
+         patch("seedsigner.hardware.displays.ST7789.Settings") as mock_settings, \
+         patch("seedsigner.hardware.displays.ST7789.get_hardware_pin_mapping", return_value=pin_mapping):
+        mock_settings.get_platform_default_hardware_config.return_value = "RPI_40"
+        from seedsigner.hardware.displays import ST7789 as st7789_module
+        # Prevent the full init sequence (reset + display commands) from running.
+        with patch.object(st7789_module.ST7789, "init"):
+            st7789_module.ST7789()
+
+    mock_spi_cls.assert_called_once_with(
+        "/dev/spidev0.0",
+        0,
+        40_000_000,
+        extra_flags=0x40,
+    )
+
+
+def test_st7789_spi_extra_flags_default_when_cs_not_disabled():
+    """ST7789.__init__ must pass extra_flags=0 to periphery.SPI when no 'cs'
+    key is present in the display config (normal CE GPIO-managed CS)."""
+    from unittest.mock import MagicMock, patch
+
+    pin_mapping = {
+        "display": {
+            "dc":  ["/dev/gpiochip0", 25],
+            "rst": ["/dev/gpiochip0", 27],
+            "bl":  ["/dev/gpiochip0", 24],
+            "spi_bus": 0,
+            "spi_device": 0,
+            # no 'cs' key → normal kernel CS management
+        }
+    }
+
+    with patch("seedsigner.hardware.displays.ST7789.GPIO"), \
+         patch("seedsigner.hardware.displays.ST7789.SPI") as mock_spi_cls, \
+         patch("seedsigner.hardware.displays.ST7789.Settings") as mock_settings, \
+         patch("seedsigner.hardware.displays.ST7789.get_hardware_pin_mapping", return_value=pin_mapping):
+        mock_settings.get_platform_default_hardware_config.return_value = "RPI_40"
+        from seedsigner.hardware.displays import ST7789 as st7789_module
+        with patch.object(st7789_module.ST7789, "init"):
+            st7789_module.ST7789()
+
+    mock_spi_cls.assert_called_once_with(
+        "/dev/spidev0.0",
+        0,
+        40_000_000,
+        extra_flags=0,
+    )

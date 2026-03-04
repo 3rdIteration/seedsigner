@@ -31,8 +31,14 @@ class ST7789(object):
         spi_mode = 0
         spi_hz = 40_000_000
 
-        logger.info(f"Initializing SPI: bus={spi_bus} at {spi_hz/1_000_000} MHz")
-        self._spi = SPI(spi_bus, spi_mode, spi_hz)
+        # SPI_NO_CS (0x40): tell the kernel not to assert/deassert any chip-select
+        # GPIO, allowing CS to be permanently tied to ground.
+        spi_extra_flags = 0
+        if pin_mapping.get("cs") == "disabled":
+            spi_extra_flags = 0x40  # SPI_NO_CS
+
+        logger.info(f"Initializing SPI: bus={spi_bus} at {spi_hz/1_000_000} MHz, SPI_NO_CS={bool(spi_extra_flags)}")
+        self._spi = SPI(spi_bus, spi_mode, spi_hz, extra_flags=spi_extra_flags)
         self.init()
 
     def _chunked_transfer(self, data):
