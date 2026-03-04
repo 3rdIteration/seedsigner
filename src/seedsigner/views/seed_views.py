@@ -1036,6 +1036,10 @@ class SeedMnemonicEntryView(View):
                     return Destination(SeedAddPassphraseView)
                 return Destination(SeedMnemonicInvalidView)
 
+            pending_seed = self.controller.storage.get_pending_seed()
+            if isinstance(pending_seed, AezeedSeed) and pending_seed.seed_bytes is None:
+                return Destination(SeedAddPassphraseView)
+
             return Destination(SeedFinalizeView)
 
 

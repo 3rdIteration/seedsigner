@@ -56,6 +56,17 @@ def test_aezeed_seed_default_passphrase_vector():
     assert seed.seed_bytes == bytes.fromhex("81b637d86359e6960de795e41e0b4cfd")
 
 
+
+
+def test_aezeed_seed_requires_passphrase_does_not_fail_word_validation():
+    mnemonic = (
+        "above gap bronze point damp name group actress idea festival cream during "
+        "bid blanket dumb wage foster merit success suggest drink protect autumn box"
+    ).split()
+    seed = AezeedSeed(mnemonic=mnemonic)
+
+    assert seed.seed_bytes is None
+
 def test_aezeed_seed_custom_passphrase_vector():
     mnemonic = (
         "above gap bronze point damp name group actress idea festival cream during "

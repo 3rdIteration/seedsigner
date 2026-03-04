@@ -91,12 +91,30 @@ class ScanView(View):
                     # seed is not valid, Exit if not valid with message
                     return Destination(NotYetImplementedView)
 
+                if seed_type == "ambiguous":
+                    TYPE_BIP39 = ButtonOption("BIP39")
+                    TYPE_AEZEED = ButtonOption("Aezeed")
+                    button_data = [TYPE_BIP39, TYPE_AEZEED]
+                    selected = self.run_screen(
+                        ButtonListScreen,
+                        title=_("Select Seed Type"),
+                        is_button_text_centered=True,
+                        button_data=button_data,
+                    )
+                    if selected == RET_CODE__BACK_BUTTON:
+                        return Destination(BackStackView)
+                    seed_type = "aezeed" if button_data[selected] == TYPE_AEZEED else "bip39"
+
                 # Found a valid mnemonic seed! All new seeds should be considered
                 #   pending (might set a passphrase, SeedXOR, etc) until finalized.
                 from seedsigner.models.seed import Seed
                 from .seed_views import SeedFinalizeView
                 if seed_type == "aezeed":
-                    self.controller.storage.set_pending_seed(AezeedSeed(mnemonic=seed_mnemonic))
+                    seed = AezeedSeed(mnemonic=seed_mnemonic)
+                    self.controller.storage.set_pending_seed(seed)
+                    if seed.seed_bytes is None:
+                        from seedsigner.views.seed_views import SeedAddPassphraseView
+                        return Destination(SeedAddPassphraseView)
                 else:
                     self.controller.storage.set_pending_seed(
                         Seed(mnemonic=seed_mnemonic, wordlist_language_code=self.wordlist_language_code)

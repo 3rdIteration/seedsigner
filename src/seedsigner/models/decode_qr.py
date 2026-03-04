@@ -1003,10 +1003,14 @@ class SeedQrDecoder(BaseSingleFrameQrDecoder):
                 except Exception:
                     is_valid_bip39 = False
 
-                if is_valid_bip39:
-                    self.seed_type = "bip39"
-                elif len(seed_phrase_list) == 24 and aezeed_has_valid_checksum(seed_phrase_list, self.word_to_index):
+                is_valid_aezeed = len(seed_phrase_list) == 24 and aezeed_has_valid_checksum(seed_phrase_list, self.word_to_index)
+
+                if is_valid_aezeed and is_valid_bip39:
+                    self.seed_type = "ambiguous"
+                elif is_valid_aezeed:
                     self.seed_type = "aezeed"
+                elif is_valid_bip39:
+                    self.seed_type = "bip39"
                 else:
                     return DecodeQRStatus.INVALID
 

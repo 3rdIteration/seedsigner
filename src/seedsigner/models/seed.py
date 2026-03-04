@@ -216,6 +216,14 @@ class AezeedSeed(Seed):
         word_to_index = {word: idx for idx, word in enumerate(self.wordlist)}
         try:
             deciphered = aezeed.decode_mnemonic(words, self._passphrase, word_to_index)
+        except aezeed.InvalidPassphraseError as e:
+            logger.info("Aezeed decode failed: %s", type(e).__name__)
+            if self._passphrase == "":
+                # Mnemonic is valid but encrypted with a user passphrase; prompt
+                # for passphrase entry instead of treating it as invalid seed words.
+                self.seed_bytes = None
+                return
+            raise InvalidSeedException(type(e).__name__)
         except Exception as e:
             logger.info("Aezeed decode failed: %s", type(e).__name__)
             raise InvalidSeedException(type(e).__name__)

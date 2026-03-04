@@ -101,6 +101,8 @@ class SeedStorage:
                 seed = ElectrumSeed(self._pending_mnemonic)
             elif self._pending_is_aezeed:
                 seed = AezeedSeed(self._pending_mnemonic)
+                if seed.seed_bytes is None:
+                    return None
             else:
                 seed = Seed(self._pending_mnemonic, wordlist_language_code=wordlist_language_code)
             return seed.get_fingerprint(network)

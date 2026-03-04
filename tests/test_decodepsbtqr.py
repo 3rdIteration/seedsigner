@@ -305,6 +305,17 @@ def test_mnemonic_qr_prefers_bip39_over_aezeed_for_valid_bip39_24_word():
     assert d.add_data(bip39_24) == DecodeQRStatus.COMPLETE
     assert d.get_seed_type() == "bip39"
 
+
+
+def test_mnemonic_qr_marks_ambiguous_when_bip39_and_aezeed_both_validate(monkeypatch):
+    mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art"
+    d = DecodeQR()
+
+    monkeypatch.setattr("seedsigner.models.decode_qr.aezeed_has_valid_checksum", lambda words, lookup: True)
+
+    assert d.add_data(mnemonic) == DecodeQRStatus.COMPLETE
+    assert d.get_seed_type() == "ambiguous"
+
 def test_xprv_qr():
     xprv = "xprv9s21ZrQH143K2LBWUUQRFXhucrQqBpKdRRxNVq2zBqsx8HVqFk2uYo8kmbaLLHRdqtQpUm98uKfu3vca1LqdGhUtyoFnCNkfmXRyPXLjbKb"
     d = DecodeQR()
