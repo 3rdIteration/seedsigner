@@ -450,6 +450,64 @@ class TestAezeedPassphraseMode(BaseTest):
         assert destination.View_cls == seed_views.MainMenuView
         assert destination.clear_history is True
 
+    def test_scan_wrong_aezeed_passphrase_returns_mode(self, monkeypatch):
+        mnemonic = (
+            "absent beef crazy include regret city blanket plug thought spatial boy receive "
+            "bag jazz fade emerge quit beach crucial giant mutual reward captain excite"
+        ).split()
+        self.controller.storage.set_pending_seed(AezeedSeed(mnemonic=mnemonic))
+
+        class DummyDecodeQR:
+            def __init__(self, is_passphrase=False):
+                self.is_complete = True
+                self.is_nonUTF8 = False
+
+            def get_passphrase(self):
+                return "wrong"
+
+        monkeypatch.setattr("seedsigner.models.decode_qr.DecodeQR", DummyDecodeQR)
+
+        view = seed_views.SeedScanPassphraseView()
+        monkeypatch.setattr(view, "run_screen", lambda *args, **kwargs: None)
+
+        destination = view.run()
+        assert destination.View_cls == seed_views.SeedAezeedPassphraseModeView
+
+    def test_seedkeeper_wrong_aezeed_passphrase_returns_mode(self, monkeypatch):
+        mnemonic = (
+            "absent beef crazy include regret city blanket plug thought spatial boy receive "
+            "bag jazz fade emerge quit beach crucial giant mutual reward captain excite"
+        ).split()
+        self.controller.storage.set_pending_seed(AezeedSeed(mnemonic=mnemonic))
+
+        class DummyLoadingScreenThread:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def start(self):
+                pass
+
+            def stop(self):
+                pass
+
+        class DummyConnector:
+            def seedkeeper_list_secret_headers(self):
+                return [{"id": 1, "label": "pw", "type": 0x90, "origin": 0, "export_rights": 0x01, "export_nbplain": 0, "export_nbsecure": 0, "export_counter": 0, "fingerprint": ""}]
+
+            def seedkeeper_export_secret(self, sid, _):
+                assert sid == 1
+                pwd = "wrong".encode()
+                return {"secret_list": [len(pwd)], "secret": (bytes([len(pwd)]) + pwd).hex()}
+
+        monkeypatch.setattr("seedsigner.views.seed_views.seedkeeper_utils.init_satochip", lambda *args, **kwargs: DummyConnector())
+        monkeypatch.setattr("seedsigner.gui.screens.screen.LoadingScreenThread", DummyLoadingScreenThread)
+
+        view = seed_views.SeedLoadSeedKeeperPassphraseView()
+        monkeypatch.setattr(view, "run_screen", lambda *args, **kwargs: 0)
+
+        destination = view.run()
+        assert destination.View_cls == seed_views.SeedAezeedPassphraseModeView
+
 class TestSlip39ExtendableSetting(BaseTest):
     def test_create_nonextendable_slip39_seed(self, monkeypatch):
         self.settings.set_value(

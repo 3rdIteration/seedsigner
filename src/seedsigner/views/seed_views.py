@@ -1347,7 +1347,21 @@ class SeedScanPassphraseView(View):
             if isinstance(self.seed, Slip39Seed):
                 self.controller.storage.get_pending_seed().set_slip39_passphrase(passphrase)
                 return Destination(SeedReviewPassphraseView)
-            self.controller.storage.get_pending_seed().set_passphrase(passphrase)
+            try:
+                self.controller.storage.get_pending_seed().set_passphrase(passphrase)
+            except InvalidSeedException as e:
+                if isinstance(self.seed, AezeedSeed) and str(e) == "InvalidPassphraseError":
+                    self.seed.set_passphrase("")
+                    self.run_screen(
+                        WarningScreen,
+                        title=_("Invalid passphrase"),
+                        status_headline=None,
+                        text=_("Wrong Aezeed passphrase.\nTry again."),
+                        show_back_button=False,
+                        button_data=[ButtonOption("OK")],
+                    )
+                    return Destination(SeedAezeedPassphraseModeView)
+                raise
             if isinstance(self.seed, AezeedSeed):
                 return Destination(SeedFinalizeView)
             return Destination(SeedReviewPassphraseView)
@@ -1467,7 +1481,21 @@ class SeedLoadSeedKeeperPassphraseView(View):
                 return Destination(SeedReviewPassphraseView)
             return Destination(SeedFinalizeView)
 
-        self.seed.set_passphrase(secret_passphrase)
+        try:
+            self.seed.set_passphrase(secret_passphrase)
+        except InvalidSeedException as e:
+            if isinstance(self.seed, AezeedSeed) and str(e) == "InvalidPassphraseError":
+                self.seed.set_passphrase("")
+                self.run_screen(
+                    WarningScreen,
+                    title=_("Invalid passphrase"),
+                    status_headline=None,
+                    text=_("Wrong Aezeed passphrase.\nTry again."),
+                    show_back_button=False,
+                    button_data=[ButtonOption("OK")],
+                )
+                return Destination(SeedAezeedPassphraseModeView)
+            raise
         if isinstance(self.seed, AezeedSeed):
             if len(self.seed.passphrase) > 0:
                 return Destination(SeedFinalizeView)
