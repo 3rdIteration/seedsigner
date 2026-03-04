@@ -101,6 +101,17 @@ def test_aezeed_seed_blank_passphrase_retry_does_not_raise():
     seed.set_passphrase("")
     assert seed.seed_bytes is None
 
+
+
+def test_in_memory_seed_type_label_for_aezeed():
+    mnemonic = (
+        "absorb original enlist once climb erode kid thrive kitchen giant define tube "
+        "orange leader harbor comfort olive fatal success suggest drink penalty chimney ritual"
+    ).split()
+    seed = AezeedSeed(mnemonic=mnemonic)
+
+    assert seed_views.SeedsMenuView.get_seed_type_label(seed) == "Aezeed"
+
 def test_xprv_seed_has_no_seed_words():
     xprv = "xprv9s21ZrQH143K2LBWUUQRFXhucrQqBpKdRRxNVq2zBqsx8HVqFk2uYo8kmbaLLHRdqtQpUm98uKfu3vca1LqdGhUtyoFnCNkfmXRyPXLjbKb"
     seed = XprvSeed(xprv)
@@ -404,6 +415,40 @@ def test_slip39_vectors_end_to_end(desc, mnemonics, secret_hex, xprv):
                 root = bip32.HDKey.from_seed(seed.seed_bytes, version=NETWORKS["main"]["xprv"])
                 assert root.to_base58() == xprv
 
+
+
+
+class TestAezeedPassphraseMode(BaseTest):
+    def test_back_from_aezeed_passphrase_entry_returns_mode(self, monkeypatch):
+        mnemonic = (
+            "absent beef crazy include regret city blanket plug thought spatial boy receive "
+            "bag jazz fade emerge quit beach crucial giant mutual reward captain excite"
+        ).split()
+        self.controller.storage.set_pending_seed(AezeedSeed(mnemonic=mnemonic))
+
+        view = seed_views.SeedAddPassphraseView()
+        monkeypatch.setattr(
+            view,
+            "run_screen",
+            lambda *args, **kwargs: {"passphrase": "", "is_back_button": True},
+        )
+
+        destination = view.run()
+        assert destination.View_cls == seed_views.SeedAezeedPassphraseModeView
+
+    def test_back_from_aezeed_passphrase_mode_returns_home(self, monkeypatch):
+        mnemonic = (
+            "absent beef crazy include regret city blanket plug thought spatial boy receive "
+            "bag jazz fade emerge quit beach crucial giant mutual reward captain excite"
+        ).split()
+        self.controller.storage.set_pending_seed(AezeedSeed(mnemonic=mnemonic))
+
+        view = seed_views.SeedAezeedPassphraseModeView()
+        monkeypatch.setattr(view, "run_screen", lambda *args, **kwargs: seed_views.RET_CODE__BACK_BUTTON)
+
+        destination = view.run()
+        assert destination.View_cls == seed_views.MainMenuView
+        assert destination.clear_history is True
 
 class TestSlip39ExtendableSetting(BaseTest):
     def test_create_nonextendable_slip39_seed(self, monkeypatch):

@@ -113,8 +113,8 @@ class ScanView(View):
                     seed = AezeedSeed(mnemonic=seed_mnemonic)
                     self.controller.storage.set_pending_seed(seed)
                     if seed.seed_bytes is None:
-                        from seedsigner.views.seed_views import SeedAddPassphraseView
-                        return Destination(SeedAddPassphraseView)
+                        from seedsigner.views.seed_views import SeedAezeedPassphraseModeView
+                        return Destination(SeedAezeedPassphraseModeView)
                 else:
                     self.controller.storage.set_pending_seed(
                         Seed(mnemonic=seed_mnemonic, wordlist_language_code=self.wordlist_language_code)
