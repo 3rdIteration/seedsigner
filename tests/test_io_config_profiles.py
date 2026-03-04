@@ -227,8 +227,7 @@ def test_st7789_spi_extra_flags_when_cs_disabled():
     with patch.object(st7789_module, "GPIO"), \
          patch.object(st7789_module, "SPI") as mock_spi_cls, \
          patch.object(st7789_module, "Settings") as mock_settings, \
-         patch.object(st7789_module, "get_hardware_pin_mapping", return_value=pin_mapping), \
-         patch.object(st7789_module.ST7789, "init"):
+         patch.object(st7789_module, "get_hardware_pin_mapping", return_value=pin_mapping):
         mock_settings.get_platform_default_hardware_config.return_value = "RPI_40"
         st7789_module.ST7789()
 
@@ -251,8 +250,7 @@ def test_st7789_spi_extra_flags_default_when_cs_not_disabled():
     with patch.object(st7789_module, "GPIO"), \
          patch.object(st7789_module, "SPI") as mock_spi_cls, \
          patch.object(st7789_module, "Settings") as mock_settings, \
-         patch.object(st7789_module, "get_hardware_pin_mapping", return_value=pin_mapping), \
-         patch.object(st7789_module.ST7789, "init"):
+         patch.object(st7789_module, "get_hardware_pin_mapping", return_value=pin_mapping):
         mock_settings.get_platform_default_hardware_config.return_value = "RPI_40"
         st7789_module.ST7789()
 
@@ -266,7 +264,9 @@ def test_st7789_spi_extra_flags_default_when_cs_not_disabled():
 
 def test_st7789_warns_on_kernel_managed_cs(caplog):
     """ST7789.__init__ must emit a WARNING when kernel-managed CE CS is active
-    (cs not 'disabled'), because a disconnected CE pin fails silently."""
+    (cs not 'disabled').  The warning must describe all three LCD CS states
+    (GND / wired-to-CE / floating) so the user knows when the display works and
+    when it will fail silently."""
     import logging
     from unittest.mock import patch
 
@@ -277,14 +277,18 @@ def test_st7789_warns_on_kernel_managed_cs(caplog):
          patch.object(st7789_module, "SPI"), \
          patch.object(st7789_module, "Settings") as mock_settings, \
          patch.object(st7789_module, "get_hardware_pin_mapping", return_value=pin_mapping), \
-         patch.object(st7789_module.ST7789, "init"), \
          caplog.at_level(logging.WARNING, logger="seedsigner.hardware.displays.ST7789"):
         mock_settings.get_platform_default_hardware_config.return_value = "RPI_40"
         st7789_module.ST7789()
 
     warning_messages = [r.message for r in caplog.records if r.levelno == logging.WARNING]
-    assert any("silently" in msg for msg in warning_messages), (
-        "Expected a warning about silent CS failure risk, got: " + str(warning_messages)
+    # Warning must mention the floating-CS silent failure path.
+    assert any("floating" in msg for msg in warning_messages), (
+        "Expected a warning mentioning floating LCD CS failure, got: " + str(warning_messages)
+    )
+    # Warning must acknowledge that LCD CS tied to GND works regardless of CE.
+    assert any("GND" in msg for msg in warning_messages), (
+        "Expected a warning that mentions GND as a working CS option, got: " + str(warning_messages)
     )
 
 
@@ -301,7 +305,6 @@ def test_st7789_no_warning_when_cs_disabled(caplog):
          patch.object(st7789_module, "SPI"), \
          patch.object(st7789_module, "Settings") as mock_settings, \
          patch.object(st7789_module, "get_hardware_pin_mapping", return_value=pin_mapping), \
-         patch.object(st7789_module.ST7789, "init"), \
          caplog.at_level(logging.WARNING, logger="seedsigner.hardware.displays.ST7789"):
         mock_settings.get_platform_default_hardware_config.return_value = "RPI_40"
         st7789_module.ST7789()
@@ -310,3 +313,104 @@ def test_st7789_no_warning_when_cs_disabled(caplog):
     assert not warning_messages, (
         "Unexpected WARNING when cs='disabled': " + str(warning_messages)
     )
+
+
+def test_st7789_init_not_called_during_construction():
+    """init() must NOT be called during __init__() — it is deferred to the
+    first draw call so that CS can be tied to GND after the SPI bus opens
+    but before the first frame is rendered."""
+    from unittest.mock import patch
+
+    st7789_module = _import_st7789_with_mocked_periphery()
+    pin_mapping = _make_st7789_pin_mapping(cs="disabled")
+
+    with patch.object(st7789_module, "GPIO"), \
+         patch.object(st7789_module, "SPI"), \
+         patch.object(st7789_module, "Settings") as mock_settings, \
+         patch.object(st7789_module, "get_hardware_pin_mapping", return_value=pin_mapping), \
+         patch.object(st7789_module.ST7789, "init") as mock_init:
+        mock_settings.get_platform_default_hardware_config.return_value = "RPI_40"
+        display = st7789_module.ST7789()
+
+    mock_init.assert_not_called()
+    assert display._display_initialized is False
+
+
+def test_st7789_init_called_on_first_show_image():
+    """_ensure_initialized() must call init() exactly once on the first call
+    and not on subsequent calls."""
+    from unittest.mock import patch
+
+    st7789_module = _import_st7789_with_mocked_periphery()
+    pin_mapping = _make_st7789_pin_mapping(cs="disabled")
+
+    with patch.object(st7789_module, "GPIO"), \
+         patch.object(st7789_module, "SPI"), \
+         patch.object(st7789_module, "Settings") as mock_settings, \
+         patch.object(st7789_module, "get_hardware_pin_mapping", return_value=pin_mapping), \
+         patch.object(st7789_module.ST7789, "init") as mock_init:
+        mock_settings.get_platform_default_hardware_config.return_value = "RPI_40"
+        display = st7789_module.ST7789()
+
+        assert not display._display_initialized
+        mock_init.assert_not_called()
+
+        # _ensure_initialized is the shared lazy-init gate called by all
+        # public draw methods (show_image, clear, invert).
+        display._ensure_initialized()
+        assert mock_init.call_count == 1
+        assert display._display_initialized is True
+
+        # Subsequent calls must not trigger init() again.
+        display._ensure_initialized()
+        assert mock_init.call_count == 1
+
+
+def test_st7789_invert_triggers_lazy_init():
+    """invert() is the simplest public draw method; it must trigger lazy init
+    on first call and not on subsequent calls."""
+    from unittest.mock import patch
+
+    st7789_module = _import_st7789_with_mocked_periphery()
+    pin_mapping = _make_st7789_pin_mapping(cs="disabled")
+
+    with patch.object(st7789_module, "GPIO"), \
+         patch.object(st7789_module, "SPI"), \
+         patch.object(st7789_module, "Settings") as mock_settings, \
+         patch.object(st7789_module, "get_hardware_pin_mapping", return_value=pin_mapping), \
+         patch.object(st7789_module.ST7789, "init") as mock_init, \
+         patch.object(st7789_module.ST7789, "command"):
+        mock_settings.get_platform_default_hardware_config.return_value = "RPI_40"
+        display = st7789_module.ST7789()
+
+        mock_init.assert_not_called()
+
+        display.invert(True)
+        assert mock_init.call_count == 1
+        assert display._display_initialized is True
+
+        display.invert(False)
+        assert mock_init.call_count == 1  # must not re-init
+
+
+def test_st7789_init_called_on_first_clear():
+    """init() must be called on the first clear() call if not yet initialized."""
+    from unittest.mock import patch
+
+    st7789_module = _import_st7789_with_mocked_periphery()
+    pin_mapping = _make_st7789_pin_mapping(cs="disabled")
+
+    with patch.object(st7789_module, "GPIO"), \
+         patch.object(st7789_module, "SPI"), \
+         patch.object(st7789_module, "Settings") as mock_settings, \
+         patch.object(st7789_module, "get_hardware_pin_mapping", return_value=pin_mapping), \
+         patch.object(st7789_module.ST7789, "init") as mock_init, \
+         patch.object(st7789_module.ST7789, "SetWindows"), \
+         patch.object(st7789_module.ST7789, "_chunked_transfer"):
+        mock_settings.get_platform_default_hardware_config.return_value = "RPI_40"
+        display = st7789_module.ST7789()
+
+        mock_init.assert_not_called()
+        display.clear()
+        assert mock_init.call_count == 1
+        assert display._display_initialized is True

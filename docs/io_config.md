@@ -52,12 +52,39 @@ For the Waveshare 1.3" LCD HAT on a GPIO40 header:
 
 These are the standard Waveshare/RPi-style assignments that the `RPI_40` profile follows.
 
+### CS and the three wiring options
+
+When `"cs"` is **not** set to `"disabled"`, the kernel manages the CE GPIO
+(e.g. CE0/GPIO8 for `spi_device: 0`) as a pure output — it drives the pin low
+before each transfer and high afterwards.  What matters for the display is the
+**LCD CS pin state**, which is determined by whichever path you choose:
+
+| LCD CS wiring | CE wiring | Display works? | Notes |
+|---|---|---|---|
+| Tied to GND | Not connected to LCD | ✅ Yes | LCD always selected; CE is irrelevant. Use `"cs": "disabled"`. |
+| Tied to GND | Connected to LCD CS | ⚠️ Risky | GND and CE fight when CE goes high. Do not do this. |
+| Wired to CE0 | CE0 connected to LCD CS | ✅ Yes | Standard HAT wiring; default config. |
+| Floating | CE0 not wired to LCD | ❌ No | **Silent failure** — SPI transfers succeed in software but LCD ignores all bytes. |
+
+> **Key insight:** if the LCD CS pin is **permanently tied to GND**, the LCD is
+> always selected and will receive every SPI byte regardless of whether the SBC's
+> CE pin is connected.  The CE pin becomes irrelevant.  In this case the
+> `spidev` device (e.g. `/dev/spidev0.0`) still works, but you should add
+> `"cs": "disabled"` to make the configuration explicit and to prevent the kernel
+> from driving the CE GPIO unnecessarily.
+
+> **Silent failure:** if LCD CS is **floating** (not tied to GND and not wired to
+> CE), every `SPI.transfer()` call succeeds in software — no exception, no
+> `errno` — but the LCD ignores every byte.  The display stays blank with no
+> error.  The driver logs a `WARNING` at startup when kernel-managed CS is active
+> to alert you to this risk.
+
 ### CS tied to ground (no GPIO chip-select)
 
-If there are no other devices on the SPI bus and you want to save a GPIO output,
-the LCD CS pin can be tied permanently to ground instead of connecting it to a
-GPIO CE pin.  In this case, add `"cs": "disabled"` to the `display` section of
-the profile:
+If there are no other devices on the SPI bus, the simplest and most robust
+wiring is to tie the LCD CS pin directly to GND.  Leave the SBC CE pin
+unconnected (or simply don't wire it to the LCD).  Then add `"cs": "disabled"`
+to the `display` section of the profile:
 
 ```json
 "display": {
@@ -72,31 +99,15 @@ the profile:
 
 When `"cs": "disabled"` is present the driver opens the SPI device with the
 `SPI_NO_CS` kernel flag (`0x40`), which prevents the kernel from asserting or
-de-asserting any chip-select GPIO.  The display is always selected via the
-hardwired ground connection, and the RST line is used for the hardware reset
-during initialisation.
-
-### Silent failure when CE pin is unconnected
-
-When `"cs"` is **not** set to `"disabled"` the kernel manages the CE GPIO
-(e.g. CE0/GPIO8 for `spi_device: 0`) as a pure output: it drives the pin
-low before each transfer and high afterwards.
-
-> **The kernel has no way to detect whether the CE pin is physically wired to
-> the LCD CS input.**  If the CE pin is left unconnected or mis-wired:
-> - Every `SPI.transfer()` call **succeeds** (no exception, no `errno`).
-> - The LCD CS input is never asserted, so the LCD ignores every byte.
-> - The display remains blank with no error message.
->
-> The startup log will emit a `WARNING` describing this risk when
-> kernel-managed CS is active.
+de-asserting any CE GPIO.  The display is always selected via the hardwired
+ground connection, and the RST line handles the hardware reset during
+initialisation.
 
 If the display is blank and you are using kernel-managed CS, check:
-1. The CE pin is physically connected to the LCD CS pin.
+1. The CE pin is physically connected to the LCD CS pin, **or** LCD CS is tied to GND.
 2. The correct `spi_device` index matches the CE pin used (e.g. `0` → CE0/GPIO8,
    `1` → CE1/GPIO7 on a Raspberry Pi).
-3. If there is only one device on the bus and you can tie LCD CS to GND, use
-   `"cs": "disabled"` to eliminate the failure mode entirely.
+3. If there is only one device on the bus, prefer `"cs": "disabled"` + LCD CS to GND.
 
 ---
 

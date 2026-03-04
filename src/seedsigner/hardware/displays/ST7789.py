@@ -32,7 +32,8 @@ class ST7789(object):
         spi_hz = 40_000_000
 
         # SPI_NO_CS (0x40): tell the kernel not to assert/deassert any chip-select
-        # GPIO, allowing CS to be permanently tied to ground.
+        # GPIO.  Use this when LCD CS is tied permanently to GND and the SBC's
+        # CE pin is not wired to the LCD at all.
         spi_extra_flags = 0
         if pin_mapping.get("cs") == "disabled":
             spi_extra_flags = 0x40  # SPI_NO_CS
@@ -43,24 +44,40 @@ class ST7789(object):
         else:
             # The kernel will drive the CE GPIO (e.g. CE0/GPIO8 for spi_device=0)
             # low before each transfer and high afterwards.  This is a pure GPIO
-            # output: the kernel has no way to confirm the pin is physically
-            # connected to the LCD's CS input.  If the CE pin is unconnected or
-            # mis-wired the LCD will ignore every SPI transfer and the display
-            # will remain blank — no exception or error code is raised by the
-            # kernel.  If the display does not respond, verify CE wiring or add
-            # '"cs": "disabled"' to the display config and tie LCD CS to GND.
+            # output with no electrical feedback.
+            #
+            # Whether the LCD receives SPI data depends entirely on its CS pin:
+            #  * LCD CS tied to GND  → CS always asserted; LCD receives every byte
+            #    regardless of whether CE is wired.  The display works fine even
+            #    if the CE pin is not connected to the LCD at all.
+            #  * LCD CS wired to CE  → LCD selected only while CE is driven low;
+            #    normal kernel-managed chip-select behaviour.
+            #  * LCD CS floating     → CS never reliably asserted; LCD ignores every
+            #    SPI byte.  Transfers succeed in software with no error raised, but
+            #    the display stays blank.  Use '"cs": "disabled"' and tie LCD CS to
+            #    GND to fix this.
+            spi_device = pin_mapping.get("spi_device", 0)
             logger.warning(
-                "SPI CS mode: kernel-managed CE%d GPIO — if the CE pin is not "
-                "wired to the LCD CS input, SPI transfers will silently succeed "
-                "but the display will not respond (no error is raised). "
+                "SPI CS mode: kernel-managed CE%d GPIO — the display will work "
+                "correctly only if LCD CS is asserted (either wired to CE%d or "
+                "tied directly to GND). If LCD CS is floating, SPI transfers "
+                "silently succeed but the display will not respond. "
                 "Set '\"cs\": \"disabled\"' in the display config and tie LCD CS "
-                "to GND to eliminate this failure mode.",
-                pin_mapping.get("spi_device", 0),
+                "to GND to make the configuration explicit and eliminate CE pin "
+                "dependency.",
+                spi_device,
+                spi_device,
             )
 
         logger.info("Initializing SPI: bus=%s at %.1f MHz", spi_bus, spi_hz / 1_000_000)
         self._spi = SPI(spi_bus, spi_mode, spi_hz, extra_flags=spi_extra_flags)
-        self.init()
+
+        # Defer the LCD register initialisation sequence to the first draw call
+        # (_ensure_initialized, called by show_image / clear / invert).  This
+        # keeps __init__ free of SPI traffic so that the caller has a window to
+        # complete any hardware setup (e.g. confirming LCD CS is asserted) before
+        # the first byte is clocked out.
+        self._display_initialized = False
 
     def _chunked_transfer(self, data):
         """Transfer data in chunks to prevent buffer overflows"""
@@ -85,6 +102,18 @@ class ST7789(object):
                     )
                     continue
                 raise
+
+    def _ensure_initialized(self):
+        """Run the display register initialization sequence on first use.
+
+        Deferring init() until the first draw call means that CS can be tied to
+        GND at any point between the SPI bus being opened and the first frame
+        being rendered — the LCD will still receive the full configuration
+        sequence.
+        """
+        if not self._display_initialized:
+            self.init()
+            self._display_initialized = True
 
     """    Write register address and data     """
     def command(self, cmd):
@@ -206,6 +235,7 @@ class ST7789(object):
     def show_image(self,Image,Xstart,Ystart):
         """Set buffer to value of Python Imaging Library image."""
         """Write display buffer to physical display"""
+        self._ensure_initialized()
         imwidth, imheight = Image.size
         if imwidth != self.width or imheight != self.height:
             raise ValueError('Image must be same dimensions as display \
@@ -220,6 +250,7 @@ class ST7789(object):
         
     def clear(self):
         """Clear contents of image buffer"""
+        self._ensure_initialized()
         _buffer = [0xff]*(self.width * self.height * 2)
         self.SetWindows ( 0, 0, self.width, self.height)
         self._dc.write(True)
@@ -227,6 +258,7 @@ class ST7789(object):
 
     def invert(self, enabled: bool = True):
         """Invert how the display interprets colors"""
+        self._ensure_initialized()
         self.command(0x21 if enabled else 0x20)
 
     def __del__(self):
