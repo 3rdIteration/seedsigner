@@ -87,6 +87,20 @@ def test_aezeed_seed_custom_passphrase_vector():
 
     assert seed.seed_bytes == bytes.fromhex("81b637d86359e6960de795e41e0b4cfd")
 
+
+def test_aezeed_seed_blank_passphrase_retry_does_not_raise():
+    mnemonic = (
+        "absent beef crazy include regret city blanket plug thought spatial boy receive "
+        "bag jazz fade emerge quit beach crucial giant mutual reward captain excite"
+    ).split()
+    seed = AezeedSeed(mnemonic=mnemonic)
+
+    assert seed.seed_bytes is None
+
+    # Blank retry must remain in passphrase-required state, not raise.
+    seed.set_passphrase("")
+    assert seed.seed_bytes is None
+
 def test_xprv_seed_has_no_seed_words():
     xprv = "xprv9s21ZrQH143K2LBWUUQRFXhucrQqBpKdRRxNVq2zBqsx8HVqFk2uYo8kmbaLLHRdqtQpUm98uKfu3vca1LqdGhUtyoFnCNkfmXRyPXLjbKb"
     seed = XprvSeed(xprv)

@@ -45,5 +45,7 @@ Because this project handles private key material for an air-gapped signer, **se
 ### Code review expectations for sensitive changes
 For changes touching entropy, seed generation/import, key derivation, signing, or secret storage:
 - Add/extend tests for both success and failure/cleanup paths.
+- For seed creation/loading features, test all supported workflows for consistent behavior and fault tolerance.
+- Prefer shared code paths across workflows (scan/manual/import) instead of duplicating seed-handling logic.
 - Document threat assumptions and failure modes in code comments or PR notes.
 - Call out any remaining risk tradeoffs explicitly.

@@ -1187,18 +1187,29 @@ class SeedAddPassphraseView(View):
                 # The new passphrase will be the return value; it might be empty.
                 self.seed.set_passphrase(passphrase)
         except InvalidSeedException as e:
-            if isinstance(self.seed, AezeedSeed) and str(e) == "InvalidPassphraseError":
-                # Clear incorrect passphrase so user can back out cleanly.
-                self.seed.set_passphrase("")
-                self.run_screen(
-                    WarningScreen,
-                    title=_("Invalid passphrase"),
-                    status_headline=None,
-                    text=_("Wrong Aezeed passphrase.\nTry again."),
-                    show_back_button=False,
-                    button_data=[ButtonOption("OK")],
-                )
-                return Destination(SeedAddPassphraseView)
+            if isinstance(self.seed, AezeedSeed):
+                if passphrase == "":
+                    self.run_screen(
+                        WarningScreen,
+                        title=_("Invalid passphrase"),
+                        status_headline=None,
+                        text=_("Aezeed passphrase required.\nTry again."),
+                        show_back_button=False,
+                        button_data=[ButtonOption("OK")],
+                    )
+                    return Destination(SeedAddPassphraseView)
+                if str(e) == "InvalidPassphraseError":
+                    # Clear incorrect passphrase so user can back out cleanly.
+                    self.seed.set_passphrase("")
+                    self.run_screen(
+                        WarningScreen,
+                        title=_("Invalid passphrase"),
+                        status_headline=None,
+                        text=_("Wrong Aezeed passphrase.\nTry again."),
+                        show_back_button=False,
+                        button_data=[ButtonOption("OK")],
+                    )
+                    return Destination(SeedAddPassphraseView)
             raise
 
         if "is_back_button" in ret_dict:
