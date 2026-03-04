@@ -2131,3 +2131,22 @@ def resize_image_to_fill(img: Image, target_size_x: int, target_size_y: int, sam
         resample=sampling_method,
         box=box,
     )
+
+
+def resize_image_to_fit(img: Image, target_size_x: int, target_size_y: int, sampling_method=Image.Resampling.NEAREST) -> Image:
+    """
+        Resizes the image to fit inside the target size without cropping.
+    """
+    if img.width == target_size_x and img.height == target_size_y:
+        return img
+
+    scale = min(target_size_x / img.width, target_size_y / img.height)
+    resized_width = max(1, int(img.width * scale))
+    resized_height = max(1, int(img.height * scale))
+    resized = img.resize((resized_width, resized_height), resample=sampling_method)
+
+    canvas = Image.new("RGB", (target_size_x, target_size_y))
+    offset_x = int((target_size_x - resized_width) / 2)
+    offset_y = int((target_size_y - resized_height) / 2)
+    canvas.paste(resized, (offset_x, offset_y))
+    return canvas

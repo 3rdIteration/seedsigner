@@ -4,34 +4,76 @@ import json
 import os
 import pathlib
 import platform
+import sys
 
 from typing import List
 
-try:
-    import RPi.GPIO as GPIO
-    USING_MOCK_GPIO = False
-except ModuleNotFoundError:  # Running on non-Raspberry Pi hardware
-    USING_MOCK_GPIO = True
-
-    class MockGPIO:
-        RPI_INFO = {"P1_REVISION": 3, "TYPE": "Unknown"}
-        BOARD = IN = OUT = PUD_UP = LOW = HIGH = None
-
-        def setmode(self, *args, **kwargs):
-            pass
-
-        def setup(self, *args, **kwargs):
-            pass
-
-        def input(self, *args, **kwargs):
-            return self.HIGH
-
-    GPIO = MockGPIO()
-
+from seedsigner.hardware.io_config import (
+    detect_runtime_profile,
+    get_hardware_pin_mapping,
+    get_hardware_profile_label,
+    runtime_profile_to_hardware_profile,
+)
 from seedsigner.models.settings_definition import SettingsConstants, SettingsDefinition
 from seedsigner.models.singleton import Singleton
 
 logger = logging.getLogger(__name__)
+
+
+def _read_device_model() -> str:
+    model_path = "/proc/device-tree/model"
+    try:
+        with open(model_path, "r", encoding="utf-8") as model_file:
+            return model_file.read().strip().lower()
+    except Exception:
+        return ""
+
+
+def _detect_gpio_backend() -> str:
+    try:
+        from periphery import GPIO as _GPIO  # noqa: F401
+        return "periphery"
+    except Exception:
+        return "mock"
+
+
+def _detect_runtime_profile(_hostname: str) -> str:
+    model = _read_device_model()
+    detected_profile = detect_runtime_profile(model)
+    if detected_profile:
+        return detected_profile
+    return "desktop"
+
+
+def _get_rpi_type() -> str:
+    model = _read_device_model()
+    if not model:
+        return "Unknown"
+    return model.title()
+
+
+def _get_system_type_and_variant(runtime_profile: str, hardware_config: str | None) -> tuple[str, str]:
+    system_type_map = {
+        "desktop": "Desktop",
+        "rpi_26": "Raspberry Pi",
+        "rpi_40": "Raspberry Pi",
+        "luckfox_22": "Luckfox Pico",
+        "luckfox_40": "Luckfox Pico",
+        "luckfox_pi": "Luckfox Pico",
+        "lc_lafrite": "Libre Computer",
+    }
+    system_type = system_type_map.get(runtime_profile, "Unknown")
+
+    model = _read_device_model()
+    if model:
+        return system_type, model.title()
+
+    if hardware_config:
+        hardware_label = get_hardware_profile_label(hardware_config)
+        if hardware_label:
+            return system_type, hardware_label
+
+    return system_type, "Unknown"
 
 
 class InvalidSettingsQRData(Exception):
@@ -41,9 +83,49 @@ class InvalidSettingsQRData(Exception):
 class Settings(Singleton):
     HOSTNAME = platform.uname()[1]
     SEEDSIGNER_OS = "seedsigner-os"
+    RUNTIME_PROFILE = _detect_runtime_profile(HOSTNAME)
     SETTINGS_FILENAME = "/mnt/microsd/settings.json" if HOSTNAME == SEEDSIGNER_OS else "settings.json"
     SU_COMMAND_PREFIX = "" if HOSTNAME == SEEDSIGNER_OS else "sudo "
-        
+
+    @classmethod
+    def get_default_settings_filename(cls) -> str:
+        filename = "settings.json"
+        if os.path.exists(filename):
+            return filename
+        src_filename = os.path.join("src", filename)
+        if os.path.exists(src_filename):
+            return src_filename
+        return filename
+
+    @classmethod
+    def get_platform_default_hardware_config(cls) -> str | None:
+        return runtime_profile_to_hardware_profile(cls.RUNTIME_PROFILE)
+
+    @classmethod
+    def get_platform_default_display_config(cls) -> str:
+        profile_map = {
+            "desktop": SettingsConstants.DISPLAY_CONFIGURATION__DESKTOP__240x240,
+            "rpi_26": SettingsConstants.DISPLAY_CONFIGURATION__ST7789__240x240,
+            "rpi_40": SettingsConstants.DISPLAY_CONFIGURATION__ST7789__240x240,
+            "luckfox_22": SettingsConstants.DISPLAY_CONFIGURATION__ST7789__240x240,
+            "luckfox_40": SettingsConstants.DISPLAY_CONFIGURATION__ST7789__240x240,
+            "luckfox_pi": SettingsConstants.DISPLAY_CONFIGURATION__ST7789__240x240,
+            "lc_lafrite": SettingsConstants.DISPLAY_CONFIGURATION__ST7789__240x240,
+        }
+        return profile_map.get(cls.RUNTIME_PROFILE, SettingsConstants.DISPLAY_CONFIGURATION__DESKTOP__240x240)
+
+    @classmethod
+    def get_platform_default_camera_rotation(cls) -> int:
+        profile_map = {
+            "rpi_26": 180,
+            "rpi_40": 180,
+            "luckfox_22": 270,
+            "luckfox_40": 270,
+            "luckfox_pi": 270,
+            "desktop": 180,
+        }
+        return profile_map.get(cls.RUNTIME_PROFILE, 180)
+
     @classmethod
     def get_instance(cls):
         # This is the only way to access the one and only instance
@@ -54,13 +136,19 @@ class Settings(Singleton):
 
             settings._data = SettingsDefinition.get_defaults()
 
-            # Read persistent settings file, if it exists. Loading should not
-            # immediately write back to disk which can dramatically slow boot
-            # if the microSD card is present. ``persist=False`` ensures we only
-            # populate the in-memory data without triggering ``save()``.
+            # Load persisted runtime settings first if available.
             if os.path.exists(Settings.SETTINGS_FILENAME):
                 with open(Settings.SETTINGS_FILENAME) as settings_file:
                     settings.update(json.load(settings_file), persist=False)
+            else:
+                # Fall back to default template settings on first run.
+                # Flow/unit tests expect deterministic in-code defaults rather than
+                # user-facing template overrides from src/settings.json.
+                if "PYTEST_CURRENT_TEST" not in os.environ and "pytest" not in sys.modules:
+                    template_path = Settings.get_default_settings_filename()
+                    if os.path.exists(template_path):
+                        with open(template_path) as settings_file:
+                            settings.update(json.load(settings_file), persist=False)
 
             # Setup multilanguage support
             path = os.path.join(
@@ -75,9 +163,38 @@ class Settings(Singleton):
             # Load default/persistent locale setting
             settings.load_locale()
 
-            if USING_MOCK_GPIO:
-                settings._data[SettingsConstants.SETTING__DISPLAY_CONFIGURATION] = (
-                    SettingsConstants.DISPLAY_CONFIGURATION__DESKTOP__240x240
+            settings._data[SettingsConstants.SETTING__DISPLAY_CONFIGURATION] = Settings.get_platform_default_display_config()
+            settings._data[SettingsConstants.SETTING__CAMERA_ROTATION] = Settings.get_platform_default_camera_rotation()
+            detected_hardware = Settings.get_platform_default_hardware_config()
+
+            system_type, system_variant = _get_system_type_and_variant(
+                Settings.RUNTIME_PROFILE,
+                detected_hardware,
+            )
+            logger.info(
+                "System detection: type=%s variant=%s runtime_profile=%s hardware_profile=%s hostname=%s model=%s gpio_backend=%s",
+                system_type,
+                system_variant,
+                Settings.RUNTIME_PROFILE,
+                detected_hardware or "n/a",
+                Settings.HOSTNAME,
+                _read_device_model() or "unknown",
+                _detect_gpio_backend(),
+            )
+            logger.info(
+                "Auto-configured defaults: hardware=%s display=%s camera_rotation=%s",
+                detected_hardware or "n/a",
+                settings._data.get(SettingsConstants.SETTING__DISPLAY_CONFIGURATION, "n/a"),
+                settings._data.get(SettingsConstants.SETTING__CAMERA_ROTATION, "n/a"),
+            )
+            if detected_hardware:
+                pin_mapping = get_hardware_pin_mapping(detected_hardware)
+                logger.info(
+                    "GPIO map (%s): display=%s buttons=%s camera=%s",
+                    detected_hardware,
+                    pin_mapping.get("display"),
+                    pin_mapping.get("buttons"),
+                    pin_mapping.get("camera"),
                 )
 
         return cls._instance
@@ -143,7 +260,7 @@ class Settings(Singleton):
                     raise InvalidSettingsQRData(f"""{abbreviated_name} = '{v}' is not valid""")
 
             updated_settings[settings_entry.attr_name] = value
-        
+
         return (config_name, updated_settings)
 
 
@@ -277,6 +394,7 @@ class Settings(Singleton):
             # Basically just check through a a bunch of possible USB hubs and ports and enable/disable them all (Should cover all RPi models, RPi4 has lots of USB ports...)
             if not any('usb' in d for d in value) and any('usb' in d for d in self._data[attr_name]):
                 logger.debug("Disabling USB")
+                rpi_type = _get_rpi_type()
                 try:
                     self.loading_screen = seedsigner.gui.screens.screen.LoadingScreenThread(text="Disabling USB Ports")
                     self.loading_screen.start()
@@ -285,10 +403,10 @@ class Settings(Singleton):
  
                 # Different Raspberry Pi models have different port config, see
                 # https://github.com/mvp/uhubctl?tab=readme-ov-file#raspberry-pi-b2b3b
-                if "Zero" in GPIO.RPI_INFO['TYPE']: # For RPi0, 02w
+                if "Zero" in rpi_type: # For RPi0, 02w
                     os.system(self.SU_COMMAND_PREFIX + "uhubctl -l 1 -a 0")
                     
-                elif "Pi 4" in GPIO.RPI_INFO['TYPE']: # For RPi4 
+                elif "Pi 4" in rpi_type: # For RPi4 
                     os.system(self.SU_COMMAND_PREFIX + "uhubctl -l 2 -a 0")
                     os.system(self.SU_COMMAND_PREFIX + "uhubctl -l 3 -a 0")
                     os.system(self.SU_COMMAND_PREFIX + "uhubctl -l 1-1 -a 0")
@@ -304,6 +422,7 @@ class Settings(Singleton):
 
             if any('usb' in d for d in value) and not any('usb' in d for d in self._data[attr_name]):
                 logger.debug("Enabling USB")
+                rpi_type = _get_rpi_type()
                 try:
                     self.loading_screen = seedsigner.gui.screens.screen.LoadingScreenThread(text="Enabling USB Ports")
                     self.loading_screen.start()
@@ -313,10 +432,10 @@ class Settings(Singleton):
                 # Different Raspberry Pi models have different port config, see
                 # https://github.com/mvp/uhubctl?tab=readme-ov-file#raspberry-pi-b2b3b
                  
-                if "Zero" in GPIO.RPI_INFO['TYPE']: # For RPi0, 02w
+                if "Zero" in rpi_type: # For RPi0, 02w
                     os.system(self.SU_COMMAND_PREFIX + "uhubctl -l 1 -a 1")
                     
-                elif "Pi 4" in GPIO.RPI_INFO['TYPE']: # For RPi4 
+                elif "Pi 4" in rpi_type: # For RPi4 
                     os.system(self.SU_COMMAND_PREFIX + "uhubctl -l 2 -a 1")
                     os.system(self.SU_COMMAND_PREFIX + "uhubctl -l 3 -a 1")
                     os.system(self.SU_COMMAND_PREFIX + "uhubctl -l 1-1 -a 1")
@@ -331,7 +450,7 @@ class Settings(Singleton):
                 try:
                     self.loading_screen.stop()
 
-                    if "Zero" in GPIO.RPI_INFO['TYPE'] or "Model A" in GPIO.RPI_INFO['TYPE']: # For RPi0, 02w or model A devices
+                    if "Zero" in rpi_type or "Model A" in rpi_type: # For RPi0, 02w or model A devices
                         screen = seedsigner.gui.screens.screen.WarningScreen(
                             title="Notice",
                             status_headline=None,
@@ -340,7 +459,7 @@ class Settings(Singleton):
                         )
                         screen.display()
 
-                    if "Unknown" in GPIO.RPI_INFO['TYPE']: # For unknown RPi devices
+                    if "Unknown" in rpi_type: # For unknown RPi devices
                         screen = seedsigner.gui.screens.screen.WarningScreen(
                             title="Notice",
                             status_headline="Unable to detect RPi Model",

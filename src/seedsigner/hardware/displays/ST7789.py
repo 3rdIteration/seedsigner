@@ -1,9 +1,13 @@
-import spidev
-import RPi.GPIO as GPIO
+import logging
+from periphery import GPIO, SPI
 import time
 import array
+import errno
 
+from seedsigner.models.settings import Settings
+from seedsigner.hardware.io_config import get_hardware_pin_mapping
 
+logger = logging.getLogger(__name__)
 
 class ST7789(object):
     """class for ST7789  240*240 1.3inch OLED displays."""
@@ -11,34 +15,60 @@ class ST7789(object):
     def __init__(self):
         self.width = 240
         self.height = 240
+        # Keep SPI transfers within conservative per-message kernel limits.
+        self.CHUNK_SIZE = 4096
 
-        #Initialize DC RST pin
-        self._dc = 22
-        self._rst = 13
-        self._bl = 18
+        hardware_config = Settings.get_platform_default_hardware_config()
+        pin_mapping = get_hardware_pin_mapping(hardware_config)["display"]
 
-        GPIO.setmode(GPIO.BOARD)
-        GPIO.setwarnings(False)
-        GPIO.setup(self._dc,GPIO.OUT)
-        GPIO.setup(self._rst,GPIO.OUT)
-        GPIO.setup(self._bl,GPIO.OUT)
-        GPIO.output(self._bl, GPIO.HIGH)
+        self._dc = GPIO(*pin_mapping["dc"], "out")
+        self._rst = GPIO(*pin_mapping["rst"], "out")
+        self._bl = GPIO(*pin_mapping["bl"], "out")
+        self._bl.write(True)
 
-        #Initialize SPI
-        self._spi = spidev.SpiDev(0, 0)
-        self._spi.max_speed_hz = 40000000
+        # Initialize SPI
+        spi_bus = f"/dev/spidev{pin_mapping['spi_bus']}.{pin_mapping['spi_device']}"
+        spi_mode = 0
+        spi_hz = 40_000_000
 
+        logger.info(f"Initializing SPI: bus={spi_bus} at {spi_hz/1_000_000} MHz")
+        self._spi = SPI(spi_bus, spi_mode, spi_hz)
         self.init()
 
+    def _chunked_transfer(self, data):
+        """Transfer data in chunks to prevent buffer overflows"""
+        if isinstance(data, list):
+            data = bytes(data)
+
+        i = 0
+        chunk_size = self.CHUNK_SIZE
+        while i < len(data):
+            chunk = data[i:i + chunk_size]
+            try:
+                self._spi.transfer(chunk)
+                i += len(chunk)
+            except Exception as e:
+                # Some kernels/drivers enforce smaller SPI message sizes.
+                if getattr(e, "errno", None) == errno.EMSGSIZE and chunk_size > 256:
+                    chunk_size = max(256, chunk_size // 2)
+                    self.CHUNK_SIZE = chunk_size
+                    logger.warning(
+                        "SPI message too long; reducing chunk size to %d bytes",
+                        chunk_size,
+                    )
+                    continue
+                raise
 
     """    Write register address and data     """
     def command(self, cmd):
-        GPIO.output(self._dc, GPIO.LOW)
-        self._spi.writebytes([cmd])
+        """Write register address"""
+        self._dc.write(False)
+        self._spi.transfer([cmd])
 
     def data(self, val):
-        GPIO.output(self._dc, GPIO.HIGH)
-        self._spi.writebytes([val])
+        """Write data"""
+        self._dc.write(True)
+        self._spi.transfer([val])
 
     def init(self):
         """Initialize dispaly"""    
@@ -122,11 +152,11 @@ class ST7789(object):
 
     def reset(self):
         """Reset the display"""
-        GPIO.output(self._rst,GPIO.HIGH)
+        self._rst.write(True)
         time.sleep(0.01)
-        GPIO.output(self._rst,GPIO.LOW)
+        self._rst.write(False)
         time.sleep(0.01)
-        GPIO.output(self._rst,GPIO.HIGH)
+        self._rst.write(True)
         time.sleep(0.01)
         
     def SetWindows(self, Xstart, Ystart, Xend, Yend):
@@ -158,16 +188,31 @@ class ST7789(object):
         arr.byteswap()
         pix = arr.tobytes()
         self.SetWindows ( 0, 0, self.width, self.height)
-        GPIO.output(self._dc,GPIO.HIGH)
-        self._spi.writebytes2(pix)	
+        self._dc.write(True)
+        self._chunked_transfer(pix)
         
     def clear(self):
         """Clear contents of image buffer"""
         _buffer = [0xff]*(self.width * self.height * 2)
         self.SetWindows ( 0, 0, self.width, self.height)
-        GPIO.output(self._dc,GPIO.HIGH)
-        self._spi.writebytes2(_buffer)
+        self._dc.write(True)
+        self._chunked_transfer(_buffer)
 
     def invert(self, enabled: bool = True):
         """Invert how the display interprets colors"""
         self.command(0x21 if enabled else 0x20)
+
+    def __del__(self):
+        """Cleanup when object is destroyed"""
+        self.close()
+
+    def close(self):
+        for attr_name in ["_dc", "_rst", "_bl", "_spi"]:
+            resource = getattr(self, attr_name, None)
+            if resource is None:
+                continue
+            try:
+                resource.close()
+            except Exception:
+                pass
+            setattr(self, attr_name, None)

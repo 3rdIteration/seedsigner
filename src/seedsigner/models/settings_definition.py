@@ -8,8 +8,8 @@ import logging
 logger = logging.getLogger(__name__)
 
 try:
-    import RPi.GPIO as _GPIO  # type: ignore  # noqa: F401
-    USING_MOCK_GPIO = getattr(_GPIO, "__file__", None) is None
+    from periphery import GPIO as _GPIO  # type: ignore  # noqa: F401
+    USING_MOCK_GPIO = False
 except ModuleNotFoundError:
     USING_MOCK_GPIO = True
 
@@ -229,6 +229,7 @@ class SettingsConstants:
         (BTC_DENOMINATION__BTCSATSHYBRID, _mft("BTC | sats hybrid")),
     ]
 
+    # Camera rotation constants
     CAMERA_ROTATION__0 = 0
     CAMERA_ROTATION__90 = 90
     CAMERA_ROTATION__180 = 180
@@ -250,6 +251,14 @@ class SettingsConstants:
         (CAMERA_DEVICE__2, _mft("Camera 2")),
         (CAMERA_DEVICE__3, _mft("Camera 3")),
     ]
+
+    # Hardware config settings
+    HARDWARE__RPI_40 = "RPI_40"
+    HARDWARE__RPI_26 = "RPI_26"
+    HARDWARE__LUCKFOX_22 = "FOX_22"
+    HARDWARE__LUCKFOX_40 = "FOX_40"
+    HARDWARE__LUCKFOX_PI = "FOX_PI"
+
 
     # QR code constants
     DENSITY__LOW = "L"
@@ -1111,8 +1120,6 @@ class SettingsDefinition:
     def get_settings_entries(cls, visibility: str = SettingsConstants.VISIBILITY__GENERAL) -> List[SettingsEntry]:
         entries = []
         for entry in cls.settings_entries:
-            if entry.attr_name == SettingsConstants.SETTING__CAMERA_DEVICE and not USING_MOCK_GPIO:
-                continue
             if entry.visibility == visibility:
                 if entry.attr_name == SettingsConstants.SETTING__CAMERA_DEVICE:
                     try:
@@ -1129,23 +1136,12 @@ class SettingsDefinition:
     def get_settings_entry(cls, attr_name) -> SettingsEntry:
         for entry in cls.settings_entries:
             if entry.attr_name == attr_name:
-                if attr_name == SettingsConstants.SETTING__CAMERA_DEVICE:
-                    if not USING_MOCK_GPIO:
-                        return None
-                    try:
-                        from seedsigner.hardware.camera import Camera
-
-                        entry.selection_options = Camera.list_cameras()
-                    except Exception:
-                        pass
                 return entry
 
 
     @classmethod
     def get_settings_entry_by_abbreviated_name(cls, abbreviated_name: str) -> SettingsEntry:
         for entry in cls.settings_entries:
-            if entry.attr_name == SettingsConstants.SETTING__CAMERA_DEVICE and not USING_MOCK_GPIO:
-                continue
             if abbreviated_name in [entry.abbreviated_name, entry.attr_name]:
                 return entry
 

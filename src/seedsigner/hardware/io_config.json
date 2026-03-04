@@ -1,0 +1,456 @@
+{
+  "models": [
+    {
+      "platform": "Raspberry Pi",
+      "variant": "40-pin",
+      "shortname": "RPI_40",
+      "runtime_profile": "rpi_40",
+      "regex": [
+        "raspberry pi model b plus rev 1\\.[0-9]+",
+        "raspberry pi model a plus rev 1\\.[0-9]+",
+        "raspberry pi 2 model b rev 1\\.[0-9]+",
+        "raspberry pi 3 model b rev 1\\.[0-9]+",
+        "raspberry pi 3 model b plus rev 1\\.[0-9]+",
+        "raspberry pi 3 model a plus rev 1\\.[0-9]+",
+        "raspberry pi 4 model b rev 1\\.[0-9]+",
+        "raspberry pi 5 model b rev 1\\.[0-9]+",
+        "raspberry pi zero rev 1\\.[0-9]+",
+        "raspberry pi zero w rev 1\\.[0-9]+",
+        "raspberry pi zero 2 w rev 1\\.[0-9]+",
+        "raspberry pi 400 rev 1\\.[0-9]+"
+      ],
+      "display": {
+        "dc": [
+          "/dev/gpiochip0",
+          25
+        ],
+        "rst": [
+          "/dev/gpiochip0",
+          27
+        ],
+        "bl": [
+          "/dev/gpiochip0",
+          24
+        ],
+        "spi_bus": 0,
+        "spi_device": 0
+      },
+      "buttons": {
+        "KEY_UP": [
+          "/dev/gpiochip0",
+          6,
+          "pull_up"
+        ],
+        "KEY_DOWN": [
+          "/dev/gpiochip0",
+          19,
+          "pull_up"
+        ],
+        "KEY_LEFT": [
+          "/dev/gpiochip0",
+          5,
+          "pull_up"
+        ],
+        "KEY_RIGHT": [
+          "/dev/gpiochip0",
+          26,
+          "pull_up"
+        ],
+        "KEY_PRESS": [
+          "/dev/gpiochip0",
+          13,
+          "pull_up"
+        ],
+        "KEY1": [
+          "/dev/gpiochip0",
+          21,
+          "pull_up"
+        ],
+        "KEY2": [
+          "/dev/gpiochip0",
+          20,
+          "pull_up"
+        ],
+        "KEY3": [
+          "/dev/gpiochip0",
+          16,
+          "pull_up"
+        ]
+      },
+      "camera": {
+        "resolution": [
+          480,
+          480
+        ],
+        "framerate": 4
+      }
+    },
+    {
+      "platform": "Raspberry Pi",
+      "variant": "26-pin",
+      "shortname": "RPI_26",
+      "runtime_profile": "rpi_26",
+      "regex": [
+        "raspberry pi model b rev 1\\.[0-9]+",
+        "raspberry pi model a rev 1\\.[0-9]+"
+      ],
+      "display": {
+        "dc": [
+          "/dev/gpiochip0",
+          25
+        ],
+        "rst": [
+          "/dev/gpiochip0",
+          27
+        ],
+        "bl": [
+          "/dev/gpiochip0",
+          24
+        ],
+        "spi_bus": 0,
+        "spi_device": 0
+      },
+      "buttons": {
+        "KEY_UP": [
+          "/dev/gpiochip0",
+          3,
+          "pull_up"
+        ],
+        "KEY_DOWN": [
+          "/dev/gpiochip0",
+          17,
+          "pull_up"
+        ],
+        "KEY_LEFT": [
+          "/dev/gpiochip0",
+          2,
+          "pull_up"
+        ],
+        "KEY_RIGHT": [
+          "/dev/gpiochip0",
+          22,
+          "pull_up"
+        ],
+        "KEY_PRESS": [
+          "/dev/gpiochip0",
+          4,
+          "pull_up"
+        ],
+        "KEY1": [
+          "/dev/gpiochip0",
+          23,
+          "pull_up"
+        ],
+        "KEY2": [
+          "/dev/gpiochip0",
+          18,
+          "pull_up"
+        ],
+        "KEY3": [
+          "/dev/gpiochip0",
+          14,
+          "pull_up"
+        ]
+      },
+      "camera": {
+        "resolution": [
+          480,
+          480
+        ],
+        "framerate": 4
+      }
+    },
+    {
+      "platform": "Luckfox Pico",
+      "variant": "22-pin",
+      "shortname": "FOX_22",
+      "runtime_profile": "luckfox_22",
+      "regex": [
+        "luckfox pico mini"
+      ],
+      "display": {
+        "dc": [
+          "/dev/gpiochip1",
+          20
+        ],
+        "rst": [
+          "/dev/gpiochip1",
+          19
+        ],
+        "bl": [
+          "/dev/gpiochip1",
+          11
+        ],
+        "spi_bus": 0,
+        "spi_device": 0
+      },
+      "buttons": {
+        "KEY_UP": [
+          "/dev/gpiochip1",
+          25,
+          "pull_up"
+        ],
+        "KEY_DOWN": [
+          "/dev/gpiochip1",
+          27,
+          "pull_up"
+        ],
+        "KEY_LEFT": [
+          "/dev/gpiochip1",
+          24,
+          "pull_up"
+        ],
+        "KEY_RIGHT": [
+          "/dev/gpiochip1",
+          22,
+          "pull_up"
+        ],
+        "KEY_PRESS": [
+          "/dev/gpiochip1",
+          26,
+          "pull_up"
+        ],
+        "KEY1": [
+          "/dev/gpiochip1",
+          23,
+          "pull_up"
+        ],
+        "KEY2": [
+          "/dev/gpiochip0",
+          4,
+          "pull_up"
+        ],
+        "KEY3": [
+          "/dev/gpiochip1",
+          21,
+          "pull_up"
+        ]
+      },
+      "camera": {
+        "device": "/dev/video12",
+        "pixelformat": "GREY",
+        "framerate": 6
+      }
+    },
+    {
+      "platform": "Luckfox Pico",
+      "variant": "40-pin",
+      "shortname": "FOX_40",
+      "runtime_profile": "luckfox_40",
+      "regex": [
+        "luckfox pico pro max"
+      ],
+      "display": {
+        "dc": [
+          "/dev/gpiochip1",
+          24
+        ],
+        "rst": [
+          "/dev/gpiochip1",
+          25
+        ],
+        "bl": [
+          "/dev/gpiochip2",
+          8
+        ],
+        "spi_bus": 0,
+        "spi_device": 0
+      },
+      "buttons": {
+        "KEY_UP": [
+          "/dev/gpiochip1",
+          26,
+          "pull_up"
+        ],
+        "KEY_DOWN": [
+          "/dev/gpiochip1",
+          21,
+          "pull_up"
+        ],
+        "KEY_LEFT": [
+          "/dev/gpiochip1",
+          27,
+          "pull_up"
+        ],
+        "KEY_RIGHT": [
+          "/dev/gpiochip1",
+          22,
+          "pull_up"
+        ],
+        "KEY_PRESS": [
+          "/dev/gpiochip1",
+          20,
+          "pull_up"
+        ],
+        "KEY1": [
+          "/dev/gpiochip1",
+          23,
+          "pull_up"
+        ],
+        "KEY2": [
+          "/dev/gpiochip1",
+          11,
+          "pull_up"
+        ],
+        "KEY3": [
+          "/dev/gpiochip1",
+          10,
+          "pull_up"
+        ]
+      },
+      "camera": {
+        "device": "/dev/video12",
+        "pixelformat": "GREY",
+        "framerate": 6
+      }
+    },
+    {
+      "platform": "Libre Computer",
+      "variant": "La Frite (AML-S805X-AC)",
+      "shortname": "LC_LAFRITE",
+      "runtime_profile": "lc_lafrite",
+      "regex": [
+        "libre computer aml-s805x-ac"
+      ],
+      "display": {
+        "dc": [
+          "/dev/gpiochip1",
+          79
+        ],
+        "rst": [
+          "/dev/gpiochip1",
+          20
+        ],
+        "bl": [
+          "/dev/gpiochip1",
+          25
+        ],
+        "spi_bus": 0,
+        "spi_device": 0
+      },
+      "buttons": {
+        "KEY_UP": [
+          "/dev/gpiochip0",
+          2,
+          "pull_up"
+        ],
+        "KEY_DOWN": [
+          "/dev/gpiochip1",
+          86,
+          "pull_up"
+        ],
+        "KEY_LEFT": [
+          "/dev/gpiochip1",
+          76,
+          "pull_up"
+        ],
+        "KEY_RIGHT": [
+          "/dev/gpiochip1",
+          84,
+          "pull_up"
+        ],
+        "KEY_PRESS": [
+          "/dev/gpiochip1",
+          85,
+          "pull_up"
+        ],
+        "KEY1": [
+          "/dev/gpiochip1",
+          83,
+          "pull_up"
+        ],
+        "KEY2": [
+          "/dev/gpiochip1",
+          82,
+          "pull_up"
+        ],
+        "KEY3": [
+          "/dev/gpiochip1",
+          81,
+          "pull_up"
+        ]
+      },
+      "camera": {
+        "device": "/dev/video1",
+        "resolution": [
+          1280,
+          720
+        ],
+        "pixelformat": "YUYV",
+        "framerate": 4
+      }
+    },
+    {
+      "platform": "Luckfox Pico",
+      "variant": "Pi",
+      "shortname": "FOX_PI",
+      "runtime_profile": "luckfox_pi",
+      "regex": [
+        "luckfox pico pi"
+      ],
+      "display": {
+        "dc": [
+          "/dev/gpiochip1",
+          27
+        ],
+        "rst": [
+          "/dev/gpiochip1",
+          24
+        ],
+        "bl": [
+          "/dev/gpiochip2",
+          6
+        ],
+        "spi_bus": 0,
+        "spi_device": 0
+      },
+      "buttons": {
+        "KEY_UP": [
+          "/dev/gpiochip3",
+          25,
+          "pull_up"
+        ],
+        "KEY_DOWN": [
+          "/dev/gpiochip0",
+          1,
+          "pull_up"
+        ],
+        "KEY_LEFT": [
+          "/dev/gpiochip3",
+          26,
+          "pull_up"
+        ],
+        "KEY_RIGHT": [
+          "/dev/gpiochip0",
+          0,
+          "pull_up"
+        ],
+        "KEY_PRESS": [
+          "/dev/gpiochip1",
+          20,
+          "pull_up"
+        ],
+        "KEY1": [
+          "/dev/gpiochip4",
+          17,
+          "pull_up"
+        ],
+        "KEY2": [
+          "/dev/gpiochip3",
+          27,
+          "pull_up"
+        ],
+        "KEY3": [
+          "/dev/gpiochip1",
+          23,
+          "pull_up"
+        ]
+      },
+      "camera": {
+        "device": "/dev/video12",
+        "pixelformat": "GREY",
+        "framerate": 6
+      }
+    }
+  ]
+}
