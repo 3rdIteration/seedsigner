@@ -28,7 +28,6 @@ class ST7789(object):
 
         # Initialize SPI
         spi_bus = f"/dev/spidev{pin_mapping['spi_bus']}.{pin_mapping['spi_device']}"
-        spi_mode = 0
         spi_hz = 40_000_000
 
         # SPI_NO_CS (0x40): tell the kernel not to assert/deassert any chip-select
@@ -37,11 +36,26 @@ class ST7789(object):
         spi_extra_flags = 0
         if pin_mapping.get("cs") == "disabled":
             spi_extra_flags = 0x40  # SPI_NO_CS
+            # ST7789 displays with CS tied permanently to GND require SPI Mode 3
+            # (CPOL=1, CPHA=1, SCK idles HIGH).  With CS always asserted the
+            # display's SPI interface is active from the moment power is applied.
+            # During Pi boot — before the SPI driver loads and takes ownership of
+            # the SCK pin — the line is in an undefined/floating state.  In Mode 0
+            # (SCK idles LOW) any high→low transition on SCK that occurs during
+            # this window is a valid falling clock edge in Mode 0, shifting garbage
+            # bits into the display's shift register and misaligning the command
+            # stream.  In Mode 3 (SCK idles HIGH) the SPI controller drives SCK
+            # high as soon as the bus is opened, and the display only samples on
+            # falling edges, so rising-edge boot noise is ignored.  This matches
+            # the behaviour described in TFT_eSPI issue #163 (Bodmer) and is the
+            # standard fix for CS-grounded ST7789 variants.
+            spi_mode = 3
             logger.info(
-                "SPI CS mode: SPI_NO_CS (0x40) — kernel will not manage any CE GPIO; "
-                "LCD CS pin must be tied to GND."
+                "SPI CS mode: SPI_NO_CS (0x40), SPI Mode 3 — kernel will not manage "
+                "any CE GPIO; LCD CS pin must be tied to GND."
             )
         else:
+            spi_mode = 0
             # The kernel will drive the CE GPIO (e.g. CE0/GPIO8 for spi_device=0)
             # low before each transfer and high afterwards.  This is a pure GPIO
             # output with no electrical feedback.
@@ -228,7 +242,10 @@ class ST7789(object):
         #    the SLPOUT frame and begin its internal wake sequence.  With CS tied
         #    permanently to GND there is never a CE HIGH pulse — the display sees
         #    an unbroken clock stream and has no edge to synchronise on, making it
-        #    sensitive to the exact inter-command timing.
+        #    sensitive to the exact inter-command timing.  Using SPI Mode 3
+        #    (SCK idles HIGH, configured automatically when cs="disabled") also
+        #    helps here by ensuring boot-time SCK transitions do not corrupt the
+        #    display's shift register before init() runs (see TFT_eSPI issue #163).
         #
         # The sleep below is the correct fix: it satisfies the datasheet timing
         # regardless of how CS is managed or which init path is taken.

@@ -217,8 +217,17 @@ def _import_st7789_with_mocked_periphery():
 
 
 def test_st7789_spi_extra_flags_when_cs_disabled():
-    """ST7789.__init__ must pass extra_flags=0x40 (SPI_NO_CS) to periphery.SPI
-    when the display config contains 'cs': 'disabled'."""
+    """ST7789.__init__ must pass extra_flags=0x40 (SPI_NO_CS) and SPI Mode 3
+    to periphery.SPI when the display config contains 'cs': 'disabled'.
+
+    Mode 3 (CPOL=1, CPHA=1, SCK idles HIGH) is required for CS-grounded
+    ST7789 displays.  With CS permanently asserted the display's SPI
+    interface is active from boot; in Mode 0 (SCK idles LOW) any SCK
+    transitions during the Pi boot sequence are interpreted as clock edges
+    and corrupt the display's shift register.  Mode 3 ensures SCK is
+    driven HIGH as soon as the SPI bus is opened, eliminating that
+    vulnerability (ref: TFT_eSPI issue #163).
+    """
     from unittest.mock import patch
 
     st7789_module = _import_st7789_with_mocked_periphery()
@@ -233,7 +242,7 @@ def test_st7789_spi_extra_flags_when_cs_disabled():
 
     mock_spi_cls.assert_called_once_with(
         "/dev/spidev0.0",
-        0,
+        3,              # Mode 3 required for CS-grounded displays
         40_000_000,
         extra_flags=0x40,
     )
