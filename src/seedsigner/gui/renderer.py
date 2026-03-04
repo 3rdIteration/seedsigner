@@ -52,7 +52,10 @@ class Renderer(ConfigurableSingleton):
             self.disp.invert()
 
         brightness_level = Settings.get_instance().get_value(SettingsConstants.SETTING__SCREEN_BRIGHTNESS, default_if_none=True)
-        duty_cycle = SettingsConstants.BRIGHTNESS_DUTY_CYCLE.get(brightness_level, 100)
+        duty_cycle = SettingsConstants.BRIGHTNESS_DUTY_CYCLE.get(
+            brightness_level,
+            SettingsConstants.BRIGHTNESS_DUTY_CYCLE[SettingsConstants.BRIGHTNESS__FULL],
+        )
         self.disp.set_brightness(duty_cycle)
 
         if self.display_type in [DISPLAY_TYPE__ST7789, DISPLAY_TYPE__DESKTOP]:

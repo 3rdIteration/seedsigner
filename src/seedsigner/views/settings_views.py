@@ -377,7 +377,10 @@ class SettingsEntryUpdateSelectionView(View):
             self.renderer.disp.invert(enabled=updated_value == SettingsConstants.OPTION__ENABLED)
 
         elif self.settings_entry.attr_name == SettingsConstants.SETTING__SCREEN_BRIGHTNESS:
-            duty_cycle = SettingsConstants.BRIGHTNESS_DUTY_CYCLE.get(updated_value, 100)
+            duty_cycle = SettingsConstants.BRIGHTNESS_DUTY_CYCLE.get(
+                updated_value,
+                SettingsConstants.BRIGHTNESS_DUTY_CYCLE[SettingsConstants.BRIGHTNESS__FULL],
+            )
             self.renderer.disp.set_brightness(duty_cycle)
 
         if destination:
