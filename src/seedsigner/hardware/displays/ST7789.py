@@ -205,11 +205,33 @@ class ST7789(object):
         # SLPOUT (Sleep Out): wake the display from its post-reset sleep state.
         # The ST7789 datasheet requires at least 120 ms between SLPOUT and any
         # subsequent command (including DISPON).  Without this delay the display
-        # ignores DISPON and stays blank.  In the original code the long
-        # application-startup path between __init__() and the first show_image()
-        # call accidentally provided enough time; with lazy initialisation
-        # (init() called immediately before the first frame) that accidental delay
-        # is gone, so the sleep must be explicit.
+        # ignores DISPON and stays blank.
+        #
+        # Why the bug was hidden with kernel-managed CE but not with CS-to-GND:
+        #
+        # Two separate effects compound:
+        #
+        # 1) Code path: SPI_NO_CS support and lazy init were introduced together.
+        #    Users on the default kernel-CE path were still running the original
+        #    eager-init code (init() called in __init__()), so hundreds of
+        #    milliseconds of application startup — settings load, controller
+        #    construction, initial view build — passed between SLPOUT and the first
+        #    pixel write, accidentally covering the 120 ms requirement.  Users
+        #    switching to CS-to-GND were necessarily on the new code that also
+        #    introduced lazy init, removing that accidental gap entirely (init()
+        #    runs immediately before show_image() with nothing in between).
+        #
+        # 2) Hardware: with kernel-managed CE wired to LCD CS, the Linux SPI
+        #    driver pulses CE HIGH between every individual spi.transfer() call.
+        #    That CS deassert/reassert edge after SLPOUT gives the ST7789 a
+        #    synchronisation point; the chip's state machine can detect the end of
+        #    the SLPOUT frame and begin its internal wake sequence.  With CS tied
+        #    permanently to GND there is never a CE HIGH pulse — the display sees
+        #    an unbroken clock stream and has no edge to synchronise on, making it
+        #    sensitive to the exact inter-command timing.
+        #
+        # The sleep below is the correct fix: it satisfies the datasheet timing
+        # regardless of how CS is managed or which init path is taken.
         self.command(0x11)
         time.sleep(0.12)  # ≥120 ms required by ST7789 datasheet after SLPOUT
 

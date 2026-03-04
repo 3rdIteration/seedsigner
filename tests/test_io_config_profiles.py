@@ -420,10 +420,23 @@ def test_st7789_init_sleeps_after_slpout():
     """init() must sleep at least 120 ms between SLPOUT (0x11) and DISPON (0x29).
 
     The ST7789 datasheet requires ≥120 ms after SLPOUT before any subsequent
-    command.  Without this delay the display ignores DISPON and stays blank,
-    which is the root cause of the 'no image when CS is at GND from boot'
-    failure: lazy init calls init() immediately before the first frame, so
-    there is no accidental startup delay to compensate.
+    command.  Without this delay the display ignores DISPON and stays blank.
+
+    The bug manifested with CS tied to GND but not with kernel-managed CE for
+    two compounding reasons:
+
+    1) Code path: SPI_NO_CS support and lazy init were introduced together.
+       Users on the default kernel-CE path had eager init, giving hundreds of
+       milliseconds of startup delay between SLPOUT and the first pixel write.
+       Users on the new CS-to-GND path had lazy init (init() runs immediately
+       before show_image()), removing that accidental gap.
+
+    2) Hardware: with kernel-managed CE wired to LCD CS, the SPI driver pulses
+       CE HIGH after every spi.transfer() call, giving the ST7789 a
+       synchronisation edge.  With CS permanently grounded, there are no CE
+       pulses and the display relies entirely on internal timing.
+
+    The 120 ms sleep is the correct fix for both paths.
     """
     import time
     from unittest.mock import patch
