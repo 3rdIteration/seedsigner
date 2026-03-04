@@ -16,7 +16,7 @@ from PIL import Image
 from PIL.ImageOps import autocontrast
 import shamir_mnemonic
 
-from seedsigner.gui.components import FontAwesomeIconConstants, SeedSignerIconConstants
+from seedsigner.gui.components import FontAwesomeIconConstants, GUIConstants, SeedSignerIconConstants
 from seedsigner.gui.screens import (RET_CODE__BACK_BUTTON, ButtonListScreen,
     WarningScreen, DireWarningScreen, seed_screens, LargeIconStatusScreen)
 from seedsigner.gui.screens.screen import ButtonOption, KeyboardScreen
@@ -1188,8 +1188,12 @@ class SeedAezeedPassphraseModeView(View):
             button_data.append(self.LOAD_SEEDKEEPER)
 
         selected_menu_num = self.run_screen(
-            ButtonListScreen,
+            LargeIconStatusScreen,
             title=_("Aezeed passphrase"),
+            status_icon_name=SeedSignerIconConstants.FINGERPRINT,
+            status_icon_size=GUIConstants.ICON_LARGE_BUTTON_SIZE,
+            status_color=GUIConstants.INFO_COLOR,
+            text=_("Passphrase required\nfor this mnemonic."),
             is_button_text_centered=False,
             button_data=button_data,
             show_back_button=True,
