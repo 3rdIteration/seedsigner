@@ -1191,10 +1191,12 @@ class SeedAddPassphraseView(View):
                 return Destination(SeedAddPassphraseExitDialogView)
             else:
                 return Destination(SeedFinalizeView)
-            
+
         elif len(self.seed.passphrase) > 0:
+            if isinstance(self.seed, AezeedSeed):
+                return Destination(SeedFinalizeView)
             return Destination(SeedReviewPassphraseView)
-        
+
         else:
             return Destination(SeedFinalizeView)
 
