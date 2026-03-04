@@ -1184,6 +1184,9 @@ class SeedAddPassphraseView(View):
             raise
 
         if "is_back_button" in ret_dict:
+            if isinstance(self.seed, AezeedSeed):
+                self.controller.storage.clear_pending_seed()
+                return Destination(MainMenuView, clear_history=True)
             if len(self.seed.passphrase) > 0:
                 return Destination(SeedAddPassphraseExitDialogView)
             else:

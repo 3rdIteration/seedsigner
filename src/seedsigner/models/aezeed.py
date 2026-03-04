@@ -833,13 +833,26 @@ def decode_mnemonic(
         raise InvalidMnemonicError("checksum mismatch")
     salt = cipher_bytes[EncipheredCipherSeedSize - 4 - SaltSize : EncipheredCipherSeedSize - 4]
     ciphertext = cipher_bytes[1 : EncipheredCipherSeedSize - 4 - SaltSize]
-    # LND always prefixes the default passphrase to user-supplied strings before
-    # running scrypt.  Append the provided passphrase to the base constant so
-    # recovery works for mnemonics created with custom passphrases.
-    pass_bytes = (DEFAULT_PASSPHRASE + (passphrase or "")).encode("utf-8")
-    key = hashlib.scrypt(pass_bytes, salt=salt, n=32768, r=8, p=1, dklen=32, maxmem=2_000_000_000)
+    # LND behavior: use the provided passphrase as-is; only fall back to
+    # the default passphrase when user passphrase is empty.
+    candidate_passphrases: list[str] = []
+    if passphrase:
+        candidate_passphrases.append(passphrase)
+        # Compatibility fallback for older/non-standard tools that concatenate
+        # the default token with user passphrase before key derivation.
+        candidate_passphrases.append(DEFAULT_PASSPHRASE + passphrase)
+    else:
+        candidate_passphrases.append(DEFAULT_PASSPHRASE)
+
     ad = _encode_ad(version, salt)
-    plaintext = _aez_decrypt(key, [ad], CipherTextExpansion, ciphertext)
+    plaintext = None
+    for candidate in candidate_passphrases:
+        pass_bytes = candidate.encode("utf-8")
+        key = hashlib.scrypt(pass_bytes, salt=salt, n=32768, r=8, p=1, dklen=32, maxmem=2_000_000_000)
+        plaintext = _aez_decrypt(key, [ad], CipherTextExpansion, ciphertext)
+        if plaintext is not None and len(plaintext) == DecipheredCipherSeedSize:
+            break
+
     if plaintext is None or len(plaintext) != DecipheredCipherSeedSize:
         raise InvalidPassphraseError("invalid passphrase")
     internal_version = plaintext[0]

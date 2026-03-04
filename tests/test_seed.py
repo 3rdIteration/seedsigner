@@ -67,6 +67,17 @@ def test_aezeed_seed_requires_passphrase_does_not_fail_word_validation():
 
     assert seed.seed_bytes is None
 
+
+
+def test_aezeed_seed_user_reported_passphrase_vector():
+    mnemonic = (
+        "absent beef crazy include regret city blanket plug thought spatial boy receive "
+        "bag jazz fade emerge quit beach crucial giant mutual reward captain excite"
+    ).split()
+    seed = AezeedSeed(mnemonic=mnemonic, passphrase="test")
+
+    assert seed.seed_bytes == bytes.fromhex("81b637d86359e6960de795e41e0b4cfd")
+
 def test_aezeed_seed_custom_passphrase_vector():
     mnemonic = (
         "above gap bronze point damp name group actress idea festival cream during "
