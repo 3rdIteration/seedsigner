@@ -23,8 +23,13 @@ class ST7789(object):
 
         self._dc = GPIO(*pin_mapping["dc"], "out")
         self._rst = GPIO(*pin_mapping["rst"], "out")
-        self._bl = GPIO(*pin_mapping["bl"], "out")
-        self._bl.write(True)
+        # bl_config is either "disabled" or a list [chip, line] for GPIO
+        bl_config = pin_mapping["bl"]
+        if bl_config == "disabled":
+            self._bl = None
+        else:
+            self._bl = GPIO(*bl_config, "out")
+            self._bl.write(True)
 
         # Initialize SPI
         spi_bus = f"/dev/spidev{pin_mapping['spi_bus']}.{pin_mapping['spi_device']}"
