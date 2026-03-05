@@ -84,7 +84,26 @@ class ST7789(object):
             )
 
         logger.info("Initializing SPI: bus=%s at %.1f MHz", spi_bus, spi_hz / 1_000_000)
-        self._spi = SPI(spi_bus, spi_mode, spi_hz, extra_flags=spi_extra_flags)
+        try:
+            self._spi = SPI(spi_bus, spi_mode, spi_hz, extra_flags=spi_extra_flags)
+        except OSError as e:
+            # Some SPI kernel drivers (e.g. on Luckfox Pico) return EINVAL when
+            # extra_flags contains SPI_NO_CS (0x40) because that flag is not
+            # implemented in their driver.  In that case, retry without the flag.
+            # SPI Mode 3 remains in effect — that is the essential fix for
+            # CS-grounded ST7789 displays (prevents boot-time SCK noise from
+            # corrupting the shift register).  The kernel-managed CE GPIO will
+            # toggle but is harmless when LCD CS is tied permanently to GND.
+            if e.errno == errno.EINVAL and spi_extra_flags != 0:
+                logger.warning(
+                    "SPI extra_flags=0x%02x rejected by driver (EINVAL); "
+                    "retrying without extra flags. SPI Mode %d is still active.",
+                    spi_extra_flags,
+                    spi_mode,
+                )
+                self._spi = SPI(spi_bus, spi_mode, spi_hz, extra_flags=0)
+            else:
+                raise
 
         # Defer the LCD register initialisation sequence to the first draw call
         # (_ensure_initialized, called by show_image / clear / invert).  This

@@ -500,3 +500,77 @@ def test_st7789_init_sleeps_after_slpout():
         f"Must sleep ≥120 ms between SLPOUT and DISPON (ST7789 datasheet); "
         f"actual delay was {delay_ms:.1f} ms"
     )
+
+
+def test_st7789_falls_back_to_mode3_without_no_cs_on_einval():
+    """When the kernel SPI driver rejects SPI_NO_CS (extra_flags=0x40) with
+    EINVAL, ST7789.__init__ must retry in SPI Mode 3 with extra_flags=0.
+
+    Some SoC SPI drivers (e.g. Luckfox Pico) do not implement SPI_NO_CS and
+    return EINVAL at bus open time.  Mode 3 (CPOL=1, CPHA=1, SCK idles HIGH)
+    is the essential fix for CS-grounded ST7789 displays and must remain active
+    even when SPI_NO_CS is not available.
+    """
+    import errno as _errno
+    from unittest.mock import patch, call, MagicMock
+
+    st7789_module = _import_st7789_with_mocked_periphery()
+    pin_mapping = _make_st7789_pin_mapping(cs="disabled")
+
+    # First SPI() call raises EINVAL; second call succeeds.
+    mock_spi_instance = MagicMock()
+    einval_error = OSError(_errno.EINVAL, "Invalid argument")
+    einval_error.errno = _errno.EINVAL
+    mock_spi_cls = MagicMock(side_effect=[einval_error, mock_spi_instance])
+
+    with patch.object(st7789_module, "GPIO"), \
+         patch.object(st7789_module, "SPI", mock_spi_cls), \
+         patch.object(st7789_module, "Settings") as mock_settings, \
+         patch.object(st7789_module, "get_hardware_pin_mapping", return_value=pin_mapping):
+        mock_settings.get_platform_default_hardware_config.return_value = "RPI_40"
+        display = st7789_module.ST7789()
+
+    # The driver must have been called twice: first with SPI_NO_CS, then without.
+    assert mock_spi_cls.call_count == 2, (
+        f"Expected 2 SPI() calls (primary + fallback), got {mock_spi_cls.call_count}"
+    )
+    first_call, second_call = mock_spi_cls.call_args_list
+    # Primary attempt: Mode 3 + SPI_NO_CS.
+    assert first_call == call("/dev/spidev0.0", 3, 40_000_000, extra_flags=0x40)
+    # Fallback: Mode 3, no extra flags.
+    assert second_call == call("/dev/spidev0.0", 3, 40_000_000, extra_flags=0)
+    # The display object must be functional (using the fallback SPI instance).
+    assert display._spi is mock_spi_instance
+
+
+def test_st7789_does_not_swallow_non_einval_oserror():
+    """OSError exceptions that are NOT EINVAL must propagate unchanged.
+
+    Only EINVAL is a known 'driver does not support this flag' signal.
+    Other errors (e.g. ENOENT — device file missing, EACCES — permission
+    denied) indicate a different problem and must not be silently swallowed
+    by the SPI_NO_CS fallback logic.
+    """
+    import errno as _errno
+    from unittest.mock import patch, MagicMock
+
+    st7789_module = _import_st7789_with_mocked_periphery()
+    pin_mapping = _make_st7789_pin_mapping(cs="disabled")
+
+    enoent_error = OSError(_errno.ENOENT, "No such file or directory")
+    enoent_error.errno = _errno.ENOENT
+    mock_spi_cls = MagicMock(side_effect=enoent_error)
+
+    with patch.object(st7789_module, "GPIO"), \
+         patch.object(st7789_module, "SPI", mock_spi_cls), \
+         patch.object(st7789_module, "Settings") as mock_settings, \
+         patch.object(st7789_module, "get_hardware_pin_mapping", return_value=pin_mapping):
+        mock_settings.get_platform_default_hardware_config.return_value = "RPI_40"
+        try:
+            st7789_module.ST7789()
+            assert False, "Expected OSError(ENOENT) to propagate but it was swallowed"
+        except OSError as e:
+            assert e.errno == _errno.ENOENT
+
+    # Only one SPI() call should have been made — no retry on non-EINVAL errors.
+    assert mock_spi_cls.call_count == 1
