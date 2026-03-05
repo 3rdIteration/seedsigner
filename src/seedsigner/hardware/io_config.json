@@ -177,10 +177,7 @@
           "/dev/gpiochip1",
           19
         ],
-        "bl": [
-          "/dev/gpiochip1",
-          11
-        ],
+        "bl": "disabled",
         "spi_bus": 0,
         "spi_device": 0
       },
@@ -192,7 +189,7 @@
         ],
         "KEY_DOWN": [
           "/dev/gpiochip1",
-          27,
+          23,
           "pull_up"
         ],
         "KEY_LEFT": [
@@ -201,23 +198,23 @@
           "pull_up"
         ],
         "KEY_RIGHT": [
-          "/dev/gpiochip1",
-          22,
+          "/dev/gpiochip0",
+          4,
           "pull_up"
         ],
         "KEY_PRESS": [
           "/dev/gpiochip1",
-          26,
+          22,
           "pull_up"
         ],
         "KEY1": [
-          "/dev/gpiochip1",
-          23,
+          "/dev/gpiochip4",
+          16,
           "pull_up"
         ],
         "KEY2": [
-          "/dev/gpiochip0",
-          4,
+          "/dev/gpiochip4",
+          17,
           "pull_up"
         ],
         "KEY3": [
