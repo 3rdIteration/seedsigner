@@ -33,12 +33,89 @@ class ST7789(object):
 
         # Initialize SPI
         spi_bus = f"/dev/spidev{pin_mapping['spi_bus']}.{pin_mapping['spi_device']}"
-        spi_mode = 0
         spi_hz = 40_000_000
 
-        logger.info(f"Initializing SPI: bus={spi_bus} at {spi_hz/1_000_000} MHz")
-        self._spi = SPI(spi_bus, spi_mode, spi_hz)
-        self.init()
+        # SPI_NO_CS (0x40): tell the kernel not to assert/deassert any chip-select
+        # GPIO.  Use this when LCD CS is tied permanently to GND and the SBC's
+        # CE pin is not wired to the LCD at all.
+        spi_extra_flags = 0
+        if pin_mapping.get("cs") == "disabled":
+            spi_extra_flags = 0x40  # SPI_NO_CS
+            # ST7789 displays with CS tied permanently to GND require SPI Mode 3
+            # (CPOL=1, CPHA=1, SCK idles HIGH).  With CS always asserted the
+            # display's SPI interface is active from the moment power is applied.
+            # During Pi boot — before the SPI driver loads and takes ownership of
+            # the SCK pin — the line is in an undefined/floating state.  In Mode 0
+            # (SCK idles LOW) any high→low transition on SCK that occurs during
+            # this window is a valid falling clock edge in Mode 0, shifting garbage
+            # bits into the display's shift register and misaligning the command
+            # stream.  In Mode 3 (SCK idles HIGH) the SPI controller drives SCK
+            # high as soon as the bus is opened, and the display only samples on
+            # falling edges, so rising-edge boot noise is ignored.  This matches
+            # the behaviour described in TFT_eSPI issue #163 (Bodmer) and is the
+            # standard fix for CS-grounded ST7789 variants.
+            spi_mode = 3
+            logger.info(
+                "SPI CS mode: SPI_NO_CS (0x40), SPI Mode 3 — kernel will not manage "
+                "any CE GPIO; LCD CS pin must be tied to GND."
+            )
+        else:
+            spi_mode = 0
+            # The kernel will drive the CE GPIO (e.g. CE0/GPIO8 for spi_device=0)
+            # low before each transfer and high afterwards.  This is a pure GPIO
+            # output with no electrical feedback.
+            #
+            # Whether the LCD receives SPI data depends entirely on its CS pin:
+            #  * LCD CS tied to GND  → CS always asserted; LCD receives every byte
+            #    regardless of whether CE is wired.  The display works fine even
+            #    if the CE pin is not connected to the LCD at all.
+            #  * LCD CS wired to CE  → LCD selected only while CE is driven low;
+            #    normal kernel-managed chip-select behaviour.
+            #  * LCD CS floating     → CS never reliably asserted; LCD ignores every
+            #    SPI byte.  Transfers succeed in software with no error raised, but
+            #    the display stays blank.  Use '"cs": "disabled"' and tie LCD CS to
+            #    GND to fix this.
+            spi_device = pin_mapping.get("spi_device", 0)
+            logger.warning(
+                "SPI CS mode: kernel-managed CE%d GPIO — the display will work "
+                "correctly only if LCD CS is asserted (either wired to CE%d or "
+                "tied directly to GND). If LCD CS is floating, SPI transfers "
+                "silently succeed but the display will not respond. "
+                "Set '\"cs\": \"disabled\"' in the display config and tie LCD CS "
+                "to GND to make the configuration explicit and eliminate CE pin "
+                "dependency.",
+                spi_device,
+                spi_device,
+            )
+
+        logger.info("Initializing SPI: bus=%s at %.1f MHz", spi_bus, spi_hz / 1_000_000)
+        try:
+            self._spi = SPI(spi_bus, spi_mode, spi_hz, extra_flags=spi_extra_flags)
+        except OSError as e:
+            # Some SPI kernel drivers (e.g. on Luckfox Pico) return EINVAL when
+            # extra_flags contains SPI_NO_CS (0x40) because that flag is not
+            # implemented in their driver.  In that case, retry without the flag.
+            # SPI Mode 3 remains in effect — that is the essential fix for
+            # CS-grounded ST7789 displays (prevents boot-time SCK noise from
+            # corrupting the shift register).  The kernel-managed CE GPIO will
+            # toggle but is harmless when LCD CS is tied permanently to GND.
+            if e.errno == errno.EINVAL and spi_extra_flags != 0:
+                logger.warning(
+                    "SPI extra_flags=0x%02x rejected by driver (EINVAL); "
+                    "retrying without extra flags. SPI Mode %d is still active.",
+                    spi_extra_flags,
+                    spi_mode,
+                )
+                self._spi = SPI(spi_bus, spi_mode, spi_hz, extra_flags=0)
+            else:
+                raise
+
+        # Defer the LCD register initialisation sequence to the first draw call
+        # (_ensure_initialized, called by show_image / clear / invert).  This
+        # keeps __init__ free of SPI traffic so that the caller has a window to
+        # complete any hardware setup (e.g. confirming LCD CS is asserted) before
+        # the first byte is clocked out.
+        self._display_initialized = False
 
     def _chunked_transfer(self, data):
         """Transfer data in chunks to prevent buffer overflows"""
@@ -63,6 +140,18 @@ class ST7789(object):
                     )
                     continue
                 raise
+
+    def _ensure_initialized(self):
+        """Run the display register initialization sequence on first use.
+
+        Deferring init() until the first draw call means that CS can be tied to
+        GND at any point between the SPI bus being opened and the first frame
+        being rendered — the LCD will still receive the full configuration
+        sequence.
+        """
+        if not self._display_initialized:
+            self.init()
+            self._display_initialized = True
 
     """    Write register address and data     """
     def command(self, cmd):
@@ -151,9 +240,43 @@ class ST7789(object):
         
         self.command(0x21)  # inversion ON; 0x20 = inversion OFF
 
+        # SLPOUT (Sleep Out): wake the display from its post-reset sleep state.
+        # The ST7789 datasheet requires at least 120 ms between SLPOUT and any
+        # subsequent command (including DISPON).  Without this delay the display
+        # ignores DISPON and stays blank.
+        #
+        # Why the bug was hidden with kernel-managed CE but not with CS-to-GND:
+        #
+        # Two separate effects compound:
+        #
+        # 1) Code path: SPI_NO_CS support and lazy init were introduced together.
+        #    Users on the default kernel-CE path were still running the original
+        #    eager-init code (init() called in __init__()), so hundreds of
+        #    milliseconds of application startup — settings load, controller
+        #    construction, initial view build — passed between SLPOUT and the first
+        #    pixel write, accidentally covering the 120 ms requirement.  Users
+        #    switching to CS-to-GND were necessarily on the new code that also
+        #    introduced lazy init, removing that accidental gap entirely (init()
+        #    runs immediately before show_image() with nothing in between).
+        #
+        # 2) Hardware: with kernel-managed CE wired to LCD CS, the Linux SPI
+        #    driver pulses CE HIGH between every individual spi.transfer() call.
+        #    That CS deassert/reassert edge after SLPOUT gives the ST7789 a
+        #    synchronisation point; the chip's state machine can detect the end of
+        #    the SLPOUT frame and begin its internal wake sequence.  With CS tied
+        #    permanently to GND there is never a CE HIGH pulse — the display sees
+        #    an unbroken clock stream and has no edge to synchronise on, making it
+        #    sensitive to the exact inter-command timing.  Using SPI Mode 3
+        #    (SCK idles HIGH, configured automatically when cs="disabled") also
+        #    helps here by ensuring boot-time SCK transitions do not corrupt the
+        #    display's shift register before init() runs (see TFT_eSPI issue #163).
+        #
+        # The sleep below is the correct fix: it satisfies the datasheet timing
+        # regardless of how CS is managed or which init path is taken.
         self.command(0x11)
+        time.sleep(0.12)  # ≥120 ms required by ST7789 datasheet after SLPOUT
 
-        self.command(0x29)
+        self.command(0x29)  # DISPON (Display On)
 
     def reset(self):
         """Reset the display"""
@@ -184,6 +307,7 @@ class ST7789(object):
     def show_image(self,Image,Xstart,Ystart):
         """Set buffer to value of Python Imaging Library image."""
         """Write display buffer to physical display"""
+        self._ensure_initialized()
         imwidth, imheight = Image.size
         if imwidth != self.width or imheight != self.height:
             raise ValueError('Image must be same dimensions as display \
@@ -198,6 +322,7 @@ class ST7789(object):
         
     def clear(self):
         """Clear contents of image buffer"""
+        self._ensure_initialized()
         _buffer = [0xff]*(self.width * self.height * 2)
         self.SetWindows ( 0, 0, self.width, self.height)
         self._dc.write(True)
@@ -205,6 +330,7 @@ class ST7789(object):
 
     def invert(self, enabled: bool = True):
         """Invert how the display interprets colors"""
+        self._ensure_initialized()
         self.command(0x21 if enabled else 0x20)
 
     def __del__(self):
