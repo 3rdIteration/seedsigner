@@ -96,22 +96,22 @@ def test_fox_22_buttons_use_gpiochip_pull_up_mapping():
 def test_fox_40_display_uses_gpiochip_format():
     mapping = get_hardware_pin_mapping("FOX_40")
 
-    assert mapping["display"]["dc"] == ["/dev/gpiochip1", 24]
-    assert mapping["display"]["rst"] == ["/dev/gpiochip1", 25]
-    assert mapping["display"]["bl"] == ["/dev/gpiochip2", 8]
+    assert mapping["display"]["dc"] == ["/dev/gpiochip2", 8]
+    assert mapping["display"]["rst"] == ["/dev/gpiochip1", 24]
+    assert mapping["display"]["bl"] == ["/dev/gpiochip1", 25]
 
 
 def test_fox_40_buttons_use_gpiochip_pull_up_mapping():
     mapping = get_hardware_pin_mapping("FOX_40")
 
-    assert mapping["buttons"]["KEY_UP"] == ["/dev/gpiochip1", 26, "pull_up"]
-    assert mapping["buttons"]["KEY_DOWN"] == ["/dev/gpiochip1", 21, "pull_up"]
-    assert mapping["buttons"]["KEY_LEFT"] == ["/dev/gpiochip1", 27, "pull_up"]
-    assert mapping["buttons"]["KEY_RIGHT"] == ["/dev/gpiochip1", 22, "pull_up"]
-    assert mapping["buttons"]["KEY_PRESS"] == ["/dev/gpiochip1", 20, "pull_up"]
+    assert mapping["buttons"]["KEY_UP"] == ["/dev/gpiochip2", 9, "pull_up"]
+    assert mapping["buttons"]["KEY_DOWN"] == ["/dev/gpiochip1", 28, "pull_up"]
+    assert mapping["buttons"]["KEY_LEFT"] == ["/dev/gpiochip1", 19, "pull_up"]
+    assert mapping["buttons"]["KEY_RIGHT"] == ["/dev/gpiochip1", 20, "pull_up"]
+    assert mapping["buttons"]["KEY_PRESS"] == ["/dev/gpiochip1", 27, "pull_up"]
     assert mapping["buttons"]["KEY1"] == ["/dev/gpiochip1", 23, "pull_up"]
-    assert mapping["buttons"]["KEY2"] == ["/dev/gpiochip1", 11, "pull_up"]
-    assert mapping["buttons"]["KEY3"] == ["/dev/gpiochip1", 10, "pull_up"]
+    assert mapping["buttons"]["KEY2"] == ["/dev/gpiochip1", 22, "pull_up"]
+    assert mapping["buttons"]["KEY3"] == ["/dev/gpiochip1", 21, "pull_up"]
 
 
 def test_lc_lafrite_display_config_is_st7789():
