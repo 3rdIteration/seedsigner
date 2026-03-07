@@ -708,3 +708,57 @@ class TestToolsFlows(FlowTest):
             FlowStep(seed_views.SeedAddressVerificationView),
             FlowStep(seed_views.SeedAddressVerificationSuccessView),
         ])
+
+
+    def test__verify_address__bug_report_all_three_address_types(self, monkeypatch):
+        """
+            Regression test for the bug report: addresses at m/44'/0'/0'/0/0 (P2PKH),
+            m/49'/0'/0'/0/0 (Nested Segwit), and m/84'/0'/0'/0/0 (Native Segwit)
+            should all be found by the expanded search.
+
+            Uses the exact mnemonic and addresses from the bug report.
+        """
+        monkeypatch.setattr(seed_views.SeedAddressVerificationView, "EXPANDED_ADDRS_PER_PATH", 5)
+
+        controller = Controller.get_instance()
+        mnemonic = "nerve oven detect rookie refuse double combine lyrics broom noble obey auto fuel print river vapor salon glow select east amused decide guess helmet"
+        seed = Seed(mnemonic=mnemonic.split())
+        controller.storage.set_pending_seed(seed)
+        controller.storage.finalize_pending_seed()
+        settings = controller.settings
+        settings.set_value(SettingsConstants.SETTING__NETWORK, SettingsConstants.MAINNET)
+
+        # Addresses from the bug report
+        test_cases = [
+            # (address, requires_sig_type_selection)
+            ("1PgAiLuE71xmy67htmn4PVaSBNwFonaC15", False),   # Legacy P2PKH m/44'/0'/0'/0/0
+            ("39X53GD2W1rNzVkew5wTWU5tFba8NSxXG5", True),    # Nested Segwit m/49'/0'/0'/0/0
+            ("bc1qf8sxhhpswt7jpea2lgxdj0yp0xzadcc6x3qf0a", False),  # Native Segwit m/84'/0'/0'/0/0
+        ]
+
+        for test_addr, needs_sig_type in test_cases:
+            def load_address_into_decoder(view: scan_views.ScanView):
+                view.decoder.add_data(test_addr)
+
+            if needs_sig_type:
+                # Nested segwit requires sig type selection
+                self.run_sequence([
+                    FlowStep(MainMenuView, button_data_selection=MainMenuView.TOOLS),
+                    FlowStep(tools_views.ToolsMenuView, button_data_selection=tools_views.ToolsMenuView.VERIFY_ADDRESS),
+                    FlowStep(scan_views.ScanAddressView, before_run=load_address_into_decoder),
+                    FlowStep(seed_views.AddressVerificationStartView, is_redirect=True),
+                    FlowStep(seed_views.AddressVerificationSigTypeView, button_data_selection=seed_views.AddressVerificationSigTypeView.SINGLE_SIG),
+                    FlowStep(seed_views.SeedSelectSeedView, screen_return_value=0),
+                    FlowStep(seed_views.SeedAddressVerificationView),
+                    FlowStep(seed_views.SeedAddressVerificationSuccessView),
+                ])
+            else:
+                self.run_sequence([
+                    FlowStep(MainMenuView, button_data_selection=MainMenuView.TOOLS),
+                    FlowStep(tools_views.ToolsMenuView, button_data_selection=tools_views.ToolsMenuView.VERIFY_ADDRESS),
+                    FlowStep(scan_views.ScanAddressView, before_run=load_address_into_decoder),
+                    FlowStep(seed_views.AddressVerificationStartView, is_redirect=True),
+                    FlowStep(seed_views.SeedSelectSeedView, screen_return_value=0),
+                    FlowStep(seed_views.SeedAddressVerificationView),
+                    FlowStep(seed_views.SeedAddressVerificationSuccessView),
+                ])
