@@ -1662,16 +1662,10 @@ class SeedAddressVerificationSuccessScreen(LargeIconStatusScreen):
             max_lines=1,  # Use abbreviated format w/ellipsis
         ))
 
+        # TRANSLATOR_NOTE: Combines address type and index (e.g. "receive address: 0" or "change address: 7")
         self.components.append(TextArea(
-            text=address_type,
+            text=f"{address_type}: {self.verified_index}",
             screen_y=self.components[-1].screen_y + self.components[-1].height + 2*GUIConstants.COMPONENT_PADDING,
-        ))
-
-        # TRANSLATOR_NOTE: Describes the address index (e.g. "index 7")
-        index_str = _("index {}").format(self.verified_index)
-        self.components.append(TextArea(
-            text=index_str,
-            screen_y=self.components[-1].screen_y + self.components[-1].height + GUIConstants.COMPONENT_PADDING,
         ))
 
         # Show derivation path and script type
