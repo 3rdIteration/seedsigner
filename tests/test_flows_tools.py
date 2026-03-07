@@ -561,7 +561,7 @@ class TestToolsFlows(FlowTest):
 
         assert destination.View_cls == seed_views.SeedAddressVerificationNotFoundView
         assert destination.view_args["seed_num"] == 0
-        assert destination.view_args["addrs_checked"] == 2
+        assert destination.view_args["addrs_per_path_checked"] == 2
         assert destination.view_args["next_start_index"] == 2
 
 
@@ -584,7 +584,7 @@ class TestToolsFlows(FlowTest):
         )
 
         view = seed_views.SeedAddressVerificationNotFoundView(
-            seed_num=0, addrs_checked=100, next_start_index=100,
+            seed_num=0, addrs_per_path_checked=100, next_start_index=100,
         )
 
         def fake_run_screen(*args, **kwargs):
@@ -617,7 +617,7 @@ class TestToolsFlows(FlowTest):
         )
 
         view = seed_views.SeedAddressVerificationNotFoundView(
-            seed_num=0, addrs_checked=100, next_start_index=100,
+            seed_num=0, addrs_per_path_checked=100, next_start_index=100,
         )
 
         def fake_run_screen(*args, **kwargs):

@@ -4035,7 +4035,7 @@ class SeedAddressVerificationView(View):
                     SeedAddressVerificationNotFoundView,
                     view_args=dict(
                         seed_num=self.seed_num,
-                        addrs_checked=next_start,
+                        addrs_per_path_checked=next_start,
                         next_start_index=next_start,
                     ),
                 )
@@ -4219,10 +4219,10 @@ class SeedAddressVerificationNotFoundView(View):
     CHECK_NEXT = ButtonOption("Check Next 100")
     DONE = ButtonOption("Done")
 
-    def __init__(self, seed_num: int, addrs_checked: int, next_start_index: int):
+    def __init__(self, seed_num: int, addrs_per_path_checked: int, next_start_index: int):
         super().__init__()
         self.seed_num = seed_num
-        self.addrs_checked = addrs_checked
+        self.addrs_per_path_checked = addrs_per_path_checked
         self.next_start_index = next_start_index
 
     def run(self):
@@ -4232,7 +4232,7 @@ class SeedAddressVerificationNotFoundView(View):
             WarningScreen,
             title=_("Not Found"),
             status_headline=_("Address Not Verified"),
-            text=_("Checked {} addresses per path with no match.").format(self.addrs_checked),
+            text=_("Checked {} addresses per path with no match.").format(self.addrs_per_path_checked),
             button_data=button_data,
             show_back_button=False,
         )
