@@ -710,13 +710,14 @@ class TestToolsFlows(FlowTest):
         ])
 
 
-    def test__verify_address__bug_report_all_three_address_types(self, monkeypatch):
+    def test__verify_address__bug_report_all_script_types(self, monkeypatch):
         """
             Regression test for the bug report: addresses at m/44'/0'/0'/0/0 (P2PKH),
-            m/49'/0'/0'/0/0 (Nested Segwit), and m/84'/0'/0'/0/0 (Native Segwit)
-            should all be found by the expanded search.
+            m/49'/0'/0'/0/0 (Nested Segwit), m/84'/0'/0'/0/0 (Native Segwit), and
+            m/86'/0'/0'/0/0 (Taproot) should all be found by the expanded search.
 
-            Uses the exact mnemonic and addresses from the bug report.
+            Uses the exact mnemonic from the bug report plus a Taproot address
+            for complete coverage of all 4 script types.
         """
         monkeypatch.setattr(seed_views.SeedAddressVerificationView, "EXPANDED_ADDRS_PER_PATH", 5)
 
@@ -728,12 +729,13 @@ class TestToolsFlows(FlowTest):
         settings = controller.settings
         settings.set_value(SettingsConstants.SETTING__NETWORK, SettingsConstants.MAINNET)
 
-        # Addresses from the bug report
+        # Addresses from the bug report + Taproot for complete coverage
         test_cases = [
             # (address, requires_sig_type_selection)
             ("1PgAiLuE71xmy67htmn4PVaSBNwFonaC15", False),   # Legacy P2PKH m/44'/0'/0'/0/0
             ("39X53GD2W1rNzVkew5wTWU5tFba8NSxXG5", True),    # Nested Segwit m/49'/0'/0'/0/0
             ("bc1qf8sxhhpswt7jpea2lgxdj0yp0xzadcc6x3qf0a", False),  # Native Segwit m/84'/0'/0'/0/0
+            ("bc1p36p22wa9td3p9q9e4ruj6cr86qlrpah8267uyf7799485277x6uqgsnqpc", False),  # Taproot m/86'/0'/0'/0/0
         ]
 
         for test_addr, needs_sig_type in test_cases:
