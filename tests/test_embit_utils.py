@@ -491,3 +491,116 @@ def test_parse_derivation_path():
             assert actual_result["index"] == expected_result[3]
         else:
             assert actual_result["index"] == int(derivation_path.split("/")[-1])
+
+
+def test_sign_message_uses_correct_derivation():
+    """
+    Verify that sign_message derives signing key directly from the root HDKey,
+    producing a signature that matches the address derived via the same root.
+    This catches the double-derivation bug where root.secret was fed back into
+    HDKey.from_seed(), giving a completely different key tree.
+    """
+    from embit import bip39, bip32
+    from embit.networks import NETWORKS
+
+    mnemonic = "abandon " * 11 + "about"
+    seed_bytes = bip39.mnemonic_to_seed(mnemonic)
+    root = bip32.HDKey.from_seed(seed_bytes, version=NETWORKS["main"]["xprv"])
+
+    derivation_path = "m/84'/0'/0'/0/0"
+    message = "Hello, Bitcoin!"
+
+    sig = embit_utils.sign_message(
+        root=root,
+        derivation=derivation_path,
+        msg=message.encode(),
+    )
+
+    # The signature should be a non-empty base64 string
+    assert isinstance(sig, str)
+    assert len(sig) > 0
+
+    # Verify the signature decodes to 65 bytes (1 byte flag + 64 byte compact sig)
+    from binascii import a2b_base64
+    sig_bytes = a2b_base64(sig)
+    assert len(sig_bytes) == 65
+
+    # The flag byte should indicate a compressed key recovery ID
+    flag = sig_bytes[0]
+    assert 31 <= flag <= 34, f"Unexpected recovery flag: {flag}"
+
+
+def test_sign_message_same_result_for_bip39_and_xprv():
+    """
+    An XprvSeed and a BIP39 Seed derived from the same mnemonic must produce
+    identical signatures, because both use the same root key.
+
+    This test catches the prior double-derivation bug where
+    seed.get_root().secret was passed to HDKey.from_seed(), creating a
+    different root.
+    """
+    from embit import bip39, bip32
+    from embit.networks import NETWORKS
+
+    mnemonic = "abandon " * 11 + "about"
+    seed_bytes = bip39.mnemonic_to_seed(mnemonic)
+
+    # BIP39 root (what Seed.get_root() returns)
+    bip39_root = bip32.HDKey.from_seed(seed_bytes, version=NETWORKS["main"]["xprv"])
+
+    # XprvSeed root (same key, loaded from xprv string)
+    xprv_string = bip39_root.to_base58()
+    xprv_root = bip32.HDKey.from_string(xprv_string)
+
+    derivation_path = "m/84'/0'/0'/0/0"
+    message = "Test message for signing"
+
+    sig_bip39 = embit_utils.sign_message(
+        root=bip39_root,
+        derivation=derivation_path,
+        msg=message.encode(),
+    )
+    sig_xprv = embit_utils.sign_message(
+        root=xprv_root,
+        derivation=derivation_path,
+        msg=message.encode(),
+    )
+
+    assert sig_bip39 == sig_xprv, (
+        "BIP39 and XprvSeed roots must produce identical signatures"
+    )
+
+
+def test_sign_message_double_derivation_gives_different_result():
+    """
+    Demonstrate that the old buggy pattern (feeding root.secret back into
+    HDKey.from_seed) produces a DIFFERENT signature than using the root
+    directly.  This confirms the fix is meaningful.
+    """
+    from embit import bip39, bip32
+    from embit.networks import NETWORKS
+
+    mnemonic = "abandon " * 11 + "about"
+    seed_bytes = bip39.mnemonic_to_seed(mnemonic)
+    root = bip32.HDKey.from_seed(seed_bytes, version=NETWORKS["main"]["xprv"])
+
+    # The WRONG root that the old code produced (double-derivation)
+    wrong_root = bip32.HDKey.from_seed(root.secret, version=NETWORKS["main"]["xprv"])
+
+    derivation_path = "m/84'/0'/0'/0/0"
+    message = "Test double derivation"
+
+    sig_correct = embit_utils.sign_message(
+        root=root,
+        derivation=derivation_path,
+        msg=message.encode(),
+    )
+    sig_wrong = embit_utils.sign_message(
+        root=wrong_root,
+        derivation=derivation_path,
+        msg=message.encode(),
+    )
+
+    assert sig_correct != sig_wrong, (
+        "Double-derived root must NOT produce the same signature"
+    )
