@@ -1,0 +1,92 @@
+(kicad_sch
+	(version 20250114)
+	(generator "eeschema")
+	(generator_version "9.0")
+	(uuid "dfa2e4b7-ca13-4527-9b55-0a1b11484ba3")
+	(paper "A4")
+	(lib_symbols)
+	(sheet
+		(at 5.08 5.08)
+		(size 12.7 3.81)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(stroke
+			(width 0)
+			(type solid)
+		)
+		(fill
+			(color 0 0 0 0.0000)
+		)
+		(uuid "34cff4ef-c09c-4200-8a21-0f6fdcb0cf51")
+		(property "Sheetname" "Sheet_1"
+			(at 5.08 4.3684 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left bottom)
+			)
+		)
+		(property "Sheetfile" "Sheet_1.kicad_sch"
+			(at 5.08 9.4746 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left top)
+			)
+		)
+		(instances
+			(project "seedsigner plus with smartcard V2"
+				(path "/dfa2e4b7-ca13-4527-9b55-0a1b11484ba3"
+					(page "1")
+				)
+			)
+		)
+	)
+	(sheet
+		(at 5.08 13.97)
+		(size 12.7 3.81)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(stroke
+			(width 0)
+			(type solid)
+		)
+		(fill
+			(color 0 0 0 0.0000)
+		)
+		(uuid "69e576dd-97de-4e07-8c7a-2512183fd619")
+		(property "Sheetname" "Sheet_2"
+			(at 5.08 13.2584 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left bottom)
+			)
+		)
+		(property "Sheetfile" "Sheet_2.kicad_sch"
+			(at 5.08 18.3646 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left top)
+			)
+		)
+		(instances
+			(project "seedsigner plus with smartcard V2"
+				(path "/dfa2e4b7-ca13-4527-9b55-0a1b11484ba3"
+					(page "2")
+				)
+			)
+		)
+	)
+)
