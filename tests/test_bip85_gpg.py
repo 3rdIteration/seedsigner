@@ -125,6 +125,147 @@ def test_bip85_rsa_entropy_vectors_match_libwally():
         assert entropy.hex() == expected
 
 
+# ── Cross-implementation reference vectors ──────────────────────────────────
+# These vectors use the common xprv from the BIP85 spec test vectors.
+# Any BIP85-GPG implementation MUST derive identical entropy, DRNG output,
+# and key material for the same master key and path.
+#
+# For RSA, PyCryptodome's RSA.generate(bits, randfunc=drng.read) is the
+# reference algorithm as implied by the BIP85 spec's example code
+# (``RSA.generate_key(4096, drng_reader.read)``).
+#
+# Master xprv:
+#   xprv9s21ZrQH143K2LBWUUQRFXhucrQqBpKdRRxNVq2zBqsx8HVqFk2uYo8kmbaLLH
+#   RdqtQpUm98uKfu3vca1LqdGhUtyoFnCNkfmXRyPXLjbKb
+
+CROSS_IMPL_XPRV = LIBWALLY_RSA_MASTER_XPRV
+
+CROSS_IMPL_ECC_VECTORS = [
+    # (key_type, key_bits, expected_entropy_hex, expected_private_hex)
+    (
+        tools_views.BIP85_GPG_KEY_TYPE_CURVE25519,
+        256,
+        "0e90b553528cd97a033c282f54cf72c1020adaec205d5c0e57e9f2556d06fea6"
+        "83618e4be8f91e7e059647f9d6373eb8b5f535e7ba4097cfb3e93c4957843614",
+        "0e90b553528cd97a033c282f54cf72c1020adaec205d5c0e57e9f2556d06fea6",
+    ),
+    (
+        tools_views.BIP85_GPG_KEY_TYPE_SECP256K1,
+        256,
+        "f3bb8b3d6b81fbd202c34b59ce7e97c83969e9b5733b936de16c51119c7a4823"
+        "9ddf66729ef5e4df97ea39471f05a89f070869b3f9d72d69f3ae8bd7ee4fb6b3",
+        "f3bb8b3d6b81fbd202c34b59ce7e97c83969e9b5733b936de16c51119c7a4823",
+    ),
+    (
+        tools_views.BIP85_GPG_KEY_TYPE_NIST,
+        256,
+        "f52586f58521916b9f28b0058be86effcde82e571eabada9e3f63c6f67752ff1"
+        "2a4d3bf2fffe0f147164945691605a58f28f6bded869c38b3db9f0e577d83728",
+        "f52586f58521916b9f28b0058be86effcde82e571eabada9e3f63c6f67752ff1",
+    ),
+    (
+        tools_views.BIP85_GPG_KEY_TYPE_NIST,
+        384,
+        "830005ea400f7a03c27aa06a9728fe311c9a48dc31bd417f07b96c69edc73d25"
+        "baa00d04b9dbbe6f42539b06d9ef1ba62ed73d4a3a992302aae09e17e0d9f42f",
+        "830005ea400f7a03c27aa06a9728fe311c9a48dc31bd417f07b96c69edc73d25"
+        "baa00d04b9dbbe6f42539b06d9ef1ba6",
+    ),
+    (
+        tools_views.BIP85_GPG_KEY_TYPE_NIST,
+        521,
+        "3524b3cbe60eb78a156dae44674702f69381afe5292d6d15d7801b7e530f2a06"
+        "16b7b876c0ba85d6e675587fdc0ce2242ad00252493ec9c3a024217d1e2aa954",
+        "a9b5a5af6b4c45ea509e838cb55a0043412b49781c54a68931395be4b27550b2"
+        "707d76c610e50803704293e4b27f9473b156e3d7f7cac4feb9bd16c1198a903849",
+    ),
+    (
+        tools_views.BIP85_GPG_KEY_TYPE_BRAINPOOL,
+        256,
+        "97ee4490d89bf257e9a038e2af12824fba47fec721970ca1fc1c094650d2716d"
+        "75491402530776ba31d215fac6c2de0cb6661f1d380b682e20246bf962cdf385",
+        "97ee4490d89bf257e9a038e2af12824fba47fec721970ca1fc1c094650d2716d",
+    ),
+    (
+        tools_views.BIP85_GPG_KEY_TYPE_BRAINPOOL,
+        384,
+        "3fa833db4195fbd7a9c4e3f6fdb65ffb8951c5c65ca0cce441a4410e11aa96fc"
+        "b094ed8c1fb5317448ae098ca9cae2c351b513e47d1b74e4c80c1facdf7b0a5a",
+        "3fa833db4195fbd7a9c4e3f6fdb65ffb8951c5c65ca0cce441a4410e11aa96fc"
+        "b094ed8c1fb5317448ae098ca9cae2c3",
+    ),
+    (
+        tools_views.BIP85_GPG_KEY_TYPE_BRAINPOOL,
+        512,
+        "985f0131503109fc7fb2ab15e6a86846888e4b9a9f4f11f0d7b30dba4570cf8c"
+        "c728a4c8ce9bbeb9b9819fbe924bb2d6d71a9c8332635cfb5db5008364f3a43a",
+        "985f0131503109fc7fb2ab15e6a86846888e4b9a9f4f11f0d7b30dba4570cf8c"
+        "c728a4c8ce9bbeb9b9819fbe924bb2d6d71a9c8332635cfb5db5008364f3a43a",
+    ),
+]
+
+# Expected RSA-2048 n value for path m/83696968'/828365'/0'/2048'/0'
+# generated via PyCryptodome RSA.generate(2048, randfunc=drng.read).
+CROSS_IMPL_RSA2048_N = int(
+    "c76c90074ba3f2e487c5d7714bdade9e1c6e4beafb3c1d1246ed9d0a5607a15d"
+    "58608bc5aec96db6160920c8327487311bc9f799d9bb312e489e2296d3e93ceb"
+    "322bf5d8ede6f989713e1ecc3b03ad146186aaba5af50656f3c29babb7b792da"
+    "8e6e1ffc6521af425965faeb5c94bd18d1526d77d8b51f501d029fb59a26384b"
+    "0269ddb36c79ee8764d0e2d09222eb9f9bfd0a7ae6be35f71e63743cdca8983e"
+    "bd7e712b2b38c8ea84fcb950bd851b882642eb05a0578c346057d9eeb7fa3218"
+    "eefcdb9b19aa11e8a1364e81de2a54940496a302c1958a99f6bf3b7b8154d0b4"
+    "c800081a8311b5b4182ed3e057af0e1010232b2e04fdc1edf5cf37978ac75cb9",
+    16,
+)
+
+
+def test_cross_impl_ecc_entropy_vectors():
+    """Entropy values for ECC key types match reference vectors."""
+    root = bip32.HDKey.from_string(CROSS_IMPL_XPRV)
+    for key_type, key_bits, expected_entropy, _ in CROSS_IMPL_ECC_VECTORS:
+        entropy = bip85.derive_entropy(
+            root, tools_views.BIP85_GPG_APP, [key_type, key_bits, 0]
+        )
+        assert entropy.hex() == expected_entropy, (
+            f"Entropy mismatch for key_type={key_type}, key_bits={key_bits}"
+        )
+
+
+def test_cross_impl_ecc_private_key_vectors():
+    """Derived ECC private key scalars match reference vectors."""
+    root = bip32.HDKey.from_string(CROSS_IMPL_XPRV)
+    derivers = {
+        (tools_views.BIP85_GPG_KEY_TYPE_CURVE25519, 256): lambda r: bip85_ed25519_from_root(r, 0),
+        (tools_views.BIP85_GPG_KEY_TYPE_SECP256K1, 256): lambda r: bip85_secp256k1_from_root(r, 0),
+        (tools_views.BIP85_GPG_KEY_TYPE_NIST, 256): lambda r: bip85_p256_from_root(r, 0),
+        (tools_views.BIP85_GPG_KEY_TYPE_NIST, 384): lambda r: bip85_p384_from_root(r, 0),
+        (tools_views.BIP85_GPG_KEY_TYPE_NIST, 521): lambda r: bip85_p521_from_root(r, 0),
+        (tools_views.BIP85_GPG_KEY_TYPE_BRAINPOOL, 256): lambda r: bip85_brainpoolp256r1_from_root(r, 0),
+        (tools_views.BIP85_GPG_KEY_TYPE_BRAINPOOL, 384): lambda r: bip85_brainpoolp384r1_from_root(r, 0),
+        (tools_views.BIP85_GPG_KEY_TYPE_BRAINPOOL, 512): lambda r: bip85_brainpoolp512r1_from_root(r, 0),
+    }
+    for key_type, key_bits, _, expected_private_hex in CROSS_IMPL_ECC_VECTORS:
+        key = derivers[(key_type, key_bits)](root)
+        actual = int(key.s)
+        expected = int(expected_private_hex, 16)
+        assert actual == expected, (
+            f"Private key mismatch for key_type={key_type}, key_bits={key_bits}: "
+            f"got {hex(actual)}, expected {hex(expected)}"
+        )
+
+
+def test_cross_impl_rsa2048_key():
+    """RSA-2048 key n-value matches reference vector.
+
+    This pins PyCryptodome's RSA.generate() output for deterministic
+    cross-implementation verification.  The BIP85 spec implies
+    PyCryptodome by its example: ``RSA.generate_key(4096, drng_reader.read)``.
+    """
+    root = bip32.HDKey.from_string(CROSS_IMPL_XPRV)
+    key = bip85_rsa_from_root(root, 2048, 0)
+    assert key.n == CROSS_IMPL_RSA2048_N
+
+
 def test_bip85_rsa_deterministic():
     seed = Seed(mnemonic=MNEMONIC)
     root = bip32.HDKey.from_seed(seed.seed_bytes)

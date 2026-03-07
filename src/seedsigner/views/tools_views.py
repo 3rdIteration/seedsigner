@@ -10680,6 +10680,14 @@ class ToolsGPGLoadPrivkeySeedkeeperView(View):
 
 
 def bip85_rsa_from_root(root, bits: int, index: int, sub_index: int | None = None):
+    """Generate a deterministic RSA key from BIP85 entropy.
+
+    Uses PyCryptodome's ``RSA.generate(bits, randfunc=drng.read)`` as the
+    reference algorithm, matching the BIP85 spec example
+    ``RSA.generate_key(4096, drng_reader.read)``.  Alternative RSA
+    implementations MUST consume the DRNG byte-stream identically to
+    PyCryptodome to ensure cross-implementation determinism.
+    """
     from embit import bip85
     from Cryptodome.PublicKey import RSA
     from seedsigner.helpers.bip85_drng import BIP85DRNG
