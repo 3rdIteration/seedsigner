@@ -3700,7 +3700,7 @@ class ToolsSatochipImportSeedView(View):
                 )
             except Exception as e:
                 self.loading_screen.stop()
-                logger.info("Satochip Import Failed:",str(e))
+                logger.exception("Satochip Import Failed: %s", e)
                 self.run_screen(
                     WarningScreen,
                     title="Failed",
