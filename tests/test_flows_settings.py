@@ -20,6 +20,7 @@ class TestSettingsFlows(FlowTest):
         """ Basic flow from MainMenuView to enable/disable persistent settings """
         # Which option are we testing?
         settings_entry = SettingsDefinition.get_settings_entry(SettingsConstants.SETTING__PERSISTENT_SETTINGS)
+        self.settings.set_value(SettingsConstants.SETTING__PERSISTENT_SETTINGS, SettingsConstants.OPTION__DISABLED)
 
         # No settings file should exist before we enable persistent settings
         assert os.path.exists(Settings.SETTINGS_FILENAME) == False

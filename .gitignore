@@ -12,3 +12,4 @@ src/seedsigner/models/settings_definition.json
 jcardsim.jar
 settings.json
 /microsd
+build/

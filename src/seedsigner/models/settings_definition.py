@@ -8,8 +8,8 @@ import logging
 logger = logging.getLogger(__name__)
 
 try:
-    import RPi.GPIO as _GPIO  # type: ignore  # noqa: F401
-    USING_MOCK_GPIO = getattr(_GPIO, "__file__", None) is None
+    from periphery import GPIO as _GPIO  # type: ignore  # noqa: F401
+    USING_MOCK_GPIO = False
 except ModuleNotFoundError:
     USING_MOCK_GPIO = True
 
@@ -229,6 +229,7 @@ class SettingsConstants:
         (BTC_DENOMINATION__BTCSATSHYBRID, _mft("BTC | sats hybrid")),
     ]
 
+    # Camera rotation constants
     CAMERA_ROTATION__0 = 0
     CAMERA_ROTATION__90 = 90
     CAMERA_ROTATION__180 = 180
@@ -250,6 +251,14 @@ class SettingsConstants:
         (CAMERA_DEVICE__2, _mft("Camera 2")),
         (CAMERA_DEVICE__3, _mft("Camera 3")),
     ]
+
+    # Hardware config settings
+    HARDWARE__RPI_40 = "RPI_40"
+    HARDWARE__RPI_26 = "RPI_26"
+    HARDWARE__LUCKFOX_22 = "FOX_22"
+    HARDWARE__LUCKFOX_40 = "FOX_40"
+    HARDWARE__LUCKFOX_PI = "FOX_PI"
+
 
     # QR code constants
     DENSITY__LOW = "L"
@@ -444,6 +453,7 @@ class SettingsConstants:
     SETTING__BIP85_CHILD_SEEDS = "bip85_child_seeds"
     SETTING__BIP85_ECC_KEYS = "bip85_ecc_keys"
     SETTING__SLIP39_SEEDS = "slip39_seeds"
+    SETTING__AEZEED_SEEDS = "aezeed_seeds"
     SETTING__SLIP39_EXTENDABLE = "slip39_extendable"
     SETTING__ELECTRUM_SEEDS = "electrum_seeds"
     SETTING__BITBOX_BACKUP = "bitbox_backup"
@@ -535,6 +545,7 @@ class SettingsConstants:
 
     # Label strings
     LABEL__BIP39_PASSPHRASE = _mft("BIP-39 Passphrase")
+    LABEL__AEZEED_PASSPHRASE = _mft("Aezeed Passphrase")
     # TRANSLATOR_NOTE: Terminology used by Electrum seeds; equivalent to bip39 passphrase
     custom_extension = _mft("Custom Extension")
     LABEL__CUSTOM_EXTENSION = custom_extension
@@ -928,6 +939,14 @@ class SettingsDefinition:
                       default_value=SettingsConstants.OPTION__DISABLED),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
+                      attr_name=SettingsConstants.SETTING__AEZEED_SEEDS,
+                      abbreviated_name="aezeed",
+                      display_name=_mft("Aezeed seeds"),
+                      help_text=_mft("LND-compatible, 24 words"),
+                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
+                      default_value=SettingsConstants.OPTION__DISABLED),
+
+        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
                       attr_name=SettingsConstants.SETTING__SLIP39_EXTENDABLE,
                       abbreviated_name="slip39ext",
                       display_name=_mft("Extendable SLIP39 shares"),
@@ -1111,8 +1130,6 @@ class SettingsDefinition:
     def get_settings_entries(cls, visibility: str = SettingsConstants.VISIBILITY__GENERAL) -> List[SettingsEntry]:
         entries = []
         for entry in cls.settings_entries:
-            if entry.attr_name == SettingsConstants.SETTING__CAMERA_DEVICE and not USING_MOCK_GPIO:
-                continue
             if entry.visibility == visibility:
                 if entry.attr_name == SettingsConstants.SETTING__CAMERA_DEVICE:
                     try:
@@ -1129,23 +1146,12 @@ class SettingsDefinition:
     def get_settings_entry(cls, attr_name) -> SettingsEntry:
         for entry in cls.settings_entries:
             if entry.attr_name == attr_name:
-                if attr_name == SettingsConstants.SETTING__CAMERA_DEVICE:
-                    if not USING_MOCK_GPIO:
-                        return None
-                    try:
-                        from seedsigner.hardware.camera import Camera
-
-                        entry.selection_options = Camera.list_cameras()
-                    except Exception:
-                        pass
                 return entry
 
 
     @classmethod
     def get_settings_entry_by_abbreviated_name(cls, abbreviated_name: str) -> SettingsEntry:
         for entry in cls.settings_entries:
-            if entry.attr_name == SettingsConstants.SETTING__CAMERA_DEVICE and not USING_MOCK_GPIO:
-                continue
             if abbreviated_name in [entry.abbreviated_name, entry.attr_name]:
                 return entry
 

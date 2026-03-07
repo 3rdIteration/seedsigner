@@ -1,4 +1,5 @@
 import logging
+import os
 import time
 import traceback
 from gettext import gettext as _
@@ -20,9 +21,38 @@ from seedsigner.models.settings_definition import SettingsConstants
 from seedsigner.views.screensaver import ScreensaverScreen
 from seedsigner.views.view import Destination
 from seedsigner.hardware.rng_monitor import HardwareRngHealthMonitor, HardwareRngMonitorThread
+from seedsigner.hardware.io_config import get_hardware_pin_mapping, get_hardware_profile_label
 
 
 logger = logging.getLogger(__name__)
+
+
+def _get_system_type_and_variant(runtime_profile: str, hardware_profile: str | None) -> tuple[str, str]:
+    system_type_map = {
+        "desktop": "Desktop",
+        "rpi_26": "Raspberry Pi",
+        "rpi_40": "Raspberry Pi",
+        "luckfox_22": "Luckfox Pico",
+        "luckfox_40": "Luckfox Pico",
+        "luckfox_pi": "Luckfox Pico",
+    }
+    system_type = system_type_map.get(runtime_profile, "Unknown")
+
+    model_path = "/proc/device-tree/model"
+    try:
+        with open(model_path, "r", encoding="utf-8") as model_file:
+            model = model_file.read().strip().replace("\x00", "")
+            if model:
+                return system_type, model
+    except Exception:
+        pass
+
+    if hardware_profile:
+        hardware_label = get_hardware_profile_label(hardware_profile)
+        if hardware_label:
+            return system_type, hardware_label
+
+    return system_type, "Unknown"
 
 
 
@@ -219,6 +249,26 @@ class Controller(Singleton):
 
         # models
         controller.settings = Settings.get_instance()
+        hardware_profile = Settings.get_platform_default_hardware_config()
+        runtime_profile = Settings.RUNTIME_PROFILE
+        system_type, system_variant = _get_system_type_and_variant(runtime_profile, hardware_profile)
+        logger.info(
+            "Startup hardware: type=%s variant=%s runtime_profile=%s hardware_profile=%s display=%s",
+            system_type,
+            system_variant,
+            runtime_profile,
+            hardware_profile,
+            controller.settings.get_value(SettingsConstants.SETTING__DISPLAY_CONFIGURATION, default_if_none=True),
+        )
+        if hardware_profile:
+            pin_mapping = get_hardware_pin_mapping(hardware_profile)
+            logger.info(
+                "Startup GPIO map (%s): display=%s buttons=%s camera=%s",
+                hardware_profile,
+                pin_mapping.get("display"),
+                pin_mapping.get("buttons"),
+                pin_mapping.get("camera"),
+            )
         
         controller.microsd = MicroSD.get_instance()
         controller.microsd.start_detection()
@@ -324,7 +374,7 @@ class Controller(Singleton):
         self.back_stack = BackStack()
 
 
-    def start(self, initial_destination: Destination = None) -> None:
+    def start(self, initial_destination: Destination = None, skip_startup_interstitials: bool = False) -> None:
         """
             The main loop of the application.
 
@@ -339,11 +389,16 @@ class Controller(Singleton):
         from seedsigner.helpers.seedsigner_os import is_seedsigner_os_dev_build
         from seedsigner.gui.toast import RemoveSDCardToastManagerThread
 
-        OpeningSplashView().run()
-        if is_seedsigner_os_dev_build():
-            DeveloperOSWarningView().run()
-        if self.settings.get_value(SettingsConstants.SETTING__DISPLAY_CONFIGURATION).startswith("desktop"):
-            DesktopWarningView().run()
+        if not skip_startup_interstitials:
+            OpeningSplashView().run()
+
+            # Flow tests start from an expected first interactive screen (usually MainMenu).
+            # Skip startup warning interstitials under pytest to keep deterministic routing.
+            if "PYTEST_CURRENT_TEST" not in os.environ:
+                if is_seedsigner_os_dev_build():
+                    DeveloperOSWarningView().run()
+                if self.settings.get_value(SettingsConstants.SETTING__DISPLAY_CONFIGURATION).startswith("desktop"):
+                    DesktopWarningView().run()
 
         """ Class references can be stored as variables in python!
 
@@ -376,8 +431,11 @@ class Controller(Singleton):
             else:
                 next_destination = Destination(MainMenuView)
             
-            # Set up our one-time toast notification tip to remove the SD card
-            self.activate_toast(RemoveSDCardToastManagerThread())
+            # Skip the "remove SD card" tip on Luckfox, where removable media
+            # handling and expected workflows differ from SeedSigner OS defaults.
+            if Settings.RUNTIME_PROFILE not in {"luckfox_22", "luckfox_40", "luckfox_pi", "desktop"}:
+                # Set up our one-time toast notification tip to remove the SD card
+                self.activate_toast(RemoveSDCardToastManagerThread())
 
             while True:
                 # Destination(None) is a special case; render the Home screen

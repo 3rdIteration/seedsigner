@@ -1,6 +1,6 @@
 from typing import List
 from seedsigner.helpers.secure_delete import wipe_bytes, wipe_list
-from seedsigner.models.seed import Seed, ElectrumSeed, Slip39Seed, InvalidSeedException
+from seedsigner.models.seed import Seed, ElectrumSeed, AezeedSeed, Slip39Seed, InvalidSeedException
 from seedsigner.models.settings_definition import SettingsConstants
 
 
@@ -11,6 +11,7 @@ class SeedStorage:
         self.pending_seed: Seed = None
         self._pending_mnemonic: List[str] = []
         self._pending_is_electrum: bool = False
+        self._pending_is_aezeed: bool = False
         self._pending_is_slip39: bool = False
         self._pending_slip39_share: List[str] = []
         self._pending_slip39_shares: List[List[str]] = []
@@ -67,9 +68,10 @@ class SeedStorage:
         return len(self._pending_mnemonic)
 
 
-    def init_pending_mnemonic(self, num_words:int = 12, is_electrum:bool = False):
+    def init_pending_mnemonic(self, num_words:int = 12, is_electrum:bool = False, is_aezeed:bool = False):
         self._pending_mnemonic = [None] * num_words
         self._pending_is_electrum = is_electrum
+        self._pending_is_aezeed = is_aezeed
 
 
     def update_pending_mnemonic(self, word: str, index: int):
@@ -97,6 +99,10 @@ class SeedStorage:
         try:
             if self._pending_is_electrum:
                 seed = ElectrumSeed(self._pending_mnemonic)
+            elif self._pending_is_aezeed:
+                seed = AezeedSeed(self._pending_mnemonic)
+                if seed.seed_bytes is None:
+                    return None
             else:
                 seed = Seed(self._pending_mnemonic, wordlist_language_code=wordlist_language_code)
             return seed.get_fingerprint(network)
@@ -110,15 +116,23 @@ class SeedStorage:
     ):
         if self._pending_is_electrum:
             self.pending_seed = ElectrumSeed(self._pending_mnemonic)
+        elif self._pending_is_aezeed:
+            self.pending_seed = AezeedSeed(self._pending_mnemonic)
         else:
             self.pending_seed = Seed(self._pending_mnemonic, wordlist_language_code=wordlist_language_code)
         self.discard_pending_mnemonic()
     
 
+
+    @property
+    def pending_is_aezeed(self) -> bool:
+        return self._pending_is_aezeed
+
     def discard_pending_mnemonic(self):
         wipe_list(self._pending_mnemonic)
         self._pending_mnemonic = []
         self._pending_is_electrum = False
+        self._pending_is_aezeed = False
 
     """Slip39 share handling"""
 

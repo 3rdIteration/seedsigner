@@ -11,6 +11,7 @@ from typing import List
 
 from seedsigner.helpers.secure_delete import wipe_bytes, wipe_string, wipe_list
 from seedsigner.models.settings import SettingsConstants
+from seedsigner.models import aezeed
 
 logger = logging.getLogger(__name__)
 
@@ -205,6 +206,43 @@ class Seed:
             return self.seed_bytes == other.seed_bytes
         return False
 
+
+
+class AezeedSeed(Seed):
+    def _generate_seed(self):
+        words = self._mnemonic
+        # Aezeed uses the same English BIP39 wordlist, but encodes encrypted
+        # cipherseed payload words, not BIP39 checksum words.
+        word_to_index = {word: idx for idx, word in enumerate(self.wordlist)}
+        try:
+            deciphered = aezeed.decode_mnemonic(words, self._passphrase, word_to_index)
+        except aezeed.InvalidPassphraseError as e:
+            logger.info("Aezeed decode failed: %s", type(e).__name__)
+            if self._passphrase == "":
+                # Mnemonic is valid but encrypted with a user passphrase; prompt
+                # for passphrase entry instead of treating it as invalid seed words.
+                self.seed_bytes = None
+                return
+            raise InvalidSeedException(type(e).__name__)
+        except Exception as e:
+            logger.info("Aezeed decode failed: %s", type(e).__name__)
+            raise InvalidSeedException(type(e).__name__)
+        self.seed_bytes = deciphered.entropy
+
+    @property
+    def passphrase_label(self) -> str:
+        return SettingsConstants.LABEL__AEZEED_PASSPHRASE
+
+    @property
+    def script_override(self) -> str:
+        return SettingsConstants.NATIVE_SEGWIT
+
+    def derivation_override(self, sig_type: str = SettingsConstants.SINGLE_SIG) -> str:
+        return "m/84h/0h/0h" if sig_type == SettingsConstants.SINGLE_SIG else None
+
+    @property
+    def seedqr_supported(self) -> bool:
+        return False
 
 
 class ElectrumSeed(Seed):
