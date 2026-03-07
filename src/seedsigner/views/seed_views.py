@@ -3866,9 +3866,10 @@ class SeedAddressVerificationView(View):
         Performs single sig verification on `seed_num` if specified, otherwise assumes
         multisig.
 
-        For singlesig with a seed, automatically searches all standard derivation
-        paths (BIP44/49/84/86) across accounts 0-9 and non-standard paths (BRD,
-        Coldcard), checking 100 addresses per path.
+        For singlesig with a seed, first searches the detected derivation path in
+        batches of SIMPLE_SEARCH_BATCH_SIZE addresses (fast, handles the common
+        case).  If not found, the user is prompted to continue, run an expanded
+        search across all paths/script-types, or cancel.
     """
     # TRANSLATOR_NOTE: Option when scanning for a matching address; skips ten addresses ahead
     SKIP_10 = ButtonOption("Skip 10")
@@ -3876,11 +3877,15 @@ class SeedAddressVerificationView(View):
 
     MAX_ITERATIONS_EXPORT_XPUB = 1000
     EXPANDED_ADDRS_PER_PATH = 10
+    SIMPLE_SEARCH_BATCH_SIZE = 100
 
-    def __init__(self, seed_num: int = None, export_for_xpub: bool = False, expanded_start_index: int = 0):
+    def __init__(self, seed_num: int = None, export_for_xpub: bool = False,
+                 expanded_start_index: int = 0, use_expanded: bool = False,
+                 simple_start_index: int = 0):
         super().__init__()
         self.seed_num = seed_num
         self.expanded_start_index = expanded_start_index
+        self.simple_start_index = simple_start_index
         self.export_for_xpub = export_for_xpub
         self.is_multisig = self.controller.unverified_address["sig_type"] == SettingsConstants.MULTISIG
         self.seed_derivation_override = ""
@@ -3901,26 +3906,43 @@ class SeedAddressVerificationView(View):
         # TODO: This should be in `Seed` or `PSBT` utility class
         embit_network = SettingsConstants.map_network_to_embit(self.network)
 
-        # The ThreadsafeCounter will be shared by the brute-force thread to keep track of
-        # its current addr index number and the Screen to display its progress and
-        # respond to UI requests to jump the index ahead.
-        self.threadsafe_counter = ThreadsafeCounter()
+        # Expanded search is only used when explicitly requested by the user
+        # (via the "Expanded Search" button on the not-found prompt).
+        self.is_expanded = use_expanded and self.seed is not None and not self.is_multisig and not self.export_for_xpub
+
+        # Singlesig simple = singlesig with seed, non-expanded, non-export
+        self.is_singlesig_simple = (
+            self.seed is not None and not self.is_multisig
+            and not self.export_for_xpub and not self.is_expanded
+        )
+
+        # The ThreadsafeCounter tracks the current address index.
+        # For singlesig simple search resuming from a previous batch, start
+        # at the offset so the screen shows the actual index being checked.
+        if self.is_singlesig_simple:
+            self.threadsafe_counter = ThreadsafeCounter(initial_value=simple_start_index)
+        else:
+            self.threadsafe_counter = ThreadsafeCounter()
 
         # Shared coordination var so the display thread can detect success
         self.verified_index = ThreadsafeCounter(initial_value=None)
         self.verified_index_is_change = ThreadsafeCounter(initial_value=None)
 
-        # For singlesig with a seed (non-export), automatically search all standard
-        # derivation paths and accounts. For multisig or export-for-xpub, use the
-        # single-path brute force thread.
-        self.is_expanded = self.seed is not None and not self.is_multisig and not self.export_for_xpub
-        logger.info(f"AddrVerification: is_expanded={self.is_expanded}, seed={self.seed is not None}, is_multisig={self.is_multisig}, export_for_xpub={self.export_for_xpub}")
+        logger.info(f"AddrVerification: is_expanded={self.is_expanded}, is_singlesig_simple={self.is_singlesig_simple}, seed={self.seed is not None}, is_multisig={self.is_multisig}, export_for_xpub={self.export_for_xpub}")
         logger.info(f"AddrVerification: address={self.address}, script_type={self.script_type}, network={self.network}")
+
+        # For the expanded search the threadsafe_counter tracks total
+        # iterations (across many paths), so we use a separate counter to
+        # communicate the current address index to the progress display.
+        # For all other modes, the threadsafe_counter IS the address index.
+        self.display_index_counter = None
+
         if self.is_expanded:
             from seedsigner.helpers import embit_utils
             derivation_paths = embit_utils.get_expanded_search_derivation_paths(
                 network=self.network,
             )
+            self.display_index_counter = ThreadsafeCounter(initial_value=self.expanded_start_index)
             self.addr_verification_thread = self.ExpandedBruteForceAddressVerificationThread(
                 address=self.address,
                 seed=self.seed,
@@ -3932,6 +3954,7 @@ class SeedAddressVerificationView(View):
                 threadsafe_counter=self.threadsafe_counter,
                 verified_index=self.verified_index,
                 verified_index_is_change=self.verified_index_is_change,
+                address_index_counter=self.display_index_counter,
             )
         else:
             # Create the brute-force calculation thread that will run in the background
@@ -3951,7 +3974,7 @@ class SeedAddressVerificationView(View):
     def run(self):
         # Start brute-force calculations from the zero-th index
         try:
-            logger.info(f"AddrVerification.run(): starting thread, is_expanded={self.is_expanded}")
+            logger.info(f"AddrVerification.run(): starting thread, is_expanded={self.is_expanded}, is_singlesig_simple={self.is_singlesig_simple}")
             self.addr_verification_thread.start()
 
             # Expanded search doesn't support Skip 10 (iterates paths, not just indices)
@@ -3979,6 +4002,8 @@ class SeedAddressVerificationView(View):
                 ))
                 num_script_types = len(self.ExpandedBruteForceAddressVerificationThread.SCRIPT_TYPES)
                 max_iterations = num_paths * self.EXPANDED_ADDRS_PER_PATH * num_script_types
+            elif self.is_singlesig_simple:
+                max_iterations = self.simple_start_index + self.SIMPLE_SEARCH_BATCH_SIZE
             else:
                 max_iterations = None
 
@@ -3988,7 +4013,6 @@ class SeedAddressVerificationView(View):
             # Using a loop here to handle the SKIP_10 button presses to increment the counter
             # and resume displaying the screen. User won't even notice that the Screen is
             # being re-constructed.
-            loop_count = 0
             while True:
                 selected_menu_num = self.run_screen(
                     seed_screens.SeedAddressVerificationScreen,
@@ -4002,16 +4026,13 @@ class SeedAddressVerificationView(View):
                     verified_index=self.verified_index,
                     button_data=button_data,
                     max_iterations=max_iterations,
+                    display_index_counter=self.display_index_counter,
                 )
-                loop_count += 1
-                logger.info(f"AddrVerification.run(): loop #{loop_count}, selected_menu_num={selected_menu_num}, verified_index={self.verified_index.cur_count}, counter={self.threadsafe_counter.cur_count}, thread_alive={self.addr_verification_thread.is_alive()}")
 
                 if self.verified_index.cur_count is not None:
-                    logger.info(f"AddrVerification.run(): SUCCESS - verified_index={self.verified_index.cur_count}")
                     break
 
                 if selected_menu_num == RET_CODE__BACK_BUTTON:
-                    logger.info(f"AddrVerification.run(): BACK button pressed")
                     break
 
                 if selected_menu_num is None:
@@ -4023,11 +4044,9 @@ class SeedAddressVerificationView(View):
                         self.threadsafe_counter.increment(10)
 
                     elif button_data[selected_menu_num] == self.CANCEL:
-                        logger.info(f"AddrVerification.run(): CANCEL pressed")
                         break
 
                 if max_iterations is not None and self.threadsafe_counter.cur_count >= max_iterations:
-                    logger.info(f"AddrVerification.run(): max_iterations reached ({self.threadsafe_counter.cur_count} >= {max_iterations})")
                     break
 
             if self.verified_index.cur_count is not None:
@@ -4045,6 +4064,18 @@ class SeedAddressVerificationView(View):
             if self.export_for_xpub and max_iterations is not None and self.threadsafe_counter.cur_count >= max_iterations:
                 return Destination(SeedExportXpubVerificationFailedView, view_args=dict(reason="no_match"))
 
+            # Singlesig simple search exhausted its batch
+            if self.is_singlesig_simple and max_iterations is not None and self.threadsafe_counter.cur_count >= max_iterations:
+                return Destination(
+                    SeedAddressVerificationSimpleNotFoundView,
+                    view_args=dict(
+                        seed_num=self.seed_num,
+                        addrs_checked=self.threadsafe_counter.cur_count,
+                        next_start_index=self.threadsafe_counter.cur_count,
+                    ),
+                )
+
+            # Expanded search exhausted all paths
             if self.is_expanded and max_iterations is not None and self.threadsafe_counter.cur_count >= max_iterations:
                 next_start = self.expanded_start_index + self.EXPANDED_ADDRS_PER_PATH
                 return Destination(
@@ -4138,7 +4169,7 @@ class SeedAddressVerificationView(View):
             SettingsConstants.TAPROOT,
         ]
 
-        def __init__(self, address: str, seed: Seed, embit_network: str, network: str, derivation_paths: list, addrs_per_path: int, start_index: int, threadsafe_counter: ThreadsafeCounter, verified_index: ThreadsafeCounter, verified_index_is_change: ThreadsafeCounter):
+        def __init__(self, address: str, seed: Seed, embit_network: str, network: str, derivation_paths: list, addrs_per_path: int, start_index: int, threadsafe_counter: ThreadsafeCounter, verified_index: ThreadsafeCounter, verified_index_is_change: ThreadsafeCounter, address_index_counter: ThreadsafeCounter = None):
             super().__init__()
             self.address = address
             self.seed = seed
@@ -4150,6 +4181,7 @@ class SeedAddressVerificationView(View):
             self.threadsafe_counter = threadsafe_counter
             self.verified_index = verified_index
             self.verified_index_is_change = verified_index_is_change
+            self.address_index_counter = address_index_counter
             self.matched_derivation_path = None
             self.matched_script_type = None
 
@@ -4183,6 +4215,8 @@ class SeedAddressVerificationView(View):
             # This ensures that the most common address (index 0) is
             # found quickly even on slow hardware.
             for i in range(self.start_index, self.start_index + self.addrs_per_path):
+                if self.address_index_counter:
+                    self.address_index_counter.set_value(i)
                 for path in self.derivation_paths:
                     if not self.keep_running:
                         logger.info(f"ExpandedSearch: stopped at index={i}, path={path}, {total_addrs_checked} addrs checked")
@@ -4276,6 +4310,54 @@ class SeedAddressVerificationSuccessView(View):
 
 
 
+class SeedAddressVerificationSimpleNotFoundView(View):
+    """Shown when the simple (single path/type) search runs out of addresses.
+    Offers: Next 100 (continue simple), Expanded Search, Cancel."""
+    NEXT_100 = ButtonOption("Next 100")
+    EXPANDED_SEARCH = ButtonOption("Expanded Search")
+    CANCEL = ButtonOption("Cancel")
+
+    def __init__(self, seed_num: int, addrs_checked: int, next_start_index: int):
+        super().__init__()
+        self.seed_num = seed_num
+        self.addrs_checked = addrs_checked
+        self.next_start_index = next_start_index
+
+    def run(self):
+        from seedsigner.gui.screens.screen import WarningScreen
+        button_data = [self.NEXT_100, self.EXPANDED_SEARCH, self.CANCEL]
+        selected_menu_num = self.run_screen(
+            WarningScreen,
+            title=_("Not Found"),
+            status_headline=_("Address Not Verified"),
+            text=_("Checked {} addresses with no match.").format(self.addrs_checked),
+            button_data=button_data,
+            show_back_button=False,
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON or button_data[selected_menu_num] == self.CANCEL:
+            return Destination(MainMenuView)
+
+        if button_data[selected_menu_num] == self.NEXT_100:
+            return Destination(
+                SeedAddressVerificationView,
+                view_args=dict(
+                    seed_num=self.seed_num,
+                    simple_start_index=self.next_start_index,
+                ),
+            )
+
+        # "Expanded Search": search all paths/types starting at index 0
+        return Destination(
+            SeedAddressVerificationView,
+            view_args=dict(
+                seed_num=self.seed_num,
+                use_expanded=True,
+            ),
+        )
+
+
+
 class SeedAddressVerificationNotFoundView(View):
     """Shown when the expanded address search completes without finding a match.
     Offers the user a chance to search the next batch of addresses."""
@@ -4303,12 +4385,13 @@ class SeedAddressVerificationNotFoundView(View):
         if selected_menu_num == RET_CODE__BACK_BUTTON or button_data[selected_menu_num] == self.DONE:
             return Destination(MainMenuView)
 
-        # "Check Next 100": re-run expanded search from next offset
+        # "Check Next 10": re-run expanded search from next offset
         return Destination(
             SeedAddressVerificationView,
             view_args=dict(
                 seed_num=self.seed_num,
                 expanded_start_index=self.next_start_index,
+                use_expanded=True,
             ),
         )
 

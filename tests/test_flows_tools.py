@@ -353,8 +353,8 @@ class TestToolsFlows(FlowTest):
 
 
     def test__verify_address__expanded_search__singlesig_default(self):
-        """Singlesig address verification should only show Cancel (no Skip 10)
-        since it automatically uses the expanded search."""
+        """Singlesig address verification should start with simple search
+        (detected path/type) which shows both Skip 10 and Cancel buttons."""
         controller = Controller.get_instance()
         controller.storage.set_pending_seed(Seed(mnemonic=["abandon " * 11 + "about"]))
         controller.storage.finalize_pending_seed()
@@ -379,15 +379,16 @@ class TestToolsFlows(FlowTest):
 
         button_data = mocked.call_args.kwargs["button_data"]
         assert seed_views.SeedAddressVerificationView.CANCEL in button_data
-        assert seed_views.SeedAddressVerificationView.SKIP_10 not in button_data
+        assert seed_views.SeedAddressVerificationView.SKIP_10 in button_data
 
 
     def test__verify_address__expanded_search__flow(self, monkeypatch):
         """
-            Singlesig address verification should automatically find an address
-            derived from a mismatched derivation path/script type combination
-            (BIP44 path with native segwit addresses instead of the standard
-            BIP84 path) without needing a separate button press.
+            Singlesig address verification should find an address derived from
+            a mismatched derivation path/script type combination (BIP44 path
+            with native segwit addresses instead of the standard BIP84 path)
+            after the user chooses "Expanded Search" from the simple not-found
+            prompt.
         """
         from seedsigner.helpers import embit_utils
 
@@ -420,7 +421,12 @@ class TestToolsFlows(FlowTest):
             FlowStep(scan_views.ScanAddressView, before_run=load_address_into_decoder),
             FlowStep(seed_views.AddressVerificationStartView, is_redirect=True),
             FlowStep(seed_views.SeedSelectSeedView, screen_return_value=0),
-            # Expanded search is now the default; finds the address automatically
+            # Simple search won't find it (wrong path); batch exhausted
+            FlowStep(seed_views.SeedAddressVerificationView),
+            # User chooses "Expanded Search" from the not-found prompt
+            FlowStep(seed_views.SeedAddressVerificationSimpleNotFoundView,
+                     button_data_selection=seed_views.SeedAddressVerificationSimpleNotFoundView.EXPANDED_SEARCH),
+            # Expanded search finds the address
             FlowStep(seed_views.SeedAddressVerificationView),
             FlowStep(seed_views.SeedAddressVerificationSuccessView),
         ])
@@ -526,16 +532,20 @@ class TestToolsFlows(FlowTest):
             FlowStep(scan_views.ScanAddressView, before_run=load_address_into_decoder),
             FlowStep(seed_views.AddressVerificationStartView, is_redirect=True),
             FlowStep(seed_views.SeedSelectSeedView, screen_return_value=0),
+            # Simple search won't find it (cross-network path); batch exhausted
+            FlowStep(seed_views.SeedAddressVerificationView),
+            # User chooses "Expanded Search"
+            FlowStep(seed_views.SeedAddressVerificationSimpleNotFoundView,
+                     button_data_selection=seed_views.SeedAddressVerificationSimpleNotFoundView.EXPANDED_SEARCH),
+            # Expanded search finds the address
             FlowStep(seed_views.SeedAddressVerificationView),
             FlowStep(seed_views.SeedAddressVerificationSuccessView),
         ])
 
 
     def test__verify_address__expanded_not_found__shows_failure(self, monkeypatch):
-        """When expanded search exhausts all paths without a match, it should
-        route to SeedAddressVerificationNotFoundView instead of MainMenuView."""
-        monkeypatch.setattr(seed_views.SeedAddressVerificationView, "EXPANDED_ADDRS_PER_PATH", 2)
-
+        """When the simple search exhausts its batch without a match, it should
+        route to SeedAddressVerificationSimpleNotFoundView."""
         controller = Controller.get_instance()
         seed = Seed(mnemonic=["abandon " * 11 + "about"])
         controller.storage.set_pending_seed(seed)
@@ -555,8 +565,40 @@ class TestToolsFlows(FlowTest):
         view = seed_views.SeedAddressVerificationView(seed_num=0)
 
         def fake_run_screen(*args, **kwargs):
-            # Return None to simulate test-mode screen; the run() loop will
-            # sleep and re-check until the thread reaches max_iterations.
+            return None
+
+        with mock.patch.object(view, "run_screen", side_effect=fake_run_screen):
+            destination = view.run()
+
+        assert destination.View_cls == seed_views.SeedAddressVerificationSimpleNotFoundView
+        assert destination.view_args["seed_num"] == 0
+        assert destination.view_args["addrs_checked"] >= 100
+        assert destination.view_args["next_start_index"] >= 100
+
+
+    def test__verify_address__expanded_not_found__after_expanded(self, monkeypatch):
+        """When the expanded search exhausts all paths without a match, it should
+        route to SeedAddressVerificationNotFoundView."""
+        monkeypatch.setattr(seed_views.SeedAddressVerificationView, "EXPANDED_ADDRS_PER_PATH", 2)
+
+        controller = Controller.get_instance()
+        seed = Seed(mnemonic=["abandon " * 11 + "about"])
+        controller.storage.set_pending_seed(seed)
+        controller.storage.finalize_pending_seed()
+        settings = controller.settings
+        settings.set_value(SettingsConstants.SETTING__NETWORK, SettingsConstants.MAINNET)
+
+        controller.unverified_address = dict(
+            address="1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            script_type=SettingsConstants.LEGACY_P2PKH,
+            network=SettingsConstants.MAINNET,
+            sig_type=SettingsConstants.SINGLE_SIG,
+            derivation_path="m/44'/0'/0'",
+        )
+
+        view = seed_views.SeedAddressVerificationView(seed_num=0, use_expanded=True)
+
+        def fake_run_screen(*args, **kwargs):
             return None
 
         with mock.patch.object(view, "run_screen", side_effect=fake_run_screen):
@@ -569,8 +611,9 @@ class TestToolsFlows(FlowTest):
 
 
     def test__verify_address__not_found_check_next__flow(self):
-        """The 'Check Next 10' button on the not-found screen should route
-        back to SeedAddressVerificationView with the next start index."""
+        """The 'Check Next 10' button on the expanded not-found screen should route
+        back to SeedAddressVerificationView with the next start index and
+        use_expanded=True."""
         controller = Controller.get_instance()
         seed = Seed(mnemonic=["abandon " * 11 + "about"])
         controller.storage.set_pending_seed(seed)
@@ -600,6 +643,7 @@ class TestToolsFlows(FlowTest):
         assert destination.View_cls == seed_views.SeedAddressVerificationView
         assert destination.view_args["seed_num"] == 0
         assert destination.view_args["expanded_start_index"] == 10
+        assert destination.view_args["use_expanded"] is True
 
 
     def test__verify_address__not_found_done__flow(self):
