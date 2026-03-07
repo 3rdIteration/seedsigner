@@ -510,6 +510,51 @@ class TestAezeedPassphraseMode(BaseTest):
 
 
 
+
+
+class TestAezeedBackupOptions(BaseTest):
+    def _load_aezeed_seed(self, passphrase=""):
+        mnemonic = (
+            "absent beef crazy include regret city blanket plug thought spatial boy receive "
+            "bag jazz fade emerge quit beach crucial giant mutual reward captain excite"
+        ).split()
+        seed = AezeedSeed(mnemonic=mnemonic)
+        if passphrase:
+            seed.set_passphrase(passphrase)
+        self.controller.storage.seeds = [seed]
+        return seed
+
+    def test_backup_view_keeps_view_words_and_hides_plaintext_qr_for_aezeed(self, monkeypatch):
+        self._load_aezeed_seed(passphrase="test")
+        self.settings.set_value(SettingsConstants.SETTING__PLAINTEXTQR, SettingsConstants.OPTION__ENABLED)
+
+        captured = {}
+        def fake_run_screen(*args, **kwargs):
+            captured['button_data'] = kwargs['button_data']
+            return seed_views.RET_CODE__BACK_BUTTON
+
+        view = seed_views.SeedBackupView(seed_num=0)
+        monkeypatch.setattr(view, "run_screen", fake_run_screen)
+        view.run()
+
+        assert seed_views.SeedBackupView.VIEW_WORDS in captured['button_data']
+        assert seed_views.SeedBackupView.EXPORT_PLAINTEXTQR not in captured['button_data']
+
+    def test_aezeed_seed_words_warning_mentions_passphrase(self, monkeypatch):
+        self._load_aezeed_seed(passphrase="test")
+
+        captured = {}
+        def fake_run_screen(*args, **kwargs):
+            captured['text'] = kwargs.get('text')
+            return seed_views.RET_CODE__BACK_BUTTON
+
+        view = seed_views.SeedWordsWarningView(seed_num=0)
+        monkeypatch.setattr(view, "run_screen", fake_run_screen)
+        destination = view.run()
+
+        assert "passphrase" in captured['text'].lower()
+        assert destination.View_cls == seed_views.BackStackView
+
 class TestSlip39ExtendableSetting(BaseTest):
     def test_create_nonextendable_slip39_seed(self, monkeypatch):
         self.settings.set_value(

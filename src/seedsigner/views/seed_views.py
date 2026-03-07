@@ -2131,9 +2131,7 @@ class SeedBackupView(View):
 
     def run(self):
 
-        button_data = []
-        if not isinstance(self.seed, AezeedSeed):
-            button_data.append(self.VIEW_WORDS)
+        button_data = [self.VIEW_WORDS]
         if self.settings.get_value(SettingsConstants.SETTING__SMARTCARD_SUPPORT) == SettingsConstants.OPTION__ENABLED:
             button_data.append(self.TO_SEEDKEEPER)
         if isinstance(self.seed, Slip39Seed):
@@ -2142,7 +2140,8 @@ class SeedBackupView(View):
         if self.seed.seedqr_supported:
             button_data.append(self.EXPORT_SEEDQR)
 
-        if self.settings.get_value(SettingsConstants.SETTING__PLAINTEXTQR) == SettingsConstants.OPTION__ENABLED:
+        if (self.settings.get_value(SettingsConstants.SETTING__PLAINTEXTQR) == SettingsConstants.OPTION__ENABLED and
+                not isinstance(self.seed, AezeedSeed)):
             button_data.append(self.EXPORT_PLAINTEXTQR)
 
         selected_menu_num = self.run_screen(
@@ -2651,9 +2650,15 @@ class SeedWordsWarningView(View):
             # Forward straight to showing the words
             return destination
 
+        warning_text = _("You must keep your seed words private & away from all online devices.")
+        if self.seed_num is not None:
+            seed = self.controller.get_seed(self.seed_num)
+            if isinstance(seed, AezeedSeed) and len(seed.passphrase) > 0:
+                warning_text = _("Passphrase was used.\nYou'll need words + passphrase.")
+
         selected_menu_num = self.run_screen(
             DireWarningScreen,
-            text=_("You must keep your seed words private & away from all online devices."),
+            text=warning_text,
         )
 
         if selected_menu_num == 0:
