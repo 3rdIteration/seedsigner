@@ -84,7 +84,12 @@ def get_expanded_search_derivation_paths(network: str = SettingsConstants.MAINNE
     """
     Returns a list of derivation paths for expanded address search.
     Includes all standard single sig paths (BIP44/49/84/86) for accounts
-    0-9 and non-standard paths used by various wallets.
+    0-9 for BOTH mainnet and testnet coin types, plus non-standard paths
+    used by various wallets.
+
+    Both coin types are included because some wallets use cross-network
+    derivation paths (e.g. a testnet derivation path to produce a
+    mainnet-formatted address).
     """
     paths = []
     script_types = [
@@ -94,15 +99,25 @@ def get_expanded_search_derivation_paths(network: str = SettingsConstants.MAINNE
         SettingsConstants.TAPROOT,
     ]
 
+    # Include both mainnet and testnet coin types to catch cross-network
+    # derivation paths. Put the detected network first so its paths are
+    # checked before the alternate network.
+    networks = [network]
+    alt_network = SettingsConstants.TESTNET if network == SettingsConstants.MAINNET else SettingsConstants.MAINNET
+    networks.append(alt_network)
+
     # Standard BIP paths for accounts 0-9
-    for script_type in script_types:
-        for account in range(10):
-            paths.append(get_standard_derivation_path(
-                network=network,
-                wallet_type=SettingsConstants.SINGLE_SIG,
-                script_type=script_type,
-                account=account,
-            ))
+    for net in networks:
+        for script_type in script_types:
+            for account in range(10):
+                path = get_standard_derivation_path(
+                    network=net,
+                    wallet_type=SettingsConstants.SINGLE_SIG,
+                    script_type=script_type,
+                    account=account,
+                )
+                if path not in paths:
+                    paths.append(path)
 
     # Non-standard paths used by various wallets
     paths.append("m/0'/0")  # BRD Wallet

@@ -491,3 +491,140 @@ class TestToolsFlows(FlowTest):
         kwargs = mocked.call_args.kwargs
         assert kwargs["derivation_path"] == standard_path
         assert kwargs["is_non_standard"] is False
+
+
+    def test__verify_address__cross_network_path__flow(self, monkeypatch):
+        """
+            Expanded search should find an address derived from a testnet
+            derivation path even when the address format is mainnet.
+            This covers wallets that use cross-network derivation paths.
+        """
+        from seedsigner.helpers import embit_utils
+
+        monkeypatch.setattr(seed_views.SeedAddressVerificationView, "EXPANDED_ADDRS_PER_PATH", 5)
+
+        controller = Controller.get_instance()
+        seed = Seed(mnemonic=["together insane echo jeans lyrics cash window object trust visa jeans moral"])
+        controller.storage.set_pending_seed(seed)
+        controller.storage.finalize_pending_seed()
+        settings = controller.settings
+        settings.set_value(SettingsConstants.SETTING__NETWORK, SettingsConstants.MAINNET)
+
+        # Address derived from testnet path m/49'/1'/0' but with mainnet encoding
+        # and LEGACY_P2PKH script type (non-standard combo)
+        test_addr = "1ptQ7z81vUMLVvMj1rtdhv1bd58Aiset2"
+
+        def load_address_into_decoder(view: scan_views.ScanView):
+            view.decoder.add_data(test_addr)
+
+        self.run_sequence([
+            FlowStep(MainMenuView, button_data_selection=MainMenuView.TOOLS),
+            FlowStep(tools_views.ToolsMenuView, button_data_selection=tools_views.ToolsMenuView.VERIFY_ADDRESS),
+            FlowStep(scan_views.ScanAddressView, before_run=load_address_into_decoder),
+            FlowStep(seed_views.AddressVerificationStartView, is_redirect=True),
+            FlowStep(seed_views.SeedSelectSeedView, screen_return_value=0),
+            FlowStep(seed_views.SeedAddressVerificationView),
+            FlowStep(seed_views.SeedAddressVerificationSuccessView),
+        ])
+
+
+    def test__verify_address__expanded_not_found__shows_failure(self, monkeypatch):
+        """When expanded search exhausts all paths without a match, it should
+        route to SeedAddressVerificationNotFoundView instead of MainMenuView."""
+        monkeypatch.setattr(seed_views.SeedAddressVerificationView, "EXPANDED_ADDRS_PER_PATH", 2)
+
+        controller = Controller.get_instance()
+        seed = Seed(mnemonic=["abandon " * 11 + "about"])
+        controller.storage.set_pending_seed(seed)
+        controller.storage.finalize_pending_seed()
+        settings = controller.settings
+        settings.set_value(SettingsConstants.SETTING__NETWORK, SettingsConstants.MAINNET)
+
+        # Use an address that definitely won't match
+        controller.unverified_address = dict(
+            address="1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            script_type=SettingsConstants.LEGACY_P2PKH,
+            network=SettingsConstants.MAINNET,
+            sig_type=SettingsConstants.SINGLE_SIG,
+            derivation_path="m/44'/0'/0'",
+        )
+
+        view = seed_views.SeedAddressVerificationView(seed_num=0)
+
+        def fake_run_screen(*args, **kwargs):
+            # Return None to simulate test-mode screen; the run() loop will
+            # sleep and re-check until the thread reaches max_iterations.
+            return None
+
+        with mock.patch.object(view, "run_screen", side_effect=fake_run_screen):
+            destination = view.run()
+
+        assert destination.View_cls == seed_views.SeedAddressVerificationNotFoundView
+        assert destination.view_args["seed_num"] == 0
+        assert destination.view_args["addrs_checked"] == 2
+        assert destination.view_args["next_start_index"] == 2
+
+
+    def test__verify_address__not_found_check_next__flow(self):
+        """The 'Check Next 100' button on the not-found screen should route
+        back to SeedAddressVerificationView with the next start index."""
+        controller = Controller.get_instance()
+        seed = Seed(mnemonic=["abandon " * 11 + "about"])
+        controller.storage.set_pending_seed(seed)
+        controller.storage.finalize_pending_seed()
+        settings = controller.settings
+        settings.set_value(SettingsConstants.SETTING__NETWORK, SettingsConstants.MAINNET)
+
+        controller.unverified_address = dict(
+            address="1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            script_type=SettingsConstants.LEGACY_P2PKH,
+            network=SettingsConstants.MAINNET,
+            sig_type=SettingsConstants.SINGLE_SIG,
+            derivation_path="m/44'/0'/0'",
+        )
+
+        view = seed_views.SeedAddressVerificationNotFoundView(
+            seed_num=0, addrs_checked=100, next_start_index=100,
+        )
+
+        def fake_run_screen(*args, **kwargs):
+            # Simulate pressing "Check Next 100" (first button = index 0)
+            return 0
+
+        with mock.patch.object(view, "run_screen", side_effect=fake_run_screen):
+            destination = view.run()
+
+        assert destination.View_cls == seed_views.SeedAddressVerificationView
+        assert destination.view_args["seed_num"] == 0
+        assert destination.view_args["expanded_start_index"] == 100
+
+
+    def test__verify_address__not_found_done__flow(self):
+        """The 'Done' button on the not-found screen should route to MainMenuView."""
+        controller = Controller.get_instance()
+        seed = Seed(mnemonic=["abandon " * 11 + "about"])
+        controller.storage.set_pending_seed(seed)
+        controller.storage.finalize_pending_seed()
+        settings = controller.settings
+        settings.set_value(SettingsConstants.SETTING__NETWORK, SettingsConstants.MAINNET)
+
+        controller.unverified_address = dict(
+            address="1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            script_type=SettingsConstants.LEGACY_P2PKH,
+            network=SettingsConstants.MAINNET,
+            sig_type=SettingsConstants.SINGLE_SIG,
+            derivation_path="m/44'/0'/0'",
+        )
+
+        view = seed_views.SeedAddressVerificationNotFoundView(
+            seed_num=0, addrs_checked=100, next_start_index=100,
+        )
+
+        def fake_run_screen(*args, **kwargs):
+            # Simulate pressing "Done" (second button = index 1)
+            return 1
+
+        with mock.patch.object(view, "run_screen", side_effect=fake_run_screen):
+            destination = view.run()
+
+        assert destination.View_cls == MainMenuView

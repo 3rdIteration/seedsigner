@@ -3875,9 +3875,10 @@ class SeedAddressVerificationView(View):
     MAX_ITERATIONS_EXPORT_XPUB = 1000
     EXPANDED_ADDRS_PER_PATH = 100
 
-    def __init__(self, seed_num: int = None, export_for_xpub: bool = False):
+    def __init__(self, seed_num: int = None, export_for_xpub: bool = False, expanded_start_index: int = 0):
         super().__init__()
         self.seed_num = seed_num
+        self.expanded_start_index = expanded_start_index
         self.export_for_xpub = export_for_xpub
         self.is_multisig = self.controller.unverified_address["sig_type"] == SettingsConstants.MULTISIG
         self.seed_derivation_override = ""
@@ -3924,6 +3925,7 @@ class SeedAddressVerificationView(View):
                 network=self.network,
                 derivation_paths=derivation_paths,
                 addrs_per_path=self.EXPANDED_ADDRS_PER_PATH,
+                start_index=self.expanded_start_index,
                 threadsafe_counter=self.threadsafe_counter,
                 verified_index=self.verified_index,
                 verified_index_is_change=self.verified_index_is_change,
@@ -4027,6 +4029,17 @@ class SeedAddressVerificationView(View):
             if self.export_for_xpub and max_iterations is not None and self.threadsafe_counter.cur_count >= max_iterations:
                 return Destination(SeedExportXpubVerificationFailedView, view_args=dict(reason="no_match"))
 
+            if self.is_expanded and max_iterations is not None and self.threadsafe_counter.cur_count >= max_iterations:
+                next_start = self.expanded_start_index + self.EXPANDED_ADDRS_PER_PATH
+                return Destination(
+                    SeedAddressVerificationNotFoundView,
+                    view_args=dict(
+                        seed_num=self.seed_num,
+                        addrs_checked=next_start,
+                        next_start_index=next_start,
+                    ),
+                )
+
         finally:
             # Halt the thread if the user gave up (will already be stopped if it verified the
             # target addr).
@@ -4100,7 +4113,7 @@ class SeedAddressVerificationView(View):
             The script type used for address generation is inferred from the scanned
             address.
         """
-        def __init__(self, address: str, seed: Seed, script_type: str, embit_network: str, network: str, derivation_paths: list, addrs_per_path: int, threadsafe_counter: ThreadsafeCounter, verified_index: ThreadsafeCounter, verified_index_is_change: ThreadsafeCounter):
+        def __init__(self, address: str, seed: Seed, script_type: str, embit_network: str, network: str, derivation_paths: list, addrs_per_path: int, start_index: int, threadsafe_counter: ThreadsafeCounter, verified_index: ThreadsafeCounter, verified_index_is_change: ThreadsafeCounter):
             super().__init__()
             self.address = address
             self.seed = seed
@@ -4109,6 +4122,7 @@ class SeedAddressVerificationView(View):
             self.network = network
             self.derivation_paths = derivation_paths
             self.addrs_per_path = addrs_per_path
+            self.start_index = start_index
             self.threadsafe_counter = threadsafe_counter
             self.verified_index = verified_index
             self.verified_index_is_change = verified_index_is_change
@@ -4128,7 +4142,7 @@ class SeedAddressVerificationView(View):
                     self.threadsafe_counter.increment(self.addrs_per_path)
                     continue
 
-                for i in range(self.addrs_per_path):
+                for i in range(self.start_index, self.start_index + self.addrs_per_path):
                     if not self.keep_running:
                         return
 
@@ -4196,6 +4210,44 @@ class SeedAddressVerificationSuccessView(View):
         )
 
         return Destination(MainMenuView)
+
+
+
+class SeedAddressVerificationNotFoundView(View):
+    """Shown when the expanded address search completes without finding a match.
+    Offers the user a chance to search the next batch of addresses."""
+    CHECK_NEXT = ButtonOption("Check Next 100")
+    DONE = ButtonOption("Done")
+
+    def __init__(self, seed_num: int, addrs_checked: int, next_start_index: int):
+        super().__init__()
+        self.seed_num = seed_num
+        self.addrs_checked = addrs_checked
+        self.next_start_index = next_start_index
+
+    def run(self):
+        from seedsigner.gui.screens.screen import WarningScreen, ButtonOption
+        button_data = [self.CHECK_NEXT, self.DONE]
+        selected_menu_num = self.run_screen(
+            WarningScreen,
+            title=_("Not Found"),
+            status_headline=_("Address Not Verified"),
+            text=_("Checked {} addresses per path with no match.").format(self.addrs_checked),
+            button_data=button_data,
+            show_back_button=False,
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON or button_data[selected_menu_num] == self.DONE:
+            return Destination(MainMenuView)
+
+        # "Check Next 100": re-run expanded search from next offset
+        return Destination(
+            SeedAddressVerificationView,
+            view_args=dict(
+                seed_num=self.seed_num,
+                expanded_start_index=self.next_start_index,
+            ),
+        )
 
 
 
