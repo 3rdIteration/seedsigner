@@ -2,7 +2,7 @@ import os
 import json
 import pytest
 from unittest.mock import patch
-from seedsigner.models.seed import InvalidSeedException, Seed, ElectrumSeed, Slip39Seed, SeedWordsUnavailableException, XprvSeed
+from seedsigner.models.seed import InvalidSeedException, Seed, AezeedSeed, ElectrumSeed, Slip39Seed, SeedWordsUnavailableException, XprvSeed
 from seedsigner.models.decode_qr import DecodeQR, DecodeQRStatus
 import shamir_mnemonic
 
@@ -43,6 +43,74 @@ def test_seed():
     # assert seed.passphrase == "test"
 
     
+
+
+
+def test_aezeed_seed_default_passphrase_vector():
+    mnemonic = (
+        "absorb original enlist once climb erode kid thrive kitchen giant define tube "
+        "orange leader harbor comfort olive fatal success suggest drink penalty chimney ritual"
+    ).split()
+    seed = AezeedSeed(mnemonic=mnemonic)
+
+    assert seed.seed_bytes == bytes.fromhex("81b637d86359e6960de795e41e0b4cfd")
+
+
+
+
+def test_aezeed_seed_requires_passphrase_does_not_fail_word_validation():
+    mnemonic = (
+        "above gap bronze point damp name group actress idea festival cream during "
+        "bid blanket dumb wage foster merit success suggest drink protect autumn box"
+    ).split()
+    seed = AezeedSeed(mnemonic=mnemonic)
+
+    assert seed.seed_bytes is None
+
+
+
+def test_aezeed_seed_user_reported_passphrase_vector():
+    mnemonic = (
+        "absent beef crazy include regret city blanket plug thought spatial boy receive "
+        "bag jazz fade emerge quit beach crucial giant mutual reward captain excite"
+    ).split()
+    seed = AezeedSeed(mnemonic=mnemonic, passphrase="test")
+
+    assert seed.seed_bytes == bytes.fromhex("81b637d86359e6960de795e41e0b4cfd")
+
+def test_aezeed_seed_custom_passphrase_vector():
+    mnemonic = (
+        "above gap bronze point damp name group actress idea festival cream during "
+        "bid blanket dumb wage foster merit success suggest drink protect autumn box"
+    ).split()
+    seed = AezeedSeed(mnemonic=mnemonic, passphrase="!very_safe_55345_password*")
+
+    assert seed.seed_bytes == bytes.fromhex("81b637d86359e6960de795e41e0b4cfd")
+
+
+def test_aezeed_seed_blank_passphrase_retry_does_not_raise():
+    mnemonic = (
+        "absent beef crazy include regret city blanket plug thought spatial boy receive "
+        "bag jazz fade emerge quit beach crucial giant mutual reward captain excite"
+    ).split()
+    seed = AezeedSeed(mnemonic=mnemonic)
+
+    assert seed.seed_bytes is None
+
+    # Blank retry must remain in passphrase-required state, not raise.
+    seed.set_passphrase("")
+    assert seed.seed_bytes is None
+
+
+
+def test_in_memory_seed_type_label_for_aezeed():
+    mnemonic = (
+        "absorb original enlist once climb erode kid thrive kitchen giant define tube "
+        "orange leader harbor comfort olive fatal success suggest drink penalty chimney ritual"
+    ).split()
+    seed = AezeedSeed(mnemonic=mnemonic)
+
+    assert seed_views.SeedsMenuView.get_seed_type_label(seed) == "Aezeed"
 
 def test_xprv_seed_has_no_seed_words():
     xprv = "xprv9s21ZrQH143K2LBWUUQRFXhucrQqBpKdRRxNVq2zBqsx8HVqFk2uYo8kmbaLLHRdqtQpUm98uKfu3vca1LqdGhUtyoFnCNkfmXRyPXLjbKb"
@@ -347,6 +415,145 @@ def test_slip39_vectors_end_to_end(desc, mnemonics, secret_hex, xprv):
                 root = bip32.HDKey.from_seed(seed.seed_bytes, version=NETWORKS["main"]["xprv"])
                 assert root.to_base58() == xprv
 
+
+
+
+class TestAezeedPassphraseMode(BaseTest):
+    def test_back_from_aezeed_passphrase_entry_returns_mode(self, monkeypatch):
+        mnemonic = (
+            "absent beef crazy include regret city blanket plug thought spatial boy receive "
+            "bag jazz fade emerge quit beach crucial giant mutual reward captain excite"
+        ).split()
+        self.controller.storage.set_pending_seed(AezeedSeed(mnemonic=mnemonic))
+
+        view = seed_views.SeedAddPassphraseView()
+        monkeypatch.setattr(
+            view,
+            "run_screen",
+            lambda *args, **kwargs: {"passphrase": "", "is_back_button": True},
+        )
+
+        destination = view.run()
+        assert destination.View_cls == seed_views.SeedAezeedPassphraseModeView
+
+    def test_back_from_aezeed_passphrase_mode_returns_home(self, monkeypatch):
+        mnemonic = (
+            "absent beef crazy include regret city blanket plug thought spatial boy receive "
+            "bag jazz fade emerge quit beach crucial giant mutual reward captain excite"
+        ).split()
+        self.controller.storage.set_pending_seed(AezeedSeed(mnemonic=mnemonic))
+
+        view = seed_views.SeedAezeedPassphraseModeView()
+        monkeypatch.setattr(view, "run_screen", lambda *args, **kwargs: seed_views.RET_CODE__BACK_BUTTON)
+
+        destination = view.run()
+        assert destination.View_cls == seed_views.MainMenuView
+        assert destination.clear_history is True
+
+    def test_scan_wrong_aezeed_passphrase_returns_mode(self, monkeypatch):
+        mnemonic = (
+            "absent beef crazy include regret city blanket plug thought spatial boy receive "
+            "bag jazz fade emerge quit beach crucial giant mutual reward captain excite"
+        ).split()
+        self.controller.storage.set_pending_seed(AezeedSeed(mnemonic=mnemonic))
+
+        class DummyDecodeQR:
+            def __init__(self, is_passphrase=False):
+                self.is_complete = True
+                self.is_nonUTF8 = False
+
+            def get_passphrase(self):
+                return "wrong"
+
+        monkeypatch.setattr("seedsigner.models.decode_qr.DecodeQR", DummyDecodeQR)
+
+        view = seed_views.SeedScanPassphraseView()
+        monkeypatch.setattr(view, "run_screen", lambda *args, **kwargs: None)
+
+        destination = view.run()
+        assert destination.View_cls == seed_views.SeedAezeedPassphraseModeView
+
+    def test_seedkeeper_wrong_aezeed_passphrase_returns_mode(self, monkeypatch):
+        mnemonic = (
+            "absent beef crazy include regret city blanket plug thought spatial boy receive "
+            "bag jazz fade emerge quit beach crucial giant mutual reward captain excite"
+        ).split()
+        self.controller.storage.set_pending_seed(AezeedSeed(mnemonic=mnemonic))
+
+        class DummyLoadingScreenThread:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def start(self):
+                pass
+
+            def stop(self):
+                pass
+
+        class DummyConnector:
+            def seedkeeper_list_secret_headers(self):
+                return [{"id": 1, "label": "pw", "type": 0x90, "origin": 0, "export_rights": 0x01, "export_nbplain": 0, "export_nbsecure": 0, "export_counter": 0, "fingerprint": ""}]
+
+            def seedkeeper_export_secret(self, sid, _):
+                assert sid == 1
+                pwd = "wrong".encode()
+                return {"secret_list": [len(pwd)], "secret": (bytes([len(pwd)]) + pwd).hex()}
+
+        monkeypatch.setattr("seedsigner.views.seed_views.seedkeeper_utils.init_satochip", lambda *args, **kwargs: DummyConnector())
+        monkeypatch.setattr("seedsigner.gui.screens.screen.LoadingScreenThread", DummyLoadingScreenThread)
+
+        view = seed_views.SeedLoadSeedKeeperPassphraseView()
+        monkeypatch.setattr(view, "run_screen", lambda *args, **kwargs: 0)
+
+        destination = view.run()
+        assert destination.View_cls == seed_views.SeedAezeedPassphraseModeView
+
+
+
+
+
+class TestAezeedBackupOptions(BaseTest):
+    def _load_aezeed_seed(self, passphrase=""):
+        mnemonic = (
+            "absent beef crazy include regret city blanket plug thought spatial boy receive "
+            "bag jazz fade emerge quit beach crucial giant mutual reward captain excite"
+        ).split()
+        seed = AezeedSeed(mnemonic=mnemonic)
+        if passphrase:
+            seed.set_passphrase(passphrase)
+        self.controller.storage.seeds = [seed]
+        return seed
+
+    def test_backup_view_keeps_view_words_and_hides_plaintext_qr_for_aezeed(self, monkeypatch):
+        self._load_aezeed_seed(passphrase="test")
+        self.settings.set_value(SettingsConstants.SETTING__PLAINTEXTQR, SettingsConstants.OPTION__ENABLED)
+
+        captured = {}
+        def fake_run_screen(*args, **kwargs):
+            captured['button_data'] = kwargs['button_data']
+            return seed_views.RET_CODE__BACK_BUTTON
+
+        view = seed_views.SeedBackupView(seed_num=0)
+        monkeypatch.setattr(view, "run_screen", fake_run_screen)
+        view.run()
+
+        assert seed_views.SeedBackupView.VIEW_WORDS in captured['button_data']
+        assert seed_views.SeedBackupView.EXPORT_PLAINTEXTQR not in captured['button_data']
+
+    def test_aezeed_seed_words_warning_mentions_passphrase(self, monkeypatch):
+        self._load_aezeed_seed(passphrase="test")
+
+        captured = {}
+        def fake_run_screen(*args, **kwargs):
+            captured['text'] = kwargs.get('text')
+            return seed_views.RET_CODE__BACK_BUTTON
+
+        view = seed_views.SeedWordsWarningView(seed_num=0)
+        monkeypatch.setattr(view, "run_screen", fake_run_screen)
+        destination = view.run()
+
+        assert "passphrase" in captured['text'].lower()
+        assert destination.View_cls == seed_views.BackStackView
 
 class TestSlip39ExtendableSetting(BaseTest):
     def test_create_nonextendable_slip39_seed(self, monkeypatch):

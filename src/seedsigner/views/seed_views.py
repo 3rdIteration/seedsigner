@@ -16,7 +16,7 @@ from PIL import Image
 from PIL.ImageOps import autocontrast
 import shamir_mnemonic
 
-from seedsigner.gui.components import FontAwesomeIconConstants, SeedSignerIconConstants
+from seedsigner.gui.components import FontAwesomeIconConstants, GUIConstants, SeedSignerIconConstants
 from seedsigner.gui.screens import (RET_CODE__BACK_BUTTON, ButtonListScreen,
     WarningScreen, DireWarningScreen, seed_screens, LargeIconStatusScreen)
 from seedsigner.gui.screens.screen import ButtonOption, KeyboardScreen
@@ -38,7 +38,7 @@ from seedsigner.helpers.tapsigner_backup import (
 )
 from seedsigner.models.encode_qr import CompactSeedQrEncoder, GenericStaticQrEncoder, SeedQrEncoder, SpecterXPubQrEncoder, StaticXpubQrEncoder, UrXpubQrEncoder
 from seedsigner.models.qr_type import QRType
-from seedsigner.models.seed import Seed, Slip39Seed, ElectrumSeed, XprvSeed, InvalidSeedException, SeedWordsUnavailableException
+from seedsigner.models.seed import Seed, AezeedSeed, Slip39Seed, ElectrumSeed, XprvSeed, InvalidSeedException, SeedWordsUnavailableException
 from seedsigner.models.settings import Settings, SettingsConstants
 from seedsigner.models.settings_definition import SettingsDefinition
 from seedsigner.models.threads import BaseThread, ThreadsafeCounter
@@ -72,6 +72,8 @@ class SeedsMenuView(View):
             return "XPRV"
         if isinstance(seed, ElectrumSeed):
             return "ELEC"
+        if isinstance(seed, AezeedSeed):
+            return "Aezeed"
         return "BIP39"
 
 
@@ -127,6 +129,7 @@ class SeedSelectSeedView(View):
     TYPE_21WORD = ButtonOption("Enter 21-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=21)
     TYPE_24WORD = ButtonOption("Enter 24-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=24)
     TYPE_ELECTRUM = ButtonOption("Enter Electrum seed", FontAwesomeIconConstants.KEYBOARD)
+    TYPE_AEZEED = ButtonOption("Enter Aezeed seed", FontAwesomeIconConstants.KEYBOARD)
     TYPE_SLIP39 = ButtonOption("SLIP-39 Shares", FontAwesomeIconConstants.KEYBOARD)
 
     def __init__(self, flow: str):
@@ -182,6 +185,8 @@ class SeedSelectSeedView(View):
 
         if self.settings.get_value(SettingsConstants.SETTING__ELECTRUM_SEEDS) == SettingsConstants.OPTION__ENABLED:
             button_data.append(self.TYPE_ELECTRUM)
+        if self.settings.get_value(SettingsConstants.SETTING__AEZEED_SEEDS) == SettingsConstants.OPTION__ENABLED:
+            button_data.append(self.TYPE_AEZEED)
         if self.settings.get_value(SettingsConstants.SETTING__SLIP39_SEEDS) == SettingsConstants.OPTION__ENABLED:
             button_data.append(self.TYPE_SLIP39)
 
@@ -241,6 +246,9 @@ class SeedSelectSeedView(View):
         elif button_data[selected_menu_num] == self.TYPE_ELECTRUM:
             return Destination(SeedElectrumMnemonicStartView)
 
+        elif button_data[selected_menu_num] == self.TYPE_AEZEED:
+            return Destination(SeedAezeedMnemonicStartView)
+
         elif button_data[selected_menu_num] == self.TYPE_SLIP39:
             return Destination(SeedSlip39MnemonicStartView)
 
@@ -257,6 +265,7 @@ class LoadSeedView(View):
     TYPE_21WORD = ButtonOption("Enter 21-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=21)
     TYPE_24WORD = ButtonOption("Enter 24-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=24)
     TYPE_ELECTRUM = ButtonOption("Enter Electrum seed", FontAwesomeIconConstants.KEYBOARD)
+    TYPE_AEZEED = ButtonOption("Enter Aezeed seed", FontAwesomeIconConstants.KEYBOARD)
     TYPE_SLIP39 = ButtonOption("SLIP-39 Shares", FontAwesomeIconConstants.KEYBOARD)
     IMPORT_SEEDKEEPER = ButtonOption("From SeedKeeper", FontAwesomeIconConstants.LOCK)
     BITBOX_BACKUP = ButtonOption("BitBox02 backup", SeedSignerIconConstants.MICROSD)
@@ -283,6 +292,9 @@ class LoadSeedView(View):
 
         if self.settings.get_value(SettingsConstants.SETTING__SLIP39_SEEDS) == SettingsConstants.OPTION__ENABLED:
             button_data.append(self.TYPE_SLIP39)
+
+        if self.settings.get_value(SettingsConstants.SETTING__AEZEED_SEEDS) == SettingsConstants.OPTION__ENABLED:
+            button_data.append(self.TYPE_AEZEED)
 
         if self.settings.get_value(SettingsConstants.SETTING__BITBOX_BACKUP) == SettingsConstants.OPTION__ENABLED:
             button_data.append(self.BITBOX_BACKUP)
@@ -321,6 +333,9 @@ class LoadSeedView(View):
 
         elif button_data[selected_menu_num] == self.TYPE_ELECTRUM:
             return Destination(SeedElectrumMnemonicStartView)
+
+        elif button_data[selected_menu_num] == self.TYPE_AEZEED:
+            return Destination(SeedAezeedMnemonicStartView)
 
         elif button_data[selected_menu_num] == self.TYPE_SLIP39:
             return Destination(SeedSlip39MnemonicStartView)
@@ -394,6 +409,8 @@ class SeedKeeperSelectView(View):
             Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["seedkeeper"])
 
             if not Satochip_Connector:
+                if isinstance(self.seed, AezeedSeed):
+                    return Destination(SeedAezeedPassphraseModeView)
                 return Destination(BackStackView)
 
             self.loading_screen = LoadingScreenThread(text="Listing Seeds\n\n\n\n\n\n")
@@ -416,7 +433,8 @@ class SeedKeeperSelectView(View):
                         (stype == 'Masterseed' and subtype == 0x01) or
                         (stype == 'Masterseed' and subtype == 0x00) or
                         (stype == 'Data' and label.startswith('XPRV:') and export_rights == 'Plaintext export allowed') or
-                        (stype == 'Electrum mnemonic' and export_rights == 'Plaintext export allowed')):
+                        (stype == 'Electrum mnemonic' and export_rights == 'Plaintext export allowed') or
+                        (stype == 'Password' and label.startswith('aezeed:') and export_rights == 'Plaintext export allowed')):
 
                     if not label:
                         label = "Unnamed Secret"
@@ -436,6 +454,8 @@ class SeedKeeperSelectView(View):
                     text="No BIP39 Secrets to Load from Seedkeeper",
                     show_back_button=False,
                 )
+                if isinstance(self.seed, AezeedSeed):
+                    return Destination(SeedAezeedPassphraseModeView)
                 return Destination(BackStackView)
 
             selected_menu_num = self.run_screen(
@@ -447,12 +467,15 @@ class SeedKeeperSelectView(View):
             )
 
             if selected_menu_num == RET_CODE__BACK_BUTTON:
+                if isinstance(self.seed, AezeedSeed):
+                    return Destination(SeedAezeedPassphraseModeView)
                 return Destination(BackStackView)
 
             selected_header = headers_parsed[selected_menu_num]
             sid = selected_header["sid"]
             stype = selected_header["stype"]
             subtype = selected_header["subtype"]
+            label = selected_header["label"]
 
             self.loading_screen = LoadingScreenThread(text="Loading Seed\n\n\n\n\n\n")
             self.loading_screen.start()
@@ -468,6 +491,19 @@ class SeedKeeperSelectView(View):
                 secret_size = secret_dict['secret_list'][0]
                 secret_mnemonic = bip39_secret[:secret_size]
                 secret_passphrase = bip39_secret[secret_size + 1:]
+
+            elif stype == 'Password' and label.startswith('aezeed:'):
+                aezeed_secret = self._decode_seedkeeper_text(secret_dict['secret']).strip()
+                secret_mnemonic = aezeed_secret
+                secret_passphrase = ""
+                if "\n" in aezeed_secret:
+                    lines = [line.strip() for line in aezeed_secret.splitlines() if line.strip()]
+                    if len(lines) > 0:
+                        secret_mnemonic = lines[0]
+                    for line in lines[1:]:
+                        if line.startswith("passphrase:"):
+                            secret_passphrase = line[len("passphrase:"):]
+                            break
 
             elif stype == 'Masterseed' and subtype == 0x01:
                 secret_raw_bytes = bytes.fromhex(secret_dict['secret'])
@@ -519,8 +555,17 @@ class SeedKeeperSelectView(View):
             )
             return Destination(BackStackView)
 
+        is_aezeed = False
+        if secret_mnemonic.startswith("aezeed:"):
+            is_aezeed = True
+            secret_mnemonic = secret_mnemonic[len("aezeed:"):]
+
         mnemonic = secret_mnemonic.split(" ")
-        self.controller.storage.init_pending_mnemonic(num_words=len(mnemonic), is_electrum=(stype == 'Electrum mnemonic'))
+        self.controller.storage.init_pending_mnemonic(
+            num_words=len(mnemonic),
+            is_electrum=(stype == 'Electrum mnemonic' and not is_aezeed),
+            is_aezeed=is_aezeed,
+        )
         for i, word in enumerate(mnemonic):
             self.controller.storage.update_pending_mnemonic(word, i)
 
@@ -532,8 +577,22 @@ class SeedKeeperSelectView(View):
         except InvalidSeedException:
             return Destination(SeedMnemonicInvalidView)
 
+        self.seed = self.controller.storage.get_pending_seed()
+
+        if isinstance(self.seed, AezeedSeed):
+            if len(secret_passphrase) > 0:
+                try:
+                    self.seed.set_passphrase(secret_passphrase)
+                except InvalidSeedException as e:
+                    if str(e) == "InvalidPassphraseError":
+                        self.seed.set_passphrase("")
+                        return Destination(SeedAezeedPassphraseModeView)
+                    raise
+            if self.seed.seed_bytes is None:
+                return Destination(SeedAezeedPassphraseModeView)
+            return Destination(SeedFinalizeView)
+
         if len(secret_passphrase) > 0:
-            self.seed = self.controller.storage.get_pending_seed()
             self.seed.set_passphrase(secret_passphrase)
             return Destination(SeedReviewPassphraseView)
 
@@ -1016,8 +1075,14 @@ class SeedMnemonicEntryView(View):
                 self.controller.storage.convert_pending_mnemonic_to_pending_seed(
                     wordlist_language_code=self.settings.get_value(SettingsConstants.SETTING__WORDLIST_LANGUAGE),
                 )
-            except InvalidSeedException:
+            except InvalidSeedException as e:
+                if self.controller.storage.pending_is_aezeed and str(e) == "InvalidPassphraseError":
+                    return Destination(SeedAezeedPassphraseModeView)
                 return Destination(SeedMnemonicInvalidView)
+
+            pending_seed = self.controller.storage.get_pending_seed()
+            if isinstance(pending_seed, AezeedSeed) and pending_seed.seed_bytes is None:
+                return Destination(SeedAezeedPassphraseModeView)
 
             return Destination(SeedFinalizeView)
 
@@ -1076,22 +1141,27 @@ class SeedFinalizeView(View):
             # just-loaded seed would be naked, but this is special handling for the
             # screenshot generator which creates a pending seed w/a passphrase already
             # set.
-            passphrase = self.seed.passphrase
-            if isinstance(self.seed, Slip39Seed):
-                self.seed.set_slip39_passphrase("")
+            if isinstance(self.seed, AezeedSeed):
+                # Aezeed passphrase is part of mnemonic decryption. Show current
+                # loaded fingerprint rather than a hypothetical "no passphrase" one.
+                self.fingerprint = self.seed.get_fingerprint(network=self.settings.get_value(SettingsConstants.SETTING__NETWORK))
             else:
-                self.seed.set_passphrase("")
-            self.fingerprint = self.seed.get_fingerprint(network=self.settings.get_value(SettingsConstants.SETTING__NETWORK))
-            if isinstance(self.seed, Slip39Seed):
-                self.seed.set_slip39_passphrase(passphrase)
-            else:
-                self.seed.set_passphrase(passphrase)
+                passphrase = self.seed.passphrase
+                if isinstance(self.seed, Slip39Seed):
+                    self.seed.set_slip39_passphrase("")
+                else:
+                    self.seed.set_passphrase("")
+                self.fingerprint = self.seed.get_fingerprint(network=self.settings.get_value(SettingsConstants.SETTING__NETWORK))
+                if isinstance(self.seed, Slip39Seed):
+                    self.seed.set_slip39_passphrase(passphrase)
+                else:
+                    self.seed.set_passphrase(passphrase)
 
 
     def run(self):
         button_data = [self.FINALIZE]
         #self.TYPE_PASSPHRASE.button_label = self.seed.passphrase_label
-        if isinstance(self.seed, XprvSeed):
+        if isinstance(self.seed, (XprvSeed, AezeedSeed)):
             pass
         elif self.settings.get_value(SettingsConstants.SETTING__PASSPHRASE) != SettingsConstants.OPTION__DISABLED:
             button_data.append(self.TYPE_PASSPHRASE)
@@ -1123,6 +1193,51 @@ class SeedFinalizeView(View):
 
 
 
+class SeedAezeedPassphraseModeView(View):
+    LOAD_SEEDKEEPER = ButtonOption("Load from SeedKeeper")
+    TYPE_PASSPHRASE = ButtonOption("Type Passphrase")
+    SCAN_PASSPHRASE = ButtonOption("Scan Passphrase")
+
+    def __init__(self):
+        super().__init__()
+        self.seed = self.controller.storage.get_pending_seed()
+
+    def run(self):
+        if not isinstance(self.seed, AezeedSeed):
+            return Destination(SeedAddPassphraseView)
+
+        button_data = [self.TYPE_PASSPHRASE, self.SCAN_PASSPHRASE]
+        if self.settings.get_value(SettingsConstants.SETTING__SMARTCARD_SUPPORT) == SettingsConstants.OPTION__ENABLED:
+            button_data.append(self.LOAD_SEEDKEEPER)
+
+        selected_menu_num = self.run_screen(
+            LargeIconStatusScreen,
+            title=_("Aezeed passphrase"),
+            status_icon_name=SeedSignerIconConstants.FINGERPRINT,
+            status_icon_size=GUIConstants.ICON_LARGE_BUTTON_SIZE,
+            status_color=GUIConstants.INFO_COLOR,
+            text=_("Passphrase required\nfor this mnemonic."),
+            is_button_text_centered=False,
+            button_data=button_data,
+            show_back_button=True,
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            self.controller.storage.clear_pending_seed()
+            return Destination(MainMenuView, clear_history=True)
+
+        if button_data[selected_menu_num] == self.TYPE_PASSPHRASE:
+            return Destination(SeedAddPassphraseView)
+
+        if button_data[selected_menu_num] == self.SCAN_PASSPHRASE:
+            return Destination(SeedScanPassphraseView)
+
+        if button_data[selected_menu_num] == self.LOAD_SEEDKEEPER:
+            return Destination(SeedLoadSeedKeeperPassphraseView)
+
+        return Destination(BackStackView)
+
+
 class SeedAddPassphraseView(View):
     """
     initial_keyboard: used by the screenshot generator to render each different keyboard layout.
@@ -1143,22 +1258,62 @@ class SeedAddPassphraseView(View):
         )
 
         passphrase = ret_dict["passphrase"]
-        if isinstance(self.seed, Slip39Seed):
-            self.seed.set_slip39_passphrase(passphrase)
-        else:
-            # The new passphrase will be the return value; it might be empty.
-            self.seed.set_passphrase(passphrase)
+        try:
+            if isinstance(self.seed, Slip39Seed):
+                self.seed.set_slip39_passphrase(passphrase)
+            else:
+                # The new passphrase will be the return value; it might be empty.
+                self.seed.set_passphrase(passphrase)
+        except InvalidSeedException as e:
+            if isinstance(self.seed, AezeedSeed):
+                if passphrase == "":
+                    self.run_screen(
+                        WarningScreen,
+                        title=_("Invalid passphrase"),
+                        status_headline=None,
+                        text=_("Aezeed passphrase required.\nTry again."),
+                        show_back_button=False,
+                        button_data=[ButtonOption("OK")],
+                    )
+                    return Destination(SeedAddPassphraseView)
+                if str(e) == "InvalidPassphraseError":
+                    # Clear incorrect passphrase so user can back out cleanly.
+                    self.seed.set_passphrase("")
+                    self.run_screen(
+                        WarningScreen,
+                        title=_("Invalid passphrase"),
+                        status_headline=None,
+                        text=_("Wrong Aezeed passphrase.\nTry again."),
+                        show_back_button=False,
+                        button_data=[ButtonOption("OK")],
+                    )
+                    return Destination(SeedAddPassphraseView)
+            raise
 
         if "is_back_button" in ret_dict:
+            if isinstance(self.seed, AezeedSeed):
+                return Destination(SeedAezeedPassphraseModeView)
             if len(self.seed.passphrase) > 0:
                 return Destination(SeedAddPassphraseExitDialogView)
             else:
                 return Destination(SeedFinalizeView)
-            
+
         elif len(self.seed.passphrase) > 0:
+            if isinstance(self.seed, AezeedSeed):
+                return Destination(SeedFinalizeView)
             return Destination(SeedReviewPassphraseView)
-        
+
         else:
+            if isinstance(self.seed, AezeedSeed) and self.seed.seed_bytes is None:
+                self.run_screen(
+                    WarningScreen,
+                    title=_("Invalid passphrase"),
+                    status_headline=None,
+                    text=_("Aezeed passphrase required.\nTry again."),
+                    show_back_button=False,
+                    button_data=[ButtonOption("OK")],
+                )
+                return Destination(SeedAddPassphraseView)
             return Destination(SeedFinalizeView)
 
 
@@ -1214,8 +1369,24 @@ class SeedScanPassphraseView(View):
             passphrase = self.seed.passphrase_display + decoder.get_passphrase()
             if isinstance(self.seed, Slip39Seed):
                 self.controller.storage.get_pending_seed().set_slip39_passphrase(passphrase)
-            else:
+                return Destination(SeedReviewPassphraseView)
+            try:
                 self.controller.storage.get_pending_seed().set_passphrase(passphrase)
+            except InvalidSeedException as e:
+                if isinstance(self.seed, AezeedSeed) and str(e) == "InvalidPassphraseError":
+                    self.seed.set_passphrase("")
+                    self.run_screen(
+                        WarningScreen,
+                        title=_("Invalid passphrase"),
+                        status_headline=None,
+                        text=_("Wrong Aezeed passphrase.\nTry again."),
+                        show_back_button=False,
+                        button_data=[ButtonOption("OK")],
+                    )
+                    return Destination(SeedAezeedPassphraseModeView)
+                raise
+            if isinstance(self.seed, AezeedSeed):
+                return Destination(SeedFinalizeView)
             return Destination(SeedReviewPassphraseView)
         elif decoder.is_nonUTF8:
             DireWarningScreen(
@@ -1224,8 +1395,12 @@ class SeedScanPassphraseView(View):
                 status_headline=_("Invalid Text QR Code"),
                 text=_("Non UTF-8 data detected.")
             ).display()
+            if isinstance(self.seed, AezeedSeed):
+                return Destination(SeedAezeedPassphraseModeView)
             return Destination(BackStackView)
         else:
+            if isinstance(self.seed, AezeedSeed):
+                return Destination(SeedAezeedPassphraseModeView)
             return Destination(BackStackView)
 
 class SeedLoadSeedKeeperPassphraseView(View):
@@ -1239,6 +1414,8 @@ class SeedLoadSeedKeeperPassphraseView(View):
             Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["seedkeeper"])
             
             if not Satochip_Connector:
+                if isinstance(self.seed, AezeedSeed):
+                    return Destination(SeedAezeedPassphraseModeView)
                 return Destination(BackStackView)
 
             self.loading_screen = LoadingScreenThread(text="Listing Secrets\n\n\n\n\n\n")
@@ -1276,6 +1453,8 @@ class SeedLoadSeedKeeperPassphraseView(View):
                 text=f"No Password Secrets to Load from Seedkeeper",
                 show_back_button=False,
                 )   
+                if isinstance(self.seed, AezeedSeed):
+                    return Destination(SeedAezeedPassphraseModeView)
                 return Destination(BackStackView)
 
             selected_menu_num = self.run_screen(
@@ -1287,6 +1466,8 @@ class SeedLoadSeedKeeperPassphraseView(View):
             )
 
             if selected_menu_num == RET_CODE__BACK_BUTTON:
+                if isinstance(self.seed, AezeedSeed):
+                    return Destination(SeedAezeedPassphraseModeView)
                 return Destination(BackStackView)
 
             self.loading_screen = LoadingScreenThread(text="Loading Secret\n\n\n\n\n\n")
@@ -1312,17 +1493,39 @@ class SeedLoadSeedKeeperPassphraseView(View):
                 text=str(e),
                 show_back_button=True,
             )
+            if isinstance(self.seed, AezeedSeed):
+                return Destination(SeedAezeedPassphraseModeView)
             return Destination(BackStackView)
         
         # The new passphrase will be the return value; it might be empty.
         if isinstance(self.seed, Slip39Seed):
             self.seed.set_slip39_passphrase(secret_passphrase)
-        else:
+            if len(self.seed.passphrase) > 0:
+                return Destination(SeedReviewPassphraseView)
+            return Destination(SeedFinalizeView)
+
+        try:
             self.seed.set_passphrase(secret_passphrase)
+        except InvalidSeedException as e:
+            if isinstance(self.seed, AezeedSeed) and str(e) == "InvalidPassphraseError":
+                self.seed.set_passphrase("")
+                self.run_screen(
+                    WarningScreen,
+                    title=_("Invalid passphrase"),
+                    status_headline=None,
+                    text=_("Wrong Aezeed passphrase.\nTry again."),
+                    show_back_button=False,
+                    button_data=[ButtonOption("OK")],
+                )
+                return Destination(SeedAezeedPassphraseModeView)
+            raise
+        if isinstance(self.seed, AezeedSeed):
+            if len(self.seed.passphrase) > 0:
+                return Destination(SeedFinalizeView)
+            return Destination(SeedAezeedPassphraseModeView)
         if len(self.seed.passphrase) > 0:
             return Destination(SeedReviewPassphraseView)
-        else:
-            return Destination(SeedFinalizeView)
+        return Destination(SeedFinalizeView)
 
 class SeedReviewPassphraseView(View):
     """
@@ -1425,6 +1628,23 @@ class SeedDiscardView(View):
                 self.controller.storage.clear_pending_seed()
             return Destination(MainMenuView, clear_history=True)
 
+
+
+
+
+class SeedAezeedMnemonicStartView(View):
+    def run(self):
+        self.run_screen(
+                WarningScreen,
+                title=_("Aezeed support"),
+                status_headline=None,
+                text=_("Aezeed entry is experimental.\nUse only with known-good backups."),
+                show_back_button=False,
+        )
+
+        self.controller.storage.init_pending_mnemonic(num_words=24, is_aezeed=True)
+
+        return Destination(SeedMnemonicEntryView)
 
 
 class SeedElectrumMnemonicStartView(View):
@@ -1920,7 +2140,8 @@ class SeedBackupView(View):
         if self.seed.seedqr_supported:
             button_data.append(self.EXPORT_SEEDQR)
 
-        if self.settings.get_value(SettingsConstants.SETTING__PLAINTEXTQR) == SettingsConstants.OPTION__ENABLED:
+        if (self.settings.get_value(SettingsConstants.SETTING__PLAINTEXTQR) == SettingsConstants.OPTION__ENABLED and
+                not isinstance(self.seed, AezeedSeed)):
             button_data.append(self.EXPORT_PLAINTEXTQR)
 
         selected_menu_num = self.run_screen(
@@ -2429,9 +2650,15 @@ class SeedWordsWarningView(View):
             # Forward straight to showing the words
             return destination
 
+        warning_text = _("You must keep your seed words private & away from all online devices.")
+        if self.seed_num is not None:
+            seed = self.controller.get_seed(self.seed_num)
+            if isinstance(seed, AezeedSeed) and len(seed.passphrase) > 0:
+                warning_text = _("Passphrase was used.\nYou'll need words + passphrase.")
+
         selected_menu_num = self.run_screen(
             DireWarningScreen,
-            text=_("You must keep your seed words private & away from all online devices."),
+            text=warning_text,
         )
 
         if selected_menu_num == 0:
@@ -3164,8 +3391,12 @@ class SeedEncryptedQRScanEncryptionKeyView(View):
                 status_headline=_("Invalid Text QR Code"),
                 text=_("Non UTF-8 data detected.")
             ).display()
+            if isinstance(self.seed, AezeedSeed):
+                return Destination(SeedAezeedPassphraseModeView)
             return Destination(BackStackView)
         else:
+            if isinstance(self.seed, AezeedSeed):
+                return Destination(SeedAezeedPassphraseModeView)
             return Destination(BackStackView)
 
 
@@ -4492,6 +4723,8 @@ class SeedExportPlaintextQRView(View):
     def run(self):
         from seedsigner.gui.screens.screen import QRDisplayScreen
         data = self.seed.mnemonic_str
+        if isinstance(self.seed, AezeedSeed):
+            data = f"aezeed:{self.seed.mnemonic_str}\npassphrase:{self.seed.passphrase}"
         if isinstance(self.seed, XprvSeed):
             data = self.seed.get_root().to_base58()
         if isinstance(self.seed, Slip39Seed) and self.share_index is not None:
@@ -4588,6 +4821,18 @@ class SaveToSeedkeeperView(View):
                     electrum_passphrase_list = list(bytes(seed.passphrase, 'utf-8'))
                     secret_list = [len(electrum_mnemonic_list)] + electrum_mnemonic_list + [len(electrum_passphrase_list)] + electrum_passphrase_list
                     header = Satochip_Connector.make_header(type, export_rights, label, subtype=subtype)
+                    secret_dic = {'header': header, 'secret_list': secret_list}
+                elif isinstance(seed, AezeedSeed):
+                    print("Saving Aezeed seed")
+                    label = f"aezeed:{ret['passphrase']}"
+                    export_rights = "Plaintext export allowed"
+                    type = "Password"
+                    aezeed_secret = f"aezeed:{seed.mnemonic_str}"
+                    if seed.passphrase:
+                        aezeed_secret += f"\npassphrase:{seed.passphrase}"
+                    aezeed_secret_list = list(bytes(aezeed_secret, 'utf-8'))
+                    secret_list = [len(aezeed_secret_list)] + aezeed_secret_list
+                    header = Satochip_Connector.make_header(type, export_rights, label)
                     secret_dic = {'header': header, 'secret_list': secret_list}
                 else:
                     if isinstance(seed, XprvSeed) and status['protocol_minor_version'] == 1:
