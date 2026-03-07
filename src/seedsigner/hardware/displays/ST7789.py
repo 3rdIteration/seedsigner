@@ -274,7 +274,7 @@ class ST7789(object):
         # The sleep below is the correct fix: it satisfies the datasheet timing
         # regardless of how CS is managed or which init path is taken.
         self.command(0x11)
-        time.sleep(0.12)  # ≥120 ms required by ST7789 datasheet after SLPOUT
+        time.sleep(0.150)  # ≥120 ms required by ST7789 datasheet after SLPOUT; use 150 ms for OS timer headroom
 
         self.command(0x29)  # DISPON (Display On)
 
