@@ -4160,30 +4160,43 @@ class SeedAddressVerificationView(View):
             logger.info(f"ExpandedSearch: network={self.network}, embit_network={self.embit_network}")
             logger.info(f"ExpandedSearch: {len(self.derivation_paths)} paths, {self.addrs_per_path} addrs/path, start_index={self.start_index}")
             logger.info(f"ExpandedSearch: script_types={self.SCRIPT_TYPES}")
-            paths_checked = 0
-            total_addrs_checked = 0
+
+            # Pre-derive xpubs for all paths (done once upfront).
+            # On slow hardware (Pi Zero) this is much faster than the
+            # address derivation that follows, and caching avoids
+            # re-deriving the same xpub for each address index.
+            xpubs = {}  # path -> xpub
+            skipped_paths = set()
             for path in self.derivation_paths:
                 if not self.keep_running:
-                    logger.info(f"ExpandedSearch: stopped at path #{paths_checked} ({path}), {total_addrs_checked} addrs checked")
                     return
-
                 try:
-                    xpub = self.seed.get_xpub(wallet_path=path, network=self.network)
+                    xpubs[path] = self.seed.get_xpub(wallet_path=path, network=self.network)
                 except Exception as e:
-                    # Skip paths that can't be derived for this seed type
                     logger.info(f"ExpandedSearch: SKIPPING path {path} due to exception: {e}")
-                    self.threadsafe_counter.increment(self.addrs_per_path * len(self.SCRIPT_TYPES))
-                    paths_checked += 1
-                    continue
+                    skipped_paths.add(path)
 
-                for script_type in self.SCRIPT_TYPES:
+            total_addrs_checked = 0
+
+            # Outer loop is address index so that index 0 is checked
+            # across ALL paths/types before moving to index 1, etc.
+            # This ensures that the most common address (index 0) is
+            # found quickly even on slow hardware.
+            for i in range(self.start_index, self.start_index + self.addrs_per_path):
+                for path in self.derivation_paths:
                     if not self.keep_running:
-                        logger.info(f"ExpandedSearch: stopped at path #{paths_checked} ({path}), script_type={script_type}")
+                        logger.info(f"ExpandedSearch: stopped at index={i}, path={path}, {total_addrs_checked} addrs checked")
                         return
 
-                    for i in range(self.start_index, self.start_index + self.addrs_per_path):
+                    if path in skipped_paths:
+                        self.threadsafe_counter.increment(len(self.SCRIPT_TYPES))
+                        continue
+
+                    xpub = xpubs[path]
+
+                    for script_type in self.SCRIPT_TYPES:
                         if not self.keep_running:
-                            logger.info(f"ExpandedSearch: stopped at path #{paths_checked} ({path}), script_type={script_type}, index={i}")
+                            logger.info(f"ExpandedSearch: stopped at index={i}, path={path}, script_type={script_type}")
                             return
 
                         receive_address = embit_utils.get_single_sig_address(
@@ -4198,7 +4211,7 @@ class SeedAddressVerificationView(View):
 
                         if self.address == receive_address:
                             logger.info(f"ExpandedSearch: MATCH FOUND! path={path}, script_type={script_type}, index={i}, is_change=False")
-                            logger.info(f"ExpandedSearch: after checking {total_addrs_checked} addrs across {paths_checked + 1} paths")
+                            logger.info(f"ExpandedSearch: after checking {total_addrs_checked} addrs")
                             self.matched_derivation_path = path
                             self.matched_script_type = script_type
                             self.verified_index.set_value(i)
@@ -4208,7 +4221,7 @@ class SeedAddressVerificationView(View):
 
                         elif self.address == change_address:
                             logger.info(f"ExpandedSearch: MATCH FOUND! path={path}, script_type={script_type}, index={i}, is_change=True")
-                            logger.info(f"ExpandedSearch: after checking {total_addrs_checked} addrs across {paths_checked + 1} paths")
+                            logger.info(f"ExpandedSearch: after checking {total_addrs_checked} addrs")
                             self.matched_derivation_path = path
                             self.matched_script_type = script_type
                             self.verified_index.set_value(i)
@@ -4218,11 +4231,7 @@ class SeedAddressVerificationView(View):
 
                         self.threadsafe_counter.increment()
 
-                paths_checked += 1
-                if paths_checked % 10 == 0:
-                    logger.info(f"ExpandedSearch: checked {paths_checked}/{len(self.derivation_paths)} paths, {total_addrs_checked} addrs, counter={self.threadsafe_counter.cur_count}")
-
-            logger.info(f"ExpandedSearch: EXHAUSTED all {paths_checked} paths, {total_addrs_checked} addrs - NO MATCH FOUND")
+            logger.info(f"ExpandedSearch: EXHAUSTED all paths, {total_addrs_checked} addrs - NO MATCH FOUND")
             logger.info(f"ExpandedSearch: final counter={self.threadsafe_counter.cur_count}")
 
 
