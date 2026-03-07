@@ -1635,6 +1635,9 @@ class SeedAddressVerificationSuccessScreen(LargeIconStatusScreen):
     address: str = None
     verified_index: int = None
     verified_index_is_change: bool = None
+    derivation_path: str = None
+    script_type_display: str = None
+    is_non_standard: bool = False
 
 
     def __post_init__(self):
@@ -1670,6 +1673,28 @@ class SeedAddressVerificationSuccessScreen(LargeIconStatusScreen):
             text=index_str,
             screen_y=self.components[-1].screen_y + self.components[-1].height + GUIConstants.COMPONENT_PADDING,
         ))
+
+        # Show derivation path and script type
+        if self.derivation_path:
+            path_label = self.derivation_path
+            if self.script_type_display:
+                path_label = f"{self.derivation_path} ({self.script_type_display})"
+            self.components.append(TextArea(
+                text=path_label,
+                font_size=GUIConstants.LABEL_FONT_SIZE,
+                font_color=GUIConstants.WARNING_COLOR if self.is_non_standard else GUIConstants.LABEL_FONT_COLOR,
+                is_text_centered=True,
+                screen_y=self.components[-1].screen_y + self.components[-1].height + GUIConstants.COMPONENT_PADDING,
+            ))
+
+        if self.is_non_standard:
+            # TRANSLATOR_NOTE: Warning shown when address was found on a non-standard derivation path
+            self.components.append(TextArea(
+                text=_("Non-standard path!"),
+                font_color=GUIConstants.WARNING_COLOR,
+                is_text_centered=True,
+                screen_y=self.components[-1].screen_y + self.components[-1].height + GUIConstants.COMPONENT_PADDING,
+            ))
 
 
 

@@ -58,6 +58,28 @@ def get_standard_derivation_path(network: str = SettingsConstants.MAINNET, walle
 
 
 
+def is_standard_derivation(derivation_path: str, script_type: str, network: str) -> bool:
+    """
+    Returns True if the derivation_path matches the standard BIP path for the
+    given script_type, network, and any account 0-9.  For example, native segwit
+    on mainnet must be m/84'/0'/<account>'.
+    """
+    for account in range(10):
+        try:
+            standard = get_standard_derivation_path(
+                network=network,
+                wallet_type=SettingsConstants.SINGLE_SIG,
+                script_type=script_type,
+                account=account,
+            )
+            if derivation_path == standard:
+                return True
+        except Exception:
+            pass
+    return False
+
+
+
 def get_expanded_search_derivation_paths(network: str = SettingsConstants.MAINNET) -> list:
     """
     Returns a list of derivation paths for expanded address search.

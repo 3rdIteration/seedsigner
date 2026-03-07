@@ -526,3 +526,32 @@ def test_get_expanded_search_derivation_paths():
     # Non-standard paths should be same regardless of network
     assert "m/0'/0" in testnet_paths
     assert "m/0" in testnet_paths
+
+
+def test_is_standard_derivation():
+    """
+    Tests seedsigner.helpers.embit_utils.is_standard_derivation()
+    """
+    # Standard combinations
+    assert embit_utils.is_standard_derivation("m/84'/0'/0'", SC.NATIVE_SEGWIT, SC.MAINNET) is True
+    assert embit_utils.is_standard_derivation("m/49'/0'/0'", SC.NESTED_SEGWIT, SC.MAINNET) is True
+    assert embit_utils.is_standard_derivation("m/44'/0'/0'", SC.LEGACY_P2PKH, SC.MAINNET) is True
+    assert embit_utils.is_standard_derivation("m/86'/0'/0'", SC.TAPROOT, SC.MAINNET) is True
+
+    # Standard with non-zero account
+    assert embit_utils.is_standard_derivation("m/84'/0'/5'", SC.NATIVE_SEGWIT, SC.MAINNET) is True
+
+    # Testnet / regtest standard paths
+    assert embit_utils.is_standard_derivation("m/84'/1'/0'", SC.NATIVE_SEGWIT, SC.TESTNET) is True
+    assert embit_utils.is_standard_derivation("m/84'/1'/0'", SC.NATIVE_SEGWIT, SC.REGTEST) is True
+
+    # Non-standard: wrong BIP purpose for the script type
+    assert embit_utils.is_standard_derivation("m/44'/0'/0'", SC.NATIVE_SEGWIT, SC.MAINNET) is False
+    assert embit_utils.is_standard_derivation("m/84'/0'/0'", SC.LEGACY_P2PKH, SC.MAINNET) is False
+
+    # Non-standard: BRD Wallet and Coldcard paths
+    assert embit_utils.is_standard_derivation("m/0'/0", SC.NATIVE_SEGWIT, SC.MAINNET) is False
+    assert embit_utils.is_standard_derivation("m/0", SC.LEGACY_P2PKH, SC.MAINNET) is False
+
+    # Non-standard: account beyond 9 still returns False
+    assert embit_utils.is_standard_derivation("m/84'/0'/10'", SC.NATIVE_SEGWIT, SC.MAINNET) is False

@@ -4168,11 +4168,31 @@ class SeedAddressVerificationSuccessView(View):
     
 
     def run(self):
+        from seedsigner.helpers import embit_utils
+        derivation_path = self.controller.unverified_address.get("derivation_path")
+        script_type = self.controller.unverified_address.get("script_type")
+        network = self.controller.unverified_address.get("network")
+
+        # Determine if the matched derivation path is non-standard for the script type
+        is_non_standard = False
+        if derivation_path and script_type and network:
+            is_non_standard = not embit_utils.is_standard_derivation(
+                derivation_path=derivation_path,
+                script_type=script_type,
+                network=network,
+            )
+
+        script_type_settings_entry = SettingsDefinition.get_settings_entry(SettingsConstants.SETTING__SCRIPT_TYPES)
+        script_type_display = script_type_settings_entry.get_selection_option_display_name_by_value(script_type) if script_type else None
+
         self.run_screen(
             seed_screens.SeedAddressVerificationSuccessScreen,
             address = self.controller.unverified_address["address"],
             verified_index = self.controller.unverified_address["verified_index"],
             verified_index_is_change = self.controller.unverified_address["verified_index_is_change"],
+            derivation_path = derivation_path,
+            script_type_display = script_type_display,
+            is_non_standard = is_non_standard,
         )
 
         return Destination(MainMenuView)

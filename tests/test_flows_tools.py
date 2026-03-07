@@ -421,3 +421,75 @@ class TestToolsFlows(FlowTest):
             FlowStep(seed_views.SeedAddressVerificationView),
             FlowStep(seed_views.SeedAddressVerificationSuccessView),
         ])
+
+
+    def test__verify_address__success_reports_derivation_path(self):
+        """Success screen should report derivation path, script type, and
+        non-standard flag when the address was found via expanded search."""
+        from seedsigner.helpers import embit_utils
+
+        controller = Controller.get_instance()
+        seed = Seed(mnemonic=["abandon " * 11 + "about"])
+        controller.storage.set_pending_seed(seed)
+        controller.storage.finalize_pending_seed()
+        settings = controller.settings
+        settings.set_value(SettingsConstants.SETTING__NETWORK, SettingsConstants.REGTEST)
+
+        # Set up a non-standard match: native segwit address on BIP44 path
+        non_standard_path = "m/44'/1'/0'"
+        controller.unverified_address = dict(
+            address="bcrt1q_fake",
+            script_type=SettingsConstants.NATIVE_SEGWIT,
+            network=SettingsConstants.REGTEST,
+            sig_type=SettingsConstants.SINGLE_SIG,
+            derivation_path=non_standard_path,
+            verified_index=2,
+            verified_index_is_change=False,
+        )
+
+        view = seed_views.SeedAddressVerificationSuccessView(seed_num=0)
+
+        def fake_run_screen(*args, **kwargs):
+            return 0
+
+        with mock.patch.object(view, "run_screen", side_effect=fake_run_screen) as mocked:
+            view.run()
+
+        kwargs = mocked.call_args.kwargs
+        assert kwargs["derivation_path"] == non_standard_path
+        assert kwargs["script_type_display"] is not None
+        assert kwargs["is_non_standard"] is True
+
+
+    def test__verify_address__success_standard_path_not_flagged(self):
+        """Success screen should not flag a standard derivation path as
+        non-standard."""
+        controller = Controller.get_instance()
+        seed = Seed(mnemonic=["abandon " * 11 + "about"])
+        controller.storage.set_pending_seed(seed)
+        controller.storage.finalize_pending_seed()
+        settings = controller.settings
+        settings.set_value(SettingsConstants.SETTING__NETWORK, SettingsConstants.REGTEST)
+
+        standard_path = "m/84'/1'/0'"
+        controller.unverified_address = dict(
+            address="bcrt1q_fake",
+            script_type=SettingsConstants.NATIVE_SEGWIT,
+            network=SettingsConstants.REGTEST,
+            sig_type=SettingsConstants.SINGLE_SIG,
+            derivation_path=standard_path,
+            verified_index=6,
+            verified_index_is_change=False,
+        )
+
+        view = seed_views.SeedAddressVerificationSuccessView(seed_num=0)
+
+        def fake_run_screen(*args, **kwargs):
+            return 0
+
+        with mock.patch.object(view, "run_screen", side_effect=fake_run_screen) as mocked:
+            view.run()
+
+        kwargs = mocked.call_args.kwargs
+        assert kwargs["derivation_path"] == standard_path
+        assert kwargs["is_non_standard"] is False
