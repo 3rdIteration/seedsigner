@@ -315,6 +315,9 @@ class TestToolsFlows(FlowTest):
 
             # Taproot regtest change addr @ index 48
             "bcrt1pj5v8ean2hc5lh2djsgfx4j9uc0n67942ngv6q9r49qv88ex5mrwsn3u4f7",
+
+            # Legacy P2PKH mainnet receive addr @ index 0 (m/44'/0'/0')
+            "1LqBGSKuX5yYUonjxT5qGfpUsXKYYWeabA",
         ]
 
         for test_addr in addrs:
