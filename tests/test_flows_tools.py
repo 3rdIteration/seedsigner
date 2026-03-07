@@ -426,8 +426,6 @@ class TestToolsFlows(FlowTest):
     def test__verify_address__success_reports_derivation_path(self):
         """Success screen should report derivation path, script type, and
         non-standard flag when the address was found via expanded search."""
-        from seedsigner.helpers import embit_utils
-
         controller = Controller.get_instance()
         seed = Seed(mnemonic=["abandon " * 11 + "about"])
         controller.storage.set_pending_seed(seed)
