@@ -1536,6 +1536,7 @@ class SeedAddressVerificationScreen(ButtonListScreen):
     threadsafe_counter: ThreadsafeCounter = None
     verified_index: ThreadsafeCounter = None
     max_iterations: int | None = None
+    display_index_counter: ThreadsafeCounter = None
 
 
     def __post_init__(self):
@@ -1564,12 +1565,17 @@ class SeedAddressVerificationScreen(ButtonListScreen):
             screen_y=self.components[-1].screen_y + self.components[-1].height + GUIConstants.COMPONENT_PADDING,
         ))
 
+        # Use display_index_counter if provided (expanded search), otherwise
+        # fall back to threadsafe_counter (simple/multisig - it IS the index).
+        index_counter = self.display_index_counter if self.display_index_counter else self.threadsafe_counter
+
         self.threads.append(SeedAddressVerificationScreen.ProgressThread(
             renderer=self.renderer,
             screen_y=self.components[-1].screen_y + self.components[-1].height + GUIConstants.COMPONENT_PADDING,
             threadsafe_counter=self.threadsafe_counter,
             verified_index=self.verified_index,
             max_iterations=self.max_iterations,
+            display_index_counter=index_counter,
         ))
     
 
@@ -1588,12 +1594,17 @@ class SeedAddressVerificationScreen(ButtonListScreen):
 
 
     class ProgressThread(BaseThread):
-        def __init__(self, renderer: Renderer, screen_y: int, threadsafe_counter: ThreadsafeCounter, verified_index: ThreadsafeCounter, max_iterations: int | None = None):
+        def __init__(self, renderer: Renderer, screen_y: int, threadsafe_counter: ThreadsafeCounter, verified_index: ThreadsafeCounter, max_iterations: int | None = None, display_index_counter: ThreadsafeCounter = None):
             self.renderer = renderer
             self.screen_y = screen_y
             self.threadsafe_counter = threadsafe_counter
             self.verified_index = verified_index
             self.max_iterations = max_iterations
+            # Counter whose value is shown as the address index on screen.
+            # For the simple/multisig search this is the threadsafe_counter
+            # itself; for the expanded search it is a separate counter that
+            # the thread updates with the current address index.
+            self.display_index_counter = display_index_counter if display_index_counter else threadsafe_counter
             super().__init__()
         
 
@@ -1616,7 +1627,7 @@ class SeedAddressVerificationScreen(ButtonListScreen):
 
                 textarea = TextArea(
                     # TRANSLATOR_NOTE: Inserts the nth address number (e.g. "Checking address 7")
-                    text=_("Checking address {}").format(self.threadsafe_counter.cur_count),
+                    text=_("Checking address {}").format(self.display_index_counter.cur_count),
                     font_name=GUIConstants.get_body_font_name(),
                     font_size=GUIConstants.get_body_font_size(),
                     screen_y=self.screen_y
@@ -1635,6 +1646,9 @@ class SeedAddressVerificationSuccessScreen(LargeIconStatusScreen):
     address: str = None
     verified_index: int = None
     verified_index_is_change: bool = None
+    derivation_path: str = None
+    script_type_display: str = None
+    is_non_standard: bool = False
 
 
     def __post_init__(self):
@@ -1659,17 +1673,33 @@ class SeedAddressVerificationSuccessScreen(LargeIconStatusScreen):
             max_lines=1,  # Use abbreviated format w/ellipsis
         ))
 
+        # TRANSLATOR_NOTE: Combines address type and index (e.g. "receive address: 0" or "change address: 7")
         self.components.append(TextArea(
-            text=address_type,
-            screen_y=self.components[-1].screen_y + self.components[-1].height + 2*GUIConstants.COMPONENT_PADDING,
-        ))
-
-        # TRANSLATOR_NOTE: Describes the address index (e.g. "index 7")
-        index_str = _("index {}").format(self.verified_index)
-        self.components.append(TextArea(
-            text=index_str,
+            text=f"{address_type}: {self.verified_index}",
             screen_y=self.components[-1].screen_y + self.components[-1].height + GUIConstants.COMPONENT_PADDING,
         ))
+
+        # Show derivation path and script type
+        if self.derivation_path:
+            path_label = self.derivation_path
+            if self.script_type_display:
+                path_label = f"{self.derivation_path} ({self.script_type_display})"
+            self.components.append(TextArea(
+                text=path_label,
+                font_size=GUIConstants.LABEL_FONT_SIZE,
+                font_color=GUIConstants.WARNING_COLOR if self.is_non_standard else GUIConstants.LABEL_FONT_COLOR,
+                is_text_centered=True,
+                screen_y=self.components[-1].screen_y + self.components[-1].height + GUIConstants.LIST_ITEM_PADDING,
+            ))
+
+        if self.is_non_standard:
+            # TRANSLATOR_NOTE: Warning shown when address was found on a non-standard derivation path
+            self.components.append(TextArea(
+                text=_("Non-standard path!"),
+                font_color=GUIConstants.WARNING_COLOR,
+                is_text_centered=True,
+                screen_y=self.components[-1].screen_y + self.components[-1].height + GUIConstants.LIST_ITEM_PADDING,
+            ))
 
 
 
