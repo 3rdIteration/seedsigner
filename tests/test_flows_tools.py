@@ -349,8 +349,9 @@ class TestToolsFlows(FlowTest):
         assert seed_views.SeedSelectSeedView.SATOCHIP in button_data
 
 
-    def test__verify_address__expanded_search__button_present_for_singlesig(self):
-        """Expanded Search button should be available for singlesig address verification."""
+    def test__verify_address__expanded_search__singlesig_default(self):
+        """Singlesig address verification should only show Cancel (no Skip 10)
+        since it automatically uses the expanded search."""
         controller = Controller.get_instance()
         controller.storage.set_pending_seed(Seed(mnemonic=["abandon " * 11 + "about"]))
         controller.storage.finalize_pending_seed()
@@ -374,16 +375,16 @@ class TestToolsFlows(FlowTest):
             view.run()
 
         button_data = mocked.call_args.kwargs["button_data"]
-        assert seed_views.SeedAddressVerificationView.EXPANDED_SEARCH in button_data
-        assert seed_views.SeedAddressVerificationView.SKIP_10 in button_data
         assert seed_views.SeedAddressVerificationView.CANCEL in button_data
+        assert seed_views.SeedAddressVerificationView.SKIP_10 not in button_data
 
 
     def test__verify_address__expanded_search__flow(self, monkeypatch):
         """
-            Expanded search should find an address derived from a mismatched
-            derivation path/script type combination (BIP44 path with native
-            segwit addresses instead of the standard BIP84 path).
+            Singlesig address verification should automatically find an address
+            derived from a mismatched derivation path/script type combination
+            (BIP44 path with native segwit addresses instead of the standard
+            BIP84 path) without needing a separate button press.
         """
         from seedsigner.helpers import embit_utils
 
@@ -398,7 +399,7 @@ class TestToolsFlows(FlowTest):
         settings.set_value(SettingsConstants.SETTING__NETWORK, SettingsConstants.REGTEST)
 
         # Generate a native segwit address from BIP44 (legacy) derivation path.
-        # Normal search on m/84'/1'/0' would NOT find this address.
+        # A single-path search on m/84'/1'/0' would NOT find this address.
         non_standard_path = "m/44'/1'/0'"
         xpub = seed.get_xpub(wallet_path=non_standard_path, network=SettingsConstants.REGTEST)
         embit_network = SettingsConstants.map_network_to_embit(SettingsConstants.REGTEST)
@@ -416,9 +417,7 @@ class TestToolsFlows(FlowTest):
             FlowStep(scan_views.ScanAddressView, before_run=load_address_into_decoder),
             FlowStep(seed_views.AddressVerificationStartView, is_redirect=True),
             FlowStep(seed_views.SeedSelectSeedView, screen_return_value=0),
-            # Normal search; select Expanded Search
-            FlowStep(seed_views.SeedAddressVerificationView, button_data_selection=seed_views.SeedAddressVerificationView.EXPANDED_SEARCH),
-            # Expanded search finds the address on the non-standard path
+            # Expanded search is now the default; finds the address automatically
             FlowStep(seed_views.SeedAddressVerificationView),
             FlowStep(seed_views.SeedAddressVerificationSuccessView),
         ])

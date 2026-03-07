@@ -3864,24 +3864,21 @@ class SeedAddressVerificationView(View):
         Performs single sig verification on `seed_num` if specified, otherwise assumes
         multisig.
 
-        When `expanded=True`, searches all standard derivation paths (BIP44/49/84/86)
-        across accounts 0-9 and non-standard paths (BRD, Coldcard), checking 100
-        addresses per path.
+        For singlesig with a seed, automatically searches all standard derivation
+        paths (BIP44/49/84/86) across accounts 0-9 and non-standard paths (BRD,
+        Coldcard), checking 100 addresses per path.
     """
     # TRANSLATOR_NOTE: Option when scanning for a matching address; skips ten addresses ahead
     SKIP_10 = ButtonOption("Skip 10")
-    # TRANSLATOR_NOTE: Option to search all standard derivation paths and the first 10 accounts
-    EXPANDED_SEARCH = ButtonOption("Expanded Search")
     CANCEL = ButtonOption("Cancel")
 
     MAX_ITERATIONS_EXPORT_XPUB = 1000
     EXPANDED_ADDRS_PER_PATH = 100
 
-    def __init__(self, seed_num: int = None, export_for_xpub: bool = False, expanded: bool = False):
+    def __init__(self, seed_num: int = None, export_for_xpub: bool = False):
         super().__init__()
         self.seed_num = seed_num
         self.export_for_xpub = export_for_xpub
-        self.expanded = expanded
         self.is_multisig = self.controller.unverified_address["sig_type"] == SettingsConstants.MULTISIG
         self.seed_derivation_override = ""
         if not self.is_multisig:
@@ -3910,7 +3907,11 @@ class SeedAddressVerificationView(View):
         self.verified_index = ThreadsafeCounter(initial_value=None)
         self.verified_index_is_change = ThreadsafeCounter(initial_value=None)
 
-        if self.expanded and self.seed:
+        # For singlesig with a seed (non-export), automatically search all standard
+        # derivation paths and accounts. For multisig or export-for-xpub, use the
+        # single-path brute force thread.
+        self.is_expanded = self.seed is not None and not self.is_multisig and not self.export_for_xpub
+        if self.is_expanded:
             from seedsigner.helpers import embit_utils
             derivation_paths = embit_utils.get_expanded_search_derivation_paths(
                 network=self.network,
@@ -3943,20 +3944,15 @@ class SeedAddressVerificationView(View):
 
 
     def run(self):
-        expanded_selected = False
-
         # Start brute-force calculations from the zero-th index
         try:
             self.addr_verification_thread.start()
 
-            # Build button list based on mode
-            if self.expanded:
+            # Expanded search doesn't support Skip 10 (iterates paths, not just indices)
+            if self.is_expanded:
                 button_data = [self.CANCEL]
             else:
-                button_data = [self.SKIP_10]
-                if self.seed and not self.export_for_xpub:
-                    button_data.append(self.EXPANDED_SEARCH)
-                button_data.append(self.CANCEL)
+                button_data = [self.SKIP_10, self.CANCEL]
 
             script_type_settings_entry = SettingsDefinition.get_settings_entry(SettingsConstants.SETTING__SCRIPT_TYPES)
             script_type_display = script_type_settings_entry.get_selection_option_display_name_by_value(self.script_type)
@@ -3970,7 +3966,7 @@ class SeedAddressVerificationView(View):
 
             if self.export_for_xpub:
                 max_iterations = self.MAX_ITERATIONS_EXPORT_XPUB
-            elif self.expanded:
+            elif self.is_expanded:
                 from seedsigner.helpers import embit_utils
                 num_paths = len(embit_utils.get_expanded_search_derivation_paths(
                     network=self.network,
@@ -4012,10 +4008,6 @@ class SeedAddressVerificationView(View):
                     if button_data[selected_menu_num] == self.SKIP_10:
                         self.threadsafe_counter.increment(10)
 
-                    elif button_data[selected_menu_num] == self.EXPANDED_SEARCH:
-                        expanded_selected = True
-                        break
-
                     elif button_data[selected_menu_num] == self.CANCEL:
                         break
 
@@ -4026,7 +4018,7 @@ class SeedAddressVerificationView(View):
                 # Successfully verified the addr; update the data
                 self.controller.unverified_address["verified_index"] = self.verified_index.cur_count
                 self.controller.unverified_address["verified_index_is_change"] = self.verified_index_is_change.cur_count == 1
-                if self.expanded and self.addr_verification_thread.matched_derivation_path:
+                if self.is_expanded and self.addr_verification_thread.matched_derivation_path:
                     self.controller.unverified_address["derivation_path"] = self.addr_verification_thread.matched_derivation_path
                 if self.export_for_xpub:
                     return Destination(SeedExportXpubVerificationSuccessView)
@@ -4034,9 +4026,6 @@ class SeedAddressVerificationView(View):
 
             if self.export_for_xpub and max_iterations is not None and self.threadsafe_counter.cur_count >= max_iterations:
                 return Destination(SeedExportXpubVerificationFailedView, view_args=dict(reason="no_match"))
-
-            if expanded_selected:
-                return Destination(SeedAddressVerificationView, view_args=dict(seed_num=self.seed_num, expanded=True))
 
         finally:
             # Halt the thread if the user gave up (will already be stopped if it verified the
