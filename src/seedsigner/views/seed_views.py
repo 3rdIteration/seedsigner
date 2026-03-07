@@ -4223,6 +4223,8 @@ class SeedAddressVerificationView(View):
                         return
 
                     if path in skipped_paths:
+                        # Account for the iterations that would have been done
+                        # for this path so the progress counter stays accurate.
                         self.threadsafe_counter.increment(len(self.SCRIPT_TYPES))
                         continue
 

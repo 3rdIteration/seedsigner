@@ -546,6 +546,8 @@ class TestToolsFlows(FlowTest):
     def test__verify_address__expanded_not_found__shows_failure(self, monkeypatch):
         """When the simple search exhausts its batch without a match, it should
         route to SeedAddressVerificationSimpleNotFoundView."""
+        monkeypatch.setattr(seed_views.SeedAddressVerificationView, "SIMPLE_SEARCH_BATCH_SIZE", 10)
+
         controller = Controller.get_instance()
         seed = Seed(mnemonic=["abandon " * 11 + "about"])
         controller.storage.set_pending_seed(seed)
@@ -572,8 +574,8 @@ class TestToolsFlows(FlowTest):
 
         assert destination.View_cls == seed_views.SeedAddressVerificationSimpleNotFoundView
         assert destination.view_args["seed_num"] == 0
-        assert destination.view_args["addrs_checked"] >= 100
-        assert destination.view_args["next_start_index"] >= 100
+        assert destination.view_args["addrs_checked"] >= 10
+        assert destination.view_args["next_start_index"] >= 10
 
 
     def test__verify_address__expanded_not_found__after_expanded(self, monkeypatch):
