@@ -266,6 +266,34 @@ def test_cross_impl_rsa2048_key():
     assert key.n == CROSS_IMPL_RSA2048_N
 
 
+def test_xprv_seed_produces_same_bip85_gpg_keys():
+    """XprvSeed.get_root() must produce the same BIP85 GPG keys as the
+    equivalent mnemonic-derived Seed.  This is the bug that caused the user
+    to see different RSA keys when loading an xprv directly into SeedSigner
+    versus providing a mnemonic to bipsea."""
+    seed = Seed(mnemonic=MNEMONIC)
+    root_from_mnemonic = bip32.HDKey.from_seed(seed.seed_bytes)
+    xprv_str = root_from_mnemonic.to_base58()
+    xprv_seed = XprvSeed(xprv_str)
+
+    root_from_xprv = xprv_seed.get_root()
+
+    # The roots must derive identical BIP85 entropy
+    entropy_mn = bip85.derive_entropy(root_from_mnemonic, tools_views.BIP85_GPG_APP, [0, 2048, 0])
+    entropy_xp = bip85.derive_entropy(root_from_xprv, tools_views.BIP85_GPG_APP, [0, 2048, 0])
+    assert entropy_mn == entropy_xp, "XprvSeed BIP85 entropy must match mnemonic Seed"
+
+    # RSA key must be identical
+    rsa_mn = bip85_rsa_from_root(root_from_mnemonic, 2048, 0)
+    rsa_xp = bip85_rsa_from_root(root_from_xprv, 2048, 0)
+    assert rsa_mn.n == rsa_xp.n, "XprvSeed RSA key n-value must match mnemonic Seed"
+
+    # ECC key must be identical
+    ecc_mn = bip85_secp256k1_from_root(root_from_mnemonic, 0)
+    ecc_xp = bip85_secp256k1_from_root(root_from_xprv, 0)
+    assert int(ecc_mn.s) == int(ecc_xp.s), "XprvSeed secp256k1 key must match mnemonic Seed"
+
+
 def test_bip85_rsa_deterministic():
     seed = Seed(mnemonic=MNEMONIC)
     root = bip32.HDKey.from_seed(seed.seed_bytes)

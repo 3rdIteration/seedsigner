@@ -11080,7 +11080,10 @@ def bip85_add_subkeys(
         key_index,
         start_index,
     )
-    root = bip32.HDKey.from_seed(seed.seed_bytes)
+    if hasattr(seed, "get_root"):
+        root = seed.get_root()
+    else:
+        root = bip32.HDKey.from_seed(seed.seed_bytes)
 
     export = run(
         ["gpg", "--armor", "--export-secret-keys", fingerprint],
@@ -11709,7 +11712,8 @@ class ToolsGPGLoadBIP85KeyView(View):
                 button_data=[ButtonOption("I Understand")],
             )
             return Destination(BackStackView)
-        root = bip32.HDKey.from_seed(seed.seed_bytes)
+        network = self.settings.get_value(SettingsConstants.SETTING__NETWORK)
+        root = seed.get_root(network)
         KEY_BITS = (
             2048
             if key_type == "rsa2048"
