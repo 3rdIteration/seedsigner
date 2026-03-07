@@ -3873,7 +3873,7 @@ class SeedAddressVerificationView(View):
     CANCEL = ButtonOption("Cancel")
 
     MAX_ITERATIONS_EXPORT_XPUB = 1000
-    EXPANDED_ADDRS_PER_PATH = 100
+    EXPANDED_ADDRS_PER_PATH = 10
 
     def __init__(self, seed_num: int = None, export_for_xpub: bool = False, expanded_start_index: int = 0):
         super().__init__()
@@ -3920,7 +3920,6 @@ class SeedAddressVerificationView(View):
             self.addr_verification_thread = self.ExpandedBruteForceAddressVerificationThread(
                 address=self.address,
                 seed=self.seed,
-                script_type=self.script_type,
                 embit_network=embit_network,
                 network=self.network,
                 derivation_paths=derivation_paths,
@@ -3973,7 +3972,8 @@ class SeedAddressVerificationView(View):
                 num_paths = len(embit_utils.get_expanded_search_derivation_paths(
                     network=self.network,
                 ))
-                max_iterations = num_paths * self.EXPANDED_ADDRS_PER_PATH
+                num_script_types = len(self.ExpandedBruteForceAddressVerificationThread.SCRIPT_TYPES)
+                max_iterations = num_paths * self.EXPANDED_ADDRS_PER_PATH * num_script_types
             else:
                 max_iterations = None
 
@@ -4022,6 +4022,8 @@ class SeedAddressVerificationView(View):
                 self.controller.unverified_address["verified_index_is_change"] = self.verified_index_is_change.cur_count == 1
                 if self.is_expanded and self.addr_verification_thread.matched_derivation_path:
                     self.controller.unverified_address["derivation_path"] = self.addr_verification_thread.matched_derivation_path
+                if self.is_expanded and self.addr_verification_thread.matched_script_type:
+                    self.controller.unverified_address["script_type"] = self.addr_verification_thread.matched_script_type
                 if self.export_for_xpub:
                     return Destination(SeedExportXpubVerificationSuccessView)
                 return Destination(SeedAddressVerificationSuccessView, view_args=dict(seed_num=self.seed_num))
@@ -4108,16 +4110,24 @@ class SeedAddressVerificationView(View):
 
     class ExpandedBruteForceAddressVerificationThread(BaseThread):
         """
-            Searches all standard derivation paths (BIP44/49/84/86) across accounts
-            0-9 and non-standard paths, checking a fixed number of addresses per path.
-            The script type used for address generation is inferred from the scanned
-            address.
+            Recovery-oriented search that tries ALL supported script types for
+            every derivation path (BIP44/49/84/86 × accounts 0-9 plus
+            non-standard wallet paths).  This catches addresses produced by
+            any script-type / derivation-path combination, even non-standard
+            ones, regardless of which script types are enabled in Settings.
         """
-        def __init__(self, address: str, seed: Seed, script_type: str, embit_network: str, network: str, derivation_paths: list, addrs_per_path: int, start_index: int, threadsafe_counter: ThreadsafeCounter, verified_index: ThreadsafeCounter, verified_index_is_change: ThreadsafeCounter):
+        # All single-sig script types to try for every derivation path.
+        SCRIPT_TYPES = [
+            SettingsConstants.NATIVE_SEGWIT,
+            SettingsConstants.NESTED_SEGWIT,
+            SettingsConstants.LEGACY_P2PKH,
+            SettingsConstants.TAPROOT,
+        ]
+
+        def __init__(self, address: str, seed: Seed, embit_network: str, network: str, derivation_paths: list, addrs_per_path: int, start_index: int, threadsafe_counter: ThreadsafeCounter, verified_index: ThreadsafeCounter, verified_index_is_change: ThreadsafeCounter):
             super().__init__()
             self.address = address
             self.seed = seed
-            self.script_type = script_type
             self.embit_network = embit_network
             self.network = network
             self.derivation_paths = derivation_paths
@@ -4127,6 +4137,7 @@ class SeedAddressVerificationView(View):
             self.verified_index = verified_index
             self.verified_index_is_change = verified_index_is_change
             self.matched_derivation_path = None
+            self.matched_script_type = None
 
 
         def run(self):
@@ -4139,37 +4150,43 @@ class SeedAddressVerificationView(View):
                     xpub = self.seed.get_xpub(wallet_path=path, network=self.network)
                 except Exception:
                     # Skip paths that can't be derived for this seed type
-                    self.threadsafe_counter.increment(self.addrs_per_path)
+                    self.threadsafe_counter.increment(self.addrs_per_path * len(self.SCRIPT_TYPES))
                     continue
 
-                for i in range(self.start_index, self.start_index + self.addrs_per_path):
+                for script_type in self.SCRIPT_TYPES:
                     if not self.keep_running:
                         return
 
-                    receive_address = embit_utils.get_single_sig_address(
-                        xpub=xpub, script_type=self.script_type,
-                        index=i, is_change=False, embit_network=self.embit_network,
-                    )
-                    change_address = embit_utils.get_single_sig_address(
-                        xpub=xpub, script_type=self.script_type,
-                        index=i, is_change=True, embit_network=self.embit_network,
-                    )
+                    for i in range(self.start_index, self.start_index + self.addrs_per_path):
+                        if not self.keep_running:
+                            return
 
-                    if self.address == receive_address:
-                        self.matched_derivation_path = path
-                        self.verified_index.set_value(i)
-                        self.verified_index_is_change.set_value(0)
-                        self.keep_running = False
-                        return
+                        receive_address = embit_utils.get_single_sig_address(
+                            xpub=xpub, script_type=script_type,
+                            index=i, is_change=False, embit_network=self.embit_network,
+                        )
+                        change_address = embit_utils.get_single_sig_address(
+                            xpub=xpub, script_type=script_type,
+                            index=i, is_change=True, embit_network=self.embit_network,
+                        )
 
-                    elif self.address == change_address:
-                        self.matched_derivation_path = path
-                        self.verified_index.set_value(i)
-                        self.verified_index_is_change.set_value(1)
-                        self.keep_running = False
-                        return
+                        if self.address == receive_address:
+                            self.matched_derivation_path = path
+                            self.matched_script_type = script_type
+                            self.verified_index.set_value(i)
+                            self.verified_index_is_change.set_value(0)
+                            self.keep_running = False
+                            return
 
-                    self.threadsafe_counter.increment()
+                        elif self.address == change_address:
+                            self.matched_derivation_path = path
+                            self.matched_script_type = script_type
+                            self.verified_index.set_value(i)
+                            self.verified_index_is_change.set_value(1)
+                            self.keep_running = False
+                            return
+
+                        self.threadsafe_counter.increment()
 
 
 
@@ -4216,7 +4233,7 @@ class SeedAddressVerificationSuccessView(View):
 class SeedAddressVerificationNotFoundView(View):
     """Shown when the expanded address search completes without finding a match.
     Offers the user a chance to search the next batch of addresses."""
-    CHECK_NEXT = ButtonOption("Check Next 100")
+    CHECK_NEXT = ButtonOption("Check Next 10")
     DONE = ButtonOption("Done")
 
     def __init__(self, seed_num: int, addrs_per_path_checked: int, next_start_index: int):

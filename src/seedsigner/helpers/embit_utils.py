@@ -90,6 +90,11 @@ def get_expanded_search_derivation_paths(network: str = SettingsConstants.MAINNE
     Both coin types are included because some wallets use cross-network
     derivation paths (e.g. a testnet derivation path to produce a
     mainnet-formatted address).
+
+    NOTE: This function intentionally does NOT consult the user's
+    Settings for enabled script types. All standard derivation paths
+    are always returned so the expanded search can act as a recovery
+    tool regardless of which script types the user has enabled.
     """
     paths = []
     script_types = [

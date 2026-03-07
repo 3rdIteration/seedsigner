@@ -313,8 +313,8 @@ class TestToolsFlows(FlowTest):
             # Native segwit regtest receive addr @ index 6
             "bcrt1q4e9q5taxnsvc6m0uxv6h75mkzvnkxeqk6l90u2",
 
-            # Taproot regtest change addr @ index 48
-            "bcrt1pj5v8ean2hc5lh2djsgfx4j9uc0n67942ngv6q9r49qv88ex5mrwsn3u4f7",
+            # Taproot regtest change addr @ index 0
+            "bcrt1p6uav7en8k7zsumsqugdmg5j6930zmzy4dg7jcddshsr0fvxlqx7qnc7l22",
 
             # Legacy P2PKH mainnet receive addr @ index 0 (m/44'/0'/0')
             "1LqBGSKuX5yYUonjxT5qGfpUsXKYYWeabA",
@@ -569,7 +569,7 @@ class TestToolsFlows(FlowTest):
 
 
     def test__verify_address__not_found_check_next__flow(self):
-        """The 'Check Next 100' button on the not-found screen should route
+        """The 'Check Next 10' button on the not-found screen should route
         back to SeedAddressVerificationView with the next start index."""
         controller = Controller.get_instance()
         seed = Seed(mnemonic=["abandon " * 11 + "about"])
@@ -587,11 +587,11 @@ class TestToolsFlows(FlowTest):
         )
 
         view = seed_views.SeedAddressVerificationNotFoundView(
-            seed_num=0, addrs_per_path_checked=100, next_start_index=100,
+            seed_num=0, addrs_per_path_checked=10, next_start_index=10,
         )
 
         def fake_run_screen(*args, **kwargs):
-            # Simulate pressing "Check Next 100" (first button = index 0)
+            # Simulate pressing "Check Next 10" (first button = index 0)
             return 0
 
         with mock.patch.object(view, "run_screen", side_effect=fake_run_screen):
@@ -599,7 +599,7 @@ class TestToolsFlows(FlowTest):
 
         assert destination.View_cls == seed_views.SeedAddressVerificationView
         assert destination.view_args["seed_num"] == 0
-        assert destination.view_args["expanded_start_index"] == 100
+        assert destination.view_args["expanded_start_index"] == 10
 
 
     def test__verify_address__not_found_done__flow(self):
@@ -631,3 +631,80 @@ class TestToolsFlows(FlowTest):
             destination = view.run()
 
         assert destination.View_cls == MainMenuView
+
+
+    def test__verify_address__nested_segwit_singlesig__flow(self, monkeypatch):
+        """Expanded search should find a Nested Segwit (P2SH-P2WPKH) address
+        at its standard BIP49 derivation path."""
+        from seedsigner.helpers import embit_utils
+
+        monkeypatch.setattr(seed_views.SeedAddressVerificationView, "EXPANDED_ADDRS_PER_PATH", 5)
+
+        controller = Controller.get_instance()
+        seed = Seed(mnemonic=["abandon " * 11 + "about"])
+        controller.storage.set_pending_seed(seed)
+        controller.storage.finalize_pending_seed()
+        settings = controller.settings
+        settings.set_value(SettingsConstants.SETTING__NETWORK, SettingsConstants.MAINNET)
+
+        # Standard BIP49 nested segwit mainnet address at index 0
+        xpub = seed.get_xpub(wallet_path="m/49'/0'/0'", network=SettingsConstants.MAINNET)
+        embit_network = SettingsConstants.map_network_to_embit(SettingsConstants.MAINNET)
+        test_addr = embit_utils.get_single_sig_address(
+            xpub=xpub, script_type=SettingsConstants.NESTED_SEGWIT,
+            index=0, is_change=False, embit_network=embit_network,
+        )
+
+        def load_address_into_decoder(view: scan_views.ScanView):
+            view.decoder.add_data(test_addr)
+
+        self.run_sequence([
+            FlowStep(MainMenuView, button_data_selection=MainMenuView.TOOLS),
+            FlowStep(tools_views.ToolsMenuView, button_data_selection=tools_views.ToolsMenuView.VERIFY_ADDRESS),
+            FlowStep(scan_views.ScanAddressView, before_run=load_address_into_decoder),
+            FlowStep(seed_views.AddressVerificationStartView, is_redirect=True),
+            # Nested segwit requires sig type selection
+            FlowStep(seed_views.AddressVerificationSigTypeView, button_data_selection=seed_views.AddressVerificationSigTypeView.SINGLE_SIG),
+            FlowStep(seed_views.SeedSelectSeedView, screen_return_value=0),
+            FlowStep(seed_views.SeedAddressVerificationView),
+            FlowStep(seed_views.SeedAddressVerificationSuccessView),
+        ])
+
+
+    def test__verify_address__expanded_search_ignores_disabled_script_types(self, monkeypatch):
+        """Expanded search should find addresses for ALL script types even
+        when they are disabled in Settings (recovery feature)."""
+        from seedsigner.helpers import embit_utils
+
+        monkeypatch.setattr(seed_views.SeedAddressVerificationView, "EXPANDED_ADDRS_PER_PATH", 5)
+
+        controller = Controller.get_instance()
+        seed = Seed(mnemonic=["abandon " * 11 + "about"])
+        controller.storage.set_pending_seed(seed)
+        controller.storage.finalize_pending_seed()
+        settings = controller.settings
+        settings.set_value(SettingsConstants.SETTING__NETWORK, SettingsConstants.MAINNET)
+
+        # Restrict settings to ONLY native segwit (LEGACY_P2PKH is disabled)
+        settings.set_value(SettingsConstants.SETTING__SCRIPT_TYPES, [SettingsConstants.NATIVE_SEGWIT])
+
+        # Use a Legacy P2PKH address — its script type is disabled in settings
+        xpub = seed.get_xpub(wallet_path="m/44'/0'/0'", network=SettingsConstants.MAINNET)
+        embit_network = SettingsConstants.map_network_to_embit(SettingsConstants.MAINNET)
+        test_addr = embit_utils.get_single_sig_address(
+            xpub=xpub, script_type=SettingsConstants.LEGACY_P2PKH,
+            index=0, is_change=False, embit_network=embit_network,
+        )
+
+        def load_address_into_decoder(view: scan_views.ScanView):
+            view.decoder.add_data(test_addr)
+
+        self.run_sequence([
+            FlowStep(MainMenuView, button_data_selection=MainMenuView.TOOLS),
+            FlowStep(tools_views.ToolsMenuView, button_data_selection=tools_views.ToolsMenuView.VERIFY_ADDRESS),
+            FlowStep(scan_views.ScanAddressView, before_run=load_address_into_decoder),
+            FlowStep(seed_views.AddressVerificationStartView, is_redirect=True),
+            FlowStep(seed_views.SeedSelectSeedView, screen_return_value=0),
+            FlowStep(seed_views.SeedAddressVerificationView),
+            FlowStep(seed_views.SeedAddressVerificationSuccessView),
+        ])
