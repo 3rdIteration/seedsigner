@@ -1665,7 +1665,7 @@ class SeedAddressVerificationSuccessScreen(LargeIconStatusScreen):
         # TRANSLATOR_NOTE: Combines address type and index (e.g. "receive address: 0" or "change address: 7")
         self.components.append(TextArea(
             text=f"{address_type}: {self.verified_index}",
-            screen_y=self.components[-1].screen_y + self.components[-1].height + 2*GUIConstants.COMPONENT_PADDING,
+            screen_y=self.components[-1].screen_y + self.components[-1].height + GUIConstants.COMPONENT_PADDING,
         ))
 
         # Show derivation path and script type
@@ -1678,7 +1678,7 @@ class SeedAddressVerificationSuccessScreen(LargeIconStatusScreen):
                 font_size=GUIConstants.LABEL_FONT_SIZE,
                 font_color=GUIConstants.WARNING_COLOR if self.is_non_standard else GUIConstants.LABEL_FONT_COLOR,
                 is_text_centered=True,
-                screen_y=self.components[-1].screen_y + self.components[-1].height + GUIConstants.COMPONENT_PADDING,
+                screen_y=self.components[-1].screen_y + self.components[-1].height + GUIConstants.LIST_ITEM_PADDING,
             ))
 
         if self.is_non_standard:
@@ -1687,7 +1687,7 @@ class SeedAddressVerificationSuccessScreen(LargeIconStatusScreen):
                 text=_("Non-standard path!"),
                 font_color=GUIConstants.WARNING_COLOR,
                 is_text_centered=True,
-                screen_y=self.components[-1].screen_y + self.components[-1].height + GUIConstants.COMPONENT_PADDING,
+                screen_y=self.components[-1].screen_y + self.components[-1].height + GUIConstants.LIST_ITEM_PADDING,
             ))
 
 
