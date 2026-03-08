@@ -181,3 +181,110 @@ the scalar is derived directly from the first `baselen` bytes of the
 64-byte HMAC-SHA512 entropy, reduced modulo the curve order with the
 same fallback.
 ~~~
+
+---
+
+## Dependency analysis: pgpy removal feasibility
+
+SeedSigner currently depends on three crypto libraries for GPG functionality:
+
+| Library | Version | Purpose |
+|---------|---------|---------|
+| **pgpy** | 0.6.0 | OpenPGP packet construction, key assembly, serialization (ASCII armor, fingerprints), message encryption/decryption, key parsing |
+| **cryptography** | 45.0.5 | EC public key derivation from scalars (Ed25519, X25519, NIST/Brainpool curves) — also a **transitive dependency of pgpy** |
+| **pycryptodomex** | 3.23.0 | RSA key generation with deterministic DRNG, SHAKE256 DRNG, AES, RIPEMD160 fallback |
+
+### What pgpy provides (5 categories of usage)
+
+**1. OpenPGP packet construction** — `fields.RSAPriv`, `fields.ECDSAPriv`,
+`fields.EdDSAPriv`, `fields.ECDHPriv`, `fields.ECPoint`, `fields.MPI`,
+`_compute_chksum()`.  Used in every `bip85_*_from_root()` function and
+`_rsa_to_privpacket()`.
+
+**2. Key assembly** — `PGPKey`, `PrivKeyV4`, `PrivSubKeyV4`, `PGPUID.new()`,
+`add_uid()`, `add_subkey()`.  These build complete OpenPGP keys with
+self-signatures, user IDs, and subkey binding signatures.
+
+**3. Serialization** — `str(key)` for ASCII armor export, `key.fingerprint`
+for v4 fingerprint computation, `key.pubkey` for public key extraction.
+
+**4. Message encryption/decryption** — `PGPMessage.new()`, `.encrypt()`,
+`.decrypt()`, `.sign()`, `.verify()` in `gpg_message.py`.
+
+**5. Key parsing** — `PGPKey.from_blob()`, `.subkeys`, `.key_flags` /
+`._get_key_flags()`, `._key.keymaterial` in `smartpgp_import.py`.
+
+### What python-cryptography provides
+
+Used **only** for EC public key derivation from BIP85-derived scalars:
+- `ed25519.Ed25519PrivateKey.from_private_bytes()` → `.public_key().public_bytes()`
+- `x25519.X25519PrivateKey.from_private_bytes()` → `.public_key().public_bytes()`
+- `ec.derive_private_key(scalar, curve)` → `.public_key().public_numbers()`
+
+These compute EC public points from private scalars (7 curve types).
+python-cryptography is also a **mandatory transitive dependency of pgpy**,
+so removing pgpy alone would not eliminate it.
+
+### Feasibility assessment: replacing pgpy with pycryptodomex only
+
+**Short answer: technically possible but a major undertaking (~2000+ lines).**
+
+What would need to be reimplemented from scratch:
+
+1. **OpenPGP v4 packet format** (RFC 4880 §5.5–5.12) — Binary serialization of
+   secret key packets, public key packets, MPI encoding (big-endian length-prefixed
+   integers), S2K specifiers, key material checksums.
+
+2. **V4 fingerprint computation** (RFC 4880 §12.2) — SHA-1 hash of specific
+   packet header + key material bytes.  Must exactly match gpg's computation
+   for key identity.
+
+3. **Self-signature and binding signature packets** (RFC 4880 §5.2) — The
+   `add_uid()` and `add_subkey()` calls create signature packets with hashed
+   subpackets (key flags, preferred algorithms, creation time, expiration).
+   These require signing with the primary key's algorithm.
+
+4. **ASCII armor encoding** (RFC 4880 §6) — Base64 with CRC24 checksum,
+   headers, and packet framing.
+
+5. **PGP message encryption/decryption** (RFC 4880 §5.1, 5.7, 5.13) —
+   Session key encryption (ECDH, RSA), symmetric data encryption (AES-256),
+   MDC computation, literal data packets.
+
+6. **EC public key derivation** — This is the python-cryptography part.
+   PyCryptodome supports NIST P-256 and P-384 via `ECC.construct()` but does
+   **not** support:
+   - Ed25519 / X25519 (Curve25519 family)
+   - secp256k1
+   - Brainpool curves (P-256r1, P-384r1, P-512r1)
+   - NIST P-521
+
+   For the missing curves, you'd need either a pure-Python EC implementation
+   or a different C library.
+
+### Recommendation
+
+The most practical approach is **not** a monolithic replacement but rather a
+phased strategy:
+
+1. **Phase 1 (low effort)**: Keep pgpy for packet construction and
+   serialization.  The `gpg` binary handles the heavy crypto (signing,
+   encryption) on SeedSignerOS.  pgpy is only used to build the initial key
+   structure and for offline key operations.
+
+2. **Phase 2 (medium effort)**: Replace python-cryptography EC point derivation
+   with pure-Python implementations where possible.  PyCryptodome's `ECC` module
+   handles P-256 and P-384.  For Ed25519/X25519, a pure-Python implementation
+   (~200 lines) could replace the cryptography dependency for just public key
+   derivation.  secp256k1 could use embit's existing implementation.
+
+3. **Phase 3 (high effort)**: Replace pgpy entirely with a minimal OpenPGP
+   packet builder.  This is ~1500–2000 lines of code covering v4 key packets,
+   signatures, ASCII armor, and fingerprint computation.  The message
+   encryption/decryption in `gpg_message.py` could delegate to the `gpg`
+   binary instead.
+
+The blocking issue for a pycryptodomex-only solution is that PyCryptodome
+**does not support** Ed25519, X25519, secp256k1, Brainpool, or P-521 in its
+`ECC` module.  These curves would require either keeping python-cryptography
+as a dependency or adding pure-Python curve arithmetic.
