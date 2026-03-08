@@ -5,7 +5,7 @@ qrcode==7.3.1
 colorama==0.4.6 ; platform_system == "Windows"
 urtypes @ https://github.com/selfcustody/urtypes/archive/7fb280eab3b3563dfc57d2733b0bf5cbc0a96a6a.zip
 pycryptodomex==3.23.0
-pgpy @ https://github.com/3rdIteration/PGPy/archive/5f6df6b5ce25218d5a99cec0f161fb3ad82c0345.zip  # v0.6.0 fork: pycryptodomex backend (no python-cryptography)
+pgpy @ https://github.com/3rdIteration/PGPy/archive/fa98d641c7af26f43564b5f9bf1af2edcdbd5c6f.zip  # v0.6.0 fork: pycryptodomex backend (no python-cryptography)
 pyasn1==0.6.2
 pysatochip==0.17.0
 pyscard==2.3.1
