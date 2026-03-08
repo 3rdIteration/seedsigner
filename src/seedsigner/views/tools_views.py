@@ -6048,7 +6048,7 @@ class ToolsGPGViewKeysView(View):
 
         buttons = []
         for k in keys:
-            label = k["uid"] if k["uid"] else k["fpr"][-8:]
+            label = k["uid"] if k["uid"] else k["fpr"][-16:]
             buttons.append(ButtonOption(label))
 
         selected = self.run_screen(
@@ -6085,7 +6085,7 @@ class ToolsGPGViewKeysView(View):
         subkeys = parse_subkey_list(detail.stdout)
 
         # Build a compact detail string.
-        uid = key["uid"] or "(no uid)"
+        uid = key["uid"] or fpr[-16:]
         fpr_short = fpr[-16:]
         lines = [
             uid,
