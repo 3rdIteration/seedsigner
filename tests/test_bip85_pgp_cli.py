@@ -1,4 +1,5 @@
 import inspect
+import shutil
 import sys
 from pathlib import Path
 
@@ -91,3 +92,108 @@ def test_cli_key_type_choices_include_all_curves():
         "ed25519",
     }
     assert expected.issubset(set(bip85_pgp.CLI_KEY_TYPE_CODES))
+
+
+# Key types that can be tested quickly (ECC only — RSA takes minutes).
+ECC_KEY_TYPES = [
+    "ed25519",
+    "secp256k1",
+    "p256",
+    "p384",
+    "p521",
+    "brainpoolp256r1",
+    "brainpoolp384r1",
+    "brainpoolp512r1",
+]
+
+
+@pytest.mark.parametrize("primary_type", ECC_KEY_TYPES)
+def test_private_key_export_all_types(primary_type):
+    """Every key type must produce valid ASCII-armored private key output."""
+    key = bip85_pgp.create_bip85_pgp_key(
+        MNEMONIC,
+        key_index=0,
+        primary_type=primary_type,
+        name="Export Test",
+        email="export@test.com",
+    )
+    priv = bip85_pgp.export_private_key(key)
+    assert priv.startswith("-----BEGIN PGP PRIVATE KEY BLOCK-----")
+    assert "-----END PGP PRIVATE KEY BLOCK-----" in priv
+
+
+@pytest.mark.parametrize("primary_type", ECC_KEY_TYPES)
+def test_private_key_export_with_subkeys(primary_type):
+    """Every key type with subkeys must produce valid private key output."""
+    key = bip85_pgp.create_bip85_pgp_key(
+        MNEMONIC,
+        key_index=0,
+        primary_type=primary_type,
+        name="Export Test",
+        email="export@test.com",
+        subkey_type=primary_type,
+    )
+    assert len(key.subkeys) >= 3
+    priv = bip85_pgp.export_private_key(key)
+    assert priv.startswith("-----BEGIN PGP PRIVATE KEY BLOCK-----")
+    assert "-----END PGP PRIVATE KEY BLOCK-----" in priv
+
+
+# Key types that can be tested with GPG import (256-bit keys work with
+# SHA-256 self-signatures; larger curves require SHA-384/512 which pgpy
+# doesn't configure automatically).
+GPG_COMPATIBLE_KEY_TYPES = [
+    "ed25519",
+    "secp256k1",
+    "p256",
+    "brainpoolp256r1",
+]
+
+
+@pytest.mark.skipif(
+    sys.platform in ("darwin", "win32") or shutil.which("gpg") is None,
+    reason="requires working GnuPG2",
+)
+@pytest.mark.parametrize("primary_type", GPG_COMPATIBLE_KEY_TYPES)
+def test_gpg_roundtrip_import_export(primary_type, tmp_path):
+    """BIP85 keys must survive a GPG import→export round-trip."""
+    import os
+    import subprocess
+
+    gnupghome = str(tmp_path / "gnupg")
+    os.makedirs(gnupghome, mode=0o700)
+    env = {**os.environ, "GNUPGHOME": gnupghome}
+
+    key = bip85_pgp.create_bip85_pgp_key(
+        MNEMONIC,
+        key_index=0,
+        primary_type=primary_type,
+        name="Roundtrip Test",
+        email="roundtrip@test.com",
+        subkey_type=primary_type if primary_type == "ed25519" else None,
+    )
+
+    armored = bip85_pgp.export_private_key(key)
+    fpr = str(key.fingerprint).replace(" ", "")
+
+    # Import
+    r = subprocess.run(
+        ["gpg", "--batch", "--import"],
+        input=armored.encode(),
+        capture_output=True,
+        env=env,
+    )
+    assert r.returncode == 0, f"Import failed: {r.stderr.decode()}"
+    assert "lower 3 bits" not in r.stderr.decode(), (
+        f"Cv25519 clamping warning during import: {r.stderr.decode()}"
+    )
+
+    # Export private key
+    r2 = subprocess.run(
+        ["gpg", "--armor", "--export-secret-keys", fpr],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    assert r2.returncode == 0, f"Private export failed: {r2.stderr}"
+    assert "-----BEGIN PGP PRIVATE KEY BLOCK-----" in r2.stdout
