@@ -43,7 +43,7 @@ vectors have been regenerated and now match PyCryptodome exactly.
 ### Problem
 
 The bipsea P-521 test vector lists fingerprint `EE26 13AE C231 FD42 ECB6 264E F0D6 7F7D 7541 0C0B`.
-pgpy computes a different V4 fingerprint from the same private key scalar.
+pgpy computes `AAAA 594C 6DB9 5F6B B622 5DCA 10CC E597 28A4 7DBC` from the same key material.
 
 The private key scalar `0xa9b5a5af…` is correct and matches between implementations.
 OpenSSL independently confirms the public point derivation. The divergence is in how

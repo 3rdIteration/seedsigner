@@ -422,7 +422,7 @@ def test_bipsea_rsa1024_fingerprint_direct():
     km.d = MPI(rsa_key.d)
     km.p = MPI(rsa_key.p)
     km.q = MPI(rsa_key.q)
-    km.u = MPI(pow(rsa_key.p, -1, rsa_key.q))
+    km.u = MPI(pow(rsa_key.p, -1, rsa_key.q))  # CRT coefficient u = p^(-1) mod q
 
     created = datetime.datetime.fromtimestamp(
         BIP85_GPG_CREATED_TS, tz=datetime.timezone.utc
@@ -433,6 +433,8 @@ def test_bipsea_rsa1024_fingerprint_direct():
     pk.created = created
     pk.update_hlen()
 
+    # Direct _key assignment required: pgpy has no public API for
+    # constructing a PGPKey from raw key material fields.
     pgp_key = PGPKey()
     pgp_key._key = pk
     uid = PGPUID.new("BIP85")
@@ -525,6 +527,11 @@ def test_rsa2048_primes_from_pycryptodome():
     assert key1.n == key2.n, "RSA modulus should be deterministic"
     assert key1.p == key2.p, "RSA prime p should be deterministic"
     assert key1.q == key2.q, "RSA prime q should be deterministic"
+
+    # Also verify the deterministic output produces the expected fingerprint
+    pgp_key = _build_rsa_pgp_key(root, 2048)
+    actual = str(pgp_key.fingerprint).replace(" ", "")
+    assert actual == PYCRYPTODOME_RSA_FINGERPRINTS[2048]
 
 
 def test_p521_private_key_matches_fingerprint_diverges():
