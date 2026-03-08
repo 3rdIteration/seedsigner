@@ -6727,7 +6727,10 @@ class ToolsGPGRebuildBip85KeyView(View):
         from subprocess import run
         from seedsigner.gui.screens.screen import LoadingScreenThread
         from seedsigner.gui.screens import LargeIconStatusScreen, WarningScreen
+        from seedsigner.helpers.pgpy_ecdsa_patch import apply as _apply_ecdsa_patch
         import re
+
+        _apply_ecdsa_patch()
 
         if not BIP85_DATA:
             self.run_screen(
@@ -11191,6 +11194,9 @@ def bip85_add_subkeys(
     from pgpy.packet import fields
     from pgpy.packet.types import MPI
     from Cryptodome.PublicKey import RSA
+    from seedsigner.helpers.pgpy_ecdsa_patch import apply as _apply_ecdsa_patch
+
+    _apply_ecdsa_patch()
 
     logger.debug(
         "bip85_add_subkeys: alg=%s key_index=%s start_index=%s",

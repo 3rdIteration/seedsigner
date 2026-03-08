@@ -62,6 +62,7 @@ from embit import bip32, bip85
 import base  # noqa: F401  – ensure hardware mocks
 
 from seedsigner.helpers.bip85_drng import BIP85DRNG
+from seedsigner.helpers.pgpy_ecdsa_patch import apply as _apply_ecdsa_patch
 from seedsigner.views import tools_views
 from seedsigner.views.tools_views import (
     BIP85_GPG_CREATED_TS,
@@ -82,6 +83,8 @@ from seedsigner.views.tools_views import (
     bip85_brainpoolp512r1_from_root,
     _bip85_subkey_specs,
 )
+
+_apply_ecdsa_patch()
 
 pytestmark = pytest.mark.skipif(
     sys.platform in ("darwin", "win32") or shutil.which("gpg") is None,
