@@ -11258,9 +11258,11 @@ def bip85_secp256k1_from_root(
         path.append(sub_index)
     entropy = bip85.derive_entropy(root, BIP85_GPG_APP, path)
     order = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
-    d = int.from_bytes(entropy[:32], "big") % order
-    if d == 0:
-        d = 1
+    # Bit-mask to curve bit length (no-op for byte-aligned curves) then
+    # reduce into [1, order-1] only when the masked value is out of range.
+    d = int.from_bytes(entropy[:32], "big") & ((1 << 256) - 1)
+    if d == 0 or d >= order:
+        d = (d % (order - 1)) + 1
     pn = ec.derive_private_key(d, ec.SECP256K1()).public_key().public_numbers()
     if alg == "ECDH":
         priv = fields.ECDHPriv()
@@ -11297,9 +11299,11 @@ def bip85_p256_from_root(
     # some versions (such as those bundled with seedsigner-os) do not
     # expose it. Instead, use the well-known group order for P-256.
     order = 0xFFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551
-    d = int.from_bytes(entropy[:32], "big") % order
-    if d == 0:
-        d = 1
+    # Bit-mask to curve bit length (no-op for byte-aligned curves) then
+    # reduce into [1, order-1] only when the masked value is out of range.
+    d = int.from_bytes(entropy[:32], "big") & ((1 << 256) - 1)
+    if d == 0 or d >= order:
+        d = (d % (order - 1)) + 1
     pn = ec.derive_private_key(d, ec.SECP256R1()).public_key().public_numbers()
     if alg == "ECDH":
         priv = fields.ECDHPriv()
@@ -11335,9 +11339,11 @@ def bip85_brainpoolp256r1_from_root(
     # Hardcode BrainpoolP256r1 group order to avoid relying on attributes
     # that may be missing in some cryptography builds.
     order = 0xA9FB57DBA1EEA9BC3E660A909D838D718C397AA3B561A6F7901E0E82974856A7
-    d = int.from_bytes(entropy[:32], "big") % order
-    if d == 0:
-        d = 1
+    # Bit-mask to curve bit length (no-op for byte-aligned curves) then
+    # reduce into [1, order-1] only when the masked value is out of range.
+    d = int.from_bytes(entropy[:32], "big") & ((1 << 256) - 1)
+    if d == 0 or d >= order:
+        d = (d % (order - 1)) + 1
     pn = ec.derive_private_key(d, ec.BrainpoolP256R1()).public_key().public_numbers()
     if alg == "ECDH":
         priv = fields.ECDHPriv()
@@ -11371,9 +11377,11 @@ def bip85_p384_from_root(
         path.append(sub_index)
     entropy = bip85.derive_entropy(root, BIP85_GPG_APP, path)
     order = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC7634D81F4372DDF581A0DB248B0A77AECEC196ACCC52973
-    d = int.from_bytes(entropy[:48], "big") % order
-    if d == 0:
-        d = 1
+    # Bit-mask to curve bit length (no-op for byte-aligned curves) then
+    # reduce into [1, order-1] only when the masked value is out of range.
+    d = int.from_bytes(entropy[:48], "big") & ((1 << 384) - 1)
+    if d == 0 or d >= order:
+        d = (d % (order - 1)) + 1
     pn = ec.derive_private_key(d, ec.SECP384R1()).public_key().public_numbers()
     if alg == "ECDH":
         priv = fields.ECDHPriv()
@@ -11449,9 +11457,11 @@ def bip85_brainpoolp384r1_from_root(
         path.append(sub_index)
     entropy = bip85.derive_entropy(root, BIP85_GPG_APP, path)
     order = 0x8CB91E82A3386D280F5D6F7E50E641DF152F7109ED5456B31F166E6CAC0425A7CF3AB6AF6B7FC3103B883202E9046565
-    d = int.from_bytes(entropy[:48], "big") % order
-    if d == 0:
-        d = 1
+    # Bit-mask to curve bit length (no-op for byte-aligned curves) then
+    # reduce into [1, order-1] only when the masked value is out of range.
+    d = int.from_bytes(entropy[:48], "big") & ((1 << 384) - 1)
+    if d == 0 or d >= order:
+        d = (d % (order - 1)) + 1
     pn = ec.derive_private_key(d, ec.BrainpoolP384R1()).public_key().public_numbers()
     if alg == "ECDH":
         priv = fields.ECDHPriv()
@@ -11485,9 +11495,11 @@ def bip85_brainpoolp512r1_from_root(
         path.append(sub_index)
     entropy = bip85.derive_entropy(root, BIP85_GPG_APP, path)
     order = 0xAADD9DB8DBE9C48B3FD4E6AE33C9FC07CB308DB3B3C9D20ED6639CCA70330870553E5C414CA92619418661197FAC10471DB1D381085DDADDB58796829CA90069
-    d = int.from_bytes(entropy[:64], "big") % order
-    if d == 0:
-        d = 1
+    # Bit-mask to curve bit length (no-op for byte-aligned curves) then
+    # reduce into [1, order-1] only when the masked value is out of range.
+    d = int.from_bytes(entropy[:64], "big") & ((1 << 512) - 1)
+    if d == 0 or d >= order:
+        d = (d % (order - 1)) + 1
     pn = ec.derive_private_key(d, ec.BrainpoolP512R1()).public_key().public_numbers()
     if alg == "ECDH":
         priv = fields.ECDHPriv()

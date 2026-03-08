@@ -128,7 +128,7 @@ def test_bipsea_gpg_entropy_vectors():
 
 # ── ECC private key vectors ─────────────────────────────────────────────────
 # These test the scalar derivation from entropy — deterministic and
-# library-agnostic (just byte truncation + modular reduction).
+# library-agnostic (just byte truncation + bit masking + range check).
 
 ECC_PRIVATE_KEY_VECTORS = [
     # (deriver, expected_private_hex)
