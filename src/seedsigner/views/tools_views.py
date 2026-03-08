@@ -10811,7 +10811,7 @@ def bip85_rsa_from_root(root, bits: int, index: int, sub_index: int | None = Non
     PyCryptodome to ensure cross-implementation determinism.
     """
     from embit import bip85
-    from Cryptodome.PublicKey import RSA
+    from Crypto.PublicKey import RSA
     from seedsigner.helpers.bip85_drng import BIP85DRNG
 
     # Enforce a minimum RSA key size to avoid weak keys.
@@ -11012,7 +11012,7 @@ def bip85_verify_existing(
     from pgpy.constants import PubKeyAlgorithm
     from pgpy.packet import fields
     from pgpy.packet.types import MPI
-    from Cryptodome.PublicKey import RSA
+    from Crypto.PublicKey import RSA
     from datetime import datetime, timezone
 
     logger.info(
@@ -11190,7 +11190,7 @@ def bip85_add_subkeys(
     from pgpy.pgp import PrivSubKeyV4
     from pgpy.packet import fields
     from pgpy.packet.types import MPI
-    from Cryptodome.PublicKey import RSA
+    from Crypto.PublicKey import RSA
 
     logger.debug(
         "bip85_add_subkeys: alg=%s key_index=%s start_index=%s",
@@ -11670,7 +11670,7 @@ class ToolsGPGLoadBIP85KeyView(View):
     def run(self):
         from embit import bip32
         from pgpy import PGPKey, PGPUID
-        from Cryptodome.PublicKey import RSA
+        from Crypto.PublicKey import RSA
         from pgpy.constants import (
             PubKeyAlgorithm,
             KeyFlags,

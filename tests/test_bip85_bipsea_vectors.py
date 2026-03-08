@@ -229,8 +229,8 @@ def test_openssl_cross_validates_ed25519_public_key():
 @pytest.mark.parametrize("bits", [1024, 2048, 3072, 4096], ids=["RSA-1024", "RSA-2048", "RSA-3072", "RSA-4096"])
 def test_openssl_cross_validates_rsa_key(bits):
     """PyCryptodome RSA key self-signs and cross-verifies correctly."""
-    from Cryptodome.Signature import pkcs1_15
-    from Cryptodome.Hash import SHA256 as PycSHA256
+    from Crypto.Signature import pkcs1_15
+    from Crypto.Hash import SHA256 as PycSHA256
 
     root = bip32.HDKey.from_string(MASTER_XPRV)
     rsa_key = bip85_rsa_from_root(root, bits, 0)
@@ -395,7 +395,7 @@ def test_bipsea_rsa1024_fingerprint_direct():
     bip85_rsa_from_root for 1024.  Instead we generate the key
     directly with PyCryptodome from the BIP85-derived entropy.
     """
-    from Cryptodome.PublicKey import RSA
+    from Crypto.PublicKey import RSA
     from pgpy import PGPKey, PGPUID
     from pgpy.pgp import PrivKeyV4
     from pgpy.constants import (
@@ -509,7 +509,7 @@ def test_rsa2048_primes_from_pycryptodome():
     produces the same key (deterministic), which is the foundation of
     BIP85 GPG RSA key derivation.
     """
-    from Cryptodome.PublicKey import RSA
+    from Crypto.PublicKey import RSA
 
     root = bip32.HDKey.from_string(MASTER_XPRV)
     entropy = bip85.derive_entropy(

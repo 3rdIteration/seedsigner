@@ -26,7 +26,7 @@ from pgpy.constants import (
 from pgpy.pgp import PrivKeyV4, PrivSubKeyV4
 from pgpy.packet import fields
 from pgpy.packet.types import MPI
-from Cryptodome.PublicKey import RSA
+from Crypto.PublicKey import RSA
 
 
 # Allow running without installing the project as a package.

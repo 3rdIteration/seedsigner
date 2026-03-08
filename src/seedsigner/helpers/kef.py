@@ -20,7 +20,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-from Cryptodome.Cipher import AES
+from Crypto.Cipher import AES
 import hashlib
 
 

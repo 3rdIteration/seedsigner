@@ -1,6 +1,6 @@
 import hashlib
 
-from Cryptodome.Cipher import AES
+from Crypto.Cipher import AES
 from embit import base58, ec, hashes
 
 from seedsigner.models.seed import InvalidSeedException

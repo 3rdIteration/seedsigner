@@ -25,7 +25,7 @@ try:
 except ValueError:  # pragma: no cover - depends on host OpenSSL build
     # ``ripemd160`` is missing; fall back to PyCryptodome's implementation and
     # patch ``hashlib.new`` so that libraries expecting it continue to work.
-    from Cryptodome.Hash import RIPEMD160
+    from Crypto.Hash import RIPEMD160
 
     _orig_hashlib_new = hashlib.new
 

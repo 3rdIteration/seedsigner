@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import base64
 import math
-from Cryptodome.Hash import SHAKE256
+from Crypto.Hash import SHAKE256
 
 
 def shake_stream(seed: bytes) -> SHAKE256.SHAKE256_XOF:

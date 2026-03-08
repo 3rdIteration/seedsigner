@@ -7,7 +7,7 @@ exposes a ``read`` method suitable for use with libraries expecting a
 file-like interface.
 """
 
-from Cryptodome.Hash import SHAKE256
+from Crypto.Hash import SHAKE256
 
 
 class BIP85DRNG:
