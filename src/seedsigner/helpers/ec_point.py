@@ -84,13 +84,13 @@ _BRAINPOOL_P512R1 = (  # (p, a, Gx, Gy)
 
 def ed25519_pub_from_seed(seed: bytes) -> bytes:
     """Derive the 32-byte Ed25519 public key from a 32-byte seed."""
-    from Crypto.PublicKey import ECC
+    from Cryptodome.PublicKey import ECC
     return ECC.construct(curve="Ed25519", seed=seed).public_key().export_key(format="raw")
 
 
 def curve25519_pub_from_seed(seed: bytes) -> bytes:
     """Derive the 32-byte Curve25519 (X25519) public key from a 32-byte seed."""
-    from Crypto.PublicKey import ECC
+    from Cryptodome.PublicKey import ECC
     return ECC.construct(curve="Curve25519", seed=seed).public_key().export_key(format="raw")
 
 
@@ -109,7 +109,7 @@ def nist_pub_xy(curve_name: str, d: int) -> tuple[int, int]:
 
     *curve_name* must be one of ``"P-256"``, ``"P-384"``, or ``"P-521"``.
     """
-    from Crypto.PublicKey import ECC
+    from Cryptodome.PublicKey import ECC
     key = ECC.construct(curve=curve_name, d=d)
     return int(key.pointQ.x), int(key.pointQ.y)
 

@@ -1,7 +1,7 @@
 from pathlib import Path
 
 import pytest
-from Crypto.Cipher import AES
+from Cryptodome.Cipher import AES
 
 from seedsigner.helpers.tapsigner_backup import TapsignerBackupError, decode_tapsigner_backup
 

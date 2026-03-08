@@ -421,7 +421,7 @@ def test_bip85_gpg_mixed_subkeys_deterministic():
     )
     from pgpy.packet import fields
     from pgpy.packet.types import MPI
-    from Crypto.PublicKey import RSA
+    from Cryptodome.PublicKey import RSA
 
     seed = Seed(mnemonic=MNEMONIC)
     root = bip32.HDKey.from_seed(seed.seed_bytes)

@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from Crypto.Cipher import AES
+from Cryptodome.Cipher import AES
 
 
 class TapsignerBackupError(Exception):
