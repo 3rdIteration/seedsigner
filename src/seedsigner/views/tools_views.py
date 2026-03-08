@@ -10753,7 +10753,18 @@ def bip85_ed25519_from_root(
             fields.ECPointFormat.Native,
             pub_bytes,
         )
-        priv.s = fields.MPI(int.from_bytes(d_bytes, "big"))
+        # Clamp the Cv25519 scalar per RFC 7748 §5: clear the three low
+        # bits of LE byte 0, clear bit 255, set bit 254.  Without
+        # clamping gpg-agent rejects the key on export ("Bad secret
+        # key").  Clamping is idempotent and doesn't change the derived
+        # public key (from_private_bytes clamps internally).
+        # The MPI must use little-endian conversion (matching pgpy's
+        # native Cv25519 convention), NOT big-endian.
+        d_clamped = bytearray(d_bytes)
+        d_clamped[0] &= 248      # LE byte 0: clear bits 0-2
+        d_clamped[31] &= 127     # LE byte 31: clear bit 255
+        d_clamped[31] |= 64      # LE byte 31: set bit 254
+        priv.s = fields.MPI(int.from_bytes(d_clamped, "little"))
     priv._compute_chksum()
     return priv
 
