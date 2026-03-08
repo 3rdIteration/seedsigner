@@ -39,7 +39,7 @@ _ECDSA_CURVES = {
 }
 
 # PyCryptodome hash modules are identified by digest_size (bytes).
-_HASHLIB_BY_SIZE: dict[int, callable] = {
+_HASHLIB_BY_SIZE = {
     20: hashlib.sha1,
     28: hashlib.sha224,
     32: hashlib.sha256,
@@ -51,13 +51,13 @@ _HASHLIB_BY_SIZE: dict[int, callable] = {
 # Stash originals before patching
 # ---------------------------------------------------------------------------
 
-_orig_sign: callable | None = None
-_orig_verify: callable | None = None
-_orig_generate: callable | None = None
-_orig_ecdh_pub_pubkey: callable | None = None
-_orig_ecdh_priv_privkey: callable | None = None
-_orig_ecdh_ct_encrypt: callable | None = None
-_orig_ecdh_ct_decrypt: callable | None = None
+_orig_sign = None
+_orig_verify = None
+_orig_generate = None
+_orig_ecdh_pub_pubkey = None
+_orig_ecdh_priv_privkey = None
+_orig_ecdh_ct_encrypt = None
+_orig_ecdh_ct_decrypt = None
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -116,14 +116,18 @@ def _patched_verify(self, sigbytes, sigdata, hash_alg):
     if curve is None:
         return _orig_verify(self, sigbytes, sigdata, hash_alg)
 
-    x, y = int(self.p.x), int(self.p.y)
-    order = curve.generator.order()
-    point = _ecdsa_lib.ellipticcurve.PointJacobi(
-        curve.curve, x, y, 1, order
-    )
-    vk = _ecdsa_lib.VerifyingKey.from_public_point(point, curve=curve)
-    hashfunc = _hashfunc_for(hash_alg)
-    vk.verify(sigbytes, sigdata, hashfunc=hashfunc, sigdecode=sigdecode_der)
+    try:
+        x, y = int(self.p.x), int(self.p.y)
+        order = curve.generator.order()
+        point = _ecdsa_lib.ellipticcurve.PointJacobi(
+            curve.curve, x, y, 1, order
+        )
+        vk = _ecdsa_lib.VerifyingKey.from_public_point(point, curve=curve)
+        hashfunc = _hashfunc_for(hash_alg)
+        vk.verify(sigbytes, sigdata, hashfunc=hashfunc, sigdecode=sigdecode_der)
+    except (_ecdsa_lib.BadSignatureError, ValueError, TypeError):
+        return False
+    return True
 
 
 def _patched_generate(self, oid):
