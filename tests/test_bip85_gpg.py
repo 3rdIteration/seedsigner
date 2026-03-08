@@ -1393,6 +1393,94 @@ def test_bip85_metadata_menu_has_options(monkeypatch):
     assert "Rebuild BIP85 Key" in buttons["labels"]
 
 
+def test_gpg_menu_has_view_keys_option(monkeypatch):
+    buttons = {}
+
+    def fake_run_screen(*args, **kwargs):
+        buttons["labels"] = [b.button_label for b in kwargs["button_data"]]
+        return RET_CODE__BACK_BUTTON
+
+    monkeypatch.setattr(
+        tools_views.ToolsGPGMenuView, "run_screen", fake_run_screen
+    )
+    view = tools_views.ToolsGPGMenuView()
+    view.run()
+    assert "View Keys" in buttons["labels"]
+
+
+def test_view_keys_no_keys(monkeypatch):
+    import subprocess
+
+    call_idx = [0]
+
+    def fake_run(cmd, *a, **kw):
+        class R:
+            returncode = 0
+            stdout = ""
+            stderr = ""
+        return R()
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    screens = []
+
+    def fake_run_screen(*args, **kwargs):
+        screens.append(kwargs.get("title", args[1].__name__ if len(args) > 1 else ""))
+        return 0
+
+    monkeypatch.setattr(
+        tools_views.ToolsGPGViewKeysView, "run_screen", fake_run_screen
+    )
+    view = tools_views.ToolsGPGViewKeysView()
+    view.run()
+    assert "View Keys" in screens
+
+
+def test_view_keys_with_key(monkeypatch):
+    import subprocess
+
+    colon_output = (
+        "sec:-:255:22:81D909D9534ED202:1231006505:::-:::scESCA:::+::ed25519:::0:\n"
+        "fpr:::::::::DFA07C169B1513F3485769A581D909D9534ED202:\n"
+        "uid:-::::1231006505::ABC::Test User <test@example.com>::::::::::0:\n"
+        "ssb:-:255:18:C8088EF1E47500B1:1231006505::::::e:::+::cv25519::\n"
+        "fpr:::::::::0FAA3F5D0FCEC3E74A357659C8088EF1E47500B1:\n"
+    )
+
+    def fake_run(cmd, *a, **kw):
+        class R:
+            returncode = 0
+            stdout = colon_output
+            stderr = ""
+        return R()
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    screens = []
+    screen_kwargs = []
+
+    def fake_run_screen(*args, **kwargs):
+        title = kwargs.get("title", "")
+        screens.append(title)
+        screen_kwargs.append(kwargs)
+        if title == "View Keys":
+            return 0  # select first key
+        return 0
+
+    monkeypatch.setattr(
+        tools_views.ToolsGPGViewKeysView, "run_screen", fake_run_screen
+    )
+    view = tools_views.ToolsGPGViewKeysView()
+    view.run()
+
+    assert "View Keys" in screens
+    assert "Key Details" in screens
+    detail_kw = screen_kwargs[-1]
+    assert "81D909D9534ED202" in detail_kw["text"]
+    assert "EdDSA" in detail_kw["text"]
+    assert "Subkeys: 1" in detail_kw["text"]
+
+
 def test_rebuild_bip85_key(monkeypatch):
     controller = Controller.get_instance()
     seed = Seed(mnemonic=MNEMONIC)

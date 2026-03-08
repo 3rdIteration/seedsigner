@@ -5908,6 +5908,7 @@ class ToolsGPGMenuView(View):
     FILE_OPS = ButtonOption("File Operations")
     IMPORT = ButtonOption("Import Keys")
     EXPORT = ButtonOption("Export Keys")
+    VIEW_KEYS = ButtonOption("View Keys")
     MESSAGE = ButtonOption("Secure Messaging")
     SMART_GPG = ButtonOption("SmartGPG")
     ADVANCED = ButtonOption("Advanced")
@@ -5923,6 +5924,7 @@ class ToolsGPGMenuView(View):
             self.FILE_OPS,
             self.IMPORT,
             self.EXPORT,
+            self.VIEW_KEYS,
             self.MESSAGE,
             self.SMART_GPG,
             self.ADVANCED,
@@ -5945,6 +5947,8 @@ class ToolsGPGMenuView(View):
             return Destination(ToolsGPGImportMenuView)
         elif button_data[selected_menu_num] == self.EXPORT:
             return Destination(ToolsGPGExportMenuView)
+        elif button_data[selected_menu_num] == self.VIEW_KEYS:
+            return Destination(ToolsGPGViewKeysView)
         elif button_data[selected_menu_num] == self.MESSAGE:
             return Destination(ToolsGPGMessageMenuView)
         elif button_data[selected_menu_num] == self.SMART_GPG:
@@ -5990,6 +5994,124 @@ class ToolsGPGAdvancedMenuView(View):
         if choice == self.BIP85_META:
             return Destination(ToolsGPGBip85MetadataMenuView)
         return Destination(ToolsGPGMenuView)
+
+
+# ---- GPG algorithm code → human-readable name map ---------------------------
+_GPG_ALGO_NAMES = {
+    "1": "RSA",
+    "16": "Elgamal",
+    "17": "DSA",
+    "18": "ECDH",
+    "19": "ECDSA",
+    "22": "EdDSA",
+}
+
+
+def _gpg_algo_label(algo_code: str, curve: str, bits: str) -> str:
+    """Return a short human-readable description for a GPG key algorithm."""
+    name = _GPG_ALGO_NAMES.get(algo_code, f"Algo {algo_code}")
+    if curve:
+        return f"{name} {curve}"
+    if bits:
+        return f"{name} {bits}"
+    return name
+
+
+class ToolsGPGViewKeysView(View):
+    """List GPG secret keys and show fingerprint / metadata."""
+
+    def run(self):
+        from subprocess import run as _run
+        from seedsigner.gui.screens.screen import (
+            ButtonListScreen,
+            LargeIconStatusScreen,
+            WarningScreen,
+        )
+
+        result = _run(
+            ["gpg", "--list-secret-keys", "--with-colons"],
+            capture_output=True,
+            text=True,
+        )
+        keys = parse_secret_key_list(result.stdout)
+
+        if not keys:
+            self.run_screen(
+                WarningScreen,
+                title="View Keys",
+                status_headline=None,
+                text="No secret keys found\nin the GPG keyring.",
+                show_back_button=False,
+                button_data=[ButtonOption("OK")],
+            )
+            return Destination(BackStackView)
+
+        buttons = []
+        for k in keys:
+            label = k["uid"] if k["uid"] else k["fpr"][-8:]
+            buttons.append(ButtonOption(label))
+
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="View Keys",
+            is_button_text_centered=False,
+            button_data=buttons,
+        )
+
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        key = keys[selected]
+        fpr = key["fpr"]
+
+        # Re-parse full output for subkey details of the selected key.
+        detail = _run(
+            ["gpg", "--list-secret-keys", "--with-colons", fpr],
+            capture_output=True,
+            text=True,
+        )
+
+        # Primary key algorithm info from the `sec` line.
+        primary_algo = ""
+        for line in detail.stdout.splitlines():
+            parts = line.split(":")
+            if parts[0] == "sec":
+                algo_code = parts[3] if len(parts) > 3 else ""
+                bits = parts[2]
+                curve = parts[16].lower() if len(parts) > 16 and parts[16] else ""
+                primary_algo = _gpg_algo_label(algo_code, curve, bits)
+                break
+
+        subkeys = parse_subkey_list(detail.stdout)
+
+        # Build a compact detail string.
+        uid = key["uid"] or "(no uid)"
+        fpr_short = fpr[-16:]
+        lines = [
+            uid,
+            f"Fpr: ...{fpr_short}",
+            f"Type: {primary_algo}",
+        ]
+        if subkeys:
+            lines.append(f"Subkeys: {len(subkeys)}")
+            for sk in subkeys[:3]:
+                sk_algo = _gpg_algo_label(
+                    sk["algo"], sk.get("curve", ""), sk["bits"]
+                )
+                lines.append(f"  {sk_algo}")
+            if len(subkeys) > 3:
+                lines.append(f"  (+{len(subkeys) - 3} more)")
+
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Key Details",
+            status_headline=None,
+            text="\n".join(lines),
+            show_back_button=False,
+            button_data=[ButtonOption("OK")],
+        )
+
+        return Destination(BackStackView)
 
 
 class ToolsGPGCrossCertifyView(View):
