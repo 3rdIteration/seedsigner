@@ -50,9 +50,6 @@ from seedsigner.views.tools_views import (
     _bip85_subkey_specs,
     _bip85_key_type_choices,
 )
-from seedsigner.helpers.pgpy_ecdsa_patch import apply as _apply_ecdsa_patch
-
-_apply_ecdsa_patch()
 
 
 # CLI test tool should expose every supported key type regardless of UI settings.

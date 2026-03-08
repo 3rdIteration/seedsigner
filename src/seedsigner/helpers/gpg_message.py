@@ -12,10 +12,6 @@ from typing import Iterable, Optional, Tuple, Union
 
 from pgpy import PGPKey, PGPMessage
 
-from seedsigner.helpers.pgpy_ecdsa_patch import apply as _apply_ecdsa_patch
-
-_apply_ecdsa_patch()
-
 
 def encrypt_message(
     pubkey_blob: Optional[str],
