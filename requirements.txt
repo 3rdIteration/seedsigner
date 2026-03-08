@@ -18,7 +18,7 @@ urtypes @ https://github.com/selfcustody/urtypes/archive/7fb280eab3b3563dfc57d27
 pycryptodome==3.23.0 \
     --hash=sha256:67bd81fcbe34f43ad9422ee8fd4843c8e7198dd88dd3d40e6de42ee65fbe1490 \
     --hash=sha256:c8987bd3307a39bc03df5c8e0e3d8be0c4c3518b7f044b0f4c15d1aa78f52575
-pgpy @ https://github.com/3rdIteration/PGPy/archive/17e2d03d35163f1b6473032f383158566adfc1e4.zip
+pgpy @ https://github.com/3rdIteration/PGPy/archive/17e2d03d35163f1b6473032f383158566adfc1e4.zip  # v0.6.0 fork: pycryptodome backend (no python-cryptography)
 pyasn1==0.6.2 --hash=sha256:1eb26d860996a18e9b6ed05e7aae0e9fc21619fcee6af91cca9bad4fbea224bf --hash=sha256:9b59a2b25ba7e4f8197db7686c09fb33e658b98339fadb826e9512629017833b
 pysatochip==0.17.0 --hash=sha256:2e7085c6d64dd89d2b5ccdab5319735ef837d708f8d2bf084ea8ba5c2c18fe41
 pyscard==2.3.1 --hash=sha256:a24356f57a0a950740b6e54f51f819edd5296ee8892a6625b0da04724e9e6c13
