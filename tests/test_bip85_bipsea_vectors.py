@@ -230,6 +230,37 @@ def test_openssl_cross_validates_ed25519_public_key():
     assert pgpy_pub == openssl_pub
 
 
+@pytest.mark.parametrize("bits", [2048, 3072, 4096], ids=["RSA-2048", "RSA-3072", "RSA-4096"])
+def test_openssl_cross_validates_rsa_key(bits):
+    """PyCryptodome RSA key imports into OpenSSL and cross-signs correctly."""
+    from cryptography.hazmat.primitives.asymmetric import padding as ossl_padding
+    from cryptography.hazmat.primitives import hashes as ossl_hashes, serialization
+    from Cryptodome.Signature import pkcs1_15
+    from Cryptodome.Hash import SHA256 as PycSHA256
+
+    root = bip32.HDKey.from_string(MASTER_XPRV)
+    rsa_key = bip85_rsa_from_root(root, bits, 0)
+
+    # Import into OpenSSL
+    der = rsa_key.export_key(format="DER")
+    ossl_priv = serialization.load_der_private_key(der, password=None)
+    ossl_nums = ossl_priv.private_numbers()
+    assert ossl_nums.public_numbers.n == rsa_key.n
+    assert ossl_nums.public_numbers.e == rsa_key.e
+    assert ossl_nums.d == rsa_key.d
+
+    # PyCryptodome sign → OpenSSL verify
+    msg = b"BIP85 RSA cross-validation"
+    pyc_sig = pkcs1_15.new(rsa_key).sign(PycSHA256.new(msg))
+    ossl_priv.public_key().verify(
+        pyc_sig, msg, ossl_padding.PKCS1v15(), ossl_hashes.SHA256()
+    )
+
+    # OpenSSL sign → PyCryptodome verify
+    ossl_sig = ossl_priv.sign(msg, ossl_padding.PKCS1v15(), ossl_hashes.SHA256())
+    pkcs1_15.new(rsa_key).verify(PycSHA256.new(msg), ossl_sig)
+
+
 # ── PGP fingerprint vectors (ECC) ───────────────────────────────────────────
 # For ECC key types where pgpy and bipsea produce identical V4 fingerprints.
 
