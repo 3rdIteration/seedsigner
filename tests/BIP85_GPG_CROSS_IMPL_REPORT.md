@@ -60,6 +60,45 @@ fingerprint now all match the bipsea reference vector.
 
 ---
 
+## Curve25519 (Ed25519 + Cv25519): Implementation Note
+
+The BIP85 entropy derivation for Curve25519 keys is straightforward: 32 bytes
+from the HMAC-SHA512 output. The Ed25519 primary key fingerprint is deterministic
+and matches across all implementations.
+
+However, an OpenPGP key using Ed25519 for signing also requires a **Cv25519 (X25519)
+ECDH subkey** for encryption. This subkey is derived from the same entropy source
+(via BIP85 sub-index) and requires two OpenPGP-level post-processing steps that are
+**not part of the BIP85 spec** but are necessary for gpg-agent compatibility:
+
+1. **RFC 7748 §5 clamping**: The 32-byte Cv25519 scalar must be clamped before
+   storage in the OpenPGP secret-key packet:
+   ```
+   d[0]  &= 248   # clear bits 0-2
+   d[31] &= 127   # clear bit 255
+   d[31] |= 64    # set bit 254
+   ```
+   The `X25519PrivateKey.from_private_bytes()` API (python-cryptography, libsodium)
+   clamps internally for public key derivation, so the public key is always correct.
+   But gpg-agent validates the stored scalar directly and rejects unclamped values
+   with "Bad secret key" during export.
+
+2. **Little-endian MPI byte order**: pgpy stores Cv25519 secret MPIs as
+   `int.from_bytes(native_bytes, "little")`, unlike all other curve types which use
+   big-endian. This matches the native X25519 wire format (RFC 7748 uses
+   little-endian).
+
+**These are OpenPGP serialization requirements, not BIP85 changes.** The BIP85
+entropy output (32 raw bytes) is identical regardless of clamping or byte order.
+The Ed25519 *primary key* fingerprint is unaffected. Only the Cv25519 *subkey*
+packet serialization was corrected.
+
+No additions to the BIP85 specification are needed for this fix, but implementors
+building OpenPGP keys from BIP85-derived Cv25519 entropy should be aware of these
+requirements.
+
+---
+
 ## What was validated successfully
 
 All key types were cross-validated against **three independent implementations**:
