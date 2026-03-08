@@ -24,12 +24,13 @@ been updated to use PyCryptodome for RSA generation, and all RSA test
 vectors now match the FIPS 186-4 output.  All RSA fingerprints in the
 updated bipsea vectors are validated here against PyCryptodome directly.
 
-.. rubric:: P-521 PGP fingerprint encoding
+.. rubric:: P-521 scalar derivation
 
-The NIST P-521 private key scalar matches between SeedSigner and bipsea.
-OpenSSL confirms the public point is correct.  However, the PGP V4
-fingerprint differs because pgpy and bipsea's ``openpgp.py`` encode the
-EC public point in the V4 public-key packet body differently.
+The NIST P-521 private key scalar is derived by reading 66 bytes from
+the SHAKE256 DRNG and masking to 521 bits (clearing the top 7 bits
+of the first byte).  This matches bipsea's reference implementation.
+If the masked value is 0 or ≥ order, it is reduced modulo ``order - 1``
+and incremented by 1.
 
 .. rubric:: Summary of cross-implementation agreement
 
@@ -43,7 +44,7 @@ Curve25519 (256)   ✓        ✓            ✓               ✓ (bipsea)
 secp256k1 (256)    ✓        ✓            ✓               ✓ (bipsea)
 NIST P-256         ✓        ✓            ✓               ✓ (bipsea)
 NIST P-384         ✓        ✓            ✓               ✓ (bipsea)
-NIST P-521         ✓        ✓            ✓               ✗ (encoding)
+NIST P-521         ✓        ✓            ✓               ✓ (bipsea)
 Brainpool P-256    ✓        ✓            ✓               ✓ (bipsea)
 Brainpool P-384    ✓        ✓            ✓               ✓ (bipsea)
 Brainpool P-512    ✓        ✓            ✓               ✓ (bipsea)
@@ -135,7 +136,7 @@ ECC_PRIVATE_KEY_VECTORS = [
     (bip85_secp256k1_from_root, "f3bb8b3d6b81fbd202c34b59ce7e97c83969e9b5733b936de16c51119c7a4823"),
     (bip85_p256_from_root, "f52586f58521916b9f28b0058be86effcde82e571eabada9e3f63c6f67752ff1"),
     (bip85_p384_from_root, "830005ea400f7a03c27aa06a9728fe311c9a48dc31bd417f07b96c69edc73d25baa00d04b9dbbe6f42539b06d9ef1ba6"),
-    (bip85_p521_from_root, "a9b5a5af6b4c45ea509e838cb55a0043412b49781c54a68931395be4b27550b2707d76c610e50803704293e4b27f9473b156e3d7f7cac4feb9bd16c1198a903849"),
+    (bip85_p521_from_root, "a9b5a5af6b4c45ea509e838cb55a0043412b49781c54a68931395be4b27550b1c60b3aa7814c9ba4093c7c0b3f72b5e21856317b97eb156533b42e36ae8f2bf157"),
     (bip85_brainpoolp256r1_from_root, "97ee4490d89bf257e9a038e2af12824fba47fec721970ca1fc1c094650d2716d"),
     (bip85_brainpoolp384r1_from_root, "3fa833db4195fbd7a9c4e3f6fdb65ffb8951c5c65ca0cce441a4410e11aa96fcb094ed8c1fb5317448ae098ca9cae2c3"),
     (bip85_brainpoolp512r1_from_root, "985f0131503109fc7fb2ab15e6a86846888e4b9a9f4f11f0d7b30dba4570cf8cc728a4c8ce9bbeb9b9819fbe924bb2d6d71a9c8332635cfb5db5008364f3a43a"),
@@ -309,6 +310,7 @@ GPG_ECC_FINGERPRINT_VECTORS = [
     ("secp256k1", bip85_secp256k1_from_root, "ECDSA", "6D99D34874C6E88FF30C758A46F7E1AF05FC3414"),
     ("nistp256", bip85_p256_from_root, "ECDSA", "2FE6D862FF2ABF1C1FAA2753B681BEF5B5D574C4"),
     ("nistp384", bip85_p384_from_root, "ECDSA", "56687C3C907219B29FCE39CF95F016F9B150B8A1"),
+    ("nistp521", bip85_p521_from_root, "ECDSA", "EE2613AEC231FD42ECB6264EF0D67F7D75410C0B"),
     ("brainpoolP256r1", bip85_brainpoolp256r1_from_root, "ECDSA", "61617C06F6F2AC323D67782F11CB4B79FEFD4369"),
     ("brainpoolP384r1", bip85_brainpoolp384r1_from_root, "ECDSA", "32786624D0CA7D7F01330940397F2F1FA2BE47CB"),
     ("brainpoolP512r1", bip85_brainpoolp512r1_from_root, "ECDSA", "99D7BDC937AC6E9BCC17D0936643E0501D03C680"),
@@ -534,12 +536,12 @@ def test_rsa2048_primes_from_pycryptodome():
     assert actual == PYCRYPTODOME_RSA_FINGERPRINTS[2048]
 
 
-def test_p521_private_key_matches_fingerprint_diverges():
-    """NIST P-521: private key matches bipsea, PGP fingerprint does not.
+def test_p521_private_key_and_fingerprint_match_bipsea():
+    """NIST P-521: private key and PGP fingerprint match bipsea.
 
-    The private scalar is derived identically.  OpenSSL confirms the
-    public point.  The PGP V4 fingerprint differs due to EC point
-    encoding differences between pgpy and bipsea's openpgp.py.
+    The scalar is derived by reading 66 bytes from the SHAKE256 DRNG,
+    masking to 521 bits (matching bipsea's reference implementation).
+    OpenSSL confirms the public point derivation.
     """
     from cryptography.hazmat.primitives.asymmetric import ec
 
@@ -547,8 +549,8 @@ def test_p521_private_key_matches_fingerprint_diverges():
     km = bip85_p521_from_root(root, 0)
 
     expected_d = int(
-        "a9b5a5af6b4c45ea509e838cb55a0043412b49781c54a68931395be4b27550b2"
-        "707d76c610e50803704293e4b27f9473b156e3d7f7cac4feb9bd16c1198a903849",
+        "a9b5a5af6b4c45ea509e838cb55a0043412b49781c54a68931395be4b27550b1"
+        "c60b3aa7814c9ba4093c7c0b3f72b5e21856317b97eb156533b42e36ae8f2bf157",
         16,
     )
     assert int(km.s) == expected_d
@@ -559,7 +561,7 @@ def test_p521_private_key_matches_fingerprint_diverges():
     assert int(km.p.x) == openssl_pub.x
     assert int(km.p.y) == openssl_pub.y
 
-    # PGP fingerprint does NOT match bipsea (encoding difference)
+    # PGP fingerprint now matches bipsea
     from pgpy.constants import PubKeyAlgorithm
 
     def sub_deriver(root, idx, sub_index, alg_n=None):
@@ -570,7 +572,4 @@ def test_p521_private_key_matches_fingerprint_diverges():
     )
     actual_fp = str(pgp_key.fingerprint).replace(" ", "")
     bipsea_fp = "EE2613AEC231FD42ECB6264EF0D67F7D75410C0B"
-    assert actual_fp != bipsea_fp, (
-        "P-521 unexpectedly matches bipsea — check if pgpy changed "
-        "its EC point encoding"
-    )
+    assert actual_fp == bipsea_fp

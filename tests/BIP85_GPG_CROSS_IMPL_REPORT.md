@@ -6,10 +6,9 @@ SeedSigner's BIP85 GPG implementation was validated against the bipsea reference
 test vectors (commit `d8f8d9075a7ed6677c3be993f67c5d79e4bd63e1`), OpenSSL (via
 python-cryptography), and PyCryptodome (FIPS 186-4).
 
-**RSA vectors now fully match** — bipsea has been updated to use PyCryptodome for
-RSA generation per our earlier recommendation. **One remaining issue**: NIST P-521
-PGP fingerprint still diverges between pgpy and bipsea due to EC point encoding
-differences in the V4 public-key packet.
+**All vectors now match.** RSA vectors were updated in bipsea to use PyCryptodome
+for generation. The P-521 scalar derivation was fixed in SeedSigner to use bit
+masking (matching bipsea's reference implementation) instead of modular reduction.
 
 ---
 
@@ -38,22 +37,26 @@ vectors have been regenerated and now match PyCryptodome exactly.
 
 ---
 
-## NIST P-521 PGP Fingerprint: ✗ Still diverges
+## NIST P-521: ✓ RESOLVED — Scalar derivation and fingerprint match
 
 ### Problem
 
-The bipsea P-521 test vector lists fingerprint `EE26 13AE C231 FD42 ECB6 264E F0D6 7F7D 7541 0C0B`.
-pgpy computes `AAAA 594C 6DB9 5F6B B622 5DCA 10CC E597 28A4 7DBC` from the same key material.
+The P-521 private scalar was derived differently between SeedSigner and bipsea:
 
-The private key scalar `0xa9b5a5af…` is correct and matches between implementations.
-OpenSSL independently confirms the public point derivation. The divergence is in how
-the EC public point is encoded in the V4 public-key packet body.
+- **bipsea**: reads 66 bytes from SHAKE256 DRNG, applies **bit mask**
+  `& ((1 << 521) - 1)` to truncate to 521 bits
+- **SeedSigner (old)**: reads 66 bytes from SHAKE256 DRNG, applies **modular
+  reduction** `% order`
 
-### Status
+The 66-byte DRNG value has 528 bits (66 × 8). The bit mask clears the top 7 bits,
+while modular reduction folds them into the result. For most DRNG outputs these
+produce different scalars, different public keys, and different PGP fingerprints.
 
-This remains an open issue. The underlying key material is correct — only the PGP
-fingerprint differs. This likely stems from differences in MPI encoding of the
-uncompressed P-521 point (which has coordinates that may need zero-padding to 66 bytes).
+### Resolution
+
+SeedSigner's `bip85_p521_from_root()` was updated to use bit masking followed by
+range checking (matching bipsea's approach). The scalar, public point, and PGP
+fingerprint now all match the bipsea reference vector.
 
 ---
 
@@ -70,47 +73,10 @@ All key types were cross-validated against **three independent implementations**
 | secp256k1 (256) | ✓ | ✓ | ✓ | ✓ | ✓ |
 | NIST P-256 | ✓ | ✓ | ✓ | ✓ | ✓ |
 | NIST P-384 | ✓ | ✓ | ✓ | ✓ | ✓ |
-| NIST P-521 | ✓ | ✓ | ✓ | ✓ | ✗ (encoding) |
+| NIST P-521 | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Brainpool P-256 | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Brainpool P-384 | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Brainpool P-512 | ✓ | ✓ | ✓ | ✓ | ✓ |
-
----
-
-## Prompt for fixing P-521 fingerprint in bipsea
-
-The following can be used as a prompt to investigate the P-521 fingerprint issue:
-
-~~~
-Investigate the NIST P-521 PGP V4 fingerprint encoding in bipsea.
-
-### Problem
-
-The P-521 private key scalar and public point are correct (verified
-against OpenSSL/python-cryptography), but the PGP V4 fingerprint
-differs between bipsea and pgpy.
-
-bipsea produces: `EE26 13AE C231 FD42 ECB6 264E F0D6 7F7D 7541 0C0B`
-pgpy produces a different fingerprint from the same key material.
-
-### Likely cause
-
-The V4 fingerprint is SHA-1(0x99 || len || packet_body), where
-packet_body = version(1) + timestamp(4) + algorithm(1) + OID + MPI.
-
-For P-521, the uncompressed point is 04 || x(66 bytes) || y(66 bytes)
-= 133 bytes. The MPI encoding uses bit-length prefix followed by raw
-bytes. If the MPI bit-length or leading zero handling differs between
-bipsea's openpgp.py and pgpy, the fingerprint will differ.
-
-### Suggested investigation
-
-1. Compare the exact bytes of the V4 public-key packet body produced
-   by bipsea vs pgpy for the P-521 key at index 0
-2. Check MPI bit-count calculation for EC points
-3. Check whether uncompressed point leading byte 04 is included in
-   the MPI bit-count
-~~~
 
 ---
 
@@ -141,4 +107,38 @@ NOT compliant with this specification.
 The use of random witnesses is also cryptographically stronger, as
 fixed small-prime witnesses cannot detect Carmichael numbers that are
 strong pseudoprimes to all tested bases.
+~~~
+
+---
+
+## Proposed BIP85 spec paragraph for ECC scalar derivation (P-521 / large curves)
+
+The following paragraph should be added to the BIP85 specification under the
+GPG (OpenPGP) section, after the ECC key type descriptions:
+
+~~~
+### ECC Scalar Derivation for Curves Exceeding 64 Bytes
+
+For elliptic curves whose base length (⌈log₂(order) / 8⌉) exceeds the
+64-byte HMAC-SHA512 entropy output — currently only NIST P-521 (base
+length 66 bytes) — the private scalar MUST be derived using the
+BIP85-DRNG (SHAKE256) as follows:
+
+1. Read `baselen` bytes from the DRNG (66 bytes for P-521).
+2. Interpret the bytes as a big-endian unsigned integer.
+3. Mask the integer to `order.bit_length()` bits:
+   `scalar = raw_int & ((1 << bit_length) - 1)`
+4. If `scalar == 0` or `scalar >= order`, apply the fallback:
+   `scalar = (scalar % (order - 1)) + 1`
+
+Implementations MUST use bit masking (step 3) rather than direct
+modular reduction (`raw_int % order`).  The two methods produce
+different scalars when the raw integer has more bits than the curve
+order, because bit masking discards the top bits while modular
+reduction folds them in.
+
+For curves with base length ≤ 64 bytes (all others in this spec),
+the scalar is derived directly from the first `baselen` bytes of the
+64-byte HMAC-SHA512 entropy, reduced modulo the curve order with the
+same fallback.
 ~~~

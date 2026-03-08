@@ -176,8 +176,8 @@ CROSS_IMPL_ECC_VECTORS = [
         521,
         "3524b3cbe60eb78a156dae44674702f69381afe5292d6d15d7801b7e530f2a06"
         "16b7b876c0ba85d6e675587fdc0ce2242ad00252493ec9c3a024217d1e2aa954",
-        "a9b5a5af6b4c45ea509e838cb55a0043412b49781c54a68931395be4b27550b2"
-        "707d76c610e50803704293e4b27f9473b156e3d7f7cac4feb9bd16c1198a903849",
+        "a9b5a5af6b4c45ea509e838cb55a0043412b49781c54a68931395be4b27550b1"
+        "c60b3aa7814c9ba4093c7c0b3f72b5e21856317b97eb156533b42e36ae8f2bf157",
     ),
     (
         tools_views.BIP85_GPG_KEY_TYPE_BRAINPOOL,
@@ -383,7 +383,8 @@ def test_bip85_p521_deterministic():
     root = bip32.HDKey.from_seed(seed.seed_bytes)
     key = bip85_p521_from_root(root, 0)
     assert int(key.s) == int(
-        "6700224442c326298a3fd6b3df9c4c05068a4c7df2bc3b2f3fee647d46355d348fbf4f0dd5b9d2681c1a057a1d037d5ab0d8b17b1d2f896dde3ab51e43b27d95a3", 16
+        "6700224442c326298a3fd6b3df9c4c05068a4c7df2bc3b2f3fee647d46355d34"
+        "7905692be4b690c1ca19357f40dfa3f1f1c788a1ff55fa8c992873fabdf75f25c7", 16
     )
 
 

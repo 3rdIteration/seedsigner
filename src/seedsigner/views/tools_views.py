@@ -11411,9 +11411,11 @@ def bip85_p521_from_root(
     drng = BIP85DRNG.new(entropy)
     d_bytes = drng.read(66)
     order = 0x01FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFA51868783BF2F966B7FCC0148F709A5D03BB5C9B8899C47AEBB6FB71E91386409
-    d = int.from_bytes(d_bytes, "big") % order
-    if d == 0:
-        d = 1
+    # Mask to 521 bits (matching bipsea reference implementation) then
+    # reduce into [1, order-1] only when the masked value is out of range.
+    d = int.from_bytes(d_bytes, "big") & ((1 << 521) - 1)
+    if d == 0 or d >= order:
+        d = (d % (order - 1)) + 1
     pn = ec.derive_private_key(d, ec.SECP521R1()).public_key().public_numbers()
     if alg == "ECDH":
         priv = fields.ECDHPriv()
