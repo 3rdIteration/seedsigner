@@ -392,6 +392,8 @@ def test_bip85_brainpoolp384r1_deterministic():
     seed = Seed(mnemonic=MNEMONIC)
     root = bip32.HDKey.from_seed(seed.seed_bytes)
     key = bip85_brainpoolp384r1_from_root(root, 0)
+    # This mnemonic's entropy exceeds the curve order, exercising the
+    # out-of-range fallback: (d % (order - 1)) + 1.
     assert int(key.s) == int(
         "5ff15e7affe063458500ebe3cb883388cc0c01a395d59b2b198bb34ea0b8c95f8399ff0197c45bd1d8e7a09babb60f14", 16
     )
