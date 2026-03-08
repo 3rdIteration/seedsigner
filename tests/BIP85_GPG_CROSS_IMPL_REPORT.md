@@ -288,3 +288,109 @@ The blocking issue for a pycryptodomex-only solution is that PyCryptodome
 **does not support** Ed25519, X25519, secp256k1, Brainpool, or P-521 in its
 `ECC` module.  These curves would require either keeping python-cryptography
 as a dependency or adding pure-Python curve arithmetic.
+
+---
+
+## Follow-up: python-gnupg as an alternative to pgpy
+
+### What is python-gnupg?
+
+**python-gnupg** (`gnupg` on PyPI) is a thin Python wrapper around the `gpg`
+command-line binary.  It calls `gpg` via `subprocess` and parses its
+`--status-fd` output.  It has **zero** Python-level crypto dependencies — no
+python-cryptography, no pycryptodome.  All actual cryptography is performed
+by the native `gpg2` binary.
+
+### Would it remove the python-cryptography dependency?
+
+**Yes, partially — but with important caveats.**
+
+python-gnupg itself does not depend on python-cryptography.  However:
+
+1. **python-cryptography is currently used directly** in `tools_views.py`
+   (lines 10833–11624) for EC public key derivation from BIP85 scalars
+   (`Ed25519PrivateKey.from_private_bytes()`, `X25519PrivateKey`,
+   `ec.derive_private_key()`).  These 9 import sites across 7 ECC key
+   derivation functions are **not part of pgpy** — they call
+   python-cryptography directly.  Replacing pgpy with python-gnupg would
+   not eliminate these.
+
+2. **pgpy uses python-cryptography internally** for its signing, encryption,
+   and EC operations.  Removing pgpy would remove this *transitive*
+   dependency.
+
+So switching to python-gnupg removes the *transitive* path through pgpy but
+**does not** remove the direct usage in `bip85_ed25519_from_root()`,
+`bip85_secp256k1_from_root()`, `bip85_p256_from_root()`, etc.  Those would
+need separate replacement (see Phase 2 in the phased strategy above).
+
+### What python-gnupg can and cannot replace
+
+| Current pgpy usage | python-gnupg replacement? | Notes |
+|---|---|---|
+| **Key import** (`gpg --batch --import`) | ✅ `gpg.import_keys(armored)` | Already done via subprocess; trivial to wrap |
+| **Key listing** (`gpg --list-secret-keys --with-colons`) | ✅ `gpg.list_keys(secret=True)` | Already done via subprocess; python-gnupg returns structured objects |
+| **Subkey add** (`gpg --quick-addkey`) | ✅ python-gnupg doesn't wrap this but can call `gpg` generically | Current code already uses subprocess |
+| **UID operations** (`--quick-add-uid`, `--quick-revoke-uid`) | ✅ Same — subprocess-based | No change needed |
+| **File encrypt/decrypt** (Tools → File Operations) | ✅ `gpg.encrypt()` / `gpg.decrypt()` | Already uses subprocess `gpg` binary |
+| **OpenPGP packet construction** (PrivKeyV4, MPI, ECPoint) | ❌ **Not possible** | python-gnupg is a CLI wrapper; it cannot construct custom key packets |
+| **BIP85 key material injection** (setting `pk.keymaterial`) | ❌ **Not possible** | The core use case: deterministically setting private key bytes from BIP85 entropy |
+| **ASCII armor serialization** (`str(pgp_key)`) | ❌ Only via gpg binary round-trip | pgpy serializes in-memory; python-gnupg requires the key to exist in the gpg keyring first |
+| **Fingerprint computation** (`key.fingerprint`) | ❌ Only after gpg import | pgpy computes fingerprints from raw packet data before import |
+| **Message encrypt/decrypt in gpg_message.py** | ⚠️ Possible but requires `gpg` binary | Current `gpg_message.py` explicitly avoids the gpg binary for portability |
+| **SmartPGP card import** (parsing key material) | ❌ **Not possible** | Needs direct access to MPI values (n, e, d, p, q) from key packets |
+
+### The core problem: BIP85 deterministic key construction
+
+The fundamental issue is that **BIP85 GPG key derivation requires constructing
+OpenPGP key packets from raw entropy bytes**.  This means:
+
+1. Deriving a private scalar from BIP85 entropy
+2. Computing the corresponding public key point
+3. Encoding both into OpenPGP MPI format
+4. Assembling a v4 secret key packet with correct creation timestamp
+5. Adding self-signatures with the correct key flags
+6. Computing the v4 fingerprint from the packet bytes
+7. Exporting as ASCII armor
+
+python-gnupg cannot do steps 1–7 because it only wraps the `gpg` CLI.
+The `gpg` binary does not accept raw key material — it either generates
+keys internally or imports fully-formed OpenPGP packets.
+
+### What would need to change
+
+To use python-gnupg instead of pgpy, you would need:
+
+1. **Keep a minimal OpenPGP packet builder** (~800–1000 lines) to construct
+   secret key packets from BIP85 entropy.  This replaces pgpy's
+   `PrivKeyV4`, `fields.*Priv`, `MPI`, `ECPoint`, `PGPUID.new()`,
+   `add_uid()`, `add_subkey()`, and `str(key)` (ASCII armor).
+
+2. **Replace the ~40 subprocess.run("gpg", ...) calls** with python-gnupg's
+   API for key listing, import, UID management, etc.  This is mostly
+   cosmetic since both approaches call the same binary.
+
+3. **Replace gpg_message.py** with python-gnupg's `encrypt()`/`decrypt()`
+   methods, or keep the current subprocess approach.  This would make
+   message operations depend on the `gpg` binary (currently pgpy handles
+   them in pure Python).
+
+4. **Replace smartpgp_import.py** key parsing with the minimal packet
+   reader from step 1, or keep pgpy just for this module.
+
+### Summary
+
+| Approach | Removes pgpy? | Removes python-cryptography? | Effort | Risk |
+|---|---|---|---|---|
+| **python-gnupg only** | ✅ | ❌ (direct usage remains) | Medium | Loses pure-Python message encrypt/decrypt |
+| **python-gnupg + minimal packet builder** | ✅ | ❌ (direct EC point derivation remains) | Medium-High | ~1000 LOC new code to test and maintain |
+| **python-gnupg + packet builder + embit/pure-Python ECC** | ✅ | ✅ | High | Most curves need custom implementations |
+| **Keep pgpy, replace direct cryptography usage** | ❌ | ❌ (pgpy depends on it) | Low | Not useful for the goal |
+
+**Bottom line**: python-gnupg is a good replacement for the **subprocess.run("gpg", ...)**
+calls that are already in the codebase (~40+ call sites).  It provides
+structured output parsing and error handling.  However, it **cannot** replace
+pgpy's core function of constructing OpenPGP key packets from raw BIP85
+entropy.  A minimal packet builder would still be needed, and
+python-cryptography would still be needed for EC public key derivation
+unless replaced by pure-Python or embit-based implementations.
