@@ -3,152 +3,113 @@
 ## Summary
 
 SeedSigner's BIP85 GPG implementation was validated against the bipsea reference
-test vectors, OpenSSL (via python-cryptography), and PyCryptodome (FIPS 186-4).
+test vectors (commit `d8f8d9075a7ed6677c3be993f67c5d79e4bd63e1`), OpenSSL (via
+python-cryptography), and PyCryptodome (FIPS 186-4).
 
-**Two issues were found in the bipsea test vectors**, plus a spec gap for RSA.
-
----
-
-## Issue 1: RSA key generation uses non-FIPS fixed Miller-Rabin witnesses
-
-### Problem
-
-bipsea's `gpg.py::_is_prime()` uses **fixed small-prime witnesses** (2, 3, 5, …, 53)
-for Miller-Rabin primality testing. This is:
-
-1. **Not FIPS 186-4 compliant** — §C.3.1 requires random bases drawn from a RNG.
-2. **Less robust** — fixed witnesses cannot detect Carmichael numbers that happen to
-   be strong pseudoprimes to all tested small bases.
-3. **Incompatible with PyCryptodome** — fixed witnesses consume **zero** DRNG bytes
-   for primality testing, while PyCryptodome's random witnesses consume bytes for
-   each Miller-Rabin round, shifting the DRNG stream.
-
-The BIP85 spec's example code references `RSA.generate_key(4096, drng_reader.read)`,
-implying PyCryptodome's FIPS 186-4 algorithm as the canonical implementation.
-
-### Observed divergence
-
-For the test master key `xprv9s21ZrQH143K2LBW...`:
-
-| Key size | Entropy | Primes (p, q) | Fingerprint |
-|----------|---------|---------------|-------------|
-| RSA-2048 | ✓ match | ✓ match (opposite order, coincidence) | ✓ match |
-| RSA-4096 | ✓ match | ✗ completely different | ✗ completely different |
-
-RSA-2048 matching is a **coincidence** specific to this DRNG stream — the two
-implementations find the same pair of primes in opposite order. This cannot be
-relied upon for other master keys or key sizes.
-
-### Corrected RSA fingerprints (PyCryptodome FIPS 186-4)
-
-| Key size | Correct fingerprint |
-|----------|-------------------|
-| RSA-2048 | `9987 9DF6 D21E 34C8 A086 A4BD 8B44 8E5B C298 294A` |
-| RSA-4096 | `24C2 5A48 383E 1175 4687 1767 D9A0 5CA6 4F2F 6A85` |
-
-### bipsea vectors that need updating
-
-- RSA-1024 fingerprint `E3D7 994A …` → regenerate with PyCryptodome
-- RSA-4096 fingerprint `5ABD 668A …` → should be `24C2 5A48 383E 1175 4687 1767 D9A0 5CA6 4F2F 6A85`
-- All RSA ASCII-armored key blocks → regenerate with PyCryptodome
+**RSA vectors now fully match** — bipsea has been updated to use PyCryptodome for
+RSA generation per our earlier recommendation. **One remaining issue**: NIST P-521
+PGP fingerprint still diverges between pgpy and bipsea due to EC point encoding
+differences in the V4 public-key packet.
 
 ---
 
-## Issue 2: NIST P-521 fingerprint is incorrect
+## RSA: ✓ RESOLVED — All vectors match
+
+### Background
+
+In the initial validation, bipsea used a pure-Python `_is_prime()` with fixed
+small-prime witnesses (2, 3, 5, …, 53) for Miller-Rabin primality testing. This
+consumed zero DRNG bytes for Miller-Rabin rounds, producing different primes than
+PyCryptodome's FIPS 186-4 implementation (which uses random witnesses from the DRNG).
+
+### Resolution
+
+As of bipsea commit `d8f8d9075a`, the reference implementation uses PyCryptodome's
+`RSA.generate(key_bits, randfunc=drng.read)` for RSA generation. All RSA test
+vectors have been regenerated and now match PyCryptodome exactly.
+
+### Validated RSA fingerprints
+
+| Key size | Fingerprint | bipsea | PyCryptodome | OpenSSL cross-sign |
+|----------|-------------|--------|--------------|-------------------|
+| RSA-1024 | `874A 3964 4ED0 255D EEC1 8E0E 1E63 8864 9672 CF70` | ✓ | ✓ | ✓ |
+| RSA-2048 | `9987 9DF6 D21E 34C8 A086 A4BD 8B44 8E5B C298 294A` | ✓ | ✓ | ✓ |
+| RSA-4096 | `24C2 5A48 383E 1175 4687 1767 D9A0 5CA6 4F2F 6A85` | ✓ | ✓ | ✓ |
+
+---
+
+## NIST P-521 PGP Fingerprint: ✗ Still diverges
 
 ### Problem
 
-The bipsea P-521 test vector lists fingerprint `EE26 13AE C231 FD42 ECB6 264E F0D6 7F7D 7541 0C0B`,
-but this does **not** match the V4 fingerprint computed from the correct primary key body.
-
-Byte-for-byte reconstruction of the V4 public-key packet body (version + timestamp +
-algorithm + OID + MPI of uncompressed point) produces **identical 147 bytes** in both
-pgpy and manual bipsea-style encoding. The SHA-1 fingerprint of this body is
-`AAAA 594C 6DB9 5F6B B622 5DCA 10CC E597 28A4 7DBC`.
+The bipsea P-521 test vector lists fingerprint `EE26 13AE C231 FD42 ECB6 264E F0D6 7F7D 7541 0C0B`.
+pgpy computes a different V4 fingerprint from the same private key scalar.
 
 The private key scalar `0xa9b5a5af…` is correct and matches between implementations.
-OpenSSL independently confirms the public point derivation. Only the expected
-fingerprint in the test vector is wrong.
+OpenSSL independently confirms the public point derivation. The divergence is in how
+the EC public point is encoded in the V4 public-key packet body.
 
-### Corrected value
+### Status
 
-| Key type | Correct fingerprint |
-|----------|-------------------|
-| NIST P-521 | `AAAA 594C 6DB9 5F6B B622 5DCA 10CC E597 28A4 7DBC` |
+This remains an open issue. The underlying key material is correct — only the PGP
+fingerprint differs. This likely stems from differences in MPI encoding of the
+uncompressed P-521 point (which has coordinates that may need zero-padding to 66 bytes).
 
 ---
 
 ## What was validated successfully
 
-All ECC key types were cross-validated against **three independent implementations**:
+All key types were cross-validated against **three independent implementations**:
 
 | Key type | Entropy | Private key | OpenSSL pubkey | OpenSSL sign/verify | PGP fingerprint (bipsea) |
 |----------|---------|-------------|----------------|---------------------|--------------------------|
+| RSA-1024 | ✓ | ✓ | ✓ (cross-sign) | ✓ | ✓ |
+| RSA-2048 | ✓ | ✓ | ✓ (cross-sign) | ✓ | ✓ |
+| RSA-4096 | ✓ | ✓ | ✓ (cross-sign) | ✓ | ✓ |
 | Curve25519 (Ed25519) | ✓ | ✓ | ✓ | ✓ | ✓ |
 | secp256k1 (256) | ✓ | ✓ | ✓ | ✓ | ✓ |
 | NIST P-256 | ✓ | ✓ | ✓ | ✓ | ✓ |
 | NIST P-384 | ✓ | ✓ | ✓ | ✓ | ✓ |
-| NIST P-521 | ✓ | ✓ | ✓ | ✓ | ✗ (bipsea vector wrong) |
+| NIST P-521 | ✓ | ✓ | ✓ | ✓ | ✗ (encoding) |
 | Brainpool P-256 | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Brainpool P-384 | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Brainpool P-512 | ✓ | ✓ | ✓ | ✓ | ✓ |
 
-RSA keys generated by PyCryptodome were imported into OpenSSL, with bidirectional
-signature cross-validation (PyCryptodome-sign → OpenSSL-verify and vice versa)
-passing for all key sizes.
-
 ---
 
-## Prompt for fixing bipsea
+## Prompt for fixing P-521 fingerprint in bipsea
 
-The following can be used as a prompt to fix the bipsea reference implementation:
+The following can be used as a prompt to investigate the P-521 fingerprint issue:
 
 ~~~
-Fix the RSA key generation in bipsea to use FIPS 186-4 compliant random
-Miller-Rabin witnesses instead of fixed small-prime witnesses.
+Investigate the NIST P-521 PGP V4 fingerprint encoding in bipsea.
 
 ### Problem
 
-`gpg.py::_is_prime()` uses fixed witnesses `(2, 3, 5, …, 53)` for
-Miller-Rabin. This:
-1. Is not FIPS 186-4 compliant (§C.3.1 requires random bases)
-2. Consumes zero DRNG bytes for primality testing, making the output
-   incompatible with PyCryptodome's `RSA.generate(bits, randfunc)`
-3. Is less robust against Carmichael numbers
+The P-521 private key scalar and public point are correct (verified
+against OpenSSL/python-cryptography), but the PGP V4 fingerprint
+differs between bipsea and pgpy.
 
-### Required changes
+bipsea produces: `EE26 13AE C231 FD42 ECB6 264E F0D6 7F7D 7541 0C0B`
+pgpy produces a different fingerprint from the same key material.
 
-1. In `gpg.py`, replace `_is_prime()` and `_generate_prime()` with
-   PyCryptodome's `RSA.generate(key_bits, randfunc=drng_read)`.
-   This is the algorithm referenced by the BIP85 spec's example code.
+### Likely cause
 
-   Replace `generate_rsa_key()` with:
-   ```python
-   from Crypto.PublicKey import RSA
+The V4 fingerprint is SHA-1(0x99 || len || packet_body), where
+packet_body = version(1) + timestamp(4) + algorithm(1) + OID + MPI.
 
-   def generate_rsa_key(key_bits, randfunc):
-       rsa = RSA.generate(key_bits, randfunc=randfunc)
-       return {
-           "n": rsa.n, "e": rsa.e, "d": rsa.d,
-           "p": rsa.p, "q": rsa.q,
-           "dp": rsa.d % (rsa.p - 1),
-           "dq": rsa.d % (rsa.q - 1),
-           "qi": pow(rsa.q, -1, rsa.p),
-       }
-   ```
+For P-521, the uncompressed point is 04 || x(66 bytes) || y(66 bytes)
+= 133 bytes. The MPI encoding uses bit-length prefix followed by raw
+bytes. If the MPI bit-length or leading zero handling differs between
+bipsea's openpgp.py and pgpy, the fingerprint will differ.
 
-2. Regenerate ALL RSA test vectors (fingerprints AND ASCII-armored key
-   blocks) in `test_vectors.md` using PyCryptodome.
+### Suggested investigation
 
-3. Fix the NIST P-521 fingerprint in `test_vectors.md`:
-   - Wrong:   `EE26 13AE C231 FD42 ECB6 264E F0D6 7F7D 7541 0C0B`
-   - Correct: `AAAA 594C 6DB9 5F6B B622 5DCA 10CC E597 28A4 7DBC`
-
-### Verification
-
-After fixing, run the SeedSigner cross-implementation tests at
-`tests/test_bip85_bipsea_vectors.py` — all RSA and P-521 fingerprints
-should match.
+1. Compare the exact bytes of the V4 public-key packet body produced
+   by bipsea vs pgpy for the P-521 key at index 0
+2. Check MPI bit-count calculation for EC points
+3. Check whether uncompressed point leading byte 04 is included in
+   the MPI bit-count
 ~~~
 
 ---

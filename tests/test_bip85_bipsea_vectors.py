@@ -5,39 +5,24 @@ Validates SeedSigner's BIP85 GPG implementation against:
   - OpenSSL (ECC public-key derivation via ``cryptography`` library)
   - PyCryptodome FIPS 186-4 (RSA key generation)
 
-Source for bipsea vectors:
-  https://github.com/3rdIteration/bipsea/blob/copilot/
-  add-test-vectors-for-xprv9s21zrqh143k2/test_vectors.md
+Source for bipsea vectors (updated):
+  https://github.com/3rdIteration/bipsea/blob/d8f8d9075a7ed6677c3be993f67c5d79e4bd63e1/test_vectors.md
 
 All derivations use master key:
   xprv9s21ZrQH143K2LBWUUQRFXhucrQqBpKdRRxNVq2zBqsx8HVqFk2uYo8kmbaLLH
   RdqtQpUm98uKfu3vca1LqdGhUtyoFnCNkfmXRyPXLjbKb
 
-.. rubric:: RSA determinism: PyCryptodome vs bipsea
+.. rubric:: RSA determinism: PyCryptodome as canonical reference
 
-RSA key generation from a deterministic DRNG is **not** implementation-
-agnostic.  The BIP85 spec's example code references PyCryptodome's
+RSA key generation from a deterministic DRNG requires a canonical
+algorithm.  The BIP85 spec references PyCryptodome's
 ``RSA.generate(bits, randfunc=drng.read)`` which follows FIPS 186-4
 (§B.3.1, §C.3.1): random Miller-Rabin witnesses drawn from ``randfunc``.
 
-bipsea instead uses a pure-Python ``generate_rsa_key()`` with **fixed**
-small-prime witnesses (2, 3, …, 53).  This is:
-
-1. **Not FIPS 186-4 compliant** — the standard requires random bases.
-2. **Less robust** — fixed witnesses cannot detect Carmichael numbers
-   that happen to be strong pseudoprimes to all small bases ≤ 53.
-3. **Incompatible** — fixed witnesses consume zero DRNG bytes for
-   primality testing, while random witnesses consume bytes for each
-   Miller-Rabin round, shifting the DRNG stream.
-
-For RSA-2048 with this particular master key, the two implementations
-happen to find the same pair of primes (in opposite order: PyCryptodome
-finds ``(q, p)`` where bipsea finds ``(p, q)``), producing the same
-modulus ``n``.  For RSA-4096, the primes diverge entirely.
-
-The PyCryptodome (FIPS 186-4) approach should be the canonical reference
-for any BIP85 RSA GPG specification, as it uses cryptographically safe
-random witnesses.
+As of bipsea commit ``d8f8d9075a``, the reference implementation has
+been updated to use PyCryptodome for RSA generation, and all RSA test
+vectors now match the FIPS 186-4 output.  All RSA fingerprints in the
+updated bipsea vectors are validated here against PyCryptodome directly.
 
 .. rubric:: P-521 PGP fingerprint encoding
 
@@ -51,8 +36,9 @@ EC public point in the V4 public-key packet body differently.
 =================  =======  ===========  ==============  =============
 Key type           Entropy  Private key  OpenSSL pubkey  PGP fingerprint
 =================  =======  ===========  ==============  =============
-RSA-2048           ✓        ✓ (same n)   n/a             ✓ (bipsea)
-RSA-4096           ✓        ✗ (diverge)  n/a             ✗ (diverge)
+RSA-1024           ✓        ✓            ✓ (cross-sign)  ✓ (bipsea)
+RSA-2048           ✓        ✓            ✓ (cross-sign)  ✓ (bipsea)
+RSA-4096           ✓        ✓            ✓ (cross-sign)  ✓ (bipsea)
 Curve25519 (256)   ✓        ✓            ✓               ✓ (bipsea)
 secp256k1 (256)    ✓        ✓            ✓               ✓ (bipsea)
 NIST P-256         ✓        ✓            ✓               ✓ (bipsea)
@@ -230,7 +216,7 @@ def test_openssl_cross_validates_ed25519_public_key():
     assert pgpy_pub == openssl_pub
 
 
-@pytest.mark.parametrize("bits", [2048, 3072, 4096], ids=["RSA-2048", "RSA-3072", "RSA-4096"])
+@pytest.mark.parametrize("bits", [1024, 2048, 3072, 4096], ids=["RSA-1024", "RSA-2048", "RSA-3072", "RSA-4096"])
 def test_openssl_cross_validates_rsa_key(bits):
     """PyCryptodome RSA key imports into OpenSSL and cross-signs correctly."""
     from cryptography.hazmat.primitives.asymmetric import padding as ossl_padding
@@ -385,24 +371,97 @@ def _build_rsa_pgp_key(root, bits, index=0):
     )
 
 
-def test_bipsea_rsa2048_gpg_fingerprint():
-    """RSA-2048 GPG key fingerprint matches bipsea test vector.
+@pytest.mark.parametrize(
+    "bits", [2048, 4096],
+    ids=["RSA-2048", "RSA-4096"],
+)
+def test_bipsea_rsa_gpg_fingerprint(bits):
+    """RSA GPG key fingerprints match updated bipsea test vectors.
 
-    RSA-2048 is the only RSA key size where PyCryptodome (FIPS 186-4,
-    random MR witnesses) and bipsea (fixed small-prime witnesses)
-    produce the same modulus n from this DRNG stream.  They find the
-    same pair of primes (in opposite order), so n = p·q is identical.
+    As of bipsea commit d8f8d9075a, bipsea uses PyCryptodome for RSA
+    generation, so all RSA fingerprints now match between implementations.
+
+    RSA-1024 is tested separately since seedsigner enforces MIN_RSA_KEY_BITS=2048.
     """
     root = bip32.HDKey.from_string(MASTER_XPRV)
-    pgp_key = _build_rsa_pgp_key(root, 2048)
+    pgp_key = _build_rsa_pgp_key(root, bits)
     actual = str(pgp_key.fingerprint).replace(" ", "")
-    assert actual == "99879DF6D21E34C8A086A4BD8B448E5BC298294A"
+    assert actual == BIPSEA_RSA_FINGERPRINTS[bits]
 
 
-# PyCryptodome-canonical RSA fingerprints (pinned to FIPS 186-4 algorithm).
-# These vectors are EXPECTED to differ from bipsea's test vectors for
-# key sizes other than 2048.
+def test_bipsea_rsa1024_fingerprint_direct():
+    """RSA-1024 bipsea fingerprint validated via PyCryptodome directly.
+
+    SeedSigner enforces MIN_RSA_KEY_BITS=2048, so we can't use
+    bip85_rsa_from_root for 1024.  Instead we generate the key
+    directly with PyCryptodome from the BIP85-derived entropy.
+    """
+    from Cryptodome.PublicKey import RSA
+    from pgpy import PGPKey, PGPUID
+    from pgpy.pgp import PrivKeyV4
+    from pgpy.constants import (
+        PubKeyAlgorithm,
+        KeyFlags,
+        HashAlgorithm,
+        SymmetricKeyAlgorithm,
+        CompressionAlgorithm,
+    )
+    from pgpy.packet import fields
+    from pgpy.packet.types import MPI
+
+    root = bip32.HDKey.from_string(MASTER_XPRV)
+    entropy = bip85.derive_entropy(
+        root, BIP85_GPG_APP, [BIP85_GPG_KEY_TYPE_RSA, 1024, 0]
+    )
+    drng = BIP85DRNG.new(entropy)
+    rsa_key = RSA.generate(1024, randfunc=drng.read)
+
+    km = fields.RSAPriv()
+    km.n = MPI(rsa_key.n)
+    km.e = MPI(rsa_key.e)
+    km.d = MPI(rsa_key.d)
+    km.p = MPI(rsa_key.p)
+    km.q = MPI(rsa_key.q)
+    km.u = MPI(pow(rsa_key.p, -1, rsa_key.q))
+
+    created = datetime.datetime.fromtimestamp(
+        BIP85_GPG_CREATED_TS, tz=datetime.timezone.utc
+    )
+    pk = PrivKeyV4()
+    pk.pkalg = PubKeyAlgorithm.RSAEncryptOrSign
+    pk.keymaterial = km
+    pk.created = created
+    pk.update_hlen()
+
+    pgp_key = PGPKey()
+    pgp_key._key = pk
+    uid = PGPUID.new("BIP85")
+    pgp_key.add_uid(
+        uid,
+        usage={KeyFlags.Certify, KeyFlags.Sign},
+        hashes=[HashAlgorithm.SHA256],
+        ciphers=[SymmetricKeyAlgorithm.AES256],
+        compression=[CompressionAlgorithm.ZLIB],
+        created=created,
+    )
+
+    actual = str(pgp_key.fingerprint).replace(" ", "")
+    assert actual == BIPSEA_RSA_FINGERPRINTS[1024]
+
+
+# ── RSA fingerprint vectors (all sizes now match bipsea) ─────────────────────
+# PyCryptodome (FIPS 186-4) fingerprints.  As of bipsea commit d8f8d9075a,
+# bipsea uses PyCryptodome for RSA generation so all vectors match.
+
+BIPSEA_RSA_FINGERPRINTS = {
+    1024: "874A39644ED0255DEEC18E0E1E6388649672CF70",
+    2048: "99879DF6D21E34C8A086A4BD8B448E5BC298294A",
+    4096: "24C25A48383E117546871767D9A05CA64F2F6A85",
+}
+
+# Internal reference including 3072 (not in bipsea vectors but validated)
 PYCRYPTODOME_RSA_FINGERPRINTS = {
+    1024: "874A39644ED0255DEEC18E0E1E6388649672CF70",
     2048: "99879DF6D21E34C8A086A4BD8B448E5BC298294A",
     3072: "5871B1143CE5724B381499ABA371306954371056",
     4096: "24C25A48383E117546871767D9A05CA64F2F6A85",
@@ -418,47 +477,36 @@ def test_pycryptodome_rsa_fingerprint(bits):
     assert actual == PYCRYPTODOME_RSA_FINGERPRINTS[bits]
 
 
-def test_rsa_implementation_divergence_bipsea_vs_pycryptodome():
-    """RSA-4096: bipsea and PyCryptodome find different primes.
+def test_rsa_implementations_now_agree():
+    """RSA 2048/4096: bipsea and PyCryptodome produce identical fingerprints.
 
-    Documents the root cause: bipsea's ``_is_prime()`` uses fixed
-    small-prime witnesses that consume NO DRNG bytes for Miller-Rabin,
-    while PyCryptodome's FIPS 186-4 implementation uses random witnesses
-    drawn from the DRNG.  This shifts the DRNG stream, producing
-    completely different primes (and thus a different modulus n).
+    As of bipsea commit d8f8d9075a, the reference implementation uses
+    PyCryptodome for RSA generation (FIPS 186-4 random MR witnesses).
+    This resolves the previous divergence where bipsea's pure-Python
+    ``_is_prime()`` used fixed small-prime witnesses that consumed NO
+    DRNG bytes, producing different primes for RSA-4096.
 
-    For RSA-2048 with this master key, the two implementations find the
-    same pair of primes (in opposite order), so n happens to match.
-    This is a coincidence specific to this DRNG stream and CANNOT be
-    relied upon for other master keys or key sizes.
+    RSA-1024 is validated separately (seedsigner enforces MIN_RSA_KEY_BITS=2048).
     """
     root = bip32.HDKey.from_string(MASTER_XPRV)
-
-    # Entropy matches (implementation-agnostic)
-    e4096 = bip85.derive_entropy(
-        root, BIP85_GPG_APP, [BIP85_GPG_KEY_TYPE_RSA, 4096, 0]
-    )
-    assert e4096.hex() == (
-        "2d2ef3335dc51e7a0642bfe86fba0bb4e8401b703d8d679bb1a31d75f8a81f1f"
-        "d52b20b2eae50ef6e0378b8755f4f0426c68b54f11edc0c848e017e81bb2ad87"
-    )
-
-    # PyCryptodome RSA-4096 fingerprint does NOT match bipsea
-    pgp_4096 = _build_rsa_pgp_key(root, 4096)
-    pycrypto_fp = str(pgp_4096.fingerprint).replace(" ", "")
-    bipsea_fp = "5ABD668A33DA720F3F583F2DE2DB9EFBCBAC4B2C"
-    assert pycrypto_fp != bipsea_fp, (
-        "RSA-4096 unexpectedly matches bipsea — check if PyCryptodome "
-        "changed its prime generation algorithm"
-    )
-    assert pycrypto_fp == PYCRYPTODOME_RSA_FINGERPRINTS[4096]
+    for bits in (2048, 4096):
+        expected_fp = BIPSEA_RSA_FINGERPRINTS[bits]
+        pgp_key = _build_rsa_pgp_key(root, bits)
+        actual = str(pgp_key.fingerprint).replace(" ", "")
+        assert actual == expected_fp, (
+            f"RSA-{bits} fingerprint should match bipsea/PyCryptodome"
+        )
+        assert actual == PYCRYPTODOME_RSA_FINGERPRINTS[bits], (
+            f"RSA-{bits} bipsea vector should equal PyCryptodome reference"
+        )
 
 
-def test_rsa2048_primes_match_across_implementations():
-    """RSA-2048: both implementations find the same primes (opposite order).
+def test_rsa2048_primes_from_pycryptodome():
+    """RSA-2048: PyCryptodome generates deterministic primes from DRNG.
 
-    PyCryptodome finds (p_small, q_large) while bipsea finds them as
-    (p_large, q_small).  Since n = p·q, the modulus is identical.
+    Verifies that RSA key generation from the same DRNG entropy always
+    produces the same key (deterministic), which is the foundation of
+    BIP85 GPG RSA key derivation.
     """
     from Cryptodome.PublicKey import RSA
 
@@ -467,63 +515,16 @@ def test_rsa2048_primes_match_across_implementations():
         root, BIP85_GPG_APP, [BIP85_GPG_KEY_TYPE_RSA, 2048, 0]
     )
 
-    # PyCryptodome
-    drng_pc = BIP85DRNG.new(entropy)
-    key_pc = RSA.generate(2048, randfunc=drng_pc.read)
+    # Generate twice with same entropy — must produce identical keys
+    drng1 = BIP85DRNG.new(entropy)
+    key1 = RSA.generate(2048, randfunc=drng1.read)
 
-    # bipsea-style (fixed witnesses, single-call reads)
-    def _is_prime_fixed(n):
-        if n < 2:
-            return False
-        small = (2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53)
-        for p in small:
-            if n == p:
-                return True
-            if n % p == 0:
-                return False
-        r, d = 0, n - 1
-        while d & 1 == 0:
-            r += 1
-            d >>= 1
-        for a in small:
-            if a >= n - 1:
-                continue
-            x = pow(a, d, n)
-            if x == 1 or x == n - 1:
-                continue
-            for _ in range(r - 1):
-                x = pow(x, 2, n)
-                if x == n - 1:
-                    break
-            else:
-                return False
-        return True
+    drng2 = BIP85DRNG.new(entropy)
+    key2 = RSA.generate(2048, randfunc=drng2.read)
 
-    def _gen_prime_fixed(bits, randfunc):
-        byte_len = (bits + 7) // 8
-        mask = (1 << bits) - 1
-        while True:
-            raw = randfunc(byte_len)
-            c = int.from_bytes(raw, "big")
-            c &= mask
-            c |= (1 << (bits - 1)) | 1
-            if _is_prime_fixed(c):
-                return c
-
-    drng_bs = BIP85DRNG.new(entropy)
-    e = 65537
-    p_bs = _gen_prime_fixed(1024, drng_bs.read)
-    q_bs = _gen_prime_fixed(1024, drng_bs.read)
-    if p_bs < q_bs:
-        p_bs, q_bs = q_bs, p_bs
-    n_bs = p_bs * q_bs
-
-    # Same modulus
-    assert key_pc.n == n_bs, "RSA-2048 modulus should match"
-    # Same primes (possibly swapped)
-    pc_primes = {key_pc.p, key_pc.q}
-    bs_primes = {p_bs, q_bs}
-    assert pc_primes == bs_primes, "RSA-2048 primes should match (possibly swapped)"
+    assert key1.n == key2.n, "RSA modulus should be deterministic"
+    assert key1.p == key2.p, "RSA prime p should be deterministic"
+    assert key1.q == key2.q, "RSA prime q should be deterministic"
 
 
 def test_p521_private_key_matches_fingerprint_diverges():
