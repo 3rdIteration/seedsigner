@@ -1,4 +1,5 @@
 """Tests for helpers.gpg_message"""
+import sys
 import pytest
 from pgpy import PGPKey, PGPUID, PGPMessage
 from pgpy.constants import PubKeyAlgorithm, KeyFlags, EllipticCurveOID
@@ -8,6 +9,21 @@ from seedsigner.models.encode_qr import UrBytesQrEncoder
 from seedsigner.helpers.ur2.ur_decoder import URDecoder
 from urtypes.bytes import Bytes
 from seedsigner.models.settings import SettingsConstants
+
+
+def _msys2_path(path: str) -> str:
+    """Convert a Windows path to MSYS2 format for GNUPGHOME.
+
+    On Windows CI the GPG binary ships with Git-for-Windows and runs under
+    MSYS2.  It expects POSIX-style paths (``/c/Users/...``) but Python's
+    ``tempfile`` returns native Windows paths (``C:\\Users\\...``).
+    """
+    if sys.platform == "win32":
+        path = path.replace("\\", "/")
+        # Convert drive letter, e.g. "C:/Users/..." → "/c/Users/..."
+        if len(path) >= 2 and path[1] == ":":
+            path = "/" + path[0].lower() + path[2:]
+    return path
 
 
 def test_encrypt_decrypt_roundtrip():
@@ -304,7 +320,7 @@ def test_bip85_key_gpg_export_roundtrip(key_type):
         pytest.skip(f"{key_type} generation unsupported: {exc}")
 
     with tempfile.TemporaryDirectory() as gnupghome:
-        env = {**os.environ, "GNUPGHOME": gnupghome}
+        env = {**os.environ, "GNUPGHOME": _msys2_path(gnupghome)}
 
         # Import into GPG (same way the UI does)
         result = subprocess.run(
@@ -436,7 +452,7 @@ def test_generate_new_gpg_export_roundtrip(key_type):
     )
 
     with tempfile.TemporaryDirectory() as gnupghome:
-        env = {**os.environ, "GNUPGHOME": gnupghome}
+        env = {**os.environ, "GNUPGHOME": _msys2_path(gnupghome)}
 
         result = subprocess.run(
             ["gpg", "--batch", "--import"],
