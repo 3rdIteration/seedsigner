@@ -11903,7 +11903,7 @@ class ToolsGPGLoadBIP85KeyView(View):
             title="WARNING",
             status_headline=None,
             text=(
-                "BIP85 key derivation is experimental.\n"
+                "BIP85 GPG key derivation\nis experimental.\n"
                 "Record your SeedSigner Version."
             ),
             show_back_button=False,
