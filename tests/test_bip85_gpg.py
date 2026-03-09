@@ -31,6 +31,7 @@ from seedsigner.views.tools_views import (
     bip85_load_data,
     _select_import_algo,
     bip85_verify_existing,
+    _normalize_date_input,
 )
 from seedsigner.models.settings_definition import SettingsConstants
 from seedsigner.helpers.bip85_drng import BIP85DRNG
@@ -2693,3 +2694,37 @@ def test_smartpgp_import_rsa_sets_key_type(monkeypatch):
     assert lengths[0] == 3
     assert lengths[1] == lengths[2] == lengths[3] == lengths[4] == lengths[5]
     assert lengths[6] == lengths[1] * 2
+
+
+# --- _normalize_date_input tests ---
+
+@pytest.mark.parametrize("input_str,expected", [
+    ("2035-12-31", "2035-12-31"),           # normal ASCII
+    (" 2035-12-31 ", "2035-12-31"),         # leading/trailing whitespace
+    ("2035-12-31\n", "2035-12-31"),         # trailing newline
+    ("\t2035-12-31\t", "2035-12-31"),       # tabs
+    ("2035\uff0d12\uff0d31", "2035-12-31"), # fullwidth hyphen
+    ("2035\u201312\u201331", "2035-12-31"), # en-dash
+    ("2035\u201412\u201431", "2035-12-31"), # em-dash
+    ("2035\u221212\u221231", "2035-12-31"), # Unicode minus sign
+    ("", ""),                                # empty string
+    ("   ", ""),                              # whitespace-only
+])
+def test_normalize_date_input(input_str, expected):
+    assert _normalize_date_input(input_str) == expected
+
+
+@pytest.mark.parametrize("input_str", [
+    "2035-12-31",
+    " 2035-12-31 ",
+    "2035-12-31\n",
+    "2035\uff0d12\uff0d31",  # fullwidth hyphen
+    "2035\u201312\u201331",  # en-dash
+    "2035\u201412\u201431",  # em-dash
+    "2035\u221212\u221231",  # Unicode minus sign
+])
+def test_normalize_date_input_parses_as_valid_date(input_str):
+    from datetime import datetime
+    normalized = _normalize_date_input(input_str)
+    dt = datetime.strptime(normalized, "%Y-%m-%d")
+    assert dt.year == 2035 and dt.month == 12 and dt.day == 31
