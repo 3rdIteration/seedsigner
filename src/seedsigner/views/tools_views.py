@@ -5941,7 +5941,26 @@ class ToolsGPGMenuView(View):
     ADVANCED = ButtonOption("Advanced")
 
     def run(self):
+        import shutil
         from seedsigner.controller import Controller
+
+        # Check that required dependencies are available
+        missing = []
+        try:
+            import pgpy  # noqa: F401
+        except ImportError:
+            missing.append("pgpy")
+        if not shutil.which("gpg"):
+            missing.append("gnupg2")
+        if missing:
+            self.run_screen(
+                ErrorScreen,
+                title=_("GPG Tools"),
+                status_headline=_("Missing packages"),
+                text=_("Required but not installed:\n") + ", ".join(missing),
+                button_data=[ButtonOption("OK")],
+            )
+            return Destination(BackStackView)
 
         if self.controller.resume_main_flow == Controller.FLOW__GPG_MESSAGE:
             self.controller.resume_main_flow = None
