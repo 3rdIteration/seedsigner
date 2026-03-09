@@ -192,10 +192,11 @@ _NIST_CURVES = [
     ("P-521", _SCALAR_SMALL),
     ("P-521", _SCALAR_521),
 ]
+_NIST_IDS = [f"{c}-{'small' if d == _SCALAR_SMALL else 'large'}" for c, d in _NIST_CURVES]
 
 
 @pytest.mark.parametrize("backend", _NIST_BACKENDS)
-@pytest.mark.parametrize("curve,d", _NIST_CURVES, ids=[f"{c}-{i}" for i, (c, _) in enumerate(_NIST_CURVES)])
+@pytest.mark.parametrize("curve,d", _NIST_CURVES, ids=_NIST_IDS)
 def test_nist_each_backend(backend, curve, d):
     """Each backend derives a valid NIST (x, y) pair."""
     set_backend(backend)
@@ -204,7 +205,7 @@ def test_nist_each_backend(backend, curve, d):
     assert x > 0 and y > 0
 
 
-@pytest.mark.parametrize("curve,d", _NIST_CURVES, ids=[f"{c}-{i}" for i, (c, _) in enumerate(_NIST_CURVES)])
+@pytest.mark.parametrize("curve,d", _NIST_CURVES, ids=_NIST_IDS)
 def test_nist_backends_agree(curve, d):
     """All installed backends produce the same NIST public key."""
     results = {}
@@ -239,10 +240,11 @@ _BRAINPOOL_CURVES = [
     (512, _SCALAR_SMALL),
     (512, _SCALAR_512),
 ]
+_BRAINPOOL_IDS = [f"BP{b}-{'small' if d == _SCALAR_SMALL else 'large'}" for b, d in _BRAINPOOL_CURVES]
 
 
 @pytest.mark.parametrize("backend", _BRAINPOOL_BACKENDS)
-@pytest.mark.parametrize("bits,d", _BRAINPOOL_CURVES, ids=[f"BP{b}-{i}" for i, (b, _) in enumerate(_BRAINPOOL_CURVES)])
+@pytest.mark.parametrize("bits,d", _BRAINPOOL_CURVES, ids=_BRAINPOOL_IDS)
 def test_brainpool_each_backend(backend, bits, d):
     """Each backend derives a valid Brainpool (x, y) pair."""
     set_backend(backend)
@@ -251,7 +253,7 @@ def test_brainpool_each_backend(backend, bits, d):
     assert x > 0 and y > 0
 
 
-@pytest.mark.parametrize("bits,d", _BRAINPOOL_CURVES, ids=[f"BP{b}-{i}" for i, (b, _) in enumerate(_BRAINPOOL_CURVES)])
+@pytest.mark.parametrize("bits,d", _BRAINPOOL_CURVES, ids=_BRAINPOOL_IDS)
 def test_brainpool_backends_agree(bits, d):
     """All installed backends produce the same Brainpool public key."""
     results = {}
