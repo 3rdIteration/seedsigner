@@ -5791,6 +5791,21 @@ def parse_subkey_list(colon_output: str):
 # human-readable typo of "2009-01-03 18:05:05" UTC, which has propagated elsewhere.
 BIP85_GPG_CREATED_TS = 1231006505
 
+
+def _normalize_date_input(s: str) -> str:
+    """Strip whitespace and replace common non-ASCII dashes with ASCII hyphen.
+
+    Locale or input-method differences can produce fullwidth hyphens (\uff0d),
+    en-dashes (\u2013), em-dashes (\u2014), or Unicode minus signs (\u2212)
+    instead of the expected ASCII hyphen-minus (U+002D).  Normalising these
+    prevents ``datetime.strptime`` / ``date.fromisoformat`` from raising
+    ``ValueError`` on otherwise-valid date strings.
+    """
+    s = s.strip()
+    for ch in "\uff0d\u2013\u2014\u2212":
+        s = s.replace(ch, "-")
+    return s
+
 # Single BIP85 GPG application number per updated spec.
 # Derivation path: m/83696968'/828365'/{key_type}'/{key_bits}'/{key_index}'[/{sub_key}']
 BIP85_GPG_APP = 828365
@@ -7577,7 +7592,7 @@ class ToolsGPGExportSubkeySecretsView(View):
                 re.sub(r"\\(?!u)", r"\\\\", ret_dict["textToEncode"]),
                 encoding="raw_unicode_escape",
             ).decode("unicode_escape")
-        except UnicodeDecodeError:
+        except UnicodeError:
             passphrase = ret_dict["textToEncode"]
 
         protected = run(
@@ -7745,7 +7760,7 @@ class ToolsGPGAddUidView(View):
                     re.sub(r"\\(?!u)", r"\\\\", ret_dict["textToEncode"]),
                     encoding="raw_unicode_escape",
                 ).decode("unicode_escape")
-            except UnicodeDecodeError:
+            except UnicodeError:
                 return ret_dict["textToEncode"]
 
         name = prompt_text("Name")
@@ -7851,7 +7866,7 @@ class ToolsGPGEditUidView(View):
                     re.sub(r"\\(?!u)", r"\\\\", ret_dict["textToEncode"]),
                     encoding="raw_unicode_escape",
                 ).decode("unicode_escape")
-            except UnicodeDecodeError:
+            except UnicodeError:
                 return ret_dict["textToEncode"]
 
         name = prompt_text("Name")
@@ -10658,7 +10673,7 @@ class ToolsGPGLoadPrivkeyFileView(View):
                 re.sub(r"\\(?!u)", r"\\\\", ret_dict["textToEncode"]),
                 encoding="raw_unicode_escape",
             ).decode("unicode_escape")
-        except UnicodeDecodeError:
+        except UnicodeError:
             passphrase = ret_dict["textToEncode"]
 
         decrypted = run(
@@ -11813,7 +11828,7 @@ class ToolsGPGLoadBIP85KeyView(View):
                     re.sub(r"\\(?!u)", r"\\\\", ret_dict["textToEncode"]),
                     encoding="raw_unicode_escape",
                 ).decode("unicode_escape")
-            except UnicodeDecodeError:
+            except UnicodeError:
                 return ret_dict["textToEncode"]
 
         name = prompt_text("Name")
@@ -11835,13 +11850,13 @@ class ToolsGPGLoadBIP85KeyView(View):
         if expiration_str is None:
             return Destination(BackStackView)
         try:
-            if expiration_str == "":
+            if expiration_str.strip() == "":
                 expiration_dt = datetime.combine(
                     default_expiration, datetime.min.time(), tzinfo=timezone.utc
                 )
             else:
                 expiration_dt = datetime.strptime(
-                    expiration_str, "%Y-%m-%d"
+                    _normalize_date_input(expiration_str), "%Y-%m-%d"
                 ).replace(tzinfo=timezone.utc)
             if expiration_dt <= created:
                 raise ValueError
@@ -12388,7 +12403,7 @@ class ToolsGPGGenerateKeyView(View):
                     re.sub(r"\\(?!u)", r"\\\\", ret_dict["textToEncode"]),
                     encoding="raw_unicode_escape",
                 ).decode("unicode_escape")
-            except UnicodeDecodeError:
+            except UnicodeError:
                 return ret_dict["textToEncode"]
 
         name = prompt_text("Name")
@@ -12410,13 +12425,13 @@ class ToolsGPGGenerateKeyView(View):
         if expiration_str is None:
             return Destination(BackStackView)
         try:
-            if expiration_str == "":
+            if expiration_str.strip() == "":
                 expiration_dt = datetime.combine(
                     default_expiration, datetime.min.time(), tzinfo=timezone.utc
                 )
             else:
                 expiration_dt = datetime.strptime(
-                    expiration_str, "%Y-%m-%d"
+                    _normalize_date_input(expiration_str), "%Y-%m-%d"
                 ).replace(tzinfo=timezone.utc)
             if expiration_dt <= created:
                 raise ValueError
@@ -12897,7 +12912,7 @@ class ToolsGPGExportPrivkeyView(View):
                     re.sub(r"\\(?!u)", r"\\\\", ret_dict["textToEncode"]),
                     encoding="raw_unicode_escape",
                 ).decode("unicode_escape")
-            except UnicodeDecodeError:
+            except UnicodeError:
                 passphrase = ret_dict["textToEncode"]
 
             filename = key["fpr"] + "_private.gpg"
@@ -13539,7 +13554,7 @@ class ToolsTextQRTextEntryView(View):
                 encoding="raw_unicode_escape"
             ).decode("unicode_escape")
 
-        except UnicodeDecodeError:
+        except UnicodeError:
             self.textToEncode = ret_dict["textToEncode"]
 
         if "is_back_button" in ret_dict:
