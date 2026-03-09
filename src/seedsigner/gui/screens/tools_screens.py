@@ -10,9 +10,9 @@ from seedsigner.helpers import mnemonic_generation
 from seedsigner.gui.renderer import Renderer
 from seedsigner.hardware.camera import Camera
 from seedsigner.helpers.qr import QR
-from seedsigner.gui.components import FontAwesomeIconConstants, Fonts, GUIConstants, IconTextLine, SeedSignerIconConstants, TextArea, Button, IconButton, CheckboxButton, load_image
+from seedsigner.gui.components import FontAwesomeIconConstants, Fonts, GUIConstants, IconTextLine, SeedSignerIconConstants, TextArea, Button, IconButton, CheckboxButton, load_image, resize_image_to_fit
 from seedsigner.gui.keyboard import Keyboard, TextEntryDisplay
-from seedsigner.gui.screens.screen import RET_CODE__BACK_BUTTON, BaseScreen, BaseTopNavScreen, ButtonListScreen, KeyboardScreen, WarningEdgesMixin, ButtonOption
+from seedsigner.gui.screens.screen import RET_CODE__BACK_BUTTON, BaseScreen, BaseTopNavScreen, ButtonListScreen, KeyboardScreen, WarningEdgesMixin, ButtonOption, LoadingScreenThread
 from seedsigner.hardware.buttons import HardwareButtonsConstants
 from seedsigner.models.settings_definition import SettingsConstants, SettingsDefinition
 
@@ -206,13 +206,20 @@ class ToolsImageEntropyLivePreviewScreen(BaseScreen):
         # sides). But passing in square dims gives us an edge-to-edge image.
         # TODO: Figure out why (camera expecting frame dims of multiples other than 16?)
         max_dimension = max(self.canvas_width, self.canvas_height)
-        self.camera.start_video_stream_mode(resolution=(max_dimension, max_dimension), framerate=24, format="rgb")
+        loading_screen = LoadingScreenThread(text=_("Starting camera..."))
+        loading_screen.start()
+        try:
+            self.camera.start_video_stream_mode()
+        finally:
+            loading_screen.stop()
 
 
     def _run(self):
-        # save preview image frames to use as additional entropy below
+        # Save compact preview samples for entropy below. Storing full-resolution
+        # frames causes avoidable memory/CPU pressure on constrained devices.
         preview_images = []
-        max_entropy_frames = 50
+        max_entropy_frames = 5
+        preview_sample_size = (96, 96)
         instructions_font = Fonts.get_font(GUIConstants.get_body_font_name(), GUIConstants.get_button_font_size())
         last_entropy_check = 0
         entropy_val = 0.0
@@ -225,41 +232,28 @@ class ToolsImageEntropyLivePreviewScreen(BaseScreen):
                 self.camera.stop_video_stream_mode()
                 return RET_CODE__BACK_BUTTON
 
-            frame: Image = self.camera.read_video_stream(as_image=True)
+            frame: Image = self.camera.read_video_stream(as_image=True, preview=True)
+            entropy_frame: Image = self.camera.read_video_stream(as_image=True)
 
-            if frame is None:
+            if frame is None or entropy_frame is None:
                 # Camera probably isn't ready yet
                 time.sleep(0.01)
                 continue
 
             with self.renderer.lock:
-                # Account for the possibly different aspect ratio of the camera frame
-                # vs the display; crop any excess.
-                # TODO: This cropping may be unnecessary if the above TODO about the
-                # camera resolution is solved.
-                box = None
-                if self.canvas_width != frame.width:
-                    half_width_diff = int(abs(self.canvas_width - frame.width)/2)
-                    box = (
-                        half_width_diff,
-                        0,
-                        frame.width - half_width_diff,
-                        frame.height
+                self.renderer.canvas.paste(
+                    resize_image_to_fit(
+                        frame,
+                        self.canvas_width,
+                        self.canvas_height,
+                        sampling_method=Image.Resampling.NEAREST,
                     )
-                elif self.canvas_height != frame.height:
-                    half_height_diff = int(abs(self.canvas_height - frame.height)/2)
-                    box = (
-                        0,
-                        half_height_diff,
-                        frame.width,
-                        frame.height - half_height_diff
-                    )
-
-                self.renderer.canvas.paste(frame.crop(box=box))
+                )
 
                 # Calculate and display Shannon entropy indicator (throttled to ~1s)
                 if time.time() - last_entropy_check >= 1:
-                    entropy_val = mnemonic_generation._shannon_entropy(frame.tobytes())
+                    entropy_sample = entropy_frame.convert("L").resize(preview_sample_size, Image.Resampling.BILINEAR)
+                    entropy_val = mnemonic_generation._shannon_entropy(entropy_sample.tobytes())
                     last_entropy_check = time.time()
                 entropy_text = f"{entropy_val:.2f}"
                 indicator_size = 10
@@ -309,6 +303,7 @@ class ToolsImageEntropyLivePreviewScreen(BaseScreen):
             if self.hw_inputs.check_for_low(keys=HardwareButtonsConstants.KEYS__ANYCLICK):
                 # Have to manually update last input time since we're not in a wait_for loop
                 self.hw_inputs.update_last_input_time()
+                final_image = self.camera.read_video_stream(as_image=True)
                 self.camera.stop_video_stream_mode()
 
                 with self.renderer.lock:
@@ -326,7 +321,7 @@ class ToolsImageEntropyLivePreviewScreen(BaseScreen):
                     )
                     self.renderer.show_image()
 
-                return preview_images
+                return (preview_images, final_image)
 
             # If we're still here, it's just another preview frame loop
             with self.renderer.lock:
@@ -348,7 +343,9 @@ class ToolsImageEntropyLivePreviewScreen(BaseScreen):
                 # Keep a moving window of the last n preview frames; pop the oldest
                 # before we add the currest frame.
                 preview_images.pop(0)
-            preview_images.append(frame)
+            preview_images.append(
+                entropy_frame.convert("L").resize(preview_sample_size, Image.Resampling.BILINEAR)
+            )
 
 
 

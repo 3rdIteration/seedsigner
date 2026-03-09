@@ -581,12 +581,16 @@ class ToolsImageEntropyLivePreviewView(View):
     def run(self):
         from seedsigner.gui.screens.tools_screens import ToolsImageEntropyLivePreviewScreen
         self.controller.image_entropy_preview_frames = None
+        self.controller.image_entropy_final_image = None
         ret = ToolsImageEntropyLivePreviewScreen().display()
 
         if ret == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
-        
-        self.controller.image_entropy_preview_frames = ret
+
+        if isinstance(ret, tuple) and len(ret) == 2:
+            self.controller.image_entropy_preview_frames, self.controller.image_entropy_final_image = ret
+        else:
+            self.controller.image_entropy_preview_frames = ret
         return Destination(
             ToolsImageEntropyFinalImageView,
             view_args=dict(next_view=self.next_view, next_view_args=self.next_view_args),
@@ -608,15 +612,23 @@ class ToolsImageEntropyFinalImageView(View):
             from seedsigner.hardware.camera import Camera
             # Take the final full-res image
             camera = Camera.get_instance()
-            max_dim = max(self.canvas_width, self.canvas_height)
+            img = None
+            try:
+                camera.start_video_stream_mode()
+                time.sleep(1.0)
+                for attempt in range(10):
+                    img = camera.read_video_stream(as_image=True)
+                    if img is not None:
+                        break
+                    logger.info(f"Attempt {attempt + 1} to capture entropy frame")
+                    time.sleep(0.2)
+            finally:
+                camera.stop_video_stream_mode()
 
-            # Final image will be at least 4x the number of pixels the screen can
-            # actually display.
-            camera.start_single_frame_mode(resolution=(2*max_dim, 2*max_dim))
+            if img is None:
+                raise Exception("Failed to capture camera entropy image")
 
-            time.sleep(0.25)
-            self.controller.image_entropy_final_image = camera.capture_frame()
-            camera.stop_single_frame_mode()
+            self.controller.image_entropy_final_image = img
 
         # Prep a copy of the image for display:
         #   * Boost the contrast for better presentation (but preserve the original pixels)

@@ -79,3 +79,9 @@ class DisplayDriver:
 
     def show_image(self, image, x_start: int = 0, y_start: int = 0):
         self.display.show_image(image, x_start, y_start)
+
+
+    def close(self):
+        close_fn = getattr(self.display, "close", None)
+        if callable(close_fn):
+            close_fn()

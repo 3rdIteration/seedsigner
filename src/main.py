@@ -5,6 +5,7 @@ import logging
 import sys
 
 from seedsigner.controller import Controller
+from seedsigner.views.view import Destination
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,11 @@ def main(sys_argv=None):
             "being written to stderr"
         ),
     )
+    parser.add_argument(
+        "--iotest",
+        action="store_true",
+        help="Launch directly into the I/O test screen",
+    )
 
     args = parser.parse_args(sys_argv)
 
@@ -46,7 +52,16 @@ def main(sys_argv=None):
     logger.info(f"Starting SeedSigner with: {args.__dict__}")
 
     # Get the one and only Controller instance and start our main loop
-    Controller.get_instance().start()
+    initial_destination = None
+    if args.iotest:
+        from seedsigner.views.settings_views import IOTestView
+
+        initial_destination = Destination(IOTestView)
+
+    Controller.get_instance().start(
+        initial_destination=initial_destination,
+        skip_startup_interstitials=args.iotest,
+    )
 
 
 if __name__ == "__main__":

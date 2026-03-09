@@ -8,6 +8,11 @@ try:
 except Exception:  # pragma: no cover - smbus2 isn't available on all platforms
     SMBus = None
 
+try:
+    from periphery import I2C  # type: ignore
+except Exception:  # pragma: no cover - periphery isn't available on all platforms
+    I2C = None
+
 
 class BusVoltageRange:
     RANGE_16V = 0x00
@@ -51,11 +56,36 @@ from seedsigner.models.threads import BaseThread
 logger = logging.getLogger(__name__)
 
 
+class _PeripherySMBusCompat:
+    """Minimal SMBus-compatible adapter over periphery I2C."""
+
+    def __init__(self, bus_number: int):
+        self._i2c = I2C(f"/dev/i2c-{bus_number}")
+
+    def read_word_data(self, addr: int, reg: int) -> int:
+        write_msg = I2C.Message([reg & 0xFF])
+        read_msg = I2C.Message([0x00, 0x00], read=True)
+        self._i2c.transfer(addr, [write_msg, read_msg])
+        read_buffer = bytes(read_msg.data)
+        # Emulate smbus2 read_word_data() ordering (little-endian host word).
+        # INA219 values are big-endian on wire; caller handles byte-swap.
+        return (read_buffer[1] << 8) | read_buffer[0]
+
+    def write_i2c_block_data(self, addr: int, reg: int, data: list[int]) -> None:
+        payload = [reg & 0xFF] + [value & 0xFF for value in data]
+        self._i2c.transfer(addr, [I2C.Message(payload)])
+
+    def close(self) -> None:
+        self._i2c.close()
+
+
 class BatteryHat(Singleton, BaseThread):
     """Simple interface for the Waveshare UPS HAT (C) using INA219."""
 
     I2C_BUS = 1
+    I2C_BUS_CANDIDATES = (1,)
     I2C_ADDR = 0x43  # INA219 address for Waveshare UPS HAT (C)
+    I2C_ADDR_CANDIDATES = (0x43,)
 
     REG_CONFIG = 0x00
     REG_SHUNT_VOLTAGE = 0x01
@@ -112,9 +142,12 @@ class BatteryHat(Singleton, BaseThread):
             instance._bus = None
             instance.percent = None
             instance.detected = False
-            instance.enabled = SMBus is not None
+            instance.enabled = SMBus is not None or I2C is not None
             instance._curve_data = None
             instance._curve_label = None
+            instance._addr = cls.I2C_ADDR
+            instance._bus_number = cls.I2C_BUS
+            instance._configured = False
         return cls._instance
 
     def initialize(self) -> bool:
@@ -123,6 +156,12 @@ class BatteryHat(Singleton, BaseThread):
         self.detected = self.detect_hat()
         if not self.detected:
             self.enabled = False
+            return self.enabled
+        try:
+            self.set_calibration_16V_5A()
+            self._configured = True
+        except Exception as e:
+            logger.warning(f"Battery calibration failed during init: {e}")
         return self.enabled
 
     def is_enabled(self) -> bool:
@@ -144,22 +183,40 @@ class BatteryHat(Singleton, BaseThread):
         if not self.enabled:
             return
         if self._bus is None:
-            if SMBus is None:
-                logger.warning("smbus2 not available")
+            if SMBus is None and I2C is None:
+                logger.warning("No I2C backend available (smbus2/periphery)")
                 self.enabled = False
                 return
+
+            if SMBus is not None:
+                try:
+                    self._bus = SMBus(self._bus_number)
+                    return
+                except (FileNotFoundError, OSError) as e:
+                    logger.warning(f"I2C bus /dev/i2c-{self._bus_number} not available via smbus2: {e}")
+                    self._bus = None
+
+            if I2C is not None:
+                try:
+                    self._bus = _PeripherySMBusCompat(self._bus_number)
+                    return
+                except (FileNotFoundError, OSError) as e:
+                    logger.warning(f"I2C bus /dev/i2c-{self._bus_number} not available via periphery: {e}")
+                    self._bus = None
+
+    def _close_bus(self) -> None:
+        if self._bus is not None:
             try:
-                self._bus = SMBus(self.I2C_BUS)
-            except FileNotFoundError:
-                logger.warning("I2C bus not available")
-                self._bus = None
-                self.enabled = False
+                self._bus.close()
+            except Exception:
+                pass
+            self._bus = None
 
     def _read_register(self, reg: int) -> int:
         self._open_bus()
         if not self._bus:
             return 0
-        raw = self._bus.read_word_data(self.I2C_ADDR, reg)
+        raw = self._bus.read_word_data(self._addr, reg)
         return ((raw & 0xFF) << 8) | (raw >> 8)
 
     def _write_register(self, reg: int, value: int) -> None:
@@ -167,7 +224,7 @@ class BatteryHat(Singleton, BaseThread):
         if not self._bus:
             return
         data = [value >> 8 & 0xFF, value & 0xFF]
-        self._bus.write_i2c_block_data(self.I2C_ADDR, reg, data)
+        self._bus.write_i2c_block_data(self._addr, reg, data)
 
     def set_calibration_16V_5A(self):
         self._current_lsb = 0.1524
@@ -184,16 +241,25 @@ class BatteryHat(Singleton, BaseThread):
         self._write_register(self.REG_CONFIG, config)
 
     def detect_hat(self) -> bool:
-        self._open_bus()
-        if not self._bus:
-            return False
-        try:
-            # Attempt to read from INA219 configuration register
-            self._bus.read_word_data(self.I2C_ADDR, self.REG_CONFIG)
-            return True
-        except Exception:
-            self.enabled = False
-            return False
+        for bus_number in self.I2C_BUS_CANDIDATES:
+            self._bus_number = bus_number
+            self._close_bus()
+            self._open_bus()
+            if not self._bus:
+                continue
+            for addr in self.I2C_ADDR_CANDIDATES:
+                try:
+                    # Presence probe: if register read succeeds, device responds.
+                    # This intentionally avoids strict value checks that can cause
+                    # false negatives on some boards during early startup.
+                    self._bus.read_word_data(addr, self.REG_CONFIG)
+                    self._addr = addr
+                    logger.info(f"Battery HAT detected at /dev/i2c-{bus_number}, address 0x{addr:02x}")
+                    return True
+                except Exception:
+                    continue
+        logger.info("Battery HAT not detected on probed I2C buses/addresses")
+        return False
 
     def read_voltage(self) -> float:
         self._open_bus()
@@ -391,7 +457,7 @@ class BatteryHat(Singleton, BaseThread):
             if self.detected:
                 try:
                     # Configure the INA219 once
-                    if not hasattr(self, "_configured"):
+                    if not self._configured:
                         self.set_calibration_16V_5A()
                         self._configured = True
                 except Exception as e:

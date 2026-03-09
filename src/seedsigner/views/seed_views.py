@@ -16,7 +16,7 @@ from PIL import Image
 from PIL.ImageOps import autocontrast
 import shamir_mnemonic
 
-from seedsigner.gui.components import FontAwesomeIconConstants, SeedSignerIconConstants
+from seedsigner.gui.components import FontAwesomeIconConstants, GUIConstants, SeedSignerIconConstants
 from seedsigner.gui.screens import (RET_CODE__BACK_BUTTON, ButtonListScreen,
     WarningScreen, DireWarningScreen, seed_screens, LargeIconStatusScreen)
 from seedsigner.gui.screens.screen import ButtonOption, KeyboardScreen
@@ -38,7 +38,7 @@ from seedsigner.helpers.tapsigner_backup import (
 )
 from seedsigner.models.encode_qr import CompactSeedQrEncoder, GenericStaticQrEncoder, SeedQrEncoder, SpecterXPubQrEncoder, StaticXpubQrEncoder, UrXpubQrEncoder
 from seedsigner.models.qr_type import QRType
-from seedsigner.models.seed import Seed, Slip39Seed, ElectrumSeed, XprvSeed, InvalidSeedException, SeedWordsUnavailableException
+from seedsigner.models.seed import Seed, AezeedSeed, Slip39Seed, ElectrumSeed, XprvSeed, InvalidSeedException, SeedWordsUnavailableException
 from seedsigner.models.settings import Settings, SettingsConstants
 from seedsigner.models.settings_definition import SettingsDefinition
 from seedsigner.models.threads import BaseThread, ThreadsafeCounter
@@ -72,6 +72,8 @@ class SeedsMenuView(View):
             return "XPRV"
         if isinstance(seed, ElectrumSeed):
             return "ELEC"
+        if isinstance(seed, AezeedSeed):
+            return "Aezeed"
         return "BIP39"
 
 
@@ -127,6 +129,7 @@ class SeedSelectSeedView(View):
     TYPE_21WORD = ButtonOption("Enter 21-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=21)
     TYPE_24WORD = ButtonOption("Enter 24-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=24)
     TYPE_ELECTRUM = ButtonOption("Enter Electrum seed", FontAwesomeIconConstants.KEYBOARD)
+    TYPE_AEZEED = ButtonOption("Enter Aezeed seed", FontAwesomeIconConstants.KEYBOARD)
     TYPE_SLIP39 = ButtonOption("SLIP-39 Shares", FontAwesomeIconConstants.KEYBOARD)
 
     def __init__(self, flow: str):
@@ -182,6 +185,8 @@ class SeedSelectSeedView(View):
 
         if self.settings.get_value(SettingsConstants.SETTING__ELECTRUM_SEEDS) == SettingsConstants.OPTION__ENABLED:
             button_data.append(self.TYPE_ELECTRUM)
+        if self.settings.get_value(SettingsConstants.SETTING__AEZEED_SEEDS) == SettingsConstants.OPTION__ENABLED:
+            button_data.append(self.TYPE_AEZEED)
         if self.settings.get_value(SettingsConstants.SETTING__SLIP39_SEEDS) == SettingsConstants.OPTION__ENABLED:
             button_data.append(self.TYPE_SLIP39)
 
@@ -241,6 +246,9 @@ class SeedSelectSeedView(View):
         elif button_data[selected_menu_num] == self.TYPE_ELECTRUM:
             return Destination(SeedElectrumMnemonicStartView)
 
+        elif button_data[selected_menu_num] == self.TYPE_AEZEED:
+            return Destination(SeedAezeedMnemonicStartView)
+
         elif button_data[selected_menu_num] == self.TYPE_SLIP39:
             return Destination(SeedSlip39MnemonicStartView)
 
@@ -257,6 +265,7 @@ class LoadSeedView(View):
     TYPE_21WORD = ButtonOption("Enter 21-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=21)
     TYPE_24WORD = ButtonOption("Enter 24-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=24)
     TYPE_ELECTRUM = ButtonOption("Enter Electrum seed", FontAwesomeIconConstants.KEYBOARD)
+    TYPE_AEZEED = ButtonOption("Enter Aezeed seed", FontAwesomeIconConstants.KEYBOARD)
     TYPE_SLIP39 = ButtonOption("SLIP-39 Shares", FontAwesomeIconConstants.KEYBOARD)
     IMPORT_SEEDKEEPER = ButtonOption("From SeedKeeper", FontAwesomeIconConstants.LOCK)
     BITBOX_BACKUP = ButtonOption("BitBox02 backup", SeedSignerIconConstants.MICROSD)
@@ -283,6 +292,9 @@ class LoadSeedView(View):
 
         if self.settings.get_value(SettingsConstants.SETTING__SLIP39_SEEDS) == SettingsConstants.OPTION__ENABLED:
             button_data.append(self.TYPE_SLIP39)
+
+        if self.settings.get_value(SettingsConstants.SETTING__AEZEED_SEEDS) == SettingsConstants.OPTION__ENABLED:
+            button_data.append(self.TYPE_AEZEED)
 
         if self.settings.get_value(SettingsConstants.SETTING__BITBOX_BACKUP) == SettingsConstants.OPTION__ENABLED:
             button_data.append(self.BITBOX_BACKUP)
@@ -321,6 +333,9 @@ class LoadSeedView(View):
 
         elif button_data[selected_menu_num] == self.TYPE_ELECTRUM:
             return Destination(SeedElectrumMnemonicStartView)
+
+        elif button_data[selected_menu_num] == self.TYPE_AEZEED:
+            return Destination(SeedAezeedMnemonicStartView)
 
         elif button_data[selected_menu_num] == self.TYPE_SLIP39:
             return Destination(SeedSlip39MnemonicStartView)
@@ -394,6 +409,8 @@ class SeedKeeperSelectView(View):
             Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["seedkeeper"])
 
             if not Satochip_Connector:
+                if isinstance(self.seed, AezeedSeed):
+                    return Destination(SeedAezeedPassphraseModeView)
                 return Destination(BackStackView)
 
             self.loading_screen = LoadingScreenThread(text="Listing Seeds\n\n\n\n\n\n")
@@ -416,7 +433,8 @@ class SeedKeeperSelectView(View):
                         (stype == 'Masterseed' and subtype == 0x01) or
                         (stype == 'Masterseed' and subtype == 0x00) or
                         (stype == 'Data' and label.startswith('XPRV:') and export_rights == 'Plaintext export allowed') or
-                        (stype == 'Electrum mnemonic' and export_rights == 'Plaintext export allowed')):
+                        (stype == 'Electrum mnemonic' and export_rights == 'Plaintext export allowed') or
+                        (stype == 'Password' and label.startswith('aezeed:') and export_rights == 'Plaintext export allowed')):
 
                     if not label:
                         label = "Unnamed Secret"
@@ -436,6 +454,8 @@ class SeedKeeperSelectView(View):
                     text="No BIP39 Secrets to Load from Seedkeeper",
                     show_back_button=False,
                 )
+                if isinstance(self.seed, AezeedSeed):
+                    return Destination(SeedAezeedPassphraseModeView)
                 return Destination(BackStackView)
 
             selected_menu_num = self.run_screen(
@@ -447,12 +467,15 @@ class SeedKeeperSelectView(View):
             )
 
             if selected_menu_num == RET_CODE__BACK_BUTTON:
+                if isinstance(self.seed, AezeedSeed):
+                    return Destination(SeedAezeedPassphraseModeView)
                 return Destination(BackStackView)
 
             selected_header = headers_parsed[selected_menu_num]
             sid = selected_header["sid"]
             stype = selected_header["stype"]
             subtype = selected_header["subtype"]
+            label = selected_header["label"]
 
             self.loading_screen = LoadingScreenThread(text="Loading Seed\n\n\n\n\n\n")
             self.loading_screen.start()
@@ -468,6 +491,19 @@ class SeedKeeperSelectView(View):
                 secret_size = secret_dict['secret_list'][0]
                 secret_mnemonic = bip39_secret[:secret_size]
                 secret_passphrase = bip39_secret[secret_size + 1:]
+
+            elif stype == 'Password' and label.startswith('aezeed:'):
+                aezeed_secret = self._decode_seedkeeper_text(secret_dict['secret']).strip()
+                secret_mnemonic = aezeed_secret
+                secret_passphrase = ""
+                if "\n" in aezeed_secret:
+                    lines = [line.strip() for line in aezeed_secret.splitlines() if line.strip()]
+                    if len(lines) > 0:
+                        secret_mnemonic = lines[0]
+                    for line in lines[1:]:
+                        if line.startswith("passphrase:"):
+                            secret_passphrase = line[len("passphrase:"):]
+                            break
 
             elif stype == 'Masterseed' and subtype == 0x01:
                 secret_raw_bytes = bytes.fromhex(secret_dict['secret'])
@@ -519,8 +555,17 @@ class SeedKeeperSelectView(View):
             )
             return Destination(BackStackView)
 
+        is_aezeed = False
+        if secret_mnemonic.startswith("aezeed:"):
+            is_aezeed = True
+            secret_mnemonic = secret_mnemonic[len("aezeed:"):]
+
         mnemonic = secret_mnemonic.split(" ")
-        self.controller.storage.init_pending_mnemonic(num_words=len(mnemonic), is_electrum=(stype == 'Electrum mnemonic'))
+        self.controller.storage.init_pending_mnemonic(
+            num_words=len(mnemonic),
+            is_electrum=(stype == 'Electrum mnemonic' and not is_aezeed),
+            is_aezeed=is_aezeed,
+        )
         for i, word in enumerate(mnemonic):
             self.controller.storage.update_pending_mnemonic(word, i)
 
@@ -532,8 +577,22 @@ class SeedKeeperSelectView(View):
         except InvalidSeedException:
             return Destination(SeedMnemonicInvalidView)
 
+        self.seed = self.controller.storage.get_pending_seed()
+
+        if isinstance(self.seed, AezeedSeed):
+            if len(secret_passphrase) > 0:
+                try:
+                    self.seed.set_passphrase(secret_passphrase)
+                except InvalidSeedException as e:
+                    if str(e) == "InvalidPassphraseError":
+                        self.seed.set_passphrase("")
+                        return Destination(SeedAezeedPassphraseModeView)
+                    raise
+            if self.seed.seed_bytes is None:
+                return Destination(SeedAezeedPassphraseModeView)
+            return Destination(SeedFinalizeView)
+
         if len(secret_passphrase) > 0:
-            self.seed = self.controller.storage.get_pending_seed()
             self.seed.set_passphrase(secret_passphrase)
             return Destination(SeedReviewPassphraseView)
 
@@ -1016,8 +1075,14 @@ class SeedMnemonicEntryView(View):
                 self.controller.storage.convert_pending_mnemonic_to_pending_seed(
                     wordlist_language_code=self.settings.get_value(SettingsConstants.SETTING__WORDLIST_LANGUAGE),
                 )
-            except InvalidSeedException:
+            except InvalidSeedException as e:
+                if self.controller.storage.pending_is_aezeed and str(e) == "InvalidPassphraseError":
+                    return Destination(SeedAezeedPassphraseModeView)
                 return Destination(SeedMnemonicInvalidView)
+
+            pending_seed = self.controller.storage.get_pending_seed()
+            if isinstance(pending_seed, AezeedSeed) and pending_seed.seed_bytes is None:
+                return Destination(SeedAezeedPassphraseModeView)
 
             return Destination(SeedFinalizeView)
 
@@ -1076,22 +1141,27 @@ class SeedFinalizeView(View):
             # just-loaded seed would be naked, but this is special handling for the
             # screenshot generator which creates a pending seed w/a passphrase already
             # set.
-            passphrase = self.seed.passphrase
-            if isinstance(self.seed, Slip39Seed):
-                self.seed.set_slip39_passphrase("")
+            if isinstance(self.seed, AezeedSeed):
+                # Aezeed passphrase is part of mnemonic decryption. Show current
+                # loaded fingerprint rather than a hypothetical "no passphrase" one.
+                self.fingerprint = self.seed.get_fingerprint(network=self.settings.get_value(SettingsConstants.SETTING__NETWORK))
             else:
-                self.seed.set_passphrase("")
-            self.fingerprint = self.seed.get_fingerprint(network=self.settings.get_value(SettingsConstants.SETTING__NETWORK))
-            if isinstance(self.seed, Slip39Seed):
-                self.seed.set_slip39_passphrase(passphrase)
-            else:
-                self.seed.set_passphrase(passphrase)
+                passphrase = self.seed.passphrase
+                if isinstance(self.seed, Slip39Seed):
+                    self.seed.set_slip39_passphrase("")
+                else:
+                    self.seed.set_passphrase("")
+                self.fingerprint = self.seed.get_fingerprint(network=self.settings.get_value(SettingsConstants.SETTING__NETWORK))
+                if isinstance(self.seed, Slip39Seed):
+                    self.seed.set_slip39_passphrase(passphrase)
+                else:
+                    self.seed.set_passphrase(passphrase)
 
 
     def run(self):
         button_data = [self.FINALIZE]
         #self.TYPE_PASSPHRASE.button_label = self.seed.passphrase_label
-        if isinstance(self.seed, XprvSeed):
+        if isinstance(self.seed, (XprvSeed, AezeedSeed)):
             pass
         elif self.settings.get_value(SettingsConstants.SETTING__PASSPHRASE) != SettingsConstants.OPTION__DISABLED:
             button_data.append(self.TYPE_PASSPHRASE)
@@ -1123,6 +1193,51 @@ class SeedFinalizeView(View):
 
 
 
+class SeedAezeedPassphraseModeView(View):
+    LOAD_SEEDKEEPER = ButtonOption("Load from SeedKeeper")
+    TYPE_PASSPHRASE = ButtonOption("Type Passphrase")
+    SCAN_PASSPHRASE = ButtonOption("Scan Passphrase")
+
+    def __init__(self):
+        super().__init__()
+        self.seed = self.controller.storage.get_pending_seed()
+
+    def run(self):
+        if not isinstance(self.seed, AezeedSeed):
+            return Destination(SeedAddPassphraseView)
+
+        button_data = [self.TYPE_PASSPHRASE, self.SCAN_PASSPHRASE]
+        if self.settings.get_value(SettingsConstants.SETTING__SMARTCARD_SUPPORT) == SettingsConstants.OPTION__ENABLED:
+            button_data.append(self.LOAD_SEEDKEEPER)
+
+        selected_menu_num = self.run_screen(
+            LargeIconStatusScreen,
+            title=_("Aezeed passphrase"),
+            status_icon_name=SeedSignerIconConstants.FINGERPRINT,
+            status_icon_size=GUIConstants.ICON_LARGE_BUTTON_SIZE,
+            status_color=GUIConstants.INFO_COLOR,
+            text=_("Passphrase required\nfor this mnemonic."),
+            is_button_text_centered=False,
+            button_data=button_data,
+            show_back_button=True,
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            self.controller.storage.clear_pending_seed()
+            return Destination(MainMenuView, clear_history=True)
+
+        if button_data[selected_menu_num] == self.TYPE_PASSPHRASE:
+            return Destination(SeedAddPassphraseView)
+
+        if button_data[selected_menu_num] == self.SCAN_PASSPHRASE:
+            return Destination(SeedScanPassphraseView)
+
+        if button_data[selected_menu_num] == self.LOAD_SEEDKEEPER:
+            return Destination(SeedLoadSeedKeeperPassphraseView)
+
+        return Destination(BackStackView)
+
+
 class SeedAddPassphraseView(View):
     """
     initial_keyboard: used by the screenshot generator to render each different keyboard layout.
@@ -1143,22 +1258,62 @@ class SeedAddPassphraseView(View):
         )
 
         passphrase = ret_dict["passphrase"]
-        if isinstance(self.seed, Slip39Seed):
-            self.seed.set_slip39_passphrase(passphrase)
-        else:
-            # The new passphrase will be the return value; it might be empty.
-            self.seed.set_passphrase(passphrase)
+        try:
+            if isinstance(self.seed, Slip39Seed):
+                self.seed.set_slip39_passphrase(passphrase)
+            else:
+                # The new passphrase will be the return value; it might be empty.
+                self.seed.set_passphrase(passphrase)
+        except InvalidSeedException as e:
+            if isinstance(self.seed, AezeedSeed):
+                if passphrase == "":
+                    self.run_screen(
+                        WarningScreen,
+                        title=_("Invalid passphrase"),
+                        status_headline=None,
+                        text=_("Aezeed passphrase required.\nTry again."),
+                        show_back_button=False,
+                        button_data=[ButtonOption("OK")],
+                    )
+                    return Destination(SeedAddPassphraseView)
+                if str(e) == "InvalidPassphraseError":
+                    # Clear incorrect passphrase so user can back out cleanly.
+                    self.seed.set_passphrase("")
+                    self.run_screen(
+                        WarningScreen,
+                        title=_("Invalid passphrase"),
+                        status_headline=None,
+                        text=_("Wrong Aezeed passphrase.\nTry again."),
+                        show_back_button=False,
+                        button_data=[ButtonOption("OK")],
+                    )
+                    return Destination(SeedAddPassphraseView)
+            raise
 
         if "is_back_button" in ret_dict:
+            if isinstance(self.seed, AezeedSeed):
+                return Destination(SeedAezeedPassphraseModeView)
             if len(self.seed.passphrase) > 0:
                 return Destination(SeedAddPassphraseExitDialogView)
             else:
                 return Destination(SeedFinalizeView)
-            
+
         elif len(self.seed.passphrase) > 0:
+            if isinstance(self.seed, AezeedSeed):
+                return Destination(SeedFinalizeView)
             return Destination(SeedReviewPassphraseView)
-        
+
         else:
+            if isinstance(self.seed, AezeedSeed) and self.seed.seed_bytes is None:
+                self.run_screen(
+                    WarningScreen,
+                    title=_("Invalid passphrase"),
+                    status_headline=None,
+                    text=_("Aezeed passphrase required.\nTry again."),
+                    show_back_button=False,
+                    button_data=[ButtonOption("OK")],
+                )
+                return Destination(SeedAddPassphraseView)
             return Destination(SeedFinalizeView)
 
 
@@ -1214,8 +1369,24 @@ class SeedScanPassphraseView(View):
             passphrase = self.seed.passphrase_display + decoder.get_passphrase()
             if isinstance(self.seed, Slip39Seed):
                 self.controller.storage.get_pending_seed().set_slip39_passphrase(passphrase)
-            else:
+                return Destination(SeedReviewPassphraseView)
+            try:
                 self.controller.storage.get_pending_seed().set_passphrase(passphrase)
+            except InvalidSeedException as e:
+                if isinstance(self.seed, AezeedSeed) and str(e) == "InvalidPassphraseError":
+                    self.seed.set_passphrase("")
+                    self.run_screen(
+                        WarningScreen,
+                        title=_("Invalid passphrase"),
+                        status_headline=None,
+                        text=_("Wrong Aezeed passphrase.\nTry again."),
+                        show_back_button=False,
+                        button_data=[ButtonOption("OK")],
+                    )
+                    return Destination(SeedAezeedPassphraseModeView)
+                raise
+            if isinstance(self.seed, AezeedSeed):
+                return Destination(SeedFinalizeView)
             return Destination(SeedReviewPassphraseView)
         elif decoder.is_nonUTF8:
             DireWarningScreen(
@@ -1224,8 +1395,12 @@ class SeedScanPassphraseView(View):
                 status_headline=_("Invalid Text QR Code"),
                 text=_("Non UTF-8 data detected.")
             ).display()
+            if isinstance(self.seed, AezeedSeed):
+                return Destination(SeedAezeedPassphraseModeView)
             return Destination(BackStackView)
         else:
+            if isinstance(self.seed, AezeedSeed):
+                return Destination(SeedAezeedPassphraseModeView)
             return Destination(BackStackView)
 
 class SeedLoadSeedKeeperPassphraseView(View):
@@ -1239,6 +1414,8 @@ class SeedLoadSeedKeeperPassphraseView(View):
             Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["seedkeeper"])
             
             if not Satochip_Connector:
+                if isinstance(self.seed, AezeedSeed):
+                    return Destination(SeedAezeedPassphraseModeView)
                 return Destination(BackStackView)
 
             self.loading_screen = LoadingScreenThread(text="Listing Secrets\n\n\n\n\n\n")
@@ -1276,6 +1453,8 @@ class SeedLoadSeedKeeperPassphraseView(View):
                 text=f"No Password Secrets to Load from Seedkeeper",
                 show_back_button=False,
                 )   
+                if isinstance(self.seed, AezeedSeed):
+                    return Destination(SeedAezeedPassphraseModeView)
                 return Destination(BackStackView)
 
             selected_menu_num = self.run_screen(
@@ -1287,6 +1466,8 @@ class SeedLoadSeedKeeperPassphraseView(View):
             )
 
             if selected_menu_num == RET_CODE__BACK_BUTTON:
+                if isinstance(self.seed, AezeedSeed):
+                    return Destination(SeedAezeedPassphraseModeView)
                 return Destination(BackStackView)
 
             self.loading_screen = LoadingScreenThread(text="Loading Secret\n\n\n\n\n\n")
@@ -1312,17 +1493,39 @@ class SeedLoadSeedKeeperPassphraseView(View):
                 text=str(e),
                 show_back_button=True,
             )
+            if isinstance(self.seed, AezeedSeed):
+                return Destination(SeedAezeedPassphraseModeView)
             return Destination(BackStackView)
         
         # The new passphrase will be the return value; it might be empty.
         if isinstance(self.seed, Slip39Seed):
             self.seed.set_slip39_passphrase(secret_passphrase)
-        else:
+            if len(self.seed.passphrase) > 0:
+                return Destination(SeedReviewPassphraseView)
+            return Destination(SeedFinalizeView)
+
+        try:
             self.seed.set_passphrase(secret_passphrase)
+        except InvalidSeedException as e:
+            if isinstance(self.seed, AezeedSeed) and str(e) == "InvalidPassphraseError":
+                self.seed.set_passphrase("")
+                self.run_screen(
+                    WarningScreen,
+                    title=_("Invalid passphrase"),
+                    status_headline=None,
+                    text=_("Wrong Aezeed passphrase.\nTry again."),
+                    show_back_button=False,
+                    button_data=[ButtonOption("OK")],
+                )
+                return Destination(SeedAezeedPassphraseModeView)
+            raise
+        if isinstance(self.seed, AezeedSeed):
+            if len(self.seed.passphrase) > 0:
+                return Destination(SeedFinalizeView)
+            return Destination(SeedAezeedPassphraseModeView)
         if len(self.seed.passphrase) > 0:
             return Destination(SeedReviewPassphraseView)
-        else:
-            return Destination(SeedFinalizeView)
+        return Destination(SeedFinalizeView)
 
 class SeedReviewPassphraseView(View):
     """
@@ -1425,6 +1628,23 @@ class SeedDiscardView(View):
                 self.controller.storage.clear_pending_seed()
             return Destination(MainMenuView, clear_history=True)
 
+
+
+
+
+class SeedAezeedMnemonicStartView(View):
+    def run(self):
+        self.run_screen(
+                WarningScreen,
+                title=_("Aezeed support"),
+                status_headline=None,
+                text=_("Aezeed entry is experimental.\nUse only with known-good backups."),
+                show_back_button=False,
+        )
+
+        self.controller.storage.init_pending_mnemonic(num_words=24, is_aezeed=True)
+
+        return Destination(SeedMnemonicEntryView)
 
 
 class SeedElectrumMnemonicStartView(View):
@@ -1920,7 +2140,8 @@ class SeedBackupView(View):
         if self.seed.seedqr_supported:
             button_data.append(self.EXPORT_SEEDQR)
 
-        if self.settings.get_value(SettingsConstants.SETTING__PLAINTEXTQR) == SettingsConstants.OPTION__ENABLED:
+        if (self.settings.get_value(SettingsConstants.SETTING__PLAINTEXTQR) == SettingsConstants.OPTION__ENABLED and
+                not isinstance(self.seed, AezeedSeed)):
             button_data.append(self.EXPORT_PLAINTEXTQR)
 
         selected_menu_num = self.run_screen(
@@ -2429,9 +2650,15 @@ class SeedWordsWarningView(View):
             # Forward straight to showing the words
             return destination
 
+        warning_text = _("You must keep your seed words private & away from all online devices.")
+        if self.seed_num is not None:
+            seed = self.controller.get_seed(self.seed_num)
+            if isinstance(seed, AezeedSeed) and len(seed.passphrase) > 0:
+                warning_text = _("Passphrase was used.\nYou'll need words + passphrase.")
+
         selected_menu_num = self.run_screen(
             DireWarningScreen,
-            text=_("You must keep your seed words private & away from all online devices."),
+            text=warning_text,
         )
 
         if selected_menu_num == 0:
@@ -3164,8 +3391,12 @@ class SeedEncryptedQRScanEncryptionKeyView(View):
                 status_headline=_("Invalid Text QR Code"),
                 text=_("Non UTF-8 data detected.")
             ).display()
+            if isinstance(self.seed, AezeedSeed):
+                return Destination(SeedAezeedPassphraseModeView)
             return Destination(BackStackView)
         else:
+            if isinstance(self.seed, AezeedSeed):
+                return Destination(SeedAezeedPassphraseModeView)
             return Destination(BackStackView)
 
 
@@ -3264,10 +3495,20 @@ class SeedEncryptedQRnonECBModeView(View):
         # Take the final full-res image
         from seedsigner.hardware.camera import Camera
         camera = Camera.get_instance()
-        camera.start_single_frame_mode(resolution=(720, 480))
-        time.sleep(0.25)
-        entropy_image = camera.capture_frame()
-        camera.stop_single_frame_mode()
+        entropy_image = None
+        try:
+            camera.start_video_stream_mode()
+            time.sleep(1.0)
+            for attempt in range(10):
+                entropy_image = camera.read_video_stream(as_image=True)
+                if entropy_image is not None:
+                    break
+                time.sleep(0.2)
+        finally:
+            camera.stop_video_stream_mode()
+
+        if entropy_image is None:
+            raise Exception("Failed to capture additional entropy image")
 
         # A copy of the image for display. The actual image data is 720x480
         display_version = autocontrast(
@@ -3768,6 +4009,8 @@ class AddressVerificationStartView(View):
         from seedsigner.helpers import embit_utils
         from seedsigner.controller import Controller
 
+        logger.info(f"AddressVerificationStartView: address={self.controller.unverified_address['address']}, script_type={self.controller.unverified_address['script_type']}, network={self.controller.unverified_address['network']}")
+
         if self.controller.unverified_address["script_type"] == SettingsConstants.LEGACY_P2PKH:
             # Legacy P2PKH addresses are always singlesig
             sig_type = SettingsConstants.SINGLE_SIG
@@ -3863,16 +4106,27 @@ class SeedAddressVerificationView(View):
 
         Performs single sig verification on `seed_num` if specified, otherwise assumes
         multisig.
+
+        For singlesig with a seed, first searches the detected derivation path in
+        batches of SIMPLE_SEARCH_BATCH_SIZE addresses (fast, handles the common
+        case).  If not found, the user is prompted to continue, run an expanded
+        search across all paths/script-types, or cancel.
     """
     # TRANSLATOR_NOTE: Option when scanning for a matching address; skips ten addresses ahead
     SKIP_10 = ButtonOption("Skip 10")
     CANCEL = ButtonOption("Cancel")
 
     MAX_ITERATIONS_EXPORT_XPUB = 1000
+    EXPANDED_ADDRS_PER_PATH = 10
+    SIMPLE_SEARCH_BATCH_SIZE = 100
 
-    def __init__(self, seed_num: int = None, export_for_xpub: bool = False):
+    def __init__(self, seed_num: int = None, export_for_xpub: bool = False,
+                 expanded_start_index: int = 0, use_expanded: bool = False,
+                 simple_start_index: int = 0):
         super().__init__()
         self.seed_num = seed_num
+        self.expanded_start_index = expanded_start_index
+        self.simple_start_index = simple_start_index
         self.export_for_xpub = export_for_xpub
         self.is_multisig = self.controller.unverified_address["sig_type"] == SettingsConstants.MULTISIG
         self.seed_derivation_override = ""
@@ -3893,35 +4147,82 @@ class SeedAddressVerificationView(View):
         # TODO: This should be in `Seed` or `PSBT` utility class
         embit_network = SettingsConstants.map_network_to_embit(self.network)
 
-        # The ThreadsafeCounter will be shared by the brute-force thread to keep track of
-        # its current addr index number and the Screen to display its progress and
-        # respond to UI requests to jump the index ahead.
-        self.threadsafe_counter = ThreadsafeCounter()
+        # Expanded search is only used when explicitly requested by the user
+        # (via the "Expanded Search" button on the not-found prompt).
+        self.is_expanded = use_expanded and self.seed is not None and not self.is_multisig and not self.export_for_xpub
+
+        # Singlesig simple = singlesig with seed, non-expanded, non-export
+        self.is_singlesig_simple = (
+            self.seed is not None and not self.is_multisig
+            and not self.export_for_xpub and not self.is_expanded
+        )
+
+        # The ThreadsafeCounter tracks the current address index.
+        # For singlesig simple search resuming from a previous batch, start
+        # at the offset so the screen shows the actual index being checked.
+        if self.is_singlesig_simple:
+            self.threadsafe_counter = ThreadsafeCounter(initial_value=simple_start_index)
+        else:
+            self.threadsafe_counter = ThreadsafeCounter()
 
         # Shared coordination var so the display thread can detect success
         self.verified_index = ThreadsafeCounter(initial_value=None)
         self.verified_index_is_change = ThreadsafeCounter(initial_value=None)
 
-        # Create the brute-force calculation thread that will run in the background
-        self.addr_verification_thread = self.BruteForceAddressVerificationThread(
-            address=self.address,
-            seed=self.seed,
-            descriptor=self.controller.multisig_wallet_descriptor,
-            script_type=self.script_type,
-            embit_network=embit_network,
-            derivation_path=self.derivation_path,
-            threadsafe_counter=self.threadsafe_counter,
-            verified_index=self.verified_index,
-            verified_index_is_change=self.verified_index_is_change,
-        )
+        logger.info(f"AddrVerification: is_expanded={self.is_expanded}, is_singlesig_simple={self.is_singlesig_simple}, seed={self.seed is not None}, is_multisig={self.is_multisig}, export_for_xpub={self.export_for_xpub}")
+        logger.info(f"AddrVerification: address={self.address}, script_type={self.script_type}, network={self.network}")
+
+        # For the expanded search the threadsafe_counter tracks total
+        # iterations (across many paths), so we use a separate counter to
+        # communicate the current address index to the progress display.
+        # For all other modes, the threadsafe_counter IS the address index.
+        self.display_index_counter = None
+
+        if self.is_expanded:
+            from seedsigner.helpers import embit_utils
+            derivation_paths = embit_utils.get_expanded_search_derivation_paths(
+                network=self.network,
+            )
+            self.display_index_counter = ThreadsafeCounter(initial_value=self.expanded_start_index)
+            self.addr_verification_thread = self.ExpandedBruteForceAddressVerificationThread(
+                address=self.address,
+                seed=self.seed,
+                embit_network=embit_network,
+                network=self.network,
+                derivation_paths=derivation_paths,
+                addrs_per_path=self.EXPANDED_ADDRS_PER_PATH,
+                start_index=self.expanded_start_index,
+                threadsafe_counter=self.threadsafe_counter,
+                verified_index=self.verified_index,
+                verified_index_is_change=self.verified_index_is_change,
+                address_index_counter=self.display_index_counter,
+            )
+        else:
+            # Create the brute-force calculation thread that will run in the background
+            self.addr_verification_thread = self.BruteForceAddressVerificationThread(
+                address=self.address,
+                seed=self.seed,
+                descriptor=self.controller.multisig_wallet_descriptor,
+                script_type=self.script_type,
+                embit_network=embit_network,
+                derivation_path=self.derivation_path,
+                threadsafe_counter=self.threadsafe_counter,
+                verified_index=self.verified_index,
+                verified_index_is_change=self.verified_index_is_change,
+            )
 
 
     def run(self):
         # Start brute-force calculations from the zero-th index
         try:
+            logger.info(f"AddrVerification.run(): starting thread, is_expanded={self.is_expanded}, is_singlesig_simple={self.is_singlesig_simple}")
             self.addr_verification_thread.start()
 
-            button_data = [self.SKIP_10, self.CANCEL]
+            # Expanded search doesn't support Skip 10 (iterates paths, not just indices)
+            if self.is_expanded:
+                button_data = [self.CANCEL]
+            else:
+                button_data = [self.SKIP_10, self.CANCEL]
 
             script_type_settings_entry = SettingsDefinition.get_settings_entry(SettingsConstants.SETTING__SCRIPT_TYPES)
             script_type_display = script_type_settings_entry.get_selection_option_display_name_by_value(self.script_type)
@@ -3933,7 +4234,21 @@ class SeedAddressVerificationView(View):
             network_display = network_settings_entry.get_selection_option_display_name_by_value(self.network)
             mainnet = network_settings_entry.get_selection_option_display_name_by_value(SettingsConstants.MAINNET)
 
-            max_iterations = self.MAX_ITERATIONS_EXPORT_XPUB if self.export_for_xpub else None
+            if self.export_for_xpub:
+                max_iterations = self.MAX_ITERATIONS_EXPORT_XPUB
+            elif self.is_expanded:
+                from seedsigner.helpers import embit_utils
+                num_paths = len(embit_utils.get_expanded_search_derivation_paths(
+                    network=self.network,
+                ))
+                num_script_types = len(self.ExpandedBruteForceAddressVerificationThread.SCRIPT_TYPES)
+                max_iterations = num_paths * self.EXPANDED_ADDRS_PER_PATH * num_script_types
+            elif self.is_singlesig_simple:
+                max_iterations = self.simple_start_index + self.SIMPLE_SEARCH_BATCH_SIZE
+            else:
+                max_iterations = None
+
+            logger.info(f"AddrVerification.run(): max_iterations={max_iterations}")
 
             # Display the Screen to show the brute-forcing progress.
             # Using a loop here to handle the SKIP_10 button presses to increment the counter
@@ -3952,6 +4267,7 @@ class SeedAddressVerificationView(View):
                     verified_index=self.verified_index,
                     button_data=button_data,
                     max_iterations=max_iterations,
+                    display_index_counter=self.display_index_counter,
                 )
 
                 if self.verified_index.cur_count is not None:
@@ -3978,12 +4294,39 @@ class SeedAddressVerificationView(View):
                 # Successfully verified the addr; update the data
                 self.controller.unverified_address["verified_index"] = self.verified_index.cur_count
                 self.controller.unverified_address["verified_index_is_change"] = self.verified_index_is_change.cur_count == 1
+                if self.is_expanded and self.addr_verification_thread.matched_derivation_path:
+                    self.controller.unverified_address["derivation_path"] = self.addr_verification_thread.matched_derivation_path
+                if self.is_expanded and self.addr_verification_thread.matched_script_type:
+                    self.controller.unverified_address["script_type"] = self.addr_verification_thread.matched_script_type
                 if self.export_for_xpub:
                     return Destination(SeedExportXpubVerificationSuccessView)
                 return Destination(SeedAddressVerificationSuccessView, view_args=dict(seed_num=self.seed_num))
 
             if self.export_for_xpub and max_iterations is not None and self.threadsafe_counter.cur_count >= max_iterations:
                 return Destination(SeedExportXpubVerificationFailedView, view_args=dict(reason="no_match"))
+
+            # Singlesig simple search exhausted its batch
+            if self.is_singlesig_simple and max_iterations is not None and self.threadsafe_counter.cur_count >= max_iterations:
+                return Destination(
+                    SeedAddressVerificationSimpleNotFoundView,
+                    view_args=dict(
+                        seed_num=self.seed_num,
+                        addrs_checked=self.threadsafe_counter.cur_count,
+                        next_start_index=self.threadsafe_counter.cur_count,
+                    ),
+                )
+
+            # Expanded search exhausted all paths
+            if self.is_expanded and max_iterations is not None and self.threadsafe_counter.cur_count >= max_iterations:
+                next_start = self.expanded_start_index + self.EXPANDED_ADDRS_PER_PATH
+                return Destination(
+                    SeedAddressVerificationNotFoundView,
+                    view_args=dict(
+                        seed_num=self.seed_num,
+                        addrs_per_path_checked=next_start,
+                        next_start_index=next_start,
+                    ),
+                )
 
         finally:
             # Halt the thread if the user gave up (will already be stopped if it verified the
@@ -4051,6 +4394,125 @@ class SeedAddressVerificationView(View):
 
 
 
+    class ExpandedBruteForceAddressVerificationThread(BaseThread):
+        """
+            Recovery-oriented search that tries ALL supported script types for
+            every derivation path (BIP44/49/84/86 × accounts 0-9 plus
+            non-standard wallet paths).  This catches addresses produced by
+            any script-type / derivation-path combination, even non-standard
+            ones, regardless of which script types are enabled in Settings.
+        """
+        # All single-sig script types to try for every derivation path.
+        SCRIPT_TYPES = [
+            SettingsConstants.NATIVE_SEGWIT,
+            SettingsConstants.NESTED_SEGWIT,
+            SettingsConstants.LEGACY_P2PKH,
+            SettingsConstants.TAPROOT,
+        ]
+
+        def __init__(self, address: str, seed: Seed, embit_network: str, network: str, derivation_paths: list, addrs_per_path: int, start_index: int, threadsafe_counter: ThreadsafeCounter, verified_index: ThreadsafeCounter, verified_index_is_change: ThreadsafeCounter, address_index_counter: ThreadsafeCounter = None):
+            super().__init__()
+            self.address = address
+            self.seed = seed
+            self.embit_network = embit_network
+            self.network = network
+            self.derivation_paths = derivation_paths
+            self.addrs_per_path = addrs_per_path
+            self.start_index = start_index
+            self.threadsafe_counter = threadsafe_counter
+            self.verified_index = verified_index
+            self.verified_index_is_change = verified_index_is_change
+            self.address_index_counter = address_index_counter
+            self.matched_derivation_path = None
+            self.matched_script_type = None
+
+
+        def run(self):
+            from seedsigner.helpers import embit_utils
+            logger.info(f"ExpandedSearch: starting search for address={self.address}")
+            logger.info(f"ExpandedSearch: network={self.network}, embit_network={self.embit_network}")
+            logger.info(f"ExpandedSearch: {len(self.derivation_paths)} paths, {self.addrs_per_path} addrs/path, start_index={self.start_index}")
+            logger.info(f"ExpandedSearch: script_types={self.SCRIPT_TYPES}")
+
+            # Pre-derive xpubs for all paths (done once upfront).
+            # On slow hardware (Pi Zero) this is much faster than the
+            # address derivation that follows, and caching avoids
+            # re-deriving the same xpub for each address index.
+            xpubs = {}  # path -> xpub
+            skipped_paths = set()
+            for path in self.derivation_paths:
+                if not self.keep_running:
+                    return
+                try:
+                    xpubs[path] = self.seed.get_xpub(wallet_path=path, network=self.network)
+                except Exception as e:
+                    logger.info(f"ExpandedSearch: SKIPPING path {path} due to exception: {e}")
+                    skipped_paths.add(path)
+
+            total_addrs_checked = 0
+
+            # Outer loop is address index so that index 0 is checked
+            # across ALL paths/types before moving to index 1, etc.
+            # This ensures that the most common address (index 0) is
+            # found quickly even on slow hardware.
+            for i in range(self.start_index, self.start_index + self.addrs_per_path):
+                if self.address_index_counter:
+                    self.address_index_counter.set_value(i)
+                for path in self.derivation_paths:
+                    if not self.keep_running:
+                        logger.info(f"ExpandedSearch: stopped at index={i}, path={path}, {total_addrs_checked} addrs checked")
+                        return
+
+                    if path in skipped_paths:
+                        # Account for the iterations that would have been done
+                        # for this path so the progress counter stays accurate.
+                        self.threadsafe_counter.increment(len(self.SCRIPT_TYPES))
+                        continue
+
+                    xpub = xpubs[path]
+
+                    for script_type in self.SCRIPT_TYPES:
+                        if not self.keep_running:
+                            logger.info(f"ExpandedSearch: stopped at index={i}, path={path}, script_type={script_type}")
+                            return
+
+                        receive_address = embit_utils.get_single_sig_address(
+                            xpub=xpub, script_type=script_type,
+                            index=i, is_change=False, embit_network=self.embit_network,
+                        )
+                        change_address = embit_utils.get_single_sig_address(
+                            xpub=xpub, script_type=script_type,
+                            index=i, is_change=True, embit_network=self.embit_network,
+                        )
+                        total_addrs_checked += 1
+
+                        if self.address == receive_address:
+                            logger.info(f"ExpandedSearch: MATCH FOUND! path={path}, script_type={script_type}, index={i}, is_change=False")
+                            logger.info(f"ExpandedSearch: after checking {total_addrs_checked} addrs")
+                            self.matched_derivation_path = path
+                            self.matched_script_type = script_type
+                            self.verified_index.set_value(i)
+                            self.verified_index_is_change.set_value(0)
+                            self.keep_running = False
+                            return
+
+                        elif self.address == change_address:
+                            logger.info(f"ExpandedSearch: MATCH FOUND! path={path}, script_type={script_type}, index={i}, is_change=True")
+                            logger.info(f"ExpandedSearch: after checking {total_addrs_checked} addrs")
+                            self.matched_derivation_path = path
+                            self.matched_script_type = script_type
+                            self.verified_index.set_value(i)
+                            self.verified_index_is_change.set_value(1)
+                            self.keep_running = False
+                            return
+
+                        self.threadsafe_counter.increment()
+
+            logger.info(f"ExpandedSearch: EXHAUSTED all paths, {total_addrs_checked} addrs - NO MATCH FOUND")
+            logger.info(f"ExpandedSearch: final counter={self.threadsafe_counter.cur_count}")
+
+
+
 class SeedAddressVerificationSuccessView(View):
     def __init__(self, seed_num: int):
         super().__init__()
@@ -4060,14 +4522,121 @@ class SeedAddressVerificationSuccessView(View):
     
 
     def run(self):
+        from seedsigner.helpers import embit_utils
+        derivation_path = self.controller.unverified_address.get("derivation_path")
+        script_type = self.controller.unverified_address.get("script_type")
+        network = self.controller.unverified_address.get("network")
+
+        # Determine if the matched derivation path is non-standard for the script type
+        is_non_standard = False
+        if derivation_path and script_type and network:
+            is_non_standard = not embit_utils.is_standard_derivation(
+                derivation_path=derivation_path,
+                script_type=script_type,
+                network=network,
+            )
+
+        script_type_settings_entry = SettingsDefinition.get_settings_entry(SettingsConstants.SETTING__SCRIPT_TYPES)
+        script_type_display = script_type_settings_entry.get_selection_option_display_name_by_value(script_type) if script_type else None
+
         self.run_screen(
             seed_screens.SeedAddressVerificationSuccessScreen,
             address = self.controller.unverified_address["address"],
             verified_index = self.controller.unverified_address["verified_index"],
             verified_index_is_change = self.controller.unverified_address["verified_index_is_change"],
+            derivation_path = derivation_path,
+            script_type_display = script_type_display,
+            is_non_standard = is_non_standard,
         )
 
         return Destination(MainMenuView)
+
+
+
+class SeedAddressVerificationSimpleNotFoundView(View):
+    """Shown when the simple (single path/type) search runs out of addresses.
+    Offers: Next 100 (continue simple), Expanded Search, Cancel."""
+    NEXT_100 = ButtonOption("Next 100")
+    EXPANDED_SEARCH = ButtonOption("Expanded Search")
+    CANCEL = ButtonOption("Cancel")
+
+    def __init__(self, seed_num: int, addrs_checked: int, next_start_index: int):
+        super().__init__()
+        self.seed_num = seed_num
+        self.addrs_checked = addrs_checked
+        self.next_start_index = next_start_index
+
+    def run(self):
+        from seedsigner.gui.screens.screen import WarningScreen
+        button_data = [self.NEXT_100, self.EXPANDED_SEARCH, self.CANCEL]
+        selected_menu_num = self.run_screen(
+            WarningScreen,
+            title=_("Not Found"),
+            status_headline=_("Address Not Verified"),
+            text=_("Checked {} addresses with no match.").format(self.addrs_checked),
+            button_data=button_data,
+            show_back_button=False,
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON or button_data[selected_menu_num] == self.CANCEL:
+            return Destination(MainMenuView)
+
+        if button_data[selected_menu_num] == self.NEXT_100:
+            return Destination(
+                SeedAddressVerificationView,
+                view_args=dict(
+                    seed_num=self.seed_num,
+                    simple_start_index=self.next_start_index,
+                ),
+            )
+
+        # "Expanded Search": search all paths/types starting at index 0
+        return Destination(
+            SeedAddressVerificationView,
+            view_args=dict(
+                seed_num=self.seed_num,
+                use_expanded=True,
+            ),
+        )
+
+
+
+class SeedAddressVerificationNotFoundView(View):
+    """Shown when the expanded address search completes without finding a match.
+    Offers the user a chance to search the next batch of addresses."""
+    CHECK_NEXT = ButtonOption("Check Next 10")
+    DONE = ButtonOption("Done")
+
+    def __init__(self, seed_num: int, addrs_per_path_checked: int, next_start_index: int):
+        super().__init__()
+        self.seed_num = seed_num
+        self.addrs_per_path_checked = addrs_per_path_checked
+        self.next_start_index = next_start_index
+
+    def run(self):
+        from seedsigner.gui.screens.screen import WarningScreen, ButtonOption
+        button_data = [self.CHECK_NEXT, self.DONE]
+        selected_menu_num = self.run_screen(
+            WarningScreen,
+            title=_("Not Found"),
+            status_headline=_("Address Not Verified"),
+            text=_("Checked {} addresses per path with no match.").format(self.addrs_per_path_checked),
+            button_data=button_data,
+            show_back_button=False,
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON or button_data[selected_menu_num] == self.DONE:
+            return Destination(MainMenuView)
+
+        # "Check Next 10": re-run expanded search from next offset
+        return Destination(
+            SeedAddressVerificationView,
+            view_args=dict(
+                seed_num=self.seed_num,
+                expanded_start_index=self.next_start_index,
+                use_expanded=True,
+            ),
+        )
 
 
 
@@ -4482,6 +5051,8 @@ class SeedExportPlaintextQRView(View):
     def run(self):
         from seedsigner.gui.screens.screen import QRDisplayScreen
         data = self.seed.mnemonic_str
+        if isinstance(self.seed, AezeedSeed):
+            data = f"aezeed:{self.seed.mnemonic_str}\npassphrase:{self.seed.passphrase}"
         if isinstance(self.seed, XprvSeed):
             data = self.seed.get_root().to_base58()
         if isinstance(self.seed, Slip39Seed) and self.share_index is not None:
@@ -4578,6 +5149,18 @@ class SaveToSeedkeeperView(View):
                     electrum_passphrase_list = list(bytes(seed.passphrase, 'utf-8'))
                     secret_list = [len(electrum_mnemonic_list)] + electrum_mnemonic_list + [len(electrum_passphrase_list)] + electrum_passphrase_list
                     header = Satochip_Connector.make_header(type, export_rights, label, subtype=subtype)
+                    secret_dic = {'header': header, 'secret_list': secret_list}
+                elif isinstance(seed, AezeedSeed):
+                    print("Saving Aezeed seed")
+                    label = f"aezeed:{ret['passphrase']}"
+                    export_rights = "Plaintext export allowed"
+                    type = "Password"
+                    aezeed_secret = f"aezeed:{seed.mnemonic_str}"
+                    if seed.passphrase:
+                        aezeed_secret += f"\npassphrase:{seed.passphrase}"
+                    aezeed_secret_list = list(bytes(aezeed_secret, 'utf-8'))
+                    secret_list = [len(aezeed_secret_list)] + aezeed_secret_list
+                    header = Satochip_Connector.make_header(type, export_rights, label)
                     secret_dic = {'header': header, 'secret_list': secret_list}
                 else:
                     if isinstance(seed, XprvSeed) and status['protocol_minor_version'] == 1:

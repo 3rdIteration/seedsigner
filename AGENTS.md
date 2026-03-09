@@ -6,6 +6,27 @@ For TextArea-based informational screens (especially ButtonListScreen flows), ke
 
 If additional detail is needed, prefer a second screen instead of longer text.
 
+## Screen layout and vertical space guidance
+
+The display is 240×240 pixels. Key layout constants (from `GUIConstants`):
+
+| Constant             | Value | Notes                                   |
+|----------------------|-------|-----------------------------------------|
+| `TOP_NAV_HEIGHT`     | 48 px | Title bar at the top of every screen    |
+| `BUTTON_HEIGHT`      | 32 px | Height of a standard bottom button      |
+| `EDGE_PADDING`       | 8 px  | Padding around screen edges / below buttons |
+| `COMPONENT_PADDING`  | 8 px  | Default gap between stacked components  |
+| `LIST_ITEM_PADDING`  | 4 px  | Tighter gap (use between closely-related lines) |
+
+For a `ButtonListScreen` with `is_bottom_list=True` and a single button, the bottom button area occupies **`BUTTON_HEIGHT + EDGE_PADDING` = 40 px** from the bottom of the screen, so content must stay within the top **200 px** (y < 200).
+
+When stacking multiple `TextArea` components (e.g. on `LargeIconStatusScreen` subclasses), calculate the cumulative `screen_y + height` to make sure the last component ends **above** the button zone. If content is tight, use `LIST_ITEM_PADDING` (4 px) instead of `COMPONENT_PADDING` (8 px) between closely-related lines (e.g. a derivation path and its warning label).
+
+## IO config consistency guidance
+
+- Keep `src/seedsigner/hardware/io_config.json` and `docs/io_config.md` consistent whenever pin mappings or profile details are changed.
+- If the JSON and documentation conflict and the correct source of truth is unclear, explicitly ask the user how they want the conflict resolved before finalizing changes.
+
 ## Security-first development guidance
 
 Because this project handles private key material for an air-gapped signer, **security takes precedence over convenience**. Treat all entropy and key-handling paths as high-risk code.
@@ -65,5 +86,7 @@ The codebase supports multiple seed types (see `src/seedsigner/models/seed.py`).
 ### Code review expectations for sensitive changes
 For changes touching entropy, seed generation/import, key derivation, signing, or secret storage:
 - Add/extend tests for both success and failure/cleanup paths.
+- For seed creation/loading features, test all supported workflows for consistent behavior and fault tolerance.
+- Prefer shared code paths across workflows (scan/manual/import) instead of duplicating seed-handling logic.
 - Document threat assumptions and failure modes in code comments or PR notes.
 - Call out any remaining risk tradeoffs explicitly.

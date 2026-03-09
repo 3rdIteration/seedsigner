@@ -11,5 +11,12 @@ pysatochip==0.17.0
 pyscard==2.3.1
 ecdsa==0.19.1
 pyaes==1.6.1
+cryptography==45.0.5
+pyopenssl==25.1.0
+typing_extensions==4.14.1
+certifi==2025.7.14
+six==1.17.0
+cffi==1.17.1
+pycparser==2.22
 smbus2==0.4.3 ; platform_system != "Windows"
 shamir-mnemonic==0.3.0
