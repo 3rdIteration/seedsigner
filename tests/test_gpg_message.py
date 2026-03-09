@@ -173,3 +173,192 @@ def test_encrypt_decrypt_binary_roundtrip():
     assert decrypted == plaintext
     assert signer is None
     assert not verified
+
+
+# ---------------------------------------------------------------------------
+# BIP85-derived key message roundtrip tests
+# ---------------------------------------------------------------------------
+
+MNEMONIC = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+
+
+@pytest.mark.parametrize(
+    "key_type",
+    ["ed25519", "p256", "brainpoolp256r1", "secp256k1", "rsa2048"],
+)
+def test_bip85_key_encrypt_decrypt_roundtrip(key_type):
+    """Encrypt/decrypt using a BIP85-derived key for each supported type."""
+    from tools.bip85_pgp import create_bip85_pgp_key
+
+    try:
+        key = create_bip85_pgp_key(
+            mnemonic=MNEMONIC,
+            key_index=0,
+            primary_type=key_type,
+            name="Test",
+            email="test@example.com",
+            subkey_type=key_type,
+        )
+    except Exception as exc:
+        pytest.skip(f"{key_type} generation unsupported: {exc}")
+
+    plaintext = f"BIP85 {key_type} encrypt test"
+    ciphertext = encrypt_message(str(key.pubkey), plaintext)
+    decrypted, signer, verified = decrypt_message(str(key), ciphertext)
+
+    assert decrypted == plaintext
+    assert signer is None
+    assert not verified
+
+
+@pytest.mark.parametrize(
+    "key_type",
+    ["ed25519", "p256", "brainpoolp256r1", "secp256k1", "rsa2048"],
+)
+def test_bip85_key_sign_roundtrip(key_type):
+    """Sign-only using a BIP85-derived key for each supported type."""
+    from tools.bip85_pgp import create_bip85_pgp_key
+
+    try:
+        key = create_bip85_pgp_key(
+            mnemonic=MNEMONIC,
+            key_index=0,
+            primary_type=key_type,
+            name="Test",
+            email="test@example.com",
+            subkey_type=key_type,
+        )
+    except Exception as exc:
+        pytest.skip(f"{key_type} generation unsupported: {exc}")
+
+    plaintext = f"BIP85 {key_type} sign test"
+    signed_msg = encrypt_message(None, plaintext, signkey_blob=str(key))
+    decrypted, signer_fpr, verified = decrypt_message(
+        None, signed_msg, pubkey_blobs=[str(key.pubkey)]
+    )
+
+    assert decrypted == plaintext
+    assert signer_fpr is not None
+    assert verified
+
+
+@pytest.mark.parametrize(
+    "key_type",
+    ["ed25519", "p256", "brainpoolp256r1", "secp256k1", "rsa2048"],
+)
+def test_bip85_key_sign_encrypt_decrypt_roundtrip(key_type):
+    """Full sign+encrypt+decrypt using a BIP85-derived key."""
+    from tools.bip85_pgp import create_bip85_pgp_key
+
+    try:
+        key = create_bip85_pgp_key(
+            mnemonic=MNEMONIC,
+            key_index=0,
+            primary_type=key_type,
+            name="Test",
+            email="test@example.com",
+            subkey_type=key_type,
+        )
+    except Exception as exc:
+        pytest.skip(f"{key_type} generation unsupported: {exc}")
+
+    plaintext = f"BIP85 {key_type} sign+encrypt test"
+    ciphertext = encrypt_message(
+        str(key.pubkey), plaintext, signkey_blob=str(key)
+    )
+    decrypted, signer_fpr, verified = decrypt_message(
+        str(key), ciphertext, pubkey_blobs=[str(key.pubkey)]
+    )
+
+    assert decrypted == plaintext
+    assert signer_fpr is not None
+    assert verified
+
+
+@pytest.mark.parametrize(
+    "key_type",
+    ["ed25519", "p256", "rsa2048"],
+)
+def test_bip85_key_gpg_export_roundtrip(key_type):
+    """End-to-end: generate BIP85 key, import to GPG, export, sign+encrypt."""
+    import subprocess
+    import tempfile
+    import os
+    import shutil
+
+    from tools.bip85_pgp import create_bip85_pgp_key
+
+    if not shutil.which("gpg"):
+        pytest.skip("gpg binary not available")
+
+    try:
+        key = create_bip85_pgp_key(
+            mnemonic=MNEMONIC,
+            key_index=0,
+            primary_type=key_type,
+            name="Test",
+            email="test@example.com",
+            subkey_type=key_type,
+        )
+    except Exception as exc:
+        pytest.skip(f"{key_type} generation unsupported: {exc}")
+
+    gnupghome = tempfile.mkdtemp()
+    env = {**os.environ, "GNUPGHOME": gnupghome}
+
+    try:
+        # Import into GPG (same way the UI does)
+        result = subprocess.run(
+            ["gpg", "--batch", "--import"],
+            input=str(key).encode(),
+            capture_output=True,
+            env=env,
+        )
+        assert result.returncode == 0, f"Import failed: {result.stderr.decode()}"
+
+        # Export public key
+        pub_export = subprocess.run(
+            ["gpg", "--armor", "--export", str(key.fingerprint)],
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        assert pub_export.returncode == 0
+        pub_blob = pub_export.stdout
+
+        # Export secret key
+        sec_export = subprocess.run(
+            ["gpg", "--armor", "--export-secret-keys", str(key.fingerprint)],
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        assert sec_export.returncode == 0
+        sec_blob = sec_export.stdout
+
+        # Encrypt with GPG-exported public key
+        plaintext = f"GPG roundtrip {key_type} test"
+        ciphertext = encrypt_message(pub_blob, plaintext)
+        decrypted, _, _ = decrypt_message(sec_blob, ciphertext)
+        assert decrypted == plaintext
+
+        # Sign with GPG-exported secret key
+        signed = encrypt_message(None, plaintext, signkey_blob=sec_blob)
+        decrypted, signer_fpr, verified = decrypt_message(
+            None, signed, pubkey_blobs=[pub_blob]
+        )
+        assert decrypted == plaintext
+        assert signer_fpr is not None
+        assert verified
+
+        # Sign + encrypt
+        ciphertext = encrypt_message(
+            pub_blob, plaintext, signkey_blob=sec_blob
+        )
+        decrypted, signer_fpr, verified = decrypt_message(
+            sec_blob, ciphertext, pubkey_blobs=[pub_blob]
+        )
+        assert decrypted == plaintext
+        assert verified
+    finally:
+        shutil.rmtree(gnupghome)

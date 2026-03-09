@@ -8610,12 +8610,23 @@ class ToolsGPGEncryptMessageView(View):
             if "is_back_button" in ret_dict:
                 return Destination(BackStackView)
             passphrase = ret_dict["textToEncode"]
-            ciphertext = encrypt_message(
-                pub_blob,
-                message,
-                signkey_blob=signkey_blob,
-                signkey_passphrase=passphrase,
-            )
+            try:
+                ciphertext = encrypt_message(
+                    pub_blob,
+                    message,
+                    signkey_blob=signkey_blob,
+                    signkey_passphrase=passphrase,
+                )
+            except Exception:
+                self.run_screen(
+                    WarningScreen,
+                    title="Error",
+                    status_headline=None,
+                    text="Failed to encrypt message",
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
         except Exception:
             self.run_screen(
                 WarningScreen,
