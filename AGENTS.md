@@ -97,7 +97,26 @@ SeedSigner must produce identical results regardless of the host locale or input
 
 ### Normalization
 - **BIP39 / SLIP39 / Electrum passphrases and mnemonics** must be NFKD-normalized (already done in `seed.py`). Do not change the normalization form.
+- **Encrypted QR code passwords** (`kef.py` `Cipher` class) are NFKD-normalized before PBKDF2 key derivation, ensuring the same password produces the same encryption key regardless of platform (macOS typically stores NFD, Linux/Windows use NFC).
 - **Display strings** shown to the user should be NFC-normalized (also already done in `seed.py` via `passphrase_display` / `mnemonic_display_str`).
+
+### Normalization audit summary
+
+The following table lists every code path where user-supplied strings feed into key derivation, encryption, or deterministic output, and whether NFKD normalization is applied:
+
+| Code path | Normalized? | Where |
+|-----------|-------------|-------|
+| BIP-39 passphrase | ✅ NFKD | `Seed.set_passphrase()` in `seed.py` |
+| BIP-39 mnemonic | ✅ NFKD | `Seed.__init__()` in `seed.py` |
+| SLIP-39 passphrase | ✅ NFKD | `Slip39Seed.set_slip39_passphrase()` in `seed.py` |
+| Electrum passphrase | ✅ NFKD + lower() | `ElectrumSeed.normalize_electrum_passphrase()` in `seed.py` |
+| Aezeed passphrase | ✅ NFKD (inherited) | Via `Seed.set_passphrase()` before reaching `aezeed.decode_mnemonic()` |
+| Encrypted QR password | ✅ NFKD | `Cipher.__init__()` in `kef.py` |
+| Dice / coin-flip entropy | N/A (ASCII-only) | Input constrained to `1-6` / `0-1` by keyboard UI |
+| GPG name / email | N/A (ASCII keyboard) | Input constrained to ASCII by on-screen keyboard |
+| GPG expiration dates | ✅ dash-normalized | `_normalize_date_input()` in `tools_views.py` |
+
+When adding a **new** code path that derives keys or produces deterministic output from user-supplied strings, always NFKD-normalize the input before encoding to bytes.
 
 ### Date and numeric input
 - When parsing dates from user input, always use `_normalize_date_input()` (in `tools_views.py`) to replace non-ASCII dashes (fullwidth `\uff0d`, en-dash `\u2013`, em-dash `\u2014`, Unicode minus `\u2212`) with ASCII hyphen-minus before calling `strptime` / `fromisoformat`.
@@ -108,3 +127,4 @@ SeedSigner must produce identical results regardless of the host locale or input
 - Never rely on locale-dependent behaviour (`str.lower()` with Turkish İ, `strftime` with locale month names, etc.) for data that affects derivation, signing, or deterministic output.
 - QR-scanned data, settings QRs, and file-imported data should all be treated as untrusted byte strings; decode as UTF-8 with error handling before further processing.
 - When adding new user-input parsing, add tests that exercise at least one non-ASCII variant (e.g. a fullwidth digit, a non-ASCII dash) to catch locale-dependent regressions.
+- Be aware that the same Unicode character can have multiple representations (e.g. `é` can be U+00E9 [NFC] or U+0065 U+0301 [NFD]). macOS file-system APIs and some input methods produce NFD; most other systems produce NFC. NFKD normalization collapses both forms into a single canonical byte sequence.
