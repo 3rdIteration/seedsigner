@@ -1513,7 +1513,8 @@ def test_key_details_shows_subkeys_button(monkeypatch):
     view.run()
 
     detail_kw = screen_kwargs[-1]
-    assert "81D909D9534ED202" in detail_kw["text"]
+    # Full fingerprint in blocks of 4 hex chars
+    assert "DFA0 7C16 9B15 13F3 4857 69A5 81D9 09D9 534E D202" in detail_kw["text"]
     assert "EdDSA" in detail_kw["text"]
     # Subkey count should NOT be in the text (removed per requirements)
     assert "Subkeys:" not in detail_kw["text"]
@@ -1651,6 +1652,86 @@ def test_key_subkeys_view(monkeypatch):
     assert "[E]" in btn_labels[0]
     # Second subkey: nistp256 with sign capability
     assert "[S]" in btn_labels[1]
+
+
+def test_key_subkeys_view_select_navigates_to_subkey_details(monkeypatch):
+    import subprocess
+
+    colon_output = (
+        "sec:-:255:22:81D909D9534ED202:1231006505:::-:::scESCA:::+::ed25519:::0:\n"
+        "fpr:::::::::DFA07C169B1513F3485769A581D909D9534ED202:\n"
+        "uid:-::::1231006505::ABC::Test User <test@example.com>::::::::::0:\n"
+        "ssb:-:255:18:C8088EF1E47500B1:1231006505::::::e:::+::cv25519::\n"
+        "fpr:::::::::0FAA3F5D0FCEC3E74A357659C8088EF1E47500B1:\n"
+    )
+
+    def fake_run(cmd, *a, **kw):
+        class R:
+            returncode = 0
+            stdout = colon_output
+            stderr = ""
+        return R()
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    def fake_run_screen(*args, **kwargs):
+        return 0  # select first subkey
+
+    monkeypatch.setattr(
+        tools_views.ToolsGPGKeySubkeysView, "run_screen", fake_run_screen
+    )
+    view = tools_views.ToolsGPGKeySubkeysView(
+        fpr="DFA07C169B1513F3485769A581D909D9534ED202"
+    )
+    dest = view.run()
+
+    assert dest.View_cls is tools_views.ToolsGPGSubkeyDetailsView
+    assert dest.view_args["primary_fpr"] == "DFA07C169B1513F3485769A581D909D9534ED202"
+    assert dest.view_args["subkey_fpr"] == "0FAA3F5D0FCEC3E74A357659C8088EF1E47500B1"
+
+
+def test_subkey_details_view(monkeypatch):
+    import subprocess
+
+    colon_output = (
+        "sec:-:255:22:81D909D9534ED202:1231006505:::-:::scESCA:::+::ed25519:::0:\n"
+        "fpr:::::::::DFA07C169B1513F3485769A581D909D9534ED202:\n"
+        "uid:-::::1231006505::ABC::Test User <test@example.com>::::::::::0:\n"
+        "ssb:-:255:18:C8088EF1E47500B1:1231006505::::::e:::+::cv25519::\n"
+        "fpr:::::::::0FAA3F5D0FCEC3E74A357659C8088EF1E47500B1:\n"
+    )
+
+    def fake_run(cmd, *a, **kw):
+        class R:
+            returncode = 0
+            stdout = colon_output
+            stderr = ""
+        return R()
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    screen_kwargs = []
+
+    def fake_run_screen(*args, **kwargs):
+        screen_kwargs.append(kwargs)
+        return RET_CODE__BACK_BUTTON
+
+    monkeypatch.setattr(
+        tools_views.ToolsGPGSubkeyDetailsView, "run_screen", fake_run_screen
+    )
+    view = tools_views.ToolsGPGSubkeyDetailsView(
+        primary_fpr="DFA07C169B1513F3485769A581D909D9534ED202",
+        subkey_fpr="0FAA3F5D0FCEC3E74A357659C8088EF1E47500B1",
+    )
+    view.run()
+
+    detail_kw = screen_kwargs[-1]
+    assert detail_kw["title"] == "Subkey Details"
+    # Full fingerprint in blocks of 4
+    assert "0FAA 3F5D 0FCE C3E7 4A35 7659 C808 8EF1 E475 00B1" in detail_kw["text"]
+    assert "ECDH" in detail_kw["text"]
+    assert "Encrypt" in detail_kw["text"]
+    assert detail_kw.get("show_back_button") is True
 
 
 def test_rebuild_bip85_key(monkeypatch):

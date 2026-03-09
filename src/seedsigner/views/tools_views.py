@@ -6053,6 +6053,11 @@ _GPG_ALGO_NAMES = {
 }
 
 
+def _format_fpr_blocks(fpr: str) -> str:
+    """Format a hex fingerprint in blocks of 4 characters separated by spaces."""
+    return " ".join(fpr[i:i + 4] for i in range(0, len(fpr), 4))
+
+
 def _gpg_algo_label(algo_code: str, curve: str, bits: str) -> str:
     """Return a short human-readable description for a GPG key algorithm."""
     name = _GPG_ALGO_NAMES.get(algo_code, f"Algo {algo_code}")
@@ -6160,10 +6165,10 @@ class ToolsGPGKeyDetailsView(View):
 
         subkeys = parse_subkey_list(detail.stdout)
 
-        fpr_short = self.fpr[-16:]
+        fpr_display = _format_fpr_blocks(self.fpr)
         lines = [
             uid,
-            f"Fpr: ...{fpr_short}",
+            f"Fpr: {fpr_display}",
             f"Type: {primary_algo}",
         ]
 
@@ -6240,11 +6245,80 @@ class ToolsGPGKeySubkeysView(View):
             label = f"{sk_fpr_short} [{cap_str}] {sk_algo}"
             buttons.append(ButtonOption(label))
 
-        self.run_screen(
+        selected = self.run_screen(
             ButtonListScreen,
             title="Subkeys",
             is_button_text_centered=False,
             button_data=buttons,
+        )
+
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        sk = subkeys[selected]
+        return Destination(
+            ToolsGPGSubkeyDetailsView,
+            view_args=dict(primary_fpr=self.fpr, subkey_fpr=sk["fpr"]),
+        )
+
+
+class ToolsGPGSubkeyDetailsView(View):
+    """Show details for a single GPG subkey."""
+
+    def __init__(self, primary_fpr: str, subkey_fpr: str):
+        super().__init__()
+        self.primary_fpr = primary_fpr
+        self.subkey_fpr = subkey_fpr
+
+    def run(self):
+        from subprocess import run as _run
+        from seedsigner.gui.screens.screen import LargeIconStatusScreen
+
+        detail = _run(
+            ["gpg", "--list-secret-keys", "--with-colons", self.primary_fpr],
+            capture_output=True,
+            text=True,
+        )
+        subkeys = parse_subkey_list(detail.stdout)
+
+        sk = None
+        for s in subkeys:
+            if s.get("fpr") == self.subkey_fpr:
+                sk = s
+                break
+
+        if sk is None:
+            sk = {"fpr": self.subkey_fpr, "algo": "", "bits": "", "caps": ""}
+
+        sk_algo = _gpg_algo_label(
+            sk["algo"], sk.get("curve", ""), sk["bits"]
+        )
+        caps = sk.get("caps", "")
+        cap_labels = []
+        if "s" in caps:
+            cap_labels.append("Sign")
+        if "e" in caps:
+            cap_labels.append("Encrypt")
+        if "a" in caps:
+            cap_labels.append("Auth")
+        cap_str = ", ".join(cap_labels) if cap_labels else caps
+
+        fpr_display = _format_fpr_blocks(self.subkey_fpr)
+        lines = [
+            f"Fpr: {fpr_display}",
+            f"Type: {sk_algo}",
+        ]
+        if cap_str:
+            lines.append(f"Caps: {cap_str}")
+
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Subkey Details",
+            status_icon_size=0,
+            status_headline=None,
+            text="\n".join(lines),
+            show_back_button=True,
+            button_data=[ButtonOption("Back")],
         )
 
         return Destination(BackStackView)
