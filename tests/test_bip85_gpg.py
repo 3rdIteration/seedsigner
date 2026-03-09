@@ -1458,12 +1458,10 @@ def test_view_keys_with_key(monkeypatch):
     monkeypatch.setattr(subprocess, "run", fake_run)
 
     screens = []
-    screen_kwargs = []
 
     def fake_run_screen(*args, **kwargs):
         title = kwargs.get("title", "")
         screens.append(title)
-        screen_kwargs.append(kwargs)
         if title == "View Keys":
             return 0  # select first key
         return 0
@@ -1472,14 +1470,187 @@ def test_view_keys_with_key(monkeypatch):
         tools_views.ToolsGPGViewKeysView, "run_screen", fake_run_screen
     )
     view = tools_views.ToolsGPGViewKeysView()
-    view.run()
+    dest = view.run()
 
     assert "View Keys" in screens
-    assert "Key Details" in screens
+    # The view now delegates to ToolsGPGKeyDetailsView
+    assert dest.View_cls is tools_views.ToolsGPGKeyDetailsView
+    assert dest.view_args["fpr"] == "DFA07C169B1513F3485769A581D909D9534ED202"
+
+
+def test_key_details_shows_subkeys_button(monkeypatch):
+    import subprocess
+
+    colon_output = (
+        "sec:-:255:22:81D909D9534ED202:1231006505:::-:::scESCA:::+::ed25519:::0:\n"
+        "fpr:::::::::DFA07C169B1513F3485769A581D909D9534ED202:\n"
+        "uid:-::::1231006505::ABC::Test User <test@example.com>::::::::::0:\n"
+        "ssb:-:255:18:C8088EF1E47500B1:1231006505::::::e:::+::cv25519::\n"
+        "fpr:::::::::0FAA3F5D0FCEC3E74A357659C8088EF1E47500B1:\n"
+    )
+
+    def fake_run(cmd, *a, **kw):
+        class R:
+            returncode = 0
+            stdout = colon_output
+            stderr = ""
+        return R()
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    screen_kwargs = []
+
+    def fake_run_screen(*args, **kwargs):
+        screen_kwargs.append(kwargs)
+        return RET_CODE__BACK_BUTTON
+
+    monkeypatch.setattr(
+        tools_views.ToolsGPGKeyDetailsView, "run_screen", fake_run_screen
+    )
+    view = tools_views.ToolsGPGKeyDetailsView(
+        fpr="DFA07C169B1513F3485769A581D909D9534ED202"
+    )
+    view.run()
+
     detail_kw = screen_kwargs[-1]
     assert "81D909D9534ED202" in detail_kw["text"]
     assert "EdDSA" in detail_kw["text"]
-    assert "Subkeys: 1" in detail_kw["text"]
+    # Subkey count should NOT be in the text (removed per requirements)
+    assert "Subkeys:" not in detail_kw["text"]
+    # No green tick icon
+    assert detail_kw.get("status_icon_size") == 0
+    # Back button enabled
+    assert detail_kw.get("show_back_button") is True
+    # Subkeys button present
+    btn_labels = [b.button_label for b in detail_kw["button_data"]]
+    assert "Subkeys" in btn_labels
+
+
+def test_key_details_no_subkeys_no_subkeys_button(monkeypatch):
+    import subprocess
+
+    colon_output = (
+        "sec:-:255:22:81D909D9534ED202:1231006505:::-:::scESCA:::+::ed25519:::0:\n"
+        "fpr:::::::::DFA07C169B1513F3485769A581D909D9534ED202:\n"
+        "uid:-::::1231006505::ABC::Test User <test@example.com>::::::::::0:\n"
+    )
+
+    def fake_run(cmd, *a, **kw):
+        class R:
+            returncode = 0
+            stdout = colon_output
+            stderr = ""
+        return R()
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    screen_kwargs = []
+
+    def fake_run_screen(*args, **kwargs):
+        screen_kwargs.append(kwargs)
+        return RET_CODE__BACK_BUTTON
+
+    monkeypatch.setattr(
+        tools_views.ToolsGPGKeyDetailsView, "run_screen", fake_run_screen
+    )
+    view = tools_views.ToolsGPGKeyDetailsView(
+        fpr="DFA07C169B1513F3485769A581D909D9534ED202"
+    )
+    view.run()
+
+    detail_kw = screen_kwargs[-1]
+    btn_labels = [b.button_label for b in detail_kw["button_data"]]
+    assert "Subkeys" not in btn_labels
+    assert "Back" in btn_labels
+
+
+def test_view_keys_filters_subkey_fprs(monkeypatch):
+    """If GPG lists a subkey fingerprint as a separate sec entry, it should be
+    filtered out so only genuine primary keys appear in the View Keys list."""
+    import subprocess
+
+    # Simulate GPG output where the subkey fingerprint also appears as a
+    # separate sec entry (some GPG configurations may do this).
+    colon_output = (
+        "sec:-:255:22:81D909D9534ED202:1231006505:::-:::scESCA:::+::ed25519:::0:\n"
+        "fpr:::::::::DFA07C169B1513F3485769A581D909D9534ED202:\n"
+        "uid:-::::1231006505::ABC::Test User <test@example.com>::::::::::0:\n"
+        "ssb:-:255:18:C8088EF1E47500B1:1231006505::::::e:::+::cv25519::\n"
+        "fpr:::::::::0FAA3F5D0FCEC3E74A357659C8088EF1E47500B1:\n"
+        "sec:-:255:18:C8088EF1E47500B1:1231006505:::-:::e:::+::cv25519:::0:\n"
+        "fpr:::::::::0FAA3F5D0FCEC3E74A357659C8088EF1E47500B1:\n"
+    )
+
+    def fake_run(cmd, *a, **kw):
+        class R:
+            returncode = 0
+            stdout = colon_output
+            stderr = ""
+        return R()
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    screen_kwargs = []
+
+    def fake_run_screen(*args, **kwargs):
+        screen_kwargs.append(kwargs)
+        return RET_CODE__BACK_BUTTON
+
+    monkeypatch.setattr(
+        tools_views.ToolsGPGViewKeysView, "run_screen", fake_run_screen
+    )
+    view = tools_views.ToolsGPGViewKeysView()
+    view.run()
+
+    # Only 1 button should appear (the primary key), not 2
+    btn_labels = [b.button_label for b in screen_kwargs[0]["button_data"]]
+    assert len(btn_labels) == 1
+    assert "Test User" in btn_labels[0]
+
+
+def test_key_subkeys_view(monkeypatch):
+    import subprocess
+
+    colon_output = (
+        "sec:-:255:22:81D909D9534ED202:1231006505:::-:::scESCA:::+::ed25519:::0:\n"
+        "fpr:::::::::DFA07C169B1513F3485769A581D909D9534ED202:\n"
+        "uid:-::::1231006505::ABC::Test User <test@example.com>::::::::::0:\n"
+        "ssb:-:255:18:C8088EF1E47500B1:1231006505::::::e:::+::cv25519::\n"
+        "fpr:::::::::0FAA3F5D0FCEC3E74A357659C8088EF1E47500B1:\n"
+        "ssb:-:256:19:AABB112233445566:1231006505::::::s::::nistp256:\n"
+        "fpr:::::::::AABB112233445566AABB112233445566AABB1122:\n"
+    )
+
+    def fake_run(cmd, *a, **kw):
+        class R:
+            returncode = 0
+            stdout = colon_output
+            stderr = ""
+        return R()
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    screen_kwargs = []
+
+    def fake_run_screen(*args, **kwargs):
+        screen_kwargs.append(kwargs)
+        return RET_CODE__BACK_BUTTON
+
+    monkeypatch.setattr(
+        tools_views.ToolsGPGKeySubkeysView, "run_screen", fake_run_screen
+    )
+    view = tools_views.ToolsGPGKeySubkeysView(
+        fpr="DFA07C169B1513F3485769A581D909D9534ED202"
+    )
+    view.run()
+
+    assert screen_kwargs[0]["title"] == "Subkeys"
+    btn_labels = [b.button_label for b in screen_kwargs[0]["button_data"]]
+    assert len(btn_labels) == 2
+    # First subkey: cv25519 with encrypt capability
+    assert "[E]" in btn_labels[0]
+    # Second subkey: nistp256 with sign capability
+    assert "[S]" in btn_labels[1]
 
 
 def test_rebuild_bip85_key(monkeypatch):

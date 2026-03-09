@@ -6070,7 +6070,6 @@ class ToolsGPGViewKeysView(View):
         from subprocess import run as _run
         from seedsigner.gui.screens.screen import (
             ButtonListScreen,
-            LargeIconStatusScreen,
             WarningScreen,
         )
 
@@ -6080,6 +6079,17 @@ class ToolsGPGViewKeysView(View):
             text=True,
         )
         keys = parse_secret_key_list(result.stdout)
+
+        # Collect all subkey fingerprints so we can exclude them from the
+        # primary key list.  Some GPG configurations may list a subkey with
+        # its own ``sec`` record; filtering by fingerprint prevents those
+        # entries from appearing as separate keys in the UI.
+        all_subkey_fprs = {
+            sk["fpr"]
+            for sk in parse_subkey_list(result.stdout)
+            if sk.get("fpr")
+        }
+        keys = [k for k in keys if k.get("fpr") not in all_subkey_fprs]
 
         if not keys:
             self.run_screen(
@@ -6108,17 +6118,34 @@ class ToolsGPGViewKeysView(View):
             return Destination(BackStackView)
 
         key = keys[selected]
-        fpr = key["fpr"]
+        return Destination(
+            ToolsGPGKeyDetailsView,
+            view_args=dict(fpr=key["fpr"]),
+        )
 
-        # Re-parse full output for subkey details of the selected key.
+
+class ToolsGPGKeyDetailsView(View):
+    """Show details for a single GPG primary key."""
+
+    SUBKEYS = ButtonOption("Subkeys")
+
+    def __init__(self, fpr: str):
+        super().__init__()
+        self.fpr = fpr
+
+    def run(self):
+        from subprocess import run as _run
+        from seedsigner.gui.screens.screen import LargeIconStatusScreen
+
         detail = _run(
-            ["gpg", "--list-secret-keys", "--with-colons", fpr],
+            ["gpg", "--list-secret-keys", "--with-colons", self.fpr],
             capture_output=True,
             text=True,
         )
 
-        # Primary key algorithm info from the `sec` line.
+        # Primary key algorithm info from the ``sec`` line.
         primary_algo = ""
+        uid = self.fpr[-16:]
         for line in detail.stdout.splitlines():
             parts = line.split(":")
             if parts[0] == "sec":
@@ -6126,35 +6153,96 @@ class ToolsGPGViewKeysView(View):
                 bits = parts[2]
                 curve = parts[16].lower() if len(parts) > 16 and parts[16] else ""
                 primary_algo = _gpg_algo_label(algo_code, curve, bits)
-                break
+            elif parts[0] == "uid" and uid == self.fpr[-16:]:
+                uid = parts[9] if len(parts) > 9 and parts[9] else uid
 
         subkeys = parse_subkey_list(detail.stdout)
 
-        # Build a compact detail string.
-        uid = key["uid"] or fpr[-16:]
-        fpr_short = fpr[-16:]
+        fpr_short = self.fpr[-16:]
         lines = [
             uid,
             f"Fpr: ...{fpr_short}",
             f"Type: {primary_algo}",
         ]
-        if subkeys:
-            lines.append(f"Subkeys: {len(subkeys)}")
-            for sk in subkeys[:3]:
-                sk_algo = _gpg_algo_label(
-                    sk["algo"], sk.get("curve", ""), sk["bits"]
-                )
-                lines.append(f"  {sk_algo}")
-            if len(subkeys) > 3:
-                lines.append(f"  (+{len(subkeys) - 3} more)")
 
-        self.run_screen(
+        button_data = []
+        if subkeys:
+            button_data.append(self.SUBKEYS)
+
+        selected = self.run_screen(
             LargeIconStatusScreen,
             title="Key Details",
+            status_icon_size=0,
             status_headline=None,
             text="\n".join(lines),
-            show_back_button=False,
-            button_data=[ButtonOption("OK")],
+            show_back_button=True,
+            button_data=button_data if button_data else [ButtonOption("Back")],
+        )
+
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        if button_data and button_data[selected] == self.SUBKEYS:
+            return Destination(
+                ToolsGPGKeySubkeysView,
+                view_args=dict(fpr=self.fpr),
+            )
+
+        return Destination(BackStackView)
+
+
+class ToolsGPGKeySubkeysView(View):
+    """List subkeys of a GPG primary key."""
+
+    def __init__(self, fpr: str):
+        super().__init__()
+        self.fpr = fpr
+
+    def run(self):
+        from subprocess import run as _run
+        from seedsigner.gui.screens.screen import ButtonListScreen, WarningScreen
+
+        detail = _run(
+            ["gpg", "--list-secret-keys", "--with-colons", self.fpr],
+            capture_output=True,
+            text=True,
+        )
+        subkeys = parse_subkey_list(detail.stdout)
+
+        if not subkeys:
+            self.run_screen(
+                WarningScreen,
+                title="Subkeys",
+                status_headline=None,
+                text="No subkeys found.",
+                show_back_button=False,
+                button_data=[ButtonOption("OK")],
+            )
+            return Destination(BackStackView)
+
+        buttons = []
+        for sk in subkeys:
+            sk_algo = _gpg_algo_label(
+                sk["algo"], sk.get("curve", ""), sk["bits"]
+            )
+            caps = sk.get("caps", "")
+            cap_labels = []
+            if "s" in caps:
+                cap_labels.append("S")
+            if "e" in caps:
+                cap_labels.append("E")
+            if "a" in caps:
+                cap_labels.append("A")
+            cap_str = ",".join(cap_labels) if cap_labels else caps
+            sk_fpr_short = sk["fpr"][-8:] if sk.get("fpr") else "?"
+            label = f"{sk_fpr_short} [{cap_str}] {sk_algo}"
+            buttons.append(ButtonOption(label))
+
+        self.run_screen(
+            ButtonListScreen,
+            title="Subkeys",
+            is_button_text_centered=False,
+            button_data=buttons,
         )
 
         return Destination(BackStackView)
