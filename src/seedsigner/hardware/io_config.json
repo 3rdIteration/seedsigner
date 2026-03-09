@@ -261,7 +261,7 @@
         ],
         "KEY_DOWN": [
           "/dev/gpiochip1",
-          28,
+          26,
           "pull_up"
         ],
         "KEY_LEFT": [
@@ -451,3 +451,4 @@
     }
   ]
 }
+

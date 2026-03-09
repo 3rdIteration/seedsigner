@@ -105,7 +105,7 @@ def test_fox_40_buttons_use_gpiochip_pull_up_mapping():
     mapping = get_hardware_pin_mapping("FOX_40")
 
     assert mapping["buttons"]["KEY_UP"] == ["/dev/gpiochip2", 9, "pull_up"]
-    assert mapping["buttons"]["KEY_DOWN"] == ["/dev/gpiochip1", 28, "pull_up"]
+    assert mapping["buttons"]["KEY_DOWN"] == ["/dev/gpiochip1", 26, "pull_up"]
     assert mapping["buttons"]["KEY_LEFT"] == ["/dev/gpiochip1", 19, "pull_up"]
     assert mapping["buttons"]["KEY_RIGHT"] == ["/dev/gpiochip1", 20, "pull_up"]
     assert mapping["buttons"]["KEY_PRESS"] == ["/dev/gpiochip1", 27, "pull_up"]
@@ -574,3 +574,4 @@ def test_st7789_does_not_swallow_non_einval_oserror():
 
     # Only one SPI() call should have been made — no retry on non-EINVAL errors.
     assert mock_spi_cls.call_count == 1
+
