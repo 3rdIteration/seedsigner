@@ -6145,7 +6145,7 @@ class ToolsGPGKeyDetailsView(View):
 
         # Primary key algorithm info from the ``sec`` line.
         primary_algo = ""
-        uid = self.fpr[-16:]
+        uid = ""
         for line in detail.stdout.splitlines():
             parts = line.split(":")
             if parts[0] == "sec":
@@ -6153,8 +6153,10 @@ class ToolsGPGKeyDetailsView(View):
                 bits = parts[2]
                 curve = parts[16].lower() if len(parts) > 16 and parts[16] else ""
                 primary_algo = _gpg_algo_label(algo_code, curve, bits)
-            elif parts[0] == "uid" and uid == self.fpr[-16:]:
-                uid = parts[9] if len(parts) > 9 and parts[9] else uid
+            elif parts[0] == "uid" and not uid:
+                uid = parts[9] if len(parts) > 9 and parts[9] else ""
+        if not uid:
+            uid = self.fpr[-16:]
 
         subkeys = parse_subkey_list(detail.stdout)
 
