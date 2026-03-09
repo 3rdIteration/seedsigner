@@ -469,6 +469,7 @@ class SettingsConstants:
     SETTING__ENCRYPTION_ITER = "pbkdf2_iterations"
     SETTING__WIF_KEYS = "wif_keys"
     SETTING__BIP38_KEYS = "bip38_keys"
+    SETTING__GPG_KEY_TYPES = "gpg_key_types"
 
     SETTING__SATOCHIP_SIGN_TIMEOUT = "satochip_sign_timeout"
     SETTING__SATOCHIP_MSG_SIGN_TIMEOUT = "satochip_msg_sign_timeout"
@@ -573,6 +574,44 @@ class SettingsConstants:
         (18, "18 words"),
         (21, "21 words"),
         (24, "24 words"),
+    ]
+
+    # GPG key type constants
+    GPG_KEY_TYPE__ED25519 = "ed25519"
+    GPG_KEY_TYPE__P256 = "p256"
+    GPG_KEY_TYPE__P384 = "p384"
+    GPG_KEY_TYPE__P521 = "p521"
+    GPG_KEY_TYPE__BRAINPOOL_P256 = "brainpoolp256r1"
+    GPG_KEY_TYPE__BRAINPOOL_P384 = "brainpoolp384r1"
+    GPG_KEY_TYPE__BRAINPOOL_P512 = "brainpoolp512r1"
+    GPG_KEY_TYPE__RSA2048 = "rsa2048"
+    GPG_KEY_TYPE__RSA3072 = "rsa3072"
+    GPG_KEY_TYPE__RSA4096 = "rsa4096"
+    GPG_KEY_TYPE__SECP256K1 = "secp256k1"
+
+    ALL_GPG_KEY_TYPES = [
+        (GPG_KEY_TYPE__ED25519, "ECC Ed25519"),
+        (GPG_KEY_TYPE__P256, "ECC NIST P-256"),
+        (GPG_KEY_TYPE__P384, "ECC NIST P-384"),
+        (GPG_KEY_TYPE__P521, "ECC NIST P-521"),
+        (GPG_KEY_TYPE__BRAINPOOL_P256, "ECC Brainpool P-256"),
+        (GPG_KEY_TYPE__BRAINPOOL_P384, "ECC Brainpool P-384"),
+        (GPG_KEY_TYPE__BRAINPOOL_P512, "ECC Brainpool P-512"),
+        (GPG_KEY_TYPE__RSA2048, "RSA 2048"),
+        (GPG_KEY_TYPE__RSA3072, "RSA 3072"),
+        (GPG_KEY_TYPE__RSA4096, "RSA 4096"),
+        (GPG_KEY_TYPE__SECP256K1, "ECC secp256k1"),
+    ]
+
+    # Default GPG key types match the "Generate New" menu
+    DEFAULT_GPG_KEY_TYPES = [
+        GPG_KEY_TYPE__ED25519,
+        GPG_KEY_TYPE__P256,
+        GPG_KEY_TYPE__BRAINPOOL_P256,
+        GPG_KEY_TYPE__RSA2048,
+        GPG_KEY_TYPE__RSA3072,
+        GPG_KEY_TYPE__RSA4096,
+        GPG_KEY_TYPE__SECP256K1,
     ]
 
 
@@ -915,6 +954,15 @@ class SettingsDefinition:
                       display_name="BIP38 keys",
                       visibility=SettingsConstants.VISIBILITY__ADVANCED,
                       default_value=SettingsConstants.OPTION__DISABLED),
+
+        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
+                      attr_name=SettingsConstants.SETTING__GPG_KEY_TYPES,
+                      abbreviated_name="gpgkeys",
+                      display_name=_mft("GPG key types"),
+                      type=SettingsConstants.TYPE__MULTISELECT,
+                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
+                      selection_options=SettingsConstants.ALL_GPG_KEY_TYPES,
+                      default_value=SettingsConstants.DEFAULT_GPG_KEY_TYPES),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
                       attr_name=SettingsConstants.SETTING__BIP85_CHILD_SEEDS,

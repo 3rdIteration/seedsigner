@@ -53,7 +53,7 @@ from seedsigner.views.tools_views import (
 
 
 # CLI test tool should expose every supported key type regardless of UI settings.
-CLI_KEY_TYPE_CHOICES = tuple(_bip85_key_type_choices())
+CLI_KEY_TYPE_CHOICES = tuple(_bip85_key_type_choices(include_all=True))
 CLI_KEY_TYPE_CODES = tuple(code for _, code in CLI_KEY_TYPE_CHOICES)
 
 

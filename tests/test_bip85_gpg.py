@@ -1047,11 +1047,7 @@ def test_load_bip85_key_selects_seed(monkeypatch):
     assert captured["key_type_options"] == [
         "ECC Ed25519",
         "ECC NIST P-256",
-        "ECC NIST P-384",
-        "ECC NIST P-521",
         "ECC Brainpool P-256",
-        "ECC Brainpool P-384",
-        "ECC Brainpool P-512",
         "RSA 2048",
         "RSA 3072",
         "RSA 4096",
@@ -1102,15 +1098,56 @@ def test_load_bip85_key_warning_always_shown(monkeypatch):
     assert captured["key_type_options"] == [
         "ECC Ed25519",
         "ECC NIST P-256",
-        "ECC NIST P-384",
-        "ECC NIST P-521",
         "ECC Brainpool P-256",
-        "ECC Brainpool P-384",
-        "ECC Brainpool P-512",
         "RSA 2048",
         "RSA 3072",
         "RSA 4096",
         "ECC secp256k1",
+    ]
+
+
+def test_bip85_key_type_choices_include_all():
+    """``_bip85_key_type_choices(include_all=True)`` returns every type."""
+    from seedsigner.views.tools_views import _bip85_key_type_choices
+
+    choices = _bip85_key_type_choices(include_all=True)
+    codes = [code for _, code in choices]
+    assert "p384" in codes
+    assert "p521" in codes
+    assert "brainpoolp384r1" in codes
+    assert "brainpoolp512r1" in codes
+    assert len(codes) == len(SettingsConstants.ALL_GPG_KEY_TYPES)
+
+
+def test_bip85_key_type_choices_respects_setting(monkeypatch):
+    """``_bip85_key_type_choices()`` filters by ``SETTING__GPG_KEY_TYPES``."""
+    from seedsigner.views.tools_views import _bip85_key_type_choices
+    from seedsigner.models.settings import Settings
+
+    settings = Settings.get_instance()
+    original = settings.get_value(SettingsConstants.SETTING__GPG_KEY_TYPES)
+    settings.set_value(SettingsConstants.SETTING__GPG_KEY_TYPES, ["rsa2048"])
+    try:
+        choices = _bip85_key_type_choices()
+        assert choices == [("RSA 2048", "rsa2048")]
+    finally:
+        settings.set_value(SettingsConstants.SETTING__GPG_KEY_TYPES, original)
+
+
+def test_bip85_key_type_choices_default_matches_generate_new():
+    """Default GPG key types match the original Generate New menu types."""
+    from seedsigner.views.tools_views import _bip85_key_type_choices
+
+    choices = _bip85_key_type_choices()
+    codes = [code for _, code in choices]
+    assert codes == [
+        "ed25519",
+        "p256",
+        "brainpoolp256r1",
+        "rsa2048",
+        "rsa3072",
+        "rsa4096",
+        "secp256k1",
     ]
 
 

@@ -6986,7 +6986,7 @@ class ToolsGPGRebuildBip85KeyView(View):
 
         key_index = entry["index"]
         key_type_label = entry["key_type"]
-        key_type_lookup = dict(_bip85_key_type_choices())
+        key_type_lookup = dict(_bip85_key_type_choices(include_all=True))
         key_type = key_type_lookup[key_type_label]
 
         uid_list = entry.get("uids", [])
@@ -11859,22 +11859,26 @@ def bip85_brainpoolp512r1_from_root(
     return priv
 
 
-def _bip85_key_type_choices() -> list[tuple[str, str]]:
-    """Return available key type labels and identifiers for BIP85 GPG keys."""
+def _bip85_key_type_choices(include_all: bool = False) -> list[tuple[str, str]]:
+    """Return available key type labels and identifiers for BIP85 GPG keys.
 
-    return [
-        ("ECC Ed25519", "ed25519"),
-        ("ECC NIST P-256", "p256"),
-        ("ECC NIST P-384", "p384"),
-        ("ECC NIST P-521", "p521"),
-        ("ECC Brainpool P-256", "brainpoolp256r1"),
-        ("ECC Brainpool P-384", "brainpoolp384r1"),
-        ("ECC Brainpool P-512", "brainpoolp512r1"),
-        ("RSA 2048", "rsa2048"),
-        ("RSA 3072", "rsa3072"),
-        ("RSA 4096", "rsa4096"),
-        ("ECC secp256k1", "secp256k1"),
+    Parameters
+    ----------
+    include_all : bool
+        When ``True`` return every supported key type regardless of the
+        ``SETTING__GPG_KEY_TYPES`` user preference.  Used by the CLI tool
+        and import paths that must accept any key type.
+    """
+    all_types = [
+        (label, code)
+        for code, label in SettingsConstants.ALL_GPG_KEY_TYPES
     ]
+    if include_all:
+        return all_types
+
+    from seedsigner.models.settings import Settings
+    enabled = Settings.get_instance().get_value(SettingsConstants.SETTING__GPG_KEY_TYPES)
+    return [(label, code) for label, code in all_types if code in enabled]
 
 
 class ToolsGPGLoadBIP85KeyView(View):
@@ -12486,43 +12490,66 @@ class ToolsGPGGenerateKeyView(View):
             tools_screens,
         )
 
-        keytype_data = [
+        all_keytype_data = [
             (
+                "ed25519",
                 "ECC Ed25519",
                 (PubKeyAlgorithm.EdDSA, EllipticCurveOID.Ed25519),
                 True,
             ),
             (
+                "p256",
                 "ECC NIST P-256",
                 (PubKeyAlgorithm.ECDSA, EllipticCurveOID.NIST_P256),
                 False,
             ),
             (
+                "brainpoolp256r1",
                 "ECC Brainpool P-256",
                 (PubKeyAlgorithm.ECDSA, EllipticCurveOID.Brainpool_P256),
                 False,
             ),
             (
+                "rsa2048",
                 "RSA 2048",
                 (PubKeyAlgorithm.RSAEncryptOrSign, 2048),
                 False,
             ),
             (
+                "rsa3072",
                 "RSA 3072",
                 (PubKeyAlgorithm.RSAEncryptOrSign, 3072),
                 False,
             ),
             (
+                "rsa4096",
                 "RSA 4096",
                 (PubKeyAlgorithm.RSAEncryptOrSign, 4096),
                 False,
             ),
             (
+                "secp256k1",
                 "ECC secp256k1",
                 (PubKeyAlgorithm.ECDSA, EllipticCurveOID.SECP256K1),
                 True,
             ),
         ]
+        enabled = self.settings.get_value(SettingsConstants.SETTING__GPG_KEY_TYPES)
+        keytype_data = [
+            (label, params, warn)
+            for code, label, params, warn in all_keytype_data
+            if code in enabled
+        ]
+        if not keytype_data:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No GPG key types enabled.\nCheck settings.",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
         keytype_buttons = [ButtonOption(label) for label, _, _ in keytype_data]
         selected_type = self.run_screen(
             ButtonListScreen,
