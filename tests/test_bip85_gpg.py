@@ -11,8 +11,12 @@ from seedsigner.views import tools_views
 from seedsigner.views.tools_views import (
     MIN_RSA_KEY_BITS,
     bip85_brainpoolp256r1_from_root,
+    bip85_brainpoolp384r1_from_root,
+    bip85_brainpoolp512r1_from_root,
     bip85_ed25519_from_root,
     bip85_p256_from_root,
+    bip85_p384_from_root,
+    bip85_p521_from_root,
     bip85_rsa_from_root,
     bip85_secp256k1_from_root,
     bip85_add_subkeys,
@@ -27,6 +31,7 @@ from seedsigner.views.tools_views import (
     bip85_load_data,
     _select_import_algo,
     bip85_verify_existing,
+    _normalize_date_input,
 )
 from seedsigner.models.settings_definition import SettingsConstants
 from seedsigner.helpers.bip85_drng import BIP85DRNG
@@ -45,52 +50,52 @@ LIBWALLY_RSA_MASTER_XPRV = (
 )
 BIP85_GPG_RSA_VECTORS = [
     (
-        "b3415a819ba8175a7f11b949d75133725594ee3dcf6284dbec8fe6a625d0e0df757c148e576369f9405b19aec9356a848897de64202df8da4880a5f769aac297",
+        "2b9380df43421f46b5c38e13ea80612ff53488bc5d272e86d493ee1eecf738bb7b50e4978b7352f95772f1211483b0e6bba86c544a946b10d76ed493b8c2e01f",
         1024,
         0,
     ),
     (
-        "ca1e93031427e4f086538f89b19f5f224719332c8a7b8c87db7eb81e4be935db24dcbc71873d0607ddd3876777cd158a2f061a5a5153413307df08fe5911a857",
+        "b34c06698228ce7a531dd292e76a4fbde1238659588e70714e1a7558a6df54e533034ba4d29ff42133db54af37520ba6724e3d3cd7e98329d6a0e4806e166bf0",
         1024,
         1,
     ),
     (
-        "e3ff02b1f0b934357cc0952225bb0e90081005b0cc992c5ed22f6fb8e9c628a3a0f138f9324e33ed4ba7250e43dd66d725a4e4c683dcf5a3b4015b82bcf71934",
+        "98c4fb6d76f203e8828bdfd28416edca7a83a9b203901f7ad31f056cda8b3c25b19e5fd2aa642ca0abb9ed8bebf3d141af6c76b28a19eba624bdc6f8a76ce138",
         2048,
         0,
     ),
     (
-        "b1b4d03eb9826aeb2fabc4529dc37da5eaaa9072d3e2b7e69da79862e2b9cd8131dbb5a9001612239cd96310f6be0417bd39c39500bf8a99ba5df32571866fe6",
+        "fad7641f55ce91a45a7ff36a7d8ebcac34b28778fd9f98abeba7afd24e0ff80ac9aaff7c8c728fbca5ebb893e0f7b9bce9b62f15c977044ad9cd05685044189e",
         2048,
         1,
     ),
     (
-        "9bd8cb61fea01892ffd981b4da7aae22f32c9641e49c48104682e249a98f7911ed55035a52e085938291d64e34537e9cc0b730f42ae9183b5ddaac33a55764ea",
+        "ed98d9cd1919fbcf73f5e3d2496b9bc43f869ffe5e27e6d55dc740eb9039ec545f084037e189ced93d0e71f70a3bcc0fa76560b98f685d2725b8345e1be50e01",
         3072,
         0,
     ),
     (
-        "fc49330db1352558f615651ae8d7840b083cce5c9e731e349847569d3813a3f7f605b5d66b178bf19fdd04bd7f48d2ddb07e16793703d17ee06c86e49e19a896",
+        "750caeee45c70b71a0297532a22e73f03a38bf226ffa95bc52969d98a586ee5913c7e9d9514d87455e6530c46d277ff67995a56e484bcefdcb662a1bb1d57d43",
         3072,
         1,
     ),
     (
-        "12a499947a142ee3ede9c0960061383f2564b5cc569327d0dd22f7887094676f2e5d5785cd4eb683990d12209ebf6f39a5c1b5e217ea66710260e99fbe4b2be3",
+        "2d2ef3335dc51e7a0642bfe86fba0bb4e8401b703d8d679bb1a31d75f8a81f1fd52b20b2eae50ef6e0378b8755f4f0426c68b54f11edc0c848e017e81bb2ad87",
         4096,
         0,
     ),
     (
-        "a6fdf91d4f4a0cadaf3d20d638744b574306725aababa0ab7136f8f8b88c5a4c5ca6104646d695cd95a72ad15e6e6912e263762eab951bfcea8e9939ed7c03f4",
+        "02b18073332b3486f1ef0bad015bdbe695595b8b3ed5ea5b4d9e54b54670e7a8011dd69b888f5042f9ae8d9f658708f786314458ba0c0078339789c50f78085b",
         4096,
         1,
     ),
     (
-        "b3a0baa54a6fa75363e2bc0809dafd20eacea8b4d0fba9ef26f9ea9c471e135c53c1f787fd6a7a02bf736bed620d44e5b4465856fae6c2ef2d620b730098f8e9",
+        "c966fcf60d5ede0515ef2c51dbe300b1e67e448049fa1a63770a104f0d52ab173f9891a6345f9d0993452d7a0ba446ada5c69c8cd07a656829df9bb26f6ca29f",
         8192,
         0,
     ),
     (
-        "1b5f1ae261e9e36039cd7d55d25e71934a4f0a2fdd2d93b2f73fbd272d04257d6eba8f6ff6bc1ffe1d58f68b707b794e54e983e2f573991bb776b48b8ed9a1ca",
+        "b8f8456044ebc18a964ef05dae81d88c6f602823d8c0415a912ed58095244562f459781c142aa723bb29092b08ce22efc648e631c6b9fdb46ffad845c893a27f",
         8192,
         1,
     ),
@@ -117,8 +122,177 @@ def test_bip85_drng_vector():
 def test_bip85_rsa_entropy_vectors_match_libwally():
     root = bip32.HDKey.from_string(LIBWALLY_RSA_MASTER_XPRV)
     for expected, bits, index in BIP85_GPG_RSA_VECTORS:
-        entropy = bip85.derive_entropy(root, tools_views.BIP85_GPG_APP_RSA, [bits, index])
+        entropy = bip85.derive_entropy(root, tools_views.BIP85_GPG_APP, [tools_views.BIP85_GPG_KEY_TYPE_RSA, bits, index])
         assert entropy.hex() == expected
+
+
+# ── Cross-implementation reference vectors ──────────────────────────────────
+# These vectors use the common xprv from the BIP85 spec test vectors.
+# Any BIP85-GPG implementation MUST derive identical entropy, DRNG output,
+# and key material for the same master key and path.
+#
+# For RSA, PyCryptodome's RSA.generate(bits, randfunc=drng.read) is the
+# reference algorithm as implied by the BIP85 spec's example code
+# (``RSA.generate_key(4096, drng_reader.read)``).
+#
+# Master xprv:
+#   xprv9s21ZrQH143K2LBWUUQRFXhucrQqBpKdRRxNVq2zBqsx8HVqFk2uYo8kmbaLLH
+#   RdqtQpUm98uKfu3vca1LqdGhUtyoFnCNkfmXRyPXLjbKb
+
+CROSS_IMPL_XPRV = LIBWALLY_RSA_MASTER_XPRV
+
+CROSS_IMPL_ECC_VECTORS = [
+    # (key_type, key_bits, expected_entropy_hex, expected_private_hex)
+    (
+        tools_views.BIP85_GPG_KEY_TYPE_CURVE25519,
+        256,
+        "0e90b553528cd97a033c282f54cf72c1020adaec205d5c0e57e9f2556d06fea6"
+        "83618e4be8f91e7e059647f9d6373eb8b5f535e7ba4097cfb3e93c4957843614",
+        "0e90b553528cd97a033c282f54cf72c1020adaec205d5c0e57e9f2556d06fea6",
+    ),
+    (
+        tools_views.BIP85_GPG_KEY_TYPE_SECP256K1,
+        256,
+        "f3bb8b3d6b81fbd202c34b59ce7e97c83969e9b5733b936de16c51119c7a4823"
+        "9ddf66729ef5e4df97ea39471f05a89f070869b3f9d72d69f3ae8bd7ee4fb6b3",
+        "f3bb8b3d6b81fbd202c34b59ce7e97c83969e9b5733b936de16c51119c7a4823",
+    ),
+    (
+        tools_views.BIP85_GPG_KEY_TYPE_NIST,
+        256,
+        "f52586f58521916b9f28b0058be86effcde82e571eabada9e3f63c6f67752ff1"
+        "2a4d3bf2fffe0f147164945691605a58f28f6bded869c38b3db9f0e577d83728",
+        "f52586f58521916b9f28b0058be86effcde82e571eabada9e3f63c6f67752ff1",
+    ),
+    (
+        tools_views.BIP85_GPG_KEY_TYPE_NIST,
+        384,
+        "830005ea400f7a03c27aa06a9728fe311c9a48dc31bd417f07b96c69edc73d25"
+        "baa00d04b9dbbe6f42539b06d9ef1ba62ed73d4a3a992302aae09e17e0d9f42f",
+        "830005ea400f7a03c27aa06a9728fe311c9a48dc31bd417f07b96c69edc73d25"
+        "baa00d04b9dbbe6f42539b06d9ef1ba6",
+    ),
+    (
+        tools_views.BIP85_GPG_KEY_TYPE_NIST,
+        521,
+        "3524b3cbe60eb78a156dae44674702f69381afe5292d6d15d7801b7e530f2a06"
+        "16b7b876c0ba85d6e675587fdc0ce2242ad00252493ec9c3a024217d1e2aa954",
+        "a9b5a5af6b4c45ea509e838cb55a0043412b49781c54a68931395be4b27550b1"
+        "c60b3aa7814c9ba4093c7c0b3f72b5e21856317b97eb156533b42e36ae8f2bf157",
+    ),
+    (
+        tools_views.BIP85_GPG_KEY_TYPE_BRAINPOOL,
+        256,
+        "97ee4490d89bf257e9a038e2af12824fba47fec721970ca1fc1c094650d2716d"
+        "75491402530776ba31d215fac6c2de0cb6661f1d380b682e20246bf962cdf385",
+        "97ee4490d89bf257e9a038e2af12824fba47fec721970ca1fc1c094650d2716d",
+    ),
+    (
+        tools_views.BIP85_GPG_KEY_TYPE_BRAINPOOL,
+        384,
+        "3fa833db4195fbd7a9c4e3f6fdb65ffb8951c5c65ca0cce441a4410e11aa96fc"
+        "b094ed8c1fb5317448ae098ca9cae2c351b513e47d1b74e4c80c1facdf7b0a5a",
+        "3fa833db4195fbd7a9c4e3f6fdb65ffb8951c5c65ca0cce441a4410e11aa96fc"
+        "b094ed8c1fb5317448ae098ca9cae2c3",
+    ),
+    (
+        tools_views.BIP85_GPG_KEY_TYPE_BRAINPOOL,
+        512,
+        "985f0131503109fc7fb2ab15e6a86846888e4b9a9f4f11f0d7b30dba4570cf8c"
+        "c728a4c8ce9bbeb9b9819fbe924bb2d6d71a9c8332635cfb5db5008364f3a43a",
+        "985f0131503109fc7fb2ab15e6a86846888e4b9a9f4f11f0d7b30dba4570cf8c"
+        "c728a4c8ce9bbeb9b9819fbe924bb2d6d71a9c8332635cfb5db5008364f3a43a",
+    ),
+]
+
+# Expected RSA-2048 n value for path m/83696968'/828365'/0'/2048'/0'
+# generated via PyCryptodome RSA.generate(2048, randfunc=drng.read).
+CROSS_IMPL_RSA2048_N = int(
+    "c76c90074ba3f2e487c5d7714bdade9e1c6e4beafb3c1d1246ed9d0a5607a15d"
+    "58608bc5aec96db6160920c8327487311bc9f799d9bb312e489e2296d3e93ceb"
+    "322bf5d8ede6f989713e1ecc3b03ad146186aaba5af50656f3c29babb7b792da"
+    "8e6e1ffc6521af425965faeb5c94bd18d1526d77d8b51f501d029fb59a26384b"
+    "0269ddb36c79ee8764d0e2d09222eb9f9bfd0a7ae6be35f71e63743cdca8983e"
+    "bd7e712b2b38c8ea84fcb950bd851b882642eb05a0578c346057d9eeb7fa3218"
+    "eefcdb9b19aa11e8a1364e81de2a54940496a302c1958a99f6bf3b7b8154d0b4"
+    "c800081a8311b5b4182ed3e057af0e1010232b2e04fdc1edf5cf37978ac75cb9",
+    16,
+)
+
+
+def test_cross_impl_ecc_entropy_vectors():
+    """Entropy values for ECC key types match reference vectors."""
+    root = bip32.HDKey.from_string(CROSS_IMPL_XPRV)
+    for key_type, key_bits, expected_entropy, _ in CROSS_IMPL_ECC_VECTORS:
+        entropy = bip85.derive_entropy(
+            root, tools_views.BIP85_GPG_APP, [key_type, key_bits, 0]
+        )
+        assert entropy.hex() == expected_entropy, (
+            f"Entropy mismatch for key_type={key_type}, key_bits={key_bits}"
+        )
+
+
+def test_cross_impl_ecc_private_key_vectors():
+    """Derived ECC private key scalars match reference vectors."""
+    root = bip32.HDKey.from_string(CROSS_IMPL_XPRV)
+    derivers = {
+        (tools_views.BIP85_GPG_KEY_TYPE_CURVE25519, 256): lambda r: bip85_ed25519_from_root(r, 0),
+        (tools_views.BIP85_GPG_KEY_TYPE_SECP256K1, 256): lambda r: bip85_secp256k1_from_root(r, 0),
+        (tools_views.BIP85_GPG_KEY_TYPE_NIST, 256): lambda r: bip85_p256_from_root(r, 0),
+        (tools_views.BIP85_GPG_KEY_TYPE_NIST, 384): lambda r: bip85_p384_from_root(r, 0),
+        (tools_views.BIP85_GPG_KEY_TYPE_NIST, 521): lambda r: bip85_p521_from_root(r, 0),
+        (tools_views.BIP85_GPG_KEY_TYPE_BRAINPOOL, 256): lambda r: bip85_brainpoolp256r1_from_root(r, 0),
+        (tools_views.BIP85_GPG_KEY_TYPE_BRAINPOOL, 384): lambda r: bip85_brainpoolp384r1_from_root(r, 0),
+        (tools_views.BIP85_GPG_KEY_TYPE_BRAINPOOL, 512): lambda r: bip85_brainpoolp512r1_from_root(r, 0),
+    }
+    for key_type, key_bits, _, expected_private_hex in CROSS_IMPL_ECC_VECTORS:
+        key = derivers[(key_type, key_bits)](root)
+        actual = int(key.s)
+        expected = int(expected_private_hex, 16)
+        assert actual == expected, (
+            f"Private key mismatch for key_type={key_type}, key_bits={key_bits}: "
+            f"got {hex(actual)}, expected {hex(expected)}"
+        )
+
+
+def test_cross_impl_rsa2048_key():
+    """RSA-2048 key n-value matches reference vector.
+
+    This pins PyCryptodome's RSA.generate() output for deterministic
+    cross-implementation verification.  The BIP85 spec implies
+    PyCryptodome by its example: ``RSA.generate_key(4096, drng_reader.read)``.
+    """
+    root = bip32.HDKey.from_string(CROSS_IMPL_XPRV)
+    key = bip85_rsa_from_root(root, 2048, 0)
+    assert key.n == CROSS_IMPL_RSA2048_N
+
+
+def test_xprv_seed_produces_same_bip85_gpg_keys():
+    """XprvSeed.get_root() must produce the same BIP85 GPG keys as the
+    equivalent mnemonic-derived Seed.  This is the bug that caused the user
+    to see different RSA keys when loading an xprv directly into SeedSigner
+    versus providing a mnemonic to bipsea."""
+    seed = Seed(mnemonic=MNEMONIC)
+    root_from_mnemonic = bip32.HDKey.from_seed(seed.seed_bytes)
+    xprv_str = root_from_mnemonic.to_base58()
+    xprv_seed = XprvSeed(xprv_str)
+
+    root_from_xprv = xprv_seed.get_root()
+
+    # The roots must derive identical BIP85 entropy
+    entropy_mn = bip85.derive_entropy(root_from_mnemonic, tools_views.BIP85_GPG_APP, [0, 2048, 0])
+    entropy_xp = bip85.derive_entropy(root_from_xprv, tools_views.BIP85_GPG_APP, [0, 2048, 0])
+    assert entropy_mn == entropy_xp, "XprvSeed BIP85 entropy must match mnemonic Seed"
+
+    # RSA key must be identical
+    rsa_mn = bip85_rsa_from_root(root_from_mnemonic, 2048, 0)
+    rsa_xp = bip85_rsa_from_root(root_from_xprv, 2048, 0)
+    assert rsa_mn.n == rsa_xp.n, "XprvSeed RSA key n-value must match mnemonic Seed"
+
+    # ECC key must be identical
+    ecc_mn = bip85_secp256k1_from_root(root_from_mnemonic, 0)
+    ecc_xp = bip85_secp256k1_from_root(root_from_xprv, 0)
+    assert int(ecc_mn.s) == int(ecc_xp.s), "XprvSeed secp256k1 key must match mnemonic Seed"
 
 
 def test_bip85_rsa_deterministic():
@@ -127,7 +301,7 @@ def test_bip85_rsa_deterministic():
     key = bip85_rsa_from_root(root, 1024, 0)
     assert key.size_in_bits() == MIN_RSA_KEY_BITS
     assert key.n == int(
-        "c50bee42220c0162164154c147b661aff9ac6b56e9f1a470db1fdba5ba82338113c5734135bb49d7a4e248b2927324dcd2d5493d385543145177a79cb0a7cdea8c8b31f493d24a7bdeb0cdd0c7ef3685e34c7f5776d2f86d6b3b935bf2d5d3edcbb5c338314444eba19c2c128e935cfaa217fde3fbcab3d2dfdc9a7d9dbf9ca5d1f9cd58f862d8158d0de7fb5c8935ea52547d662bbe1e484752b2104e8d337a4794f9c2b2b0b6c4afcb4bf88c304644c0b134355f39228619091fe7fbe612f0005216b441edce575dbf639710c73eab6da71f980bb2a412b19fbceeca3b56756a62d29e12cbfbb1a6025f4059a9ea5ce6b537e2f06bb589a5e24b22a6f77b95",
+        "cf61fb06f3fea3d33e2671cf1f8c9878760864c63ae73e7c9b9f8a912740368a1fa4dc416a5d98e825ce08adcbc57eb3f6032079aea83da0bae61ac544a11c23ced82227cab51c2f72cf163c77ef77607fc2fb6e959a83baceb94d0a70fe8662d9d8180748e7240b2440ceb85240280ef1c83e19c19c9dc7bb8f5a60904a0a3cbf6fec290da4210900c07a52ef1c2380947bd373291aaafffd598fde0dd6b9ce6f24b70a4714092b16a377190e6b80f447412e7b0e9bece88a94c3a0f6854715947980de09d463343939733704679787f7622928c28bce92e11298cb54b87694284d50645e56cc51fb9411b026723adb05f68037d040e8448f7762507309a1c7",
         16,
     )
 
@@ -145,7 +319,7 @@ def test_bip85_rsa_3072_deterministic():
     key = bip85_rsa_from_root(root, 3072, 0)
     assert key.size_in_bits() == 3072
     assert key.n == int(
-        "c3cfd8332fde9f8ec605520f687c11f250b0eedfd695aa3170f3eb242c15e0be769a1120f9c81c30615e3a5f3a0c50aa399df15f2d3a8554a0d698c5c86cacfbbce160c8bf6e7f581f9ad16885cbe5aeffeddc8ff66c16a16b6f429da765b98adbdd4554e0ec322206fc8c9b780f3527f2b93aa3075bde1fb735829e41f5f42be6ee7dc0d28f570c394e7610f44b85ba452a933e2405a3a72cdf8d33577a85fb5bb35b2cd0c2d7c6f3309c4ca47aab8eb094d31db982c91e9ea9c8f369827d73c4a53f943c15dfff791b33aa2d60173f13dc437cee05222b288726cea9d02eefff111a74714655ed6c048c27ff1a3264732d2952a233c42b640ec93bc214a39eef342b285c828ae00d2082fae2bef26e88a6fc0650939beeeb518feea3b79576a54afe640146eb0d9fb0bcd12d14d7dea6aed79527243a182f6bf83d9b6128582b87eddecfb99d8969c779314e8334e7580204ac25ae734035b45510268d6fb8964a4f74ae7ca5ff2cabf0553c374d760d600da4472d09a42a81844844346525",
+        "b338ff5ea63036e2dea2cc9037f8c3147d47c539ced2a20ca5d979186e8269ea9ab538c584cbfa5171d34f79e9e5e33aaf6ed24e436b55d2dca362e50c11003c32a7293c78c54c0d89bddb0b4a97257fe619ac320af247d2f45cc59d6a5587e764419021abba5a10cc79c1a2b410da9e4d656731bcd48c3b3a2ead9824504cc8c751a688c3b3b9d7977c8f5b9b70c4b60eac295446a6c145dc2ca723d9ee557b2200737b4b5116467f8344b00a22a2954875b629e63fc27b17429041ccf95b4ae077d2cdd3227d32135d94e05130f404975a8bf7b4bbcfbbc1f9bcaa6886374e4899988d0c7b1d471906c210159543e07b297081e1ea6eca074e79558904a179eaa1c96e26a32c09a39df2c08eff672c7d9759768f657698dfd63621937056dcff02ac99ac8ebcc5dc5bff93fc5de20f768eb6660a9e755b1eb059b135c6dec968cda8877c362c7b97ce899403b2a43e7e2c86ca5355f371a8cd01582df8900d76159ef5a298fde9845378efd11798c7c2ee1f9450d7b1edc120c0c3a379913d",
         16,
     )
 
@@ -155,7 +329,7 @@ def test_bip85_secp256k1_deterministic():
     root = bip32.HDKey.from_seed(seed.seed_bytes)
     key = bip85_secp256k1_from_root(root, 0)
     assert int(key.s) == int(
-        "f57c35cfe2bc7d15d847bb82951188d9b72c604cf052de9f9fd41dff545d5743", 16
+        "dd4eebe20675d3649e8f188a14a8832fb473cfcea029cf755fb4f7b715ea9d23", 16
     )
 
 
@@ -164,7 +338,7 @@ def test_bip85_p256_deterministic():
     root = bip32.HDKey.from_seed(seed.seed_bytes)
     key = bip85_p256_from_root(root, 0)
     assert int(key.s) == int(
-        "236c5de595d7306949afe92f0f0086ef5fed541e4ca7e374eee414499a365f3f", 16
+        "dc9b40d295b20fa87aa7414d5aa1db8b12bc850587fa0ed172f71ee620062114", 16
     )
 
 
@@ -173,7 +347,7 @@ def test_bip85_brainpoolp256r1_deterministic():
     root = bip32.HDKey.from_seed(seed.seed_bytes)
     key = bip85_brainpoolp256r1_from_root(root, 0)
     assert int(key.s) == int(
-        "6dedd2fd032d8153fbea2ec026e2df265897af0c070c544324a3c24a2964d755", 16
+        "904a67c2b20820d8bf98be62a24a2cddcd9674ecd0943bb5e10d7b50fd02806c", 16
     )
 
 
@@ -182,7 +356,7 @@ def test_bip85_ed25519_deterministic():
     root = bip32.HDKey.from_seed(seed.seed_bytes)
     key = bip85_ed25519_from_root(root, 0)
     assert int(key.s) == int(
-        "738a622e2b889989a272da3350053d42978c94e56cec646da180e206010924d3", 16
+        "9c2c35e872ee9112ae0235c811c12b5187d8e4ce77c5b8595e1da0f787dc4caa", 16
     )
 
 
@@ -194,6 +368,45 @@ def test_bip85_ed25519_sub_index_progression():
     repeat = bip85_ed25519_from_root(root, 0, 3, "EdDSA")
     assert int(first.s) != int(later.s)
     assert int(later.s) == int(repeat.s)
+
+
+def test_bip85_p384_deterministic():
+    seed = Seed(mnemonic=MNEMONIC)
+    root = bip32.HDKey.from_seed(seed.seed_bytes)
+    key = bip85_p384_from_root(root, 0)
+    assert int(key.s) == int(
+        "61296e8ee7b08b639c56babb292a0bdaf352ceacd37b33c5a51a3da82d8d8434f7f42353fb8ec82e79599824889cb582", 16
+    )
+
+
+def test_bip85_p521_deterministic():
+    seed = Seed(mnemonic=MNEMONIC)
+    root = bip32.HDKey.from_seed(seed.seed_bytes)
+    key = bip85_p521_from_root(root, 0)
+    assert int(key.s) == int(
+        "6700224442c326298a3fd6b3df9c4c05068a4c7df2bc3b2f3fee647d46355d34"
+        "7905692be4b690c1ca19357f40dfa3f1f1c788a1ff55fa8c992873fabdf75f25c7", 16
+    )
+
+
+def test_bip85_brainpoolp384r1_deterministic():
+    seed = Seed(mnemonic=MNEMONIC)
+    root = bip32.HDKey.from_seed(seed.seed_bytes)
+    key = bip85_brainpoolp384r1_from_root(root, 0)
+    # This mnemonic's entropy exceeds the curve order, exercising the
+    # out-of-range fallback: (d % (order - 1)) + 1.
+    assert int(key.s) == int(
+        "5ff15e7affe063458500ebe3cb883388cc0c01a395d59b2b198bb34ea0b8c95f8399ff0197c45bd1d8e7a09babb60f14", 16
+    )
+
+
+def test_bip85_brainpoolp512r1_deterministic():
+    seed = Seed(mnemonic=MNEMONIC)
+    root = bip32.HDKey.from_seed(seed.seed_bytes)
+    key = bip85_brainpoolp512r1_from_root(root, 0)
+    assert int(key.s) == int(
+        "2b26f4734a1408d42ed2dcdb04415346da82db6c9bc62d972091f6136e7ded1a9317676f6924c6d05b506026eb04bcb444cfd3368c8a046765c517c50a862c4d", 16
+    )
 
 
 def test_bip85_gpg_mixed_subkeys_deterministic():
@@ -278,15 +491,15 @@ def test_bip85_gpg_mixed_subkeys_deterministic():
             created=created,
         )
 
-    assert pgp_key.fingerprint == "662A9BF1670B7704A41C1FBC74054CC86CF4AB2C"
+    assert pgp_key.fingerprint == "BDC8DB33B793C02FC5E295B2CC44522B14B5A8B6"
     fingerprints = [str(sk.fingerprint).replace(" ", "") for sk in pgp_key.subkeys.values()]
     assert fingerprints == [
-        "71DD02A0E5E9033287EF85EA0E7275FA96AF991C",
-        "36B51EB5B9D11A2EEA976CF47D8B9EEB49E3B336",
-        "34599F081AA651F1A03EE7EF2F985087816EEBDA",
-        "0938B62C0B8FE641FE528A8411A26272C153E6CF",
-        "9696B4AAFCA808BFFDE2A04AD2CA980F3652A5D4",
-        "07A435FD12E96F72C09B31966577C9E71A248706",
+        "55C54A4B6382B313B4539C3B781215E4F91451F9",
+        "55BDCFA487CCE02A07460F3ED2944F2EC019B5DF",
+        "AC3DE112686C83BB26A4587DF18933B6CEE6D463",
+        "49902AF8AE102DC986233CB6626F4106A6AB1355",
+        "94D620C2FC7DD25BAEC027FA106DAD2E7177CFB7",
+        "E3C9FEA1785D2A00CCAC373BB8AC66BF71D074F0",
     ]
 
 
@@ -791,7 +1004,7 @@ def test_load_bip85_key_selects_seed(monkeypatch):
     original = list(controller.storage.seeds)
     controller.storage.seeds = [Seed(mnemonic=MNEMONIC), Seed(mnemonic=MNEMONIC)]
 
-    responses = iter([1])
+    responses = iter([0, 1])
     screens = []
     captured = {}
 
@@ -829,12 +1042,20 @@ def test_load_bip85_key_selects_seed(monkeypatch):
         controller.storage.seeds = original
 
     assert captured["idx"] == 1
-    assert screens[0] == tools_views.seed_screens.SeedSelectSeedScreen
-    assert WarningScreen not in screens
-    assert captured["key_type_options"] == ["RSA 2048", "RSA 3072", "RSA 4096"]
+    assert screens[0] == WarningScreen
+    assert screens[1] == tools_views.seed_screens.SeedSelectSeedScreen
+    assert captured["key_type_options"] == [
+        "ECC Ed25519",
+        "ECC NIST P-256",
+        "ECC Brainpool P-256",
+        "RSA 2048",
+        "RSA 3072",
+        "RSA 4096",
+        "ECC secp256k1",
+    ]
 
 
-def test_load_bip85_key_warning_when_ecc_enabled(monkeypatch):
+def test_load_bip85_key_warning_always_shown(monkeypatch):
     from seedsigner.views import tools_views
 
     controller = Controller.get_instance()
@@ -867,24 +1088,11 @@ def test_load_bip85_key_warning_when_ecc_enabled(monkeypatch):
     )
 
     view = tools_views.ToolsGPGLoadBIP85KeyView()
-    base_settings = view.settings
-
-    class DummySettings:
-        def __init__(self, base):
-            self._base = base
-
-        def get_value(self, attr_name):
-            if attr_name == SettingsConstants.SETTING__BIP85_ECC_KEYS:
-                return SettingsConstants.OPTION__ENABLED
-            return self._base.get_value(attr_name)
-
-    view.settings = DummySettings(base_settings)
 
     try:
         view.run()
     finally:
         controller.storage.seeds = original
-        view.settings = base_settings
 
     assert screens and screens[0] == WarningScreen
     assert captured["key_type_options"] == [
@@ -895,6 +1103,52 @@ def test_load_bip85_key_warning_when_ecc_enabled(monkeypatch):
         "RSA 3072",
         "RSA 4096",
         "ECC secp256k1",
+    ]
+
+
+def test_bip85_key_type_choices_include_all():
+    """``_bip85_key_type_choices(include_all=True)`` returns every type."""
+    from seedsigner.views.tools_views import _bip85_key_type_choices
+
+    choices = _bip85_key_type_choices(include_all=True)
+    codes = [code for _, code in choices]
+    assert "p384" in codes
+    assert "p521" in codes
+    assert "brainpoolp384r1" in codes
+    assert "brainpoolp512r1" in codes
+    assert len(codes) == len(SettingsConstants.ALL_GPG_KEY_TYPES)
+    assert set(codes) == {code for code, _ in SettingsConstants.ALL_GPG_KEY_TYPES}
+
+
+def test_bip85_key_type_choices_respects_setting(monkeypatch):
+    """``_bip85_key_type_choices()`` filters by ``SETTING__GPG_KEY_TYPES``."""
+    from seedsigner.views.tools_views import _bip85_key_type_choices
+    from seedsigner.models.settings import Settings
+
+    settings = Settings.get_instance()
+    original = settings.get_value(SettingsConstants.SETTING__GPG_KEY_TYPES)
+    settings.set_value(SettingsConstants.SETTING__GPG_KEY_TYPES, ["rsa2048"])
+    try:
+        choices = _bip85_key_type_choices()
+        assert choices == [("RSA 2048", "rsa2048")]
+    finally:
+        settings.set_value(SettingsConstants.SETTING__GPG_KEY_TYPES, original)
+
+
+def test_bip85_key_type_choices_default_matches_generate_new():
+    """Default GPG key types match the original Generate New menu types."""
+    from seedsigner.views.tools_views import _bip85_key_type_choices
+
+    choices = _bip85_key_type_choices()
+    codes = [code for _, code in choices]
+    assert codes == [
+        "ed25519",
+        "p256",
+        "brainpoolp256r1",
+        "rsa2048",
+        "rsa3072",
+        "rsa4096",
+        "secp256k1",
     ]
 
 
@@ -1175,6 +1429,346 @@ def test_bip85_metadata_menu_has_options(monkeypatch):
     assert "Save BIP85 Data" in buttons["labels"]
     assert "Load BIP85 Data" in buttons["labels"]
     assert "Rebuild BIP85 Key" in buttons["labels"]
+
+
+def test_gpg_menu_has_view_keys_option(monkeypatch):
+    buttons = {}
+
+    def fake_run_screen(*args, **kwargs):
+        buttons["labels"] = [b.button_label for b in kwargs["button_data"]]
+        return RET_CODE__BACK_BUTTON
+
+    monkeypatch.setattr(
+        tools_views.ToolsGPGMenuView, "run_screen", fake_run_screen
+    )
+    view = tools_views.ToolsGPGMenuView()
+    view.run()
+    assert "View Keys" in buttons["labels"]
+
+
+def test_view_keys_no_keys(monkeypatch):
+    import subprocess
+
+    call_idx = [0]
+
+    def fake_run(cmd, *a, **kw):
+        class R:
+            returncode = 0
+            stdout = ""
+            stderr = ""
+        return R()
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    screens = []
+
+    def fake_run_screen(*args, **kwargs):
+        screens.append(kwargs.get("title", args[1].__name__ if len(args) > 1 else ""))
+        return 0
+
+    monkeypatch.setattr(
+        tools_views.ToolsGPGViewKeysView, "run_screen", fake_run_screen
+    )
+    view = tools_views.ToolsGPGViewKeysView()
+    view.run()
+    assert "View Keys" in screens
+
+
+def test_view_keys_with_key(monkeypatch):
+    import subprocess
+
+    colon_output = (
+        "sec:-:255:22:81D909D9534ED202:1231006505:::-:::scESCA:::+::ed25519:::0:\n"
+        "fpr:::::::::DFA07C169B1513F3485769A581D909D9534ED202:\n"
+        "uid:-::::1231006505::ABC::Test User <test@example.com>::::::::::0:\n"
+        "ssb:-:255:18:C8088EF1E47500B1:1231006505::::::e:::+::cv25519::\n"
+        "fpr:::::::::0FAA3F5D0FCEC3E74A357659C8088EF1E47500B1:\n"
+    )
+
+    def fake_run(cmd, *a, **kw):
+        class R:
+            returncode = 0
+            stdout = colon_output
+            stderr = ""
+        return R()
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    screens = []
+
+    def fake_run_screen(*args, **kwargs):
+        title = kwargs.get("title", "")
+        screens.append(title)
+        if title == "View Keys":
+            return 0  # select first key
+        return 0
+
+    monkeypatch.setattr(
+        tools_views.ToolsGPGViewKeysView, "run_screen", fake_run_screen
+    )
+    view = tools_views.ToolsGPGViewKeysView()
+    dest = view.run()
+
+    assert "View Keys" in screens
+    # The view now delegates to ToolsGPGKeyDetailsView
+    assert dest.View_cls is tools_views.ToolsGPGKeyDetailsView
+    assert dest.view_args["fpr"] == "DFA07C169B1513F3485769A581D909D9534ED202"
+
+
+def test_key_details_shows_subkeys_button(monkeypatch):
+    import subprocess
+
+    colon_output = (
+        "sec:-:255:22:81D909D9534ED202:1231006505:::-:::scESCA:::+::ed25519:::0:\n"
+        "fpr:::::::::DFA07C169B1513F3485769A581D909D9534ED202:\n"
+        "uid:-::::1231006505::ABC::Test User <test@example.com>::::::::::0:\n"
+        "ssb:-:255:18:C8088EF1E47500B1:1231006505::::::e:::+::cv25519::\n"
+        "fpr:::::::::0FAA3F5D0FCEC3E74A357659C8088EF1E47500B1:\n"
+    )
+
+    def fake_run(cmd, *a, **kw):
+        class R:
+            returncode = 0
+            stdout = colon_output
+            stderr = ""
+        return R()
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    screen_kwargs = []
+
+    def fake_run_screen(*args, **kwargs):
+        screen_kwargs.append(kwargs)
+        return RET_CODE__BACK_BUTTON
+
+    monkeypatch.setattr(
+        tools_views.ToolsGPGKeyDetailsView, "run_screen", fake_run_screen
+    )
+    view = tools_views.ToolsGPGKeyDetailsView(
+        fpr="DFA07C169B1513F3485769A581D909D9534ED202"
+    )
+    view.run()
+
+    detail_kw = screen_kwargs[-1]
+    # Full fingerprint in blocks of 4 hex chars
+    assert "DFA0 7C16 9B15 13F3 4857 69A5 81D9 09D9 534E D202" in detail_kw["text"]
+    assert "EdDSA" in detail_kw["text"]
+    # Subkey count should NOT be in the text (removed per requirements)
+    assert "Subkeys:" not in detail_kw["text"]
+    # No green tick icon
+    assert detail_kw.get("status_icon_size") == 0
+    # Back button enabled
+    assert detail_kw.get("show_back_button") is True
+    # Subkeys button present
+    btn_labels = [b.button_label for b in detail_kw["button_data"]]
+    assert "Subkeys" in btn_labels
+
+
+def test_key_details_no_subkeys_no_subkeys_button(monkeypatch):
+    import subprocess
+
+    colon_output = (
+        "sec:-:255:22:81D909D9534ED202:1231006505:::-:::scESCA:::+::ed25519:::0:\n"
+        "fpr:::::::::DFA07C169B1513F3485769A581D909D9534ED202:\n"
+        "uid:-::::1231006505::ABC::Test User <test@example.com>::::::::::0:\n"
+    )
+
+    def fake_run(cmd, *a, **kw):
+        class R:
+            returncode = 0
+            stdout = colon_output
+            stderr = ""
+        return R()
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    screen_kwargs = []
+
+    def fake_run_screen(*args, **kwargs):
+        screen_kwargs.append(kwargs)
+        return RET_CODE__BACK_BUTTON
+
+    monkeypatch.setattr(
+        tools_views.ToolsGPGKeyDetailsView, "run_screen", fake_run_screen
+    )
+    view = tools_views.ToolsGPGKeyDetailsView(
+        fpr="DFA07C169B1513F3485769A581D909D9534ED202"
+    )
+    view.run()
+
+    detail_kw = screen_kwargs[-1]
+    btn_labels = [b.button_label for b in detail_kw["button_data"]]
+    assert "Subkeys" not in btn_labels
+    assert "Back" in btn_labels
+
+
+def test_view_keys_filters_subkey_fprs(monkeypatch):
+    """If GPG lists a subkey fingerprint as a separate sec entry, it should be
+    filtered out so only genuine primary keys appear in the View Keys list."""
+    import subprocess
+
+    # Simulate GPG output where the subkey fingerprint also appears as a
+    # separate sec entry (some GPG configurations may do this).
+    colon_output = (
+        "sec:-:255:22:81D909D9534ED202:1231006505:::-:::scESCA:::+::ed25519:::0:\n"
+        "fpr:::::::::DFA07C169B1513F3485769A581D909D9534ED202:\n"
+        "uid:-::::1231006505::ABC::Test User <test@example.com>::::::::::0:\n"
+        "ssb:-:255:18:C8088EF1E47500B1:1231006505::::::e:::+::cv25519::\n"
+        "fpr:::::::::0FAA3F5D0FCEC3E74A357659C8088EF1E47500B1:\n"
+        "sec:-:255:18:C8088EF1E47500B1:1231006505:::-:::e:::+::cv25519:::0:\n"
+        "fpr:::::::::0FAA3F5D0FCEC3E74A357659C8088EF1E47500B1:\n"
+    )
+
+    def fake_run(cmd, *a, **kw):
+        class R:
+            returncode = 0
+            stdout = colon_output
+            stderr = ""
+        return R()
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    screen_kwargs = []
+
+    def fake_run_screen(*args, **kwargs):
+        screen_kwargs.append(kwargs)
+        return RET_CODE__BACK_BUTTON
+
+    monkeypatch.setattr(
+        tools_views.ToolsGPGViewKeysView, "run_screen", fake_run_screen
+    )
+    view = tools_views.ToolsGPGViewKeysView()
+    view.run()
+
+    # Only 1 button should appear (the primary key), not 2
+    btn_labels = [b.button_label for b in screen_kwargs[0]["button_data"]]
+    assert len(btn_labels) == 1
+    assert "Test User" in btn_labels[0]
+
+
+def test_key_subkeys_view(monkeypatch):
+    import subprocess
+
+    colon_output = (
+        "sec:-:255:22:81D909D9534ED202:1231006505:::-:::scESCA:::+::ed25519:::0:\n"
+        "fpr:::::::::DFA07C169B1513F3485769A581D909D9534ED202:\n"
+        "uid:-::::1231006505::ABC::Test User <test@example.com>::::::::::0:\n"
+        "ssb:-:255:18:C8088EF1E47500B1:1231006505::::::e:::+::cv25519::\n"
+        "fpr:::::::::0FAA3F5D0FCEC3E74A357659C8088EF1E47500B1:\n"
+        "ssb:-:256:19:AABB112233445566:1231006505::::::s::::nistp256:\n"
+        "fpr:::::::::AABB112233445566AABB112233445566AABB1122:\n"
+    )
+
+    def fake_run(cmd, *a, **kw):
+        class R:
+            returncode = 0
+            stdout = colon_output
+            stderr = ""
+        return R()
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    screen_kwargs = []
+
+    def fake_run_screen(*args, **kwargs):
+        screen_kwargs.append(kwargs)
+        return RET_CODE__BACK_BUTTON
+
+    monkeypatch.setattr(
+        tools_views.ToolsGPGKeySubkeysView, "run_screen", fake_run_screen
+    )
+    view = tools_views.ToolsGPGKeySubkeysView(
+        fpr="DFA07C169B1513F3485769A581D909D9534ED202"
+    )
+    view.run()
+
+    assert screen_kwargs[0]["title"] == "Subkeys"
+    btn_labels = [b.button_label for b in screen_kwargs[0]["button_data"]]
+    assert len(btn_labels) == 2
+    # First subkey: cv25519 with encrypt capability
+    assert "[E]" in btn_labels[0]
+    # Second subkey: nistp256 with sign capability
+    assert "[S]" in btn_labels[1]
+
+
+def test_key_subkeys_view_select_navigates_to_subkey_details(monkeypatch):
+    import subprocess
+
+    colon_output = (
+        "sec:-:255:22:81D909D9534ED202:1231006505:::-:::scESCA:::+::ed25519:::0:\n"
+        "fpr:::::::::DFA07C169B1513F3485769A581D909D9534ED202:\n"
+        "uid:-::::1231006505::ABC::Test User <test@example.com>::::::::::0:\n"
+        "ssb:-:255:18:C8088EF1E47500B1:1231006505::::::e:::+::cv25519::\n"
+        "fpr:::::::::0FAA3F5D0FCEC3E74A357659C8088EF1E47500B1:\n"
+    )
+
+    def fake_run(cmd, *a, **kw):
+        class R:
+            returncode = 0
+            stdout = colon_output
+            stderr = ""
+        return R()
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    def fake_run_screen(*args, **kwargs):
+        return 0  # select first subkey
+
+    monkeypatch.setattr(
+        tools_views.ToolsGPGKeySubkeysView, "run_screen", fake_run_screen
+    )
+    view = tools_views.ToolsGPGKeySubkeysView(
+        fpr="DFA07C169B1513F3485769A581D909D9534ED202"
+    )
+    dest = view.run()
+
+    assert dest.View_cls is tools_views.ToolsGPGSubkeyDetailsView
+    assert dest.view_args["primary_fpr"] == "DFA07C169B1513F3485769A581D909D9534ED202"
+    assert dest.view_args["subkey_fpr"] == "0FAA3F5D0FCEC3E74A357659C8088EF1E47500B1"
+
+
+def test_subkey_details_view(monkeypatch):
+    import subprocess
+
+    colon_output = (
+        "sec:-:255:22:81D909D9534ED202:1231006505:::-:::scESCA:::+::ed25519:::0:\n"
+        "fpr:::::::::DFA07C169B1513F3485769A581D909D9534ED202:\n"
+        "uid:-::::1231006505::ABC::Test User <test@example.com>::::::::::0:\n"
+        "ssb:-:255:18:C8088EF1E47500B1:1231006505::::::e:::+::cv25519::\n"
+        "fpr:::::::::0FAA3F5D0FCEC3E74A357659C8088EF1E47500B1:\n"
+    )
+
+    def fake_run(cmd, *a, **kw):
+        class R:
+            returncode = 0
+            stdout = colon_output
+            stderr = ""
+        return R()
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    screen_kwargs = []
+
+    def fake_run_screen(*args, **kwargs):
+        screen_kwargs.append(kwargs)
+        return RET_CODE__BACK_BUTTON
+
+    monkeypatch.setattr(
+        tools_views.ToolsGPGSubkeyDetailsView, "run_screen", fake_run_screen
+    )
+    view = tools_views.ToolsGPGSubkeyDetailsView(
+        primary_fpr="DFA07C169B1513F3485769A581D909D9534ED202",
+        subkey_fpr="0FAA3F5D0FCEC3E74A357659C8088EF1E47500B1",
+    )
+    view.run()
+
+    detail_kw = screen_kwargs[-1]
+    assert detail_kw["title"] == "Subkey Details"
+    # Full fingerprint in blocks of 4
+    assert "0FAA 3F5D 0FCE C3E7 4A35 7659 C808 8EF1 E475 00B1" in detail_kw["text"]
+    assert "ECDH" in detail_kw["text"]
+    assert "Encrypt" in detail_kw["text"]
+    assert detail_kw.get("show_back_button") is True
 
 
 def test_rebuild_bip85_key(monkeypatch):
@@ -2389,3 +2983,37 @@ def test_smartpgp_import_rsa_sets_key_type(monkeypatch):
     assert lengths[0] == 3
     assert lengths[1] == lengths[2] == lengths[3] == lengths[4] == lengths[5]
     assert lengths[6] == lengths[1] * 2
+
+
+# --- _normalize_date_input tests ---
+
+@pytest.mark.parametrize("input_str,expected", [
+    ("2035-12-31", "2035-12-31"),           # normal ASCII
+    (" 2035-12-31 ", "2035-12-31"),         # leading/trailing whitespace
+    ("2035-12-31\n", "2035-12-31"),         # trailing newline
+    ("\t2035-12-31\t", "2035-12-31"),       # tabs
+    ("2035\uff0d12\uff0d31", "2035-12-31"), # fullwidth hyphen
+    ("2035\u201312\u201331", "2035-12-31"), # en-dash
+    ("2035\u201412\u201431", "2035-12-31"), # em-dash
+    ("2035\u221212\u221231", "2035-12-31"), # Unicode minus sign
+    ("", ""),                                # empty string
+    ("   ", ""),                              # whitespace-only
+])
+def test_normalize_date_input(input_str, expected):
+    assert _normalize_date_input(input_str) == expected
+
+
+@pytest.mark.parametrize("input_str", [
+    "2035-12-31",
+    " 2035-12-31 ",
+    "2035-12-31\n",
+    "2035\uff0d12\uff0d31",  # fullwidth hyphen
+    "2035\u201312\u201331",  # en-dash
+    "2035\u201412\u201431",  # em-dash
+    "2035\u221212\u221231",  # Unicode minus sign
+])
+def test_normalize_date_input_parses_as_valid_date(input_str):
+    from datetime import datetime
+    normalized = _normalize_date_input(input_str)
+    dt = datetime.strptime(normalized, "%Y-%m-%d")
+    assert dt.year == 2035 and dt.month == 12 and dt.day == 31

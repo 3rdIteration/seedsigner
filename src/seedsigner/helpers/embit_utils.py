@@ -230,8 +230,9 @@ def parse_derivation_path(derivation_path: str) -> dict:
     else:
         details["is_change"] = None
 
-    # Check if there's a standard address index
-    if sections[-1].isdigit():
+    # Check if there's a standard address index (ASCII digits only;
+    # .isdigit() would also match non-ASCII Unicode digits).
+    if sections[-1].isascii() and sections[-1].isdigit():
         details["index"] = int(sections[-1])
     else:
         details["index"] = None
@@ -253,18 +254,20 @@ def parse_derivation_path(derivation_path: str) -> dict:
 
 
 
-def sign_message(seed_bytes: bytes, derivation: str, msg: bytes, compressed: bool = True, embit_network: str = "main") -> bytes:
+def sign_message(root: HDKey, derivation: str, msg: bytes, compressed: bool = True) -> bytes:
     """
         from: https://github.com/cryptoadvance/specter-diy/blob/b58a819ef09b2bca880a82c7e122618944355118/src/apps/signmessage/signmessage.py
+
+        Sign a Bitcoin message using a BIP-32 root key and derivation path.
+        Use seed.get_root(network) to obtain the root key — never
+        bip32.HDKey.from_seed(seed.seed_bytes) directly (see AGENTS.md).
     """
-    """Sign message with private key"""
     msghash = sha256(
         sha256(
             b"\x18Bitcoin Signed Message:\n" + compact.to_bytes(len(msg)) + msg
         ).digest()
     ).digest()
 
-    root = bip32.HDKey.from_seed(seed_bytes, version=NETWORKS[embit_network]["xprv"])
     prv = root.derive(derivation).key
     sig = secp256k1.ecdsa_sign_recoverable(msghash, prv._secret)
     flag = sig[64]

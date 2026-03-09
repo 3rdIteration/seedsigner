@@ -4992,7 +4992,7 @@ class SeedSignMessageSignedMessageQRView(View):
             self.seed_num = data["seed_num"]
             seed = self.controller.get_seed(self.seed_num)
             self.signed_message = embit_utils.sign_message(
-                seed_bytes=seed.get_root().secret,
+                root=seed.get_root(),
                 derivation=derivation_path,
                 msg=message.encode(),
             )

@@ -172,3 +172,24 @@ class TestSettings(BaseTest):
             assert self.settings.get_value(SettingsConstants.SETTING__CAMERA_DEVICE) == current
         finally:
             settings_definition.USING_MOCK_GPIO = orig
+
+    def test_settingsqr_numeric_parsing_rejects_superscript_digits(self):
+        """Settings QR parser should not crash on non-ASCII digit characters.
+
+        Python's str.isdigit() returns True for Unicode superscript digits
+        (e.g. '¹²³') but int() raises ValueError on them. The parser must
+        handle this gracefully by keeping the value as a string rather than
+        crashing.
+        """
+        # camera=¹⁸⁰ uses Unicode superscript digits — old .isdigit() path
+        # would pass the pre-check but crash on int('¹⁸⁰').
+        # The parser should treat this as a non-numeric string value.
+        superscript_180 = "\u00b9\u2078\u2070"  # ¹⁸⁰
+        settingsqr_data = f"settings::v1 camera={superscript_180}"
+        # Superscript digits: isdigit() == True but int() fails
+        assert superscript_180.isdigit() is True  # precondition
+
+        # Should raise InvalidSettingsQRData because the value is not a valid
+        # option for "camera", but must NOT raise ValueError/crash.
+        with pytest.raises(InvalidSettingsQRData):
+            Settings.parse_settingsqr(settingsqr_data)

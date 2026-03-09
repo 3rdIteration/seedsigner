@@ -150,3 +150,45 @@ class TestEncryptedQRCodeVectors(BaseTest):
 
         mnemonic = bip39.mnemonic_from_bytes(encrypted_qr.decrypt(TEST_KEY))
         assert mnemonic == TEST_WORDS
+
+
+def test_cipher_nfkd_normalizes_key():
+    """NFC and NFD forms of the same password must derive the same key.
+
+    macOS input methods typically produce NFD (e + combining-acute) while
+    Linux/Windows produce NFC (single é codepoint).  The Cipher class
+    NFKD-normalizes string keys so the same password works cross-platform.
+    """
+    import unicodedata
+
+    # é as NFC (single codepoint U+00E9)
+    key_nfc = "caf\u00e9"
+    # é as NFD (e + combining acute U+0301)
+    key_nfd = "cafe\u0301"
+
+    assert key_nfc != key_nfd  # different Python str objects
+    assert unicodedata.normalize("NFKD", key_nfc) == unicodedata.normalize("NFKD", key_nfd)
+
+    salt = "test salt"
+    iterations = 10
+
+    cipher_nfc = kef.Cipher(key_nfc, salt, iterations)
+    cipher_nfd = kef.Cipher(key_nfd, salt, iterations)
+
+    plaintext = b"hello world"
+    encrypted = cipher_nfc.encrypt(plaintext, 0)  # ECB mode
+
+    # Both forms must decrypt successfully
+    assert cipher_nfd.decrypt(encrypted, 0) == plaintext
+    assert cipher_nfc.decrypt(encrypted, 0) == plaintext
+
+
+def test_cipher_ascii_key_unchanged_by_normalization():
+    """ASCII-only keys must produce identical results before and after
+    the NFKD normalization change (backward compatibility)."""
+    cipher = kef.Cipher(TEST_KEY, TEST_MNEMONIC_ID, ITERATIONS)
+    plaintext = TEST_WORDS.encode()
+
+    # Verify the same vectors still pass (ASCII is a no-op for NFKD)
+    encrypted_ecb = cipher.encrypt(plaintext, 0)
+    assert encrypted_ecb == ECB_ENCRYPTED_WORDS

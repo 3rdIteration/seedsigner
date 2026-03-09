@@ -18,7 +18,7 @@ class PassportBackupDetails:
 
 
 def _format_backup_code(code: str) -> str:
-    digits = [c for c in code if c.isdigit()]
+    digits = [c for c in code if c in "0123456789"]
     if len(digits) != 20:
         raise PassportBackupError("Backup code must include exactly 20 digits.")
 
