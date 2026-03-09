@@ -5797,7 +5797,7 @@ def _normalize_date_input(s: str) -> str:
 
     Locale or input-method differences can produce fullwidth hyphens (\uff0d),
     en-dashes (\u2013), em-dashes (\u2014), or Unicode minus signs (\u2212)
-    instead of the expected ASCII hyphen-minus (U+002D).  Normalising these
+    instead of the expected ASCII hyphen-minus (U+002D).  Normalizing these
     prevents ``datetime.strptime`` / ``date.fromisoformat`` from raising
     ``ValueError`` on otherwise-valid date strings.
     """
