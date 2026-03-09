@@ -1,8 +1,8 @@
 """Tests for ToolsGPGMenuView dependency checking (pgpy + gnupg2)."""
 import sys
-import base  # noqa: F401  — ensure hardware mocks
+import types
+import base  # noqa: F401 -- ensure hardware mocks
 import pytest
-from unittest.mock import patch
 
 from seedsigner.gui.screens import RET_CODE__BACK_BUTTON, ErrorScreen
 from seedsigner.gui.screens.screen import ButtonListScreen, ButtonOption
@@ -26,8 +26,7 @@ def test_missing_pgpy_shows_error(monkeypatch):
         tools_views.ToolsGPGMenuView, "run_screen",
         _make_fake_run_screen(captured),
     )
-    # Hide pgpy so the import check fails
-    real_pgpy = sys.modules.get("pgpy")
+    # Hide pgpy so the import check fails (monkeypatch restores on teardown)
     monkeypatch.setitem(sys.modules, "pgpy", None)
     # Ensure gpg binary IS available so only pgpy is reported
     monkeypatch.setattr("shutil.which", lambda cmd: "/usr/bin/gpg" if cmd == "gpg" else None)
@@ -39,10 +38,6 @@ def test_missing_pgpy_shows_error(monkeypatch):
     assert "pgpy" in captured["kwargs"]["text"]
     assert dest.View_cls is BackStackView
 
-    # Restore
-    if real_pgpy is not None:
-        monkeypatch.setitem(sys.modules, "pgpy", real_pgpy)
-
 
 def test_missing_gpg_binary_shows_error(monkeypatch):
     """When the gpg binary is not found, an ErrorScreen mentioning 'gnupg2' is shown."""
@@ -51,6 +46,9 @@ def test_missing_gpg_binary_shows_error(monkeypatch):
         tools_views.ToolsGPGMenuView, "run_screen",
         _make_fake_run_screen(captured),
     )
+    # Ensure pgpy is importable (use a stub if not installed)
+    if "pgpy" not in sys.modules or sys.modules["pgpy"] is None:
+        monkeypatch.setitem(sys.modules, "pgpy", types.ModuleType("pgpy"))
     # gpg binary not found
     monkeypatch.setattr("shutil.which", lambda cmd: None)
 
@@ -69,7 +67,6 @@ def test_missing_both_shows_both(monkeypatch):
         tools_views.ToolsGPGMenuView, "run_screen",
         _make_fake_run_screen(captured),
     )
-    real_pgpy = sys.modules.get("pgpy")
     monkeypatch.setitem(sys.modules, "pgpy", None)
     monkeypatch.setattr("shutil.which", lambda cmd: None)
 
@@ -82,13 +79,9 @@ def test_missing_both_shows_both(monkeypatch):
     assert "gnupg2" in text
     assert dest.View_cls is BackStackView
 
-    if real_pgpy is not None:
-        monkeypatch.setitem(sys.modules, "pgpy", real_pgpy)
-
 
 def test_all_deps_present_shows_menu(monkeypatch):
     """When both pgpy and gpg are available, the normal menu is shown."""
-    import types
     captured = {}
 
     def fake_run_screen(self, screen, *args, **kwargs):
