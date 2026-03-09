@@ -239,44 +239,44 @@
       ],
       "display": {
         "dc": [
-          "/dev/gpiochip1",
-          24
+          "/dev/gpiochip2",
+          8
         ],
         "rst": [
           "/dev/gpiochip1",
-          25
+          24
         ],
         "bl": [
-          "/dev/gpiochip2",
-          8
+          "/dev/gpiochip1",
+          25
         ],
         "spi_bus": 0,
         "spi_device": 0
       },
       "buttons": {
         "KEY_UP": [
-          "/dev/gpiochip1",
-          26,
+          "/dev/gpiochip2",
+          9,
           "pull_up"
         ],
         "KEY_DOWN": [
           "/dev/gpiochip1",
-          21,
+          26,
           "pull_up"
         ],
         "KEY_LEFT": [
           "/dev/gpiochip1",
-          27,
+          19,
           "pull_up"
         ],
         "KEY_RIGHT": [
           "/dev/gpiochip1",
-          22,
+          20,
           "pull_up"
         ],
         "KEY_PRESS": [
           "/dev/gpiochip1",
-          20,
+          27,
           "pull_up"
         ],
         "KEY1": [
@@ -286,12 +286,12 @@
         ],
         "KEY2": [
           "/dev/gpiochip1",
-          11,
+          22,
           "pull_up"
         ],
         "KEY3": [
           "/dev/gpiochip1",
-          10,
+          21,
           "pull_up"
         ]
       },
@@ -451,3 +451,4 @@
     }
   ]
 }
+
