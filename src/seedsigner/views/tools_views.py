@@ -6986,7 +6986,7 @@ class ToolsGPGRebuildBip85KeyView(View):
 
         key_index = entry["index"]
         key_type_label = entry["key_type"]
-        key_type_lookup = dict(_bip85_key_type_choices(True))
+        key_type_lookup = dict(_bip85_key_type_choices())
         key_type = key_type_lookup[key_type_label]
 
         uid_list = entry.get("uids", [])
@@ -11848,32 +11848,22 @@ def bip85_brainpoolp512r1_from_root(
     return priv
 
 
-def _bip85_key_type_choices(include_ecc: bool) -> list[tuple[str, str]]:
+def _bip85_key_type_choices() -> list[tuple[str, str]]:
     """Return available key type labels and identifiers for BIP85 GPG keys."""
 
-    choices: list[tuple[str, str]] = []
-    if include_ecc:
-        choices.extend(
-            [
-                ("ECC Ed25519", "ed25519"),
-                ("ECC NIST P-256", "p256"),
-                ("ECC NIST P-384", "p384"),
-                ("ECC NIST P-521", "p521"),
-                ("ECC Brainpool P-256", "brainpoolp256r1"),
-                ("ECC Brainpool P-384", "brainpoolp384r1"),
-                ("ECC Brainpool P-512", "brainpoolp512r1"),
-            ]
-        )
-    choices.extend(
-        [
-            ("RSA 2048", "rsa2048"),
-            ("RSA 3072", "rsa3072"),
-            ("RSA 4096", "rsa4096"),
-        ]
-    )
-    if include_ecc:
-        choices.append(("ECC secp256k1", "secp256k1"))
-    return choices
+    return [
+        ("ECC Ed25519", "ed25519"),
+        ("ECC NIST P-256", "p256"),
+        ("ECC NIST P-384", "p384"),
+        ("ECC NIST P-521", "p521"),
+        ("ECC Brainpool P-256", "brainpoolp256r1"),
+        ("ECC Brainpool P-384", "brainpoolp384r1"),
+        ("ECC Brainpool P-512", "brainpoolp512r1"),
+        ("RSA 2048", "rsa2048"),
+        ("RSA 3072", "rsa3072"),
+        ("RSA 4096", "rsa4096"),
+        ("ECC secp256k1", "secp256k1"),
+    ]
 
 
 class ToolsGPGLoadBIP85KeyView(View):
@@ -11908,23 +11898,17 @@ class ToolsGPGLoadBIP85KeyView(View):
             )
             return Destination(BackStackView)
 
-        ecc_enabled = (
-            self.settings.get_value(SettingsConstants.SETTING__BIP85_ECC_KEYS)
-            == SettingsConstants.OPTION__ENABLED
+        self.run_screen(
+            WarningScreen,
+            title="WARNING",
+            status_headline=None,
+            text=(
+                "BIP85 key derivation is experimental.\n"
+                "Record your SeedSigner Version."
+            ),
+            show_back_button=False,
+            button_data=[ButtonOption("I Understand")],
         )
-
-        if ecc_enabled:
-            self.run_screen(
-                WarningScreen,
-                title="WARNING",
-                status_headline=None,
-                text=(
-                    "ECC key derivation follows BIP85.\n"
-                    "Record your SeedSigner Version."
-                ),
-                show_back_button=False,
-                button_data=[ButtonOption("I Understand")],
-            )
 
         if len(self.controller.storage.seeds) > 1:
             seed_buttons = []
@@ -11957,7 +11941,7 @@ class ToolsGPGLoadBIP85KeyView(View):
             return Destination(BackStackView)
         key_index = int(ret)
 
-        keytype_choices = _bip85_key_type_choices(ecc_enabled)
+        keytype_choices = _bip85_key_type_choices()
         keytype_buttons = [ButtonOption(label) for label, _ in keytype_choices]
         selected_type = self.run_screen(
             ButtonListScreen,
@@ -12388,11 +12372,7 @@ class ToolsGPGAddSubkeysView(View):
                 base_index,
                 key_index,
             )
-        ecc_enabled = (
-            self.settings.get_value(SettingsConstants.SETTING__BIP85_ECC_KEYS)
-            == SettingsConstants.OPTION__ENABLED
-        )
-        keytype_choices = _bip85_key_type_choices(ecc_enabled)
+        keytype_choices = _bip85_key_type_choices()
         keytype_buttons = [ButtonOption(label) for label, _ in keytype_choices]
         selected_type = self.run_screen(
             ButtonListScreen,

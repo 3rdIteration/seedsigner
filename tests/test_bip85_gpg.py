@@ -1004,7 +1004,7 @@ def test_load_bip85_key_selects_seed(monkeypatch):
     original = list(controller.storage.seeds)
     controller.storage.seeds = [Seed(mnemonic=MNEMONIC), Seed(mnemonic=MNEMONIC)]
 
-    responses = iter([1])
+    responses = iter([0, 1])
     screens = []
     captured = {}
 
@@ -1042,12 +1042,24 @@ def test_load_bip85_key_selects_seed(monkeypatch):
         controller.storage.seeds = original
 
     assert captured["idx"] == 1
-    assert screens[0] == tools_views.seed_screens.SeedSelectSeedScreen
-    assert WarningScreen not in screens
-    assert captured["key_type_options"] == ["RSA 2048", "RSA 3072", "RSA 4096"]
+    assert screens[0] == WarningScreen
+    assert screens[1] == tools_views.seed_screens.SeedSelectSeedScreen
+    assert captured["key_type_options"] == [
+        "ECC Ed25519",
+        "ECC NIST P-256",
+        "ECC NIST P-384",
+        "ECC NIST P-521",
+        "ECC Brainpool P-256",
+        "ECC Brainpool P-384",
+        "ECC Brainpool P-512",
+        "RSA 2048",
+        "RSA 3072",
+        "RSA 4096",
+        "ECC secp256k1",
+    ]
 
 
-def test_load_bip85_key_warning_when_ecc_enabled(monkeypatch):
+def test_load_bip85_key_warning_always_shown(monkeypatch):
     from seedsigner.views import tools_views
 
     controller = Controller.get_instance()
@@ -1080,24 +1092,11 @@ def test_load_bip85_key_warning_when_ecc_enabled(monkeypatch):
     )
 
     view = tools_views.ToolsGPGLoadBIP85KeyView()
-    base_settings = view.settings
-
-    class DummySettings:
-        def __init__(self, base):
-            self._base = base
-
-        def get_value(self, attr_name):
-            if attr_name == SettingsConstants.SETTING__BIP85_ECC_KEYS:
-                return SettingsConstants.OPTION__ENABLED
-            return self._base.get_value(attr_name)
-
-    view.settings = DummySettings(base_settings)
 
     try:
         view.run()
     finally:
         controller.storage.seeds = original
-        view.settings = base_settings
 
     assert screens and screens[0] == WarningScreen
     assert captured["key_type_options"] == [
