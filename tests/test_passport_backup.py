@@ -68,3 +68,20 @@ def test_invalid_password_raises(tmp_path):
 
     with pytest.raises(PassportBackupError):
         decode_passport_backup(archive, "0000-0000-0000-0000-0000")
+
+
+def test_format_backup_code_rejects_unicode_digits():
+    """_format_backup_code should only count ASCII digits, not Unicode digits.
+
+    Arabic-Indic digits (U+0660–U+0669) pass str.isdigit() but are not valid
+    in a Passport backup code.
+    """
+    from seedsigner.helpers.passport_backup import _format_backup_code
+
+    # 20 ASCII digits should work
+    assert _format_backup_code("12345678901234567890") == "1234-5678-9012-3456-7890"
+
+    # 20 Arabic-Indic digits should be rejected (not counted as valid digits)
+    with pytest.raises(PassportBackupError):
+        _format_backup_code("\u0661\u0662\u0663\u0664\u0665\u0666\u0667\u0668\u0669\u0660"
+                           "\u0661\u0662\u0663\u0664\u0665\u0666\u0667\u0668\u0669\u0660")

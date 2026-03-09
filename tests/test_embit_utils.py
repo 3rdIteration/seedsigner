@@ -493,6 +493,17 @@ def test_parse_derivation_path():
             assert actual_result["index"] == int(derivation_path.split("/")[-1])
 
 
+def test_parse_derivation_path_rejects_unicode_digit_index():
+    """Address index containing non-ASCII digits should not be parsed as int.
+
+    Python's str.isdigit() returns True for Arabic-Indic digits (U+0660–U+0669)
+    but they are not valid in a BIP32 derivation path.
+    """
+    # Use Arabic-Indic digit '٥' (U+0665) as the address index
+    result = embit_utils.parse_derivation_path("m/84'/0'/0'/0/\u0665")
+    assert result["index"] is None
+
+
 def test_sign_message_uses_correct_derivation():
     """
     Verify that sign_message derives signing key directly from the root HDKey,

@@ -227,16 +227,24 @@ class Settings(Singleton):
         for entry in data.split()[split_index:]:
             abbreviated_name, value = entry.split("=")
 
-            # Parse multi-value settings; numeric-ize where needed
+            # Parse multi-value settings; numeric-ize where needed.
+            # Use try/except instead of .isdigit() because .isdigit() returns
+            # True for non-ASCII Unicode digits (e.g. Arabic-Indic ٠-٩) that
+            # int()/float() cannot convert, causing a ValueError on some locales.
             if "," in value:
                 values_updated = []
                 for v in value.split(","):
-                    if v.replace(".", "", 1).isdigit():
+                    try:
                         v = float(v) if "." in v else int(v)
+                    except ValueError:
+                        pass
                     values_updated.append(v)
                 value = values_updated
-            elif value.replace(".", "", 1).isdigit():
-                value = float(value) if "." in value else int(value)
+            else:
+                try:
+                    value = float(value) if "." in value else int(value)
+                except ValueError:
+                    pass
             
             # Replace abbreviated name with full attr_name
             settings_entry = SettingsDefinition.get_settings_entry_by_abbreviated_name(abbreviated_name)

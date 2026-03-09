@@ -230,8 +230,9 @@ def parse_derivation_path(derivation_path: str) -> dict:
     else:
         details["is_change"] = None
 
-    # Check if there's a standard address index
-    if sections[-1].isdigit():
+    # Check if there's a standard address index (ASCII digits only;
+    # .isdigit() would also match non-ASCII Unicode digits).
+    if sections[-1].isascii() and sections[-1].isdigit():
         details["index"] = int(sections[-1])
     else:
         details["index"] = None
