@@ -81,7 +81,7 @@ def test_format_backup_code_rejects_unicode_digits():
     # 20 ASCII digits should work
     assert _format_backup_code("12345678901234567890") == "1234-5678-9012-3456-7890"
 
-    # 20 Arabic-Indic digits should be rejected (not counted as valid digits)
+    # 20 Arabic-Indic digits (١٢٣٤٥٦٧٨٩٠) should be rejected
+    arabic_indic_20 = "\u0661\u0662\u0663\u0664\u0665\u0666\u0667\u0668\u0669\u0660" * 2
     with pytest.raises(PassportBackupError):
-        _format_backup_code("\u0661\u0662\u0663\u0664\u0665\u0666\u0667\u0668\u0669\u0660"
-                           "\u0661\u0662\u0663\u0664\u0665\u0666\u0667\u0668\u0669\u0660")
+        _format_backup_code(arabic_indic_20)

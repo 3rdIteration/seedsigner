@@ -184,9 +184,10 @@ class TestSettings(BaseTest):
         # camera=¹⁸⁰ uses Unicode superscript digits — old .isdigit() path
         # would pass the pre-check but crash on int('¹⁸⁰').
         # The parser should treat this as a non-numeric string value.
-        settingsqr_data = "settings::v1 camera=\u00b9\u2078\u2070"
-        # '¹⁸⁰' are superscript digits: isdigit() == True but int() fails
-        assert "\u00b9\u2078\u2070".isdigit() is True  # precondition
+        superscript_180 = "\u00b9\u2078\u2070"  # ¹⁸⁰
+        settingsqr_data = f"settings::v1 camera={superscript_180}"
+        # Superscript digits: isdigit() == True but int() fails
+        assert superscript_180.isdigit() is True  # precondition
 
         # Should raise InvalidSettingsQRData because the value is not a valid
         # option for "camera", but must NOT raise ValueError/crash.

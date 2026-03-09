@@ -229,8 +229,8 @@ class Settings(Singleton):
 
             # Parse multi-value settings; numeric-ize where needed.
             # Use try/except instead of .isdigit() because .isdigit() returns
-            # True for non-ASCII Unicode digits (e.g. Arabic-Indic ٠-٩) that
-            # int()/float() cannot convert, causing a ValueError on some locales.
+            # True for non-ASCII Unicode digit characters (e.g. superscript ¹²³)
+            # that int()/float() cannot convert, causing a ValueError.
             if "," in value:
                 values_updated = []
                 for v in value.split(","):
