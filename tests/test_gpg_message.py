@@ -277,7 +277,7 @@ def test_bip85_key_sign_encrypt_decrypt_roundtrip(key_type):
 
 @pytest.mark.parametrize(
     "key_type",
-    ["ed25519", "p256", "rsa2048"],
+    ["ed25519", "p256", "brainpoolp256r1", "secp256k1", "rsa2048"],
 )
 def test_bip85_key_gpg_export_roundtrip(key_type):
     """End-to-end: generate BIP85 key, import to GPG, export, sign+encrypt."""
@@ -351,6 +351,131 @@ def test_bip85_key_gpg_export_roundtrip(key_type):
         assert verified
 
         # Sign + encrypt
+        ciphertext = encrypt_message(
+            pub_blob, plaintext, signkey_blob=sec_blob
+        )
+        decrypted, signer_fpr, verified = decrypt_message(
+            sec_blob, ciphertext, pubkey_blobs=[pub_blob]
+        )
+        assert decrypted == plaintext
+        assert verified
+
+
+@pytest.mark.parametrize(
+    "key_type",
+    ["ed25519", "p256", "brainpoolp256r1", "rsa2048"],
+)
+def test_generate_new_gpg_export_roundtrip(key_type):
+    """End-to-end: PGPKey.new with subkeys → GPG import → export → sign+encrypt.
+
+    This mirrors the exact workflow in ToolsGPGGenerateKeyView: generate a
+    primary key with subkeys, import into GPG, then use the GPG-exported keys
+    for the secure message sign/encrypt operations.
+    """
+    import subprocess
+    import tempfile
+    import os
+    import shutil
+
+    from pgpy.constants import (
+        PubKeyAlgorithm,
+        KeyFlags,
+        HashAlgorithm,
+        SymmetricKeyAlgorithm,
+        CompressionAlgorithm,
+        EllipticCurveOID,
+    )
+    from datetime import datetime, timezone, timedelta
+
+    if not shutil.which("gpg"):
+        pytest.skip("gpg binary not available")
+
+    # Generate key the same way ToolsGPGGenerateKeyView does
+    if key_type == "ed25519":
+        alg, param = PubKeyAlgorithm.EdDSA, EllipticCurveOID.Ed25519
+    elif key_type == "p256":
+        alg, param = PubKeyAlgorithm.ECDSA, EllipticCurveOID.NIST_P256
+    elif key_type == "brainpoolp256r1":
+        alg, param = PubKeyAlgorithm.ECDSA, EllipticCurveOID.Brainpool_P256
+    elif key_type == "rsa2048":
+        alg, param = PubKeyAlgorithm.RSAEncryptOrSign, 2048
+    else:
+        raise ValueError(key_type)
+
+    try:
+        master_key = PGPKey.new(alg, param)
+    except Exception as exc:
+        pytest.skip(f"{key_type} unsupported: {exc}")
+
+    uid = PGPUID.new("GenTest", email="gen@example.com")
+    expires = timedelta(days=365)
+    master_key.add_uid(
+        uid,
+        usage={KeyFlags.Certify, KeyFlags.Sign},
+        hashes=[HashAlgorithm.SHA256],
+        ciphers=[SymmetricKeyAlgorithm.AES256],
+        compression=[CompressionAlgorithm.ZLIB],
+        expires=expires,
+    )
+
+    # Add subkeys matching ToolsGPGGenerateKeyView logic
+    if alg == PubKeyAlgorithm.RSAEncryptOrSign:
+        sub_enc = PGPKey.new(PubKeyAlgorithm.RSAEncryptOrSign, param)
+    elif alg == PubKeyAlgorithm.EdDSA:
+        sub_enc = PGPKey.new(PubKeyAlgorithm.ECDH, EllipticCurveOID.Curve25519)
+    else:
+        sub_enc = PGPKey.new(PubKeyAlgorithm.ECDH, param)
+
+    master_key.add_subkey(
+        sub_enc,
+        usage={KeyFlags.EncryptCommunications, KeyFlags.EncryptStorage},
+        hashes=[HashAlgorithm.SHA256],
+        ciphers=[SymmetricKeyAlgorithm.AES256],
+        compression=[CompressionAlgorithm.ZLIB],
+        expires=expires,
+    )
+
+    with tempfile.TemporaryDirectory() as gnupghome:
+        env = {**os.environ, "GNUPGHOME": gnupghome}
+
+        result = subprocess.run(
+            ["gpg", "--batch", "--import"],
+            input=str(master_key).encode(),
+            capture_output=True,
+            env=env,
+        )
+        assert result.returncode == 0, f"Import failed: {result.stderr.decode()}"
+
+        pub_export = subprocess.run(
+            ["gpg", "--armor", "--export", str(master_key.fingerprint)],
+            capture_output=True, text=True, env=env,
+        )
+        assert pub_export.returncode == 0
+        pub_blob = pub_export.stdout
+
+        sec_export = subprocess.run(
+            ["gpg", "--armor", "--export-secret-keys", str(master_key.fingerprint)],
+            capture_output=True, text=True, env=env,
+        )
+        assert sec_export.returncode == 0
+        sec_blob = sec_export.stdout
+
+        # PGPy automatically selects ECDH/RSA subkey for encryption
+        plaintext = f"Generate-new {key_type} roundtrip"
+        ciphertext = encrypt_message(pub_blob, plaintext)
+        decrypted, _, _ = decrypt_message(sec_blob, ciphertext)
+        assert decrypted == plaintext
+
+        # PGPy uses primary key (or signing subkey) for signing
+        signed = encrypt_message(None, plaintext, signkey_blob=sec_blob)
+        decrypted, signer_fpr, verified = decrypt_message(
+            None, signed, pubkey_blobs=[pub_blob]
+        )
+        assert decrypted == plaintext
+        assert signer_fpr is not None
+        assert verified
+
+        # Sign + encrypt combined
         ciphertext = encrypt_message(
             pub_blob, plaintext, signkey_blob=sec_blob
         )
