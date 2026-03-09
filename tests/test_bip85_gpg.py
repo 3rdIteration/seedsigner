@@ -1117,6 +1117,7 @@ def test_bip85_key_type_choices_include_all():
     assert "brainpoolp384r1" in codes
     assert "brainpoolp512r1" in codes
     assert len(codes) == len(SettingsConstants.ALL_GPG_KEY_TYPES)
+    assert set(codes) == {code for code, _ in SettingsConstants.ALL_GPG_KEY_TYPES}
 
 
 def test_bip85_key_type_choices_respects_setting(monkeypatch):

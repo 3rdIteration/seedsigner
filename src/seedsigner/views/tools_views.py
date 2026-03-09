@@ -12545,7 +12545,7 @@ class ToolsGPGGenerateKeyView(View):
                 WarningScreen,
                 title="Error",
                 status_headline=None,
-                text="No GPG key types enabled.\nCheck settings.",
+                text="No GPG key types enabled.\nEnable types in Settings.",
                 show_back_button=False,
                 button_data=[ButtonOption("I Understand")],
             )
