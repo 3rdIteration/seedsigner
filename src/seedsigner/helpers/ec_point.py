@@ -1,13 +1,96 @@
-"""Pure-Python and PyCryptodome helpers for EC public-key derivation.
+"""EC public-key derivation with multiple crypto backend support.
 
-These replace direct usage of ``python-cryptography`` for deriving EC
-public-key points from private scalars.  PyCryptodome handles NIST
-curves (P-256, P-384, P-521), Ed25519, and Curve25519.  Brainpool
-curves use a minimal pure-Python implementation because PyCryptodome
-does not support them.  secp256k1 delegates to embit's native
-implementation.
+Supports automatic fail-over between backends:
+
+* **python-cryptography** — preferred when available (C-accelerated)
+* **PyCryptodome** (pycryptodomex) — NIST curves, Ed25519, Curve25519
+* **embit** — secp256k1 (native Bitcoin library)
+* **ecdsa** — pure-Python ECDSA for NIST, secp256k1, and Brainpool
+* **pure_python** — minimal double-and-add for Brainpool curves
+
+The module auto-detects which libraries are installed and uses the best
+available backend.  Use :func:`set_backend` to force a specific backend
+for testing or compatibility.
 """
 from __future__ import annotations
+
+
+# ---------------------------------------------------------------------------
+# Backend name constants
+# ---------------------------------------------------------------------------
+
+CRYPTOGRAPHY = "cryptography"
+PYCRYPTODOME = "pycryptodome"
+EMBIT = "embit"
+ECDSA_LIB = "ecdsa"
+PURE_PYTHON = "pure_python"
+
+
+# ---------------------------------------------------------------------------
+# Backend detection
+# ---------------------------------------------------------------------------
+
+def _detect_backends() -> set[str]:
+    """Detect which crypto backends are importable."""
+    found: set[str] = {PURE_PYTHON}
+    try:
+        import ecdsa as _ecdsa  # noqa: F841
+        found.add(ECDSA_LIB)
+    except ImportError:
+        pass
+    try:
+        from embit import ec as _ec  # noqa: F841
+        found.add(EMBIT)
+    except ImportError:
+        pass
+    try:
+        from Cryptodome.PublicKey import ECC as _ECC  # noqa: F841
+        found.add(PYCRYPTODOME)
+    except ImportError:
+        pass
+    try:
+        from cryptography.hazmat.primitives.asymmetric import ec as _cry  # noqa: F841
+        found.add(CRYPTOGRAPHY)
+    except ImportError:
+        pass
+    return found
+
+
+_available: set[str] = _detect_backends()
+_forced_backend: str | None = None
+
+
+def available_backends() -> frozenset[str]:
+    """Return the set of detected crypto backend names."""
+    return frozenset(_available)
+
+
+def set_backend(name: str | None) -> None:
+    """Force a specific backend, or ``None`` for auto-detection.
+
+    Raises :exc:`ValueError` if *name* is not installed.
+    """
+    global _forced_backend
+    if name is not None and name not in _available:
+        raise ValueError(
+            f"Backend {name!r} is not available. "
+            f"Installed: {sorted(_available)}"
+        )
+    _forced_backend = name
+
+
+def get_backend() -> str | None:
+    """Return the forced backend name, or ``None`` if auto-detecting."""
+    return _forced_backend
+
+
+# ---------------------------------------------------------------------------
+# Helper: check if a backend should be tried
+# ---------------------------------------------------------------------------
+
+def _should_try(name: str) -> bool:
+    """Return True if *name* should be attempted given current settings."""
+    return name in _available and (_forced_backend is None or _forced_backend == name)
 
 
 # ---------------------------------------------------------------------------
@@ -84,24 +167,61 @@ _BRAINPOOL_P512R1 = (  # (p, a, Gx, Gy)
 
 def ed25519_pub_from_seed(seed: bytes) -> bytes:
     """Derive the 32-byte Ed25519 public key from a 32-byte seed."""
-    from Cryptodome.PublicKey import ECC
-    return ECC.construct(curve="Ed25519", seed=seed).public_key().export_key(format="raw")
+    if _should_try(CRYPTOGRAPHY):
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+        from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+        return Ed25519PrivateKey.from_private_bytes(seed).public_key().public_bytes(
+            Encoding.Raw, PublicFormat.Raw)
+
+    if _should_try(PYCRYPTODOME):
+        from Cryptodome.PublicKey import ECC
+        return ECC.construct(curve="Ed25519", seed=seed).public_key().export_key(format="raw")
+
+    raise ImportError(
+        f"No backend for Ed25519 (forced={_forced_backend}, available={sorted(_available)})")
 
 
 def curve25519_pub_from_seed(seed: bytes) -> bytes:
     """Derive the 32-byte Curve25519 (X25519) public key from a 32-byte seed."""
-    from Cryptodome.PublicKey import ECC
-    return ECC.construct(curve="Curve25519", seed=seed).public_key().export_key(format="raw")
+    if _should_try(CRYPTOGRAPHY):
+        from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
+        from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+        return X25519PrivateKey.from_private_bytes(seed).public_key().public_bytes(
+            Encoding.Raw, PublicFormat.Raw)
+
+    if _should_try(PYCRYPTODOME):
+        from Cryptodome.PublicKey import ECC
+        return ECC.construct(curve="Curve25519", seed=seed).public_key().export_key(format="raw")
+
+    raise ImportError(
+        f"No backend for Curve25519 (forced={_forced_backend}, available={sorted(_available)})")
 
 
 def secp256k1_pub_xy(d: int) -> tuple[int, int]:
     """Derive the secp256k1 public key ``(x, y)`` from private scalar *d*."""
-    from embit import ec
-    priv = ec.PrivateKey(d.to_bytes(32, "big"))
-    pub = priv.get_public_key()
-    pub.compressed = False
-    raw = pub.sec()          # 0x04 || x (32 bytes) || y (32 bytes)
-    return int.from_bytes(raw[1:33], "big"), int.from_bytes(raw[33:65], "big")
+    if _should_try(CRYPTOGRAPHY):
+        from cryptography.hazmat.primitives.asymmetric import ec
+        key = ec.derive_private_key(d, ec.SECP256K1())
+        nums = key.public_key().public_numbers()
+        return nums.x, nums.y
+
+    if _should_try(EMBIT):
+        from embit import ec as embit_ec
+        priv = embit_ec.PrivateKey(d.to_bytes(32, "big"))
+        pub = priv.get_public_key()
+        pub.compressed = False
+        raw = pub.sec()          # 0x04 || x (32 bytes) || y (32 bytes)
+        return int.from_bytes(raw[1:33], "big"), int.from_bytes(raw[33:65], "big")
+
+    if _should_try(ECDSA_LIB):
+        import ecdsa
+        sk = ecdsa.SigningKey.from_secret_exponent(d, curve=ecdsa.SECP256k1)
+        raw = sk.get_verifying_key().to_string()
+        sz = len(raw) // 2
+        return int.from_bytes(raw[:sz], "big"), int.from_bytes(raw[sz:], "big")
+
+    raise ImportError(
+        f"No backend for secp256k1 (forced={_forced_backend}, available={sorted(_available)})")
 
 
 def nist_pub_xy(curve_name: str, d: int) -> tuple[int, int]:
@@ -109,9 +229,28 @@ def nist_pub_xy(curve_name: str, d: int) -> tuple[int, int]:
 
     *curve_name* must be one of ``"P-256"``, ``"P-384"``, or ``"P-521"``.
     """
-    from Cryptodome.PublicKey import ECC
-    key = ECC.construct(curve=curve_name, d=d)
-    return int(key.pointQ.x), int(key.pointQ.y)
+    if _should_try(CRYPTOGRAPHY):
+        from cryptography.hazmat.primitives.asymmetric import ec
+        _CURVES = {"P-256": ec.SECP256R1(), "P-384": ec.SECP384R1(), "P-521": ec.SECP521R1()}
+        key = ec.derive_private_key(d, _CURVES[curve_name])
+        nums = key.public_key().public_numbers()
+        return nums.x, nums.y
+
+    if _should_try(PYCRYPTODOME):
+        from Cryptodome.PublicKey import ECC
+        key = ECC.construct(curve=curve_name, d=d)
+        return int(key.pointQ.x), int(key.pointQ.y)
+
+    if _should_try(ECDSA_LIB):
+        import ecdsa
+        _CURVES = {"P-256": ecdsa.NIST256p, "P-384": ecdsa.NIST384p, "P-521": ecdsa.NIST521p}
+        sk = ecdsa.SigningKey.from_secret_exponent(d, curve=_CURVES[curve_name])
+        raw = sk.get_verifying_key().to_string()
+        sz = len(raw) // 2
+        return int.from_bytes(raw[:sz], "big"), int.from_bytes(raw[sz:], "big")
+
+    raise ImportError(
+        f"No backend for {curve_name} (forced={_forced_backend}, available={sorted(_available)})")
 
 
 def brainpool_pub_xy(bits: int, d: int) -> tuple[int, int]:
@@ -119,10 +258,29 @@ def brainpool_pub_xy(bits: int, d: int) -> tuple[int, int]:
 
     *bits* must be ``256``, ``384``, or ``512``.
     """
-    params = {
-        256: _BRAINPOOL_P256R1,
-        384: _BRAINPOOL_P384R1,
-        512: _BRAINPOOL_P512R1,
-    }
-    p, a, Gx, Gy = params[bits]
-    return _ec_point_mul(p, a, Gx, Gy, d)
+    if _should_try(CRYPTOGRAPHY):
+        from cryptography.hazmat.primitives.asymmetric import ec
+        _CURVES = {256: ec.BrainpoolP256R1(), 384: ec.BrainpoolP384R1(), 512: ec.BrainpoolP512R1()}
+        key = ec.derive_private_key(d, _CURVES[bits])
+        nums = key.public_key().public_numbers()
+        return nums.x, nums.y
+
+    if _should_try(ECDSA_LIB):
+        import ecdsa
+        _CURVES = {256: ecdsa.BRAINPOOLP256r1, 384: ecdsa.BRAINPOOLP384r1, 512: ecdsa.BRAINPOOLP512r1}
+        sk = ecdsa.SigningKey.from_secret_exponent(d, curve=_CURVES[bits])
+        raw = sk.get_verifying_key().to_string()
+        sz = len(raw) // 2
+        return int.from_bytes(raw[:sz], "big"), int.from_bytes(raw[sz:], "big")
+
+    if _should_try(PURE_PYTHON):
+        params = {
+            256: _BRAINPOOL_P256R1,
+            384: _BRAINPOOL_P384R1,
+            512: _BRAINPOOL_P512R1,
+        }
+        p, a, Gx, Gy = params[bits]
+        return _ec_point_mul(p, a, Gx, Gy, d)
+
+    raise ImportError(
+        f"No backend for Brainpool P-{bits} (forced={_forced_backend}, available={sorted(_available)})")
