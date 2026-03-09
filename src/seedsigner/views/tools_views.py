@@ -8622,7 +8622,7 @@ class ToolsGPGEncryptMessageView(View):
                     WarningScreen,
                     title="Error",
                     status_headline=None,
-                    text="Failed to encrypt message",
+                    text="Incorrect passphrase or\nunsupported key type",
                     show_back_button=False,
                     button_data=[ButtonOption("I Understand")],
                 )

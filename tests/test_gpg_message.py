@@ -303,10 +303,9 @@ def test_bip85_key_gpg_export_roundtrip(key_type):
     except Exception as exc:
         pytest.skip(f"{key_type} generation unsupported: {exc}")
 
-    gnupghome = tempfile.mkdtemp()
-    env = {**os.environ, "GNUPGHOME": gnupghome}
+    with tempfile.TemporaryDirectory() as gnupghome:
+        env = {**os.environ, "GNUPGHOME": gnupghome}
 
-    try:
         # Import into GPG (same way the UI does)
         result = subprocess.run(
             ["gpg", "--batch", "--import"],
@@ -360,5 +359,3 @@ def test_bip85_key_gpg_export_roundtrip(key_type):
         )
         assert decrypted == plaintext
         assert verified
-    finally:
-        shutil.rmtree(gnupghome)
