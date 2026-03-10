@@ -1044,9 +1044,14 @@ class ToolsCalcFinalWordDoneView(View):
         if selected_menu_num == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
         
-        self.controller.storage.convert_pending_mnemonic_to_pending_seed(
-            wordlist_language_code=self.settings.get_value(SettingsConstants.SETTING__WORDLIST_LANGUAGE),
-        )
+        from seedsigner.models.seed import InvalidSeedException
+        from seedsigner.views.seed_views import SeedMnemonicInvalidView
+        try:
+            self.controller.storage.convert_pending_mnemonic_to_pending_seed(
+                wordlist_language_code=self.settings.get_value(SettingsConstants.SETTING__WORDLIST_LANGUAGE),
+            )
+        except InvalidSeedException:
+            return Destination(SeedMnemonicInvalidView)
 
         if button_data[selected_menu_num] == self.LOAD:
             return Destination(SeedFinalizeView)
