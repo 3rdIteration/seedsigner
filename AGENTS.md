@@ -45,6 +45,30 @@ Because this project handles private key material for an air-gapped signer, **se
 - Store secrets in mutable byte buffers when possible (so they can be wiped), not immutable strings.
 - Ensure error paths and early returns also wipe sensitive intermediates.
 
+### Secure wipe and shared wordlist safety
+
+`wipe_string()` (in `secure_delete.py`) uses `ctypes.memset` to zero a Python string's internal buffer **in place**. Because Python interns and shares string objects, this will **corrupt any other reference to the same object**. The BIP-39 and SLIP-39 wordlists (`bip39.WORDLIST`, `shamir_mnemonic.wordlist.WORDLIST`) are global, module-level lists of interned strings—if a word looked up from one of these lists is stored directly and later wiped, the corresponding entry in the global wordlist is permanently destroyed, breaking all subsequent mnemonic entry/matching for that word.
+
+**Rules:**
+
+- **Never store a direct reference** to an element of `bip39.WORDLIST` (or any shared/global wordlist) in a list or object that may later be passed to `wipe_list()` or `wipe_string()`.
+- **Create an independent copy** with `"".join(word)`. This builds a new `str` object whose memory is separate from the wordlist.
+- **`str(word)` and `word[:]` do NOT create copies** for `str` objects—Python returns the same object. Only `"".join(word)` (or equivalent `str` concatenation that forces a new allocation) is safe.
+- When reviewing or writing code that **reads from a wordlist and stores the result** in a list, always apply the `"".join(...)` pattern at the point of storage.
+
+**Currently protected call sites** (as of this writing):
+
+| File | Function / line | What it stores |
+|------|----------------|----------------|
+| `seed_storage.py` | `update_pending_mnemonic()` | BIP-39 word into `_pending_mnemonic` |
+| `seed_storage.py` | `update_pending_slip39_share()` | SLIP-39 word into `_pending_slip39_share` |
+| `decode_qr.py` | `SeedQrDecoder.add()` (SeedQR path) | BIP-39 word into `seed_phrase` |
+| `decode_qr.py` | `SeedQrDecoder.add()` (four-letter path) | BIP-39 word into `words` |
+| `mnemonic_generation.py` | `calculate_checksum()` | Temp final word (`wordlist[0]`) appended to caller's list |
+| `tools_views.py` | `_bip39_words_from_entropy()` | BIP-39 word into password word list |
+
+Any **new** code path that looks up a word from a shared wordlist and stores it in a list that could be wiped must follow the same `"".join(word)` pattern and should include a regression test that wipes the list and asserts the global wordlist is still intact (see `test_seedqr.py::test_seedqr_decode_does_not_corrupt_wordlist` for an example).
+
 ### Cleanup and lifecycle controls
 - On screen transitions, cancellations, exceptions, and shutdown/restart flows, clear in-memory seed/key state.
 - Ensure temporary files are never used for entropy/key material; if unavoidable, they must be securely deleted immediately.
