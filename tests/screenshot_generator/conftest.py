@@ -20,8 +20,8 @@ def _translations_available() -> bool:
     )
 
 
-def pytest_ignore_collect(path, config):
-    if not _translations_available() and "screenshot_generator" in str(path):
+def pytest_ignore_collect(collection_path, config):
+    if not _translations_available() and "screenshot_generator" in str(collection_path):
         return True
 
 
