@@ -82,7 +82,10 @@ class SeedStorage:
         """
         if index >= len(self._pending_mnemonic):
             raise Exception(f"index {index} is too high")
-        self._pending_mnemonic[index] = word
+        # Create an independent copy so that wipe_list() in
+        # discard_pending_mnemonic() won't corrupt the shared
+        # global wordlist strings via wipe_string/ctypes.memset.
+        self._pending_mnemonic[index] = "".join(word)
     
 
     def get_pending_mnemonic_word(self, index: int) -> str:
@@ -146,7 +149,9 @@ class SeedStorage:
     def update_pending_slip39_share(self, word: str, index: int):
         if index >= len(self._pending_slip39_share):
             raise Exception(f"index {index} is too high")
-        self._pending_slip39_share[index] = word
+        # Create an independent copy so that wipe_list() won't
+        # corrupt the shared global SLIP-39 wordlist strings.
+        self._pending_slip39_share[index] = "".join(word)
 
     def get_pending_slip39_word(self, index: int) -> str:
         if index < len(self._pending_slip39_share):
