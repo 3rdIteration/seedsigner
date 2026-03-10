@@ -14792,7 +14792,9 @@ class ToolsPasswordGenerateView(View):
         words = []
         for i in range(word_count):
             idx = int(bit_string[i * 11 : (i + 1) * 11], 2)
-            words.append(wordlist[idx])
+            # Create an independent copy to avoid holding a direct
+            # reference to the shared global wordlist string.
+            words.append("".join(wordlist[idx]))
         return words
 
     def _dice_length_for_charset(self, alphabet_size: int) -> int:

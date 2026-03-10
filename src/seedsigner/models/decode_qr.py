@@ -963,7 +963,10 @@ class SeedQrDecoder(BaseSingleFrameQrDecoder):
                 for i in range(0, num_words):
                     index = int(segment[i * 4: (i*4) + 4])
                     word = self.wordlist[index]
-                    self.seed_phrase.append(word)
+                    # Create an independent copy so that any future
+                    # wipe_list() won't corrupt the shared global
+                    # wordlist strings via wipe_string/ctypes.memset.
+                    self.seed_phrase.append("".join(word))
                 if len(self.seed_phrase) > 0:
                     if not self.has_valid_word_count():
                         return DecodeQRStatus.INVALID
@@ -1028,7 +1031,9 @@ class SeedQrDecoder(BaseSingleFrameQrDecoder):
                 for s in seed_phrase_list:
                     # TODO: Pre-calculate this once on startup
                     _4LETTER_WORDLIST = [word[:4].strip() for word in self.wordlist]
-                    words.append(self.wordlist[_4LETTER_WORDLIST.index(s)])
+                    # Create an independent copy to avoid holding a
+                    # direct reference to the shared global wordlist.
+                    words.append("".join(self.wordlist[_4LETTER_WORDLIST.index(s)]))
 
                 # embit mnemonic code to validate
                 seed = Seed(words, passphrase="", wordlist_language_code=self.wordlist_language_code)

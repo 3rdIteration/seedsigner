@@ -232,3 +232,25 @@ def test_50_dice_rolls():
     actual = " ".join(mnemonic)
     assert bip39.mnemonic_is_valid(actual)
     assert actual == expected
+
+
+def test_calculate_checksum_does_not_corrupt_wordlist():
+    """Regression test: calculate_checksum must not inject a direct reference
+    to bip39.WORDLIST[0] into the caller's mnemonic list."""
+    from seedsigner.helpers.secure_delete import wipe_list
+
+    original_first_word = bip39.WORDLIST[0]
+    assert original_first_word == "abandon"
+
+    # 11-word partial mnemonic (calculate_checksum will append the temp word)
+    partial = "crawl focus rescue cable view differ race truly blush basket crater".split()
+    result = mnemonic_generation.calculate_checksum(partial)
+    assert bip39.mnemonic_is_valid(" ".join(result))
+
+    # The input list was modified in-place (11 words -> 12); wipe it
+    assert len(partial) == 12
+    wipe_list(partial)
+
+    # The global wordlist must still be intact
+    assert bip39.WORDLIST[0] == "abandon"
+    assert repr(bip39.WORDLIST[0]) == "'abandon'"
