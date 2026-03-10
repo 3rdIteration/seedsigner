@@ -161,3 +161,62 @@ def test_compact_seedqr_bytes_interpretable_as_str():
         entropy_bytes.decode()  # should not raise an exception
         mnemonic_length = 12 if len(entropy_bytes) == 16 else 24
         run_encode_decode_test(entropy_bytes, mnemonic_length=mnemonic_length, qr_type=QRType.SEED__COMPACTSEEDQR)
+
+
+def test_seedqr_decode_does_not_corrupt_wordlist():
+    """Regression test: SeedQR decoding must not store direct references to
+    bip39.WORDLIST entries.  If wipe_list() were ever called on the decoded
+    seed_phrase, direct references would corrupt the global wordlist via
+    wipe_string/ctypes.memset."""
+    from seedsigner.helpers.secure_delete import wipe_list
+
+    original_first_word = bip39.WORDLIST[0]  # "abandon"
+    assert original_first_word == "abandon"
+
+    # Encode and decode a seed whose first word is "abandon"
+    entropy = b'\x00' * 16  # produces "abandon" * 11 + "about"
+    mnemonic = bip39.mnemonic_from_bytes(entropy).split()
+    assert mnemonic == ["abandon"] * 11 + ["about"]
+
+    e = SeedQrEncoder(mnemonic=mnemonic)
+    data = e.next_part()
+    decoder = DecodeQR()
+    status = decoder.add_data(data)
+    assert status == DecodeQRStatus.COMPLETE
+
+    decoded = decoder.get_seed_phrase()
+    assert decoded[0] == "abandon"
+
+    # Simulate a cleanup that wipes the decoded phrase
+    wipe_list(decoded)
+
+    # The global wordlist must still be intact
+    assert bip39.WORDLIST[0] == "abandon"
+    assert repr(bip39.WORDLIST[0]) == "'abandon'"
+
+
+def test_four_letter_mnemonic_decode_does_not_corrupt_wordlist():
+    """Regression test: four-letter mnemonic decoding must not store direct
+    references to bip39.WORDLIST entries."""
+    from seedsigner.helpers.secure_delete import wipe_list
+
+    original_first_word = bip39.WORDLIST[0]
+    assert original_first_word == "abandon"
+
+    # Construct a four-letter mnemonic (first 4 chars of each word)
+    full_mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+    four_letter = " ".join(w[:4] for w in full_mnemonic.split())
+
+    decoder = DecodeQR()
+    status = decoder.add_data(four_letter)
+    assert status == DecodeQRStatus.COMPLETE
+
+    decoded = decoder.get_seed_phrase()
+    assert decoded[0] == "abandon"
+
+    # Simulate a cleanup that wipes the decoded phrase
+    wipe_list(decoded)
+
+    # The global wordlist must still be intact
+    assert bip39.WORDLIST[0] == "abandon"
+    assert repr(bip39.WORDLIST[0]) == "'abandon'"

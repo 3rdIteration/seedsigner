@@ -65,7 +65,9 @@ def calculate_checksum(mnemonic: list | str, wordlist_language_code: str = Setti
         mnemonic = re.findall(r'[^,\s]+', mnemonic)
 
     if len(mnemonic) in [11, 14, 17, 20, 23]:
-        temp_final_word = Seed.get_wordlist(wordlist_language_code)[0]
+        # Create an independent copy so the caller's list doesn't hold
+        # a direct reference to the shared global wordlist string.
+        temp_final_word = "".join(Seed.get_wordlist(wordlist_language_code)[0])
         mnemonic.append(temp_final_word)
 
     if len(mnemonic) not in SUPPORTED_WORD_LENGTHS:
