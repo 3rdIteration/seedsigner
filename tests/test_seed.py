@@ -42,7 +42,25 @@ def test_seed():
     
     # assert seed.passphrase == "test"
 
-    
+
+
+
+def test_seed_case_insensitive():
+    """Mnemonic words should be accepted regardless of case."""
+    expected_bytes = Seed(mnemonic="abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about".split()).seed_bytes
+
+    # Capitalized words
+    seed = Seed(mnemonic="Abandon Abandon Abandon Abandon Abandon Abandon Abandon Abandon Abandon Abandon Abandon About".split())
+    assert seed.seed_bytes == expected_bytes
+    assert seed.mnemonic_str == "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+
+    # Uppercase words
+    seed = Seed(mnemonic="ABANDON ABANDON ABANDON ABANDON ABANDON ABANDON ABANDON ABANDON ABANDON ABANDON ABANDON ABOUT".split())
+    assert seed.seed_bytes == expected_bytes
+
+    # Mixed case words
+    seed = Seed(mnemonic="aBaNdOn ABANDON abandon Abandon ABANDON abandon ABANDON Abandon abandon ABANDON abandon About".split())
+    assert seed.seed_bytes == expected_bytes
 
 
 
