@@ -176,7 +176,7 @@ def test_seedqr_decode_does_not_corrupt_wordlist():
     # Encode and decode a seed whose first word is "abandon"
     entropy = b'\x00' * 16  # produces "abandon" * 11 + "about"
     mnemonic = bip39.mnemonic_from_bytes(entropy).split()
-    assert mnemonic[0] == "abandon"
+    assert mnemonic == ["abandon"] * 11 + ["about"]
 
     e = SeedQrEncoder(mnemonic=mnemonic)
     data = e.next_part()

@@ -242,7 +242,8 @@ def test_calculate_checksum_does_not_corrupt_wordlist():
     original_first_word = bip39.WORDLIST[0]
     assert original_first_word == "abandon"
 
-    # 11-word partial mnemonic (calculate_checksum will append the temp word)
+    # 11-word partial mnemonic; calculate_checksum appends wordlist[0]
+    # ("abandon") as a temp final word before computing the real checksum.
     partial = "crawl focus rescue cable view differ race truly blush basket crater".split()
     result = mnemonic_generation.calculate_checksum(partial)
     assert bip39.mnemonic_is_valid(" ".join(result))
