@@ -63,6 +63,31 @@ def test_seed_case_insensitive():
     assert seed.seed_bytes == expected_bytes
 
 
+def test_discard_pending_mnemonic_does_not_corrupt_wordlist():
+    """Regression test: wipe_list in discard_pending_mnemonic must not corrupt
+    the global bip39.WORDLIST via wipe_string/ctypes.memset."""
+    from embit import bip39
+    from seedsigner.models.seed_storage import SeedStorage
+
+    original_first_word = bip39.WORDLIST[0]  # "abandon"
+    assert original_first_word == "abandon"
+
+    storage = SeedStorage()
+    storage.init_pending_mnemonic(num_words=12)
+    mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about".split()
+    for i, word in enumerate(mnemonic):
+        storage.update_pending_mnemonic(word, i)
+
+    storage.convert_pending_mnemonic_to_pending_seed()
+
+    # The global wordlist must still be intact
+    assert bip39.WORDLIST[0] == "abandon"
+    assert bip39.WORDLIST[0].startswith("a")
+    assert repr(bip39.WORDLIST[0]) == "'abandon'"
+    # Word matching (as used in keyboard entry) must still work
+    assert "abandon" in [w for w in bip39.WORDLIST if w.startswith("a")]
+
+
 
 def test_aezeed_seed_default_passphrase_vector():
     mnemonic = (
