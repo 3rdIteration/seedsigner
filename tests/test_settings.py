@@ -159,11 +159,8 @@ class TestSettings(BaseTest):
             assert settings.get_value(SettingsConstants.SETTING__PERSISTENT_SETTINGS) == SettingsConstants.OPTION__ENABLED
 
     def test_persisted_camera_rotation_not_overwritten(self):
-        """User-persisted camera rotation must survive Settings reload.
-
-        Previously, get_instance() unconditionally overwrote the camera
-        rotation with the platform default after loading the settings file,
-        effectively ignoring the user's saved preference.
+        """Camera rotation loaded from persisted settings must not be
+        overwritten by the platform default during Settings initialization.
         """
         BaseTest.reset_settings()
         target_rotation = SettingsConstants.CAMERA_ROTATION__90
