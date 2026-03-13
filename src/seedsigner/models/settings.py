@@ -137,9 +137,12 @@ class Settings(Singleton):
             settings._data = SettingsDefinition.get_defaults()
 
             # Load persisted runtime settings first if available.
+            _has_persisted_camera_rotation = False
             if os.path.exists(Settings.SETTINGS_FILENAME):
                 with open(Settings.SETTINGS_FILENAME) as settings_file:
-                    settings.update(json.load(settings_file), persist=False)
+                    loaded = json.load(settings_file)
+                    _has_persisted_camera_rotation = SettingsConstants.SETTING__CAMERA_ROTATION in loaded
+                    settings.update(loaded, persist=False)
             else:
                 # Fall back to default template settings on first run.
                 # Flow/unit tests expect deterministic in-code defaults rather than
@@ -148,7 +151,9 @@ class Settings(Singleton):
                     template_path = Settings.get_default_settings_filename()
                     if os.path.exists(template_path):
                         with open(template_path) as settings_file:
-                            settings.update(json.load(settings_file), persist=False)
+                            loaded = json.load(settings_file)
+                            _has_persisted_camera_rotation = SettingsConstants.SETTING__CAMERA_ROTATION in loaded
+                            settings.update(loaded, persist=False)
 
             # Setup multilanguage support
             path = os.path.join(
@@ -164,7 +169,11 @@ class Settings(Singleton):
             settings.load_locale()
 
             settings._data[SettingsConstants.SETTING__DISPLAY_CONFIGURATION] = Settings.get_platform_default_display_config()
-            settings._data[SettingsConstants.SETTING__CAMERA_ROTATION] = Settings.get_platform_default_camera_rotation()
+            # Only apply platform-detected camera rotation when the user has
+            # not explicitly saved a preference; otherwise the persisted value
+            # would be silently overwritten on every boot.
+            if not _has_persisted_camera_rotation:
+                settings._data[SettingsConstants.SETTING__CAMERA_ROTATION] = Settings.get_platform_default_camera_rotation()
             detected_hardware = Settings.get_platform_default_hardware_config()
 
             system_type, system_variant = _get_system_type_and_variant(

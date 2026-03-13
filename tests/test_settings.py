@@ -158,6 +158,26 @@ class TestSettings(BaseTest):
             mock_save.assert_not_called()
             assert settings.get_value(SettingsConstants.SETTING__PERSISTENT_SETTINGS) == SettingsConstants.OPTION__ENABLED
 
+    def test_persisted_camera_rotation_not_overwritten(self):
+        """User-persisted camera rotation must survive Settings reload.
+
+        Previously, get_instance() unconditionally overwrote the camera
+        rotation with the platform default after loading the settings file,
+        effectively ignoring the user's saved preference.
+        """
+        BaseTest.reset_settings()
+        target_rotation = SettingsConstants.CAMERA_ROTATION__90
+        data = {
+            SettingsConstants.SETTING__PERSISTENT_SETTINGS: SettingsConstants.OPTION__ENABLED,
+            SettingsConstants.SETTING__CAMERA_ROTATION: target_rotation,
+        }
+        with open(Settings.SETTINGS_FILENAME, "w") as f:
+            json.dump(data, f)
+
+        with patch.object(Settings, "save"):
+            settings = Settings.get_instance()
+            assert settings.get_value(SettingsConstants.SETTING__CAMERA_ROTATION) == target_rotation
+
     def test_set_value_ignores_missing_settings_entry(self):
         """set_value should not raise if the settings entry cannot be found"""
         from seedsigner.models import settings_definition
