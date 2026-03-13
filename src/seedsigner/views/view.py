@@ -299,6 +299,7 @@ class RestartView(View):
     class DoResetThread(BaseThread):
         def run(self):
             import os
+            import shlex
             import sys
             import time
             from subprocess import call
@@ -312,7 +313,8 @@ class RestartView(View):
             # parent being killed and can then start the new process.
             pid = os.getpid()
             if Settings.HOSTNAME == Settings.SEEDSIGNER_OS:
-                call(f"kill {pid}; exec {sys.executable} /opt/src/main.py", shell=True)
+                python = shlex.quote(sys.executable)
+                call(f"kill {pid}; exec {python} /opt/src/main.py", shell=True)
             else:
                 call(f"kill {pid}", shell=True)
 

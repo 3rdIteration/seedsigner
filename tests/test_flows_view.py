@@ -72,6 +72,7 @@ class TestViewFlows(FlowTest):
         """
         Verify DoResetThread uses os.getpid() and sys.executable on seedsigner-os.
         """
+        import shlex
         original_hostname = Settings.HOSTNAME
         try:
             Settings.HOSTNAME = Settings.SEEDSIGNER_OS
@@ -82,9 +83,8 @@ class TestViewFlows(FlowTest):
                 mock_subprocess_call.assert_called_once()
                 cmd = mock_subprocess_call.call_args[0][0]
                 pid = os.getpid()
-                assert f"kill {pid}" in cmd
-                assert sys.executable in cmd
-                assert "/opt/src/main.py" in cmd
+                python = shlex.quote(sys.executable)
+                assert cmd == f"kill {pid}; exec {python} /opt/src/main.py"
                 assert mock_subprocess_call.call_args[1] == {"shell": True}
         finally:
             Settings.HOSTNAME = original_hostname
