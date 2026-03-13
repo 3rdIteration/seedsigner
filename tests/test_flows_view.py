@@ -1,3 +1,5 @@
+import os
+import sys
 from unittest.mock import patch
 
 # Must import test base before the Controller
@@ -64,3 +66,45 @@ class TestViewFlows(FlowTest):
             FlowStep(UnhandledExceptionView),
             FlowStep(MainMenuView),
         ])
+
+
+    def test_restart_thread_command_seedsigner_os(self):
+        """
+        Verify DoResetThread uses os.getpid() and sys.executable on seedsigner-os.
+        """
+        original_hostname = Settings.HOSTNAME
+        try:
+            Settings.HOSTNAME = Settings.SEEDSIGNER_OS
+            thread = RestartView.DoResetThread()
+            with patch('subprocess.call') as mock_subprocess_call, \
+                 patch('time.sleep'):
+                thread.run()
+                mock_subprocess_call.assert_called_once()
+                cmd = mock_subprocess_call.call_args[0][0]
+                pid = os.getpid()
+                assert f"kill {pid}" in cmd
+                assert sys.executable in cmd
+                assert "/opt/src/main.py" in cmd
+                assert mock_subprocess_call.call_args[1] == {"shell": True}
+        finally:
+            Settings.HOSTNAME = original_hostname
+
+
+    def test_restart_thread_command_desktop(self):
+        """
+        Verify DoResetThread uses os.getpid() on non-seedsigner-os (desktop).
+        """
+        original_hostname = Settings.HOSTNAME
+        try:
+            Settings.HOSTNAME = "desktop-host"
+            thread = RestartView.DoResetThread()
+            with patch('subprocess.call') as mock_subprocess_call, \
+                 patch('time.sleep'):
+                thread.run()
+                mock_subprocess_call.assert_called_once()
+                cmd = mock_subprocess_call.call_args[0][0]
+                pid = os.getpid()
+                assert cmd == f"kill {pid}"
+                assert mock_subprocess_call.call_args[1] == {"shell": True}
+        finally:
+            Settings.HOSTNAME = original_hostname
