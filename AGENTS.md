@@ -36,6 +36,7 @@ When stacking multiple `TextArea` components (e.g. on `LargeIconStatusScreen` su
 - **Never unconditionally overwrite a setting with a platform default** after the persisted settings file has been loaded. Always check whether the key is present in the loaded data first and skip the override when it is.
 - The current implementation tracks which keys were present in the loaded JSON via a `_persisted_keys` set. When adding a **new** platform-detected default, follow the same pattern:
   ```python
+  # Only apply platform default if user hasn't saved a preference
   if SettingsConstants.SETTING__MY_NEW_SETTING not in _persisted_keys:
       settings._data[SettingsConstants.SETTING__MY_NEW_SETTING] = Settings.get_platform_default_my_new_setting()
   ```
