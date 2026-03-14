@@ -1,4 +1,5 @@
 import os
+import shlex
 import sys
 from unittest.mock import patch
 
@@ -72,7 +73,6 @@ class TestViewFlows(FlowTest):
         """
         Verify DoResetThread uses os.getpid() and sys.executable on seedsigner-os.
         """
-        import shlex
         original_hostname = Settings.HOSTNAME
         try:
             Settings.HOSTNAME = Settings.SEEDSIGNER_OS
@@ -119,8 +119,7 @@ class TestViewFlows(FlowTest):
         is raised during screen render, causing RestartView to stop the thread.
         """
         thread = RestartView.DoResetThread()
-        thread.start()  # sets keep_running = True
-        thread.stop()   # sets keep_running = False
+        thread.keep_running = False
         with patch('subprocess.call') as mock_subprocess_call, \
              patch('time.sleep'):
             thread.run()

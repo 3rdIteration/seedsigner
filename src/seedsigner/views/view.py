@@ -296,6 +296,10 @@ class RestartView(View):
         try:
             self.run_screen(ResetScreen)
         except Exception:
+            # Stop the reset thread if the screen exits abnormally (e.g.
+            # ScreenshotComplete during screenshot generation).  Broad catch
+            # is intentional: whatever caused the exit, we must prevent the
+            # background thread from killing the process.
             thread.stop()
             raise
 
