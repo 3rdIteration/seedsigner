@@ -27,6 +27,29 @@ When stacking multiple `TextArea` components (e.g. on `LargeIconStatusScreen` su
 - Keep `src/seedsigner/hardware/io_config.json` and `docs/io_config.md` consistent whenever pin mappings or profile details are changed.
 - If the JSON and documentation conflict and the correct source of truth is unclear, explicitly ask the user how they want the conflict resolved before finalizing changes.
 
+## Persistent settings and platform-detected defaults
+
+`Settings.get_instance()` in `src/seedsigner/models/settings.py` loads user-persisted settings from disk and then applies platform-detected defaults for certain hardware-dependent values (display configuration, camera rotation, etc.). **User-persisted settings must always take priority over platform-detected defaults.**
+
+### Rules
+
+- **Never unconditionally overwrite a setting with a platform default** after the persisted settings file has been loaded. Always check whether the key is present in the loaded data first and skip the override when it is.
+- The current implementation tracks which keys were present in the loaded JSON via a `_persisted_keys` set. When adding a **new** platform-detected default, follow the same pattern:
+  ```python
+  if SettingsConstants.SETTING__MY_NEW_SETTING not in _persisted_keys:
+      settings._data[SettingsConstants.SETTING__MY_NEW_SETTING] = Settings.get_platform_default_my_new_setting()
+  ```
+- When in doubt, treat `_persisted_keys` as the authoritative record of what the user explicitly saved; anything **not** in that set is safe to auto-detect.
+
+### Currently guarded settings
+
+| Setting constant | Platform default method | Guard variable |
+|-----------------|------------------------|----------------|
+| `SETTING__DISPLAY_CONFIGURATION` | `get_platform_default_display_config()` | `_persisted_keys` |
+| `SETTING__CAMERA_ROTATION` | `get_platform_default_camera_rotation()` | `_persisted_keys` |
+
+Any **new** hardware-detected setting that can also be changed by the user must be added to this table and follow the same guard pattern. Failing to do so will cause the user's preference to be silently lost on every reboot.
+
 ## Security-first development guidance
 
 Because this project handles private key material for an air-gapped signer, **security takes precedence over convenience**. Treat all entropy and key-handling paths as high-risk code.
