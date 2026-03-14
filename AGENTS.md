@@ -29,27 +29,39 @@ When stacking multiple `TextArea` components (e.g. on `LargeIconStatusScreen` su
 
 ## Persistent settings and platform-detected defaults
 
-`Settings.get_instance()` in `src/seedsigner/models/settings.py` loads user-persisted settings from disk and then applies platform-detected defaults for certain hardware-dependent values (display configuration, camera rotation, etc.). **User-persisted settings must always take priority over platform-detected defaults.**
+`Settings.get_instance()` in `src/seedsigner/models/settings.py` initialises settings in three layers, applied in order so that each layer overrides the previous:
+
+1. **Code defaults** — `SettingsDefinition.get_defaults()`
+2. **Platform-detected defaults** — hardware-specific values (display config, camera rotation) computed once via `get_platform_default_*()` methods
+3. **User-persisted settings** — loaded from the settings JSON file on disk
+
+Because user settings are applied **last**, they naturally take priority over platform defaults without any additional guard logic.
+
+### How it works
+
+Platform defaults are computed into a `platform_defaults` dict at the top of `get_instance()`. When a settings file (or template) is loaded, `platform_defaults` are merged in as fallbacks for any keys the file doesn't contain (`loaded.setdefault(key, value)`), then `settings.update(loaded)` applies everything at once. When no file is loaded (test environment or first boot without template), platform defaults are written directly to `settings._data`.
 
 ### Rules
 
-- **Never unconditionally overwrite a setting with a platform default** after the persisted settings file has been loaded. Always check whether the key is present in the loaded data first and skip the override when it is.
-- The current implementation tracks which keys were present in the loaded JSON via a `_persisted_keys` set. When adding a **new** platform-detected default, follow the same pattern:
+- **User-persisted settings must always take priority over platform-detected defaults.** The current layered approach guarantees this: platform defaults are merged as fallbacks before user settings are applied.
+- When adding a **new** platform-detected default, add it to the `platform_defaults` dict in `get_instance()`:
   ```python
-  # Only apply platform default if user hasn't saved a preference
-  if SettingsConstants.SETTING__MY_NEW_SETTING not in _persisted_keys:
-      settings._data[SettingsConstants.SETTING__MY_NEW_SETTING] = Settings.get_platform_default_my_new_setting()
+  platform_defaults = {
+      SettingsConstants.SETTING__DISPLAY_CONFIGURATION: Settings.get_platform_default_display_config(),
+      SettingsConstants.SETTING__CAMERA_ROTATION: Settings.get_platform_default_camera_rotation(),
+      SettingsConstants.SETTING__MY_NEW_SETTING: Settings.get_platform_default_my_new_setting(),
+  }
   ```
-- When in doubt, treat `_persisted_keys` as the authoritative record of what the user explicitly saved; anything **not** in that set is safe to auto-detect.
+  No additional guard logic is needed — `loaded.setdefault()` ensures the user's saved value wins when present.
 
-### Currently guarded settings
+### Currently platform-detected settings
 
-| Setting constant | Platform default method | Guard variable |
-|-----------------|------------------------|----------------|
-| `SETTING__DISPLAY_CONFIGURATION` | `get_platform_default_display_config()` | `_persisted_keys` |
-| `SETTING__CAMERA_ROTATION` | `get_platform_default_camera_rotation()` | `_persisted_keys` |
+| Setting constant | Platform default method |
+|-----------------|------------------------|
+| `SETTING__DISPLAY_CONFIGURATION` | `get_platform_default_display_config()` |
+| `SETTING__CAMERA_ROTATION` | `get_platform_default_camera_rotation()` |
 
-Any **new** hardware-detected setting that can also be changed by the user must be added to this table and follow the same guard pattern. Failing to do so will cause the user's preference to be silently lost on every reboot.
+Any **new** hardware-detected setting that can also be changed by the user must be added to this table and to the `platform_defaults` dict. Failing to do so will cause the platform default to not be applied.
 
 ## Security-first development guidance
 
