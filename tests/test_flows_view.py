@@ -77,6 +77,7 @@ class TestViewFlows(FlowTest):
         try:
             Settings.HOSTNAME = Settings.SEEDSIGNER_OS
             thread = RestartView.DoResetThread()
+            thread.keep_running = True
             with patch('subprocess.call') as mock_subprocess_call, \
                  patch('time.sleep'):
                 thread.run()
@@ -98,6 +99,7 @@ class TestViewFlows(FlowTest):
         try:
             Settings.HOSTNAME = "desktop-host"
             thread = RestartView.DoResetThread()
+            thread.keep_running = True
             with patch('subprocess.call') as mock_subprocess_call, \
                  patch('time.sleep'):
                 thread.run()
@@ -108,3 +110,18 @@ class TestViewFlows(FlowTest):
                 assert mock_subprocess_call.call_args[1] == {"shell": True}
         finally:
             Settings.HOSTNAME = original_hostname
+
+
+    def test_restart_thread_skips_kill_when_stopped(self):
+        """
+        Verify DoResetThread does not execute kill when keep_running is False.
+        This simulates the screenshot generator scenario where ScreenshotComplete
+        is raised during screen render, causing RestartView to stop the thread.
+        """
+        thread = RestartView.DoResetThread()
+        thread.start()  # sets keep_running = True
+        thread.stop()   # sets keep_running = False
+        with patch('subprocess.call') as mock_subprocess_call, \
+             patch('time.sleep'):
+            thread.run()
+            mock_subprocess_call.assert_not_called()

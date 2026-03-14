@@ -293,7 +293,11 @@ class RestartView(View):
         from seedsigner.gui.screens.screen import ResetScreen
         thread = RestartView.DoResetThread()
         thread.start()
-        self.run_screen(ResetScreen)
+        try:
+            self.run_screen(ResetScreen)
+        except Exception:
+            thread.stop()
+            raise
 
 
     class DoResetThread(BaseThread):
@@ -307,6 +311,9 @@ class RestartView(View):
             # Give the screen just enough time to display the reset message before
             # exiting.
             time.sleep(0.25)
+
+            if not self.keep_running:
+                return
 
             # Kill the current process by its PID (reliable across all
             # Python binary names).  The shell subprocess survives the
