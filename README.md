@@ -98,7 +98,7 @@ Support and discussion relating to this fork can happen via this [Telegram Group
 ---------------
 
 * [Project Summary](#project-summary)
-* [Shopping List](#shopping-list)
+* [Shopping List](./docs/shopping_list.md)
 * [Software Installation](#software-installation)
   * [Verifying your download](#verifying-your-download)
 * [Enclosure Designs](#enclosure-designs)
