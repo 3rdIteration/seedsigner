@@ -40,7 +40,8 @@ The table below uses standard 40-pin physical numbering and highlights:
 
 ## Waveshare SPI display pin notes
 
-For the Waveshare 1.3" LCD HAT on a GPIO40 header:
+The Waveshare 1.3" LCD HAT (ST7789, 240×240) and 1.44" LCD HAT (ST7735S,
+128×128) share the same GPIO40 header pinout:
 - `SPI0_MOSI`: pin `19` (`GPIO10`)
 - `SPI0_SCLK`: pin `23` (`GPIO11`)
 - `CS` / `LCD-CS` (`SPI0_CE0`): pin `24` (`GPIO8`)
@@ -50,7 +51,16 @@ For the Waveshare 1.3" LCD HAT on a GPIO40 header:
 - Power: pin `1` (`3V3`)
 - Ground: e.g. pin `6` (`GND`)
 
-These are the standard Waveshare/RPi-style assignments that the `RPI_40` profile follows.
+Both HATs use the same `RPI_40` hardware profile — the only difference is the
+display driver setting:
+
+| HAT | Display setting | Driver |
+|-----|----------------|--------|
+| 1.3" LCD HAT (240×240) | `st7789_240x240` (default) | `ST7789.py` |
+| 1.44" LCD HAT (128×128) | `st7735_128x128` | `ST7735.py` |
+
+To use the 1.44" HAT, change the **Display type** setting to `st7735 128x128`
+(or use a SettingsQR with `disp_conf=st7735_128x128`).
 
 ### CS and the three wiring options
 
