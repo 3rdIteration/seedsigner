@@ -577,7 +577,7 @@ def test_st7789_does_not_swallow_non_einval_oserror():
 
 
 # ---------------------------------------------------------------------------
-# ST7735 display driver tests (Waveshare 1.44" LCD HAT, 128×128)
+# ST7735 display driver tests (Waveshare 1.44" LCD HAT, 128x128)
 # ---------------------------------------------------------------------------
 
 def _make_st7735_pin_mapping(cs=None):
