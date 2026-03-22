@@ -37,6 +37,8 @@ Note: The Luckfox Pico Mini and Pro/Max models require an adaptor board that can
   - Pi Zero-compatible camera (tested with Aokin / AuviPal 5MP 1080p with OV5647 Sensor)
   - SC3336 Camera (for Luckfox Pico boards)
   - USB Camera (for Libre Computer La Frite)
+    - [0.3MP Pixel USB Camera Module](https://www.hbvcamera.com/0-3mp-pixel-usb-cameras/usb-cmos-camera-module-for-advertising-machine.html)
+    - [GC0307 USB Camera](https://www.aliexpress.com/item/1005008187236223.html or https://cryptoguide.tips/product/gc0307-usb-camera-module/)
 
 - **Note**: Raspberry Pi 1 is also compatible but requires a hardware modification to the Waveshare LCD Hat
 
