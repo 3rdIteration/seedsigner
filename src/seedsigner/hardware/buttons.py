@@ -413,7 +413,18 @@ class HardwareButtons(Singleton):
                         continue
                     self.update_last_input_time()
                     return True
-                self._low_since_ms[key] = None
+                else:
+                    # Pin is high. If it was previously observed as low, the
+                    # button was pressed and released between polling calls.
+                    # Treat this as a valid press provided the debounce
+                    # interval was met, so that brief clicks are not lost in
+                    # slow polling loops (e.g. camera preview).
+                    low_since = self._low_since_ms.get(key)
+                    if low_since is not None:
+                        self._low_since_ms[key] = None
+                        if cur_time - low_since >= self.debounce_threshold_ms:
+                            self.update_last_input_time()
+                            return True
             return False
 
         pygame.event.pump()

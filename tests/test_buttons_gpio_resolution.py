@@ -293,3 +293,136 @@ def test_disabled_button_never_reports_low(monkeypatch):
     assert not instance.check_for_low(key="KEY1")
     # has_any_input should not crash when some buttons are disabled
     assert not instance.has_any_input()
+
+
+# ---------------------------------------------------------------------------
+# check_for_low latching tests – verifies that a brief button press (pressed
+# and released between two slow polling calls) is still detected.
+# ---------------------------------------------------------------------------
+
+def _make_instance_with_controllable_pins(monkeypatch):
+    """Create a HardwareButtons instance whose GPIO pins can be individually
+    controlled via a ``pin_states`` dict (True = high / not pressed,
+    False = low / pressed)."""
+
+    pin_states = {}
+
+    button_map = {
+        "KEY_UP": ["/dev/gpiochip1", 25, "pull_up"],
+        "KEY_DOWN": ["/dev/gpiochip1", 27, "pull_up"],
+        "KEY_LEFT": ["/dev/gpiochip1", 24, "pull_up"],
+        "KEY_RIGHT": ["/dev/gpiochip1", 22, "pull_up"],
+        "KEY_PRESS": ["/dev/gpiochip1", 26, "pull_up"],
+        "KEY1": ["/dev/gpiochip1", 17, "pull_up"],
+        "KEY2": ["/dev/gpiochip0", 4, "pull_up"],
+        "KEY3": ["/dev/gpiochip1", 21, "pull_up"],
+    }
+
+    class ControllableGPIO:
+        def __init__(self, *args, **kwargs):
+            self._name = None
+
+        def close(self):
+            pass
+
+        def read(self):
+            if self._name is not None:
+                return pin_states.get(self._name, True)
+            return True
+
+    monkeypatch.setattr(buttons_module, "USING_GPIO", True)
+    monkeypatch.setattr(buttons_module.Settings, "get_platform_default_hardware_config", lambda: "FOX_22")
+    monkeypatch.setattr(buttons_module, "get_hardware_pin_mapping", lambda _: {"buttons": button_map})
+    monkeypatch.setattr(buttons_module, "GPIO", ControllableGPIO)
+
+    instance = buttons_module.HardwareButtons.get_instance()
+
+    # Map each pin object to its button name so we can control read() values
+    for name, pin_obj in instance._gpio_pins.items():
+        pin_obj._name = name
+        pin_states[name] = True  # all buttons start high (not pressed)
+
+    return instance, pin_states
+
+
+def test_check_for_low_detects_held_button(monkeypatch):
+    """A button held across two check_for_low calls is detected."""
+    instance, pin_states = _make_instance_with_controllable_pins(monkeypatch)
+
+    # First call: pin goes low → records timestamp, returns False
+    pin_states["KEY_PRESS"] = False  # pressed
+    assert not instance.check_for_low(key="KEY_PRESS")
+
+    # Simulate time passing beyond debounce threshold
+    instance._low_since_ms["KEY_PRESS"] = int(time.time() * 1000) - 20
+
+    # Second call: pin still low, debounce met → returns True
+    assert instance.check_for_low(key="KEY_PRESS")
+
+
+def test_check_for_low_detects_released_button(monkeypatch):
+    """A button pressed and released between two slow polling calls is detected
+    (the latching fix for issue #342)."""
+    instance, pin_states = _make_instance_with_controllable_pins(monkeypatch)
+
+    # First call: pin is low → records timestamp, returns False
+    pin_states["KEY_PRESS"] = False  # pressed
+    assert not instance.check_for_low(key="KEY_PRESS")
+
+    # Simulate time passing beyond debounce threshold
+    instance._low_since_ms["KEY_PRESS"] = int(time.time() * 1000) - 20
+
+    # Button is released before the next call
+    pin_states["KEY_PRESS"] = True  # released
+
+    # Second call: pin is high but was previously low → latched press detected
+    assert instance.check_for_low(key="KEY_PRESS")
+
+    # State is cleared after detection
+    assert instance._low_since_ms["KEY_PRESS"] is None
+
+    # Subsequent call with pin still high returns False (no double-fire)
+    assert not instance.check_for_low(key="KEY_PRESS")
+
+
+def test_check_for_low_ignores_noise_within_debounce(monkeypatch):
+    """A very brief low (within debounce window) that goes high is not
+    treated as a valid press."""
+    instance, pin_states = _make_instance_with_controllable_pins(monkeypatch)
+
+    # Pin goes low briefly
+    pin_states["KEY_PRESS"] = False
+    assert not instance.check_for_low(key="KEY_PRESS")
+
+    # Do NOT advance the timestamp – debounce window not met
+    # (_low_since_ms stays at current time, so next check is within debounce)
+
+    # Pin goes high immediately
+    pin_states["KEY_PRESS"] = True
+
+    # Should NOT return True because debounce threshold was not met
+    assert not instance.check_for_low(key="KEY_PRESS")
+
+    # State should be cleared
+    assert instance._low_since_ms["KEY_PRESS"] is None
+
+
+def test_check_for_low_latching_works_with_keys_list(monkeypatch):
+    """Latching works when checking multiple keys at once (the ANYCLICK
+    pattern used in camera preview)."""
+    instance, pin_states = _make_instance_with_controllable_pins(monkeypatch)
+
+    anyclick = ["KEY_PRESS", "KEY1", "KEY2", "KEY3"]
+
+    # KEY1 is briefly pressed
+    pin_states["KEY1"] = False
+    assert not instance.check_for_low(keys=anyclick)
+
+    # Simulate time passing beyond debounce threshold
+    instance._low_since_ms["KEY1"] = int(time.time() * 1000) - 20
+
+    # KEY1 is released
+    pin_states["KEY1"] = True
+
+    # Should detect the latched press
+    assert instance.check_for_low(keys=anyclick)
