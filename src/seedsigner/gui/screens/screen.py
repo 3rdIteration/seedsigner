@@ -210,12 +210,14 @@ class BaseTopNavScreen(BaseScreen):
     top_nav_icon_name: str = None
     top_nav_icon_color: str = None
     title: str = "Screen Title"
-    title_font_size: int = GUIConstants.get_top_nav_title_font_size()
+    title_font_size: int = None
     show_back_button: bool = True
     show_power_button: bool = False
 
     def __post_init__(self):
         super().__post_init__()
+        if self.title_font_size is None:
+            self.title_font_size = GUIConstants.get_top_nav_title_font_size()
         self.top_nav = TopNav(
             icon_name=self.top_nav_icon_name,
             icon_color=self.top_nav_icon_color,

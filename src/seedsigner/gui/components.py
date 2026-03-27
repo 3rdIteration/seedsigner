@@ -1974,8 +1974,8 @@ def calc_bezier_curve(p1: Tuple[int,int], p2: Tuple[int,int], p3: Tuple[int,int]
 
 def reflow_text_for_width(text: str,
                           width: int,
-                          font_name=GUIConstants.get_body_font_name(),
-                          font_size=GUIConstants.get_body_font_size(),
+                          font_name=None,
+                          font_size=None,
                           allow_text_overflow: bool=False) -> list[dict]:
     """
     Reflows text to fit within `width` by breaking long lines up.
@@ -1985,6 +1985,10 @@ def reflow_text_for_width(text: str,
     Note: It is up to the calling code to handle any height considerations for the 
     resulting lines of text.
     """
+    if font_name is None:
+        font_name = GUIConstants.get_body_font_name()
+    if font_size is None:
+        font_size = GUIConstants.get_body_font_size()
     # We have to figure out if and where to make line breaks in the text so that it
     #   fits in its bounding rect (plus accounting for edge padding) using its given
     #   font.
@@ -2103,9 +2107,9 @@ def reflow_text_for_width(text: str,
 def reflow_text_into_pages(text: str,
                            width: int,
                            height: int,
-                           font_name=GUIConstants.get_body_font_name(),
-                           font_size=GUIConstants.get_body_font_size(),
-                           line_spacer: int = GUIConstants.BODY_LINE_SPACING,
+                           font_name=None,
+                           font_size=None,
+                           line_spacer: int = None,
                            allow_text_overflow: bool=False) -> list[str]:
     """
     Invokes `reflow_text_for_width` above to convert long text into width-limited
@@ -2114,6 +2118,12 @@ def reflow_text_into_pages(text: str,
 
     Returns a list of strings where each string is a page's worth of line-breaked text.
     """
+    if font_name is None:
+        font_name = GUIConstants.get_body_font_name()
+    if font_size is None:
+        font_size = GUIConstants.get_body_font_size()
+    if line_spacer is None:
+        line_spacer = GUIConstants.BODY_LINE_SPACING
     reflowed_lines_dicts = reflow_text_for_width(text=text,
                                            width=width,
                                            font_name=font_name,
