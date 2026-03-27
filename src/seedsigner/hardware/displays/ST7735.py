@@ -197,11 +197,13 @@ class ST7735:
         self.data(0x0E)
 
         # ------ Memory access (orientation) ------
-        # 0x60 = MX | MV → landscape, same wiring as 1.3" HAT.
-        # RGB colour order is handled by the same BGR;16 conversion used
-        # by the ST7789 driver — no RGB bit needed in MADCTL.
+        # 0x68 = MX | MV | BGR → landscape, same wiring as 1.3" HAT.
+        # The ST7735S panel has physically BGR-ordered sub-pixels, so the
+        # BGR bit (0x08) must be set for correct colour rendering.
+        # Without it, red and blue channels are swapped (orange appears
+        # blue, etc.).
         self.command(0x36)  # MADCTL
-        self.data(0x60)
+        self.data(0x68)
 
         # ------ Gamma correction ------
         self.command(0xE0)  # GAMCTRP1 — positive gamma
