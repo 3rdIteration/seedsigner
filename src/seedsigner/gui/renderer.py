@@ -59,16 +59,9 @@ class Renderer(ConfigurableSingleton):
             if Settings.get_instance().get_value(SettingsConstants.SETTING__DISPLAY_COLOR_INVERTED, default_if_none=True) == SettingsConstants.OPTION__ENABLED:
                 self.disp.invert()
 
-            if self.display_type in [DISPLAY_TYPE__ST7789, DISPLAY_TYPE__DESKTOP]:
+            if self.display_type in [DISPLAY_TYPE__ST7789, DISPLAY_TYPE__ST7735, DISPLAY_TYPE__DESKTOP]:
                 self.canvas_width = self.disp.width
                 self.canvas_height = self.disp.height
-
-            elif self.display_type == DISPLAY_TYPE__ST7735:
-                # The UI is designed for 240×240; render at that resolution
-                # and downscale to the physical 128×128 display in
-                # show_image().
-                self.canvas_width = 240
-                self.canvas_height = 240
 
             elif self.display_type in [DISPLAY_TYPE__ILI9341, DISPLAY_TYPE__ILI9486]:
                 # Swap for the natively portrait-oriented displays
@@ -83,13 +76,17 @@ class Renderer(ConfigurableSingleton):
 
             self.canvas = Image.new('RGB', (self.canvas_width, self.canvas_height))
             self.draw = ImageDraw.Draw(self.canvas)
+
+            # Scale GUI constants for the current display resolution.
+            from seedsigner.gui.components import GUIConstants
+            GUIConstants.apply_display_scale(self.canvas_width)
         finally:
             self.lock.release()
 
 
     def _resize_for_display(self, image):
-        """Downscale *image* to the physical display size when the canvas is
-        larger than the display (e.g. 240×240 canvas on a 128×128 ST7735)."""
+        """Resize *image* to the physical display size when the canvas dimensions
+        differ from the display (e.g. rotated ILI9341/ILI9486 displays)."""
         if self._needs_resize:
             return image.resize(self._display_size, Image.LANCZOS)
         return image

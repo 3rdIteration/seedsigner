@@ -5,7 +5,7 @@ import pathlib
 import re
 import time
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal
 from gettext import gettext as _
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
@@ -23,6 +23,9 @@ logger = logging.getLogger(__name__)
 
 # TODO: Remove all pixel hard coding
 class GUIConstants:
+    _REFERENCE_RESOLUTION = 240
+    _scale_factor = 1.0
+
     EDGE_PADDING = 8
     COMPONENT_PADDING = 8
     LIST_ITEM_PADDING = 4
@@ -162,6 +165,61 @@ class GUIConstants:
             return GUIConstants.BUTTON_FONT_SIZE[locale]
         else:
             return GUIConstants.BUTTON_FONT_SIZE["default"]
+
+
+    @classmethod
+    def _scale(cls, value):
+        """Scale a pixel value from reference resolution to current display."""
+        if cls._scale_factor == 1.0:
+            return value
+        return max(1, round(value * cls._scale_factor))
+
+
+    @classmethod
+    def apply_display_scale(cls, canvas_size):
+        """Adjust all pixel/font constants for the given canvas size.
+
+        Called by Renderer after determining the native display dimensions.
+        Modifies class attributes in-place so that all subsequent reads of
+        GUIConstants (including inside ``__post_init__`` methods) use values
+        appropriate for the target resolution.
+        """
+        cls._scale_factor = canvas_size / cls._REFERENCE_RESOLUTION
+        if cls._scale_factor == 1.0:
+            return
+
+        # Padding & spacing
+        cls.EDGE_PADDING = cls._scale(8)
+        cls.COMPONENT_PADDING = cls._scale(8)
+        cls.LIST_ITEM_PADDING = cls._scale(4)
+
+        # Icon sizes
+        cls.ICON_FONT_SIZE = cls._scale(22)
+        cls.ICON_INLINE_FONT_SIZE = cls._scale(24)
+        cls.ICON_LARGE_BUTTON_SIZE = cls._scale(48)
+        cls.ICON_TOAST_FONT_SIZE = cls._scale(30)
+        cls.ICON_PRIMARY_SCREEN_SIZE = cls._scale(50)
+
+        # Top nav
+        cls.TOP_NAV_HEIGHT = cls._scale(48)
+        cls.TOP_NAV_BUTTON_SIZE = cls._scale(32)
+
+        # Font sizes (locale-specific dicts)
+        for key in list(cls.TOP_NAV_TITLE_FONT_SIZE):
+            cls.TOP_NAV_TITLE_FONT_SIZE[key] = cls._scale(cls.TOP_NAV_TITLE_FONT_SIZE[key])
+        for key in list(cls.BODY_FONT_SIZE):
+            cls.BODY_FONT_SIZE[key] = cls._scale(cls.BODY_FONT_SIZE[key])
+        for key in list(cls.BUTTON_FONT_SIZE):
+            cls.BUTTON_FONT_SIZE[key] = cls._scale(cls.BUTTON_FONT_SIZE[key])
+
+        # Derived font-size constants
+        cls.BODY_FONT_MAX_SIZE = cls.TOP_NAV_TITLE_FONT_SIZE["default"]
+        cls.BODY_FONT_MIN_SIZE = cls._scale(15)
+        cls.BODY_LINE_SPACING = cls.COMPONENT_PADDING
+        cls.LABEL_FONT_SIZE = cls.BODY_FONT_MIN_SIZE
+
+        # Button
+        cls.BUTTON_HEIGHT = cls._scale(32)
 
 
 
@@ -392,7 +450,7 @@ class TextArea(BaseComponent):
     font_name: str = None
     font_size: int = None
     font_color: str = GUIConstants.BODY_FONT_COLOR
-    edge_padding: int = GUIConstants.EDGE_PADDING
+    edge_padding: int = field(default_factory=lambda: GUIConstants.EDGE_PADDING)
     is_text_centered: bool = True
     supersampling_factor: int = 2  # 1 = disabled; 2 = default, double sample (4px square rendered for 1px)
     auto_line_break: bool = True
@@ -775,7 +833,7 @@ class Icon(BaseComponent):
     screen_x: int = 0
     screen_y: int = 0
     icon_name: str = SeedSignerIconConstants.BITCOIN_ALT
-    icon_size: int = GUIConstants.ICON_FONT_SIZE
+    icon_size: int = field(default_factory=lambda: GUIConstants.ICON_FONT_SIZE)
     icon_color: str = GUIConstants.BODY_FONT_COLOR
 
     def __post_init__(self):
@@ -809,7 +867,7 @@ class IconTextLine(BaseComponent):
     """
     height: int = None
     icon_name: str = None
-    icon_size: int = GUIConstants.ICON_FONT_SIZE
+    icon_size: int = field(default_factory=lambda: GUIConstants.ICON_FONT_SIZE)
     icon_color: str = GUIConstants.BODY_FONT_COLOR
     label_text: str = None
     value_text: str = ""
@@ -952,6 +1010,8 @@ class FormattedAddress(BaseComponent):
 
     def __post_init__(self):
         super().__post_init__()
+        if GUIConstants._scale_factor != 1.0 and self.font_size == 24:
+            self.font_size = GUIConstants._scale(24)
         if self.width == 0:
             self.width = self.renderer.canvas_width
         
@@ -1112,6 +1172,11 @@ class BtcAmount(BaseComponent):
 
     def __post_init__(self):
         super().__post_init__()
+        if GUIConstants._scale_factor != 1.0:
+            if self.icon_size == 34:
+                self.icon_size = GUIConstants._scale(34)
+            if self.font_size == 24:
+                self.font_size = GUIConstants._scale(24)
         self.sub_components: List[BaseComponent] = []
         self.paste_image: Image.Image = None
         self.paste_coords = None
@@ -1358,13 +1423,13 @@ class Button(BaseComponent):
     width: int = None
     height: int = None
     icon_name: str = None   # Optional icon to accompany the text
-    icon_size: int = GUIConstants.ICON_INLINE_FONT_SIZE
+    icon_size: int = field(default_factory=lambda: GUIConstants.ICON_INLINE_FONT_SIZE)
     icon_color: str = GUIConstants.BUTTON_FONT_COLOR
     selected_icon_color: str = "black"
     icon_y_offset: int = 0
     is_icon_inline: bool = True    # True = render next to text; False = render centered above text
     right_icon_name: str = None    # Optional icon rendered right-justified
-    right_icon_size: int = GUIConstants.ICON_INLINE_FONT_SIZE
+    right_icon_size: int = field(default_factory=lambda: GUIConstants.ICON_INLINE_FONT_SIZE)
     right_icon_color: str = GUIConstants.BUTTON_FONT_COLOR
     text_y_offset: int = 0
     background_color: str = GUIConstants.BUTTON_BACKGROUND_COLOR
@@ -1659,7 +1724,7 @@ class IconButton(Button):
     """
         A button that is just an icon (e.g. the BACK arrow)
     """
-    icon_size: int = GUIConstants.ICON_INLINE_FONT_SIZE
+    icon_size: int = field(default_factory=lambda: GUIConstants.ICON_INLINE_FONT_SIZE)
     text: str = None
     is_icon_inline: bool = False
     is_text_centered: bool = True
@@ -1673,8 +1738,8 @@ class LargeIconButton(IconButton):
         A button that is primarily a big icon (e.g. the Home screen buttons) w/text below
         the icon.
     """
-    icon_size: int = GUIConstants.ICON_LARGE_BUTTON_SIZE
-    icon_y_offset: int = GUIConstants.COMPONENT_PADDING
+    icon_size: int = field(default_factory=lambda: GUIConstants.ICON_LARGE_BUTTON_SIZE)
+    icon_y_offset: int = field(default_factory=lambda: GUIConstants.COMPONENT_PADDING)
     is_scrollable_text: bool = True
 
 
@@ -1683,7 +1748,7 @@ class LargeIconButton(IconButton):
 class TopNav(BaseComponent):
     text: str = "Screen Title"
     width: int = None
-    height: int = GUIConstants.TOP_NAV_HEIGHT
+    height: int = field(default_factory=lambda: GUIConstants.TOP_NAV_HEIGHT)
     background_color: str = GUIConstants.BACKGROUND_COLOR
     icon_name: str = None
     icon_color: str = GUIConstants.BODY_FONT_COLOR
@@ -1800,11 +1865,13 @@ class BatteryIndicator(BaseComponent):
     charging: bool = False
     screen_x: int = 0
     screen_y: int = 0
-    icon_size: int = GUIConstants.ICON_FONT_SIZE
+    icon_size: int = field(default_factory=lambda: GUIConstants.ICON_FONT_SIZE)
     font_size: int = 14
 
     def __post_init__(self):
         super().__post_init__()
+        if GUIConstants._scale_factor != 1.0 and self.font_size == 14:
+            self.font_size = GUIConstants._scale(14)
         self.font = Fonts.get_font(GUIConstants.ICON_FONT_NAME__FONT_AWESOME, self.icon_size)
         self.charging_font = Fonts.get_font(GUIConstants.ICON_FONT_NAME__FONT_AWESOME, max(10, self.icon_size - 6))
         self.text_font = Fonts.get_font(GUIConstants.get_body_font_name(), self.font_size)

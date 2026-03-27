@@ -540,6 +540,8 @@ class TextEntryDisplay(TextEntryDisplayConstants):
 
 
     def __post_init__(self):
+        if GUIConstants._scale_factor != 1.0 and self.font_size == 24:
+            self.font_size = GUIConstants._scale(24)
         self.font = Fonts.get_font(self.font_name, self.font_size)
 
 

@@ -664,7 +664,7 @@ class LargeButtonScreen(BaseTopNavScreen):
             }
             if icon_name:
                 button_args["icon_name"] = icon_name
-                button_args["text_y_offset"] = int(48 / 240 * self.renderer.canvas_height) + GUIConstants.COMPONENT_PADDING
+                button_args["text_y_offset"] = GUIConstants.TOP_NAV_HEIGHT + GUIConstants.COMPONENT_PADDING
                 button = LargeIconButton(**button_args)
             else:
                 button = Button(**button_args)
@@ -939,11 +939,11 @@ class QRDisplayScreen(BaseScreen):
 class LargeIconStatusScreen(ButtonListScreen):
     title: str = _mft("Success!")
     status_icon_name: str = SeedSignerIconConstants.SUCCESS
-    status_icon_size: int = GUIConstants.ICON_PRIMARY_SCREEN_SIZE
+    status_icon_size: int = field(default_factory=lambda: GUIConstants.ICON_PRIMARY_SCREEN_SIZE)
     status_color: str = GUIConstants.SUCCESS_COLOR
     status_headline: str = None
     text: str = ""                          # The body text of the screen
-    text_edge_padding: int = GUIConstants.EDGE_PADDING
+    text_edge_padding: int = field(default_factory=lambda: GUIConstants.EDGE_PADDING)
     button_data: list = None
     allow_text_overflow: bool = False
 
@@ -1059,7 +1059,7 @@ class WarningEdgesThread(BaseThread):
 @dataclass
 class WarningEdgesMixin:
     status_color: str = GUIConstants.WARNING_COLOR
-    text_edge_padding: int = 2 * GUIConstants.EDGE_PADDING
+    text_edge_padding: int = field(default_factory=lambda: 2 * GUIConstants.EDGE_PADDING)
 
     def __post_init__(self):
         super().__post_init__()
