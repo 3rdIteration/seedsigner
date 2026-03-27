@@ -34,7 +34,7 @@ def _ensure_real_gui_modules():
         if k.startswith("seedsigner.gui") and isinstance(sys.modules[k], MagicMock)
     ]
     if not _mock_keys:
-        return  # nothing to fix
+        return  # GUI modules not mocked; nothing to restore
 
     for k in _mock_keys:
         del sys.modules[k]
@@ -273,8 +273,9 @@ class TestScreenshotComparison:
     """Render screens at both 240×240 and 128×128, compare proportions."""
 
     # Maximum tolerated RMS difference between the downscaled-240 and native-128.
-    # Native rendering will naturally differ due to font hinting and rounding, so
-    # we allow a generous but finite tolerance.
+    # Native rendering differs due to font hinting, rounding, and anti-aliasing at
+    # different resolutions.  Empirically, well-matched screens produce RMS ~25-30;
+    # 60 gives comfortable headroom while still catching gross layout mismatches.
     MAX_RMS_DIFF = 60.0
 
     def _compare_renders(self, img_240: Image.Image, img_128: Image.Image, name: str):
