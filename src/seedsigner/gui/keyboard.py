@@ -570,8 +570,8 @@ class TextEntryDisplay(TextEntryDisplayConstants):
         text_height = -1 * top  # "top" is negative when measuring from baseline; ignoring below baseline
 
         if self.cursor_mode == TextEntryDisplay.CURSOR_MODE__BLOCK:
-            cursor_block_width = 18
-            cursor_block_height = 33
+            cursor_block_width = GUIConstants._scale(18)
+            cursor_block_height = GUIConstants._scale(33)
 
             # Draw n-1 of the selected letters
             (left, top, right, bottom) = self.font.getbbox(self.cur_text[:-1], anchor="ls")

@@ -22,14 +22,31 @@ class LogoScreen(BaseScreen):
         super().__init__()
         self.logo = load_image("logo_black_240.png")
 
+        # Scale the logo to the current canvas size when it doesn't match.
+        if self.logo.width != self.renderer.canvas_width or self.logo.height != self.renderer.canvas_height:
+            from PIL import Image as PILImage
+            self.logo = self.logo.resize(
+                (self.renderer.canvas_width, self.renderer.canvas_height),
+                PILImage.LANCZOS,
+            )
+
         self.partners = [
             "sese",
         ]
 
         self.partner_logos: dict = {}
+        max_partner_width = self.renderer.canvas_width - 2 * GUIConstants.EDGE_PADDING
         for partner in self.partners:
             logo_url = os.path.join("partners", f"{partner}_logo.png")
-            self.partner_logos[partner] = load_image(logo_url)
+            logo = load_image(logo_url)
+            if logo.width > max_partner_width:
+                from PIL import Image as PILImage
+                scale = max_partner_width / logo.width
+                logo = logo.resize(
+                    (max_partner_width, max(1, int(logo.height * scale))),
+                    PILImage.LANCZOS,
+                )
+            self.partner_logos[partner] = logo
 
 
     def _run(self):
@@ -80,7 +97,7 @@ class OpeningSplashScreen(LogoScreen):
         logo_offset_x = int((self.canvas_width - self.logo.width)/2)
 
         if show_partner_logos:
-            logo_offset_y = -56
+            logo_offset_y = -GUIConstants._scale(56)
         else:
             logo_offset_y = 0
 
@@ -102,8 +119,9 @@ class OpeningSplashScreen(LogoScreen):
         font = Fonts.get_font(GUIConstants.get_body_font_name(), GUIConstants.get_top_nav_title_font_size())
         version = f"{controller.VERSION}"
 
-        # The logo png is 240x240, but the actual logo is 70px tall, vertically centered
-        logo_height = 70
+        # The logo png is 240x240, but the actual logo is 70px tall, vertically centered.
+        # Scale the logo height proportionally when the canvas is not 240x240.
+        logo_height = GUIConstants._scale(70)
         version_x = int(self.renderer.canvas_width/2)
         version_y = int(self.canvas_height/2) + int(logo_height/2) + logo_offset_y + GUIConstants.COMPONENT_PADDING
         self.renderer.draw.text(xy=(version_x, version_y), text=version, font=font, fill=GUIConstants.ACCENT_COLOR, anchor="mt")
