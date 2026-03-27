@@ -1004,14 +1004,12 @@ class FormattedAddress(BaseComponent):
     address: str = None
     max_lines: int = None
     font_name: str = GUIConstants.FIXED_WIDTH_FONT_NAME
-    font_size: int = 24
+    font_size: int = field(default_factory=lambda: GUIConstants._scale(24))
     font_accent_color: str = GUIConstants.ACCENT_COLOR
     font_base_color: str = GUIConstants.LABEL_FONT_COLOR
 
     def __post_init__(self):
         super().__post_init__()
-        if GUIConstants._scale_factor != 1.0 and self.font_size == 24:
-            self.font_size = GUIConstants._scale(24)
         if self.width == 0:
             self.width = self.renderer.canvas_width
         
@@ -1164,19 +1162,14 @@ class BtcAmount(BaseComponent):
         * btcsatshybrd: "B" icon + 2-decimal amount + "|" + up to 6-digit, comma-separated sats + "sats"
     """
     total_sats: int = None
-    icon_size: int = 34
-    font_size: int = 24
+    icon_size: int = field(default_factory=lambda: GUIConstants._scale(34))
+    font_size: int = field(default_factory=lambda: GUIConstants._scale(24))
     screen_x: int = 0
     screen_y: int = None
 
 
     def __post_init__(self):
         super().__post_init__()
-        if GUIConstants._scale_factor != 1.0:
-            if self.icon_size == 34:
-                self.icon_size = GUIConstants._scale(34)
-            if self.font_size == 24:
-                self.font_size = GUIConstants._scale(24)
         self.sub_components: List[BaseComponent] = []
         self.paste_image: Image.Image = None
         self.paste_coords = None
@@ -1866,12 +1859,10 @@ class BatteryIndicator(BaseComponent):
     screen_x: int = 0
     screen_y: int = 0
     icon_size: int = field(default_factory=lambda: GUIConstants.ICON_FONT_SIZE)
-    font_size: int = 14
+    font_size: int = field(default_factory=lambda: GUIConstants._scale(14))
 
     def __post_init__(self):
         super().__post_init__()
-        if GUIConstants._scale_factor != 1.0 and self.font_size == 14:
-            self.font_size = GUIConstants._scale(14)
         self.font = Fonts.get_font(GUIConstants.ICON_FONT_NAME__FONT_AWESOME, self.icon_size)
         self.charging_font = Fonts.get_font(GUIConstants.ICON_FONT_NAME__FONT_AWESOME, max(10, self.icon_size - 6))
         self.text_font = Fonts.get_font(GUIConstants.get_body_font_name(), self.font_size)

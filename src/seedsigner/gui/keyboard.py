@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from PIL import Image, ImageDraw, ImageFont
 from typing import Tuple
 from gettext import gettext as _
@@ -530,7 +530,7 @@ class TextEntryDisplay(TextEntryDisplayConstants):
     canvas: Image
     rect: Tuple[int,int,int,int]
     font_name: str = GUIConstants.FIXED_WIDTH_EMPHASIS_FONT_NAME
-    font_size: int = 24
+    font_size: int = field(default_factory=lambda: GUIConstants._scale(24))
     accent_color: str = GUIConstants.ACCENT_COLOR
     background_color: str = GUIConstants.BUTTON_BACKGROUND_COLOR
     cursor_mode: str = TextEntryDisplayConstants.CURSOR_MODE__BLOCK
@@ -540,8 +540,6 @@ class TextEntryDisplay(TextEntryDisplayConstants):
 
 
     def __post_init__(self):
-        if GUIConstants._scale_factor != 1.0 and self.font_size == 24:
-            self.font_size = GUIConstants._scale(24)
         self.font = Fonts.get_font(self.font_name, self.font_size)
 
 

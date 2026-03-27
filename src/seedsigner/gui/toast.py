@@ -16,13 +16,11 @@ class ToastOverlay(BaseComponent):
     font_color: str = GUIConstants.NOTIFICATION_COLOR
     label_text: str = None
     height: int = field(default_factory=lambda: GUIConstants.ICON_TOAST_FONT_SIZE + 2 * GUIConstants.EDGE_PADDING)
-    font_size: int = 19
+    font_size: int = field(default_factory=lambda: GUIConstants._scale(19))
     outline_thickness: int = 2  # pixels
 
     def __post_init__(self):
         super().__post_init__()
-        if GUIConstants._scale_factor != 1.0 and self.font_size == 19:
-            self.font_size = GUIConstants._scale(19)
 
         icon_delta_x = 0
         if self.icon_name:
