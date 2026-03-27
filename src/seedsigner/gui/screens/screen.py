@@ -1369,11 +1369,13 @@ class KeyboardScreen(BaseTopNavScreen):
 @dataclass
 class MainMenuScreen(LargeButtonScreen):
     # Override LargeButtonScreen defaults
-    title_font_size: int = 26
+    title_font_size: int = None  # Lazy-scaled in __post_init__
     show_back_button: bool = False
     show_power_button: bool = True
 
     def __post_init__(self):
+        if self.title_font_size is None:
+            self.title_font_size = GUIConstants._scale(26)
         super().__post_init__()
         from seedsigner.hardware.battery_hat import BatteryHat
         from seedsigner.gui.components import BatteryIndicator

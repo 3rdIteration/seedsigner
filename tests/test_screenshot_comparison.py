@@ -451,3 +451,40 @@ class TestScreenshotComparison:
         img_128 = _render_button_list_screen(128, title="Settings", button_labels=labels)
         rms = self._compare_renders(img_240, img_128, "scrollable_list")
         print(f"Scrollable list RMS diff: {rms:.1f}")
+
+    def test_main_menu_title_font_scales(self):
+        """MainMenuScreen.title_font_size (26 at 240) must scale for 128."""
+        from seedsigner.gui.screens.screen import MainMenuScreen, ButtonOption
+        from seedsigner.gui.components import SeedSignerIconConstants
+
+        buttons = [
+            ButtonOption("Seeds", icon_name=SeedSignerIconConstants.SEEDS),
+            ButtonOption("Scan", icon_name=SeedSignerIconConstants.SCAN),
+            ButtonOption("Tools", icon_name=SeedSignerIconConstants.TOOLS),
+            ButtonOption("Settings", icon_name=SeedSignerIconConstants.SETTINGS),
+        ]
+
+        # At 240 the font size should be the reference value (26)
+        _setup_renderer(240)
+        with patch("seedsigner.hardware.buttons.HardwareButtons.get_instance", return_value=_mock_hw_buttons()), \
+             patch("seedsigner.hardware.battery_hat.BatteryHat.get_instance") as bat_mock:
+            bat = MagicMock()
+            bat.is_enabled.return_value = False
+            bat.detected = False
+            bat_mock.return_value = bat
+            screen_240 = MainMenuScreen(title="SeedSigner", button_data=buttons)
+            assert screen_240.title_font_size == 26
+
+        # At 128 the font size should be proportionally scaled
+        _setup_renderer(128)
+        with patch("seedsigner.hardware.buttons.HardwareButtons.get_instance", return_value=_mock_hw_buttons()), \
+             patch("seedsigner.hardware.battery_hat.BatteryHat.get_instance") as bat_mock2:
+            bat2 = MagicMock()
+            bat2.is_enabled.return_value = False
+            bat2.detected = False
+            bat_mock2.return_value = bat2
+            screen_128 = MainMenuScreen(title="SeedSigner", button_data=buttons)
+            expected = max(1, round(26 * 128 / 240))
+            assert screen_128.title_font_size == expected, (
+                f"MainMenuScreen title_font_size at 128 should be {expected}, got {screen_128.title_font_size}"
+            )
