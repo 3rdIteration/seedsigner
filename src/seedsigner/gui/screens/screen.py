@@ -411,20 +411,23 @@ class ButtonListScreen(BaseTopNavScreen):
             self.buttons.append(button)
 
         if self.has_scroll_arrows:
-            self.arrow_half_width = 10
+            self.arrow_half_width = GUIConstants._scale(10)
+            arrow_height = GUIConstants._scale(8)
+            arrow_overlap = GUIConstants._scale(12)
+            arrow_gap = GUIConstants._scale(2)
             self.cur_scroll_y = self.scroll_y_initial_offset if self.scroll_y_initial_offset is not None else 0
-            self.up_arrow_img = Image.new("RGBA", size=(2 * self.arrow_half_width, 8), color="black")
-            self.up_arrow_img_y = self.top_nav_height - 12
+            self.up_arrow_img = Image.new("RGBA", size=(2 * self.arrow_half_width, arrow_height), color="black")
+            self.up_arrow_img_y = self.top_nav_height - arrow_overlap
             arrow_draw = ImageDraw.Draw(self.up_arrow_img)
-            arrow_draw.line((self.arrow_half_width, 1, 0, 7), fill=GUIConstants.BUTTON_FONT_COLOR)
-            arrow_draw.line((self.arrow_half_width, 1, 2 * self.arrow_half_width, 7), fill=GUIConstants.BUTTON_FONT_COLOR)
+            arrow_draw.line((self.arrow_half_width, 1, 0, arrow_height - 1), fill=GUIConstants.BUTTON_FONT_COLOR)
+            arrow_draw.line((self.arrow_half_width, 1, 2 * self.arrow_half_width, arrow_height - 1), fill=GUIConstants.BUTTON_FONT_COLOR)
 
-            self.down_arrow_img = Image.new("RGBA", size=(2 * self.arrow_half_width, 8), color="black")
-            self.down_arrow_img_y = self.top_nav_height + button_display_height + 2
+            self.down_arrow_img = Image.new("RGBA", size=(2 * self.arrow_half_width, arrow_height), color="black")
+            self.down_arrow_img_y = self.top_nav_height + button_display_height + arrow_gap
             arrow_draw = ImageDraw.Draw(self.down_arrow_img)
             center_x = int(self.canvas_width / 2)
-            arrow_draw.line((self.arrow_half_width, 7, 0, 1), fill=GUIConstants.BUTTON_FONT_COLOR)
-            arrow_draw.line((self.arrow_half_width, 7, 2 * self.arrow_half_width, 1), fill=GUIConstants.BUTTON_FONT_COLOR)
+            arrow_draw.line((self.arrow_half_width, arrow_height - 1, 0, 1), fill=GUIConstants.BUTTON_FONT_COLOR)
+            arrow_draw.line((self.arrow_half_width, arrow_height - 1, 2 * self.arrow_half_width, 1), fill=GUIConstants.BUTTON_FONT_COLOR)
 
         cur_selected_button = self.buttons[self.selected_button]
         cur_selected_button.is_selected = True

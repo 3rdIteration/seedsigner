@@ -410,3 +410,44 @@ class TestScreenshotComparison:
         assert font_128 == expected_128, (
             f"title_font_size at 128 should be {expected_128}, got {font_128}"
         )
+
+    def test_scroll_arrows_do_not_overlap_title(self):
+        """Scroll arrow black background must not overlap the title text area.
+
+        At 128×128, hardcoded pixel offsets for the up-arrow image could place
+        its black background rectangle over the top nav title area.  This test
+        renders a scrollable ButtonListScreen (many items) at both sizes and
+        checks that the top-nav region (the first TOP_NAV_HEIGHT rows) contains
+        no black rectangle that wasn't present in the non-scrollable version.
+        """
+        for size in (240, 128):
+            # Render a short list (no scroll arrows)
+            short_img = _render_button_list_screen(size, title="Settings", button_labels=["A", "B"])
+            # Render a long list (with scroll arrows)
+            long_labels = [f"Item {i}" for i in range(10)]
+            long_img = _render_button_list_screen(size, title="Settings", button_labels=long_labels)
+
+            _save(short_img, f"scroll_arrow_short_{size}.png")
+            _save(long_img, f"scroll_arrow_long_{size}.png")
+
+            # Extract the top nav region from both images
+            _setup_renderer(size)
+            nav_h = GUIConstants.TOP_NAV_HEIGHT
+            short_nav = short_img.crop((0, 0, size, nav_h))
+            long_nav = long_img.crop((0, 0, size, nav_h))
+
+            # The title region of the scrollable screen should look the same
+            # as the non-scrollable version (no black rectangle overlay).
+            rms = _image_rms_diff(short_nav, long_nav)
+            assert rms < 15.0, (
+                f"@{size}: scroll arrows distort title area (RMS={rms:.1f}). "
+                f"See {_SCREENSHOT_DIR}/scroll_arrow_*_{size}.png"
+            )
+
+    def test_scrollable_button_list_at_both_sizes(self):
+        """A scrollable (10-item) list should match proportionally at both sizes."""
+        labels = [f"Item {i}" for i in range(10)]
+        img_240 = _render_button_list_screen(240, title="Settings", button_labels=labels)
+        img_128 = _render_button_list_screen(128, title="Settings", button_labels=labels)
+        rms = self._compare_renders(img_240, img_128, "scrollable_list")
+        print(f"Scrollable list RMS diff: {rms:.1f}")
