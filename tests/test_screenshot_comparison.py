@@ -9,10 +9,10 @@ Each test:
   4. Saves both screenshots (and the downscaled reference) to a temp dir so they
      can be visually inspected.
 
-NOTE: These tests exercise the real Renderer and GUIConstants code.  When
-collected together with other test files that import ``base.py`` (which replaces
-``seedsigner.gui.renderer`` with a ``MagicMock``), the renderer module may
-already be mocked.  We detect this and restore the real modules before running.
+NOTE: These tests exercise the real Renderer and GUIConstants code.  The
+autouse ``_isolate_gui_modules`` fixture snapshots and fully restores
+``sys.modules`` around each test so that loading real GUI modules does not
+pollute other test files (which rely on ``base.py``'s MagicMock stubs).
 """
 
 import importlib
@@ -26,63 +26,42 @@ from unittest.mock import MagicMock, patch
 import pytest
 from PIL import Image, ImageDraw, ImageStat
 
+from seedsigner.models.settings import Settings
+from seedsigner.models.settings_definition import SettingsConstants
 
-def _ensure_real_gui_modules():
-    """Load real GUI modules for this test file.
 
-    If ``base.py``'s mocks replaced the GUI modules in ``sys.modules``, we
-    temporarily remove them so ``importlib`` can load the real ``.py`` files.
-    The mock entries are saved and returned so they can be restored between
-    tests to avoid polluting other test files.
+def _load_real_gui_modules():
+    """Ensure real GUI modules are in ``sys.modules``.
 
-    Returns a dict of ``{module_key: MagicMock}`` that were removed, or an
-    empty dict if no mocks were present.
+    If ``base.py``'s mocks (or any MagicMock stubs) are present for
+    ``seedsigner.gui.*``, they are temporarily removed so that
+    ``importlib`` loads the real ``.py`` files.
+
+    After this function returns, the real modules are in ``sys.modules``.
+    The caller is responsible for restoring the original state.
     """
-    saved_mocks = {
+    mocks = {
         k: sys.modules[k] for k in list(sys.modules)
         if k.startswith("seedsigner.gui") and isinstance(sys.modules[k], MagicMock)
     }
-    if not saved_mocks:
-        return saved_mocks  # GUI modules not mocked; nothing to do
-
-    # Temporarily remove mocks so importlib loads real modules.
-    for k in saved_mocks:
+    for k in mocks:
         del sys.modules[k]
 
-    # Re-import so Python loads from the real .py files.
     importlib.import_module("seedsigner.gui.renderer")
     importlib.import_module("seedsigner.gui.components")
     importlib.import_module("seedsigner.gui.keyboard")
     importlib.import_module("seedsigner.gui.screens.screen")
 
-    return saved_mocks
 
+def _get_real_refs():
+    """Return live references to real Renderer and GUIConstants classes."""
+    mod_renderer = sys.modules["seedsigner.gui.renderer"]
+    mod_components = sys.modules["seedsigner.gui.components"]
+    return mod_renderer.Renderer, mod_components.GUIConstants
 
-_saved_gui_mocks = _ensure_real_gui_modules()
-
-# Grab references to the *real* classes.
-from seedsigner.gui.renderer import Renderer  # noqa: E402
-from seedsigner.gui.components import GUIConstants  # noqa: E402
-from seedsigner.models.settings import Settings  # noqa: E402
-from seedsigner.models.settings_definition import SettingsConstants  # noqa: E402
-
-# Capture the real module entries AFTER the imports above so the snapshot
-# includes everything that was loaded (even when no mocks were present at
-# collection time).  This dict is used by the _swap_real_gui_modules fixture
-# to reinstate real modules before each test.
-_real_gui_modules = {
-    k: sys.modules[k] for k in list(sys.modules)
-    if k.startswith("seedsigner.gui") and not isinstance(sys.modules[k], MagicMock)
-}
-
-# Immediately restore mock entries so other test files whose
-# Controller.configure_instance() uses a local import continue to get the
-# harmless MagicMock instead of the real Renderer.
-if _saved_gui_mocks:
-    for _k, _v in _saved_gui_mocks.items():
-        sys.modules[_k] = _v
-    del _k, _v
-
+# ── Module-level references (populated by _isolate_gui_modules fixture) ──
+Renderer = None
+GUIConstants = None
 
 # ── Original (240×240) GUIConstants values for reset ───────────────────
 _ORIG = dict(
@@ -134,40 +113,46 @@ def _reset_gui_constants():
         setattr(GUIConstants, attr, val.copy())
 
 
-class _TestRenderer(Renderer):
-    """A minimal renderer that paints to an in-memory PIL Image."""
+def _make_test_renderer_class(real_renderer_cls):
+    """Build a _TestRenderer subclass of the real Renderer at runtime."""
 
-    @classmethod
-    def configure_instance(cls, width=240, height=240):
-        renderer = cls.__new__(cls)
-        cls._instance = renderer
-        renderer.canvas_width = width
-        renderer.canvas_height = height
-        renderer.canvas = Image.new("RGB", (width, height))
-        renderer.draw = ImageDraw.Draw(renderer.canvas)
-        renderer.lock = Lock()
-        renderer.disp = None
-        renderer.buttons = None
-        renderer._needs_resize = False
-        renderer._display_size = (width, height)
-        return renderer
+    class _TestRenderer(real_renderer_cls):
+        """A minimal renderer that paints to an in-memory PIL Image."""
 
-    # Override to just store/paste like ScreenshotRenderer
-    def show_image(self, image=None, alpha_overlay=None, show_direct=False):
-        if alpha_overlay:
-            if image is None:
-                image = self.canvas
-            image = Image.alpha_composite(image, alpha_overlay)
-        if image:
-            self.canvas.paste(image)
+        @classmethod
+        def configure_instance(cls, width=240, height=240):
+            renderer = cls.__new__(cls)
+            cls._instance = renderer
+            renderer.canvas_width = width
+            renderer.canvas_height = height
+            renderer.canvas = Image.new("RGB", (width, height))
+            renderer.draw = ImageDraw.Draw(renderer.canvas)
+            renderer.lock = Lock()
+            renderer.disp = None
+            renderer.buttons = None
+            renderer._needs_resize = False
+            renderer._display_size = (width, height)
+            return renderer
+
+        def show_image(self, image=None, alpha_overlay=None, show_direct=False):
+            if alpha_overlay:
+                if image is None:
+                    image = self.canvas
+                image = Image.alpha_composite(image, alpha_overlay)
+            if image:
+                self.canvas.paste(image)
+
+    return _TestRenderer
+
+
+_TestRendererClass = None  # Set by _isolate_gui_modules fixture
 
 
 def _setup_renderer(size: int):
     """Create a _TestRenderer at *size*×*size* and apply GUI scaling."""
     _reset_gui_constants()
-    renderer = _TestRenderer.configure_instance(width=size, height=size)
+    renderer = _TestRendererClass.configure_instance(width=size, height=size)
     GUIConstants.apply_display_scale(size)
-    # Also make sure the Renderer singleton returns our instance
     Renderer._instance = renderer
     return renderer
 
@@ -205,47 +190,69 @@ def _save(img: Image.Image, name: str):
 # ── Fixtures ───────────────────────────────────────────────────────────
 
 @pytest.fixture(autouse=True)
-def _swap_real_gui_modules():
-    """Ensure real GUI modules are in sys.modules for the duration of this test.
+def _isolate_gui_modules():
+    """Snapshot sys.modules, load real GUI modules, then fully restore afterward.
 
-    base.py's mocks may be installed at any point during test collection.
-    This fixture dynamically saves whatever mock entries exist at test start,
-    installs the real modules for the test, then restores the mocks so other
-    test files' ``Controller.configure_instance()`` (which uses a local
-    import) continues to pick up the harmless MagicMock.
+    This is the ONLY fixture needed for module isolation.  It takes a complete
+    snapshot of every ``seedsigner.*`` entry in ``sys.modules`` before the test,
+    loads real GUI modules, and then restores the snapshot exactly — including
+    removing any entries that were added as side effects.  This prevents real
+    module objects (and their class-level references) from leaking into other
+    test files that rely on ``base.py``'s MagicMock stubs.
     """
-    if not _real_gui_modules:
-        yield
-        return
+    global Renderer, GUIConstants, _TestRendererClass
 
-    # Save whatever mock entries are currently in sys.modules.
-    current_mocks = {
+    # ── snapshot ──
+    snapshot = {
         k: sys.modules[k] for k in list(sys.modules)
-        if k.startswith("seedsigner.gui") and isinstance(sys.modules[k], MagicMock)
+        if k.startswith("seedsigner.")
     }
-    # Install real modules for this test.
-    sys.modules.update(_real_gui_modules)
-    yield
-    # Restore mock entries so other tests are isolated.
-    for k, v in current_mocks.items():
-        sys.modules[k] = v
 
+    # ── install real modules ──
+    _load_real_gui_modules()
+    real_renderer, real_gui_constants = _get_real_refs()
 
-@pytest.fixture(autouse=True)
-def _ensure_settings():
-    """Ensure Settings singleton exists (needed by GUIConstants font helpers)."""
+    # Populate module-level names so helpers / tests can use them.
+    Renderer = real_renderer
+    GUIConstants = real_gui_constants
+    _TestRendererClass = _make_test_renderer_class(real_renderer)
+
+    # Ensure Settings singleton exists (needed by GUIConstants font helpers).
     Settings._instance = None
     Settings.get_instance()
+
     yield
+
+    # ── teardown: reset GUI state ──
+    _reset_gui_constants()
+    real_renderer._instance = None
     Settings._instance = None
 
+    # Clear module-level refs so they can't be used outside a fixture context.
+    Renderer = None
+    GUIConstants = None
+    _TestRendererClass = None
 
-@pytest.fixture(autouse=True)
-def _cleanup_gui():
-    """Reset GUIConstants after every test."""
-    yield
-    _reset_gui_constants()
-    Renderer._instance = None
+    # ── restore sys.modules exactly ──
+    # 1. Remove any seedsigner.* entries that were added during the test.
+    for k in list(sys.modules):
+        if k.startswith("seedsigner.") and k not in snapshot:
+            del sys.modules[k]
+    # 2. Restore original entries (including mocks).
+    sys.modules.update(snapshot)
+    # 3. Fix parent package attributes that Python's import system may have
+    #    mutated.  When a real submodule is loaded, Python sets an attribute
+    #    on the parent package (e.g. ``seedsigner.gui.renderer`` on the
+    #    ``seedsigner.gui`` module).  Restoring ``sys.modules`` entries
+    #    doesn't undo those attribute mutations.  If the parent package
+    #    existed in the snapshot, explicitly reset the ``renderer`` attribute
+    #    so ``from seedsigner.gui import Renderer`` won't pick up the real
+    #    class via the stale attribute.
+    gui_pkg = snapshot.get("seedsigner.gui")
+    if gui_pkg is not None and hasattr(gui_pkg, "renderer"):
+        renderer_entry = snapshot.get("seedsigner.gui.renderer")
+        if renderer_entry is not None:
+            gui_pkg.renderer = renderer_entry
 
 
 # ── Helpers to build screens ───────────────────────────────────────────
@@ -324,7 +331,71 @@ def _render_warning_screen(size: int):
     return renderer.canvas.copy()
 
 
-# ── Test cases ─────────────────────────────────────────────────────────
+def _render_keyboard_screen(size: int, title="Enter PIN", charset=None, rows=4, cols=9,
+                            show_save_button=False):
+    """Render a KeyboardScreen at the given canvas size and return its canvas."""
+    if charset is None:
+        charset = "abcdefghijklmnopqrstuvwxyz"
+    renderer = _setup_renderer(size)
+
+    with patch("seedsigner.hardware.buttons.HardwareButtons.get_instance", return_value=_mock_hw_buttons()):
+        from seedsigner.gui.screens.screen import KeyboardScreen
+        screen = KeyboardScreen(
+            title=title,
+            rows=rows,
+            cols=cols,
+            keys_charset=charset,
+            show_save_button=show_save_button,
+        )
+        screen._render()
+    return renderer.canvas.copy()
+
+
+def _render_loading_screen_frame(size: int, text="Loading..."):
+    """Render one frame of the loading screen at the given canvas size.
+
+    LoadingScreenThread normally runs as a background animation.  Here we
+    replicate its first-frame drawing logic so we can capture a static image
+    for screenshot comparison.
+    """
+    renderer = _setup_renderer(size)
+    from seedsigner.gui.components import load_image, TextArea
+
+    center_image = load_image("btc_logo_60x60.png")
+    orbit_gap = 2 * GUIConstants.COMPONENT_PADDING
+    cx = renderer.canvas_width // 2
+    cy = renderer.canvas_height // 2
+    bounding_box = (
+        cx - center_image.width // 2 - orbit_gap,
+        cy - center_image.height // 2 - orbit_gap,
+        cx + center_image.width // 2 + orbit_gap,
+        cy + center_image.height // 2 + orbit_gap,
+    )
+
+    # Static background: clear + paste logo
+    renderer.draw.rectangle(
+        (0, 0, renderer.canvas_width, renderer.canvas_height),
+        fill="#000000",
+    )
+    renderer.canvas.paste(
+        center_image,
+        (bounding_box[0] + orbit_gap, bounding_box[1] + orbit_gap),
+    )
+
+    # Optional text below the logo
+    if text:
+        TextArea(
+            text=text,
+            font_size=GUIConstants.get_top_nav_title_font_size(),
+            screen_y=int((renderer.canvas_height - bounding_box[3]) / 2),
+        ).render()
+
+    # Draw one animation frame (leading arc at position 0)
+    arc_sweep = 45
+    renderer.draw.arc(bounding_box, start=0, end=arc_sweep,
+                      fill="#ff9416", width=GUIConstants.COMPONENT_PADDING)
+
+    return renderer.canvas.copy()
 
 class TestScreenshotComparison:
     """Render screens at both 240×240 and 128×128, compare proportions."""
@@ -433,6 +504,8 @@ class TestScreenshotComparison:
             (lambda sz: _render_button_list_screen(sz), "button_list_fit"),
             (lambda sz: _render_large_icon_status_screen(sz), "icon_status_fit"),
             (lambda sz: _render_large_button_screen(sz), "large_button_fit"),
+            (lambda sz: _render_keyboard_screen(sz), "keyboard_fit"),
+            (lambda sz: _render_loading_screen_frame(sz), "loading_fit"),
         ]:
             img = render_fn(128)
             assert img.size == (128, 128), f"{name}: unexpected image size {img.size}"
@@ -544,4 +617,52 @@ class TestScreenshotComparison:
             expected = max(1, round(26 * 128 / 240))
             assert screen_128.title_font_size == expected, (
                 f"MainMenuScreen title_font_size at 128 should be {expected}, got {screen_128.title_font_size}"
+            )
+
+    # ── Keyboard screen tests ──
+
+    def test_keyboard_screen(self):
+        """KeyboardScreen (alpha keyboard) should match at both sizes."""
+        img_240 = _render_keyboard_screen(240)
+        img_128 = _render_keyboard_screen(128)
+        rms = self._compare_renders(img_240, img_128, "keyboard")
+        self._assert_top_nav_proportion(img_240, img_128, "keyboard")
+        print(f"KeyboardScreen RMS diff: {rms:.1f}")
+
+    def test_keyboard_screen_with_save_button(self):
+        """KeyboardScreen with save button panel should match at both sizes."""
+        img_240 = _render_keyboard_screen(240, title="Card PIN", show_save_button=True)
+        img_128 = _render_keyboard_screen(128, title="Card PIN", show_save_button=True)
+        rms = self._compare_renders(img_240, img_128, "keyboard_save")
+        print(f"KeyboardScreen (save button) RMS diff: {rms:.1f}")
+
+    def test_keyboard_content_fits_within_canvas(self):
+        """Keyboard content at 128×128 must not overflow the canvas."""
+        img = _render_keyboard_screen(128)
+        assert img.size == (128, 128)
+        bbox = _non_black_bbox(img)
+        if bbox:
+            x0, y0, x1, y1 = bbox
+            assert x1 <= 128 and y1 <= 128, (
+                f"keyboard@128: content overflows canvas: bbox={bbox}"
+            )
+
+    # ── Loading screen tests ──
+
+    def test_loading_screen(self):
+        """Loading screen frame should match at both sizes."""
+        img_240 = _render_loading_screen_frame(240)
+        img_128 = _render_loading_screen_frame(128)
+        rms = self._compare_renders(img_240, img_128, "loading")
+        print(f"LoadingScreen RMS diff: {rms:.1f}")
+
+    def test_loading_screen_content_fits_within_canvas(self):
+        """Loading screen at 128×128 must not overflow the canvas."""
+        img = _render_loading_screen_frame(128)
+        assert img.size == (128, 128)
+        bbox = _non_black_bbox(img)
+        if bbox:
+            x0, y0, x1, y1 = bbox
+            assert x1 <= 128 and y1 <= 128, (
+                f"loading@128: content overflows canvas: bbox={bbox}"
             )
