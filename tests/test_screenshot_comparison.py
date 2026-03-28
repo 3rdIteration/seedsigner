@@ -28,30 +28,60 @@ from PIL import Image, ImageDraw, ImageStat
 
 
 def _ensure_real_gui_modules():
-    """If base.py's mocks replaced the GUI modules, restore the real ones."""
-    _mock_keys = [
-        k for k in list(sys.modules)
-        if k.startswith("seedsigner.gui") and isinstance(sys.modules[k], MagicMock)
-    ]
-    if not _mock_keys:
-        return  # GUI modules not mocked; nothing to restore
+    """Load real GUI modules for this test file.
 
-    for k in _mock_keys:
+    If ``base.py``'s mocks replaced the GUI modules in ``sys.modules``, we
+    temporarily remove them so ``importlib`` can load the real ``.py`` files.
+    The mock entries are saved and returned so they can be restored between
+    tests to avoid polluting other test files.
+
+    Returns a dict of ``{module_key: MagicMock}`` that were removed, or an
+    empty dict if no mocks were present.
+    """
+    saved_mocks = {
+        k: sys.modules[k] for k in list(sys.modules)
+        if k.startswith("seedsigner.gui") and isinstance(sys.modules[k], MagicMock)
+    }
+    if not saved_mocks:
+        return saved_mocks  # GUI modules not mocked; nothing to do
+
+    # Temporarily remove mocks so importlib loads real modules.
+    for k in saved_mocks:
         del sys.modules[k]
 
-    # Re-import so Python loads from the real .py files
+    # Re-import so Python loads from the real .py files.
     importlib.import_module("seedsigner.gui.renderer")
     importlib.import_module("seedsigner.gui.components")
     importlib.import_module("seedsigner.gui.keyboard")
     importlib.import_module("seedsigner.gui.screens.screen")
 
+    return saved_mocks
 
-_ensure_real_gui_modules()
 
-from seedsigner.gui.renderer import Renderer
-from seedsigner.gui.components import GUIConstants
-from seedsigner.models.settings import Settings
-from seedsigner.models.settings_definition import SettingsConstants
+_saved_gui_mocks = _ensure_real_gui_modules()
+
+# Grab references to the *real* classes.
+from seedsigner.gui.renderer import Renderer  # noqa: E402
+from seedsigner.gui.components import GUIConstants  # noqa: E402
+from seedsigner.models.settings import Settings  # noqa: E402
+from seedsigner.models.settings_definition import SettingsConstants  # noqa: E402
+
+# Capture the real module entries AFTER the imports above so the snapshot
+# includes everything that was loaded (even when no mocks were present at
+# collection time).  This dict is used by the _swap_real_gui_modules fixture
+# to reinstate real modules before each test.
+_real_gui_modules = {
+    k: sys.modules[k] for k in list(sys.modules)
+    if k.startswith("seedsigner.gui") and not isinstance(sys.modules[k], MagicMock)
+}
+
+# Immediately restore mock entries so other test files whose
+# Controller.configure_instance() uses a local import continue to get the
+# harmless MagicMock instead of the real Renderer.
+if _saved_gui_mocks:
+    for _k, _v in _saved_gui_mocks.items():
+        sys.modules[_k] = _v
+    del _k, _v
 
 
 # ── Original (240×240) GUIConstants values for reset ───────────────────
@@ -173,6 +203,33 @@ def _save(img: Image.Image, name: str):
 
 
 # ── Fixtures ───────────────────────────────────────────────────────────
+
+@pytest.fixture(autouse=True)
+def _swap_real_gui_modules():
+    """Ensure real GUI modules are in sys.modules for the duration of this test.
+
+    base.py's mocks may be installed at any point during test collection.
+    This fixture dynamically saves whatever mock entries exist at test start,
+    installs the real modules for the test, then restores the mocks so other
+    test files' ``Controller.configure_instance()`` (which uses a local
+    import) continues to pick up the harmless MagicMock.
+    """
+    if not _real_gui_modules:
+        yield
+        return
+
+    # Save whatever mock entries are currently in sys.modules.
+    current_mocks = {
+        k: sys.modules[k] for k in list(sys.modules)
+        if k.startswith("seedsigner.gui") and isinstance(sys.modules[k], MagicMock)
+    }
+    # Install real modules for this test.
+    sys.modules.update(_real_gui_modules)
+    yield
+    # Restore mock entries so other tests are isolated.
+    for k, v in current_mocks.items():
+        sys.modules[k] = v
+
 
 @pytest.fixture(autouse=True)
 def _ensure_settings():
