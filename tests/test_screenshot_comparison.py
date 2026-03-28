@@ -362,6 +362,12 @@ def _render_loading_screen_frame(size: int, text="Loading..."):
     from seedsigner.gui.components import load_image, TextArea
 
     center_image = load_image("btc_logo_60x60.png")
+    # Scale the logo proportionally (mirrors LoadingScreenThread.run())
+    logo_size = GUIConstants._scale(center_image.width)
+    if logo_size != center_image.width:
+        center_image = center_image.resize(
+            (logo_size, logo_size), Image.LANCZOS
+        )
     orbit_gap = 2 * GUIConstants.COMPONENT_PADDING
     cx = renderer.canvas_width // 2
     cy = renderer.canvas_height // 2

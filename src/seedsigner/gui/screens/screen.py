@@ -147,6 +147,12 @@ class LoadingScreenThread(BaseThread):
         renderer: Renderer = Renderer.get_instance()
 
         center_image = load_image("btc_logo_60x60.png")
+        # Scale the logo proportionally for smaller displays
+        logo_size = GUIConstants._scale(center_image.width)
+        if logo_size != center_image.width:
+            center_image = center_image.resize(
+                (logo_size, logo_size), Image.LANCZOS
+            )
         orbit_gap = 2*GUIConstants.COMPONENT_PADDING
         bounding_box = (
             int((renderer.canvas_width - center_image.width)/2 - orbit_gap),
@@ -1194,9 +1200,9 @@ class KeyboardScreen(BaseTopNavScreen):
 
         # Set up the keyboard params        
         if self.show_save_button:
-            right_panel_buttons_width = 60
+            right_panel_buttons_width = GUIConstants._scale(60)
             hw_button_x = self.canvas_width - right_panel_buttons_width + GUIConstants.COMPONENT_PADDING
-            hw_button_y = int(self.canvas_height - GUIConstants.BUTTON_HEIGHT) / 2 + 60
+            hw_button_y = int(self.canvas_height - GUIConstants.BUTTON_HEIGHT) / 2 + GUIConstants._scale(60)
             
             self.keyboard_width = self.canvas_width - (GUIConstants.EDGE_PADDING + GUIConstants.COMPONENT_PADDING + right_panel_buttons_width - GUIConstants.COMPONENT_PADDING)
 
@@ -1213,11 +1219,12 @@ class KeyboardScreen(BaseTopNavScreen):
             self.keyboard_width = self.canvas_width - 2*GUIConstants.EDGE_PADDING
 
         text_entry_display_y = self.top_nav.height
-        text_entry_display_height = 30
+        text_entry_display_height = GUIConstants._scale(30)
 
         keyboard_start_y = text_entry_display_y + text_entry_display_height + GUIConstants.COMPONENT_PADDING
+        key_gap = max(1, GUIConstants._scale(2))
         if self.key_height is None:
-            self.key_height = int((self.canvas_height - GUIConstants.EDGE_PADDING - text_entry_display_y - text_entry_display_height - GUIConstants.COMPONENT_PADDING - (self.rows - 1) * 2) / self.rows)
+            self.key_height = int((self.canvas_height - GUIConstants.EDGE_PADDING - text_entry_display_y - text_entry_display_height - GUIConstants.COMPONENT_PADDING - (self.rows - 1) * key_gap) / self.rows)
 
         if self.keyboard_font_size:
             font_size = self.keyboard_font_size
@@ -1236,7 +1243,7 @@ class KeyboardScreen(BaseTopNavScreen):
                 GUIConstants.EDGE_PADDING,
                 keyboard_start_y,
                 GUIConstants.EDGE_PADDING + self.keyboard_width,
-                keyboard_start_y + self.rows * self.key_height + (self.rows - 1) * 2
+                keyboard_start_y + self.rows * self.key_height + (self.rows - 1) * key_gap
             ),
             auto_wrap=[Keyboard.WRAP_LEFT, Keyboard.WRAP_RIGHT],
             render_now=False

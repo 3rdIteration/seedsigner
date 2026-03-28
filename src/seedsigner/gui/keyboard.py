@@ -217,7 +217,7 @@ class Keyboard:
 
         # Set up the rendering and state params
         self.active_keys = list(self.charset)
-        self.icon_key_font = Fonts.get_font(GUIConstants.ICON_FONT_NAME__SEEDSIGNER, 26)
+        self.icon_key_font = Fonts.get_font(GUIConstants.ICON_FONT_NAME__SEEDSIGNER, GUIConstants._scale(26))
 
         # Fixed-width fonts will all have same height, ignoring below baseline (e.g. "Q" or "q")
         (left, top, right, bottom) = self.font.getbbox("X", anchor="ls")
@@ -228,10 +228,10 @@ class Keyboard:
 
         self.x_start = rect[0]
         self.y_start = rect[1]
-        self.x_gap = 2
+        self.x_gap = max(1, GUIConstants._scale(2))
         self.key_width = int((rect[2] - rect[0]) / cols) - self.x_gap
         self.width = cols * (self.key_width) + (cols - 1) * self.x_gap
-        self.y_gap = 2
+        self.y_gap = max(1, GUIConstants._scale(2))
         self.key_height = int((rect[3] - rect[1]) / rows) - self.y_gap
         self.height = rows * (self.key_height) + (rows - 1) * self.y_gap
         self.additional_key_entered_from_x = None
@@ -562,7 +562,7 @@ class TextEntryDisplay(TextEntryDisplayConstants):
         image = Image.new("RGB", (self.width + 1, self.height + 1), "black")
         draw = ImageDraw.Draw(image)
 
-        draw.rounded_rectangle((0, 0, self.width, self.height), fill=self.background_color, radius=4)
+        draw.rounded_rectangle((0, 0, self.width, self.height), fill=self.background_color, radius=GUIConstants._scale(4))
 
         (left, top, right, bottom) = self.font.getbbox("X", anchor="ls")  # measure from baseline
         text_height = -1 * top  # "top" is negative when measuring from baseline; ignoring below baseline
@@ -596,7 +596,8 @@ class TextEntryDisplay(TextEntryDisplayConstants):
             draw.text((cursor_block_offset + 1, self.height - int(text_height/2)), self.cur_text[-1], fill=GUIConstants.ACCENT_COLOR, font=self.font, anchor="ls")
 
         else:
-            cursor_bar_serif_half_width = 4
+            cursor_bar_serif_half_width = GUIConstants._scale(4)
+            bar_pad = GUIConstants._scale(3)
             if self.is_centered:
                 # self.text_offset = int(self.width - tw)/2
                 raise Exception("Centered cursor bars not fully implemented")
@@ -604,10 +605,10 @@ class TextEntryDisplay(TextEntryDisplayConstants):
             (left, top, right, bottom) = self.font.getbbox(cur_text if cur_text else "", anchor="ls")  # measure from baseline
             text_width = right
 
-            end_pos_x = 3 + text_width + cursor_bar_serif_half_width + 3
+            end_pos_x = bar_pad + text_width + cursor_bar_serif_half_width + bar_pad
             if end_pos_x < self.width:
                 # The entire cur_text plus the cursor bar fits
-                self.text_offset = 3 + cursor_bar_serif_half_width
+                self.text_offset = bar_pad + cursor_bar_serif_half_width
                 left, top, right, bottom  = self.font.getbbox(self.cur_text[:cursor_position])
                 tw_left, th = right - left, bottom - top
                 cursor_bar_x = self.text_offset + tw_left
@@ -620,14 +621,14 @@ class TextEntryDisplay(TextEntryDisplayConstants):
                 left, top, right, bottom  = self.font.getbbox(self.cur_text[:cursor_position])
                 tw_left, th = right - left, bottom - top
 
-                if self.text_offset + tw_left + cursor_bar_serif_half_width + 3 >= self.width:
+                if self.text_offset + tw_left + cursor_bar_serif_half_width + bar_pad >= self.width:
                     # Cursor is at the extreme right; have to push the full tw_right off
                     #   the right edge of the display.
-                    self.text_offset = self.width - (tw_left + cursor_bar_serif_half_width + 3)
-                elif self.text_offset + tw_left < 3 + cursor_bar_serif_half_width:
+                    self.text_offset = self.width - (tw_left + cursor_bar_serif_half_width + bar_pad)
+                elif self.text_offset + tw_left < bar_pad + cursor_bar_serif_half_width:
                     # Cursor is at the extreme left; have to push the full tw_left off 
                     #   left edge of the display.
-                    self.text_offset = 3 + cursor_bar_serif_half_width - tw_left
+                    self.text_offset = bar_pad + cursor_bar_serif_half_width - tw_left
 
                 cursor_bar_x = self.text_offset + tw_left
 
@@ -644,9 +645,9 @@ class TextEntryDisplay(TextEntryDisplayConstants):
 
             # Render as an "I" bar
             cursor_bar_color = "#ccc"
-            draw.line((cursor_bar_x, 3, cursor_bar_x, self.height - 3), fill=cursor_bar_color)
-            draw.line((cursor_bar_x - cursor_bar_serif_half_width, 3, cursor_bar_x + cursor_bar_serif_half_width, 3), fill=cursor_bar_color)
-            draw.line((cursor_bar_x - cursor_bar_serif_half_width, self.height - 3, cursor_bar_x + cursor_bar_serif_half_width, self.height - 3), fill=cursor_bar_color)
+            draw.line((cursor_bar_x, bar_pad, cursor_bar_x, self.height - bar_pad), fill=cursor_bar_color)
+            draw.line((cursor_bar_x - cursor_bar_serif_half_width, bar_pad, cursor_bar_x + cursor_bar_serif_half_width, bar_pad), fill=cursor_bar_color)
+            draw.line((cursor_bar_x - cursor_bar_serif_half_width, self.height - bar_pad, cursor_bar_x + cursor_bar_serif_half_width, self.height - bar_pad), fill=cursor_bar_color)
 
         # Paste the display onto the main canvas
         self.canvas.paste(image, (self.rect[0], self.rect[1]))
