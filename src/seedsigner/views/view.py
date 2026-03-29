@@ -4,7 +4,7 @@ from typing import Type
 
 from seedsigner.helpers.l10n import mark_for_translation as _mft
 from seedsigner.gui.components import SeedSignerIconConstants
-from seedsigner.gui.screens import RET_CODE__POWER_BUTTON, RET_CODE__BACK_BUTTON
+from seedsigner.gui.screens import RET_CODE__POWER_BUTTON, RET_CODE__BACK_BUTTON, RET_CODE__DISPLAY_TOGGLE
 from seedsigner.gui.screens.screen import BaseScreen, ButtonOption, LargeButtonScreen, WarningScreen, ErrorScreen
 from seedsigner.models.settings import Settings, SettingsConstants
 from seedsigner.models.settings_definition import SettingsDefinition
@@ -245,6 +245,11 @@ class MainMenuView(View):
 
         if selected_menu_num == RET_CODE__POWER_BUTTON:
             return Destination(PowerOptionsView)
+
+        if selected_menu_num == RET_CODE__DISPLAY_TOGGLE:
+            # Display driver was switched via very-long-press; re-render the
+            # home screen with the new display dimensions.
+            return Destination(MainMenuView)
 
         if button_data[selected_menu_num] == self.SCAN:
             from seedsigner.views.scan_views import ScanView
