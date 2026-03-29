@@ -13,3 +13,4 @@ jcardsim.jar
 settings.json
 /microsd
 build/
+*.FCBak
