@@ -360,11 +360,11 @@ class ScanTypeEncryptionKeyScreen(BaseTopNavScreen):
 
 
         # Set up the keyboard params
-        self.right_panel_buttons_width = 56
+        self.right_panel_buttons_width = GUIConstants._scale(56)
 
         max_cols = 9
         text_entry_display_y = self.top_nav.height
-        text_entry_display_height = 30
+        text_entry_display_height = GUIConstants._scale(30)
 
         keyboard_start_y = text_entry_display_y + text_entry_display_height + GUIConstants.COMPONENT_PADDING
         self.keyboard_abc = Keyboard(
@@ -494,7 +494,7 @@ class ScanTypeEncryptionKeyScreen(BaseTopNavScreen):
             text=self.KEYBOARD__UPPERCASE_BUTTON_TEXT,
             is_text_centered=False,
             font_name=GUIConstants.FIXED_WIDTH_EMPHASIS_FONT_NAME,
-            font_size=GUIConstants.get_button_font_size() + 4,
+            font_size=GUIConstants.get_button_font_size() + GUIConstants._scale(4),
             width=self.right_panel_buttons_width,
             screen_x=hw_button_x,
             screen_y=hw_button_y - 3*GUIConstants.COMPONENT_PADDING - GUIConstants.BUTTON_HEIGHT,
@@ -505,7 +505,7 @@ class ScanTypeEncryptionKeyScreen(BaseTopNavScreen):
             text=self.KEYBOARD__DIGITS_BUTTON_TEXT,
             is_text_centered=False,
             font_name=GUIConstants.FIXED_WIDTH_EMPHASIS_FONT_NAME,
-            font_size=GUIConstants.get_button_font_size() + 4,
+            font_size=GUIConstants.get_button_font_size() + GUIConstants._scale(4),
             width=self.right_panel_buttons_width,
             screen_x=hw_button_x,
             screen_y=hw_button_y,
