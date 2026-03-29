@@ -1369,7 +1369,7 @@ class MainMenuScreen(LargeButtonScreen):
     show_back_button: bool = False
     show_power_button: bool = True
 
-    # Very-long-press (5 s) on a joystick direction switches the display driver.
+    # Very-long-press (5 seconds) on a joystick direction switches the display driver.
     VERY_LONG_PRESS_MS = 5000
     _DIRECTION_TO_DISPLAY = None  # built lazily in _run_callback
 
