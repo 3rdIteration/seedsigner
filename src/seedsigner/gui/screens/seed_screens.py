@@ -35,7 +35,7 @@ class SeedMnemonicEntryScreen(BaseTopNavScreen):
         # wordlist.
         # TODO: If we ever support other wordlist languages, adjust accordingly.
         matches_list_highlight_font_name = GUIConstants.FIXED_WIDTH_EMPHASIS_FONT_NAME
-        matches_list_highlight_font_size = GUIConstants.get_button_font_size() + 4
+        matches_list_highlight_font_size = GUIConstants.get_button_font_size() + GUIConstants._scale(4)
         (left, top, right, bottom) = Fonts.get_font(matches_list_highlight_font_name, matches_list_highlight_font_size).getbbox("mushroom", anchor="ls")
         matches_list_max_text_width = right - left
         matches_list_button_width = matches_list_max_text_width + 2*GUIConstants.COMPONENT_PADDING
@@ -43,7 +43,7 @@ class SeedMnemonicEntryScreen(BaseTopNavScreen):
         # Set up the keyboard params
         self.keyboard_width = self.canvas_width - GUIConstants.EDGE_PADDING - matches_list_button_width
         text_entry_display_y = self.top_nav.height
-        text_entry_display_height = 30
+        text_entry_display_height = GUIConstants._scale(30)
 
         self.arrow_up_is_active = False
         self.arrow_down_is_active = False
@@ -56,7 +56,7 @@ class SeedMnemonicEntryScreen(BaseTopNavScreen):
             cols=6,
             rect=(
                 GUIConstants.EDGE_PADDING,
-                text_entry_display_y + text_entry_display_height + 6,
+                text_entry_display_y + text_entry_display_height + GUIConstants._scale(6),
                 GUIConstants.EDGE_PADDING + self.keyboard_width,
                 self.canvas_height
             ),
@@ -95,7 +95,7 @@ class SeedMnemonicEntryScreen(BaseTopNavScreen):
             text="abcdefghijklmnopqrstuvwxyz",
             is_text_centered=False,
             font_name=GUIConstants.FIXED_WIDTH_EMPHASIS_FONT_NAME,
-            font_size=GUIConstants.get_button_font_size() + 4,
+            font_size=GUIConstants.get_button_font_size() + GUIConstants._scale(4),
             screen_x=self.matches_list_x,
             screen_y=self.highlighted_row_y,
             width=self.canvas_width - self.matches_list_x + GUIConstants.COMPONENT_PADDING,
@@ -107,7 +107,7 @@ class SeedMnemonicEntryScreen(BaseTopNavScreen):
         arrow_button_height = int(0.75*GUIConstants.BUTTON_HEIGHT)
         self.matches_list_up_button = IconButton(
             icon_name=FontAwesomeIconConstants.ANGLE_UP,
-            icon_size=GUIConstants.ICON_INLINE_FONT_SIZE + 2,
+            icon_size=GUIConstants.ICON_INLINE_FONT_SIZE + GUIConstants._scale(2),
             is_text_centered=False,
             screen_x=self.canvas_width - arrow_button_width + GUIConstants.COMPONENT_PADDING,
             screen_y=self.highlighted_row_y - 3*GUIConstants.COMPONENT_PADDING - GUIConstants.BUTTON_HEIGHT,
@@ -117,7 +117,7 @@ class SeedMnemonicEntryScreen(BaseTopNavScreen):
 
         self.matches_list_down_button = IconButton(
             icon_name=FontAwesomeIconConstants.ANGLE_DOWN,
-            icon_size=GUIConstants.ICON_INLINE_FONT_SIZE + 2,
+            icon_size=GUIConstants.ICON_INLINE_FONT_SIZE + GUIConstants._scale(2),
             is_text_centered=False,
             screen_x=self.canvas_width - arrow_button_width + GUIConstants.COMPONENT_PADDING,
             screen_y=self.highlighted_row_y + GUIConstants.BUTTON_HEIGHT + 3*GUIConstants.COMPONENT_PADDING,
@@ -125,7 +125,7 @@ class SeedMnemonicEntryScreen(BaseTopNavScreen):
             height=arrow_button_height,
         )
 
-        self.word_font = Fonts.get_font(GUIConstants.FIXED_WIDTH_EMPHASIS_FONT_NAME, GUIConstants.get_button_font_size() + 4)
+        self.word_font = Fonts.get_font(GUIConstants.FIXED_WIDTH_EMPHASIS_FONT_NAME, GUIConstants.get_button_font_size() + GUIConstants._scale(4))
         (left, top, right, bottom) = self.word_font.getbbox("abcdefghijklmnopqrstuvwxyz", anchor="ls")
         self.word_font_height = -1 * top
         self.matches_list_row_height = self.word_font_height + GUIConstants.COMPONENT_PADDING
@@ -714,11 +714,11 @@ class SeedAddPassphraseScreen(BaseTopNavScreen):
 
 
         # Set up the keyboard params
-        self.right_panel_buttons_width = 56
+        self.right_panel_buttons_width = GUIConstants._scale(56)
 
         max_cols = 9
         text_entry_display_y = self.top_nav.height
-        text_entry_display_height = 30
+        text_entry_display_height = GUIConstants._scale(30)
 
         keyboard_start_y = text_entry_display_y + text_entry_display_height + GUIConstants.COMPONENT_PADDING
         self.keyboard_abc = Keyboard(
@@ -848,7 +848,7 @@ class SeedAddPassphraseScreen(BaseTopNavScreen):
             text=self.KEYBOARD__UPPERCASE_BUTTON_TEXT,
             is_text_centered=False,
             font_name=GUIConstants.FIXED_WIDTH_EMPHASIS_FONT_NAME,
-            font_size=GUIConstants.get_button_font_size() + 4,
+            font_size=GUIConstants.get_button_font_size() + GUIConstants._scale(4),
             width=self.right_panel_buttons_width,
             screen_x=hw_button_x,
             screen_y=hw_button_y - 3*GUIConstants.COMPONENT_PADDING - GUIConstants.BUTTON_HEIGHT,
@@ -859,7 +859,7 @@ class SeedAddPassphraseScreen(BaseTopNavScreen):
             text=self.KEYBOARD__DIGITS_BUTTON_TEXT,
             is_text_centered=False,
             font_name=GUIConstants.FIXED_WIDTH_EMPHASIS_FONT_NAME,
-            font_size=GUIConstants.get_button_font_size() + 4,
+            font_size=GUIConstants.get_button_font_size() + GUIConstants._scale(4),
             width=self.right_panel_buttons_width,
             screen_x=hw_button_x,
             screen_y=hw_button_y,
@@ -1858,11 +1858,11 @@ class SeedEncryptedQRMnemonicIDScreen(BaseTopNavScreen):
 
 
         # Set up the keyboard params
-        self.right_panel_buttons_width = 56
+        self.right_panel_buttons_width = GUIConstants._scale(56)
 
         max_cols = 9
         text_entry_display_y = self.top_nav.height
-        text_entry_display_height = 30
+        text_entry_display_height = GUIConstants._scale(30)
 
         keyboard_start_y = text_entry_display_y + text_entry_display_height + GUIConstants.COMPONENT_PADDING
         self.keyboard_abc = Keyboard(
@@ -1992,7 +1992,7 @@ class SeedEncryptedQRMnemonicIDScreen(BaseTopNavScreen):
             text=self.KEYBOARD__UPPERCASE_BUTTON_TEXT,
             is_text_centered=False,
             font_name=GUIConstants.FIXED_WIDTH_EMPHASIS_FONT_NAME,
-            font_size=GUIConstants.get_button_font_size() + 4,
+            font_size=GUIConstants.get_button_font_size() + GUIConstants._scale(4),
             width=self.right_panel_buttons_width,
             screen_x=hw_button_x,
             screen_y=hw_button_y - 3*GUIConstants.COMPONENT_PADDING - GUIConstants.BUTTON_HEIGHT,
@@ -2003,7 +2003,7 @@ class SeedEncryptedQRMnemonicIDScreen(BaseTopNavScreen):
             text=self.KEYBOARD__DIGITS_BUTTON_TEXT,
             is_text_centered=False,
             font_name=GUIConstants.FIXED_WIDTH_EMPHASIS_FONT_NAME,
-            font_size=GUIConstants.get_button_font_size() + 4,
+            font_size=GUIConstants.get_button_font_size() + GUIConstants._scale(4),
             width=self.right_panel_buttons_width,
             screen_x=hw_button_x,
             screen_y=hw_button_y,
