@@ -468,7 +468,9 @@ class TestScreenshotComparison:
     # Native rendering differs due to font hinting, rounding, and anti-aliasing at
     # different resolutions.  Empirically, well-matched screens produce RMS ~25-30;
     # complex multi-panel screens (keyboard + side buttons) can reach ~62.
-    # 65 gives comfortable headroom while still catching gross layout mismatches.
+    # 65 provides headroom for rendering variation across platforms while still
+    # catching gross layout mismatches (e.g. unscaled hardcoded pixel values
+    # typically push RMS above 80).
     MAX_RMS_DIFF = 65.0
 
     def _compare_renders(self, img_240: Image.Image, img_128: Image.Image, name: str):
