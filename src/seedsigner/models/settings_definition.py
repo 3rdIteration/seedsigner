@@ -573,8 +573,6 @@ class SettingsConstants:
         ENCRYPTION_MODE_CBC,
         ENCRYPTION_MODE_CTR,
         ENCRYPTION_MODE_GCM,
-        ENCRYPTION_MODE_ECBV1,
-        ENCRYPTION_MODE_CBCV1,
     ]
 
     ALL_SEED_WORD_LENGTHS = [
