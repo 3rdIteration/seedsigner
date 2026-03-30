@@ -155,3 +155,25 @@ class TestSeedQRAmbiguityFlows(FlowTest):
             QRType.SEED__ENCRYPTEDQR,
         ]
         assert destination.view_args["public_data"] == ENCRYPTED_PUBLIC_DATA
+
+    def test_decrypt_route_shows_text_when_payload_is_not_known_qr_type(self, monkeypatch):
+        monkeypatch.setattr(
+            DecodeQR,
+            "analyze_bytedata_payload",
+            staticmethod(
+                lambda segment: PayloadAnalysis(
+                    segment=segment,
+                    candidate_types=[],
+                    public_data=None,
+                    encrypted_qr=None,
+                )
+            ),
+        )
+        monkeypatch.setattr(DecodeQR, "resolve_payload_type", staticmethod(lambda _analysis: None))
+
+        view = scan_views.ScanDecryptEncryptedQRView(encryption_key="outer key", encrypted_data=b"unused")
+        destination = view._route_decrypted_payload(b"UTF-8 TEXT")
+
+        assert isinstance(destination, Destination)
+        assert destination.View_cls == scan_views.ScanDecryptedTextView
+        assert destination.view_args["text"] == "UTF-8 TEXT"
