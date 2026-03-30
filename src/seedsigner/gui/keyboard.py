@@ -179,7 +179,7 @@ class Keyboard:
                  selected_char="a",
                  rows=4,
                  cols=10,
-                 rect=(0,40, 240,240),
+                 rect=None,
                  additional_keys=[KEY_BACKSPACE],
                  auto_wrap=[WRAP_TOP, WRAP_BOTTOM, WRAP_LEFT, WRAP_RIGHT],
                  render_now=True,
@@ -192,6 +192,10 @@ class Keyboard:
         self.charset = charset
         self.rows = rows
         self.cols = cols
+        if rect is None:
+            from seedsigner.gui.renderer import Renderer
+            renderer = Renderer.get_instance()
+            rect = (0, GUIConstants.TOP_NAV_HEIGHT, renderer.canvas_width, renderer.canvas_height)
         self.rect = rect
         self.font = Fonts.get_font(font_name, font_size)
 
