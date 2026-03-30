@@ -6,6 +6,7 @@ from seedsigner.hardware.displays.display_driver import (
     DISPLAY_TYPE__ILI9341,
     DISPLAY_TYPE__ILI9486,
     DISPLAY_TYPE__ST7789,
+    DISPLAY_TYPE__ST7735,
     DISPLAY_TYPE__DESKTOP,
     DisplayDriver,
 )
@@ -23,6 +24,8 @@ class Renderer(ConfigurableSingleton):
     draw: ImageDraw.ImageDraw = None
     disp = None
     lock = Lock()
+    _needs_resize = False
+    _display_size = (0, 0)
 
 
     @classmethod
@@ -60,10 +63,23 @@ class Renderer(ConfigurableSingleton):
                 self.canvas_width = self.disp.width
                 self.canvas_height = self.disp.height
 
+            elif self.display_type == DISPLAY_TYPE__ST7735:
+                # The UI is designed for 240×240; render at that resolution
+                # and downscale to the physical 128×128 display in
+                # show_image().
+                self.canvas_width = 240
+                self.canvas_height = 240
+
             elif self.display_type in [DISPLAY_TYPE__ILI9341, DISPLAY_TYPE__ILI9486]:
                 # Swap for the natively portrait-oriented displays
                 self.canvas_width = self.disp.height
                 self.canvas_height = self.disp.width
+
+            self._needs_resize = (
+                self.canvas_width != self.disp.width
+                or self.canvas_height != self.disp.height
+            )
+            self._display_size = (self.disp.width, self.disp.height)
 
             self.canvas = Image.new('RGB', (self.canvas_width, self.canvas_height))
             self.draw = ImageDraw.Draw(self.canvas)
@@ -71,10 +87,18 @@ class Renderer(ConfigurableSingleton):
             self.lock.release()
 
 
+    def _resize_for_display(self, image):
+        """Downscale *image* to the physical display size when the canvas is
+        larger than the display (e.g. 240×240 canvas on a 128×128 ST7735)."""
+        if self._needs_resize:
+            return image.resize(self._display_size, Image.LANCZOS)
+        return image
+
+
     def show_image(self, image=None, alpha_overlay=None, show_direct=False):
         if show_direct:
             # Use the incoming image as the canvas and immediately render
-            self.disp.show_image(image, 0, 0)
+            self.disp.show_image(self._resize_for_display(image), 0, 0)
             return
 
         if alpha_overlay:
@@ -86,7 +110,7 @@ class Renderer(ConfigurableSingleton):
             # Always write to the current canvas, rather than trying to replace it
             self.canvas.paste(image)
 
-        self.disp.show_image(self.canvas, 0, 0)
+        self.disp.show_image(self._resize_for_display(self.canvas), 0, 0)
 
 
     def show_image_pan(self, image, start_x, start_y, end_x, end_y, rate, alpha_overlay=None):
@@ -120,7 +144,7 @@ class Renderer(ConfigurableSingleton):
             # Always keep a copy of the current display in the canvas
             self.canvas.paste(crop)
 
-            self.disp.show_image(crop, 0, 0)
+            self.disp.show_image(self._resize_for_display(crop), 0, 0)
 
 
 

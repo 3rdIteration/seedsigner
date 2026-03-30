@@ -33,6 +33,38 @@ Current profiles in `io_config.json`:
 - `FOX_PI` (Luckfox Pico Pi)
 - `LC_LAFRITE` (Libre Computer La Frite AML-S805X-AC, USB camera)
 
+## Supported displays
+
+SeedSigner supports several SPI display modules. The active display driver is
+selected via **Settings → Hardware → Display type** (or via a SettingsQR).
+
+| Display | Config value | Resolution | Driver | Notes |
+|---------|-------------|------------|--------|-------|
+| Waveshare 1.3" LCD HAT (ST7789) | `st7789_240x240` | 240×240 | `ST7789.py` | Default; original SeedSigner display |
+| ST7789 320×240 (e.g. 2.0" IPS) | `st7789_320x240` | 320×240 | `st7789_mpy.py` | Natively portrait; 90° rotation applied |
+| Waveshare 1.44" LCD HAT (ST7735S) | `st7735_128x128` | 128×128 | `ST7735.py` | UI renders at 240×240 and downscales |
+| ILI9341 320×240 | `ili9341_320x240` | 320×240 | `ili9341.py` | Beta support |
+
+The Waveshare 1.3" and 1.44" LCD HATs share the same GPIO40 header pinout and
+use the same `RPI_40` hardware profile — only the display driver setting differs.
+See `docs/io_config.md` for wiring details.
+
+## Display switching shortcut (very-long-press)
+
+While on the **home screen**, holding the joystick in one direction for
+**5 seconds or more** will switch the display driver without navigating to
+Settings. This is useful when the current display setting doesn't match the
+physical hardware (e.g. after swapping HATs) and the screen is unreadable.
+
+| Joystick direction | Switches to |
+|--------------------|-------------|
+| **Up** (hold 5 s) | ST7789 240×240 |
+| **Right** (hold 5 s) | ST7789 320×240 |
+| **Down** (hold 5 s) | ST7735 128×128 |
+
+The setting is persisted if **Persistent Settings** is enabled. After switching,
+the home screen re-renders automatically with the new display dimensions.
+
 ## Button GPIO mapping format
 
 Button mappings live under each model's `buttons` object.

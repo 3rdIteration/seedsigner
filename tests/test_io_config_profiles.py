@@ -575,3 +575,223 @@ def test_st7789_does_not_swallow_non_einval_oserror():
     # Only one SPI() call should have been made — no retry on non-EINVAL errors.
     assert mock_spi_cls.call_count == 1
 
+
+# ---------------------------------------------------------------------------
+# ST7735 display driver tests (Waveshare 1.44" LCD HAT, 128x128)
+# ---------------------------------------------------------------------------
+
+def _make_st7735_pin_mapping(cs=None):
+    """Return a minimal display pin mapping for ST7735 tests."""
+    mapping = {
+        "display": {
+            "dc":  ["/dev/gpiochip0", 25],
+            "rst": ["/dev/gpiochip0", 27],
+            "bl":  ["/dev/gpiochip0", 24],
+            "spi_bus": 0,
+            "spi_device": 0,
+        }
+    }
+    if cs is not None:
+        mapping["display"]["cs"] = cs
+    return mapping
+
+
+def _import_st7735_with_mocked_periphery():
+    """Import ST7735 with mocked periphery, analogous to _import_st7789_..."""
+    import sys
+    import types
+    from unittest.mock import MagicMock
+
+    if "periphery" not in sys.modules:
+        fake_periphery = types.ModuleType("periphery")
+        fake_periphery.GPIO = MagicMock()
+        fake_periphery.SPI = MagicMock()
+        sys.modules["periphery"] = fake_periphery
+
+    sys.modules.pop("seedsigner.hardware.displays.ST7735", None)
+    import seedsigner.hardware.displays.ST7735 as st7735_module
+    return st7735_module
+
+
+def test_st7735_dimensions():
+    """ST7735 must report 128×128 resolution."""
+    from unittest.mock import patch
+
+    st7735_module = _import_st7735_with_mocked_periphery()
+    pin_mapping = _make_st7735_pin_mapping()
+
+    with patch.object(st7735_module, "GPIO"), \
+         patch.object(st7735_module, "SPI"), \
+         patch.object(st7735_module, "Settings") as mock_settings, \
+         patch.object(st7735_module, "get_hardware_pin_mapping", return_value=pin_mapping):
+        mock_settings.get_platform_default_hardware_config.return_value = "RPI_40"
+        display = st7735_module.ST7735()
+
+    assert display.width == 128
+    assert display.height == 128
+
+
+def test_st7735_spi_speed():
+    """ST7735 must use 16 MHz SPI speed (datasheet max ~16 MHz)."""
+    from unittest.mock import patch
+
+    st7735_module = _import_st7735_with_mocked_periphery()
+    pin_mapping = _make_st7735_pin_mapping()
+
+    with patch.object(st7735_module, "GPIO"), \
+         patch.object(st7735_module, "SPI") as mock_spi_cls, \
+         patch.object(st7735_module, "Settings") as mock_settings, \
+         patch.object(st7735_module, "get_hardware_pin_mapping", return_value=pin_mapping):
+        mock_settings.get_platform_default_hardware_config.return_value = "RPI_40"
+        st7735_module.ST7735()
+
+    mock_spi_cls.assert_called_once_with(
+        "/dev/spidev0.0",
+        0,
+        16_000_000,
+        extra_flags=0,
+    )
+
+
+def test_st7735_spi_cs_disabled():
+    """ST7735 must use SPI Mode 3 + SPI_NO_CS when cs='disabled'."""
+    from unittest.mock import patch
+
+    st7735_module = _import_st7735_with_mocked_periphery()
+    pin_mapping = _make_st7735_pin_mapping(cs="disabled")
+
+    with patch.object(st7735_module, "GPIO"), \
+         patch.object(st7735_module, "SPI") as mock_spi_cls, \
+         patch.object(st7735_module, "Settings") as mock_settings, \
+         patch.object(st7735_module, "get_hardware_pin_mapping", return_value=pin_mapping):
+        mock_settings.get_platform_default_hardware_config.return_value = "RPI_40"
+        st7735_module.ST7735()
+
+    mock_spi_cls.assert_called_once_with(
+        "/dev/spidev0.0",
+        3,
+        16_000_000,
+        extra_flags=0x40,
+    )
+
+
+def test_st7735_init_not_called_during_construction():
+    """init() must be deferred (lazy init), same as ST7789."""
+    from unittest.mock import patch
+
+    st7735_module = _import_st7735_with_mocked_periphery()
+    pin_mapping = _make_st7735_pin_mapping()
+
+    with patch.object(st7735_module, "GPIO"), \
+         patch.object(st7735_module, "SPI"), \
+         patch.object(st7735_module, "Settings") as mock_settings, \
+         patch.object(st7735_module, "get_hardware_pin_mapping", return_value=pin_mapping), \
+         patch.object(st7735_module.ST7735, "init") as mock_init:
+        mock_settings.get_platform_default_hardware_config.return_value = "RPI_40"
+        display = st7735_module.ST7735()
+
+    mock_init.assert_not_called()
+    assert display._display_initialized is False
+
+
+def test_st7735_init_called_on_first_show_image():
+    """_ensure_initialized() must call init() exactly once."""
+    from unittest.mock import patch
+
+    st7735_module = _import_st7735_with_mocked_periphery()
+    pin_mapping = _make_st7735_pin_mapping()
+
+    with patch.object(st7735_module, "GPIO"), \
+         patch.object(st7735_module, "SPI"), \
+         patch.object(st7735_module, "Settings") as mock_settings, \
+         patch.object(st7735_module, "get_hardware_pin_mapping", return_value=pin_mapping), \
+         patch.object(st7735_module.ST7735, "init") as mock_init:
+        mock_settings.get_platform_default_hardware_config.return_value = "RPI_40"
+        display = st7735_module.ST7735()
+
+        display._ensure_initialized()
+        assert mock_init.call_count == 1
+        assert display._display_initialized is True
+
+        display._ensure_initialized()
+        assert mock_init.call_count == 1
+
+
+def test_st7735_init_sleeps_after_slpout():
+    """init() must sleep ≥120 ms between SLPOUT and DISPON."""
+    import time
+    from unittest.mock import patch
+
+    ST7735_SLPOUT = 0x11
+    ST7735_DISPON = 0x29
+
+    st7735_module = _import_st7735_with_mocked_periphery()
+    pin_mapping = _make_st7735_pin_mapping()
+
+    commands_in_order = []
+
+    def fake_command(self_inner, cmd):
+        commands_in_order.append(("cmd", cmd, time.monotonic()))
+
+    def fake_data(self_inner, val):
+        commands_in_order.append(("data", val, None))
+
+    def fake_reset(self_inner):
+        pass
+
+    with patch.object(st7735_module, "GPIO"), \
+         patch.object(st7735_module, "SPI"), \
+         patch.object(st7735_module, "Settings") as mock_settings, \
+         patch.object(st7735_module, "get_hardware_pin_mapping", return_value=pin_mapping), \
+         patch.object(st7735_module.ST7735, "reset", fake_reset), \
+         patch.object(st7735_module.ST7735, "command", fake_command), \
+         patch.object(st7735_module.ST7735, "data", fake_data):
+        mock_settings.get_platform_default_hardware_config.return_value = "RPI_40"
+        display = st7735_module.ST7735()
+        display.init()
+
+    slpout_t = next(
+        (e[2] for e in commands_in_order if e[0] == "cmd" and e[1] == ST7735_SLPOUT),
+        None,
+    )
+    dispon_t = next(
+        (e[2] for e in commands_in_order if e[0] == "cmd" and e[1] == ST7735_DISPON),
+        None,
+    )
+
+    assert slpout_t is not None, "SLPOUT (0x11) not found in init() sequence"
+    assert dispon_t is not None, "DISPON (0x29) not found in init() sequence"
+    assert dispon_t > slpout_t, "DISPON must be sent after SLPOUT"
+
+    delay_ms = (dispon_t - slpout_t) * 1000
+    assert delay_ms >= 120, (
+        f"Must sleep ≥120 ms between SLPOUT and DISPON; actual {delay_ms:.1f} ms"
+    )
+
+
+def test_st7735_falls_back_on_einval():
+    """ST7735 must retry without SPI_NO_CS on EINVAL, keeping Mode 3."""
+    import errno as _errno
+    from unittest.mock import patch, call, MagicMock
+
+    st7735_module = _import_st7735_with_mocked_periphery()
+    pin_mapping = _make_st7735_pin_mapping(cs="disabled")
+
+    mock_spi_instance = MagicMock()
+    einval_error = OSError(_errno.EINVAL, "Invalid argument")
+    einval_error.errno = _errno.EINVAL
+    mock_spi_cls = MagicMock(side_effect=[einval_error, mock_spi_instance])
+
+    with patch.object(st7735_module, "GPIO"), \
+         patch.object(st7735_module, "SPI", mock_spi_cls), \
+         patch.object(st7735_module, "Settings") as mock_settings, \
+         patch.object(st7735_module, "get_hardware_pin_mapping", return_value=pin_mapping):
+        mock_settings.get_platform_default_hardware_config.return_value = "RPI_40"
+        display = st7735_module.ST7735()
+
+    assert mock_spi_cls.call_count == 2
+    first_call, second_call = mock_spi_cls.call_args_list
+    assert first_call == call("/dev/spidev0.0", 3, 16_000_000, extra_flags=0x40)
+    assert second_call == call("/dev/spidev0.0", 3, 16_000_000, extra_flags=0)
+    assert display._spi is mock_spi_instance
+
