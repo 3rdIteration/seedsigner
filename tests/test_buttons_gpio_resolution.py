@@ -426,3 +426,40 @@ def test_check_for_low_latching_works_with_keys_list(monkeypatch):
 
     # Should detect the latched press
     assert instance.check_for_low(keys=anyclick)
+
+
+def test_wait_for_clears_low_state_preventing_phantom_press(monkeypatch):
+    """After wait_for() returns a key press, check_for_low() must not see
+    stale _low_since_ms state and report a phantom press (the 'camera
+    captures immediately' bug)."""
+    instance, pin_states = _make_instance_with_controllable_pins(monkeypatch)
+
+    # wait_for() does ``from seedsigner.controller import Controller`` at
+    # runtime.  Provide a lightweight mock module so we don't pull in heavy
+    # dependencies (embit, etc.) that may not be installed in the test env.
+    mock_controller = SimpleNamespace(
+        screensaver_activation_ms=999_999_999,
+        is_screensaver_running=False,
+    )
+    mock_controller_module = SimpleNamespace(
+        Controller=SimpleNamespace(get_instance=lambda: mock_controller),
+    )
+    monkeypatch.setitem(sys.modules, "seedsigner.controller", mock_controller_module)
+
+    # Pre-set the pin LOW and back-date _low_since_ms so wait_for() will
+    # detect the press immediately (no threading needed).
+    pin_states["KEY_PRESS"] = False
+    instance._low_since_ms["KEY_PRESS"] = int(time.time() * 1000) - 20
+
+    result = instance.wait_for(keys=["KEY_PRESS"])
+    assert result == "KEY_PRESS"
+
+    # wait_for() must have cleared _low_since_ms for the returned key
+    assert instance._low_since_ms["KEY_PRESS"] is None
+
+    # Now simulate the user releasing the button (as happens during screen
+    # transition to the camera preview)
+    pin_states["KEY_PRESS"] = True
+
+    # check_for_low must NOT report a phantom press
+    assert not instance.check_for_low(key="KEY_PRESS")

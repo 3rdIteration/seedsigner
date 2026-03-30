@@ -344,14 +344,17 @@ class HardwareButtons(Singleton):
                             self.cur_input = key
                             self.cur_input_started = cur_time
                             self.last_input_time = cur_time
+                            self._low_since_ms[key] = None
                             return key
                         else:
                             if cur_time - self.last_input_time > self.next_repeat_threshold:
                                 self.cur_input_started = cur_time
                                 self.last_input_time = cur_time
+                                self._low_since_ms[key] = None
                                 return key
                             elif cur_time - self.cur_input_started > self.first_repeat_threshold:
                                 self.last_input_time = cur_time
+                                self._low_since_ms[key] = None
                                 return key
                     else:
                         self._low_since_ms[key] = None
