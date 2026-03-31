@@ -360,6 +360,32 @@ def test_check_for_low_detects_held_button(monkeypatch):
     assert instance.check_for_low(key="KEY_PRESS")
 
 
+def test_check_for_low_no_double_fire_on_release(monkeypatch):
+    """A button held long enough to return True on the debounced-low path
+    must NOT fire again when it is subsequently released (pin goes high).
+    This is the double-fire bug described in the issue."""
+    instance, pin_states = _make_instance_with_controllable_pins(monkeypatch)
+
+    # First call: pin goes low → records timestamp, returns False
+    pin_states["KEY_PRESS"] = False
+    assert not instance.check_for_low(key="KEY_PRESS")
+
+    # Simulate time passing beyond debounce threshold
+    instance._low_since_ms["KEY_PRESS"] = int(time.time() * 1000) - 20
+
+    # Second call: pin still low, debounce met → returns True (first fire)
+    assert instance.check_for_low(key="KEY_PRESS")
+
+    # _low_since_ms must be cleared after the debounced-low return
+    assert instance._low_since_ms["KEY_PRESS"] is None
+
+    # Button is released
+    pin_states["KEY_PRESS"] = True
+
+    # Must NOT return True again – the press was already consumed
+    assert not instance.check_for_low(key="KEY_PRESS")
+
+
 def test_check_for_low_detects_released_button(monkeypatch):
     """A button pressed and released between two slow polling calls is detected
     (the latching fix for issue #342)."""

@@ -414,6 +414,7 @@ class HardwareButtons(Singleton):
                         continue
                     if cur_time - low_since < self.debounce_threshold_ms:
                         continue
+                    self._low_since_ms[key] = None
                     self.update_last_input_time()
                     return True
                 else:
