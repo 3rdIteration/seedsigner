@@ -58,6 +58,80 @@ def get_standard_derivation_path(network: str = SettingsConstants.MAINNET, walle
 
 
 
+def is_standard_derivation(derivation_path: str, script_type: str, network: str) -> bool:
+    """
+    Returns True if the derivation_path matches the standard BIP path for the
+    given script_type, network, and any account 0-9.  For example, native segwit
+    on mainnet must be m/84'/0'/<account>'.
+    """
+    for account in range(10):
+        try:
+            standard = get_standard_derivation_path(
+                network=network,
+                wallet_type=SettingsConstants.SINGLE_SIG,
+                script_type=script_type,
+                account=account,
+            )
+            if derivation_path == standard:
+                return True
+        except Exception:
+            pass
+    return False
+
+
+
+def get_expanded_search_derivation_paths(network: str = SettingsConstants.MAINNET) -> list:
+    """
+    Returns a list of derivation paths for expanded address search.
+    Includes all standard single sig paths (BIP44/49/84/86) for accounts
+    0-9 for BOTH mainnet and testnet coin types, plus non-standard paths
+    used by various wallets.
+
+    Both coin types are included because some wallets use cross-network
+    derivation paths (e.g. a testnet derivation path to produce a
+    mainnet-formatted address).
+
+    NOTE: This function intentionally does NOT consult the user's
+    Settings for enabled script types. All standard derivation paths
+    are always returned so the expanded search can act as a recovery
+    tool regardless of which script types the user has enabled.
+    """
+    paths = []
+    script_types = [
+        SettingsConstants.NATIVE_SEGWIT,
+        SettingsConstants.NESTED_SEGWIT,
+        SettingsConstants.LEGACY_P2PKH,
+        SettingsConstants.TAPROOT,
+    ]
+
+    # Include both mainnet and testnet coin types to catch cross-network
+    # derivation paths. Put the detected network first so its paths are
+    # checked before the alternate network.
+    networks = [network]
+    alt_network = SettingsConstants.TESTNET if network == SettingsConstants.MAINNET else SettingsConstants.MAINNET
+    networks.append(alt_network)
+
+    # Standard BIP paths for accounts 0-9
+    for net in networks:
+        for script_type in script_types:
+            for account in range(10):
+                path = get_standard_derivation_path(
+                    network=net,
+                    wallet_type=SettingsConstants.SINGLE_SIG,
+                    script_type=script_type,
+                    account=account,
+                )
+                if path not in paths:
+                    paths.append(path)
+
+    # Non-standard paths used by various wallets
+    paths.append("m/0'/0")  # BRD Wallet
+    paths.append("m/0")     # Coldcard Address Explorer Default Legacy
+
+    return paths
+
+
+
 def get_xpub(seed_bytes, derivation_path: str, embit_network: str = "main") -> HDKey:
     root = bip32.HDKey.from_seed(seed_bytes, version=NETWORKS[embit_network]["xprv"])
     xprv = root.derive(derivation_path)
@@ -156,8 +230,9 @@ def parse_derivation_path(derivation_path: str) -> dict:
     else:
         details["is_change"] = None
 
-    # Check if there's a standard address index
-    if sections[-1].isdigit():
+    # Check if there's a standard address index (ASCII digits only;
+    # .isdigit() would also match non-ASCII Unicode digits).
+    if sections[-1].isascii() and sections[-1].isdigit():
         details["index"] = int(sections[-1])
     else:
         details["index"] = None
@@ -179,18 +254,20 @@ def parse_derivation_path(derivation_path: str) -> dict:
 
 
 
-def sign_message(seed_bytes: bytes, derivation: str, msg: bytes, compressed: bool = True, embit_network: str = "main") -> bytes:
+def sign_message(root: HDKey, derivation: str, msg: bytes, compressed: bool = True) -> bytes:
     """
         from: https://github.com/cryptoadvance/specter-diy/blob/b58a819ef09b2bca880a82c7e122618944355118/src/apps/signmessage/signmessage.py
+
+        Sign a Bitcoin message using a BIP-32 root key and derivation path.
+        Use seed.get_root(network) to obtain the root key — never
+        bip32.HDKey.from_seed(seed.seed_bytes) directly (see AGENTS.md).
     """
-    """Sign message with private key"""
     msghash = sha256(
         sha256(
             b"\x18Bitcoin Signed Message:\n" + compact.to_bytes(len(msg)) + msg
         ).digest()
     ).digest()
 
-    root = bip32.HDKey.from_seed(seed_bytes, version=NETWORKS[embit_network]["xprv"])
     prv = root.derive(derivation).key
     sig = secp256k1.ecdsa_sign_recoverable(msghash, prv._secret)
     flag = sig[64]

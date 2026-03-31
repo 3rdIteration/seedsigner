@@ -20,6 +20,7 @@ class TestSettingsFlows(FlowTest):
         """ Basic flow from MainMenuView to enable/disable persistent settings """
         # Which option are we testing?
         settings_entry = SettingsDefinition.get_settings_entry(SettingsConstants.SETTING__PERSISTENT_SETTINGS)
+        self.settings.set_value(SettingsConstants.SETTING__PERSISTENT_SETTINGS, SettingsConstants.OPTION__DISABLED)
 
         # No settings file should exist before we enable persistent settings
         assert os.path.exists(Settings.SETTINGS_FILENAME) == False
@@ -62,6 +63,31 @@ class TestSettingsFlows(FlowTest):
             FlowStep(settings_views.SettingsMenuView),
         ])
 
+
+    def test_battery_info_unavailable(self):
+        """Battery info should show an unavailable message when no monitor is detected."""
+        with patch("seedsigner.hardware.battery_hat.BatteryHat") as battery_hat:
+            battery_hat.get_instance.return_value.is_enabled.return_value = False
+
+            self.run_sequence([
+                FlowStep(MainMenuView, button_data_selection=MainMenuView.SETTINGS),
+                FlowStep(settings_views.SettingsMenuView, button_data_selection=settings_views.SettingsMenuView.HARDWARE),
+                FlowStep(settings_views.SettingsMenuView, button_data_selection=settings_views.SettingsMenuView.BATTERY_INFO),
+                FlowStep(settings_views.BatteryInfoView),
+                FlowStep(settings_views.SettingsMenuView),
+            ])
+
+    def test_system_info(self):
+        """Basic flow from MainMenuView to System Info View."""
+        self.run_sequence([
+            FlowStep(MainMenuView, button_data_selection=MainMenuView.SETTINGS),
+            FlowStep(settings_views.SettingsMenuView, button_data_selection=settings_views.SettingsMenuView.HARDWARE),
+            FlowStep(settings_views.SettingsMenuView, button_data_selection=settings_views.SettingsMenuView.SYSTEM_INFO),
+            FlowStep(settings_views.SystemInfoView),
+            FlowStep(settings_views.SettingsMenuView),
+        ])
+
+
     def test_hardware_menu_back_returns_to_main(self):
         """Ensure BACK from Hardware settings returns to main Settings menu."""
         def assert_general(view: settings_views.SettingsMenuView):
@@ -83,6 +109,27 @@ class TestSettingsFlows(FlowTest):
             FlowStep(settings_views.DonateView),
             FlowStep(settings_views.SettingsMenuView),
         ])
+
+
+    def test_load_backup_files_submenu(self):
+        tapsigner_entry = SettingsDefinition.get_settings_entry(SettingsConstants.SETTING__TAPSIGNER_BACKUP)
+
+        self.run_sequence([
+            FlowStep(MainMenuView, button_data_selection=MainMenuView.SETTINGS),
+            FlowStep(settings_views.SettingsMenuView, button_data_selection=settings_views.SettingsMenuView.ADVANCED),
+            FlowStep(settings_views.SettingsMenuView, button_data_selection=settings_views.SettingsMenuView.LOAD_BACKUP_FILES),
+            FlowStep(settings_views.LoadBackupFilesSettingsView, button_data_selection=ButtonOption(tapsigner_entry.display_name)),
+            FlowStep(settings_views.SettingsEntryUpdateSelectionView, button_data_selection=ButtonOption(tapsigner_entry.get_selection_option_display_name_by_value(SettingsConstants.OPTION__ENABLED))),
+            FlowStep(settings_views.SettingsEntryUpdateSelectionView, screen_return_value=RET_CODE__BACK_BUTTON),
+            FlowStep(settings_views.LoadBackupFilesSettingsView, screen_return_value=RET_CODE__BACK_BUTTON),
+            FlowStep(settings_views.SettingsMenuView),
+        ])
+
+        assert self.settings.get_value(SettingsConstants.SETTING__TAPSIGNER_BACKUP) == SettingsConstants.OPTION__ENABLED
+
+
+    def test_tapsigner_backup_setting_default_disabled(self):
+        assert self.settings.get_value(SettingsConstants.SETTING__TAPSIGNER_BACKUP) == SettingsConstants.OPTION__DISABLED
 
 
     def test_settingsqr(self):

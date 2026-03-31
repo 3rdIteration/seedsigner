@@ -1,4 +1,5 @@
 import logging
+import os
 import time
 import traceback
 from gettext import gettext as _
@@ -19,9 +20,39 @@ from seedsigner.models.threads import BaseThread
 from seedsigner.models.settings_definition import SettingsConstants
 from seedsigner.views.screensaver import ScreensaverScreen
 from seedsigner.views.view import Destination
+from seedsigner.hardware.rng_monitor import HardwareRngHealthMonitor, HardwareRngMonitorThread
+from seedsigner.hardware.io_config import get_hardware_pin_mapping, get_hardware_profile_label
 
 
 logger = logging.getLogger(__name__)
+
+
+def _get_system_type_and_variant(runtime_profile: str, hardware_profile: str | None) -> tuple[str, str]:
+    system_type_map = {
+        "desktop": "Desktop",
+        "rpi_26": "Raspberry Pi",
+        "rpi_40": "Raspberry Pi",
+        "luckfox_22": "Luckfox Pico",
+        "luckfox_40": "Luckfox Pico",
+        "luckfox_pi": "Luckfox Pico",
+    }
+    system_type = system_type_map.get(runtime_profile, "Unknown")
+
+    model_path = "/proc/device-tree/model"
+    try:
+        with open(model_path, "r", encoding="utf-8") as model_file:
+            model = model_file.read().strip().replace("\x00", "")
+            if model:
+                return system_type, model
+    except Exception:
+        pass
+
+    if hardware_profile:
+        hardware_label = get_hardware_profile_label(hardware_profile)
+        if hardware_label:
+            return system_type, hardware_label
+
+    return system_type, "Unknown"
 
 
 
@@ -121,7 +152,7 @@ class Controller(Singleton):
         rather than at the top in order avoid circular imports.
     """
     
-    VERSION = "0.8.6+Satochip+ERT-B7"
+    VERSION = "SeSi-0.8.6+ShSi-B9"
 
     # Declare class member vars with type hints to enable richer IDE support throughout
     # the code.
@@ -176,6 +207,8 @@ class Controller(Singleton):
     screensaver: ScreensaverScreen = None
     toast_notification_thread: BaseToastOverlayManagerThread = None
     wipe_timer_thread: BaseThread = None
+    rng_monitor_thread: BaseThread = None
+    hardware_rng_monitor: HardwareRngHealthMonitor = None
     wipe_timer_ms: int = None
     auto_wiped: bool = False
 
@@ -216,14 +249,35 @@ class Controller(Singleton):
 
         # models
         controller.settings = Settings.get_instance()
+        hardware_profile = Settings.get_platform_default_hardware_config()
+        runtime_profile = Settings.RUNTIME_PROFILE
+        system_type, system_variant = _get_system_type_and_variant(runtime_profile, hardware_profile)
+        logger.info(
+            "Startup hardware: type=%s variant=%s runtime_profile=%s hardware_profile=%s display=%s",
+            system_type,
+            system_variant,
+            runtime_profile,
+            hardware_profile,
+            controller.settings.get_value(SettingsConstants.SETTING__DISPLAY_CONFIGURATION, default_if_none=True),
+        )
+        if hardware_profile:
+            pin_mapping = get_hardware_pin_mapping(hardware_profile)
+            logger.info(
+                "Startup GPIO map (%s): display=%s buttons=%s camera=%s",
+                hardware_profile,
+                pin_mapping.get("display"),
+                pin_mapping.get("buttons"),
+                pin_mapping.get("camera"),
+            )
         
         controller.microsd = MicroSD.get_instance()
         controller.microsd.start_detection()
 
         controller.battery_hat = BatteryHat.get_instance()
-        controller.battery_hat.process_discharge_log()
-        controller.battery_hat.load_discharge_curve()
-        controller.battery_hat.start()
+        if controller.battery_hat.initialize():
+            controller.battery_hat.process_discharge_log()
+            controller.battery_hat.load_discharge_curve()
+            controller.battery_hat.start()
 
         # Store one working psbt in memory
         controller.psbt = None
@@ -248,6 +302,10 @@ class Controller(Singleton):
         controller.wipe_timer_thread = WipeTimerThread()
         controller.wipe_timer_thread.start()
 
+        controller.hardware_rng_monitor = HardwareRngHealthMonitor()
+        controller.rng_monitor_thread = HardwareRngMonitorThread(controller.hardware_rng_monitor)
+        controller.rng_monitor_thread.start()
+
         return cls._instance
 
 
@@ -271,6 +329,20 @@ class Controller(Singleton):
         while not self._storage2:
             time.sleep(0.001)
         return self._storage2
+
+
+    @property
+    def hardware_rng_is_healthy(self) -> bool:
+        if not self.hardware_rng_monitor:
+            return False
+        return self.hardware_rng_monitor.is_healthy()
+
+
+    @property
+    def hardware_rng_failure_reason(self) -> str | None:
+        if not self.hardware_rng_monitor:
+            return "System RNG monitor unavailable"
+        return self.hardware_rng_monitor.failure_reason()
 
 
     def get_seed(self, seed_num: int) -> Seed:
@@ -302,7 +374,7 @@ class Controller(Singleton):
         self.back_stack = BackStack()
 
 
-    def start(self, initial_destination: Destination = None) -> None:
+    def start(self, initial_destination: Destination = None, skip_startup_interstitials: bool = False) -> None:
         """
             The main loop of the application.
 
@@ -317,11 +389,16 @@ class Controller(Singleton):
         from seedsigner.helpers.seedsigner_os import is_seedsigner_os_dev_build
         from seedsigner.gui.toast import RemoveSDCardToastManagerThread
 
-        OpeningSplashView().run()
-        if is_seedsigner_os_dev_build():
-            DeveloperOSWarningView().run()
-        if self.settings.get_value(SettingsConstants.SETTING__DISPLAY_CONFIGURATION).startswith("desktop"):
-            DesktopWarningView().run()
+        if not skip_startup_interstitials:
+            OpeningSplashView().run()
+
+            # Flow tests start from an expected first interactive screen (usually MainMenu).
+            # Skip startup warning interstitials under pytest to keep deterministic routing.
+            if "PYTEST_CURRENT_TEST" not in os.environ:
+                if is_seedsigner_os_dev_build():
+                    DeveloperOSWarningView().run()
+                if self.settings.get_value(SettingsConstants.SETTING__DISPLAY_CONFIGURATION).startswith("desktop"):
+                    DesktopWarningView().run()
 
         """ Class references can be stored as variables in python!
 
@@ -354,8 +431,11 @@ class Controller(Singleton):
             else:
                 next_destination = Destination(MainMenuView)
             
-            # Set up our one-time toast notification tip to remove the SD card
-            self.activate_toast(RemoveSDCardToastManagerThread())
+            # Skip the "remove SD card" tip on Luckfox, where removable media
+            # handling and expected workflows differ from SeedSigner OS defaults.
+            if Settings.RUNTIME_PROFILE not in {"luckfox_22", "luckfox_40", "luckfox_pi", "desktop"}:
+                # Set up our one-time toast notification tip to remove the SD card
+                self.activate_toast(RemoveSDCardToastManagerThread())
 
             while True:
                 # Destination(None) is a special case; render the Home screen
@@ -376,6 +456,11 @@ class Controller(Singleton):
                     self.psbt_seed = None
                     self.psbt_sign_with_satochip = False
                     self.sign_message_with_satochip = False
+
+                    # Clear camera entropy data so it cannot be used to
+                    # reconstruct seeds after the flow completes.
+                    self.image_entropy_preview_frames = None
+                    self.image_entropy_final_image = None
 
                     # Clear the whole Smartcard session if caching PIN is disabled (Same as removing the card)
                     if Settings.get_instance().get_value(SettingsConstants.SETTING__CACHE_SCARD_PIN) != "E":
@@ -454,6 +539,9 @@ class Controller(Singleton):
 
             if self.wipe_timer_thread and self.wipe_timer_thread.is_alive():
                 self.wipe_timer_thread.stop()
+
+            if self.rng_monitor_thread and self.rng_monitor_thread.is_alive():
+                self.rng_monitor_thread.stop()
 
             # Clear the screen when exiting
             logger.info("Clearing screen, exiting")
@@ -541,6 +629,8 @@ class Controller(Singleton):
         self.Satochip_Last_UID_SHA1 = None
         self.Satochip_Connector = None
         self.GPG_Admin_PIN = None
+        self.image_entropy_preview_frames = None
+        self.image_entropy_final_image = None
 
         # Return to main menu
         self.clear_back_stack()

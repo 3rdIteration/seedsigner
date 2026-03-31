@@ -21,7 +21,7 @@ class TestMain(BaseTest):
         assert logging.root.level == logging.INFO
         assert logging.getLogger().getEffectiveLevel() == logging.INFO
         patched_controller.assert_has_calls(
-            [call.get_instance(), call.get_instance().start()]
+            [call.get_instance(), call.get_instance().start(initial_destination=None, skip_startup_interstitials=False)]
         )
 
 
@@ -31,7 +31,7 @@ class TestMain(BaseTest):
         assert logging.root.level == logging.DEBUG
         assert logging.getLogger().getEffectiveLevel() == logging.DEBUG
         patched_controller.assert_has_calls(
-            [call.get_instance(), call.get_instance().start()]
+            [call.get_instance(), call.get_instance().start(initial_destination=None, skip_startup_interstitials=False)]
         )
 
 
@@ -46,5 +46,16 @@ class TestMain(BaseTest):
         _, err = capsys.readouterr()
         assert "Starting SeedSigner" in err and "INFO" in err
         patched_controller.assert_has_calls(
-            [call.get_instance(), call.get_instance().start()]
+            [call.get_instance(), call.get_instance().start(initial_destination=None, skip_startup_interstitials=False)]
         )
+
+
+    @patch("main.Controller")
+    def test_main__argparse__iotest(self, patched_controller):
+        main(["--iotest"])
+        assert logging.root.level == logging.INFO
+        assert logging.getLogger().getEffectiveLevel() == logging.INFO
+        patched_controller.get_instance().start.assert_called_once()
+        call_kwargs = patched_controller.get_instance().start.call_args.kwargs
+        assert call_kwargs["initial_destination"].View_cls.__name__ == "IOTestView"
+        assert call_kwargs["skip_startup_interstitials"] is True

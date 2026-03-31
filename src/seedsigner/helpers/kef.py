@@ -22,6 +22,7 @@
 
 from Cryptodome.Cipher import AES
 import hashlib
+import unicodedata
 
 
 # KEF: AES, MODEs VERSIONS, MODE_NUMBERS, and MODE_IVS are defined here
@@ -141,8 +142,12 @@ class Cipher:
     """More than just a helper for AES encrypt/decrypt. Enforces KEF VERSIONS rules"""
 
     def __init__(self, key, salt, iterations):
-        key = key if isinstance(key, bytes) else key.encode()
-        salt = salt if isinstance(salt, bytes) else salt.encode()
+        # NFKD-normalize string inputs so that the same passphrase typed on
+        # different platforms (macOS NFD vs Linux NFC) always derives the same
+        # PBKDF2 key.  This is consistent with BIP-39/SLIP-39 passphrase
+        # handling elsewhere in the codebase.
+        key = key if isinstance(key, bytes) else unicodedata.normalize("NFKD", key).encode()
+        salt = salt if isinstance(salt, bytes) else unicodedata.normalize("NFKD", salt).encode()
         self._key = hashlib.pbkdf2_hmac("sha256", key, salt, iterations)
 
     def encrypt(self, plain, version, iv=b"", fail_unsafe=True):

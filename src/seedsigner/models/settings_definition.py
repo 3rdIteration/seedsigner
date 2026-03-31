@@ -8,8 +8,8 @@ import logging
 logger = logging.getLogger(__name__)
 
 try:
-    import RPi.GPIO as _GPIO  # type: ignore  # noqa: F401
-    USING_MOCK_GPIO = getattr(_GPIO, "__file__", None) is None
+    from periphery import GPIO as _GPIO  # type: ignore  # noqa: F401
+    USING_MOCK_GPIO = False
 except ModuleNotFoundError:
     USING_MOCK_GPIO = True
 
@@ -229,6 +229,7 @@ class SettingsConstants:
         (BTC_DENOMINATION__BTCSATSHYBRID, _mft("BTC | sats hybrid")),
     ]
 
+    # Camera rotation constants
     CAMERA_ROTATION__0 = 0
     CAMERA_ROTATION__90 = 90
     CAMERA_ROTATION__180 = 180
@@ -250,6 +251,14 @@ class SettingsConstants:
         (CAMERA_DEVICE__2, _mft("Camera 2")),
         (CAMERA_DEVICE__3, _mft("Camera 3")),
     ]
+
+    # Hardware config settings
+    HARDWARE__RPI_40 = "RPI_40"
+    HARDWARE__RPI_26 = "RPI_26"
+    HARDWARE__LUCKFOX_22 = "FOX_22"
+    HARDWARE__LUCKFOX_40 = "FOX_40"
+    HARDWARE__LUCKFOX_PI = "FOX_PI"
+
 
     # QR code constants
     DENSITY__LOW = "L"
@@ -442,12 +451,13 @@ class SettingsConstants:
     SETTING__CAMERA_DEVICE = "camera_device"
     SETTING__COMPACT_SEEDQR = "compact_seedqr"
     SETTING__BIP85_CHILD_SEEDS = "bip85_child_seeds"
-    SETTING__BIP85_ECC_KEYS = "bip85_ecc_keys"
     SETTING__SLIP39_SEEDS = "slip39_seeds"
+    SETTING__AEZEED_SEEDS = "aezeed_seeds"
     SETTING__SLIP39_EXTENDABLE = "slip39_extendable"
     SETTING__ELECTRUM_SEEDS = "electrum_seeds"
     SETTING__BITBOX_BACKUP = "bitbox_backup"
     SETTING__PASSPORT_BACKUP = "passport_backup"
+    SETTING__TAPSIGNER_BACKUP = "tapsigner_backup"
     SETTING__MESSAGE_SIGNING = "message_signing"
     SETTING__PRIVACY_WARNINGS = "privacy_warnings"
     SETTING__DIRE_WARNINGS = "dire_warnings"
@@ -459,6 +469,7 @@ class SettingsConstants:
     SETTING__ENCRYPTION_ITER = "pbkdf2_iterations"
     SETTING__WIF_KEYS = "wif_keys"
     SETTING__BIP38_KEYS = "bip38_keys"
+    SETTING__GPG_KEY_TYPES = "gpg_key_types"
 
     SETTING__SATOCHIP_SIGN_TIMEOUT = "satochip_sign_timeout"
     SETTING__SATOCHIP_MSG_SIGN_TIMEOUT = "satochip_msg_sign_timeout"
@@ -473,23 +484,28 @@ class SettingsConstants:
     # Hardware config settings
     DISPLAY_CONFIGURATION__ST7789__240x240 = "st7789_240x240"  # default; original Waveshare 1.3" display hat
     DISPLAY_CONFIGURATION__ST7789__320x240 = "st7789_320x240"    # natively portrait dimensions; we apply a 90° rotation
+    DISPLAY_CONFIGURATION__ST7735__128x128 = "st7735_128x128"    # Waveshare 1.44" LCD HAT; ST7735S controller
     DISPLAY_CONFIGURATION__ILI9341__320x240 = "ili9341_320x240"  # natively portrait dimensions; we apply a 90° rotation
     DISPLAY_CONFIGURATION__ILI9486__480x320 = "ili9486_480x320"  # natively portrait dimensions; we apply a 90° rotation
     DISPLAY_CONFIGURATION__DESKTOP__240x240 = "desktop_240x240"  # pygame-based desktop simulation
     DISPLAY_CONFIGURATION__DESKTOP__320x240 = "desktop_320x240"
+    DISPLAY_CONFIGURATION__DESKTOP__128x128 = "desktop_128x128"
     if USING_MOCK_GPIO:
         ALL_DISPLAY_CONFIGURATIONS = [
             (DISPLAY_CONFIGURATION__ST7789__240x240, "st7789 240x240"),
             (DISPLAY_CONFIGURATION__ST7789__320x240, "st7789 320x240"),
+            (DISPLAY_CONFIGURATION__ST7735__128x128, "st7735 128x128"),
             (DISPLAY_CONFIGURATION__ILI9341__320x240, "ili9341 320x240 (beta)"),
             (DISPLAY_CONFIGURATION__DESKTOP__240x240, "desktop 240x240"),
             (DISPLAY_CONFIGURATION__DESKTOP__320x240, "desktop 320x240"),
+            (DISPLAY_CONFIGURATION__DESKTOP__128x128, "desktop 128x128"),
             # (DISPLAY_CONFIGURATION__ILI9486__320x480, "ili9486 480x320"),  # TODO: Enable when ili9486 driver performance is improved
         ]
     else:
         ALL_DISPLAY_CONFIGURATIONS = [
             (DISPLAY_CONFIGURATION__ST7789__240x240, "st7789 240x240"),
             (DISPLAY_CONFIGURATION__ST7789__320x240, "st7789 320x240"),
+            (DISPLAY_CONFIGURATION__ST7735__128x128, "st7735 128x128"),
             (DISPLAY_CONFIGURATION__ILI9341__320x240, "ili9341 320x240 (beta)"),
             # (DISPLAY_CONFIGURATION__ILI9486__320x480, "ili9486 480x320"),  # TODO: Enable when ili9486 driver performance is improved
         ]
@@ -534,6 +550,7 @@ class SettingsConstants:
 
     # Label strings
     LABEL__BIP39_PASSPHRASE = _mft("BIP-39 Passphrase")
+    LABEL__AEZEED_PASSPHRASE = _mft("Aezeed Passphrase")
     # TRANSLATOR_NOTE: Terminology used by Electrum seeds; equivalent to bip39 passphrase
     custom_extension = _mft("Custom Extension")
     LABEL__CUSTOM_EXTENSION = custom_extension
@@ -562,6 +579,44 @@ class SettingsConstants:
         (18, "18 words"),
         (21, "21 words"),
         (24, "24 words"),
+    ]
+
+    # GPG key type constants
+    GPG_KEY_TYPE__ED25519 = "ed25519"
+    GPG_KEY_TYPE__P256 = "p256"
+    GPG_KEY_TYPE__P384 = "p384"
+    GPG_KEY_TYPE__P521 = "p521"
+    GPG_KEY_TYPE__BRAINPOOL_P256 = "brainpoolp256r1"
+    GPG_KEY_TYPE__BRAINPOOL_P384 = "brainpoolp384r1"
+    GPG_KEY_TYPE__BRAINPOOL_P512 = "brainpoolp512r1"
+    GPG_KEY_TYPE__RSA2048 = "rsa2048"
+    GPG_KEY_TYPE__RSA3072 = "rsa3072"
+    GPG_KEY_TYPE__RSA4096 = "rsa4096"
+    GPG_KEY_TYPE__SECP256K1 = "secp256k1"
+
+    ALL_GPG_KEY_TYPES = [
+        (GPG_KEY_TYPE__ED25519, "ECC Ed25519"),
+        (GPG_KEY_TYPE__P256, "ECC NIST P-256"),
+        (GPG_KEY_TYPE__P384, "ECC NIST P-384"),
+        (GPG_KEY_TYPE__P521, "ECC NIST P-521"),
+        (GPG_KEY_TYPE__BRAINPOOL_P256, "ECC Brainpool P-256"),
+        (GPG_KEY_TYPE__BRAINPOOL_P384, "ECC Brainpool P-384"),
+        (GPG_KEY_TYPE__BRAINPOOL_P512, "ECC Brainpool P-512"),
+        (GPG_KEY_TYPE__RSA2048, "RSA 2048"),
+        (GPG_KEY_TYPE__RSA3072, "RSA 3072"),
+        (GPG_KEY_TYPE__RSA4096, "RSA 4096"),
+        (GPG_KEY_TYPE__SECP256K1, "ECC secp256k1"),
+    ]
+
+    # Default GPG key types match the "Generate New" menu
+    DEFAULT_GPG_KEY_TYPES = [
+        GPG_KEY_TYPE__ED25519,
+        GPG_KEY_TYPE__P256,
+        GPG_KEY_TYPE__BRAINPOOL_P256,
+        GPG_KEY_TYPE__RSA2048,
+        GPG_KEY_TYPE__RSA3072,
+        GPG_KEY_TYPE__RSA4096,
+        GPG_KEY_TYPE__SECP256K1,
     ]
 
 
@@ -906,6 +961,15 @@ class SettingsDefinition:
                       default_value=SettingsConstants.OPTION__DISABLED),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
+                      attr_name=SettingsConstants.SETTING__GPG_KEY_TYPES,
+                      abbreviated_name="gpgkeys",
+                      display_name=_mft("GPG key types"),
+                      type=SettingsConstants.TYPE__MULTISELECT,
+                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
+                      selection_options=SettingsConstants.ALL_GPG_KEY_TYPES,
+                      default_value=SettingsConstants.DEFAULT_GPG_KEY_TYPES),
+
+        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
                       attr_name=SettingsConstants.SETTING__BIP85_CHILD_SEEDS,
                       abbreviated_name="bip85",
                       display_name=_mft("BIP-85 child seeds"),
@@ -913,16 +977,17 @@ class SettingsDefinition:
                       default_value=SettingsConstants.OPTION__ENABLED),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
-                      attr_name=SettingsConstants.SETTING__BIP85_ECC_KEYS,
-                      abbreviated_name="bip85_ecc",
-                      display_name=_mft("BIP85 ECC curves"),
+                      attr_name=SettingsConstants.SETTING__SLIP39_SEEDS,
+                      abbreviated_name="slip39",
+                      display_name=_mft("SLIP39 seeds"),
                       visibility=SettingsConstants.VISIBILITY__ADVANCED,
                       default_value=SettingsConstants.OPTION__DISABLED),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
-                      attr_name=SettingsConstants.SETTING__SLIP39_SEEDS,
-                      abbreviated_name="slip39",
-                      display_name=_mft("SLIP39 seeds"),
+                      attr_name=SettingsConstants.SETTING__AEZEED_SEEDS,
+                      abbreviated_name="aezeed",
+                      display_name=_mft("Aezeed seeds"),
+                      help_text=_mft("LND-compatible, 24 words"),
                       visibility=SettingsConstants.VISIBILITY__ADVANCED,
                       default_value=SettingsConstants.OPTION__DISABLED),
 
@@ -945,14 +1010,21 @@ class SettingsDefinition:
                       attr_name=SettingsConstants.SETTING__BITBOX_BACKUP,
                       abbreviated_name="bitbox",
                       display_name=_mft("BitBox02 backups"),
-                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
+                      visibility=SettingsConstants.VISIBILITY__HIDDEN,
                       default_value=SettingsConstants.OPTION__DISABLED),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
                       attr_name=SettingsConstants.SETTING__PASSPORT_BACKUP,
                       abbreviated_name="passport",
                       display_name=_mft("Passport backups"),
-                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
+                      visibility=SettingsConstants.VISIBILITY__HIDDEN,
+                      default_value=SettingsConstants.OPTION__DISABLED),
+
+        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
+                      attr_name=SettingsConstants.SETTING__TAPSIGNER_BACKUP,
+                      abbreviated_name="tapsigner",
+                      display_name=_mft("TAPSIGNER backups"),
+                      visibility=SettingsConstants.VISIBILITY__HIDDEN,
                       default_value=SettingsConstants.OPTION__DISABLED),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
@@ -1103,8 +1175,6 @@ class SettingsDefinition:
     def get_settings_entries(cls, visibility: str = SettingsConstants.VISIBILITY__GENERAL) -> List[SettingsEntry]:
         entries = []
         for entry in cls.settings_entries:
-            if entry.attr_name == SettingsConstants.SETTING__CAMERA_DEVICE and not USING_MOCK_GPIO:
-                continue
             if entry.visibility == visibility:
                 if entry.attr_name == SettingsConstants.SETTING__CAMERA_DEVICE:
                     try:
@@ -1121,23 +1191,12 @@ class SettingsDefinition:
     def get_settings_entry(cls, attr_name) -> SettingsEntry:
         for entry in cls.settings_entries:
             if entry.attr_name == attr_name:
-                if attr_name == SettingsConstants.SETTING__CAMERA_DEVICE:
-                    if not USING_MOCK_GPIO:
-                        return None
-                    try:
-                        from seedsigner.hardware.camera import Camera
-
-                        entry.selection_options = Camera.list_cameras()
-                    except Exception:
-                        pass
                 return entry
 
 
     @classmethod
     def get_settings_entry_by_abbreviated_name(cls, abbreviated_name: str) -> SettingsEntry:
         for entry in cls.settings_entries:
-            if entry.attr_name == SettingsConstants.SETTING__CAMERA_DEVICE and not USING_MOCK_GPIO:
-                continue
             if abbreviated_name in [entry.abbreviated_name, entry.attr_name]:
                 return entry
 

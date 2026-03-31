@@ -281,6 +281,50 @@ def test_short_4_letter_mnemonic_qr():
     assert d.get_seed_phrase() == ["height", "demise", "useless", "trap", "grow", "lion", "found", "off", "key", "clown", "transfer", "enroll"]
 
 
+
+
+def test_mnemonic_qr_detects_aezeed_checksum_when_bip39_invalid():
+    aezeed_mnemonic = (
+        "absorb original enlist once climb erode kid thrive kitchen giant define tube "
+        "orange leader harbor comfort olive fatal success suggest drink penalty chimney ritual"
+    )
+    d = DecodeQR()
+
+    assert d.add_data(aezeed_mnemonic) == DecodeQRStatus.COMPLETE
+    assert d.get_seed_phrase() == aezeed_mnemonic.split()
+    assert d.get_seed_type() == "aezeed"
+
+
+def test_mnemonic_qr_prefers_bip39_over_aezeed_for_valid_bip39_24_word():
+    bip39_24 = (
+        "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon "
+        "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art"
+    )
+    d = DecodeQR()
+
+    assert d.add_data(bip39_24) == DecodeQRStatus.COMPLETE
+    assert d.get_seed_type() == "bip39"
+
+
+
+def test_mnemonic_qr_marks_ambiguous_when_bip39_and_aezeed_both_validate(monkeypatch):
+    mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art"
+    d = DecodeQR()
+
+    monkeypatch.setattr("seedsigner.models.decode_qr.aezeed_has_valid_checksum", lambda words, lookup: True)
+
+    assert d.add_data(mnemonic) == DecodeQRStatus.COMPLETE
+    assert d.get_seed_type() == "ambiguous"
+
+def test_xprv_qr():
+    xprv = "xprv9s21ZrQH143K2LBWUUQRFXhucrQqBpKdRRxNVq2zBqsx8HVqFk2uYo8kmbaLLHRdqtQpUm98uKfu3vca1LqdGhUtyoFnCNkfmXRyPXLjbKb"
+    d = DecodeQR()
+
+    assert d.add_data(xprv) == DecodeQRStatus.COMPLETE
+    assert d.qr_type == QRType.SEED__XPRV
+    assert d.get_xprv() == xprv
+
+
 # Test data for bitcoin address decoding. All generated from test key: ["abandon"] * 11 + ["about"]
 legacy_address_mainnet = "1LqBGSKuX5yYUonjxT5qGfpUsXKYYWeabA"
 legacy_address_testnet = "mkpZhYtJu2r87Js3pDiWJDmPte2NRZ8bJV"
@@ -407,6 +451,52 @@ def test_seed_qr():
     
     assert d.qr_type == QRType.SEED__SEEDQR
     assert d.get_seed_phrase() == "obscure bone gas open exotic abuse virus bunker shuffle nasty ship dash".split()
+
+
+def test_mnemonic_text_qr_case_insensitive():
+    """Text QR codes containing BIP39 mnemonics should be detected regardless of case."""
+    expected_phrase = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about".split()
+
+    # Lowercase (standard)
+    d = DecodeQR()
+    d.add_data("abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about")
+    assert d.qr_type == QRType.SEED__MNEMONIC
+    assert d.get_seed_phrase() == expected_phrase
+
+    # Capitalized words
+    d = DecodeQR()
+    d.add_data("Abandon Abandon Abandon Abandon Abandon Abandon Abandon Abandon Abandon Abandon Abandon About")
+    assert d.qr_type == QRType.SEED__MNEMONIC
+    assert d.get_seed_phrase() == expected_phrase
+
+    # Uppercase words
+    d = DecodeQR()
+    d.add_data("ABANDON ABANDON ABANDON ABANDON ABANDON ABANDON ABANDON ABANDON ABANDON ABANDON ABANDON ABOUT")
+    assert d.qr_type == QRType.SEED__MNEMONIC
+    assert d.get_seed_phrase() == expected_phrase
+
+
+def test_mnemonic_text_qr_whitespace_tolerant():
+    """Text QR codes with non-standard whitespace should still be detected."""
+    expected_phrase = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about".split()
+
+    # Double spaces
+    d = DecodeQR()
+    d.add_data("abandon  abandon  abandon  abandon  abandon  abandon  abandon  abandon  abandon  abandon  abandon  about")
+    assert d.qr_type == QRType.SEED__MNEMONIC
+    assert d.get_seed_phrase() == expected_phrase
+
+    # Newline-separated
+    d = DecodeQR()
+    d.add_data("abandon\nabandon\nabandon\nabandon\nabandon\nabandon\nabandon\nabandon\nabandon\nabandon\nabandon\nabout")
+    assert d.qr_type == QRType.SEED__MNEMONIC
+    assert d.get_seed_phrase() == expected_phrase
+
+    # Multi-line with mixed whitespace
+    d = DecodeQR()
+    d.add_data("abandon abandon abandon abandon\nabandon abandon abandon abandon\nabandon abandon abandon about")
+    assert d.qr_type == QRType.SEED__MNEMONIC
+    assert d.get_seed_phrase() == expected_phrase
 
 
 def test_specter_wallet_json():    

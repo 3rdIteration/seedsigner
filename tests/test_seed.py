@@ -1,14 +1,14 @@
 import os
 import json
 import pytest
-from seedsigner.models.seed import InvalidSeedException, Seed, ElectrumSeed, Slip39Seed
+from unittest.mock import patch
+from seedsigner.models.seed import InvalidSeedException, Seed, AezeedSeed, ElectrumSeed, Slip39Seed, SeedWordsUnavailableException, XprvSeed
 from seedsigner.models.decode_qr import DecodeQR, DecodeQRStatus
 import shamir_mnemonic
 
 from base import BaseTest
 from seedsigner.models.settings import SettingsConstants
 from seedsigner.views import seed_views
-
 
 
 def test_seed():
@@ -42,7 +42,164 @@ def test_seed():
     
     # assert seed.passphrase == "test"
 
-    
+
+
+
+def test_seed_case_insensitive():
+    """Mnemonic words should be accepted regardless of case."""
+    expected_bytes = Seed(mnemonic="abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about".split()).seed_bytes
+
+    # Capitalized words
+    seed = Seed(mnemonic="Abandon Abandon Abandon Abandon Abandon Abandon Abandon Abandon Abandon Abandon Abandon About".split())
+    assert seed.seed_bytes == expected_bytes
+    assert seed.mnemonic_str == "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+
+    # Uppercase words
+    seed = Seed(mnemonic="ABANDON ABANDON ABANDON ABANDON ABANDON ABANDON ABANDON ABANDON ABANDON ABANDON ABANDON ABOUT".split())
+    assert seed.seed_bytes == expected_bytes
+
+    # Mixed case words
+    seed = Seed(mnemonic="aBaNdOn ABANDON abandon Abandon ABANDON abandon ABANDON Abandon abandon ABANDON abandon About".split())
+    assert seed.seed_bytes == expected_bytes
+
+
+def test_discard_pending_mnemonic_does_not_corrupt_wordlist():
+    """Regression test: wipe_list in discard_pending_mnemonic must not corrupt
+    the global bip39.WORDLIST via wipe_string/ctypes.memset."""
+    from embit import bip39
+    from seedsigner.models.seed_storage import SeedStorage
+
+    original_first_word = bip39.WORDLIST[0]  # "abandon"
+    assert original_first_word == "abandon"
+
+    storage = SeedStorage()
+    storage.init_pending_mnemonic(num_words=12)
+    mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about".split()
+    for i, word in enumerate(mnemonic):
+        storage.update_pending_mnemonic(word, i)
+
+    storage.convert_pending_mnemonic_to_pending_seed()
+
+    # The global wordlist must still be intact
+    assert bip39.WORDLIST[0] == "abandon"
+    assert bip39.WORDLIST[0].startswith("a")
+    assert repr(bip39.WORDLIST[0]) == "'abandon'"
+    # Word matching (as used in keyboard entry) must still work
+    assert "abandon" in [w for w in bip39.WORDLIST if w.startswith("a")]
+
+
+
+def test_aezeed_seed_default_passphrase_vector():
+    mnemonic = (
+        "absorb original enlist once climb erode kid thrive kitchen giant define tube "
+        "orange leader harbor comfort olive fatal success suggest drink penalty chimney ritual"
+    ).split()
+    seed = AezeedSeed(mnemonic=mnemonic)
+
+    assert seed.seed_bytes == bytes.fromhex("81b637d86359e6960de795e41e0b4cfd")
+
+
+
+
+def test_aezeed_seed_requires_passphrase_does_not_fail_word_validation():
+    mnemonic = (
+        "above gap bronze point damp name group actress idea festival cream during "
+        "bid blanket dumb wage foster merit success suggest drink protect autumn box"
+    ).split()
+    seed = AezeedSeed(mnemonic=mnemonic)
+
+    assert seed.seed_bytes is None
+
+
+
+def test_aezeed_seed_user_reported_passphrase_vector():
+    mnemonic = (
+        "absent beef crazy include regret city blanket plug thought spatial boy receive "
+        "bag jazz fade emerge quit beach crucial giant mutual reward captain excite"
+    ).split()
+    seed = AezeedSeed(mnemonic=mnemonic, passphrase="test")
+
+    assert seed.seed_bytes == bytes.fromhex("81b637d86359e6960de795e41e0b4cfd")
+
+def test_aezeed_seed_custom_passphrase_vector():
+    mnemonic = (
+        "above gap bronze point damp name group actress idea festival cream during "
+        "bid blanket dumb wage foster merit success suggest drink protect autumn box"
+    ).split()
+    seed = AezeedSeed(mnemonic=mnemonic, passphrase="!very_safe_55345_password*")
+
+    assert seed.seed_bytes == bytes.fromhex("81b637d86359e6960de795e41e0b4cfd")
+
+
+def test_aezeed_seed_blank_passphrase_retry_does_not_raise():
+    mnemonic = (
+        "absent beef crazy include regret city blanket plug thought spatial boy receive "
+        "bag jazz fade emerge quit beach crucial giant mutual reward captain excite"
+    ).split()
+    seed = AezeedSeed(mnemonic=mnemonic)
+
+    assert seed.seed_bytes is None
+
+    # Blank retry must remain in passphrase-required state, not raise.
+    seed.set_passphrase("")
+    assert seed.seed_bytes is None
+
+
+
+def test_in_memory_seed_type_label_for_aezeed():
+    mnemonic = (
+        "absorb original enlist once climb erode kid thrive kitchen giant define tube "
+        "orange leader harbor comfort olive fatal success suggest drink penalty chimney ritual"
+    ).split()
+    seed = AezeedSeed(mnemonic=mnemonic)
+
+    assert seed_views.SeedsMenuView.get_seed_type_label(seed) == "Aezeed"
+
+def test_xprv_seed_has_no_seed_words():
+    xprv = "xprv9s21ZrQH143K2LBWUUQRFXhucrQqBpKdRRxNVq2zBqsx8HVqFk2uYo8kmbaLLHRdqtQpUm98uKfu3vca1LqdGhUtyoFnCNkfmXRyPXLjbKb"
+    seed = XprvSeed(xprv)
+
+    with pytest.raises(SeedWordsUnavailableException, match="does not have seed words"):
+        _ = seed.mnemonic_display_list
+
+
+def test_xprv_seed_supports_bip85_child_mnemonic_vectors():
+    """BIP85 vectors from BIP-0085 for application 39' (BIP39 mnemonics)."""
+    xprv = "xprv9s21ZrQH143K2LBWUUQRFXhucrQqBpKdRRxNVq2zBqsx8HVqFk2uYo8kmbaLLHRdqtQpUm98uKfu3vca1LqdGhUtyoFnCNkfmXRyPXLjbKb"
+    seed = XprvSeed(xprv)
+
+    assert seed.bip85_supported
+    assert seed.get_bip85_child_mnemonic(0, 12) == "girl mad pet galaxy egg matter matrix prison refuse sense ordinary nose"
+    assert seed.get_bip85_child_mnemonic(0, 18) == "near account window bike charge season chef number sketch tomorrow excuse sniff circle vital hockey outdoor supply token"
+    assert seed.get_bip85_child_mnemonic(0, 24) == "puppy ocean match cereal symbol another shed magic wrap hammer bulb intact gadget divorce twin tonight reason outdoor destroy simple truth cigar social volcano"
+
+
+def test_electrum_seed_supports_bip85_child_mnemonic():
+    seed = ElectrumSeed(mnemonic="regular reject rare profit once math fringe chase until ketchup century escape".split())
+
+    assert seed.bip85_supported
+    assert seed.get_bip85_child_mnemonic(0, 12) == "slender grass raw hundred skirt obey street sound swear fuel drastic dish"
+
+
+def test_slip39_seed_supports_bip85_child_mnemonic(monkeypatch):
+    class DummyLoadingScreenThread:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def start(self):
+            pass
+
+        def stop(self):
+            pass
+
+    monkeypatch.setattr("seedsigner.gui.screens.screen.LoadingScreenThread", DummyLoadingScreenThread)
+
+    share = "testify swimming academic academic column loyalty smear include exotic bedroom exotic wrist lobe cover grief golden smart junior estimate learn"
+    seed = Slip39Seed(mnemonics=[share])
+
+    assert seed.bip85_supported
+    assert seed.get_bip85_child_mnemonic(0, 12) == "unable jealous real gain balance armed wide sting alley float fiction engine"
+
 def test_electrum_seed():
     """
     ElectrumSeed should correctly parse a modern Electrum mnemonic.
@@ -302,6 +459,145 @@ def test_slip39_vectors_end_to_end(desc, mnemonics, secret_hex, xprv):
                 assert root.to_base58() == xprv
 
 
+
+
+class TestAezeedPassphraseMode(BaseTest):
+    def test_back_from_aezeed_passphrase_entry_returns_mode(self, monkeypatch):
+        mnemonic = (
+            "absent beef crazy include regret city blanket plug thought spatial boy receive "
+            "bag jazz fade emerge quit beach crucial giant mutual reward captain excite"
+        ).split()
+        self.controller.storage.set_pending_seed(AezeedSeed(mnemonic=mnemonic))
+
+        view = seed_views.SeedAddPassphraseView()
+        monkeypatch.setattr(
+            view,
+            "run_screen",
+            lambda *args, **kwargs: {"passphrase": "", "is_back_button": True},
+        )
+
+        destination = view.run()
+        assert destination.View_cls == seed_views.SeedAezeedPassphraseModeView
+
+    def test_back_from_aezeed_passphrase_mode_returns_home(self, monkeypatch):
+        mnemonic = (
+            "absent beef crazy include regret city blanket plug thought spatial boy receive "
+            "bag jazz fade emerge quit beach crucial giant mutual reward captain excite"
+        ).split()
+        self.controller.storage.set_pending_seed(AezeedSeed(mnemonic=mnemonic))
+
+        view = seed_views.SeedAezeedPassphraseModeView()
+        monkeypatch.setattr(view, "run_screen", lambda *args, **kwargs: seed_views.RET_CODE__BACK_BUTTON)
+
+        destination = view.run()
+        assert destination.View_cls == seed_views.MainMenuView
+        assert destination.clear_history is True
+
+    def test_scan_wrong_aezeed_passphrase_returns_mode(self, monkeypatch):
+        mnemonic = (
+            "absent beef crazy include regret city blanket plug thought spatial boy receive "
+            "bag jazz fade emerge quit beach crucial giant mutual reward captain excite"
+        ).split()
+        self.controller.storage.set_pending_seed(AezeedSeed(mnemonic=mnemonic))
+
+        class DummyDecodeQR:
+            def __init__(self, is_passphrase=False):
+                self.is_complete = True
+                self.is_nonUTF8 = False
+
+            def get_passphrase(self):
+                return "wrong"
+
+        monkeypatch.setattr("seedsigner.models.decode_qr.DecodeQR", DummyDecodeQR)
+
+        view = seed_views.SeedScanPassphraseView()
+        monkeypatch.setattr(view, "run_screen", lambda *args, **kwargs: None)
+
+        destination = view.run()
+        assert destination.View_cls == seed_views.SeedAezeedPassphraseModeView
+
+    def test_seedkeeper_wrong_aezeed_passphrase_returns_mode(self, monkeypatch):
+        mnemonic = (
+            "absent beef crazy include regret city blanket plug thought spatial boy receive "
+            "bag jazz fade emerge quit beach crucial giant mutual reward captain excite"
+        ).split()
+        self.controller.storage.set_pending_seed(AezeedSeed(mnemonic=mnemonic))
+
+        class DummyLoadingScreenThread:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def start(self):
+                pass
+
+            def stop(self):
+                pass
+
+        class DummyConnector:
+            def seedkeeper_list_secret_headers(self):
+                return [{"id": 1, "label": "pw", "type": 0x90, "origin": 0, "export_rights": 0x01, "export_nbplain": 0, "export_nbsecure": 0, "export_counter": 0, "fingerprint": ""}]
+
+            def seedkeeper_export_secret(self, sid, _):
+                assert sid == 1
+                pwd = "wrong".encode()
+                return {"secret_list": [len(pwd)], "secret": (bytes([len(pwd)]) + pwd).hex()}
+
+        monkeypatch.setattr("seedsigner.views.seed_views.seedkeeper_utils.init_satochip", lambda *args, **kwargs: DummyConnector())
+        monkeypatch.setattr("seedsigner.gui.screens.screen.LoadingScreenThread", DummyLoadingScreenThread)
+
+        view = seed_views.SeedLoadSeedKeeperPassphraseView()
+        monkeypatch.setattr(view, "run_screen", lambda *args, **kwargs: 0)
+
+        destination = view.run()
+        assert destination.View_cls == seed_views.SeedAezeedPassphraseModeView
+
+
+
+
+
+class TestAezeedBackupOptions(BaseTest):
+    def _load_aezeed_seed(self, passphrase=""):
+        mnemonic = (
+            "absent beef crazy include regret city blanket plug thought spatial boy receive "
+            "bag jazz fade emerge quit beach crucial giant mutual reward captain excite"
+        ).split()
+        seed = AezeedSeed(mnemonic=mnemonic)
+        if passphrase:
+            seed.set_passphrase(passphrase)
+        self.controller.storage.seeds = [seed]
+        return seed
+
+    def test_backup_view_keeps_view_words_and_hides_plaintext_qr_for_aezeed(self, monkeypatch):
+        self._load_aezeed_seed(passphrase="test")
+        self.settings.set_value(SettingsConstants.SETTING__PLAINTEXTQR, SettingsConstants.OPTION__ENABLED)
+
+        captured = {}
+        def fake_run_screen(*args, **kwargs):
+            captured['button_data'] = kwargs['button_data']
+            return seed_views.RET_CODE__BACK_BUTTON
+
+        view = seed_views.SeedBackupView(seed_num=0)
+        monkeypatch.setattr(view, "run_screen", fake_run_screen)
+        view.run()
+
+        assert seed_views.SeedBackupView.VIEW_WORDS in captured['button_data']
+        assert seed_views.SeedBackupView.EXPORT_PLAINTEXTQR not in captured['button_data']
+
+    def test_aezeed_seed_words_warning_mentions_passphrase(self, monkeypatch):
+        self._load_aezeed_seed(passphrase="test")
+
+        captured = {}
+        def fake_run_screen(*args, **kwargs):
+            captured['text'] = kwargs.get('text')
+            return seed_views.RET_CODE__BACK_BUTTON
+
+        view = seed_views.SeedWordsWarningView(seed_num=0)
+        monkeypatch.setattr(view, "run_screen", fake_run_screen)
+        destination = view.run()
+
+        assert "passphrase" in captured['text'].lower()
+        assert destination.View_cls == seed_views.BackStackView
+
 class TestSlip39ExtendableSetting(BaseTest):
     def test_create_nonextendable_slip39_seed(self, monkeypatch):
         self.settings.set_value(
@@ -332,3 +628,123 @@ class TestSlip39ExtendableSetting(BaseTest):
         assert isinstance(seed, Slip39Seed)
         assert not seed.extendable
 
+
+def test_seed_storage_convert_pending_mnemonic_passes_wordlist_language(monkeypatch):
+    from seedsigner.models.seed_storage import SeedStorage
+    from seedsigner.models.settings_definition import SettingsConstants
+
+    captured = {}
+
+    class DummySeed:
+        def __init__(self, mnemonic, passphrase="", wordlist_language_code=SettingsConstants.WORDLIST_LANGUAGE__ENGLISH):
+            captured["mnemonic"] = list(mnemonic)
+            captured["wordlist_language_code"] = wordlist_language_code
+
+    monkeypatch.setattr("seedsigner.models.seed_storage.Seed", DummySeed)
+    monkeypatch.setattr("seedsigner.models.seed_storage.wipe_list", lambda values: None)
+
+    storage = SeedStorage()
+    storage.init_pending_mnemonic(num_words=12)
+    for i in range(12):
+        storage.update_pending_mnemonic("abandon", i)
+
+    storage.convert_pending_mnemonic_to_pending_seed(wordlist_language_code=SettingsConstants.WORDLIST_LANGUAGE__ENGLISH)
+
+    assert captured["mnemonic"] == ["abandon"] * 12
+    assert captured["wordlist_language_code"] == SettingsConstants.WORDLIST_LANGUAGE__ENGLISH
+
+
+def test_seed_storage_pending_mnemonic_fingerprint_passes_wordlist_language(monkeypatch):
+    from seedsigner.models.seed_storage import SeedStorage
+    from seedsigner.models.settings_definition import SettingsConstants
+
+    captured = {}
+
+    class DummySeed:
+        def __init__(self, mnemonic, passphrase="", wordlist_language_code=SettingsConstants.WORDLIST_LANGUAGE__ENGLISH):
+            captured["mnemonic"] = list(mnemonic)
+            captured["wordlist_language_code"] = wordlist_language_code
+
+        def get_fingerprint(self, network):
+            captured["network"] = network
+            return "deadbeef"
+
+    monkeypatch.setattr("seedsigner.models.seed_storage.Seed", DummySeed)
+    monkeypatch.setattr("seedsigner.models.seed_storage.wipe_list", lambda values: None)
+
+    storage = SeedStorage()
+    storage.init_pending_mnemonic(num_words=12)
+    for i in range(12):
+        storage.update_pending_mnemonic("abandon", i)
+
+    fingerprint = storage.get_pending_mnemonic_fingerprint(
+        network=SettingsConstants.TESTNET,
+        wordlist_language_code=SettingsConstants.WORDLIST_LANGUAGE__ENGLISH,
+    )
+
+    assert fingerprint == "deadbeef"
+    assert captured["mnemonic"] == ["abandon"] * 12
+    assert captured["wordlist_language_code"] == SettingsConstants.WORDLIST_LANGUAGE__ENGLISH
+    assert captured["network"] == SettingsConstants.TESTNET
+
+def test_seed_storage_allows_multiple_xprvs():
+    from seedsigner.models.seed_storage import SeedStorage
+
+    storage = SeedStorage()
+
+    xprv_a = XprvSeed("xprv9s21ZrQH143K2LBWUUQRFXhucrQqBpKdRRxNVq2zBqsx8HVqFk2uYo8kmbaLLHRdqtQpUm98uKfu3vca1LqdGhUtyoFnCNkfmXRyPXLjbKb")
+    xprv_b = XprvSeed("xprv9s21ZrQH143K4QViKpwKCpS2zVbz8GrZgpEchMDg6KME9HZtjfL7iThE9w5muQA4YPHKN1u5VM1w8D4pvnjxa2BmpGMfXr7hnRrRHZ93awZ")
+
+    storage.set_pending_seed(xprv_a)
+    first_index = storage.finalize_pending_seed()
+
+    storage.set_pending_seed(xprv_b)
+    second_index = storage.finalize_pending_seed()
+
+    assert first_index == 0
+    assert second_index == 1
+    assert storage.num_seeds() == 2
+    assert storage.seeds[0] == xprv_a
+    assert storage.seeds[1] == xprv_b
+
+
+def test_seed_storage_import_multiple_seed_types_mix_and_match():
+    from seedsigner.models.seed_storage import SeedStorage
+
+    with patch("seedsigner.gui.screens.screen.LoadingScreenThread"):
+        storage = SeedStorage()
+
+        bip39_a = Seed(mnemonic="abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about".split())
+        bip39_b = Seed(mnemonic="obscure bone gas open exotic abuse virus bunker shuffle nasty ship dash".split())
+
+        electrum_a = ElectrumSeed(mnemonic="regular reject rare profit once math fringe chase until ketchup century escape".split())
+        electrum_b = ElectrumSeed(mnemonic="basket print toy noodle betray weird filter ticket insect copy force machine".split())
+
+        secret1 = bytes.fromhex("11" * 16)
+        shares1 = shamir_mnemonic.generate_mnemonics(1, [(2, 3)], secret1)[0]
+        slip39_a = Slip39Seed(mnemonics=[shares1[0], shares1[1]])
+
+        secret2 = bytes.fromhex("22" * 16)
+        shares2 = shamir_mnemonic.generate_mnemonics(1, [(2, 3)], secret2)[0]
+        slip39_b = Slip39Seed(mnemonics=[shares2[0], shares2[1]])
+
+        xprv_a = XprvSeed("xprv9s21ZrQH143K2LBWUUQRFXhucrQqBpKdRRxNVq2zBqsx8HVqFk2uYo8kmbaLLHRdqtQpUm98uKfu3vca1LqdGhUtyoFnCNkfmXRyPXLjbKb")
+        xprv_b = XprvSeed("xprv9s21ZrQH143K4QViKpwKCpS2zVbz8GrZgpEchMDg6KME9HZtjfL7iThE9w5muQA4YPHKN1u5VM1w8D4pvnjxa2BmpGMfXr7hnRrRHZ93awZ")
+
+        seeds_in_order = [
+            bip39_a,
+            xprv_a,
+            electrum_a,
+            slip39_a,
+            bip39_b,
+            xprv_b,
+            electrum_b,
+            slip39_b,
+        ]
+
+        for expected_index, seed in enumerate(seeds_in_order):
+            storage.set_pending_seed(seed)
+            assert storage.finalize_pending_seed() == expected_index
+
+        assert storage.num_seeds() == len(seeds_in_order)
+        assert storage.seeds == seeds_in_order

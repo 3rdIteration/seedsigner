@@ -40,3 +40,8 @@ class TestSettingsDefinition(BaseTest):
     def test_default_seed_word_lengths(self):
         defaults = SettingsDefinition.get_defaults()
         assert defaults[SettingsConstants.SETTING__SEED_WORD_LENGTHS] == [12, 24]
+
+
+    def test_tapsigner_backup_default_disabled(self):
+        defaults = SettingsDefinition.get_defaults()
+        assert defaults[SettingsConstants.SETTING__TAPSIGNER_BACKUP] == SettingsConstants.OPTION__DISABLED

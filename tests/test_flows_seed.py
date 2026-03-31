@@ -20,6 +20,12 @@ def load_seed_into_decoder(view: scan_views.ScanView):
     view.decoder.add_data("0000" * 11 + "0003")
 
 
+def load_xprv_into_decoder(view: scan_views.ScanView):
+    view.decoder.add_data(
+        "xprv9s21ZrQH143K2LBWUUQRFXhucrQqBpKdRRxNVq2zBqsx8HVqFk2uYo8kmbaLLHRdqtQpUm98uKfu3vca1LqdGhUtyoFnCNkfmXRyPXLjbKb"
+    )
+
+
 
 class TestSeedFlows(FlowTest):
 
@@ -34,6 +40,31 @@ class TestSeedFlows(FlowTest):
             FlowStep(seed_views.SeedFinalizeView, button_data_selection=seed_views.SeedFinalizeView.FINALIZE),
             FlowStep(seed_views.SeedOptionsView),
         ])
+
+    def test_scan_xprv_flow(self):
+        self.run_sequence([
+            FlowStep(MainMenuView, button_data_selection=MainMenuView.SCAN),
+            FlowStep(scan_views.ScanView, before_run=load_xprv_into_decoder),
+            FlowStep(seed_views.SeedFinalizeView, button_data_selection=seed_views.SeedFinalizeView.FINALIZE),
+            FlowStep(seed_views.SeedOptionsView),
+        ])
+
+
+    def test_xprv_view_seed_words_shows_human_message(self):
+        self.settings.set_value(SettingsConstants.SETTING__DIRE_WARNINGS, SettingsConstants.OPTION__DISABLED)
+
+        self.run_sequence([
+            FlowStep(MainMenuView, button_data_selection=MainMenuView.SCAN),
+            FlowStep(scan_views.ScanView, before_run=load_xprv_into_decoder),
+            FlowStep(seed_views.SeedFinalizeView, button_data_selection=seed_views.SeedFinalizeView.FINALIZE),
+            FlowStep(seed_views.SeedOptionsView, button_data_selection=seed_views.SeedOptionsView.BACKUP),
+            FlowStep(seed_views.SeedBackupView, button_data_selection=seed_views.SeedBackupView.VIEW_WORDS),
+            FlowStep(seed_views.SeedWordsWarningView, is_redirect=True),
+            FlowStep(seed_views.SeedWordsView),
+            FlowStep(seed_views.SeedBackupView),
+        ])
+
+
 
 
     def test_passphrase_entry_flow(self):
@@ -1155,3 +1186,41 @@ class TestSatochipImportSeedView(BaseTest):
         assert "already" in view.run_screen.call_args.kwargs["text"].lower()
         assert destination.View_cls == tools_views.MainMenuView
 
+    def test_xprv_seed_shows_unsupported_message(self, monkeypatch):
+        from seedsigner.views import tools_views
+        from seedsigner.helpers import seedkeeper_utils
+        from seedsigner.models.seed import XprvSeed
+
+        class MockConnector:
+            def card_get_status(self):
+                return (None, 0x90, 0x00, {"is_seeded": False})
+
+            def card_bip32_import_seed(self, _seed_bytes):
+                raise AssertionError("xprv should be blocked before import")
+
+        monkeypatch.setattr(
+            seedkeeper_utils, "init_satochip", lambda *a, **k: MockConnector()
+        )
+
+        self.controller.storage.seeds = [
+            XprvSeed(
+                "xprv9s21ZrQH143K2LBWUUQRFXhucrQqBpKdRRxNVq2zBqsx8HVqFk2uYo8kmbaLLHRdqtQpUm98uKfu3vca1LqdGhUtyoFnCNkfmXRyPXLjbKb"
+            )
+        ]
+
+        view = tools_views.ToolsSatochipImportSeedView()
+        responses = iter([0, 0])
+        captured = {}
+
+        def fake_run_screen(screen_cls, **kwargs):
+            if screen_cls is tools_views.WarningScreen:
+                captured["warning_text"] = kwargs.get("text")
+            return next(responses)
+
+        monkeypatch.setattr(view, "run_screen", fake_run_screen)
+        destination = view.run()
+
+        warning_text = captured["warning_text"].lower()
+        assert "xprv" in warning_text
+        assert "slip39" in warning_text
+        assert destination.View_cls == tools_views.BackStackView

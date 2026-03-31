@@ -4,7 +4,7 @@ from typing import Type
 
 from seedsigner.helpers.l10n import mark_for_translation as _mft
 from seedsigner.gui.components import SeedSignerIconConstants
-from seedsigner.gui.screens import RET_CODE__POWER_BUTTON, RET_CODE__BACK_BUTTON
+from seedsigner.gui.screens import RET_CODE__POWER_BUTTON, RET_CODE__BACK_BUTTON, RET_CODE__DISPLAY_TOGGLE
 from seedsigner.gui.screens.screen import BaseScreen, ButtonOption, LargeButtonScreen, WarningScreen, ErrorScreen
 from seedsigner.models.settings import Settings, SettingsConstants
 from seedsigner.models.settings_definition import SettingsDefinition
@@ -130,13 +130,46 @@ class Destination:
     clear_history: bool = False         # Optionally clears the back_stack to prevent "back"
 
 
+    _SENSITIVE_ARG_NAMES = {
+        "password",
+        "passphrase",
+        "mnemonic",
+        "seed",
+        "seed_bytes",
+        "secret",
+        "secret_list",
+        "private_key",
+        "pin",
+    }
+
+    @classmethod
+    def _redact_for_repr(cls, value, key: str | None = None):
+        if isinstance(value, dict):
+            redacted = {}
+            for k, v in value.items():
+                key_name = str(k).lower()
+                redacted[k] = cls._redact_for_repr(v, key=key_name)
+            return redacted
+
+        if isinstance(value, list):
+            return [cls._redact_for_repr(item, key=key) for item in value]
+
+        if isinstance(value, tuple):
+            return tuple(cls._redact_for_repr(item, key=key) for item in value)
+
+        if key and key in cls._SENSITIVE_ARG_NAMES:
+            return "***redacted***"
+
+        return value
+
     def __repr__(self):
         if self.View_cls is None:
             out = "None"
         else:
             out = self.View_cls.__name__
         if self.view_args:
-            out += f"({self.view_args})"
+            safe_view_args = self._redact_for_repr(self.view_args)
+            out += f"({safe_view_args})"
         else:
             out += "()"
         if self.clear_history:
@@ -213,6 +246,11 @@ class MainMenuView(View):
         if selected_menu_num == RET_CODE__POWER_BUTTON:
             return Destination(PowerOptionsView)
 
+        if selected_menu_num == RET_CODE__DISPLAY_TOGGLE:
+            # Display driver was switched via very-long-press; re-render the
+            # home screen with the new display dimensions.
+            return Destination(MainMenuView)
+
         if button_data[selected_menu_num] == self.SCAN:
             from seedsigner.views.scan_views import ScanView
             return Destination(ScanView)
@@ -260,11 +298,22 @@ class RestartView(View):
         from seedsigner.gui.screens.screen import ResetScreen
         thread = RestartView.DoResetThread()
         thread.start()
-        self.run_screen(ResetScreen)
+        try:
+            self.run_screen(ResetScreen)
+        except Exception:
+            # Stop the reset thread if the screen exits abnormally (e.g.
+            # ScreenshotComplete during screenshot generation).  Broad catch
+            # is intentional: whatever caused the exit, we must prevent the
+            # background thread from killing the process.
+            thread.stop()
+            raise
 
 
     class DoResetThread(BaseThread):
         def run(self):
+            import os
+            import shlex
+            import sys
             import time
             from subprocess import call
 
@@ -272,12 +321,18 @@ class RestartView(View):
             # exiting.
             time.sleep(0.25)
 
-            # Kill the SeedSigner process; Running the process again.
-            # `.*` is a wildcard to detect either `python`` or `python3`.
+            if not self.keep_running:
+                return
+
+            # Kill the current process by its PID (reliable across all
+            # Python binary names).  The shell subprocess survives the
+            # parent being killed and can then start the new process.
+            pid = os.getpid()
             if Settings.HOSTNAME == Settings.SEEDSIGNER_OS:
-                call("kill $(pidof python*) & python /opt/src/main.py", shell=True)
+                python = shlex.quote(sys.executable)
+                call(f"kill {pid}; exec {python} /opt/src/main.py", shell=True)
             else:
-                call("kill $(ps aux | grep '[p]ython.*main.py' | awk '{print $2}')", shell=True)
+                call(f"kill {pid}", shell=True)
 
 
 

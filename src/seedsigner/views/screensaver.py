@@ -23,7 +23,7 @@ class LogoScreen(BaseScreen):
         self.logo = load_image("logo_black_240.png")
 
         self.partners = [
-            "hrf",
+            "sese",
         ]
 
         self.partner_logos: dict = {}
@@ -100,7 +100,7 @@ class OpeningSplashScreen(LogoScreen):
 
         # Display version num below SeedSigner logo
         font = Fonts.get_font(GUIConstants.get_body_font_name(), GUIConstants.get_top_nav_title_font_size())
-        version = f"v{controller.VERSION}"
+        version = f"{controller.VERSION}"
 
         # The logo png is 240x240, but the actual logo is 70px tall, vertically centered
         logo_height = 70
@@ -119,8 +119,8 @@ class OpeningSplashScreen(LogoScreen):
             # Set up the partner logo
             partner_logo: Image.Image = self.partner_logos[self.get_random_partner()]
             font = Fonts.get_font(GUIConstants.get_top_nav_title_font_name(), GUIConstants.get_body_font_size())
-            # TRANSLATOR_NOTE: This is on the opening splash screen, displayed above the HRF logo
-            sponsor_text = _("With support from:")
+            # TRANSLATOR_NOTE: This is on the opening splash screen, displayed above the Seedsigner logo
+            sponsor_text = _("An unofficial fork of:")
             (left, top, tw, th) = font.getbbox(sponsor_text, anchor="lt")
 
             x = int((self.renderer.canvas_width) / 2)

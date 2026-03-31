@@ -1,4 +1,7 @@
 import logging
+import os
+import platform
+import re
 from gettext import gettext as _
 
 #from seedsigner.gui.screens import (RET_CODE__BACK_BUTTON, ButtonListScreen, WarningScreen, settings_screens)
@@ -7,6 +10,7 @@ from seedsigner.gui.components import GUIConstants, SeedSignerIconConstants
 from seedsigner.gui.screens import (RET_CODE__BACK_BUTTON, ButtonListScreen, WarningScreen, settings_screens)
 from seedsigner.gui.screens.screen import ButtonOption
 from seedsigner.models.settings import Settings, SettingsConstants, SettingsDefinition
+from seedsigner.hardware.io_config import get_hardware_profile_label
 
 from .view import View, Destination, MainMenuView, BackStackView
 
@@ -24,6 +28,8 @@ class SettingsMenuView(View):
     DONATE = ButtonOption("Donate")
     RESTART_PCSC = ButtonOption("Restart PCSC")
     BATTERY_INFO = ButtonOption("Battery info")
+    SYSTEM_INFO = ButtonOption("System info")
+    LOAD_BACKUP_FILES = ButtonOption("Load Backup Files", right_icon_name=SeedSignerIconConstants.CHEVRON_RIGHT)
 
     def __init__(self, visibility: str = SettingsConstants.VISIBILITY__GENERAL, selected_attr: str = None, initial_scroll: int = 0):
         super().__init__()
@@ -72,7 +78,8 @@ class SettingsMenuView(View):
         elif self.visibility == SettingsConstants.VISIBILITY__ADVANCED:
             title = _("Advanced")
 
-            # The hardware options nest below "Advanced"
+            # Backup loaders and hardware options nest below "Advanced"
+            button_data.append(self.LOAD_BACKUP_FILES)
             button_data.append(self.HARDWARE)
             hardware_destination = Destination(
                 SettingsMenuView,
@@ -81,9 +88,8 @@ class SettingsMenuView(View):
 
         elif self.visibility == SettingsConstants.VISIBILITY__HARDWARE:
             title = "Hardware"
-            from seedsigner.hardware.battery_hat import BatteryHat
-            if BatteryHat.get_instance().detect_hat():
-                button_data.append(self.BATTERY_INFO)
+            button_data.append(self.SYSTEM_INFO)
+            button_data.append(self.BATTERY_INFO)
             button_data.append(self.IO_TEST)
             if self.settings.get_value(SettingsConstants.SETTING__SMARTCARD_SUPPORT) == SettingsConstants.OPTION__ENABLED:
                 button_data.append(self.LIST_READERS)
@@ -121,6 +127,9 @@ class SettingsMenuView(View):
         elif button_data[selected_menu_num] == self.HARDWARE:
             return hardware_destination
 
+        elif button_data[selected_menu_num] == self.LOAD_BACKUP_FILES:
+            return Destination(LoadBackupFilesSettingsView)
+
         elif button_data[selected_menu_num] == self.IO_TEST:
             return Destination(IOTestView)
         
@@ -142,6 +151,9 @@ class SettingsMenuView(View):
         elif button_data[selected_menu_num] == self.BATTERY_INFO:
             return Destination(BatteryInfoView)
 
+        elif button_data[selected_menu_num] == self.SYSTEM_INFO:
+            return Destination(SystemInfoView)
+
         elif settings_entries[selected_menu_num].attr_name == SettingsConstants.SETTING__ENCRYPTION_ITER:
             return Destination(SettingPBKDF2IterationsView, view_args=dict(attr_name=settings_entries[selected_menu_num].attr_name, parent_initial_scroll=initial_scroll))
 
@@ -151,6 +163,36 @@ class SettingsMenuView(View):
         else:
             return Destination(SettingsEntryUpdateSelectionView, view_args=dict(attr_name=settings_entries[selected_menu_num].attr_name, parent_initial_scroll=initial_scroll))
 
+
+
+class LoadBackupFilesSettingsView(View):
+    def run(self):
+        settings_entries = [
+            SettingsDefinition.get_settings_entry(SettingsConstants.SETTING__BITBOX_BACKUP),
+            SettingsDefinition.get_settings_entry(SettingsConstants.SETTING__PASSPORT_BACKUP),
+            SettingsDefinition.get_settings_entry(SettingsConstants.SETTING__TAPSIGNER_BACKUP),
+        ]
+        button_data = [ButtonOption(entry.display_name) for entry in settings_entries]
+
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title=_("Load Backup Files"),
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(SettingsMenuView, view_args={"visibility": SettingsConstants.VISIBILITY__ADVANCED})
+
+        selected_entry = settings_entries[selected_menu_num]
+        return Destination(
+            SettingsEntryUpdateSelectionView,
+            view_args={
+                "attr_name": selected_entry.attr_name,
+                "parent_initial_scroll": 0,
+                "parent_destination": Destination(LoadBackupFilesSettingsView),
+            },
+        )
 
 
 class SettingPBKDF2IterationsView(View):
@@ -240,11 +282,12 @@ class SettingsEntryUpdateSelectionView(View):
         Handles changes to all selection-type settings (Multiselect, SELECT_1,
         Enabled/Disabled, etc).
     """
-    def __init__(self, attr_name: str, parent_initial_scroll: int = 0, selected_button: int = None):
+    def __init__(self, attr_name: str, parent_initial_scroll: int = 0, selected_button: int = None, parent_destination: Destination = None):
         super().__init__()
         self.settings_entry = SettingsDefinition.get_settings_entry(attr_name)
         self.selected_button = selected_button
         self.parent_initial_scroll = parent_initial_scroll
+        self.parent_destination = parent_destination
 
 
     def run(self):
@@ -296,9 +339,10 @@ class SettingsEntryUpdateSelectionView(View):
                 "initial_scroll": self.parent_initial_scroll,
             }
         )
+        parent_destination = self.parent_destination or settings_menu_view_destination
 
         if ret_value == RET_CODE__BACK_BUTTON:
-            return settings_menu_view_destination
+            return parent_destination
 
         value = self.settings_entry.get_selection_option_value(ret_value)
 
@@ -319,7 +363,7 @@ class SettingsEntryUpdateSelectionView(View):
             # All other types are single selects (e.g. Enabled/Disabled, SELECT_1)
             if value == initial_value:
                 # No change, return to menu
-                return settings_menu_view_destination
+                return parent_destination
             else:
                 updated_value = value
 
@@ -340,7 +384,7 @@ class SettingsEntryUpdateSelectionView(View):
         # All selects stay in place; re-initialize where in the list we left off
         self.selected_button = ret_value
 
-        return Destination(SettingsEntryUpdateSelectionView, view_args=dict(attr_name=self.settings_entry.attr_name, parent_initial_scroll=self.parent_initial_scroll, selected_button=self.selected_button), skip_current_view=True)
+        return Destination(SettingsEntryUpdateSelectionView, view_args=dict(attr_name=self.settings_entry.attr_name, parent_initial_scroll=self.parent_initial_scroll, selected_button=self.selected_button, parent_destination=self.parent_destination), skip_current_view=True)
 
 
 
@@ -707,6 +751,109 @@ class DonateView(View):
 
 class BatteryInfoView(View):
     def run(self):
+        from seedsigner.hardware.battery_hat import BatteryHat
+
+        if not BatteryHat.get_instance().is_enabled():
+            self.run_screen(
+                WarningScreen,
+                title=_("Battery Info"),
+                status_icon_size=0,
+                status_headline=None,
+                text=_("No compatible battery monitor detected"),
+                button_data=[ButtonOption(_("Back"))],
+            )
+            return Destination(SettingsMenuView, view_args={"visibility": SettingsConstants.VISIBILITY__HARDWARE})
+
         self.run_screen(settings_screens.BatteryInfoScreen)
+
+        return Destination(SettingsMenuView, view_args={"visibility": SettingsConstants.VISIBILITY__HARDWARE})
+
+
+class SystemInfoView(View):
+    def _read_text_file(self, path: str) -> str | None:
+        try:
+            with open(path, "r", encoding="utf-8") as file:
+                value = file.read().strip().replace("\x00", "")
+            return value or None
+        except Exception:
+            return None
+
+    def _get_system_serial(self) -> str:
+        try:
+            with open("/proc/cpuinfo", "r", encoding="utf-8") as file:
+                for line in file:
+                    if line.startswith("Serial"):
+                        serial = line.split(":", 1)[-1].strip()
+                        return serial or _("Unavailable")
+        except Exception:
+            pass
+
+        return _("Unavailable")
+
+    def _get_microsd_serial(self) -> str:
+        from seedsigner.hardware.microsd import MicroSD
+
+        mount_device = None
+        try:
+            with open("/proc/mounts", "r", encoding="utf-8") as file:
+                for line in file:
+                    parts = line.split()
+                    if len(parts) >= 2 and parts[1] == MicroSD.MOUNT_POINT:
+                        mount_device = parts[0]
+                        break
+        except Exception:
+            return _("Unavailable")
+
+        if not mount_device:
+            return _("Unavailable")
+
+        block_device = os.path.basename(mount_device)
+        parent_device = re.sub(r"p?\d+$", "", block_device)
+        serial_path = f"/sys/class/block/{parent_device}/device/serial"
+        serial = self._read_text_file(serial_path)
+        return serial if serial else _("Unavailable")
+
+    def _get_platform_info(self) -> tuple[str, str]:
+        profile = Settings.RUNTIME_PROFILE
+        platform_map = {
+            "desktop": "Desktop",
+            "rpi_26": "Raspberry Pi",
+            "rpi_40": "Raspberry Pi",
+            "luckfox_22": "Luckfox Pico",
+            "luckfox_40": "Luckfox Pico",
+            "luckfox_pi": "Luckfox Pico",
+        }
+        platform_name = platform_map.get(profile, "Unknown")
+
+        if profile == "desktop":
+            os_name = platform.system().strip()
+            if os_name:
+                return platform_name, os_name
+            return platform_name, _("Unavailable")
+
+        # Prefer actual board model (e.g. specific Raspberry Pi / Luckfox model).
+        variant = self._read_text_file("/proc/device-tree/model")
+        if not variant:
+            try:
+                hardware_config = Settings.get_platform_default_hardware_config()
+                if hardware_config:
+                    variant = get_hardware_profile_label(hardware_config)
+            except Exception:
+                pass
+
+        if not variant:
+            variant = _("Unavailable")
+
+        return platform_name, variant
+
+    def run(self):
+        platform_name, platform_variant = self._get_platform_info()
+        self.run_screen(
+            settings_screens.SystemInfoScreen,
+            system_serial=self._get_system_serial(),
+            microsd_serial=self._get_microsd_serial(),
+            platform_name=platform_name,
+            platform_variant=platform_variant,
+        )
 
         return Destination(SettingsMenuView, view_args={"visibility": SettingsConstants.VISIBILITY__HARDWARE})

@@ -9,7 +9,7 @@ from seedsigner.gui.screens.screen import RET_CODE__BACK_BUTTON, ButtonListScree
 from seedsigner.gui.screens.scan_screens import ScanEncryptedQRScreen, ScanTypeEncryptionKeyScreen, ScanReviewEncryptionKeyScreen
 from seedsigner.gui.screens import LargeIconStatusScreen
 from seedsigner.models.decode_qr import DecodeQR, DecodeQRStatus
-from seedsigner.models.seed import Seed, InvalidSeedException
+from seedsigner.models.seed import Seed, AezeedSeed, XprvSeed, InvalidSeedException
 
 from gettext import gettext as _
 from seedsigner.helpers.l10n import mark_for_translation as _mft
@@ -85,23 +85,45 @@ class ScanView(View):
 
             if self.decoder.is_seed:
                 seed_mnemonic = self.decoder.get_seed_phrase()
+                seed_type = self.decoder.get_seed_type()
 
                 if not seed_mnemonic:
                     # seed is not valid, Exit if not valid with message
                     return Destination(NotYetImplementedView)
+
+                if seed_type == "ambiguous":
+                    TYPE_BIP39 = ButtonOption("BIP39")
+                    TYPE_AEZEED = ButtonOption("Aezeed")
+                    button_data = [TYPE_BIP39, TYPE_AEZEED]
+                    selected = self.run_screen(
+                        ButtonListScreen,
+                        title=_("Select Seed Type"),
+                        is_button_text_centered=True,
+                        button_data=button_data,
+                    )
+                    if selected == RET_CODE__BACK_BUTTON:
+                        return Destination(BackStackView)
+                    seed_type = "aezeed" if button_data[selected] == TYPE_AEZEED else "bip39"
+
+                # Found a valid mnemonic seed! All new seeds should be considered
+                #   pending (might set a passphrase, SeedXOR, etc) until finalized.
+                from seedsigner.models.seed import Seed
+                from .seed_views import SeedFinalizeView
+                if seed_type == "aezeed":
+                    seed = AezeedSeed(mnemonic=seed_mnemonic)
+                    self.controller.storage.set_pending_seed(seed)
+                    if seed.seed_bytes is None:
+                        from seedsigner.views.seed_views import SeedAezeedPassphraseModeView
+                        return Destination(SeedAezeedPassphraseModeView)
                 else:
-                    # Found a valid mnemonic seed! All new seeds should be considered
-                    #   pending (might set a passphrase, SeedXOR, etc) until finalized.
-                    from seedsigner.models.seed import Seed
-                    from .seed_views import SeedFinalizeView
                     self.controller.storage.set_pending_seed(
                         Seed(mnemonic=seed_mnemonic, wordlist_language_code=self.wordlist_language_code)
                     )
-                    if self.settings.get_value(SettingsConstants.SETTING__PASSPHRASE) == SettingsConstants.OPTION__REQUIRED:
-                        from seedsigner.views.seed_views import SeedAddPassphraseView
-                        return Destination(SeedAddPassphraseView)
-                    else:
-                        return Destination(SeedFinalizeView)
+                if seed_type != "aezeed" and self.settings.get_value(SettingsConstants.SETTING__PASSPHRASE) == SettingsConstants.OPTION__REQUIRED:
+                    from seedsigner.views.seed_views import SeedAddPassphraseView
+                    return Destination(SeedAddPassphraseView)
+                else:
+                    return Destination(SeedFinalizeView)
 
             elif self.decoder.is_slip39_share:
                 share = self.decoder.get_slip39_share()
@@ -111,6 +133,18 @@ class ScanView(View):
                     self.controller.storage.update_pending_slip39_share(w, i)
                 self.controller.storage.finalize_current_slip39_share()
                 return Destination(SeedSlip39MoreSharesView)
+
+            elif self.decoder.is_xprv:
+                from .seed_views import SeedFinalizeView
+
+                try:
+                    self.controller.storage.set_pending_seed(
+                        XprvSeed(self.decoder.get_xprv())
+                    )
+                except InvalidSeedException:
+                    return Destination(ScanInvalidQRTypeView)
+
+                return Destination(SeedFinalizeView)
             
             elif self.decoder.is_psbt:
                 from seedsigner.views.psbt_views import PSBTSelectSeedView
@@ -297,7 +331,7 @@ class ScanSeedQRView(ScanView):
 
     @property
     def is_valid_qr_type(self):
-        return self.decoder.is_seed or self.decoder.is_encrypted_seedqr
+        return self.decoder.is_seed or self.decoder.is_encrypted_seedqr or self.decoder.is_xprv
 
 
 class ScanSlip39ShareQRView(ScanView):
@@ -638,9 +672,15 @@ class ScanDecryptEncryptedQRView(View):
 
         if status == DecodeQRStatus.COMPLETE:
             self.controller.storage2.clear_encryptedqr()
-            self.controller.storage.set_pending_seed(
-                Seed(mnemonic=decoder.get_seed_phrase(), wordlist_language_code=self.wordlist_language_code)
-            )
+            xprv = decoder.get_xprv()
+            if xprv:
+                self.controller.storage.set_pending_seed(XprvSeed(xprv))
+                from .seed_views import SeedFinalizeView
+                return Destination(SeedFinalizeView, skip_current_view=True)
+            else:
+                self.controller.storage.set_pending_seed(
+                    Seed(mnemonic=decoder.get_seed_phrase(), wordlist_language_code=self.wordlist_language_code)
+                )
             if self.settings.get_value(SettingsConstants.SETTING__PASSPHRASE) == SettingsConstants.OPTION__REQUIRED:
                 from seedsigner.views.seed_views import SeedAddPassphraseView
                 return Destination(SeedAddPassphraseView, skip_current_view=True)

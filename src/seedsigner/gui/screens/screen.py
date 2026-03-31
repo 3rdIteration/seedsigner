@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 #   screens with buttons.
 RET_CODE__BACK_BUTTON = 1000
 RET_CODE__POWER_BUTTON = 1001
+RET_CODE__DISPLAY_TOGGLE = 1002
 
 
 
@@ -866,7 +867,7 @@ class QRDisplayScreen(BaseScreen):
                 # Display the brightness tips toast
                 duration = 10 ** 9 * 1.2  # 1.2 seconds
                 if is_brightness_tip_enabled and time.time_ns() - self.tips_start_time.cur_count < duration:
-                    image = self.qr_encoder.part_to_image(self.qr_encoder.cur_part(), 240, 240, border=2, background_color=hex_color)
+                    image = self.qr_encoder.part_to_image(self.qr_encoder.cur_part(), self.renderer.canvas_width, self.renderer.canvas_height, border=2, background_color=hex_color)
                     self.render_brightness_tip(image)
                     pending_encoder_restart = True
                 else:
@@ -876,7 +877,7 @@ class QRDisplayScreen(BaseScreen):
                         # brightness tip is stowed.
                         self.qr_encoder.restart()
                         pending_encoder_restart = False
-                    image = self.qr_encoder.next_part_image(240, 240, border=2, background_color=hex_color)
+                    image = self.qr_encoder.next_part_image(self.renderer.canvas_width, self.renderer.canvas_height, border=2, background_color=hex_color)
 
                 with self.renderer.lock:
                     self.renderer.show_image(image)
@@ -1368,6 +1369,10 @@ class MainMenuScreen(LargeButtonScreen):
     show_back_button: bool = False
     show_power_button: bool = True
 
+    # Very-long-press (5 seconds) on a joystick direction switches the display driver.
+    VERY_LONG_PRESS_MS = 5000
+    _DIRECTION_TO_DISPLAY = None  # built lazily in _run_callback
+
     def __post_init__(self):
         super().__post_init__()
         from seedsigner.hardware.battery_hat import BatteryHat
@@ -1376,11 +1381,58 @@ class MainMenuScreen(LargeButtonScreen):
         self.battery_indicator = BatteryIndicator()
         self.battery_indicator.screen_x = GUIConstants.EDGE_PADDING
         self.battery_indicator.screen_y = GUIConstants.EDGE_PADDING
-        if self.battery_hat.detected:
+        if self.battery_hat.is_enabled() and self.battery_hat.detected:
             self.components.append(self.battery_indicator)
         self.threads.append(MainMenuScreen.UpdateThread(self))
 
+        # State for tracking the very-long-press
+        self._hold_key = None
+        self._hold_start_ms = None
+
     def _run_callback(self):
+        from seedsigner.models.settings import Settings
+
+        # Lazy-build the direction→display map (avoids import-time reference to
+        # SettingsConstants values that are plain strings).
+        if MainMenuScreen._DIRECTION_TO_DISPLAY is None:
+            MainMenuScreen._DIRECTION_TO_DISPLAY = {
+                HardwareButtonsConstants.KEY_UP:    SettingsConstants.DISPLAY_CONFIGURATION__ST7789__240x240,
+                HardwareButtonsConstants.KEY_RIGHT: SettingsConstants.DISPLAY_CONFIGURATION__ST7789__320x240,
+                HardwareButtonsConstants.KEY_DOWN:  SettingsConstants.DISPLAY_CONFIGURATION__ST7735__128x128,
+            }
+
+        cur_input = self.hw_inputs.cur_input
+        cur_time = int(time.time() * 1000)
+
+        if cur_input in self._DIRECTION_TO_DISPLAY:
+            if cur_input != self._hold_key:
+                # New direction; start tracking
+                self._hold_key = cur_input
+                self._hold_start_ms = cur_time
+            elif cur_time - self._hold_start_ms >= self.VERY_LONG_PRESS_MS:
+                new_config = self._DIRECTION_TO_DISPLAY[cur_input]
+                settings = Settings.get_instance()
+                current_config = settings.get_value(
+                    SettingsConstants.SETTING__DISPLAY_CONFIGURATION
+                )
+                if new_config != current_config:
+                    logger.info(
+                        "Very-long-press detected (%s): switching display %s → %s",
+                        cur_input, current_config, new_config,
+                    )
+                    settings.set_value(
+                        SettingsConstants.SETTING__DISPLAY_CONFIGURATION,
+                        new_config,
+                    )
+                    self.renderer.initialize_display()
+                    return RET_CODE__DISPLAY_TOGGLE
+                # Same config already active; reset so we don't keep triggering
+                self._hold_key = None
+                self._hold_start_ms = None
+        else:
+            self._hold_key = None
+            self._hold_start_ms = None
+
         return None
 
     class UpdateThread(BaseThread):
@@ -1393,8 +1445,9 @@ class MainMenuScreen(LargeButtonScreen):
 
         def run(self):
             while self.keep_running:
-                if not self.battery_hat.detected:
-                    self.battery_hat.detected = self.battery_hat.detect_hat()
+                if not self.battery_hat.is_enabled():
+                    time.sleep(1)
+                    continue
 
                 if self.battery_hat.detected and self.screen.battery_indicator not in self.screen.components:
                     with self.screen.renderer.lock:

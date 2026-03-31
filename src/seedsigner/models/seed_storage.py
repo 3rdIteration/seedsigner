@@ -1,5 +1,6 @@
 from typing import List
-from seedsigner.models.seed import Seed, ElectrumSeed, Slip39Seed, InvalidSeedException
+from seedsigner.helpers.secure_delete import wipe_bytes, wipe_list
+from seedsigner.models.seed import Seed, ElectrumSeed, AezeedSeed, Slip39Seed, InvalidSeedException
 from seedsigner.models.settings_definition import SettingsConstants
 
 
@@ -10,6 +11,7 @@ class SeedStorage:
         self.pending_seed: Seed = None
         self._pending_mnemonic: List[str] = []
         self._pending_is_electrum: bool = False
+        self._pending_is_aezeed: bool = False
         self._pending_is_slip39: bool = False
         self._pending_slip39_share: List[str] = []
         self._pending_slip39_shares: List[List[str]] = []
@@ -37,6 +39,8 @@ class SeedStorage:
 
 
     def clear_pending_seed(self):
+        if self.pending_seed is not None:
+            self.pending_seed.wipe()
         self.pending_seed = None
 
 
@@ -64,9 +68,10 @@ class SeedStorage:
         return len(self._pending_mnemonic)
 
 
-    def init_pending_mnemonic(self, num_words:int = 12, is_electrum:bool = False):
+    def init_pending_mnemonic(self, num_words:int = 12, is_electrum:bool = False, is_aezeed:bool = False):
         self._pending_mnemonic = [None] * num_words
         self._pending_is_electrum = is_electrum
+        self._pending_is_aezeed = is_aezeed
 
 
     def update_pending_mnemonic(self, word: str, index: int):
@@ -77,7 +82,10 @@ class SeedStorage:
         """
         if index >= len(self._pending_mnemonic):
             raise Exception(f"index {index} is too high")
-        self._pending_mnemonic[index] = word
+        # Create an independent copy so that wipe_list() in
+        # discard_pending_mnemonic() won't corrupt the shared
+        # global wordlist strings via wipe_string/ctypes.memset.
+        self._pending_mnemonic[index] = "".join(word)
     
 
     def get_pending_mnemonic_word(self, index: int) -> str:
@@ -86,28 +94,48 @@ class SeedStorage:
         return None
     
 
-    def get_pending_mnemonic_fingerprint(self, network: str = SettingsConstants.MAINNET) -> str:
+    def get_pending_mnemonic_fingerprint(
+        self,
+        network: str = SettingsConstants.MAINNET,
+        wordlist_language_code: str = SettingsConstants.WORDLIST_LANGUAGE__ENGLISH,
+    ) -> str:
         try:
             if self._pending_is_electrum:
                 seed = ElectrumSeed(self._pending_mnemonic)
+            elif self._pending_is_aezeed:
+                seed = AezeedSeed(self._pending_mnemonic)
+                if seed.seed_bytes is None:
+                    return None
             else:
-                seed = Seed(self._pending_mnemonic)
+                seed = Seed(self._pending_mnemonic, wordlist_language_code=wordlist_language_code)
             return seed.get_fingerprint(network)
         except InvalidSeedException:
             return None
 
 
-    def convert_pending_mnemonic_to_pending_seed(self):
+    def convert_pending_mnemonic_to_pending_seed(
+        self,
+        wordlist_language_code: str = SettingsConstants.WORDLIST_LANGUAGE__ENGLISH,
+    ):
         if self._pending_is_electrum:
             self.pending_seed = ElectrumSeed(self._pending_mnemonic)
+        elif self._pending_is_aezeed:
+            self.pending_seed = AezeedSeed(self._pending_mnemonic)
         else:
-            self.pending_seed = Seed(self._pending_mnemonic)
+            self.pending_seed = Seed(self._pending_mnemonic, wordlist_language_code=wordlist_language_code)
         self.discard_pending_mnemonic()
     
 
+
+    @property
+    def pending_is_aezeed(self) -> bool:
+        return self._pending_is_aezeed
+
     def discard_pending_mnemonic(self):
+        wipe_list(self._pending_mnemonic)
         self._pending_mnemonic = []
         self._pending_is_electrum = False
+        self._pending_is_aezeed = False
 
     """Slip39 share handling"""
 
@@ -121,7 +149,9 @@ class SeedStorage:
     def update_pending_slip39_share(self, word: str, index: int):
         if index >= len(self._pending_slip39_share):
             raise Exception(f"index {index} is too high")
-        self._pending_slip39_share[index] = word
+        # Create an independent copy so that wipe_list() won't
+        # corrupt the shared global SLIP-39 wordlist strings.
+        self._pending_slip39_share[index] = "".join(word)
 
     def get_pending_slip39_word(self, index: int) -> str:
         if index < len(self._pending_slip39_share):
@@ -169,6 +199,9 @@ class SeedStorage:
         self.discard_pending_slip39_shares()
 
     def discard_pending_slip39_shares(self):
+        wipe_list(self._pending_slip39_share)
+        for share in self._pending_slip39_shares:
+            wipe_list(share)
         self._pending_slip39_share = []
         self._pending_slip39_shares = []
         self._pending_is_slip39 = False

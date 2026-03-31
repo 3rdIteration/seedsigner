@@ -65,7 +65,9 @@ def calculate_checksum(mnemonic: list | str, wordlist_language_code: str = Setti
         mnemonic = re.findall(r'[^,\s]+', mnemonic)
 
     if len(mnemonic) in [11, 14, 17, 20, 23]:
-        temp_final_word = Seed.get_wordlist(wordlist_language_code)[0]
+        # Create an independent copy so the caller's list doesn't hold
+        # a direct reference to the shared global wordlist string.
+        temp_final_word = "".join(Seed.get_wordlist(wordlist_language_code)[0])
         mnemonic.append(temp_final_word)
 
     if len(mnemonic) not in SUPPORTED_WORD_LENGTHS:
@@ -83,13 +85,20 @@ def calculate_checksum(mnemonic: list | str, wordlist_language_code: str = Setti
     # calculate the proper checksum bits while doing so. For a 12-word seed it will just
     # overwrite the last 4 bits from the above result with the checksum; for a 24-word
     # seed it'll overwrite the last 8 bits.
-    return bip39.mnemonic_from_bytes(mnemonic_bytes).split()
+    return bip39.mnemonic_from_bytes(
+        mnemonic_bytes,
+        wordlist=Seed.get_wordlist(wordlist_language_code),
+    ).split()
 
 
 
 def generate_mnemonic_from_bytes(entropy_bytes, wordlist_language_code: str = SettingsConstants.WORDLIST_LANGUAGE__ENGLISH) -> list[str]:
     return bip39.mnemonic_from_bytes(entropy_bytes, wordlist=Seed.get_wordlist(wordlist_language_code)).split()
 
+
+
+def _hash_dice_rolls(roll_data: str) -> bytes:
+    return hashlib.sha256(roll_data.encode()).digest()
 
 
 def generate_mnemonic_from_dice(roll_data: str, wordlist_language_code: str = SettingsConstants.WORDLIST_LANGUAGE__ENGLISH) -> list[str]:
@@ -102,7 +111,7 @@ def generate_mnemonic_from_dice(roll_data: str, wordlist_language_code: str = Se
 
         Important note: This method is NOT compatible with iancoleman's "Dice" mode.
     """
-    entropy_bytes = hashlib.sha256(roll_data.encode()).digest()
+    entropy_bytes = _hash_dice_rolls(roll_data)
 
     word_length = ROLL_COUNT_TO_LENGTH.get(len(roll_data), 24)
 
@@ -112,12 +121,13 @@ def generate_mnemonic_from_dice(roll_data: str, wordlist_language_code: str = Se
     return bip39.mnemonic_from_bytes(entropy_bytes, wordlist=Seed.get_wordlist(wordlist_language_code)).split()
 
 
-def generate_bytes_from_dice(roll_data: str) -> bytes:
+def generate_bytes_from_dice(roll_data: str, length_bytes: int | None = None) -> bytes:
     """Return entropy bytes from dice rolls without converting to mnemonic."""
-    entropy_bytes = hashlib.sha256(roll_data.encode()).digest()
-    word_length = ROLL_COUNT_TO_LENGTH.get(len(roll_data), 24)
-    entropy_bytes = entropy_bytes[:ENTROPY_BYTES_REQUIRED[word_length]]
-    return entropy_bytes
+    entropy_bytes = _hash_dice_rolls(roll_data)
+    if length_bytes is None:
+        word_length = ROLL_COUNT_TO_LENGTH.get(len(roll_data), 24)
+        length_bytes = ENTROPY_BYTES_REQUIRED[word_length]
+    return entropy_bytes[:length_bytes]
 
 
 

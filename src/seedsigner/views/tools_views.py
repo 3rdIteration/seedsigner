@@ -1,3 +1,4 @@
+import base64
 import hashlib
 import json
 import logging
@@ -8,6 +9,7 @@ import binascii
 import re
 import subprocess
 from pathlib import Path
+import math
 from embit.util import secp256k1
 from embit.psbt import PSBT
 
@@ -35,11 +37,13 @@ from seedsigner.gui.screens.tools_screens import (ToolsCalcFinalWordDoneScreen, 
     ToolsTranscribeTextQRConfirmQRPromptScreen, ToolsCommonFilterScreen, ToolsNetworkInfoScreen,
     ToolsBatteryCalibrationIntroScreen, ToolsBatteryCalibrationStartScreen, ToolsBatteryCalibrationRunningScreen)
 from seedsigner.helpers import embit_utils, mnemonic_generation
+from seedsigner.helpers import bip85_drng, diceware, password_generation
 from seedsigner.helpers.iso7816 import format_sw_error
 from seedsigner.models.decode_qr import DecodeQR
 from seedsigner.models.encode_qr import GenericStaticQrEncoder
 from seedsigner.gui.screens.screen import ButtonOption
 from seedsigner.models.seed import Seed
+from seedsigner.models.seed import XprvSeed
 from seedsigner.models.settings_definition import SettingsConstants
 from seedsigner.views.seed_views import (
     SeedDiscardView,
@@ -62,6 +66,7 @@ from .view import View, Destination, BackStackView, MainMenuView
 from .satochip_bias import ToolsSatochipBiasCheckView
 
 from seedsigner.hardware.microsd import MicroSD
+from seedsigner.hardware.rng_monitor import HardwareRngHealthMonitor
 from seedsigner.helpers import seedkeeper_utils
 from seedsigner.helpers.satochip_signer import (
     _call_with_timeout,
@@ -71,9 +76,261 @@ from seedsigner.helpers.satochip_signer import (
 from seedsigner.gui.screens import seed_screens
 logger = logging.getLogger(__name__)
 
+# Minimum RSA key size in bits to avoid weak keys.
+MIN_RSA_KEY_BITS = 2048
+
 from pysatochip.JCconstants import SEEDKEEPER_DIC_TYPE, SEEDKEEPER_DIC_ORIGIN, SEEDKEEPER_DIC_EXPORT_RIGHTS, BIP39_WORDLIST_DIC
 from pysatochip.CardConnector import CardConnector, UnexpectedSW12Error
 from binascii import unhexlify, hexlify
+
+PASSWORD_TYPE_RANDOM = "random"
+PASSWORD_TYPE_DICEWARE_EFF_SHORT = "diceware_eff_short"
+PASSWORD_TYPE_DICEWARE_EFF_LONG = "diceware_eff_long"
+PASSWORD_TYPE_DICEWARE_BIP39 = "diceware_bip39"
+PASSWORD_TYPE_DICE_ROLLS = "dice_rolls"
+PASSWORD_TYPE_HEX = "hex"
+PASSWORD_TYPE_BASE64 = "base64"
+PASSWORD_TYPE_BASE85 = "base85"
+
+PASSWORD_WORD_SEPARATOR_NONE = "none"
+PASSWORD_WORD_SEPARATOR_CAPITALISE = "capitalise"
+PASSWORD_WORD_SEPARATOR_SPACE = "space"
+PASSWORD_WORD_SEPARATOR_DOT = "dot"
+
+PASSWORD_ENTROPY_CAMERA = "camera"
+PASSWORD_ENTROPY_DICE = "dice"
+PASSWORD_ENTROPY_BIP85 = "bip85"
+PASSWORD_ENTROPY_HARDWARE_RNG = "hardware_rng"
+
+BIP85_APP_HEX = 128169
+BIP85_APP_BASE64 = 707764
+BIP85_APP_BASE85 = 707785
+BIP85_APP_DICE = 89101
+
+
+def _clear_password_entropy_cache(controller) -> None:
+    controller.password_generator_entropy_cache = None
+
+
+def _cache_password_entropy(
+    controller,
+    *,
+    password_type: str,
+    strength_bits: int,
+    entropy_source: str,
+    word_count: int | None,
+    roll_data: bytes | str | None = None,
+    entropy_bytes: bytes | None = None,
+) -> None:
+    controller.password_generator_entropy_cache = {
+        "password_type": password_type,
+        "strength_bits": strength_bits,
+        "entropy_source": entropy_source,
+        "word_count": word_count,
+        "roll_data": roll_data,
+        "entropy_bytes": entropy_bytes,
+    }
+
+
+def _get_password_entropy_cache(controller) -> dict | None:
+    return getattr(controller, "password_generator_entropy_cache", None)
+
+
+def _read_secure_rng_bytes(num_bytes: int = 64) -> bytes:
+    return os.urandom(num_bytes)
+
+
+def _ensure_entropy_quality(entropy_bytes: bytes, error_text: str, min_entropy: float = 3.0) -> None:
+    if not entropy_bytes or len(set(entropy_bytes)) == 1:
+        raise ValueError(error_text)
+
+    entropy_score = HardwareRngHealthMonitor.shannon_entropy(entropy_bytes)
+    if entropy_score < min_entropy:
+        raise ValueError(error_text)
+
+
+def _system_entropy_salt() -> bytes:
+    system_parts: list[bytes] = []
+
+    def _append_file(path: str):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                content = f.read().strip()
+            if content:
+                system_parts.append(content.encode("utf-8"))
+        except Exception:
+            # Graceful fallback for non-Linux or unavailable procfs/sysfs files.
+            pass
+
+    _append_file("/proc/uptime")
+
+    try:
+        with open("/proc/cpuinfo", "r", encoding="utf-8") as f:
+            cpuinfo = f.read()
+        serial_line = next((line for line in cpuinfo.splitlines() if line.startswith("Serial")), "")
+        if serial_line:
+            system_parts.append(serial_line.encode("utf-8"))
+    except Exception:
+        pass
+
+    try:
+        mount_dev = None
+        with open("/proc/mounts", "r", encoding="utf-8") as f:
+            for line in f:
+                parts = line.split()
+                if len(parts) >= 2 and parts[1] == MicroSD.MOUNT_POINT:
+                    mount_dev = parts[0]
+                    break
+        if mount_dev:
+            system_parts.append(mount_dev.encode("utf-8"))
+            device = os.path.basename(mount_dev)
+            parent_device = re.sub(r"p?\d+$", "", device)
+            serial_path = f"/sys/class/block/{parent_device}/device/serial"
+            _append_file(serial_path)
+    except Exception:
+        pass
+
+    _append_file("/proc/meminfo")
+
+    try:
+        with open("/proc/stat", "r", encoding="utf-8") as f:
+            cpu_line = f.readline().strip()
+        if cpu_line:
+            system_parts.append(cpu_line.encode("utf-8"))
+    except Exception:
+        pass
+
+    try:
+        load_avg = os.getloadavg()
+        system_parts.append(f"{load_avg[0]:.4f},{load_avg[1]:.4f},{load_avg[2]:.4f}".encode("utf-8"))
+    except Exception:
+        # Windows and some environments do not implement getloadavg().
+        pass
+
+    # Always include cross-platform runtime variability.
+    system_parts.append(str(time.time_ns()).encode("utf-8"))
+    system_parts.append(str(time.perf_counter_ns()).encode("utf-8"))
+    system_parts.append(str(os.getpid()).encode("utf-8"))
+
+    salt = b"|".join(system_parts)
+    if not salt:
+        salt = str(time.time_ns()).encode("utf-8")
+    return salt
+def _derive_hardware_rng_entropy_bytes() -> bytes:
+    rng_entropy = _read_secure_rng_bytes(64)
+    _ensure_entropy_quality(
+        rng_entropy,
+        _("System RNG entropy too low. Try again later."),
+        min_entropy=4.0,
+    )
+    salt = _system_entropy_salt()
+    derived_entropy = hashlib.sha256(rng_entropy + salt).digest()
+    _ensure_entropy_quality(
+        derived_entropy,
+        _("System RNG derived entropy failed health checks."),
+    )
+    return derived_entropy
+
+
+def _derive_camera_entropy_bytes(preview_images, final_image) -> bytes | None:
+    # Build in some hardware-level uniqueness via CPU unique Serial num
+    try:
+        with open("/proc/cpuinfo", "r", encoding="utf-8") as f:
+            serial_line = next(
+                (line for line in f if line.startswith("Serial")), ""
+            )
+        serial_num = serial_line.split(":")[-1].strip().encode("utf-8")
+        serial_hash = hashlib.sha256(serial_num)
+        hash_bytes = serial_hash.digest()
+    except Exception as e:
+        logger.info(repr(e), exc_info=True)
+        hash_bytes = hashlib.sha256(os.urandom(32)).digest()
+
+    # Build in modest entropy via millis since power on
+    millis_hash = hashlib.sha256(hash_bytes + str(time.time()).encode("utf-8"))
+    hash_bytes = millis_hash.digest()
+
+    # Mix in entropy from hardware RNG or os.urandom fallback
+    rng_entropy = _read_secure_rng_bytes(32)
+
+    rng_hash = hashlib.sha256(hash_bytes + rng_entropy)
+    hash_bytes = rng_hash.digest()
+
+    # Build in better entropy by chaining the preview frames
+    for frame in preview_images:
+        img_hash = hashlib.sha256(hash_bytes + frame.tobytes())
+        hash_bytes = img_hash.digest()
+
+    # Finally build in our headline entropy via the new full-res image
+    if not mnemonic_generation.byte_entropy_is_sufficient(final_image.tobytes()):
+        return None
+    return hashlib.sha256(hash_bytes + final_image.tobytes()).digest()
+
+
+def _random_charset(random_options: dict) -> str:
+    keys_lower = "abcdefghijklmnopqrstuvwxyz"
+    keys_upper = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    keys_number = "0123456789"
+    keys_symbol_1 = """!@#$%&();:,.-+='"?"""
+    keys_symbol_2 = """^*[]{}_\\|<>/`~"""
+    charset = ""
+    if random_options.get("lower"):
+        charset += keys_lower
+    if random_options.get("upper"):
+        charset += keys_upper
+    if random_options.get("digits"):
+        charset += keys_number
+    if random_options.get("special"):
+        charset += keys_symbol_1 + keys_symbol_2
+    return charset
+
+
+def _bip85_supported_password_type(password_type: str) -> bool:
+    return password_type in {
+        PASSWORD_TYPE_DICEWARE_EFF_SHORT,
+        PASSWORD_TYPE_DICEWARE_EFF_LONG,
+        PASSWORD_TYPE_DICEWARE_BIP39,
+        PASSWORD_TYPE_DICE_ROLLS,
+        PASSWORD_TYPE_HEX,
+        PASSWORD_TYPE_BASE64,
+        PASSWORD_TYPE_BASE85,
+    }
+
+
+def _strength_to_length(entropy_bits: int, alphabet_size: int) -> int:
+    return max(1, math.ceil(entropy_bits / math.log2(alphabet_size)))
+
+
+def _dice_rolls_for_strength(entropy_bits: int) -> int:
+    return max(1, math.ceil(entropy_bits / math.log2(6)))
+
+
+def _is_diceware_password_type(password_type: str) -> bool:
+    return password_type in {
+        PASSWORD_TYPE_DICEWARE_EFF_SHORT,
+        PASSWORD_TYPE_DICEWARE_EFF_LONG,
+        PASSWORD_TYPE_DICEWARE_BIP39,
+    }
+
+
+def _diceware_word_count(password_type: str, entropy_bits: int) -> int:
+    if password_type == PASSWORD_TYPE_DICEWARE_EFF_SHORT:
+        word_bits = math.log2(1296)
+    elif password_type == PASSWORD_TYPE_DICEWARE_EFF_LONG:
+        word_bits = math.log2(7776)
+    else:
+        word_bits = 11
+    return max(1, math.ceil(entropy_bits / word_bits))
+
+
+def _format_word_password(words: list[str], separator: str) -> str:
+    if separator == PASSWORD_WORD_SEPARATOR_CAPITALISE:
+        return "".join(word.capitalize() for word in words)
+    if separator == PASSWORD_WORD_SEPARATOR_SPACE:
+        return " ".join(words)
+    if separator == PASSWORD_WORD_SEPARATOR_DOT:
+        return ".".join(words)
+    return "".join(words)
 
 class ToolsMenuView(View):
     IMAGE = ButtonOption(" New seed", FontAwesomeIconConstants.CAMERA)
@@ -84,6 +341,7 @@ class ToolsMenuView(View):
     ADDRESS_EXPLORER = ButtonOption("Address Explorer")
     VERIFY_ADDRESS = ButtonOption("Verify address")
     TEXTQRCODE = ButtonOption("Text QR Code")
+    PASSWORD_GENERATOR = ButtonOption("Password Generator", FontAwesomeIconConstants.LOCK)
     SMARTCARD = ButtonOption("Smartcard Tools", FontAwesomeIconConstants.LOCK)
     MICROSD = ButtonOption("MicroSD Tools")
     BATTERY_CALIBRATION = ButtonOption("Battery Calibration")
@@ -91,8 +349,15 @@ class ToolsMenuView(View):
     CLEAR_DESCRIPTOR = ButtonOption("Clear Multisig Descriptor")
     NETWORK_INFO = ButtonOption("Network Info")
 
+    def __init__(self, include_password_generator: bool = True):
+        super().__init__()
+        self.include_password_generator = include_password_generator
+
     def run(self):
         button_data = [self.IMAGE, self.DICE]
+
+        if getattr(self, "include_password_generator", True):
+            button_data.append(self.PASSWORD_GENERATOR)
         
         if self.settings.get_value(SettingsConstants.SETTING__SLIP39_SEEDS) == SettingsConstants.OPTION__ENABLED:
             button_data.extend([self.SLIP39_IMAGE, self.SLIP39_DICE])
@@ -100,13 +365,16 @@ class ToolsMenuView(View):
         if self.settings.get_value(SettingsConstants.SETTING__SMARTCARD_SUPPORT) == SettingsConstants.OPTION__ENABLED:
             button_data.append(self.SMARTCARD)
         
+        from seedsigner.hardware.battery_hat import BatteryHat
+        battery_calibration_button = self.BATTERY_CALIBRATION if BatteryHat.get_instance().is_enabled() else None
+
         button_data.extend([
             self.KEYBOARD,
             self.ADDRESS_EXPLORER,
             self.VERIFY_ADDRESS,
             self.TEXTQRCODE,
             self.MICROSD,
-            self.BATTERY_CALIBRATION,
+            battery_calibration_button,
             self.NETWORK_INFO if Path("/usr/bin/network-info").is_file() else None,
             self.GPG,
             self.CLEAR_DESCRIPTOR,
@@ -150,6 +418,9 @@ class ToolsMenuView(View):
         elif button_data[selected_menu_num] == self.TEXTQRCODE:
             return Destination(ToolsTextQRView)
 
+        elif button_data[selected_menu_num] == self.PASSWORD_GENERATOR:
+            return Destination(ToolsPasswordGeneratorTypeView)
+
         elif button_data[selected_menu_num] == self.SMARTCARD:
             return Destination(ToolsSmartcardMenuView)
         
@@ -184,7 +455,11 @@ class ToolsBatteryCalibrationView(View):
     def run(self):
         from seedsigner.hardware.battery_hat import BatteryHat
 
-        BatteryHat.get_instance().process_discharge_log(step=self.CALIBRATION_STEP)
+        battery_hat = BatteryHat.get_instance()
+        if not battery_hat.is_enabled():
+            return Destination(BackStackView)
+
+        battery_hat.process_discharge_log(step=self.CALIBRATION_STEP)
 
         microsd = MicroSD.get_instance()
         if not microsd.is_inserted:
@@ -204,9 +479,6 @@ class ToolsBatteryCalibrationView(View):
         if ret == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
 
-        from seedsigner.hardware.battery_hat import BatteryHat
-
-        battery_hat = BatteryHat.get_instance()
         log_path = battery_hat.get_discharge_log_path()
         ret = ToolsBatteryCalibrationRunningScreen(
             log_path=log_path,
@@ -301,20 +573,37 @@ class ToolsNetworkInfoView(View):
     Image entropy Views
 ****************************************************************************"""
 class ToolsImageEntropyLivePreviewView(View):
+    def __init__(self, next_view: type = None, next_view_args: dict | None = None):
+        super().__init__()
+        self.next_view = next_view
+        self.next_view_args = next_view_args
+
     def run(self):
         from seedsigner.gui.screens.tools_screens import ToolsImageEntropyLivePreviewScreen
         self.controller.image_entropy_preview_frames = None
+        self.controller.image_entropy_final_image = None
         ret = ToolsImageEntropyLivePreviewScreen().display()
 
         if ret == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
-        
-        self.controller.image_entropy_preview_frames = ret
-        return Destination(ToolsImageEntropyFinalImageView)
+
+        if isinstance(ret, tuple) and len(ret) == 2:
+            self.controller.image_entropy_preview_frames, self.controller.image_entropy_final_image = ret
+        else:
+            self.controller.image_entropy_preview_frames = ret
+        return Destination(
+            ToolsImageEntropyFinalImageView,
+            view_args=dict(next_view=self.next_view, next_view_args=self.next_view_args),
+        )
 
 
 
 class ToolsImageEntropyFinalImageView(View):
+    def __init__(self, next_view: type = None, next_view_args: dict | None = None):
+        super().__init__()
+        self.next_view = next_view
+        self.next_view_args = next_view_args
+
     def run(self):
         from PIL import Image
         from PIL.ImageOps import autocontrast
@@ -323,15 +612,23 @@ class ToolsImageEntropyFinalImageView(View):
             from seedsigner.hardware.camera import Camera
             # Take the final full-res image
             camera = Camera.get_instance()
-            max_dim = max(self.canvas_width, self.canvas_height)
+            img = None
+            try:
+                camera.start_video_stream_mode()
+                time.sleep(1.0)
+                for attempt in range(10):
+                    img = camera.read_video_stream(as_image=True)
+                    if img is not None:
+                        break
+                    logger.info(f"Attempt {attempt + 1} to capture entropy frame")
+                    time.sleep(0.2)
+            finally:
+                camera.stop_video_stream_mode()
 
-            # Final image will be at least 4x the number of pixels the screen can
-            # actually display.
-            camera.start_single_frame_mode(resolution=(2*max_dim, 2*max_dim))
+            if img is None:
+                raise Exception("Failed to capture camera entropy image")
 
-            time.sleep(0.25)
-            self.controller.image_entropy_final_image = camera.capture_frame()
-            camera.stop_single_frame_mode()
+            self.controller.image_entropy_final_image = img
 
         # Prep a copy of the image for display:
         #   * Boost the contrast for better presentation (but preserve the original pixels)
@@ -353,7 +650,8 @@ class ToolsImageEntropyFinalImageView(View):
             self.controller.image_entropy_final_image = None
             return Destination(BackStackView)
         
-        return Destination(ToolsImageEntropyMnemonicLengthView)
+        next_view = self.next_view or ToolsImageEntropyMnemonicLengthView
+        return Destination(next_view, view_args=self.next_view_args)
 
 
 
@@ -397,44 +695,8 @@ class ToolsImageEntropyMnemonicLengthView(View):
         preview_images = self.controller.image_entropy_preview_frames
         seed_entropy_image = self.controller.image_entropy_final_image
 
-        # Build in some hardware-level uniqueness via CPU unique Serial num
-        try:
-            stream = os.popen("cat /proc/cpuinfo | grep Serial")
-            output = stream.read()
-            serial_num = output.split(":")[-1].strip().encode('utf-8')
-            serial_hash = hashlib.sha256(serial_num)
-            hash_bytes = serial_hash.digest()
-        except Exception as e:
-            logger.info(repr(e), exc_info=True)
-            hash_bytes = b'0'
-
-        # Build in modest entropy via millis since power on
-        millis_hash = hashlib.sha256(hash_bytes + str(time.time()).encode('utf-8'))
-        hash_bytes = millis_hash.digest()
-
-        # Mix in entropy from hardware RNG or os.urandom fallback
-        rng_entropy = b""
-        for rng_path in ("/dev/hwrng", "/dev/random"):
-            try:
-                with open(rng_path, "rb") as rng:
-                    rng_entropy = rng.read(32)
-                    if rng_entropy:
-                        break
-            except Exception as e:
-                logger.info(repr(e), exc_info=True)
-        if not rng_entropy:
-            rng_entropy = os.urandom(32)
-
-        rng_hash = hashlib.sha256(hash_bytes + rng_entropy)
-        hash_bytes = rng_hash.digest()
-
-        # Build in better entropy by chaining the preview frames
-        for frame in preview_images:
-            img_hash = hashlib.sha256(hash_bytes + frame.tobytes())
-            hash_bytes = img_hash.digest()
-
-        # Finally build in our headline entropy via the new full-res image
-        if not mnemonic_generation.byte_entropy_is_sufficient(seed_entropy_image.tobytes()):
+        final_hash = _derive_camera_entropy_bytes(preview_images, seed_entropy_image)
+        if final_hash is None:
             loading_screen.stop()
             self.run_screen(
                 ErrorScreen,
@@ -445,7 +707,6 @@ class ToolsImageEntropyMnemonicLengthView(View):
             self.controller.image_entropy_preview_frames = None
             self.controller.image_entropy_final_image = None
             return Destination(BackStackView)
-        final_hash = hashlib.sha256(hash_bytes + seed_entropy_image.tobytes()).digest()
 
         if mnemonic_length in mnemonic_generation.ENTROPY_BYTES_REQUIRED:
             final_hash = final_hash[:mnemonic_generation.ENTROPY_BYTES_REQUIRED[mnemonic_length]]
@@ -564,7 +825,10 @@ class ToolsDiceEntropyEntryView(View):
             loading_screen.stop()
             return Destination(SeedSlip39CreateFromBytesView, view_args=dict(secret=entropy_bytes), clear_history=True)
         else:
-            dice_seed_phrase = mnemonic_generation.generate_mnemonic_from_dice(ret)
+            dice_seed_phrase = mnemonic_generation.generate_mnemonic_from_dice(
+                ret,
+                wordlist_language_code=self.settings.get_value(SettingsConstants.SETTING__WORDLIST_LANGUAGE),
+            )
             seed = Seed(dice_seed_phrase, wordlist_language_code=self.settings.get_value(SettingsConstants.SETTING__WORDLIST_LANGUAGE))
             self.controller.storage.set_pending_seed(seed)
             loading_screen.stop()
@@ -770,14 +1034,19 @@ class ToolsCalcFinalWordDoneView(View):
         selected_menu_num = ToolsCalcFinalWordDoneScreen(
             final_word=final_word,
             mnemonic_word_length=mnemonic_word_length,
-            fingerprint=self.controller.storage.get_pending_mnemonic_fingerprint(self.settings.get_value(SettingsConstants.SETTING__NETWORK)),
+            fingerprint=self.controller.storage.get_pending_mnemonic_fingerprint(
+                self.settings.get_value(SettingsConstants.SETTING__NETWORK),
+                wordlist_language_code=self.settings.get_value(SettingsConstants.SETTING__WORDLIST_LANGUAGE),
+            ),
             button_data=button_data,
         ).display()
 
         if selected_menu_num == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
         
-        self.controller.storage.convert_pending_mnemonic_to_pending_seed()
+        self.controller.storage.convert_pending_mnemonic_to_pending_seed(
+            wordlist_language_code=self.settings.get_value(SettingsConstants.SETTING__WORDLIST_LANGUAGE),
+        )
 
         if button_data[selected_menu_num] == self.LOAD:
             return Destination(SeedFinalizeView)
@@ -1314,6 +1583,7 @@ class ToolsSmartcardGenuineCheckView(View):
             return Destination(BackStackView)
 
         try:
+            initial_uid = getattr(Satochip_Connector, "UID_SHA1", None)
             is_genuine, _, _, _, txt_error = Satochip_Connector.card_verify_authenticity()
 
             # Workaround for occasional incorrect UID calculation in pysatochip
@@ -1328,8 +1598,15 @@ class ToolsSmartcardGenuineCheckView(View):
                         init_card_filter=card_filter,
                         require_pin=False,
                     )
-                    Satochip_Connector.set_pin(0, temp_pin)
-                    if Satochip_Connector:
+                    retry_uid = getattr(Satochip_Connector, "UID_SHA1", None)
+                    can_retry_authenticity = True
+                    if temp_pin and initial_uid == retry_uid:
+                        Satochip_Connector.set_pin(0, temp_pin)
+                    elif temp_pin:
+                        can_retry_authenticity = False
+                        txt_error = "Card changed during retry; re-enter PIN for this card."
+
+                    if Satochip_Connector and can_retry_authenticity:
                         is_genuine, _, _, _, txt_error = (
                             Satochip_Connector.card_verify_authenticity()
                         )
@@ -2380,7 +2657,7 @@ class ToolsSeedkeeperViewSecretsView(View):
                     headers_parsed.append((sid, label))
                     button_data.append(ButtonOption(label))
 
-            logger.info(headers_parsed)
+            logger.debug("headers_parsed: %s", headers_parsed)
             if len(headers_parsed) < 1:
                 self.run_screen(
                 WarningScreen,
@@ -2441,8 +2718,8 @@ class ToolsSeedkeeperViewSecretsView(View):
                 wordlist_byte = secret_raw_bytes[offset]
                 offset+=1
                 wordlist = BIP39_WORDLIST_DIC.get(wordlist_byte)
-                if wordlist == None:
-                    logger.info(f"Error: wordlist byte {wordlist_byte} unsupported!")
+                if wordlist is None:
+                    logger.info("Error: unsupported BIP39 wordlist identifier encountered")
                     exit()
                 
                 entropy_size = secret_raw_bytes[offset]
@@ -2689,7 +2966,7 @@ class ToolsSeedkeeperDeleteSecretView(View):
                     headers_parsed.append((sid, label))
                     button_data.append(ButtonOption(label))
 
-            logger.info(headers_parsed)
+            logger.debug("headers_parsed: %s", headers_parsed)
             if len(headers_parsed) < 1:
                 self.run_screen(
                 WarningScreen,
@@ -2790,8 +3067,8 @@ class ToolsSeedkeeperLoadDescriptorView(View):
                         multisig_descriptor_secrets.append((sid, label))
                         button_data.append(ButtonOption(label))
 
-            logger.info("Multisig Descriptor Secrets:", multisig_descriptor_secrets)
-            logger.info("Xpub Secrets:",xpub_secrets)
+            logger.debug("Found %d multisig descriptor secrets", len(multisig_descriptor_secrets))
+            logger.debug("Found %d xpub secrets", len(xpub_secrets))
 
             self.loading_screen.stop()
 
@@ -2829,9 +3106,9 @@ class ToolsSeedkeeperLoadDescriptorView(View):
                 secret_dict['secret'] = unhexlify(secret_dict['secret'])[1:].decode()
                 secret_template = secret_dict['secret']
 
-                for xpub_secret_id, xpub_secret_label in xpub_secrets: 
+                for idx, (xpub_secret_id, xpub_secret_label) in enumerate(xpub_secrets):
                     if xpub_secret_label in secret_template:
-                        logger.info("Matched on:", xpub_secret_label)
+                        logger.debug("Matched on an xpub secret label at index %d", idx)
                         secret_dict = Satochip_Connector.seedkeeper_export_secret(xpub_secret_id, None)
                         secret_dict['secret'] = unhexlify(secret_dict['secret'])[1:].decode()
                         secret_template = secret_template.replace(xpub_secret_label, secret_dict['secret'])
@@ -2881,7 +3158,7 @@ class ToolsSeedkeeperSaveDescriptorView(View):
             # Break up the descriptor for efficient storage on SeedKeeper Cards
             descriptor_string = descriptor.to_string()
 
-            logger.info(descriptor_string)
+            logger.debug("descriptor_string: %s", descriptor_string)
 
             # Prompt for Descriptor Name
             ret = seed_screens.SeedAddPassphraseScreen(title="Descriptor Label").display()
@@ -2951,8 +3228,8 @@ class ToolsSeedkeeperSaveDescriptorView(View):
                     if stype == "Descriptor": 
                         multisig_descriptor_secrets.append((sid, label))
 
-            logger.info("Multisig Descriptor Secrets:", multisig_descriptor_secrets)
-            logger.info("Xpub Secrets:",xpub_labels)
+            logger.debug("Found %d multisig descriptor secrets", len(multisig_descriptor_secrets))
+            logger.debug("Found %d xpub labels", len(xpub_labels))
 
             multisig_descriptor_templates = []
 
@@ -2963,14 +3240,16 @@ class ToolsSeedkeeperSaveDescriptorView(View):
 
                 multisig_descriptor_templates.append(secret_dict['secret'])
 
-            logger.info(multisig_descriptor_templates)
+            logger.debug("Loaded %d multisig descriptor templates from Seedkeeper", len(multisig_descriptor_templates))
 
-            logger.info("Key Strings:", key_strings)
+            # Do not log key_strings directly, as it may contain sensitive descriptor labels or passphrases
+            logger.debug("Prepared %d key strings for Seedkeeper import", len(key_strings))
 
             # Add required secrets to seedkeeper
-            for secret_label, secret_text in key_strings:
+            for idx, (secret_label, secret_text) in enumerate(key_strings):
                 if secret_text in multisig_descriptor_templates or secret_label in xpub_labels:
-                    logger.info("Mached Existing Secret, skipping:", secret_label)
+                    # Do not log secret labels directly, as they may contain sensitive information
+                    logger.debug("Matched existing secret at index %d; skipping import", idx)
                     secrets_skipped += 1
                     continue
                 header = Satochip_Connector.make_header(secret_type, "Plaintext export allowed", secret_label)
@@ -3405,6 +3684,16 @@ class ToolsSatochipImportSeedView(View):
 
         if len(seeds) > 0 and selected_menu_num < len(seeds):
             # User selected one of the n seeds
+            if isinstance(seeds[selected_menu_num], XprvSeed):
+                self.run_screen(
+                    WarningScreen,
+                    title="Unsupported",
+                    status_headline=None,
+                    text=_("xprv cannot init Satochip.\nUse BIP39, SLIP39, or Electrum."),
+                    show_back_button=False,
+                )
+                return Destination(BackStackView)
+
             try:
                 self.loading_screen = LoadingScreenThread(text="Importing Secret\n\n\n\n\n\n")
                 self.loading_screen.start()
@@ -3423,7 +3712,7 @@ class ToolsSatochipImportSeedView(View):
                 )
             except Exception as e:
                 self.loading_screen.stop()
-                logger.info("Satochip Import Failed:",str(e))
+                logger.exception("Satochip Import Failed: %s", e)
                 self.run_screen(
                     WarningScreen,
                     title="Failed",
@@ -3445,7 +3734,7 @@ class ToolsSatochipImportSeedView(View):
         elif button_data[selected_menu_num] == self.TYPE_SLIP39:
             return Destination(SeedSlip39MnemonicStartView)
         elif button_data[selected_menu_num] == self.CREATE:
-            return Destination(ToolsMenuView)
+            return Destination(ToolsMenuView, view_args={"include_password_generator": False})
         elif button_data[selected_menu_num] == self.TYPE_ELECTRUM:
             return Destination(SeedElectrumMnemonicStartView)
         
@@ -4763,18 +5052,18 @@ class ToolsDIYBuildAppletsView(View):
                 os.system(f"cp /opt/tools/javacard-build.xml.seedsigneros {microsd_dir}/javacard-build.xml")
 
             if not os.path.exists(microsd_dir / "javacard-cap/"):
-                os.system(f"mkdir -p {microsd_dir}/javacard-cap/")
+                os.makedirs(microsd_dir / "javacard-cap/", exist_ok=True)
 
             os.environ["JAVA_HOME"] = "/mnt/diy/jdk"
-            commandString = f"/mnt/diy/ant/bin/ant -f {microsd_dir}/javacard-build.xml"
+            commandString = ["/mnt/diy/ant/bin/ant", "-f", str(microsd_dir / "javacard-build.xml")]
         elif os.path.exists("/home/pi"):
             if not os.path.exists(microsd_dir / "javacard-build.xml"):
-                os.system(f"sudo cp {repo_root}/tools/javacard-build.xml.manual {microsd_dir}/javacard-build.xml")
+                run(["sudo", "cp", str(repo_root / "tools" / "javacard-build.xml.manual"), str(microsd_dir / "javacard-build.xml")], check=False)
 
             if not os.path.exists(microsd_dir / "javacard-cap/"):
-                os.system(f"sudo mkdir -p {microsd_dir}/javacard-cap/")
+                run(["sudo", "mkdir", "-p", str(microsd_dir / "javacard-cap/")], check=False)
 
-            commandString = f"sudo ant -f {microsd_dir}/javacard-build.xml"
+            commandString = ["sudo", "ant", "-f", str(microsd_dir / "javacard-build.xml")]
         else:
             build_xml = microsd_dir / "javacard-build.xml"
             if not build_xml.exists():
@@ -4784,9 +5073,9 @@ class ToolsDIYBuildAppletsView(View):
             if not cap_dir.exists():
                 os.makedirs(cap_dir)
 
-            commandString = f"ant -f {build_xml}"
+            commandString = ["ant", "-f", str(build_xml)]
 
-        data = run(commandString, capture_output=True, shell=True, text=True)
+        data = run(commandString, capture_output=True, text=True)
 
         logger.info(data)
 
@@ -4975,8 +5264,9 @@ class ToolsDIYUninstallAppletView(View):
     MicroSD Views
 ****************************************************************************"""
 def find_sd_card_device():
+    import re
     for device in os.listdir("/sys/block"):
-        if device.startswith("mmcblk"):
+        if device.startswith("mmcblk") and re.fullmatch(r'mmcblk\d+', device):
             partitions = os.listdir(f"/sys/block/{device}")
             # Only consider devices with partitions (e.g., mmcblk1p1)
             if any(p.startswith(device + "p") for p in partitions):
@@ -5102,27 +5392,24 @@ class ToolsMicroSDFlashView(View):
 
             # Unmount everything
             if platform.uname()[1] == "seedsigner-os":
-                cmd = "umount /mnt/diy"
-                data = run(cmd, capture_output=True, shell=True, text=True)
+                data = run(["umount", "/mnt/diy"], capture_output=True, text=True)
                 logger.info(data)
 
             if platform.uname()[1] == "seedsigner-os":
-                cmd = "umount /mnt/microsd"
-                data = run(cmd, capture_output=True, shell=True, text=True)
+                data = run(["umount", "/mnt/microsd"], capture_output=True, text=True)
                 logger.info(data)
 
             # Zero the MicroSD first (Makes sure that the verification step works correctly later)
             # Seedsigner images are currently 26MB or smaller
-            if platform.uname()[1] == "seedsigner-os":
-                cmd = "dd if=/dev/zero of=" + microsd_dev + " bs=1M count=26"
-            else:
-                cmd = "sudo dd if=/dev/zero of=" + microsd_dev + " bs=1M count=26"
+            dd_cmd = ["dd", f"if=/dev/zero", f"of={microsd_dev}", "bs=1M", "count=26"]
+            if platform.uname()[1] != "seedsigner-os":
+                dd_cmd = ["sudo"] + dd_cmd
 
-            data = run(cmd, capture_output=True, shell=True, text=True)
+            data = run(dd_cmd, capture_output=True, text=True)
             logger.info(data)
 
             # Then flash the image
-            data = run("dd if=/tmp/img.img of=" + microsd_dev, capture_output=True, shell=True, text=True)
+            data = run(["dd", "if=/tmp/img.img", f"of={microsd_dev}"], capture_output=True, text=True)
             logger.info(data)
 
             self.loading_screen.stop()
@@ -5214,12 +5501,12 @@ class ToolsMicroSDVerifyView(View):
 
         microsd_dev = find_sd_card_device()
 
-        if platform.uname()[1] == "seedsigner-os":
-            os.system("dd if=" + microsd_dev + " of=/tmp/img.img bs=1M count=26")
-        else:
-            os.system("sudo dd if=" + microsd_dev + " of=/tmp/img.img bs=1M count=26")
+        dd_cmd = ["dd", f"if={microsd_dev}", "of=/tmp/img.img", "bs=1M", "count=26"]
+        if platform.uname()[1] != "seedsigner-os":
+            dd_cmd = ["sudo"] + dd_cmd
+        run(dd_cmd, check=False)
 
-        data = run("sha256sum /tmp/img.img", capture_output=True, shell=True, text=True)
+        data = run(["sha256sum", "/tmp/img.img"], capture_output=True, text=True)
         logger.info(data)
 
         self.loading_screen.stop()
@@ -5301,21 +5588,18 @@ class ToolsMicroSDWipeZeroView(View):
 
         # Unmount everything
         if platform.uname()[1] == "seedsigner-os":
-            cmd = "umount /mnt/diy"
-            data = run(cmd, capture_output=True, shell=True, text=True)
+            data = run(["umount", "/mnt/diy"], capture_output=True, text=True)
             logger.info(data)
 
         if platform.uname()[1] == "seedsigner-os":
-            cmd = "umount /mnt/microsd"
-            data = run(cmd, capture_output=True, shell=True, text=True)
+            data = run(["umount", "/mnt/microsd"], capture_output=True, text=True)
             logger.info(data)
 
-        if platform.uname()[1] == "seedsigner-os":
-            cmd = "dd if=/dev/zero of=" + microsd_dev + " bs=1M" + wipesize_cmd_string
-        else:
-            cmd = "sudo dd if=/dev/zero of=" + microsd_dev + " bs=1M" + wipesize_cmd_string
+        dd_cmd = ["dd", f"if=/dev/zero", f"of={microsd_dev}", "bs=1M"] + wipesize_cmd_string.split()
+        if platform.uname()[1] != "seedsigner-os":
+            dd_cmd = ["sudo"] + dd_cmd
 
-        data = run(cmd, capture_output=True, shell=True, text=True)
+        data = run(dd_cmd, capture_output=True, text=True)
         logger.info(data)
 
         self.loading_screen.stop()
@@ -5404,12 +5688,11 @@ class ToolsMicroSDWipeRandomView(View):
         self.loading_screen = LoadingScreenThread(text="Wiping MicroSD\n\n\n\n\n\n(This takes a while)")
         self.loading_screen.start()
 
-        if platform.uname()[1] == "seedsigner-os":
-            cmd = "dd if=/dev/urandom of=" + microsd_dev + " bs=1M" + wipesize_cmd_string
-        else:
-            cmd = "sudo dd if=/dev/urandom of=" + microsd_dev + " bs=1M" + wipesize_cmd_string
+        dd_cmd = ["dd", f"if=/dev/urandom", f"of={microsd_dev}", "bs=1M"] + wipesize_cmd_string.split()
+        if platform.uname()[1] != "seedsigner-os":
+            dd_cmd = ["sudo"] + dd_cmd
 
-        data = run(cmd, capture_output=True, shell=True, text=True)
+        data = run(dd_cmd, capture_output=True, text=True)
         logger.info(data)
 
         self.loading_screen.stop()
@@ -5508,14 +5791,31 @@ def parse_subkey_list(colon_output: str):
 # human-readable typo of "2009-01-03 18:05:05" UTC, which has propagated elsewhere.
 BIP85_GPG_CREATED_TS = 1231006505
 
-# BIP85 application numbers for supported GPG key types
-BIP85_GPG_APP_RSA = 828365
-BIP85_GPG_APP_CURVE25519 = 828366
-BIP85_GPG_APP_SECP256K1 = 828367
-BIP85_GPG_APP_NIST_P256 = 828368
-BIP85_GPG_APP_BRAINPOOL_P256 = 828369
 
-BIP85_GPG_ECC_KEY_BITS = 256
+def _normalize_date_input(s: str) -> str:
+    """Strip whitespace and replace common non-ASCII dashes with ASCII hyphen.
+
+    Locale or input-method differences can produce fullwidth hyphens (\uff0d),
+    en-dashes (\u2013), em-dashes (\u2014), or Unicode minus signs (\u2212)
+    instead of the expected ASCII hyphen-minus (U+002D).  Normalizing these
+    prevents ``datetime.strptime`` / ``date.fromisoformat`` from raising
+    ``ValueError`` on otherwise-valid date strings.
+    """
+    s = s.strip()
+    for ch in "\uff0d\u2013\u2014\u2212":
+        s = s.replace(ch, "-")
+    return s
+
+# Single BIP85 GPG application number per updated spec.
+# Derivation path: m/83696968'/828365'/{key_type}'/{key_bits}'/{key_index}'[/{sub_key}']
+BIP85_GPG_APP = 828365
+
+# BIP85 GPG key_type codes
+BIP85_GPG_KEY_TYPE_RSA = 0
+BIP85_GPG_KEY_TYPE_CURVE25519 = 1
+BIP85_GPG_KEY_TYPE_SECP256K1 = 2
+BIP85_GPG_KEY_TYPE_NIST = 3
+BIP85_GPG_KEY_TYPE_BRAINPOOL = 4
 
 # In-memory registry of BIP85-derived keys
 BIP85_DATA = {}
@@ -5598,8 +5898,7 @@ def parse_uid_list(colon_output: str):
 def filter_deletable_subkeys(primary_fpr: str, subkeys):
     bip85 = primary_fpr in BIP85_DATA
     logger.info(
-        "filter_deletable_subkeys: fpr=%s bip85=%s subkey_count=%s",
-        primary_fpr,
+        "filter_deletable_subkeys: bip85=%s subkey_count=%s",
         bip85,
         len(subkeys),
     )
@@ -5636,12 +5935,32 @@ class ToolsGPGMenuView(View):
     FILE_OPS = ButtonOption("File Operations")
     IMPORT = ButtonOption("Import Keys")
     EXPORT = ButtonOption("Export Keys")
+    VIEW_KEYS = ButtonOption("View Keys")
     MESSAGE = ButtonOption("Secure Messaging")
     SMART_GPG = ButtonOption("SmartGPG")
     ADVANCED = ButtonOption("Advanced")
 
     def run(self):
+        import shutil
         from seedsigner.controller import Controller
+
+        # Check that required dependencies are available
+        missing = []
+        try:
+            import pgpy  # noqa: F401
+        except ImportError:
+            missing.append("pgpy")
+        if not shutil.which("gpg"):
+            missing.append("gnupg2")
+        if missing:
+            self.run_screen(
+                ErrorScreen,
+                title=_("GPG Tools"),
+                status_headline=_("Missing packages"),
+                text=_("Required but not installed:\n") + ", ".join(missing),
+                button_data=[ButtonOption("OK")],
+            )
+            return Destination(BackStackView)
 
         if self.controller.resume_main_flow == Controller.FLOW__GPG_MESSAGE:
             self.controller.resume_main_flow = None
@@ -5651,6 +5970,7 @@ class ToolsGPGMenuView(View):
             self.FILE_OPS,
             self.IMPORT,
             self.EXPORT,
+            self.VIEW_KEYS,
             self.MESSAGE,
             self.SMART_GPG,
             self.ADVANCED,
@@ -5673,6 +5993,8 @@ class ToolsGPGMenuView(View):
             return Destination(ToolsGPGImportMenuView)
         elif button_data[selected_menu_num] == self.EXPORT:
             return Destination(ToolsGPGExportMenuView)
+        elif button_data[selected_menu_num] == self.VIEW_KEYS:
+            return Destination(ToolsGPGViewKeysView)
         elif button_data[selected_menu_num] == self.MESSAGE:
             return Destination(ToolsGPGMessageMenuView)
         elif button_data[selected_menu_num] == self.SMART_GPG:
@@ -5718,6 +6040,288 @@ class ToolsGPGAdvancedMenuView(View):
         if choice == self.BIP85_META:
             return Destination(ToolsGPGBip85MetadataMenuView)
         return Destination(ToolsGPGMenuView)
+
+
+# ---- GPG algorithm code → human-readable name map ---------------------------
+_GPG_ALGO_NAMES = {
+    "1": "RSA",
+    "16": "Elgamal",
+    "17": "DSA",
+    "18": "ECDH",
+    "19": "ECDSA",
+    "22": "EdDSA",
+}
+
+
+def _format_fpr_blocks(fpr: str) -> str:
+    """Format a hex fingerprint in blocks of 4 characters separated by spaces."""
+    return " ".join(fpr[i:i + 4] for i in range(0, len(fpr), 4))
+
+
+def _gpg_algo_label(algo_code: str, curve: str, bits: str) -> str:
+    """Return a short human-readable description for a GPG key algorithm."""
+    name = _GPG_ALGO_NAMES.get(algo_code, f"Algo {algo_code}")
+    if curve:
+        return f"{name} {curve}"
+    if bits:
+        return f"{name} {bits}"
+    return name
+
+
+class ToolsGPGViewKeysView(View):
+    """List GPG secret keys and show fingerprint / metadata."""
+
+    def run(self):
+        from subprocess import run as _run
+        from seedsigner.gui.screens.screen import (
+            ButtonListScreen,
+            WarningScreen,
+        )
+
+        result = _run(
+            ["gpg", "--list-secret-keys", "--with-colons"],
+            capture_output=True,
+            text=True,
+        )
+        keys = parse_secret_key_list(result.stdout)
+
+        # Collect all subkey fingerprints so we can exclude them from the
+        # primary key list.  Some GPG configurations may list a subkey with
+        # its own ``sec`` record; filtering by fingerprint prevents those
+        # entries from appearing as separate keys in the UI.
+        all_subkey_fprs = {
+            sk["fpr"]
+            for sk in parse_subkey_list(result.stdout)
+            if sk.get("fpr")
+        }
+        keys = [k for k in keys if k.get("fpr") not in all_subkey_fprs]
+
+        if not keys:
+            self.run_screen(
+                WarningScreen,
+                title="View Keys",
+                status_headline=None,
+                text="No secret keys found\nin the GPG keyring.",
+                show_back_button=False,
+                button_data=[ButtonOption("OK")],
+            )
+            return Destination(BackStackView)
+
+        buttons = []
+        for k in keys:
+            label = k["uid"] if k["uid"] else k["fpr"][-16:]
+            buttons.append(ButtonOption(label))
+
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="View Keys",
+            is_button_text_centered=False,
+            button_data=buttons,
+        )
+
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        key = keys[selected]
+        return Destination(
+            ToolsGPGKeyDetailsView,
+            view_args=dict(fpr=key["fpr"]),
+        )
+
+
+class ToolsGPGKeyDetailsView(View):
+    """Show details for a single GPG primary key."""
+
+    SUBKEYS = ButtonOption("Subkeys")
+
+    def __init__(self, fpr: str):
+        super().__init__()
+        self.fpr = fpr
+
+    def run(self):
+        from subprocess import run as _run
+        from seedsigner.gui.screens.screen import LargeIconStatusScreen
+
+        detail = _run(
+            ["gpg", "--list-secret-keys", "--with-colons", self.fpr],
+            capture_output=True,
+            text=True,
+        )
+
+        # Primary key algorithm info from the ``sec`` line.
+        primary_algo = ""
+        uid = ""
+        for line in detail.stdout.splitlines():
+            parts = line.split(":")
+            if parts[0] == "sec":
+                algo_code = parts[3] if len(parts) > 3 else ""
+                bits = parts[2]
+                curve = parts[16].lower() if len(parts) > 16 and parts[16] else ""
+                primary_algo = _gpg_algo_label(algo_code, curve, bits)
+            elif parts[0] == "uid" and not uid:
+                uid = parts[9] if len(parts) > 9 and parts[9] else ""
+        if not uid:
+            uid = self.fpr[-16:]
+
+        subkeys = parse_subkey_list(detail.stdout)
+
+        fpr_display = _format_fpr_blocks(self.fpr)
+        lines = [
+            uid,
+            f"Fpr: {fpr_display}",
+            f"Type: {primary_algo}",
+        ]
+
+        button_data = []
+        if subkeys:
+            button_data.append(self.SUBKEYS)
+
+        selected = self.run_screen(
+            LargeIconStatusScreen,
+            title="Key Details",
+            status_icon_size=0,
+            status_headline=None,
+            text="\n".join(lines),
+            show_back_button=True,
+            button_data=button_data if button_data else [ButtonOption("Back")],
+        )
+
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        if button_data and button_data[selected] == self.SUBKEYS:
+            return Destination(
+                ToolsGPGKeySubkeysView,
+                view_args=dict(fpr=self.fpr),
+            )
+
+        return Destination(BackStackView)
+
+
+class ToolsGPGKeySubkeysView(View):
+    """List subkeys of a GPG primary key."""
+
+    def __init__(self, fpr: str):
+        super().__init__()
+        self.fpr = fpr
+
+    def run(self):
+        from subprocess import run as _run
+        from seedsigner.gui.screens.screen import ButtonListScreen, WarningScreen
+
+        detail = _run(
+            ["gpg", "--list-secret-keys", "--with-colons", self.fpr],
+            capture_output=True,
+            text=True,
+        )
+        subkeys = parse_subkey_list(detail.stdout)
+
+        if not subkeys:
+            self.run_screen(
+                WarningScreen,
+                title="Subkeys",
+                status_headline=None,
+                text="No subkeys found.",
+                show_back_button=False,
+                button_data=[ButtonOption("OK")],
+            )
+            return Destination(BackStackView)
+
+        buttons = []
+        for sk in subkeys:
+            sk_algo = _gpg_algo_label(
+                sk["algo"], sk.get("curve", ""), sk["bits"]
+            )
+            caps = sk.get("caps", "")
+            cap_labels = []
+            if "s" in caps:
+                cap_labels.append("S")
+            if "e" in caps:
+                cap_labels.append("E")
+            if "a" in caps:
+                cap_labels.append("A")
+            cap_str = ",".join(cap_labels) if cap_labels else caps
+            sk_fpr_short = sk["fpr"][-8:] if sk.get("fpr") else "?"
+            label = f"{sk_fpr_short} [{cap_str}] {sk_algo}"
+            buttons.append(ButtonOption(label))
+
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Subkeys",
+            is_button_text_centered=False,
+            button_data=buttons,
+        )
+
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        sk = subkeys[selected]
+        return Destination(
+            ToolsGPGSubkeyDetailsView,
+            view_args=dict(primary_fpr=self.fpr, subkey_fpr=sk["fpr"]),
+        )
+
+
+class ToolsGPGSubkeyDetailsView(View):
+    """Show details for a single GPG subkey."""
+
+    def __init__(self, primary_fpr: str, subkey_fpr: str):
+        super().__init__()
+        self.primary_fpr = primary_fpr
+        self.subkey_fpr = subkey_fpr
+
+    def run(self):
+        from subprocess import run as _run
+        from seedsigner.gui.screens.screen import LargeIconStatusScreen
+
+        detail = _run(
+            ["gpg", "--list-secret-keys", "--with-colons", self.primary_fpr],
+            capture_output=True,
+            text=True,
+        )
+        subkeys = parse_subkey_list(detail.stdout)
+
+        sk = None
+        for s in subkeys:
+            if s.get("fpr") == self.subkey_fpr:
+                sk = s
+                break
+
+        if sk is None:
+            sk = {"fpr": self.subkey_fpr, "algo": "", "bits": "", "caps": ""}
+
+        sk_algo = _gpg_algo_label(
+            sk["algo"], sk.get("curve", ""), sk["bits"]
+        )
+        caps = sk.get("caps", "")
+        cap_labels = []
+        if "s" in caps:
+            cap_labels.append("Sign")
+        if "e" in caps:
+            cap_labels.append("Encrypt")
+        if "a" in caps:
+            cap_labels.append("Auth")
+        cap_str = ", ".join(cap_labels) if cap_labels else caps
+
+        fpr_display = _format_fpr_blocks(self.subkey_fpr)
+        lines = [
+            f"Fpr: {fpr_display}",
+            f"Type: {sk_algo}",
+        ]
+        if cap_str:
+            lines.append(f"Caps: {cap_str}")
+
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Subkey Details",
+            status_icon_size=0,
+            status_headline=None,
+            text="\n".join(lines),
+            show_back_button=True,
+            button_data=[ButtonOption("Back")],
+        )
+
+        return Destination(BackStackView)
 
 
 class ToolsGPGCrossCertifyView(View):
@@ -6382,7 +6986,7 @@ class ToolsGPGRebuildBip85KeyView(View):
 
         key_index = entry["index"]
         key_type_label = entry["key_type"]
-        key_type_lookup = dict(_bip85_key_type_choices(True))
+        key_type_lookup = dict(_bip85_key_type_choices(include_all=True))
         key_type = key_type_lookup[key_type_label]
 
         uid_list = entry.get("uids", [])
@@ -6484,7 +7088,7 @@ class ToolsGPGRebuildBip85KeyView(View):
             )
             return Destination(BackStackView)
 
-        root = bip32.HDKey.from_seed(seed.seed_bytes)
+        root = seed.get_root(self.settings.get_value(SettingsConstants.SETTING__NETWORK))
         KEY_BITS = (
             2048
             if key_type == "rsa2048"
@@ -6516,9 +7120,21 @@ class ToolsGPGRebuildBip85KeyView(View):
             elif key_type == "p256":
                 pk.pkalg = PubKeyAlgorithm.ECDSA
                 pk.keymaterial = bip85_p256_from_root(root, key_index)
+            elif key_type == "p384":
+                pk.pkalg = PubKeyAlgorithm.ECDSA
+                pk.keymaterial = bip85_p384_from_root(root, key_index)
+            elif key_type == "p521":
+                pk.pkalg = PubKeyAlgorithm.ECDSA
+                pk.keymaterial = bip85_p521_from_root(root, key_index)
             elif key_type == "brainpoolp256r1":
                 pk.pkalg = PubKeyAlgorithm.ECDSA
                 pk.keymaterial = bip85_brainpoolp256r1_from_root(root, key_index)
+            elif key_type == "brainpoolp384r1":
+                pk.pkalg = PubKeyAlgorithm.ECDSA
+                pk.keymaterial = bip85_brainpoolp384r1_from_root(root, key_index)
+            elif key_type == "brainpoolp512r1":
+                pk.pkalg = PubKeyAlgorithm.ECDSA
+                pk.keymaterial = bip85_brainpoolp512r1_from_root(root, key_index)
             elif key_type == "ed25519":
                 pk.pkalg = PubKeyAlgorithm.EdDSA
                 pk.keymaterial = bip85_ed25519_from_root(root, key_index)
@@ -6554,7 +7170,11 @@ class ToolsGPGRebuildBip85KeyView(View):
                     specs = _bip85_subkey_specs(
                         {
                             "p256": "nistp256",
+                            "p384": "nistp384",
+                            "p521": "nistp521",
                             "brainpoolp256r1": "brainpoolP256r1",
+                            "brainpoolp384r1": "brainpoolP384r1",
+                            "brainpoolp512r1": "brainpoolP512r1",
                             "secp256k1": "secp256k1",
                             "ed25519": "ed25519",
                         }.get(key_type, "rsa")
@@ -6563,7 +7183,11 @@ class ToolsGPGRebuildBip85KeyView(View):
                     func_map = {
                         "secp256k1": bip85_secp256k1_from_root,
                         "p256": bip85_p256_from_root,
+                        "p384": bip85_p384_from_root,
+                        "p521": bip85_p521_from_root,
                         "brainpoolp256r1": bip85_brainpoolp256r1_from_root,
+                        "brainpoolp384r1": bip85_brainpoolp384r1_from_root,
+                        "brainpoolp512r1": bip85_brainpoolp512r1_from_root,
                         "ed25519": bip85_ed25519_from_root,
                     }
                     subpkt = PrivSubKeyV4()
@@ -6602,7 +7226,11 @@ class ToolsGPGRebuildBip85KeyView(View):
                         func_map = {
                             "secp256k1": bip85_secp256k1_from_root,
                             "nist p-256": bip85_p256_from_root,
+                            "nist p-384": bip85_p384_from_root,
+                            "nist p-521": bip85_p521_from_root,
                             "brainpool p-256": bip85_brainpoolp256r1_from_root,
+                            "brainpool p-384": bip85_brainpoolp384r1_from_root,
+                            "brainpool p-512": bip85_brainpoolp512r1_from_root,
                             "ed25519": bip85_ed25519_from_root,
                         }
                         pkalg_map = {
@@ -7147,7 +7775,7 @@ class ToolsGPGExportSubkeySecretsView(View):
                 re.sub(r"\\(?!u)", r"\\\\", ret_dict["textToEncode"]),
                 encoding="raw_unicode_escape",
             ).decode("unicode_escape")
-        except UnicodeDecodeError:
+        except UnicodeError:
             passphrase = ret_dict["textToEncode"]
 
         protected = run(
@@ -7315,7 +7943,7 @@ class ToolsGPGAddUidView(View):
                     re.sub(r"\\(?!u)", r"\\\\", ret_dict["textToEncode"]),
                     encoding="raw_unicode_escape",
                 ).decode("unicode_escape")
-            except UnicodeDecodeError:
+            except UnicodeError:
                 return ret_dict["textToEncode"]
 
         name = prompt_text("Name")
@@ -7421,7 +8049,7 @@ class ToolsGPGEditUidView(View):
                     re.sub(r"\\(?!u)", r"\\\\", ret_dict["textToEncode"]),
                     encoding="raw_unicode_escape",
                 ).decode("unicode_escape")
-            except UnicodeDecodeError:
+            except UnicodeError:
                 return ret_dict["textToEncode"]
 
         name = prompt_text("Name")
@@ -7982,12 +8610,23 @@ class ToolsGPGEncryptMessageView(View):
             if "is_back_button" in ret_dict:
                 return Destination(BackStackView)
             passphrase = ret_dict["textToEncode"]
-            ciphertext = encrypt_message(
-                pub_blob,
-                message,
-                signkey_blob=signkey_blob,
-                signkey_passphrase=passphrase,
-            )
+            try:
+                ciphertext = encrypt_message(
+                    pub_blob,
+                    message,
+                    signkey_blob=signkey_blob,
+                    signkey_passphrase=passphrase,
+                )
+            except Exception:
+                self.run_screen(
+                    WarningScreen,
+                    title="Error",
+                    status_headline=None,
+                    text="Incorrect passphrase or\nunsupported key type",
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
         except Exception:
             self.run_screen(
                 WarningScreen,
@@ -9937,9 +10576,7 @@ class ToolsGPGImportPubkeyFileView(View):
 
         _check_future_key_creation(self, key_blob)
 
-        cmd = f"gpg --import {filepath}"
-
-        data = run(cmd, capture_output=True, shell=True, text=True)
+        data = run(["gpg", "--import", filepath], capture_output=True, text=True)
 
         result = data.stderr.split("\n")
         certs_not_changed = 0
@@ -10230,7 +10867,7 @@ class ToolsGPGLoadPrivkeyFileView(View):
                 re.sub(r"\\(?!u)", r"\\\\", ret_dict["textToEncode"]),
                 encoding="raw_unicode_escape",
             ).decode("unicode_escape")
-        except UnicodeDecodeError:
+        except UnicodeError:
             passphrase = ret_dict["textToEncode"]
 
         decrypted = run(
@@ -10386,14 +11023,26 @@ class ToolsGPGLoadPrivkeySeedkeeperView(View):
 
 
 def bip85_rsa_from_root(root, bits: int, index: int, sub_index: int | None = None):
+    """Generate a deterministic RSA key from BIP85 entropy.
+
+    Uses PyCryptodome's ``RSA.generate(bits, randfunc=drng.read)`` as the
+    reference algorithm, matching the BIP85 spec example
+    ``RSA.generate_key(4096, drng_reader.read)``.  Alternative RSA
+    implementations MUST consume the DRNG byte-stream identically to
+    PyCryptodome to ensure cross-implementation determinism.
+    """
     from embit import bip85
     from Cryptodome.PublicKey import RSA
     from seedsigner.helpers.bip85_drng import BIP85DRNG
 
-    path = [bits, index]
+    # Enforce a minimum RSA key size to avoid weak keys.
+    if bits < MIN_RSA_KEY_BITS:
+        bits = MIN_RSA_KEY_BITS
+
+    path = [BIP85_GPG_KEY_TYPE_RSA, bits, index]
     if sub_index is not None:
         path.append(sub_index)
-    entropy = bip85.derive_entropy(root, BIP85_GPG_APP_RSA, path)
+    entropy = bip85.derive_entropy(root, BIP85_GPG_APP, path)
     drng = BIP85DRNG.new(entropy)
     return RSA.generate(bits, randfunc=drng.read)
 
@@ -10402,27 +11051,19 @@ def bip85_ed25519_from_root(
     root, index: int, sub_index: int | None = None, alg: str = "EdDSA"
 ):
     from embit import bip85
-    from cryptography.hazmat.primitives.asymmetric import ed25519, x25519
-    from cryptography.hazmat.primitives import serialization
+    from seedsigner.helpers.ec_point import ed25519_pub_from_seed, curve25519_pub_from_seed
     from pgpy.constants import EllipticCurveOID
     from pgpy.packet import fields
 
-    path = [BIP85_GPG_ECC_KEY_BITS, index]
+    path = [BIP85_GPG_KEY_TYPE_CURVE25519, 256, index]
     if sub_index is not None:
         path.append(sub_index)
-    entropy = bip85.derive_entropy(root, BIP85_GPG_APP_CURVE25519, path)
+    entropy = bip85.derive_entropy(root, BIP85_GPG_APP, path)
     d_bytes = entropy[:32]
     if alg == "EdDSA":
         priv = fields.EdDSAPriv()
         priv.oid = EllipticCurveOID.Ed25519
-        pub_bytes = (
-            ed25519.Ed25519PrivateKey.from_private_bytes(d_bytes)
-            .public_key()
-            .public_bytes(
-                encoding=serialization.Encoding.Raw,
-                format=serialization.PublicFormat.Raw,
-            )
-        )
+        pub_bytes = ed25519_pub_from_seed(d_bytes)
         priv.p = fields.ECPoint.from_values(
             priv.oid.key_size,
             fields.ECPointFormat.Native,
@@ -10434,20 +11075,24 @@ def bip85_ed25519_from_root(
         priv.oid = EllipticCurveOID.Curve25519
         priv.kdf.halg = priv.oid.kdf_halg
         priv.kdf.encalg = priv.oid.kek_alg
-        pub_bytes = (
-            x25519.X25519PrivateKey.from_private_bytes(d_bytes)
-            .public_key()
-            .public_bytes(
-                encoding=serialization.Encoding.Raw,
-                format=serialization.PublicFormat.Raw,
-            )
-        )
+        pub_bytes = curve25519_pub_from_seed(d_bytes)
         priv.p = fields.ECPoint.from_values(
             priv.oid.key_size,
             fields.ECPointFormat.Native,
             pub_bytes,
         )
-        priv.s = fields.MPI(int.from_bytes(d_bytes, "big"))
+        # Clamp the Cv25519 scalar per RFC 7748 §5: clear the three low
+        # bits of LE byte 0, clear bit 255, set bit 254.  Without
+        # clamping gpg-agent rejects the key on export ("Bad secret
+        # key").  Clamping is idempotent and doesn't change the derived
+        # public key (from_private_bytes clamps internally).
+        # The MPI must use little-endian conversion (matching pgpy's
+        # native Cv25519 convention), NOT big-endian.
+        d_clamped = bytearray(d_bytes)
+        d_clamped[0] &= 248      # LE byte 0: clear bits 0-2
+        d_clamped[31] &= 127     # LE byte 31: clear bit 255
+        d_clamped[31] |= 64      # LE byte 31: set bit 254
+        priv.s = fields.MPI(int.from_bytes(d_clamped, "little"))
     priv._compute_chksum()
     return priv
 
@@ -10542,6 +11187,8 @@ def _normalize_bip85_alg(alg: str) -> str:
         return alg
     alias = {
         "p256": "nistp256",
+        "p384": "nistp384",
+        "p521": "nistp521",
     }
     alg_lower = alg.lower()
     return alias.get(alg_lower, alg_lower)
@@ -10557,7 +11204,7 @@ def _bip85_subkey_specs(alg):
             (1, PubKeyAlgorithm.EdDSA, {KeyFlags.Authentication, KeyFlags.Sign}, "EdDSA"),
             (2, PubKeyAlgorithm.EdDSA, {KeyFlags.Sign}, "EdDSA"),
         ]
-    if alg in ["secp256k1", "nistp256", "brainpoolp256r1"]:
+    if alg in ["secp256k1", "nistp256", "nistp384", "nistp521", "brainpoolp256r1", "brainpoolp384r1", "brainpoolp512r1"]:
         return [
             (0, PubKeyAlgorithm.ECDH, {KeyFlags.EncryptCommunications, KeyFlags.EncryptStorage}, "ECDH"),
             (1, PubKeyAlgorithm.ECDSA, {KeyFlags.Authentication, KeyFlags.Sign}, "ECDSA"),
@@ -10590,9 +11237,14 @@ def bip85_verify_existing(
     from datetime import datetime, timezone
 
     logger.info(
-        "bip85_verify_existing: fpr=%s index=%s", fingerprint, key_index
+        "bip85_verify_existing: fpr(last8)=%s index=%s",
+        "redacted" if fingerprint else "None",
+        key_index,
     )
-    root = bip32.HDKey.from_seed(seed.seed_bytes)
+    if hasattr(seed, "get_root"):
+        root = seed.get_root()
+    else:
+        root = bip32.HDKey.from_seed(seed.seed_bytes)
     created = datetime.fromtimestamp(created_ts, tz=timezone.utc)
     primary_curve = _normalize_bip85_alg(primary_curve)
 
@@ -10610,7 +11262,12 @@ def bip85_verify_existing(
     pk = PrivKeyV4()
     if primary_algo in ("1", "2", "3"):
         pk.pkalg = PubKeyAlgorithm.RSAEncryptOrSign
-        bits = int(primary_bits) if primary_bits else 0
+        try:
+            bits = int(primary_bits) if primary_bits else MIN_RSA_KEY_BITS
+        except (TypeError, ValueError):
+            bits = MIN_RSA_KEY_BITS
+        if bits < MIN_RSA_KEY_BITS:
+            bits = MIN_RSA_KEY_BITS
         rsa_main = bip85_rsa_from_root(root, bits, key_index)
         pk.keymaterial = rsa_to_privpacket(rsa_main)
     elif primary_curve == "secp256k1":
@@ -10619,9 +11276,21 @@ def bip85_verify_existing(
     elif primary_curve == "nistp256":
         pk.pkalg = PubKeyAlgorithm.ECDSA
         pk.keymaterial = bip85_p256_from_root(root, key_index)
+    elif primary_curve == "nistp384":
+        pk.pkalg = PubKeyAlgorithm.ECDSA
+        pk.keymaterial = bip85_p384_from_root(root, key_index)
+    elif primary_curve == "nistp521":
+        pk.pkalg = PubKeyAlgorithm.ECDSA
+        pk.keymaterial = bip85_p521_from_root(root, key_index)
     elif primary_curve == "brainpoolp256r1":
         pk.pkalg = PubKeyAlgorithm.ECDSA
         pk.keymaterial = bip85_brainpoolp256r1_from_root(root, key_index)
+    elif primary_curve == "brainpoolp384r1":
+        pk.pkalg = PubKeyAlgorithm.ECDSA
+        pk.keymaterial = bip85_brainpoolp384r1_from_root(root, key_index)
+    elif primary_curve == "brainpoolp512r1":
+        pk.pkalg = PubKeyAlgorithm.ECDSA
+        pk.keymaterial = bip85_brainpoolp512r1_from_root(root, key_index)
     elif primary_curve == "ed25519":
         pk.pkalg = PubKeyAlgorithm.EdDSA
         pk.keymaterial = bip85_ed25519_from_root(root, key_index)
@@ -10639,9 +11308,7 @@ def bip85_verify_existing(
     primary._key = pk
     if primary.fingerprint != fingerprint:
         logger.warning(
-            "Primary key fingerprint mismatch: expected %s got %s",
-            fingerprint,
-            primary.fingerprint,
+            "Primary key fingerprint mismatch during BIP85 verification"
         )
         return False
 
@@ -10666,10 +11333,26 @@ def bip85_verify_existing(
             subpkt.pkalg = PubKeyAlgorithm.ECDH if algo == "18" else PubKeyAlgorithm.ECDSA
             alg_name = "ECDH" if algo == "18" else "ECDSA"
             subpkt.keymaterial = bip85_p256_from_root(root, group_idx, sub_index, alg_name)
+        elif curve == "nistp384":
+            subpkt.pkalg = PubKeyAlgorithm.ECDH if algo == "18" else PubKeyAlgorithm.ECDSA
+            alg_name = "ECDH" if algo == "18" else "ECDSA"
+            subpkt.keymaterial = bip85_p384_from_root(root, group_idx, sub_index, alg_name)
+        elif curve == "nistp521":
+            subpkt.pkalg = PubKeyAlgorithm.ECDH if algo == "18" else PubKeyAlgorithm.ECDSA
+            alg_name = "ECDH" if algo == "18" else "ECDSA"
+            subpkt.keymaterial = bip85_p521_from_root(root, group_idx, sub_index, alg_name)
         elif curve == "brainpoolp256r1":
             subpkt.pkalg = PubKeyAlgorithm.ECDH if algo == "18" else PubKeyAlgorithm.ECDSA
             alg_name = "ECDH" if algo == "18" else "ECDSA"
             subpkt.keymaterial = bip85_brainpoolp256r1_from_root(root, group_idx, sub_index, alg_name)
+        elif curve == "brainpoolp384r1":
+            subpkt.pkalg = PubKeyAlgorithm.ECDH if algo == "18" else PubKeyAlgorithm.ECDSA
+            alg_name = "ECDH" if algo == "18" else "ECDSA"
+            subpkt.keymaterial = bip85_brainpoolp384r1_from_root(root, group_idx, sub_index, alg_name)
+        elif curve == "brainpoolp512r1":
+            subpkt.pkalg = PubKeyAlgorithm.ECDH if algo == "18" else PubKeyAlgorithm.ECDSA
+            alg_name = "ECDH" if algo == "18" else "ECDSA"
+            subpkt.keymaterial = bip85_brainpoolp512r1_from_root(root, group_idx, sub_index, alg_name)
         elif curve == "cv25519":
             if algo != "18":
                 logger.warning(
@@ -10730,14 +11413,16 @@ def bip85_add_subkeys(
     from pgpy.packet.types import MPI
     from Cryptodome.PublicKey import RSA
 
-    logger.info(
-        "bip85_add_subkeys: fpr=%s alg=%s key_index=%s start_index=%s",
-        fingerprint,
+    logger.debug(
+        "bip85_add_subkeys: alg=%s key_index=%s start_index=%s",
         alg,
         key_index,
         start_index,
     )
-    root = bip32.HDKey.from_seed(seed.seed_bytes)
+    if hasattr(seed, "get_root"):
+        root = seed.get_root()
+    else:
+        root = bip32.HDKey.from_seed(seed.seed_bytes)
 
     export = run(
         ["gpg", "--armor", "--export-secret-keys", fingerprint],
@@ -10774,8 +11459,16 @@ def bip85_add_subkeys(
     type_map = {
         "nistp256": "ECC NIST P-256",
         "p256": "ECC NIST P-256",
+        "nistp384": "ECC NIST P-384",
+        "p384": "ECC NIST P-384",
+        "nistp521": "ECC NIST P-521",
+        "p521": "ECC NIST P-521",
         "brainpoolp256r1": "ECC Brainpool P-256",
         "brainpoolP256r1": "ECC Brainpool P-256",
+        "brainpoolp384r1": "ECC Brainpool P-384",
+        "brainpoolP384r1": "ECC Brainpool P-384",
+        "brainpoolp512r1": "ECC Brainpool P-512",
+        "brainpoolP512r1": "ECC Brainpool P-512",
         "secp256k1": "ECC secp256k1",
         "ed25519": "ECC Ed25519",
         "rsa2048": "RSA 2048",
@@ -10794,8 +11487,16 @@ def bip85_add_subkeys(
             subpkt.keymaterial = bip85_secp256k1_from_root(root, key_index, sub_index, alg_name[0])
         elif alg_canon == "nistp256":
             subpkt.keymaterial = bip85_p256_from_root(root, key_index, sub_index, alg_name[0])
+        elif alg_canon == "nistp384":
+            subpkt.keymaterial = bip85_p384_from_root(root, key_index, sub_index, alg_name[0])
+        elif alg_canon == "nistp521":
+            subpkt.keymaterial = bip85_p521_from_root(root, key_index, sub_index, alg_name[0])
         elif alg_canon == "brainpoolp256r1":
             subpkt.keymaterial = bip85_brainpoolp256r1_from_root(root, key_index, sub_index, alg_name[0])
+        elif alg_canon == "brainpoolp384r1":
+            subpkt.keymaterial = bip85_brainpoolp384r1_from_root(root, key_index, sub_index, alg_name[0])
+        elif alg_canon == "brainpoolp512r1":
+            subpkt.keymaterial = bip85_brainpoolp512r1_from_root(root, key_index, sub_index, alg_name[0])
         elif alg_canon == "ed25519":
             subpkt.keymaterial = bip85_ed25519_from_root(root, key_index, sub_index, alg_name[0])
         else:
@@ -10842,7 +11543,11 @@ def loose_add_subkeys(fingerprint: str, alg: str) -> bool:
     curve_map = {
         "secp256k1": EllipticCurveOID.SECP256K1,
         "nistp256": EllipticCurveOID.NIST_P256,
+        "nistp384": EllipticCurveOID.NIST_P384,
+        "nistp521": EllipticCurveOID.NIST_P521,
         "brainpoolp256r1": EllipticCurveOID.Brainpool_P256,
+        "brainpoolp384r1": EllipticCurveOID.Brainpool_P384,
+        "brainpoolp512r1": EllipticCurveOID.Brainpool_P512,
     }
     curve = curve_map[alg_canon]
 
@@ -10883,19 +11588,21 @@ def bip85_secp256k1_from_root(
     root, index: int, sub_index: int | None = None, alg: str = "ECDSA"
 ):
     from embit import bip85
-    from cryptography.hazmat.primitives.asymmetric import ec
+    from seedsigner.helpers.ec_point import secp256k1_pub_xy
     from pgpy.constants import EllipticCurveOID
     from pgpy.packet import fields
 
-    path = [BIP85_GPG_ECC_KEY_BITS, index]
+    path = [BIP85_GPG_KEY_TYPE_SECP256K1, 256, index]
     if sub_index is not None:
         path.append(sub_index)
-    entropy = bip85.derive_entropy(root, BIP85_GPG_APP_SECP256K1, path)
+    entropy = bip85.derive_entropy(root, BIP85_GPG_APP, path)
     order = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
-    d = int.from_bytes(entropy[:32], "big") % order
-    if d == 0:
-        d = 1
-    pn = ec.derive_private_key(d, ec.SECP256K1()).public_key().public_numbers()
+    # Bit-mask to curve bit length (no-op for byte-aligned curves) then
+    # reduce into [1, order-1] only when the masked value is out of range.
+    d = int.from_bytes(entropy[:32], "big") & ((1 << 256) - 1)
+    if d == 0 or d >= order:
+        d = (d % (order - 1)) + 1
+    pub_x, pub_y = secp256k1_pub_xy(d)
     if alg == "ECDH":
         priv = fields.ECDHPriv()
         priv.oid = EllipticCurveOID.SECP256K1
@@ -10907,8 +11614,8 @@ def bip85_secp256k1_from_root(
     priv.p = fields.ECPoint.from_values(
         priv.oid.key_size,
         fields.ECPointFormat.Standard,
-        fields.MPI(pn.x),
-        fields.MPI(pn.y),
+        fields.MPI(pub_x),
+        fields.MPI(pub_y),
     )
     priv.s = fields.MPI(d)
     priv._compute_chksum()
@@ -10919,22 +11626,24 @@ def bip85_p256_from_root(
     root, index: int, sub_index: int | None = None, alg: str = "ECDSA"
 ):
     from embit import bip85
-    from cryptography.hazmat.primitives.asymmetric import ec
+    from seedsigner.helpers.ec_point import nist_pub_xy
     from pgpy.constants import EllipticCurveOID
     from pgpy.packet import fields
 
-    path = [BIP85_GPG_ECC_KEY_BITS, index]
+    path = [BIP85_GPG_KEY_TYPE_NIST, 256, index]
     if sub_index is not None:
         path.append(sub_index)
-    entropy = bip85.derive_entropy(root, BIP85_GPG_APP_NIST_P256, path)
+    entropy = bip85.derive_entropy(root, BIP85_GPG_APP, path)
     # Avoid relying on cryptography's ``group_order`` attribute since
     # some versions (such as those bundled with seedsigner-os) do not
     # expose it. Instead, use the well-known group order for P-256.
     order = 0xFFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551
-    d = int.from_bytes(entropy[:32], "big") % order
-    if d == 0:
-        d = 1
-    pn = ec.derive_private_key(d, ec.SECP256R1()).public_key().public_numbers()
+    # Bit-mask to curve bit length (no-op for byte-aligned curves) then
+    # reduce into [1, order-1] only when the masked value is out of range.
+    d = int.from_bytes(entropy[:32], "big") & ((1 << 256) - 1)
+    if d == 0 or d >= order:
+        d = (d % (order - 1)) + 1
+    pub_x, pub_y = nist_pub_xy("P-256", d)
     if alg == "ECDH":
         priv = fields.ECDHPriv()
         priv.oid = EllipticCurveOID.NIST_P256
@@ -10946,8 +11655,8 @@ def bip85_p256_from_root(
     priv.p = fields.ECPoint.from_values(
         priv.oid.key_size,
         fields.ECPointFormat.Standard,
-        fields.MPI(pn.x),
-        fields.MPI(pn.y),
+        fields.MPI(pub_x),
+        fields.MPI(pub_y),
     )
     priv.s = fields.MPI(d)
     priv._compute_chksum()
@@ -10958,21 +11667,23 @@ def bip85_brainpoolp256r1_from_root(
     root, index: int, sub_index: int | None = None, alg: str = "ECDSA",
 ):
     from embit import bip85
-    from cryptography.hazmat.primitives.asymmetric import ec
+    from seedsigner.helpers.ec_point import brainpool_pub_xy
     from pgpy.constants import EllipticCurveOID
     from pgpy.packet import fields
 
-    path = [BIP85_GPG_ECC_KEY_BITS, index]
+    path = [BIP85_GPG_KEY_TYPE_BRAINPOOL, 256, index]
     if sub_index is not None:
         path.append(sub_index)
-    entropy = bip85.derive_entropy(root, BIP85_GPG_APP_BRAINPOOL_P256, path)
+    entropy = bip85.derive_entropy(root, BIP85_GPG_APP, path)
     # Hardcode BrainpoolP256r1 group order to avoid relying on attributes
     # that may be missing in some cryptography builds.
     order = 0xA9FB57DBA1EEA9BC3E660A909D838D718C397AA3B561A6F7901E0E82974856A7
-    d = int.from_bytes(entropy[:32], "big") % order
-    if d == 0:
-        d = 1
-    pn = ec.derive_private_key(d, ec.BrainpoolP256R1()).public_key().public_numbers()
+    # Bit-mask to curve bit length (no-op for byte-aligned curves) then
+    # reduce into [1, order-1] only when the masked value is out of range.
+    d = int.from_bytes(entropy[:32], "big") & ((1 << 256) - 1)
+    if d == 0 or d >= order:
+        d = (d % (order - 1)) + 1
+    pub_x, pub_y = brainpool_pub_xy(256, d)
     if alg == "ECDH":
         priv = fields.ECDHPriv()
         priv.oid = EllipticCurveOID.Brainpool_P256
@@ -10984,36 +11695,190 @@ def bip85_brainpoolp256r1_from_root(
     priv.p = fields.ECPoint.from_values(
         priv.oid.key_size,
         fields.ECPointFormat.Standard,
-        fields.MPI(pn.x),
-        fields.MPI(pn.y),
+        fields.MPI(pub_x),
+        fields.MPI(pub_y),
     )
     priv.s = fields.MPI(d)
     priv._compute_chksum()
     return priv
 
 
-def _bip85_key_type_choices(include_ecc: bool) -> list[tuple[str, str]]:
-    """Return available key type labels and identifiers for BIP85 GPG keys."""
+def bip85_p384_from_root(
+    root, index: int, sub_index: int | None = None, alg: str = "ECDSA"
+):
+    from embit import bip85
+    from seedsigner.helpers.ec_point import nist_pub_xy
+    from pgpy.constants import EllipticCurveOID
+    from pgpy.packet import fields
 
-    choices: list[tuple[str, str]] = []
-    if include_ecc:
-        choices.extend(
-            [
-                ("ECC Ed25519", "ed25519"),
-                ("ECC NIST P-256", "p256"),
-                ("ECC Brainpool P-256", "brainpoolp256r1"),
-            ]
-        )
-    choices.extend(
-        [
-            ("RSA 2048", "rsa2048"),
-            ("RSA 3072", "rsa3072"),
-            ("RSA 4096", "rsa4096"),
-        ]
+    path = [BIP85_GPG_KEY_TYPE_NIST, 384, index]
+    if sub_index is not None:
+        path.append(sub_index)
+    entropy = bip85.derive_entropy(root, BIP85_GPG_APP, path)
+    order = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC7634D81F4372DDF581A0DB248B0A77AECEC196ACCC52973
+    # Bit-mask to curve bit length (no-op for byte-aligned curves) then
+    # reduce into [1, order-1] only when the masked value is out of range.
+    d = int.from_bytes(entropy[:48], "big") & ((1 << 384) - 1)
+    if d == 0 or d >= order:
+        d = (d % (order - 1)) + 1
+    pub_x, pub_y = nist_pub_xy("P-384", d)
+    if alg == "ECDH":
+        priv = fields.ECDHPriv()
+        priv.oid = EllipticCurveOID.NIST_P384
+        priv.kdf.halg = priv.oid.kdf_halg
+        priv.kdf.encalg = priv.oid.kek_alg
+    else:
+        priv = fields.ECDSAPriv()
+        priv.oid = EllipticCurveOID.NIST_P384
+    priv.p = fields.ECPoint.from_values(
+        priv.oid.key_size,
+        fields.ECPointFormat.Standard,
+        fields.MPI(pub_x),
+        fields.MPI(pub_y),
     )
-    if include_ecc:
-        choices.append(("ECC secp256k1", "secp256k1"))
-    return choices
+    priv.s = fields.MPI(d)
+    priv._compute_chksum()
+    return priv
+
+
+def bip85_p521_from_root(
+    root, index: int, sub_index: int | None = None, alg: str = "ECDSA"
+):
+    from embit import bip85
+    from seedsigner.helpers.ec_point import nist_pub_xy
+    from pgpy.constants import EllipticCurveOID
+    from pgpy.packet import fields
+    from seedsigner.helpers.bip85_drng import BIP85DRNG
+
+    path = [BIP85_GPG_KEY_TYPE_NIST, 521, index]
+    if sub_index is not None:
+        path.append(sub_index)
+    entropy = bip85.derive_entropy(root, BIP85_GPG_APP, path)
+    # P-521 needs 66 bytes which exceeds the 64-byte HMAC output; use DRNG.
+    drng = BIP85DRNG.new(entropy)
+    d_bytes = drng.read(66)
+    order = 0x01FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFA51868783BF2F966B7FCC0148F709A5D03BB5C9B8899C47AEBB6FB71E91386409
+    # Mask to 521 bits (matching bipsea reference implementation) then
+    # reduce into [1, order-1] only when the masked value is out of range.
+    d = int.from_bytes(d_bytes, "big") & ((1 << 521) - 1)
+    if d == 0 or d >= order:
+        d = (d % (order - 1)) + 1
+    pub_x, pub_y = nist_pub_xy("P-521", d)
+    if alg == "ECDH":
+        priv = fields.ECDHPriv()
+        priv.oid = EllipticCurveOID.NIST_P521
+        priv.kdf.halg = priv.oid.kdf_halg
+        priv.kdf.encalg = priv.oid.kek_alg
+    else:
+        priv = fields.ECDSAPriv()
+        priv.oid = EllipticCurveOID.NIST_P521
+    priv.p = fields.ECPoint.from_values(
+        priv.oid.key_size,
+        fields.ECPointFormat.Standard,
+        fields.MPI(pub_x),
+        fields.MPI(pub_y),
+    )
+    priv.s = fields.MPI(d)
+    priv._compute_chksum()
+    return priv
+
+
+def bip85_brainpoolp384r1_from_root(
+    root, index: int, sub_index: int | None = None, alg: str = "ECDSA",
+):
+    from embit import bip85
+    from seedsigner.helpers.ec_point import brainpool_pub_xy
+    from pgpy.constants import EllipticCurveOID
+    from pgpy.packet import fields
+
+    path = [BIP85_GPG_KEY_TYPE_BRAINPOOL, 384, index]
+    if sub_index is not None:
+        path.append(sub_index)
+    entropy = bip85.derive_entropy(root, BIP85_GPG_APP, path)
+    order = 0x8CB91E82A3386D280F5D6F7E50E641DF152F7109ED5456B31F166E6CAC0425A7CF3AB6AF6B7FC3103B883202E9046565
+    # Bit-mask to curve bit length (no-op for byte-aligned curves) then
+    # reduce into [1, order-1] only when the masked value is out of range.
+    d = int.from_bytes(entropy[:48], "big") & ((1 << 384) - 1)
+    if d == 0 or d >= order:
+        d = (d % (order - 1)) + 1
+    pub_x, pub_y = brainpool_pub_xy(384, d)
+    if alg == "ECDH":
+        priv = fields.ECDHPriv()
+        priv.oid = EllipticCurveOID.Brainpool_P384
+        priv.kdf.halg = priv.oid.kdf_halg
+        priv.kdf.encalg = priv.oid.kek_alg
+    else:
+        priv = fields.ECDSAPriv()
+        priv.oid = EllipticCurveOID.Brainpool_P384
+    priv.p = fields.ECPoint.from_values(
+        priv.oid.key_size,
+        fields.ECPointFormat.Standard,
+        fields.MPI(pub_x),
+        fields.MPI(pub_y),
+    )
+    priv.s = fields.MPI(d)
+    priv._compute_chksum()
+    return priv
+
+
+def bip85_brainpoolp512r1_from_root(
+    root, index: int, sub_index: int | None = None, alg: str = "ECDSA",
+):
+    from embit import bip85
+    from seedsigner.helpers.ec_point import brainpool_pub_xy
+    from pgpy.constants import EllipticCurveOID
+    from pgpy.packet import fields
+
+    path = [BIP85_GPG_KEY_TYPE_BRAINPOOL, 512, index]
+    if sub_index is not None:
+        path.append(sub_index)
+    entropy = bip85.derive_entropy(root, BIP85_GPG_APP, path)
+    order = 0xAADD9DB8DBE9C48B3FD4E6AE33C9FC07CB308DB3B3C9D20ED6639CCA70330870553E5C414CA92619418661197FAC10471DB1D381085DDADDB58796829CA90069
+    # Bit-mask to curve bit length (no-op for byte-aligned curves) then
+    # reduce into [1, order-1] only when the masked value is out of range.
+    d = int.from_bytes(entropy[:64], "big") & ((1 << 512) - 1)
+    if d == 0 or d >= order:
+        d = (d % (order - 1)) + 1
+    pub_x, pub_y = brainpool_pub_xy(512, d)
+    if alg == "ECDH":
+        priv = fields.ECDHPriv()
+        priv.oid = EllipticCurveOID.Brainpool_P512
+        priv.kdf.halg = priv.oid.kdf_halg
+        priv.kdf.encalg = priv.oid.kek_alg
+    else:
+        priv = fields.ECDSAPriv()
+        priv.oid = EllipticCurveOID.Brainpool_P512
+    priv.p = fields.ECPoint.from_values(
+        priv.oid.key_size,
+        fields.ECPointFormat.Standard,
+        fields.MPI(pub_x),
+        fields.MPI(pub_y),
+    )
+    priv.s = fields.MPI(d)
+    priv._compute_chksum()
+    return priv
+
+
+def _bip85_key_type_choices(include_all: bool = False) -> list[tuple[str, str]]:
+    """Return available key type labels and identifiers for BIP85 GPG keys.
+
+    Parameters
+    ----------
+    include_all : bool
+        When ``True`` return every supported key type regardless of the
+        ``SETTING__GPG_KEY_TYPES`` user preference.  Used by the CLI tool
+        and import paths that must accept any key type.
+    """
+    all_types = [
+        (label, code)
+        for code, label in SettingsConstants.ALL_GPG_KEY_TYPES
+    ]
+    if include_all:
+        return all_types
+
+    from seedsigner.models.settings import Settings
+    enabled = Settings.get_instance().get_value(SettingsConstants.SETTING__GPG_KEY_TYPES)
+    return [(label, code) for label, code in all_types if code in enabled]
 
 
 class ToolsGPGLoadBIP85KeyView(View):
@@ -11048,23 +11913,17 @@ class ToolsGPGLoadBIP85KeyView(View):
             )
             return Destination(BackStackView)
 
-        ecc_enabled = (
-            self.settings.get_value(SettingsConstants.SETTING__BIP85_ECC_KEYS)
-            == SettingsConstants.OPTION__ENABLED
+        self.run_screen(
+            WarningScreen,
+            title="WARNING",
+            status_headline=None,
+            text=(
+                "BIP85 GPG key derivation\nis experimental.\n"
+                "Record your SeedSigner Version."
+            ),
+            show_back_button=False,
+            button_data=[ButtonOption("I Understand")],
         )
-
-        if ecc_enabled:
-            self.run_screen(
-                WarningScreen,
-                title="WARNING",
-                status_headline=None,
-                text=(
-                    "ECC Curves extend beyond current BIP85 spec..\n"
-                    "Record your SeedSigner Version."
-                ),
-                show_back_button=False,
-                button_data=[ButtonOption("I Understand")],
-            )
 
         if len(self.controller.storage.seeds) > 1:
             seed_buttons = []
@@ -11097,7 +11956,7 @@ class ToolsGPGLoadBIP85KeyView(View):
             return Destination(BackStackView)
         key_index = int(ret)
 
-        keytype_choices = _bip85_key_type_choices(ecc_enabled)
+        keytype_choices = _bip85_key_type_choices()
         keytype_buttons = [ButtonOption(label) for label, _ in keytype_choices]
         selected_type = self.run_screen(
             ButtonListScreen,
@@ -11151,7 +12010,7 @@ class ToolsGPGLoadBIP85KeyView(View):
                     re.sub(r"\\(?!u)", r"\\\\", ret_dict["textToEncode"]),
                     encoding="raw_unicode_escape",
                 ).decode("unicode_escape")
-            except UnicodeDecodeError:
+            except UnicodeError:
                 return ret_dict["textToEncode"]
 
         name = prompt_text("Name")
@@ -11173,13 +12032,13 @@ class ToolsGPGLoadBIP85KeyView(View):
         if expiration_str is None:
             return Destination(BackStackView)
         try:
-            if expiration_str == "":
+            if expiration_str.strip() == "":
                 expiration_dt = datetime.combine(
                     default_expiration, datetime.min.time(), tzinfo=timezone.utc
                 )
             else:
                 expiration_dt = datetime.strptime(
-                    expiration_str, "%Y-%m-%d"
+                    _normalize_date_input(expiration_str), "%Y-%m-%d"
                 ).replace(tzinfo=timezone.utc)
             if expiration_dt <= created:
                 raise ValueError
@@ -11194,7 +12053,8 @@ class ToolsGPGLoadBIP85KeyView(View):
                 button_data=[ButtonOption("I Understand")],
             )
             return Destination(BackStackView)
-        root = bip32.HDKey.from_seed(seed.seed_bytes)
+        network = self.settings.get_value(SettingsConstants.SETTING__NETWORK)
+        root = seed.get_root(network)
         KEY_BITS = (
             2048
             if key_type == "rsa2048"
@@ -11226,9 +12086,21 @@ class ToolsGPGLoadBIP85KeyView(View):
             elif key_type == "p256":
                 pk.pkalg = PubKeyAlgorithm.ECDSA
                 pk.keymaterial = bip85_p256_from_root(root, key_index)
+            elif key_type == "p384":
+                pk.pkalg = PubKeyAlgorithm.ECDSA
+                pk.keymaterial = bip85_p384_from_root(root, key_index)
+            elif key_type == "p521":
+                pk.pkalg = PubKeyAlgorithm.ECDSA
+                pk.keymaterial = bip85_p521_from_root(root, key_index)
             elif key_type == "brainpoolp256r1":
                 pk.pkalg = PubKeyAlgorithm.ECDSA
                 pk.keymaterial = bip85_brainpoolp256r1_from_root(root, key_index)
+            elif key_type == "brainpoolp384r1":
+                pk.pkalg = PubKeyAlgorithm.ECDSA
+                pk.keymaterial = bip85_brainpoolp384r1_from_root(root, key_index)
+            elif key_type == "brainpoolp512r1":
+                pk.pkalg = PubKeyAlgorithm.ECDSA
+                pk.keymaterial = bip85_brainpoolp512r1_from_root(root, key_index)
             elif key_type == "ed25519":
                 pk.pkalg = PubKeyAlgorithm.EdDSA
                 pk.keymaterial = bip85_ed25519_from_root(root, key_index)
@@ -11260,7 +12132,7 @@ class ToolsGPGLoadBIP85KeyView(View):
                     (1, PubKeyAlgorithm.EdDSA, {KeyFlags.Authentication}, "EdDSA"),
                     (2, PubKeyAlgorithm.EdDSA, {KeyFlags.Sign}, "EdDSA"),
                 ]
-            elif key_type in ["secp256k1", "p256", "brainpoolp256r1"]:
+            elif key_type in ["secp256k1", "p256", "p384", "p521", "brainpoolp256r1", "brainpoolp384r1", "brainpoolp512r1"]:
                 subkey_specs = [
                     (0, PubKeyAlgorithm.ECDH, {KeyFlags.EncryptCommunications, KeyFlags.EncryptStorage}, "ECDH"),
                     (1, PubKeyAlgorithm.ECDSA, {KeyFlags.Authentication}, "ECDSA"),
@@ -11282,8 +12154,16 @@ class ToolsGPGLoadBIP85KeyView(View):
                     subpkt.keymaterial = bip85_secp256k1_from_root(root, key_index, sub_index, alg[0])
                 elif key_type == "p256":
                     subpkt.keymaterial = bip85_p256_from_root(root, key_index, sub_index, alg[0])
+                elif key_type == "p384":
+                    subpkt.keymaterial = bip85_p384_from_root(root, key_index, sub_index, alg[0])
+                elif key_type == "p521":
+                    subpkt.keymaterial = bip85_p521_from_root(root, key_index, sub_index, alg[0])
                 elif key_type == "brainpoolp256r1":
                     subpkt.keymaterial = bip85_brainpoolp256r1_from_root(root, key_index, sub_index, alg[0])
+                elif key_type == "brainpoolp384r1":
+                    subpkt.keymaterial = bip85_brainpoolp384r1_from_root(root, key_index, sub_index, alg[0])
+                elif key_type == "brainpoolp512r1":
+                    subpkt.keymaterial = bip85_brainpoolp512r1_from_root(root, key_index, sub_index, alg[0])
                 elif key_type == "ed25519":
                     subpkt.keymaterial = bip85_ed25519_from_root(root, key_index, sub_index, alg[0])
                 else:
@@ -11412,9 +12292,10 @@ class ToolsGPGAddSubkeysView(View):
         created_ts = keys[selected]["created"]
         entry = BIP85_DATA.get(fingerprint)
         bip85 = entry is not None
-        logger.info(
-            "AddSubkeysView: fpr=%s bip85=%s start_index=%s",
-            fingerprint,
+        fingerprint_suffix = fingerprint[-4:] if isinstance(fingerprint, str) and len(fingerprint) >= 4 else fingerprint
+        logger.debug(
+            "AddSubkeysView: fpr_suffix=%s bip85=%s start_index=%s",
+            fingerprint_suffix,
             bip85,
             start_index,
         )
@@ -11428,9 +12309,9 @@ class ToolsGPGAddSubkeysView(View):
         seed = None
         base_index = None
         if bip85:
-            logger.info(
-                "BIP85 key detected; searching for seed fingerprint %s",
-                entry["seed_fpr"],
+            logger.debug(
+                "BIP85 key detected; searching for seed fingerprint suffix=%s",
+                entry["seed_fpr"][-4:] if isinstance(entry["seed_fpr"], str) and len(entry["seed_fpr"]) >= 4 else entry["seed_fpr"],
             )
             network = self.settings.get_value(SettingsConstants.SETTING__NETWORK)
             seed = None
@@ -11450,7 +12331,7 @@ class ToolsGPGAddSubkeysView(View):
                     button_data=[ButtonOption("I Understand")],
                 )
                 return Destination(BackStackView)
-            logger.info("Seed matched at index=%s", seed_index)
+            logger.debug("Seed matched at index=%s", seed_index)
             base_index = entry["index"]
             if not bip85_verify_existing(
                 seed,
@@ -11462,9 +12343,9 @@ class ToolsGPGAddSubkeysView(View):
                 primary_curve,
                 subkeys,
             ):
-                logger.warning(
-                    "Selected seed/index failed validation for fingerprint %s",
-                    fingerprint,
+                logger.debug(
+                    "Selected seed/index failed validation (base_index=%s)",
+                    base_index,
                 )
                 corrected = None
                 for i in range(base_index - 1, -1, -1):
@@ -11506,11 +12387,7 @@ class ToolsGPGAddSubkeysView(View):
                 base_index,
                 key_index,
             )
-        ecc_enabled = (
-            self.settings.get_value(SettingsConstants.SETTING__BIP85_ECC_KEYS)
-            == SettingsConstants.OPTION__ENABLED
-        )
-        keytype_choices = _bip85_key_type_choices(ecc_enabled)
+        keytype_choices = _bip85_key_type_choices()
         keytype_buttons = [ButtonOption(label) for label, _ in keytype_choices]
         selected_type = self.run_screen(
             ButtonListScreen,
@@ -11613,43 +12490,66 @@ class ToolsGPGGenerateKeyView(View):
             tools_screens,
         )
 
-        keytype_data = [
+        all_keytype_data = [
             (
+                "ed25519",
                 "ECC Ed25519",
                 (PubKeyAlgorithm.EdDSA, EllipticCurveOID.Ed25519),
                 True,
             ),
             (
+                "p256",
                 "ECC NIST P-256",
                 (PubKeyAlgorithm.ECDSA, EllipticCurveOID.NIST_P256),
                 False,
             ),
             (
+                "brainpoolp256r1",
                 "ECC Brainpool P-256",
                 (PubKeyAlgorithm.ECDSA, EllipticCurveOID.Brainpool_P256),
                 False,
             ),
             (
+                "rsa2048",
                 "RSA 2048",
                 (PubKeyAlgorithm.RSAEncryptOrSign, 2048),
                 False,
             ),
             (
+                "rsa3072",
                 "RSA 3072",
                 (PubKeyAlgorithm.RSAEncryptOrSign, 3072),
                 False,
             ),
             (
+                "rsa4096",
                 "RSA 4096",
                 (PubKeyAlgorithm.RSAEncryptOrSign, 4096),
                 False,
             ),
             (
+                "secp256k1",
                 "ECC secp256k1",
                 (PubKeyAlgorithm.ECDSA, EllipticCurveOID.SECP256K1),
                 True,
             ),
         ]
+        enabled = self.settings.get_value(SettingsConstants.SETTING__GPG_KEY_TYPES)
+        keytype_data = [
+            (label, params, warn)
+            for code, label, params, warn in all_keytype_data
+            if code in enabled
+        ]
+        if not keytype_data:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text="No GPG key types enabled.\nEnable types in Settings.",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
         keytype_buttons = [ButtonOption(label) for label, _, _ in keytype_data]
         selected_type = self.run_screen(
             ButtonListScreen,
@@ -11704,7 +12604,7 @@ class ToolsGPGGenerateKeyView(View):
                     re.sub(r"\\(?!u)", r"\\\\", ret_dict["textToEncode"]),
                     encoding="raw_unicode_escape",
                 ).decode("unicode_escape")
-            except UnicodeDecodeError:
+            except UnicodeError:
                 return ret_dict["textToEncode"]
 
         name = prompt_text("Name")
@@ -11726,13 +12626,13 @@ class ToolsGPGGenerateKeyView(View):
         if expiration_str is None:
             return Destination(BackStackView)
         try:
-            if expiration_str == "":
+            if expiration_str.strip() == "":
                 expiration_dt = datetime.combine(
                     default_expiration, datetime.min.time(), tzinfo=timezone.utc
                 )
             else:
                 expiration_dt = datetime.strptime(
-                    expiration_str, "%Y-%m-%d"
+                    _normalize_date_input(expiration_str), "%Y-%m-%d"
                 ).replace(tzinfo=timezone.utc)
             if expiration_dt <= created:
                 raise ValueError
@@ -12213,7 +13113,7 @@ class ToolsGPGExportPrivkeyView(View):
                     re.sub(r"\\(?!u)", r"\\\\", ret_dict["textToEncode"]),
                     encoding="raw_unicode_escape",
                 ).decode("unicode_escape")
-            except UnicodeDecodeError:
+            except UnicodeError:
                 passphrase = ret_dict["textToEncode"]
 
             filename = key["fpr"] + "_private.gpg"
@@ -12855,7 +13755,7 @@ class ToolsTextQRTextEntryView(View):
                 encoding="raw_unicode_escape"
             ).decode("unicode_escape")
 
-        except UnicodeDecodeError:
+        except UnicodeError:
             self.textToEncode = ret_dict["textToEncode"]
 
         if "is_back_button" in ret_dict:
@@ -12954,11 +13854,18 @@ class ToolsTextQRReviewTextView(View):
 
 
 
+def _text_qr_done_destination(return_to_home: bool = False) -> Destination:
+    if return_to_home:
+        return Destination(ToolsMenuView, clear_history=True)
+    return Destination(ToolsTextQRView, clear_history=True)
+
+
 class ToolsTextQRTranscribeModePromptView(View):
-    def __init__(self, text: str, num_modules: int):
+    def __init__(self, text: str, num_modules: int, return_to_home: bool = False):
         super().__init__()
         self.text = text
         self.num_modules = num_modules
+        self.return_to_home = return_to_home
 
 
     def run(self):
@@ -12980,22 +13887,23 @@ class ToolsTextQRTranscribeModePromptView(View):
         elif button_data[selected_menu_num] == TRANSCRIBE:
             return Destination(
                 ToolsTextQRTranscribeModeView,
-                view_args=dict(text=self.text, num_modules=self.num_modules)
+                view_args=dict(text=self.text, num_modules=self.num_modules, return_to_home=self.return_to_home)
             )
 
         elif button_data[selected_menu_num] == FULLSCREEN:
             return Destination(
                 ToolsTextQRFullScreenModeView,
-                view_args=dict(text=self.text)
+                view_args=dict(text=self.text, return_to_home=self.return_to_home)
             )
 
 
 
 class ToolsTextQRTranscribeModeView(View):
-    def __init__(self, text: str, num_modules: int):
+    def __init__(self, text: str, num_modules: int, return_to_home: bool = False):
         super().__init__()
         self.text = text
         self.num_modules = num_modules
+        self.return_to_home = return_to_home
 
 
     def run(self):
@@ -13010,30 +13918,32 @@ class ToolsTextQRTranscribeModeView(View):
         else:
             return Destination(
                 ToolsTranscribeTextQRZoomedInView,
-                view_args=dict(text=self.text, num_modules=self.num_modules)
+                view_args=dict(text=self.text, num_modules=self.num_modules, return_to_home=self.return_to_home)
             )
 
 
 
 class ToolsTextQRFullScreenModeView(View):
-    def __init__(self, text: str):
+    def __init__(self, text: str, return_to_home: bool = False):
         super().__init__()
         self.text = text
+        self.return_to_home = return_to_home
 
     def run(self):
         from seedsigner.gui.screens.screen import QRDisplayScreen
         encoder_args = dict(data=self.text)
         e = GenericStaticQrEncoder(**encoder_args)
         QRDisplayScreen(qr_encoder=e).display()
-        return Destination(ToolsTextQRView, clear_history=True)
+        return _text_qr_done_destination(self.return_to_home)
 
 
 
 class ToolsTranscribeTextQRZoomedInView(View):
-    def __init__(self, text: str, num_modules: int):
+    def __init__(self, text: str, num_modules: int, return_to_home: bool = False):
         super().__init__()
         self.text = text
         self.num_modules = num_modules
+        self.return_to_home = return_to_home
 
 
     def run(self):
@@ -13045,15 +13955,16 @@ class ToolsTranscribeTextQRZoomedInView(View):
 
         return Destination(
             ToolsTranscribeTextQRConfirmQRPromptView,
-            view_args=dict(text=self.text)
+            view_args=dict(text=self.text, return_to_home=self.return_to_home)
         )
 
 
 
 class ToolsTranscribeTextQRConfirmQRPromptView(View):
-    def __init__(self, text: str):
+    def __init__(self, text: str, return_to_home: bool = False):
         super().__init__()
         self.text = text
+        self.return_to_home = return_to_home
 
 
     def run(self):
@@ -13070,17 +13981,18 @@ class ToolsTranscribeTextQRConfirmQRPromptView(View):
             return Destination(BackStackView)
 
         elif button_data[selected_menu_option] == SCAN:
-            return Destination(ToolsTranscribeTextQRConfirmScanView, view_args=dict(text=self.text))
+            return Destination(ToolsTranscribeTextQRConfirmScanView, view_args=dict(text=self.text, return_to_home=self.return_to_home))
 
         elif button_data[selected_menu_option] == DONE:
-            return Destination(ToolsTextQRView, clear_history=True)
+            return _text_qr_done_destination(self.return_to_home)
 
 
 
 class ToolsTranscribeTextQRConfirmScanView(View):
-    def __init__(self, text: str):
+    def __init__(self, text: str, return_to_home: bool = False):
         super().__init__()
         self.text = text
+        self.return_to_home = return_to_home
 
 
     def run(self):
@@ -13114,7 +14026,7 @@ class ToolsTranscribeTextQRConfirmScanView(View):
                     button_data=[ButtonOption("OK")],
                 ).display()
 
-                return Destination(ToolsTextQRView, clear_history=True)
+                return _text_qr_done_destination(self.return_to_home)
 
         else:
             DireWarningScreen(
@@ -13187,3 +14099,1314 @@ class ToolsTextQRReviewTextView2(View):
 
         elif button_data[selected_menu_num] == DONE:
             return Destination(BackStackView)
+
+
+"""****************************************************************************
+    Password Generator Views
+****************************************************************************"""
+class ToolsPasswordGeneratorTypeView(View):
+    def run(self):
+        options = [
+            (ButtonOption("Custom"), PASSWORD_TYPE_RANDOM),
+            (ButtonOption("Diceware-EFF Short"), PASSWORD_TYPE_DICEWARE_EFF_SHORT),
+            (ButtonOption("Diceware-EFF Long"), PASSWORD_TYPE_DICEWARE_EFF_LONG),
+            (ButtonOption("Diceware-BIP39"), PASSWORD_TYPE_DICEWARE_BIP39),
+            (ButtonOption("Base85"), PASSWORD_TYPE_BASE85),
+            (ButtonOption("Base64"), PASSWORD_TYPE_BASE64),
+            (ButtonOption("Hex"), PASSWORD_TYPE_HEX),
+            (ButtonOption("Dice Rolls"), PASSWORD_TYPE_DICE_ROLLS),
+        ]
+        button_data = [button for button, _ in options]
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title=_("Password Type"),
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        password_type = options[selected_menu_num][1]
+        if password_type == PASSWORD_TYPE_DICE_ROLLS:
+            return Destination(
+                ToolsPasswordDiceRollCountView,
+                view_args=dict(
+                    password_type=password_type,
+                    strength_bits=64,
+                    entropy_source=None,
+                ),
+            )
+        return Destination(
+            ToolsPasswordStrengthView,
+            view_args=dict(password_type=password_type),
+        )
+
+
+class ToolsPasswordStrengthView(View):
+    def __init__(self, password_type: str):
+        super().__init__()
+        self.password_type = password_type
+
+    def run(self):
+        options = [
+            ButtonOption("64 bits", return_data=64),
+            ButtonOption("128 bits", return_data=128),
+            ButtonOption("256 bits", return_data=256),
+        ]
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title=_("Password Strength"),
+            is_button_text_centered=False,
+            selected_button=1,
+            button_data=options,
+        )
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        strength_bits = options[selected_menu_num].return_data
+        if self.password_type == PASSWORD_TYPE_RANDOM:
+            return Destination(
+                ToolsPasswordRandomOptionsView,
+                view_args=dict(
+                    password_type=self.password_type,
+                    strength_bits=strength_bits,
+                ),
+            )
+        return Destination(
+            ToolsPasswordEntropySourceView,
+            view_args=dict(
+                password_type=self.password_type,
+                strength_bits=strength_bits,
+            ),
+        )
+
+
+class ToolsPasswordRandomOptionsView(View):
+    def __init__(self, password_type: str, strength_bits: int):
+        super().__init__()
+        self.password_type = password_type
+        self.strength_bits = strength_bits
+
+    def _prompt_choice(self, title: str) -> bool | None:
+        yes = ButtonOption("Yes")
+        no = ButtonOption("No")
+        selected = self.run_screen(
+            ButtonListScreen,
+            title=title,
+            is_button_text_centered=True,
+            button_data=[yes, no],
+        )
+        if selected == RET_CODE__BACK_BUTTON:
+            return None
+        return selected == 0
+
+    def run(self):
+        while True:
+            lower = self._prompt_choice("Lowercase?")
+            if lower is None:
+                return Destination(BackStackView)
+            upper = self._prompt_choice("Uppercase?")
+            if upper is None:
+                return Destination(BackStackView)
+            digits = self._prompt_choice("Numbers?")
+            if digits is None:
+                return Destination(BackStackView)
+            special = self._prompt_choice("Specials?")
+            if special is None:
+                return Destination(BackStackView)
+            random_options = {
+                "lower": lower,
+                "upper": upper,
+                "digits": digits,
+                "special": special,
+            }
+            if any(random_options.values()):
+                return Destination(
+                    ToolsPasswordEntropySourceView,
+                    view_args=dict(
+                        password_type=self.password_type,
+                        strength_bits=self.strength_bits,
+                        random_options=random_options,
+                    ),
+                )
+            self.run_screen(
+                WarningScreen,
+                title=_("Select Options"),
+                status_headline=None,
+                text=_("Choose at least one character set."),
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+
+
+class ToolsPasswordEntropySourceView(View):
+    def __init__(
+        self,
+        password_type: str,
+        strength_bits: int,
+        random_options: dict | None = None,
+        dice_sides: int | None = None,
+        roll_count: int | None = None,
+    ):
+        super().__init__()
+        self.password_type = password_type
+        self.strength_bits = strength_bits
+        self.random_options = random_options or {}
+        self.dice_sides = dice_sides
+        self.roll_count = roll_count
+
+    def _hardware_rng_available(self) -> bool:
+        if self.controller.hardware_rng_is_healthy:
+            return True
+        reason = self.controller.hardware_rng_failure_reason or _("System RNG health check failed.")
+        self.run_screen(
+            WarningScreen,
+            title=_("System RNG Error"),
+            status_headline=None,
+            text=reason,
+            show_back_button=False,
+            button_data=[ButtonOption("I Understand")],
+        )
+        return False
+
+    def run(self):
+        _clear_password_entropy_cache(self.controller)
+
+        camera = ButtonOption("Camera")
+        dice = ButtonOption("Dice")
+        hardware_rng = ButtonOption("System RNG")
+        bip85 = ButtonOption("BIP85")
+
+        if self.password_type == PASSWORD_TYPE_DICE_ROLLS:
+            button_data = [camera, hardware_rng, bip85]
+        else:
+            button_data = [camera, dice, hardware_rng, bip85]
+
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title=_("Entropy Source"),
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        selected = button_data[selected_menu_num]
+        if selected == bip85 and not _bip85_supported_password_type(self.password_type):
+            self.run_screen(
+                WarningScreen,
+                title=_("Not Supported"),
+                status_headline=None,
+                text=_("BIP85 supports Diceware, Dice Rolls, Hex, Base64, and Base85."),
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(
+                ToolsPasswordEntropySourceView,
+                view_args=dict(
+                    password_type=self.password_type,
+                    strength_bits=self.strength_bits,
+                    random_options=self.random_options,
+                ),
+            )
+
+        if selected == camera:
+            if self.password_type in {
+                PASSWORD_TYPE_DICEWARE_EFF_SHORT,
+                PASSWORD_TYPE_DICEWARE_EFF_LONG,
+                PASSWORD_TYPE_DICEWARE_BIP39,
+            }:
+                return Destination(
+                    ToolsImageEntropyLivePreviewView,
+                    view_args=dict(
+                        next_view=ToolsPasswordWordSeparatorView,
+                        next_view_args=dict(
+                            password_type=self.password_type,
+                            strength_bits=self.strength_bits,
+                            random_options=self.random_options,
+                            entropy_source=PASSWORD_ENTROPY_CAMERA,
+                        ),
+                    ),
+                )
+            return Destination(
+                ToolsImageEntropyLivePreviewView,
+                view_args=dict(
+                    next_view=ToolsPasswordGenerateView,
+                    next_view_args=dict(
+                        password_type=self.password_type,
+                        strength_bits=self.strength_bits,
+                        entropy_source=PASSWORD_ENTROPY_CAMERA,
+                        random_options=self.random_options,
+                        roll_count=self.roll_count,
+                        dice_sides=self.dice_sides or 6,
+                    ),
+                ),
+            )
+
+        if selected == dice:
+            if self.password_type == PASSWORD_TYPE_DICE_ROLLS and self.dice_sides is not None and self.roll_count is not None:
+                return Destination(
+                    ToolsPasswordDiceEntryView,
+                    view_args=dict(
+                        password_type=self.password_type,
+                        random_options=self.random_options,
+                        strength_bits=self.strength_bits,
+                        total_rolls=self.roll_count,
+                        word_count=None,
+                        entropy_source=PASSWORD_ENTROPY_DICE,
+                        dice_sides=self.dice_sides,
+                    ),
+                    skip_current_view=True,
+                )
+            return Destination(
+                ToolsPasswordDiceRollCountView,
+                view_args=dict(
+                    password_type=self.password_type,
+                    strength_bits=self.strength_bits,
+                    random_options=self.random_options,
+                    entropy_source=PASSWORD_ENTROPY_DICE,
+                ),
+            )
+
+        if selected == hardware_rng:
+            if not self._hardware_rng_available():
+                return Destination(BackStackView)
+            if _is_diceware_password_type(getattr(self, "password_type", None)):
+                return Destination(
+                    ToolsPasswordHardwareRngEntropyView,
+                    view_args=dict(
+                        password_type=self.password_type,
+                        strength_bits=self.strength_bits,
+                        random_options=self.random_options,
+                    ),
+                )
+            return Destination(
+                ToolsPasswordGenerateView,
+                view_args=dict(
+                    password_type=self.password_type,
+                    strength_bits=self.strength_bits,
+                    entropy_source=PASSWORD_ENTROPY_HARDWARE_RNG,
+                    random_options=self.random_options,
+                    roll_count=self.roll_count,
+                    dice_sides=self.dice_sides or 6,
+                ),
+            )
+
+        return Destination(
+            ToolsPasswordBIP85GenerateView,
+            view_args=dict(
+                password_type=self.password_type,
+                strength_bits=self.strength_bits,
+                random_options=self.random_options,
+                dice_sides=self.dice_sides,
+                roll_count=self.roll_count,
+            ),
+        )
+
+
+class ToolsPasswordHardwareRngEntropyView(View):
+    def __init__(
+        self,
+        password_type: str,
+        strength_bits: int,
+        random_options: dict | None = None,
+    ):
+        super().__init__()
+        self.password_type = password_type
+        self.strength_bits = strength_bits
+        self.random_options = random_options or {}
+
+    def run(self):
+        if not self.controller.hardware_rng_is_healthy:
+            self.run_screen(
+                WarningScreen,
+                title=_("System RNG Error"),
+                status_headline=None,
+                text=self.controller.hardware_rng_failure_reason or _("System RNG health check failed."),
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        entropy_bytes = _derive_hardware_rng_entropy_bytes()
+        _cache_password_entropy(
+            self.controller,
+            password_type=self.password_type,
+            strength_bits=self.strength_bits,
+            entropy_source=PASSWORD_ENTROPY_HARDWARE_RNG,
+            word_count=_diceware_word_count(self.password_type, self.strength_bits),
+            roll_data=None,
+            entropy_bytes=entropy_bytes,
+        )
+        return Destination(
+            ToolsPasswordWordSeparatorView,
+            view_args=dict(
+                password_type=self.password_type,
+                strength_bits=self.strength_bits,
+                random_options=self.random_options,
+                entropy_source=PASSWORD_ENTROPY_HARDWARE_RNG,
+            ),
+            skip_current_view=True,
+        )
+
+
+class ToolsPasswordWordSeparatorView(View):
+    def __init__(
+        self,
+        password_type: str,
+        strength_bits: int,
+        random_options: dict | None = None,
+        entropy_source: str | None = PASSWORD_ENTROPY_DICE,
+    ):
+        super().__init__()
+        self.password_type = password_type
+        self.strength_bits = strength_bits
+        self.random_options = random_options or {}
+        self.entropy_source = entropy_source
+
+    def run(self):
+        cached_entropy = _get_password_entropy_cache(self.controller)
+
+        separator_options = [
+            (ButtonOption("None"), PASSWORD_WORD_SEPARATOR_NONE),
+            (ButtonOption("Capitalise"), PASSWORD_WORD_SEPARATOR_CAPITALISE),
+            (ButtonOption("Space"), PASSWORD_WORD_SEPARATOR_SPACE),
+            (ButtonOption("."), PASSWORD_WORD_SEPARATOR_DOT),
+        ]
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title=_("Separator"),
+            is_button_text_centered=False,
+            selected_button=1,
+            button_data=[button for button, _ in separator_options],
+        )
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            _clear_password_entropy_cache(self.controller)
+            return Destination(
+                ToolsPasswordEntropySourceView,
+                view_args=dict(
+                    password_type=self.password_type,
+                    strength_bits=self.strength_bits,
+                    random_options=self.random_options,
+                ),
+                skip_current_view=True,
+            )
+
+        word_separator = separator_options[selected_menu_num][1]
+
+        if cached_entropy and cached_entropy.get("password_type") == self.password_type \
+            and cached_entropy.get("strength_bits") == self.strength_bits \
+            and cached_entropy.get("entropy_source") == self.entropy_source:
+            return Destination(
+                ToolsPasswordGenerateView,
+                view_args=dict(
+                    password_type=self.password_type,
+                    entropy_source=self.entropy_source,
+                    random_options=self.random_options,
+                    strength_bits=self.strength_bits,
+                    word_count=cached_entropy.get("word_count"),
+                    word_separator=word_separator,
+                    roll_data=cached_entropy.get("roll_data"),
+                    entropy_bytes_override=cached_entropy.get("entropy_bytes"),
+                ),
+                skip_current_view=True,
+            )
+
+        return Destination(
+            ToolsPasswordDiceRollCountView,
+            view_args=dict(
+                password_type=self.password_type,
+                strength_bits=self.strength_bits,
+                random_options=self.random_options,
+                word_separator=word_separator,
+                entropy_source=self.entropy_source,
+            ),
+        )
+
+
+class ToolsPasswordDiceRollCountView(View):
+    def __init__(
+        self,
+        password_type: str,
+        strength_bits: int,
+        random_options: dict | None = None,
+        word_separator: str = PASSWORD_WORD_SEPARATOR_NONE,
+        entropy_source: str = PASSWORD_ENTROPY_DICE,
+    ):
+        super().__init__()
+        self.password_type = password_type
+        self.strength_bits = strength_bits
+        self.random_options = random_options or {}
+        self.word_separator = word_separator
+        self.entropy_source = entropy_source
+
+    def _prompt_dice_sides(self) -> int | None:
+        side_options = [
+            ButtonOption("6 sides", return_data=6),
+            ButtonOption("10 sides", return_data=10),
+            ButtonOption("20 sides", return_data=20),
+        ]
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title=_("Dice Sides"),
+            is_button_text_centered=False,
+            selected_button=0,
+            button_data=side_options,
+        )
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return None
+        return int(side_options[selected_menu_num].return_data)
+
+    def _prompt_roll_count(self) -> int | None:
+        ret = seed_screens.SeedBIP85SelectChildIndexScreen(title=_("Number of Rolls")).display()
+        if ret == RET_CODE__BACK_BUTTON:
+            return None
+        if not ret:
+            return 0
+        return int(ret)
+
+    def run(self):
+        if self.password_type in {
+            PASSWORD_TYPE_DICEWARE_EFF_SHORT,
+            PASSWORD_TYPE_DICEWARE_EFF_LONG,
+            PASSWORD_TYPE_DICEWARE_BIP39,
+        } and self.entropy_source in {
+            PASSWORD_ENTROPY_CAMERA,
+            PASSWORD_ENTROPY_HARDWARE_RNG,
+        }:
+            return Destination(
+                ToolsPasswordGenerateView,
+                view_args=dict(
+                    password_type=self.password_type,
+                    entropy_source=self.entropy_source,
+                    random_options=self.random_options,
+                    strength_bits=self.strength_bits,
+                    word_count=_diceware_word_count(self.password_type, self.strength_bits),
+                    word_separator=self.word_separator,
+                ),
+                skip_current_view=True,
+            )
+
+        if self.password_type == PASSWORD_TYPE_DICE_ROLLS:
+            dice_sides = self._prompt_dice_sides()
+            if dice_sides is None:
+                return Destination(BackStackView)
+
+            roll_count = self._prompt_roll_count()
+            if roll_count is None:
+                return Destination(BackStackView)
+            if roll_count < 1:
+                self.run_screen(
+                    WarningScreen,
+                    title=_("Invalid Input"),
+                    status_headline=None,
+                    text=_("Number of rolls must be at least 1."),
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
+
+            if self.entropy_source is None:
+                return Destination(
+                    ToolsPasswordEntropySourceView,
+                    view_args=dict(
+                        password_type=self.password_type,
+                        strength_bits=self.strength_bits,
+                        random_options=self.random_options,
+                        dice_sides=dice_sides,
+                        roll_count=roll_count,
+                    ),
+                    skip_current_view=True,
+                )
+
+            if self.entropy_source == PASSWORD_ENTROPY_DICE:
+                return Destination(
+                    ToolsPasswordDiceEntryView,
+                    view_args=dict(
+                        password_type=self.password_type,
+                        random_options=self.random_options,
+                        strength_bits=self.strength_bits,
+                        total_rolls=roll_count,
+                        word_count=None,
+                        word_separator=self.word_separator,
+                        entropy_source=PASSWORD_ENTROPY_DICE,
+                        dice_sides=dice_sides,
+                    ),
+                    skip_current_view=True,
+                )
+
+            return Destination(
+                ToolsPasswordGenerateView,
+                view_args=dict(
+                    password_type=self.password_type,
+                    entropy_source=self.entropy_source,
+                    random_options=self.random_options,
+                    strength_bits=self.strength_bits,
+                    roll_count=roll_count,
+                    word_count=None,
+                    word_separator=self.word_separator,
+                    dice_sides=dice_sides,
+                ),
+                skip_current_view=True,
+            )
+
+        word_count = None
+        if self.password_type in {
+            PASSWORD_TYPE_DICEWARE_EFF_SHORT,
+            PASSWORD_TYPE_DICEWARE_EFF_LONG,
+            PASSWORD_TYPE_DICEWARE_BIP39,
+        }:
+            word_count = _diceware_word_count(self.password_type, self.strength_bits)
+            if self.password_type == PASSWORD_TYPE_DICEWARE_EFF_SHORT:
+                total_rolls = word_count * 4
+            elif self.password_type == PASSWORD_TYPE_DICEWARE_EFF_LONG:
+                total_rolls = word_count * 5
+            else:
+                total_rolls = max(1, math.ceil(word_count * 11 / math.log2(6)))
+        else:
+            total_rolls = _dice_rolls_for_strength(self.strength_bits)
+        return Destination(
+            ToolsPasswordDiceEntryView,
+            view_args=dict(
+                password_type=self.password_type,
+                random_options=self.random_options,
+                strength_bits=self.strength_bits,
+                total_rolls=total_rolls,
+                word_count=word_count,
+                word_separator=self.word_separator,
+                entropy_source=self.entropy_source,
+            ),
+            skip_current_view=True,
+        )
+
+
+class ToolsPasswordDiceEntryView(View):
+    def __init__(
+        self,
+        password_type: str,
+        strength_bits: int,
+        total_rolls: int,
+        random_options: dict | None = None,
+        word_count: int | None = None,
+        word_separator: str = PASSWORD_WORD_SEPARATOR_NONE,
+        entropy_source: str = PASSWORD_ENTROPY_DICE,
+        dice_sides: int = 6,
+    ):
+        super().__init__()
+        self.password_type = password_type
+        self.strength_bits = strength_bits
+        self.total_rolls = total_rolls
+        self.random_options = random_options or {}
+        self.word_count = word_count
+        self.word_separator = word_separator
+        self.entropy_source = entropy_source
+        self.dice_sides = dice_sides
+
+    def run(self):
+        ret = ToolsDiceEntropyEntryScreen(
+            return_after_n_chars=self.total_rolls,
+        ).display()
+
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        if not mnemonic_generation.dice_entropy_is_sufficient(ret):
+            self.run_screen(
+                ErrorScreen,
+                title=_("Poor Entropy"),
+                status_headline=None,
+                text=_("Dice rolls didn't appear random enough. Please try again."),
+            )
+            return Destination(BackStackView)
+
+        if _is_diceware_password_type(getattr(self, "password_type", None)):
+            _cache_password_entropy(
+                self.controller,
+                password_type=self.password_type,
+                strength_bits=self.strength_bits,
+                entropy_source=self.entropy_source,
+                word_count=self.word_count,
+                roll_data=ret,
+                entropy_bytes=None,
+            )
+            return Destination(
+                ToolsPasswordWordSeparatorView,
+                view_args=dict(
+                    password_type=self.password_type,
+                    strength_bits=self.strength_bits,
+                    random_options=self.random_options,
+                    entropy_source=self.entropy_source,
+                ),
+                skip_current_view=True,
+            )
+
+        return Destination(
+            ToolsPasswordGenerateView,
+            view_args=dict(
+                password_type=self.password_type,
+                entropy_source=self.entropy_source,
+                random_options=self.random_options,
+                strength_bits=self.strength_bits,
+                roll_data=ret,
+                roll_count=self.total_rolls,
+                word_count=self.word_count,
+                word_separator=self.word_separator,
+                dice_sides=self.dice_sides,
+            ),
+        )
+
+
+class ToolsPasswordGenerateView(View):
+    def __init__(
+        self,
+        password_type: str,
+        entropy_source: str,
+        strength_bits: int,
+        random_options: dict | None = None,
+        roll_data: bytes | str | None = None,
+        roll_count: int | None = None,
+        word_count: int | None = None,
+        word_separator: str = PASSWORD_WORD_SEPARATOR_NONE,
+        entropy_bytes_override: bytes | None = None,
+        dice_sides: int = 6,
+    ):
+        super().__init__()
+        self.password_type = password_type
+        self.entropy_source = entropy_source
+        self.strength_bits = strength_bits
+        self.random_options = random_options or {}
+        self.roll_data = roll_data
+        self.roll_count = roll_count
+        self.word_count = word_count
+        self.word_separator = word_separator
+        self.entropy_bytes_override = entropy_bytes_override
+        self.dice_sides = dice_sides
+
+    def _bip39_words_from_entropy(self, seed: bytes, word_count: int) -> list[str]:
+        wordlist = Seed.get_wordlist(
+            self.settings.get_value(SettingsConstants.SETTING__WORDLIST_LANGUAGE)
+        )
+        total_bits = word_count * 11
+        num_bytes = math.ceil(total_bits / 8)
+        data = password_generation.shake_stream(seed).read(num_bytes)
+        bit_string = "".join(f"{byte:08b}" for byte in data)
+        words = []
+        for i in range(word_count):
+            idx = int(bit_string[i * 11 : (i + 1) * 11], 2)
+            # Create an independent copy to avoid holding a direct
+            # reference to the shared global wordlist string.
+            words.append("".join(wordlist[idx]))
+        return words
+
+    def _dice_length_for_charset(self, alphabet_size: int) -> int:
+        return _strength_to_length(self.strength_bits, alphabet_size)
+
+    def _diceware_rolls_from_entropy(self, entropy_seed: bytes) -> str:
+        if self.word_count is None:
+            raise ValueError("Word count is required for diceware")
+        if self.password_type == PASSWORD_TYPE_DICEWARE_EFF_SHORT:
+            sides = 6
+            rolls_per_word = 4
+        elif self.password_type == PASSWORD_TYPE_DICEWARE_EFF_LONG:
+            sides = 6
+            rolls_per_word = 5
+        else:
+            sides = 2048
+            rolls_per_word = 1
+        roll_count = self.word_count * rolls_per_word
+        return password_generation.dice_rolls_from_seed(entropy_seed, sides, roll_count)
+
+    def _diceware_words(self, entropy_bytes: bytes | None = None) -> list[str]:
+        if self.password_type == PASSWORD_TYPE_DICEWARE_BIP39 and self.entropy_source in {
+            PASSWORD_ENTROPY_CAMERA,
+            PASSWORD_ENTROPY_HARDWARE_RNG,
+            PASSWORD_ENTROPY_BIP85,
+        }:
+            if self.word_count is None:
+                raise ValueError("Word count is required for words")
+            return self._bip39_words_from_entropy(entropy_bytes, self.word_count)
+
+        roll_data = self.roll_data
+        if self.password_type in {PASSWORD_TYPE_DICEWARE_EFF_SHORT, PASSWORD_TYPE_DICEWARE_EFF_LONG} and self.entropy_source in {
+            PASSWORD_ENTROPY_CAMERA,
+            PASSWORD_ENTROPY_HARDWARE_RNG,
+            PASSWORD_ENTROPY_BIP85,
+        }:
+            if entropy_bytes is None:
+                raise ValueError("Entropy is required for diceware")
+            roll_data = self._diceware_rolls_from_entropy(entropy_bytes)
+
+        if self.password_type == PASSWORD_TYPE_DICEWARE_EFF_SHORT:
+            return diceware.diceware_words_from_rolls(
+                roll_data, diceware.eff_short_map(), 4
+            )
+        if self.password_type == PASSWORD_TYPE_DICEWARE_EFF_LONG:
+            return diceware.diceware_words_from_rolls(
+                roll_data, diceware.eff_large_map(), 5
+            )
+
+        word_count = self.word_count
+        if word_count is None:
+            entropy_bits = password_generation.dice_roll_entropy_bits(self.roll_count)
+            word_count = int(entropy_bits // 11)
+        if word_count < 1:
+            raise ValueError("Not enough entropy for words")
+        entropy_seed = entropy_bytes if entropy_bytes is not None else mnemonic_generation._hash_dice_rolls(roll_data)
+        return self._bip39_words_from_entropy(entropy_seed, word_count)
+
+    def run(self):
+        entropy_bytes_override = getattr(self, "entropy_bytes_override", None)
+        if entropy_bytes_override is not None:
+            entropy_bytes = entropy_bytes_override
+        elif self.entropy_source == PASSWORD_ENTROPY_CAMERA:
+            entropy_bytes = _derive_camera_entropy_bytes(
+                self.controller.image_entropy_preview_frames,
+                self.controller.image_entropy_final_image,
+            )
+            self.controller.image_entropy_preview_frames = None
+            self.controller.image_entropy_final_image = None
+            if entropy_bytes is None:
+                self.run_screen(
+                    ErrorScreen,
+                    title=_("Poor Entropy"),
+                    status_headline=None,
+                    text=_("Camera entropy didn't appear random enough. Please try again."),
+                )
+                return Destination(BackStackView)
+        elif self.entropy_source == PASSWORD_ENTROPY_HARDWARE_RNG:
+            if not self.controller.hardware_rng_is_healthy:
+                self.run_screen(
+                    WarningScreen,
+                    title=_("System RNG Error"),
+                    status_headline=None,
+                    text=self.controller.hardware_rng_failure_reason or _("System RNG health check failed."),
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
+            entropy_bytes = _derive_hardware_rng_entropy_bytes()
+        else:
+            entropy_bytes = self.roll_data if self.entropy_source == PASSWORD_ENTROPY_BIP85 else mnemonic_generation._hash_dice_rolls(self.roll_data)
+
+        if self.password_type in {
+            PASSWORD_TYPE_DICEWARE_EFF_SHORT,
+            PASSWORD_TYPE_DICEWARE_EFF_LONG,
+            PASSWORD_TYPE_DICEWARE_BIP39,
+        }:
+            _cache_password_entropy(
+                self.controller,
+                password_type=self.password_type,
+                strength_bits=self.strength_bits,
+                entropy_source=self.entropy_source,
+                word_count=self.word_count,
+                roll_data=self.roll_data if self.entropy_source == PASSWORD_ENTROPY_DICE else None,
+                entropy_bytes=entropy_bytes if self.entropy_source != PASSWORD_ENTROPY_DICE else None,
+            )
+
+        try:
+            if self.password_type in {
+                PASSWORD_TYPE_DICEWARE_EFF_SHORT,
+                PASSWORD_TYPE_DICEWARE_EFF_LONG,
+                PASSWORD_TYPE_DICEWARE_BIP39,
+            }:
+                words = self._diceware_words(entropy_bytes=entropy_bytes)
+                password = _format_word_password(words, self.word_separator)
+            elif self.password_type == PASSWORD_TYPE_RANDOM:
+                charset = _random_charset(self.random_options)
+                if self.entropy_source == PASSWORD_ENTROPY_DICE:
+                    length = self._dice_length_for_charset(len(charset))
+                else:
+                    length = _strength_to_length(self.strength_bits, len(charset))
+                password = password_generation.random_string_from_charset(
+                    entropy_bytes, length, charset
+                )
+            elif self.password_type == PASSWORD_TYPE_DICE_ROLLS:
+                if self.roll_count is None:
+                    raise ValueError("Roll count is required")
+                rolls = password_generation.dice_roll_values_from_seed(
+                    entropy_bytes,
+                    sides=self.dice_sides,
+                    roll_count=self.roll_count,
+                    base=0,
+                )
+                password = ",".join(str(roll) for roll in rolls)
+            elif self.password_type == PASSWORD_TYPE_HEX:
+                if self.entropy_source == PASSWORD_ENTROPY_DICE:
+                    length = self._dice_length_for_charset(16)
+                    password = password_generation.hex_password_from_seed(entropy_bytes, length)
+                elif self.entropy_source == PASSWORD_ENTROPY_BIP85:
+                    num_bytes = _strength_to_length(self.strength_bits, 256)
+                    password = password_generation.bip85_hex_password(entropy_bytes, num_bytes)
+                else:
+                    length = _strength_to_length(self.strength_bits, 16)
+                    password = password_generation.hex_password_from_seed(entropy_bytes, length)
+            elif self.password_type == PASSWORD_TYPE_BASE64:
+                if self.entropy_source == PASSWORD_ENTROPY_DICE:
+                    length = self._dice_length_for_charset(64)
+                    password = password_generation.base64_password_from_seed(
+                        entropy_bytes, length
+                    )
+                elif self.entropy_source == PASSWORD_ENTROPY_BIP85:
+                    length = _strength_to_length(self.strength_bits, 64)
+                    password = password_generation.bip85_base64_password(
+                        entropy_bytes, length
+                    )
+                else:
+                    length = _strength_to_length(self.strength_bits, 64)
+                    password = password_generation.base64_password_from_seed(
+                        entropy_bytes, length
+                    )
+            else:
+                if self.entropy_source == PASSWORD_ENTROPY_DICE:
+                    length = self._dice_length_for_charset(85)
+                    password = password_generation.base85_password_from_seed(
+                        entropy_bytes, length
+                    )
+                elif self.entropy_source == PASSWORD_ENTROPY_BIP85:
+                    length = _strength_to_length(self.strength_bits, 85)
+                    password = password_generation.bip85_base85_password(
+                        entropy_bytes, length
+                    )
+                else:
+                    length = _strength_to_length(self.strength_bits, 85)
+                    password = password_generation.base85_password_from_seed(
+                        entropy_bytes, length
+                    )
+        except ValueError as exc:
+            self.run_screen(
+                WarningScreen,
+                title=_("Invalid Input"),
+                status_headline=None,
+                text=str(exc),
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        return Destination(
+            ToolsPasswordReviewView,
+            view_args=dict(
+                password=password,
+                password_type=self.password_type,
+                strength_bits=self.strength_bits,
+                random_options=self.random_options,
+                entropy_source=self.entropy_source,
+            ),
+            skip_current_view=True,
+        )
+
+
+class ToolsPasswordBIP85GenerateView(View):
+    def __init__(
+        self,
+        password_type: str,
+        strength_bits: int,
+        random_options: dict | None = None,
+        dice_sides: int | None = None,
+        roll_count: int | None = None,
+    ):
+        super().__init__()
+        self.password_type = password_type
+        self.strength_bits = strength_bits
+        self.random_options = random_options or {}
+        self.dice_sides = dice_sides
+        self.roll_count = roll_count
+
+    def _prompt_dice_sides(self) -> int | None:
+        side_options = [
+            ButtonOption("6 sides", return_data=6),
+            ButtonOption("10 sides", return_data=10),
+            ButtonOption("20 sides", return_data=20),
+        ]
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title=_("Dice Sides"),
+            is_button_text_centered=False,
+            selected_button=0,
+            button_data=side_options,
+        )
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return None
+        return int(side_options[selected_menu_num].return_data)
+
+    def _prompt_roll_count(self) -> int | None:
+        ret = seed_screens.SeedBIP85SelectChildIndexScreen(title=_("Number of Rolls")).display()
+        if ret == RET_CODE__BACK_BUTTON:
+            return None
+        if not ret:
+            return 0
+        return int(ret)
+
+    def run(self):
+        from embit import bip85
+
+        if len(self.controller.storage.seeds) == 0:
+            self.run_screen(
+                WarningScreen,
+                title=_("WARNING"),
+                status_headline=None,
+                text=_("Load a seed before using BIP85."),
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        if len(self.controller.storage.seeds) > 1:
+            seed_buttons = []
+            for seed in self.controller.storage.seeds:
+                button_str = seed.get_fingerprint(
+                    self.settings.get_value(SettingsConstants.SETTING__NETWORK)
+                )
+                seed_buttons.append(
+                    ButtonOption(
+                        button_str,
+                        SeedSignerIconConstants.FINGERPRINT,
+                        icon_color="blue",
+                    )
+                )
+            selected_seed = self.run_screen(
+                seed_screens.SeedSelectSeedScreen,
+                title=_("Select Seed"),
+                text=_("Choose seed for BIP85"),
+                is_button_text_centered=False,
+                button_data=seed_buttons,
+            )
+            if selected_seed == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+            seed = self.controller.get_seed(selected_seed)
+        else:
+            seed = self.controller.get_seed(0)
+
+        ret = seed_screens.SeedBIP85SelectChildIndexScreen(title=_("BIP85 Index")).display()
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        index = int(ret)
+
+        root = seed.get_root(self.settings.get_value(SettingsConstants.SETTING__NETWORK))
+
+        if self.password_type in {
+            PASSWORD_TYPE_DICEWARE_EFF_SHORT,
+            PASSWORD_TYPE_DICEWARE_EFF_LONG,
+            PASSWORD_TYPE_DICEWARE_BIP39,
+        }:
+            if self.password_type == PASSWORD_TYPE_DICEWARE_BIP39:
+                sides = 2048
+                rolls = _diceware_word_count(self.password_type, self.strength_bits)
+            elif self.password_type == PASSWORD_TYPE_DICEWARE_EFF_SHORT:
+                sides = 6
+                rolls = _diceware_word_count(self.password_type, self.strength_bits) * 4
+            else:
+                sides = 6
+                rolls = _diceware_word_count(self.password_type, self.strength_bits) * 5
+            entropy = bip85.derive_entropy(root, BIP85_APP_DICE, [sides, rolls, index])
+            _cache_password_entropy(
+                self.controller,
+                password_type=self.password_type,
+                strength_bits=self.strength_bits,
+                entropy_source=PASSWORD_ENTROPY_BIP85,
+                word_count=_diceware_word_count(self.password_type, self.strength_bits),
+                roll_data=None,
+                entropy_bytes=entropy,
+            )
+            return Destination(
+                ToolsPasswordWordSeparatorView,
+                view_args=dict(
+                    password_type=self.password_type,
+                    strength_bits=self.strength_bits,
+                    random_options=self.random_options,
+                    entropy_source=PASSWORD_ENTROPY_BIP85,
+                ),
+            )
+
+
+        if self.password_type == PASSWORD_TYPE_DICE_ROLLS:
+            sides = getattr(self, "dice_sides", None)
+            if sides is None:
+                sides = self._prompt_dice_sides()
+                if sides is None:
+                    return Destination(BackStackView)
+            rolls = getattr(self, "roll_count", None)
+            if rolls is None:
+                rolls = self._prompt_roll_count()
+                if rolls is None:
+                    return Destination(BackStackView)
+            if rolls < 1:
+                self.run_screen(
+                    WarningScreen,
+                    title=_("Invalid Input"),
+                    status_headline=None,
+                    text=_("Number of rolls must be at least 1."),
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
+
+            entropy = bip85.derive_entropy(root, BIP85_APP_DICE, [sides, rolls, index])
+            return Destination(
+                ToolsPasswordGenerateView,
+                view_args=dict(
+                    password_type=self.password_type,
+                    entropy_source=PASSWORD_ENTROPY_BIP85,
+                    strength_bits=self.strength_bits,
+                    random_options=self.random_options,
+                    roll_data=entropy,
+                    roll_count=rolls,
+                    dice_sides=sides,
+                ),
+            )
+
+        if self.password_type == PASSWORD_TYPE_HEX:
+            num_bytes = _strength_to_length(self.strength_bits, 256)
+            if num_bytes < 16 or num_bytes > 64:
+                self.run_screen(
+                    WarningScreen,
+                    title=_("Invalid Length"),
+                    status_headline=None,
+                    text=_("BIP85 Hex supports 128 or 256 bits."),
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
+            entropy = bip85.derive_entropy(root, BIP85_APP_HEX, [num_bytes, index])
+            return Destination(
+                ToolsPasswordGenerateView,
+                view_args=dict(
+                    password_type=self.password_type,
+                    entropy_source=PASSWORD_ENTROPY_BIP85,
+                    strength_bits=self.strength_bits,
+                    random_options=self.random_options,
+                    roll_data=entropy,
+                ),
+            )
+        elif self.password_type == PASSWORD_TYPE_BASE64:
+            length = _strength_to_length(self.strength_bits, 64)
+            if length < 20 or length > 86:
+                self.run_screen(
+                    WarningScreen,
+                    title=_("Invalid Length"),
+                    status_headline=None,
+                    text=_("BIP85 Base64 needs 120+ bits."),
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
+            entropy = bip85.derive_entropy(root, BIP85_APP_BASE64, [length, index])
+            return Destination(
+                ToolsPasswordGenerateView,
+                view_args=dict(
+                    password_type=self.password_type,
+                    entropy_source=PASSWORD_ENTROPY_BIP85,
+                    strength_bits=self.strength_bits,
+                    random_options=self.random_options,
+                    roll_data=entropy,
+                ),
+            )
+        else:
+            length = _strength_to_length(self.strength_bits, 85)
+            if length < 10 or length > 80:
+                self.run_screen(
+                    WarningScreen,
+                    title=_("Invalid Length"),
+                    status_headline=None,
+                    text=_("BIP85 Base85 needs 64-512 bits."),
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
+            entropy = bip85.derive_entropy(root, BIP85_APP_BASE85, [length, index])
+            return Destination(
+                ToolsPasswordGenerateView,
+                view_args=dict(
+                    password_type=self.password_type,
+                    entropy_source=PASSWORD_ENTROPY_BIP85,
+                    strength_bits=self.strength_bits,
+                    random_options=self.random_options,
+                    roll_data=entropy,
+                ),
+            )
+
+
+def _save_password_to_seedkeeper(view: View, password: str) -> bool:
+    from seedsigner.gui.screens.screen import LoadingScreenThread
+
+    label = seed_screens.SeedAddPassphraseScreen(title=_("Password Name")).display()
+    if "is_back_button" in label:
+        return False
+
+    Satochip_Connector = seedkeeper_utils.init_satochip(
+        view, init_card_filter=["seedkeeper"]
+    )
+    if not Satochip_Connector:
+        return False
+
+    header = Satochip_Connector.make_header(
+        "Password",
+        "Plaintext export allowed",
+        label["passphrase"],
+    )
+    secret_text_list = list(password.encode("utf-8"))
+    secret_list = [len(secret_text_list)] + secret_text_list
+    secret_dic = {"header": header, "secret_list": secret_list}
+
+    try:
+        fits, required_bytes, free_bytes = seedkeeper_utils.ensure_seedkeeper_capacity(
+            Satochip_Connector, secret_dic
+        )
+    except Exception as e:
+        view.run_screen(
+            WarningScreen,
+            title=_("Error"),
+            status_headline=None,
+            text=str(e),
+            show_back_button=False,
+            button_data=[ButtonOption("I Understand")],
+        )
+        return False
+
+    if not fits:
+        view.run_screen(
+            WarningScreen,
+            title=_("Not Enough Space"),
+            status_headline=None,
+            text=seedkeeper_utils.format_seedkeeper_space_error(required_bytes, free_bytes),
+            show_back_button=False,
+            button_data=[ButtonOption("I Understand")],
+        )
+        return False
+
+    try:
+        loading = LoadingScreenThread(text=_("Saving Secret\n\n\n\n\n\n"))
+        loading.start()
+        Satochip_Connector.seedkeeper_import_secret(secret_dic)
+        loading.stop()
+        view.run_screen(
+            LargeIconStatusScreen,
+            title=_("Success"),
+            status_headline=None,
+            text=_("Password saved to Seedkeeper"),
+            show_back_button=False,
+            button_data=[ButtonOption("Continue")],
+        )
+        return True
+    except UnexpectedSW12Error as e:
+        loading.stop()
+        if e.sw1 == 0x6A and e.sw2 == 0x84:
+            err_text = _("Not enough space on Seedkeeper for password")
+        else:
+            err_text = format_sw_error(e.sw1, e.sw2)
+        view.run_screen(
+            WarningScreen,
+            title=_("Error"),
+            status_headline=None,
+            text=err_text,
+            show_back_button=False,
+            button_data=[ButtonOption("I Understand")],
+        )
+    except Exception as e:
+        logger.info(e)
+        loading.stop()
+        view.run_screen(
+            WarningScreen,
+            title=_("Failed"),
+            status_headline=None,
+            text=_("Password save failed"),
+            show_back_button=False,
+            button_data=[ButtonOption("I Understand")],
+        )
+    return False
+
+
+class ToolsPasswordReviewView(View):
+    def __init__(
+        self,
+        password: str,
+        password_type: str | None = None,
+        strength_bits: int | None = None,
+        random_options: dict | None = None,
+        entropy_source: str | None = None,
+    ):
+        super().__init__()
+        self.password = password
+        self.password_type = password_type
+        self.strength_bits = strength_bits
+        self.random_options = random_options or {}
+        self.entropy_source = entropy_source
+
+    def run(self):
+        while True:
+            edit = ButtonOption("Edit")
+            next_button = ButtonOption("Next")
+            button_data = [edit, next_button]
+            selected_menu_num = self.run_screen(
+                ToolsTextQRReviewTextScreen,
+                textToEncode=self.password,
+                title=_("Password"),
+                button_data=button_data,
+                show_back_button=True,
+            )
+
+            if selected_menu_num == RET_CODE__BACK_BUTTON:
+                if _is_diceware_password_type(getattr(self, "password_type", None)):
+                    return Destination(
+                        ToolsPasswordWordSeparatorView,
+                        view_args=dict(
+                            password_type=self.password_type,
+                            strength_bits=self.strength_bits,
+                            random_options=self.random_options,
+                            entropy_source=self.entropy_source,
+                        ),
+                        skip_current_view=True,
+                    )
+                return Destination(BackStackView)
+
+            if button_data[selected_menu_num] == edit:
+                ret_dict = ToolsTextQRTextEntryScreen(
+                    textToEncode=self.password,
+                    title=_("Password"),
+                ).display()
+                if "is_back_button" in ret_dict:
+                    continue
+                self.password = ret_dict["textToEncode"]
+                continue
+
+            return Destination(
+                ToolsPasswordSaveView,
+                view_args=dict(password=self.password),
+            )
+
+
+class ToolsPasswordSaveView(View):
+    def __init__(self, password: str):
+        super().__init__()
+        self.password = password
+
+    def run(self):
+        show_qr = ButtonOption("Show as QR")
+        seedkeeper = ButtonOption("Save to Seedkeeper")
+        button_data = [show_qr, seedkeeper]
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title=_("Save Password"),
+            is_button_text_centered=False,
+            button_data=button_data,
+            show_back_button=True,
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        if button_data[selected_menu_num] == show_qr:
+            from seedsigner.helpers.qr import QR
+            num_modules = QR().qrsize(data=self.password)
+            if num_modules <= 33:
+                return Destination(
+                    ToolsTextQRTranscribeModePromptView,
+                    view_args=dict(text=self.password, num_modules=num_modules, return_to_home=True),
+                )
+            return Destination(
+                ToolsTextQRFullScreenModeView,
+                view_args=dict(text=self.password, return_to_home=True),
+            )
+
+        if _save_password_to_seedkeeper(self, self.password):
+            return Destination(MainMenuView)
+        return Destination(BackStackView)
