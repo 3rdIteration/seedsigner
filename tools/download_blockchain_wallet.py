@@ -344,7 +344,7 @@ def main() -> None:
     else:
         output_path = args.output
         with open(output_path, "w") as f:
-            f.write(str(payload))
+            f.write(payload)
         print(f"\nSuccess! Encrypted wallet payload saved to {output_path}")
 
 
