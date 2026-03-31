@@ -1,4 +1,0 @@
-(fp_lib_table
-  (version 7)
-  (lib (name "seedsigner plus with smartcard V2")(type "KiCad")(uri "$(KIPRJMOD)/seedsigner plus with smartcard V2.pretty")(options "")(descr ""))
-)
