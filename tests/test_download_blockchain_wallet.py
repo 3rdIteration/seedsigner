@@ -1,4 +1,4 @@
-"""Tests for tools/download_blockchain_wallet.py.
+"""Tests for extract-scripts/download_blockchain_wallet.py.
 
 Uses ``unittest.mock`` to stub out HTTP calls so the tests run without
 network access and complete quickly.
@@ -14,10 +14,10 @@ from unittest import mock
 
 import pytest
 
-# Import the script as a module from the tools directory.
-_TOOLS_DIR = str(Path(__file__).resolve().parents[1] / "tools")
-if _TOOLS_DIR not in sys.path:
-    sys.path.insert(0, _TOOLS_DIR)
+# Import the script as a module from the extract-scripts directory.
+_EXTRACT_SCRIPTS_DIR = str(Path(__file__).resolve().parents[1] / "extract-scripts")
+if _EXTRACT_SCRIPTS_DIR not in sys.path:
+    sys.path.insert(0, _EXTRACT_SCRIPTS_DIR)
 
 import download_blockchain_wallet as dw  # noqa: E402
 
