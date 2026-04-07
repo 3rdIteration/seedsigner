@@ -6,6 +6,19 @@ These QR codes demonstrate both the **ambiguity bug** that [PR #345](https://git
 
 ---
 
+## Decryption Key QR Codes
+
+Scan these instead of typing the encryption keys manually:
+
+| QR Code | Key | Used by |
+|---------|-----|---------|
+| ![key_testkey](key_testkey.png) | `testkey` | issue_1, issue_2, feature_2, feature_5 |
+| ![key_outerkey](key_outerkey.png) | `outerkey` | feature_3 (outer layer) |
+| ![key_innerkey](key_innerkey.png) | `innerkey` | feature_3 (inner layer) |
+| ![key_textkey](key_textkey.png) | `textkey` | feature_4 (encrypted text) |
+
+---
+
 ## Issue Demonstration
 
 PR #345 fixes a bug where valid **EncryptedQR** codes could be **misidentified as CompactSeedQR** when their total byte length happened to match a valid CompactSeedQR entropy size (16, 20, 24, 28, or 32 bytes).
@@ -26,7 +39,7 @@ This meant a carefully-crafted (or unlucky) EncryptedQR whose KEF envelope total
 |-------|-------|
 | **QR type** | EncryptedQR (AES-ECB, version 5) |
 | **ID** | *(empty)* |
-| **Encryption key** | `testkey` |
+| **Encryption key** | `testkey` (scan ![key](key_testkey.png)) |
 | **PBKDF2 iterations** | 10,000 |
 | **Encrypted content** | `crush inherit small egg include title slogan mom remain blouse boost bonus` |
 | **Total bytes** | 24 (same as 18-word CompactSeedQR) |
@@ -47,7 +60,7 @@ This meant a carefully-crafted (or unlucky) EncryptedQR whose KEF envelope total
 |-------|-------|
 | **QR type** | EncryptedQR (AES-ECB, version 5) |
 | **ID** | `SeedSign` |
-| **Encryption key** | `testkey` |
+| **Encryption key** | `testkey` (scan ![key](key_testkey.png)) |
 | **PBKDF2 iterations** | 10,000 |
 | **Encrypted content** | `crush inherit small egg include title slogan mom remain blouse boost bonus` |
 | **Total bytes** | 32 (same as 24-word CompactSeedQR) |
@@ -84,7 +97,7 @@ A standard EncryptedQR using AES-CBC mode. At 49 bytes, it doesn't match any Com
 | Field | Value |
 |-------|-------|
 | **ID** | `MyWallet` |
-| **Encryption key** | `testkey` |
+| **Encryption key** | `testkey` (scan ![key](key_testkey.png)) |
 | **Mode** | AES-CBC |
 | **PBKDF2 iterations** | 10,000 |
 | **Encrypted content** | `crush inherit small egg include title slogan mom remain blouse boost bonus` |
@@ -100,11 +113,11 @@ An EncryptedQR whose **decrypted content is another EncryptedQR**. PR #345 adds 
 | Layer | Field | Value |
 |-------|-------|-------|
 | **Outer** | ID | `outer` |
-| | Encryption key | `outerkey` |
+| | Encryption key | `outerkey` (scan ![key](key_outerkey.png)) |
 | | Mode | AES-CBC |
 | | PBKDF2 iterations | 10,000 |
 | **Inner** | ID | `inner` |
-| | Encryption key | `innerkey` |
+| | Encryption key | `innerkey` (scan ![key](key_innerkey.png)) |
 | | Mode | AES-ECB |
 | | PBKDF2 iterations | 10,000 |
 | **Final content** | Mnemonic | `crush inherit small egg include title slogan mom remain blouse boost bonus` |
@@ -126,7 +139,7 @@ An EncryptedQR whose decrypted content is **plain text** (not a seed mnemonic or
 | Field | Value |
 |-------|-------|
 | **ID** | `msg01` |
-| **Encryption key** | `textkey` |
+| **Encryption key** | `textkey` (scan ![key](key_textkey.png)) |
 | **Mode** | AES-CBC +p |
 | **PBKDF2 iterations** | 10,000 |
 | **Decrypted text** | `Hello from SeedSigner! This is a secret message.` |
@@ -142,7 +155,7 @@ An EncryptedQR encoded as a **Base43 text string** instead of raw binary. This u
 | Field | Value |
 |-------|-------|
 | **ID** | `b43test` |
-| **Encryption key** | `testkey` |
+| **Encryption key** | `testkey` (scan ![key](key_testkey.png)) |
 | **Mode** | AES-CBC |
 | **Base43 string** | `M8DOXUK9:0KV1/E-2C*WG8RFNFEDZ/0DU-X6R:U$8W$.7WUK54IYHT67+L-.CAO3*D:MBE` |
 | **Encrypted content** | `crush inherit small egg include title slogan mom remain blouse boost bonus` |
@@ -177,9 +190,21 @@ PR #345 adds a new **"Ambiguous QR"** setting under Settings → Advanced:
 
 | Option | Behavior |
 |--------|----------|
-| **Prefer CompactSeedQR** (default) | Automatically treat ambiguous QR codes as CompactSeedQR |
+| **Prefer CompactSeedQR** | Automatically treat ambiguous QR codes as CompactSeedQR |
 | **Prefer EncryptedQR** | Automatically treat ambiguous QR codes as EncryptedQR |
-| **Ask each time** | Show a prompt letting the user choose the interpretation |
+| **Ask each time** (default) | Show a prompt letting the user choose the interpretation |
+
+> **Note:** The original PR #345 code set the default to "Prefer CompactSeedQR"
+> (`AMBIGUOUS_QR_COMPACT`). This has been corrected to "Ask each time"
+> (`AMBIGUOUS_QR_PROMPT`) in `settings_definition.py` line:
+> ```python
+> default_value=SettingsConstants.AMBIGUOUS_QR_PROMPT
+> ```
+> The root cause was simply the wrong constant being used as `default_value` in
+> the `SettingsEntry` for `SETTING__AMBIGUOUS_QR`.
+
+This change also hides the legacy AES v1 modes (AES-ECB v1, AES-CBC v1) from the
+encryption mode selector.
 
 ---
 

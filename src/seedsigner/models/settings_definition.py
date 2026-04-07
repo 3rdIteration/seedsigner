@@ -465,6 +465,7 @@ class SettingsConstants:
     SETTING__PARTNER_LOGOS = "partner_logos"
     SETTING__PLAINTEXTQR = "plaintextqr"
     SETTING__ENCRYPTED_QR = "encrypted_qr"
+    SETTING__AMBIGUOUS_QR = "ambiguous_qr_preference"
     SETTING__ENCRYPTION_MODE = "version"
     SETTING__ENCRYPTION_ITER = "pbkdf2_iterations"
     SETTING__WIF_KEYS = "wif_keys"
@@ -564,13 +565,19 @@ class SettingsConstants:
     ENCRYPTION_MODE_CBCV1 = "AES-CBC v1"
     ENCRYPTION_MODE       = ENCRYPTION_MODE_GCM
     ENCRYPTION_ITERATIONS = 10
+    AMBIGUOUS_QR_PROMPT  = "prompt"
+    AMBIGUOUS_QR_COMPACT = "compactseedqr"
+    AMBIGUOUS_QR_ENCRYPTED = "encryptedseedqr"
+    ALL_AMBIGUOUS_QR_OPTIONS = [
+        (AMBIGUOUS_QR_COMPACT, _mft("Prefer CompactSeedQR")),
+        (AMBIGUOUS_QR_ENCRYPTED, _mft("Prefer EncryptedQR")),
+        (AMBIGUOUS_QR_PROMPT, _mft("Ask each time")),
+    ]
     ALL_ENCRYPTION_MODES = [
         ENCRYPTION_MODE_ECB,
         ENCRYPTION_MODE_CBC,
         ENCRYPTION_MODE_CTR,
         ENCRYPTION_MODE_GCM,
-        ENCRYPTION_MODE_ECBV1,
-        ENCRYPTION_MODE_CBCV1,
     ]
 
     ALL_SEED_WORD_LENGTHS = [
@@ -947,6 +954,14 @@ class SettingsDefinition:
                       type=SettingsConstants.TYPE__FREE_ENTRY,
                       visibility=SettingsConstants.VISIBILITY__ADVANCED,
                       default_value=SettingsConstants.ENCRYPTION_ITERATIONS),
+
+        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
+                      attr_name=SettingsConstants.SETTING__AMBIGUOUS_QR,
+                      display_name=_mft("Ambiguous QR"),
+                      type=SettingsConstants.TYPE__SELECT_1,
+                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
+                      selection_options=SettingsConstants.ALL_AMBIGUOUS_QR_OPTIONS,
+                      default_value=SettingsConstants.AMBIGUOUS_QR_PROMPT),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
                       attr_name=SettingsConstants.SETTING__WIF_KEYS,
