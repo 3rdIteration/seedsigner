@@ -344,14 +344,17 @@ class HardwareButtons(Singleton):
                             self.cur_input = key
                             self.cur_input_started = cur_time
                             self.last_input_time = cur_time
+                            self._low_since_ms[key] = None
                             return key
                         else:
                             if cur_time - self.last_input_time > self.next_repeat_threshold:
                                 self.cur_input_started = cur_time
                                 self.last_input_time = cur_time
+                                self._low_since_ms[key] = None
                                 return key
                             elif cur_time - self.cur_input_started > self.first_repeat_threshold:
                                 self.last_input_time = cur_time
+                                self._low_since_ms[key] = None
                                 return key
                     else:
                         self._low_since_ms[key] = None
@@ -411,9 +414,21 @@ class HardwareButtons(Singleton):
                         continue
                     if cur_time - low_since < self.debounce_threshold_ms:
                         continue
+                    self._low_since_ms[key] = None
                     self.update_last_input_time()
                     return True
-                self._low_since_ms[key] = None
+                else:
+                    # Pin is high. If it was previously observed as low, the
+                    # button was pressed and released between polling calls.
+                    # Treat this as a valid press provided the debounce
+                    # interval was met, so that brief clicks are not lost in
+                    # slow polling loops (e.g. camera preview).
+                    low_since = self._low_since_ms.get(key)
+                    if low_since is not None:
+                        self._low_since_ms[key] = None
+                        if cur_time - low_since >= self.debounce_threshold_ms:
+                            self.update_last_input_time()
+                            return True
             return False
 
         pygame.event.pump()
