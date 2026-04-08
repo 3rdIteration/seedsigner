@@ -1136,6 +1136,8 @@ class ToolsTextQRTextEntryScreen(BaseTopNavScreen):
 class ToolsTextQRReviewTextScreen(ButtonListScreen):
     textToEncode: str = None
     title: str = None
+    max_lines: int = 5
+    visible_space: bool = True
 
     def __post_init__(self):
         # Customize defaults
@@ -1143,7 +1145,7 @@ class ToolsTextQRReviewTextScreen(ButtonListScreen):
 
         super().__post_init__()
 
-        if " " in self.textToEncode:
+        if self.visible_space and " " in self.textToEncode:
             self.textToEncode = self.textToEncode.replace(" ", "\u2589")
 
         review_font_name = (
@@ -1155,7 +1157,7 @@ class ToolsTextQRReviewTextScreen(ButtonListScreen):
         max_font_size = GUIConstants.get_top_nav_title_font_size() + 8
         min_font_size = GUIConstants.get_top_nav_title_font_size() - 4
         font_size = max_font_size
-        max_lines = 5
+        max_lines = self.max_lines
         max_chars_per_line = -1
         found_solution = False
         for font_size in range(max_font_size, min_font_size-1, -2):
