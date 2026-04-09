@@ -30,14 +30,14 @@ Total BOM cost (excluding card socket and GPIO header): **well under $1 USD**.
           (pull-up)   (pull-up)                        [C3]              [C4]
               |           |                           100nF              100nF
               |           |                             |                  |
-              |           +--- Card RST (C2)           GND               GND
+              |           +--- Card RST (ISO-C2)        GND               GND
               |           |                      (card decoup)       (IC1 decoup)
               |          [R5]
               |          100R
               |           |
               |       Pi GPIO4 (Pin 7)  ---- Card Reset control
               |
-  Card I/O (C7) ---+
+  Card I/O (ISO-C7) ---+
               |    |
               |   [R7]
               |   100R
@@ -84,7 +84,7 @@ Total BOM cost (excluding card socket and GPIO header): **well under $1 USD**.
                         [R2]
                         100R
                          |
-                    Card CLK (C3)
+                    Card CLK (ISO-C3)
 
 
   ===== IC1 74HC04D (SOIC-14) Pin Assignments =====
@@ -98,14 +98,14 @@ Total BOM cost (excluding card socket and GPIO header): **well under $1 USD**.
    Pin 13: 6A  → GND           Pin 12: 6Y (unused output, float)
 
 
-  ===== ISO 7816 Card Pinout =====
+  ===== ISO 7816 Card Pinout (card pin labels use "ISO-" prefix) =====
 
-   C1 (VCC)  ---- 3.3V
-   C2 (RST)  ---- Pi GPIO4 through R5/R6
-   C3 (CLK)  ---- IC1 Pin 4 (2Y) through R2
-   C5 (GND)  ---- GND
-   C7 (I/O)  ---- Q1 collector / Pi RXD through R7 / R4 pull-up
-   C4, C6, C8 -- Not connected (unused for modern Javacards)
+   ISO-C1 (VCC)  ---- 3.3V
+   ISO-C2 (RST)  ---- Pi GPIO4 through R5/R6
+   ISO-C3 (CLK)  ---- IC1 Pin 4 (2Y) through R2
+   ISO-C5 (GND)  ---- GND
+   ISO-C7 (I/O)  ---- Q1 collector / Pi RXD through R7 / R4 pull-up
+   ISO-C4, ISO-C6, ISO-C8 -- Not connected (unused for modern Javacards)
 
 
   ===== Raspberry Pi GPIO Header Connections =====
@@ -218,9 +218,9 @@ reader phoenix {
 };
 ```
 
-Note: The existing `phoenix-usb` setting in SeedSigner is configured for `/dev/ttyUSB0`. For this direct UART Phoenix reader, you would either:
-1. Add a new smartcard interface option (`phoenix-uart`) that points to `/dev/ttyAMA0`
-2. Or manually edit the OpenCT config to point to `/dev/ttyAMA0`
+Note: The existing `phoenix-usb` smartcard interface option (defined in `src/seedsigner/models/settings_definition.py` as `SMARTCARD_INTERFACE_PHOENIX`) configures OpenCT for `/dev/ttyUSB0`. For this direct UART Phoenix reader, you would either:
+1. Add a new smartcard interface option (`phoenix-uart`) in `settings_definition.py` that points OpenCT to `/dev/ttyAMA0`
+2. Or manually edit `/usr/local/etc/openct.conf` to point the device to `serial:/dev/ttyAMA0`
 
 ### Card Reset GPIO
 
@@ -235,7 +235,9 @@ raspi-gpio set 4 op dl
 raspi-gpio set 4 op dh
 ```
 
-If using the GPIO Clock alternative (above), use a different GPIO for RST (e.g., GPIO17) since GPIO4 would be used for the clock output.
+**Important:** The GPIO pin used for RST depends on which clock option you chose:
+- **Crystal oscillator design (default):** GPIO4 (Pin 7) is used for RST as shown above.
+- **GPIO Clock alternative:** GPIO4 is repurposed for clock output (GPCLK0), so you must use a different GPIO for RST — e.g., GPIO17 (Pin 11). Update the commands above to reference GPIO17 instead of GPIO4.
 
 ## Limitations vs SEC1210 SmartCard Hat
 
