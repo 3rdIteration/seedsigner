@@ -16,7 +16,21 @@ All active components (the 74HC04 and MMBT2222A) are JLCPCB basic parts. All pas
 
 Total BOM cost (excluding card socket and GPIO header): **well under $1 USD**.
 
-## Schematic
+## Schematic Diagrams
+
+### Full Schematic
+![Full Schematic](img/phoenix_full_schematic.png)
+
+### Clock Oscillator (Gates 1 & 2)
+![Clock Oscillator](img/phoenix_clock_oscillator.png)
+
+### Half-Duplex I/O Bridge (Gate 3 + Q1)
+![I/O Bridge](img/phoenix_io_bridge.png)
+
+### Card Interface, Power & Reset
+![Card Interface](img/phoenix_card_interface.png)
+
+## Schematic (Text Reference)
 
 ```
                          VCC (3.3V, from Pi GPIO Pin 1)
