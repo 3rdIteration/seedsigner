@@ -17,9 +17,6 @@ run-name: >-
 
 on:
   pull_request:
-    # Build on changes to this workflow files in PRs to test proposed changes
-    paths:
-      - '.github/workflows/build.yml'
   push:
     branches:
       - main
@@ -73,6 +70,11 @@ on:
 permissions:
   contents: read
 
+# Cancel in-progress builds when a PR is updated; unique per-PR or per-SHA
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
 jobs:
   build:
     name: >-
@@ -96,8 +98,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [ "${{ github.event_name == 'workflow_dispatch' && github.event.inputs.target || 'pi0' }}" ]
-        # Default target pi0 to keep within 500mb storage limit for Github free
+        # PRs build both pi0 and pi02w; push defaults to pi0; workflow_dispatch uses user input
+        target: >-
+          ${{
+            github.event_name == 'pull_request'
+              && fromJSON('["pi0", "pi02w"]')
+            || github.event_name == 'workflow_dispatch'
+              && fromJSON(format('["{0}"]', github.event.inputs.target || 'pi0'))
+            || fromJSON('["pi0"]')
+          }}
     steps:
       - name: checkout seedsigner-os
         uses: actions/checkout@v4
