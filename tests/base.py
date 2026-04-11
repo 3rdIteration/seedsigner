@@ -105,7 +105,10 @@ class BaseTest:
     @classmethod
     def reset_settings(cls):
         """ Wipe and re-initialize the Settings singleton """
+        from seedsigner.models.settings_definition import SettingsDefinition
+
         Settings._instance = None
+        SettingsDefinition.reset_runtime_state()
         BaseTest.remove_settings()
 
 

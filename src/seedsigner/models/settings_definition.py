@@ -1,3 +1,4 @@
+import copy
 import os
 from dataclasses import dataclass, replace
 from typing import Any, List
@@ -670,12 +671,12 @@ class SettingsEntry:
 
     def copy(self, **overrides) -> "SettingsEntry":
         selection_options = overrides.pop("selection_options", self.selection_options)
-        if isinstance(selection_options, list):
-            selection_options = list(selection_options)
+        if selection_options is not None:
+            selection_options = copy.deepcopy(selection_options)
 
         default_value = overrides.pop("default_value", self.default_value)
-        if isinstance(default_value, list):
-            default_value = list(default_value)
+        if default_value is not None:
+            default_value = copy.deepcopy(default_value)
 
         copied = replace(self, **overrides)
         copied.selection_options = selection_options
@@ -1236,10 +1237,8 @@ class SettingsDefinition:
         for key, value in overrides.items():
             if value is None:
                 entry_overrides.pop(key, None)
-            elif isinstance(value, list):
-                entry_overrides[key] = list(value)
             else:
-                entry_overrides[key] = value
+                entry_overrides[key] = copy.deepcopy(value)
 
         if entry_overrides:
             cls._runtime_entry_overrides[attr_name] = entry_overrides

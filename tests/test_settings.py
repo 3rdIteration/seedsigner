@@ -257,7 +257,7 @@ class TestSettings(BaseTest):
         assert base_entry.help_text == original_help_text
 
     def test_get_settings_entries_does_not_probe_cameras_for_menu_render(self):
-        with patch("seedsigner.hardware.camera.Camera.list_cameras", side_effect=AssertionError("should not probe cameras")):
+        with patch("seedsigner.hardware.camera.Camera.list_cameras", side_effect=RuntimeError("should not probe cameras")):
             entries = SettingsDefinition.get_settings_entries(SettingsConstants.VISIBILITY__HARDWARE)
 
         camera_entry = next(
