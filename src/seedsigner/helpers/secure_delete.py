@@ -39,9 +39,15 @@ _IMMORTAL_REFCOUNT: int = sys.getrefcount("")
 
 # Strings with a refcount at or above this threshold are considered shared
 # and must not be wiped.  On CPython 3.12+ this equals the immortal sentinel
-# (~4 billion).  On older CPython we fall back to a conservative limit: any
-# string referenced more than _SHARED_REFCOUNT_LIMIT times is almost
-# certainly a global constant (wordlist entry, interned literal, etc.).
+# (~4 billion).  On older CPython we fall back to a conservative limit of 50.
+#
+# Why 50: in testing, independent copies created via "".join() have a
+# refcount of 2–5 at the point of wiping (list element + loop variable +
+# function args + getrefcount overhead).  Global wordlist entries on
+# CPython < 3.12 have at least ~4–10 references (the WORDLIST list, the
+# module co_consts tuple, intern tables, word_to_index dicts, etc.).  50
+# provides a wide safety margin above any plausible single-owner refcount
+# while still catching any string that is even modestly shared.
 _SHARED_REFCOUNT_LIMIT: int = min(_IMMORTAL_REFCOUNT, 50)
 
 
