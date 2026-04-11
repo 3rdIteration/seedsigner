@@ -284,7 +284,10 @@ class SettingsEntryUpdateSelectionView(View):
     """
     def __init__(self, attr_name: str, parent_initial_scroll: int = 0, selected_button: int = None, parent_destination: Destination = None):
         super().__init__()
-        self.settings_entry = SettingsDefinition.get_settings_entry(attr_name)
+        self.settings_entry = SettingsDefinition.get_settings_entry(
+            attr_name,
+            refresh_dynamic_options=attr_name == SettingsConstants.SETTING__CAMERA_DEVICE,
+        )
         self.selected_button = selected_button
         self.parent_initial_scroll = parent_initial_scroll
         self.parent_destination = parent_destination

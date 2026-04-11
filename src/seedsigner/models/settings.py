@@ -133,6 +133,7 @@ class Settings(Singleton):
             # Instantiate the one and only instance
             settings = cls.__new__(cls)
             cls._instance = settings
+            SettingsDefinition.reset_runtime_state()
 
             settings._data = SettingsDefinition.get_defaults()
 
@@ -716,10 +717,11 @@ class Settings(Singleton):
         if Settings.HOSTNAME == Settings.SEEDSIGNER_OS:
             if action == MicroSD.ACTION__INSERTED:
                 # SD card was just inserted.
-                # Restore persistent settings back to defaults
-                entry = SettingsDefinition.get_settings_entry(SettingsConstants.SETTING__PERSISTENT_SETTINGS)
-                entry.selection_options = SettingsConstants.OPTIONS__ENABLED_DISABLED
-                entry.help_text = SettingsConstants.PERSISTENT_SETTINGS__SD_INSERTED__HELP_TEXT
+                SettingsDefinition.set_runtime_entry_override(
+                    SettingsConstants.SETTING__PERSISTENT_SETTINGS,
+                    selection_options=SettingsConstants.OPTIONS__ENABLED_DISABLED,
+                    help_text=SettingsConstants.PERSISTENT_SETTINGS__SD_INSERTED__HELP_TEXT,
+                )
 
                 # If a settings file exists, load it without persisting again. This
                 # avoids unnecessary disk writes during boot and when cards are
@@ -735,10 +737,12 @@ class Settings(Singleton):
                 # Set persistent settings to disabled value directly
                 Settings.get_instance()._data[SettingsConstants.SETTING__PERSISTENT_SETTINGS] = SettingsConstants.OPTION__DISABLED
 
-                # set persistent settings to only have disabled as an option, adding additional help text that microSD is removed
-                entry = SettingsDefinition.get_settings_entry(SettingsConstants.SETTING__PERSISTENT_SETTINGS)
-                entry.selection_options = SettingsConstants.OPTIONS__ONLY_DISABLED
-                entry.help_text = SettingsConstants.PERSISTENT_SETTINGS__SD_REMOVED__HELP_TEXT
+                # Limit persistent settings to disabled while the microSD is unavailable.
+                SettingsDefinition.set_runtime_entry_override(
+                    SettingsConstants.SETTING__PERSISTENT_SETTINGS,
+                    selection_options=SettingsConstants.OPTIONS__ONLY_DISABLED,
+                    help_text=SettingsConstants.PERSISTENT_SETTINGS__SD_REMOVED__HELP_TEXT,
+                )
             
             else:
                 raise Exception(f"Invalid MicroSD action: {action}")

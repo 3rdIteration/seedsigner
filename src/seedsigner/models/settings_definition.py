@@ -1,5 +1,5 @@
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, List
 
 from seedsigner.helpers.l10n import mark_for_translation as _mft
@@ -668,6 +668,21 @@ class SettingsEntry:
             self.default_value = self.default_value[0]
 
 
+    def copy(self, **overrides) -> "SettingsEntry":
+        selection_options = overrides.pop("selection_options", self.selection_options)
+        if isinstance(selection_options, list):
+            selection_options = list(selection_options)
+
+        default_value = overrides.pop("default_value", self.default_value)
+        if isinstance(default_value, list):
+            default_value = list(default_value)
+
+        copied = replace(self, **overrides)
+        copied.selection_options = selection_options
+        copied.default_value = default_value
+        return copied
+
+
     @property
     def selection_options_display_names(self) -> List[str]:
         if type(self.selection_options[0]) == tuple:
@@ -756,6 +771,7 @@ class SettingsDefinition:
     # Increment if there are any breaking changes; write migrations to bridge from
     # incompatible prior versions.
     version: int = 1
+    _runtime_entry_overrides: dict[str, dict[str, Any]] = {}
 
     settings_entries: List[SettingsEntry] = [
         # General options
@@ -1191,29 +1207,59 @@ class SettingsDefinition:
         entries = []
         for entry in cls.settings_entries:
             if entry.visibility == visibility:
-                if entry.attr_name == SettingsConstants.SETTING__CAMERA_DEVICE:
-                    try:
-                        from seedsigner.hardware.camera import Camera
-
-                        entry.selection_options = Camera.list_cameras()
-                    except Exception:
-                        pass
-                entries.append(entry)
+                entries.append(cls._get_effective_settings_entry(entry))
         return entries
     
 
     @classmethod
-    def get_settings_entry(cls, attr_name) -> SettingsEntry:
+    def get_settings_entry(cls, attr_name, refresh_dynamic_options: bool = False) -> SettingsEntry:
         for entry in cls.settings_entries:
             if entry.attr_name == attr_name:
-                return entry
+                return cls._get_effective_settings_entry(entry, refresh_dynamic_options=refresh_dynamic_options)
 
 
     @classmethod
     def get_settings_entry_by_abbreviated_name(cls, abbreviated_name: str) -> SettingsEntry:
         for entry in cls.settings_entries:
             if abbreviated_name in [entry.abbreviated_name, entry.attr_name]:
-                return entry
+                return cls._get_effective_settings_entry(entry)
+
+
+    @classmethod
+    def reset_runtime_state(cls):
+        cls._runtime_entry_overrides = {}
+
+
+    @classmethod
+    def set_runtime_entry_override(cls, attr_name: str, **overrides):
+        entry_overrides = cls._runtime_entry_overrides.get(attr_name, {}).copy()
+        for key, value in overrides.items():
+            if value is None:
+                entry_overrides.pop(key, None)
+            elif isinstance(value, list):
+                entry_overrides[key] = list(value)
+            else:
+                entry_overrides[key] = value
+
+        if entry_overrides:
+            cls._runtime_entry_overrides[attr_name] = entry_overrides
+        else:
+            cls._runtime_entry_overrides.pop(attr_name, None)
+
+
+    @classmethod
+    def _get_effective_settings_entry(cls, entry: SettingsEntry, refresh_dynamic_options: bool = False) -> SettingsEntry:
+        overrides = cls._runtime_entry_overrides.get(entry.attr_name, {}).copy()
+
+        if entry.attr_name == SettingsConstants.SETTING__CAMERA_DEVICE and refresh_dynamic_options:
+            try:
+                from seedsigner.hardware.camera import Camera
+
+                overrides["selection_options"] = Camera.list_cameras()
+            except Exception:
+                pass
+
+        return entry.copy(**overrides)
 
 
     @classmethod

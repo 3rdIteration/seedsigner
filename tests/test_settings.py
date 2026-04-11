@@ -1,8 +1,9 @@
 import json
 import pytest
 from base import BaseTest
+from seedsigner.hardware.microsd import MicroSD
 from seedsigner.models.settings import InvalidSettingsQRData, Settings
-from seedsigner.models.settings_definition import SettingsConstants
+from seedsigner.models.settings_definition import SettingsConstants, SettingsDefinition
 from unittest.mock import patch
 
 
@@ -227,3 +228,53 @@ class TestSettings(BaseTest):
         # option for "camera", but must NOT raise ValueError/crash.
         with pytest.raises(InvalidSettingsQRData):
             Settings.parse_settingsqr(settingsqr_data)
+
+    def test_microsd_runtime_override_does_not_mutate_base_settings_entry(self):
+        base_entry = next(
+            entry
+            for entry in SettingsDefinition.settings_entries
+            if entry.attr_name == SettingsConstants.SETTING__PERSISTENT_SETTINGS
+        )
+        original_selection_options = list(base_entry.selection_options)
+        original_help_text = base_entry.help_text
+
+        with patch.object(Settings, "HOSTNAME", Settings.SEEDSIGNER_OS):
+            Settings.handle_microsd_state_change(MicroSD.ACTION__REMOVED)
+
+        effective_entry = SettingsDefinition.get_settings_entry(SettingsConstants.SETTING__PERSISTENT_SETTINGS)
+        assert effective_entry.selection_options == SettingsConstants.OPTIONS__ONLY_DISABLED
+        assert effective_entry.help_text == SettingsConstants.PERSISTENT_SETTINGS__SD_REMOVED__HELP_TEXT
+        assert base_entry.selection_options == original_selection_options
+        assert base_entry.help_text == original_help_text
+
+        with patch.object(Settings, "HOSTNAME", Settings.SEEDSIGNER_OS):
+            Settings.handle_microsd_state_change(MicroSD.ACTION__INSERTED)
+
+        restored_entry = SettingsDefinition.get_settings_entry(SettingsConstants.SETTING__PERSISTENT_SETTINGS)
+        assert restored_entry.selection_options == SettingsConstants.OPTIONS__ENABLED_DISABLED
+        assert restored_entry.help_text == SettingsConstants.PERSISTENT_SETTINGS__SD_INSERTED__HELP_TEXT
+        assert base_entry.selection_options == original_selection_options
+        assert base_entry.help_text == original_help_text
+
+    def test_get_settings_entries_does_not_probe_cameras_for_menu_render(self):
+        with patch("seedsigner.hardware.camera.Camera.list_cameras", side_effect=AssertionError("should not probe cameras")):
+            entries = SettingsDefinition.get_settings_entries(SettingsConstants.VISIBILITY__HARDWARE)
+
+        camera_entry = next(
+            entry
+            for entry in entries
+            if entry.attr_name == SettingsConstants.SETTING__CAMERA_DEVICE
+        )
+        assert camera_entry.selection_options == SettingsConstants.ALL_CAMERA_DEVICES
+
+    def test_get_settings_entry_refreshes_camera_options_only_for_camera_setting(self):
+        detected_cameras = [(SettingsConstants.CAMERA_DEVICE__0, "Camera 0")]
+
+        with patch("seedsigner.hardware.camera.Camera.list_cameras", return_value=detected_cameras) as mock_list_cameras:
+            entry = SettingsDefinition.get_settings_entry(
+                SettingsConstants.SETTING__CAMERA_DEVICE,
+                refresh_dynamic_options=True,
+            )
+
+        assert entry.selection_options == detected_cameras
+        mock_list_cameras.assert_called_once()
