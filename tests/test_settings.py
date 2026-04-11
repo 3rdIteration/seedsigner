@@ -292,3 +292,18 @@ class TestSettings(BaseTest):
             assert write_count == 0
             self.settings.flush_save()
             assert write_count == 1
+
+    def test_flush_save_noop_when_no_pending(self):
+        """flush_save() should be a no-op when no save is pending."""
+        write_count = 0
+        original_write = Settings._do_write_to_disk
+
+        def counting_write(self_inner):
+            nonlocal write_count
+            original_write(self_inner)
+            write_count += 1
+
+        with patch.object(Settings, '_do_write_to_disk', counting_write):
+            self.settings._reset_save_infra()
+            self.settings.flush_save()
+            assert write_count == 0

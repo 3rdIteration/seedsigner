@@ -303,7 +303,9 @@ class Settings(Singleton):
     # ------------------------------------------------------------------
     # Background-save infrastructure
     # ------------------------------------------------------------------
-    # Lazily allocated per-instance; see _ensure_save_infra().
+    # These class-level defaults are safe because Settings is a strict
+    # Singleton (enforced by the Singleton base class).  They are set to
+    # per-instance values by _ensure_save_infra().
     _save_lock: threading.Lock = None
     _save_timer: threading.Timer = None
 
@@ -359,23 +361,25 @@ class Settings(Singleton):
                 self._save_timer.cancel()
             timer = threading.Timer(self._SAVE_DELAY_SECONDS, self._write_to_disk)
             timer.daemon = True
-            timer.start()
+            # Assign before start() so flush_save/save can always cancel.
             self._save_timer = timer
+            timer.start()
 
     def flush_save(self):
         """Block until any pending background save completes.
 
         Call this before shutdown / microSD removal to guarantee the
-        latest settings have been persisted.
+        latest settings have been persisted.  If no save is pending this
+        is a no-op.
         """
         self._ensure_save_infra()
         with self._save_lock:
             if self._save_timer is not None:
                 self._save_timer.cancel()
                 self._save_timer = None
-            # Write synchronously while still holding the lock so no new
-            # timer can slip in between the cancel and the write.
-            self._do_write_to_disk()
+                # Write synchronously while still holding the lock so no
+                # new timer can slip in between the cancel and the write.
+                self._do_write_to_disk()
 
 
     def update(self, new_settings: dict, persist: bool = True):
