@@ -679,6 +679,8 @@ class SettingsEntry:
             default_value = copy.deepcopy(default_value)
 
         copied = replace(self, **overrides)
+        # Assign after replace(): __post_init__ normalizes enabled/disabled entries and
+        # would otherwise overwrite runtime-specific selection options.
         copied.selection_options = selection_options
         copied.default_value = default_value
         return copied
@@ -772,6 +774,7 @@ class SettingsDefinition:
     # Increment if there are any breaking changes; write migrations to bridge from
     # incompatible prior versions.
     version: int = 1
+    # Runtime-only overrides layered on top of the static entry definitions.
     _runtime_entry_overrides: dict[str, dict[str, Any]] = {}
 
     settings_entries: List[SettingsEntry] = [
@@ -1233,6 +1236,7 @@ class SettingsDefinition:
 
     @classmethod
     def set_runtime_entry_override(cls, attr_name: str, **overrides):
+        """Set runtime-only entry overrides; pass None to remove an override key."""
         entry_overrides = cls._runtime_entry_overrides.get(attr_name, {}).copy()
         for key, value in overrides.items():
             if value is None:
