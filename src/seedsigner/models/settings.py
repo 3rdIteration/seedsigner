@@ -303,9 +303,7 @@ class Settings(Singleton):
     # ------------------------------------------------------------------
     # Background-save infrastructure
     # ------------------------------------------------------------------
-    # A lock, timer handle, and event are allocated lazily on first use so
-    # that the class can be instantiated without threading overhead (which
-    # matters for unit tests that mock the class before get_instance()).
+    # Lazily allocated per-instance; see _ensure_save_infra().
     _save_lock: threading.Lock = None
     _save_timer: threading.Timer = None
 
@@ -314,23 +312,36 @@ class Settings(Singleton):
         if self._save_lock is None:
             self._save_lock = threading.Lock()
 
+    def _reset_save_infra(self):
+        """Cancel any pending timer and reset internal state.
+
+        Intended for test isolation only.
+        """
+        if self._save_timer is not None:
+            self._save_timer.cancel()
+        self._save_lock = None
+        self._save_timer = None
+
+    def _do_write_to_disk(self):
+        """Write settings JSON to microSD with flush+fsync.
+
+        Caller **must** hold ``_save_lock``.
+        """
+        try:
+            from seedsigner.hardware.microsd import MicroSD
+            if self._data[SettingsConstants.SETTING__PERSISTENT_SETTINGS] == SettingsConstants.OPTION__ENABLED and MicroSD.get_instance().is_inserted:
+                data_snapshot = dict(self._data)
+                with open(Settings.SETTINGS_FILENAME, 'w') as settings_file:
+                    json.dump(data_snapshot, settings_file, indent=4)
+                    settings_file.flush()
+                    os.fsync(settings_file.fileno())
+        except Exception:
+            logger.exception("Background settings save failed")
+
     def _write_to_disk(self):
-        """Perform the actual blocking write+fsync (runs on a background
-        daemon thread)."""
+        """Lock-protected wrapper used as the Timer callback."""
         with self._save_lock:
-            try:
-                from seedsigner.hardware.microsd import MicroSD
-                if self._data[SettingsConstants.SETTING__PERSISTENT_SETTINGS] == SettingsConstants.OPTION__ENABLED and MicroSD.get_instance().is_inserted:
-                    # Snapshot current data while holding the lock so we
-                    # write a consistent view even if the main thread
-                    # mutates _data immediately after.
-                    data_snapshot = dict(self._data)
-                    with open(Settings.SETTINGS_FILENAME, 'w') as settings_file:
-                        json.dump(data_snapshot, settings_file, indent=4)
-                        settings_file.flush()
-                        os.fsync(settings_file.fileno())
-            except Exception:
-                logger.exception("Background settings save failed")
+            self._do_write_to_disk()
 
     def save(self):
         """Schedule a deferred write to disk.
@@ -362,8 +373,9 @@ class Settings(Singleton):
             if self._save_timer is not None:
                 self._save_timer.cancel()
                 self._save_timer = None
-        # Perform the write synchronously on the calling thread.
-        self._write_to_disk()
+            # Write synchronously while still holding the lock so no new
+            # timer can slip in between the cancel and the write.
+            self._do_write_to_disk()
 
 
     def update(self, new_settings: dict, persist: bool = True):

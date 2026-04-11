@@ -234,17 +234,16 @@ class TestSettings(BaseTest):
         import time
 
         write_count = 0
-        original_write = Settings._write_to_disk
+        original_write = Settings._do_write_to_disk
 
         def counting_write(self_inner):
             nonlocal write_count
             original_write(self_inner)
             write_count += 1
 
-        with patch.object(Settings, '_write_to_disk', counting_write), \
+        with patch.object(Settings, '_do_write_to_disk', counting_write), \
              patch.object(Settings, '_SAVE_DELAY_SECONDS', 0.1):
-            self.settings._save_lock = None  # Reset lazy infra
-            self.settings._save_timer = None
+            self.settings._reset_save_infra()
             self.settings.save()
             # save() returns immediately; write hasn't happened yet
             assert write_count == 0
@@ -257,17 +256,16 @@ class TestSettings(BaseTest):
         import time
 
         write_count = 0
-        original_write = Settings._write_to_disk
+        original_write = Settings._do_write_to_disk
 
         def counting_write(self_inner):
             nonlocal write_count
             original_write(self_inner)
             write_count += 1
 
-        with patch.object(Settings, '_write_to_disk', counting_write), \
+        with patch.object(Settings, '_do_write_to_disk', counting_write), \
              patch.object(Settings, '_SAVE_DELAY_SECONDS', 0.2):
-            self.settings._save_lock = None
-            self.settings._save_timer = None
+            self.settings._reset_save_infra()
             # Fire 5 rapid saves
             for _ in range(5):
                 self.settings.save()
@@ -280,17 +278,16 @@ class TestSettings(BaseTest):
     def test_flush_save_writes_immediately(self):
         """flush_save() should force an immediate synchronous write."""
         write_count = 0
-        original_write = Settings._write_to_disk
+        original_write = Settings._do_write_to_disk
 
         def counting_write(self_inner):
             nonlocal write_count
             original_write(self_inner)
             write_count += 1
 
-        with patch.object(Settings, '_write_to_disk', counting_write), \
+        with patch.object(Settings, '_do_write_to_disk', counting_write), \
              patch.object(Settings, '_SAVE_DELAY_SECONDS', 10.0):
-            self.settings._save_lock = None
-            self.settings._save_timer = None
+            self.settings._reset_save_infra()
             self.settings.save()
             assert write_count == 0
             self.settings.flush_save()
