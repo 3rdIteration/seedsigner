@@ -1,5 +1,5 @@
 import os
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from base import BaseTest
 from seedsigner.models.settings_definition import SettingsConstants, SettingsDefinition
@@ -45,3 +45,8 @@ class TestSettingsDefinition(BaseTest):
     def test_tapsigner_backup_default_disabled(self):
         defaults = SettingsDefinition.get_defaults()
         assert defaults[SettingsConstants.SETTING__TAPSIGNER_BACKUP] == SettingsConstants.OPTION__DISABLED
+
+    def test_get_settings_entries_does_not_probe_cameras(self):
+        with patch("seedsigner.hardware.camera.Camera.list_cameras") as list_cameras:
+            SettingsDefinition.get_settings_entries(SettingsConstants.VISIBILITY__HARDWARE)
+            list_cameras.assert_not_called()

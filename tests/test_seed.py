@@ -89,6 +89,21 @@ def test_discard_pending_mnemonic_does_not_corrupt_wordlist():
 
 
 
+def test_wipe_list_direct_shared_wordlist_refs_do_not_corrupt_global_wordlists():
+    from embit import bip39
+    from shamir_mnemonic import wordlist as slip39_wordlist
+    from seedsigner.helpers.secure_delete import wipe_list
+
+    original_bip39_first = bip39.WORDLIST[0]
+    original_slip39_first = slip39_wordlist.WORDLIST[0]
+
+    refs = [bip39.WORDLIST[0], slip39_wordlist.WORDLIST[0]]
+    wipe_list(refs)
+
+    assert bip39.WORDLIST[0] == original_bip39_first == "abandon"
+    assert slip39_wordlist.WORDLIST[0] == original_slip39_first
+
+
 def test_aezeed_seed_default_passphrase_vector():
     mnemonic = (
         "absorb original enlist once climb erode kid thrive kitchen giant define tube "

@@ -291,6 +291,20 @@ class SettingsEntryUpdateSelectionView(View):
 
 
     def run(self):
+        if self.settings_entry.attr_name == SettingsConstants.SETTING__CAMERA_DEVICE:
+            from seedsigner.gui.screens.screen import LoadingScreenThread
+
+            loading_screen = LoadingScreenThread(text="Detecting cameras")
+            loading_screen.start()
+            try:
+                from seedsigner.hardware.camera import Camera
+
+                self.settings_entry.selection_options = Camera.list_cameras()
+            except Exception:
+                pass
+            finally:
+                loading_screen.stop()
+
         initial_value = self.settings.get_value(self.settings_entry.attr_name)
         button_data: list[ButtonOption] = []
         checked_buttons: list[int] = []

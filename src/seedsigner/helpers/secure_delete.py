@@ -18,6 +18,35 @@ import ctypes
 import sys
 
 
+_SHARED_WORDLIST_STR_IDS: set[int] | None = None
+
+
+def _get_shared_wordlist_str_ids() -> set[int]:
+    global _SHARED_WORDLIST_STR_IDS
+    if _SHARED_WORDLIST_STR_IDS is not None:
+        return _SHARED_WORDLIST_STR_IDS
+
+    shared_ids: set[int] = set()
+    try:
+        from embit import bip39
+        shared_ids.update(id(word) for word in bip39.WORDLIST)
+    except Exception:
+        pass
+
+    try:
+        from shamir_mnemonic import wordlist as slip39_wordlist
+        shared_ids.update(id(word) for word in slip39_wordlist.WORDLIST)
+    except Exception:
+        pass
+
+    _SHARED_WORDLIST_STR_IDS = shared_ids
+    return _SHARED_WORDLIST_STR_IDS
+
+
+def _is_shared_wordlist_string_ref(s: str) -> bool:
+    return id(s) in _get_shared_wordlist_str_ids()
+
+
 def _wipe_buffer(obj, length: int) -> None:
     """Overwrite *length* bytes starting at the object's buffer address."""
     if length <= 0:
@@ -52,6 +81,9 @@ def wipe_string(s: str | None) -> None:
     still overwrite a significant portion.
     """
     if s is None or len(s) == 0:
+        return
+    if _is_shared_wordlist_string_ref(s):
+        # Never wipe shared global wordlist entries in place.
         return
     # CPython compact ASCII strings store data right after the
     # PyASCIIObject struct.  sys.getsizeof includes the NUL terminator.
