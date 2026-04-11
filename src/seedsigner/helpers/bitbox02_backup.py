@@ -214,7 +214,8 @@ def decode_bitbox02_backup(data: bytes) -> Bitbox02BackupDetails:
 
     seed_bytes, timestamp, name, birthdate, generator = _decode_backup_content(backup_content_bytes)
 
-    mnemonic = bip39.mnemonic_from_bytes(seed_bytes).split()
+    # Create independent copies so wipe_list() won't corrupt global wordlist.
+    mnemonic = ["".join(w) for w in bip39.mnemonic_from_bytes(seed_bytes).split()]
 
     return Bitbox02BackupDetails(
         mnemonic=mnemonic,

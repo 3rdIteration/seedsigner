@@ -578,7 +578,9 @@ class ScanAmbiguousQRPromptView(View):
             return finalize_mnemonic_seed(
                 controller=self.controller,
                 settings=self.settings,
-                seed_mnemonic=bip39.mnemonic_from_bytes(self.segment).split(),
+                # Create independent copies so wipe_list() won't corrupt
+                # the shared global wordlist strings.
+                seed_mnemonic=["".join(w) for w in bip39.mnemonic_from_bytes(self.segment).split()],
                 seed_type="bip39",
                 wordlist_language_code=self.wordlist_language_code,
             )
@@ -792,7 +794,9 @@ class ScanDecryptEncryptedQRView(View):
             return finalize_mnemonic_seed(
                 controller=self.controller,
                 settings=self.settings,
-                seed_mnemonic=bip39.mnemonic_from_bytes(word_bytes).split(),
+                # Create independent copies so wipe_list() won't corrupt
+                # the shared global wordlist strings.
+                seed_mnemonic=["".join(w) for w in bip39.mnemonic_from_bytes(word_bytes).split()],
                 seed_type="bip39",
                 wordlist_language_code=self.wordlist_language_code,
                 skip_current_view=True,
