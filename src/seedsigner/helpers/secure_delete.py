@@ -15,7 +15,48 @@ Limitations:
 """
 
 import ctypes
+import logging
 import sys
+
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Shared-string detection
+# ---------------------------------------------------------------------------
+# On CPython 3.12+ every string literal (and several built-in objects) is
+# marked *immortal*: its reference count is pinned to a platform-specific
+# sentinel value and never changes.  Wiping such a string via ctypes.memset
+# would corrupt every other reference to the same object — in particular it
+# would destroy entries in the global BIP-39 / SLIP-39 wordlists, making
+# subsequent seed validation fail until the process is restarted.
+#
+# We detect the immortal sentinel by inspecting a known-immortal object (the
+# empty string "").  On CPython < 3.12 the empty string simply has a high
+# (but not sentinel) refcount; the threshold below is generous enough to
+# catch it and any other heavily-shared string.
+# ---------------------------------------------------------------------------
+_IMMORTAL_REFCOUNT: int = sys.getrefcount("")
+
+# Strings with a refcount at or above this threshold are considered shared
+# and must not be wiped.  On CPython 3.12+ this equals the immortal sentinel
+# (~4 billion).  On older CPython we fall back to a conservative limit: any
+# string referenced more than _SHARED_REFCOUNT_LIMIT times is almost
+# certainly a global constant (wordlist entry, interned literal, etc.).
+_SHARED_REFCOUNT_LIMIT: int = min(_IMMORTAL_REFCOUNT, 50)
+
+
+def _is_shared(obj) -> bool:
+    """Return True if *obj* appears to be shared or immortal.
+
+    The reference count returned by ``sys.getrefcount`` includes one
+    temporary reference for the argument itself.  In the typical call chain
+    ``wipe_list → wipe_string → _is_shared`` an independent (single-owner)
+    string has a refcount of about 5 (list element + loop variable +
+    wipe_string param + _is_shared param + getrefcount arg).  Shared strings
+    — especially immortal string literals on CPython 3.12+ — have a vastly
+    higher count.
+    """
+    return sys.getrefcount(obj) >= _SHARED_REFCOUNT_LIMIT
 
 
 def _wipe_buffer(obj, length: int) -> None:
@@ -50,8 +91,20 @@ def wipe_string(s: str | None) -> None:
     character occupies one byte.  For wider encodings the internal
     layout differs and this may not fully clear the data, but it will
     still overwrite a significant portion.
+
+    **Safety guard**: if the string's reference count indicates it is shared
+    or immortal (e.g. a BIP-39 wordlist entry), the wipe is skipped to
+    prevent corrupting global data structures.
     """
     if s is None or len(s) == 0:
+        return
+    if _is_shared(s):
+        logger.warning(
+            "wipe_string: refusing to wipe shared/immortal string "
+            "(refcount=%d, len=%d)",
+            sys.getrefcount(s),
+            len(s),
+        )
         return
     # CPython compact ASCII strings store data right after the
     # PyASCIIObject struct.  sys.getsizeof includes the NUL terminator.
