@@ -90,7 +90,7 @@ def wipe_string(s: str | None) -> None:
         # Defensive fallback: callers should store independent copies of wordlist
         # entries (e.g. "".join(word)) before any future wipe operation.
         # Never wipe shared global wordlist entries in place.
-        logger.warning("Skipping wipe of shared wordlist string reference (id=%s)", id(s))
+        logger.debug("Skipping wipe of shared wordlist string reference")
         return
     # CPython compact ASCII strings store data right after the
     # PyASCIIObject struct.  sys.getsizeof includes the NUL terminator.

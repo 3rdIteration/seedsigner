@@ -89,7 +89,7 @@ def test_discard_pending_mnemonic_does_not_corrupt_wordlist():
 
 
 
-def test_wipe_list_does_not_corrupt_shared_wordlists():
+def test_wipe_operations_do_not_corrupt_shared_wordlists():
     from embit import bip39
     from shamir_mnemonic import wordlist as slip39_wordlist
     from seedsigner.helpers.secure_delete import wipe_list, wipe_string

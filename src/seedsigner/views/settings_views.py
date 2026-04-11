@@ -302,7 +302,7 @@ class SettingsEntryUpdateSelectionView(View):
                 self.settings_entry.selection_options = Camera.list_cameras()
             except Exception as e:
                 logger.exception(
-                    "Camera detection failed; using cached/default camera options",
+                    "Camera detection failed; proceeding with existing camera options",
                     exc_info=e,
                 )
             finally:
