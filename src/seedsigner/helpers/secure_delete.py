@@ -30,13 +30,13 @@ def _get_shared_wordlist_str_ids() -> set[int]:
     try:
         from embit import bip39
         shared_ids.update(id(word) for word in bip39.WORDLIST)
-    except Exception:
+    except (ImportError, ModuleNotFoundError):
         pass
 
     try:
         from shamir_mnemonic import wordlist as slip39_wordlist
         shared_ids.update(id(word) for word in slip39_wordlist.WORDLIST)
-    except Exception:
+    except (ImportError, ModuleNotFoundError):
         pass
 
     _SHARED_WORDLIST_STR_IDS = shared_ids
@@ -83,6 +83,8 @@ def wipe_string(s: str | None) -> None:
     if s is None or len(s) == 0:
         return
     if _is_shared_wordlist_string_ref(s):
+        # Defensive fallback: callers should store independent copies of wordlist
+        # entries (e.g. "".join(word)) before any future wipe operation.
         # Never wipe shared global wordlist entries in place.
         return
     # CPython compact ASCII strings store data right after the

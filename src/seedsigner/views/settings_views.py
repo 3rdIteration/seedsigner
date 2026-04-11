@@ -300,8 +300,8 @@ class SettingsEntryUpdateSelectionView(View):
                 from seedsigner.hardware.camera import Camera
 
                 self.settings_entry.selection_options = Camera.list_cameras()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.exception("Camera detection failed", exc_info=e)
             finally:
                 loading_screen.stop()
 

@@ -89,7 +89,7 @@ def test_discard_pending_mnemonic_does_not_corrupt_wordlist():
 
 
 
-def test_wipe_list_direct_shared_wordlist_refs_do_not_corrupt_global_wordlists():
+def test_wipe_list_does_not_corrupt_shared_wordlists():
     from embit import bip39
     from shamir_mnemonic import wordlist as slip39_wordlist
     from seedsigner.helpers.secure_delete import wipe_list
@@ -101,6 +101,12 @@ def test_wipe_list_direct_shared_wordlist_refs_do_not_corrupt_global_wordlists()
     wipe_list(refs)
 
     assert bip39.WORDLIST[0] == original_bip39_first == "abandon"
+    assert slip39_wordlist.WORDLIST[0] == original_slip39_first
+
+    safe_copies = ["".join(bip39.WORDLIST[0]), "".join(slip39_wordlist.WORDLIST[0])]
+    wipe_list(safe_copies)
+    assert safe_copies == []
+    assert bip39.WORDLIST[0] == "abandon"
     assert slip39_wordlist.WORDLIST[0] == original_slip39_first
 
 
