@@ -296,6 +296,8 @@ class PowerOptionsView(View):
 class RestartView(View):
     def run(self):
         from seedsigner.gui.screens.screen import ResetScreen
+        # Ensure any pending background settings save completes before restart.
+        Settings.get_instance().flush_save()
         thread = RestartView.DoResetThread()
         thread.start()
         try:
@@ -342,6 +344,9 @@ class PowerOffView(View):
         from seedsigner.hardware.buttons import USING_GPIO
         import os
         import sys
+
+        # Ensure any pending background settings save completes before power-off.
+        Settings.get_instance().flush_save()
 
         if not USING_GPIO:
             if "PYTEST_CURRENT_TEST" not in os.environ:
