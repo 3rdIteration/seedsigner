@@ -92,7 +92,7 @@ class Settings(Singleton):
     # disk write is deferred by this amount so that rapid-fire settings
     # changes (e.g. user scrolling through options) are coalesced into a
     # single write.
-    _SAVE_DELAY_SECONDS: float = 1.0
+    _SAVE_DELAY_SECONDS: float = 5.0
 
     @classmethod
     def get_default_settings_filename(cls) -> str:
