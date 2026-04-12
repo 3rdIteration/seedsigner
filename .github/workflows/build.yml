@@ -131,7 +131,11 @@ jobs:
             APP_REPO_URL="https://github.com/${APP_REPO_INPUT}"
           fi
 
-          APP_REF="${{ github.event_name == 'workflow_dispatch' && github.event.inputs['source-ref'] || github.sha }}"
+          APP_REF="${{
+            github.event_name == 'workflow_dispatch' && github.event.inputs['source-ref']
+            || github.event_name == 'pull_request' && github.event.pull_request.head.sha
+            || github.sha
+          }}"
 
           if [[ "${{ github.event_name }}" = "workflow_dispatch" ]] && ! [[ "${APP_REF}" =~ ^[0-9a-fA-F]{7,40}$ ]]; then
             APP_REF_ARG="--app-branch=${APP_REF}"

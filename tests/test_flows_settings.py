@@ -34,6 +34,7 @@ class TestSettingsFlows(FlowTest):
         ])
 
         # Settings file should now exist
+        self.settings.flush_save()
         assert os.path.exists(Settings.SETTINGS_FILENAME) == True
 
 
