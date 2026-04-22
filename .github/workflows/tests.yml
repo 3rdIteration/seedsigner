@@ -4,6 +4,11 @@ on:
   push:
   pull_request:
 
+# Explicitly restrict the auto-provisioned GITHUB_TOKEN to the least privilege required
+# for this workflow.
+permissions:
+  contents: read
+
 concurrency:
   # Concurrency group that uses the workflow name and PR number if available
   # or commit SHA as a fallback. If a new build is triggered under that
@@ -16,6 +21,7 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       matrix:
         # 3.10: currently used by Seedsigner
@@ -33,17 +39,15 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Install dependencies
         run: |
-          sudo apt-get install libzbar0
-          python -m pip install --upgrade pip
+          sudo apt-get install -y --no-install-recommends libzbar0
           pip install -r requirements.txt -r tests/requirements.txt
           pip install .
       - name: Test with pytest
         run: |
-          mkdir artifacts
+          mkdir -p artifacts
           python -m pytest \
             --color=yes \
             --cov=seedsigner \
-            --cov-append \
             --cov-branch \
             --durations 5 \
             -vv
@@ -66,5 +70,5 @@ jobs:
           path: artifacts/**
           retention-days: 10
         # Upload also when tests fail. The workflow result (red/green) will
-        # be not effected by this.
+        # be not affected by this.
         if: always()
