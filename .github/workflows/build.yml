@@ -35,7 +35,7 @@ jobs:
   build:
     name: build
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 120
     # Prevent resource consuming cron triggered runs in forks
     if: (!github.event.repository.fork || github.event_name == 'workflow_dispatch')
     strategy:
