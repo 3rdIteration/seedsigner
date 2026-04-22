@@ -70,5 +70,5 @@ jobs:
           path: artifacts/**
           retention-days: 10
         # Upload also when tests fail. The workflow result (red/green) will
-        # be not affected by this.
+        # not be affected by this.
         if: always()
