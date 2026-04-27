@@ -142,9 +142,8 @@ def wipe_string(s: str | None) -> None:
     if _is_shared(s):
         logger.warning(
             "wipe_string: refusing to wipe shared/immortal string "
-            "(refcount=%d, len=%d)",
+            "(refcount=%d)",
             sys.getrefcount(s),
-            len(s),
         )
         return
     # CPython compact ASCII strings store data right after the
