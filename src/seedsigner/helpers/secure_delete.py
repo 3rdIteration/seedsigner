@@ -41,27 +41,62 @@ _IMMORTAL_REFCOUNT: int = sys.getrefcount("")
 # and must not be wiped.  On CPython 3.12+ this equals the immortal sentinel
 # (~4 billion).  On older CPython we fall back to a conservative limit of 50.
 #
-# Why 50: in testing, independent copies created via "".join() have a
-# refcount of 2–5 at the point of wiping (list element + loop variable +
-# function args + getrefcount overhead).  Global wordlist entries on
-# CPython < 3.12 have at least ~4–10 references (the WORDLIST list, the
-# module co_consts tuple, intern tables, word_to_index dicts, etc.).  50
-# provides a wide safety margin above any plausible single-owner refcount
-# while still catching any string that is even modestly shared.
+# Note: this threshold alone is not sufficient for CPython < 3.12 where BIP-39
+# wordlist entries are not immortal and only have ~4–10 permanent references
+# (far below 50).  The explicit _WORDLIST_IDS set below covers that case.
 _SHARED_REFCOUNT_LIMIT: int = min(_IMMORTAL_REFCOUNT, 50)
+
+# ---------------------------------------------------------------------------
+# Wordlist-ID fast-path (CPython < 3.12 safety net)
+# ---------------------------------------------------------------------------
+# On CPython < 3.12 wordlist entries are not immortal, so their reference
+# count at the point of a wipe call is too low to be caught by
+# _SHARED_REFCOUNT_LIMIT.  We instead track the id() of every known
+# wordlist entry at module-import time.  Since wordlists are held in
+# module-level lists they will not be garbage-collected, making their
+# id() values stable for the lifetime of the process.
+# ---------------------------------------------------------------------------
+def _collect_wordlist_ids() -> frozenset:
+    ids: set = set()
+    try:
+        from embit import bip39 as _bip39
+        ids.update(id(w) for w in _bip39.WORDLIST)
+    except Exception:
+        pass
+    try:
+        import shamir_mnemonic.wordlist as _slip39
+        ids.update(id(w) for w in _slip39.WORDLIST)
+    except Exception:
+        pass
+    return frozenset(ids)
+
+
+_WORDLIST_IDS: frozenset = _collect_wordlist_ids()
 
 
 def _is_shared(obj) -> bool:
     """Return True if *obj* appears to be shared or immortal.
 
-    The reference count returned by ``sys.getrefcount`` includes one
-    temporary reference for the argument itself.  In the typical call chain
-    ``wipe_list → wipe_string → _is_shared`` an independent (single-owner)
-    string has a refcount of about 5 (list element + loop variable +
-    wipe_string param + _is_shared param + getrefcount arg).  Shared strings
-    — especially immortal string literals on CPython 3.12+ — have a vastly
-    higher count.
+    Two detection mechanisms are used:
+
+    1. **Wordlist-ID check**: if ``id(obj)`` is in the pre-computed set of
+       BIP-39 / SLIP-39 wordlist entry IDs the string is always considered
+       shared.  This is reliable on all CPython versions because the wordlist
+       objects are module-level singletons that live for the entire process.
+
+    2. **Refcount check**: if the reference count returned by
+       ``sys.getrefcount`` is at or above ``_SHARED_REFCOUNT_LIMIT`` the
+       string is considered shared.  This catches immortal strings on
+       CPython 3.12+ (where the sentinel refcount is ~4 billion) as well as
+       any other heavily-referenced string not covered by the wordlist set.
+
+    In the typical call chain ``wipe_list → wipe_string → _is_shared`` an
+    independent (single-owner) string has a refcount of about 5 (list
+    element + loop variable + wipe_string param + _is_shared param +
+    getrefcount arg).  Shared strings have a higher count.
     """
+    if isinstance(obj, str) and id(obj) in _WORDLIST_IDS:
+        return True
     return sys.getrefcount(obj) >= _SHARED_REFCOUNT_LIMIT
 
 

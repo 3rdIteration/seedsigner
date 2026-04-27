@@ -207,9 +207,9 @@ jobs:
           shopt -s nullglob
           zip_files=(*.img.zip)
 
-          if ((${#zip_files[@]})); then
-            unzip -o "${zip_files[@]}"
-          fi
+          for zip in "${zip_files[@]}"; do
+            unzip -o "$zip"
+          done
 
           if ((${#zip_files[@]})); then
             sha256sum "${zip_files[@]}"
@@ -274,9 +274,9 @@ jobs:
           shopt -s nullglob
           zip_files=(*.img.zip)
 
-          if ((${#zip_files[@]})); then
-            unzip -o "${zip_files[@]}"
-          fi
+          for zip in "${zip_files[@]}"; do
+            unzip -o "$zip"
+          done
 
           img_files=(*.img)
 
