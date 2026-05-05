@@ -15,7 +15,89 @@ Limitations:
 """
 
 import ctypes
+import logging
 import sys
+
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Shared-string detection
+# ---------------------------------------------------------------------------
+# On CPython 3.12+ every string literal (and several built-in objects) is
+# marked *immortal*: its reference count is pinned to a platform-specific
+# sentinel value and never changes.  Wiping such a string via ctypes.memset
+# would corrupt every other reference to the same object — in particular it
+# would destroy entries in the global BIP-39 / SLIP-39 wordlists, making
+# subsequent seed validation fail until the process is restarted.
+#
+# We detect the immortal sentinel by inspecting a known-immortal object (the
+# empty string "").  On CPython < 3.12 the empty string simply has a high
+# (but not sentinel) refcount; the threshold below is generous enough to
+# catch it and any other heavily-shared string.
+# ---------------------------------------------------------------------------
+_IMMORTAL_REFCOUNT: int = sys.getrefcount("")
+
+# Strings with a refcount at or above this threshold are considered shared
+# and must not be wiped.  On CPython 3.12+ this equals the immortal sentinel
+# (~4 billion).  On older CPython we fall back to a conservative limit of 50.
+#
+# Note: this threshold alone is not sufficient for CPython < 3.12 where BIP-39
+# wordlist entries are not immortal and only have ~4–10 permanent references
+# (far below 50).  The explicit _WORDLIST_IDS set below covers that case.
+_SHARED_REFCOUNT_LIMIT: int = min(_IMMORTAL_REFCOUNT, 50)
+
+# ---------------------------------------------------------------------------
+# Wordlist-ID fast-path (CPython < 3.12 safety net)
+# ---------------------------------------------------------------------------
+# On CPython < 3.12 wordlist entries are not immortal, so their reference
+# count at the point of a wipe call is too low to be caught by
+# _SHARED_REFCOUNT_LIMIT.  We instead track the id() of every known
+# wordlist entry at module-import time.  Since wordlists are held in
+# module-level lists they will not be garbage-collected, making their
+# id() values stable for the lifetime of the process.
+# ---------------------------------------------------------------------------
+def _collect_wordlist_ids() -> frozenset:
+    ids: set = set()
+    try:
+        from embit import bip39 as _bip39
+        ids.update(id(w) for w in _bip39.WORDLIST)
+    except Exception:
+        pass
+    try:
+        import shamir_mnemonic.wordlist as _slip39
+        ids.update(id(w) for w in _slip39.WORDLIST)
+    except Exception:
+        pass
+    return frozenset(ids)
+
+
+_WORDLIST_IDS: frozenset = _collect_wordlist_ids()
+
+
+def _is_shared(obj) -> bool:
+    """Return True if *obj* appears to be shared or immortal.
+
+    Two detection mechanisms are used:
+
+    1. **Wordlist-ID check**: if ``id(obj)`` is in the pre-computed set of
+       BIP-39 / SLIP-39 wordlist entry IDs the string is always considered
+       shared.  This is reliable on all CPython versions because the wordlist
+       objects are module-level singletons that live for the entire process.
+
+    2. **Refcount check**: if the reference count returned by
+       ``sys.getrefcount`` is at or above ``_SHARED_REFCOUNT_LIMIT`` the
+       string is considered shared.  This catches immortal strings on
+       CPython 3.12+ (where the sentinel refcount is ~4 billion) as well as
+       any other heavily-referenced string not covered by the wordlist set.
+
+    In the typical call chain ``wipe_list → wipe_string → _is_shared`` an
+    independent (single-owner) string has a refcount of about 5 (list
+    element + loop variable + wipe_string param + _is_shared param +
+    getrefcount arg).  Shared strings have a higher count.
+    """
+    if isinstance(obj, str) and id(obj) in _WORDLIST_IDS:
+        return True
+    return sys.getrefcount(obj) >= _SHARED_REFCOUNT_LIMIT
 
 
 def _wipe_buffer(obj, length: int) -> None:
@@ -50,8 +132,19 @@ def wipe_string(s: str | None) -> None:
     character occupies one byte.  For wider encodings the internal
     layout differs and this may not fully clear the data, but it will
     still overwrite a significant portion.
+
+    **Safety guard**: if the string's reference count indicates it is shared
+    or immortal (e.g. a BIP-39 wordlist entry), the wipe is skipped to
+    prevent corrupting global data structures.
     """
     if s is None or len(s) == 0:
+        return
+    if _is_shared(s):
+        logger.warning(
+            "wipe_string: refusing to wipe shared/immortal string "
+            "(refcount=%d)",
+            sys.getrefcount(s),
+        )
         return
     # CPython compact ASCII strings store data right after the
     # PyASCIIObject struct.  sys.getsizeof includes the NUL terminator.

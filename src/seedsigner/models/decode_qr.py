@@ -1070,7 +1070,9 @@ class SeedQrDecoder(BaseSingleFrameQrDecoder):
         if qr_type == QRType.SEED__COMPACTSEEDQR:
             logging.info("Trying CompactSeedQR")
             try:
-                self.seed_phrase = bip39.mnemonic_from_bytes(segment).split()
+                # Create independent copies so wipe_list() won't corrupt
+                # the shared global wordlist strings.
+                self.seed_phrase = ["".join(w) for w in bip39.mnemonic_from_bytes(segment).split()]
                 if not self.has_valid_word_count():
                     return DecodeQRStatus.INVALID
                 self.seed_type = "bip39"

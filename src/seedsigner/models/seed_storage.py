@@ -186,8 +186,10 @@ class SeedStorage:
             raise InvalidSeedException("Invalid SLIP-39 share")
         if self._slip39_first_share is None:
             self._slip39_first_share = share_obj
-        self._pending_slip39_shares.append(mnemonic.split())
-        self._slip39_share_length = len(mnemonic.split())
+        # Create independent copies so wipe_list() won't corrupt global
+        # wordlist strings.
+        self._pending_slip39_shares.append(["".join(w) for w in mnemonic.split()])
+        self._slip39_share_length = len(self._pending_slip39_shares[-1])
         self._pending_is_slip39 = True
 
     def convert_pending_slip39_shares_to_pending_seed(self, passphrase: str = ""):

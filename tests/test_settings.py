@@ -227,3 +227,83 @@ class TestSettings(BaseTest):
         # option for "camera", but must NOT raise ValueError/crash.
         with pytest.raises(InvalidSettingsQRData):
             Settings.parse_settingsqr(settingsqr_data)
+
+    def test_save_is_non_blocking(self):
+        """save() should return immediately; the disk write happens later."""
+        import threading
+        import time
+
+        write_count = 0
+        original_write = Settings._do_write_to_disk
+
+        def counting_write(self_inner):
+            nonlocal write_count
+            original_write(self_inner)
+            write_count += 1
+
+        with patch.object(Settings, '_do_write_to_disk', counting_write), \
+             patch.object(Settings, '_SAVE_DELAY_SECONDS', 0.1):
+            self.settings._reset_save_infra()
+            self.settings.save()
+            # save() returns immediately; write hasn't happened yet
+            assert write_count == 0
+            # Wait for the deferred write to complete
+            time.sleep(0.3)
+            assert write_count == 1
+
+    def test_save_coalesces_rapid_calls(self):
+        """Multiple rapid save() calls should result in a single disk write."""
+        import time
+
+        write_count = 0
+        original_write = Settings._do_write_to_disk
+
+        def counting_write(self_inner):
+            nonlocal write_count
+            original_write(self_inner)
+            write_count += 1
+
+        with patch.object(Settings, '_do_write_to_disk', counting_write), \
+             patch.object(Settings, '_SAVE_DELAY_SECONDS', 0.2):
+            self.settings._reset_save_infra()
+            # Fire 5 rapid saves
+            for _ in range(5):
+                self.settings.save()
+            # None should have executed yet
+            assert write_count == 0
+            # Wait for the single deferred write
+            time.sleep(0.5)
+            assert write_count == 1
+
+    def test_flush_save_writes_immediately(self):
+        """flush_save() should force an immediate synchronous write."""
+        write_count = 0
+        original_write = Settings._do_write_to_disk
+
+        def counting_write(self_inner):
+            nonlocal write_count
+            original_write(self_inner)
+            write_count += 1
+
+        with patch.object(Settings, '_do_write_to_disk', counting_write), \
+             patch.object(Settings, '_SAVE_DELAY_SECONDS', 10.0):
+            self.settings._reset_save_infra()
+            self.settings.save()
+            assert write_count == 0
+            self.settings.flush_save()
+            assert write_count == 1
+
+    def test_flush_save_noop_when_no_pending(self):
+        """flush_save() should be a no-op when no save is pending."""
+        write_count = 0
+        original_write = Settings._do_write_to_disk
+
+        def counting_write(self_inner):
+            nonlocal write_count
+            original_write(self_inner)
+            write_count += 1
+
+        with patch.object(Settings, '_do_write_to_disk', counting_write):
+            self.settings._reset_save_infra()
+            self.settings.flush_save()
+            assert write_count == 0

@@ -255,3 +255,61 @@ def test_calculate_checksum_does_not_corrupt_wordlist():
     # The global wordlist must still be intact
     assert bip39.WORDLIST[0] == "abandon"
     assert repr(bip39.WORDLIST[0]) == "'abandon'"
+
+
+def _assert_wordlist_intact():
+    """Helper: verify a sampling of bip39.WORDLIST entries are uncorrupted."""
+    assert bip39.WORDLIST[0] == "abandon"
+    assert bip39.WORDLIST[3] == "about"
+    assert bip39.WORDLIST[2047] == "zoo"
+    # repr check catches zeroed-out buffers that still have len > 0
+    assert repr(bip39.WORDLIST[0]) == "'abandon'"
+
+
+def test_generate_mnemonic_from_bytes_does_not_corrupt_wordlist():
+    """Wiping a mnemonic returned by generate_mnemonic_from_bytes must not
+    corrupt bip39.WORDLIST."""
+    from seedsigner.helpers.secure_delete import wipe_list
+
+    _assert_wordlist_intact()
+    mnemonic = mnemonic_generation.generate_mnemonic_from_bytes(b"\x00" * 16)
+    assert bip39.mnemonic_is_valid(" ".join(mnemonic))
+    wipe_list(mnemonic)
+    _assert_wordlist_intact()
+
+
+def test_generate_mnemonic_from_dice_does_not_corrupt_wordlist():
+    """Wiping a mnemonic returned by generate_mnemonic_from_dice must not
+    corrupt bip39.WORDLIST."""
+    from seedsigner.helpers.secure_delete import wipe_list
+
+    _assert_wordlist_intact()
+    dice_rolls = "1" * mnemonic_generation.DICE_ROLLS_REQUIRED[24]
+    mnemonic = mnemonic_generation.generate_mnemonic_from_dice(dice_rolls)
+    assert bip39.mnemonic_is_valid(" ".join(mnemonic))
+    wipe_list(mnemonic)
+    _assert_wordlist_intact()
+
+
+def test_generate_mnemonic_from_coin_flips_does_not_corrupt_wordlist():
+    """Wiping a mnemonic returned by generate_mnemonic_from_coin_flips must not
+    corrupt bip39.WORDLIST."""
+    from seedsigner.helpers.secure_delete import wipe_list
+
+    _assert_wordlist_intact()
+    coin_flips = "0" * 128
+    mnemonic = mnemonic_generation.generate_mnemonic_from_coin_flips(coin_flips)
+    assert bip39.mnemonic_is_valid(" ".join(mnemonic))
+    wipe_list(mnemonic)
+    _assert_wordlist_intact()
+
+
+def test_get_partial_final_word_does_not_corrupt_wordlist():
+    """Wiping the result of get_partial_final_word must not corrupt
+    bip39.WORDLIST."""
+    from seedsigner.helpers.secure_delete import wipe_string
+
+    _assert_wordlist_intact()
+    word = mnemonic_generation.get_partial_final_word("0000000")
+    wipe_string(word)
+    _assert_wordlist_intact()

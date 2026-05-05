@@ -105,6 +105,8 @@ class BaseTest:
     @classmethod
     def reset_settings(cls):
         """ Wipe and re-initialize the Settings singleton """
+        if Settings._instance is not None:
+            Settings._instance._reset_save_infra()
         Settings._instance = None
         BaseTest.remove_settings()
 
@@ -150,6 +152,8 @@ class BaseTest:
     
 
     def teardown_method(self):
+        if Settings._instance is not None:
+            Settings._instance._reset_save_infra()
         BaseTest.remove_settings()
 
 

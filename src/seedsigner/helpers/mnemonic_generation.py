@@ -85,15 +85,19 @@ def calculate_checksum(mnemonic: list | str, wordlist_language_code: str = Setti
     # calculate the proper checksum bits while doing so. For a 12-word seed it will just
     # overwrite the last 4 bits from the above result with the checksum; for a 24-word
     # seed it'll overwrite the last 8 bits.
-    return bip39.mnemonic_from_bytes(
+    # Create independent copies of each word so that any future
+    # wipe_list() / wipe_string() won't corrupt the shared global wordlist
+    # strings via ctypes.memset.
+    return ["".join(w) for w in bip39.mnemonic_from_bytes(
         mnemonic_bytes,
         wordlist=Seed.get_wordlist(wordlist_language_code),
-    ).split()
+    ).split()]
 
 
 
 def generate_mnemonic_from_bytes(entropy_bytes, wordlist_language_code: str = SettingsConstants.WORDLIST_LANGUAGE__ENGLISH) -> list[str]:
-    return bip39.mnemonic_from_bytes(entropy_bytes, wordlist=Seed.get_wordlist(wordlist_language_code)).split()
+    # Create independent copies so wipe_list() won't corrupt global wordlist.
+    return ["".join(w) for w in bip39.mnemonic_from_bytes(entropy_bytes, wordlist=Seed.get_wordlist(wordlist_language_code)).split()]
 
 
 
@@ -117,8 +121,8 @@ def generate_mnemonic_from_dice(roll_data: str, wordlist_language_code: str = Se
 
     entropy_bytes = entropy_bytes[:ENTROPY_BYTES_REQUIRED[word_length]]
 
-    # Return as a list
-    return bip39.mnemonic_from_bytes(entropy_bytes, wordlist=Seed.get_wordlist(wordlist_language_code)).split()
+    # Create independent copies so wipe_list() won't corrupt global wordlist.
+    return ["".join(w) for w in bip39.mnemonic_from_bytes(entropy_bytes, wordlist=Seed.get_wordlist(wordlist_language_code)).split()]
 
 
 def generate_bytes_from_dice(roll_data: str, length_bytes: int | None = None) -> bytes:
@@ -154,8 +158,8 @@ def generate_mnemonic_from_coin_flips(coin_flips: str, wordlist_language_code: s
 
     entropy_bytes = entropy_bytes[:ENTROPY_BYTES_REQUIRED[word_length]]
 
-    # Return as a list
-    return bip39.mnemonic_from_bytes(entropy_bytes, wordlist=Seed.get_wordlist(wordlist_language_code)).split()
+    # Create independent copies so wipe_list() won't corrupt global wordlist.
+    return ["".join(w) for w in bip39.mnemonic_from_bytes(entropy_bytes, wordlist=Seed.get_wordlist(wordlist_language_code)).split()]
 
 
 
@@ -167,7 +171,9 @@ def get_partial_final_word(coin_flips: str, wordlist_language_code: str = Settin
     binary_string = coin_flips + "0" * (11 - len(coin_flips))
     wordlist_index = int(binary_string, 2)
 
-    return Seed.get_wordlist(wordlist_language_code)[wordlist_index]
+    # Create an independent copy to avoid holding a direct reference
+    # to the shared global wordlist string.
+    return "".join(Seed.get_wordlist(wordlist_language_code)[wordlist_index])
 
 
 
@@ -177,8 +183,8 @@ def generate_mnemonic_from_image(image, wordlist_language_code: str = SettingsCo
     import hashlib
     hash = hashlib.sha256(image.tobytes())
 
-    # Return as a list
-    return bip39.mnemonic_from_bytes(hash.digest(), wordlist=Seed.get_wordlist(wordlist_language_code)).split()
+    # Create independent copies so wipe_list() won't corrupt global wordlist.
+    return ["".join(w) for w in bip39.mnemonic_from_bytes(hash.digest(), wordlist=Seed.get_wordlist(wordlist_language_code)).split()]
 
 
 def _shannon_entropy(data: bytes | str) -> float:
