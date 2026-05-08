@@ -1393,10 +1393,11 @@ class ToolsSmartcardMenuView(View):
     COMMON = ButtonOption("Common Functions")
     SATOCHIP = ButtonOption("Satochip Functions")
     SEEDKEEPER = ButtonOption("SeedKeeper Functions")
+    KEYCARD = ButtonOption("Keycard (ETH)")
     Satochip_DIY = ButtonOption("DIY Tools")
 
     def run(self):
-        button_data = [self.COMMON, self.SEEDKEEPER, self.SATOCHIP, self.Satochip_DIY]
+        button_data = [self.COMMON, self.SEEDKEEPER, self.SATOCHIP, self.KEYCARD, self.Satochip_DIY]
 
         selected_menu_num = self.run_screen(
             ButtonListScreen,
@@ -1410,12 +1411,16 @@ class ToolsSmartcardMenuView(View):
 
         elif button_data[selected_menu_num] == self.COMMON:
             return Destination(ToolsCommonView)
-        
+
         elif button_data[selected_menu_num] == self.SATOCHIP:
             return Destination(ToolsSatochipView)
-        
+
         elif button_data[selected_menu_num] == self.SEEDKEEPER:
             return Destination(ToolsSeedkeeperView)
+
+        elif button_data[selected_menu_num] == self.KEYCARD:
+            from seedsigner.views.keycard_views import ToolsKeycardMenuView
+            return Destination(ToolsKeycardMenuView)
 
         elif button_data[selected_menu_num] == self.Satochip_DIY:
             return Destination(ToolsSatochipDIYView)

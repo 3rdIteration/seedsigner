@@ -419,6 +419,18 @@ class UrTextQrEncoder(BaseFountainQrEncoder):
         self.ur2_encode = UREncoder(ur=qr_ur_text, max_fragment_len=self.qr_max_fragment_size)
 
 
+@dataclass
+class EthSignatureQrEncoder(BaseFountainQrEncoder):
+    eth_signature: object = None  # seedsigner.helpers.ethereum.ur_codec.EthSignature
+
+    def __post_init__(self):
+        super().__post_init__()
+        if self.eth_signature is None:
+            raise ValueError("eth_signature is required")
+        qr_ur = UR("eth-signature", self.eth_signature.to_cbor())
+        self.ur2_encode = UREncoder(ur=qr_ur, max_fragment_len=self.qr_max_fragment_size)
+
+
 class GenericStringEncoder(BaseStaticQrEncoder):
     def __init__(self, generic_string: str):
         super().__init__()

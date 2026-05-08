@@ -27,6 +27,9 @@ class QRType:
 
     SIGN_MESSAGE = "sign_message"
 
+    ETH_SIGN_REQUEST = "eth_sign_request"
+    ETH_SIGNATURE = "eth_signature"
+
     SET_TIME = "set_time"
 
     PASSPHRASE = "passphrase"

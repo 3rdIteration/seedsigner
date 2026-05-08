@@ -86,7 +86,7 @@ class DecodeQR:
         if self.qr_type == None:
             self.qr_type = qr_type
 
-            if self.qr_type in [QRType.PSBT__UR2, QRType.OUTPUT__UR, QRType.ACCOUNT__UR, QRType.BYTES__UR]:
+            if self.qr_type in [QRType.PSBT__UR2, QRType.OUTPUT__UR, QRType.ACCOUNT__UR, QRType.BYTES__UR, QRType.ETH_SIGN_REQUEST]:
                 self.decoder = URDecoder() # BCUR Decoder
 
             elif self.qr_type == QRType.PSBT__SPECTER:
@@ -179,7 +179,7 @@ class DecodeQR:
             # it's already str data
             qr_str = data
 
-        if self.qr_type in [QRType.PSBT__UR2, QRType.OUTPUT__UR, QRType.ACCOUNT__UR, QRType.BYTES__UR]:
+        if self.qr_type in [QRType.PSBT__UR2, QRType.OUTPUT__UR, QRType.ACCOUNT__UR, QRType.BYTES__UR, QRType.ETH_SIGN_REQUEST]:
             added_part = self.decoder.receive_part(qr_str)
             if self.decoder.is_complete():
                 self.complete = True
@@ -342,7 +342,7 @@ class DecodeQR:
         if not self.decoder:
             return 0
 
-        if self.qr_type in [QRType.PSBT__UR2, QRType.OUTPUT__UR, QRType.ACCOUNT__UR, QRType.BYTES__UR]:
+        if self.qr_type in [QRType.PSBT__UR2, QRType.OUTPUT__UR, QRType.ACCOUNT__UR, QRType.BYTES__UR, QRType.ETH_SIGN_REQUEST]:
             return int(self.decoder.estimated_percent_complete(weight_mixed_frames=weight_mixed_frames) * 100)
 
         elif self.qr_type in [QRType.PSBT__SPECTER]:
@@ -442,6 +442,17 @@ class DecodeQR:
     @property
     def is_settings(self):
         return self.qr_type == QRType.SETTINGS
+
+    @property
+    def is_eth_sign_request(self) -> bool:
+        return self.qr_type == QRType.ETH_SIGN_REQUEST
+
+    def get_eth_sign_request(self):
+        if self.is_eth_sign_request and self.complete:
+            from seedsigner.helpers.ethereum.ur_codec import EthSignRequest
+            cbor = self.decoder.result_message().cbor
+            return EthSignRequest.from_cbor(cbor)
+        return None
 
 
     @property
@@ -590,6 +601,9 @@ class DecodeQR:
 
             elif re.search("^UR:BYTES/", s, re.IGNORECASE):
                 return QRType.BYTES__UR
+
+            elif re.search("^UR:ETH-SIGN-REQUEST/", s, re.IGNORECASE):
+                return QRType.ETH_SIGN_REQUEST
 
             elif DecodeQR.is_base64_psbt(s):
                 return QRType.PSBT__BASE64
