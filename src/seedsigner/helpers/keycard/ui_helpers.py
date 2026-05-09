@@ -137,20 +137,46 @@ def prompt_for_pin(parent_view: "View", title: str) -> Optional[bytearray]:
 def open_unlocked_session(parent_view: "View", pin: bytearray) -> Tuple["KeycardClient", "PairingInfo"]:
     """Connect, SELECT, OPEN_SECURE_CHANNEL, VERIFY_PIN.
 
-    Returns ``(client, pairing)``. Raises ``RuntimeError`` if the
-    controller has no cached pairing for the current boot. The caller is
-    responsible for wiping ``pin`` after use.
+    Auto-switch behaviour: SELECT runs before any pairing lookup so the
+    function discovers which physical card is currently in the reader,
+    then picks the right cached pairing for that card.
+
+    Raises :class:`KeycardCardChangedError` (with the card's
+    ``instance_uid``) if no pairing for the inserted card exists in the
+    boot cache. The caller is responsible for wiping ``pin`` after use.
+    """
+    from seedsigner.helpers.keycard import KeycardCardChangedError
+    from seedsigner.helpers.keycard.client import KeycardClient
+    from seedsigner.helpers.keycard.reader import wait_for_card
+
+    connection = wait_for_card(timeout_s=5.0)
+    client = KeycardClient(connection)
+    info = client.select()
+    parent_view.controller.last_keycard_uid = bytes(info.instance_uid)
+
+    pairing = parent_view.controller.get_pairing_for(info.instance_uid)
+    if pairing is None:
+        raise KeycardCardChangedError(info.instance_uid)
+
+    client.open_secure_channel(pairing)
+    client.verify_pin(bytes(pin))
+    return client, pairing
+
+
+def identify_inserted_card(parent_view: "View") -> Tuple["KeycardClient", bytes]:
+    """SELECT only — identify which card is in the reader without unlocking.
+
+    Returns ``(client, instance_uid)`` and updates
+    ``controller.last_keycard_uid``. Used by entry-point views that
+    need to redirect to the Pair flow when the inserted card has no
+    cached pairing.
     """
     from seedsigner.helpers.keycard.client import KeycardClient
     from seedsigner.helpers.keycard.reader import wait_for_card
 
-    pairing = parent_view.controller.keycard_pairing
-    if pairing is None:
-        raise RuntimeError("card not paired in this session")
-
     connection = wait_for_card(timeout_s=5.0)
     client = KeycardClient(connection)
-    client.select()
-    client.open_secure_channel(pairing)
-    client.verify_pin(bytes(pin))
-    return client, pairing
+    info = client.select()
+    uid = bytes(info.instance_uid)
+    parent_view.controller.last_keycard_uid = uid
+    return client, uid

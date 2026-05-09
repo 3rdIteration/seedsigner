@@ -117,3 +117,153 @@ class TestValidation:
     def test_uid_length_byte_range(self, sample_pairing):
         with pytest.raises(ValueError):
             encrypt_pairing("a", sample_pairing, b"\x00" * 256)
+
+
+# ---------------------------------------------------------------------------
+# Multi-card features (per-UID storage, list, remove, legacy fallback)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def storage_dir(tmp_path, monkeypatch):
+    """Patch ``get_storage_path`` to point at a per-test directory."""
+    base = tmp_path / "storage"
+    base.mkdir()
+
+    def _fake_get(filename=pairing_storage.DEFAULT_FILENAME):
+        return base / filename
+
+    monkeypatch.setattr(pairing_storage, "get_storage_path", _fake_get)
+    return base
+
+
+class TestFingerprint:
+    def test_deterministic(self):
+        a = pairing_storage.fingerprint_for_uid(b"\xAA" * 16)
+        b = pairing_storage.fingerprint_for_uid(b"\xAA" * 16)
+        assert a == b
+
+    def test_distinct_for_different_uids(self):
+        a = pairing_storage.fingerprint_for_uid(b"\xAA" * 16)
+        b = pairing_storage.fingerprint_for_uid(b"\xBB" * 16)
+        assert a != b
+        assert len(a) == pairing_storage.FINGERPRINT_LEN_HEX
+        assert len(b) == pairing_storage.FINGERPRINT_LEN_HEX
+
+    def test_rejects_empty_uid(self):
+        with pytest.raises(ValueError):
+            pairing_storage.fingerprint_for_uid(b"")
+
+
+class TestMultiCardStorage:
+    def test_save_two_cards_load_each_independently(self, sample_pairing, storage_dir):
+        uid_a = b"\xAA" * 16
+        uid_b = b"\xBB" * 16
+        pair_b = PairingInfo(pairing_index=7, pairing_key=b"\x42" * 32)
+
+        pa = pairing_storage.save("pw", sample_pairing, uid_a)
+        pb = pairing_storage.save("pw", pair_b, uid_b)
+        assert pa != pb
+        assert pa.exists() and pb.exists()
+
+        loaded_a = pairing_storage.load("pw", instance_uid=uid_a)
+        loaded_b = pairing_storage.load("pw", instance_uid=uid_b)
+        assert loaded_a.pairing.pairing_index == sample_pairing.pairing_index
+        assert loaded_b.pairing.pairing_index == 7
+        assert loaded_a.instance_uid == uid_a
+        assert loaded_b.instance_uid == uid_b
+
+    def test_list_pairings_returns_all(self, sample_pairing, storage_dir):
+        uid_a = b"\xAA" * 16
+        uid_b = b"\xBB" * 16
+        pairing_storage.save("pw", sample_pairing, uid_a)
+        pairing_storage.save("pw", sample_pairing, uid_b)
+
+        entries = pairing_storage.list_pairings(base_dir=storage_dir)
+        fps = sorted(e.fingerprint for e in entries)
+        expected = sorted([
+            pairing_storage.fingerprint_for_uid(uid_a),
+            pairing_storage.fingerprint_for_uid(uid_b),
+        ])
+        assert fps == expected
+        for e in entries:
+            assert not e.is_legacy
+
+    def test_remove_specific_uid_keeps_others(self, sample_pairing, storage_dir):
+        uid_a = b"\xAA" * 16
+        uid_b = b"\xBB" * 16
+        pairing_storage.save("pw", sample_pairing, uid_a)
+        pairing_storage.save("pw", sample_pairing, uid_b)
+
+        assert pairing_storage.remove(instance_uid=uid_a) is True
+        # Second call returns False (nothing left for A).
+        assert pairing_storage.remove(instance_uid=uid_a) is False
+        # B still loadable.
+        loaded = pairing_storage.load("pw", instance_uid=uid_b)
+        assert loaded is not None
+
+    def test_remove_all_clears_directory(self, sample_pairing, storage_dir):
+        pairing_storage.save("pw", sample_pairing, b"\xAA" * 16)
+        pairing_storage.save("pw", sample_pairing, b"\xBB" * 16)
+        # Also drop a legacy file in the same dir.
+        pairing_storage.save("pw", sample_pairing, b"\xCC" * 16,
+                             path=storage_dir / pairing_storage.DEFAULT_FILENAME)
+
+        count = pairing_storage.remove_all(base_dir=storage_dir)
+        assert count >= 2
+        assert pairing_storage.list_pairings(base_dir=storage_dir) == []
+
+    def test_load_with_uid_returns_none_when_nothing_saved(self, storage_dir):
+        assert pairing_storage.load("pw", instance_uid=b"\xAA" * 16) is None
+
+
+class TestLegacyMigration:
+    def test_load_with_uid_falls_back_to_legacy_when_uid_matches(
+        self, sample_pairing, storage_dir,
+    ):
+        uid = b"\xAA" * 16
+        legacy_path = storage_dir / pairing_storage.DEFAULT_FILENAME
+        # Hand-write the legacy file (no per-UID file present).
+        pairing_storage.save("pw", sample_pairing, uid, path=legacy_path)
+
+        loaded = pairing_storage.load("pw", instance_uid=uid)
+        assert loaded is not None
+        assert loaded.pairing.pairing_index == sample_pairing.pairing_index
+
+    def test_load_with_uid_returns_none_when_legacy_uid_mismatches(
+        self, sample_pairing, storage_dir,
+    ):
+        legacy_path = storage_dir / pairing_storage.DEFAULT_FILENAME
+        pairing_storage.save("pw", sample_pairing, b"\xAA" * 16, path=legacy_path)
+
+        loaded = pairing_storage.load("pw", instance_uid=b"\xBB" * 16)
+        assert loaded is None
+
+    def test_save_after_legacy_load_removes_legacy_file(
+        self, sample_pairing, storage_dir,
+    ):
+        uid = b"\xAA" * 16
+        legacy_path = storage_dir / pairing_storage.DEFAULT_FILENAME
+        pairing_storage.save("pw", sample_pairing, uid, path=legacy_path)
+        assert legacy_path.exists()
+
+        # Save without explicit path uses per-UID file AND removes legacy.
+        new_pair = PairingInfo(pairing_index=9, pairing_key=b"\x33" * 32)
+        per_uid_path = pairing_storage.save("pw", new_pair, uid)
+        assert per_uid_path != legacy_path
+        assert per_uid_path.exists()
+        assert not legacy_path.exists()
+
+
+class TestRemoveBackwardsCompat:
+    def test_remove_with_path_still_works(self, sample_pairing, storage_dir):
+        target = storage_dir / "kp_explicit.bin"
+        pairing_storage.save("pw", sample_pairing, b"\xAA" * 16, path=target)
+        assert pairing_storage.remove(path=target) is True
+        assert not target.exists()
+
+    def test_remove_no_args_targets_legacy(self, sample_pairing, storage_dir):
+        legacy = storage_dir / pairing_storage.DEFAULT_FILENAME
+        pairing_storage.save("pw", sample_pairing, b"\xAA" * 16, path=legacy)
+        assert pairing_storage.remove() is True
+        assert not legacy.exists()

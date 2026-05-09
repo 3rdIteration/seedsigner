@@ -115,45 +115,85 @@ class TestWipeBytearray(unittest.TestCase):
 
 
 class TestOpenUnlockedSession(unittest.TestCase):
-    def test_raises_when_not_paired(self):
-        from seedsigner.helpers.keycard.ui_helpers import open_unlocked_session
-        view = MagicMock()
-        view.controller.keycard_pairing = None
-        with self.assertRaises(RuntimeError):
-            open_unlocked_session(view, bytearray(b"123456"))
+    """``open_unlocked_session`` SELECTs first, then looks up the cached
+    pairing for the inserted card's instance_uid."""
 
-    def test_happy_path_calls_select_and_verify_pin(self):
-        from seedsigner.helpers.keycard.ui_helpers import open_unlocked_session
+    UID = b"\xAA" * 16
 
-        view = MagicMock()
-        pairing = MagicMock(name="pairing")
-        view.controller.keycard_pairing = pairing
-        pin = bytearray(b"123456")
+    def _patch_hardware(self, client):
+        import seedsigner.helpers.keycard.client as kc_client
+        import seedsigner.helpers.keycard.reader as kc_reader
+        return (
+            patch.object(kc_client, "KeycardClient", MagicMock(return_value=client)),
+            patch.object(kc_reader, "wait_for_card", return_value="conn"),
+        )
+
+    def _select_info(self, uid=None):
+        select_info = MagicMock()
+        select_info.instance_uid = uid if uid is not None else self.UID
+        return select_info
+
+    def test_raises_when_card_not_paired(self):
+        from seedsigner.helpers.keycard import KeycardCardChangedError
+        from seedsigner.helpers.keycard.ui_helpers import open_unlocked_session
 
         client = MagicMock()
-        client_cls = MagicMock(return_value=client)
+        client.select.return_value = self._select_info()
 
-        with patch(
-            "seedsigner.helpers.keycard.ui_helpers.KeycardClient", client_cls,
-            create=True,
-        ), patch(
-            "seedsigner.helpers.keycard.ui_helpers.wait_for_card",
-            return_value=MagicMock(name="connection"),
-            create=True,
-        ):
-            # The function imports lazily; replicate the lazy patches by
-            # patching the resolved module attributes after import.
-            import seedsigner.helpers.keycard.client as kc_client
-            import seedsigner.helpers.keycard.reader as kc_reader
-            with patch.object(kc_client, "KeycardClient", client_cls), \
-                 patch.object(kc_reader, "wait_for_card", return_value="conn"):
-                returned_client, returned_pairing = open_unlocked_session(view, pin)
+        view = MagicMock()
+        view.controller.get_pairing_for.return_value = None
+
+        p1, p2 = self._patch_hardware(client)
+        with p1, p2, self.assertRaises(KeycardCardChangedError) as ctx:
+            open_unlocked_session(view, bytearray(b"123456"))
+        self.assertEqual(ctx.exception.instance_uid, self.UID)
+        # Ensure the secure channel was NOT opened on a card-changed error.
+        client.open_secure_channel.assert_not_called()
+        view.controller.last_keycard_uid = self.UID  # set by the helper
+
+    def test_happy_path_uses_cached_pairing_for_inserted_card(self):
+        from seedsigner.helpers.keycard.ui_helpers import open_unlocked_session
+
+        pairing = MagicMock(name="pairing")
+        client = MagicMock()
+        client.select.return_value = self._select_info()
+
+        view = MagicMock()
+        view.controller.get_pairing_for.return_value = pairing
+        pin = bytearray(b"123456")
+
+        p1, p2 = self._patch_hardware(client)
+        with p1, p2:
+            returned_client, returned_pairing = open_unlocked_session(view, pin)
 
         self.assertIs(returned_pairing, pairing)
         self.assertIs(returned_client, client)
+        view.controller.get_pairing_for.assert_called_once_with(self.UID)
         client.select.assert_called_once()
         client.open_secure_channel.assert_called_once_with(pairing)
         client.verify_pin.assert_called_once_with(bytes(pin))
+
+
+class TestIdentifyInsertedCard(unittest.TestCase):
+    def test_returns_uid_and_updates_controller(self):
+        from seedsigner.helpers.keycard.ui_helpers import identify_inserted_card
+
+        client = MagicMock()
+        info = MagicMock()
+        info.instance_uid = b"\xBB" * 16
+        client.select.return_value = info
+
+        view = MagicMock()
+
+        import seedsigner.helpers.keycard.client as kc_client
+        import seedsigner.helpers.keycard.reader as kc_reader
+        with patch.object(kc_client, "KeycardClient", MagicMock(return_value=client)), \
+             patch.object(kc_reader, "wait_for_card", return_value="conn"):
+            returned_client, uid = identify_inserted_card(view)
+
+        self.assertIs(returned_client, client)
+        self.assertEqual(uid, b"\xBB" * 16)
+        self.assertEqual(view.controller.last_keycard_uid, b"\xBB" * 16)
 
 
 if __name__ == "__main__":

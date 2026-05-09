@@ -288,6 +288,16 @@ class Controller(Singleton):
         controller.psbt_microsd_seed_warning_shown = False
         controller.sign_message_with_satochip = False
 
+        # Keycard session state. ``keycard_pairings`` caches decrypted
+        # pairings keyed by ``instance_uid`` for the boot so a user can
+        # swap between paired cards without re-entering the pairing
+        # password. ``keycard_pairing`` (singular) is a back-compat shim
+        # that surfaces the most-recently-seen pairing.
+        controller.keycard_pairings = {}
+        controller.last_keycard_uid = None
+        controller.eth_sign_request = None
+        controller.eth_signature = None
+
         # Configure the Renderer
         Renderer.configure_instance()
 
@@ -313,7 +323,54 @@ class Controller(Singleton):
     def camera(self):
         from .hardware.camera import Camera
         return Camera.get_instance()
-    
+
+
+    # ---- Keycard pairing cache helpers ----
+
+    def get_pairing_for(self, instance_uid):
+        """Return the cached PairingInfo for ``instance_uid`` or None."""
+        if instance_uid is None:
+            return None
+        return self.keycard_pairings.get(bytes(instance_uid))
+
+    def set_pairing_for(self, instance_uid, pairing) -> None:
+        """Cache (or overwrite) the pairing for ``instance_uid``."""
+        if instance_uid is None:
+            return
+        self.keycard_pairings[bytes(instance_uid)] = pairing
+        self.last_keycard_uid = bytes(instance_uid)
+
+    def forget_pairing_for(self, instance_uid) -> None:
+        if instance_uid is None:
+            return
+        self.keycard_pairings.pop(bytes(instance_uid), None)
+        if self.last_keycard_uid == bytes(instance_uid):
+            self.last_keycard_uid = None
+
+    def forget_all_pairings(self) -> None:
+        self.keycard_pairings.clear()
+        self.last_keycard_uid = None
+
+    @property
+    def keycard_pairing(self):
+        """Back-compat singular: pairing for the most-recently-seen card."""
+        if self.last_keycard_uid is None:
+            return None
+        return self.keycard_pairings.get(self.last_keycard_uid)
+
+    @keycard_pairing.setter
+    def keycard_pairing(self, value):
+        # Setting to None or a value without a known UID can't update the
+        # dict cleanly, so just clear the "active" pointer.
+        if value is None:
+            self.last_keycard_uid = None
+            return
+        # Best-effort: store under last_keycard_uid if known, else under a
+        # placeholder key. Callers that touch this setter are legacy paths
+        # we expect to phase out; new code should use set_pairing_for().
+        if self.last_keycard_uid is not None:
+            self.keycard_pairings[self.last_keycard_uid] = value
+
 
     @property
     def storage(self):

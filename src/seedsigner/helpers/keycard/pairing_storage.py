@@ -28,12 +28,13 @@ card currently in the reader.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 from Cryptodome.Cipher import AES
 from Cryptodome.Hash import SHA256
@@ -50,7 +51,10 @@ TAG_LEN = 16
 KDF_ITERATIONS = 50000
 KDF_SALT_DOMAIN = b"Keycard Pairing Storage v1"
 
-DEFAULT_FILENAME = "keycard_pairing.bin"
+DEFAULT_FILENAME = "keycard_pairing.bin"  # legacy single-card file
+PER_UID_PREFIX = "keycard_pairing_"
+PER_UID_SUFFIX = ".bin"
+FINGERPRINT_LEN_HEX = 16  # 8 bytes of SHA-256(instance_uid)
 
 
 class PairingStorageError(Exception):
@@ -137,10 +141,75 @@ def get_storage_path(filename: str = DEFAULT_FILENAME) -> Path:
     return MicroSD.get_microsd_dir() / filename
 
 
+def fingerprint_for_uid(instance_uid: bytes) -> str:
+    """Hex fingerprint used in per-UID filenames.
+
+    Truncated SHA-256 so the filename does not leak the raw instance UID
+    in FAT directory listings.
+    """
+    if not instance_uid:
+        raise ValueError("instance_uid must not be empty")
+    return hashlib.sha256(bytes(instance_uid)).hexdigest()[:FINGERPRINT_LEN_HEX]
+
+
+def _path_for_uid(instance_uid: bytes, *, base_dir: Optional[Path] = None) -> Path:
+    fp = fingerprint_for_uid(instance_uid)
+    filename = f"{PER_UID_PREFIX}{fp}{PER_UID_SUFFIX}"
+    if base_dir is not None:
+        return base_dir / filename
+    return get_storage_path(filename)
+
+
+@dataclass(frozen=True)
+class StoredFingerprint:
+    """One entry returned by :func:`list_pairings` for the Forget UI."""
+    fingerprint: str  # hex; "" for the legacy single-card file
+    path: Path
+    is_legacy: bool
+
+
+def list_pairings(*, base_dir: Optional[Path] = None) -> List[StoredFingerprint]:
+    """Return all pairing files known to this device.
+
+    Includes the legacy ``keycard_pairing.bin`` if present so the Forget
+    UI can clean it up explicitly.
+    """
+    if base_dir is None:
+        try:
+            base_dir = get_storage_path().parent
+        except Exception:
+            return []
+    out: List[StoredFingerprint] = []
+    if not base_dir.exists():
+        return out
+    for entry in sorted(base_dir.iterdir()):
+        if not entry.is_file():
+            continue
+        name = entry.name
+        if name == DEFAULT_FILENAME:
+            out.append(StoredFingerprint(fingerprint="", path=entry, is_legacy=True))
+        elif name.startswith(PER_UID_PREFIX) and name.endswith(PER_UID_SUFFIX):
+            fp = name[len(PER_UID_PREFIX):-len(PER_UID_SUFFIX)]
+            if len(fp) == FINGERPRINT_LEN_HEX and all(c in "0123456789abcdef" for c in fp):
+                out.append(StoredFingerprint(fingerprint=fp, path=entry, is_legacy=False))
+    return out
+
+
 def save(password: str, pairing: PairingInfo, instance_uid: bytes,
          path: Optional[Path] = None) -> Path:
+    """Persist a pairing.
+
+    With ``path`` explicit (test path) writes there. Otherwise writes to
+    the per-UID file and, if a legacy single-card file exists, removes
+    it so we don't keep stale duplicates.
+    """
     blob = encrypt_pairing(password, pairing, instance_uid)
-    target = path or get_storage_path()
+    if path is None:
+        target = _path_for_uid(instance_uid)
+        legacy = get_storage_path()
+    else:
+        target = path
+        legacy = None
     target.parent.mkdir(parents=True, exist_ok=True)
     tmp = target.with_suffix(target.suffix + ".tmp")
     tmp.write_bytes(blob)
@@ -150,27 +219,99 @@ def save(password: str, pairing: PairingInfo, instance_uid: bytes,
     except Exception:
         # best-effort; vfat (microSD) typically ignores POSIX modes
         pass
+    if legacy is not None and legacy != target and legacy.exists():
+        try:
+            legacy.unlink()
+        except Exception:
+            logger.exception("could not remove legacy pairing file %s", legacy)
     return target
 
 
-def load(password: str, path: Optional[Path] = None) -> Optional[StoredPairing]:
-    target = path or get_storage_path()
-    if not target.exists():
+def load(password: str, instance_uid: Optional[bytes] = None,
+         path: Optional[Path] = None) -> Optional[StoredPairing]:
+    """Load a stored pairing.
+
+    Resolution order:
+    * ``path`` explicit → that file (used by tests).
+    * ``instance_uid`` given → ``_path_for_uid(instance_uid)`` first,
+      then legacy ``keycard_pairing.bin`` if its stored UID matches.
+    * Neither → legacy file (back-compat with old callers).
+
+    Returns ``None`` if no candidate file exists, or if the legacy fallback
+    decodes to a different UID.
+    """
+    if path is not None:
+        if not path.exists():
+            return None
+        try:
+            blob = path.read_bytes()
+        except OSError as exc:
+            raise PairingStorageError(f"could not read {path}: {exc}") from exc
+        return decrypt_pairing(password, blob)
+
+    if instance_uid is not None:
+        target = _path_for_uid(instance_uid)
+        if target.exists():
+            try:
+                blob = target.read_bytes()
+            except OSError as exc:
+                raise PairingStorageError(f"could not read {target}: {exc}") from exc
+            return decrypt_pairing(password, blob)
+        # Fallback to legacy file: only if its embedded UID matches.
+        legacy = get_storage_path()
+        if not legacy.exists():
+            return None
+        try:
+            blob = legacy.read_bytes()
+        except OSError as exc:
+            raise PairingStorageError(f"could not read {legacy}: {exc}") from exc
+        stored = decrypt_pairing(password, blob)
+        if stored.instance_uid != bytes(instance_uid):
+            return None
+        return stored
+
+    # No UID and no path → legacy single-file behaviour.
+    legacy = get_storage_path()
+    if not legacy.exists():
         return None
     try:
-        blob = target.read_bytes()
+        blob = legacy.read_bytes()
     except OSError as exc:
-        raise PairingStorageError(f"could not read {target}: {exc}") from exc
+        raise PairingStorageError(f"could not read {legacy}: {exc}") from exc
     return decrypt_pairing(password, blob)
 
 
-def remove(path: Optional[Path] = None) -> bool:
-    target = path or get_storage_path()
+def remove(instance_uid: Optional[bytes] = None,
+           path: Optional[Path] = None) -> bool:
+    """Remove one stored pairing.
+
+    Resolution order: ``path`` → ``instance_uid`` → legacy file.
+    """
+    if path is not None:
+        target = path
+    elif instance_uid is not None:
+        target = _path_for_uid(instance_uid)
+    else:
+        target = get_storage_path()
     try:
         target.unlink()
         return True
     except FileNotFoundError:
         return False
+
+
+def remove_all(*, base_dir: Optional[Path] = None) -> int:
+    """Remove every pairing file (per-UID + legacy). Returns count removed."""
+    removed = 0
+    for entry in list_pairings(base_dir=base_dir):
+        try:
+            entry.path.unlink()
+            removed += 1
+        except FileNotFoundError:
+            pass
+        except OSError:
+            logger.exception("could not remove pairing file %s", entry.path)
+    return removed
 
 
 def _normalise_password(password: str) -> str:
