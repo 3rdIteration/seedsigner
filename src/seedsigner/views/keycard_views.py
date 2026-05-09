@@ -49,6 +49,7 @@ from seedsigner.helpers.ethereum.ur_codec import (
     EthSignRequest,
 )
 from seedsigner.helpers.keycard.ui_helpers import (
+    classify_card_error,
     extract_pubkey,
     format_path,
     open_unlocked_session,
@@ -173,7 +174,8 @@ class ToolsKeycardStatusView(View):
             client = KeycardClient(connection)
             info = client.select(aid=self.controller.active_keycard_aid)
         except Exception as exc:
-            return _error_destination("Card not reachable", str(exc))
+            title, body = classify_card_error(exc)
+            return _error_destination(title, body)
 
         version = f"{(info.app_version >> 8) & 0xFF}.{info.app_version & 0xFF}"
         text = (
@@ -247,10 +249,12 @@ class ToolsKeycardFactoryResetView(View):
                     "Not supported",
                     "Update applet, or use\nkeycard-shell on PC.",
                 )
-            return _error_destination("Reset failed", str(exc))
+            title, body = classify_card_error(exc, default_title="Reset failed")
+            return _error_destination(title, body)
         except Exception as exc:
             logger.exception("FACTORY_RESET failed")
-            return _error_destination("Reset failed", str(exc))
+            title, body = classify_card_error(exc, default_title="Reset failed")
+            return _error_destination(title, body)
 
         # Drop the device's local state for the now-blank card.
         try:
@@ -333,7 +337,8 @@ class ToolsKeycardInitView(View):
             client.init(pin.encode("ascii"), puk.encode("ascii"), secret)
         except Exception as exc:
             logger.exception("Keycard INIT failed")
-            return _error_destination("INIT failed", str(exc))
+            title, body = classify_card_error(exc, default_title="INIT failed")
+            return _error_destination(title, body)
 
         self.run_screen(
             LargeIconStatusScreen,
@@ -385,7 +390,8 @@ class ToolsKeycardPairView(View):
             select_info = client.select(aid=self.controller.active_keycard_aid)
         except Exception as exc:
             logger.exception("Keycard SELECT failed")
-            return _error_destination("Card not reachable", str(exc))
+            title, body = classify_card_error(exc)
+            return _error_destination(title, body)
 
         instance_uid = bytes(select_info.instance_uid)
         self.controller.last_keycard_uid = instance_uid
@@ -440,7 +446,8 @@ class ToolsKeycardPairView(View):
                     pass
                 _wipe_bytearray(password_buf)
                 logger.exception("Keycard PAIR failed")
-                return _error_destination("PAIR failed", str(exc))
+                title, body = classify_card_error(exc, default_title="PAIR failed")
+                return _error_destination(title, body)
             try:
                 pairing_storage.save(normalised, pairing, instance_uid)
             except Exception:
@@ -560,7 +567,8 @@ class ToolsKeycardForgetCurrentCardView(View):
             _, instance_uid = identify_inserted_card(self)
         except Exception as exc:
             logger.exception("Forget-current SELECT failed")
-            return _error_destination("Card not reachable", str(exc))
+            title, body = classify_card_error(exc)
+            return _error_destination(title, body)
 
         ret = self.run_screen(
             WarningScreen,
@@ -654,7 +662,8 @@ class ToolsKeycardUnpairView(View):
             return Destination(ToolsKeycardPairView)
         except Exception as exc:
             logger.exception("Keycard UNPAIR failed")
-            return _error_destination("UNPAIR failed", str(exc))
+            title, body = classify_card_error(exc, default_title="UNPAIR failed")
+            return _error_destination(title, body)
         finally:
             _wipe_bytearray(pin)
 
@@ -706,7 +715,8 @@ class ToolsKeycardGenerateKeyView(View):
             return Destination(ToolsKeycardPairView)
         except Exception as exc:
             logger.exception("Keycard GENERATE_KEY failed")
-            return _error_destination("Generate failed", str(exc))
+            title, body = classify_card_error(exc, default_title="Generate failed")
+            return _error_destination(title, body)
         finally:
             _wipe_bytearray(pin)
 
@@ -871,7 +881,8 @@ class ToolsKeycardImportSeedView(View):
                 return Destination(ToolsKeycardPairView)
             except Exception as exc:
                 logger.exception("LOAD_KEY failed")
-                return _error_destination("Push failed", str(exc))
+                title, body = classify_card_error(exc, default_title="Push failed")
+                return _error_destination(title, body)
 
             self.run_screen(
                 LargeIconStatusScreen,
@@ -971,7 +982,8 @@ class ToolsKeycardExportPubkeyView(View):
             return Destination(ToolsKeycardPairView)
         except Exception as exc:
             logger.exception("Keycard EXPORT failed")
-            return _error_destination("Export failed", str(exc))
+            title, body = classify_card_error(exc, default_title="Export failed")
+            return _error_destination(title, body)
         finally:
             _wipe_bytearray(pin)
 
@@ -1105,7 +1117,8 @@ class ToolsKeycardInstancesListView(View):
             channel, instances = _open_isd_channel(self.controller)
         except Exception as exc:
             logger.exception("GP list_instances failed")
-            return _error_destination("GP failed", str(exc))
+            title, body = classify_card_error(exc, default_title="GP failed")
+            return _error_destination(title, body)
 
         if not instances:
             text = "No applet instances\nfound."
@@ -1129,7 +1142,8 @@ class ToolsKeycardInstancesSwitchView(View):
             channel, instances = _open_isd_channel(self.controller)
         except Exception as exc:
             logger.exception("GP list_instances failed")
-            return _error_destination("GP failed", str(exc))
+            title, body = classify_card_error(exc, default_title="GP failed")
+            return _error_destination(title, body)
 
         # Filter to AIDs that look like Keycard instances.
         candidates = [
@@ -1182,7 +1196,8 @@ class ToolsKeycardInstancesCreateView(View):
             channel, instances = _open_isd_channel(self.controller)
         except Exception as exc:
             logger.exception("GP open failed")
-            return _error_destination("GP failed", str(exc))
+            title, body = classify_card_error(exc, default_title="GP failed")
+            return _error_destination(title, body)
 
         existing_aids = [i.aid for i in instances]
         try:
@@ -1210,7 +1225,8 @@ class ToolsKeycardInstancesCreateView(View):
             )
         except Exception as exc:
             logger.exception("INSTALL [for install] failed")
-            return _error_destination("Install failed", str(exc))
+            title, body = classify_card_error(exc, default_title="Install failed")
+            return _error_destination(title, body)
 
         self.run_screen(
             LargeIconStatusScreen,
@@ -1233,7 +1249,8 @@ class ToolsKeycardInstancesDeleteView(View):
             channel, instances = _open_isd_channel(self.controller)
         except Exception as exc:
             logger.exception("GP open failed")
-            return _error_destination("GP failed", str(exc))
+            title, body = classify_card_error(exc, default_title="GP failed")
+            return _error_destination(title, body)
 
         candidates = [
             i for i in instances if i.aid.startswith(KEYCARD_APPLET_AID)
@@ -1272,7 +1289,8 @@ class ToolsKeycardInstancesDeleteView(View):
             delete_aid(channel, target, with_related=True)
         except Exception as exc:
             logger.exception("DELETE failed")
-            return _error_destination("Delete failed", str(exc))
+            title, body = classify_card_error(exc, default_title="Delete failed")
+            return _error_destination(title, body)
 
         # Drop any cached pairing whose previously-observed UID we
         # can't tie to this AID. Best-effort: we don't know the
@@ -1401,9 +1419,8 @@ class ToolsKeycardSignEthFinalizeView(View):
             logger.exception("Keycard signing failed")
             self.controller.eth_sign_request = None
             self.controller.eth_signature = None
-            return _error_destination(
-                "Signing failed", str(exc), return_to_main=True,
-            )
+            title, body = classify_card_error(exc, default_title="Signing failed")
+            return _error_destination(title, body, return_to_main=True)
         finally:
             _wipe_bytearray(pin)
 

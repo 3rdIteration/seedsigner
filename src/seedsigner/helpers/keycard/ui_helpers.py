@@ -201,3 +201,63 @@ def identify_inserted_card(parent_view: "View") -> Tuple["KeycardClient", bytes]
     uid = bytes(info.instance_uid)
     parent_view.controller.last_keycard_uid = uid
     return client, uid
+
+
+def classify_card_error(
+    exc: BaseException,
+    *,
+    default_title: str = "Card error",
+) -> Tuple[str, str]:
+    """Map a Keycard-flow exception to a user-friendly ``(title, body)``.
+
+    The view layer uses this to avoid two recurring UX bugs:
+
+    1. A successful ``wait_for_card`` followed by an ``APDUError`` with
+       SW=0x6A82 (applet not at active AID) used to be reported as
+       "Card not reachable" — misleading: the card *is* reachable.
+    2. A no-card timeout used to render ``str(exc)`` ("card not
+       reachable; reseat and retry") into the body of a screen whose
+       title was already "Card not reachable" — duplicated wording.
+
+    Bodies are kept to ≤2 lines / ~60 chars per line so they fit the
+    ``KeycardErrorView`` (truncated to 120 chars by the view).
+
+    ``default_title`` is what the caller wants for "I don't know what
+    went wrong" — usually the operation name, e.g. ``"Generate failed"``
+    or ``"Signing failed"``. It's overridden when this function
+    recognises a specific failure mode.
+    """
+    from seedsigner.helpers.iso7816 import ISO7816_STATUS_WORDS
+    from seedsigner.helpers.keycard import KeycardCardChangedError
+    from seedsigner.helpers.keycard.commands import APDUError
+    from seedsigner.helpers.keycard.pairing_storage import PairingStorageError
+    from seedsigner.helpers.keycard.reader import NoCardError, NoReaderError
+    from seedsigner.helpers.keycard.secure_channel import SecureChannelError
+
+    if isinstance(exc, NoReaderError):
+        return ("No reader", "Connect a card reader\nand retry.")
+    if isinstance(exc, NoCardError):
+        return ("No card", "Insert a card and retry.")
+    if isinstance(exc, KeycardCardChangedError):
+        return ("Card changed", "Pair the inserted card\nfirst.")
+    if isinstance(exc, SecureChannelError):
+        return ("Pairing failed", "Secure channel could\nnot be opened.")
+    if isinstance(exc, PairingStorageError):
+        return ("Storage error", str(exc)[:100])
+    if isinstance(exc, APDUError):
+        sw = exc.sw
+        if sw == 0x6A82:
+            return ("Applet not found",
+                    "Try Manage instances\nto switch active AID.")
+        if sw in (0x6982, 0x6985):
+            return ("Card refused",
+                    f"Auth/condition not met\n(SW={sw:04X}).")
+        if (sw & 0xFFF0) == 0x63C0:
+            tries = sw & 0x000F
+            return ("Wrong PIN", f"{tries} tries left.")
+        if (sw & 0xFF00) == 0x6D00:
+            return ("Not supported",
+                    "Card does not implement\nthis op.")
+        short = ISO7816_STATUS_WORDS.get(sw, "Card error")
+        return (default_title, f"SW={sw:04X}\n{short}"[:100])
+    return (default_title, str(exc)[:100])

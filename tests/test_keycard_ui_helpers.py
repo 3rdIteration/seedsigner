@@ -196,6 +196,125 @@ class TestIdentifyInsertedCard(unittest.TestCase):
         self.assertEqual(view.controller.last_keycard_uid, b"\xBB" * 16)
 
 
+class TestClassifyCardError(unittest.TestCase):
+    """``classify_card_error`` maps raw exceptions from a Keycard flow
+    onto user-friendly ``(title, body)`` pairs so the UI doesn't show
+    misleading "Card not reachable" titles for, e.g., a successful
+    SELECT that returned SW=0x6A82 (applet not at active AID)."""
+
+    def test_no_reader(self):
+        from seedsigner.helpers.keycard.reader import NoReaderError
+        from seedsigner.helpers.keycard.ui_helpers import classify_card_error
+        title, body = classify_card_error(NoReaderError("none"))
+        self.assertEqual(title, "No reader")
+        self.assertIn("Connect", body)
+
+    def test_no_card(self):
+        from seedsigner.helpers.keycard.reader import NoCardError
+        from seedsigner.helpers.keycard.ui_helpers import classify_card_error
+        title, body = classify_card_error(NoCardError("timeout"))
+        self.assertEqual(title, "No card")
+        self.assertIn("Insert", body)
+
+    def test_card_changed(self):
+        from seedsigner.helpers.keycard import KeycardCardChangedError
+        from seedsigner.helpers.keycard.ui_helpers import classify_card_error
+        title, body = classify_card_error(KeycardCardChangedError(b"\xAA" * 16))
+        self.assertEqual(title, "Card changed")
+        self.assertIn("Pair", body)
+
+    def test_secure_channel_error(self):
+        from seedsigner.helpers.keycard.secure_channel import SecureChannelError
+        from seedsigner.helpers.keycard.ui_helpers import classify_card_error
+        title, body = classify_card_error(SecureChannelError("mac mismatch"))
+        self.assertEqual(title, "Pairing failed")
+        self.assertIn("Secure channel", body)
+
+    def test_pairing_storage_error(self):
+        from seedsigner.helpers.keycard.pairing_storage import PairingStorageError
+        from seedsigner.helpers.keycard.ui_helpers import classify_card_error
+        title, body = classify_card_error(PairingStorageError("corrupt blob"))
+        self.assertEqual(title, "Storage error")
+        self.assertEqual(body, "corrupt blob")
+
+    def test_apdu_applet_not_found(self):
+        """SW=0x6A82 is the headline bug: card *is* reachable, applet
+        is not at the active AID. Should NOT say 'Card not reachable'."""
+        from seedsigner.helpers.keycard.commands import APDUError
+        from seedsigner.helpers.keycard.ui_helpers import classify_card_error
+        title, body = classify_card_error(APDUError(0x6A82, "File not found"))
+        self.assertEqual(title, "Applet not found")
+        self.assertIn("Manage instances", body)
+
+    def test_apdu_security_status(self):
+        from seedsigner.helpers.keycard.commands import APDUError
+        from seedsigner.helpers.keycard.ui_helpers import classify_card_error
+        title, body = classify_card_error(APDUError(0x6982, "Security status"))
+        self.assertEqual(title, "Card refused")
+        self.assertIn("6982", body)
+
+    def test_apdu_conditions_of_use(self):
+        from seedsigner.helpers.keycard.commands import APDUError
+        from seedsigner.helpers.keycard.ui_helpers import classify_card_error
+        title, _ = classify_card_error(APDUError(0x6985, "Conditions of use"))
+        self.assertEqual(title, "Card refused")
+
+    def test_apdu_wrong_pin_with_tries_left(self):
+        from seedsigner.helpers.keycard.commands import APDUError
+        from seedsigner.helpers.keycard.ui_helpers import classify_card_error
+        title, body = classify_card_error(APDUError(0x63C2, "Wrong PIN"))
+        self.assertEqual(title, "Wrong PIN")
+        self.assertIn("2 tries left", body)
+
+    def test_apdu_not_supported(self):
+        from seedsigner.helpers.keycard.commands import APDUError
+        from seedsigner.helpers.keycard.ui_helpers import classify_card_error
+        title, body = classify_card_error(APDUError(0x6D00, "INS not supported"))
+        self.assertEqual(title, "Not supported")
+        self.assertIn("not implement", body)
+
+    def test_apdu_other_uses_default_title(self):
+        from seedsigner.helpers.keycard.commands import APDUError
+        from seedsigner.helpers.keycard.ui_helpers import classify_card_error
+        title, body = classify_card_error(
+            APDUError(0x6A80, "Bad params"),
+            default_title="Generate failed",
+        )
+        self.assertEqual(title, "Generate failed")
+        self.assertIn("6A80", body)
+
+    def test_unknown_exception_uses_default_title(self):
+        from seedsigner.helpers.keycard.ui_helpers import classify_card_error
+        title, body = classify_card_error(
+            RuntimeError("kaboom"),
+            default_title="Signing failed",
+        )
+        self.assertEqual(title, "Signing failed")
+        self.assertEqual(body, "kaboom")
+
+    def test_default_title_default_value(self):
+        from seedsigner.helpers.keycard.ui_helpers import classify_card_error
+        title, _ = classify_card_error(RuntimeError("x"))
+        self.assertEqual(title, "Card error")
+
+    def test_body_truncated_to_100_chars(self):
+        from seedsigner.helpers.keycard.ui_helpers import classify_card_error
+        long_msg = "x" * 250
+        _, body = classify_card_error(RuntimeError(long_msg))
+        self.assertEqual(len(body), 100)
+
+    def test_apdu_success_falls_through_to_default(self):
+        """0x9000 should never reach this helper, but if it does we
+        must not crash and must fall back to the default title."""
+        from seedsigner.helpers.keycard.commands import APDUError
+        from seedsigner.helpers.keycard.ui_helpers import classify_card_error
+        title, _ = classify_card_error(
+            APDUError(0x9000, "Success"),
+            default_title="Generate failed",
+        )
+        self.assertEqual(title, "Generate failed")
+
+
 class TestPromptForPinKeyboard(unittest.TestCase):
     """``prompt_for_pin`` should open the digits keyboard, not abc."""
 
