@@ -220,4 +220,13 @@ class ToolsStealthBootConfirmRecordView(View):
             show_back_button=False,
             button_data=[ButtonOption("OK")],
         )
-        return Destination(ToolsStealthBootView, skip_current_view=True)
+        # Collapse the recording flow off the back stack: drop everything
+        # pushed since (and including) the previous ToolsStealthBootView so
+        # that DONE/Back from the menu returns to the parent (Tools), not
+        # back into the Record screen.
+        back_stack = self.controller.back_stack
+        for i in range(len(back_stack) - 1, -1, -1):
+            if back_stack[i].View_cls == ToolsStealthBootView:
+                del back_stack[i + 1:]
+                break
+        return Destination(ToolsStealthBootView)
