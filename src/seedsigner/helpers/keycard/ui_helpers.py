@@ -114,7 +114,10 @@ def prompt_for_pin(parent_view: "View", title: str) -> Optional[bytearray]:
     from seedsigner.gui.screens import seed_screens
 
     while True:
-        ret = seed_screens.SeedAddPassphraseScreen(title=title).display()
+        ret = seed_screens.SeedAddPassphraseScreen(
+            title=title,
+            initial_keyboard=seed_screens.SeedAddPassphraseScreen.KEYBOARD__DIGITS_BUTTON_TEXT,
+        ).display()
         if isinstance(ret, dict) and "is_back_button" in ret:
             return None
         pin_str = ret.get("passphrase", "") if isinstance(ret, dict) else ""

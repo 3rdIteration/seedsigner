@@ -196,5 +196,36 @@ class TestIdentifyInsertedCard(unittest.TestCase):
         self.assertEqual(view.controller.last_keycard_uid, b"\xBB" * 16)
 
 
+class TestPromptForPinKeyboard(unittest.TestCase):
+    """``prompt_for_pin`` should open the digits keyboard, not abc."""
+
+    def test_passes_digits_initial_keyboard(self):
+        from seedsigner.gui.screens import seed_screens
+        from seedsigner.helpers.keycard import ui_helpers
+
+        expected_digits_const = seed_screens.SeedAddPassphraseScreen.KEYBOARD__DIGITS_BUTTON_TEXT
+        captured = {}
+
+        class FakeScreen:
+            # Mirror the keyboard-mode constants so the class-attribute
+            # lookup in prompt_for_pin still resolves after we patch the
+            # class binding on seed_screens.
+            KEYBOARD__DIGITS_BUTTON_TEXT = expected_digits_const
+
+            def __init__(self, *args, **kwargs):
+                captured["kwargs"] = kwargs
+
+            def display(self):
+                # Simulate user backing out so prompt_for_pin returns None.
+                return {"is_back_button": True}
+
+        with patch.object(seed_screens, "SeedAddPassphraseScreen", FakeScreen):
+            result = ui_helpers.prompt_for_pin(MagicMock(), "Card PIN")
+
+        self.assertIsNone(result)
+        self.assertEqual(captured["kwargs"].get("initial_keyboard"), expected_digits_const)
+        self.assertEqual(captured["kwargs"].get("title"), "Card PIN")
+
+
 if __name__ == "__main__":
     unittest.main()

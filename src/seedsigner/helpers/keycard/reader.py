@@ -1,10 +1,14 @@
-"""PC/SC reader discovery and connection helpers for Keycard."""
+"""PC/SC reader discovery and connection helpers for Keycard.
+
+Uses ``CardRequest.waitforcard()`` (event-based, ``SCardGetStatusChange``
+under the hood) to wait for any reader to report a card -- the same
+primitive ``keycard-cli`` and ``keycard-shell`` use. This handles
+multi-slot readers (ID-1 + ID-000/SIM) without polling.
+"""
 
 from __future__ import annotations
 
 import logging
-import time
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -22,26 +26,26 @@ def list_readers():
     return list(_readers())
 
 
-def wait_for_card(timeout_s: float = 5.0, poll_interval: float = 0.2):
-    """Connect to the first reader that has a card present, or time out."""
-    deadline = time.time() + timeout_s
-    last_error: Optional[Exception] = None
+def wait_for_card(timeout_s: float = 15.0):
+    """Block until any attached reader detects a card, or time out.
 
-    while time.time() < deadline:
-        readers = list_readers()
-        if not readers:
-            last_error = NoReaderError("no smart card readers found")
-            time.sleep(poll_interval)
-            continue
-        for reader in readers:
-            try:
-                conn = reader.createConnection()
-                conn.connect()
-                return conn
-            except Exception as exc:
-                last_error = exc
-                continue
-        time.sleep(poll_interval)
-    if last_error is not None:
-        raise NoCardError(f"no card detected within {timeout_s}s: {last_error}")
-    raise NoCardError(f"no card detected within {timeout_s}s")
+    Event-driven via PC/SC ``SCardGetStatusChange`` -- watches all
+    readers simultaneously, so multi-slot hardware works out of the
+    box. Raises :class:`NoReaderError` when no reader is attached and
+    :class:`NoCardError` when the timeout elapses.
+    """
+    from smartcard.CardRequest import CardRequest
+    from smartcard.CardType import AnyCardType
+    from smartcard.Exceptions import CardRequestTimeoutException
+
+    if not list_readers():
+        raise NoReaderError("no smart card readers found")
+
+    try:
+        request = CardRequest(timeout=timeout_s, cardType=AnyCardType())
+        service = request.waitforcard()
+    except CardRequestTimeoutException as exc:
+        raise NoCardError(f"no card detected within {timeout_s}s") from exc
+
+    service.connection.connect()
+    return service.connection

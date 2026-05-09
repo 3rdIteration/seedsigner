@@ -1015,7 +1015,11 @@ class SeedAddPassphraseScreen(BaseTopNavScreen):
                             input = Keyboard.ENTER_TOP
                         else:
                             input = Keyboard.ENTER_BOTTOM
-                    elif input in [HardwareButtonsConstants.KEY_LEFT, HardwareButtonsConstants.KEY_RIGHT] and self.top_nav.is_selected:
+                    elif input == HardwareButtonsConstants.KEY_LEFT and self.top_nav.is_selected:
+                        # Treat LEFT on the back-arrow as "go back" so the
+                        # user does not have to navigate UP+PRESS to exit.
+                        return dict(passphrase=self.passphrase, is_back_button=True)
+                    elif input == HardwareButtonsConstants.KEY_RIGHT and self.top_nav.is_selected:
                         # ignore
                         continue
 
@@ -2161,7 +2165,10 @@ class SeedEncryptedQRMnemonicIDScreen(BaseTopNavScreen):
                             input = Keyboard.ENTER_TOP
                         else:
                             input = Keyboard.ENTER_BOTTOM
-                    elif input in [HardwareButtonsConstants.KEY_LEFT, HardwareButtonsConstants.KEY_RIGHT] and self.top_nav.is_selected:
+                    elif input == HardwareButtonsConstants.KEY_LEFT and self.top_nav.is_selected:
+                        # Treat LEFT on the back-arrow as "go back".
+                        return dict(mnemonic_id=self.mnemonic_id, is_back_button=True)
+                    elif input == HardwareButtonsConstants.KEY_RIGHT and self.top_nav.is_selected:
                         # ignore
                         continue
 

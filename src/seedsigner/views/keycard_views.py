@@ -1412,7 +1412,11 @@ class ToolsKeycardSignEthQrDisplayView(View):
 
 
 def _error_destination(title: str, message: str) -> Destination:
-    return Destination(KeycardErrorView, view_args={"title": title, "message": message})
+    return Destination(
+        KeycardErrorView,
+        view_args={"title": title, "message": message},
+        skip_current_view=True,
+    )
 
 
 class KeycardErrorView(View):
