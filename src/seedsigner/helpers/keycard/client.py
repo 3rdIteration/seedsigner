@@ -57,6 +57,14 @@ class KeycardClient:
     def init(self, pin: bytes, puk: bytes, pairing_secret: bytes) -> None:
         self.transmit(commands.init(pin, puk, pairing_secret))
 
+    def factory_reset(self) -> None:
+        """Wipe the card. No secure channel required.
+
+        Raises ``APDUError`` (typically SW=``0x6D00`` "instruction not
+        supported") if the applet version doesn't expose this command.
+        """
+        self.transmit(commands.factory_reset())
+
     def pair(self, pairing_secret: bytes) -> PairingInfo:
         client_challenge = crypto.random_bytes(32)
         resp1 = self.transmit(commands.pair_step1(client_challenge))
@@ -119,6 +127,21 @@ class KeycardClient:
 
     def generate_key(self) -> bytes:
         return self._transmit_protected(commands.INS_GENERATE_KEY, 0x00, 0x00)
+
+    def load_bip39_seed(self, seed64: bytes) -> None:
+        """Push a 64-byte BIP-39 seed to the card via LOAD KEY P1=0x02.
+
+        Requires an open secure channel and a verified PIN. The card
+        replaces any existing master key.
+        """
+        if len(seed64) != 64:
+            raise ValueError("BIP-39 seed must be exactly 64 bytes")
+        self._transmit_protected(
+            commands.INS_LOAD_KEY,
+            commands.LOAD_KEY_P1_BIP39_SEED,
+            0x00,
+            bytes(seed64),
+        )
 
     def remove_key(self) -> None:
         self._transmit_protected(commands.INS_REMOVE_KEY, 0x00, 0x00)

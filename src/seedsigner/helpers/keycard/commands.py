@@ -37,6 +37,17 @@ INS_SET_PINLESS_PATH = 0xC1
 INS_EXPORT_KEY = 0xC2
 INS_GET_STATUS = 0xF2
 INS_INIT = 0xFE
+INS_FACTORY_RESET = 0xFD
+
+# FACTORY_RESET requires fixed magic bytes in P1/P2 to defeat accidental
+# triggers (Status Keycard convention; see KeycardApplet.java).
+FACTORY_RESET_P1_MAGIC = 0xAA
+FACTORY_RESET_P2_MAGIC = 0x55
+
+# LOAD KEY P1 (key import format)
+LOAD_KEY_P1_EXTENDED_PRIVKEY = 0x01
+LOAD_KEY_P1_BIP39_SEED = 0x02
+LOAD_KEY_P1_PUBKEY_DERIVATION = 0x03
 
 # DERIVE KEY P1 source
 DERIVE_P1_FROM_MASTER = 0x00
@@ -89,6 +100,18 @@ def identify_card(challenge: bytes) -> List[int]:
     if len(challenge) != 32:
         raise ValueError("IDENTIFY requires a 32-byte challenge")
     return build_apdu(CLA_PROPRIETARY, INS_IDENTIFY_CARD, 0x00, 0x00, challenge)
+
+
+def factory_reset() -> List[int]:
+    """Wipe PIN, PUK, pairings and master key from the card.
+
+    Cleartext command (does NOT require an open secure channel). The
+    fixed magic in P1/P2 is the on-card sanity check.
+    """
+    return build_apdu(
+        CLA_PROPRIETARY, INS_FACTORY_RESET,
+        FACTORY_RESET_P1_MAGIC, FACTORY_RESET_P2_MAGIC,
+    )
 
 
 def init(pin: bytes, puk: bytes, pairing_secret: bytes) -> List[int]:
@@ -149,6 +172,26 @@ def change_pin(p1: int, new_secret: bytes) -> List[int]:
 
 def generate_key() -> List[int]:
     return build_apdu(CLA_PROPRIETARY, INS_GENERATE_KEY, 0x00, 0x00)
+
+
+def load_bip39_seed(seed64: bytes) -> List[int]:
+    """LOAD KEY APDU for the 64-byte BIP-39 seed.
+
+    The card derives the master key on-card from the supplied seed
+    (HMAC-SHA512 with the standard "Bitcoin seed" key per BIP-32).
+
+    The APDU is sent over the secure channel (the caller must have
+    verified the PIN). The CLA is the *plaintext* proprietary class
+    here; the secure channel wrapper switches it to ``CLA_PROTECTED``
+    when the call goes through ``_transmit_protected``.
+    """
+    if len(seed64) != 64:
+        raise ValueError("BIP-39 seed must be exactly 64 bytes")
+    return build_apdu(
+        CLA_PROPRIETARY, INS_LOAD_KEY,
+        LOAD_KEY_P1_BIP39_SEED, 0x00,
+        bytes(seed64),
+    )
 
 
 def remove_key() -> List[int]:

@@ -58,6 +58,7 @@ from seedsigner.helpers.keycard.ui_helpers import (
 )
 from seedsigner.helpers.secure_delete import wipe_string
 from seedsigner.models.encode_qr import EthSignatureQrEncoder
+from seedsigner.models.settings_definition import SettingsConstants
 from seedsigner.views.view import (
     BackStackView, Destination, MainMenuView, NotYetImplementedView, View,
 )
@@ -96,7 +97,9 @@ class ToolsKeycardMenuView(View):
     FORGET = ButtonOption("Forget saved pairing")
     UNPAIR = ButtonOption("Unpair (this device)")
     GENERATE_KEY = ButtonOption("Generate key on card")
+    IMPORT_SEED = ButtonOption("Import seedphrase to card")
     INIT = ButtonOption("Initialise blank card")
+    FACTORY_RESET = ButtonOption("Factory reset card")
     STATUS = ButtonOption("Card status")
 
     def run(self):
@@ -107,7 +110,9 @@ class ToolsKeycardMenuView(View):
             self.FORGET,
             self.UNPAIR,
             self.GENERATE_KEY,
+            self.IMPORT_SEED,
             self.INIT,
+            self.FACTORY_RESET,
             self.STATUS,
         ]
         selected = self.run_screen(
@@ -132,8 +137,12 @@ class ToolsKeycardMenuView(View):
             return Destination(ToolsKeycardUnpairView)
         if chosen == self.GENERATE_KEY:
             return Destination(ToolsKeycardGenerateKeyView)
+        if chosen == self.IMPORT_SEED:
+            return Destination(ToolsKeycardImportSeedView)
         if chosen == self.INIT:
             return Destination(ToolsKeycardInitView)
+        if chosen == self.FACTORY_RESET:
+            return Destination(ToolsKeycardFactoryResetView)
         if chosen == self.STATUS:
             return Destination(ToolsKeycardStatusView)
         return Destination(NotYetImplementedView)
@@ -174,6 +183,81 @@ class ToolsKeycardStatusView(View):
             button_data=[ButtonOption("OK")],
         )
         return Destination(BackStackView)
+
+
+# ---------------------------------------------------------------------------
+# Factory reset (wipe card)
+# ---------------------------------------------------------------------------
+
+
+class ToolsKeycardFactoryResetView(View):
+    """Wipe everything on the card: PIN, PUK, pairings, master key.
+
+    The applet supports this on Status firmware revisions that include
+    INS_FACTORY_RESET (0xFD). On older applets the call returns
+    `0x6D00` "instruction not supported"; we surface that with a
+    pointer to keycard-shell as a fallback.
+
+    On success we also drop the device's persisted pairing storage and
+    in-memory cache: nothing on this device should reference the now-
+    blank card any more.
+    """
+
+    CONFIRM = ButtonOption("Wipe card")
+
+    def run(self):
+        try:
+            from seedsigner.helpers.keycard import pairing_storage
+            from seedsigner.helpers.keycard.client import KeycardClient
+            from seedsigner.helpers.keycard.commands import APDUError
+            from seedsigner.helpers.keycard.reader import wait_for_card
+        except ImportError as exc:
+            return _error_destination("Keycard support unavailable", str(exc))
+
+        ret = self.run_screen(
+            DireWarningScreen,
+            title="Factory reset?",
+            status_headline=None,
+            text="Wipes EVERYTHING on the\ncard. Cannot be undone.",
+            show_back_button=True,
+            button_data=[self.CONFIRM],
+        )
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        try:
+            connection = wait_for_card(timeout_s=5.0)
+            client = KeycardClient(connection)
+            client.select()
+            client.factory_reset()
+        except APDUError as exc:
+            logger.warning("FACTORY_RESET unsupported: %s", exc)
+            if (exc.sw & 0xFF00) == 0x6D00:
+                return _error_destination(
+                    "Not supported",
+                    "Update applet, or use\nkeycard-shell on PC.",
+                )
+            return _error_destination("Reset failed", str(exc))
+        except Exception as exc:
+            logger.exception("FACTORY_RESET failed")
+            return _error_destination("Reset failed", str(exc))
+
+        # Drop the device's local state for the now-blank card.
+        try:
+            pairing_storage.remove_all()
+        except Exception:
+            logger.exception("could not clear local pairings after factory reset")
+        self.controller.forget_all_pairings()
+
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Card wiped",
+            status_headline=None,
+            text="Run Init to reuse it.",
+            show_back_button=False,
+            button_data=[ButtonOption("OK")],
+        )
+        return Destination(ToolsKeycardMenuView)
 
 
 # ---------------------------------------------------------------------------
@@ -619,6 +703,232 @@ class ToolsKeycardGenerateKeyView(View):
             button_data=[ButtonOption("OK")],
         )
         return Destination(ToolsKeycardMenuView)
+
+
+# ---------------------------------------------------------------------------
+# Import seedphrase to card (LOAD_KEY P1=BIP39_SEED)
+# ---------------------------------------------------------------------------
+
+
+class ToolsKeycardImportSeedView(View):
+    """Push a BIP-39 seedphrase onto the card via LOAD_KEY P1=0x02.
+
+    Threat model
+    ------------
+    Unlike the standard SeedSigner Tools flows, this view sends the
+    seed bytes off-device — encrypted under the secure channel — to the
+    card. After the card ACKs, the only persistent copy is in the card.
+    A compromised reader or a clone of the card observed at this exact
+    moment could harvest the seed; the model is the same as
+    ``keycard-shell load`` on a PC.
+
+    The seed and mnemonic are NEVER stored in
+    ``controller.in_memory_seeds`` and never reach disk. The flow lives
+    in this single view so a try/finally guarantees the wipe of every
+    intermediate buffer (mnemonic, passphrase, 64-byte seed, PIN) on
+    every exit path.
+
+    Wipes are best-effort given Python's GC; users should treat seizure
+    in the middle of an import as a likely seed compromise.
+    """
+
+    SCAN = ButtonOption("Scan SeedQR")
+    TYPE_12 = ButtonOption("Type 12 words")
+    TYPE_24 = ButtonOption("Type 24 words")
+    CONFIRM = ButtonOption("Push to card")
+    SKIP_PASSPHRASE = ButtonOption("No passphrase")
+    SET_PASSPHRASE = ButtonOption("Set passphrase")
+
+    def run(self):
+        from seedsigner.helpers.keycard import KeycardCardChangedError
+
+        # 1. Strong warning + confirm to enter the flow.
+        warn_ret = self.run_screen(
+            DireWarningScreen,
+            title="Import to card?",
+            status_headline=None,
+            text="Seed leaves device once,\nencrypted to card. Replaces\nany existing key on card.",
+            show_back_button=True,
+            button_data=[ButtonOption("Continue")],
+        )
+        if warn_ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        # 2. Pick the input method.
+        button_data = [self.SCAN, self.TYPE_12, self.TYPE_24]
+        choice_ret = self.run_screen(
+            ButtonListScreen,
+            title="Source",
+            is_button_text_centered=False,
+            button_data=button_data,
+            show_back_button=True,
+        )
+        if choice_ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        choice = button_data[choice_ret]
+
+        # Buffers we must wipe on every exit path.
+        words: list = []
+        passphrase_buf = bytearray()
+        seed64 = bytearray(64)
+        pin: Optional[bytearray] = None
+
+        try:
+            # 3. Capture the mnemonic.
+            if choice == self.SCAN:
+                phrase = self._capture_via_scan()
+            else:
+                num_words = 12 if choice == self.TYPE_12 else 24
+                phrase = self._capture_via_keyboard(num_words)
+            if phrase is None:
+                return Destination(BackStackView)
+            # Copy each word into a freshly-allocated string so wipes
+            # never touch the BIP-39 wordlist (see CLAUDE.md guidance).
+            words = ["".join(w) for w in phrase]
+
+            # 4. Validate checksum via embit.
+            from embit import bip39, bip32
+            mnemonic = " ".join(words)
+            try:
+                bip39.mnemonic_to_seed(mnemonic, password="")
+            except Exception:
+                return _error_destination("Invalid seed",
+                                          "Checksum failed.")
+
+            # 5. Optional passphrase.
+            pp_choice_data = [self.SKIP_PASSPHRASE, self.SET_PASSPHRASE]
+            pp_choice = self.run_screen(
+                ButtonListScreen,
+                title="Passphrase?",
+                is_button_text_centered=False,
+                button_data=pp_choice_data,
+                show_back_button=True,
+            )
+            if pp_choice == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+            passphrase = ""
+            if pp_choice_data[pp_choice] == self.SET_PASSPHRASE:
+                got = _prompt_for_text(self, "Passphrase", max_len=80)
+                if got is None:
+                    return Destination(BackStackView)
+                passphrase_buf.extend(got.encode("utf-8"))
+                try:
+                    wipe_string(got)
+                except Exception:
+                    pass
+                try:
+                    passphrase = passphrase_buf.decode("utf-8")
+                except Exception as exc:
+                    return _error_destination("Bad passphrase", str(exc))
+
+            # 6. Compute seed + master fingerprint for confirmation.
+            try:
+                derived = bip39.mnemonic_to_seed(mnemonic, password=passphrase)
+                seed64[:] = derived
+                root = bip32.HDKey.from_seed(bytes(seed64))
+                fingerprint = root.my_fingerprint.hex()
+            except Exception as exc:
+                logger.exception("seed derivation failed")
+                return _error_destination("Derive failed", str(exc))
+
+            # 7. Confirmation screen showing master fingerprint.
+            confirm_ret = self.run_screen(
+                WarningScreen,
+                title="Push?",
+                status_headline=None,
+                text=f"Master fp:\n{fingerprint}\nVerify before push.",
+                show_back_button=True,
+                button_data=[self.CONFIRM],
+            )
+            if confirm_ret == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+
+            # 8. PIN + push.
+            pin = _prompt_for_pin(self, "Card PIN")
+            if pin is None:
+                return Destination(BackStackView)
+
+            try:
+                client, _ = _open_unlocked_session(self, pin)
+                client.load_bip39_seed(bytes(seed64))
+            except KeycardCardChangedError:
+                return Destination(ToolsKeycardPairView)
+            except Exception as exc:
+                logger.exception("LOAD_KEY failed")
+                return _error_destination("Push failed", str(exc))
+
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Wallet imported",
+                status_headline=None,
+                text=f"Master fp:\n{fingerprint}",
+                show_back_button=False,
+                button_data=[ButtonOption("OK")],
+            )
+            return Destination(ToolsKeycardMenuView)
+        finally:
+            # Best-effort wipe of every intermediate secret.
+            for i in range(len(words)):
+                try:
+                    wipe_string(words[i])
+                except Exception:
+                    pass
+            _wipe_bytearray(passphrase_buf)
+            _wipe_bytearray(seed64)
+            _wipe_bytearray(pin)
+
+    # ---- input capture helpers ----
+
+    def _capture_via_scan(self) -> Optional[list]:
+        """Scan a SeedQR / Compact SeedQR / mnemonic QR.
+
+        Returns the list of BIP-39 words on success, ``None`` on
+        back-out, or raises a Destination via _error_destination on
+        invalid payloads (caller handles via try/except).
+        """
+        from seedsigner.gui.screens.scan_screens import ScanScreen
+        from seedsigner.models.decode_qr import DecodeQR
+
+        decoder = DecodeQR()
+        self.run_screen(
+            ScanScreen,
+            instructions_text="Scan SeedQR",
+            decoder=decoder,
+        )
+        time.sleep(0.1)
+        if not decoder.is_complete:
+            return None
+        if not decoder.is_seed:
+            raise RuntimeError("Not a seed QR")
+        phrase = decoder.get_seed_phrase()
+        if not phrase or len(phrase) not in (12, 18, 21, 24):
+            raise RuntimeError(f"Unexpected seed length: {len(phrase) if phrase else 0}")
+        return list(phrase)
+
+    def _capture_via_keyboard(self, num_words: int) -> Optional[list]:
+        """Capture ``num_words`` words via the on-screen keyboard."""
+        from seedsigner.gui.screens import seed_screens
+        from seedsigner.models.seed import Seed
+
+        wordlist = Seed.get_wordlist(
+            wordlist_language_code=self.settings.get_value(
+                SettingsConstants.SETTING__WORDLIST_LANGUAGE,
+            ),
+        )
+        words: list = []
+        for i in range(num_words):
+            ret = self.run_screen(
+                seed_screens.SeedMnemonicEntryScreen,
+                title=f"Word #{i + 1}",
+                initial_letters=["a"],
+                wordlist=wordlist,
+            )
+            if ret == RET_CODE__BACK_BUTTON:
+                return None
+            if not isinstance(ret, str) or not ret:
+                return None
+            words.append(ret)
+        return words
 
 
 # ---------------------------------------------------------------------------
