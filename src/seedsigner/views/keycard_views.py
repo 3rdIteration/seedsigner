@@ -27,7 +27,7 @@ from __future__ import annotations
 import logging
 import time
 import unicodedata
-from typing import Optional
+from typing import Optional, Tuple
 
 from seedsigner.gui.screens import (
     RET_CODE__BACK_BUTTON,
@@ -50,11 +50,13 @@ from seedsigner.helpers.ethereum.ur_codec import (
 )
 from seedsigner.helpers.keycard.ui_helpers import (
     classify_card_error,
+    extract_extended_pubkey,
     extract_pubkey,
     format_path,
     open_unlocked_session,
     prompt_for_pin,
     prompt_for_text,
+    select_with_autodetect,
     wipe_bytearray,
 )
 from seedsigner.helpers.secure_delete import wipe_string
@@ -85,6 +87,11 @@ DATA_TYPE_LABELS = {
 PIN_LENGTH = 6
 PUK_LENGTH = 12
 
+# Pairing password baked into cards initialised by keycard-shell /
+# keycard-cli (the typical "stock" state). Tried silently before the
+# user is prompted, so unmodified cards Just Work without ceremony.
+DEFAULT_PAIRING_PASSWORD = "KeycardDefaultPairing"
+
 
 # ---------------------------------------------------------------------------
 # Menu
@@ -93,7 +100,7 @@ PUK_LENGTH = 12
 
 class ToolsKeycardMenuView(View):
     SIGN_ETH = ButtonOption("Sign ETH transaction")
-    EXPORT_PUBKEY = ButtonOption("Export ETH address")
+    EXPORT_PUBKEY = ButtonOption("Pair with wallet")
     PAIR = ButtonOption("Pair card")
     FORGET = ButtonOption("Forget saved pairing")
     UNPAIR = ButtonOption("Unpair (this device)")
@@ -131,7 +138,7 @@ class ToolsKeycardMenuView(View):
         if chosen == self.SIGN_ETH:
             return Destination(ToolsKeycardSignEthStartView)
         if chosen == self.EXPORT_PUBKEY:
-            return Destination(ToolsKeycardExportPubkeyView)
+            return Destination(ToolsKeycardPairWalletView)
         if chosen == self.PAIR:
             return Destination(ToolsKeycardPairView)
         if chosen == self.FORGET:
@@ -172,7 +179,7 @@ class ToolsKeycardStatusView(View):
             release_other_smartcard_holders(self.controller)
             connection = wait_for_card(timeout_s=5.0)
             client = KeycardClient(connection)
-            info = client.select(aid=self.controller.active_keycard_aid)
+            info = select_with_autodetect(client, self.controller)
         except Exception as exc:
             title, body = classify_card_error(exc)
             return _error_destination(title, body)
@@ -240,7 +247,7 @@ class ToolsKeycardFactoryResetView(View):
             release_other_smartcard_holders(self.controller)
             connection = wait_for_card(timeout_s=5.0)
             client = KeycardClient(connection)
-            client.select(aid=self.controller.active_keycard_aid)
+            select_with_autodetect(client, self.controller)
             client.factory_reset()
         except APDUError as exc:
             logger.warning("FACTORY_RESET unsupported: %s", exc)
@@ -332,7 +339,7 @@ class ToolsKeycardInitView(View):
             release_other_smartcard_holders(self.controller)
             connection = wait_for_card(timeout_s=5.0)
             client = KeycardClient(connection)
-            client.select(aid=self.controller.active_keycard_aid)
+            select_with_autodetect(client, self.controller)
             secret = derive_pairing_secret(pairing_password)
             client.init(pin.encode("ascii"), puk.encode("ascii"), secret)
         except Exception as exc:
@@ -356,6 +363,56 @@ class ToolsKeycardInitView(View):
 # ---------------------------------------------------------------------------
 
 
+def _try_pair_with_password(
+    client,
+    pairing_storage,
+    derive_pairing_secret,
+    SecureChannelError,
+    pwd: str,
+    instance_uid: bytes,
+) -> Tuple[Optional[object], Optional[str]]:
+    """Attempt to obtain a PairingInfo for ``instance_uid`` using ``pwd``.
+
+    Tries the on-disk encrypted cache first (no APDU), then falls back
+    to a fresh PAIR APDU. Returns ``(pairing, source)`` where ``source``
+    is ``"disk"`` or ``"pair"`` on success, or ``(None, None)`` if the
+    password is wrong (cryptogram mismatch). Other failures (no slots,
+    transport errors) are re-raised.
+    """
+    # Force a fresh str object — prevents wipe_string from zeroing the
+    # caller's buffer or any interned constant (e.g. DEFAULT_PAIRING_PASSWORD).
+    fresh = "".join(pwd)
+    normalised = unicodedata.normalize("NFKD", fresh)
+    try:
+        try:
+            stored = pairing_storage.load(normalised, instance_uid=instance_uid)
+        except pairing_storage.PairingStorageError as exc:
+            logger.info("saved pairing rejected: %s", exc)
+            stored = None
+        if stored is not None and stored.instance_uid == instance_uid:
+            return stored.pairing, "disk"
+
+        try:
+            secret = derive_pairing_secret(normalised)
+            pairing = client.pair(secret)
+        except SecureChannelError as exc:
+            if "cryptogram" in str(exc).lower():
+                return None, None  # wrong password — caller falls through
+            raise
+        try:
+            pairing_storage.save(normalised, pairing, instance_uid)
+        except Exception:
+            logger.exception("could not persist pairing")
+            # Non-fatal: keep the in-memory pairing.
+        return pairing, "pair"
+    finally:
+        for s in (fresh, normalised):
+            try:
+                wipe_string(s)
+            except Exception:
+                pass
+
+
 class ToolsKeycardPairView(View):
     """Pair the card currently in the reader for this boot.
 
@@ -363,11 +420,13 @@ class ToolsKeycardPairView(View):
       1. SELECT the inserted card to discover its ``instance_uid``.
       2. If a pairing for that UID is already cached this boot, return
          immediately without prompting (multi-card auto-switch friendly).
-      3. Otherwise prompt for the pairing password, try to load a
-         previously-saved encrypted blob (per-UID file, with legacy
-         single-file fallback), and only fall back to a fresh PAIR APDU
-         when no blob is available.
-      4. Persist the resulting pairing under the per-UID filename and
+      3. Try the keycard-shell / keycard-cli default pairing password
+         (``"KeycardDefaultPairing"``) silently — both the on-disk cache
+         and a fresh PAIR APDU. PAIR failures with that password do not
+         consume a slot, so this is free for cards with a custom secret.
+      4. Only on default-password mismatch, prompt for a custom one and
+         try again.
+      5. Persist the resulting pairing under the per-UID filename and
          cache it on the controller's keycard_pairings dict.
     """
 
@@ -379,7 +438,9 @@ class ToolsKeycardPairView(View):
             from seedsigner.helpers.keycard.reader import (
                 release_other_smartcard_holders, wait_for_card,
             )
-            from seedsigner.helpers.keycard.secure_channel import PairingInfo
+            from seedsigner.helpers.keycard.secure_channel import (
+                PairingInfo, SecureChannelError,
+            )
         except ImportError as exc:
             return _error_destination("Keycard support unavailable", str(exc))
 
@@ -387,7 +448,7 @@ class ToolsKeycardPairView(View):
             release_other_smartcard_holders(self.controller)
             connection = wait_for_card(timeout_s=5.0)
             client = KeycardClient(connection)
-            select_info = client.select(aid=self.controller.active_keycard_aid)
+            select_info = select_with_autodetect(client, self.controller)
         except Exception as exc:
             logger.exception("Keycard SELECT failed")
             title, body = classify_card_error(exc)
@@ -407,65 +468,66 @@ class ToolsKeycardPairView(View):
             )
             return Destination(ToolsKeycardMenuView)
 
-        password = _prompt_for_text(self, "Pairing password")
-        if password is None:
-            return Destination(BackStackView)
-
-        password_buf = bytearray(password.encode("utf-8"))
+        # --- Default-password fast path (silent) --------------------
         try:
-            wipe_string(password)
-        except Exception:
-            pass
-
-        try:
-            normalised = unicodedata.normalize("NFKD", password_buf.decode("utf-8"))
+            pairing, source = _try_pair_with_password(
+                client, pairing_storage, derive_pairing_secret,
+                SecureChannelError,
+                DEFAULT_PAIRING_PASSWORD, instance_uid,
+            )
         except Exception as exc:
-            _wipe_bytearray(password_buf)
-            return _error_destination("Bad password", str(exc))
+            logger.exception("Keycard PAIR (default pwd) failed")
+            title, body = classify_card_error(exc, default_title="PAIR failed")
+            return _error_destination(title, body)
 
-        pairing: Optional[PairingInfo] = None
-        loaded_from_disk = False
-        try:
-            stored = pairing_storage.load(normalised, instance_uid=instance_uid)
-        except pairing_storage.PairingStorageError as exc:
-            logger.info("saved pairing rejected: %s", exc)
-            stored = None
+        used_default = pairing is not None
 
-        if stored is not None and stored.instance_uid == instance_uid:
-            pairing = stored.pairing
-            loaded_from_disk = True
-
+        # --- Custom-password fallback -------------------------------
         if pairing is None:
+            password = _prompt_for_text(self, "Pairing password")
+            if password is None:
+                return Destination(BackStackView)
+            password_buf = bytearray(password.encode("utf-8"))
             try:
-                secret = derive_pairing_secret(normalised)
-                pairing = client.pair(secret)
+                wipe_string(password)
+            except Exception:
+                pass
+            try:
+                custom = password_buf.decode("utf-8")
             except Exception as exc:
-                try:
-                    wipe_string(normalised)
-                except Exception:
-                    pass
                 _wipe_bytearray(password_buf)
-                logger.exception("Keycard PAIR failed")
+                return _error_destination("Bad password", str(exc))
+            try:
+                pairing, source = _try_pair_with_password(
+                    client, pairing_storage, derive_pairing_secret,
+                    SecureChannelError,
+                    custom, instance_uid,
+                )
+            except Exception as exc:
+                _wipe_bytearray(password_buf)
+                logger.exception("Keycard PAIR (custom pwd) failed")
                 title, body = classify_card_error(exc, default_title="PAIR failed")
                 return _error_destination(title, body)
-            try:
-                pairing_storage.save(normalised, pairing, instance_uid)
-            except Exception:
-                logger.exception("could not persist pairing")
-                # Non-fatal: keep the in-memory pairing.
-
-        try:
-            wipe_string(normalised)
-        except Exception:
-            pass
-        _wipe_bytearray(password_buf)
+            finally:
+                try:
+                    wipe_string(custom)
+                except Exception:
+                    pass
+            _wipe_bytearray(password_buf)
+            if pairing is None:
+                return _error_destination(
+                    "Wrong password",
+                    "Pairing password did\nnot match this card.",
+                )
 
         self.controller.set_pairing_for(instance_uid, pairing)
-        text = (
-            f"Slot {pairing.pairing_index}\n"
-            f"loaded from disk" if loaded_from_disk else f"Slot {pairing.pairing_index}\n"
-            f"saved for next boot"
-        )
+
+        if source == "disk":
+            detail = "loaded from disk"
+        else:
+            detail = "saved for next boot"
+        pwd_label = "default password" if used_default else "custom password"
+        text = f"Slot {pairing.pairing_index}\n{pwd_label}\n{detail}"
         self.run_screen(
             LargeIconStatusScreen,
             title="Paired",
@@ -963,9 +1025,54 @@ class ToolsKeycardImportSeedView(View):
 # ---------------------------------------------------------------------------
 
 
-class ToolsKeycardExportPubkeyView(View):
+def _hash160(data: bytes) -> bytes:
+    """RIPEMD-160(SHA-256(data)) — BIP-32 fingerprint primitive."""
+    import hashlib
+    return hashlib.new("ripemd160", hashlib.sha256(data).digest()).digest()
+
+
+def _compress_pubkey(uncompressed: bytes) -> bytes:
+    """Compress a 65-byte (0x04 ‖ X ‖ Y) secp256k1 pubkey to 33 bytes."""
+    if len(uncompressed) != 65 or uncompressed[0] != 0x04:
+        raise ValueError("expected 65-byte uncompressed pubkey")
+    prefix = b"\x02" if uncompressed[64] % 2 == 0 else b"\x03"
+    return prefix + uncompressed[1:33]
+
+
+# Hardened-bit OR helper for BIP-32 path components.
+_H = 0x80000000
+
+# Path components for derive_key (high bit = hardened).
+_PATH_44H = [44 | _H]
+_PATH_44H_60H = [44 | _H, 60 | _H]
+_PATH_44H_60H_0H = [44 | _H, 60 | _H, 0 | _H]
+
+
+class ToolsKeycardPairWalletView(View):
+    """Export the BIP-44 ETH HD account as a ``crypto-hdkey`` UR.
+
+    Rabby and MetaMask Mobile import this UR and from then on derive
+    receive addresses (``0/i``) themselves. Subsequent eth-sign-request
+    QRs from those wallets target paths under ``m/44'/60'/0'`` and the
+    Keycard signs them in :class:`ToolsKeycardSignEthFinalizeView`.
+
+    Flow inside one PIN-verified session:
+
+    1. ``m`` → master pubkey → master fingerprint.
+    2. ``m/44'/60'`` → parent pubkey → parent fingerprint.
+    3. ``m/44'/60'/0'`` → account pubkey + chain code.
+    4. ``m/44'/60'/0'/0/0`` → first-receive pubkey for the address screen.
+
+    The ``crypto-hdkey`` QR is the primary screen; the checksum address
+    screen is shown after the user dismisses the QR, so they can
+    physically read off ``m/0/0`` and compare to what their wallet
+    displays after import.
+    """
+
     def run(self):
+        from seedsigner.gui.screens.screen import QRDisplayScreen
         from seedsigner.helpers.keycard import KeycardCardChangedError
+        from seedsigner.models.encode_qr import EthHDKeyQrEncoder
 
         if not self.controller.keycard_pairings:
             return Destination(ToolsKeycardPairView)
@@ -974,29 +1081,62 @@ class ToolsKeycardExportPubkeyView(View):
         if pin is None:
             return Destination(BackStackView)
 
+        master_pub = parent_pub = None
+        account_pub = chain_code = None
+        first_addr_pub = None
+
         try:
             client, _ = _open_unlocked_session(self, pin)
+
+            # 1. master
+            client.derive_key([])
+            master_pub = _extract_pubkey(client.export_pubkey())
+
+            # 2. parent (m/44'/60')
+            client.derive_key(_PATH_44H_60H)
+            parent_pub = _extract_pubkey(client.export_pubkey())
+
+            # 3. account (m/44'/60'/0') extended
+            client.derive_key(_PATH_44H_60H_0H)
+            extended = extract_extended_pubkey(client.export_pubkey(extended=True))
+            if extended is not None:
+                account_pub, chain_code = extended
+
+            # 4. first receive address (m/44'/60'/0'/0/0)
             client.derive_key(DEFAULT_ETH_PATH)
-            response = client.export_pubkey()
+            first_addr_pub = _extract_pubkey(client.export_pubkey())
         except KeycardCardChangedError:
             return Destination(ToolsKeycardPairView)
         except Exception as exc:
-            logger.exception("Keycard EXPORT failed")
+            logger.exception("Keycard EXPORT (pair-wallet) failed")
             title, body = classify_card_error(exc, default_title="Export failed")
             return _error_destination(title, body)
         finally:
             _wipe_bytearray(pin)
 
-        pubkey = _extract_pubkey(response)
-        if pubkey is None:
+        if master_pub is None or parent_pub is None or first_addr_pub is None:
             return _error_destination("Bad response", "Could not parse key.")
+        if account_pub is None or chain_code is None:
+            return _error_destination(
+                "Bad response", "No chain code from card.",
+            )
 
         try:
-            address = to_checksum_address(pubkey_to_address(pubkey))
+            master_fp = _hash160(_compress_pubkey(master_pub))[:4]
+            parent_fp = _hash160(_compress_pubkey(parent_pub))[:4]
+            address = to_checksum_address(pubkey_to_address(first_addr_pub))
         except Exception as exc:
             return _error_destination("Bad pubkey", str(exc))
 
-        # 42-char address won't fit one display line; show in chunks of 21.
+        encoder = EthHDKeyQrEncoder(
+            pubkey=account_pub,
+            chain_code=chain_code,
+            parent_fingerprint=parent_fp,
+            source_fingerprint=master_fp,
+        )
+        self.run_screen(QRDisplayScreen, qr_encoder=encoder)
+
+        # Secondary screen: textual address for visual verification.
         text = f"m/44'/60'/0'/0/0\n{address[:21]}\n{address[21:]}"
         self.run_screen(
             LargeIconStatusScreen,
@@ -1007,6 +1147,10 @@ class ToolsKeycardExportPubkeyView(View):
             button_data=[ButtonOption("OK")],
         )
         return Destination(ToolsKeycardMenuView)
+
+
+# Backwards-compatible alias for any external importer (tests, scripts).
+ToolsKeycardExportPubkeyView = ToolsKeycardPairWalletView
 
 
 # ---------------------------------------------------------------------------
@@ -1434,11 +1578,11 @@ class ToolsKeycardSignEthQrDisplayView(View):
         if signature is None:
             return _error_destination("No signature", "Nothing to display")
 
-        from seedsigner.gui.screens.psbt_screens import PSBTSignedQRDisplayScreen
+        from seedsigner.gui.screens.screen import QRDisplayScreen
 
         encoder = EthSignatureQrEncoder(eth_signature=signature)
         self.run_screen(
-            PSBTSignedQRDisplayScreen,
+            QRDisplayScreen,
             qr_encoder=encoder,
         )
         self.controller.eth_sign_request = None

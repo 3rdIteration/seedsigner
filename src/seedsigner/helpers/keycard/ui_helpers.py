@@ -71,6 +71,39 @@ def extract_pubkey(export_response: bytes) -> Optional[bytes]:
     return None
 
 
+def extract_extended_pubkey(
+    export_response: bytes,
+) -> Optional[Tuple[bytes, bytes]]:
+    """Pull (pubkey, chain_code) from an EXPORT KEY (extended) response.
+
+    With ``EXPORT_P2_EXTENDED_PUBLIC`` the Status Keycard returns the
+    same ``0xA1 [TLVs]`` template as ``extract_pubkey``, but with an
+    additional 32-byte chain code under tag ``0x82``. Returns ``None``
+    if either field is missing or malformed.
+    """
+    if not export_response:
+        return None
+    if export_response[0] == 0xA1:
+        body = export_response[2:2 + export_response[1]]
+    else:
+        body = export_response
+    pubkey: Optional[bytes] = None
+    chain_code: Optional[bytes] = None
+    cursor = 0
+    while cursor + 2 <= len(body):
+        tag = body[cursor]
+        length = body[cursor + 1]
+        value = body[cursor + 2:cursor + 2 + length]
+        if tag == 0x80 and len(value) == 65 and value[0] == 0x04:
+            pubkey = bytes(value)
+        elif tag == 0x82 and len(value) == 32:
+            chain_code = bytes(value)
+        cursor += 2 + length
+    if pubkey is None or chain_code is None:
+        return None
+    return pubkey, chain_code
+
+
 def wipe_bytearray(buf: Optional[bytearray]) -> None:
     """Best-effort in-place zeroing of a mutable byte buffer."""
     if buf is None:
@@ -147,6 +180,57 @@ def _active_aid(parent_view: "View"):
     return getattr(parent_view.controller, "active_keycard_aid", APPLET_AID)
 
 
+# Status Keycard package prefix (8 bytes) + 1-byte version + 1-byte instance.
+# The last byte is the instance suffix; cards initialised by keycard-shell
+# may live at a suffix other than 0x01.
+_KEYCARD_INSTANCE_PREFIX = bytes.fromhex("A000000804000101")
+_KNOWN_INSTANCE_SUFFIXES = [bytes([b]) for b in range(0x01, 0x10)]  # 01..0F
+
+
+def select_with_autodetect(client, controller):
+    """SELECT the active Keycard applet, auto-probing on 6A82.
+
+    First tries ``controller.active_keycard_aid``; if the card returns
+    ``0x6A82`` (file/applet not found), probes a small set of known
+    instance AIDs (``A000000804000101`` + ``0x01..0x0F``) and updates
+    ``controller.active_keycard_aid`` on the first match. Avoids forcing
+    the user through Manage Instances → Switch active when a stock card
+    happens to use a non-default instance suffix.
+
+    Returns the ``SelectResponse`` from the successful SELECT. Raises
+    the original ``APDUError(0x6A82)`` if no candidate matches, so
+    callers see the canonical "Applet not found" classification.
+    """
+    from seedsigner.helpers.keycard.commands import APDUError
+
+    target = getattr(controller, "active_keycard_aid", None) or (
+        _KEYCARD_INSTANCE_PREFIX + b"\x01"
+    )
+    last_exc: Optional[APDUError] = None
+    try:
+        return client.select(aid=target)
+    except APDUError as exc:
+        if exc.sw != 0x6A82:
+            raise
+        last_exc = exc
+
+    for suffix in _KNOWN_INSTANCE_SUFFIXES:
+        candidate = _KEYCARD_INSTANCE_PREFIX + suffix
+        if candidate == target:
+            continue
+        try:
+            info = client.select(aid=candidate)
+        except APDUError as exc:
+            if exc.sw == 0x6A82:
+                continue
+            raise
+        controller.active_keycard_aid = candidate
+        return info
+
+    assert last_exc is not None
+    raise last_exc
+
+
 def open_unlocked_session(parent_view: "View", pin: bytearray) -> Tuple["KeycardClient", "PairingInfo"]:
     """Connect, SELECT, OPEN_SECURE_CHANNEL, VERIFY_PIN.
 
@@ -169,7 +253,7 @@ def open_unlocked_session(parent_view: "View", pin: bytearray) -> Tuple["Keycard
     release_other_smartcard_holders(parent_view.controller)
     connection = wait_for_card(timeout_s=5.0)
     client = KeycardClient(connection)
-    info = client.select(aid=_active_aid(parent_view))
+    info = select_with_autodetect(client, parent_view.controller)
     parent_view.controller.last_keycard_uid = bytes(info.instance_uid)
 
     pairing = parent_view.controller.get_pairing_for(info.instance_uid)
@@ -197,7 +281,7 @@ def identify_inserted_card(parent_view: "View") -> Tuple["KeycardClient", bytes]
     release_other_smartcard_holders(parent_view.controller)
     connection = wait_for_card(timeout_s=5.0)
     client = KeycardClient(connection)
-    info = client.select(aid=_active_aid(parent_view))
+    info = select_with_autodetect(client, parent_view.controller)
     uid = bytes(info.instance_uid)
     parent_view.controller.last_keycard_uid = uid
     return client, uid
@@ -241,6 +325,13 @@ def classify_card_error(
     if isinstance(exc, KeycardCardChangedError):
         return ("Card changed", "Pair the inserted card\nfirst.")
     if isinstance(exc, SecureChannelError):
+        # The "cryptogram mismatch" failure is only ever caused by a
+        # wrong pairing password (PAIR step 1 cryptogram check); other
+        # SecureChannelError messages (length errors, MAC mismatches)
+        # are genuine secure-channel issues.
+        if "cryptogram" in str(exc).lower():
+            return ("Wrong password",
+                    "Pairing password did\nnot match this card.")
         return ("Pairing failed", "Secure channel could\nnot be opened.")
     if isinstance(exc, PairingStorageError):
         return ("Storage error", str(exc)[:100])

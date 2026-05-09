@@ -431,6 +431,66 @@ class EthSignatureQrEncoder(BaseFountainQrEncoder):
         self.ur2_encode = UREncoder(ur=qr_ur, max_fragment_len=self.qr_max_fragment_size)
 
 
+@dataclass
+class EthHDKeyQrEncoder(BaseFountainQrEncoder):
+    """``crypto-hdkey`` UR for the ETH HD account at ``m/44'/60'/0'``.
+
+    Rabby and MetaMask Mobile (Keystone SDK) consume this UR to import
+    the SeedSigner Keycard as a "QR-based hardware wallet". With chain
+    code present and ``children`` set to ``0/*``, the wallet derives
+    receive addresses ``0/i`` itself, matching standard BIP-44 ETH.
+    """
+    pubkey: bytes = None             # 65-byte uncompressed (0x04 ‖ X ‖ Y)
+    chain_code: bytes = None         # 32 bytes
+    parent_fingerprint: bytes = None # HASH160(parent_pubkey)[:4]
+    source_fingerprint: bytes = None # HASH160(master_pubkey)[:4]
+
+    def __post_init__(self):
+        super().__post_init__()
+        if (self.pubkey is None or self.chain_code is None
+                or self.parent_fingerprint is None
+                or self.source_fingerprint is None):
+            raise ValueError(
+                "pubkey, chain_code, parent_fingerprint, source_fingerprint required"
+            )
+        if len(self.pubkey) != 65 or self.pubkey[0] != 0x04:
+            raise ValueError("pubkey must be 65-byte uncompressed (0x04-prefixed)")
+        if len(self.chain_code) != 32:
+            raise ValueError("chain_code must be 32 bytes")
+        if len(self.parent_fingerprint) != 4 or len(self.source_fingerprint) != 4:
+            raise ValueError("fingerprints must be 4 bytes each")
+
+        compressed = (
+            (b"\x02" if self.pubkey[64] % 2 == 0 else b"\x03")
+            + self.pubkey[1:33]
+        )
+        origin = Keypath(
+            [
+                PathComponent(44, True),
+                PathComponent(60, True),
+                PathComponent(0, True),
+            ],
+            self.source_fingerprint,
+            3,
+        )
+        children = Keypath(
+            [PathComponent(0, False), PathComponent(None, False)],  # 0/*
+            None,
+            None,
+        )
+        use_info = CoinInfo(type=60, network=None)  # SLIP-44 ETH
+        hdkey = HDKey({
+            "key": compressed,
+            "chain_code": self.chain_code,
+            "use_info": use_info,
+            "origin": origin,
+            "children": children,
+            "parent_fingerprint": self.parent_fingerprint,
+        })
+        qr_ur = UR("crypto-hdkey", hdkey.to_cbor())
+        self.ur2_encode = UREncoder(ur=qr_ur, max_fragment_len=self.qr_max_fragment_size)
+
+
 class GenericStringEncoder(BaseStaticQrEncoder):
     def __init__(self, generic_string: str):
         super().__init__()
