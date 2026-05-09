@@ -129,23 +129,45 @@ def wait_for_card(timeout_s: float = 15.0):
             break
         sub_timeout = max(0.5, remaining)
         service = None
+        connection = None
         try:
+            # Wait for any reader to report a card (event-based via
+            # SCardGetStatusChange under the hood).
             request = CardRequest(timeout=sub_timeout, cardType=AnyCardType())
             service = request.waitforcard()
-            service.connection.connect()
-            return service.connection
+            reader_name = service.connection.getReader()
+            # Discard service.connection: it's bound to the CardRequest's
+            # PC/SC hcontext, which gets released the moment `request` falls
+            # out of scope (CPython runs PCSCCardRequest.__del__ ->
+            # SCardReleaseContext). That invalidates the hcard we'd return,
+            # and the caller's first transmit() raises
+            # CardConnectionException("Card not connected"). Build our own
+            # connection on the same Reader so the hcontext is owned by the
+            # caller instead.
+            target_reader = next(
+                (r for r in list_readers() if r.name == reader_name), None,
+            )
+            if target_reader is None:
+                raise NoCardError(f"reader '{reader_name}' vanished")
+            connection = target_reader.createConnection()
+            connection.connect()
+            return connection
         except CardRequestTimeoutException:
             break
-        except (CardConnectionException, NoCardException) as exc:
+        except (CardConnectionException, NoCardException, NoCardError) as exc:
             last_exc = exc
-            # Release the half-open PC/SC handle before retrying; otherwise
+            logger.warning(
+                "wait_for_card retry: %s: %s", type(exc).__name__, exc,
+            )
+            # Release any half-open PC/SC handles before retrying; otherwise
             # we accumulate zombie connections that keep the reader busy and
             # poison subsequent attempts in the same session.
-            if service is not None:
-                try:
-                    service.connection.disconnect()
-                except Exception:
-                    pass
+            for ref in (connection, getattr(service, "connection", None)):
+                if ref is not None:
+                    try:
+                        ref.disconnect()
+                    except Exception:
+                        pass
             time.sleep(0.3)
 
     if last_exc is not None:
