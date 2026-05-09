@@ -348,6 +348,7 @@ class ToolsMenuView(View):
     GPG = ButtonOption("GPG Tools")
     CLEAR_DESCRIPTOR = ButtonOption("Clear Multisig Descriptor")
     NETWORK_INFO = ButtonOption("Network Info")
+    STEALTH_BOOT = ButtonOption("Stealth boot")
 
     def __init__(self, include_password_generator: bool = True):
         super().__init__()
@@ -378,6 +379,7 @@ class ToolsMenuView(View):
             self.NETWORK_INFO if Path("/usr/bin/network-info").is_file() else None,
             self.GPG,
             self.CLEAR_DESCRIPTOR,
+            self.STEALTH_BOOT,
         ])
         button_data = [button for button in button_data if button is not None]
 
@@ -446,6 +448,10 @@ class ToolsMenuView(View):
                 show_back_button=False,
             )
             return Destination(BackStackView)
+
+        elif button_data[selected_menu_num] == self.STEALTH_BOOT:
+            from seedsigner.views.stealth_views import ToolsStealthBootView
+            return Destination(ToolsStealthBootView)
 
 
 

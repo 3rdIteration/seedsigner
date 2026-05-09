@@ -1,23 +1,33 @@
 """Tools > Keycard views.
 
-UX model
---------
+Threat model & UX model
+-----------------------
 Each operation that touches the card opens its own session
 (connect → SELECT → OPEN_SECURE_CHANNEL → VERIFY_PIN), runs its work,
-and lets the connection drop.  The PIN is never cached on the
+and lets the connection drop. The PIN is never cached on the
 controller — it lives in a local ``bytearray`` that is wiped before
-return.  The pairing key, by contrast, is cached on the controller for
+return. The pairing key, by contrast, is cached on the controller for
 the duration of the boot so the user only re-enters the pairing
 password once.
+
+Wipe is best-effort: Python's GC and CPython's string interning prevent
+ironclad zeroing. Assume any value still resident in memory at the
+moment of physical seizure is recoverable. Mitigation is operational
+(short sessions, PIN re-entry per operation, no debug logging of
+secrets), not cryptographic.
+
+Shared helpers (path formatting, pubkey extraction, PIN/text prompts,
+session opening, byte wiping) live in ``helpers/keycard/ui_helpers``.
+This module re-exports them under their old underscore-prefixed names
+so existing callers and tests keep working.
 """
 
 from __future__ import annotations
 
-import json
 import logging
 import time
 import unicodedata
-from typing import Optional, Tuple
+from typing import Optional
 
 from seedsigner.gui.screens import (
     RET_CODE__BACK_BUTTON,
@@ -29,7 +39,7 @@ from seedsigner.gui.screens import (
 )
 from seedsigner.gui.screens.screen import ButtonOption
 from seedsigner.gui.screens.scan_screens import ScanScreen
-from seedsigner.gui.screens import seed_screens
+from seedsigner.helpers.ethereum import DEFAULT_ETH_PATH
 from seedsigner.helpers.ethereum.address import (
     pubkey_to_address, to_checksum_address,
 )
@@ -38,13 +48,28 @@ from seedsigner.helpers.ethereum.ur_codec import (
     DATA_TYPE_TYPED_DATA, DATA_TYPE_TYPED_TX,
     EthSignRequest,
 )
+from seedsigner.helpers.keycard.ui_helpers import (
+    extract_pubkey,
+    format_path,
+    open_unlocked_session,
+    prompt_for_pin,
+    prompt_for_text,
+    wipe_bytearray,
+)
 from seedsigner.helpers.secure_delete import wipe_string
-from seedsigner.models.decode_qr import DecodeQR
 from seedsigner.models.encode_qr import EthSignatureQrEncoder
 from seedsigner.views.view import (
     BackStackView, Destination, MainMenuView, NotYetImplementedView, View,
 )
 from seedsigner.views.scan_views import ScanView
+
+# Backwards-compatible aliases for older imports / tests.
+_format_path = format_path
+_extract_pubkey = extract_pubkey
+_wipe_bytearray = wipe_bytearray
+_prompt_for_pin = prompt_for_pin
+_prompt_for_text = prompt_for_text
+_open_unlocked_session = open_unlocked_session
 
 logger = logging.getLogger(__name__)
 
@@ -57,15 +82,6 @@ DATA_TYPE_LABELS = {
 
 PIN_LENGTH = 6
 PUK_LENGTH = 12
-
-# Default ETH derivation path: BIP-44 for chain 60.
-DEFAULT_ETH_PATH = (
-    44 | 0x80000000,
-    60 | 0x80000000,
-    0  | 0x80000000,
-    0,
-    0,
-)
 
 
 # ---------------------------------------------------------------------------
@@ -627,17 +643,8 @@ class ToolsKeycardSignEthQrDisplayView(View):
 
 
 # ---------------------------------------------------------------------------
-# Helpers
+# Helpers (the rest live in helpers/keycard/ui_helpers.py)
 # ---------------------------------------------------------------------------
-
-
-def _format_path(components) -> str:
-    parts = []
-    for c in components:
-        hardened = bool(c & 0x80000000)
-        idx = c & 0x7FFFFFFF
-        parts.append(f"{idx}'" if hardened else str(idx))
-    return "m/" + "/".join(parts)
 
 
 def _error_destination(title: str, message: str) -> Destination:
@@ -661,87 +668,3 @@ class KeycardErrorView(View):
             button_data=[ButtonOption("OK")],
         )
         return Destination(BackStackView)
-
-
-def _prompt_for_text(parent_view: View, title: str, *, max_len: int = 80) -> Optional[str]:
-    while True:
-        ret = seed_screens.SeedAddPassphraseScreen(title=title).display()
-        if isinstance(ret, dict) and "is_back_button" in ret:
-            return None
-        text = ret.get("passphrase", "") if isinstance(ret, dict) else ""
-        if 1 <= len(text) <= max_len:
-            return text
-        parent_view.run_screen(
-            WarningScreen,
-            title="Invalid input",
-            status_headline=None,
-            text=f"Length must be 1..{max_len}.",
-            show_back_button=True,
-        )
-
-
-def _prompt_for_pin(parent_view: View, title: str) -> Optional[bytearray]:
-    """Capture a 6-digit PIN as a mutable bytearray (so the caller can wipe it)."""
-    while True:
-        ret = seed_screens.SeedAddPassphraseScreen(title=title).display()
-        if isinstance(ret, dict) and "is_back_button" in ret:
-            return None
-        pin_str = ret.get("passphrase", "") if isinstance(ret, dict) else ""
-        if len(pin_str) == PIN_LENGTH and pin_str.isdigit() and pin_str.isascii():
-            buf = bytearray(pin_str.encode("ascii"))
-            try:
-                wipe_string(pin_str)
-            except Exception:
-                pass
-            return buf
-        parent_view.run_screen(
-            WarningScreen,
-            title="Invalid PIN",
-            status_headline=None,
-            text=f"PIN must be exactly {PIN_LENGTH} digits.",
-            show_back_button=True,
-        )
-
-
-def _wipe_bytearray(buf: Optional[bytearray]) -> None:
-    if buf is None:
-        return
-    for i in range(len(buf)):
-        buf[i] = 0
-
-
-def _open_unlocked_session(parent_view: View, pin: bytearray) -> Tuple["KeycardClient", "PairingInfo"]:
-    """Connect, SELECT, OPEN_SECURE_CHANNEL, VERIFY_PIN.  Returns (client, pairing)."""
-    from seedsigner.helpers.keycard.client import KeycardClient
-    from seedsigner.helpers.keycard.reader import wait_for_card
-
-    pairing = parent_view.controller.keycard_pairing
-    if pairing is None:
-        raise RuntimeError("card not paired in this session")
-
-    connection = wait_for_card(timeout_s=5.0)
-    client = KeycardClient(connection)
-    client.select()
-    client.open_secure_channel(pairing)
-    client.verify_pin(bytes(pin))
-    return client, pairing
-
-
-def _extract_pubkey(export_response: bytes) -> Optional[bytes]:
-    """Pull the 65-byte uncompressed public key from an EXPORT KEY response."""
-    if not export_response:
-        return None
-    # Template: 0xA1 [TLVs]; pubkey is tag 0x80, 65 bytes 0x04-prefixed.
-    if export_response[0] == 0xA1:
-        body = export_response[2:2 + export_response[1]]
-    else:
-        body = export_response
-    cursor = 0
-    while cursor + 2 <= len(body):
-        tag = body[cursor]
-        length = body[cursor + 1]
-        value = body[cursor + 2:cursor + 2 + length]
-        if tag == 0x80 and len(value) == 65 and value[0] == 0x04:
-            return bytes(value)
-        cursor += 2 + length
-    return None

@@ -481,6 +481,12 @@ class SettingsConstants:
 
     SETTING__DEBUG = "debug"
 
+    # Stealth boot mode (boot into Snake; configurable unlock combo reveals
+    # the firmware). HIDDEN: managed only via Tools > Advanced > Stealth boot.
+    SETTING__STEALTH_BOOT = "stealth_boot"
+    SETTING__STEALTH_UNLOCK_SEQUENCE = "stealth_unlock_sequence"
+    STEALTH_UNLOCK_SEQUENCE_DEFAULT = "KEY_UP,KEY_UP,KEY_UP,KEY_UP,KEY_UP"
+
 
     # Hardware config settings
     DISPLAY_CONFIGURATION__ST7789__240x240 = "st7789_240x240"  # default; original Waveshare 1.3" display hat
@@ -1183,6 +1189,20 @@ class SettingsDefinition:
                       type=SettingsConstants.TYPE__FREE_ENTRY,
                       visibility=SettingsConstants.VISIBILITY__HIDDEN,
                       default_value=62),
+
+        # Stealth boot: managed only via Tools > Advanced > Stealth boot.
+        SettingsEntry(category=SettingsConstants.CATEGORY__SYSTEM,
+                      attr_name=SettingsConstants.SETTING__STEALTH_BOOT,
+                      display_name="Stealth boot",
+                      type=SettingsConstants.TYPE__ENABLED_DISABLED,
+                      visibility=SettingsConstants.VISIBILITY__HIDDEN,
+                      default_value=SettingsConstants.OPTION__DISABLED),
+        SettingsEntry(category=SettingsConstants.CATEGORY__SYSTEM,
+                      attr_name=SettingsConstants.SETTING__STEALTH_UNLOCK_SEQUENCE,
+                      display_name="Stealth unlock sequence",
+                      type=SettingsConstants.TYPE__FREE_ENTRY,
+                      visibility=SettingsConstants.VISIBILITY__HIDDEN,
+                      default_value=SettingsConstants.STEALTH_UNLOCK_SEQUENCE_DEFAULT),
     ]
 
 

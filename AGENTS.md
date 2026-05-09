@@ -188,3 +188,93 @@ When adding a **new** code path that derives keys or produces deterministic outp
 - QR-scanned data, settings QRs, and file-imported data should all be treated as untrusted byte strings; decode as UTF-8 with error handling before further processing.
 - When adding new user-input parsing, add tests that exercise at least one non-ASCII variant (e.g. a fullwidth digit, a non-ASCII dash) to catch locale-dependent regressions.
 - Be aware that the same Unicode character can have multiple representations (e.g. `é` can be U+00E9 [NFC] or U+0065 U+0301 [NFD]). macOS file-system APIs and some input methods produce NFD; most other systems produce NFC. NFKD normalization collapses both forms into a single canonical byte sequence.
+
+## Ethereum + Keycard integration
+
+This fork extends SeedSigner to sign Ethereum transactions using a Status Keycard (or compatible JavaCard applet, e.g. cards initialised via `keycard-shell`). **Bitcoin remains the headline experience**; the Keycard flow lives entirely under `Tools > Smartcard Tools > Keycard` and shares no code paths with the BIP39/PSBT flow.
+
+### Module layout
+
+| Path | Responsibility |
+|------|----------------|
+| `src/seedsigner/helpers/ethereum/` | Chain-agnostic primitives: `rlp`, `keccak`, `address` (EIP-55), `tx_legacy` (EIP-155), `tx_eip1559`, `eip712`, `personal_sign`, `ur_codec` (UR `eth-sign-request` / `eth-signature`) |
+| `src/seedsigner/helpers/keycard/` | Card protocol: `commands` (APDU builders), `responses` (TLV/DER), `crypto` (PBKDF2/AES-CBC/ECDH), `secure_channel`, `client`, `reader` (PC/SC), `secrets` (CSPRNG PIN/PUK/password), `pairing_storage` (AES-GCM blob on microSD), `ui_helpers` (path/pubkey/PIN helpers shared by views) |
+| `src/seedsigner/helpers/keycard_signer.py` | Glue: `signing_hash_for(request)` + `compute_v(request, rec_id)` |
+| `src/seedsigner/views/keycard_views.py` | UI: `Tools > Keycard` menu, init/pair/unpair, generate-key, export address, sign-eth scan→review→sign→QR |
+| `scripts/keycard_smoke_test.py` | Hardware-only end-to-end check (SELECT → PAIR → SC → VERIFY_PIN → DERIVE → EXPORT → SIGN+recover) |
+
+### Protocol compatibility — DO NOT change without coordinating with existing cards
+
+Cards initialised by `keycard-cli` / `keycard-shell` ship with very specific protocol parameters. The constants below are deliberately matched to that convention; **changing any of them breaks every previously-paired card.**
+
+| Parameter | Value | Source |
+|-----------|-------|--------|
+| Applet AID | `A0000008040001010101` | Status Keycard published AID, hard-coded in `commands.py` |
+| Pairing-password KDF | PBKDF2-HMAC-**SHA256**, 50000 iter | `crypto.derive_pairing_secret()` — matches keycard-cli/shell defaults |
+| Pairing-password salt | `b"Keycard Pairing Password Salt"` | Same constant as keycard-cli |
+| Password Unicode normalisation | NFKD before UTF-8 encode | Already done at every entry point (PairView, smoke test) |
+| Secure channel ECDH | secp256k1, raw X-coordinate (not libsecp default SHA256-of-X) | `crypto.secp256k1_ecdh()` uses `ec_pubkey_tweak_mul` |
+| Session key derivation | SHA512 over `shared_x ‖ pairing_key ‖ salt`, split into ENC/MAC keys | `secure_channel.py` |
+| Session encryption | AES-256-CBC + AES-CBC-MAC over framed payload | `secure_channel.py` |
+| Default ETH derivation path | `m/44'/60'/0'/0/0` (BIP-44 chain 60) | exported as `helpers.ethereum.DEFAULT_ETH_PATH` |
+| PIN length | 6 ASCII digits | `keycard_views.PIN_LENGTH` |
+| PUK length | 12 ASCII digits | `keycard_views.PUK_LENGTH` |
+
+If the user has cards from a custom applet variant (e.g. one that derives the pairing secret with SHA-512 instead of SHA-256), the right answer is to add an opt-in setting that toggles `derive_pairing_secret(..., hmac_hash_module=...)`, not to change the default.
+
+### Pairing persistence on microSD
+
+`helpers/keycard/pairing_storage.py` writes a single file:
+
+- **Path:** `<MicroSD>/keycard_pairing.bin` (resolved via `MicroSD.get_microsd_dir()`).
+- **Format:** `[version:1] [salt:16] [nonce:12] [tag:16] [ciphertext:N]`. Plaintext payload: `pairing_index ‖ pairing_key(32) ‖ instance_uid_len ‖ instance_uid`.
+- **Encryption:** AES-256-GCM. Key derived from the user's pairing password via PBKDF2-HMAC-SHA256, 50000 iter, with a **separate domain salt** (`b"Keycard Pairing Storage v1"` ‖ random 16 bytes) so the on-disk key is not the same as the on-card pairing secret.
+- **Card binding:** the persisted `instance_uid` is checked against the SELECT response on load; a blob from another card is rejected before any card APDU is sent.
+- **Atomic writes:** `save()` writes to `*.tmp` then `os.replace`s; chmod 0o600 best-effort (vfat ignores).
+
+The user enters the pairing password **once per boot**. The decrypted pairing key is cached in `Controller.keycard_pairing` (a `PairingInfo`) for the session and is dropped on `Tools > Keycard > Forget saved pairing` or unpair.
+
+### Threat model and memory hygiene
+
+- **PIN never cached.** It lives in a `bytearray` for the duration of one APDU exchange. After the operation, `wipe_bytearray()` zeros every byte. Then the operation closes its connection.
+- **Pairing password never cached.** Captured into a `bytearray`, NFKD-normalised, used to derive both the on-card secret and the on-disk storage key, then the bytearray and the intermediate normalised string are wiped (best-effort — see below).
+- **Pairing key cached.** As above: held in memory until the user exits the session or chooses "Forget saved pairing".
+- **Wipe is best-effort.** `helpers/secure_delete.wipe_string()` and our `wipe_bytearray()` cannot defeat Python's GC, copy-on-write inside CPython, or the C runtime's allocator. **Assume any value that exists in memory at the moment of physical seizure is recoverable.** Mitigation: short-lived sessions, PIN re-entry per operation, no debug logging of secrets.
+- **Bitcoin paths untouched.** No Keycard or Ethereum module imports from `seedsigner.models.seed*` or any BIP39 path. The `Controller` holds Keycard state in dedicated attributes (`keycard_pairing`, `eth_sign_request`, `eth_signature`) that are reset on flow exit / `MainMenuView`.
+
+### Extension points (when adding new ETH features)
+
+- **New transaction type / signing flavour**: add a `DATA_TYPE_*` to `helpers/ethereum/ur_codec.py`, extend `keycard_signer.signing_hash_for()` and `compute_v()`. Do NOT branch in `keycard_views.py` — the view layer should stay agnostic to digest construction.
+- **New chain / derivation path**: prefer making the path part of the `EthSignRequest` (it already carries `derivation_path`). Only override `DEFAULT_ETH_PATH` if the path is wired through the smoke test fixtures and view tests.
+- **Alternate card applet (e.g. Satochip with ETH support)**: keep `helpers/ethereum/` as-is, add a parallel `helpers/<card>/` and a `<card>_signer.py` that exposes the same `sign(digest, path) -> (r,s,v,pubkey)` shape. The view layer can then dispatch based on a Tools submenu choice.
+
+### Hardware verification
+
+Before merging any change to `helpers/keycard/` or `helpers/keycard_signer.py`, run on a Pi:
+
+```
+python scripts/keycard_smoke_test.py --path "m/44'/60'/0'/0/0" --sign
+```
+
+Capture the output to a local file (do **not** commit — the pubkey is fine but pairing diagnostics may include sensitive timing). Without `--sign`, the script exercises SELECT → PAIR → secure-channel → VERIFY_PIN → DERIVE → EXPORT only.
+
+## Stealth boot mode
+
+This fork supports an optional "stealth boot" mode controlled by two settings (default OFF, hidden from the Settings UI under Advanced):
+
+| Setting | Default | Purpose |
+|---------|---------|---------|
+| `SETTING__STEALTH_BOOT` | `False` | When `True`, the device boots into a Snake game instead of `MainMenuView` |
+| `SETTING__STEALTH_UNLOCK_SEQUENCE` | `"KEY_UP,KEY_UP,KEY_UP,KEY_UP,KEY_UP"` | CSV of `HardwareButtonsConstants` names; the sequence the user must press to exit the game and start the firmware |
+
+### Rules
+
+- **The stealth module (`src/seedsigner/stealth/`) MUST NOT import from `seedsigner.models.seed*`, `seedsigner.helpers.keycard*`, or any module that touches secrets.** This is enforced by code review (no static checker yet) and reduces the blast radius if the game has a bug.
+- **No persistence from the game.** The Snake game does not write anywhere — no high score, no resume state. The settings file holds only the toggle and the unlock sequence.
+- **No visual hint** that the unlock sequence is being matched. Showing partial progress would defeat the "looks like a game" property for a casual observer.
+- **Resolution-aware.** The game reads `Renderer.canvas_width` / `canvas_height` and adapts the grid; do not hard-code 240x240 or 320x240 — both are valid hardware configurations.
+- **Panic exit** (documented here, not in UI): holding `KEY1 + KEY2 + KEY3` for 10 s during the game disables `STEALTH_BOOT` and triggers a reboot. Use this if a user enables stealth mode and then loses their unlock sequence.
+
+### Where the boot hook lives
+
+`Controller.start()` checks `SETTING__STEALTH_BOOT` *before* the OpeningSplashView. When the game returns (sequence matched), the rest of the boot continues normally — splash, dev/desktop warnings, MainMenu. The session is then indistinguishable from a non-stealth boot.
