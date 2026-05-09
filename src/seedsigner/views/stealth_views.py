@@ -75,18 +75,23 @@ def _set_sequence(keys: list) -> None:
 class ToolsStealthBootView(View):
     TOGGLE = ButtonOption("Toggle on/off")
     EDIT = ButtonOption("Edit unlock sequence")
+    VIEW = ButtonOption("View current")
     DONE = ButtonOption("Done")
 
     def run(self):
         enabled = _is_enabled()
-        try:
-            seq = parse_sequence(_get_sequence_csv())
-            seq_label = " ".join(s.replace("KEY_", "") for s in seq)
-        except InvalidSequenceError:
-            seq_label = "(invalid)"
+        csv = _get_sequence_csv() or ""
+        if not csv.strip():
+            seq_label = "(none)"
+        else:
+            try:
+                seq = parse_sequence(csv)
+                seq_label = " ".join(s.replace("KEY_", "") for s in seq)
+            except InvalidSequenceError:
+                seq_label = "(invalid)"
 
         title = f"Stealth: {'ON' if enabled else 'OFF'}"
-        button_data = [self.TOGGLE, self.EDIT, self.DONE]
+        button_data = [self.TOGGLE, self.EDIT, self.VIEW, self.DONE]
         ret = self.run_screen(
             ButtonListScreen,
             title=title,
@@ -96,10 +101,32 @@ class ToolsStealthBootView(View):
         if ret == RET_CODE__BACK_BUTTON or button_data[ret] == self.DONE:
             return Destination(BackStackView)
         if button_data[ret] == self.TOGGLE:
+            # Refuse to enable stealth without a recorded unlock sequence.
+            # Anything that fails parse_sequence -- including the new empty
+            # default -- counts as "no sequence" for gating purposes.
+            if not enabled and seq_label in ("(none)", "(invalid)"):
+                self.run_screen(
+                    WarningScreen,
+                    title="No sequence",
+                    status_headline=None,
+                    text="Record an unlock\nsequence first.",
+                    show_back_button=True,
+                )
+                return Destination(ToolsStealthBootView, skip_current_view=True)
             _set_enabled(not enabled)
             return Destination(ToolsStealthBootView, skip_current_view=True)
         if button_data[ret] == self.EDIT:
             return Destination(ToolsStealthBootRecordView)
+        if button_data[ret] == self.VIEW:
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Unlock sequence",
+                status_headline=None,
+                text=seq_label[:120],
+                show_back_button=False,
+                button_data=[ButtonOption("OK")],
+            )
+            return Destination(ToolsStealthBootView, skip_current_view=True)
         return Destination(BackStackView)
 
 
@@ -221,12 +248,15 @@ class ToolsStealthBootConfirmRecordView(View):
             button_data=[ButtonOption("OK")],
         )
         # Collapse the recording flow off the back stack: drop everything
-        # pushed since (and including) the previous ToolsStealthBootView so
-        # that DONE/Back from the menu returns to the parent (Tools), not
-        # back into the Record screen.
+        # pushed AFTER the previous ToolsStealthBootView so that DONE/Back
+        # from the menu returns to the parent (Tools), not back into the
+        # Record screen. The skip_current_view=True is what makes a single
+        # DONE press exit -- without it the controller leaves a duplicate
+        # of ToolsStealthBootView on the stack and the user has to press
+        # DONE twice.
         back_stack = self.controller.back_stack
         for i in range(len(back_stack) - 1, -1, -1):
             if back_stack[i].View_cls == ToolsStealthBootView:
                 del back_stack[i + 1:]
                 break
-        return Destination(ToolsStealthBootView)
+        return Destination(ToolsStealthBootView, skip_current_view=True)

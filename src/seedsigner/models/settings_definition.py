@@ -485,7 +485,11 @@ class SettingsConstants:
     # the firmware). HIDDEN: managed only via Tools > Advanced > Stealth boot.
     SETTING__STEALTH_BOOT = "stealth_boot"
     SETTING__STEALTH_UNLOCK_SEQUENCE = "stealth_unlock_sequence"
-    STEALTH_UNLOCK_SEQUENCE_DEFAULT = "KEY_UP,KEY_UP,KEY_UP,KEY_UP,KEY_UP"
+    # Empty by default: forces the user to record a custom sequence via
+    # Tools > Stealth boot > Edit before the firmware lets them enable
+    # stealth mode. A trivial all-same-direction default would be guessed
+    # by anyone holding the device.
+    STEALTH_UNLOCK_SEQUENCE_DEFAULT = ""
 
 
     # Hardware config settings

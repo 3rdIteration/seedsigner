@@ -110,9 +110,11 @@ class TestStealthSettingsDefinition(unittest.TestCase):
             defaults[SettingsConstants.SETTING__STEALTH_BOOT],
             SettingsConstants.OPTION__DISABLED,
         )
+        # Default is empty so the user is forced to record a custom
+        # sequence before the firmware lets them enable stealth mode.
         self.assertEqual(
             defaults[SettingsConstants.SETTING__STEALTH_UNLOCK_SEQUENCE],
-            "KEY_UP,KEY_UP,KEY_UP,KEY_UP,KEY_UP",
+            "",
         )
 
     def test_settings_visibility_is_hidden(self):
