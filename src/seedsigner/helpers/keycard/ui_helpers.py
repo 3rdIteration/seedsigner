@@ -162,8 +162,11 @@ def open_unlocked_session(parent_view: "View", pin: bytearray) -> Tuple["Keycard
     """
     from seedsigner.helpers.keycard import KeycardCardChangedError
     from seedsigner.helpers.keycard.client import KeycardClient
-    from seedsigner.helpers.keycard.reader import wait_for_card
+    from seedsigner.helpers.keycard.reader import (
+        release_other_smartcard_holders, wait_for_card,
+    )
 
+    release_other_smartcard_holders(parent_view.controller)
     connection = wait_for_card(timeout_s=5.0)
     client = KeycardClient(connection)
     info = client.select(aid=_active_aid(parent_view))
@@ -187,8 +190,11 @@ def identify_inserted_card(parent_view: "View") -> Tuple["KeycardClient", bytes]
     cached pairing.
     """
     from seedsigner.helpers.keycard.client import KeycardClient
-    from seedsigner.helpers.keycard.reader import wait_for_card
+    from seedsigner.helpers.keycard.reader import (
+        release_other_smartcard_holders, wait_for_card,
+    )
 
+    release_other_smartcard_holders(parent_view.controller)
     connection = wait_for_card(timeout_s=5.0)
     client = KeycardClient(connection)
     info = client.select(aid=_active_aid(parent_view))

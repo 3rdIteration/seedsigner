@@ -161,11 +161,14 @@ class ToolsKeycardStatusView(View):
     def run(self):
         try:
             from seedsigner.helpers.keycard.client import KeycardClient
-            from seedsigner.helpers.keycard.reader import wait_for_card
+            from seedsigner.helpers.keycard.reader import (
+                release_other_smartcard_holders, wait_for_card,
+            )
         except ImportError as exc:
             return _error_destination("Keycard support unavailable", str(exc))
 
         try:
+            release_other_smartcard_holders(self.controller)
             connection = wait_for_card(timeout_s=5.0)
             client = KeycardClient(connection)
             info = client.select(aid=self.controller.active_keycard_aid)
@@ -214,7 +217,9 @@ class ToolsKeycardFactoryResetView(View):
             from seedsigner.helpers.keycard import pairing_storage
             from seedsigner.helpers.keycard.client import KeycardClient
             from seedsigner.helpers.keycard.commands import APDUError
-            from seedsigner.helpers.keycard.reader import wait_for_card
+            from seedsigner.helpers.keycard.reader import (
+                release_other_smartcard_holders, wait_for_card,
+            )
         except ImportError as exc:
             return _error_destination("Keycard support unavailable", str(exc))
 
@@ -230,6 +235,7 @@ class ToolsKeycardFactoryResetView(View):
             return Destination(BackStackView)
 
         try:
+            release_other_smartcard_holders(self.controller)
             connection = wait_for_card(timeout_s=5.0)
             client = KeycardClient(connection)
             client.select(aid=self.controller.active_keycard_aid)
@@ -281,7 +287,9 @@ class ToolsKeycardInitView(View):
             from seedsigner.helpers.keycard.client import KeycardClient
             from seedsigner.helpers.keycard.commands import init as init_apdu
             from seedsigner.helpers.keycard.crypto import derive_pairing_secret
-            from seedsigner.helpers.keycard.reader import wait_for_card
+            from seedsigner.helpers.keycard.reader import (
+                release_other_smartcard_holders, wait_for_card,
+            )
         except ImportError as exc:
             return _error_destination("Keycard support unavailable", str(exc))
 
@@ -317,6 +325,7 @@ class ToolsKeycardInitView(View):
             return Destination(BackStackView)
 
         try:
+            release_other_smartcard_holders(self.controller)
             connection = wait_for_card(timeout_s=5.0)
             client = KeycardClient(connection)
             client.select(aid=self.controller.active_keycard_aid)
@@ -362,12 +371,15 @@ class ToolsKeycardPairView(View):
             from seedsigner.helpers.keycard import pairing_storage
             from seedsigner.helpers.keycard.client import KeycardClient
             from seedsigner.helpers.keycard.crypto import derive_pairing_secret
-            from seedsigner.helpers.keycard.reader import wait_for_card
+            from seedsigner.helpers.keycard.reader import (
+                release_other_smartcard_holders, wait_for_card,
+            )
             from seedsigner.helpers.keycard.secure_channel import PairingInfo
         except ImportError as exc:
             return _error_destination("Keycard support unavailable", str(exc))
 
         try:
+            release_other_smartcard_holders(self.controller)
             connection = wait_for_card(timeout_s=5.0)
             client = KeycardClient(connection)
             select_info = client.select(aid=self.controller.active_keycard_aid)
@@ -1074,8 +1086,11 @@ def _open_isd_channel(controller):
     from seedsigner.helpers.keycard.global_platform import (
         GpSecureChannel, list_instances,
     )
-    from seedsigner.helpers.keycard.reader import wait_for_card
+    from seedsigner.helpers.keycard.reader import (
+        release_other_smartcard_holders, wait_for_card,
+    )
 
+    release_other_smartcard_holders(controller)
     connection = wait_for_card(timeout_s=5.0)
     channel = GpSecureChannel(connection)
     channel.select_isd()
@@ -1341,12 +1356,14 @@ class ToolsKeycardSignEthOverviewView(View):
         )
         button_data = [self.CONFIRM, self.CANCEL]
         ret = self.run_screen(
-            ButtonListScreen,
-            title="Sign ETH?",
+            LargeIconStatusScreen,
+            title="Confirm",
+            status_icon_size=0,
+            status_headline="Sign ETH?",
+            text=text,
             is_button_text_centered=False,
             button_data=button_data,
             show_back_button=False,
-            status_headline=None,
         )
         if ret == RET_CODE__BACK_BUTTON or button_data[ret] == self.CANCEL:
             self.controller.eth_sign_request = None
@@ -1377,10 +1394,16 @@ class ToolsKeycardSignEthFinalizeView(View):
             client, _ = _open_unlocked_session(self, pin)
             signature = sign_with_keycard(client, request)
         except KeycardCardChangedError:
+            self.controller.eth_sign_request = None
+            self.controller.eth_signature = None
             return Destination(ToolsKeycardPairView)
         except Exception as exc:
             logger.exception("Keycard signing failed")
-            return _error_destination("Signing failed", str(exc))
+            self.controller.eth_sign_request = None
+            self.controller.eth_signature = None
+            return _error_destination(
+                "Signing failed", str(exc), return_to_main=True,
+            )
         finally:
             _wipe_bytearray(pin)
 
@@ -1411,19 +1434,29 @@ class ToolsKeycardSignEthQrDisplayView(View):
 # ---------------------------------------------------------------------------
 
 
-def _error_destination(title: str, message: str) -> Destination:
+def _error_destination(
+    title: str,
+    message: str,
+    *,
+    return_to_main: bool = False,
+) -> Destination:
     return Destination(
         KeycardErrorView,
-        view_args={"title": title, "message": message},
+        view_args={
+            "title": title,
+            "message": message,
+            "return_to_main": return_to_main,
+        },
         skip_current_view=True,
     )
 
 
 class KeycardErrorView(View):
-    def __init__(self, title: str, message: str):
+    def __init__(self, title: str, message: str, return_to_main: bool = False):
         super().__init__()
         self.title = title
         self.message = message
+        self.return_to_main = return_to_main
 
     def run(self):
         msg = self.message[:120]
@@ -1435,4 +1468,6 @@ class KeycardErrorView(View):
             show_back_button=False,
             button_data=[ButtonOption("OK")],
         )
+        if self.return_to_main:
+            return Destination(MainMenuView, clear_history=True)
         return Destination(BackStackView)

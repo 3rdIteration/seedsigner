@@ -92,7 +92,6 @@ class ToolsStealthBootView(View):
             title=title,
             is_button_text_centered=False,
             button_data=button_data,
-            status_headline=None,
         )
         if ret == RET_CODE__BACK_BUTTON or button_data[ret] == self.DONE:
             return Destination(BackStackView)
@@ -201,11 +200,13 @@ class ToolsStealthBootConfirmRecordView(View):
         pretty = " ".join(s.replace("KEY_", "") for s in self.recorded)
         button_data = [self.SAVE, self.DISCARD]
         ret = self.run_screen(
-            ButtonListScreen,
+            LargeIconStatusScreen,
             title="Save sequence?",
+            status_icon_size=0,
+            status_headline=pretty[:60],
+            text="Save this sequence?",
             is_button_text_centered=False,
             button_data=button_data,
-            status_headline=pretty[:60],
         )
         if ret == RET_CODE__BACK_BUTTON or button_data[ret] == self.DISCARD:
             return Destination(BackStackView)
