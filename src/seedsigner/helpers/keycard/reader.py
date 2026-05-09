@@ -69,8 +69,13 @@ def release_other_smartcard_holders(controller=None) -> None:
 
     try:
         from subprocess import run
+        # Kill the GPG scdaemon. We deliberately do NOT relaunch it: scdaemon
+        # polls any inserted card on a short interval and grabs the exclusive
+        # PC/SC handle, which makes our subsequent connect() fail with
+        # CardConnectionException("card not connected") even when the card is
+        # physically present. gpg-agent will respawn scdaemon on demand the
+        # next time GPG actually needs it.
         run(["gpgconf", "--kill", "scdaemon"], check=False)
-        run(["gpgconf", "--launch", "scdaemon"], check=False)
     except Exception:
         pass
 
@@ -123,6 +128,7 @@ def wait_for_card(timeout_s: float = 15.0):
         if remaining <= 0:
             break
         sub_timeout = max(0.5, remaining)
+        service = None
         try:
             request = CardRequest(timeout=sub_timeout, cardType=AnyCardType())
             service = request.waitforcard()
@@ -132,6 +138,14 @@ def wait_for_card(timeout_s: float = 15.0):
             break
         except (CardConnectionException, NoCardException) as exc:
             last_exc = exc
+            # Release the half-open PC/SC handle before retrying; otherwise
+            # we accumulate zombie connections that keep the reader busy and
+            # poison subsequent attempts in the same session.
+            if service is not None:
+                try:
+                    service.connection.disconnect()
+                except Exception:
+                    pass
             time.sleep(0.3)
 
     if last_exc is not None:

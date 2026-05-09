@@ -1470,4 +1470,10 @@ class KeycardErrorView(View):
         )
         if self.return_to_main:
             return Destination(MainMenuView, clear_history=True)
-        return Destination(BackStackView)
+        # Route explicitly to the Keycard menu (not BackStackView): every
+        # Keycard error is dispatched with skip_current_view=True, so the
+        # back stack state at this point depends on whatever sub-flow
+        # raised. Sending the user straight to the menu — and clearing the
+        # breadcrumbs — is deterministic and matches what successful flows
+        # already do (e.g. ToolsKeycardInitView, ToolsKeycardFactoryResetView).
+        return Destination(ToolsKeycardMenuView, clear_history=True)

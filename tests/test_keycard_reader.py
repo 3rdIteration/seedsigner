@@ -186,7 +186,7 @@ class TestWaitForCard(unittest.TestCase):
 
 
 class TestReleaseOtherSmartcardHolders(unittest.TestCase):
-    def test_disconnects_satochip_and_kicks_scdaemon(self):
+    def test_disconnects_satochip_and_kills_scdaemon(self):
         from seedsigner.helpers.keycard import reader
 
         controller = MagicMock(name="controller")
@@ -207,7 +207,9 @@ class TestReleaseOtherSmartcardHolders(unittest.TestCase):
             if c.args and c.args[0][:2] == ["gpgconf", "--launch"]
         ]
         self.assertEqual(len(kill_calls), 1)
-        self.assertEqual(len(launch_calls), 1)
+        # We deliberately do NOT relaunch scdaemon: it would race for the
+        # PC/SC exclusive lock and break our subsequent connect().
+        self.assertEqual(len(launch_calls), 0)
 
     def test_no_op_when_no_satochip_present(self):
         from seedsigner.helpers.keycard import reader
