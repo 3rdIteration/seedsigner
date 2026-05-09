@@ -297,6 +297,11 @@ class Controller(Singleton):
         controller.last_keycard_uid = None
         controller.eth_sign_request = None
         controller.eth_signature = None
+        # Multi-instance support: which applet AID we SELECT for
+        # Keycard operations this session. Defaults to the Status
+        # published AID; the Manage Instances flow updates it.
+        from seedsigner.helpers.keycard.commands import APPLET_AID as _DEFAULT_KEYCARD_AID
+        controller.active_keycard_aid = _DEFAULT_KEYCARD_AID
 
         # Configure the Renderer
         Renderer.configure_instance()

@@ -100,6 +100,7 @@ class ToolsKeycardMenuView(View):
     IMPORT_SEED = ButtonOption("Import seedphrase to card")
     INIT = ButtonOption("Initialise blank card")
     FACTORY_RESET = ButtonOption("Factory reset card")
+    INSTANCES = ButtonOption("Manage instances")
     STATUS = ButtonOption("Card status")
 
     def run(self):
@@ -113,6 +114,7 @@ class ToolsKeycardMenuView(View):
             self.IMPORT_SEED,
             self.INIT,
             self.FACTORY_RESET,
+            self.INSTANCES,
             self.STATUS,
         ]
         selected = self.run_screen(
@@ -143,6 +145,8 @@ class ToolsKeycardMenuView(View):
             return Destination(ToolsKeycardInitView)
         if chosen == self.FACTORY_RESET:
             return Destination(ToolsKeycardFactoryResetView)
+        if chosen == self.INSTANCES:
+            return Destination(ToolsKeycardInstancesMenuView)
         if chosen == self.STATUS:
             return Destination(ToolsKeycardStatusView)
         return Destination(NotYetImplementedView)
@@ -164,7 +168,7 @@ class ToolsKeycardStatusView(View):
         try:
             connection = wait_for_card(timeout_s=5.0)
             client = KeycardClient(connection)
-            info = client.select()
+            info = client.select(aid=self.controller.active_keycard_aid)
         except Exception as exc:
             return _error_destination("Card not reachable", str(exc))
 
@@ -228,7 +232,7 @@ class ToolsKeycardFactoryResetView(View):
         try:
             connection = wait_for_card(timeout_s=5.0)
             client = KeycardClient(connection)
-            client.select()
+            client.select(aid=self.controller.active_keycard_aid)
             client.factory_reset()
         except APDUError as exc:
             logger.warning("FACTORY_RESET unsupported: %s", exc)
@@ -315,7 +319,7 @@ class ToolsKeycardInitView(View):
         try:
             connection = wait_for_card(timeout_s=5.0)
             client = KeycardClient(connection)
-            client.select()
+            client.select(aid=self.controller.active_keycard_aid)
             secret = derive_pairing_secret(pairing_password)
             client.init(pin.encode("ascii"), puk.encode("ascii"), secret)
         except Exception as exc:
@@ -366,7 +370,7 @@ class ToolsKeycardPairView(View):
         try:
             connection = wait_for_card(timeout_s=5.0)
             client = KeycardClient(connection)
-            select_info = client.select()
+            select_info = client.select(aid=self.controller.active_keycard_aid)
         except Exception as exc:
             logger.exception("Keycard SELECT failed")
             return _error_destination("Card not reachable", str(exc))
@@ -979,6 +983,301 @@ class ToolsKeycardExportPubkeyView(View):
             button_data=[ButtonOption("OK")],
         )
         return Destination(ToolsKeycardMenuView)
+
+
+# ---------------------------------------------------------------------------
+# Manage instances (GlobalPlatform: list / switch active / install / delete)
+# ---------------------------------------------------------------------------
+
+
+# Status Keycard package AID (containing the applet binary). Issued
+# instances live under AIDs that share this prefix and add an instance
+# byte (e.g. 01, 02, 03 for the last byte).
+KEYCARD_PACKAGE_AID = bytes.fromhex("A0000008040001")
+KEYCARD_APPLET_AID = bytes.fromhex("A000000804000101")
+
+
+def _format_aid_short(aid: bytes) -> str:
+    if len(aid) == 0:
+        return "(empty)"
+    hexstr = aid.hex()
+    if len(hexstr) <= 16:
+        return hexstr
+    return hexstr[:6] + "…" + hexstr[-4:]
+
+
+def _next_free_instance_aid(existing: list) -> bytes:
+    """Suggest the next instance AID by bumping the last byte.
+
+    Status default instance AID ends in ``...0101``. We look at every
+    existing instance whose AID begins with ``KEYCARD_APPLET_AID`` +
+    one byte and pick the smallest unused last byte.
+    """
+    used = set()
+    for aid in existing:
+        if (
+            len(aid) == len(KEYCARD_APPLET_AID) + 2
+            and aid.startswith(KEYCARD_APPLET_AID)
+            and aid[-2] == 0x01
+        ):
+            used.add(aid[-1])
+    for candidate in range(0x01, 0x10):
+        if candidate not in used:
+            return KEYCARD_APPLET_AID + bytes([0x01, candidate])
+    raise RuntimeError("no free instance slot in 0x0101..0x010F")
+
+
+class ToolsKeycardInstancesMenuView(View):
+    """Top-level Manage Instances menu.
+
+    All four operations talk to the Card Manager (ISD), not the Keycard
+    applet itself. The user must be aware their card uses the GP
+    default ISD keys (`404142...4F`); we don't try to brute-force or
+    prompt for alternates here.
+    """
+
+    LIST = ButtonOption("List instances")
+    SWITCH = ButtonOption("Switch active")
+    CREATE = ButtonOption("Create instance")
+    DELETE = ButtonOption("Delete instance")
+
+    def run(self):
+        active = _format_aid_short(self.controller.active_keycard_aid)
+        button_data = [self.LIST, self.SWITCH, self.CREATE, self.DELETE]
+        ret = self.run_screen(
+            ButtonListScreen,
+            title=f"Active: {active}",
+            is_button_text_centered=False,
+            button_data=button_data,
+            show_back_button=True,
+        )
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        chosen = button_data[ret]
+        if chosen == self.LIST:
+            return Destination(ToolsKeycardInstancesListView)
+        if chosen == self.SWITCH:
+            return Destination(ToolsKeycardInstancesSwitchView)
+        if chosen == self.CREATE:
+            return Destination(ToolsKeycardInstancesCreateView)
+        if chosen == self.DELETE:
+            return Destination(ToolsKeycardInstancesDeleteView)
+        return Destination(BackStackView)
+
+
+def _open_isd_channel(controller):
+    """Helper: open the GP secure channel against the inserted card.
+
+    Returns (gp_channel, list_of_instances). Caller surfaces errors via
+    ``_error_destination`` — we deliberately let exceptions bubble.
+    """
+    from seedsigner.helpers.keycard.global_platform import (
+        GpSecureChannel, list_instances,
+    )
+    from seedsigner.helpers.keycard.reader import wait_for_card
+
+    connection = wait_for_card(timeout_s=5.0)
+    channel = GpSecureChannel(connection)
+    channel.select_isd()
+    channel.open()
+    instances = list_instances(channel)
+    return channel, instances
+
+
+class ToolsKeycardInstancesListView(View):
+    def run(self):
+        try:
+            channel, instances = _open_isd_channel(self.controller)
+        except Exception as exc:
+            logger.exception("GP list_instances failed")
+            return _error_destination("GP failed", str(exc))
+
+        if not instances:
+            text = "No applet instances\nfound."
+        else:
+            lines = [_format_aid_short(i.aid) for i in instances]
+            text = "\n".join(lines[:6])
+        self.run_screen(
+            LargeIconStatusScreen,
+            title=f"Instances ({len(instances)})",
+            status_headline=None,
+            text=text,
+            show_back_button=False,
+            button_data=[ButtonOption("OK")],
+        )
+        return Destination(BackStackView)
+
+
+class ToolsKeycardInstancesSwitchView(View):
+    def run(self):
+        try:
+            channel, instances = _open_isd_channel(self.controller)
+        except Exception as exc:
+            logger.exception("GP list_instances failed")
+            return _error_destination("GP failed", str(exc))
+
+        # Filter to AIDs that look like Keycard instances.
+        candidates = [
+            i for i in instances if i.aid.startswith(KEYCARD_APPLET_AID)
+        ]
+        if not candidates:
+            return _error_destination(
+                "No instances",
+                "No Keycard applet found on this card.",
+            )
+
+        button_data = [
+            ButtonOption(_format_aid_short(i.aid)) for i in candidates
+        ]
+        ret = self.run_screen(
+            ButtonListScreen,
+            title="Pick active",
+            is_button_text_centered=False,
+            button_data=button_data,
+            show_back_button=True,
+        )
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        chosen = candidates[ret].aid
+        self.controller.active_keycard_aid = chosen
+
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Active set",
+            status_headline=None,
+            text=_format_aid_short(chosen),
+            show_back_button=False,
+            button_data=[ButtonOption("OK")],
+        )
+        return Destination(ToolsKeycardInstancesMenuView, skip_current_view=True)
+
+
+class ToolsKeycardInstancesCreateView(View):
+    """Install a fresh Keycard applet instance from the on-card package."""
+
+    CONFIRM = ButtonOption("Create")
+
+    def run(self):
+        from seedsigner.helpers.keycard.global_platform import (
+            install_for_install,
+        )
+
+        try:
+            channel, instances = _open_isd_channel(self.controller)
+        except Exception as exc:
+            logger.exception("GP open failed")
+            return _error_destination("GP failed", str(exc))
+
+        existing_aids = [i.aid for i in instances]
+        try:
+            new_aid = _next_free_instance_aid(existing_aids)
+        except Exception as exc:
+            return _error_destination("No slot", str(exc))
+
+        ret = self.run_screen(
+            DireWarningScreen,
+            title="Create instance?",
+            status_headline=None,
+            text=f"New AID:\n{_format_aid_short(new_aid)}\nCard must have package.",
+            show_back_button=True,
+            button_data=[self.CONFIRM],
+        )
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        try:
+            install_for_install(
+                channel,
+                package_aid=KEYCARD_PACKAGE_AID,
+                applet_aid=KEYCARD_APPLET_AID,
+                instance_aid=new_aid,
+            )
+        except Exception as exc:
+            logger.exception("INSTALL [for install] failed")
+            return _error_destination("Install failed", str(exc))
+
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Created",
+            status_headline=None,
+            text=f"AID:\n{_format_aid_short(new_aid)}\nRun Init next.",
+            show_back_button=False,
+            button_data=[ButtonOption("OK")],
+        )
+        return Destination(ToolsKeycardInstancesMenuView, skip_current_view=True)
+
+
+class ToolsKeycardInstancesDeleteView(View):
+    """Delete an applet instance and drop its local pairing."""
+
+    def run(self):
+        from seedsigner.helpers.keycard.global_platform import delete_aid
+
+        try:
+            channel, instances = _open_isd_channel(self.controller)
+        except Exception as exc:
+            logger.exception("GP open failed")
+            return _error_destination("GP failed", str(exc))
+
+        candidates = [
+            i for i in instances if i.aid.startswith(KEYCARD_APPLET_AID)
+        ]
+        if not candidates:
+            return _error_destination(
+                "No instances", "Nothing to delete.",
+            )
+
+        button_data = [
+            ButtonOption(_format_aid_short(i.aid)) for i in candidates
+        ]
+        ret = self.run_screen(
+            ButtonListScreen,
+            title="Delete?",
+            is_button_text_centered=False,
+            button_data=button_data,
+            show_back_button=True,
+        )
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        target = candidates[ret].aid
+
+        confirm_ret = self.run_screen(
+            DireWarningScreen,
+            title="Confirm delete?",
+            status_headline=None,
+            text=f"Delete instance\n{_format_aid_short(target)}?",
+            show_back_button=True,
+            button_data=[ButtonOption("Delete")],
+        )
+        if confirm_ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        try:
+            delete_aid(channel, target, with_related=True)
+        except Exception as exc:
+            logger.exception("DELETE failed")
+            return _error_destination("Delete failed", str(exc))
+
+        # Drop any cached pairing whose previously-observed UID we
+        # can't tie to this AID. Best-effort: we don't know the
+        # mapping AID → instance_uid here without re-SELECTing the
+        # applet (which we just deleted). Leave the cache for now;
+        # next operation will get KeycardCardChangedError if needed.
+
+        # If the deleted AID was the active one, fall back to default.
+        if self.controller.active_keycard_aid == target:
+            self.controller.active_keycard_aid = KEYCARD_APPLET_AID + b"\x01\x01"
+
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Deleted",
+            status_headline=None,
+            text=_format_aid_short(target),
+            show_back_button=False,
+            button_data=[ButtonOption("OK")],
+        )
+        return Destination(ToolsKeycardInstancesMenuView, skip_current_view=True)
 
 
 # ---------------------------------------------------------------------------

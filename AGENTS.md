@@ -258,6 +258,48 @@ python scripts/keycard_smoke_test.py --path "m/44'/60'/0'/0/0" --sign
 
 Capture the output to a local file (do **not** commit — the pubkey is fine but pairing diagnostics may include sensitive timing). Without `--sign`, the script exercises SELECT → PAIR → secure-channel → VERIFY_PIN → DERIVE → EXPORT only.
 
+### Multi-instance management (GlobalPlatform / SCP02)
+
+Multiple Keycard applet instances can live on the same physical card, each with its own AID, `instance_uid`, PIN, pairing slots and master key. SeedSigner manages them via `Tools > Keycard > Manage instances`.
+
+**Pre-conditions:**
+
+- The Status Keycard **package** (`A0000008040001`) is already loaded on the card. Retail Status Keycards and any card the user previously initialised satisfy this. We never `INSTALL [for load]` a `.cap` file from the device — that would require shipping the binary in the firmware image.
+- The card's **ISD keys** are still the GlobalPlatform defaults (`404142434445464748494A4B4C4D4E4F` for ENC, MAC, DEK). Cards with rotated keys are not supported yet; the user would need to introduce them via a future "custom ISD keys" flow.
+
+**Protocol (`helpers/keycard/global_platform.py`):**
+
+| Step | APDU | Notes |
+|------|------|-------|
+| SELECT ISD | `00 A4 04 00 …` | Tries `A000000003000000` (Visa) then `A000000151000000` (Mastercard) |
+| INITIALIZE UPDATE | `80 50 00 00 08 [host_chal] 00` | Response 28 bytes: 10 KDV + 1 KVN + 1 SCP id + 2 seq counter + 6 card chal + 8 card cryptogram |
+| Session keys | 3DES-CBC(IV=0) over `derivation_const(2) ‖ seq(2) ‖ zeros(12)` | S-ENC `0182`, S-MAC `0101`, S-DEK `0181` (we don't currently use S-DEK) |
+| Card cryptogram check | `last8(3DES-CBC(S-ENC, host_chal ‖ seq ‖ card_chal ‖ pad80))` | Computed and compared before sending anything authenticated |
+| EXTERNAL AUTHENTICATE | `84 82 01 00 10 [host_cryptogram(8)] [CMAC(8)]` | Security level 0x01 = C-MAC only (no C-ENC) |
+| Subsequent commands | `84 INS P1 P2 (Lc+8) [data] [CMAC]` | Retail MAC (ISO 9797-1 alg 3, padding method 2). ICV chains: next ICV = single-DES-encrypt(prev MAC, K1_MAC) |
+
+**Why C-MAC only:**
+
+The commands we send (`INSTALL [for install]`, `DELETE`, `GET STATUS`) carry no secret payload — INSTALL contains AIDs and install parameters, DELETE contains a target AID, GET STATUS is a query. Adding C-ENC over 3DES-CBC would only add code volume without raising security against an attacker who already has physical card access.
+
+**AID conventions:**
+
+- Status applet binary: `A000000804000101`
+- Default first instance: `A0000008040001010101`
+- We allocate new instance AIDs by bumping the last byte: `…0102`, `…0103`, … up to `…010F`.
+- Each instance generates its own random `instance_uid` at INIT time, so the per-UID pairing storage in `helpers/keycard/pairing_storage.py` Just Works for multi-instance setups — no schema change needed.
+
+**Active instance for the session:**
+
+- `Controller.active_keycard_aid` (defaults to the published Status AID) is the AID we SELECT for every Keycard operation. The Manage Instances flow lets the user switch it.
+- After DELETE, if the deleted AID was the active one we fall back to the default. After INSTALL, the new AID does NOT auto-become active — the user explicitly switches.
+
+**Threat-model additions:**
+
+- Anyone in physical possession of the card AND the ISD keys can install/delete applets at will. There is no authenticated channel for "the user" beyond the ISD secret. If the user hands a card to someone with default keys still set, that person can wipe it.
+- The C-MAC alone provides integrity and replay protection within a session, but not confidentiality. INSTALL/DELETE payloads are observable on a malicious reader (they're already public AIDs, so no leakage of user secrets either way).
+- This module **never** signs or imports seed material. It does not import from `seedsigner.models.seed*` or `seedsigner.helpers.keycard.crypto`. Bug or break in `global_platform.py` cannot affect signing flows.
+
 ## Stealth boot mode
 
 This fork supports an optional "stealth boot" mode controlled by two settings (default OFF, hidden from the Settings UI under Advanced):

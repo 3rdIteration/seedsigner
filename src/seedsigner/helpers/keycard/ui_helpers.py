@@ -134,12 +134,24 @@ def prompt_for_pin(parent_view: "View", title: str) -> Optional[bytearray]:
         )
 
 
+def _active_aid(parent_view: "View"):
+    """Resolve the AID to SELECT for Keycard ops on this controller.
+
+    Falls back to the published Status AID if the controller doesn't
+    expose ``active_keycard_aid`` (e.g. early-init test stubs).
+    """
+    from seedsigner.helpers.keycard.commands import APPLET_AID
+    return getattr(parent_view.controller, "active_keycard_aid", APPLET_AID)
+
+
 def open_unlocked_session(parent_view: "View", pin: bytearray) -> Tuple["KeycardClient", "PairingInfo"]:
     """Connect, SELECT, OPEN_SECURE_CHANNEL, VERIFY_PIN.
 
     Auto-switch behaviour: SELECT runs before any pairing lookup so the
     function discovers which physical card is currently in the reader,
-    then picks the right cached pairing for that card.
+    then picks the right cached pairing for that card. The AID we
+    SELECT is ``controller.active_keycard_aid`` so multi-instance
+    setups can target the right applet.
 
     Raises :class:`KeycardCardChangedError` (with the card's
     ``instance_uid``) if no pairing for the inserted card exists in the
@@ -151,7 +163,7 @@ def open_unlocked_session(parent_view: "View", pin: bytearray) -> Tuple["Keycard
 
     connection = wait_for_card(timeout_s=5.0)
     client = KeycardClient(connection)
-    info = client.select()
+    info = client.select(aid=_active_aid(parent_view))
     parent_view.controller.last_keycard_uid = bytes(info.instance_uid)
 
     pairing = parent_view.controller.get_pairing_for(info.instance_uid)
@@ -164,7 +176,7 @@ def open_unlocked_session(parent_view: "View", pin: bytearray) -> Tuple["Keycard
 
 
 def identify_inserted_card(parent_view: "View") -> Tuple["KeycardClient", bytes]:
-    """SELECT only — identify which card is in the reader without unlocking.
+    """SELECT only — identify which card/instance is in the reader.
 
     Returns ``(client, instance_uid)`` and updates
     ``controller.last_keycard_uid``. Used by entry-point views that
@@ -176,7 +188,7 @@ def identify_inserted_card(parent_view: "View") -> Tuple["KeycardClient", bytes]
 
     connection = wait_for_card(timeout_s=5.0)
     client = KeycardClient(connection)
-    info = client.select()
+    info = client.select(aid=_active_aid(parent_view))
     uid = bytes(info.instance_uid)
     parent_view.controller.last_keycard_uid = uid
     return client, uid
