@@ -383,6 +383,23 @@ class SettingsConstants:
         (WIPE_TIMER__THIRTY_MINUTES, _mft("30 minutes")),
     ]
 
+    # Screensaver timeout (minutes). ``0`` disables the screensaver
+    # entirely; any other value sets ``Controller.screensaver_activation_ms``.
+    SCREENSAVER__DISABLED = 0
+    SCREENSAVER__ONE_MINUTE = 1
+    SCREENSAVER__TWO_MINUTES = 2
+    SCREENSAVER__FIVE_MINUTES = 5
+    SCREENSAVER__TEN_MINUTES = 10
+    SCREENSAVER__THIRTY_MINUTES = 30
+    ALL_SCREENSAVER_TIMEOUTS = [
+        (SCREENSAVER__DISABLED, _mft("Off")),
+        (SCREENSAVER__ONE_MINUTE, _mft("1 minute")),
+        (SCREENSAVER__TWO_MINUTES, _mft("2 minutes")),
+        (SCREENSAVER__FIVE_MINUTES, _mft("5 minutes")),
+        (SCREENSAVER__TEN_MINUTES, _mft("10 minutes")),
+        (SCREENSAVER__THIRTY_MINUTES, _mft("30 minutes")),
+    ]
+
     SINGLE_SIG = "ss"
     MULTISIG = "ms"
     ALL_SIG_TYPES = [
@@ -435,6 +452,7 @@ class SettingsConstants:
     SETTING__SCARD_PIN_ATTEMPTS = "scard_pin_attempts"
     SETTING__SMARTCARD_SUPPORT = "smartcard_support"
     SETTING__WIPE_TIMER = "wipe_timer"
+    SETTING__SCREENSAVER_TIMEOUT = "screensaver_timeout"
 
     SETTING__DISPLAY_CONFIGURATION = "display_config"
     SETTING__DISPLAY_COLOR_INVERTED = "color_inverted"
@@ -864,6 +882,14 @@ class SettingsDefinition:
                     type=SettingsConstants.TYPE__SELECT_1,
                     selection_options=SettingsConstants.ALL_WIPE_TIMERS,
                     default_value=SettingsConstants.WIPE_TIMER__DISABLED),
+
+        SettingsEntry(category=SettingsConstants.CATEGORY__SYSTEM,
+                    attr_name=SettingsConstants.SETTING__SCREENSAVER_TIMEOUT,
+                    abbreviated_name="screensaver",
+                    display_name=_mft("Screensaver"),
+                    type=SettingsConstants.TYPE__SELECT_1,
+                    selection_options=SettingsConstants.ALL_SCREENSAVER_TIMEOUTS,
+                    default_value=SettingsConstants.SCREENSAVER__TWO_MINUTES),
 
         # Advanced options
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,

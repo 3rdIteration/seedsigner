@@ -323,14 +323,15 @@ class Controller(Singleton):
         # Address cache for "View wallets". Initialised here so the
         # attribute is always a dict by the time any view touches it.
         controller.keycard_wallets_data = {}
+        # Subscribers for PC/SC card-event fan-out. Populated by views
+        # that need to react to insert/remove (e.g. CardWaitScreen).
+        controller._card_inserted_listeners = []
+        controller._card_removed_listeners = []
 
         # Configure the Renderer
         Renderer.configure_instance()
 
         controller.back_stack = BackStack()
-
-        # Other behavior constants
-        controller.screensaver_activation_ms = 2 * 60 * 1000  # two minutes
 
         background_import_thread = BackgroundImportThread()
         background_import_thread.start()
@@ -355,6 +356,26 @@ class Controller(Singleton):
     def camera(self):
         from .hardware.camera import Camera
         return Camera.get_instance()
+
+    @property
+    def screensaver_activation_ms(self) -> float:
+        """Idle-time threshold (ms) before the screensaver kicks in.
+
+        Backed by :attr:`SettingsConstants.SETTING__SCREENSAVER_TIMEOUT`
+        — the user controls this from Settings ▸ System ▸ Screensaver.
+        ``0`` disables the screensaver entirely; we return positive
+        infinity so the comparison in ``HardwareButtons.wait_for`` never
+        fires.
+        """
+        try:
+            minutes = self.settings.get_value(
+                SettingsConstants.SETTING__SCREENSAVER_TIMEOUT
+            )
+        except Exception:
+            minutes = 2
+        if minutes is None or minutes <= 0:
+            return float("inf")
+        return minutes * 60 * 1000
 
 
     # ---- Keycard pairing cache helpers ----
@@ -436,8 +457,9 @@ class Controller(Singleton):
         """Card-removed event from the background PC/SC monitor.
 
         Wipes every cached card secret immediately so a removed card
-        cannot leak its PIN. Safe to call from a background thread:
-        all state mutations are simple dict / attribute writes.
+        cannot leak its PIN, then dispatches the event to any
+        ``register_card_removed_listener`` consumers (e.g. the active
+        ``CardWaitScreen``). Safe to call from a background thread.
         Reader name is intentionally not logged (fingerprint risk).
         """
         try:
@@ -448,15 +470,20 @@ class Controller(Singleton):
             self.forget_satochip_session()
         except Exception:
             logger.exception("forget_satochip_session failed in on_card_removed")
+        try:
+            from seedsigner.gui.toast import CardRemovedToast
+            self.activate_toast(CardRemovedToast())
+        except Exception:
+            logger.exception("CardRemovedToast dispatch failed")
+        self._notify_card_listeners(self._card_removed_listeners)
 
     def on_card_inserted(self, atr: bytes, reader_name=None) -> None:
         """Card-inserted event from the background PC/SC monitor.
 
         Fires ``CardInsertedToast`` when ``SETTING__AUTO_PIN_ON_INSERT``
-        is enabled. Identification is left intentionally generic until
-        Phase 6 ships the SELECT-probe; the toast just nudges the user
-        to navigate into a card menu where the cached-PIN flow takes
-        over. ATR is NOT logged (fingerprint risk).
+        is enabled, then dispatches the event to any registered
+        ``card_inserted`` listeners (e.g. the active ``CardWaitScreen``).
+        ATR is NOT logged (fingerprint risk).
         """
         try:
             enabled = Settings.get_instance().get_value(
@@ -464,14 +491,47 @@ class Controller(Singleton):
             )
         except Exception:
             enabled = SettingsConstants.OPTION__DISABLED
-        if enabled != SettingsConstants.OPTION__ENABLED:
-            return
+        if enabled == SettingsConstants.OPTION__ENABLED:
+            try:
+                from seedsigner.gui.toast import CardInsertedToast
+                kind = self.identify_inserted_card_kind(atr)
+                self.activate_toast(CardInsertedToast(kind=kind))
+            except Exception:
+                logger.exception("CardInsertedToast dispatch failed")
+        self._notify_card_listeners(self._card_inserted_listeners, atr, reader_name)
+
+    # ---- Card-event listener registry ---------------------------------
+
+    def register_card_inserted_listener(self, fn) -> None:
+        """Subscribe to PC/SC card-inserted events.
+
+        Listeners run on the pyscard monitor thread; keep callbacks fast
+        and exception-safe. Use ``unregister_card_inserted_listener`` on
+        teardown to avoid leaking references.
+        """
+        self._card_inserted_listeners.append(fn)
+
+    def unregister_card_inserted_listener(self, fn) -> None:
         try:
-            from seedsigner.gui.toast import CardInsertedToast
-            kind = self.identify_inserted_card_kind(atr)
-            self.activate_toast(CardInsertedToast(kind=kind))
-        except Exception:
-            logger.exception("CardInsertedToast dispatch failed")
+            self._card_inserted_listeners.remove(fn)
+        except ValueError:
+            pass
+
+    def register_card_removed_listener(self, fn) -> None:
+        self._card_removed_listeners.append(fn)
+
+    def unregister_card_removed_listener(self, fn) -> None:
+        try:
+            self._card_removed_listeners.remove(fn)
+        except ValueError:
+            pass
+
+    def _notify_card_listeners(self, listeners, *args) -> None:
+        for fn in list(listeners):
+            try:
+                fn(*args)
+            except Exception:
+                logger.exception("card-event listener raised; continuing")
 
     def identify_inserted_card_kind(self, atr: bytes) -> str:
         """Best-effort label for ``on_card_inserted`` toasts.

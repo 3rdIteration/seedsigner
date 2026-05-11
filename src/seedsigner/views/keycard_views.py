@@ -102,7 +102,12 @@ DEFAULT_PAIRING_PASSWORD = "KeycardDefaultPairing"
 
 class ToolsKeycardMenuView(View):
     """Top-level Keycard menu. Daily-use ops at the top, setup and
-    maintenance hidden behind submenus to keep the list scannable."""
+    maintenance hidden behind submenus to keep the list scannable.
+
+    On entry the card is probed (see ``card_probe.run_card_gate``):
+    a missing card lands on ``CardWaitScreen``; an uninstantiated
+    applet routes straight to ``ToolsKeycardInitView``.
+    """
 
     SIGN_ETH = ButtonOption("Sign ETH")
     VIEW_WALLETS = ButtonOption("View wallets")
@@ -111,6 +116,13 @@ class ToolsKeycardMenuView(View):
     MANAGE = ButtonOption("Manage")
 
     def run(self):
+        from seedsigner.helpers.card_probe import run_card_gate
+        gate = run_card_gate(
+            self, "keycard", title="Keycard", setup_view=ToolsKeycardInitView,
+        )
+        if gate is not None:
+            return gate
+
         button_data = [
             self.SIGN_ETH,
             self.VIEW_WALLETS,
@@ -357,7 +369,7 @@ class ToolsKeycardFactoryResetView(View):
             show_back_button=False,
             button_data=[ButtonOption("OK")],
         )
-        return Destination(ToolsKeycardMenuView)
+        return Destination(ToolsKeycardMenuView, skip_current_view=True)
 
 
 # ---------------------------------------------------------------------------
@@ -440,7 +452,7 @@ class ToolsKeycardInitView(View):
             show_back_button=False,
             button_data=[ButtonOption("OK")],
         )
-        return Destination(ToolsKeycardMenuView)
+        return Destination(ToolsKeycardMenuView, skip_current_view=True)
 
 
 # ---------------------------------------------------------------------------
@@ -520,7 +532,7 @@ class ToolsKeycardChangePinView(View):
                 show_back_button=False,
                 button_data=[ButtonOption("OK")],
             )
-            return Destination(ToolsKeycardMenuView)
+            return Destination(ToolsKeycardMenuView, skip_current_view=True)
         finally:
             wipe_bytearray(new_pin)
             wipe_bytearray(confirm_pin)
@@ -726,7 +738,7 @@ class ToolsKeycardPairView(View):
                 show_back_button=False,
                 button_data=[ButtonOption("OK")],
             )
-            return Destination(ToolsKeycardMenuView)
+            return Destination(ToolsKeycardMenuView, skip_current_view=True)
 
         # If the card has no free slots and we have no cached pairing
         # to reuse, PAIR will fail with SW=0x6A84. Stop early with a
@@ -828,7 +840,7 @@ class ToolsKeycardPairView(View):
             show_back_button=False,
             button_data=[ButtonOption("OK")],
         )
-        return Destination(ToolsKeycardMenuView)
+        return Destination(ToolsKeycardMenuView, skip_current_view=True)
 
     # ---- ephemeral (v3.2+) path -------------------------------------
 
@@ -859,7 +871,7 @@ class ToolsKeycardPairView(View):
                 show_back_button=False,
                 button_data=[ButtonOption("OK")],
             )
-            return Destination(ToolsKeycardMenuView)
+            return Destination(ToolsKeycardMenuView, skip_current_view=True)
 
         secret_used: Optional[bytes] = None
         used_default = False
@@ -979,7 +991,7 @@ class ToolsKeycardPairView(View):
             show_back_button=False,
             button_data=[ButtonOption("OK")],
         )
-        return Destination(ToolsKeycardMenuView)
+        return Destination(ToolsKeycardMenuView, skip_current_view=True)
 
 
 class ToolsKeycardRemovePairingView(View):
@@ -1116,11 +1128,11 @@ class ToolsKeycardRemovePairingView(View):
             self._drop_local_for_uid(instance_uid)
             self._show_done("Removed local",
                             "Slot still in use\non the card.")
-            return Destination(ToolsKeycardMenuView)
+            return Destination(ToolsKeycardMenuView, skip_current_view=True)
 
         self._drop_local_for_uid(instance_uid)
         self._show_done("Unpaired", "Slot freed; local removed.")
-        return Destination(ToolsKeycardMenuView)
+        return Destination(ToolsKeycardMenuView, skip_current_view=True)
 
     def _drop_local_for_uid(self, instance_uid: bytes) -> None:
         from seedsigner.helpers.keycard import pairing_storage
@@ -1147,7 +1159,7 @@ class ToolsKeycardRemovePairingView(View):
         count = pairing_storage.remove_all()
         self.controller.forget_all_pairings()
         self._show_done("Removed", f"Removed {count} pairing(s).")
-        return Destination(ToolsKeycardMenuView)
+        return Destination(ToolsKeycardMenuView, skip_current_view=True)
 
     def _remove_local_entry(self, entry) -> Destination:
         from seedsigner.helpers.keycard import pairing_storage
@@ -1227,6 +1239,10 @@ class ToolsKeycardGenerateKeyView(View):
             title, body = classify_card_error(exc, default_title="Generate failed")
             return _error_destination(title, body)
 
+        # The on-card master key just changed — any cached View-wallets
+        # addresses for this AID were derived from the old key.
+        _invalidate_wallets_cache_for_active_aid(self.controller)
+
         self.run_screen(
             LargeIconStatusScreen,
             title="Key created",
@@ -1235,7 +1251,7 @@ class ToolsKeycardGenerateKeyView(View):
             show_back_button=False,
             button_data=[ButtonOption("OK")],
         )
-        return Destination(ToolsKeycardMenuView)
+        return Destination(ToolsKeycardMenuView, skip_current_view=True)
 
 
 # ---------------------------------------------------------------------------
@@ -1392,6 +1408,10 @@ class ToolsKeycardImportSeedView(View):
                 title, body = classify_card_error(exc, default_title="Push failed")
                 return _error_destination(title, body)
 
+            # The on-card master key just changed — any cached View-wallets
+            # addresses for this AID were derived from the old key.
+            _invalidate_wallets_cache_for_active_aid(self.controller)
+
             self.run_screen(
                 LargeIconStatusScreen,
                 title="Wallet imported",
@@ -1400,7 +1420,7 @@ class ToolsKeycardImportSeedView(View):
                 show_back_button=False,
                 button_data=[ButtonOption("OK")],
             )
-            return Destination(ToolsKeycardMenuView)
+            return Destination(ToolsKeycardMenuView, skip_current_view=True)
         finally:
             # Best-effort wipe of every intermediate secret.
             for i in range(len(words)):
@@ -1602,7 +1622,7 @@ class ToolsKeycardPairWalletView(View):
             show_back_button=False,
             button_data=[ButtonOption("OK")],
         )
-        return Destination(ToolsKeycardMenuView)
+        return Destination(ToolsKeycardMenuView, skip_current_view=True)
 
 
 # Backwards-compatible alias for any external importer (tests, scripts).
@@ -1627,6 +1647,19 @@ def _wallets_cache_for_active_aid(controller) -> list:
         controller.keycard_wallets_data = {}
     aid_hex = bytes(controller.active_keycard_aid).hex()
     return controller.keycard_wallets_data.setdefault(aid_hex, [])
+
+
+def _invalidate_wallets_cache_for_active_aid(controller) -> None:
+    """Drop the cached View-wallets list for the active AID.
+
+    Call after any operation that changes the on-card master key
+    (GENERATE_KEY, LOAD_KEY) so the next View-wallets entry re-derives
+    against the new key instead of showing addresses from the old one.
+    """
+    if controller.keycard_wallets_data is None:
+        return
+    aid_hex = bytes(controller.active_keycard_aid).hex()
+    controller.keycard_wallets_data.pop(aid_hex, None)
 
 
 class ToolsKeycardWalletsListView(View):

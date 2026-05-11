@@ -45,6 +45,12 @@ class _FakeController:
         self.forget_satochip_session_called = 0
         self.inserted_events = []
         self.raise_on_pin_wipe = False
+        # Real Controller exposes these listener registries; the
+        # observer dispatch path now uses them. Tests don't care about
+        # their content but the attribute must exist.
+        self._card_inserted_listeners = []
+        self._card_removed_listeners = []
+        self.toasts_activated = []
 
     def forget_all_pins(self):
         self.forget_all_pins_called += 1
@@ -53,6 +59,16 @@ class _FakeController:
 
     def forget_satochip_session(self):
         self.forget_satochip_session_called += 1
+
+    def activate_toast(self, toast):
+        # Real ``activate_toast`` spins up a thread; in tests we just
+        # record the call so the observer pathway doesn't crash on
+        # missing infrastructure.
+        self.toasts_activated.append(toast)
+
+    def _notify_card_listeners(self, listeners, *args):
+        from seedsigner.controller import Controller
+        Controller._notify_card_listeners(self, listeners, *args)
 
     # Real Controller wires these into the same callbacks; mirror that here.
     def on_card_removed(self, reader_name=None):
@@ -161,6 +177,10 @@ class TestOnCardInsertedToast(unittest.TestCase):
         ctrl = MagicMock(spec=Controller)
         ctrl.activate_toast = MagicMock()
         ctrl.identify_inserted_card_kind = MagicMock(return_value="Card")
+        # Listener registries used by the card-event fan-out (added in
+        # Phase 5b alongside CardWaitScreen).
+        ctrl._card_inserted_listeners = []
+        ctrl._card_removed_listeners = []
 
         # Patch Settings.get_instance() so on_card_inserted reads our value.
         from unittest.mock import patch

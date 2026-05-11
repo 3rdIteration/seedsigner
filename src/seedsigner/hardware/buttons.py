@@ -391,6 +391,62 @@ class HardwareButtons(Singleton):
                                 return mapped
                 time.sleep(0.01)
 
+    def poll(self, keys: List = []) -> str | None:
+        """Non-blocking variant of :meth:`wait_for`.
+
+        Returns the first key in ``keys`` currently pressed (with the
+        same debounce semantics as ``wait_for``), or ``None`` if no
+        listed key is down. Intended for screens that must coexist with
+        another wait source (e.g. ``CardWaitScreen`` waiting on both a
+        card-event listener and a Cancel press).
+        """
+        cur_time = int(time.time() * 1000)
+
+        if USING_GPIO:
+            for key in keys:
+                if key not in self._gpio_pins:
+                    continue
+                if self._gpio_pins[key].read():
+                    # High means released; reset any debounce window.
+                    self._low_since_ms[key] = None
+                    continue
+                low_since = self._low_since_ms.get(key)
+                if low_since is None:
+                    self._low_since_ms[key] = cur_time
+                    continue
+                if cur_time - low_since < self.debounce_threshold_ms:
+                    continue
+                self._low_since_ms[key] = None
+                self.cur_input = key
+                self.cur_input_started = cur_time
+                self.last_input_time = cur_time
+                return key
+            return None
+
+        # Pygame fallback (desktop). Drain pending events; return first
+        # mapped match.
+        if pygame is None:
+            return None
+        if threading.current_thread() is threading.main_thread():
+            pygame.event.pump()
+        for event in pygame.event.get():
+            if event.type == pygame.KEYDOWN:
+                mapped = self.key_map.get(event.key)
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                mapped = None
+                for key, rect in self.button_rects.items():
+                    if rect.collidepoint(event.pos):
+                        mapped = key
+                        break
+            else:
+                mapped = None
+            if mapped in keys:
+                self.cur_input = mapped
+                self.cur_input_started = cur_time
+                self.last_input_time = cur_time
+                return mapped
+        return None
+
     def update_last_input_time(self):
         self.last_input_time = int(time.time() * 1000)
 

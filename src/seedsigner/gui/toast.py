@@ -313,7 +313,27 @@ class CardInsertedToast(DefaultToast):
             font_color=GUIConstants.BODY_FONT_COLOR,
             font_size=body_font_size,
         )
-    
+
+
+class CardRemovedToast(DefaultToast):
+    """Notification fired by ``Controller.on_card_removed``. Pairs with
+    ``CardInsertedToast`` so the user sees both halves of a swap.
+    Cached PIN/session state is already wiped by the time this is shown.
+    """
+
+    def __init__(self, activation_delay: int = 0, duration: int = 3):
+        super().__init__(label_text="Card removed",
+                         activation_delay=activation_delay, duration=duration)
+
+    def instantiate_toast(self) -> ToastOverlay:
+        body_font_size = GUIConstants.get_body_font_size()
+        return ToastOverlay(
+            icon_name=SeedSignerIconConstants.WARNING,
+            label_text=self.label_text,
+            color=GUIConstants.WARNING_COLOR,
+            font_color=GUIConstants.BODY_FONT_COLOR,
+            font_size=body_font_size,
+        )
 
 
 class SuccessToast(DefaultToast):

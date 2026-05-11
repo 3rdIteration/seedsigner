@@ -343,7 +343,6 @@ class ToolsMenuView(View):
     VERIFY_ADDRESS = ButtonOption("Verify address")
     TEXTQRCODE = ButtonOption("Text QR Code")
     PASSWORD_GENERATOR = ButtonOption("Password Generator", FontAwesomeIconConstants.LOCK)
-    SMARTCARD = ButtonOption("Smartcard Tools", FontAwesomeIconConstants.LOCK)
     MICROSD = ButtonOption("MicroSD Tools")
     BATTERY_CALIBRATION = ButtonOption("Battery Calibration")
     GPG = ButtonOption("GPG Tools")
@@ -363,9 +362,6 @@ class ToolsMenuView(View):
 
         if self.settings.get_value(SettingsConstants.SETTING__SLIP39_SEEDS) == SettingsConstants.OPTION__ENABLED:
             button_data.extend([self.SLIP39_IMAGE, self.SLIP39_DICE])
-
-        if self.settings.get_value(SettingsConstants.SETTING__SMARTCARD_SUPPORT) == SettingsConstants.OPTION__ENABLED:
-            button_data.append(self.SMARTCARD)
 
         from seedsigner.hardware.battery_hat import BatteryHat
         battery_calibration_button = self.BATTERY_CALIBRATION if BatteryHat.get_instance().is_enabled() else None
@@ -428,9 +424,6 @@ class ToolsMenuView(View):
         elif button_data[selected_menu_num] == self.PASSWORD_GENERATOR:
             return Destination(ToolsPasswordGeneratorTypeView)
 
-        elif button_data[selected_menu_num] == self.SMARTCARD:
-            return Destination(ToolsSmartcardMenuView)
-        
         elif button_data[selected_menu_num] == self.MICROSD:
             return Destination(ToolsMicroSDMenuView)
 
@@ -1400,42 +1393,6 @@ class ToolsTextQRView(View):
 """****************************************************************************
     Smartcard Views
 ****************************************************************************"""
-class ToolsSmartcardMenuView(View):
-    COMMON = ButtonOption("Common Functions")
-    SATOCHIP = ButtonOption("Satochip Functions")
-    SEEDKEEPER = ButtonOption("SeedKeeper Functions")
-    KEYCARD = ButtonOption("Keycard (ETH)")
-    Satochip_DIY = ButtonOption("DIY Tools")
-
-    def run(self):
-        button_data = [self.COMMON, self.SEEDKEEPER, self.SATOCHIP, self.KEYCARD, self.Satochip_DIY]
-
-        selected_menu_num = self.run_screen(
-            ButtonListScreen,
-            title="Smartcard Tools",
-            is_button_text_centered=False,
-            button_data=button_data
-        )
-
-        if selected_menu_num == RET_CODE__BACK_BUTTON:
-            return Destination(BackStackView)
-
-        elif button_data[selected_menu_num] == self.COMMON:
-            return Destination(ToolsCommonView)
-
-        elif button_data[selected_menu_num] == self.SATOCHIP:
-            return Destination(ToolsSatochipView)
-
-        elif button_data[selected_menu_num] == self.SEEDKEEPER:
-            return Destination(ToolsSeedkeeperView)
-
-        elif button_data[selected_menu_num] == self.KEYCARD:
-            from seedsigner.views.keycard_views import ToolsKeycardMenuView
-            return Destination(ToolsKeycardMenuView)
-
-        elif button_data[selected_menu_num] == self.Satochip_DIY:
-            return Destination(ToolsSatochipDIYView)
-
 class ToolsCommonView(View):
     FILTER = ButtonOption("Device Filter")
     INFO = ButtonOption("Card Info")
@@ -2097,7 +2054,8 @@ class ToolsSatochipFactoryResetView(View):
             pin = seedkeeper_utils.prompt_for_pin(self, "Enter PIN")
 
             if pin is None:
-                return Destination(ToolsSmartcardMenuView)
+                from seedsigner.views.view import CardsMenuView
+                return Destination(CardsMenuView)
 
             try:
                 (response, sw1, sw2)= Satochip_Connector.card_verify_PIN(pin)
@@ -2228,6 +2186,36 @@ class ToolsSatochipChangeLabelView(View):
 
         return Destination(MainMenuView)
 
+class ToolsSeedkeeperSetupView(View):
+    """First-use wizard for an uninstantiated SeedKeeper applet.
+
+    Reuses ``seedkeeper_utils.init_satochip`` whose ``setup_done==False``
+    branch prompts for a new PIN and runs ``card_setup``. After a
+    successful setup the user lands back on ``ToolsSeedkeeperView``
+    which re-probes and shows the regular menu.
+    """
+
+    def run(self):
+        connector = seedkeeper_utils.init_satochip(
+            self, init_card_filter=["seedkeeper"], require_pin=True,
+        )
+        if connector is None:
+            return Destination(BackStackView)
+        return Destination(ToolsSeedkeeperView, skip_current_view=True)
+
+
+class ToolsSatochipSetupView(View):
+    """First-use wizard for an uninstantiated Satochip applet."""
+
+    def run(self):
+        connector = seedkeeper_utils.init_satochip(
+            self, init_card_filter=["satochip"], require_pin=True,
+        )
+        if connector is None:
+            return Destination(BackStackView)
+        return Destination(ToolsSatochipView, skip_current_view=True)
+
+
 class ToolsSeedkeeperView(View):
     VIEW_FREE_SPACE = ButtonOption("View Free Space")
     VIEW_SECRETS = ButtonOption("View Secrets on Card")
@@ -2238,6 +2226,14 @@ class ToolsSeedkeeperView(View):
     CLONE_SECRETS = ButtonOption("Clone Card Secrets")
 
     def run(self):
+        from seedsigner.helpers.card_probe import run_card_gate
+        gate = run_card_gate(
+            self, "seedkeeper", title="SeedKeeper",
+            setup_view=ToolsSeedkeeperSetupView,
+        )
+        if gate is not None:
+            return gate
+
         button_data = [
             self.VIEW_SECRETS,
             self.IMPORT_PASSWORD,
@@ -3336,6 +3332,14 @@ class ToolsSatochipView(View):
     ADVANCED = ButtonOption("Advanced")
 
     def run(self):
+        from seedsigner.helpers.card_probe import run_card_gate
+        gate = run_card_gate(
+            self, "satochip", title="Satochip",
+            setup_view=ToolsSatochipSetupView,
+        )
+        if gate is not None:
+            return gate
+
         button_data = [
             self.IMPORT_SEED,
             self.EXPORT_XPUB,
@@ -5284,6 +5288,7 @@ class ToolsDIYUninstallAppletView(View):
                     if package_info[1] == 'A00000052721010141504558': package_info[3]="(|Apex TOTP|)"
                     if package_info[1] == 'D27600012401': package_info[3]="(|SmartPGP|)"
                     if package_info[1] == 'B00B5111CB': package_info[3]="(|SpecterDIY|)"
+                    if package_info[1] == 'A0000008040001': package_info[3]="(|Keycard|)"
 
                     installed_applets_list.append(ButtonOption(package_info[3][2:-2]))
                     installed_applets_aids.append(package_info[1])

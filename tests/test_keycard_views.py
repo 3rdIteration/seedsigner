@@ -76,10 +76,17 @@ class TestKeycardMenuRouting(unittest.TestCase):
 
     def _route(self, view_cls, button_index):
         # Bypass View.__init__ which expects a Controller singleton —
-        # we only exercise routing logic, not screen rendering.
+        # we only exercise routing logic, not screen rendering. The
+        # Keycard top menu now calls ``run_card_gate`` on entry; patch
+        # it to a no-op so routing tests stay focused on selection
+        # behaviour rather than probe state.
         view = view_cls.__new__(view_cls)
         view.run_screen = MagicMock(return_value=button_index)
-        return view.run()
+        view.controller = MagicMock()
+        import seedsigner.helpers.card_probe as card_probe_mod
+        from unittest.mock import patch
+        with patch.object(card_probe_mod, "run_card_gate", return_value=None):
+            return view.run()
 
     def test_top_menu_routes(self):
         from seedsigner.views.keycard_views import (
@@ -152,6 +159,79 @@ class TestKeycardMenuRouting(unittest.TestCase):
         for i, view_cls in enumerate(expected):
             dest = self._route(ToolsKeycardAdvancedMenuView, i)
             self.assertIs(dest.View_cls, view_cls)
+
+    def test_wallets_cache_invalidation_drops_only_active_aid(self):
+        """After Generate-key / Import-seed, the on-card master key
+        changes; the View-wallets cache for the active AID must be
+        invalidated so stale addresses don't show until reboot.
+        Other AIDs' entries must be preserved (multi-instance cards).
+        """
+        from seedsigner.views.keycard_views import (
+            _invalidate_wallets_cache_for_active_aid,
+        )
+
+        controller = MagicMock()
+        controller.active_keycard_aid = bytes.fromhex("A0000008040001010101")
+        other_aid_hex = bytes.fromhex("A0000008040001010102").hex()
+        controller.keycard_wallets_data = {
+            bytes(controller.active_keycard_aid).hex(): ["0xOLD1", "0xOLD2"],
+            other_aid_hex: ["0xKEEP1"],
+        }
+
+        _invalidate_wallets_cache_for_active_aid(controller)
+
+        self.assertNotIn(
+            bytes(controller.active_keycard_aid).hex(),
+            controller.keycard_wallets_data,
+        )
+        self.assertEqual(controller.keycard_wallets_data[other_aid_hex], ["0xKEEP1"])
+
+    def test_wallets_cache_invalidation_tolerates_empty_dict(self):
+        from seedsigner.views.keycard_views import (
+            _invalidate_wallets_cache_for_active_aid,
+        )
+
+        controller = MagicMock()
+        controller.active_keycard_aid = bytes.fromhex("A0000008040001010101")
+
+        controller.keycard_wallets_data = None
+        _invalidate_wallets_cache_for_active_aid(controller)
+        self.assertIsNone(controller.keycard_wallets_data)
+
+        controller.keycard_wallets_data = {}
+        _invalidate_wallets_cache_for_active_aid(controller)
+        self.assertEqual(controller.keycard_wallets_data, {})
+
+    def test_leaf_returns_to_menu_skip_or_clear(self):
+        """Every ``return Destination(ToolsKeycardMenuView ...)`` from a
+        leaf flow must mark either ``skip_current_view=True`` or
+        ``clear_history=True``. Without one of those flags the leaf view
+        stays on the back stack, so pressing Back from the Keycard menu
+        re-opens the just-completed flow (e.g. Export xpub).
+        """
+        import re
+
+        path = os.path.join(SRC_ROOT, "seedsigner", "views", "keycard_views.py")
+        with open(path, encoding="utf-8") as fh:
+            source = fh.read()
+
+        offenders = []
+        for match in re.finditer(
+            r"Destination\(ToolsKeycardMenuView(?P<args>[^)]*)\)",
+            source,
+        ):
+            args = match.group("args")
+            if "skip_current_view=True" in args or "clear_history=True" in args:
+                continue
+            line_no = source[: match.start()].count("\n") + 1
+            offenders.append((line_no, match.group(0)))
+
+        self.assertEqual(
+            offenders, [],
+            "Leaf returns to ToolsKeycardMenuView must set "
+            "skip_current_view=True or clear_history=True; offenders: "
+            f"{offenders}",
+        )
 
     def test_pin_management_view_removed(self):
         """``ToolsKeycardPinManagementMenuView`` was a one-entry indirection

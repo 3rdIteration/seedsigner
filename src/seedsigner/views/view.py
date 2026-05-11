@@ -275,24 +275,18 @@ class MainMenuView(View):
 
 class CardsMenuView(View):
     """
-    Top-level entry point for smartcard apps (Keycard / Satochip / SeedKeeper).
-    Mirrors `tools_views.ToolsSmartcardMenuView` so the same flows are reachable
-    from the home screen without traversing Tools.
+    Top-level entry point for smartcard apps. Each entry probes the card on
+    selection: if uninstantiated the user is routed to the matching setup
+    wizard before the app's own menu is shown.
     """
-    COMMON = ButtonOption("Common Functions")
-    SEEDKEEPER = ButtonOption("SeedKeeper Functions")
-    SATOCHIP = ButtonOption("Satochip Functions")
-    KEYCARD = ButtonOption("Keycard (ETH)")
-    INITIALISE = ButtonOption("Initialise blank card")
-    DIY = ButtonOption("DIY Tools")
+    SEEDKEEPER = ButtonOption("SeedKeeper")
+    SATOCHIP = ButtonOption("Satochip")
+    KEYCARD = ButtonOption("Keycard")
 
     def run(self):
         from seedsigner.gui.screens.screen import ButtonListScreen
 
-        button_data = [
-            self.COMMON, self.SEEDKEEPER, self.SATOCHIP, self.KEYCARD,
-            self.INITIALISE, self.DIY,
-        ]
+        button_data = [self.SEEDKEEPER, self.SATOCHIP, self.KEYCARD]
 
         selected_menu_num = self.run_screen(
             ButtonListScreen,
@@ -304,11 +298,7 @@ class CardsMenuView(View):
         if selected_menu_num == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
 
-        if button_data[selected_menu_num] == self.COMMON:
-            from seedsigner.views.tools_views import ToolsCommonView
-            return Destination(ToolsCommonView)
-
-        elif button_data[selected_menu_num] == self.SEEDKEEPER:
+        if button_data[selected_menu_num] == self.SEEDKEEPER:
             from seedsigner.views.tools_views import ToolsSeedkeeperView
             return Destination(ToolsSeedkeeperView)
 
@@ -319,56 +309,6 @@ class CardsMenuView(View):
         elif button_data[selected_menu_num] == self.KEYCARD:
             from seedsigner.views.keycard_views import ToolsKeycardMenuView
             return Destination(ToolsKeycardMenuView)
-
-        elif button_data[selected_menu_num] == self.INITIALISE:
-            return Destination(CardManagementView)
-
-        elif button_data[selected_menu_num] == self.DIY:
-            from seedsigner.views.tools_views import ToolsSatochipDIYView
-            return Destination(ToolsSatochipDIYView)
-
-
-class CardManagementView(View):
-    """
-    Routing surface for blank or partially-initialised cards. Offers a
-    direct path to each applet's existing initialisation flow without
-    forcing the user to dig through Tools/Cards submenus.
-
-    Phase 6 minimum: explicit user choice. A follow-up iteration will
-    add a SELECT-probe (``helpers.card_monitor.multi_applet_probe``)
-    and auto-route blank cards to the correct flow.
-    """
-    AS_KEYCARD = ButtonOption("Initialise as Keycard")
-    AS_SATOCHIP = ButtonOption("Initialise as Satochip")
-    AS_SEEDKEEPER = ButtonOption("Initialise as SeedKeeper")
-
-    def run(self):
-        from seedsigner.gui.screens.screen import ButtonListScreen
-
-        button_data = [self.AS_KEYCARD, self.AS_SATOCHIP, self.AS_SEEDKEEPER]
-        selected_menu_num = self.run_screen(
-            ButtonListScreen,
-            title=_("Initialise card"),
-            is_button_text_centered=False,
-            button_data=button_data,
-        )
-
-        if selected_menu_num == RET_CODE__BACK_BUTTON:
-            return Destination(BackStackView)
-
-        if button_data[selected_menu_num] == self.AS_KEYCARD:
-            from seedsigner.views.keycard_views import ToolsKeycardInitView
-            return Destination(ToolsKeycardInitView)
-
-        elif button_data[selected_menu_num] == self.AS_SATOCHIP:
-            # The Satochip entry point exposes setup-when-uninitialised
-            # via the existing init_satochip() branch.
-            from seedsigner.views.tools_views import ToolsSatochipView
-            return Destination(ToolsSatochipView)
-
-        elif button_data[selected_menu_num] == self.AS_SEEDKEEPER:
-            from seedsigner.views.tools_views import ToolsSeedkeeperView
-            return Destination(ToolsSeedkeeperView)
 
 
 
