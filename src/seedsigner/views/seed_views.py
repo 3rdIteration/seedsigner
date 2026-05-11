@@ -5127,7 +5127,14 @@ class SaveToSeedkeeperView(View):
                 export_rights = "Plaintext export allowed"
                 header = Satochip_Connector.make_header("Password", export_rights, label)
                 share_list = list(bytes(share, 'utf-8'))
-                secret_list = [len(share_list)] + share_list
+                # SECRET_TYPE_PASSWORD layout (see ToolsSeedkeeperImportPasswordView
+                # for the why): [pw|login|url] all length-prefixed; the iOS app
+                # crashes if the trailing zero-size bytes are missing.
+                secret_list = (
+                    [len(share_list)] + share_list
+                    + [0x00]  # login_size = 0
+                    + [0x00]  # url_size   = 0
+                )
                 secret_dic = {'header': header, 'secret_list': secret_list}
 
             else:

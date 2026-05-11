@@ -2869,7 +2869,17 @@ class ToolsSeedkeeperImportPasswordView(View):
         
         header = Satochip_Connector.make_header("Password", "Plaintext export allowed", secret_label['passphrase'])
         secret_text_list = list(bytes(secret_text['passphrase'], 'utf-8'))
-        secret_list = [len(secret_text_list)] + secret_text_list
+        # SECRET_TYPE_PASSWORD layout per Seedkeeper-Applet Specifications.md:
+        #   [pw_size(1b) | pw | login_size(1b) | login | url_size(1b) | url]
+        # login and url are optional, but their length bytes are NOT. Omitting
+        # them makes the iOS Satochip app's parser read past the buffer and
+        # crash on reveal (and on the secret-list refresh that the app does
+        # after change-PIN, which is why change-PIN also appears to crash).
+        secret_list = (
+            [len(secret_text_list)] + secret_text_list
+            + [0x00]  # login_size = 0
+            + [0x00]  # url_size   = 0
+        )
         secret_dic = {'header': header, 'secret_list': secret_list}
 
         try:
@@ -3510,10 +3520,6 @@ class ToolsSatochipAdvancedView(View):
 class ToolsSatochipUninstallAppletView(View):
     """Delete the Satochip applet via gp.jar (requires default ISD keys)."""
 
-    PACKAGE_AID = "53617473436870"  # "SatoChp" — Satochip package AID
-    # Note: the actual Satochip package AID is the 8-byte SATOCHIP_AID
-    # (`5361746f43686970`); gp.jar accepts it as the --delete target.
-
     def run(self):
         from seedsigner.gui.screens.screen import (
             DireWarningScreen, LargeIconStatusScreen, WarningScreen,
@@ -3584,7 +3590,7 @@ class ToolsSeedkeeperUninstallAppletView(View):
             return Destination(BackStackView)
 
         result = seedkeeper_utils.run_globalplatform(
-            self, f"--delete 5365656b6565706572 -force",
+            self, f"--delete 536565644b6565706572 -force",
             "Deleting SeedKeeper applet", None,
         )
         if result is None:

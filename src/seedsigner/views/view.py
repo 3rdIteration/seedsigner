@@ -340,7 +340,9 @@ class CardsMenuView(View):
 
 _DEFAULT_CAP_BY_KIND = {
     "satochip": ("SatoChip-0.12-official.cap", "--install {cap}"),
-    "seedkeeper": ("SeedKeeper-0.2-official.cap", "--install {cap} --params 1FFF"),
+    # `{params}` is filled at install time from the storage chooser
+    # (Change 3 below); 1FFF = 8 KB is the default.
+    "seedkeeper": ("SeedKeeper-0.2-official.cap", "--install {cap} --params {params}"),
     # Keycard is a multi-instance package: --load then 3 × --create.
     # The recipe matches the proven keycard-cli install path; the
     # signing instance AID (A0000008040001010101) must stay exact —
@@ -348,6 +350,19 @@ _DEFAULT_CAP_BY_KIND = {
     # against it.
     "keycard": ("Keycard-3.2.cap", None),
 }
+
+# Seedkeeper --params values per the applet's INSTALL parameter format:
+# the first byte sets the data-object-store size, with 0xFF meaning the
+# applet's max. (4/8/16/32/64 KB → 0FFF/1FFF/3FFF/7FFF/FFFF.) Matches
+# the chooser previously offered by the DIY-tools view (PR #189).
+_SEEDKEEPER_STORAGE_OPTIONS = [
+    ("4 KB", "0FFF"),
+    ("8 KB (default)", "1FFF"),
+    ("16 KB", "3FFF"),
+    ("32 KB", "7FFF"),
+    ("64 KB", "FFFF"),
+]
+_SEEDKEEPER_STORAGE_DEFAULT_INDEX = 1  # 8 KB
 
 _KEYCARD_CREATE_COMMANDS = [
     "--package A0000008040001 --applet A000000804000101 --create A0000008040001010101",
@@ -370,7 +385,7 @@ class CardsInstallAppletView(View):
 
     def run(self):
         from seedsigner.gui.screens.screen import (
-            LargeIconStatusScreen, WarningScreen,
+            ButtonListScreen, LargeIconStatusScreen, WarningScreen,
         )
         from seedsigner.hardware.microsd import MicroSD
         from seedsigner.helpers import seedkeeper_utils
@@ -387,6 +402,26 @@ class CardsInstallAppletView(View):
                 f"Applet bundle missing:\n{cap_name}\nRebuild seedsigner-os.",
             )
 
+        # SeedKeeper: ask the user how much object storage to allocate
+        # (4/8/16/32/64 KB). Restores the chooser that PR #189 added to
+        # the pre-refactor DIY-tools install view.
+        storage_param = None
+        if self.kind == "seedkeeper":
+            options = [
+                ButtonOption(label, return_data=value)
+                for (label, value) in _SEEDKEEPER_STORAGE_OPTIONS
+            ]
+            selected = self.run_screen(
+                ButtonListScreen,
+                title="Select Storage",
+                is_button_text_centered=False,
+                button_data=options,
+                selected_button=_SEEDKEEPER_STORAGE_DEFAULT_INDEX,
+            )
+            if selected == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+            storage_param = options[selected].return_data or "1FFF"
+
         if self.kind == "keycard":
             # Multi-step recipe: --load then 3 × --create instances.
             steps = [(f"--load {cap_path}", "Loading Keycard package")]
@@ -399,12 +434,20 @@ class CardsInstallAppletView(View):
                 if result is None:
                     return _show_warning(self, "Install", "Keycard install failed.")
         else:
-            command = single_cmd_template.format(cap=str(cap_path))
+            command = single_cmd_template.format(cap=str(cap_path), params=storage_param)
             result = seedkeeper_utils.run_globalplatform(
                 self, command, f"Installing {self.kind}", None,
             )
             if result is None:
                 return _show_warning(self, "Install", f"{self.kind} install failed.")
+
+        # gp.jar leaves scdaemon holding the reader and may invalidate any
+        # CardConnector the controller still references from before the
+        # install. The pre-refactor flow bounced back to a generic menu
+        # that re-probed via `run_card_gate`, which implicitly cleaned
+        # this up; the direct-to-setup routing below skips that, so reset
+        # the PC/SC state explicitly here.
+        seedkeeper_utils.disconnect_smartcard_connections(self.controller)
 
         self.run_screen(
             LargeIconStatusScreen,
