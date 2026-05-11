@@ -410,21 +410,22 @@ class CardsInstallAppletView(View):
             LargeIconStatusScreen,
             title="Install",
             status_headline=None,
-            text=f"{self.kind.capitalize()} applet installed.",
+            text=f"{self.kind.capitalize()} applet installed.\nSet a device PIN to continue.",
             show_back_button=False,
-            button_data=[ButtonOption("OK")],
+            button_data=[ButtonOption("Set up")],
         )
-        # Hop back to the originating app's menu — it'll probe again
-        # and find the new applet ready for setup.
+        # Jump straight into the per-applet setup wizard — once the user
+        # has just installed the applet, the obvious next step is PIN
+        # setup. Skipping the menu hop also avoids the extra probe.
         if self.kind == "keycard":
-            from seedsigner.views.keycard_views import ToolsKeycardMenuView
-            return Destination(ToolsKeycardMenuView, skip_current_view=True)
+            from seedsigner.views.keycard_views import ToolsKeycardInitView
+            return Destination(ToolsKeycardInitView, skip_current_view=True)
         if self.kind == "satochip":
-            from seedsigner.views.tools_views import ToolsSatochipView
-            return Destination(ToolsSatochipView, skip_current_view=True)
+            from seedsigner.views.tools_views import ToolsSatochipSetupView
+            return Destination(ToolsSatochipSetupView, skip_current_view=True)
         if self.kind == "seedkeeper":
-            from seedsigner.views.tools_views import ToolsSeedkeeperView
-            return Destination(ToolsSeedkeeperView, skip_current_view=True)
+            from seedsigner.views.tools_views import ToolsSeedkeeperSetupView
+            return Destination(ToolsSeedkeeperSetupView, skip_current_view=True)
         return Destination(CardsMenuView, skip_current_view=True)
 
 

@@ -195,16 +195,10 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True):
         )
         return None
 
-    if require_pin:
-        # Prompt for pin if one hasn't been set, otherwise a cached pin will be used
-        if parentObject.controller.Satochip_PIN is None:
-            print("No Cached pin, prompting for pin")
-            pin_str = prompt_for_pin(parentObject, "Card PIN")
-            if pin_str is None:
-                return None
-            card_pin = list(pin_str.encode("utf-8"))
-        else:
-            card_pin = parentObject.controller.Satochip_PIN
+    # NB: PIN prompt is deferred until after the status check. Asking for
+    # the existing PIN before we know whether the applet is initialised
+    # confuses the user — an uninstantiated card has no PIN to enter, and
+    # the next screen would ask for a brand-new one anyway.
 
     parentObject.loading_screen = LoadingScreenThread(text="Connecting to Card")
     parentObject.loading_screen.start()
@@ -276,8 +270,10 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True):
     if status[3]["setup_done"]:
 
         if require_pin:
-            # Check for an existing Seedkeeper card that we may have been using with this PIN,
-            # prompt to re-enter pin if the card has been swapped...
+            # If the card UID has changed since we last cached a PIN, the
+            # cached PIN belongs to a different card and must not be sent.
+            # Wipe it (best-effort — see secure_delete guidance) before
+            # falling through to the cache-miss prompt below.
             if (
                 parentObject.controller.Satochip_Last_UID_SHA1 is not None
                 and parentObject.controller.Satochip_Last_UID_SHA1
@@ -285,10 +281,7 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True):
             ):
                 print("Found Card:", Satochip_Connector.UID_SHA1)
                 print("Expecting Card:", parentObject.controller.Satochip_Last_UID_SHA1)
-                print("Card has changed, prompting for new PIN")
-                # Wipe the old card's PIN out of RAM before prompting —
-                # we no longer have a use for it and the new card has
-                # its own PIN. Best-effort; Python may have made copies.
+                print("Card has changed, dropping cached PIN")
                 old_pin = parentObject.controller.Satochip_PIN
                 if isinstance(old_pin, list):
                     for i in range(len(old_pin)):
@@ -297,11 +290,16 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True):
                     for i in range(len(old_pin)):
                         old_pin[i] = 0
                 parentObject.controller.Satochip_PIN = None
+
+            if parentObject.controller.Satochip_PIN is None:
+                print("No Cached pin, prompting for pin")
                 pin_str = prompt_for_pin(parentObject, "Card PIN")
                 if pin_str is None:
                     return None
                 card_pin = list(pin_str.encode("utf-8"))
-            print("Same card, using existing PIN, already loaded...")
+            else:
+                print("Same card, using existing PIN, already loaded...")
+                card_pin = parentObject.controller.Satochip_PIN
 
             # Check PIN
             Satochip_Connector.set_pin(0, card_pin)
