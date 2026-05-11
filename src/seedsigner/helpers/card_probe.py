@@ -28,10 +28,11 @@ CardKind = Literal["keycard", "satochip", "seedkeeper"]
 
 
 # Cleartext AIDs we SELECT-probe to enumerate installed applets. Keycard
-# uses the canonical instance AID (the package and the signing instance
-# share a stable prefix); pysatochip's CardConnector encodes Satochip /
-# SeedKeeper AIDs as lists, but they are the same bytes we need here.
-APPLET_AID_KEYCARD = bytes.fromhex("A0000008040001010101")
+# uses a stable package prefix + 1-byte instance suffix; cards initialised
+# by keycard-shell may live at any suffix in 0x01..0x0F (matches the range
+# autodetected by `select_with_autodetect`). pysatochip's CardConnector
+# encodes Satochip / SeedKeeper AIDs as lists, but they are the same bytes
+# we need here.
 APPLET_AID_SATOCHIP = bytes([0x53, 0x61, 0x74, 0x6f, 0x43, 0x68, 0x69, 0x70])  # "SatoChip"
 APPLET_AID_SEEDKEEPER = bytes([0x53, 0x65, 0x65, 0x64, 0x4b, 0x65, 0x65, 0x70, 0x65, 0x72])  # "SeedKeeper"
 
@@ -310,8 +311,35 @@ def probe_installed_applets(controller, timeout_s: float = 1.5) -> CardInstalled
 
         state.present = True
         client = KeycardClient(connection)
+
+        # Keycard: probe the whole 0x01..0x0F instance-suffix range,
+        # preferring the currently-active AID first. Mirrors
+        # `select_with_autodetect` so a keycard-shell-initialised card on
+        # a non-default suffix is still flagged as installed.
+        from seedsigner.helpers.keycard.ui_helpers import (
+            _KEYCARD_INSTANCE_PREFIX, _KNOWN_INSTANCE_SUFFIXES,
+        )
+        candidates: list[bytes] = []
+        active = getattr(controller, "active_keycard_aid", None)
+        if active:
+            candidates.append(bytes(active))
+        for suffix in _KNOWN_INSTANCE_SUFFIXES:
+            candidate = _KEYCARD_INSTANCE_PREFIX + suffix
+            if candidate not in candidates:
+                candidates.append(candidate)
+        for aid in candidates:
+            apdu = [0x00, 0xA4, 0x04, 0x00, len(aid)] + list(aid)
+            try:
+                client.transmit(apdu)
+                state.keycard_installed = True
+                break
+            except APDUError:
+                continue
+            except Exception as exc:
+                logger.debug("SELECT %s failed: %s", aid.hex(), exc)
+
+        # Satochip / SeedKeeper: single fixed AID each.
         for aid, flag in (
-            (APPLET_AID_KEYCARD, "keycard_installed"),
             (APPLET_AID_SATOCHIP, "satochip_installed"),
             (APPLET_AID_SEEDKEEPER, "seedkeeper_installed"),
         ):

@@ -45,7 +45,6 @@ from seedsigner.models.threads import BaseThread, ThreadsafeCounter
 from seedsigner.views.view import NotYetImplementedView, OptionDisabledView, View, Destination, BackStackView, MainMenuView
 
 from pysatochip.JCconstants import SEEDKEEPER_DIC_TYPE, SEEDKEEPER_DIC_ORIGIN, SEEDKEEPER_DIC_EXPORT_RIGHTS, BIP39_WORDLIST_DIC
-from pysatochip.util import dict_swap_keys_values
 from seedsigner.helpers import seedkeeper_utils
 from binascii import unhexlify
 
@@ -5196,19 +5195,18 @@ class SaveToSeedkeeperView(View):
                             xprv_list = list(bytes(seed.get_root().to_base58(), 'utf-8'))
                             secret_list = list(len(xprv_list).to_bytes(2, "big")) + xprv_list
                         else:
-                            type = "Masterseed"
-                            subtype = 0x01
-                            wordlist_byte = dict_swap_keys_values(BIP39_WORDLIST_DIC).get("english")
-                            bip39_entropy_bytes = self.mnemonic_to_entropy(seed.mnemonic_str, "english")
-                            bip39_entropy_list = list(bip39_entropy_bytes)
+                            # Use the iOS-compatible BIP39 mnemonic layout
+                            # (same as the V1 path). The Seedkeeper-iOS app
+                            # only parses type=BIP39 mnemonic subtype=0 with
+                            # body `[size|mnemonic|size|passphrase]`; the
+                            # Masterseed v2 layout previously used here is
+                            # not parsed by iOS and crashes the reveal flow.
+                            type = "BIP39 mnemonic"
+                            subtype = 0
+                            bip39_mnemonic_list = list(bytes(seed.mnemonic_str, 'utf-8'))
                             bip39_passphrase_list = list(bytes(seed.passphrase, 'utf-8'))
-                            masterseed_bytes = seed.seed_bytes
-                            masterseed_list = list(masterseed_bytes)
-                            secret_list = ([len(masterseed_list)] +
-                                           masterseed_list +
-                                           [wordlist_byte] +
-                                           [len(bip39_entropy_list)] +
-                                           bip39_entropy_list +
+                            secret_list = ([len(bip39_mnemonic_list)] +
+                                           bip39_mnemonic_list +
                                            [len(bip39_passphrase_list)] +
                                            bip39_passphrase_list
                                            )

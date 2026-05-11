@@ -195,26 +195,54 @@ class TestProbeSatochipFamily(unittest.TestCase):
 
 class TestProbeInstalledApplets(unittest.TestCase):
     """SELECT-probe should set the per-applet flags from each transmit
-    outcome (SW=0x9000 → installed, APDUError → missing)."""
+    outcome (SW=0x9000 → installed, APDUError → missing).
 
-    def _patched_stack(self, transmit_side_effect):
-        """Return a context manager that wires the probe to a mock
-        client whose ``transmit`` cycles through ``transmit_side_effect``.
+    The Keycard probe iterates a small range of instance suffixes
+    (0x01..0x0F), so the mock dispatches outcomes by AID rather than by
+    call order.
+    """
+
+    _KEYCARD_PREFIX = bytes.fromhex("A000000804000101")
+    _SATOCHIP_AID = bytes([0x53, 0x61, 0x74, 0x6f, 0x43, 0x68, 0x69, 0x70])
+    _SEEDKEEPER_AID = bytes([0x53, 0x65, 0x65, 0x64, 0x4b, 0x65, 0x65, 0x70, 0x65, 0x72])
+
+    def _patched_stack(self, *, keycard_installed_suffix=None,
+                       satochip_installed=False, seedkeeper_installed=False):
+        """Return a context manager whose mocked ``transmit`` matches the
+        APDU's AID against the expected outcomes.
+
+        ``keycard_installed_suffix`` is an int suffix (0x01..0x0F) that
+        returns success; any other suffix raises ``APDUError(0x6A82)``.
         """
         from contextlib import ExitStack
         from unittest.mock import patch
         from seedsigner.helpers.keycard.commands import APDUError
 
+        keycard_prefix = self._KEYCARD_PREFIX
+        satochip_aid = self._SATOCHIP_AID
+        seedkeeper_aid = self._SEEDKEEPER_AID
+
         class _MockClient:
             def __init__(self, _conn):
-                self._idx = 0
+                pass
 
             def transmit(self, apdu):
-                outcome = transmit_side_effect[self._idx]
-                self._idx += 1
-                if isinstance(outcome, Exception):
-                    raise outcome
-                return outcome
+                # APDU layout: [CLA, INS, P1, P2, Lc, ...aid...]
+                aid = bytes(apdu[5:])
+                if aid.startswith(keycard_prefix) and len(aid) == 9:
+                    suffix = aid[-1]
+                    if keycard_installed_suffix is not None and suffix == keycard_installed_suffix:
+                        return b""
+                    raise APDUError(0x6A82, "applet not found")
+                if aid == satochip_aid:
+                    if satochip_installed:
+                        return b""
+                    raise APDUError(0x6A82, "applet not found")
+                if aid == seedkeeper_aid:
+                    if seedkeeper_installed:
+                        return b""
+                    raise APDUError(0x6A82, "applet not found")
+                raise APDUError(0x6A82, "unknown AID")
 
         stack = ExitStack()
         stack.enter_context(_patch_reader_present())
@@ -230,7 +258,9 @@ class TestProbeInstalledApplets(unittest.TestCase):
 
     def test_all_installed(self):
         from seedsigner.helpers.card_probe import probe_installed_applets
-        with self._patched_stack([b"", b"", b""]):
+        with self._patched_stack(keycard_installed_suffix=0x01,
+                                  satochip_installed=True,
+                                  seedkeeper_installed=True):
             state = probe_installed_applets(MagicMock())
         self.assertTrue(state.present)
         self.assertTrue(state.keycard_installed)
@@ -239,9 +269,7 @@ class TestProbeInstalledApplets(unittest.TestCase):
 
     def test_none_installed(self):
         from seedsigner.helpers.card_probe import probe_installed_applets
-        from seedsigner.helpers.keycard.commands import APDUError
-        misses = [APDUError(0x6A82, "applet not found")] * 3
-        with self._patched_stack(misses):
+        with self._patched_stack():
             state = probe_installed_applets(MagicMock())
         self.assertTrue(state.present)
         self.assertFalse(state.keycard_installed)
@@ -250,28 +278,33 @@ class TestProbeInstalledApplets(unittest.TestCase):
 
     def test_only_keycard(self):
         from seedsigner.helpers.card_probe import probe_installed_applets
-        from seedsigner.helpers.keycard.commands import APDUError
-        # Probe order in the helper: Keycard, Satochip, SeedKeeper.
-        outcomes = [
-            b"",
-            APDUError(0x6A82, "no"),
-            APDUError(0x6A82, "no"),
-        ]
-        with self._patched_stack(outcomes):
+        with self._patched_stack(keycard_installed_suffix=0x01):
             state = probe_installed_applets(MagicMock())
         self.assertTrue(state.keycard_installed)
         self.assertFalse(state.satochip_installed)
         self.assertFalse(state.seedkeeper_installed)
 
+    def test_keycard_non_default_suffix(self):
+        """keycard-shell cards often live on a non-default suffix; the
+        probe must still flag them as installed."""
+        from seedsigner.helpers.card_probe import probe_installed_applets
+        with self._patched_stack(keycard_installed_suffix=0x03):
+            state = probe_installed_applets(MagicMock())
+        self.assertTrue(state.keycard_installed)
+
+    def test_keycard_prefers_active_aid(self):
+        """If ``controller.active_keycard_aid`` is set, the probe should
+        try it first (mirroring select_with_autodetect)."""
+        from seedsigner.helpers.card_probe import probe_installed_applets
+        controller = MagicMock()
+        controller.active_keycard_aid = self._KEYCARD_PREFIX + b"\x07"
+        with self._patched_stack(keycard_installed_suffix=0x07):
+            state = probe_installed_applets(controller)
+        self.assertTrue(state.keycard_installed)
+
     def test_only_satochip(self):
         from seedsigner.helpers.card_probe import probe_installed_applets
-        from seedsigner.helpers.keycard.commands import APDUError
-        outcomes = [
-            APDUError(0x6A82, "no"),
-            b"",
-            APDUError(0x6A82, "no"),
-        ]
-        with self._patched_stack(outcomes):
+        with self._patched_stack(satochip_installed=True):
             state = probe_installed_applets(MagicMock())
         self.assertFalse(state.keycard_installed)
         self.assertTrue(state.satochip_installed)
