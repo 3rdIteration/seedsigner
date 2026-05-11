@@ -127,12 +127,14 @@ def test_lc_lafrite_display_config_is_st7789():
 
 
 def test_desktop_runtime_profile_display_config_is_pygame():
-    """Desktop profile should use the desktop/pygame display driver, not ST7789"""
+    """Desktop profile should use the desktop/pygame display driver, not ST7789.
+    The default desktop resolution is 320x240 — matching the
+    ``profile_map`` in ``Settings.get_platform_default_display_config``."""
     orig = Settings.RUNTIME_PROFILE
     try:
         Settings.RUNTIME_PROFILE = "desktop"
         display_config = Settings.get_platform_default_display_config()
-        assert display_config == SettingsConstants.DISPLAY_CONFIGURATION__DESKTOP__240x240
+        assert display_config == SettingsConstants.DISPLAY_CONFIGURATION__DESKTOP__320x240
         assert display_config != SettingsConstants.DISPLAY_CONFIGURATION__ST7789__240x240
     finally:
         Settings.RUNTIME_PROFILE = orig

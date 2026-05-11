@@ -21,14 +21,35 @@ class TestSettings(BaseTest):
 
 
     def test_reset_settings(self):
-        """ BaseTest.reset_settings() should wipe out any previous Settings changes """
+        """``BaseTest.reset_settings()`` must wipe any per-test changes
+        and rebuild the singleton from scratch. We pick a setting whose
+        default differs from a value we can deliberately set, then
+        assert the post-reset value matches the SettingsDefinition
+        default (which is the source of truth — hard-coding the
+        expected value would silently drift if the default ever moves).
+        """
+        from seedsigner.models.settings_definition import SettingsDefinition
+
+        # SLIP39_SEEDS defaults to DISABLED; flip it to ENABLED and
+        # confirm reset returns it to DISABLED. PERSISTENT_SETTINGS is
+        # a poor choice for this test because it defaults to ENABLED,
+        # which matches the post-set value and would mask a broken
+        # reset.
+        setting = SettingsConstants.SETTING__SLIP39_SEEDS
+        default = SettingsDefinition.get_settings_entry(setting).default_value
+        non_default = (
+            SettingsConstants.OPTION__ENABLED
+            if default == SettingsConstants.OPTION__DISABLED
+            else SettingsConstants.OPTION__DISABLED
+        )
+
         settings = Settings.get_instance()
-        settings.set_value(SettingsConstants.SETTING__PERSISTENT_SETTINGS, SettingsConstants.OPTION__ENABLED)
-        assert settings.get_value(SettingsConstants.SETTING__PERSISTENT_SETTINGS) == SettingsConstants.OPTION__ENABLED
+        settings.set_value(setting, non_default)
+        assert settings.get_value(setting) == non_default
 
         BaseTest.reset_settings()
         settings = Settings.get_instance()
-        assert settings.get_value(SettingsConstants.SETTING__PERSISTENT_SETTINGS) == SettingsConstants.OPTION__DISABLED
+        assert settings.get_value(setting) == default
 
 
     def test_parse_settingsqr_data(self):

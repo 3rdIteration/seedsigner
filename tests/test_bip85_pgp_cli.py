@@ -13,18 +13,39 @@ try:
 except ImportError:  # pragma: no cover - dependency missing in environment
     EllipticCurveOID = None
 else:
-    _curve_cls = EllipticCurveOID.Brainpool_P256.curve
-    if _curve_cls is not None and inspect.isabstract(_curve_cls):
-        _BRAINPOOL_P256_ORDER = (
+    # pgpy ships ``Brainpool_P256/P384/P512`` as abstract classes missing
+    # the ``group_order`` property (cryptography lib upstream removed it
+    # at some point); fill it in from RFC 5639 so the BIP85→PGP tests can
+    # actually generate keys.
+    _BRAINPOOL_ORDERS = {
+        "Brainpool_P256": (
             0xA9FB57DBA1EEA9BC3E660A909D838D718C397AA3B561A6F7901E0E82974856A7
-        )
+        ),
+        "Brainpool_P384": (
+            0x8CB91E82A3386D280F5D6F7E50E641DF152F7109ED5456B31F166E6CAC0425A7CF3AB6AF6B7FC3103B883202E9046565
+        ),
+        "Brainpool_P512": (
+            0xAADD9DB8DBE9C48B3FD4E6AE33C9FC07CB308DB3B3C9D20ED6639CCA70330870553E5C414CA92619418661197FAC10471DB1D381085DDADDB58796829CA90069
+        ),
+    }
+    for _oid_name, _order in _BRAINPOOL_ORDERS.items():
+        _oid = getattr(EllipticCurveOID, _oid_name, None)
+        if _oid is None:
+            continue
+        _curve_cls = _oid.curve
+        if _curve_cls is None or not inspect.isabstract(_curve_cls):
+            continue
 
-        class _BrainpoolP256R1Fixed(_curve_cls):
+        # The closure must capture _order by default arg, not by name —
+        # the loop variable is shared across the generated classes.
+        class _BrainpoolFixed(_curve_cls):  # noqa: N801 - dynamic name fine
+            _order_value = _order
+
             @property
             def group_order(self):  # pragma: no cover - simple property
-                return _BRAINPOOL_P256_ORDER
+                return type(self)._order_value
 
-        EllipticCurveOID.Brainpool_P256.curve = _BrainpoolP256R1Fixed
+        _oid.curve = _BrainpoolFixed
 
 
 MNEMONIC = (
