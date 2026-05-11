@@ -350,14 +350,10 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True):
 
     else:
         print("Card Needs Initial Setup")
-        parentObject.run_screen(
-            WarningScreen,
-            title="Card Uninitialised",
-            status_headline=None,
-            text=f"Set a device PIN to complete Card Setup",
-            show_back_button=True,
-        )
-
+        # No "Card Uninitialised" warning here: the upstream entry point
+        # (install success screen, or the Cards-menu setup wizard) already
+        # announced the PIN setup, and the "New Card PIN" prompt below
+        # carries its own title.
         pin_str = prompt_for_pin(parentObject, "New Card PIN")
 
         if pin_str is None:
