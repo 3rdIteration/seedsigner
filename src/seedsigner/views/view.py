@@ -278,15 +278,41 @@ class CardsMenuView(View):
     Top-level entry point for smartcard apps. Each entry probes the card on
     selection: if uninstantiated the user is routed to the matching setup
     wizard before the app's own menu is shown.
+
+    A SELECT-probe on entry annotates each entry with a trailing icon
+    showing whether the applet is installed on the currently-inserted
+    card. Factory Reset wipes every installed applet at the bottom.
     """
-    SEEDKEEPER = ButtonOption("SeedKeeper")
-    SATOCHIP = ButtonOption("Satochip")
-    KEYCARD = ButtonOption("Keycard")
+
+    SEEDKEEPER_LABEL = "SeedKeeper"
+    SATOCHIP_LABEL = "Satochip"
+    KEYCARD_LABEL = "Keycard"
+    FACTORY_RESET_LABEL = "Factory reset card"
 
     def run(self):
         from seedsigner.gui.screens.screen import ButtonListScreen
+        from seedsigner.helpers.card_probe import probe_installed_applets
 
-        button_data = [self.SEEDKEEPER, self.SATOCHIP, self.KEYCARD]
+        state = probe_installed_applets(self.controller)
+
+        def _entry(label: str, installed: bool) -> ButtonOption:
+            if not state.present:
+                return ButtonOption(label)
+            icon = (
+                SeedSignerIconConstants.CHECK if installed
+                else SeedSignerIconConstants.CHECKBOX
+            )
+            return ButtonOption(label, right_icon_name=icon)
+
+        seedkeeper_btn = _entry(self.SEEDKEEPER_LABEL, state.seedkeeper_installed)
+        satochip_btn = _entry(self.SATOCHIP_LABEL, state.satochip_installed)
+        keycard_btn = _entry(self.KEYCARD_LABEL, state.keycard_installed)
+        factory_reset_btn = ButtonOption(
+            self.FACTORY_RESET_LABEL,
+            icon_name=FontAwesomeIconConstants.LOCK,
+        )
+
+        button_data = [seedkeeper_btn, satochip_btn, keycard_btn, factory_reset_btn]
 
         selected_menu_num = self.run_screen(
             ButtonListScreen,
@@ -298,17 +324,263 @@ class CardsMenuView(View):
         if selected_menu_num == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
 
-        if button_data[selected_menu_num] == self.SEEDKEEPER:
+        chosen = button_data[selected_menu_num]
+        if chosen is seedkeeper_btn:
             from seedsigner.views.tools_views import ToolsSeedkeeperView
             return Destination(ToolsSeedkeeperView)
-
-        elif button_data[selected_menu_num] == self.SATOCHIP:
+        if chosen is satochip_btn:
             from seedsigner.views.tools_views import ToolsSatochipView
             return Destination(ToolsSatochipView)
-
-        elif button_data[selected_menu_num] == self.KEYCARD:
+        if chosen is keycard_btn:
             from seedsigner.views.keycard_views import ToolsKeycardMenuView
             return Destination(ToolsKeycardMenuView)
+        if chosen is factory_reset_btn:
+            return Destination(CardsFactoryResetView)
+
+
+_DEFAULT_CAP_BY_KIND = {
+    "satochip": ("SatoChip-0.12-official.cap", "--install {cap}"),
+    "seedkeeper": ("SeedKeeper-0.2-official.cap", "--install {cap} --params 1FFF"),
+    # Keycard is a multi-instance package: --load then 3 × --create.
+    # The recipe matches the proven keycard-cli install path; the
+    # signing instance AID (A0000008040001010101) must stay exact —
+    # `select_with_autodetect` and the rest of the Keycard views select
+    # against it.
+    "keycard": ("Keycard-3.2.cap", None),
+}
+
+_KEYCARD_CREATE_COMMANDS = [
+    "--package A0000008040001 --applet A000000804000101 --create A0000008040001010101",
+    "--package A0000008040001 --applet A000000804000102 --create D2760000850101",
+    "--package A0000008040001 --applet A000000804000103 --create A0000008040001030101",
+]
+
+
+class CardsInstallAppletView(View):
+    """Install the .cap for a requested applet kind.
+
+    Reuses ``seedkeeper_utils.run_globalplatform`` which shells out to
+    ``gp.jar`` in the diy-tools squashfs. The .cap files are baked into
+    the firmware image under ``<microsd>/javacard-cap/``.
+    """
+
+    def __init__(self, kind: str):
+        super().__init__()
+        self.kind = kind
+
+    def run(self):
+        from seedsigner.gui.screens.screen import (
+            LargeIconStatusScreen, WarningScreen,
+        )
+        from seedsigner.hardware.microsd import MicroSD
+        from seedsigner.helpers import seedkeeper_utils
+
+        info = _DEFAULT_CAP_BY_KIND.get(self.kind)
+        if info is None:
+            return _show_warning(self, "Install", f"Unknown applet kind: {self.kind}")
+
+        cap_name, single_cmd_template = info
+        cap_path = MicroSD.get_microsd_dir() / "javacard-cap" / cap_name
+        if not cap_path.exists():
+            return _show_warning(
+                self, "Install",
+                f"Applet bundle missing:\n{cap_name}\nRebuild seedsigner-os.",
+            )
+
+        if self.kind == "keycard":
+            # Multi-step recipe: --load then 3 × --create instances.
+            steps = [(f"--load {cap_path}", "Loading Keycard package")]
+            steps.extend(
+                (cmd, f"Creating Keycard instance {i + 1}/3")
+                for i, cmd in enumerate(_KEYCARD_CREATE_COMMANDS)
+            )
+            for command, label in steps:
+                result = seedkeeper_utils.run_globalplatform(self, command, label, None)
+                if result is None:
+                    return _show_warning(self, "Install", "Keycard install failed.")
+        else:
+            command = single_cmd_template.format(cap=str(cap_path))
+            result = seedkeeper_utils.run_globalplatform(
+                self, command, f"Installing {self.kind}", None,
+            )
+            if result is None:
+                return _show_warning(self, "Install", f"{self.kind} install failed.")
+
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Install",
+            status_headline=None,
+            text=f"{self.kind.capitalize()} applet installed.",
+            show_back_button=False,
+            button_data=[ButtonOption("OK")],
+        )
+        # Hop back to the originating app's menu — it'll probe again
+        # and find the new applet ready for setup.
+        if self.kind == "keycard":
+            from seedsigner.views.keycard_views import ToolsKeycardMenuView
+            return Destination(ToolsKeycardMenuView, skip_current_view=True)
+        if self.kind == "satochip":
+            from seedsigner.views.tools_views import ToolsSatochipView
+            return Destination(ToolsSatochipView, skip_current_view=True)
+        if self.kind == "seedkeeper":
+            from seedsigner.views.tools_views import ToolsSeedkeeperView
+            return Destination(ToolsSeedkeeperView, skip_current_view=True)
+        return Destination(CardsMenuView, skip_current_view=True)
+
+
+def _show_warning(view, title, text):
+    from seedsigner.gui.screens.screen import WarningScreen
+    view.run_screen(
+        WarningScreen,
+        title=title,
+        status_headline=None,
+        text=text,
+        show_back_button=True,
+    )
+    return Destination(BackStackView)
+
+
+class CardsFactoryResetView(View):
+    """Wipe every applet on the inserted card.
+
+    Tries GlobalPlatform first with the default ISD keys: opens an SCP02
+    session, enumerates every applet AID via ``list_instances``, and
+    issues ``delete_aid`` for each. If the SCP02 handshake fails because
+    the ISD keys have been rotated, falls back to per-applet soft
+    resets:
+
+    - Keycard: cleartext ``FACTORY_RESET`` APDU wipes PIN / PUK / master
+      key (applet stays loaded; data is gone).
+    - Satochip / SeedKeeper: cannot be removed without ISD keys; surface
+      a clear notice so the user knows the limit.
+    """
+
+    def run(self):
+        from seedsigner.gui.screens.screen import (
+            ButtonListScreen, DireWarningScreen, LargeIconStatusScreen,
+        )
+        from seedsigner.helpers.card_probe import probe_installed_applets
+
+        ret = self.run_screen(
+            DireWarningScreen,
+            title=_("Factory reset"),
+            status_headline=None,
+            text=_("Wipe every applet on this card?"),
+            show_back_button=True,
+            button_data=[ButtonOption("Wipe")],
+        )
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        report_lines = _attempt_globalplatform_wipe(self.controller)
+        if report_lines is None:
+            # GP path failed (likely rotated ISD keys); fall back to
+            # per-applet soft reset.
+            report_lines = _attempt_soft_reset(self, probe_installed_applets(self.controller))
+
+        self.run_screen(
+            LargeIconStatusScreen,
+            title=_("Factory reset"),
+            status_headline=None,
+            text="\n".join(report_lines),
+            show_back_button=False,
+            button_data=[ButtonOption("OK")],
+        )
+        return Destination(CardsMenuView, skip_current_view=True)
+
+
+def _attempt_globalplatform_wipe(controller):
+    """Returns a list of result lines, or None if SCP02 could not be
+    opened (caller should fall back to soft reset).
+    """
+    try:
+        from seedsigner.helpers.keycard import global_platform as gp
+        from seedsigner.helpers.keycard.reader import (
+            release_other_smartcard_holders, wait_for_card,
+        )
+    except ImportError as exc:
+        return ["GlobalPlatform stack missing:", str(exc)]
+
+    connection = None
+    try:
+        release_other_smartcard_holders(controller)
+        try:
+            connection = wait_for_card(timeout_s=2.0)
+        except Exception as exc:
+            return [f"Card not reachable: {exc}"]
+
+        channel = gp.GpSecureChannel(connection)
+        try:
+            channel.select_isd()
+            channel.open()
+        except Exception:
+            # Surface as "fall back" — most likely cause is rotated ISD
+            # keys (cryptogram mismatch). Return None so the caller
+            # tries the soft path.
+            return None
+
+        try:
+            instances = gp.list_instances(channel)
+        except Exception as exc:
+            return [f"GET STATUS failed: {exc}"]
+
+        deleted = []
+        skipped = []
+        for inst in instances:
+            try:
+                gp.delete_aid(channel, inst.aid, with_related=True)
+                deleted.append(inst.aid.hex())
+            except Exception as exc:
+                skipped.append(f"{inst.aid.hex()}: {exc}")
+
+        report = [f"Deleted {len(deleted)} applet(s)."]
+        if skipped:
+            report.append(f"{len(skipped)} skipped.")
+        return report
+    finally:
+        if connection is not None:
+            try:
+                connection.disconnect()
+            except Exception:
+                pass
+
+
+def _attempt_soft_reset(view, state):
+    """Per-applet wipe when GlobalPlatform is unavailable.
+
+    Currently only Keycard has a cleartext self-wipe path. Satochip and
+    SeedKeeper would need their PINs to drive a meaningful reset, which
+    we don't want to gate the operation on — instead we report that the
+    user must wipe those from a PC.
+    """
+    report = ["ISD keys rotated."]
+
+    if state.keycard_installed:
+        try:
+            from seedsigner.helpers.keycard.client import KeycardClient
+            from seedsigner.helpers.keycard.commands import factory_reset
+            from seedsigner.helpers.keycard.reader import (
+                release_other_smartcard_holders, wait_for_card,
+            )
+            release_other_smartcard_holders(view.controller)
+            connection = wait_for_card(timeout_s=2.0)
+            try:
+                client = KeycardClient(connection)
+                client.transmit(factory_reset())
+                report.append("Keycard data wiped.")
+            finally:
+                try:
+                    connection.disconnect()
+                except Exception:
+                    pass
+        except Exception as exc:
+            report.append(f"Keycard wipe failed: {exc}")
+    else:
+        report.append("Keycard: not installed.")
+
+    if state.satochip_installed or state.seedkeeper_installed:
+        report.append("Satochip / SeedKeeper: wipe from PC.")
+    return report
 
 
 

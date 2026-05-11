@@ -2224,6 +2224,7 @@ class ToolsSeedkeeperView(View):
     LOAD_DESCRIPTOR = ButtonOption("Load MultiSig Descriptor")
     SAVE_DESCRIPTOR = ButtonOption("Save MultiSig Descriptor")
     CLONE_SECRETS = ButtonOption("Clone Card Secrets")
+    ADVANCED = ButtonOption("Advanced")
 
     def run(self):
         from seedsigner.helpers.card_probe import run_card_gate
@@ -2242,6 +2243,7 @@ class ToolsSeedkeeperView(View):
             self.SAVE_DESCRIPTOR,
             self.CLONE_SECRETS,
             self.VIEW_FREE_SPACE,
+            self.ADVANCED,
         ]
 
         selected_menu_num = self.run_screen(
@@ -2265,7 +2267,7 @@ class ToolsSeedkeeperView(View):
 
         elif button_data[selected_menu_num] == self.LOAD_DESCRIPTOR:
             return Destination(ToolsSeedkeeperLoadDescriptorView)
-        
+
         elif button_data[selected_menu_num] == self.SAVE_DESCRIPTOR:
             return Destination(ToolsSeedkeeperSaveDescriptorView)
 
@@ -2274,6 +2276,9 @@ class ToolsSeedkeeperView(View):
 
         elif button_data[selected_menu_num] == self.CLONE_SECRETS:
             return Destination(ToolsSeedkeeperCloneSecretsView)
+
+        elif button_data[selected_menu_num] == self.ADVANCED:
+            return Destination(ToolsSeedkeeperAdvancedView)
 
 
 class ToolsSeedkeeperFreeSpaceView(View):
@@ -3469,9 +3474,13 @@ class ToolsSatochipAdvancedView(View):
     BENCHMARK = ButtonOption("Benchmark Signing")
     BENCHMARK_MESSAGE = ButtonOption("Benchmark Message Signing")
     BIAS_TEST = ButtonOption("Check signing bias")
+    UNINSTALL = ButtonOption("Uninstall applet")
 
     def run(self):
-        button_data = [self.ENABLE_2FA, self.BENCHMARK, self.BENCHMARK_MESSAGE, self.BIAS_TEST]
+        button_data = [
+            self.ENABLE_2FA, self.BENCHMARK, self.BENCHMARK_MESSAGE,
+            self.BIAS_TEST, self.UNINSTALL,
+        ]
         selected_menu_num = self.run_screen(
             ButtonListScreen,
             title="Satochip Advanced",
@@ -3493,6 +3502,104 @@ class ToolsSatochipAdvancedView(View):
 
         elif button_data[selected_menu_num] == self.BIAS_TEST:
             return Destination(ToolsSatochipBiasCheckView)
+
+        elif button_data[selected_menu_num] == self.UNINSTALL:
+            return Destination(ToolsSatochipUninstallAppletView)
+
+
+class ToolsSatochipUninstallAppletView(View):
+    """Delete the Satochip applet via gp.jar (requires default ISD keys)."""
+
+    PACKAGE_AID = "53617473436870"  # "SatoChp" — Satochip package AID
+    # Note: the actual Satochip package AID is the 8-byte SATOCHIP_AID
+    # (`5361746f43686970`); gp.jar accepts it as the --delete target.
+
+    def run(self):
+        from seedsigner.gui.screens.screen import (
+            DireWarningScreen, LargeIconStatusScreen, WarningScreen,
+        )
+        ret = self.run_screen(
+            DireWarningScreen,
+            title="Uninstall",
+            status_headline=None,
+            text="Delete the Satochip applet?\nUser data will be lost.",
+            show_back_button=True,
+            button_data=[ButtonOption("Delete")],
+        )
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        result = seedkeeper_utils.run_globalplatform(
+            self, f"--delete 5361746f43686970 -force",
+            "Deleting Satochip applet", None,
+        )
+        if result is None:
+            return Destination(BackStackView)
+
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Uninstall",
+            status_headline=None,
+            text="Satochip applet removed.",
+            show_back_button=False,
+            button_data=[ButtonOption("OK")],
+        )
+        from seedsigner.views.view import CardsMenuView
+        return Destination(CardsMenuView, skip_current_view=True)
+
+
+class ToolsSeedkeeperAdvancedView(View):
+    UNINSTALL = ButtonOption("Uninstall applet")
+
+    def run(self):
+        button_data = [self.UNINSTALL]
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="SeedKeeper Advanced",
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        if button_data[selected] == self.UNINSTALL:
+            return Destination(ToolsSeedkeeperUninstallAppletView)
+
+
+class ToolsSeedkeeperUninstallAppletView(View):
+    """Delete the SeedKeeper applet via gp.jar (requires default ISD keys)."""
+
+    def run(self):
+        from seedsigner.gui.screens.screen import (
+            DireWarningScreen, LargeIconStatusScreen,
+        )
+        ret = self.run_screen(
+            DireWarningScreen,
+            title="Uninstall",
+            status_headline=None,
+            text="Delete the SeedKeeper applet?\nUser data will be lost.",
+            show_back_button=True,
+            button_data=[ButtonOption("Delete")],
+        )
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        result = seedkeeper_utils.run_globalplatform(
+            self, f"--delete 5365656b6565706572 -force",
+            "Deleting SeedKeeper applet", None,
+        )
+        if result is None:
+            return Destination(BackStackView)
+
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Uninstall",
+            status_headline=None,
+            text="SeedKeeper applet removed.",
+            show_back_button=False,
+            button_data=[ButtonOption("OK")],
+        )
+        from seedsigner.views.view import CardsMenuView
+        return Destination(CardsMenuView, skip_current_view=True)
 
 class ToolsSatochipBenchmarkSignView(View):
     """Benchmark Satochip signing performance."""

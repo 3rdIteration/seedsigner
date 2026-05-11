@@ -193,6 +193,98 @@ class TestProbeSatochipFamily(unittest.TestCase):
             probe_card("smartpgp", controller=MagicMock())  # type: ignore[arg-type]
 
 
+class TestProbeInstalledApplets(unittest.TestCase):
+    """SELECT-probe should set the per-applet flags from each transmit
+    outcome (SW=0x9000 → installed, APDUError → missing)."""
+
+    def _patched_stack(self, transmit_side_effect):
+        """Return a context manager that wires the probe to a mock
+        client whose ``transmit`` cycles through ``transmit_side_effect``.
+        """
+        from contextlib import ExitStack
+        from unittest.mock import patch
+        from seedsigner.helpers.keycard.commands import APDUError
+
+        class _MockClient:
+            def __init__(self, _conn):
+                self._idx = 0
+
+            def transmit(self, apdu):
+                outcome = transmit_side_effect[self._idx]
+                self._idx += 1
+                if isinstance(outcome, Exception):
+                    raise outcome
+                return outcome
+
+        stack = ExitStack()
+        stack.enter_context(_patch_reader_present())
+        stack.enter_context(patch(
+            "seedsigner.helpers.keycard.reader.wait_for_card",
+            return_value=MagicMock(),
+        ))
+        stack.enter_context(patch(
+            "seedsigner.helpers.keycard.client.KeycardClient",
+            _MockClient,
+        ))
+        return stack
+
+    def test_all_installed(self):
+        from seedsigner.helpers.card_probe import probe_installed_applets
+        with self._patched_stack([b"", b"", b""]):
+            state = probe_installed_applets(MagicMock())
+        self.assertTrue(state.present)
+        self.assertTrue(state.keycard_installed)
+        self.assertTrue(state.satochip_installed)
+        self.assertTrue(state.seedkeeper_installed)
+
+    def test_none_installed(self):
+        from seedsigner.helpers.card_probe import probe_installed_applets
+        from seedsigner.helpers.keycard.commands import APDUError
+        misses = [APDUError(0x6A82, "applet not found")] * 3
+        with self._patched_stack(misses):
+            state = probe_installed_applets(MagicMock())
+        self.assertTrue(state.present)
+        self.assertFalse(state.keycard_installed)
+        self.assertFalse(state.satochip_installed)
+        self.assertFalse(state.seedkeeper_installed)
+
+    def test_only_keycard(self):
+        from seedsigner.helpers.card_probe import probe_installed_applets
+        from seedsigner.helpers.keycard.commands import APDUError
+        # Probe order in the helper: Keycard, Satochip, SeedKeeper.
+        outcomes = [
+            b"",
+            APDUError(0x6A82, "no"),
+            APDUError(0x6A82, "no"),
+        ]
+        with self._patched_stack(outcomes):
+            state = probe_installed_applets(MagicMock())
+        self.assertTrue(state.keycard_installed)
+        self.assertFalse(state.satochip_installed)
+        self.assertFalse(state.seedkeeper_installed)
+
+    def test_only_satochip(self):
+        from seedsigner.helpers.card_probe import probe_installed_applets
+        from seedsigner.helpers.keycard.commands import APDUError
+        outcomes = [
+            APDUError(0x6A82, "no"),
+            b"",
+            APDUError(0x6A82, "no"),
+        ]
+        with self._patched_stack(outcomes):
+            state = probe_installed_applets(MagicMock())
+        self.assertFalse(state.keycard_installed)
+        self.assertTrue(state.satochip_installed)
+        self.assertFalse(state.seedkeeper_installed)
+
+    def test_no_reader_returns_absent(self):
+        from seedsigner.helpers.card_probe import probe_installed_applets
+        with _patch_reader_absent():
+            state = probe_installed_applets(MagicMock())
+        self.assertFalse(state.present)
+        self.assertFalse(state.keycard_installed)
+
+
 class TestRunCardGate(unittest.TestCase):
     """Branch coverage for the gate helper that wraps probe + routing."""
 
@@ -223,15 +315,28 @@ class TestRunCardGate(unittest.TestCase):
         self.assertIs(result.View_cls, setup_view)
         self.assertTrue(result.skip_current_view)
 
-    def test_warns_on_wrong_applet(self):
+    def test_wrong_applet_offers_install(self):
+        """Card present but wrong applet → menu with Install / Cancel.
+        The "Install" path (index 0) routes to ``CardsInstallAppletView``
+        with the requested ``kind``."""
         from seedsigner.helpers.card_probe import ProbeResult, run_card_gate
-        view = self._make_view()
+        view = self._make_view(run_screen_return=0)
         wrong = ProbeResult(present=True, kind_match=False, initialised=False)
         with patch("seedsigner.helpers.card_probe.probe_card", return_value=wrong):
-            result = run_card_gate(view, "keycard", title="Keycard",
+            result = run_card_gate(view, "satochip", title="Satochip",
                                    setup_view=MagicMock())
-        # WarningScreen was rendered; result is a back-stack pop.
-        self.assertTrue(view.run_screen.called)
+        from seedsigner.views.view import CardsInstallAppletView
+        self.assertIs(result.View_cls, CardsInstallAppletView)
+        self.assertEqual(result.view_args.get("kind"), "satochip")
+        self.assertTrue(result.skip_current_view)
+
+    def test_wrong_applet_cancel_pops_back(self):
+        from seedsigner.helpers.card_probe import ProbeResult, run_card_gate
+        view = self._make_view(run_screen_return=1)  # Cancel
+        wrong = ProbeResult(present=True, kind_match=False, initialised=False)
+        with patch("seedsigner.helpers.card_probe.probe_card", return_value=wrong):
+            result = run_card_gate(view, "satochip", title="Satochip",
+                                   setup_view=MagicMock())
         from seedsigner.views.view import BackStackView
         self.assertIs(result.View_cls, BackStackView)
 

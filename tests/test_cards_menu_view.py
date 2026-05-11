@@ -1,7 +1,8 @@
 """Tests for the top-level Cards menu.
 
-Pins the 3-entry shape (SeedKeeper / Satochip / Keycard) and confirms
-each entry routes to the matching app View. The legacy
+Pins the 4-entry shape (SeedKeeper / Satochip / Keycard / Factory
+Reset), confirms install-state checkmarks render, and that each entry
+routes to the correct destination. The legacy
 ``Tools > Smartcard Tools`` indirection and the ``CardManagementView``
 "Initialise blank card" picker were removed once the per-app probe
 took over uninstantiated-card routing.
@@ -12,7 +13,7 @@ from __future__ import annotations
 import os
 import sys
 import unittest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 
 SRC_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -34,34 +35,98 @@ def _install_hw_mocks():
 _install_hw_mocks()
 
 
+def _make_view():
+    """Build a CardsMenuView without going through ``View.__init__``."""
+    from seedsigner.views.view import CardsMenuView
+    v = CardsMenuView.__new__(CardsMenuView)
+    v.controller = MagicMock()
+    return v
+
+
+def _absent_state():
+    from seedsigner.helpers.card_probe import CardInstalledState
+    return CardInstalledState(False, False, False, False)
+
+
+def _present_state(**flags):
+    from seedsigner.helpers.card_probe import CardInstalledState
+    return CardInstalledState(
+        True,
+        flags.get("keycard", False),
+        flags.get("satochip", False),
+        flags.get("seedkeeper", False),
+    )
+
+
 class TestCardsMenuShape(unittest.TestCase):
-    def test_has_three_entries(self):
+    def test_labels(self):
         from seedsigner.views.view import CardsMenuView
-        labels = [
-            CardsMenuView.SEEDKEEPER.button_label,
-            CardsMenuView.SATOCHIP.button_label,
-            CardsMenuView.KEYCARD.button_label,
-        ]
-        self.assertEqual(labels, ["SeedKeeper", "Satochip", "Keycard"])
+        self.assertEqual(CardsMenuView.SEEDKEEPER_LABEL, "SeedKeeper")
+        self.assertEqual(CardsMenuView.SATOCHIP_LABEL, "Satochip")
+        self.assertEqual(CardsMenuView.KEYCARD_LABEL, "Keycard")
+        self.assertEqual(CardsMenuView.FACTORY_RESET_LABEL, "Factory reset card")
 
     def test_legacy_classes_removed(self):
-        """The Initialise blank card flow and the Tools-side mirror are
-        gone — keep them gone so we don't accidentally resurrect dead
-        entry points."""
         from seedsigner.views import view as view_mod
         from seedsigner.views import tools_views
         self.assertFalse(hasattr(view_mod, "CardManagementView"))
         self.assertFalse(hasattr(tools_views, "ToolsSmartcardMenuView"))
 
 
+class TestCardsMenuRendering(unittest.TestCase):
+    """The menu must show 4 entries and only render checkmarks when a
+    card is actually present."""
+
+    def _run_and_capture(self, state, selected_index):
+        v = _make_view()
+        captured = {}
+
+        def fake_run_screen(_screen_cls, **kwargs):
+            captured["button_data"] = kwargs["button_data"]
+            return selected_index
+
+        v.run_screen = fake_run_screen
+        with patch(
+            "seedsigner.helpers.card_probe.probe_installed_applets",
+            return_value=state,
+        ):
+            dest = v.run()
+        return dest, captured["button_data"]
+
+    def test_no_card_no_checkmarks(self):
+        _, buttons = self._run_and_capture(_absent_state(), selected_index=0)
+        self.assertEqual(len(buttons), 4)
+        # First three should have no right icon when card is absent.
+        for b in buttons[:3]:
+            self.assertIsNone(b.right_icon_name)
+
+    def test_present_card_renders_checkmarks(self):
+        from seedsigner.gui.components import SeedSignerIconConstants
+        _, buttons = self._run_and_capture(
+            _present_state(keycard=True, satochip=False, seedkeeper=True),
+            selected_index=0,
+        )
+        labels = [b.button_label for b in buttons]
+        self.assertEqual(
+            labels, ["SeedKeeper", "Satochip", "Keycard", "Factory reset card"],
+        )
+        # Order is SeedKeeper, Satochip, Keycard.
+        self.assertEqual(buttons[0].right_icon_name, SeedSignerIconConstants.CHECK)
+        self.assertEqual(buttons[1].right_icon_name, SeedSignerIconConstants.CHECKBOX)
+        self.assertEqual(buttons[2].right_icon_name, SeedSignerIconConstants.CHECK)
+
+
 class TestCardsMenuRouting(unittest.TestCase):
-    """Confirm each entry routes to the correct app View."""
+    """Confirm each entry routes to the correct destination."""
 
     def _route(self, button_index):
-        from seedsigner.views.view import CardsMenuView
-        v = CardsMenuView.__new__(CardsMenuView)
+        v = _make_view()
         v.run_screen = MagicMock(return_value=button_index)
-        return v.run()
+        with patch(
+            "seedsigner.helpers.card_probe.probe_installed_applets",
+            return_value=_absent_state(),
+        ):
+            return v.run()
 
     def test_seedkeeper_routes(self):
         from seedsigner.views.tools_views import ToolsSeedkeeperView
@@ -77,6 +142,11 @@ class TestCardsMenuRouting(unittest.TestCase):
         from seedsigner.views.keycard_views import ToolsKeycardMenuView
         dest = self._route(2)
         self.assertIs(dest.View_cls, ToolsKeycardMenuView)
+
+    def test_factory_reset_routes(self):
+        from seedsigner.views.view import CardsFactoryResetView
+        dest = self._route(3)
+        self.assertIs(dest.View_cls, CardsFactoryResetView)
 
 
 if __name__ == "__main__":

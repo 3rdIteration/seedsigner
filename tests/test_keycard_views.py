@@ -150,11 +150,13 @@ class TestKeycardMenuRouting(unittest.TestCase):
             ToolsKeycardPairView,
             ToolsKeycardRemovePairingView,
             ToolsKeycardFactoryResetView,
+            ToolsKeycardUninstallAppletView,
         )
         expected = [
             ToolsKeycardPairView,
             ToolsKeycardRemovePairingView,
             ToolsKeycardFactoryResetView,
+            ToolsKeycardUninstallAppletView,
         ]
         for i, view_cls in enumerate(expected):
             dest = self._route(ToolsKeycardAdvancedMenuView, i)

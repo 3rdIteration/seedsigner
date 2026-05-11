@@ -27,6 +27,15 @@ logger = logging.getLogger(__name__)
 CardKind = Literal["keycard", "satochip", "seedkeeper"]
 
 
+# Cleartext AIDs we SELECT-probe to enumerate installed applets. Keycard
+# uses the canonical instance AID (the package and the signing instance
+# share a stable prefix); pysatochip's CardConnector encodes Satochip /
+# SeedKeeper AIDs as lists, but they are the same bytes we need here.
+APPLET_AID_KEYCARD = bytes.fromhex("A0000008040001010101")
+APPLET_AID_SATOCHIP = bytes([0x53, 0x61, 0x74, 0x6f, 0x43, 0x68, 0x69, 0x70])  # "SatoChip"
+APPLET_AID_SEEDKEEPER = bytes([0x53, 0x65, 0x65, 0x64, 0x4b, 0x65, 0x65, 0x70, 0x65, 0x72])  # "SeedKeeper"
+
+
 @dataclass
 class ProbeResult:
     """Outcome of probing the reader for a specific applet kind."""
@@ -37,6 +46,16 @@ class ProbeResult:
     instance_uid: Optional[bytes] = None
     app_version: Optional[int] = None   # Keycard only
     detail: Optional[str] = None        # diagnostic, may be shown in UI
+
+
+@dataclass
+class CardInstalledState:
+    """Which of the supported applets are installed on the inserted card."""
+
+    present: bool                       # any card detected at all
+    keycard_installed: bool
+    satochip_installed: bool
+    seedkeeper_installed: bool
 
 
 def probe_card(kind: CardKind, controller, timeout_s: float = 1.5) -> ProbeResult:
@@ -217,14 +236,32 @@ def run_card_gate(view, kind: CardKind, *, title: str, setup_view):
         return Destination(BackStackView)
 
     if not probe.kind_match:
-        view.run_screen(
-            WarningScreen,
+        # Card is present but the requested applet isn't installed.
+        # Offer the install path before the user is stuck with a
+        # warning-and-back dead end.
+        from seedsigner.gui.screens.screen import ButtonListScreen
+        from seedsigner.gui.screens.screen import ButtonOption as _ButtonOption
+        install_btn = _ButtonOption("Install applet")
+        cancel_btn = _ButtonOption("Cancel")
+        selected = view.run_screen(
+            ButtonListScreen,
             title=title,
-            status_headline=None,
-            text=f"Not a {title} card.\nInsert the right card.",
-            show_back_button=True,
+            is_button_text_centered=False,
+            is_bottom_list=True,
+            button_data=[install_btn, cancel_btn],
         )
-        return Destination(BackStackView)
+        from seedsigner.gui.screens.screen import RET_CODE__BACK_BUTTON as _BACK
+        if selected == _BACK or selected == 1:
+            return Destination(BackStackView)
+        # User picked Install. The dedicated install view does the
+        # gp.jar handshake; on success it re-enters the gated view
+        # which will then probe again and see the new applet.
+        from seedsigner.views.view import CardsInstallAppletView
+        return Destination(
+            CardsInstallAppletView,
+            view_args={"kind": kind},
+            skip_current_view=True,
+        )
 
     if not probe.initialised:
         # The setup wizard handles PIN / master-key creation. Coming
@@ -232,3 +269,64 @@ def run_card_gate(view, kind: CardKind, *, title: str, setup_view):
         return Destination(setup_view, skip_current_view=True)
 
     return None
+
+
+# ---------------------------------------------------------------------------
+# Installed-applet enumeration (used for Cards menu checkmarks)
+# ---------------------------------------------------------------------------
+
+
+def probe_installed_applets(controller, timeout_s: float = 1.5) -> CardInstalledState:
+    """Enumerate which of the supported applets are installed.
+
+    Uses cleartext ``SELECT AID`` probes so it works on any card, with
+    or without default ISD keys. ``SW=0x9000`` means installed,
+    ``SW=0x6A82`` (or any other error) means missing. The function
+    never raises — readers without a card or without smartcard support
+    return ``present=False`` and all flags ``False``.
+    """
+    state = CardInstalledState(False, False, False, False)
+    try:
+        from seedsigner.helpers.keycard.client import KeycardClient
+        from seedsigner.helpers.keycard.commands import APDUError
+        from seedsigner.helpers.keycard.reader import (
+            NoCardError, NoReaderError, list_readers,
+            release_other_smartcard_holders, wait_for_card,
+        )
+    except ImportError as exc:
+        logger.debug("smartcard stack unavailable: %s", exc)
+        return state
+
+    if not list_readers():
+        return state
+
+    connection = None
+    try:
+        release_other_smartcard_holders(controller)
+        try:
+            connection = wait_for_card(timeout_s=timeout_s)
+        except (NoReaderError, NoCardError):
+            return state
+
+        state.present = True
+        client = KeycardClient(connection)
+        for aid, flag in (
+            (APPLET_AID_KEYCARD, "keycard_installed"),
+            (APPLET_AID_SATOCHIP, "satochip_installed"),
+            (APPLET_AID_SEEDKEEPER, "seedkeeper_installed"),
+        ):
+            apdu = [0x00, 0xA4, 0x04, 0x00, len(aid)] + list(aid)
+            try:
+                client.transmit(apdu)
+                setattr(state, flag, True)
+            except APDUError:
+                pass
+            except Exception as exc:
+                logger.debug("SELECT %s failed: %s", aid.hex(), exc)
+        return state
+    finally:
+        if connection is not None:
+            try:
+                connection.disconnect()
+            except Exception:
+                pass

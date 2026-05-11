@@ -225,12 +225,14 @@ class ToolsKeycardAdvancedMenuView(View):
     PAIR = ButtonOption("Pair card")
     REMOVE_PAIRING = ButtonOption("Remove pairing")
     FACTORY_RESET = ButtonOption("Factory reset")
+    UNINSTALL = ButtonOption("Uninstall applet")
 
     def run(self):
         button_data = [
             self.PAIR,
             self.REMOVE_PAIRING,
             self.FACTORY_RESET,
+            self.UNINSTALL,
         ]
         selected = self.run_screen(
             ButtonListScreen,
@@ -248,7 +250,84 @@ class ToolsKeycardAdvancedMenuView(View):
             return Destination(ToolsKeycardRemovePairingView)
         if chosen == self.FACTORY_RESET:
             return Destination(ToolsKeycardFactoryResetView)
+        if chosen == self.UNINSTALL:
+            return Destination(ToolsKeycardUninstallAppletView)
         return Destination(NotYetImplementedView)
+
+
+class ToolsKeycardUninstallAppletView(View):
+    """Delete the Keycard package via GlobalPlatform (default ISD keys).
+
+    The Status Keycard package is a single CAP with three applet
+    instances (signing applet, NDEF, Cash). DELETE with ``with_related``
+    on the package AID nukes all three.
+    """
+
+    def run(self):
+        from seedsigner.gui.screens.screen import (
+            DireWarningScreen, LargeIconStatusScreen,
+        )
+
+        ret = self.run_screen(
+            DireWarningScreen,
+            title="Uninstall",
+            status_headline=None,
+            text="Delete the Keycard package?\nMaster key will be lost.",
+            show_back_button=True,
+            button_data=[ButtonOption("Delete")],
+        )
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        try:
+            from seedsigner.helpers.keycard import global_platform as gp
+            from seedsigner.helpers.keycard.reader import (
+                release_other_smartcard_holders, wait_for_card,
+            )
+        except ImportError as exc:
+            return _error_destination("Keycard support unavailable", str(exc))
+
+        try:
+            release_other_smartcard_holders(self.controller)
+            connection = wait_for_card(timeout_s=5.0)
+        except Exception as exc:
+            return _error_destination("Card not reachable", str(exc))
+
+        try:
+            channel = gp.GpSecureChannel(connection)
+            channel.select_isd()
+            try:
+                channel.open()
+            except Exception as exc:
+                return _error_destination(
+                    "ISD keys required",
+                    "Default ISD keys missing.\nWipe via PC or full Factory Reset.",
+                )
+            # Package AID for Status Keycard.
+            package_aid = bytes.fromhex("A0000008040001")
+            try:
+                gp.delete_aid(channel, package_aid, with_related=True)
+            except Exception as exc:
+                return _error_destination("Uninstall failed", str(exc))
+        finally:
+            try:
+                connection.disconnect()
+            except Exception:
+                pass
+
+        # Cached pairings for this card are now stale; drop them.
+        self.controller.forget_all_pairings()
+
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Uninstall",
+            status_headline=None,
+            text="Keycard package removed.",
+            show_back_button=False,
+            button_data=[ButtonOption("OK")],
+        )
+        from seedsigner.views.view import CardsMenuView
+        return Destination(CardsMenuView, skip_current_view=True)
 
 
 # ---------------------------------------------------------------------------
