@@ -12,7 +12,7 @@ from seedsigner.gui.screens.screen import RET_CODE__BACK_BUTTON, ButtonOption
 from seedsigner.models.settings import Settings, SettingsConstants
 from seedsigner.models.seed import ElectrumSeed, Seed
 from seedsigner.views.view import MainMenuView, OptionDisabledView, View, NetworkMismatchErrorView
-from seedsigner.views import seed_views, scan_views, settings_views
+from seedsigner.views import seed_views, scan_views, settings_views, tools_views
 from binascii import hexlify
 
 
@@ -97,7 +97,8 @@ class TestSeedFlows(FlowTest):
         def test_with_mnemonic(mnemonic):
             Settings.HOSTNAME = "not seedsigner-os"
             sequence = [
-                FlowStep(MainMenuView, button_data_selection=MainMenuView.SEEDS),
+                FlowStep(MainMenuView, button_data_selection=MainMenuView.TOOLS),
+                FlowStep(tools_views.ToolsMenuView, button_data_selection=tools_views.ToolsMenuView.SEEDS),
                 FlowStep(seed_views.SeedsMenuView, is_redirect=True),  # When no seeds are loaded it auto-redirects to LoadSeedView
                 FlowStep(seed_views.LoadSeedView, button_data_selection=seed_views.LoadSeedView.TYPE_12WORD if len(mnemonic) == 12 else seed_views.LoadSeedView.TYPE_24WORD),
             ]
@@ -129,7 +130,8 @@ class TestSeedFlows(FlowTest):
         # Test data from iancoleman.io
         mnemonic = "blush twice taste dawn feed second opinion lazy thumb play neglect impact".split()
         sequence = [
-            FlowStep(MainMenuView, button_data_selection=MainMenuView.SEEDS),
+            FlowStep(MainMenuView, button_data_selection=MainMenuView.TOOLS),
+            FlowStep(tools_views.ToolsMenuView, button_data_selection=tools_views.ToolsMenuView.SEEDS),
             FlowStep(seed_views.SeedsMenuView, is_redirect=True),  # When no seeds are loaded it auto-redirects to LoadSeedView
             FlowStep(seed_views.LoadSeedView, button_data_selection=seed_views.LoadSeedView.TYPE_12WORD if len(mnemonic) == 12 else seed_views.LoadSeedView.TYPE_24WORD),
         ]
@@ -167,7 +169,8 @@ class TestSeedFlows(FlowTest):
             settings.set_value(SettingsConstants.SETTING__ELECTRUM_SEEDS, SettingsConstants.OPTION__ENABLED)
 
             sequence = [
-                FlowStep(MainMenuView, button_data_selection=MainMenuView.SEEDS),
+                FlowStep(MainMenuView, button_data_selection=MainMenuView.TOOLS),
+                FlowStep(tools_views.ToolsMenuView, button_data_selection=tools_views.ToolsMenuView.SEEDS),
                 FlowStep(seed_views.SeedsMenuView, is_redirect=True),  # When no seeds are loaded it auto-redirects to LoadSeedView
                 FlowStep(seed_views.LoadSeedView, button_data_selection=seed_views.LoadSeedView.TYPE_ELECTRUM),
                 FlowStep(seed_views.SeedElectrumMnemonicStartView),  # Warning screen; no relevant button data selection.
@@ -225,7 +228,8 @@ class TestSeedFlows(FlowTest):
         share2 = shares[1].split()
 
         sequence = [
-            FlowStep(MainMenuView, button_data_selection=MainMenuView.SEEDS),
+            FlowStep(MainMenuView, button_data_selection=MainMenuView.TOOLS),
+            FlowStep(tools_views.ToolsMenuView, button_data_selection=tools_views.ToolsMenuView.SEEDS),
             FlowStep(seed_views.SeedsMenuView, is_redirect=True),
             FlowStep(seed_views.LoadSeedView, button_data_selection=seed_views.LoadSeedView.TYPE_SLIP39),
             FlowStep(seed_views.SeedSlip39MnemonicStartView, screen_return_value=0),
@@ -251,7 +255,8 @@ class TestSeedFlows(FlowTest):
         share = "testify swimming academic academic column loyalty smear include exotic bedroom exotic wrist lobe cover grief golden smart junior estimate learn".split()
 
         sequence = [
-            FlowStep(MainMenuView, button_data_selection=MainMenuView.SEEDS),
+            FlowStep(MainMenuView, button_data_selection=MainMenuView.TOOLS),
+            FlowStep(tools_views.ToolsMenuView, button_data_selection=tools_views.ToolsMenuView.SEEDS),
             FlowStep(seed_views.SeedsMenuView, is_redirect=True),
             FlowStep(seed_views.LoadSeedView, button_data_selection=seed_views.LoadSeedView.TYPE_SLIP39),
             FlowStep(seed_views.SeedSlip39MnemonicStartView, screen_return_value=0),
@@ -575,7 +580,8 @@ class TestSeedFlows(FlowTest):
             sequence=[
                 FlowStep(seed_views.SeedOptionsView, button_data_selection=seed_views.SeedOptionsView.DISCARD),
                 FlowStep(seed_views.SeedDiscardView, button_data_selection=seed_views.SeedDiscardView.DISCARD),
-                FlowStep(MainMenuView, button_data_selection=MainMenuView.SEEDS),
+                FlowStep(MainMenuView, button_data_selection=MainMenuView.TOOLS),
+                FlowStep(tools_views.ToolsMenuView, button_data_selection=tools_views.ToolsMenuView.SEEDS),
                 FlowStep(seed_views.SeedsMenuView, is_redirect=True),  # When no seeds are loaded it auto-redirects to LoadSeedView
                 FlowStep(seed_views.LoadSeedView),
             ]
@@ -602,7 +608,8 @@ class TestSeedFlows(FlowTest):
             view.decoder.add_data("0000" * 11 + "0003")
 
         self.run_sequence([
-            FlowStep(MainMenuView, button_data_selection=MainMenuView.SEEDS),
+            FlowStep(MainMenuView, button_data_selection=MainMenuView.TOOLS),
+            FlowStep(tools_views.ToolsMenuView, button_data_selection=tools_views.ToolsMenuView.SEEDS),
             FlowStep(seed_views.SeedsMenuView, screen_return_value=0),
             FlowStep(seed_views.SeedOptionsView, button_data_selection=seed_views.SeedOptionsView.BACKUP),
             FlowStep(seed_views.SeedBackupView, button_data_selection=seed_views.SeedBackupView.EXPORT_SEEDQR),

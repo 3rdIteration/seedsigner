@@ -149,7 +149,8 @@ class TestToolsFlows(FlowTest):
         #  change script type selection.
         self.settings.set_value(SettingsConstants.SETTING__SCRIPT_TYPES, [SettingsConstants.NATIVE_SEGWIT, SettingsConstants.TAPROOT])
         self.run_sequence([
-            FlowStep(MainMenuView, button_data_selection=MainMenuView.SEEDS),
+            FlowStep(MainMenuView, button_data_selection=MainMenuView.TOOLS),
+            FlowStep(tools_views.ToolsMenuView, button_data_selection=tools_views.ToolsMenuView.SEEDS),
             FlowStep(seed_views.SeedsMenuView, screen_return_value=0),  # select the first onboard seed
             FlowStep(seed_views.SeedOptionsView, button_data_selection=seed_views.SeedOptionsView.EXPLORER),
             FlowStep(seed_views.SeedExportXpubScriptTypeView, screen_return_value=0),
@@ -161,7 +162,8 @@ class TestToolsFlows(FlowTest):
         # SeedOptionsView, BACK to SeedOptionsView.
         self.settings.set_value(SettingsConstants.SETTING__SCRIPT_TYPES, [SettingsConstants.NATIVE_SEGWIT])
         self.run_sequence([
-            FlowStep(MainMenuView, button_data_selection=MainMenuView.SEEDS),
+            FlowStep(MainMenuView, button_data_selection=MainMenuView.TOOLS),
+            FlowStep(tools_views.ToolsMenuView, button_data_selection=tools_views.ToolsMenuView.SEEDS),
             FlowStep(seed_views.SeedsMenuView, screen_return_value=0),  # select the first onboard seed
             FlowStep(seed_views.SeedOptionsView, button_data_selection=seed_views.SeedOptionsView.EXPLORER),
             FlowStep(seed_views.SeedExportXpubScriptTypeView, is_redirect=True),

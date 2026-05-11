@@ -431,7 +431,12 @@ class HardwareButtons(Singleton):
                             return True
             return False
 
-        pygame.event.pump()
+        # macOS Cocoa requires event.pump() on the main thread or it raises
+        # NSInternalInconsistencyException. Off-thread callers (screensaver,
+        # toast, animation threads) skip the pump; pressed-state queries
+        # still work against whatever the last main-thread pump captured.
+        if threading.current_thread() is threading.main_thread():
+            pygame.event.pump()
         pressed = pygame.key.get_pressed()
         for key in keys:
             pg_key = self.reverse_map.get(key)
@@ -449,7 +454,8 @@ class HardwareButtons(Singleton):
                     return True
             return False
 
-        pygame.event.pump()
+        if threading.current_thread() is threading.main_thread():
+            pygame.event.pump()
         pressed = pygame.key.get_pressed()
         for key in HardwareButtonsConstants.ALL_KEYS:
             pg_key = self.reverse_map.get(key)

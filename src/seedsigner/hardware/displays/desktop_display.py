@@ -1,5 +1,7 @@
 """Desktop display driver that mimics the Waveshare LCD using pygame."""
 
+import threading
+
 from PIL import Image
 
 import seedsigner.hardware.buttons as button_defs
@@ -68,9 +70,14 @@ class DesktopDisplay:
         self.window.fill(DARK_BLUE)
         self.window.blit(pg_img, (self.left_width * self.scale, 0))
         self.draw_buttons()
-        # Pump events to keep the window responsive even when no input is read
-        self.pygame.event.pump()
-        self.pygame.display.flip()
+        # macOS Cocoa rejects nextEventMatchingMask off the main thread,
+        # which crashes the whole process. Gate event.pump (and display.flip,
+        # which on some SDL backends also touches the event queue) on
+        # main-thread renders. Background threads (animations, splash) just
+        # update the offscreen buffer; the next main-thread render flushes.
+        if threading.current_thread() is threading.main_thread():
+            self.pygame.event.pump()
+            self.pygame.display.flip()
 
     def draw_buttons(self):
         """Render clickable button overlays alongside the simulated display."""

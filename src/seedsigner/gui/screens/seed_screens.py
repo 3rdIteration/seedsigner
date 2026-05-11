@@ -910,9 +910,31 @@ class SeedAddPassphraseScreen(BaseTopNavScreen):
 
     def _run(self):
         cursor_position = len(self.passphrase)
-        cur_keyboard = self.keyboard_abc
-        cur_button1_text = self.KEYBOARD__UPPERCASE_BUTTON_TEXT
-        cur_button2_text = self.KEYBOARD__DIGITS_BUTTON_TEXT
+
+        # Honour ``initial_keyboard`` so input dispatch matches the keyboard
+        # that ``_render()`` actually drew. Without this, _run() always
+        # treated the lowercase abc keyboard as current and the first
+        # navigation event would overwrite the rendered initial keyboard.
+        if self.initial_keyboard == self.KEYBOARD__UPPERCASE_BUTTON_TEXT:
+            cur_keyboard = self.keyboard_ABC
+            cur_button1_text = self.KEYBOARD__LOWERCASE_BUTTON_TEXT
+            cur_button2_text = self.KEYBOARD__DIGITS_BUTTON_TEXT
+        elif self.initial_keyboard == self.KEYBOARD__DIGITS_BUTTON_TEXT:
+            cur_keyboard = self.keyboard_digits
+            cur_button1_text = self.KEYBOARD__UPPERCASE_BUTTON_TEXT
+            cur_button2_text = self.KEYBOARD__SYMBOLS_1_BUTTON_TEXT
+        elif self.initial_keyboard == self.KEYBOARD__SYMBOLS_1_BUTTON_TEXT:
+            cur_keyboard = self.keyboard_symbols_1
+            cur_button1_text = self.KEYBOARD__UPPERCASE_BUTTON_TEXT
+            cur_button2_text = self.KEYBOARD__SYMBOLS_2_BUTTON_TEXT
+        elif self.initial_keyboard == self.KEYBOARD__SYMBOLS_2_BUTTON_TEXT:
+            cur_keyboard = self.keyboard_symbols_2
+            cur_button1_text = self.KEYBOARD__UPPERCASE_BUTTON_TEXT
+            cur_button2_text = self.KEYBOARD__DIGITS_BUTTON_TEXT
+        else:
+            cur_keyboard = self.keyboard_abc
+            cur_button1_text = self.KEYBOARD__UPPERCASE_BUTTON_TEXT
+            cur_button2_text = self.KEYBOARD__DIGITS_BUTTON_TEXT
 
         # Start the interactive update loop
         while True:
@@ -2059,9 +2081,30 @@ class SeedEncryptedQRMnemonicIDScreen(BaseTopNavScreen):
     def _run(self):
         cursor_position = len(self.mnemonic_id)
 
-        cur_keyboard = self.keyboard_abc
-        cur_button1_text = self.KEYBOARD__UPPERCASE_BUTTON_TEXT
-        cur_button2_text = self.KEYBOARD__DIGITS_BUTTON_TEXT
+        # Honour ``initial_keyboard`` so input dispatch matches the keyboard
+        # that ``_render()`` actually drew. Without this, _run() always
+        # treated the lowercase abc keyboard as current and the first
+        # navigation event would overwrite the rendered initial keyboard.
+        if self.initial_keyboard == self.KEYBOARD__UPPERCASE_BUTTON_TEXT:
+            cur_keyboard = self.keyboard_ABC
+            cur_button1_text = self.KEYBOARD__LOWERCASE_BUTTON_TEXT
+            cur_button2_text = self.KEYBOARD__DIGITS_BUTTON_TEXT
+        elif self.initial_keyboard == self.KEYBOARD__DIGITS_BUTTON_TEXT:
+            cur_keyboard = self.keyboard_digits
+            cur_button1_text = self.KEYBOARD__UPPERCASE_BUTTON_TEXT
+            cur_button2_text = self.KEYBOARD__SYMBOLS_1_BUTTON_TEXT
+        elif self.initial_keyboard == self.KEYBOARD__SYMBOLS_1_BUTTON_TEXT:
+            cur_keyboard = self.keyboard_symbols_1
+            cur_button1_text = self.KEYBOARD__UPPERCASE_BUTTON_TEXT
+            cur_button2_text = self.KEYBOARD__SYMBOLS_2_BUTTON_TEXT
+        elif self.initial_keyboard == self.KEYBOARD__SYMBOLS_2_BUTTON_TEXT:
+            cur_keyboard = self.keyboard_symbols_2
+            cur_button1_text = self.KEYBOARD__UPPERCASE_BUTTON_TEXT
+            cur_button2_text = self.KEYBOARD__DIGITS_BUTTON_TEXT
+        else:
+            cur_keyboard = self.keyboard_abc
+            cur_button1_text = self.KEYBOARD__UPPERCASE_BUTTON_TEXT
+            cur_button2_text = self.KEYBOARD__DIGITS_BUTTON_TEXT
 
         # Start the interactive update loop
         while True:

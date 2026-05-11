@@ -3,7 +3,7 @@ from gettext import gettext as _
 from typing import Type
 
 from seedsigner.helpers.l10n import mark_for_translation as _mft
-from seedsigner.gui.components import SeedSignerIconConstants
+from seedsigner.gui.components import FontAwesomeIconConstants, SeedSignerIconConstants
 from seedsigner.gui.screens import RET_CODE__POWER_BUTTON, RET_CODE__BACK_BUTTON, RET_CODE__DISPLAY_TOGGLE
 from seedsigner.gui.screens.screen import BaseScreen, ButtonOption, LargeButtonScreen, WarningScreen, ErrorScreen
 from seedsigner.models.settings import Settings, SettingsConstants
@@ -178,12 +178,15 @@ class Destination:
 
 
     def _instantiate_view(self):
-        if not self.view_args:
-            # Can't unpack (**) None so we replace with an empty dict
-            self.view_args = {}
-
-        # Instantiate the `View_cls` with the `view_args` dict
-        self.view = self.View_cls(**self.view_args)
+        # Use a local for the unpack so a Destination created with
+        # view_args=None keeps view_args=None after run(). Mutating
+        # self.view_args broke __eq__ when comparing a back_stack entry
+        # (already run, view_args mutated to {}) with a fresh
+        # Destination(..., view_args=None) returned via skip_current_view
+        # — equal-by-intent destinations were treated as different and
+        # appended again, leaving a stale duplicate on the back stack.
+        view_args = self.view_args or {}
+        self.view = self.View_cls(**view_args)
     
 
     def _run_view(self):
@@ -199,11 +202,13 @@ class Destination:
 
     def __eq__(self, obj):
         """
-            Equality test IGNORES the skip_current_view and clear_history options
+            Equality test IGNORES the skip_current_view and clear_history options.
+            Treats view_args=None and view_args={} as equivalent so that an
+            unmutated fresh Destination still matches one that was run.
         """
-        return (isinstance(obj, Destination) and 
+        return (isinstance(obj, Destination) and
             obj.View_cls == self.View_cls and
-            obj.view_args == self.view_args)
+            (obj.view_args or {}) == (self.view_args or {}))
     
 
     def __ne__(self, obj):
@@ -218,7 +223,7 @@ class Destination:
 #########################################################################################
 class MainMenuView(View):
     SCAN = ButtonOption("Scan", SeedSignerIconConstants.SCAN)
-    SEEDS = ButtonOption("Seeds", SeedSignerIconConstants.SEEDS)
+    CARDS = ButtonOption("Cards", FontAwesomeIconConstants.ID_CARD)
     TOOLS = ButtonOption("Tools", SeedSignerIconConstants.TOOLS)
     SETTINGS = ButtonOption("Settings", SeedSignerIconConstants.SETTINGS)
 
@@ -236,7 +241,7 @@ class MainMenuView(View):
         if controller.auto_wiped:
             controller.auto_wiped = False
             controller.activate_toast(InfoToast(label_text=_("Data wiped after inactivity")))
-        button_data = [self.SCAN, self.SEEDS, self.TOOLS, self.SETTINGS]
+        button_data = [self.SCAN, self.CARDS, self.TOOLS, self.SETTINGS]
         selected_menu_num = self.run_screen(
             MainMenuScreen,
             title=_("Home"),
@@ -254,10 +259,9 @@ class MainMenuView(View):
         if button_data[selected_menu_num] == self.SCAN:
             from seedsigner.views.scan_views import ScanView
             return Destination(ScanView)
-        
-        elif button_data[selected_menu_num] == self.SEEDS:
-            from seedsigner.views.seed_views import SeedsMenuView
-            return Destination(SeedsMenuView)
+
+        elif button_data[selected_menu_num] == self.CARDS:
+            return Destination(CardsMenuView)
 
         elif button_data[selected_menu_num] == self.TOOLS:
             from seedsigner.views.tools_views import ToolsMenuView
@@ -266,6 +270,105 @@ class MainMenuView(View):
         elif button_data[selected_menu_num] == self.SETTINGS:
             from seedsigner.views.settings_views import SettingsMenuView
             return Destination(SettingsMenuView)
+
+
+
+class CardsMenuView(View):
+    """
+    Top-level entry point for smartcard apps (Keycard / Satochip / SeedKeeper).
+    Mirrors `tools_views.ToolsSmartcardMenuView` so the same flows are reachable
+    from the home screen without traversing Tools.
+    """
+    COMMON = ButtonOption("Common Functions")
+    SEEDKEEPER = ButtonOption("SeedKeeper Functions")
+    SATOCHIP = ButtonOption("Satochip Functions")
+    KEYCARD = ButtonOption("Keycard (ETH)")
+    INITIALISE = ButtonOption("Initialise blank card")
+    DIY = ButtonOption("DIY Tools")
+
+    def run(self):
+        from seedsigner.gui.screens.screen import ButtonListScreen
+
+        button_data = [
+            self.COMMON, self.SEEDKEEPER, self.SATOCHIP, self.KEYCARD,
+            self.INITIALISE, self.DIY,
+        ]
+
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title=_("Cards"),
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        if button_data[selected_menu_num] == self.COMMON:
+            from seedsigner.views.tools_views import ToolsCommonView
+            return Destination(ToolsCommonView)
+
+        elif button_data[selected_menu_num] == self.SEEDKEEPER:
+            from seedsigner.views.tools_views import ToolsSeedkeeperView
+            return Destination(ToolsSeedkeeperView)
+
+        elif button_data[selected_menu_num] == self.SATOCHIP:
+            from seedsigner.views.tools_views import ToolsSatochipView
+            return Destination(ToolsSatochipView)
+
+        elif button_data[selected_menu_num] == self.KEYCARD:
+            from seedsigner.views.keycard_views import ToolsKeycardMenuView
+            return Destination(ToolsKeycardMenuView)
+
+        elif button_data[selected_menu_num] == self.INITIALISE:
+            return Destination(CardManagementView)
+
+        elif button_data[selected_menu_num] == self.DIY:
+            from seedsigner.views.tools_views import ToolsSatochipDIYView
+            return Destination(ToolsSatochipDIYView)
+
+
+class CardManagementView(View):
+    """
+    Routing surface for blank or partially-initialised cards. Offers a
+    direct path to each applet's existing initialisation flow without
+    forcing the user to dig through Tools/Cards submenus.
+
+    Phase 6 minimum: explicit user choice. A follow-up iteration will
+    add a SELECT-probe (``helpers.card_monitor.multi_applet_probe``)
+    and auto-route blank cards to the correct flow.
+    """
+    AS_KEYCARD = ButtonOption("Initialise as Keycard")
+    AS_SATOCHIP = ButtonOption("Initialise as Satochip")
+    AS_SEEDKEEPER = ButtonOption("Initialise as SeedKeeper")
+
+    def run(self):
+        from seedsigner.gui.screens.screen import ButtonListScreen
+
+        button_data = [self.AS_KEYCARD, self.AS_SATOCHIP, self.AS_SEEDKEEPER]
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title=_("Initialise card"),
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        if button_data[selected_menu_num] == self.AS_KEYCARD:
+            from seedsigner.views.keycard_views import ToolsKeycardInitView
+            return Destination(ToolsKeycardInitView)
+
+        elif button_data[selected_menu_num] == self.AS_SATOCHIP:
+            # The Satochip entry point exposes setup-when-uninitialised
+            # via the existing init_satochip() branch.
+            from seedsigner.views.tools_views import ToolsSatochipView
+            return Destination(ToolsSatochipView)
+
+        elif button_data[selected_menu_num] == self.AS_SEEDKEEPER:
+            from seedsigner.views.tools_views import ToolsSeedkeeperView
+            return Destination(ToolsSeedkeeperView)
 
 
 

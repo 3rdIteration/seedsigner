@@ -333,6 +333,7 @@ def _format_word_password(words: list[str], separator: str) -> str:
     return "".join(words)
 
 class ToolsMenuView(View):
+    SEEDS = ButtonOption("Seeds", SeedSignerIconConstants.SEEDS)
     IMAGE = ButtonOption(" New seed", FontAwesomeIconConstants.CAMERA)
     DICE = ButtonOption("New seed", FontAwesomeIconConstants.DICE)
     SLIP39_IMAGE = ButtonOption("SLIP39 seed", FontAwesomeIconConstants.CAMERA)
@@ -355,17 +356,17 @@ class ToolsMenuView(View):
         self.include_password_generator = include_password_generator
 
     def run(self):
-        button_data = [self.IMAGE, self.DICE]
+        button_data = [self.SEEDS, self.IMAGE, self.DICE]
 
         if getattr(self, "include_password_generator", True):
             button_data.append(self.PASSWORD_GENERATOR)
-        
+
         if self.settings.get_value(SettingsConstants.SETTING__SLIP39_SEEDS) == SettingsConstants.OPTION__ENABLED:
             button_data.extend([self.SLIP39_IMAGE, self.SLIP39_DICE])
-        
+
         if self.settings.get_value(SettingsConstants.SETTING__SMARTCARD_SUPPORT) == SettingsConstants.OPTION__ENABLED:
             button_data.append(self.SMARTCARD)
-        
+
         from seedsigner.hardware.battery_hat import BatteryHat
         battery_calibration_button = self.BATTERY_CALIBRATION if BatteryHat.get_instance().is_enabled() else None
 
@@ -392,6 +393,10 @@ class ToolsMenuView(View):
 
         if selected_menu_num == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
+
+        elif button_data[selected_menu_num] == self.SEEDS:
+            from seedsigner.views.seed_views import SeedsMenuView
+            return Destination(SeedsMenuView)
 
         elif button_data[selected_menu_num] == self.IMAGE:
             return Destination(ToolsImageEntropyLivePreviewView)
@@ -5179,6 +5184,52 @@ class ToolsDIYInstallAppletView(View):
                 "Installing Applet",
                 "Applet Installed",
             )
+        elif "keycard" in applet_file.lower():
+            # Status Keycard 3.2 cap contains Keycard + NDEF + Cash applets
+            # in a single package. gp.jar accepts --install only once per
+            # invocation, so we --load the package first, then create each
+            # instance with its own --create call. Mirrors the proven
+            # keycard-cli install-5-instances.sh recipe.
+            # Instance AID for the signing applet (A0000008040001010101) is
+            # what keycard_views.py SELECTs by default — must stay exact.
+            cap_path = f"{cap_dir}/{applet_file}"
+            keycard_steps = [
+                (f"--load {cap_path}", "Loading Keycard package"),
+                (
+                    "--package A0000008040001 --applet A000000804000101 "
+                    "--create A0000008040001010101",
+                    "Creating Keycard instance",
+                ),
+                (
+                    "--package A0000008040001 --applet A000000804000102 "
+                    "--create D2760000850101",
+                    "Creating NDEF instance",
+                ),
+                (
+                    "--package A0000008040001 --applet A000000804000103 "
+                    "--create A0000008040001030101",
+                    "Creating Cash instance",
+                ),
+            ]
+            installed_applets = "ok"
+            for command, label in keycard_steps:
+                # successtext=None suppresses the per-step success screen.
+                # Failure screens are still shown by run_globalplatform and
+                # the loop bails out via None.
+                step_result = seedkeeper_utils.run_globalplatform(
+                    self, command, label, None,
+                )
+                if step_result is None:
+                    installed_applets = None
+                    break
+            if installed_applets:
+                self.run_screen(
+                    LargeIconStatusScreen,
+                    title="Success",
+                    status_headline=None,
+                    text="Keycard Applets Installed",
+                    show_back_button=False,
+                )
         else:
             installed_applets = seedkeeper_utils.run_globalplatform(
                 self,

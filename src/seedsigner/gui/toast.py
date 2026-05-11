@@ -289,6 +289,30 @@ class InfoToast(DefaultToast):
             font_color=GUIConstants.BODY_FONT_COLOR,
             font_size=body_font_size,
         )
+
+
+class CardInsertedToast(DefaultToast):
+    """Notification fired by ``Controller.on_card_inserted`` when a
+    recognised card is detected by the background PC/SC monitor.
+    Informational only — the user navigates to the card menu manually,
+    where the cached-PIN flow takes over (one prompt, then transparent).
+    """
+
+    def __init__(self, kind: str, activation_delay: int = 0, duration: int = 3):
+        # ``kind`` is one of "Keycard", "Satochip", "SeedKeeper"; the
+        # caller is responsible for passing a user-friendly label.
+        label = f"{kind} inserted"
+        super().__init__(label_text=label, activation_delay=activation_delay, duration=duration)
+
+    def instantiate_toast(self) -> ToastOverlay:
+        body_font_size = GUIConstants.get_body_font_size()
+        return ToastOverlay(
+            icon_name=SeedSignerIconConstants.INFO,
+            label_text=self.label_text,
+            color=GUIConstants.INFO_COLOR,
+            font_color=GUIConstants.BODY_FONT_COLOR,
+            font_size=body_font_size,
+        )
     
 
 
