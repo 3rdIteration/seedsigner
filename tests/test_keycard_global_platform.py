@@ -364,5 +364,216 @@ class TestStatusTlvParser(unittest.TestCase):
         self.assertEqual(parsed[1].aid, aid_b)
 
 
+class TestInstallForInstallWithFallback(unittest.TestCase):
+    """``install_for_install_with_fallback`` retries with the split
+    P1=0x04 + P1=0x08 form when the combined P1=0x0C is rejected with
+    ``0x6982`` (security status not satisfied).
+    """
+
+    def _new_channel(self, install_responder):
+        from seedsigner.helpers.keycard.global_platform import GpSecureChannel
+
+        class _RecordingCard(_MockCard):
+            def __init__(self):
+                super().__init__()
+                self.install_calls = []
+
+            def transmit(self, apdu):
+                # INSTALL: CLA=0x84 (secure), INS=0xE6.
+                if apdu[0] == 0x84 and apdu[1] == 0xE6:
+                    p1 = apdu[2]
+                    self.install_calls.append(p1)
+                    sw1, sw2 = install_responder(p1)
+                    return ([], sw1, sw2)
+                return super().transmit(apdu)
+
+        card = _RecordingCard()
+        gp = GpSecureChannel(card)
+        gp.select_isd()
+        gp.open(host_challenge=b"\x01" * 8)
+        return gp, card
+
+    def test_combined_form_succeeds_on_first_try(self):
+        from seedsigner.helpers.keycard.global_platform import (
+            install_for_install_with_fallback,
+        )
+        gp, card = self._new_channel(lambda p1: (0x90, 0x00))
+        install_for_install_with_fallback(
+            gp,
+            package_aid=bytes.fromhex("A0000008040001"),
+            applet_aid=bytes.fromhex("A000000804000101"),
+            instance_aid=bytes.fromhex("A00000080400010102"),
+        )
+        self.assertEqual(card.install_calls, [0x0C])
+
+    def test_falls_back_to_split_form_on_6982(self):
+        from seedsigner.helpers.keycard.global_platform import (
+            install_for_install_with_fallback,
+        )
+
+        def responder(p1):
+            if p1 == 0x0C:
+                return (0x69, 0x82)
+            return (0x90, 0x00)
+
+        gp, card = self._new_channel(responder)
+        install_for_install_with_fallback(
+            gp,
+            package_aid=bytes.fromhex("A0000008040001"),
+            applet_aid=bytes.fromhex("A000000804000101"),
+            instance_aid=bytes.fromhex("A00000080400010102"),
+        )
+        # P1=0x0C tried first, then split into 0x04 + 0x08.
+        self.assertEqual(card.install_calls, [0x0C, 0x04, 0x08])
+
+    def test_does_not_fall_back_on_other_status_words(self):
+        from seedsigner.helpers.keycard.global_platform import (
+            GpProtocolError, install_for_install_with_fallback,
+        )
+
+        def responder(p1):
+            # 0x6A88 = "Referenced data not found" — not a fallback case.
+            return (0x6A, 0x88) if p1 == 0x0C else (0x90, 0x00)
+
+        gp, card = self._new_channel(responder)
+        with self.assertRaises(GpProtocolError):
+            install_for_install_with_fallback(
+                gp,
+                package_aid=bytes.fromhex("A0000008040001"),
+                applet_aid=bytes.fromhex("A000000804000101"),
+                instance_aid=bytes.fromhex("A00000080400010102"),
+            )
+        self.assertEqual(card.install_calls, [0x0C])
+
+
+class TestListInstancesFallbacks(unittest.TestCase):
+    """``list_instances`` must:
+
+    1. Page on ``0x6310`` ("more data available") without losing data.
+    2. Fall back to legacy ``P2=0x00`` format when ``P2=0x02`` returns
+       no entries.
+    3. Survive ``0x6A88`` ("no match") cleanly.
+    """
+
+    def _open_channel(self, status_responder):
+        from seedsigner.helpers.keycard.global_platform import GpSecureChannel
+
+        class _StatusCard(_MockCard):
+            def transmit(self, apdu):
+                # GET STATUS: CLA=0x84, INS=0xF2.
+                if apdu[0] == 0x84 and apdu[1] == 0xF2:
+                    p2 = apdu[3]
+                    return status_responder(p2)
+                return super().transmit(apdu)
+
+        gp = GpSecureChannel(_StatusCard())
+        gp.select_isd()
+        gp.open(host_challenge=b"\x01" * 8)
+        return gp
+
+    def test_pages_on_6310_and_concatenates(self):
+        from seedsigner.helpers.keycard.global_platform import list_instances
+
+        aid_a = bytes.fromhex("A000000804000101")
+        aid_b = bytes.fromhex("A00000080400010102")
+        entry_a = bytes([0x4F, len(aid_a)]) + aid_a + bytes.fromhex("9F70017FC50100")
+        entry_b = bytes([0x4F, len(aid_b)]) + aid_b + bytes.fromhex("9F70017FC50100")
+        page1 = bytes([0xE3, len(entry_a)]) + entry_a
+        page2 = bytes([0xE3, len(entry_b)]) + entry_b
+        responses = iter([page1, page2])
+        sws = iter([(0x63, 0x10), (0x90, 0x00)])
+
+        def responder(p2):
+            return (list(next(responses)), *next(sws))
+
+        gp = self._open_channel(responder)
+        result = list_instances(gp)
+        self.assertEqual([i.aid for i in result], [aid_a, aid_b])
+
+    def test_falls_back_to_legacy_p2_00(self):
+        from seedsigner.helpers.keycard.global_platform import list_instances
+
+        aid = bytes.fromhex("A000000804000101")
+        # Legacy entry: AID_len(1) || AID || life || privs
+        legacy = bytes([len(aid)]) + aid + b"\x07\x00"
+
+        def responder(p2):
+            if p2 == 0x02:
+                # Card doesn't support TLV format.
+                return ([], 0x6A, 0x86)
+            if p2 == 0x00:
+                return (list(legacy), 0x90, 0x00)
+            return ([], 0x6A, 0x88)
+
+        gp = self._open_channel(responder)
+        result = list_instances(gp)
+        self.assertEqual([i.aid for i in result], [aid])
+
+    def test_handles_6a88_as_empty(self):
+        from seedsigner.helpers.keycard.global_platform import list_instances
+
+        def responder(p2):
+            return ([], 0x6A, 0x88)
+
+        gp = self._open_channel(responder)
+        result = list_instances(gp)
+        self.assertEqual(result, [])
+
+
+class TestProbeKeycardInstanceAids(unittest.TestCase):
+    def test_finds_aid_via_select(self):
+        from seedsigner.helpers.keycard.global_platform import (
+            probe_keycard_instance_aids,
+        )
+
+        prefix = bytes.fromhex("A000000804000101")
+        target = prefix + bytes([0x01, 0x02])
+
+        class _Conn:
+            def __init__(self):
+                self.calls = []
+
+            def transmit(self, apdu):
+                self.calls.append(list(apdu))
+                # Each candidate is sent as `00 A4 04 00 LL AID 00`.
+                aid_len = apdu[4]
+                aid = bytes(apdu[5:5 + aid_len])
+                if aid == target:
+                    return ([], 0x90, 0x00)
+                return ([], 0x6A, 0x82)
+
+        conn = _Conn()
+        found = probe_keycard_instance_aids(
+            conn, package_prefix=prefix, instance_byte_range=range(0x01, 0x05),
+        )
+        self.assertEqual(found, [target])
+        # Bare prefix + 4 instance suffixes = 5 SELECTs total.
+        self.assertEqual(len(conn.calls), 5)
+
+
+class TestScpIdValidation(unittest.TestCase):
+    """``open()`` rejects INITIALIZE UPDATE responses that advertise an
+    unsupported SCP id, since our KDF only matches SCP02 (i='15')."""
+
+    def test_rejects_non_scp02(self):
+        from seedsigner.helpers.keycard.global_platform import (
+            GpProtocolError, GpSecureChannel,
+        )
+
+        class _Scp01Card(_MockCard):
+            def transmit(self, apdu):
+                data, sw1, sw2 = super().transmit(apdu)
+                if apdu[0] == 0x80 and apdu[1] == 0x50:
+                    bad = list(data)
+                    bad[11] = 0x01  # SCP id 0x01 instead of 0x02
+                    return (bad, sw1, sw2)
+                return (data, sw1, sw2)
+
+        gp = GpSecureChannel(_Scp01Card())
+        gp.select_isd()
+        with self.assertRaisesRegex(GpProtocolError, "SCP id"):
+            gp.open(host_challenge=b"\x01" * 8)
+
+
 if __name__ == "__main__":
     unittest.main()

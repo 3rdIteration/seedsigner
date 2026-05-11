@@ -41,9 +41,13 @@ UID_A = b"\xAA" * 16
 UID_B = b"\xBB" * 16
 
 
-def _make_select_response(uid):
+def _make_select_response(uid, app_version=0x0301):
+    # app_version 0x0301 = v3.1 (no ephemeral pairing) by default; tests
+    # exercising the persistent path get the legacy behaviour. Pass 0
+    # to simulate a pre-init applet, or 0x0302+ for ephemeral.
     info = MagicMock(name="select_info")
     info.instance_uid = uid
+    info.app_version = app_version
     return info
 
 
@@ -52,6 +56,8 @@ class _Controller:
 
     def __init__(self):
         self.keycard_pairings = {}
+        self.keycard_ephemeral_secrets = {}
+        self.keycard_pins = {}
         self.last_keycard_uid = None
 
     def get_pairing_for(self, uid):
@@ -62,6 +68,27 @@ class _Controller:
     def set_pairing_for(self, uid, pairing):
         self.keycard_pairings[bytes(uid)] = pairing
         self.last_keycard_uid = bytes(uid)
+
+    def get_ephemeral_secret_for(self, uid):
+        if uid is None:
+            return None
+        return self.keycard_ephemeral_secrets.get(bytes(uid))
+
+    def forget_ephemeral_secret_for(self, uid):
+        self.keycard_ephemeral_secrets.pop(bytes(uid), None)
+
+    def get_pin_for(self, uid):
+        if uid is None:
+            return None
+        return self.keycard_pins.get(bytes(uid))
+
+    def set_pin_for(self, uid, pin):
+        if uid is None or pin is None:
+            return
+        self.keycard_pins[bytes(uid)] = bytearray(pin)
+
+    def forget_pin_for(self, uid):
+        self.keycard_pins.pop(bytes(uid), None)
 
 
 def _patches(client):

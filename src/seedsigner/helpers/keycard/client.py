@@ -55,7 +55,50 @@ class KeycardClient:
         return self._select_response
 
     def init(self, pin: bytes, puk: bytes, pairing_secret: bytes) -> None:
-        self.transmit(commands.init(pin, puk, pairing_secret))
+        """Run INIT against a pre-init applet using the one-shot encrypted format.
+
+        Status Keycard rejects plaintext INIT data with SW=6A80; the
+        applet expects ``client_pubkey(65) || iv(16) || AES-256-CBC(
+        PIN(6) || PUK(12) || pairing_secret(32) )`` where the AES key is
+        the raw X-coordinate of ECDH(client_priv, card_static_pub) and
+        padding is ISO 9797-1 method 2 (matches the secure-channel
+        ``oneShotEncrypt`` in ``SecureChannel.java``).
+
+        Caller must have run ``select()`` first so the card pubkey is
+        cached on ``self._select_response``.
+        """
+        if self._select_response is None or not self._select_response.secp256k1_pubkey:
+            raise SecureChannelError(
+                "INIT requires a prior SELECT carrying the card pubkey"
+            )
+        if len(pin) != 6:
+            raise ValueError("PIN must be 6 ASCII bytes")
+        if len(puk) != 12:
+            raise ValueError("PUK must be 12 ASCII bytes")
+        if len(pairing_secret) != 32:
+            raise ValueError("pairing secret must be 32 bytes")
+
+        client_priv, client_pub = crypto.secp256k1_generate_keypair()
+        shared_x = b""
+        try:
+            shared_x = crypto.secp256k1_ecdh(
+                client_priv, self._select_response.secp256k1_pubkey,
+            )
+            iv = crypto.random_bytes(16)
+            plaintext = bytes(pin) + bytes(puk) + bytes(pairing_secret)
+            ciphertext = crypto.aes_cbc_encrypt(shared_x, iv, plaintext)
+            self.transmit(
+                commands.init_encrypted(client_pub, iv, ciphertext),
+            )
+        finally:
+            # Best-effort wipe of the ephemeral private key + AES key.
+            for buf in (client_priv, shared_x):
+                try:
+                    ba = bytearray(buf)
+                    for i in range(len(ba)):
+                        ba[i] = 0
+                except Exception:
+                    pass
 
     def factory_reset(self) -> None:
         """Wipe the card. No secure channel required.
@@ -65,9 +108,17 @@ class KeycardClient:
         """
         self.transmit(commands.factory_reset())
 
-    def pair(self, pairing_secret: bytes) -> PairingInfo:
+    def pair(self, pairing_secret: bytes,
+             p2: int = commands.PAIR_P2_PERSISTENT) -> PairingInfo:
+        """Run PAIR (steps 1 + 2) and return the resulting PairingInfo.
+
+        Pass ``p2=PAIR_P2_EPHEMERAL`` on v3.2+ cards to allocate the
+        ephemeral pairing slot (index 0xFF, cleared on deselect, no
+        persistent slot consumed). v3.1 cards ignore P2 and always use a
+        persistent slot.
+        """
         client_challenge = crypto.random_bytes(32)
-        resp1 = self.transmit(commands.pair_step1(client_challenge))
+        resp1 = self.transmit(commands.pair_step1(client_challenge, p2=p2))
         if len(resp1) != 64:
             raise SecureChannelError(f"PAIR step 1: expected 64 bytes, got {len(resp1)}")
         card_cryptogram = resp1[:32]
@@ -84,6 +135,16 @@ class KeycardClient:
             pairing_index=resp2[0],
             pairing_key=derive_pairing_key(pairing_secret, resp2[1:]),
         )
+
+    def pair_ephemeral(self, pairing_secret: bytes) -> PairingInfo:
+        """Convenience: PAIR with ``PAIR_P2_EPHEMERAL``.
+
+        Caller is responsible for checking ``select_response.app_version
+        >= APP_VERSION_EPHEMERAL_PAIRING`` first; this method does NOT
+        re-validate, so passing it to a v3.1 card silently allocates a
+        persistent slot (P2 is ignored on those cards).
+        """
+        return self.pair(pairing_secret, p2=commands.PAIR_P2_EPHEMERAL)
 
     def unpair(self, pairing_index: int) -> None:
         self.transmit(commands.unpair(pairing_index))
@@ -120,6 +181,16 @@ class KeycardClient:
         if len(pin) != 6:
             raise ValueError("PIN must be 6 ASCII digits")
         self._transmit_protected(commands.INS_VERIFY_PIN, 0x00, 0x00, bytes(pin))
+
+    def change_pin(self, new_pin: bytes) -> None:
+        """Replace the user PIN on the card. Requires the current PIN to
+        have been verified earlier in this secure-channel session.
+        """
+        if len(new_pin) != 6:
+            raise ValueError("PIN must be 6 ASCII digits")
+        self._transmit_protected(
+            commands.INS_CHANGE_PIN, 0x00, 0x00, bytes(new_pin),
+        )
 
     def get_status(self) -> StatusResponse:
         resp = self._transmit_protected(commands.INS_GET_STATUS, 0x00, 0x00)

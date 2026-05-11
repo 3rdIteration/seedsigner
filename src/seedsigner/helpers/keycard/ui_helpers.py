@@ -47,27 +47,80 @@ def format_path(components) -> str:
     return "m/" + "/".join(parts)
 
 
-def extract_pubkey(export_response: bytes) -> Optional[bytes]:
-    """Pull the 65-byte uncompressed public key from an EXPORT KEY response.
+def _strip_outer_template(export_response: bytes) -> bytes:
+    """Unwrap an outer BER-TLV template if present.
 
-    Status Keycard wraps the public key in a TLV template ``0xA1 [TLVs]``
-    where the pubkey itself sits under tag ``0x80``, length 65, leading
-    byte ``0x04``. Returns ``None`` if the response cannot be parsed.
+    Status Keycard wraps EXPORT KEY responses in ``0xA1 LL ...`` (template
+    tag, short-form length). Some applet variants either omit the template
+    entirely or use the long-form length (``0x81 LL``). This returns the
+    inner bytes regardless.
     """
     if not export_response:
-        return None
-    if export_response[0] == 0xA1:
-        body = export_response[2:2 + export_response[1]]
-    else:
-        body = export_response
+        return b""
+    if export_response[0] != 0xA1:
+        return export_response
+    if len(export_response) < 2:
+        return b""
+    length_byte = export_response[1]
+    if length_byte == 0x81:
+        if len(export_response) < 3:
+            return b""
+        length = export_response[2]
+        return export_response[3:3 + length]
+    if length_byte & 0x80:
+        # Higher long-form lengths (0x82, 0x83, ...) — not expected from
+        # Keycard for these payloads, treat as malformed.
+        return b""
+    return export_response[2:2 + length_byte]
+
+
+def _iter_inner_tlvs(body: bytes):
+    """Yield ``(tag, value)`` tuples from a flat short-form / 0x81 BER-TLV stream."""
     cursor = 0
     while cursor + 2 <= len(body):
         tag = body[cursor]
-        length = body[cursor + 1]
-        value = body[cursor + 2:cursor + 2 + length]
+        length_byte = body[cursor + 1]
+        if length_byte == 0x81:
+            if cursor + 3 > len(body):
+                return
+            length = body[cursor + 2]
+            value = body[cursor + 3:cursor + 3 + length]
+            cursor += 3 + length
+        elif length_byte & 0x80:
+            return
+        else:
+            length = length_byte
+            value = body[cursor + 2:cursor + 2 + length]
+            cursor += 2 + length
+        yield tag, bytes(value)
+
+
+def extract_pubkey(export_response: bytes) -> Optional[bytes]:
+    """Pull the 65-byte uncompressed public key from an EXPORT KEY response.
+
+    Accepts every shape we have seen in the wild:
+
+    * ``0xA1 LL 0x80 0x41 04 ...`` — Status Keycard spec wrapping (template
+      tag with short-form length, inner pubkey under tag ``0x80``).
+    * ``0xA1 0x81 LL 0x80 0x41 04 ...`` — same with BER long-form length
+      on the outer template.
+    * ``0x80 0x41 04 ...`` — bare inner TLV without the outer template.
+    * ``04 ...`` (exactly 65 bytes) — raw uncompressed pubkey, no TLV
+      wrapping at all (some custom applets).
+
+    Returns ``None`` if none of these shapes match.
+    """
+    if not export_response:
+        return None
+    body = _strip_outer_template(export_response)
+    if not body:
+        return None
+    # Bare uncompressed pubkey, no TLV at all.
+    if len(body) == 65 and body[0] == 0x04:
+        return bytes(body)
+    for tag, value in _iter_inner_tlvs(body):
         if tag == 0x80 and len(value) == 65 and value[0] == 0x04:
-            return bytes(value)
-        cursor += 2 + length
+            return value
     return None
 
 
@@ -76,29 +129,26 @@ def extract_extended_pubkey(
 ) -> Optional[Tuple[bytes, bytes]]:
     """Pull (pubkey, chain_code) from an EXPORT KEY (extended) response.
 
-    With ``EXPORT_P2_EXTENDED_PUBLIC`` the Status Keycard returns the
-    same ``0xA1 [TLVs]`` template as ``extract_pubkey``, but with an
-    additional 32-byte chain code under tag ``0x82``. Returns ``None``
-    if either field is missing or malformed.
+    Accepts the same wrapping variants as :func:`extract_pubkey`, plus
+    the bare ``04 ... (pubkey,65) || (chain_code,32)`` form (97 bytes
+    total) seen on some custom applets. Returns ``None`` if either field
+    is missing or malformed.
     """
     if not export_response:
         return None
-    if export_response[0] == 0xA1:
-        body = export_response[2:2 + export_response[1]]
-    else:
-        body = export_response
+    body = _strip_outer_template(export_response)
+    if not body:
+        return None
+    # Bare pubkey || chain_code, no TLV.
+    if len(body) == 97 and body[0] == 0x04:
+        return bytes(body[:65]), bytes(body[65:])
     pubkey: Optional[bytes] = None
     chain_code: Optional[bytes] = None
-    cursor = 0
-    while cursor + 2 <= len(body):
-        tag = body[cursor]
-        length = body[cursor + 1]
-        value = body[cursor + 2:cursor + 2 + length]
+    for tag, value in _iter_inner_tlvs(body):
         if tag == 0x80 and len(value) == 65 and value[0] == 0x04:
-            pubkey = bytes(value)
+            pubkey = value
         elif tag == 0x82 and len(value) == 32:
-            chain_code = bytes(value)
-        cursor += 2 + length
+            chain_code = value
     if pubkey is None or chain_code is None:
         return None
     return pubkey, chain_code
@@ -117,8 +167,13 @@ def prompt_for_text(parent_view: "View", title: str, *, max_len: int = 80) -> Op
 
     Used for the pairing password (NOT the PIN — see ``prompt_for_pin``).
     The caller is responsible for wiping the returned string after use.
+
+    Escape paths:
+      * Top-nav back arrow (UP then PRESS, or LEFT while on top-nav).
+      * Saving with empty input is treated as cancel — gives the user an
+        out without having to discover the top-nav navigation.
     """
-    from seedsigner.gui.screens import RET_CODE__BACK_BUTTON, WarningScreen
+    from seedsigner.gui.screens import WarningScreen
     from seedsigner.gui.screens import seed_screens
 
     while True:
@@ -126,13 +181,16 @@ def prompt_for_text(parent_view: "View", title: str, *, max_len: int = 80) -> Op
         if isinstance(ret, dict) and "is_back_button" in ret:
             return None
         text = ret.get("passphrase", "") if isinstance(ret, dict) else ""
-        if 1 <= len(text) <= max_len:
+        if not text:
+            # Empty Save = cancel. Avoids the "Invalid input" loop trap.
+            return None
+        if len(text) <= max_len:
             return text
         parent_view.run_screen(
             WarningScreen,
-            title="Invalid input",
+            title="Too long",
             status_headline=None,
-            text=f"Length must be 1..{max_len}.",
+            text=f"Max {max_len} chars.",
             show_back_button=True,
         )
 
@@ -231,8 +289,13 @@ def select_with_autodetect(client, controller):
     raise last_exc
 
 
-def open_unlocked_session(parent_view: "View", pin: bytearray) -> Tuple["KeycardClient", "PairingInfo"]:
-    """Connect, SELECT, OPEN_SECURE_CHANNEL, VERIFY_PIN.
+def open_unlocked_session(
+    parent_view: "View",
+    pin: Optional[bytearray] = None,
+    *,
+    require_key: bool = True,
+) -> Tuple["KeycardClient", "PairingInfo"]:
+    """Connect, SELECT, (PAIR if ephemeral), OPEN_SECURE_CHANNEL, VERIFY_PIN.
 
     Auto-switch behaviour: SELECT runs before any pairing lookup so the
     function discovers which physical card is currently in the reader,
@@ -240,12 +303,47 @@ def open_unlocked_session(parent_view: "View", pin: bytearray) -> Tuple["Keycard
     SELECT is ``controller.active_keycard_aid`` so multi-instance
     setups can target the right applet.
 
+    PIN handling:
+
+    * If ``pin`` is None and a cached PIN exists for the inserted card,
+      it is used transparently.
+    * If ``pin`` is None and no cached PIN exists,
+      :class:`KeycardPinRequiredError` is raised so the view layer can
+      prompt the user.
+    * If ``pin`` is provided, it is sent to the card; on success a
+      copy is stored in ``Controller.keycard_pins`` so subsequent
+      operations skip the prompt. The caller still owns ``pin`` and
+      MUST wipe it.
+    * If VERIFY_PIN fails with SW=``0x63CX`` (bad PIN), the cache for
+      this UID is dropped before the exception propagates.
+
+    Pairing source priority for the inserted card:
+
+    1. Ephemeral secret cached for this boot — re-PAIR(P2=EPHEMERAL)
+       and OPEN with index 0xFF. The on-card ephemeral key is cleared
+       on every applet deselect, so we cannot reuse a previous
+       ``PairingInfo`` here; the cached *secret* is what survives.
+    2. Persistent ``PairingInfo`` cached for this boot — OPEN directly.
+
+    ``require_key``: when True (default), bail with
+    :class:`KeycardNoMasterKeyError` if the SELECT response indicates no
+    master key on the card. Sign / derive / export flows must keep this
+    on so the user sees a clear error instead of a cryptic SW=0x6985.
+    Flows that *create* a key (GENERATE_KEY, LOAD_KEY) or do not touch
+    it (CHANGE_PIN, UNPAIR) pass ``require_key=False`` so they can run
+    on a freshly initialised card.
+
     Raises :class:`KeycardCardChangedError` (with the card's
-    ``instance_uid``) if no pairing for the inserted card exists in the
-    boot cache. The caller is responsible for wiping ``pin`` after use.
+    ``instance_uid``) if no pairing data exists for the inserted card.
     """
-    from seedsigner.helpers.keycard import KeycardCardChangedError
+    from seedsigner.helpers.keycard import (
+        KeycardCardChangedError, KeycardNoMasterKeyError,
+        KeycardNotInitialisedError, KeycardPinRequiredError,
+    )
     from seedsigner.helpers.keycard.client import KeycardClient
+    from seedsigner.helpers.keycard.commands import (
+        APDUError, PAIR_P2_EPHEMERAL, supports_ephemeral_pairing,
+    )
     from seedsigner.helpers.keycard.reader import (
         release_other_smartcard_holders, wait_for_card,
     )
@@ -254,15 +352,101 @@ def open_unlocked_session(parent_view: "View", pin: bytearray) -> Tuple["Keycard
     connection = wait_for_card(timeout_s=5.0)
     client = KeycardClient(connection)
     info = select_with_autodetect(client, parent_view.controller)
+    if info.app_version == 0:
+        raise KeycardNotInitialisedError(
+            "card not initialised; run Initialise first"
+        )
+    # SelectResponse.key_uid is empty until GENERATE_KEY or LOAD_KEY runs.
+    # Without a master key, every DERIVE/EXPORT returns SW=0x6985 and the
+    # user sees a cryptic "Parse fail" — bail early with a clear error.
+    # Callers that *create* a key (GENERATE_KEY, LOAD_KEY) or do not need
+    # one (CHANGE_PIN, UNPAIR) pass ``require_key=False`` to skip this.
+    if require_key and not info.key_uid:
+        raise KeycardNoMasterKeyError(info.instance_uid)
     parent_view.controller.last_keycard_uid = bytes(info.instance_uid)
 
-    pairing = parent_view.controller.get_pairing_for(info.instance_uid)
+    pairing = None
+    ephemeral_secret = parent_view.controller.get_ephemeral_secret_for(
+        info.instance_uid,
+    )
+    if ephemeral_secret is not None:
+        if not supports_ephemeral_pairing(info.app_version):
+            # Stale state: we cached an ephemeral secret but the card
+            # currently in the reader doesn't speak v3.2. Drop the
+            # stale entry and ask the user to re-pair instead of
+            # silently allocating a persistent slot on the older card.
+            parent_view.controller.forget_ephemeral_secret_for(
+                info.instance_uid,
+            )
+            raise KeycardCardChangedError(info.instance_uid)
+        pairing = client.pair(ephemeral_secret, p2=PAIR_P2_EPHEMERAL)
+    else:
+        pairing = parent_view.controller.get_pairing_for(info.instance_uid)
+
     if pairing is None:
         raise KeycardCardChangedError(info.instance_uid)
 
     client.open_secure_channel(pairing)
-    client.verify_pin(bytes(pin))
+
+    if pin is None:
+        cached_pin = parent_view.controller.get_pin_for(info.instance_uid)
+        if cached_pin is None:
+            raise KeycardPinRequiredError(info.instance_uid)
+        pin_to_send = bytes(cached_pin)
+    else:
+        pin_to_send = bytes(pin)
+
+    try:
+        client.verify_pin(pin_to_send)
+    except APDUError as exc:
+        # SW=0x63CX = bad PIN, X attempts remaining. Drop the cache so
+        # we don't keep burning attempts with a stale value; the next
+        # call will raise KeycardPinRequiredError and trigger a prompt.
+        if (exc.sw & 0xFFF0) == 0x63C0:
+            parent_view.controller.forget_pin_for(info.instance_uid)
+        raise
+
+    if pin is not None:
+        parent_view.controller.set_pin_for(info.instance_uid, pin)
     return client, pairing
+
+
+def open_unlocked_session_cached_or_prompt(
+    parent_view: "View",
+    pin_title: str = "Card PIN",
+    *,
+    require_key: bool = True,
+) -> Tuple["KeycardClient", "PairingInfo"]:
+    """Variant of :func:`open_unlocked_session` that prompts for the PIN
+    on cache miss and wipes the captured buffer before returning.
+
+    ``require_key`` is forwarded to :func:`open_unlocked_session`; see
+    that function for semantics.
+
+    Raises :class:`KeycardPinPromptCancelled` if the user backs out of
+    the PIN keyboard. All other exceptions from
+    :func:`open_unlocked_session` propagate unchanged.
+    """
+    from seedsigner.helpers.keycard import (
+        KeycardPinPromptCancelled, KeycardPinRequiredError,
+    )
+
+    try:
+        return open_unlocked_session(
+            parent_view, pin=None, require_key=require_key,
+        )
+    except KeycardPinRequiredError:
+        pass
+
+    pin = prompt_for_pin(parent_view, pin_title)
+    if pin is None:
+        raise KeycardPinPromptCancelled()
+    try:
+        return open_unlocked_session(
+            parent_view, pin=pin, require_key=require_key,
+        )
+    finally:
+        wipe_bytearray(pin)
 
 
 def identify_inserted_card(parent_view: "View") -> Tuple["KeycardClient", bytes]:
@@ -312,7 +496,10 @@ def classify_card_error(
     recognises a specific failure mode.
     """
     from seedsigner.helpers.iso7816 import ISO7816_STATUS_WORDS
-    from seedsigner.helpers.keycard import KeycardCardChangedError
+    from seedsigner.helpers.keycard import (
+        KeycardCardChangedError, KeycardNoMasterKeyError,
+        KeycardNotInitialisedError,
+    )
     from seedsigner.helpers.keycard.commands import APDUError
     from seedsigner.helpers.keycard.pairing_storage import PairingStorageError
     from seedsigner.helpers.keycard.reader import NoCardError, NoReaderError
@@ -324,22 +511,33 @@ def classify_card_error(
         return ("No card", "Insert a card and retry.")
     if isinstance(exc, KeycardCardChangedError):
         return ("Card changed", "Pair the inserted card\nfirst.")
+    if isinstance(exc, KeycardNotInitialisedError):
+        return ("Not initialised",
+                "Run Setup ›\nInitialise card first.")
+    if isinstance(exc, KeycardNoMasterKeyError):
+        return ("No key on card",
+                "Generate key or\nimport seed first.")
     if isinstance(exc, SecureChannelError):
         # The "cryptogram mismatch" failure is only ever caused by a
         # wrong pairing password (PAIR step 1 cryptogram check); other
         # SecureChannelError messages (length errors, MAC mismatches)
         # are genuine secure-channel issues.
-        if "cryptogram" in str(exc).lower():
+        msg = str(exc)
+        if "cryptogram" in msg.lower():
             return ("Wrong password",
                     "Pairing password did\nnot match this card.")
-        return ("Pairing failed", "Secure channel could\nnot be opened.")
+        # Surface the underlying reason so a stale pairing on disk, a
+        # MAC mismatch, or a truncated OPEN response can be diagnosed
+        # without attaching a debugger.
+        detail = (msg or "unknown")[:60]
+        return ("Secure channel", f"SC open failed:\n{detail}")
     if isinstance(exc, PairingStorageError):
         return ("Storage error", str(exc)[:100])
     if isinstance(exc, APDUError):
         sw = exc.sw
         if sw == 0x6A82:
             return ("Applet not found",
-                    "Try Manage instances\nto switch active AID.")
+                    "Try Manage › Instances\nto switch active AID.")
         if sw in (0x6982, 0x6985):
             return ("Card refused",
                     f"Auth/condition not met\n(SW={sw:04X}).")

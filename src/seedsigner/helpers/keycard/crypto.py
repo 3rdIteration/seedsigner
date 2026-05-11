@@ -26,20 +26,29 @@ def sha512(data: bytes) -> bytes:
 
 
 def aes_cbc_encrypt(key: bytes, iv: bytes, plaintext: bytes) -> bytes:
+    """AES-256-CBC encrypt with ISO/IEC 9797-1 method 2 padding.
+
+    The Status Keycard applet uses ``Cipher.ALG_AES_CBC_ISO9797_M2``
+    (see ``Crypto.java`` line 82). ISO9797-M2 always appends ``0x80``
+    followed by zero bytes up to the next block boundary — even when
+    the plaintext is already block-aligned, in which case a full
+    16-byte padding block is added.
+    """
     if len(key) not in (16, 24, 32):
         raise ValueError("AES key must be 128/192/256 bits")
     if len(iv) != 16:
         raise ValueError("AES-CBC IV must be 16 bytes")
     cipher = AES.new(key, AES.MODE_CBC, iv)
-    return cipher.encrypt(_pkcs7_pad(plaintext, 16))
+    return cipher.encrypt(_iso9797_m2_pad(plaintext, 16))
 
 
 def aes_cbc_decrypt(key: bytes, iv: bytes, ciphertext: bytes) -> bytes:
+    """AES-256-CBC decrypt and strip ISO/IEC 9797-1 method 2 padding."""
     if len(ciphertext) % 16 != 0:
         raise ValueError("ciphertext length must be a multiple of 16")
     cipher = AES.new(key, AES.MODE_CBC, iv)
     plain = cipher.decrypt(ciphertext)
-    return _pkcs7_unpad(plain, 16)
+    return _iso9797_m2_unpad(plain)
 
 
 def aes_cbc_block(key: bytes, iv: bytes, data: bytes) -> bytes:
@@ -54,26 +63,52 @@ def aes_cbc_block(key: bytes, iv: bytes, data: bytes) -> bytes:
     return encrypted[-16:]
 
 
-def _pkcs7_pad(data: bytes, block_size: int) -> bytes:
+def _iso9797_m2_pad(data: bytes, block_size: int) -> bytes:
+    """ISO/IEC 9797-1 method 2 (a.k.a. bit-padding): append 0x80 and zero
+    pad to block boundary. Always adds at least one byte; if ``data``
+    is already block-aligned a full padding block is appended.
+    """
     pad_len = block_size - (len(data) % block_size)
-    return data + bytes([pad_len]) * pad_len
+    return data + b"\x80" + b"\x00" * (pad_len - 1)
 
 
-def _pkcs7_unpad(data: bytes, block_size: int) -> bytes:
+def _iso9797_m2_unpad(data: bytes) -> bytes:
+    """Strip ISO/IEC 9797-1 method 2 padding.
+
+    Walks the trailing bytes back from the end: skips ``0x00`` bytes and
+    expects a single ``0x80`` marker. Raises if the marker is missing
+    or the search exceeds one block boundary back from the end.
+    """
     if not data:
         raise ValueError("cannot unpad empty data")
-    pad_len = data[-1]
-    if pad_len < 1 or pad_len > block_size:
-        raise ValueError("invalid PKCS#7 padding length")
-    if data[-pad_len:] != bytes([pad_len]) * pad_len:
-        raise ValueError("invalid PKCS#7 padding bytes")
-    return data[:-pad_len]
+    i = len(data) - 1
+    # Padding can be at most 16 bytes (one block) and the 0x80 must be
+    # within that window.
+    limit = max(0, len(data) - 16)
+    while i >= limit and data[i] == 0x00:
+        i -= 1
+    if i < limit or data[i] != 0x80:
+        raise ValueError("invalid ISO9797-M2 padding")
+    return data[:i]
 
 
 # Salt and iteration count are the keycard-cli / keycard-shell defaults.
 # Compatible with cards initialised via those tools.
 PAIRING_PASSWORD_SALT = b"Keycard Pairing Password Salt"
 PAIRING_PASSWORD_ITERATIONS = 50000
+
+# Hard-coded 32-byte pairing secret used by the keycard-shell hardware
+# wallet firmware (https://github.com/keycard-tech/keycard-shell). When
+# keycard-shell initialises a card it writes this PSK directly as the
+# pairing secret — there is *no* PBKDF2 derivation. Any device wanting
+# to pair with a keycard-shell-initialised card must use these 32 bytes
+# verbatim. Source: ``app/keycard/keycard.c`` in keycard-shell.
+KEYCARD_SHELL_DEFAULT_PSK = bytes([
+    0x67, 0x5d, 0xea, 0xbb, 0x0d, 0x7c, 0x72, 0x4b,
+    0x4a, 0x36, 0xca, 0xad, 0x0e, 0x28, 0x08, 0x26,
+    0x15, 0x9e, 0x89, 0x88, 0x6f, 0x70, 0x82, 0x53,
+    0x5d, 0x43, 0x1e, 0x92, 0x48, 0x48, 0xbc, 0xf1,
+])
 
 
 def derive_pairing_secret(password: str) -> bytes:

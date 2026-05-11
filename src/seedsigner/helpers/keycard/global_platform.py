@@ -240,11 +240,20 @@ class GpSecureChannel:
 
     # ---- raw transmit ----
 
-    def _transmit_raw(self, apdu) -> bytes:
+    def _transmit_raw(self, apdu, command_label: str = "") -> bytes:
         from seedsigner.helpers.iso7816 import format_sw_error
         data, sw1, sw2 = self._conn.transmit(list(apdu))
         sw = ((sw1 & 0xFF) << 8) | (sw2 & 0xFF)
         if sw != SW_OK:
+            if len(apdu) >= 5:
+                cla, ins, p1, p2, lc = apdu[0], apdu[1], apdu[2], apdu[3], apdu[4]
+                head = bytes(apdu[5:5 + min(8, max(0, len(apdu) - 5))]).hex()
+                logger.warning(
+                    "GP %s CLA=%02X INS=%02X P1=%02X P2=%02X Lc=%02X SW=%04X data_head=%s",
+                    command_label or "?", cla, ins, p1, p2, lc, sw, head,
+                )
+            else:
+                logger.warning("GP %s short APDU SW=%04X", command_label or "?", sw)
             raise GpProtocolError(format_sw_error(sw1, sw2))
         return bytes(data)
 
@@ -270,8 +279,21 @@ class GpSecureChannel:
         if host_challenge is None:
             host_challenge = urandom(8)
 
-        resp = self._transmit_raw(_build_initialize_update(host_challenge))
+        resp = self._transmit_raw(
+            _build_initialize_update(host_challenge),
+            command_label="INITIALIZE UPDATE",
+        )
         parsed = parse_initialize_update_response(resp)
+        # We only implement SCP02 (i='15'). If the card negotiated a
+        # different protocol the session-key KDF below would diverge from
+        # whatever the card actually used and any authenticated command
+        # would fail with 6982 / 6300 from the card's side. Bail early
+        # with a clear message so the user isn't misled by the downstream
+        # error.
+        if parsed["scp_id"] != 0x02:
+            raise GpProtocolError(
+                f"unexpected SCP id 0x{parsed['scp_id']:02X} (expected 0x02)"
+            )
         sequence = parsed["sequence_counter"]
         card_challenge = parsed["card_challenge"]
         card_cryptogram_received = parsed["card_cryptogram"]
@@ -301,7 +323,7 @@ class GpSecureChannel:
             [cla, INS_EXTERNAL_AUTHENTICATE, p1, 0x00, 0x10]
             + list(host_cryptogram) + list(cmac)
         )
-        self._transmit_raw(ea_apdu)
+        self._transmit_raw(ea_apdu, command_label="EXTERNAL AUTHENTICATE")
 
         # The MAC value (cmac) becomes the ICV's predecessor; per SCP02
         # the next command's ICV is encrypt(prev_mac, K1_MAC).
@@ -316,9 +338,55 @@ class GpSecureChannel:
 
     # ---- authenticated commands ----
 
+    def transmit_protected_with_sw(self, ins: int, p1: int, p2: int,
+                                   data: bytes = b"",
+                                   command_label: str = "") -> tuple:
+        """Send a CLA_GP_MAC command and return ``(response_data, sw)``.
+
+        Unlike :meth:`transmit_protected`, this never raises on a non-9000
+        SW: the caller decides which warning words (e.g. 6310 "more data
+        available") preserve their accompanying data. Hard errors should
+        be inspected via the returned SW.
+
+        The MAC chaining ICV is updated on every successful exchange,
+        regardless of SW, so a warning-class response leaves the channel
+        usable for the follow-up command.
+        """
+        if self.session is None:
+            raise GpProtocolError("secure channel not open")
+        if not 0 <= len(data) <= 247:
+            raise ValueError("APDU data too long for SCP02 with CMAC")
+
+        cla = CLA_GP_MAC
+        lc = len(data) + 8
+
+        mac_input = bytes([cla, ins, p1, p2, lc]) + bytes(data)
+        cmac = retail_mac(self.session.s_mac, self.session.icv, mac_input)
+
+        apdu = [cla, ins, p1, p2, lc] + list(data) + list(cmac)
+        resp_data, sw1, sw2 = self._conn.transmit(apdu)
+        sw = ((sw1 & 0xFF) << 8) | (sw2 & 0xFF)
+
+        # Update ICV chaining unconditionally so the next command's MAC
+        # lines up with what the card expects.
+        self.session = GpSession(
+            s_enc=self.session.s_enc,
+            s_mac=self.session.s_mac,
+            s_dek=self.session.s_dek,
+            sequence_counter=self.session.sequence_counter,
+            card_challenge=self.session.card_challenge,
+            icv=encrypt_icv(self.session.s_mac, cmac),
+        )
+        return bytes(resp_data), sw
+
     def transmit_protected(self, ins: int, p1: int, p2: int,
-                           data: bytes = b"") -> bytes:
-        """Send a CLA_GP_MAC command authenticated with a fresh C-MAC."""
+                           data: bytes = b"",
+                           command_label: str = "") -> bytes:
+        """Send a CLA_GP_MAC command authenticated with a fresh C-MAC.
+
+        Raises :class:`GpProtocolError` on any non-9000 SW. ``command_label``
+        is used only for logging on failure.
+        """
         if self.session is None:
             raise GpProtocolError("secure channel not open")
         if not 0 <= len(data) <= 247:
@@ -332,7 +400,7 @@ class GpSecureChannel:
         cmac = retail_mac(self.session.s_mac, self.session.icv, mac_input)
 
         apdu = [cla, ins, p1, p2, lc] + list(data) + list(cmac)
-        resp = self._transmit_raw(apdu)
+        resp = self._transmit_raw(apdu, command_label=command_label)
         # Update chaining ICV for the next command.
         self.session = GpSession(
             s_enc=self.session.s_enc,
@@ -358,53 +426,164 @@ class AppletInstance:
     privileges: int
 
 
+def _get_status_pages(channel: GpSecureChannel, p2_first: int) -> bytes:
+    """Issue GET STATUS, paging on 6310, and return the concatenated payload.
+
+    Returns ``b""`` if the card responds 6A88 ("Referenced data not found")
+    or any other warning that means "no more entries". Raises
+    :class:`GpProtocolError` for hard failures.
+    """
+    blob = b""
+    p2_more = (p2_first & ~0x01) | 0x01  # set "next occurrence" bit
+    cur_p2 = p2_first
+    while True:
+        resp, sw = channel.transmit_protected_with_sw(
+            INS_GET_STATUS_GP, GP_STATUS_P1_APPLICATIONS, cur_p2,
+            bytes([0x4F, 0x00]),
+            command_label="GET STATUS",
+        )
+        if sw == SW_OK:
+            blob += resp
+            return blob
+        if sw == 0x6310:
+            blob += resp
+            cur_p2 = p2_more
+            continue
+        if sw == 0x6A88:
+            # No matching entries — return what we have (possibly empty).
+            return blob
+        # Anything else is a hard error.
+        from seedsigner.helpers.iso7816 import format_sw_error
+        raise GpProtocolError(format_sw_error((sw >> 8) & 0xFF, sw & 0xFF))
+
+
 def list_instances(channel: GpSecureChannel) -> List[AppletInstance]:
     """Return every applet instance the Card Manager reports.
 
-    Sends GET STATUS with P1=0x40 (applications), P2=0x02 (TLV format),
-    data = ``4F 00`` (empty AID = list all). Loops while the response
-    SW is ``0x6310`` (more data).
+    Sends GET STATUS with P1=0x40 (applications). Tries the modern
+    TLV format first (P2=0x02); if the card returns no entries (either
+    empty data, ``0x6A88`` "no match", or ``0x6A86`` "wrong P1/P2"), falls
+    back to the legacy non-TLV format (P2=0x00) which older cards expose.
+
+    Both paths page on ``0x6310`` ("more data available") and concatenate
+    the chunks before parsing.
+    """
+    # Modern TLV format.
+    try:
+        data = _get_status_pages(channel, p2_first=0x02)
+    except GpProtocolError as exc:
+        # Some cards reject P2=0x02 outright with 6A86 or 6A81 — fall
+        # through to the legacy probe instead of giving up.
+        msg = str(exc).lower()
+        if "6a86" not in msg and "6a81" not in msg:
+            raise
+        data = b""
+    logger.info(
+        "GET STATUS P2=02 -> %d bytes head=%s",
+        len(data), data[:16].hex() if data else "",
+    )
+    out = _parse_status_tlv(data)
+    if out:
+        return out
+
+    # Legacy non-TLV format. Each entry is ``[AID_len][AID][life][privs]``
+    # with no template wrapper and no inner tags; AIDs are 5..16 bytes.
+    try:
+        legacy = _get_status_pages(channel, p2_first=0x00)
+    except GpProtocolError as exc:
+        logger.warning("GET STATUS legacy probe failed: %s", exc)
+        return out
+    logger.info(
+        "GET STATUS P2=00 -> %d bytes head=%s",
+        len(legacy), legacy[:16].hex() if legacy else "",
+    )
+    return _parse_status_legacy(legacy)
+
+
+def probe_keycard_instance_aids(connection,
+                                package_prefix: bytes = bytes.fromhex("A000000804000101"),
+                                instance_byte_range: range = range(0x01, 0x10)
+                                ) -> List[bytes]:
+    """Brute-probe likely Keycard applet AIDs via cleartext SELECT.
+
+    Used as a fallback for cards whose ISD does not expose installed
+    applets via GET STATUS — we can still confirm an instance exists by
+    SELECTing it. Sends one SELECT per candidate AID:
+
+    * Bare ``package_prefix`` (no extra suffix), then
+    * ``package_prefix || 0x01 || X`` for each ``X`` in ``instance_byte_range``.
+
+    Returns the AIDs that responded with SW=9000. Note: this side-effect
+    SELECTs the *last responding* applet on the card, so callers should
+    treat the connection as no longer holding a GP secure channel after
+    this returns.
+    """
+    found: List[bytes] = []
+    candidates: List[bytes] = [package_prefix]
+    for b in instance_byte_range:
+        candidates.append(package_prefix + bytes([0x01, b]))
+    for aid in candidates:
+        apdu = [0x00, 0xA4, 0x04, 0x00, len(aid)] + list(aid) + [0x00]
+        try:
+            _, sw1, sw2 = connection.transmit(apdu)
+        except Exception as exc:
+            logger.debug("probe SELECT %s failed: %s", aid.hex(), exc)
+            continue
+        sw = ((sw1 & 0xFF) << 8) | (sw2 & 0xFF)
+        if sw == SW_OK:
+            found.append(aid)
+    logger.info("probe_keycard_instance_aids: %d hits", len(found))
+    return found
+
+
+def _parse_status_legacy(payload: bytes) -> List[AppletInstance]:
+    """Parse a GET STATUS legacy (non-TLV) response stream.
+
+    Format per GP 2.1.1: a sequence of ``[AID_len(1)][AID(5..16)]
+    [life_cycle(1)][privileges(1)]`` records, no delimiters.
     """
     out: List[AppletInstance] = []
-    p2 = 0x02  # TLV format
-    p2_more = 0x03  # repeat with "next occurrence"
-    cur_p2 = p2
-    while True:
-        try:
-            data = channel.transmit_protected(
-                INS_GET_STATUS_GP, GP_STATUS_P1_APPLICATIONS, cur_p2,
-                bytes([0x4F, 0x00]),
-            )
-            more = False
-        except GpProtocolError as exc:
-            # 6310 means "more data available"; the response payload was
-            # already consumed by transmit_protected raising; we'd have
-            # to teach transmit_raw to return the payload too. For now,
-            # treat a single round as good-enough; cards rarely have
-            # >5 applets.
-            if "6310" in str(exc):
-                more = True
-                break
-            raise
-        out.extend(_parse_status_tlv(data))
-        if not more:
+    cur = 0
+    while cur < len(payload):
+        aid_len = payload[cur]
+        if aid_len < 5 or aid_len > 16 or cur + 1 + aid_len + 2 > len(payload):
+            # Malformed entry; bail out rather than guess.
             break
-        cur_p2 = p2_more
+        aid = bytes(payload[cur + 1:cur + 1 + aid_len])
+        life = payload[cur + 1 + aid_len]
+        privs = payload[cur + 2 + aid_len]
+        out.append(AppletInstance(aid=aid, life_cycle=life, privileges=privs))
+        cur += 3 + aid_len
     return out
 
 
 def _parse_status_tlv(payload: bytes) -> List[AppletInstance]:
-    """Parse a GET STATUS TLV stream. Each entry is ``E3 LL ...`` with
-    inner tags ``4F`` (AID), ``9F70`` (life cycle) and ``C5`` (privileges)."""
+    """Parse a GET STATUS TLV stream. Each entry is ``E3 LL ...`` (or
+    ``E3 81 LL ...`` BER long-form) with inner tags ``4F`` (AID),
+    ``9F70`` (life cycle) and ``C5`` (privileges)."""
     out: List[AppletInstance] = []
     cur = 0
     while cur < len(payload):
         if payload[cur] != 0xE3:
             cur += 1
             continue
-        # Length: short form only for our purposes.
-        length = payload[cur + 1]
-        body = payload[cur + 2:cur + 2 + length]
+        if cur + 1 >= len(payload):
+            break
+        length_byte = payload[cur + 1]
+        if length_byte == 0x81:
+            if cur + 2 >= len(payload):
+                break
+            length = payload[cur + 2]
+            body = payload[cur + 3:cur + 3 + length]
+            entry_size = 3 + length
+        elif length_byte & 0x80:
+            # Higher long-form (0x82, 0x83) — not expected from GET STATUS;
+            # bail rather than misparse.
+            break
+        else:
+            length = length_byte
+            body = payload[cur + 2:cur + 2 + length]
+            entry_size = 2 + length
         aid = b""
         life = 0
         privs = 0
@@ -433,7 +612,7 @@ def _parse_status_tlv(payload: bytes) -> List[AppletInstance]:
                 bcur += 2 + ll
         if aid:
             out.append(AppletInstance(aid=aid, life_cycle=life, privileges=privs))
-        cur += 2 + length
+        cur += entry_size
     return out
 
 
@@ -464,7 +643,80 @@ def install_for_install(channel: GpSecureChannel,
     )
     return channel.transmit_protected(
         INS_INSTALL, INSTALL_P1_FOR_INSTALL_AND_MAKE_SELECTABLE, 0x00, body,
+        command_label="INSTALL[install+selectable]",
     )
+
+
+# INSTALL [for install] alone — used as the first half of the two-step
+# fallback when the combined "install + make selectable" form is rejected.
+INSTALL_P1_FOR_INSTALL_ONLY = 0x04
+INSTALL_P1_FOR_MAKE_SELECTABLE = 0x08
+
+
+def install_for_make_selectable(channel: GpSecureChannel,
+                                instance_aid: bytes) -> bytes:
+    """INSTALL [for make selectable] on an already-installed instance.
+
+    Used as the second step of the two-APDU install sequence on cards
+    that reject the combined ``P1=0x0C`` form.
+    """
+    body = (
+        bytes([0])  # zero-length package AID
+        + bytes([0])  # zero-length applet AID
+        + bytes([len(instance_aid)]) + instance_aid
+        + bytes([0])  # zero-length privileges
+        + bytes([0])  # zero-length params
+        + bytes([0])  # zero-length token
+    )
+    return channel.transmit_protected(
+        INS_INSTALL, INSTALL_P1_FOR_MAKE_SELECTABLE, 0x00, body,
+        command_label="INSTALL[selectable]",
+    )
+
+
+def install_for_install_with_fallback(channel: GpSecureChannel,
+                                      package_aid: bytes,
+                                      applet_aid: bytes,
+                                      instance_aid: bytes,
+                                      privileges: bytes = b"\x00",
+                                      install_params: bytes = b"") -> bytes:
+    """INSTALL with fallback for cards that reject the combined P1=0x0C.
+
+    Tries the canonical ``INSTALL [for install + make selectable]``
+    first. If the card refuses with ``0x6982`` (security status not
+    satisfied) — which on some applet/JCRE combinations indicates the
+    lifecycle handler wants the two phases sent separately — retries
+    with ``INSTALL [for install]`` (P1=0x04) followed by
+    ``INSTALL [for make selectable]`` (P1=0x08).
+
+    Other status words propagate from the first attempt unchanged.
+    """
+    try:
+        return install_for_install(
+            channel, package_aid, applet_aid, instance_aid,
+            privileges=privileges, install_params=install_params,
+        )
+    except GpProtocolError as exc:
+        if "6982" not in str(exc):
+            raise
+        logger.warning(
+            "INSTALL[install+selectable] returned 6982; trying split form",
+        )
+
+    inner_params = bytes([0xC9, len(install_params)]) + install_params
+    body = (
+        bytes([len(package_aid)]) + package_aid
+        + bytes([len(applet_aid)]) + applet_aid
+        + bytes([len(instance_aid)]) + instance_aid
+        + bytes([len(privileges)]) + privileges
+        + bytes([len(inner_params)]) + inner_params
+        + bytes([0])  # zero-length token
+    )
+    channel.transmit_protected(
+        INS_INSTALL, INSTALL_P1_FOR_INSTALL_ONLY, 0x00, body,
+        command_label="INSTALL[install]",
+    )
+    return install_for_make_selectable(channel, instance_aid)
 
 
 def delete_aid(channel: GpSecureChannel, aid: bytes,
@@ -476,4 +728,6 @@ def delete_aid(channel: GpSecureChannel, aid: bytes,
     """
     p2 = 0x80 if with_related else 0x00
     body = bytes([0x4F, len(aid)]) + bytes(aid)
-    return channel.transmit_protected(INS_DELETE, 0x00, p2, body)
+    return channel.transmit_protected(
+        INS_DELETE, 0x00, p2, body, command_label="DELETE",
+    )

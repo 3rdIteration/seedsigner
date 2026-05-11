@@ -290,8 +290,9 @@ class TestClassifyCardErrorWrongPassword(unittest.TestCase):
         from seedsigner.helpers.keycard.secure_channel import SecureChannelError
         from seedsigner.helpers.keycard.ui_helpers import classify_card_error
         title, body = classify_card_error(SecureChannelError("mac mismatch"))
-        self.assertEqual(title, "Pairing failed")
-        self.assertIn("Secure channel", body)
+        self.assertEqual(title, "Secure channel")
+        # Body now surfaces the underlying reason for diagnostics.
+        self.assertIn("mac mismatch", body)
 
 
 if __name__ == "__main__":

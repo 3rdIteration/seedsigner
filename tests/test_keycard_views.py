@@ -52,5 +52,117 @@ class TestErrorDestination(unittest.TestCase):
         self.assertEqual(dest.view_args["message"], "no card detected")
 
 
+class TestKeycardMenuRouting(unittest.TestCase):
+    """Smoke tests for the reorganised Keycard menu hierarchy:
+
+        Keycard (top)
+          ├─ Sign ETH       → ToolsKeycardSignEthStartView
+          ├─ View wallets   → ToolsKeycardWalletsListView
+          ├─ Export xpub    → ToolsKeycardPairWalletView
+          ├─ Setup ›        → ToolsKeycardSetupMenuView
+          │   ├─ Initialise card → ToolsKeycardInitView
+          │   ├─ Generate key    → ToolsKeycardGenerateKeyView
+          │   └─ Import seed     → ToolsKeycardImportSeedView
+          └─ Manage ›       → ToolsKeycardManageMenuView
+              ├─ Status      → ToolsKeycardStatusView
+              ├─ Change PIN  → ToolsKeycardChangePinView
+              ├─ Instances   → ToolsKeycardInstancesMenuView
+              └─ Advanced ›  → ToolsKeycardAdvancedMenuView
+
+    Each parametrised case mocks ``run_screen`` to return a specific
+    button index and asserts the resulting ``Destination`` routes to the
+    correct child view.
+    """
+
+    def _route(self, view_cls, button_index):
+        # Bypass View.__init__ which expects a Controller singleton —
+        # we only exercise routing logic, not screen rendering.
+        view = view_cls.__new__(view_cls)
+        view.run_screen = MagicMock(return_value=button_index)
+        return view.run()
+
+    def test_top_menu_routes(self):
+        from seedsigner.views.keycard_views import (
+            ToolsKeycardMenuView,
+            ToolsKeycardSignEthStartView,
+            ToolsKeycardWalletsListView,
+            ToolsKeycardPairWalletView,
+            ToolsKeycardSetupMenuView,
+            ToolsKeycardManageMenuView,
+        )
+        expected = [
+            ToolsKeycardSignEthStartView,
+            ToolsKeycardWalletsListView,
+            ToolsKeycardPairWalletView,
+            ToolsKeycardSetupMenuView,
+            ToolsKeycardManageMenuView,
+        ]
+        for i, view_cls in enumerate(expected):
+            dest = self._route(ToolsKeycardMenuView, i)
+            self.assertIs(dest.View_cls, view_cls,
+                          f"top menu index {i} routes to {dest.View_cls.__name__}, "
+                          f"expected {view_cls.__name__}")
+
+    def test_setup_menu_routes(self):
+        from seedsigner.views.keycard_views import (
+            ToolsKeycardSetupMenuView,
+            ToolsKeycardInitView,
+            ToolsKeycardGenerateKeyView,
+            ToolsKeycardImportSeedView,
+        )
+        expected = [
+            ToolsKeycardInitView,
+            ToolsKeycardGenerateKeyView,
+            ToolsKeycardImportSeedView,
+        ]
+        for i, view_cls in enumerate(expected):
+            dest = self._route(ToolsKeycardSetupMenuView, i)
+            self.assertIs(dest.View_cls, view_cls)
+
+    def test_manage_menu_routes(self):
+        from seedsigner.views.keycard_views import (
+            ToolsKeycardManageMenuView,
+            ToolsKeycardStatusView,
+            ToolsKeycardChangePinView,
+            ToolsKeycardInstancesMenuView,
+            ToolsKeycardAdvancedMenuView,
+        )
+        expected = [
+            ToolsKeycardStatusView,
+            ToolsKeycardChangePinView,
+            ToolsKeycardInstancesMenuView,
+            ToolsKeycardAdvancedMenuView,
+        ]
+        for i, view_cls in enumerate(expected):
+            dest = self._route(ToolsKeycardManageMenuView, i)
+            self.assertIs(dest.View_cls, view_cls)
+
+    def test_advanced_menu_routes(self):
+        from seedsigner.views.keycard_views import (
+            ToolsKeycardAdvancedMenuView,
+            ToolsKeycardPairView,
+            ToolsKeycardRemovePairingView,
+            ToolsKeycardFactoryResetView,
+        )
+        expected = [
+            ToolsKeycardPairView,
+            ToolsKeycardRemovePairingView,
+            ToolsKeycardFactoryResetView,
+        ]
+        for i, view_cls in enumerate(expected):
+            dest = self._route(ToolsKeycardAdvancedMenuView, i)
+            self.assertIs(dest.View_cls, view_cls)
+
+    def test_pin_management_view_removed(self):
+        """``ToolsKeycardPinManagementMenuView`` was a one-entry indirection
+        ("Change PIN" was the only item); since Change PIN now hangs
+        directly off Manage, the intermediate menu has been removed."""
+        from seedsigner.views import keycard_views
+        self.assertFalse(
+            hasattr(keycard_views, "ToolsKeycardPinManagementMenuView"),
+            "Stale ToolsKeycardPinManagementMenuView class is still present",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

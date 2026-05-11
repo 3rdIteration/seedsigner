@@ -31,8 +31,24 @@ class SelectResponse:
 
 
 def parse_select(response: bytes) -> SelectResponse:
-    # ApplicationInfo template: 0xA4 ...
+    # Initialised applet returns ApplicationInfo template (tag 0xA4).
+    # Pre-init applet (PIN/PUK/pairing-secret never set) returns just the
+    # secure-channel pubkey under tag 0x80; app_version=0 is the sentinel
+    # callers use to detect this state.
     tag, body, _ = parse_tlv(response, 0)
+    if tag == 0x80:
+        if len(body) != 65 or body[0] != 0x04:
+            raise ValueError(
+                "pre-init SELECT: expected 65-byte uncompressed pubkey"
+            )
+        return SelectResponse(
+            instance_uid=b"",
+            secp256k1_pubkey=bytes(body),
+            app_version=0,
+            free_pairing_slots=0,
+            key_uid=b"",
+            capabilities=0,
+        )
     if tag != 0xA4:
         raise ValueError(f"unexpected SELECT response tag {tag:02X}")
     cursor = 0

@@ -70,6 +70,28 @@ class TestApduBuilders:
         assert apdu[1] == commands.INS_INIT
         assert apdu[4] == 6 + 12 + 32
 
+    def test_init_encrypted_layout(self):
+        client_pub = b"\x04" + b"\x11" * 64
+        iv = b"\x22" * 16
+        ciphertext = b"\x33" * 64
+        apdu = commands.init_encrypted(client_pub, iv, ciphertext)
+        assert apdu[1] == commands.INS_INIT
+        # Wire data = 1 (pub_len) + 65 (pubkey) + 16 (iv) + 64 (ct).
+        assert apdu[4] == 1 + 65 + 16 + 64
+        # Length-prefix byte the applet reads at OFFSET_CDATA.
+        assert apdu[5] == 65
+        assert bytes(apdu[6:6 + 65]) == client_pub
+        assert bytes(apdu[6 + 65:6 + 65 + 16]) == iv
+        assert bytes(apdu[6 + 65 + 16:6 + 65 + 16 + 64]) == ciphertext
+
+    def test_init_encrypted_validates_inputs(self):
+        with pytest.raises(ValueError):
+            commands.init_encrypted(b"\x02" + b"\x11" * 64, b"\x22" * 16, b"\x33" * 64)
+        with pytest.raises(ValueError):
+            commands.init_encrypted(b"\x04" + b"\x11" * 64, b"\x22" * 15, b"\x33" * 64)
+        with pytest.raises(ValueError):
+            commands.init_encrypted(b"\x04" + b"\x11" * 64, b"\x22" * 16, b"\x33" * 63)
+
     def test_sign_requires_32_byte_hash(self):
         with pytest.raises(ValueError):
             commands.sign(b"\x00" * 31)
@@ -91,6 +113,36 @@ class TestApduBuilders:
             commands.open_secure_channel(0, b"\x02" + b"\x00" * 64)
         apdu = commands.open_secure_channel(2, b"\x04" + b"\x00" * 64)
         assert apdu[:4] == [commands.CLA_PROPRIETARY, commands.INS_OPEN_SECURE_CHANNEL, 2, 0]
+
+    def test_pair_step1_p2_defaults_to_persistent(self):
+        """Sending P2=PERSISTENT explicitly is the safer default: v3.2
+        cards then never silently fall back to ephemeral when the slot
+        table is full, and v3.1 cards ignore P2 entirely."""
+        apdu = commands.pair_step1(b"\x00" * 32)
+        assert apdu[3] == commands.PAIR_P2_PERSISTENT == 0x02
+
+    def test_pair_step1_p2_can_request_ephemeral(self):
+        apdu = commands.pair_step1(b"\x00" * 32, p2=commands.PAIR_P2_EPHEMERAL)
+        assert apdu[3] == 0x01
+
+    def test_supports_ephemeral_pairing(self):
+        assert not commands.supports_ephemeral_pairing(0x0300)
+        assert not commands.supports_ephemeral_pairing(0x0301)
+        assert commands.supports_ephemeral_pairing(0x0302)
+        assert commands.supports_ephemeral_pairing(0x0400)
+
+    def test_change_pin_apdu_format(self):
+        new_pin = b"234567"
+        apdu = commands.change_pin(0x00, new_pin)
+        assert apdu[:4] == [commands.CLA_PROPRIETARY, commands.INS_CHANGE_PIN, 0x00, 0x00]
+        assert apdu[4] == len(new_pin)
+        assert bytes(apdu[5:5 + len(new_pin)]) == new_pin
+
+    def test_change_pin_p1_selects_credential(self):
+        # P1 distinguishes which credential is being replaced: 0=PIN,
+        # 1=PUK, 2=pairing secret. We pass it through verbatim.
+        apdu = commands.change_pin(0x02, b"\x11" * 32)
+        assert apdu[2] == 0x02
 
 
 class TestSelectResponseParser:
@@ -118,6 +170,28 @@ class TestSelectResponseParser:
         assert parsed.app_version == 1
         assert parsed.free_pairing_slots == 5
         assert parsed.key_uid == key_uid
+
+    def test_pre_init_template_returns_app_version_zero(self):
+        # Pre-init applet: SELECT response is `0x80 LL <pubkey 65>`.
+        pubkey = b"\x04" + b"\x77" * 64
+        resp = bytes([0x80, len(pubkey)]) + pubkey
+
+        parsed = parse_select(resp)
+        assert parsed.app_version == 0
+        assert parsed.secp256k1_pubkey == pubkey
+        assert parsed.instance_uid == b""
+        assert parsed.key_uid == b""
+        assert parsed.free_pairing_slots == 0
+        assert parsed.capabilities == 0
+
+    def test_pre_init_template_rejects_short_pubkey(self):
+        import pytest
+
+        body = b"\x04" + b"\x77" * 32  # too short
+        resp = bytes([0x80, len(body)]) + body
+
+        with pytest.raises(ValueError, match="pre-init"):
+            parse_select(resp)
 
 
 class TestSignatureParser:
@@ -221,6 +295,112 @@ class TestSecureChannelHandshake:
         # 16 MAC + 32 plaintext padded to 48 = 16 + 48
         assert len(cipher_data) == 16 + 48
 
+    def _build_card_response(self, sc, payload: bytes) -> bytes:
+        """Synthesise what the Status applet sends back over the SC.
+
+        The applet appends the inner ``SW`` to ``data`` before padding +
+        encryption; callers pass the full ``data || sw1 || sw2`` here.
+        """
+        from seedsigner.helpers.keycard.crypto import (
+            aes_cbc_block, aes_cbc_encrypt,
+        )
+
+        ciphertext = aes_cbc_encrypt(sc._enc_key, sc._iv, payload)
+        total_len = len(ciphertext) + 16
+        mac_input = bytes([total_len & 0xFF]) + b"\x00" * 15 + ciphertext
+        mac = aes_cbc_block(sc._mac_key, b"\x00" * 16, mac_input)
+        return mac + ciphertext
+
+    def _open_session(self):
+        _, card_pub = crypto.secp256k1_generate_keypair()
+        pairing = PairingInfo(pairing_index=1, pairing_key=b"\x77" * 32)
+        sc = SecureChannel(pairing, card_pub)
+        sc.begin_open()
+        sc.derive_session_from(b"\x44" * 32 + b"\x66" * 16)
+        return sc
+
+    def test_unwrap_response_matches_status_applet_formula(self):
+        """Regression: the response MAC's first byte is the *total*
+        response length (MAC + ciphertext), not just len(ciphertext).
+
+        Mirrors ``SecureChannel.java#respond`` and
+        ``app/keycard/secure_channel.c#securechannel_decrypt_apdu``
+        (keycard-shell). With the previous ``len(ciphertext)`` formula
+        every card returned "response MAC mismatch" on
+        MUTUALLY_AUTHENTICATE.
+        """
+        sc = self._open_session()
+        # The applet appends ``SW=9000`` to the payload before padding.
+        challenge = b"\x12" * 32
+        card_response = self._build_card_response(sc, challenge + b"\x90\x00")
+
+        # The fixed ``unwrap_response`` must accept this and return the
+        # original challenge (without the trailing SW).
+        assert sc.unwrap_response(card_response) == challenge
+
+    def test_unwrap_response_strips_inner_sw_on_success(self):
+        """Plaintext is ``data || SW`` — the SW must be split off."""
+        sc = self._open_session()
+        data = b"hello-keycard"
+        card_response = self._build_card_response(sc, data + b"\x90\x00")
+        assert sc.unwrap_response(card_response) == data
+
+    def test_unwrap_response_raises_on_inner_wrong_pin(self):
+        """SW=0x63CX (PIN refused, X tries left) must surface as
+        ``APDUError`` so ``verify_pin()`` fails on submission, not later
+        on the next operation."""
+        sc = self._open_session()
+        # Empty data + SW=63C2 (2 tries left).
+        card_response = self._build_card_response(sc, b"\x63\xC2")
+        with pytest.raises(APDUError) as exc_info:
+            sc.unwrap_response(card_response)
+        assert exc_info.value.sw == 0x63C2
+
+    def test_unwrap_response_raises_on_inner_6985(self):
+        """SW=0x6985 ("conditions not met" — e.g. PIN not verified or no
+        master key) must surface as ``APDUError`` instead of returning a
+        garbage plaintext that downstream parsers misread."""
+        sc = self._open_session()
+        card_response = self._build_card_response(sc, b"\x69\x85")
+        with pytest.raises(APDUError) as exc_info:
+            sc.unwrap_response(card_response)
+        assert exc_info.value.sw == 0x6985
+
+    def test_unwrap_response_advances_iv_even_on_inner_error(self):
+        """The IV chain must advance regardless of inner SW so a
+        subsequent command on the same session stays in lockstep with
+        the card."""
+        sc = self._open_session()
+        iv_before = sc._iv
+        bad_response = self._build_card_response(sc, b"\x69\x85")
+        with pytest.raises(APDUError):
+            sc.unwrap_response(bad_response)
+        assert sc._iv != iv_before
+
+    def test_unwrap_response_rejects_legacy_short_length(self):
+        """If the MAC was computed with the OLD (buggy) formula —
+        first byte = len(ciphertext) — ``unwrap_response`` must reject
+        it. This guards against accidentally re-introducing the bug.
+        """
+        from seedsigner.helpers.keycard.crypto import (
+            aes_cbc_block, aes_cbc_encrypt,
+        )
+
+        _, card_pub = crypto.secp256k1_generate_keypair()
+        pairing = PairingInfo(pairing_index=1, pairing_key=b"\x77" * 32)
+        sc = SecureChannel(pairing, card_pub)
+        sc.begin_open()
+        sc.derive_session_from(b"\x44" * 32 + b"\x66" * 16)
+
+        challenge = b"\x12" * 32
+        ciphertext = aes_cbc_encrypt(sc._enc_key, sc._iv, challenge)
+        # Buggy formula: first byte = len(ciphertext) (no +16).
+        mac_input = bytes([len(ciphertext)]) + b"\x00" * 15 + ciphertext
+        bad_mac = aes_cbc_block(sc._mac_key, b"\x00" * 16, mac_input)
+
+        with pytest.raises(SecureChannelError, match="MAC mismatch"):
+            sc.unwrap_response(bad_mac + ciphertext)
+
 
 class TestKeycardClientWithMockConnection:
     def _make_select_payload(self) -> bytes:
@@ -253,3 +433,33 @@ class TestKeycardClientWithMockConnection:
         with pytest.raises(APDUError) as exc_info:
             client.select()
         assert exc_info.value.sw == 0x6982
+
+
+class TestKeycardClientChangePin:
+    """``client.change_pin`` validates length and routes through the
+    secure-channel wrapper (``_transmit_protected``)."""
+
+    def test_rejects_wrong_length(self):
+        client = KeycardClient(MockConnection([]))
+        with pytest.raises(ValueError):
+            client.change_pin(b"12345")
+        with pytest.raises(ValueError):
+            client.change_pin(b"1234567")
+
+    def test_routes_through_transmit_protected(self):
+        captured = {}
+
+        def fake_transmit_protected(ins, p1, p2, data=b""):
+            captured["ins"] = ins
+            captured["p1"] = p1
+            captured["p2"] = p2
+            captured["data"] = bytes(data)
+            return b""
+
+        client = KeycardClient(MockConnection([]))
+        client._transmit_protected = fake_transmit_protected
+        client.change_pin(b"654321")
+        assert captured["ins"] == commands.INS_CHANGE_PIN
+        assert captured["p1"] == 0x00
+        assert captured["p2"] == 0x00
+        assert captured["data"] == b"654321"

@@ -70,8 +70,32 @@ SIGN_P1_DERIVE = 0x01
 SIGN_P1_DERIVE_AND_MAKE_CURRENT = 0x02
 SIGN_P1_PINLESS = 0x03
 
+# PAIR P2 (introduced in applet v3.2 / commit 731314f).
+# v3.1 cards ignore P2 entirely and behave as PERSISTENT.
+PAIR_P2_ANY = 0x00         # tries persistent slot, falls back to ephemeral
+PAIR_P2_EPHEMERAL = 0x01   # always ephemeral, never consumes a card slot
+PAIR_P2_PERSISTENT = 0x02  # always persistent, SW=6A84 if no slot free
+
+# Pairing index returned by PAIR step 2 when ephemeral pairing was used,
+# and accepted by OPEN_SECURE_CHANNEL / UNPAIR to address the ephemeral key.
+EPHEMERAL_PAIRING_INDEX = 0xFF
+
+# v3.2 applet version (major<<8 | minor). Cards reporting >= this in the
+# SELECT response support the ephemeral pairing extensions.
+APP_VERSION_EPHEMERAL_PAIRING = 0x0302
+
 # Status word for "OK"
 SW_OK = 0x9000
+
+
+def supports_ephemeral_pairing(app_version: int) -> bool:
+    """True when the applet at ``app_version`` understands PAIR P2=0x01.
+
+    v3.1 cards (0x0301) do not branch on P2 and would silently allocate a
+    persistent slot if asked for ephemeral. Gate the ephemeral flow on
+    this check so we don't burn pairing slots on older firmware.
+    """
+    return app_version >= APP_VERSION_EPHEMERAL_PAIRING
 
 
 class APDUError(Exception):
@@ -115,6 +139,11 @@ def factory_reset() -> List[int]:
 
 
 def init(pin: bytes, puk: bytes, pairing_secret: bytes) -> List[int]:
+    """Legacy plaintext INIT builder. Kept for unit tests; not used by
+    KeycardClient anymore — Status Keycard 3.x rejects this format with
+    SW=6A80 and the wire-correct path lives in
+    :func:`init_encrypted`.
+    """
     if len(pin) != 6:
         raise ValueError("PIN must be 6 ASCII digits")
     if len(puk) != 12:
@@ -127,10 +156,45 @@ def init(pin: bytes, puk: bytes, pairing_secret: bytes) -> List[int]:
     )
 
 
-def pair_step1(challenge: bytes) -> List[int]:
+def init_encrypted(client_pub: bytes, iv: bytes, ciphertext: bytes) -> List[int]:
+    """Build an INIT APDU in the Status Keycard one-shot-encrypted format.
+
+    Wire layout (matches ``SecureChannel.oneShotDecrypt`` in the applet):
+      ``pub_len(1) || client_pubkey(pub_len) || iv(16) || ciphertext``
+    where ciphertext = AES-256-CBC(ECDH_x(client_priv, card_static_pub),
+    iv, ISO9797-M2-pad(PIN || PUK || pairing_secret)). The leading
+    length byte is read at OFFSET_CDATA by the applet (line 100 of
+    ``SecureChannel.java``: ``apduBuffer[ISO7816.OFFSET_CDATA]``);
+    omitting it makes the applet read 16 bytes of pubkey-as-IV and
+    decrypt garbage, leading to SW=6A80 on the post-decrypt validation.
+    """
+    if len(client_pub) != 65 or client_pub[0] != 0x04:
+        raise ValueError(
+            "client pubkey must be 65-byte uncompressed (0x04 prefix)"
+        )
+    if len(iv) != 16:
+        raise ValueError("IV must be 16 bytes")
+    if not ciphertext or len(ciphertext) % 16 != 0:
+        raise ValueError("ciphertext must be a non-empty multiple of 16")
+    return build_apdu(
+        CLA_PROPRIETARY, INS_INIT, 0x00, 0x00,
+        bytes([len(client_pub)]) + bytes(client_pub) + bytes(iv) + bytes(ciphertext),
+    )
+
+
+def pair_step1(challenge: bytes, p2: int = PAIR_P2_PERSISTENT) -> List[int]:
+    """PAIR step 1.
+
+    ``p2`` selects pairing type on v3.2+ applets:
+      * ``PAIR_P2_PERSISTENT`` (0x02, default): consume a slot; fail if full.
+      * ``PAIR_P2_EPHEMERAL`` (0x01): in-RAM only; cleared on deselect.
+      * ``PAIR_P2_ANY`` (0x00): persistent if a slot is free, else ephemeral.
+
+    v3.1 cards ignore ``p2`` and always behave as persistent.
+    """
     if len(challenge) != 32:
         raise ValueError("PAIR step 1 challenge must be 32 bytes")
-    return build_apdu(CLA_PROPRIETARY, INS_PAIR, 0x00, 0x00, challenge)
+    return build_apdu(CLA_PROPRIETARY, INS_PAIR, 0x00, p2, challenge)
 
 
 def pair_step2(client_cryptogram: bytes) -> List[int]:
