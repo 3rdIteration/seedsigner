@@ -286,6 +286,17 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True):
                 print("Found Card:", Satochip_Connector.UID_SHA1)
                 print("Expecting Card:", parentObject.controller.Satochip_Last_UID_SHA1)
                 print("Card has changed, prompting for new PIN")
+                # Wipe the old card's PIN out of RAM before prompting —
+                # we no longer have a use for it and the new card has
+                # its own PIN. Best-effort; Python may have made copies.
+                old_pin = parentObject.controller.Satochip_PIN
+                if isinstance(old_pin, list):
+                    for i in range(len(old_pin)):
+                        old_pin[i] = 0
+                elif isinstance(old_pin, bytearray):
+                    for i in range(len(old_pin)):
+                        old_pin[i] = 0
+                parentObject.controller.Satochip_PIN = None
                 pin_str = prompt_for_pin(parentObject, "Card PIN")
                 if pin_str is None:
                     return None

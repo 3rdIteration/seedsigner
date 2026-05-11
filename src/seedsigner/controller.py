@@ -180,6 +180,13 @@ class Controller(Singleton):
 
     address_explorer_data: dict = None
 
+    # Per-instance Keycard wallets cache: ``{aid_hex: list[str]}`` of
+    # EIP-55 addresses already derived for the active Keycard instance,
+    # used by Tools > Keycard > View wallets to avoid re-deriving on
+    # pagination. Cleared when the wipe timer fires; per-AID entries are
+    # invalidated when the user switches/deletes an instance.
+    keycard_wallets_data: dict = None
+
     sign_message_data: dict = None
     gpg_keys_imported: bool = False
     gpg_pending_message: str = None
@@ -294,6 +301,17 @@ class Controller(Singleton):
         # password. ``keycard_pairing`` (singular) is a back-compat shim
         # that surfaces the most-recently-seen pairing.
         controller.keycard_pairings = {}
+        # ``keycard_ephemeral_secrets`` caches the 32-byte pairing
+        # secret (NOT the pairing key) for cards that use v3.2 ephemeral
+        # pairing. The on-card key is wiped on every applet deselect, so
+        # we PAIR fresh on each session using the cached secret. Nothing
+        # ever reaches disk for ephemeral pairings.
+        controller.keycard_ephemeral_secrets = {}
+        # ``keycard_pins`` caches verified PINs as ``bytearray`` keyed
+        # by ``instance_uid`` for the boot, so card operations after the
+        # first VERIFY_PIN don't re-prompt. Wiped on swap (CardMonitor),
+        # bad PIN (SW=0x63CX), unpair, and ``handle_wipe_timeout``.
+        controller.keycard_pins = {}
         controller.last_keycard_uid = None
         controller.eth_sign_request = None
         controller.eth_signature = None
@@ -302,6 +320,9 @@ class Controller(Singleton):
         # published AID; the Manage Instances flow updates it.
         from seedsigner.helpers.keycard.commands import APPLET_AID as _DEFAULT_KEYCARD_AID
         controller.active_keycard_aid = _DEFAULT_KEYCARD_AID
+        # Address cache for "View wallets". Initialised here so the
+        # attribute is always a dict by the time any view touches it.
+        controller.keycard_wallets_data = {}
 
         # Configure the Renderer
         Renderer.configure_instance()
@@ -320,6 +341,12 @@ class Controller(Singleton):
         controller.hardware_rng_monitor = HardwareRngHealthMonitor()
         controller.rng_monitor_thread = HardwareRngMonitorThread(controller.hardware_rng_monitor)
         controller.rng_monitor_thread.start()
+
+        # Background PC/SC card-event listener. Wipes cached PINs the
+        # moment a card is removed so a yank cannot leak the PIN
+        # through a session that's still alive.
+        from seedsigner.helpers.card_monitor import start_card_monitor
+        controller.card_monitor_observer = start_card_monitor(controller)
 
         return cls._instance
 
@@ -349,12 +376,185 @@ class Controller(Singleton):
         if instance_uid is None:
             return
         self.keycard_pairings.pop(bytes(instance_uid), None)
+        # Also drop any ephemeral secret for this UID — callers using
+        # forget_pairing_for() expect the card to have *no* cached
+        # auth state of any kind after the call.
+        self.forget_ephemeral_secret_for(instance_uid)
+        # Unpair removes the card's pairing slot; the cached PIN is no
+        # longer reachable until the user re-pairs, so drop it too.
+        self.forget_pin_for(instance_uid)
         if self.last_keycard_uid == bytes(instance_uid):
             self.last_keycard_uid = None
 
     def forget_all_pairings(self) -> None:
         self.keycard_pairings.clear()
+        for uid in list(self.keycard_ephemeral_secrets.keys()):
+            self.forget_ephemeral_secret_for(uid)
+        self.forget_all_pins()
         self.last_keycard_uid = None
+
+    # ---- Keycard PIN cache ----
+
+    def get_pin_for(self, instance_uid):
+        """Return the cached PIN bytearray for ``instance_uid`` or None."""
+        if instance_uid is None:
+            return None
+        return self.keycard_pins.get(bytes(instance_uid))
+
+    def set_pin_for(self, instance_uid, pin) -> None:
+        """Cache an independent copy of ``pin`` for ``instance_uid``.
+
+        The cached buffer is a fresh ``bytearray``, so callers can wipe
+        their own buffer afterwards without destroying the cache.
+        """
+        if instance_uid is None or pin is None:
+            return
+        key = bytes(instance_uid)
+        existing = self.keycard_pins.get(key)
+        if isinstance(existing, bytearray):
+            for i in range(len(existing)):
+                existing[i] = 0
+        self.keycard_pins[key] = bytearray(pin)
+
+    def forget_pin_for(self, instance_uid) -> None:
+        if instance_uid is None:
+            return
+        existing = self.keycard_pins.pop(bytes(instance_uid), None)
+        if isinstance(existing, bytearray):
+            for i in range(len(existing)):
+                existing[i] = 0
+
+    def forget_all_pins(self) -> None:
+        for uid in list(self.keycard_pins.keys()):
+            self.forget_pin_for(uid)
+
+    # ---- Satochip / SeedKeeper session ----
+
+    # ---- CardMonitor callbacks (PC/SC events) ----
+
+    def on_card_removed(self, reader_name=None) -> None:
+        """Card-removed event from the background PC/SC monitor.
+
+        Wipes every cached card secret immediately so a removed card
+        cannot leak its PIN. Safe to call from a background thread:
+        all state mutations are simple dict / attribute writes.
+        Reader name is intentionally not logged (fingerprint risk).
+        """
+        try:
+            self.forget_all_pins()
+        except Exception:
+            logger.exception("forget_all_pins failed in on_card_removed")
+        try:
+            self.forget_satochip_session()
+        except Exception:
+            logger.exception("forget_satochip_session failed in on_card_removed")
+
+    def on_card_inserted(self, atr: bytes, reader_name=None) -> None:
+        """Card-inserted event from the background PC/SC monitor.
+
+        Fires ``CardInsertedToast`` when ``SETTING__AUTO_PIN_ON_INSERT``
+        is enabled. Identification is left intentionally generic until
+        Phase 6 ships the SELECT-probe; the toast just nudges the user
+        to navigate into a card menu where the cached-PIN flow takes
+        over. ATR is NOT logged (fingerprint risk).
+        """
+        try:
+            enabled = Settings.get_instance().get_value(
+                SettingsConstants.SETTING__AUTO_PIN_ON_INSERT
+            )
+        except Exception:
+            enabled = SettingsConstants.OPTION__DISABLED
+        if enabled != SettingsConstants.OPTION__ENABLED:
+            return
+        try:
+            from seedsigner.gui.toast import CardInsertedToast
+            kind = self.identify_inserted_card_kind(atr)
+            self.activate_toast(CardInsertedToast(kind=kind))
+        except Exception:
+            logger.exception("CardInsertedToast dispatch failed")
+
+    def identify_inserted_card_kind(self, atr: bytes) -> str:
+        """Best-effort label for ``on_card_inserted`` toasts.
+
+        Phase 5 stays generic ("Card") because reliable ATR-based
+        identification across the heterogeneous Java Card population
+        is impractical. Phase 6 will replace this with a SELECT-probe
+        that produces "Keycard" / "Satochip" / "SeedKeeper" / "Blank".
+        """
+        return "Card"
+
+    def forget_satochip_session(self) -> None:
+        """Drop the cached Satochip/SeedKeeper PIN and disconnect the
+        active connector, leaving the controller in the same state as
+        a fresh boot for subsequent ``init_satochip`` calls.
+
+        Called on card-removed events (CardMonitor), the wipe-timer,
+        and explicit "lock" actions in the UI.
+        """
+        existing = getattr(self, "Satochip_PIN", None)
+        if isinstance(existing, list):
+            for i in range(len(existing)):
+                existing[i] = 0
+        elif isinstance(existing, bytearray):
+            for i in range(len(existing)):
+                existing[i] = 0
+        self.Satochip_PIN = None
+        self.Satochip_Last_UID_SHA1 = None
+        connector = getattr(self, "Satochip_Connector", None)
+        if connector is not None:
+            try:
+                connector.card_disconnect()
+            except Exception:
+                pass
+        self.Satochip_Connector = None
+
+    # ---- Ephemeral (v3.2) pairing-secret cache ----
+
+    def get_ephemeral_secret_for(self, instance_uid):
+        if instance_uid is None:
+            return None
+        return self.keycard_ephemeral_secrets.get(bytes(instance_uid))
+
+    def set_ephemeral_secret_for(self, instance_uid, secret: bytes) -> None:
+        if instance_uid is None:
+            return
+        if not isinstance(secret, (bytes, bytearray)) or len(secret) != 32:
+            raise ValueError("pairing secret must be 32 bytes")
+        # Drop any persistent pairing for this UID so the lookup order
+        # doesn't accidentally fall through to it on a v3.2 card that
+        # was previously persistent-paired.
+        self.keycard_pairings.pop(bytes(instance_uid), None)
+        self.keycard_ephemeral_secrets[bytes(instance_uid)] = bytes(secret)
+        self.last_keycard_uid = bytes(instance_uid)
+
+    def has_any_keycard_auth(self) -> bool:
+        """True when at least one card has cached auth state for this boot.
+
+        Used by entry-point views (Generate key, Import seed, Sign ETH,
+        Pair-with-wallet) to decide whether to bounce the user to the
+        Pair view first. Counts both persistent pairings and v3.2
+        ephemeral secrets — either is enough to authenticate against
+        the right card.
+        """
+        return bool(self.keycard_pairings) or bool(self.keycard_ephemeral_secrets)
+
+    def forget_ephemeral_secret_for(self, instance_uid) -> None:
+        if instance_uid is None:
+            return
+        existing = self.keycard_ephemeral_secrets.pop(bytes(instance_uid), None)
+        if isinstance(existing, (bytes, bytearray)):
+            # Best-effort wipe before letting the GC collect the bytes
+            # object. Python interns short bytes literals, but a freshly
+            # allocated 32-byte secret won't be shared, so this is
+            # meaningful even if not ironclad.
+            try:
+                buf = bytearray(existing)
+                for i in range(len(buf)):
+                    buf[i] = 0
+            except Exception:
+                pass
+        if self.last_keycard_uid == bytes(instance_uid):
+            self.last_keycard_uid = None
 
     @property
     def keycard_pairing(self):
@@ -544,9 +744,10 @@ class Controller(Singleton):
 
                     # Clear the whole Smartcard session if caching PIN is disabled (Same as removing the card)
                     if Settings.get_instance().get_value(SettingsConstants.SETTING__CACHE_SCARD_PIN) != "E":
-                        self.Satochip_PIN = None
-                        self.Satochip_Last_UID_SHA1 = None
-                        self.Satochip_Connector = None
+                        self.forget_satochip_session()
+                        # Keycard PIN cache obeys the same setting so the
+                        # two card families have symmetric semantics.
+                        self.forget_all_pins()
 
                     # Always drop any cached OpenPGP admin PIN when returning home
                     self.GPG_Admin_PIN = None
@@ -619,6 +820,12 @@ class Controller(Singleton):
 
             if self.wipe_timer_thread and self.wipe_timer_thread.is_alive():
                 self.wipe_timer_thread.stop()
+
+            observer = getattr(self, "card_monitor_observer", None)
+            if observer is not None:
+                from seedsigner.helpers.card_monitor import stop_card_monitor
+                stop_card_monitor(observer)
+                self.card_monitor_observer = None
 
             if self.rng_monitor_thread and self.rng_monitor_thread.is_alive():
                 self.rng_monitor_thread.stop()
@@ -705,12 +912,18 @@ class Controller(Singleton):
         self.address_explorer_data = None
         self.sign_message_data = None
         self.resume_main_flow = None
-        self.Satochip_PIN = None
-        self.Satochip_Last_UID_SHA1 = None
-        self.Satochip_Connector = None
+        self.forget_satochip_session()
         self.GPG_Admin_PIN = None
         self.image_entropy_preview_frames = None
         self.image_entropy_final_image = None
+        # Wipe cached Keycard PINs; pairings are intentionally kept so
+        # the user can resume after a wipe-timer trigger by entering
+        # the PIN again, without re-pairing.
+        self.forget_all_pins()
+        # Drop any cached Keycard wallet addresses; harmless to recompute
+        # but no reason to keep them around once the user is wiped out.
+        if self.keycard_wallets_data is not None:
+            self.keycard_wallets_data.clear()
 
         # Return to main menu
         self.clear_back_stack()

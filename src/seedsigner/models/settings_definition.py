@@ -431,6 +431,7 @@ class SettingsConstants:
     SETTING__BTC_DENOMINATION = "denomination"
     SETTING__SMARTCARD_INTERFACES = "smartcard_interfaces"
     SETTING__CACHE_SCARD_PIN = "cache_scard_pin"
+    SETTING__AUTO_PIN_ON_INSERT = "auto_pin_on_insert"
     SETTING__SCARD_PIN_ATTEMPTS = "scard_pin_attempts"
     SETTING__SMARTCARD_SUPPORT = "smartcard_support"
     SETTING__WIPE_TIMER = "wipe_timer"
@@ -793,7 +794,7 @@ class SettingsDefinition:
                       abbreviated_name="persistent",
                       display_name=_mft("Persistent settings"),
                       help_text=SettingsConstants.PERSISTENT_SETTINGS__SD_INSERTED__HELP_TEXT,
-                      default_value=SettingsConstants.OPTION__DISABLED),
+                      default_value=SettingsConstants.OPTION__ENABLED),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__WALLET,
                       attr_name=SettingsConstants.SETTING__COORDINATORS,
@@ -833,6 +834,17 @@ class SettingsDefinition:
                     attr_name=SettingsConstants.SETTING__CACHE_SCARD_PIN,
                     abbreviated_name="cachepin",
                     display_name="Cache Smartcard Pin",
+                    help_text="Keep the verified PIN in RAM until reboot or card swap so subsequent operations don't re-prompt. Disabled = wipe on every Home navigation.",
+                    type=SettingsConstants.TYPE__SELECT_1,
+                    selection_options=SettingsConstants.OPTIONS__ENABLED_DISABLED,
+                    default_value=SettingsConstants.OPTION__ENABLED),
+
+        SettingsEntry(category=SettingsConstants.CATEGORY__SYSTEM,
+                    attr_name=SettingsConstants.SETTING__AUTO_PIN_ON_INSERT,
+                    abbreviated_name="autopin",
+                    display_name="Auto PIN on insert",
+                    help_text="Show a toast notification when a recognised card is inserted, prompting you to enter the PIN once. Off by default for low-profile use.",
+                    visibility=SettingsConstants.VISIBILITY__ADVANCED,
                     type=SettingsConstants.TYPE__SELECT_1,
                     selection_options=SettingsConstants.OPTIONS__ENABLED_DISABLED,
                     default_value=SettingsConstants.OPTION__DISABLED),
@@ -930,7 +942,7 @@ class SettingsDefinition:
                       type=SettingsConstants.TYPE__SELECT_1,
                       visibility=SettingsConstants.VISIBILITY__ADVANCED,
                       selection_options=SettingsConstants.ALL_CAMERA_ROTATIONS,
-                      default_value=SettingsConstants.CAMERA_ROTATION__180),
+                      default_value=SettingsConstants.CAMERA_ROTATION__0),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
                       attr_name=SettingsConstants.SETTING__COMPACT_SEEDQR,
@@ -1156,7 +1168,7 @@ class SettingsDefinition:
                       type=SettingsConstants.TYPE__SELECT_1,
                       visibility=SettingsConstants.VISIBILITY__HARDWARE,
                       selection_options=SettingsConstants.ALL_DISPLAY_CONFIGURATIONS,
-                      default_value=SettingsConstants.DISPLAY_CONFIGURATION__ST7789__240x240),
+                      default_value=SettingsConstants.DISPLAY_CONFIGURATION__ST7789__320x240),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__SYSTEM,
                       attr_name=SettingsConstants.SETTING__DISPLAY_COLOR_INVERTED,
