@@ -339,10 +339,15 @@ class CardsMenuView(View):
 
 
 _DEFAULT_CAP_BY_KIND = {
-    "satochip": ("SatoChip-0.12-official.cap", "--install {cap}"),
+    # ``-force`` makes the install tolerant of a pre-existing load file
+    # — necessary because earlier factory-reset builds left orphan
+    # Keycard load files on user cards, and a fresh install fails with
+    # "Applet loading not allowed" without this flag. Per-applet
+    # uninstall views already use ``-force`` for the same reason.
+    "satochip": ("SatoChip-0.12-official.cap", "--install {cap} -force"),
     # `{params}` is filled at install time from the storage chooser
     # (Change 3 below); 1FFF = 8 KB is the default.
-    "seedkeeper": ("SeedKeeper-0.2-official.cap", "--install {cap} --params {params}"),
+    "seedkeeper": ("SeedKeeper-0.2-official.cap", "--install {cap} --params {params} -force"),
     # Keycard is a multi-instance package: --load then 3 × --create.
     # The recipe matches the proven keycard-cli install path; the
     # signing instance AID (A0000008040001010101) must stay exact —
@@ -424,7 +429,9 @@ class CardsInstallAppletView(View):
 
         if self.kind == "keycard":
             # Multi-step recipe: --load then 3 × --create instances.
-            steps = [(f"--load {cap_path}", "Loading Keycard package")]
+            # ``-force`` on --load deletes any pre-existing Keycard load
+            # file (orphan from older factory-reset builds).
+            steps = [(f"--load {cap_path} -force", "Loading Keycard package")]
             steps.extend(
                 (cmd, f"Creating Keycard instance {i + 1}/3")
                 for i, cmd in enumerate(_KEYCARD_CREATE_COMMANDS)
@@ -534,80 +541,69 @@ class CardsFactoryResetView(View):
 
 
 def _attempt_globalplatform_wipe(view):
-    """Returns a list of result lines, or None if SCP02 could not be
-    opened (caller should fall back to soft reset).
+    """Returns a list of result lines, or None if the GP delete path
+    failed entirely (caller should fall back to soft reset).
 
-    Auth-probes the card via the Python SCP02 stack and enumerates
-    installed applets via GET STATUS, then disconnects and shells out to
-    ``gp.jar --delete <AID> -force`` per AID. gp.jar's ``-force`` is what
-    actually makes SeedKeeper deletable; the Python ``delete_aid`` issues
-    a single DELETE APDU and gets rejected for that applet, which
-    surfaced previously as "1 skipped" in the factory-reset report. The
-    per-applet Uninstall views already use gp.jar with the same flag, so
-    this aligns factory reset with proven-working behaviour.
+    Probes which of our three supported applets are present via
+    cleartext SELECT (``probe_installed_applets``), then shells out to
+    ``gp.jar --delete <AID> -force`` per kind — exactly the same command
+    the per-applet Uninstall views use (see e.g.
+    ``ToolsSeedkeeperUninstallAppletView``), which the user has verified
+    works for SeedKeeper. We deliberately do NOT open a Python SCP02
+    channel before gp.jar: every previous attempt to do so left the
+    card in a state where gp.jar's DELETE returned SW=0x6985
+    ("Could not delete X. Some app still active?"), even though the
+    same gp.jar invocation succeeds from a cold start.
+
+    For Keycard we pass the 7-byte package AID so a single
+    ``--delete -force`` wipes the whole multi-instance package.
     """
     try:
-        from seedsigner.helpers.keycard import global_platform as gp
-        from seedsigner.helpers.keycard.reader import (
-            release_other_smartcard_holders, wait_for_card,
-        )
         from seedsigner.helpers import seedkeeper_utils
+        from seedsigner.helpers.card_probe import probe_installed_applets
     except ImportError as exc:
         return ["GlobalPlatform stack missing:", str(exc)]
 
-    controller = view.controller
-    connection = None
-    aids: list[bytes] = []
-    try:
-        release_other_smartcard_holders(controller)
-        try:
-            connection = wait_for_card(timeout_s=2.0)
-        except Exception as exc:
-            return [f"Card not reachable: {exc}"]
+    state = probe_installed_applets(view.controller)
+    if not state.present:
+        return ["No card detected."]
 
-        channel = gp.GpSecureChannel(connection)
-        try:
-            channel.select_isd()
-            channel.open()
-        except Exception:
-            # Surface as "fall back" — most likely cause is rotated ISD
-            # keys (cryptogram mismatch). Return None so the caller
-            # tries the soft path.
-            return None
+    # Each entry: (display name, AID hex passed to ``gp.jar --delete``).
+    targets: list[tuple[str, str]] = []
+    if state.seedkeeper_installed:
+        targets.append(("SeedKeeper", "536565644b6565706572"))
+    if state.satochip_installed:
+        targets.append(("Satochip", "5361746f43686970"))
+    if state.keycard_installed:
+        # Package AID — deletes the load file + all 3 instances in one shot.
+        targets.append(("Keycard", "A0000008040001"))
 
-        try:
-            aids = [inst.aid for inst in gp.list_instances(channel)]
-        except Exception as exc:
-            return [f"GET STATUS failed: {exc}"]
-    finally:
-        if connection is not None:
-            try:
-                connection.disconnect()
-            except Exception:
-                pass
-
-    if not aids:
+    if not targets:
         return ["No applets to delete."]
 
-    # gp.jar opens its own SCP02 session per call — safe now that the
-    # Python channel above is closed. -force matches the flag the
-    # per-applet Uninstall views use (see ToolsSeedkeeperUninstallAppletView).
     deleted: list[str] = []
     skipped: list[str] = []
-    for aid in aids:
-        aid_hex = aid.hex()
+    for name, aid_hex in targets:
         result = seedkeeper_utils.run_globalplatform(
             view, f"--delete {aid_hex} -force",
-            f"Deleting {aid_hex}", None,
+            f"Deleting {name}", None,
         )
         if result is None:
-            skipped.append(aid_hex)
+            skipped.append(name)
         else:
-            deleted.append(aid_hex)
+            deleted.append(name)
 
-    report = [f"Deleted {len(deleted)} applet(s)."]
+    # If none of the gp.jar deletes succeeded, this is most likely an
+    # ISD-keys-rotated card. Surface as None so the caller falls back
+    # to the per-applet soft-reset path.
+    if not deleted and skipped:
+        return None
+
+    report: list[str] = []
+    if deleted:
+        report.append(f"Deleted: {', '.join(deleted)}.")
     if skipped:
-        report.append(f"{len(skipped)} skipped.")
+        report.append(f"Skipped: {', '.join(skipped)}.")
     return report
 
 
