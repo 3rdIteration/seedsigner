@@ -516,7 +516,7 @@ class CardsFactoryResetView(View):
         if ret == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
 
-        report_lines = _attempt_globalplatform_wipe(self.controller)
+        report_lines = _attempt_globalplatform_wipe(self)
         if report_lines is None:
             # GP path failed (likely rotated ISD keys); fall back to
             # per-applet soft reset.
@@ -533,19 +533,31 @@ class CardsFactoryResetView(View):
         return Destination(CardsMenuView, skip_current_view=True)
 
 
-def _attempt_globalplatform_wipe(controller):
+def _attempt_globalplatform_wipe(view):
     """Returns a list of result lines, or None if SCP02 could not be
     opened (caller should fall back to soft reset).
+
+    Auth-probes the card via the Python SCP02 stack and enumerates
+    installed applets via GET STATUS, then disconnects and shells out to
+    ``gp.jar --delete <AID> -force`` per AID. gp.jar's ``-force`` is what
+    actually makes SeedKeeper deletable; the Python ``delete_aid`` issues
+    a single DELETE APDU and gets rejected for that applet, which
+    surfaced previously as "1 skipped" in the factory-reset report. The
+    per-applet Uninstall views already use gp.jar with the same flag, so
+    this aligns factory reset with proven-working behaviour.
     """
     try:
         from seedsigner.helpers.keycard import global_platform as gp
         from seedsigner.helpers.keycard.reader import (
             release_other_smartcard_holders, wait_for_card,
         )
+        from seedsigner.helpers import seedkeeper_utils
     except ImportError as exc:
         return ["GlobalPlatform stack missing:", str(exc)]
 
+    controller = view.controller
     connection = None
+    aids: list[bytes] = []
     try:
         release_other_smartcard_holders(controller)
         try:
@@ -564,29 +576,39 @@ def _attempt_globalplatform_wipe(controller):
             return None
 
         try:
-            instances = gp.list_instances(channel)
+            aids = [inst.aid for inst in gp.list_instances(channel)]
         except Exception as exc:
             return [f"GET STATUS failed: {exc}"]
-
-        deleted = []
-        skipped = []
-        for inst in instances:
-            try:
-                gp.delete_aid(channel, inst.aid, with_related=True)
-                deleted.append(inst.aid.hex())
-            except Exception as exc:
-                skipped.append(f"{inst.aid.hex()}: {exc}")
-
-        report = [f"Deleted {len(deleted)} applet(s)."]
-        if skipped:
-            report.append(f"{len(skipped)} skipped.")
-        return report
     finally:
         if connection is not None:
             try:
                 connection.disconnect()
             except Exception:
                 pass
+
+    if not aids:
+        return ["No applets to delete."]
+
+    # gp.jar opens its own SCP02 session per call — safe now that the
+    # Python channel above is closed. -force matches the flag the
+    # per-applet Uninstall views use (see ToolsSeedkeeperUninstallAppletView).
+    deleted: list[str] = []
+    skipped: list[str] = []
+    for aid in aids:
+        aid_hex = aid.hex()
+        result = seedkeeper_utils.run_globalplatform(
+            view, f"--delete {aid_hex} -force",
+            f"Deleting {aid_hex}", None,
+        )
+        if result is None:
+            skipped.append(aid_hex)
+        else:
+            deleted.append(aid_hex)
+
+    report = [f"Deleted {len(deleted)} applet(s)."]
+    if skipped:
+        report.append(f"{len(skipped)} skipped.")
+    return report
 
 
 def _attempt_soft_reset(view, state):
