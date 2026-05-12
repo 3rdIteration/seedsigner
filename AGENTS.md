@@ -222,6 +222,14 @@ Cards initialised by `keycard-cli` / `keycard-shell` ship with very specific pro
 
 If the user has cards from a custom applet variant (e.g. one that derives the pairing secret with SHA-512 instead of SHA-256), the right answer is to add an opt-in setting that toggles `derive_pairing_secret(..., hmac_hash_module=...)`, not to change the default.
 
+### Coexistence with SeedKeeper on the same card
+
+The Seedkeeper iOS app (`Toporin/Seedkeeper-iOS`) **crashes on the secret-reveal step** when the Keycard package (`A0000008040001`) is loaded on the same physical card as the SeedKeeper applet — even if only the signing instance is created and the NDEF / Cash applets are skipped. Verified hands-on: the SeedKeeper blob on the card is byte-perfect (`[len|pw_utf8|0x00|0x00]`) and the on-device firmware reads it fine; the iOS app loads the secret *label* and then exits the process on Reveal. Deleting only the Keycard package (`gp.jar --delete A0000008040001 -force`, leaving the SeedKeeper applet and secrets intact) restores iOS reveal immediately.
+
+We can't fix this from inside SeedSigner (it's an iOS-side issue, in code we don't control). The mitigation is in `CardsInstallAppletView` (`src/seedsigner/views/view.py`): before installing either applet on a card that already has the other, we show a `DireWarningScreen` reading *"iOS Seedkeeper app crashes when Keycard shares a card."* with a single **Install anyway** button + back-to-cancel. The user can override if they don't use the iOS app; the warning is suppressed when the probe can't read the card so install isn't blocked by reader/driver hiccups. Tests cover both directions: `tests/test_cards_install_and_wipe.py::TestCrossAppletCompatibilityWarning`.
+
+If you investigate this further, the next things to check upstream are (a) whether the iOS app does any AID enumeration / Card Manager GET DATA tag that returns differently with the Keycard package loaded, and (b) whether reducing the Keycard CAP footprint (e.g. installing a stripped variant without the NDEF/Cash applets baked in) is enough. As of this writing, neither has been tested.
+
 ### Pairing persistence on microSD
 
 `helpers/keycard/pairing_storage.py` writes a single file:

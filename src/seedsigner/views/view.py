@@ -431,13 +431,14 @@ _SEEDKEEPER_STORAGE_OPTIONS = [
 _SEEDKEEPER_STORAGE_DEFAULT_INDEX = 1  # 8 KB
 
 # The Keycard-3.2.cap ships three applets (signing, NDEF, Cash). We
-# only create the signing instance: the NDEF applet (`D2760000850101`,
-# ISO/IEC 14443 Type-4 NDEF AID) is auto-SELECTed by iOS Core NFC during
-# tag discovery and breaks the SeedKeeper iOS app's reveal flow when
-# both applets coexist on the same card. The Cash applet (Status Pay)
-# is unused by every wallet/tool we care about. The signing instance
-# AID (A0000008040001010101) must stay exact — `select_with_autodetect`
-# and the rest of the Keycard views select against it.
+# only create the signing instance: the others are unused by the wallets
+# and tools we target, and skipping them keeps the EEPROM footprint
+# small. (The mere presence of the Keycard *package* on a card already
+# crashes the SeedKeeper iOS app's reveal flow even without the NDEF
+# instance — `CardsInstallAppletView` warns about that incompat below.)
+# The signing instance AID (A0000008040001010101) must stay exact —
+# `select_with_autodetect` and the rest of the Keycard views select
+# against it.
 _KEYCARD_CREATE_COMMANDS = [
     "--package A0000008040001 --applet A000000804000101 --create A0000008040001010101",
 ]
@@ -473,6 +474,36 @@ class CardsInstallAppletView(View):
                 self, "Install",
                 f"Applet bundle missing:\n{cap_name}\nRebuild seedsigner-os.",
             )
+
+        # Cross-applet compatibility check. The presence of the Keycard
+        # package on a card crashes the Seedkeeper iOS app's secret-reveal
+        # flow (label loads, then the app exits when Reveal is tapped).
+        # Verified hands-on: deleting just the Keycard package restores
+        # iOS reveal without touching SeedKeeper data. We can't fix the
+        # iOS app from here, so we warn before letting the user create
+        # that situation. Skipped if the probe couldn't read the card.
+        from seedsigner.gui.screens.screen import DireWarningScreen
+        from seedsigner.helpers.card_probe import probe_installed_applets
+        try:
+            installed = probe_installed_applets(self.controller)
+        except Exception:
+            installed = None
+        if installed is not None and installed.present:
+            other_present = (
+                (self.kind == "keycard" and installed.seedkeeper_installed)
+                or (self.kind == "seedkeeper" and installed.keycard_installed)
+            )
+            if other_present:
+                ret = self.run_screen(
+                    DireWarningScreen,
+                    title="Compatibility",
+                    status_headline=None,
+                    text="iOS Seedkeeper app crashes when\nKeycard shares a card.",
+                    show_back_button=True,
+                    button_data=[ButtonOption("Install anyway")],
+                )
+                if ret == RET_CODE__BACK_BUTTON:
+                    return Destination(BackStackView)
 
         # SeedKeeper: ask the user how much object storage to allocate
         # (4/8/16/32/64 KB). Restores the chooser that PR #189 added to

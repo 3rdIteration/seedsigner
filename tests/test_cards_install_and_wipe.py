@@ -84,11 +84,13 @@ class TestKeycardInstallPreDelete(unittest.TestCase):
     -force`` with the failure dialog suppressed *before* anything else
     when installing the Keycard applet."""
 
-    def _stub_microsd_and_runner(self, run_results):
+    def _stub_microsd_and_runner(self, run_results, probe_state=None):
         """Patch ``MicroSD.get_microsd_dir`` so the CAP path "exists" and
         ``run_globalplatform`` so we capture every invocation. ``run_results``
         is a list of return values applied positionally — pre-delete is
-        index 0, then --load, then 3 × --create."""
+        index 0, then --load, then 3 × --create. ``probe_state`` overrides
+        the ``probe_installed_applets`` return value; defaults to a blank
+        absent state so the cross-applet compatibility warning is skipped."""
         from pathlib import Path
 
         cap_path = Path("/tmp/seedsigner-test-microsd")
@@ -103,6 +105,8 @@ class TestKeycardInstallPreDelete(unittest.TestCase):
             idx = len(calls) - 1
             return run_results[idx] if idx < len(run_results) else run_results[-1]
 
+        if probe_state is None:
+            probe_state = _absent_state()
         microsd_patch = patch(
             "seedsigner.hardware.microsd.MicroSD.get_microsd_dir",
             return_value=cap_path,
@@ -115,13 +119,17 @@ class TestKeycardInstallPreDelete(unittest.TestCase):
             "seedsigner.helpers.seedkeeper_utils.disconnect_smartcard_connections",
             MagicMock(),
         )
-        return microsd_patch, runner_patch, disconnect_patch, calls
+        probe_patch = patch(
+            "seedsigner.helpers.card_probe.probe_installed_applets",
+            return_value=probe_state,
+        )
+        return microsd_patch, runner_patch, disconnect_patch, probe_patch, calls
 
     def test_pre_delete_is_first_and_suppressed(self):
         v = _make_install_view("keycard")
         # All steps succeed (truthy).
-        m, r, d, calls = self._stub_microsd_and_runner([True, True, True])
-        with m, r, d:
+        m, r, d, p, calls = self._stub_microsd_and_runner([True, True, True])
+        with m, r, d, p:
             v.run()
 
         # 1 pre-delete + 1 --load + 1 --create (signing only) = 3.
@@ -159,8 +167,8 @@ class TestKeycardInstallPreDelete(unittest.TestCase):
         # audible recipe ("steps" = --load + 1 × --create = 2). The
         # pre-delete is intentionally NOT counted in the step numbering
         # shown to the user.
-        m, r, d, _ = self._stub_microsd_and_runner([True, True, None])
-        with m, r, d:
+        m, r, d, p, _ = self._stub_microsd_and_runner([True, True, None])
+        with m, r, d, p:
             v.run()
 
         self.assertIn("2/2", captured_text["text"])
@@ -171,12 +179,149 @@ class TestKeycardInstallPreDelete(unittest.TestCase):
         present on card" → suppressed) must not abort the install."""
         v = _make_install_view("keycard")
         # Pre-delete fails (None, but suppressed); load + create succeed.
-        m, r, d, _ = self._stub_microsd_and_runner([None, True, True])
-        with m, r, d:
+        m, r, d, p, _ = self._stub_microsd_and_runner([None, True, True])
+        with m, r, d, p:
             dest = v.run()
 
         # Reached the post-install routing.
         self.assertIsNotNone(dest)
+
+
+class TestCrossAppletCompatibilityWarning(unittest.TestCase):
+    """``CardsInstallAppletView`` must warn before installing one applet
+    on a card that already has the other. Mere coexistence of SeedKeeper
+    and the Keycard package crashes the Seedkeeper iOS app's reveal flow
+    (verified hands-on by deleting only the Keycard package and seeing
+    iOS reveal recover). The warning is a DireWarningScreen with a single
+    ``Install anyway`` button + back-to-cancel."""
+
+    def _stub(self, run_results, probe_state):
+        from pathlib import Path
+        cap_path = Path("/tmp/seedsigner-test-microsd")
+        cap_dir = cap_path / "javacard-cap"
+        cap_dir.mkdir(parents=True, exist_ok=True)
+        (cap_dir / "Keycard-3.2.cap").touch()
+        (cap_dir / "SeedKeeper-0.2-official.cap").touch()
+        calls = []
+
+        def fake_run(*args, **kwargs):
+            calls.append((args, kwargs))
+            idx = len(calls) - 1
+            return run_results[idx] if idx < len(run_results) else run_results[-1]
+
+        return (
+            patch("seedsigner.hardware.microsd.MicroSD.get_microsd_dir", return_value=cap_path),
+            patch("seedsigner.helpers.seedkeeper_utils.run_globalplatform", side_effect=fake_run),
+            patch("seedsigner.helpers.seedkeeper_utils.disconnect_smartcard_connections", MagicMock()),
+            patch("seedsigner.helpers.card_probe.probe_installed_applets", return_value=probe_state),
+            calls,
+        )
+
+    def test_keycard_install_warns_when_seedkeeper_present(self):
+        from seedsigner.gui.screens.screen import DireWarningScreen
+        v = _make_install_view("keycard")
+        # First run_screen call → DireWarning, accept ("Install anyway" = index 0).
+        screen_calls = []
+
+        def fake_run_screen(screen_cls, **kwargs):
+            screen_calls.append((screen_cls, kwargs))
+            return 0
+        v.run_screen = fake_run_screen
+        m, r, d, p, calls = self._stub([True, True, True], _present_state(seedkeeper=True))
+        with m, r, d, p:
+            v.run()
+        # First screen MUST be the DireWarning.
+        self.assertEqual(screen_calls[0][0], DireWarningScreen)
+        self.assertEqual(screen_calls[0][1].get("title"), "Compatibility")
+        self.assertIn("iOS", screen_calls[0][1].get("text", ""))
+        # Install still proceeds: 1 pre-delete + 1 --load + 1 --create = 3.
+        self.assertEqual(len(calls), 3)
+
+    def test_keycard_install_aborts_when_back_pressed_on_warning(self):
+        from seedsigner.gui.screens.screen import (
+            DireWarningScreen, RET_CODE__BACK_BUTTON,
+        )
+        v = _make_install_view("keycard")
+        screen_calls = []
+
+        def fake_run_screen(screen_cls, **kwargs):
+            screen_calls.append((screen_cls, kwargs))
+            return RET_CODE__BACK_BUTTON
+        v.run_screen = fake_run_screen
+        m, r, d, p, calls = self._stub([True, True, True], _present_state(seedkeeper=True))
+        with m, r, d, p:
+            v.run()
+        # DireWarning shown once and then the back button aborted everything.
+        self.assertEqual(len(screen_calls), 1)
+        self.assertEqual(screen_calls[0][0], DireWarningScreen)
+        # No gp.jar calls — install never started.
+        self.assertEqual(calls, [])
+
+    def test_seedkeeper_install_warns_when_keycard_present(self):
+        from seedsigner.gui.screens.screen import DireWarningScreen
+        v = _make_install_view("seedkeeper")
+        # SeedKeeper install also runs a storage chooser screen. First run_screen
+        # is the DireWarning (accept), second is the storage chooser (pick 0).
+        screen_calls = []
+
+        def fake_run_screen(screen_cls, **kwargs):
+            screen_calls.append((screen_cls, kwargs))
+            return 0
+        v.run_screen = fake_run_screen
+        m, r, d, p, calls = self._stub([True], _present_state(keycard=True))
+        with m, r, d, p:
+            v.run()
+        self.assertEqual(screen_calls[0][0], DireWarningScreen)
+        self.assertEqual(screen_calls[0][1].get("title"), "Compatibility")
+        # SeedKeeper install = single gp.jar call.
+        self.assertEqual(len(calls), 1)
+        self.assertIn("--install", calls[0][0][1])
+
+    def test_no_warning_when_only_target_kind_present(self):
+        # Installing Keycard on a card that already has Keycard (reinstall):
+        # no SeedKeeper present → no warning, jump straight into the recipe.
+        from seedsigner.gui.screens.screen import DireWarningScreen
+        v = _make_install_view("keycard")
+        screen_calls = []
+
+        def fake_run_screen(screen_cls, **kwargs):
+            screen_calls.append((screen_cls, kwargs))
+            return 0
+        v.run_screen = fake_run_screen
+        m, r, d, p, calls = self._stub([True, True, True], _present_state(keycard=True))
+        with m, r, d, p:
+            v.run()
+        for s, _ in screen_calls:
+            self.assertNotEqual(s, DireWarningScreen)
+
+    def test_no_warning_when_probe_fails(self):
+        # If probe raises (no reader / driver issue) we skip the warning
+        # rather than blocking the install path.
+        from seedsigner.gui.screens.screen import DireWarningScreen
+        v = _make_install_view("keycard")
+        screen_calls = []
+
+        def fake_run_screen(screen_cls, **kwargs):
+            screen_calls.append((screen_cls, kwargs))
+            return 0
+        v.run_screen = fake_run_screen
+        from pathlib import Path
+        cap_path = Path("/tmp/seedsigner-test-microsd")
+        (cap_path / "javacard-cap").mkdir(parents=True, exist_ok=True)
+        (cap_path / "javacard-cap" / "Keycard-3.2.cap").touch()
+        with patch(
+            "seedsigner.hardware.microsd.MicroSD.get_microsd_dir", return_value=cap_path,
+        ), patch(
+            "seedsigner.helpers.seedkeeper_utils.run_globalplatform", return_value=True,
+        ), patch(
+            "seedsigner.helpers.seedkeeper_utils.disconnect_smartcard_connections", MagicMock(),
+        ), patch(
+            "seedsigner.helpers.card_probe.probe_installed_applets",
+            side_effect=RuntimeError("no reader"),
+        ):
+            v.run()
+        for s, _ in screen_calls:
+            self.assertNotEqual(s, DireWarningScreen)
 
 
 class TestFactoryResetAlwaysTargetsKeycard(unittest.TestCase):
