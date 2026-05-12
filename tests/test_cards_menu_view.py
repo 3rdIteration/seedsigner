@@ -74,8 +74,9 @@ class TestCardsMenuShape(unittest.TestCase):
 
 
 class TestCardsMenuRendering(unittest.TestCase):
-    """The menu must show 4 entries and only render checkmarks when a
-    card is actually present."""
+    """The menu must show 4 entries with install-state checkmarks when
+    a card is present. The absent-card path is covered by
+    :class:`TestCardsMenuGate` below."""
 
     def _run_and_capture(self, state, selected_index):
         v = _make_view()
@@ -93,13 +94,6 @@ class TestCardsMenuRendering(unittest.TestCase):
             dest = v.run()
         return dest, captured["button_data"]
 
-    def test_no_card_no_checkmarks(self):
-        _, buttons = self._run_and_capture(_absent_state(), selected_index=0)
-        self.assertEqual(len(buttons), 4)
-        # First three should have no right icon when card is absent.
-        for b in buttons[:3]:
-            self.assertIsNone(b.right_icon_name)
-
     def test_present_card_renders_checkmarks(self):
         from seedsigner.gui.components import SeedSignerIconConstants
         _, buttons = self._run_and_capture(
@@ -116,6 +110,45 @@ class TestCardsMenuRendering(unittest.TestCase):
         self.assertEqual(buttons[2].right_icon_name, SeedSignerIconConstants.CHECK)
 
 
+class TestCardsMenuGate(unittest.TestCase):
+    """No card → bounce to MainMenu with an InfoToast. Every menu entry
+    requires a card to do anything useful, so we don't even render the
+    menu in the no-card case."""
+
+    def test_no_card_redirects_to_main_menu(self):
+        from seedsigner.views.view import MainMenuView
+        v = _make_view()
+        # run_screen must not be called on this path.
+        v.run_screen = MagicMock(side_effect=AssertionError("run_screen called on gate path"))
+        with patch(
+            "seedsigner.helpers.card_probe.probe_installed_applets",
+            return_value=_absent_state(),
+        ):
+            dest = v.run()
+        self.assertIs(dest.View_cls, MainMenuView)
+        self.assertTrue(dest.clear_history)
+
+    def test_no_card_activates_info_toast(self):
+        v = _make_view()
+        v.run_screen = MagicMock(side_effect=AssertionError("run_screen called on gate path"))
+        fake_toast_instance = MagicMock(name="InfoToast_instance")
+        fake_toast_cls = MagicMock(return_value=fake_toast_instance, name="InfoToast")
+        with patch(
+            "seedsigner.helpers.card_probe.probe_installed_applets",
+            return_value=_absent_state(),
+        ), patch(
+            "seedsigner.gui.toast.InfoToast", fake_toast_cls,
+        ):
+            v.run()
+        # Toast was constructed with the localized "insert a card" label.
+        fake_toast_cls.assert_called_once()
+        kwargs = fake_toast_cls.call_args.kwargs
+        self.assertIn("label_text", kwargs)
+        self.assertIn("Insert a card", kwargs["label_text"])
+        # And handed off to the controller's toast manager.
+        v.controller.activate_toast.assert_called_once_with(fake_toast_instance)
+
+
 class TestCardsMenuRouting(unittest.TestCase):
     """Confirm each entry routes to the correct destination."""
 
@@ -124,7 +157,7 @@ class TestCardsMenuRouting(unittest.TestCase):
         v.run_screen = MagicMock(return_value=button_index)
         with patch(
             "seedsigner.helpers.card_probe.probe_installed_applets",
-            return_value=_absent_state(),
+            return_value=_present_state(),
         ):
             return v.run()
 
@@ -190,7 +223,7 @@ class TestCardsMenuRefreshOnInsert(unittest.TestCase):
         v.run_screen = fake_run_screen
 
         probe_count = [0]
-        states = [_absent_state(), _present_state(keycard=True)]
+        states = [_present_state(), _present_state(keycard=True)]
 
         def fake_probe(_):
             i = probe_count[0]
@@ -222,7 +255,7 @@ class TestCardsMenuRefreshOnInsert(unittest.TestCase):
         v.run_screen = MagicMock(return_value=0)
         with patch(
             "seedsigner.helpers.card_probe.probe_installed_applets",
-            return_value=_absent_state(),
+            return_value=_present_state(),
         ):
             v.run()
         v.controller.register_card_removed_listener.assert_not_called()
@@ -244,7 +277,7 @@ class TestBackButtonNotSwallowedByInsertOverride(unittest.TestCase):
         v.run_screen = MagicMock(return_value=RET_CODE__BACK_BUTTON)
         with patch(
             "seedsigner.helpers.card_probe.probe_installed_applets",
-            return_value=_absent_state(),
+            return_value=_present_state(),
         ):
             dest = v.run()
         self.assertIs(dest.View_cls, BackStackView)
@@ -320,6 +353,104 @@ class TestCardRemovedRedirect(unittest.TestCase):
         c = self._stub_controller(None)
         c._on_card_removed_redirect()
         self.assertFalse(c._pending_card_removed_redirect)
+
+
+class TestOverrideInterruptPropagation(unittest.TestCase):
+    """``trigger_override()`` previously *returned* ``OVERRIDE`` (1000)
+    from ``wait_for``, which the screen ``_run`` loops silently dropped
+    (the value matches no key in their ``elif`` chains), leaving the
+    user stuck on the current screen. Now ``wait_for`` raises
+    ``OverrideInterrupt`` and ``BaseScreen.display`` translates it to
+    ``RET_CODE__BACK_BUTTON`` so the calling View returns to the main
+    loop, which then applies any pending redirect."""
+
+    def setUp(self):
+        # Other test modules (via base.py) replace seedsigner.hardware.buttons
+        # in sys.modules with a MagicMock. Force-load the real module here so
+        # OverrideInterrupt is the real exception class and HardwareButtons is
+        # the real class. Restore the mock on tearDown so the rest of the suite
+        # is unaffected. Crucially, do NOT reload the screen module — that
+        # would re-create its classes (ButtonOption, BaseScreen, ...) and
+        # break isinstance checks elsewhere (e.g. FlowTest in base.py).
+        import importlib
+        self._saved_buttons_entry = sys.modules.pop("seedsigner.hardware.buttons", None)
+        self._saved_hw_buttons_attr = None
+        if isinstance(self._saved_buttons_entry, MagicMock):
+            import seedsigner.hardware
+            self._saved_hw_buttons_attr = getattr(seedsigner.hardware, "buttons", None)
+            if isinstance(self._saved_hw_buttons_attr, MagicMock):
+                delattr(seedsigner.hardware, "buttons")
+        self.buttons_module = importlib.import_module("seedsigner.hardware.buttons")
+
+    def tearDown(self):
+        # Restore the mock (if any) so other tests in the suite see the
+        # state base.py expects.
+        if isinstance(self._saved_buttons_entry, MagicMock):
+            sys.modules["seedsigner.hardware.buttons"] = self._saved_buttons_entry
+            import seedsigner.hardware
+            if self._saved_hw_buttons_attr is not None:
+                seedsigner.hardware.buttons = self._saved_hw_buttons_attr
+
+    def test_wait_for_raises_when_override_set_during_loop(self):
+        """``wait_for`` resets ``override_ind`` at entry (so stale flags
+        from a previous call don't fire) and then polls it inside the
+        loop. The on-device pattern is: another thread (CardMonitor,
+        WipeTimer) calls ``trigger_override`` *while* ``wait_for`` is
+        already looping. We simulate that with a Timer that flips the
+        flag a tick after wait_for starts."""
+        import threading
+        import time as time_mod
+        HardwareButtons = self.buttons_module.HardwareButtons
+        OverrideInterrupt = self.buttons_module.OverrideInterrupt
+        from seedsigner.controller import Controller
+
+        stub_ctrl = MagicMock()
+        stub_ctrl.screensaver_activation_ms = float("inf")
+        stub_ctrl.is_screensaver_running = False
+
+        hw = HardwareButtons.__new__(HardwareButtons)
+        hw.override_ind = False
+        hw.last_input_time = int(time_mod.time() * 1000)
+        hw._gpio_pins = {}
+        hw._low_since_ms = {}
+        hw.cur_input = None
+        hw.cur_input_started = None
+        hw.debounce_threshold_ms = 10
+        hw.first_repeat_threshold = 225
+        hw.next_repeat_threshold = 250
+
+        threading.Timer(0.05, hw.trigger_override).start()
+
+        with patch.object(Controller, "get_instance", return_value=stub_ctrl):
+            with self.assertRaises(OverrideInterrupt):
+                hw.wait_for(keys=[])
+        self.assertFalse(hw.override_ind)
+
+    def test_base_screen_display_translates_override_to_back_button(self):
+        # The screen module may have been imported with a MagicMock-flavoured
+        # buttons module (via base.py), in which case its module-level
+        # ``OverrideInterrupt`` reference is a MagicMock attribute rather
+        # than the real exception class. Patch the reference for the
+        # duration of this test so its ``except OverrideInterrupt:`` clause
+        # matches the real exception we raise.
+        from seedsigner.gui.screens import screen as screen_module
+        OverrideInterrupt = self.buttons_module.OverrideInterrupt
+        with patch.object(screen_module, "OverrideInterrupt", OverrideInterrupt):
+            BaseScreen = screen_module.BaseScreen
+            RET_CODE__BACK_BUTTON = screen_module.RET_CODE__BACK_BUTTON
+
+            s = BaseScreen.__new__(BaseScreen)
+            s.renderer = MagicMock()
+            s.threads = []
+            s.components = []
+            s.paste_images = []
+            s.scroll_y = 0
+            s._render = MagicMock()
+            s.get_threads = MagicMock(return_value=[])
+            s._run = MagicMock(side_effect=OverrideInterrupt())
+
+            result = s.display()
+            self.assertEqual(result, RET_CODE__BACK_BUTTON)
 
 
 if __name__ == "__main__":

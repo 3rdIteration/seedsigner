@@ -29,6 +29,27 @@ from seedsigner.hardware.io_config import get_hardware_pin_mapping
 
 logger = logging.getLogger(__name__)
 
+
+class OverrideInterrupt(Exception):
+    """Raised by :meth:`HardwareButtons.wait_for` when ``trigger_override()``
+    is called from another thread.
+
+    Caught at the :meth:`seedsigner.gui.screens.screen.BaseScreen.display`
+    boundary, which translates it to ``RET_CODE__BACK_BUTTON``. This is the
+    propagation path used by:
+
+    - ``Controller._on_card_removed_redirect`` (card removed while the user
+      is in a card view → main loop redirects to MainMenu).
+    - ``Controller.handle_wipe_timeout`` (inactivity timeout → MainMenu).
+
+    Returning a sentinel value from ``wait_for`` was the historic approach
+    but it didn't work: ``ButtonListScreen._run``/``LargeButtonScreen._run``
+    only compare ``user_input`` against the known KEY_* constants, so a
+    return of ``1000`` falls through the ``elif`` chain and the screen
+    loops back to ``wait_for``, which then resets the override flag.
+    """
+
+
 DESKTOP_SCALE = 2
 DESKTOP_LEFT_WIDTH = 160
 DESKTOP_RIGHT_WIDTH = 80
@@ -319,7 +340,7 @@ class HardwareButtons(Singleton):
         while True:
             if self.override_ind:
                 self.override_ind = False
-                return HardwareButtonsConstants.OVERRIDE
+                raise OverrideInterrupt()
 
             cur_time = int(time.time() * 1000)
             if cur_time - self.last_input_time > controller.screensaver_activation_ms and not controller.is_screensaver_running:

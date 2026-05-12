@@ -325,6 +325,21 @@ class CardsMenuView(View):
                 refresh_requested[0] = False
                 state = probe_installed_applets(controller)
 
+                if not state.present:
+                    # No card → bounce back to MainMenu with a toast. Every
+                    # entry in this menu either requires a card to do anything
+                    # useful (Keycard/Satochip/SeedKeeper sub-flows) or wipes
+                    # one (Factory reset), so there is nothing to do here
+                    # without a card.
+                    from seedsigner.gui.toast import InfoToast
+                    try:
+                        controller.activate_toast(
+                            InfoToast(label_text=_("Insert a card first"))
+                        )
+                    except Exception:
+                        pass
+                    return Destination(MainMenuView, clear_history=True)
+
                 def _entry(label: str, installed: bool) -> ButtonOption:
                     if not state.present:
                         return ButtonOption(label)

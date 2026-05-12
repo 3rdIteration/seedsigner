@@ -13,7 +13,7 @@ from seedsigner.gui.components import (GUIConstants,
     BaseComponent, Button, FontAwesomeIconConstants, Icon, IconButton,
     LargeIconButton, SeedSignerIconConstants, TopNav, TextArea, load_image)
 from seedsigner.gui.keyboard import Keyboard, TextEntryDisplay
-from seedsigner.hardware.buttons import HardwareButtonsConstants, HardwareButtons
+from seedsigner.hardware.buttons import HardwareButtonsConstants, HardwareButtons, OverrideInterrupt
 from seedsigner.models.encode_qr import BaseQrEncoder
 from seedsigner.models.settings import SettingsConstants
 from seedsigner.models.threads import BaseThread, ThreadsafeCounter
@@ -71,6 +71,12 @@ class BaseScreen(BaseComponent):
                     t.start()
 
             return self._run()
+        except OverrideInterrupt:
+            # ``trigger_override()`` fired from another thread (e.g. the
+            # card-removed redirect or the wipe timer). Propagate as a
+            # back-button so the calling View returns to the main loop,
+            # which then honors any pending Controller redirect.
+            return RET_CODE__BACK_BUTTON
         except Exception as e:
             repr(e)
             raise e
