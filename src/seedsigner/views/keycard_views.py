@@ -2268,11 +2268,15 @@ class ToolsKeycardInstancesRenameView(View):
     """
 
     def run(self):
-        from seedsigner.helpers.keycard import pairing_storage
-        from seedsigner.helpers.keycard.client import KeycardClient
-        from seedsigner.helpers.keycard.reader import (
-            release_other_smartcard_holders, wait_for_card,
-        )
+        try:
+            from seedsigner.helpers.keycard import pairing_storage
+            from seedsigner.helpers.keycard.client import KeycardClient
+            from seedsigner.helpers.keycard.crypto import KEYCARD_SHELL_DEFAULT_PSK
+            from seedsigner.helpers.keycard.reader import (
+                release_other_smartcard_holders, wait_for_card,
+            )
+        except ImportError as exc:
+            return _error_destination("Keycard support unavailable", str(exc))
 
         try:
             channel, instances, isd_connection = _open_isd_channel(self.controller)
