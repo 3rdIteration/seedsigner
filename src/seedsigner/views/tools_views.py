@@ -5304,11 +5304,17 @@ class ToolsDIYInstallAppletView(View):
         elif "keycard" in applet_file.lower():
             # Status Keycard 3.2 cap contains Keycard + NDEF + Cash applets
             # in a single package. gp.jar accepts --install only once per
-            # invocation, so we --load the package first, then create each
-            # instance with its own --create call. Mirrors the proven
-            # keycard-cli install-5-instances.sh recipe.
-            # Instance AID for the signing applet (A0000008040001010101) is
-            # what keycard_views.py SELECTs by default — must stay exact.
+            # invocation, so we --load the package first, then create the
+            # signing instance. We deliberately skip the NDEF and Cash
+            # instances:
+            #   - NDEF (`D2760000850101`) is the ISO/IEC 14443 Type-4
+            #     NDEF AID, which iOS Core NFC auto-SELECTs on tap. Its
+            #     presence breaks the Seedkeeper iOS app's reveal flow
+            #     when SeedKeeper coexists on the same card.
+            #   - Cash (Status Pay) is unused by every tool that targets
+            #     this device.
+            # Instance AID for the signing applet (A0000008040001010101)
+            # is what keycard_views.py SELECTs by default — keep exact.
             cap_path = f"{cap_dir}/{applet_file}"
             keycard_steps = [
                 (f"--load {cap_path}", "Loading Keycard package"),
@@ -5316,16 +5322,6 @@ class ToolsDIYInstallAppletView(View):
                     "--package A0000008040001 --applet A000000804000101 "
                     "--create A0000008040001010101",
                     "Creating Keycard instance",
-                ),
-                (
-                    "--package A0000008040001 --applet A000000804000102 "
-                    "--create D2760000850101",
-                    "Creating NDEF instance",
-                ),
-                (
-                    "--package A0000008040001 --applet A000000804000103 "
-                    "--create A0000008040001030101",
-                    "Creating Cash instance",
                 ),
             ]
             installed_applets = "ok"

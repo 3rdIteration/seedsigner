@@ -120,12 +120,14 @@ class TestKeycardInstallPreDelete(unittest.TestCase):
     def test_pre_delete_is_first_and_suppressed(self):
         v = _make_install_view("keycard")
         # All steps succeed (truthy).
-        m, r, d, calls = self._stub_microsd_and_runner([True, True, True, True, True])
+        m, r, d, calls = self._stub_microsd_and_runner([True, True, True])
         with m, r, d:
             v.run()
 
-        # 1 pre-delete + 1 --load + 3 × --create = 5.
-        self.assertEqual(len(calls), 5)
+        # 1 pre-delete + 1 --load + 1 --create (signing only) = 3.
+        # NDEF and Cash are skipped to avoid breaking SeedKeeper iOS
+        # interop (NDEF AID is the ISO/IEC 14443 Type-4 standard).
+        self.assertEqual(len(calls), 3)
         first_args, first_kwargs = calls[0]
         # Positional command argument: (view, command, label, success).
         self.assertEqual(first_args[1], "--delete A0000008040001 -force")
@@ -138,12 +140,10 @@ class TestKeycardInstallPreDelete(unittest.TestCase):
         self.assertIn("-force", load_args[1])
         self.assertNotIn("suppress_failure_dialog", load_kwargs)
 
-        # The 3 create steps come from _KEYCARD_CREATE_COMMANDS — order
-        # is signing instance, NDEF, third instance.
-        for i in range(2, 5):
-            cmd = calls[i][0][1]
-            self.assertIn("--create", cmd)
-            self.assertIn("A0000008040001", cmd)
+        # The single create step is the signing instance.
+        create_cmd = calls[2][0][1]
+        self.assertIn("--create A0000008040001010101", create_cmd)
+        self.assertIn("--applet A000000804000101", create_cmd)
 
     def test_step_failure_reports_which_step(self):
         v = _make_install_view("keycard")
@@ -155,23 +155,23 @@ class TestKeycardInstallPreDelete(unittest.TestCase):
 
         v.run_screen = fake_run_screen
         # Pre-delete succeeds (True), --load succeeds (True),
-        # first --create FAILS (None) — should bail at the second step
-        # of the audible recipe ("steps" = --load + 3 × --create = 4).
-        # The pre-delete is intentionally NOT counted in the step
-        # numbering shown to the user.
-        m, r, d, _ = self._stub_microsd_and_runner([True, True, None, True, True])
+        # --create FAILS (None) — should bail at the second step of the
+        # audible recipe ("steps" = --load + 1 × --create = 2). The
+        # pre-delete is intentionally NOT counted in the step numbering
+        # shown to the user.
+        m, r, d, _ = self._stub_microsd_and_runner([True, True, None])
         with m, r, d:
             v.run()
 
-        self.assertIn("2/4", captured_text["text"])
-        self.assertIn("Creating Keycard instance 1/3", captured_text["text"])
+        self.assertIn("2/2", captured_text["text"])
+        self.assertIn("Creating Keycard signing instance", captured_text["text"])
 
     def test_clean_card_install_still_succeeds(self):
         """Pre-delete returning None on a clean card (gp.jar's "not
         present on card" → suppressed) must not abort the install."""
         v = _make_install_view("keycard")
-        # Pre-delete fails (None, but suppressed); load + 3 creates succeed.
-        m, r, d, _ = self._stub_microsd_and_runner([None, True, True, True, True])
+        # Pre-delete fails (None, but suppressed); load + create succeed.
+        m, r, d, _ = self._stub_microsd_and_runner([None, True, True])
         with m, r, d:
             dest = v.run()
 

@@ -413,10 +413,16 @@ _SEEDKEEPER_STORAGE_OPTIONS = [
 ]
 _SEEDKEEPER_STORAGE_DEFAULT_INDEX = 1  # 8 KB
 
+# The Keycard-3.2.cap ships three applets (signing, NDEF, Cash). We
+# only create the signing instance: the NDEF applet (`D2760000850101`,
+# ISO/IEC 14443 Type-4 NDEF AID) is auto-SELECTed by iOS Core NFC during
+# tag discovery and breaks the SeedKeeper iOS app's reveal flow when
+# both applets coexist on the same card. The Cash applet (Status Pay)
+# is unused by every wallet/tool we care about. The signing instance
+# AID (A0000008040001010101) must stay exact — `select_with_autodetect`
+# and the rest of the Keycard views select against it.
 _KEYCARD_CREATE_COMMANDS = [
     "--package A0000008040001 --applet A000000804000101 --create A0000008040001010101",
-    "--package A0000008040001 --applet A000000804000102 --create D2760000850101",
-    "--package A0000008040001 --applet A000000804000103 --create A0000008040001030101",
 ]
 
 
@@ -487,11 +493,11 @@ class CardsInstallAppletView(View):
                 "Preparing Keycard install", None,
                 suppress_failure_dialog=True,
             )
-            # Multi-step recipe: --load then 3 × --create instances.
+            # Multi-step recipe: --load then create the signing instance.
             steps = [(f"--load {cap_path} -force", "Loading Keycard package")]
             steps.extend(
-                (cmd, f"Creating Keycard instance {i + 1}/3")
-                for i, cmd in enumerate(_KEYCARD_CREATE_COMMANDS)
+                (cmd, "Creating Keycard signing instance")
+                for cmd in _KEYCARD_CREATE_COMMANDS
             )
             for index, (command, label) in enumerate(steps):
                 result = seedkeeper_utils.run_globalplatform(self, command, label, None)
