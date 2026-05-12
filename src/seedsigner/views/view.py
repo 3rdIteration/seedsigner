@@ -350,8 +350,16 @@ class CardsMenuView(View):
                     button_data=button_data,
                 )
 
-                if selected_menu_num == HardwareButtonsConstants.OVERRIDE:
-                    # CardMonitor woke us up — re-probe and redraw.
+                # ``HardwareButtonsConstants.OVERRIDE`` and
+                # ``RET_CODE__BACK_BUTTON`` happen to share the value
+                # ``1000``, so the return code alone can't tell us
+                # which one fired. The listener flag is the ground
+                # truth: if the CardMonitor woke us up, ``trigger_override``
+                # set ``refresh_requested[0]`` before the screen returned;
+                # otherwise it's a real back-button press. Check the
+                # flag first so a back press is never swallowed by the
+                # refresh loop.
+                if refresh_requested[0]:
                     continue
 
                 if selected_menu_num == RET_CODE__BACK_BUTTON:

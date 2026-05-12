@@ -218,5 +218,26 @@ class TestCardsMenuRefresh(unittest.TestCase):
         self.assertNotIn("rem", registered)
 
 
+class TestBackButtonNotSwallowedByOverride(unittest.TestCase):
+    """Regression: ``RET_CODE__BACK_BUTTON`` and
+    ``HardwareButtonsConstants.OVERRIDE`` share the value ``1000``. The
+    refresh loop must distinguish them via the listener flag so a back
+    press is never mistaken for a card-event override (which previously
+    sent the user to SeedKeeper — the first item — on the next iteration)."""
+
+    def test_back_press_without_card_event_returns_to_backstack(self):
+        from seedsigner.gui.screens.screen import RET_CODE__BACK_BUTTON
+        from seedsigner.views.view import BackStackView
+
+        v = _make_view()
+        v.run_screen = MagicMock(return_value=RET_CODE__BACK_BUTTON)
+        with patch(
+            "seedsigner.helpers.card_probe.probe_installed_applets",
+            return_value=_absent_state(),
+        ):
+            dest = v.run()
+        self.assertIs(dest.View_cls, BackStackView)
+
+
 if __name__ == "__main__":
     unittest.main()
