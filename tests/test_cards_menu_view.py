@@ -149,17 +149,19 @@ class TestCardsMenuRouting(unittest.TestCase):
         self.assertIs(dest.View_cls, CardsFactoryResetView)
 
 
-class TestCardsMenuRefresh(unittest.TestCase):
-    """When a card-event listener fires while the menu is on screen,
-    ``run()`` re-probes and re-renders rather than holding stale state."""
+class TestCardsMenuRefreshOnInsert(unittest.TestCase):
+    """When a card-inserted listener fires while the menu is on screen,
+    ``run()`` re-probes and re-renders rather than holding stale state.
+    Removals are handled centrally in Controller and don't go through
+    this path anymore."""
 
-    def test_refreshes_on_card_event_then_routes(self):
+    def test_refreshes_on_insert_then_routes(self):
         from seedsigner.hardware.buttons import HardwareButtonsConstants
         from seedsigner.views.tools_views import ToolsSeedkeeperView
 
         v = _make_view()
 
-        # Capture the listener so we can simulate the CardMonitor firing it.
+        # Capture the insert listener so we can simulate the CardMonitor firing it.
         registered = {}
 
         def reg_ins(fn):
@@ -168,16 +170,8 @@ class TestCardsMenuRefresh(unittest.TestCase):
         def unreg_ins(fn):
             registered.pop("ins", None)
 
-        def reg_rem(fn):
-            registered["rem"] = fn
-
-        def unreg_rem(fn):
-            registered.pop("rem", None)
-
         v.controller.register_card_inserted_listener.side_effect = reg_ins
         v.controller.unregister_card_inserted_listener.side_effect = unreg_ins
-        v.controller.register_card_removed_listener.side_effect = reg_rem
-        v.controller.unregister_card_removed_listener.side_effect = unreg_rem
 
         # First render: simulate a card-inserted event while the screen
         # waits for input, then return OVERRIDE so the view loops.
@@ -213,16 +207,33 @@ class TestCardsMenuRefresh(unittest.TestCase):
         self.assertEqual(probe_count[0], 2)
         # Routing on the second iteration matches the user's choice.
         self.assertIs(dest.View_cls, ToolsSeedkeeperView)
-        # Listeners were unregistered in the finally block.
+        # Listener was unregistered in the finally block.
         self.assertNotIn("ins", registered)
-        self.assertNotIn("rem", registered)
+        # CardsMenuView no longer subscribes to removals; the central
+        # Controller redirect owns that path.
+        v.controller.register_card_removed_listener.assert_not_called()
+
+    def test_cardsmenuview_does_not_subscribe_to_removals(self):
+        """Regression: CardsMenuView previously registered itself for
+        removed events, which competed with the central redirect and
+        caused the menu to refresh in place instead of bailing to
+        MainMenu on card removal."""
+        v = _make_view()
+        v.run_screen = MagicMock(return_value=0)
+        with patch(
+            "seedsigner.helpers.card_probe.probe_installed_applets",
+            return_value=_absent_state(),
+        ):
+            v.run()
+        v.controller.register_card_removed_listener.assert_not_called()
+        v.controller.unregister_card_removed_listener.assert_not_called()
 
 
-class TestBackButtonNotSwallowedByOverride(unittest.TestCase):
+class TestBackButtonNotSwallowedByInsertOverride(unittest.TestCase):
     """Regression: ``RET_CODE__BACK_BUTTON`` and
     ``HardwareButtonsConstants.OVERRIDE`` share the value ``1000``. The
     refresh loop must distinguish them via the listener flag so a back
-    press is never mistaken for a card-event override (which previously
+    press is never mistaken for a card-insert override (which previously
     sent the user to SeedKeeper — the first item — on the next iteration)."""
 
     def test_back_press_without_card_event_returns_to_backstack(self):
@@ -237,6 +248,78 @@ class TestBackButtonNotSwallowedByOverride(unittest.TestCase):
         ):
             dest = v.run()
         self.assertIs(dest.View_cls, BackStackView)
+
+
+class TestCardRemovedRedirect(unittest.TestCase):
+    """Centralised redirect in ``Controller``: when a card is removed
+    while the active view belongs to the cards subtree, the next
+    destination is force-replaced with ``MainMenuView``."""
+
+    def _stub_controller(self, back_stack_top_view_cls):
+        """Build a partially-initialised Controller for unit tests."""
+        from seedsigner.controller import Controller, BackStack
+        from seedsigner.views.view import Destination
+        c = Controller.__new__(Controller)
+        c.back_stack = BackStack()
+        if back_stack_top_view_cls is not None:
+            c.back_stack.append(Destination(back_stack_top_view_cls))
+        c._pending_card_removed_redirect = False
+        return c
+
+    def test_is_card_view_true_for_cards_menu(self):
+        from seedsigner.views.view import CardsMenuView
+        c = self._stub_controller(None)
+        self.assertTrue(c._is_card_view(CardsMenuView))
+
+    def test_is_card_view_true_for_cards_factory_reset(self):
+        from seedsigner.views.view import CardsFactoryResetView
+        c = self._stub_controller(None)
+        self.assertTrue(c._is_card_view(CardsFactoryResetView))
+
+    def test_is_card_view_true_for_keycard_views_module(self):
+        from seedsigner.views.keycard_views import ToolsKeycardMenuView
+        c = self._stub_controller(None)
+        self.assertTrue(c._is_card_view(ToolsKeycardMenuView))
+
+    def test_is_card_view_true_for_satochip_and_seedkeeper_prefixes(self):
+        from seedsigner.views.tools_views import (
+            ToolsSatochipView, ToolsSeedkeeperView,
+        )
+        c = self._stub_controller(None)
+        self.assertTrue(c._is_card_view(ToolsSatochipView))
+        self.assertTrue(c._is_card_view(ToolsSeedkeeperView))
+
+    def test_is_card_view_false_for_main_menu(self):
+        from seedsigner.views.view import MainMenuView
+        c = self._stub_controller(None)
+        self.assertFalse(c._is_card_view(MainMenuView))
+
+    def test_is_card_view_false_for_none(self):
+        c = self._stub_controller(None)
+        self.assertFalse(c._is_card_view(None))
+
+    def test_listener_sets_flag_when_in_cards_menu(self):
+        from seedsigner.views.view import CardsMenuView
+        c = self._stub_controller(CardsMenuView)
+        c._on_card_removed_redirect()
+        self.assertTrue(c._pending_card_removed_redirect)
+
+    def test_listener_sets_flag_when_in_keycard_view(self):
+        from seedsigner.views.keycard_views import ToolsKeycardMenuView
+        c = self._stub_controller(ToolsKeycardMenuView)
+        c._on_card_removed_redirect()
+        self.assertTrue(c._pending_card_removed_redirect)
+
+    def test_listener_noop_outside_card_view(self):
+        from seedsigner.views.view import MainMenuView
+        c = self._stub_controller(MainMenuView)
+        c._on_card_removed_redirect()
+        self.assertFalse(c._pending_card_removed_redirect)
+
+    def test_listener_noop_when_back_stack_empty(self):
+        c = self._stub_controller(None)
+        c._on_card_removed_redirect()
+        self.assertFalse(c._pending_card_removed_redirect)
 
 
 if __name__ == "__main__":

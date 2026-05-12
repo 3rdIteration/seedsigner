@@ -303,11 +303,13 @@ class CardsMenuView(View):
             hw_inputs = None
 
         # ``refresh_requested`` is mutated from the CardMonitor thread
-        # via the listener callbacks below; the box pattern keeps the
+        # via the insert listener below; the box pattern keeps the
         # closure cheap and avoids needing a Lock for a single bool.
+        # Card *removal* is handled centrally in Controller (it snaps
+        # back to MainMenu), so we only subscribe to insertion here.
         refresh_requested = [False]
 
-        def _on_card_event(*_args, **_kwargs):
+        def _on_card_inserted(*_args, **_kwargs):
             refresh_requested[0] = True
             if hw_inputs is not None:
                 try:
@@ -317,8 +319,7 @@ class CardsMenuView(View):
                     # will still pick up the new state on next entry.
                     pass
 
-        controller.register_card_inserted_listener(_on_card_event)
-        controller.register_card_removed_listener(_on_card_event)
+        controller.register_card_inserted_listener(_on_card_inserted)
         try:
             while True:
                 refresh_requested[0] = False
@@ -354,11 +355,13 @@ class CardsMenuView(View):
                 # ``RET_CODE__BACK_BUTTON`` happen to share the value
                 # ``1000``, so the return code alone can't tell us
                 # which one fired. The listener flag is the ground
-                # truth: if the CardMonitor woke us up, ``trigger_override``
-                # set ``refresh_requested[0]`` before the screen returned;
-                # otherwise it's a real back-button press. Check the
-                # flag first so a back press is never swallowed by the
-                # refresh loop.
+                # truth: if the CardMonitor woke us up on insertion,
+                # ``trigger_override`` set ``refresh_requested[0]``
+                # before the screen returned; otherwise it's a real
+                # back press. Check the flag first so a back press is
+                # never swallowed by the refresh loop. Removals don't
+                # reach this branch — they're handled by the central
+                # redirect in Controller before this view re-runs.
                 if refresh_requested[0]:
                     continue
 
@@ -378,8 +381,7 @@ class CardsMenuView(View):
                 if chosen is factory_reset_btn:
                     return Destination(CardsFactoryResetView)
         finally:
-            controller.unregister_card_inserted_listener(_on_card_event)
-            controller.unregister_card_removed_listener(_on_card_event)
+            controller.unregister_card_inserted_listener(_on_card_inserted)
 
 
 _DEFAULT_CAP_BY_KIND = {

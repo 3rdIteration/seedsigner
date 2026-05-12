@@ -219,6 +219,25 @@ class Controller(Singleton):
     wipe_timer_ms: int = None
     auto_wiped: bool = False
 
+    # Card-view detection used by the centralized card-removed redirect.
+    # When a removal fires while the top of the back_stack is one of
+    # these views, the next destination is force-replaced with
+    # MainMenuView (the existing CardRemovedToast is the visible cue).
+    _CARD_VIEW_MODULES = frozenset({
+        "seedsigner.views.keycard_views",
+    })
+    _CARD_VIEW_CLASSNAMES = frozenset({
+        "CardsMenuView",
+        "CardsFactoryResetView",
+        "CardsInstallAppletView",
+    })
+    _CARD_VIEW_CLASSNAME_PREFIXES = (
+        "ToolsSatochip",
+        "ToolsSeedkeeper",
+        "Satochip",
+    )
+    _pending_card_removed_redirect: bool = False
+
 
     @classmethod
     def get_instance(cls):
@@ -349,6 +368,11 @@ class Controller(Singleton):
         from seedsigner.helpers.card_monitor import start_card_monitor
         controller.card_monitor_observer = start_card_monitor(controller)
 
+        # Centralized "card removed while in a card view → MainMenu"
+        # redirect. Registered once, fans out via the main loop.
+        controller._pending_card_removed_redirect = False
+        controller.register_card_removed_listener(controller._on_card_removed_redirect)
+
         return cls._instance
 
 
@@ -470,6 +494,43 @@ class Controller(Singleton):
             self.forget_satochip_session()
         except Exception:
             logger.exception("forget_satochip_session failed in wipe_card_session_secrets")
+
+    def _is_card_view(self, view_cls) -> bool:
+        """True iff ``view_cls`` belongs to the card-views subtree.
+
+        Used by the card-removed redirect to decide whether to snap
+        back to MainMenu. See class-level ``_CARD_VIEW_*`` allowlists.
+        """
+        if view_cls is None:
+            return False
+        if view_cls.__module__ in self._CARD_VIEW_MODULES:
+            return True
+        name = view_cls.__name__
+        if name in self._CARD_VIEW_CLASSNAMES:
+            return True
+        if name.startswith(self._CARD_VIEW_CLASSNAME_PREFIXES):
+            return True
+        return False
+
+    def _on_card_removed_redirect(self, *_args, **_kwargs) -> None:
+        """Card-removed listener that forces a return to MainMenu.
+
+        Fires on the CardMonitor thread; must be fast and exception-safe.
+        Sets a flag the main loop honors after the active view returns,
+        and trips ``trigger_override`` so any screen blocked on input
+        wakes up.
+        """
+        if not self.back_stack:
+            return
+        top = self.back_stack[-1]
+        if not self._is_card_view(getattr(top, "View_cls", None)):
+            return
+        self._pending_card_removed_redirect = True
+        try:
+            from seedsigner.hardware.buttons import HardwareButtons
+            HardwareButtons.get_instance().trigger_override()
+        except Exception:
+            pass
 
     def dispatch_card_removed_event(self, reader_name=None) -> None:
         """User-visible side of a card-removed event: toast + listener fan-out.
@@ -861,6 +922,15 @@ class Controller(Singleton):
                     # Should only happen during dev when you hit an unimplemented option
                     from seedsigner.views.view import NotYetImplementedView
                     next_destination = Destination(NotYetImplementedView)
+
+                # Card-removed redirect: if a card was pulled while the
+                # user was anywhere in the cards subtree, override the
+                # view's return value and snap back to MainMenu. The
+                # existing CardRemovedToast is the visible cue; this
+                # only handles navigation.
+                if self._pending_card_removed_redirect:
+                    self._pending_card_removed_redirect = False
+                    next_destination = Destination(MainMenuView, clear_history=True)
 
                 if next_destination.skip_current_view:
                     # Remove the current View from history; it's forwarding us straight
