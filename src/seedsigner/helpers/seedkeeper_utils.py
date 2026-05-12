@@ -432,7 +432,8 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True):
 
 
 def run_globalplatform(
-    parentObject, command, loadingText="Loading", successtext="Success"
+    parentObject, command, loadingText="Loading", successtext="Success",
+    suppress_failure_dialog: bool = False,
 ):
     import shlex
     from subprocess import run
@@ -533,13 +534,14 @@ def run_globalplatform(
             failureText = "Unable to complete secure connection... (App or reader may need restart)"
 
         logger.error(failureText)
-        parentObject.run_screen(
-            WarningScreen,
-            title="Failed",
-            status_headline=None,
-            text=failureText[:100],
-            show_back_button=False,
-        )
+        if not suppress_failure_dialog:
+            parentObject.run_screen(
+                WarningScreen,
+                title="Failed",
+                status_headline=None,
+                text=failureText[:100],
+                show_back_button=False,
+            )
 
         if uninstall_required:
             command = command.replace("--install", "--uninstall")

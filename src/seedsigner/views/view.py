@@ -464,18 +464,35 @@ class CardsInstallAppletView(View):
             storage_param = options[selected].return_data or "1FFF"
 
         if self.kind == "keycard":
+            # Belt-and-braces: cascade-delete any prior Keycard package
+            # before --load. probe_installed_applets only SELECTs against
+            # instance AIDs, so an orphan 7-byte package (`A0000008040001`)
+            # from a partial install or a factory-reset on older firmware
+            # is invisible to the menu, the factory-reset path, and even
+            # keycard-shell — but it still makes `--load` fail with
+            # "Applet loading not allowed". `-force` on --load is kept
+            # below as a second line of defence; this explicit delete is
+            # the primary recovery path. Silenced because on a clean card
+            # gp.jar emits "Applet is not present on card" — expected.
+            seedkeeper_utils.run_globalplatform(
+                self, "--delete A0000008040001 -force",
+                "Preparing Keycard install", None,
+                suppress_failure_dialog=True,
+            )
             # Multi-step recipe: --load then 3 × --create instances.
-            # ``-force`` on --load deletes any pre-existing Keycard load
-            # file (orphan from older factory-reset builds).
             steps = [(f"--load {cap_path} -force", "Loading Keycard package")]
             steps.extend(
                 (cmd, f"Creating Keycard instance {i + 1}/3")
                 for i, cmd in enumerate(_KEYCARD_CREATE_COMMANDS)
             )
-            for command, label in steps:
+            for index, (command, label) in enumerate(steps):
                 result = seedkeeper_utils.run_globalplatform(self, command, label, None)
                 if result is None:
-                    return _show_warning(self, "Install", "Keycard install failed.")
+                    return _show_warning(
+                        self, "Install",
+                        f"Keycard install failed at step "
+                        f"{index + 1}/{len(steps)}:\n{label}.",
+                    )
         else:
             command = single_cmd_template.format(cap=str(cap_path), params=storage_param)
             result = seedkeeper_utils.run_globalplatform(
@@ -604,30 +621,42 @@ def _attempt_globalplatform_wipe(view):
     if not state.present:
         return ["No card detected."]
 
-    # Each entry: (display name, AID hex passed to ``gp.jar --delete``).
-    targets: list[tuple[str, str]] = []
+    # Each entry: (display name, AID hex passed to ``gp.jar --delete``,
+    # suppress_failure_dialog). For Keycard we *always* attempt the
+    # package delete — even when the probe reports it absent — because
+    # the probe only SELECTs instance AIDs, so an orphan 7-byte package
+    # (load file without instances) is invisible to it. The suppressed
+    # WarningScreen prevents a misleading "Failed" dialog on cards that
+    # genuinely have no Keycard package.
+    targets: list[tuple[str, str, bool]] = []
     if state.seedkeeper_installed:
-        targets.append(("SeedKeeper", "536565644b6565706572"))
+        targets.append(("SeedKeeper", "536565644b6565706572", False))
     if state.satochip_installed:
-        targets.append(("Satochip", "5361746f43686970"))
-    if state.keycard_installed:
-        # Package AID — deletes the load file + all 3 instances in one shot.
-        targets.append(("Keycard", "A0000008040001"))
-
-    if not targets:
-        return ["No applets to delete."]
+        targets.append(("Satochip", "5361746f43686970", False))
+    targets.append(("Keycard", "A0000008040001", not state.keycard_installed))
 
     deleted: list[str] = []
     skipped: list[str] = []
-    for name, aid_hex in targets:
+    for name, aid_hex, suppress in targets:
         result = seedkeeper_utils.run_globalplatform(
             view, f"--delete {aid_hex} -force",
             f"Deleting {name}", None,
+            suppress_failure_dialog=suppress,
         )
         if result is None:
-            skipped.append(name)
+            # Don't surface a silenced (probe-not-seen) Keycard failure
+            # as a "Skipped: Keycard." line — on a clean card that would
+            # be misleading. Only real, user-visible failures count.
+            if not suppress:
+                skipped.append(name)
         else:
             deleted.append(name)
+
+    # Genuinely clean card: probe found nothing AND the always-attempted
+    # Keycard package delete also failed silently. Keep the old "nothing
+    # to do" message instead of falling through to an empty report.
+    if not deleted and not skipped:
+        return ["No applets to delete."]
 
     # If none of the gp.jar deletes succeeded, this is most likely an
     # ISD-keys-rotated card. Surface as None so the caller falls back
