@@ -373,28 +373,33 @@ class TestRunCardGate(unittest.TestCase):
         from seedsigner.views.view import BackStackView
         self.assertIs(result.View_cls, BackStackView)
 
-    def test_cancel_from_wait_pops_back(self):
-        from seedsigner.gui.screens.screen import RET_CODE__BACK_BUTTON
-        from seedsigner.helpers.card_probe import ProbeResult, run_card_gate
-        view = self._make_view(run_screen_return=RET_CODE__BACK_BUTTON)
-        absent = ProbeResult(present=False, kind_match=False, initialised=False)
-        with patch("seedsigner.helpers.card_probe.probe_card", return_value=absent):
-            result = run_card_gate(view, "keycard", title="Keycard",
-                                   setup_view=MagicMock())
-        from seedsigner.views.view import BackStackView
-        self.assertIs(result.View_cls, BackStackView)
+    def test_absent_redirects_home_with_toast(self):
+        """Card absent → snap back to MainMenuView with an InfoToast.
 
-    def test_insert_from_wait_reenters_view(self):
-        from seedsigner.gui.screens.screen import RET_CODE__CARD_INSERTED
+        Replaces the old CardWaitScreen flow: no intermediate "Insert
+        card" screen, just a direct redirect plus a "No card — returned
+        home" notification surfaced via ``Controller.activate_toast``.
+        ``InfoToast`` itself requires a configured ``Renderer``, so we
+        patch the class with a sentinel and assert it was constructed
+        with the expected label text.
+        """
         from seedsigner.helpers.card_probe import ProbeResult, run_card_gate
-        view = self._make_view(run_screen_return=RET_CODE__CARD_INSERTED)
-        view_cls = view.__class__
+        view = self._make_view()
         absent = ProbeResult(present=False, kind_match=False, initialised=False)
-        with patch("seedsigner.helpers.card_probe.probe_card", return_value=absent):
+        toast_factory = MagicMock(name="InfoToast")
+        with patch("seedsigner.helpers.card_probe.probe_card", return_value=absent), \
+             patch("seedsigner.gui.toast.InfoToast", toast_factory):
             result = run_card_gate(view, "keycard", title="Keycard",
                                    setup_view=MagicMock())
-        self.assertIs(result.View_cls, view_cls)
-        self.assertTrue(result.skip_current_view)
+        from seedsigner.views.view import MainMenuView
+        self.assertIs(result.View_cls, MainMenuView)
+        self.assertTrue(result.clear_history)
+        toast_factory.assert_called_once()
+        kwargs = toast_factory.call_args.kwargs
+        self.assertIn("No card", kwargs.get("label_text", ""))
+        view.controller.activate_toast.assert_called_once_with(
+            toast_factory.return_value
+        )
 
 
 if __name__ == "__main__":

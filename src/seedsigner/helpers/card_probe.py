@@ -2,9 +2,9 @@
 
 Each app View (Keycard / Satochip / SeedKeeper) calls :func:`probe_card`
 on entry to decide whether to show its menu, route to the setup wizard,
-or fall back to the "Insert card" screen. The probe is intentionally
-cheap (single SELECT + at most one GET STATUS) and never prompts for a
-PIN — the view layer is responsible for the next step.
+or snap back to MainMenu with a "No card" toast. The probe is
+intentionally cheap (single SELECT + at most one GET STATUS) and never
+prompts for a PIN — the view layer is responsible for the next step.
 
 Threat model: no seed material flows here. Caches/secret state in the
 controller are not touched. The probe opens its own connection and
@@ -207,9 +207,10 @@ def run_card_gate(view, kind: CardKind, *, title: str, setup_view):
 
     Branches:
 
-    - **Absent**: shows :class:`CardWaitScreen`. On insert, returns a
-      Destination that re-enters the caller View (so the probe runs
-      again with the new card). On Cancel, returns to ``CardsMenuView``.
+    - **Absent**: surfaces an ``InfoToast`` ("No card — returned home")
+      and redirects to ``MainMenuView`` with ``clear_history=True``. No
+      intermediate "Insert card" screen; if the user wants to retry,
+      they reopen the Cards menu after inserting.
     - **Wrong applet**: warning, then back to ``CardsMenuView``.
     - **Uninitialised**: routes to ``setup_view``. When the setup flow
       returns, the caller's back-stack lands back on the gated View,
@@ -219,22 +220,22 @@ def run_card_gate(view, kind: CardKind, *, title: str, setup_view):
     ``view`` is the calling View (used for ``run_screen`` and
     ``controller``). ``title`` is the screen header (e.g. "Satochip").
     """
-    from seedsigner.gui.screens.screen import (
-        RET_CODE__BACK_BUTTON, RET_CODE__CARD_INSERTED, CardWaitScreen,
-        WarningScreen,
-    )
-    from seedsigner.views.view import BackStackView, Destination
+    from seedsigner.views.view import BackStackView, Destination, MainMenuView
 
     probe = probe_card(kind, view.controller)
 
     if not probe.present:
-        ret = view.run_screen(CardWaitScreen, title=title)
-        if ret == RET_CODE__CARD_INSERTED:
-            # Re-enter the calling view so the next loop probes the
-            # newly inserted card.
-            return Destination(view.__class__, skip_current_view=True)
-        # Cancel: pop back up the stack (parent is CardsMenuView).
-        return Destination(BackStackView)
+        # Card was pulled (or never present) between CardsMenuView and
+        # this app menu. Snap straight back to MainMenu with a toast so
+        # the user is not stuck on a "please insert card" prompt.
+        try:
+            from seedsigner.gui.toast import InfoToast
+            view.controller.activate_toast(
+                InfoToast(label_text="No card — returned home")
+            )
+        except Exception:
+            logger.exception("InfoToast dispatch failed in run_card_gate")
+        return Destination(MainMenuView, clear_history=True)
 
     if not probe.kind_match:
         # Card is present but the requested applet isn't installed.

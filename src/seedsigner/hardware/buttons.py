@@ -418,8 +418,8 @@ class HardwareButtons(Singleton):
         Returns the first key in ``keys`` currently pressed (with the
         same debounce semantics as ``wait_for``), or ``None`` if no
         listed key is down. Intended for screens that must coexist with
-        another wait source (e.g. ``CardWaitScreen`` waiting on both a
-        card-event listener and a Cancel press).
+        another wait source (e.g. a background event listener plus a
+        Cancel press).
         """
         cur_time = int(time.time() * 1000)
 

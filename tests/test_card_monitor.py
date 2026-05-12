@@ -255,8 +255,7 @@ class TestOnCardInsertedToast(unittest.TestCase):
         ctrl = MagicMock(spec=Controller)
         ctrl.activate_toast = MagicMock()
         ctrl.identify_inserted_card_kind = MagicMock(return_value="Card")
-        # Listener registries used by the card-event fan-out (added in
-        # Phase 5b alongside CardWaitScreen).
+        # Listener registries used by the card-event fan-out.
         ctrl._card_inserted_listeners = []
         ctrl._card_removed_listeners = []
 

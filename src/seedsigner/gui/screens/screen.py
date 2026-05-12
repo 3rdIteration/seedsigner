@@ -26,7 +26,6 @@ logger = logging.getLogger(__name__)
 RET_CODE__BACK_BUTTON = 1000
 RET_CODE__POWER_BUTTON = 1001
 RET_CODE__DISPLAY_TOGGLE = 1002
-RET_CODE__CARD_INSERTED = 1003
 
 
 
@@ -997,64 +996,6 @@ class LargeIconStatusScreen(ButtonListScreen):
                 screen_y=next_y,
                 allow_text_overflow=self.allow_text_overflow,
             ))
-
-
-
-@dataclass
-class CardWaitScreen(LargeIconStatusScreen):
-    """Interruptible "Insert card" screen.
-
-    Subscribes to ``Controller`` card-inserted events for the duration
-    of the call so a card insertion wakes the screen immediately,
-    without a second PC/SC polling loop running alongside the existing
-    ``CardMonitor`` daemon. Cancel via the standard back / KEY_LEFT
-    semantics.
-    """
-    title: str = _mft("Insert card")
-    status_icon_name: str = FontAwesomeIconConstants.ID_CARD
-    status_color: str = GUIConstants.INFO_COLOR
-    status_headline: str = None
-    text: str = _mft("Insert the card to continue.")
-    show_back_button: bool = True
-
-    def __post_init__(self):
-        # ``button_data`` is consumed by ButtonListScreen to render the
-        # bottom button area. We need *something* so the layout reserves
-        # space; Cancel is the only path out besides insertion.
-        if not self.button_data:
-            self.button_data = [ButtonOption(_mft("Cancel"))]
-        super().__post_init__()
-
-    def _run(self):
-        import threading
-        from seedsigner.controller import Controller
-
-        controller = Controller.get_instance()
-        inserted_event = threading.Event()
-
-        def _on_insert(atr=None, reader_name=None):
-            inserted_event.set()
-
-        controller.register_card_inserted_listener(_on_insert)
-        try:
-            # The monitor only fires on transitions. If a card is
-            # already in the slot when we arrive, the screen would hang
-            # forever waiting for an event that never comes. The view
-            # layer is responsible for skipping us when a card is
-            # already present, but we still check defensively each
-            # iteration.
-            cancel_keys = [
-                HardwareButtonsConstants.KEY_LEFT,
-                HardwareButtonsConstants.KEY_PRESS,
-            ]
-            while True:
-                if inserted_event.wait(timeout=0.2):
-                    return RET_CODE__CARD_INSERTED
-                key = self.hw_inputs.poll(cancel_keys)
-                if key is not None:
-                    return RET_CODE__BACK_BUTTON
-        finally:
-            controller.unregister_card_inserted_listener(_on_insert)
 
 
 
