@@ -71,6 +71,14 @@ class _FakeController:
         Controller._notify_card_listeners(self, listeners, *args)
 
     # Real Controller wires these into the same callbacks; mirror that here.
+    def wipe_card_session_secrets(self):
+        from seedsigner.controller import Controller
+        Controller.wipe_card_session_secrets(self)
+
+    def dispatch_card_removed_event(self, reader_name=None):
+        from seedsigner.controller import Controller
+        Controller.dispatch_card_removed_event(self, reader_name)
+
     def on_card_removed(self, reader_name=None):
         # Borrow the real implementation logic to keep the test
         # honest — the observer contract is what we're testing, but
@@ -135,6 +143,76 @@ class TestPinWipingObserver(unittest.TestCase):
         obs.update(observable=None, handlers=([], [card]))
         self.assertEqual(ctrl.forget_all_pins_called, 1)
         self.assertEqual(ctrl.forget_satochip_session_called, 1)
+
+
+class TestRemovalDebounce(unittest.TestCase):
+    """The observer must absorb spurious removed/inserted bounces from
+    PC/SC drivers without surfacing a "Card removed" toast or notifying
+    removal listeners. The defensive wipe still runs unconditionally."""
+
+    def _make_observer_with_dispatch_capture(self):
+        from seedsigner.helpers.card_monitor import _PinWipingObserver
+        ctrl = _FakeController()
+        # Replace the bound delegating method with a capture so we can
+        # tell whether the debounced dispatch ever fired.
+        dispatch_calls = []
+        ctrl.dispatch_card_removed_event = lambda r=None: dispatch_calls.append(r)
+        return _PinWipingObserver(ctrl), ctrl, dispatch_calls
+
+    def test_inserted_within_window_cancels_dispatch(self):
+        import time
+        obs, ctrl, dispatch_calls = self._make_observer_with_dispatch_capture()
+        old = MagicMock(reader="r1")
+        new = MagicMock(reader="r1")
+        new.atr = [0x3B, 0x00]
+
+        obs.update(observable=None, handlers=([], [old]))
+        # Insert lands well before the 250 ms window expires.
+        obs.update(observable=None, handlers=([new], []))
+        # Wait past the original deadline to confirm the timer was cancelled.
+        time.sleep(0.4)
+
+        # Defensive wipe still ran on the removed event…
+        self.assertEqual(ctrl.forget_all_pins_called, 1)
+        # …but the user-visible removal event is suppressed.
+        self.assertEqual(dispatch_calls, [])
+        # And the insertion was dispatched normally.
+        self.assertEqual(len(ctrl.inserted_events), 1)
+
+    def test_removal_alone_dispatches_after_window(self):
+        import time
+        obs, ctrl, dispatch_calls = self._make_observer_with_dispatch_capture()
+        card = MagicMock(reader="r1")
+
+        obs.update(observable=None, handlers=([], [card]))
+
+        # Before the window the dispatch hasn't fired yet.
+        time.sleep(0.05)
+        self.assertEqual(dispatch_calls, [])
+        # Past the window it has.
+        time.sleep(0.35)
+        self.assertEqual(dispatch_calls, ["r1"])
+        # Wipe ran immediately, not deferred.
+        self.assertEqual(ctrl.forget_all_pins_called, 1)
+
+    def test_distinct_readers_are_independent(self):
+        """A spurious bounce on reader A must not cancel a real
+        removal pending on reader B."""
+        import time
+        obs, ctrl, dispatch_calls = self._make_observer_with_dispatch_capture()
+        card_a = MagicMock(reader="a")
+        card_b = MagicMock(reader="b")
+        card_a_in = MagicMock(reader="a")
+        card_a_in.atr = [0x3B, 0x00]
+
+        obs.update(observable=None, handlers=([], [card_a]))
+        obs.update(observable=None, handlers=([], [card_b]))
+        # Cancel only reader "a" via re-insertion.
+        obs.update(observable=None, handlers=([card_a_in], []))
+        time.sleep(0.4)
+
+        # Reader b's removal still fires; reader a's was cancelled.
+        self.assertEqual(dispatch_calls, ["b"])
 
 
 class TestStartStopCardMonitor(unittest.TestCase):

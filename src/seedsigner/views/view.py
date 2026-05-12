@@ -291,51 +291,87 @@ class CardsMenuView(View):
 
     def run(self):
         from seedsigner.gui.screens.screen import ButtonListScreen
+        from seedsigner.hardware.buttons import (
+            HardwareButtons, HardwareButtonsConstants,
+        )
         from seedsigner.helpers.card_probe import probe_installed_applets
 
-        state = probe_installed_applets(self.controller)
+        controller = self.controller
+        try:
+            hw_inputs = HardwareButtons.get_instance()
+        except Exception:
+            hw_inputs = None
 
-        def _entry(label: str, installed: bool) -> ButtonOption:
-            if not state.present:
-                return ButtonOption(label)
-            icon = (
-                SeedSignerIconConstants.CHECK if installed
-                else SeedSignerIconConstants.CHECKBOX
-            )
-            return ButtonOption(label, right_icon_name=icon)
+        # ``refresh_requested`` is mutated from the CardMonitor thread
+        # via the listener callbacks below; the box pattern keeps the
+        # closure cheap and avoids needing a Lock for a single bool.
+        refresh_requested = [False]
 
-        seedkeeper_btn = _entry(self.SEEDKEEPER_LABEL, state.seedkeeper_installed)
-        satochip_btn = _entry(self.SATOCHIP_LABEL, state.satochip_installed)
-        keycard_btn = _entry(self.KEYCARD_LABEL, state.keycard_installed)
-        factory_reset_btn = ButtonOption(
-            self.FACTORY_RESET_LABEL,
-            icon_name=FontAwesomeIconConstants.LOCK,
-        )
+        def _on_card_event(*_args, **_kwargs):
+            refresh_requested[0] = True
+            if hw_inputs is not None:
+                try:
+                    hw_inputs.trigger_override()
+                except Exception:
+                    # ``trigger_override`` is best-effort: the screen
+                    # will still pick up the new state on next entry.
+                    pass
 
-        button_data = [seedkeeper_btn, satochip_btn, keycard_btn, factory_reset_btn]
+        controller.register_card_inserted_listener(_on_card_event)
+        controller.register_card_removed_listener(_on_card_event)
+        try:
+            while True:
+                refresh_requested[0] = False
+                state = probe_installed_applets(controller)
 
-        selected_menu_num = self.run_screen(
-            ButtonListScreen,
-            title=_("Cards"),
-            is_button_text_centered=False,
-            button_data=button_data,
-        )
+                def _entry(label: str, installed: bool) -> ButtonOption:
+                    if not state.present:
+                        return ButtonOption(label)
+                    icon = (
+                        SeedSignerIconConstants.CHECK if installed
+                        else SeedSignerIconConstants.CHECKBOX
+                    )
+                    return ButtonOption(label, right_icon_name=icon)
 
-        if selected_menu_num == RET_CODE__BACK_BUTTON:
-            return Destination(BackStackView)
+                seedkeeper_btn = _entry(self.SEEDKEEPER_LABEL, state.seedkeeper_installed)
+                satochip_btn = _entry(self.SATOCHIP_LABEL, state.satochip_installed)
+                keycard_btn = _entry(self.KEYCARD_LABEL, state.keycard_installed)
+                factory_reset_btn = ButtonOption(
+                    self.FACTORY_RESET_LABEL,
+                    icon_name=FontAwesomeIconConstants.LOCK,
+                )
 
-        chosen = button_data[selected_menu_num]
-        if chosen is seedkeeper_btn:
-            from seedsigner.views.tools_views import ToolsSeedkeeperView
-            return Destination(ToolsSeedkeeperView)
-        if chosen is satochip_btn:
-            from seedsigner.views.tools_views import ToolsSatochipView
-            return Destination(ToolsSatochipView)
-        if chosen is keycard_btn:
-            from seedsigner.views.keycard_views import ToolsKeycardMenuView
-            return Destination(ToolsKeycardMenuView)
-        if chosen is factory_reset_btn:
-            return Destination(CardsFactoryResetView)
+                button_data = [seedkeeper_btn, satochip_btn, keycard_btn, factory_reset_btn]
+
+                selected_menu_num = self.run_screen(
+                    ButtonListScreen,
+                    title=_("Cards"),
+                    is_button_text_centered=False,
+                    button_data=button_data,
+                )
+
+                if selected_menu_num == HardwareButtonsConstants.OVERRIDE:
+                    # CardMonitor woke us up — re-probe and redraw.
+                    continue
+
+                if selected_menu_num == RET_CODE__BACK_BUTTON:
+                    return Destination(BackStackView)
+
+                chosen = button_data[selected_menu_num]
+                if chosen is seedkeeper_btn:
+                    from seedsigner.views.tools_views import ToolsSeedkeeperView
+                    return Destination(ToolsSeedkeeperView)
+                if chosen is satochip_btn:
+                    from seedsigner.views.tools_views import ToolsSatochipView
+                    return Destination(ToolsSatochipView)
+                if chosen is keycard_btn:
+                    from seedsigner.views.keycard_views import ToolsKeycardMenuView
+                    return Destination(ToolsKeycardMenuView)
+                if chosen is factory_reset_btn:
+                    return Destination(CardsFactoryResetView)
+        finally:
+            controller.unregister_card_inserted_listener(_on_card_event)
+            controller.unregister_card_removed_listener(_on_card_event)
 
 
 _DEFAULT_CAP_BY_KIND = {

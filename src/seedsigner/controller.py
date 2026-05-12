@@ -453,29 +453,51 @@ class Controller(Singleton):
 
     # ---- CardMonitor callbacks (PC/SC events) ----
 
-    def on_card_removed(self, reader_name=None) -> None:
-        """Card-removed event from the background PC/SC monitor.
+    def wipe_card_session_secrets(self) -> None:
+        """Defensive wipe of cached card secrets (PINs, Satochip session).
 
-        Wipes every cached card secret immediately so a removed card
-        cannot leak its PIN, then dispatches the event to any
-        ``register_card_removed_listener`` consumers (e.g. the active
-        ``CardWaitScreen``). Safe to call from a background thread.
-        Reader name is intentionally not logged (fingerprint risk).
+        Called immediately on every PC/SC ``removed`` event — never
+        debounced, even when the event later turns out to be a contact-
+        bounce glitch. The cost of a spurious wipe is one extra PIN
+        re-entry; the cost of skipping a real wipe is leaking secrets
+        across cards. Safe from any thread, never raises.
         """
         try:
             self.forget_all_pins()
         except Exception:
-            logger.exception("forget_all_pins failed in on_card_removed")
+            logger.exception("forget_all_pins failed in wipe_card_session_secrets")
         try:
             self.forget_satochip_session()
         except Exception:
-            logger.exception("forget_satochip_session failed in on_card_removed")
+            logger.exception("forget_satochip_session failed in wipe_card_session_secrets")
+
+    def dispatch_card_removed_event(self, reader_name=None) -> None:
+        """User-visible side of a card-removed event: toast + listener fan-out.
+
+        Run **after** a short debounce in :mod:`seedsigner.helpers.card_monitor`
+        so spurious removed/inserted bounces (common on contactless and loose
+        USB readers) don't surface a confusing "Card removed" toast during a
+        normal insertion. The wipe is handled separately by
+        :meth:`wipe_card_session_secrets` and is **not** debounced.
+        """
         try:
             from seedsigner.gui.toast import CardRemovedToast
             self.activate_toast(CardRemovedToast())
         except Exception:
             logger.exception("CardRemovedToast dispatch failed")
         self._notify_card_listeners(self._card_removed_listeners)
+
+    def on_card_removed(self, reader_name=None) -> None:
+        """Adapter that wipes and dispatches in one shot, no debounce.
+
+        The CardMonitor itself uses the split entry points
+        (:meth:`wipe_card_session_secrets` immediately, then
+        :meth:`dispatch_card_removed_event` via a debouncer). This
+        adapter exists for callers outside the monitor (tests, manual
+        invocations) and preserves the original synchronous semantics.
+        """
+        self.wipe_card_session_secrets()
+        self.dispatch_card_removed_event(reader_name)
 
     def on_card_inserted(self, atr: bytes, reader_name=None) -> None:
         """Card-inserted event from the background PC/SC monitor.

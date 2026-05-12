@@ -149,5 +149,74 @@ class TestCardsMenuRouting(unittest.TestCase):
         self.assertIs(dest.View_cls, CardsFactoryResetView)
 
 
+class TestCardsMenuRefresh(unittest.TestCase):
+    """When a card-event listener fires while the menu is on screen,
+    ``run()`` re-probes and re-renders rather than holding stale state."""
+
+    def test_refreshes_on_card_event_then_routes(self):
+        from seedsigner.hardware.buttons import HardwareButtonsConstants
+        from seedsigner.views.tools_views import ToolsSeedkeeperView
+
+        v = _make_view()
+
+        # Capture the listener so we can simulate the CardMonitor firing it.
+        registered = {}
+
+        def reg_ins(fn):
+            registered["ins"] = fn
+
+        def unreg_ins(fn):
+            registered.pop("ins", None)
+
+        def reg_rem(fn):
+            registered["rem"] = fn
+
+        def unreg_rem(fn):
+            registered.pop("rem", None)
+
+        v.controller.register_card_inserted_listener.side_effect = reg_ins
+        v.controller.unregister_card_inserted_listener.side_effect = unreg_ins
+        v.controller.register_card_removed_listener.side_effect = reg_rem
+        v.controller.unregister_card_removed_listener.side_effect = unreg_rem
+
+        # First render: simulate a card-inserted event while the screen
+        # waits for input, then return OVERRIDE so the view loops.
+        # Second render: user picks SeedKeeper.
+        run_calls = [0]
+
+        def fake_run_screen(_screen_cls, **_kwargs):
+            i = run_calls[0]
+            run_calls[0] += 1
+            if i == 0:
+                self.assertIn("ins", registered)
+                registered["ins"]()  # CardMonitor woke us up.
+                return HardwareButtonsConstants.OVERRIDE
+            return 0
+
+        v.run_screen = fake_run_screen
+
+        probe_count = [0]
+        states = [_absent_state(), _present_state(keycard=True)]
+
+        def fake_probe(_):
+            i = probe_count[0]
+            probe_count[0] += 1
+            return states[min(i, len(states) - 1)]
+
+        with patch(
+            "seedsigner.helpers.card_probe.probe_installed_applets",
+            side_effect=fake_probe,
+        ):
+            dest = v.run()
+
+        # Probe ran twice (once before each render).
+        self.assertEqual(probe_count[0], 2)
+        # Routing on the second iteration matches the user's choice.
+        self.assertIs(dest.View_cls, ToolsSeedkeeperView)
+        # Listeners were unregistered in the finally block.
+        self.assertNotIn("ins", registered)
+        self.assertNotIn("rem", registered)
+
+
 if __name__ == "__main__":
     unittest.main()

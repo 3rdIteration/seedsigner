@@ -27,9 +27,69 @@ Threat model:
 from __future__ import annotations
 
 import logging
+import threading
 from typing import Optional
 
 logger = logging.getLogger(__name__)
+
+
+# Window in which a "removed" event will be cancelled by a matching
+# "inserted" on the same reader. Long enough to absorb typical contact
+# bounce on ACR1252U/PN532 (~50–150 ms observed) without masking real
+# card swaps (mechanically >500 ms). Tuned conservatively; raise only
+# if real-world hardware shows longer bounce traces.
+REMOVAL_DEBOUNCE_S = 0.25
+
+
+class _RemovalDebouncer:
+    """Coalesces spurious ``removed`` events from PC/SC drivers.
+
+    Some readers briefly fire ``removed`` then ``added`` for the same
+    card during a normal insertion (contact bounce). Without debouncing,
+    the user sees a "Card removed" toast in the middle of inserting
+    their card, plus any registered removal listener fires uselessly.
+
+    Indexed by ``reader_name`` so two reader slots in parallel can't
+    cancel each other. ``None`` is treated as a single anonymous slot.
+    Timers are daemon threads so the process can exit cleanly.
+    """
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._timers: dict = {}
+
+    def schedule(self, reader_name, callback, delay: float = REMOVAL_DEBOUNCE_S) -> None:
+        with self._lock:
+            existing = self._timers.pop(reader_name, None)
+            if existing is not None:
+                existing.cancel()
+            timer = threading.Timer(delay, self._fire, args=(reader_name, callback))
+            timer.daemon = True
+            self._timers[reader_name] = timer
+            timer.start()
+
+    def cancel(self, reader_name) -> None:
+        with self._lock:
+            existing = self._timers.pop(reader_name, None)
+        if existing is not None:
+            existing.cancel()
+
+    def cancel_all(self) -> None:
+        with self._lock:
+            timers = list(self._timers.values())
+            self._timers.clear()
+        for timer in timers:
+            timer.cancel()
+
+    def _fire(self, reader_name, callback) -> None:
+        # Drop our reference before calling so a callback that re-enters
+        # schedule()/cancel() sees a clean slot.
+        with self._lock:
+            self._timers.pop(reader_name, None)
+        try:
+            callback()
+        except Exception:
+            logger.exception("debounced card-removed callback failed")
 
 
 class _PinWipingObserver:
@@ -37,10 +97,16 @@ class _PinWipingObserver:
     events to the controller. Defined as a plain class so the module
     imports cleanly when ``smartcard`` is mocked in tests; the real
     base class is mixed in lazily inside :func:`start_card_monitor`.
+
+    The wipe of cached card secrets runs immediately on every ``removed``
+    event (defensive — see :meth:`Controller.wipe_card_session_secrets`).
+    The user-visible toast and removal-listener fan-out are deferred via
+    a :class:`_RemovalDebouncer` so a quick re-insertion cancels both.
     """
 
     def __init__(self, controller):
         self._controller = controller
+        self._removal_debouncer = _RemovalDebouncer()
 
     def update(self, observable, handlers) -> None:
         # ``handlers`` is ``(addedcards, removedcards)`` per pyscard.
@@ -51,12 +117,28 @@ class _PinWipingObserver:
         for card in removed or []:
             try:
                 reader_name = getattr(card, "reader", None)
-                self._controller.on_card_removed(reader_name)
+                # Defensive wipe runs no matter what: a glitch costs the
+                # user one extra PIN entry; skipping a real wipe leaks
+                # secrets across cards.
+                try:
+                    self._controller.wipe_card_session_secrets()
+                except Exception:
+                    logger.exception("wipe_card_session_secrets failed")
+                # Defer the visible event. A matching ``added`` on the
+                # same reader within REMOVAL_DEBOUNCE_S cancels it.
+                ctrl = self._controller
+                self._removal_debouncer.schedule(
+                    reader_name,
+                    lambda r=reader_name: ctrl.dispatch_card_removed_event(r),
+                )
             except Exception:
                 logger.exception("on_card_removed callback failed")
         for card in added or []:
             try:
                 reader_name = getattr(card, "reader", None)
+                # Suppress any pending removal dispatch for this reader
+                # — the card came back before we'd reported it gone.
+                self._removal_debouncer.cancel(reader_name)
                 atr_attr = getattr(card, "atr", None)
                 atr = bytes(atr_attr) if atr_attr else b""
                 self._controller.on_card_inserted(atr, reader_name)
