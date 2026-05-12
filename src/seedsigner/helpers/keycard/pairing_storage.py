@@ -21,9 +21,16 @@ Plaintext payload::
     [pairing_key:32]
     [instance_uid_len:1]
     [instance_uid:N]   -- UID from the SELECT response, 16 bytes for status keycard
+    [label_tag:1=0x01] [label_len:1] [label_slot:16]  -- optional trailer, fixed 18 bytes
 
 The instance UID lets us refuse to load a blob that doesn't match the
 card currently in the reader.
+
+The label trailer is written for every new blob (since v1) but is
+*optional* on read: blobs written before the label trailer existed
+have no trailer bytes and decode with ``label=None``. The label slot
+is constant length (16 bytes, zero-padded) so the on-disk ciphertext
+size does not leak whether a name was set.
 """
 
 from __future__ import annotations
@@ -51,6 +58,11 @@ TAG_LEN = 16
 KDF_ITERATIONS = 50000
 KDF_SALT_DOMAIN = b"Keycard Pairing Storage v1"
 
+# Optional plaintext trailer: tag byte + length byte + fixed slot.
+LABEL_TAG = 0x01
+LABEL_MAX_LEN = 16  # bytes of UTF-8; the slot is always this size, zero-padded.
+LABEL_TRAILER_LEN = 2 + LABEL_MAX_LEN  # 18
+
 DEFAULT_FILENAME = "keycard_pairing.bin"  # legacy single-card file
 PER_UID_PREFIX = "keycard_pairing_"
 PER_UID_SUFFIX = ".bin"
@@ -65,21 +77,29 @@ class PairingStorageError(Exception):
 class StoredPairing:
     pairing: PairingInfo
     instance_uid: bytes
+    label: Optional[str] = None
 
 
-def encrypt_pairing(password: str, pairing: PairingInfo, instance_uid: bytes) -> bytes:
+def encrypt_pairing(
+    password: str,
+    pairing: PairingInfo,
+    instance_uid: bytes,
+    label: Optional[str] = None,
+) -> bytes:
     if len(pairing.pairing_key) != 32:
         raise ValueError("pairing key must be 32 bytes")
     if not 0 <= pairing.pairing_index <= 0xFF:
         raise ValueError("pairing index must fit in one byte")
     if len(instance_uid) > 0xFF:
         raise ValueError("instance UID too long")
+    label_bytes = _encode_label(label)
     password = _normalise_password(password)
     payload = (
         bytes([pairing.pairing_index])
         + pairing.pairing_key
         + bytes([len(instance_uid)])
         + bytes(instance_uid)
+        + _build_label_trailer(label_bytes)
     )
     salt = os.urandom(SALT_LEN)
     nonce = os.urandom(NONCE_LEN)
@@ -129,9 +149,11 @@ def decrypt_pairing(password: str, blob: bytes) -> StoredPairing:
     if len(plaintext) < 34 + uid_len:
         raise PairingStorageError("instance UID truncated")
     instance_uid = bytes(plaintext[34:34 + uid_len])
+    label = _parse_label_trailer(plaintext[34 + uid_len:])
     return StoredPairing(
         pairing=PairingInfo(pairing_index=pairing_index, pairing_key=pairing_key),
         instance_uid=instance_uid,
+        label=label,
     )
 
 
@@ -196,14 +218,14 @@ def list_pairings(*, base_dir: Optional[Path] = None) -> List[StoredFingerprint]
 
 
 def save(password: str, pairing: PairingInfo, instance_uid: bytes,
-         path: Optional[Path] = None) -> Path:
+         path: Optional[Path] = None, label: Optional[str] = None) -> Path:
     """Persist a pairing.
 
     With ``path`` explicit (test path) writes there. Otherwise writes to
     the per-UID file and, if a legacy single-card file exists, removes
     it so we don't keep stale duplicates.
     """
-    blob = encrypt_pairing(password, pairing, instance_uid)
+    blob = encrypt_pairing(password, pairing, instance_uid, label=label)
     if path is None:
         target = _path_for_uid(instance_uid)
         legacy = get_storage_path()
@@ -225,6 +247,20 @@ def save(password: str, pairing: PairingInfo, instance_uid: bytes,
         except Exception:
             logger.exception("could not remove legacy pairing file %s", legacy)
     return target
+
+
+def update_label(password: str, instance_uid: bytes,
+                 new_label: Optional[str]) -> Path:
+    """Re-encrypt the per-UID blob with a new label, keeping pairing intact.
+
+    Raises ``PairingStorageError`` if the blob cannot be loaded (no file,
+    wrong password) and lets ``OSError`` propagate to the caller so the
+    UI can surface microSD-missing failures.
+    """
+    stored = load(password, instance_uid=instance_uid)
+    if stored is None:
+        raise PairingStorageError("no stored pairing for this card")
+    return save(password, stored.pairing, instance_uid, label=new_label)
 
 
 def load(password: str, instance_uid: Optional[bytes] = None,
@@ -312,6 +348,51 @@ def remove_all(*, base_dir: Optional[Path] = None) -> int:
         except OSError:
             logger.exception("could not remove pairing file %s", entry.path)
     return removed
+
+
+def _encode_label(label: Optional[str]) -> bytes:
+    """Return the UTF-8 bytes of ``label`` (empty if None) and enforce cap."""
+    if label is None or label == "":
+        return b""
+    encoded = label.encode("utf-8")
+    if len(encoded) > LABEL_MAX_LEN:
+        raise ValueError(f"label exceeds {LABEL_MAX_LEN} UTF-8 bytes")
+    return encoded
+
+
+def _build_label_trailer(label_bytes: bytes) -> bytes:
+    """Fixed-length trailer: ``[tag:1][len:1][slot:LABEL_MAX_LEN]``.
+
+    ``slot`` is the label bytes right-padded with ``0x00`` to a constant
+    size so the on-disk ciphertext length is independent of label
+    presence / length.
+    """
+    if len(label_bytes) > LABEL_MAX_LEN:
+        raise ValueError("label too long")
+    slot = label_bytes + b"\x00" * (LABEL_MAX_LEN - len(label_bytes))
+    return bytes([LABEL_TAG, len(label_bytes)]) + slot
+
+
+def _parse_label_trailer(trailer: bytes) -> Optional[str]:
+    """Decode a label trailer; return ``None`` if absent or malformed.
+
+    Older blobs (written before labels existed) have no trailer bytes,
+    so a short or missing trailer is a normal backward-compat path, not
+    an error.
+    """
+    if len(trailer) < LABEL_TRAILER_LEN:
+        return None
+    if trailer[0] != LABEL_TAG:
+        return None
+    label_len = trailer[1]
+    if label_len > LABEL_MAX_LEN:
+        return None
+    if label_len == 0:
+        return None
+    try:
+        return trailer[2:2 + label_len].decode("utf-8")
+    except UnicodeDecodeError:
+        return None
 
 
 def _normalise_password(password: str) -> str:

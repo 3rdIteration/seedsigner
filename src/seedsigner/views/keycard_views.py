@@ -105,8 +105,9 @@ class ToolsKeycardMenuView(View):
     maintenance hidden behind submenus to keep the list scannable.
 
     On entry the card is probed (see ``card_probe.run_card_gate``):
-    a missing card lands on ``CardWaitScreen``; an uninstantiated
-    applet routes straight to ``ToolsKeycardInitView``.
+    a missing card snaps back to ``MainMenuView`` with a "No card"
+    toast; an uninstantiated applet routes straight to
+    ``ToolsKeycardInitView``.
     """
 
     SIGN_ETH = ButtonOption("Sign ETH")
@@ -472,6 +473,8 @@ class ToolsKeycardInitView(View):
     INITIALISE = ButtonOption("Initialise card")
 
     def run(self):
+        import hmac
+
         try:
             from seedsigner.helpers.keycard import secrets as kc_secrets
             from seedsigner.helpers.keycard.client import KeycardClient
@@ -493,45 +496,88 @@ class ToolsKeycardInitView(View):
         if ret == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
 
-        pin = kc_secrets.generate_pin()
-        puk = kc_secrets.generate_puk()
-
-        backup_text = (
-            f"PIN  {pin}\n"
-            f"PUK  {puk}"
-        )
-        ret = self.run_screen(
-            WarningScreen,
-            title="Write these down",
-            status_headline=None,
-            text=backup_text,
-            show_back_button=True,
-            button_data=[self.INITIALISE],
-        )
-        if ret == RET_CODE__BACK_BUTTON:
-            return Destination(BackStackView)
-
+        pin_buf: Optional[bytearray] = None
+        confirm_buf: Optional[bytearray] = None
         try:
-            release_other_smartcard_holders(self.controller)
-            connection = wait_for_card(timeout_s=5.0)
-            client = KeycardClient(connection)
-            select_with_autodetect(client, self.controller)
-            secret = derive_pairing_secret(DEFAULT_PAIRING_PASSWORD)
-            client.init(pin.encode("ascii"), puk.encode("ascii"), secret)
-        except Exception as exc:
-            logger.exception("Keycard INIT failed")
-            title, body = classify_card_error(exc, default_title="INIT failed")
-            return _error_destination(title, body)
+            # Loop until two identical PIN entries succeed or the user backs out.
+            while True:
+                pin_buf = prompt_for_pin(self, "Set PIN (6 digits)")
+                if pin_buf is None:
+                    return Destination(BackStackView)
+                confirm_buf = prompt_for_pin(self, "Confirm PIN")
+                if confirm_buf is None:
+                    wipe_bytearray(pin_buf)
+                    pin_buf = None
+                    return Destination(BackStackView)
+                if hmac.compare_digest(bytes(pin_buf), bytes(confirm_buf)):
+                    wipe_bytearray(confirm_buf)
+                    confirm_buf = None
+                    break
+                wipe_bytearray(pin_buf)
+                wipe_bytearray(confirm_buf)
+                pin_buf = None
+                confirm_buf = None
+                self.run_screen(
+                    WarningScreen,
+                    title="PINs differ",
+                    status_headline=None,
+                    text="Try again.",
+                    show_back_button=True,
+                    button_data=[ButtonOption("Retry")],
+                )
 
-        self.run_screen(
-            LargeIconStatusScreen,
-            title="Initialised",
-            status_headline=None,
-            text="PIN/PUK set.\nPair, then Generate key.",
-            show_back_button=False,
-            button_data=[ButtonOption("OK")],
-        )
-        return Destination(ToolsKeycardMenuView, skip_current_view=True)
+            # Optional wallet name — captured here, persisted by the
+            # next successful pair in ToolsKeycardPairView via the
+            # controller's pending_keycard_label slot. Empty/cancelled
+            # => no label (anonymous wallet).
+            label_raw = prompt_for_text(self, "Wallet name (optional)", max_len=16)
+            if label_raw is None:
+                label_clean = None
+            else:
+                stripped = label_raw.strip()
+                label_clean = stripped if stripped else None
+            self.controller.pending_keycard_label = label_clean
+
+            puk = kc_secrets.generate_puk()
+
+            ret = self.run_screen(
+                WarningScreen,
+                title="Write this down",
+                status_headline=None,
+                text=f"PUK  {puk}",
+                show_back_button=True,
+                button_data=[self.INITIALISE],
+            )
+            if ret == RET_CODE__BACK_BUTTON:
+                self.controller.pending_keycard_label = None
+                return Destination(BackStackView)
+
+            try:
+                release_other_smartcard_holders(self.controller)
+                connection = wait_for_card(timeout_s=5.0)
+                client = KeycardClient(connection)
+                select_with_autodetect(client, self.controller)
+                secret = derive_pairing_secret(DEFAULT_PAIRING_PASSWORD)
+                client.init(bytes(pin_buf), puk.encode("ascii"), secret)
+            except Exception as exc:
+                logger.exception("Keycard INIT failed")
+                title, body = classify_card_error(exc, default_title="INIT failed")
+                return _error_destination(title, body)
+
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Initialised",
+                status_headline=None,
+                text="PIN/PUK set.\nPair, then Generate key.",
+                show_back_button=False,
+                button_data=[ButtonOption("OK")],
+            )
+            return Destination(ToolsKeycardMenuView, skip_current_view=True)
+        finally:
+            if pin_buf is not None:
+                wipe_bytearray(pin_buf)
+            if confirm_buf is not None:
+                wipe_bytearray(confirm_buf)
 
 
 # ---------------------------------------------------------------------------
@@ -646,16 +692,13 @@ def _try_pair_with_raw_psk(
     SecureChannelError,
     psk: bytes,
     instance_uid: bytes,
-) -> Tuple[Optional[object], Optional[str]]:
+    label: Optional[str] = None,
+) -> Tuple[Optional[object], Optional[str], Optional[str]]:
     """Attempt to pair using a raw 32-byte pairing secret (no PBKDF2).
 
-    Used to support cards initialised by ``keycard-shell``, whose
-    firmware stores a hard-coded 32-byte ``KEYCARD_DEFAULT_PSK`` as the
-    pairing secret rather than deriving it from a user password. Tries
-    the on-disk cache first (keyed by a sentinel storage password tied
-    to this PSK so a different PSK won't decrypt our blob), then falls
-    back to a fresh PAIR APDU. Returns ``(None, None)`` on cryptogram
-    mismatch (the card was not initialised with this PSK).
+    Returns ``(pairing, source, effective_label)`` where
+    ``effective_label`` is the label stored on disk (``"disk"`` path)
+    or the one we just wrote (``"pair"`` path); ``None`` on mismatch.
     """
     if len(psk) != 32:
         raise ValueError("PSK must be 32 bytes")
@@ -667,19 +710,19 @@ def _try_pair_with_raw_psk(
             logger.info("saved pairing rejected: %s", exc)
             stored = None
         if stored is not None and stored.instance_uid == instance_uid:
-            return stored.pairing, "disk"
+            return stored.pairing, "disk", stored.label
 
         try:
             pairing = client.pair(psk)
         except SecureChannelError as exc:
             if "cryptogram" in str(exc).lower():
-                return None, None  # PSK does not match — fall through
+                return None, None, None  # PSK does not match — fall through
             raise
         try:
-            pairing_storage.save(storage_pwd, pairing, instance_uid)
+            pairing_storage.save(storage_pwd, pairing, instance_uid, label=label)
         except Exception:
             logger.exception("could not persist pairing")
-        return pairing, "pair"
+        return pairing, "pair", label
     finally:
         try:
             wipe_string(storage_pwd)
@@ -694,14 +737,14 @@ def _try_pair_with_password(
     SecureChannelError,
     pwd: str,
     instance_uid: bytes,
-) -> Tuple[Optional[object], Optional[str]]:
+    label: Optional[str] = None,
+) -> Tuple[Optional[object], Optional[str], Optional[str]]:
     """Attempt to obtain a PairingInfo for ``instance_uid`` using ``pwd``.
 
-    Tries the on-disk encrypted cache first (no APDU), then falls back
-    to a fresh PAIR APDU. Returns ``(pairing, source)`` where ``source``
-    is ``"disk"`` or ``"pair"`` on success, or ``(None, None)`` if the
-    password is wrong (cryptogram mismatch). Other failures (no slots,
-    transport errors) are re-raised.
+    Returns ``(pairing, source, effective_label)`` where ``source`` is
+    ``"disk"`` or ``"pair"`` on success, and ``effective_label`` is the
+    label that ended up on disk (if any). ``(None, None, None)`` on
+    cryptogram mismatch.
     """
     # Force a fresh str object — prevents wipe_string from zeroing the
     # caller's buffer or any interned constant (e.g. DEFAULT_PAIRING_PASSWORD).
@@ -714,21 +757,21 @@ def _try_pair_with_password(
             logger.info("saved pairing rejected: %s", exc)
             stored = None
         if stored is not None and stored.instance_uid == instance_uid:
-            return stored.pairing, "disk"
+            return stored.pairing, "disk", stored.label
 
         try:
             secret = derive_pairing_secret(normalised)
             pairing = client.pair(secret)
         except SecureChannelError as exc:
             if "cryptogram" in str(exc).lower():
-                return None, None  # wrong password — caller falls through
+                return None, None, None  # wrong password — caller falls through
             raise
         try:
-            pairing_storage.save(normalised, pairing, instance_uid)
+            pairing_storage.save(normalised, pairing, instance_uid, label=label)
         except Exception:
             logger.exception("could not persist pairing")
             # Non-fatal: keep the in-memory pairing.
-        return pairing, "pair"
+        return pairing, "pair", label
     finally:
         for s in (fresh, normalised):
             try:
@@ -791,6 +834,9 @@ class ToolsKeycardPairView(View):
 
         instance_uid = bytes(select_info.instance_uid)
         self.controller.last_keycard_uid = instance_uid
+        self.controller.remember_aid_for_uid(
+            self.controller.active_keycard_aid, instance_uid,
+        )
 
         free_slots = select_info.free_pairing_slots
         ephemeral_supported = supports_ephemeral_pairing(select_info.app_version)
@@ -839,19 +885,23 @@ class ToolsKeycardPairView(View):
         #
         # PAIR step-1 cryptogram mismatches do NOT consume a card slot,
         # so trying both silently is free for cards using neither default.
+        pending_label = getattr(self.controller, "pending_keycard_label", None)
         used_default = False
         pairing = None
         source = None
+        effective_label = None
         try:
-            pairing, source = _try_pair_with_password(
+            pairing, source, effective_label = _try_pair_with_password(
                 client, pairing_storage, derive_pairing_secret,
                 SecureChannelError,
                 DEFAULT_PAIRING_PASSWORD, instance_uid,
+                label=pending_label,
             )
             if pairing is None:
-                pairing, source = _try_pair_with_raw_psk(
+                pairing, source, effective_label = _try_pair_with_raw_psk(
                     client, pairing_storage, SecureChannelError,
                     KEYCARD_SHELL_DEFAULT_PSK, instance_uid,
+                    label=pending_label,
                 )
         except Exception as exc:
             logger.exception("Keycard PAIR (default secrets) failed")
@@ -876,10 +926,11 @@ class ToolsKeycardPairView(View):
                 _wipe_bytearray(password_buf)
                 return _error_destination("Bad password", str(exc))
             try:
-                pairing, source = _try_pair_with_password(
+                pairing, source, effective_label = _try_pair_with_password(
                     client, pairing_storage, derive_pairing_secret,
                     SecureChannelError,
                     custom, instance_uid,
+                    label=pending_label,
                 )
             except Exception as exc:
                 _wipe_bytearray(password_buf)
@@ -899,6 +950,16 @@ class ToolsKeycardPairView(View):
                 )
 
         self.controller.set_pairing_for(instance_uid, pairing)
+        # Cache the human-readable wallet name so List/Switch/Delete
+        # views can show it instead of just the AID hex.
+        self.controller.set_label_for(instance_uid, effective_label)
+        # Consume the pending label once it has been written to disk.
+        # We clear it on the "disk" path too: a label captured at Init
+        # is only meaningful for a brand-new card whose first PAIR
+        # writes a fresh blob; if we ended up reading an existing blob
+        # the label was already set there and the pending value is
+        # stale (likely from a previous Init that never paired).
+        self.controller.pending_keycard_label = None
 
         if source == "disk":
             detail = "loaded from disk"
@@ -1888,6 +1949,35 @@ def _format_aid_short(aid: bytes) -> str:
     return hexstr[:6] + "…" + hexstr[-4:]
 
 
+def _instance_uid_for_aid(controller, aid: bytes) -> Optional[bytes]:
+    """Best-effort: return the cached ``instance_uid`` that maps to ``aid``.
+
+    Uses the controller's AID→UID map populated at SELECT time. Falls
+    back to ``None`` for AIDs we have never paired this boot, in which
+    case the caller renders the AID hex.
+    """
+    if not hasattr(controller, "get_uid_for_aid"):
+        return None
+    return controller.get_uid_for_aid(aid)
+
+
+def _format_instance_label(aid: bytes, controller) -> str:
+    """Render an instance row as ``"<label>  (<aid>)"`` when known.
+
+    Falls back to the short AID alone when no label is cached this
+    session — e.g. card inserted for the first time without a Pair.
+    """
+    short_aid = _format_aid_short(aid)
+    uid = _instance_uid_for_aid(controller, aid)
+    label = controller.get_label_for(uid) if uid else None
+    if not label:
+        return short_aid
+    text = f"{label}  ({short_aid})"
+    if len(text) > 26:
+        text = text[:25] + "…"
+    return text
+
+
 def _next_free_instance_aid(existing: list) -> bytes:
     """Suggest the next instance AID by bumping the last byte.
 
@@ -1895,6 +1985,7 @@ def _next_free_instance_aid(existing: list) -> bytes:
     existing instance whose AID begins with ``KEYCARD_APPLET_AID`` +
     one byte and pick the smallest unused last byte.
     """
+    from seedsigner.helpers.keycard.global_platform import MAX_KEYCARD_INSTANCES
     used = set()
     for aid in existing:
         if (
@@ -1903,10 +1994,12 @@ def _next_free_instance_aid(existing: list) -> bytes:
             and aid[-2] == 0x01
         ):
             used.add(aid[-1])
-    for candidate in range(0x01, 0x10):
+    for candidate in range(0x01, 0x01 + MAX_KEYCARD_INSTANCES):
         if candidate not in used:
             return KEYCARD_APPLET_AID + bytes([0x01, candidate])
-    raise RuntimeError("no free instance slot in 0x0101..0x010F")
+    raise RuntimeError(
+        f"no free instance slot (max {MAX_KEYCARD_INSTANCES})"
+    )
 
 
 class ToolsKeycardInstancesMenuView(View):
@@ -1921,11 +2014,14 @@ class ToolsKeycardInstancesMenuView(View):
     LIST = ButtonOption("List instances")
     SWITCH = ButtonOption("Switch active")
     CREATE = ButtonOption("Create instance")
+    RENAME = ButtonOption("Rename instance")
     DELETE = ButtonOption("Delete instance")
 
     def run(self):
-        active = _format_aid_short(self.controller.active_keycard_aid)
-        button_data = [self.LIST, self.SWITCH, self.CREATE, self.DELETE]
+        active = _format_instance_label(
+            self.controller.active_keycard_aid, self.controller,
+        )
+        button_data = [self.LIST, self.SWITCH, self.CREATE, self.RENAME, self.DELETE]
         ret = self.run_screen(
             ButtonListScreen,
             title=f"Active: {active}",
@@ -1942,6 +2038,8 @@ class ToolsKeycardInstancesMenuView(View):
             return Destination(ToolsKeycardInstancesSwitchView)
         if chosen == self.CREATE:
             return Destination(ToolsKeycardInstancesCreateView)
+        if chosen == self.RENAME:
+            return Destination(ToolsKeycardInstancesRenameView)
         if chosen == self.DELETE:
             return Destination(ToolsKeycardInstancesDeleteView)
         return Destination(BackStackView)
@@ -2006,14 +2104,20 @@ class ToolsKeycardInstancesListView(View):
             self.controller, instances, isd_connection,
         )
 
+        from seedsigner.helpers.keycard.global_platform import MAX_KEYCARD_INSTANCES
+        keycard_instances = [
+            i for i in instances if i.aid.startswith(KEYCARD_APPLET_AID)
+        ]
         if not instances:
             text = "No applet instances\nfound."
         else:
-            lines = [_format_aid_short(i.aid) for i in instances]
+            lines = [
+                _format_instance_label(i.aid, self.controller) for i in instances
+            ]
             text = "\n".join(lines[:6])
         self.run_screen(
             LargeIconStatusScreen,
-            title=f"Instances ({len(instances)})",
+            title=f"Instances ({len(keycard_instances)}/{MAX_KEYCARD_INSTANCES})",
             status_headline=None,
             text=text,
             show_back_button=False,
@@ -2045,12 +2149,14 @@ class ToolsKeycardInstancesSwitchView(View):
                 "No Keycard applet found on this card.",
             )
 
+        from seedsigner.helpers.keycard.global_platform import MAX_KEYCARD_INSTANCES
         button_data = [
-            ButtonOption(_format_aid_short(i.aid)) for i in candidates
+            ButtonOption(_format_instance_label(i.aid, self.controller))
+            for i in candidates
         ]
         ret = self.run_screen(
             ButtonListScreen,
-            title="Pick active",
+            title=f"Pick active ({len(candidates)}/{MAX_KEYCARD_INSTANCES})",
             is_button_text_centered=False,
             button_data=button_data,
             show_back_button=True,
@@ -2084,7 +2190,8 @@ class ToolsKeycardInstancesCreateView(View):
 
     def run(self):
         from seedsigner.helpers.keycard.global_platform import (
-            GpProtocolError, install_for_install_with_fallback,
+            GpProtocolError, MAX_KEYCARD_INSTANCES,
+            install_for_install_with_fallback,
         )
 
         try:
@@ -2095,6 +2202,14 @@ class ToolsKeycardInstancesCreateView(View):
             return _error_destination(title, body)
 
         existing_aids = [i.aid for i in instances]
+        keycard_count = sum(
+            1 for aid in existing_aids if aid.startswith(KEYCARD_APPLET_AID)
+        )
+        if keycard_count >= MAX_KEYCARD_INSTANCES:
+            return _error_destination(
+                "Maximum reached",
+                f"Delete one of the {MAX_KEYCARD_INSTANCES} instances first.",
+            )
         try:
             new_aid = _next_free_instance_aid(existing_aids)
         except Exception as exc:
@@ -2141,6 +2256,129 @@ class ToolsKeycardInstancesCreateView(View):
         return Destination(ToolsKeycardInstancesMenuView, skip_current_view=True)
 
 
+class ToolsKeycardInstancesRenameView(View):
+    """Rename the wallet label associated with a Keycard instance.
+
+    Lists the keycard-prefixed instances on the inserted card, lets the
+    user pick one, captures the new name, and re-encrypts the on-disk
+    pairing blob with the updated label. Tries the well-known pairing
+    passwords (KeycardDefaultPairing, keycard-shell raw PSK) silently
+    first; only prompts the user for a pairing password when both
+    silent paths fail to decrypt — same UX pattern as the Pair flow.
+    """
+
+    def run(self):
+        from seedsigner.helpers.keycard import pairing_storage
+        from seedsigner.helpers.keycard.client import KeycardClient
+        from seedsigner.helpers.keycard.reader import (
+            release_other_smartcard_holders, wait_for_card,
+        )
+
+        try:
+            channel, instances, isd_connection = _open_isd_channel(self.controller)
+        except Exception as exc:
+            logger.exception("GP open failed")
+            title, body = classify_card_error(exc, default_title="GP failed")
+            return _error_destination(title, body)
+
+        instances = _instances_or_probe_fallback(
+            self.controller, instances, isd_connection,
+        )
+        candidates = [
+            i for i in instances if i.aid.startswith(KEYCARD_APPLET_AID)
+        ]
+        if not candidates:
+            return _error_destination(
+                "No instances", "No Keycard applet found.",
+            )
+
+        button_data = [
+            ButtonOption(_format_instance_label(i.aid, self.controller))
+            for i in candidates
+        ]
+        ret = self.run_screen(
+            ButtonListScreen,
+            title="Rename?",
+            is_button_text_centered=False,
+            button_data=button_data,
+            show_back_button=True,
+        )
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        target_aid = candidates[ret].aid
+
+        # Resolve instance_uid via SELECT against the chosen AID.
+        try:
+            release_other_smartcard_holders(self.controller)
+            connection = wait_for_card(timeout_s=5.0)
+            client = KeycardClient(connection)
+            select_info = client.select(aid=target_aid)
+        except Exception as exc:
+            logger.exception("Keycard SELECT failed")
+            title, body = classify_card_error(exc, default_title="SELECT failed")
+            return _error_destination(title, body)
+        instance_uid = bytes(select_info.instance_uid)
+        self.controller.remember_aid_for_uid(target_aid, instance_uid)
+
+        raw = prompt_for_text(self, "New wallet name", max_len=16)
+        if raw is None:
+            return Destination(BackStackView)
+        stripped = raw.strip()
+        new_label = stripped if stripped else None
+
+        silent_pwds = [
+            DEFAULT_PAIRING_PASSWORD,
+            "raw-psk:" + KEYCARD_SHELL_DEFAULT_PSK.hex(),
+        ]
+        updated = False
+        for storage_pwd in silent_pwds:
+            try:
+                pairing_storage.update_label(storage_pwd, instance_uid, new_label)
+                updated = True
+                break
+            except pairing_storage.PairingStorageError:
+                continue
+            except OSError:
+                return _error_destination(
+                    "Storage error", "Insert microSD and retry.",
+                )
+
+        if not updated:
+            password = prompt_for_text(self, "Pairing password")
+            if password is None:
+                return Destination(BackStackView)
+            try:
+                try:
+                    pairing_storage.update_label(password, instance_uid, new_label)
+                except pairing_storage.PairingStorageError:
+                    return _error_destination(
+                        "Wrong password", "Could not decrypt blob.",
+                    )
+                except OSError:
+                    return _error_destination(
+                        "Storage error", "Insert microSD and retry.",
+                    )
+            finally:
+                try:
+                    wipe_string(password)
+                except Exception:
+                    pass
+
+        # Reflect the change in the controller cache so the next
+        # screen render shows the new name.
+        self.controller.set_label_for(instance_uid, new_label)
+
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Renamed",
+            status_headline=None,
+            text=new_label or "(no name)",
+            show_back_button=False,
+            button_data=[ButtonOption("OK")],
+        )
+        return Destination(ToolsKeycardInstancesMenuView, skip_current_view=True)
+
+
 class ToolsKeycardInstancesDeleteView(View):
     """Delete an applet instance and drop its local pairing."""
 
@@ -2163,7 +2401,8 @@ class ToolsKeycardInstancesDeleteView(View):
             )
 
         button_data = [
-            ButtonOption(_format_aid_short(i.aid)) for i in candidates
+            ButtonOption(_format_instance_label(i.aid, self.controller))
+            for i in candidates
         ]
         ret = self.run_screen(
             ButtonListScreen,

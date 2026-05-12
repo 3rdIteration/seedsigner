@@ -500,9 +500,12 @@ def list_instances(channel: GpSecureChannel) -> List[AppletInstance]:
     return _parse_status_legacy(legacy)
 
 
+MAX_KEYCARD_INSTANCES = 4
+
+
 def probe_keycard_instance_aids(connection,
                                 package_prefix: bytes = bytes.fromhex("A000000804000101"),
-                                instance_byte_range: range = range(0x01, 0x10)
+                                instance_byte_range: range = range(0x01, 0x01 + MAX_KEYCARD_INSTANCES)
                                 ) -> List[bytes]:
     """Brute-probe likely Keycard applet AIDs via cleartext SELECT.
 

@@ -320,6 +320,17 @@ class Controller(Singleton):
         # password. ``keycard_pairing`` (singular) is a back-compat shim
         # that surfaces the most-recently-seen pairing.
         controller.keycard_pairings = {}
+        # Per-instance wallet name, keyed by ``instance_uid``. Populated
+        # opportunistically as we load pairings from disk so that the
+        # Instances list/switch/delete views can show human-readable
+        # names. Memory-only: the authoritative copy lives encrypted on
+        # the microSD card via ``pairing_storage``.
+        controller.keycard_labels = {}
+        # AID → instance_uid mapping captured at SELECT time. Lets the
+        # Manage Instances views look up the label for any AID returned
+        # by GET STATUS once the user has paired that instance this
+        # boot. Cleared by ``forget_pairing_for`` for that UID.
+        controller.keycard_aid_to_uid = {}
         # ``keycard_ephemeral_secrets`` caches the 32-byte pairing
         # secret (NOT the pairing key) for cards that use v3.2 ephemeral
         # pairing. The on-card key is wiped on every applet deselect, so
@@ -339,11 +350,16 @@ class Controller(Singleton):
         # published AID; the Manage Instances flow updates it.
         from seedsigner.helpers.keycard.commands import APPLET_AID as _DEFAULT_KEYCARD_AID
         controller.active_keycard_aid = _DEFAULT_KEYCARD_AID
+        # Wallet name captured during Init that should be written into
+        # the next successful pairing save. Cleared once consumed so
+        # subsequent re-pairings of *other* cards don't pick it up.
+        controller.pending_keycard_label = None
         # Address cache for "View wallets". Initialised here so the
         # attribute is always a dict by the time any view touches it.
         controller.keycard_wallets_data = {}
-        # Subscribers for PC/SC card-event fan-out. Populated by views
-        # that need to react to insert/remove (e.g. CardWaitScreen).
+        # Subscribers for PC/SC card-event fan-out. Populated by code
+        # that needs to react to insert/remove (e.g. the centralized
+        # card-removed redirect, CardInsertedToast).
         controller._card_inserted_listeners = []
         controller._card_removed_listeners = []
 
@@ -417,10 +433,42 @@ class Controller(Singleton):
         self.keycard_pairings[bytes(instance_uid)] = pairing
         self.last_keycard_uid = bytes(instance_uid)
 
+    def get_label_for(self, instance_uid):
+        """Return the cached wallet name for ``instance_uid`` or None."""
+        if instance_uid is None:
+            return None
+        return self.keycard_labels.get(bytes(instance_uid))
+
+    def set_label_for(self, instance_uid, label) -> None:
+        """Cache (or overwrite) the wallet name for ``instance_uid``."""
+        if instance_uid is None:
+            return
+        key = bytes(instance_uid)
+        if label:
+            self.keycard_labels[key] = label
+        else:
+            self.keycard_labels.pop(key, None)
+
+    def remember_aid_for_uid(self, aid, instance_uid) -> None:
+        """Record the AID→UID mapping observed at SELECT time."""
+        if aid is None or instance_uid is None:
+            return
+        self.keycard_aid_to_uid[bytes(aid)] = bytes(instance_uid)
+
+    def get_uid_for_aid(self, aid):
+        if aid is None:
+            return None
+        return self.keycard_aid_to_uid.get(bytes(aid))
+
     def forget_pairing_for(self, instance_uid) -> None:
         if instance_uid is None:
             return
         self.keycard_pairings.pop(bytes(instance_uid), None)
+        self.keycard_labels.pop(bytes(instance_uid), None)
+        uid_b = bytes(instance_uid)
+        for aid_key, mapped_uid in list(self.keycard_aid_to_uid.items()):
+            if mapped_uid == uid_b:
+                self.keycard_aid_to_uid.pop(aid_key, None)
         # Also drop any ephemeral secret for this UID — callers using
         # forget_pairing_for() expect the card to have *no* cached
         # auth state of any kind after the call.
@@ -433,6 +481,8 @@ class Controller(Singleton):
 
     def forget_all_pairings(self) -> None:
         self.keycard_pairings.clear()
+        self.keycard_labels.clear()
+        self.keycard_aid_to_uid.clear()
         for uid in list(self.keycard_ephemeral_secrets.keys()):
             self.forget_ephemeral_secret_for(uid)
         self.forget_all_pins()
@@ -565,8 +615,7 @@ class Controller(Singleton):
 
         Fires ``CardInsertedToast`` when ``SETTING__AUTO_PIN_ON_INSERT``
         is enabled, then dispatches the event to any registered
-        ``card_inserted`` listeners (e.g. the active ``CardWaitScreen``).
-        ATR is NOT logged (fingerprint risk).
+        ``card_inserted`` listeners. ATR is NOT logged (fingerprint risk).
         """
         try:
             enabled = Settings.get_instance().get_value(

@@ -235,6 +235,147 @@ class TestKeycardMenuRouting(unittest.TestCase):
             f"{offenders}",
         )
 
+    def test_init_pin_mismatch_reprompts_then_accepts(self):
+        """Init must loop on PIN/Confirm mismatch and use the matched pair.
+
+        Sequence we feed to ``prompt_for_pin``::
+
+            1st prompt → "111111"   (initial)
+            2nd prompt → "222222"   (confirm — MISMATCH)
+            3rd prompt → "333333"   (retry initial)
+            4th prompt → "333333"   (retry confirm — match)
+
+        The PIN bytes passed to ``client.init`` must be the matched pair
+        ``b"333333"``; the mismatched values must never reach the card.
+        """
+        from unittest.mock import patch
+
+        from seedsigner.gui.screens import RET_CODE__BACK_BUTTON  # noqa: F401
+        from seedsigner.views import keycard_views
+        from seedsigner.views.keycard_views import ToolsKeycardInitView
+
+        view = ToolsKeycardInitView.__new__(ToolsKeycardInitView)
+        view.controller = MagicMock()
+
+        # run_screen returns: DireWarning confirm → 0 (CONTINUE),
+        # WarningScreen("PINs differ") → 0 (Retry), Warning("Write this down") → 0,
+        # LargeIconStatusScreen("Initialised") → 0.
+        view.run_screen = MagicMock(return_value=0)
+
+        pin_buffers = [
+            bytearray(b"111111"),
+            bytearray(b"222222"),
+            bytearray(b"333333"),
+            bytearray(b"333333"),
+        ]
+        prompt_calls = {"n": 0}
+
+        def fake_prompt_for_pin(parent, title):
+            buf = pin_buffers[prompt_calls["n"]]
+            prompt_calls["n"] += 1
+            return buf
+
+        fake_client = MagicMock()
+        fake_connection = MagicMock()
+        captured = {}
+
+        def fake_init(pin_bytes, puk_bytes, secret):
+            captured["pin"] = bytes(pin_bytes)
+            captured["puk"] = bytes(puk_bytes)
+
+        fake_client.init.side_effect = fake_init
+
+        with patch.object(keycard_views, "prompt_for_pin", side_effect=fake_prompt_for_pin), \
+             patch.object(keycard_views, "prompt_for_text", return_value=None), \
+             patch("seedsigner.helpers.keycard.reader.wait_for_card",
+                   return_value=fake_connection), \
+             patch("seedsigner.helpers.keycard.reader.release_other_smartcard_holders"), \
+             patch("seedsigner.helpers.keycard.client.KeycardClient",
+                   return_value=fake_client), \
+             patch("seedsigner.helpers.keycard.crypto.derive_pairing_secret",
+                   return_value=b"\x11" * 32), \
+             patch.object(keycard_views, "select_with_autodetect"):
+            view.run()
+
+        self.assertEqual(prompt_calls["n"], 4)
+        self.assertEqual(captured["pin"], b"333333")
+        self.assertEqual(len(captured["puk"]), 12)  # PUK_LENGTH
+        # No label entered -> pending_keycard_label must be cleared.
+        self.assertIsNone(view.controller.pending_keycard_label)
+
+    def test_init_captures_wallet_label_for_pair(self):
+        """Init must stash the typed wallet name in
+        ``controller.pending_keycard_label`` so the next PAIR persists
+        it alongside the pairing blob.
+        """
+        from unittest.mock import patch
+
+        from seedsigner.views import keycard_views
+        from seedsigner.views.keycard_views import ToolsKeycardInitView
+
+        view = ToolsKeycardInitView.__new__(ToolsKeycardInitView)
+        view.controller = MagicMock()
+        view.controller.pending_keycard_label = None
+        view.run_screen = MagicMock(return_value=0)
+
+        with patch.object(keycard_views, "prompt_for_pin",
+                          side_effect=[bytearray(b"123456"), bytearray(b"123456")]), \
+             patch.object(keycard_views, "prompt_for_text",
+                          return_value="  Cold Wallet  "), \
+             patch("seedsigner.helpers.keycard.reader.wait_for_card",
+                   return_value=MagicMock()), \
+             patch("seedsigner.helpers.keycard.reader.release_other_smartcard_holders"), \
+             patch("seedsigner.helpers.keycard.client.KeycardClient",
+                   return_value=MagicMock()), \
+             patch("seedsigner.helpers.keycard.crypto.derive_pairing_secret",
+                   return_value=b"\x11" * 32), \
+             patch.object(keycard_views, "select_with_autodetect"):
+            view.run()
+
+        # Whitespace-stripped, ready for pairing_storage.save.
+        self.assertEqual(view.controller.pending_keycard_label, "Cold Wallet")
+
+    def test_instance_cap_blocks_create_at_four(self):
+        """``ToolsKeycardInstancesCreateView`` must short-circuit to an
+        error destination when 4 Keycard instances already exist, and
+        must never call ``install_for_install_with_fallback``.
+        """
+        from unittest.mock import patch
+
+        from seedsigner.helpers.keycard.global_platform import (
+            AppletInstance, MAX_KEYCARD_INSTANCES,
+        )
+        from seedsigner.views import keycard_views
+        from seedsigner.views.keycard_views import (
+            KEYCARD_APPLET_AID, ToolsKeycardInstancesCreateView,
+        )
+
+        self.assertEqual(MAX_KEYCARD_INSTANCES, 4)
+
+        # Four installed Keycard instances at AIDs ...010101..010104.
+        full_instances = [
+            AppletInstance(
+                aid=KEYCARD_APPLET_AID + bytes([0x01, suffix]),
+                life_cycle=0, privileges=0,
+            )
+            for suffix in range(0x01, 0x05)
+        ]
+
+        view = ToolsKeycardInstancesCreateView.__new__(ToolsKeycardInstancesCreateView)
+        view.controller = MagicMock()
+
+        with patch.object(
+            keycard_views, "_open_isd_channel",
+            return_value=(MagicMock(), full_instances, MagicMock()),
+        ), patch(
+            "seedsigner.helpers.keycard.global_platform.install_for_install_with_fallback"
+        ) as install_mock:
+            dest = view.run()
+
+        install_mock.assert_not_called()
+        self.assertIs(dest.View_cls, keycard_views.KeycardErrorView)
+        self.assertEqual(dest.view_args["title"], "Maximum reached")
+
     def test_pin_management_view_removed(self):
         """``ToolsKeycardPinManagementMenuView`` was a one-entry indirection
         ("Change PIN" was the only item); since Change PIN now hangs

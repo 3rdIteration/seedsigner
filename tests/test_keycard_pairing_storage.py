@@ -267,3 +267,100 @@ class TestRemoveBackwardsCompat:
         pairing_storage.save("pw", sample_pairing, b"\xAA" * 16, path=legacy)
         assert pairing_storage.remove() is True
         assert not legacy.exists()
+
+
+# ---------------------------------------------------------------------------
+# Label trailer (wallet name)
+# ---------------------------------------------------------------------------
+
+
+class TestLabelRoundTrip:
+    def test_label_round_trip(self, sample_pairing, sample_uid):
+        blob = encrypt_pairing("pw", sample_pairing, sample_uid, label="My Wallet")
+        stored = decrypt_pairing("pw", blob)
+        assert stored.label == "My Wallet"
+        assert stored.pairing.pairing_key == sample_pairing.pairing_key
+        assert stored.instance_uid == sample_uid
+
+    def test_label_none_round_trip(self, sample_pairing, sample_uid):
+        blob = encrypt_pairing("pw", sample_pairing, sample_uid)
+        stored = decrypt_pairing("pw", blob)
+        assert stored.label is None
+
+    def test_label_empty_string_treated_as_none(self, sample_pairing, sample_uid):
+        blob = encrypt_pairing("pw", sample_pairing, sample_uid, label="")
+        stored = decrypt_pairing("pw", blob)
+        assert stored.label is None
+
+    def test_blob_length_constant_with_or_without_label(
+        self, sample_pairing, sample_uid,
+    ):
+        empty = encrypt_pairing("pw", sample_pairing, sample_uid, label=None)
+        named = encrypt_pairing("pw", sample_pairing, sample_uid, label="X" * 16)
+        assert len(empty) == len(named)
+
+    def test_label_too_long_rejected(self, sample_pairing, sample_uid):
+        too_long = "x" * 17  # 17 ASCII bytes > LABEL_MAX_LEN (16)
+        with pytest.raises(ValueError):
+            encrypt_pairing("pw", sample_pairing, sample_uid, label=too_long)
+
+    def test_label_utf8_multibyte_counts_in_bytes(self, sample_pairing, sample_uid):
+        # "ñ" is 2 UTF-8 bytes; 8 of them = 16 bytes (fits exactly).
+        ok = "ñ" * 8
+        encrypt_pairing("pw", sample_pairing, sample_uid, label=ok)  # no raise
+        # 9 of them = 18 bytes -> over the cap.
+        with pytest.raises(ValueError):
+            encrypt_pairing("pw", sample_pairing, sample_uid, label="ñ" * 9)
+
+
+class TestLegacyBlobNoTrailer:
+    def test_legacy_blob_loads_with_label_none(self, sample_pairing, sample_uid):
+        """A blob produced by the pre-label format must still decrypt cleanly.
+
+        We construct one by hand: encrypt the exact plaintext that the old
+        version emitted (no trailer bytes).
+        """
+        from Cryptodome.Cipher import AES
+
+        password = pairing_storage._normalise_password("pw")
+        salt = os.urandom(pairing_storage.SALT_LEN)
+        nonce = os.urandom(pairing_storage.NONCE_LEN)
+        key = pairing_storage._derive_storage_key(password, salt)
+        legacy_payload = (
+            bytes([sample_pairing.pairing_index])
+            + sample_pairing.pairing_key
+            + bytes([len(sample_uid)])
+            + bytes(sample_uid)
+        )
+        cipher = AES.new(key, AES.MODE_GCM, nonce=nonce)
+        ciphertext, tag = cipher.encrypt_and_digest(legacy_payload)
+        legacy_blob = (
+            bytes([pairing_storage.STORAGE_VERSION]) + salt + nonce + tag + ciphertext
+        )
+
+        stored = decrypt_pairing("pw", legacy_blob)
+        assert stored.label is None
+        assert stored.instance_uid == sample_uid
+        assert stored.pairing.pairing_index == sample_pairing.pairing_index
+
+
+class TestUpdateLabel:
+    def test_update_label_round_trip(self, sample_pairing, storage_dir):
+        uid = b"\xAA" * 16
+        pairing_storage.save("pw", sample_pairing, uid, label="Alpha")
+        pairing_storage.update_label("pw", uid, "Beta")
+        loaded = pairing_storage.load("pw", instance_uid=uid)
+        assert loaded.label == "Beta"
+        assert loaded.pairing.pairing_index == sample_pairing.pairing_index
+        assert loaded.pairing.pairing_key == sample_pairing.pairing_key
+
+    def test_update_label_clear(self, sample_pairing, storage_dir):
+        uid = b"\xAA" * 16
+        pairing_storage.save("pw", sample_pairing, uid, label="Alpha")
+        pairing_storage.update_label("pw", uid, None)
+        loaded = pairing_storage.load("pw", instance_uid=uid)
+        assert loaded.label is None
+
+    def test_update_label_no_blob_raises(self, storage_dir):
+        with pytest.raises(PairingStorageError):
+            pairing_storage.update_label("pw", b"\xCC" * 16, "X")

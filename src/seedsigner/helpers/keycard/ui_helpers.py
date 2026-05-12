@@ -242,7 +242,11 @@ def _active_aid(parent_view: "View"):
 # The last byte is the instance suffix; cards initialised by keycard-shell
 # may live at a suffix other than 0x01.
 _KEYCARD_INSTANCE_PREFIX = bytes.fromhex("A000000804000101")
-_KNOWN_INSTANCE_SUFFIXES = [bytes([b]) for b in range(0x01, 0x10)]  # 01..0F
+# Suffix probe range mirrors MAX_KEYCARD_INSTANCES in global_platform.
+from .global_platform import MAX_KEYCARD_INSTANCES as _MAX_KC_INSTANCES
+_KNOWN_INSTANCE_SUFFIXES = [
+    bytes([b]) for b in range(0x01, 0x01 + _MAX_KC_INSTANCES)
+]
 
 
 def select_with_autodetect(client, controller):
