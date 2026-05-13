@@ -451,6 +451,7 @@ class SeedKeeperSelectView(View):
                 self.run_screen(
                     WarningScreen,
                     title="No Secrets to Load",
+                    status_headline=None,
                     text="No BIP39 Secrets to Load from Seedkeeper",
                     show_back_button=False,
                 )
@@ -550,6 +551,7 @@ class SeedKeeperSelectView(View):
             self.run_screen(
                 WarningScreen,
                 title="Error",
+                status_headline=None,
                 text=str(e),
                 show_back_button=True,
             )
@@ -1875,6 +1877,7 @@ class SeedSlip39LoadFromSeedkeeperView(View):
                 self.run_screen(
                     WarningScreen,
                     title="No Secrets to Load",
+                    status_headline=None,
                     text="No SLIP39 Shares on SeedKeeper",
                     show_back_button=False,
                 )
@@ -1914,6 +1917,7 @@ class SeedSlip39LoadFromSeedkeeperView(View):
             self.run_screen(
                 WarningScreen,
                 title="Error",
+                status_headline=None,
                 text=str(e),
                 show_back_button=True,
             )
