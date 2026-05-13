@@ -10,3 +10,4 @@
 [submodule "electronics/usb-plug-pcb"]
 	path = electronics/usb-plug-pcb
 	url = https://github.com/3rdIteration/PCB-Edge-USB-connector-KiCad-library.git
+	update = none
