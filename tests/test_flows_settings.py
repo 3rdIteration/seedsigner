@@ -10,7 +10,7 @@ from seedsigner.models.settings import Settings
 from seedsigner.models.settings_definition import SettingsDefinition, SettingsConstants
 from seedsigner.gui.screens.screen import RET_CODE__BACK_BUTTON, ButtonOption
 from seedsigner.hardware.microsd import MicroSD
-from seedsigner.views.view import MainMenuView
+from seedsigner.views.view import MainMenuView, ScanTargetSelectView
 from seedsigner.views import scan_views, settings_views
 
 
@@ -150,6 +150,7 @@ class TestSettingsFlows(FlowTest):
             self.settings.set_value(SettingsConstants.SETTING__PERSISTENT_SETTINGS, initial_setting_state)
             self.run_sequence([
                 FlowStep(MainMenuView, button_data_selection=MainMenuView.SCAN),
+                FlowStep(ScanTargetSelectView, button_data_selection=ScanTargetSelectView.SEEDSIGNER),
                 FlowStep(scan_views.ScanView, before_run=load_settingsqr_into_decoder),  # simulate read message QR; ret val is ignored
                 FlowStep(settings_views.SettingsIngestSettingsQRView),   # ret val is ignored
                 FlowStep(MainMenuView),

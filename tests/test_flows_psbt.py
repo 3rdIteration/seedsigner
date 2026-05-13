@@ -3,7 +3,7 @@ from base import BaseTest, FlowTest, FlowStep
 from unittest.mock import Mock
 
 from seedsigner.controller import Controller
-from seedsigner.views.view import MainMenuView
+from seedsigner.views.view import MainMenuView, ScanTargetSelectView
 from seedsigner.views import scan_views, seed_views, psbt_views
 from seedsigner.models.settings import SettingsConstants
 
@@ -43,6 +43,7 @@ class TestPSBTFlows(FlowTest):
     
         self.run_sequence([
             FlowStep(MainMenuView, button_data_selection=MainMenuView.SCAN),
+            FlowStep(ScanTargetSelectView, button_data_selection=ScanTargetSelectView.SEEDSIGNER),
             FlowStep(scan_views.ScanView, before_run=load_psbt_into_decoder),  # simulate read PSBT; ret val is ignored
             FlowStep(psbt_views.PSBTSelectSeedView, button_data_selection=psbt_views.PSBTSelectSeedView.SCAN_SEED),
             FlowStep(scan_views.ScanSeedQRView, before_run=load_seed_into_decoder),
@@ -72,6 +73,7 @@ class TestPSBTFlows(FlowTest):
 
         sequence = [
             FlowStep(MainMenuView, button_data_selection=MainMenuView.SCAN),
+            FlowStep(ScanTargetSelectView, button_data_selection=ScanTargetSelectView.SEEDSIGNER),
             FlowStep(scan_views.ScanView, before_run=load_psbt_into_decoder),  # simulate read PSBT; ret val is ignored
             FlowStep(psbt_views.PSBTSelectSeedView, button_data_selection=psbt_views.PSBTSelectSeedView.TYPE_ELECTRUM),
             FlowStep(seed_views.SeedElectrumMnemonicStartView),
@@ -103,6 +105,7 @@ class TestPSBTFlows(FlowTest):
             
         self.run_sequence([
             FlowStep(MainMenuView, button_data_selection=MainMenuView.SCAN),
+            FlowStep(ScanTargetSelectView, button_data_selection=ScanTargetSelectView.SEEDSIGNER),
             FlowStep(scan_views.ScanView, before_run=load_psbt_into_decoder),  # simulate read PSBT; ret val is ignored
             FlowStep(psbt_views.PSBTSelectSeedView, button_data_selection=psbt_views.PSBTSelectSeedView.SCAN_SEED),
             FlowStep(scan_views.ScanSeedQRView, before_run=load_seed_into_decoder),
@@ -154,6 +157,7 @@ class TestPSBTFlows(FlowTest):
 
         self.run_sequence([
             FlowStep(MainMenuView, button_data_selection=MainMenuView.SCAN),
+            FlowStep(ScanTargetSelectView, button_data_selection=ScanTargetSelectView.SEEDSIGNER),
             FlowStep(scan_views.ScanView, before_run=load_psbt_into_decoder),  # simulate read PSBT; ret val is ignored
             FlowStep(psbt_views.PSBTSelectSeedView, button_data_selection=psbt_views.PSBTSelectSeedView.SCAN_SEED),
             FlowStep(scan_views.ScanSeedQRView, before_run=load_seed_into_decoder),
@@ -198,6 +202,7 @@ class TestPSBTFlows(FlowTest):
 
         self.run_sequence([
             FlowStep(MainMenuView, button_data_selection=MainMenuView.SCAN),
+            FlowStep(ScanTargetSelectView, button_data_selection=ScanTargetSelectView.SEEDSIGNER),
             FlowStep(scan_views.ScanView, before_run=load_psbt_into_decoder),
             FlowStep(psbt_views.PSBTSelectSeedView, button_data_selection=psbt_views.PSBTSelectSeedView.SCAN_WIF),
             FlowStep(scan_views.ScanWIFQRView, before_run=load_wif_into_decoder),
@@ -231,6 +236,7 @@ class TestPSBTFlows(FlowTest):
 
         self.run_sequence([
             FlowStep(MainMenuView, button_data_selection=MainMenuView.SCAN),
+            FlowStep(ScanTargetSelectView, button_data_selection=ScanTargetSelectView.SEEDSIGNER),
             FlowStep(scan_views.ScanView, before_run=load_psbt_into_decoder),
             FlowStep(psbt_views.PSBTSelectSeedView, button_data_selection=psbt_views.PSBTSelectSeedView.SCAN_BIP38),
             FlowStep(scan_views.ScanBIP38QRView, before_run=load_bip38_into_decoder),
@@ -260,6 +266,7 @@ class TestPSBTSatochip(FlowTest):
 
         self.run_sequence([
             FlowStep(MainMenuView, button_data_selection=MainMenuView.SCAN),
+            FlowStep(ScanTargetSelectView, button_data_selection=ScanTargetSelectView.SEEDSIGNER),
             FlowStep(scan_views.ScanView, before_run=load_psbt_into_decoder),
             FlowStep(psbt_views.PSBTSelectSeedView, button_data_selection=psbt_views.PSBTSelectSeedView.SATOCHIP),
             FlowStep(psbt_views.PSBTSelectSeedView),
@@ -301,6 +308,7 @@ class TestPSBTSatochip(FlowTest):
 
         self.run_sequence([
             FlowStep(MainMenuView, button_data_selection=MainMenuView.SCAN),
+            FlowStep(ScanTargetSelectView, button_data_selection=ScanTargetSelectView.SEEDSIGNER),
             FlowStep(scan_views.ScanView, before_run=load_psbt_into_decoder),
             FlowStep(psbt_views.PSBTSelectSeedView, screen_return_value=0),
             FlowStep(psbt_views.PSBTSelectSeedView),

@@ -11,7 +11,7 @@ from base import FlowTestInvalidButtonDataSelectionException
 from seedsigner.gui.screens.screen import RET_CODE__BACK_BUTTON, ButtonOption
 from seedsigner.models.settings import Settings, SettingsConstants
 from seedsigner.models.seed import ElectrumSeed, Seed
-from seedsigner.views.view import MainMenuView, OptionDisabledView, View, NetworkMismatchErrorView
+from seedsigner.views.view import MainMenuView, OptionDisabledView, ScanTargetSelectView, View, NetworkMismatchErrorView
 from seedsigner.views import seed_views, scan_views, settings_views, tools_views
 from binascii import hexlify
 
@@ -36,6 +36,7 @@ class TestSeedFlows(FlowTest):
         """
         self.run_sequence([
             FlowStep(MainMenuView, button_data_selection=MainMenuView.SCAN),
+            FlowStep(ScanTargetSelectView, button_data_selection=ScanTargetSelectView.SEEDSIGNER),
             FlowStep(scan_views.ScanView, before_run=load_seed_into_decoder),  # simulate read SeedQR; ret val is ignored
             FlowStep(seed_views.SeedFinalizeView, button_data_selection=seed_views.SeedFinalizeView.FINALIZE),
             FlowStep(seed_views.SeedOptionsView),
@@ -44,6 +45,7 @@ class TestSeedFlows(FlowTest):
     def test_scan_xprv_flow(self):
         self.run_sequence([
             FlowStep(MainMenuView, button_data_selection=MainMenuView.SCAN),
+            FlowStep(ScanTargetSelectView, button_data_selection=ScanTargetSelectView.SEEDSIGNER),
             FlowStep(scan_views.ScanView, before_run=load_xprv_into_decoder),
             FlowStep(seed_views.SeedFinalizeView, button_data_selection=seed_views.SeedFinalizeView.FINALIZE),
             FlowStep(seed_views.SeedOptionsView),
@@ -55,6 +57,7 @@ class TestSeedFlows(FlowTest):
 
         self.run_sequence([
             FlowStep(MainMenuView, button_data_selection=MainMenuView.SCAN),
+            FlowStep(ScanTargetSelectView, button_data_selection=ScanTargetSelectView.SEEDSIGNER),
             FlowStep(scan_views.ScanView, before_run=load_xprv_into_decoder),
             FlowStep(seed_views.SeedFinalizeView, button_data_selection=seed_views.SeedFinalizeView.FINALIZE),
             FlowStep(seed_views.SeedOptionsView, button_data_selection=seed_views.SeedOptionsView.BACKUP),
@@ -74,6 +77,7 @@ class TestSeedFlows(FlowTest):
         """
         self.run_sequence([
             FlowStep(MainMenuView, button_data_selection=MainMenuView.SCAN),
+            FlowStep(ScanTargetSelectView, button_data_selection=ScanTargetSelectView.SEEDSIGNER),
             FlowStep(scan_views.ScanView, before_run=load_seed_into_decoder),  # simulate read SeedQR; ret val is ignored
             FlowStep(seed_views.SeedFinalizeView, button_data_selection=seed_views.SeedFinalizeView.TYPE_PASSPHRASE),
             FlowStep(seed_views.SeedAddPassphraseView, screen_return_value=dict(passphrase="muhpassphrase", is_back_button=True)),
@@ -705,6 +709,7 @@ class TestMessageSigningFlows(FlowTest):
         # Scenario 1: Load the mesage first, then the seed
         self.run_sequence([
             FlowStep(MainMenuView, button_data_selection=MainMenuView.SCAN),
+            FlowStep(ScanTargetSelectView, button_data_selection=ScanTargetSelectView.SEEDSIGNER),
             FlowStep(scan_views.ScanView, before_run=self.load_short_message_into_decoder),  # simulate read message QR; ret val is ignored
             FlowStep(seed_views.SeedSignMessageStartView, is_redirect=True),
             FlowStep(seed_views.SeedSelectSeedView, button_data_selection=seed_views.SeedSelectSeedView.SCAN_SEED),
@@ -721,6 +726,7 @@ class TestMessageSigningFlows(FlowTest):
         self.controller.discard_seed(0)
         self.run_sequence([
             FlowStep(MainMenuView, button_data_selection=MainMenuView.SCAN),
+            FlowStep(ScanTargetSelectView, button_data_selection=ScanTargetSelectView.SEEDSIGNER),
             FlowStep(scan_views.ScanView, before_run=self.load_seed_into_decoder),  # simulate read SeedQR; ret val is ignored
             FlowStep(seed_views.SeedFinalizeView, button_data_selection=seed_views.SeedFinalizeView.FINALIZE),
             FlowStep(seed_views.SeedOptionsView, button_data_selection=seed_views.SeedOptionsView.SIGN_MESSAGE),
@@ -735,6 +741,7 @@ class TestMessageSigningFlows(FlowTest):
         # Scenario 3: Load a long, multipage message
         self.run_sequence([
             FlowStep(MainMenuView, button_data_selection=MainMenuView.SCAN),
+            FlowStep(ScanTargetSelectView, button_data_selection=ScanTargetSelectView.SEEDSIGNER),
             FlowStep(scan_views.ScanView, before_run=self.load_multipage_message_into_decoder),  # simulate read message QR; ret val is ignored
             FlowStep(seed_views.SeedSignMessageStartView, is_redirect=True),
             FlowStep(seed_views.SeedSelectSeedView, button_data_selection=seed_views.SeedSelectSeedView.SCAN_SEED),
@@ -769,6 +776,7 @@ class TestMessageSigningFlows(FlowTest):
         self.controller.discard_seed(0)
         self.run_sequence([
             FlowStep(MainMenuView, button_data_selection=MainMenuView.SCAN),
+            FlowStep(ScanTargetSelectView, button_data_selection=ScanTargetSelectView.SEEDSIGNER),
             FlowStep(scan_views.ScanView, before_run=self.load_seed_into_decoder),  # simulate read SeedQR; ret val is ignored
             FlowStep(seed_views.SeedFinalizeView, button_data_selection=seed_views.SeedFinalizeView.FINALIZE),
             FlowStep(seed_views.SeedOptionsView, button_data_selection=seed_views.SeedOptionsView.SIGN_MESSAGE),
@@ -794,6 +802,7 @@ class TestMessageSigningFlows(FlowTest):
         def expect_network_mismatch_error(load_message: Callable):
             self.run_sequence([
                 FlowStep(MainMenuView, button_data_selection=MainMenuView.SCAN),
+                FlowStep(ScanTargetSelectView, button_data_selection=ScanTargetSelectView.SEEDSIGNER),
                 FlowStep(scan_views.ScanView, before_run=load_message),  # simulate read message QR; ret val is ignored
                 FlowStep(seed_views.SeedSignMessageStartView, is_redirect=True),
                 FlowStep(NetworkMismatchErrorView),
@@ -826,6 +835,7 @@ class TestMessageSigningFlows(FlowTest):
 
         sequence = [
             FlowStep(MainMenuView, button_data_selection=MainMenuView.SCAN),
+            FlowStep(ScanTargetSelectView, button_data_selection=ScanTargetSelectView.SEEDSIGNER),
             FlowStep(scan_views.ScanView, before_run=self.load_short_message_into_decoder),  # simulate read message QR; ret val is ignored
             FlowStep(seed_views.SeedSignMessageStartView, is_redirect=True),
         ]
@@ -862,6 +872,7 @@ class TestMessageSigningFlows(FlowTest):
 
         self.run_sequence([
             FlowStep(MainMenuView, button_data_selection=MainMenuView.SCAN),
+            FlowStep(ScanTargetSelectView, button_data_selection=ScanTargetSelectView.SEEDSIGNER),
             FlowStep(scan_views.ScanView, before_run=self.load_seed_into_decoder),  # simulate read SeedQR; ret val is ignored
             FlowStep(seed_views.SeedFinalizeView, button_data_selection=seed_views.SeedFinalizeView.FINALIZE),
             FlowStep(seed_views.SeedOptionsView, button_data_selection=seed_views.SeedOptionsView.SIGN_MESSAGE),
@@ -883,6 +894,7 @@ class TestMessageSigningFlows(FlowTest):
         def expect_unsupported_derivation(load_message: Callable):
             self.run_sequence([
                 FlowStep(MainMenuView, button_data_selection=MainMenuView.SCAN),
+                FlowStep(ScanTargetSelectView, button_data_selection=ScanTargetSelectView.SEEDSIGNER),
                 FlowStep(scan_views.ScanView, before_run=self.load_seed_into_decoder),  # simulate read SeedQR; ret val is ignored
                 FlowStep(seed_views.SeedFinalizeView, button_data_selection=seed_views.SeedFinalizeView.FINALIZE),
                 FlowStep(seed_views.SeedOptionsView, button_data_selection=seed_views.SeedOptionsView.SIGN_MESSAGE),
