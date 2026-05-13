@@ -112,8 +112,9 @@ class ToolsKeycardMenuView(View):
     """
 
     SIGN_ETH = ButtonOption("Sign ETH")
+    BITCOIN = ButtonOption("Bitcoin")
     VIEW_WALLETS = ButtonOption("View wallets")
-    EXPORT_PUBKEY = ButtonOption("Export xpub")
+    EXPORT_PUBKEY = ButtonOption("Export ETH xpub")
     SETUP = ButtonOption("Setup")
     MANAGE = ButtonOption("Manage")
 
@@ -127,6 +128,7 @@ class ToolsKeycardMenuView(View):
 
         button_data = [
             self.SIGN_ETH,
+            self.BITCOIN,
             self.VIEW_WALLETS,
             self.EXPORT_PUBKEY,
             self.SETUP,
@@ -144,6 +146,8 @@ class ToolsKeycardMenuView(View):
         chosen = button_data[selected]
         if chosen == self.SIGN_ETH:
             return Destination(ToolsKeycardSignEthStartView)
+        if chosen == self.BITCOIN:
+            return Destination(ToolsKeycardBitcoinMenuView)
         if chosen == self.VIEW_WALLETS:
             return Destination(ToolsKeycardWalletsListView)
         if chosen == self.EXPORT_PUBKEY:
@@ -569,11 +573,16 @@ class ToolsKeycardInitView(View):
                 LargeIconStatusScreen,
                 title="Initialised",
                 status_headline=None,
-                text="PIN/PUK set.\nPair, then Generate key.",
+                text="PIN/PUK set.\nNow load a seed.",
                 show_back_button=False,
                 button_data=[ButtonOption("OK")],
             )
-            return Destination(ToolsKeycardMenuView, skip_current_view=True)
+            # Chain into the setup chooser (Generate vs Import). The
+            # individual Setup-menu entries still work as standalone, so
+            # users who back out can re-run either step from the menu.
+            return Destination(
+                ToolsKeycardSetupChooseSeedView, skip_current_view=True,
+            )
         finally:
             if pin_buf is not None:
                 wipe_bytearray(pin_buf)
@@ -1384,55 +1393,31 @@ class ToolsKeycardRemovePairingView(View):
 
 
 class ToolsKeycardGenerateKeyView(View):
-    CONFIRM = ButtonOption("Generate key")
+    """Entry-point for the on-card key generation flow.
+
+    Card supplies the entropy via ``GENERATE_MNEMONIC`` (INS=0xD2); the
+    host shows the mnemonic to the user ONCE for backup, optionally runs
+    a word-by-word quiz, derives the 64-byte BIP-39 seed and pushes it
+    back to the card via ``LOAD_KEY``. After the load the seed cannot be
+    extracted from the card — same trust model as keycard-shell.
+    """
+
+    CONFIRM = ButtonOption("Continue")
 
     def run(self):
-        from seedsigner.helpers.keycard import KeycardCardChangedError
-
-        if not self.controller.has_any_keycard_auth():
-            if not try_silent_ephemeral_pair(self):
-                return Destination(ToolsKeycardPairView)
-
         ret = self.run_screen(
             DireWarningScreen,
-            title="Generate key?",
+            title="Generate seed?",
             status_headline=None,
-            text="Replaces any existing key on this card.",
+            text="Card generates a new\nseed. Replaces any existing\nkey on this card.",
             show_back_button=True,
             button_data=[self.CONFIRM],
         )
         if ret == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
-
-        from seedsigner.helpers.keycard import KeycardPinPromptCancelled
-
-        try:
-            client, _ = _open_unlocked_session_cached_or_prompt(
-                self, require_key=False,
-            )
-            client.generate_key()
-        except KeycardPinPromptCancelled:
-            return Destination(BackStackView)
-        except KeycardCardChangedError:
-            return Destination(ToolsKeycardPairView)
-        except Exception as exc:
-            logger.exception("Keycard GENERATE_KEY failed")
-            title, body = classify_card_error(exc, default_title="Generate failed")
-            return _error_destination(title, body)
-
-        # The on-card master key just changed — any cached View-wallets
-        # addresses for this AID were derived from the old key.
-        _invalidate_wallets_cache_for_active_aid(self.controller)
-
-        self.run_screen(
-            LargeIconStatusScreen,
-            title="Key created",
-            status_headline=None,
-            text="Card holds a fresh master key.",
-            show_back_button=False,
-            button_data=[ButtonOption("OK")],
+        return Destination(
+            ToolsKeycardGenerateMnemonicLengthView, skip_current_view=True,
         )
-        return Destination(ToolsKeycardMenuView, skip_current_view=True)
 
 
 # ---------------------------------------------------------------------------
@@ -1601,9 +1586,23 @@ class ToolsKeycardImportSeedView(View):
                 show_back_button=False,
                 button_data=[ButtonOption("OK")],
             )
-            return Destination(ToolsKeycardMenuView, skip_current_view=True)
+            # Hand the mnemonic + passphrase to the Seedkeeper-offer
+            # chain via the controller. Use fresh string allocations so
+            # the local-buffer wipe in the ``finally`` below cannot reach
+            # the controller's copy.
+            self.controller.pending_keycard_mnemonic = [
+                "".join(w) for w in words
+            ]
+            self.controller.pending_keycard_passphrase = bytearray(
+                bytes(passphrase_buf),
+            )
+            return Destination(
+                ToolsKeycardSeedkeeperOfferView, skip_current_view=True,
+            )
         finally:
-            # Best-effort wipe of every intermediate secret.
+            # Best-effort wipe of every intermediate secret. The
+            # controller's copies (if we got that far) are untouched by
+            # these wipes since they're independent allocations.
             for i in range(len(words)):
                 try:
                     wipe_string(words[i])
@@ -1643,13 +1642,9 @@ class ToolsKeycardImportSeedView(View):
     def _capture_via_keyboard(self, num_words: int) -> Optional[list]:
         """Capture ``num_words`` words via the on-screen keyboard."""
         from seedsigner.gui.screens import seed_screens
-        from seedsigner.models.seed import Seed
+        from embit import bip39
 
-        wordlist = Seed.get_wordlist(
-            wordlist_language_code=self.settings.get_value(
-                SettingsConstants.SETTING__WORDLIST_LANGUAGE,
-            ),
-        )
+        wordlist = bip39.WORDLIST
         words: list = []
         for i in range(num_words):
             ret = self.run_screen(
@@ -1664,6 +1659,696 @@ class ToolsKeycardImportSeedView(View):
                 return None
             words.append(ret)
         return words
+
+
+# ---------------------------------------------------------------------------
+# Setup chain: Init → (Generate | Import) → Backup → LOAD_KEY → Seedkeeper?
+# ---------------------------------------------------------------------------
+
+
+def _wipe_pending_setup_state(controller) -> None:
+    """Wipe transient mnemonic / passphrase held during the Setup chain.
+
+    Safe to call repeatedly; idempotent. Each terminal step in the chain
+    (success, error, skip, back-out) calls this so a yanked card or a
+    crash during the next user input cannot leak the mnemonic.
+    """
+    from seedsigner.helpers.secure_delete import wipe_list
+
+    if controller.pending_keycard_mnemonic is not None:
+        try:
+            wipe_list(controller.pending_keycard_mnemonic)
+        except Exception:
+            pass
+        controller.pending_keycard_mnemonic = None
+    if controller.pending_keycard_passphrase is not None:
+        try:
+            wipe_bytearray(controller.pending_keycard_passphrase)
+        except Exception:
+            pass
+        controller.pending_keycard_passphrase = None
+
+
+class ToolsKeycardSetupChooseSeedView(View):
+    """Post-Init chooser: Generate a new seed on card, or Import one.
+
+    Reached from ``ToolsKeycardInitView`` on a freshly-initialised card.
+    Backing out lands on the Setup menu (via BackStack) — the user can
+    still re-run either path later from there.
+    """
+
+    GENERATE = ButtonOption("Generate new seed")
+    IMPORT = ButtonOption("Import existing seed")
+
+    def run(self):
+        button_data = [self.GENERATE, self.IMPORT]
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Load seed",
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        chosen = button_data[selected]
+        if chosen == self.GENERATE:
+            return Destination(ToolsKeycardGenerateKeyView)
+        if chosen == self.IMPORT:
+            return Destination(ToolsKeycardImportSeedView)
+        return Destination(NotYetImplementedView)
+
+
+class ToolsKeycardGenerateMnemonicLengthView(View):
+    """Pick mnemonic length for ``GENERATE MNEMONIC``."""
+
+    WORDS_12 = ButtonOption("12 words")
+    WORDS_24 = ButtonOption("24 words")
+
+    def run(self):
+        button_data = [self.WORDS_12, self.WORDS_24]
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Mnemonic length",
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        word_count = 12 if button_data[selected] == self.WORDS_12 else 24
+        return Destination(
+            ToolsKeycardGenerateMnemonicRunView,
+            view_args={"word_count": word_count},
+        )
+
+
+class ToolsKeycardGenerateMnemonicRunView(View):
+    """Call GENERATE MNEMONIC on the card and stash the result.
+
+    On success, ``controller.pending_keycard_mnemonic`` holds the
+    fresh mnemonic (each word is ``"".join(WORDLIST[i])`` so wiping the
+    list does NOT corrupt the global BIP-39 wordlist).
+    """
+
+    def __init__(self, word_count: int):
+        super().__init__()
+        self.word_count = word_count
+
+    def run(self):
+        from seedsigner.helpers.keycard import (
+            KeycardCardChangedError, KeycardPinPromptCancelled,
+        )
+
+        # Make sure no leftovers from a previous attempt linger.
+        _wipe_pending_setup_state(self.controller)
+
+        try:
+            client, _ = _open_unlocked_session_cached_or_prompt(
+                self, require_key=False,
+            )
+            indices = client.generate_mnemonic(self.word_count)
+        except KeycardPinPromptCancelled:
+            return Destination(BackStackView)
+        except KeycardCardChangedError:
+            return Destination(ToolsKeycardPairView)
+        except Exception as exc:
+            logger.exception("GENERATE_MNEMONIC failed")
+            title, body = classify_card_error(
+                exc, default_title="Generate failed",
+            )
+            return _error_destination(title, body)
+
+        from embit import bip39
+        wordlist = bip39.WORDLIST
+        # Fresh per-word allocations so a later wipe never targets the
+        # shared wordlist (CLAUDE.md "Secure wipe and shared wordlist
+        # safety").
+        words: list = []
+        for idx in indices:
+            if idx < 0 or idx >= len(wordlist):
+                return _error_destination(
+                    "Bad mnemonic", f"Index {idx} out of range",
+                )
+            words.append("".join(wordlist[idx]))
+
+        self.controller.pending_keycard_mnemonic = words
+        return Destination(
+            ToolsKeycardGenerateSeedWordsView,
+            view_args={"page_index": 0},
+            skip_current_view=True,
+        )
+
+
+class ToolsKeycardGenerateSeedWordsView(View):
+    """Paginated display of the just-generated mnemonic (4 words/page).
+
+    Reuses the ``SeedWordsScreen`` layout but reads from
+    ``controller.pending_keycard_mnemonic`` so the words never travel
+    through ``SeedStorage`` (which is Bitcoin-side and not appropriate
+    for a card-bound seed).
+    """
+
+    NEXT = ButtonOption("Next")
+    DONE = ButtonOption("Done")
+
+    def __init__(self, page_index: int = 0):
+        super().__init__()
+        self.page_index = page_index
+
+    def run(self):
+        from seedsigner.gui.screens import seed_screens
+
+        mnemonic = self.controller.pending_keycard_mnemonic or []
+        if not mnemonic:
+            # State got cleared (e.g. via MainMenuView re-entry); bail.
+            return Destination(BackStackView)
+        words_per_page = 4
+        num_pages = max(1, len(mnemonic) // words_per_page)
+        words = mnemonic[
+            self.page_index * words_per_page :
+            (self.page_index + 1) * words_per_page
+        ]
+        is_last_page = self.page_index >= num_pages - 1
+        button_data = [self.DONE if is_last_page else self.NEXT]
+
+        selected = seed_screens.SeedWordsScreen(
+            title=f"Seed Words: {self.page_index + 1}/{num_pages}",
+            words=words,
+            page_index=self.page_index,
+            num_pages=num_pages,
+            button_data=button_data,
+        ).display()
+
+        if selected == RET_CODE__BACK_BUTTON:
+            if self.page_index == 0:
+                # First page back = abort; wipe and unwind.
+                _wipe_pending_setup_state(self.controller)
+                return Destination(BackStackView)
+            return Destination(
+                ToolsKeycardGenerateSeedWordsView,
+                view_args={"page_index": self.page_index - 1},
+                skip_current_view=True,
+            )
+
+        if button_data[selected] == self.NEXT:
+            return Destination(
+                ToolsKeycardGenerateSeedWordsView,
+                view_args={"page_index": self.page_index + 1},
+                skip_current_view=True,
+            )
+        # DONE → backup-test prompt
+        return Destination(ToolsKeycardGenerateSeedBackupPromptView)
+
+
+class ToolsKeycardGenerateSeedBackupPromptView(View):
+    """Ask whether to verify the backup word-by-word, or skip.
+
+    Skip does NOT re-show the mnemonic — the user has had their one
+    look at the previous step. Backing out of this screen returns to
+    the last page of the mnemonic display.
+    """
+
+    VERIFY = ButtonOption("Verify words")
+    SKIP = ButtonOption("Skip")
+
+    def run(self):
+        from seedsigner.gui.screens import seed_screens
+
+        # Use the existing prompt screen so the look matches Bitcoin
+        # flows. It accepts a custom button_data list.
+        selected = seed_screens.SeedWordsBackupTestPromptScreen(
+            button_data=[self.VERIFY, self.SKIP],
+        ).display()
+
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        button = (self.VERIFY, self.SKIP)[selected]
+        if button == self.VERIFY:
+            return Destination(ToolsKeycardGenerateSeedBackupQuizView)
+        # SKIP → straight to passphrase prompt
+        return Destination(
+            ToolsKeycardGenerateSeedPassphrasePromptView,
+        )
+
+
+class ToolsKeycardGenerateSeedBackupQuizView(View):
+    """Word-by-word verification quiz for the freshly-generated mnemonic.
+
+    Pulls the mnemonic from ``controller.pending_keycard_mnemonic`` —
+    NOT from ``SeedStorage`` — so the quiz never round-trips through a
+    Bitcoin-side ``Seed`` object.
+    """
+
+    def __init__(self,
+                 confirmed_list: Optional[List[int]] = None,
+                 cur_index: Optional[int] = None,
+                 rand_seed: Optional[int] = None):
+        super().__init__()
+        self.confirmed_list = confirmed_list or []
+        self.cur_index = cur_index
+        self.rand_seed = rand_seed
+
+    def run(self):
+        import random
+        from embit import bip39
+
+        mnemonic = self.controller.pending_keycard_mnemonic or []
+        if not mnemonic:
+            return Destination(BackStackView)
+
+        if self.rand_seed is not None:
+            random.seed(
+                self.rand_seed + (self.cur_index or 0),
+            )
+        if self.cur_index is None:
+            self.cur_index = int(random.random() * len(mnemonic))
+            while self.cur_index in self.confirmed_list:
+                self.cur_index = int(random.random() * len(mnemonic))
+
+        real = ButtonOption(mnemonic[self.cur_index])
+        # `"".join(...)` keeps wipes off the shared global wordlist.
+        fake_options = [
+            ButtonOption("".join(bip39.WORDLIST[
+                int(random.random() * 2047)
+            ]))
+            for _ in range(3)
+        ]
+        button_data = [real] + fake_options
+        random.shuffle(button_data)
+
+        selected = self.run_screen(
+            ButtonListScreen,
+            title=f"Verify Word #{self.cur_index + 1}",
+            show_back_button=False,
+            button_data=button_data,
+            is_bottom_list=True,
+            is_button_text_centered=True,
+        )
+
+        if button_data[selected] == real:
+            self.confirmed_list.append(self.cur_index)
+            if len(self.confirmed_list) == len(mnemonic):
+                return Destination(
+                    ToolsKeycardGenerateSeedPassphrasePromptView,
+                )
+            return Destination(
+                ToolsKeycardGenerateSeedBackupQuizView,
+                view_args={"confirmed_list": self.confirmed_list},
+            )
+        # Wrong word
+        return Destination(
+            ToolsKeycardGenerateSeedBackupMistakeView,
+            view_args={
+                "cur_index": self.cur_index,
+                "wrong_word": button_data[selected].button_label,
+                "confirmed_list": self.confirmed_list,
+            },
+        )
+
+
+class ToolsKeycardGenerateSeedBackupMistakeView(View):
+    """Shown when the user picks the wrong word in the quiz."""
+
+    REVIEW = ButtonOption("Review words")
+    RETRY = ButtonOption("Try Again")
+
+    def __init__(self, cur_index: int, wrong_word: str,
+                 confirmed_list: Optional[List[int]] = None):
+        super().__init__()
+        self.cur_index = cur_index
+        self.wrong_word = wrong_word
+        self.confirmed_list = confirmed_list or []
+
+    def run(self):
+        text = f'Word #{self.cur_index + 1} is not "{self.wrong_word}".'
+        selected = self.run_screen(
+            DireWarningScreen,
+            title="Verification error",
+            show_back_button=False,
+            status_headline="Wrong word!",
+            button_data=[self.REVIEW, self.RETRY],
+            text=text,
+        )
+        if (self.REVIEW, self.RETRY)[selected] == self.REVIEW:
+            return Destination(
+                ToolsKeycardGenerateSeedWordsView,
+                view_args={"page_index": 0},
+                skip_current_view=True,
+            )
+        return Destination(
+            ToolsKeycardGenerateSeedBackupQuizView,
+            view_args={
+                "confirmed_list": self.confirmed_list,
+                "cur_index": self.cur_index,
+            },
+        )
+
+
+class ToolsKeycardGenerateSeedPassphrasePromptView(View):
+    """Ask whether to add a BIP-39 passphrase to the generated mnemonic.
+
+    Mirrors the Import flow's optional-passphrase step. The passphrase
+    (if any) is stashed on ``controller.pending_keycard_passphrase`` as
+    a bytearray so wipes are reliable.
+    """
+
+    SKIP = ButtonOption("No passphrase")
+    SET = ButtonOption("Set passphrase")
+
+    def run(self):
+        button_data = [self.SKIP, self.SET]
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Passphrase?",
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        chosen = button_data[selected]
+        if chosen == self.SKIP:
+            # explicit empty -> store empty bytearray so later steps
+            # don't have to special-case None.
+            self.controller.pending_keycard_passphrase = bytearray()
+            return Destination(
+                ToolsKeycardGenerateSeedLoadView, skip_current_view=True,
+            )
+        # SET → on-screen keyboard
+        got = _prompt_for_text(self, "Passphrase", max_len=80)
+        if got is None:
+            return Destination(BackStackView)
+        buf = bytearray()
+        try:
+            buf.extend(got.encode("utf-8"))
+        finally:
+            try:
+                wipe_string(got)
+            except Exception:
+                pass
+        self.controller.pending_keycard_passphrase = buf
+        return Destination(
+            ToolsKeycardGenerateSeedLoadView, skip_current_view=True,
+        )
+
+
+class ToolsKeycardGenerateSeedLoadView(View):
+    """Derive 64-byte BIP-39 seed and push it to the card via LOAD_KEY.
+
+    On success, hands the mnemonic over to
+    ``ToolsKeycardSeedkeeperOfferView`` which decides whether to prompt
+    for a backup save (only if a Seedkeeper applet is detected on the
+    same card). Wipes the local 64-byte seed and any intermediate
+    buffers on every exit path; the mnemonic/passphrase live on the
+    controller until the Seedkeeper-offer chain wipes them.
+    """
+
+    def run(self):
+        from seedsigner.helpers.keycard import (
+            KeycardCardChangedError, KeycardPinPromptCancelled,
+        )
+
+        mnemonic = self.controller.pending_keycard_mnemonic
+        passphrase_buf = self.controller.pending_keycard_passphrase
+        if not mnemonic or passphrase_buf is None:
+            return Destination(BackStackView)
+
+        seed64 = bytearray(64)
+        try:
+            from embit import bip39, bip32
+            mnemonic_str = " ".join(mnemonic)
+            try:
+                passphrase_str = passphrase_buf.decode("utf-8")
+            except Exception as exc:
+                _wipe_pending_setup_state(self.controller)
+                return _error_destination("Bad passphrase", str(exc))
+
+            try:
+                derived = bip39.mnemonic_to_seed(
+                    mnemonic_str, password=passphrase_str,
+                )
+                seed64[:] = derived
+                root = bip32.HDKey.from_seed(bytes(seed64))
+                fingerprint = root.my_fingerprint.hex()
+            except Exception as exc:
+                logger.exception("seed derivation failed")
+                _wipe_pending_setup_state(self.controller)
+                return _error_destination("Derive failed", str(exc))
+
+            try:
+                client, _ = _open_unlocked_session_cached_or_prompt(
+                    self, require_key=False,
+                )
+                client.load_bip39_seed(bytes(seed64))
+            except KeycardPinPromptCancelled:
+                _wipe_pending_setup_state(self.controller)
+                return Destination(BackStackView)
+            except KeycardCardChangedError:
+                _wipe_pending_setup_state(self.controller)
+                return Destination(ToolsKeycardPairView)
+            except Exception as exc:
+                logger.exception("LOAD_KEY failed")
+                _wipe_pending_setup_state(self.controller)
+                title, body = classify_card_error(
+                    exc, default_title="Push failed",
+                )
+                return _error_destination(title, body)
+
+            _invalidate_wallets_cache_for_active_aid(self.controller)
+
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Seed loaded",
+                status_headline=None,
+                text=f"Master fp:\n{fingerprint}",
+                show_back_button=False,
+                button_data=[ButtonOption("OK")],
+            )
+            return Destination(
+                ToolsKeycardSeedkeeperOfferView, skip_current_view=True,
+            )
+        finally:
+            wipe_bytearray(seed64)
+
+
+class ToolsKeycardSeedkeeperOfferView(View):
+    """If a Seedkeeper applet is on the same card, offer to save the seed.
+
+    Probes the card via ``probe_installed_applets``. If absent, wipes
+    the pending mnemonic and returns straight to the Keycard menu —
+    the user never sees an unnecessary prompt.
+    """
+
+    YES = ButtonOption("Save backup")
+    NO = ButtonOption("Skip")
+
+    def run(self):
+        from seedsigner.helpers.card_probe import probe_installed_applets
+        from seedsigner.helpers.keycard.reader import (
+            release_other_smartcard_holders,
+        )
+
+        # Give up the existing SC connection cleanly before re-probing.
+        try:
+            release_other_smartcard_holders(self.controller)
+        except Exception:
+            pass
+
+        try:
+            state = probe_installed_applets(self.controller)
+        except Exception:
+            state = None
+
+        seedkeeper_present = bool(
+            state and getattr(state, "seedkeeper_installed", False)
+        )
+        if not seedkeeper_present:
+            _wipe_pending_setup_state(self.controller)
+            return Destination(
+                ToolsKeycardMenuView, clear_history=True,
+            )
+
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Save to Seedkeeper?",
+            is_button_text_centered=False,
+            button_data=[self.YES, self.NO],
+        )
+        if selected == RET_CODE__BACK_BUTTON or (
+            (self.YES, self.NO)[selected] == self.NO
+        ):
+            _wipe_pending_setup_state(self.controller)
+            return Destination(
+                ToolsKeycardMenuView, clear_history=True,
+            )
+
+        return Destination(ToolsKeycardSeedkeeperFormatChooserView)
+
+
+class ToolsKeycardSeedkeeperFormatChooserView(View):
+    """Pick how to encode the mnemonic on the Seedkeeper applet."""
+
+    MNEMONIC = ButtonOption("BIP39 mnemonic")
+    PASSWORD = ButtonOption("UTF-8 password")
+
+    def run(self):
+        button_data = [self.MNEMONIC, self.PASSWORD]
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Backup format",
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        chosen = button_data[selected]
+        secret_type = "bip39" if chosen == self.MNEMONIC else "password"
+        return Destination(
+            ToolsKeycardSeedkeeperSaveRunView,
+            view_args={"secret_type": secret_type},
+            skip_current_view=True,
+        )
+
+
+class ToolsKeycardSeedkeeperSaveRunView(View):
+    """Write the pending mnemonic to the Seedkeeper applet.
+
+    Uses pysatochip's typed "BIP39 mnemonic" header for the mnemonic
+    format (matches the iOS-compatible layout used by
+    ``ToolsSeedkeeperImportXprvView``), or the standard Password layout
+    for the UTF-8 format. The mnemonic / passphrase are wiped after the
+    save (success or failure) so a stuck user never leaves them on the
+    controller.
+    """
+
+    def __init__(self, secret_type: str = "bip39"):
+        super().__init__()
+        self.secret_type = secret_type
+
+    def run(self):
+        from seedsigner.gui.screens import seed_screens
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+        from seedsigner.helpers import seedkeeper_utils
+
+        try:
+            from pysatochip.CardConnector import UnexpectedSW12Error
+        except Exception as exc:
+            _wipe_pending_setup_state(self.controller)
+            return _error_destination(
+                "Seedkeeper unavailable", str(exc),
+            )
+
+        mnemonic = self.controller.pending_keycard_mnemonic
+        passphrase_buf = self.controller.pending_keycard_passphrase
+        if not mnemonic or passphrase_buf is None:
+            return Destination(BackStackView)
+
+        mnemonic_str = " ".join(mnemonic)
+        try:
+            passphrase_str = passphrase_buf.decode("utf-8")
+        except Exception:
+            passphrase_str = ""
+
+        label_ret = seed_screens.SeedAddPassphraseScreen(
+            title="Secret label",
+        ).display()
+        if isinstance(label_ret, dict) and "is_back_button" in label_ret:
+            return Destination(BackStackView)
+        if not isinstance(label_ret, dict):
+            _wipe_pending_setup_state(self.controller)
+            return _error_destination(
+                "Bad label", "Could not read label",
+            )
+        label = label_ret.get("passphrase", "").strip() or "Keycard backup"
+
+        Satochip_Connector = seedkeeper_utils.init_satochip(
+            self, init_card_filter=["seedkeeper"],
+        )
+        if not Satochip_Connector:
+            _wipe_pending_setup_state(self.controller)
+            return Destination(BackStackView)
+
+        export_rights = "Plaintext export allowed"
+        if self.secret_type == "bip39":
+            # iOS-compatible "BIP39 mnemonic" layout, subtype=0.
+            # Body: [size|mnemonic|size|passphrase].
+            mnem_bytes = list(mnemonic_str.encode("utf-8"))
+            pp_bytes = list(passphrase_str.encode("utf-8"))
+            secret_list = (
+                [len(mnem_bytes)] + mnem_bytes
+                + [len(pp_bytes)] + pp_bytes
+            )
+            header = Satochip_Connector.make_header(
+                "BIP39 mnemonic", export_rights, label, subtype=0,
+            )
+        else:
+            # Password layout: [pw|login=0|url=0]. iOS app crashes
+            # without the trailing length=0 fields, per the SLIP-39
+            # save path in seed_views.py.
+            words_blob = mnemonic_str
+            if passphrase_str:
+                # Carry the passphrase as a separate line so an
+                # operator restoring the secret in another tool can
+                # see it. The Keycard cannot be rehydrated from a
+                # mnemonic alone if a passphrase was used.
+                words_blob = f"{mnemonic_str}\npassphrase:{passphrase_str}"
+            pw_bytes = list(words_blob.encode("utf-8"))
+            secret_list = [len(pw_bytes)] + pw_bytes + [0x00] + [0x00]
+            header = Satochip_Connector.make_header(
+                "Password", export_rights, label,
+            )
+
+        secret_dic = {"header": header, "secret_list": secret_list}
+
+        loading = None
+        try:
+            fits, required, free = seedkeeper_utils.ensure_seedkeeper_capacity(
+                Satochip_Connector, secret_dic,
+            )
+        except Exception as exc:
+            _wipe_pending_setup_state(self.controller)
+            return _error_destination("Seedkeeper error", str(exc))
+
+        if not fits:
+            _wipe_pending_setup_state(self.controller)
+            return _error_destination(
+                "Not enough space",
+                seedkeeper_utils.format_seedkeeper_space_error(required, free),
+            )
+
+        try:
+            loading = LoadingScreenThread(text="Saving secret\n\n\n\n\n\n")
+            loading.start()
+            Satochip_Connector.seedkeeper_import_secret(secret_dic)
+            loading.stop()
+        except UnexpectedSW12Error as exc:
+            if loading is not None:
+                loading.stop()
+            _wipe_pending_setup_state(self.controller)
+            from seedsigner.helpers.iso7816 import format_sw_error
+            if exc.sw1 == 0x6A and exc.sw2 == 0x84:
+                err = "Not enough space on Seedkeeper"
+            else:
+                err = format_sw_error(exc.sw1, exc.sw2)
+            return _error_destination("Save failed", err)
+        except Exception as exc:
+            if loading is not None:
+                loading.stop()
+            _wipe_pending_setup_state(self.controller)
+            logger.exception("Seedkeeper import failed")
+            return _error_destination("Save failed", str(exc))
+
+        _wipe_pending_setup_state(self.controller)
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Backup saved",
+            status_headline=None,
+            text="Mnemonic stored on Seedkeeper.",
+            show_back_button=False,
+            button_data=[ButtonOption("OK")],
+        )
+        return Destination(
+            ToolsKeycardMenuView, clear_history=True,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -2914,3 +3599,363 @@ class KeycardErrorView(View):
         # breadcrumbs — is deterministic and matches what successful flows
         # already do (e.g. ToolsKeycardInitView, ToolsKeycardFactoryResetView).
         return Destination(ToolsKeycardMenuView, clear_history=True)
+
+
+# ---------------------------------------------------------------------------
+# Bitcoin (BIP-84 P2WPKH single-sig, mainnet)
+# ---------------------------------------------------------------------------
+#
+# Mirrors the ETH sign chain: a small menu, an Export-xpub flow that
+# DERIVE + EXPORT_KEY against the account path, a PSBT sign flow that
+# scans + reviews + signs, and a BIP-137 message-sign flow.
+#
+# Session handling reuses the same helpers as the ETH path
+# (``_open_unlocked_session_cached_or_prompt``, ``classify_card_error``).
+# Each flow drops its own scratch state on the Controller; cleanup
+# happens on the success path and in every error branch.
+
+
+class ToolsKeycardBitcoinMenuView(View):
+    EXPORT_XPUB = ButtonOption("Export xpub")
+    SIGN_PSBT = ButtonOption("Sign PSBT")
+    SIGN_MESSAGE = ButtonOption("Sign message")
+
+    def run(self):
+        from seedsigner.helpers.card_probe import run_card_gate
+        gate = run_card_gate(
+            self, "keycard", title="Bitcoin", setup_view=ToolsKeycardInitView,
+        )
+        if gate is not None:
+            return gate
+
+        button_data = [self.EXPORT_XPUB, self.SIGN_PSBT, self.SIGN_MESSAGE]
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Bitcoin",
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        chosen = button_data[selected]
+        if chosen == self.EXPORT_XPUB:
+            return Destination(ToolsKeycardBtcExportXpubView)
+        if chosen == self.SIGN_PSBT:
+            return Destination(ToolsKeycardBtcSignPsbtScanView)
+        if chosen == self.SIGN_MESSAGE:
+            return Destination(ToolsKeycardBtcSignMessageStartView)
+        return Destination(NotYetImplementedView)
+
+
+class ToolsKeycardBtcExportXpubView(View):
+    """Derive the BIP-84 account xpub on the Keycard and display the
+    canonical ``wpkh(...)`` descriptor as a static QR.
+
+    UR ``crypto-account`` animated export is a follow-up: the
+    descriptor is sufficient for Sparrow / Specter / BlueWallet to
+    ingest as text and avoids the extra encoder dependency at MVP.
+    """
+
+    def run(self):
+        from seedsigner.helpers.keycard import (
+            KeycardCardChangedError, KeycardPinPromptCancelled,
+        )
+
+        if not self.controller.has_any_keycard_auth():
+            if not try_silent_ephemeral_pair(self):
+                return Destination(ToolsKeycardPairView)
+
+        try:
+            from seedsigner.helpers.bitcoin import DEFAULT_BTC_ACCOUNT_PATH
+            from seedsigner.helpers.keycard_btc_signer import export_xpub
+        except ImportError as exc:
+            return _error_destination("BTC support unavailable", str(exc))
+
+        try:
+            client, _ = _open_unlocked_session_cached_or_prompt(self)
+            xpub_export = export_xpub(client, DEFAULT_BTC_ACCOUNT_PATH)
+        except KeycardPinPromptCancelled:
+            return Destination(BackStackView)
+        except KeycardCardChangedError:
+            return Destination(ToolsKeycardPairView)
+        except Exception as exc:
+            logger.exception("Keycard export_xpub failed")
+            title, body = classify_card_error(exc, default_title="Export failed")
+            return _error_destination(title, body, return_to_main=True)
+
+        # Brief headline + path before showing the QR.
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="BIP-84 xpub",
+            status_headline=None,
+            text=f"fp {xpub_export.master_fingerprint.hex()}\n{DEFAULT_BTC_ACCOUNT_PATH}",
+            show_back_button=False,
+            button_data=[ButtonOption("Show QR")],
+        )
+
+        from seedsigner.gui.screens.screen import QRDisplayScreen
+        from seedsigner.models.encode_qr import GenericStaticQrEncoder
+
+        encoder = GenericStaticQrEncoder(data=xpub_export.descriptor)
+        self.run_screen(QRDisplayScreen, qr_encoder=encoder)
+        return Destination(ToolsKeycardBitcoinMenuView, clear_history=True)
+
+
+class ToolsKeycardBtcSignPsbtScanView(ScanView):
+    """Scan PSBT (animated UR or single-frame base64) and route to the
+    review screen. Any other QR type triggers the standard wrong-type
+    error.
+    """
+    instructions_text = "Scan PSBT"
+    invalid_qr_type_message = "Expected a PSBT QR"
+
+    @property
+    def is_valid_qr_type(self):
+        return self.decoder.is_psbt
+
+    def run(self):
+        from seedsigner.gui.screens.scan_screens import ScanScreen
+        import time as _time
+
+        self.run_screen(
+            ScanScreen,
+            instructions_text=self.instructions_text,
+            decoder=self.decoder,
+        )
+        self.controller.reset_screensaver_timeout()
+        _time.sleep(0.1)
+
+        if not self.decoder.is_complete:
+            return Destination(ToolsKeycardBitcoinMenuView, clear_history=True)
+        if not self.decoder.is_psbt:
+            return _error_destination(
+                "Wrong QR type",
+                "Expected a PSBT but got: " + (self.decoder.qr_type or "?"),
+                return_to_main=False,
+            )
+
+        self.controller.psbt = self.decoder.get_psbt()
+        return Destination(ToolsKeycardBtcSignPsbtReviewView)
+
+
+class ToolsKeycardBtcSignPsbtReviewView(View):
+    """Parse the PSBT against the card's master fingerprint and present
+    a summary (input count, total in, total out, fee) before signing.
+    Non-P2WPKH inputs are rejected here with a clear error — the MVP
+    bound matches keycard-shell."""
+
+    def run(self):
+        from seedsigner.helpers.keycard import (
+            KeycardCardChangedError, KeycardPinPromptCancelled,
+        )
+
+        psbt = getattr(self.controller, "psbt", None)
+        if psbt is None:
+            return _error_destination("No PSBT", "Lost PSBT mid-flow")
+
+        if not self.controller.has_any_keycard_auth():
+            if not try_silent_ephemeral_pair(self):
+                return Destination(ToolsKeycardPairView)
+
+        try:
+            from seedsigner.helpers.bitcoin import psbt_helpers
+            from seedsigner.helpers.keycard_btc_signer import (
+                compress_pubkey, path_str_to_components,
+            )
+            from seedsigner.helpers.bitcoin import xpub as btc_xpub
+            from seedsigner.helpers.keycard import commands as kc_cmds
+        except ImportError as exc:
+            return _error_destination("BTC support unavailable", str(exc))
+
+        try:
+            client, _ = _open_unlocked_session_cached_or_prompt(self)
+            client.derive_key([], source=kc_cmds.DERIVE_P1_FROM_MASTER)
+            master_resp = client.export_pubkey(path_components=None, extended=False)
+            from seedsigner.helpers.keycard_btc_signer import _parse_pubkey_only
+            master_pub = _parse_pubkey_only(master_resp)
+            master_fingerprint = btc_xpub.pubkey_fingerprint(compress_pubkey(master_pub))
+        except KeycardPinPromptCancelled:
+            return Destination(BackStackView)
+        except KeycardCardChangedError:
+            self.controller.psbt = None
+            return Destination(ToolsKeycardPairView)
+        except Exception as exc:
+            logger.exception("Keycard fingerprint probe failed")
+            self.controller.psbt = None
+            title, body = classify_card_error(exc, default_title="Probe failed")
+            return _error_destination(title, body, return_to_main=True)
+
+        try:
+            parsed = psbt_helpers.extract(psbt, master_fingerprint)
+        except ValueError as exc:
+            self.controller.psbt = None
+            return _error_destination("PSBT rejected", str(exc), return_to_main=True)
+
+        self.controller.btc_parsed_psbt = parsed
+
+        total_in = sum(v.amount_sats for v in parsed.inputs)
+        total_out = sum(v.amount_sats for v in parsed.outputs if not v.is_change)
+        ret = self.run_screen(
+            LargeIconStatusScreen,
+            title="Review PSBT",
+            status_headline=None,
+            text=(
+                f"in: {len(parsed.inputs)}\n"
+                f"out: {sum(1 for v in parsed.outputs if not v.is_change)} ({total_out} sat)\n"
+                f"fee: {parsed.fee_sats} sat"
+            ),
+            show_back_button=True,
+            button_data=[ButtonOption("Sign")],
+        )
+        if ret == RET_CODE__BACK_BUTTON:
+            self.controller.psbt = None
+            self.controller.btc_parsed_psbt = None
+            return Destination(ToolsKeycardBitcoinMenuView, clear_history=True)
+
+        return Destination(ToolsKeycardBtcSignPsbtFinalizeView)
+
+
+class ToolsKeycardBtcSignPsbtFinalizeView(View):
+    def run(self):
+        from seedsigner.helpers.keycard import (
+            KeycardCardChangedError, KeycardPinPromptCancelled,
+        )
+
+        parsed = getattr(self.controller, "btc_parsed_psbt", None)
+        if parsed is None:
+            return _error_destination("No PSBT", "Lost PSBT mid-flow")
+
+        try:
+            from seedsigner.helpers.keycard_btc_signer import sign_psbt as kc_sign_psbt
+        except ImportError as exc:
+            return _error_destination("BTC support unavailable", str(exc))
+
+        try:
+            client, _ = _open_unlocked_session_cached_or_prompt(self)
+            kc_sign_psbt(client, parsed)
+        except KeycardPinPromptCancelled:
+            return Destination(BackStackView)
+        except KeycardCardChangedError:
+            self.controller.psbt = None
+            self.controller.btc_parsed_psbt = None
+            return Destination(ToolsKeycardPairView)
+        except Exception as exc:
+            logger.exception("Keycard sign_psbt failed")
+            self.controller.psbt = None
+            self.controller.btc_parsed_psbt = None
+            title, body = classify_card_error(exc, default_title="Signing failed")
+            return _error_destination(title, body, return_to_main=True)
+
+        from seedsigner.gui.screens.screen import QRDisplayScreen
+        from seedsigner.models.encode_qr import UrPsbtQrEncoder
+
+        encoder = UrPsbtQrEncoder(psbt=parsed.psbt)
+        self.run_screen(QRDisplayScreen, qr_encoder=encoder)
+        self.controller.psbt = None
+        self.controller.btc_parsed_psbt = None
+        return Destination(MainMenuView, clear_history=True)
+
+
+class ToolsKeycardBtcSignMessageStartView(View):
+    """BIP-137 message signing entry: scan a UR ``bytes`` / generic text
+    QR with the message body, then sign at the default BIP-84 path.
+
+    MVP keeps the path fixed at ``DEFAULT_BTC_PATH`` (``m/84'/0'/0'/0/0``);
+    a future revision can let the user pick a derivation. The signed
+    output is the base64 string ``bitcoin-cli verifymessage`` accepts.
+    """
+
+    def run(self):
+        return Destination(ToolsKeycardBtcSignMessageScanView, skip_current_view=True)
+
+
+class ToolsKeycardBtcSignMessageScanView(ScanView):
+    instructions_text = "Scan message QR"
+    invalid_qr_type_message = "Expected a text / bytes QR"
+
+    @property
+    def is_valid_qr_type(self):
+        # Accept either a UR ``bytes`` payload or a single-frame text QR.
+        return getattr(self.decoder, "is_text", False) or getattr(self.decoder, "is_bytes", False)
+
+    def run(self):
+        from seedsigner.gui.screens.scan_screens import ScanScreen
+        import time as _time
+
+        self.run_screen(
+            ScanScreen,
+            instructions_text=self.instructions_text,
+            decoder=self.decoder,
+        )
+        self.controller.reset_screensaver_timeout()
+        _time.sleep(0.1)
+
+        if not self.decoder.is_complete:
+            return Destination(ToolsKeycardBitcoinMenuView, clear_history=True)
+
+        # Extract the message body. ``decode_qr`` exposes ``get_text()``
+        # for UR text and TextQrDecoder; raw bytes are surfaced via
+        # ``get_qr_data()`` in the existing scan helpers.
+        try:
+            message = self.decoder.get_text()
+        except Exception:
+            try:
+                message = self.decoder.get_qr_data()
+            except Exception:
+                return _error_destination(
+                    "Wrong QR type", "Could not extract a message from the QR.",
+                )
+        if not isinstance(message, str):
+            try:
+                message = message.decode("utf-8")
+            except Exception:
+                return _error_destination(
+                    "Unsupported encoding", "Message must be UTF-8 text.",
+                )
+
+        return Destination(
+            ToolsKeycardBtcSignMessageFinalizeView,
+            view_args=dict(message=message),
+        )
+
+
+class ToolsKeycardBtcSignMessageFinalizeView(View):
+    def __init__(self, message: str):
+        super().__init__()
+        self.message = message
+
+    def run(self):
+        from seedsigner.helpers.keycard import (
+            KeycardCardChangedError, KeycardPinPromptCancelled,
+        )
+
+        if not self.controller.has_any_keycard_auth():
+            if not try_silent_ephemeral_pair(self):
+                return Destination(ToolsKeycardPairView)
+
+        try:
+            from seedsigner.helpers.bitcoin import DEFAULT_BTC_PATH
+            from seedsigner.helpers.keycard_btc_signer import sign_message as kc_sign_message
+        except ImportError as exc:
+            return _error_destination("BTC support unavailable", str(exc))
+
+        try:
+            client, _ = _open_unlocked_session_cached_or_prompt(self)
+            sig_b64 = kc_sign_message(client, self.message, DEFAULT_BTC_PATH)
+        except KeycardPinPromptCancelled:
+            return Destination(BackStackView)
+        except KeycardCardChangedError:
+            return Destination(ToolsKeycardPairView)
+        except Exception as exc:
+            logger.exception("Keycard sign_message failed")
+            title, body = classify_card_error(exc, default_title="Signing failed")
+            return _error_destination(title, body, return_to_main=True)
+
+        from seedsigner.gui.screens.screen import QRDisplayScreen
+        from seedsigner.models.encode_qr import GenericStaticQrEncoder
+
+        # The 65-byte signature fits a single-frame text QR comfortably.
+        encoder = GenericStaticQrEncoder(data=sig_b64)
+        self.run_screen(QRDisplayScreen, qr_encoder=encoder)
+        return Destination(ToolsKeycardBitcoinMenuView, clear_history=True)

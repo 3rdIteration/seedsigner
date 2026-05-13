@@ -92,6 +92,7 @@ class TestKeycardMenuRouting(unittest.TestCase):
         from seedsigner.views.keycard_views import (
             ToolsKeycardMenuView,
             ToolsKeycardSignEthStartView,
+            ToolsKeycardBitcoinMenuView,
             ToolsKeycardWalletsListView,
             ToolsKeycardPairWalletView,
             ToolsKeycardSetupMenuView,
@@ -99,6 +100,7 @@ class TestKeycardMenuRouting(unittest.TestCase):
         )
         expected = [
             ToolsKeycardSignEthStartView,
+            ToolsKeycardBitcoinMenuView,
             ToolsKeycardWalletsListView,
             ToolsKeycardPairWalletView,
             ToolsKeycardSetupMenuView,
@@ -108,6 +110,24 @@ class TestKeycardMenuRouting(unittest.TestCase):
             dest = self._route(ToolsKeycardMenuView, i)
             self.assertIs(dest.View_cls, view_cls,
                           f"top menu index {i} routes to {dest.View_cls.__name__}, "
+                          f"expected {view_cls.__name__}")
+
+    def test_bitcoin_menu_routes(self):
+        from seedsigner.views.keycard_views import (
+            ToolsKeycardBitcoinMenuView,
+            ToolsKeycardBtcExportXpubView,
+            ToolsKeycardBtcSignPsbtScanView,
+            ToolsKeycardBtcSignMessageStartView,
+        )
+        expected = [
+            ToolsKeycardBtcExportXpubView,
+            ToolsKeycardBtcSignPsbtScanView,
+            ToolsKeycardBtcSignMessageStartView,
+        ]
+        for i, view_cls in enumerate(expected):
+            dest = self._route(ToolsKeycardBitcoinMenuView, i)
+            self.assertIs(dest.View_cls, view_cls,
+                          f"BTC menu index {i} routes to {dest.View_cls.__name__}, "
                           f"expected {view_cls.__name__}")
 
     def test_setup_menu_routes(self):
