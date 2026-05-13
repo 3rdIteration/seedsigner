@@ -92,18 +92,15 @@ Because this project handles private key material for an air-gapped signer, **se
 - **`str(word)` and `word[:]` do NOT create copies** for `str` objects—Python returns the same object. Only `"".join(word)` (or equivalent `str` concatenation that forces a new allocation) is safe.
 - When reviewing or writing code that **reads from a wordlist and stores the result** in a list, always apply the `"".join(...)` pattern at the point of storage.
 
-**Currently protected call sites** (as of this writing):
+**Currently protected call sites** (post-keycard-only refactor):
 
 | File | Function / line | What it stores |
 |------|----------------|----------------|
-| `seed_storage.py` | `update_pending_mnemonic()` | BIP-39 word into `_pending_mnemonic` |
-| `seed_storage.py` | `update_pending_slip39_share()` | SLIP-39 word into `_pending_slip39_share` |
-| `decode_qr.py` | `SeedQrDecoder.add()` (SeedQR path) | BIP-39 word into `seed_phrase` |
-| `decode_qr.py` | `SeedQrDecoder.add()` (four-letter path) | BIP-39 word into `words` |
-| `mnemonic_generation.py` | `calculate_checksum()` | Temp final word (`wordlist[0]`) appended to caller's list |
-| `tools_views.py` | `_bip39_words_from_entropy()` | BIP-39 word into password word list |
+| `helpers/mnemonic_generation.py` | `calculate_checksum()` | Temp final word (`wordlist[0]`) appended to caller's list — used by the Keycard generate-mnemonic-visible flow |
+| `helpers/mnemonic_generation.py` | `generate_mnemonic_from_bytes()` etc. | Each word in the returned list is independently allocated via `"".join(w)` |
+| `views/keycard_views.py` | `_capture_via_keyboard()` | BIP-39 word into a per-session list before `wipe_list()` clears it |
 
-Any **new** code path that looks up a word from a shared wordlist and stores it in a list that could be wiped must follow the same `"".join(word)` pattern and should include a regression test that wipes the list and asserts the global wordlist is still intact (see `test_seedqr.py::test_seedqr_decode_does_not_corrupt_wordlist` for an example).
+The SeedSigner SeedQR / SLIP-39 / on-device seed-entry call sites that this table used to track are gone (see "On-device seed handling — removed"). Any **new** code path that looks up a word from a shared wordlist and stores it in a list that could be wiped must follow the same `"".join(word)` pattern and ship a regression test that wipes the list and asserts the global wordlist is still intact (see `tests/test_secure_delete.py::test_full_lifecycle_wordlist_integrity` for an example).
 
 ### Cleanup and lifecycle controls
 - On screen transitions, cancellations, exceptions, and shutdown/restart flows, clear in-memory seed/key state.
@@ -123,25 +120,27 @@ Any **new** code path that looks up a word from a shared wordlist and stores it 
 - Do not introduce new crypto dependencies or algorithms without explicit justification in the PR description.
 - Keep reproducibility and deterministic builds in mind for security-sensitive changes.
 
-### Seed type differences — `seed_bytes` vs `get_root()`
+### On-device seed handling — removed
 
-The codebase supports multiple seed types (see `src/seedsigner/models/seed.py`). They share a `Seed` base class but differ in critical ways. **Always use `seed.get_root(network)` to obtain the BIP-32 root key** — never call `bip32.HDKey.from_seed(seed.seed_bytes)` directly, because some seed types have `seed_bytes = None`.
+The firmware no longer manages seed material on-device. The previous
+`models/seed.py`, `models/seed_storage.py`, `models/aezeed.py`,
+`views/seed_views.py` and `views/psbt_views.py` are all gone. Private
+key material lives exclusively on a Status Keycard or in a SeedKeeper
+applet; the device only orchestrates.
 
-| Type | `seed_bytes` | `get_root(network)` | Notes |
-|------|-------------|---------------------|-------|
-| **`Seed`** (BIP39) | 64-byte BIP39 seed (from mnemonic + passphrase) | Derives root from `seed_bytes` with network version | Standard path; passphrase changes `seed_bytes` |
-| **`XprvSeed`** | **`None`** | Returns pre-parsed `_root` HDKey (network param ignored) | No mnemonic, no seed bytes — root key is the only secret |
-| **`ElectrumSeed`** | PBKDF2-derived bytes | Inherited from `Seed` | Overrides `script_override`, `derivation_override`, `detect_version` |
-| **`AezeedSeed`** | Aezeed entropy | Inherited from `Seed` | Decrypted from aezeed ciphertext |
-| **`Slip39Seed`** | SLIP-39 master secret | Inherited from `Seed` | Recovered from share combination |
+**Do not re-introduce a `Seed` model** without first re-aligning the
+threat model. The Keycard / SeedKeeper flows must keep their property
+that no private bytes ever leave the smartcard.
 
-**Rules when writing code that handles seeds:**
+<!-- Historical Seed-type table removed in the keycard-only refactor.
+The codebase below this point talks to the Keycard / SeedKeeper
+applets only. -->
 
-- **Never access `seed.seed_bytes` directly for key derivation.** Call `seed.get_root(network)` instead. `XprvSeed.seed_bytes` is `None` and will crash `bip32.HDKey.from_seed()`.
-- **Check for feature support before using seed-type-specific features.** For example, `seed.mnemonic_list` is empty for `XprvSeed`; `seed.seedqr_supported` is `False` for `XprvSeed`, `ElectrumSeed`, and `Slip39Seed`.
-- **Respect method overrides.** `ElectrumSeed` overrides `derivation_override()`, `script_override`, and `detect_version()`. Always call these through the seed object rather than assuming BIP39 defaults.
-- **When working with non-Seed-like objects** (e.g. in helper functions that may receive mock objects or raw HDKeys), use the pattern `if hasattr(seed, "get_root"): root = seed.get_root()` with a fallback to `bip32.HDKey.from_seed(seed.seed_bytes)`.
-- **Test with multiple seed types.** Any new feature touching key derivation, BIP85, address verification, or PSBT signing should be tested with at least `Seed` (BIP39) and `XprvSeed` to catch `seed_bytes = None` issues.
+#### Legacy Seed-type compatibility table (DELETED)
+
+The codebase used to ship multiple seed types (see `src/seedsigner/models/seed.py`). They shared a `Seed` base class but differed in critical ways.
+
+_All five classes (`Seed`, `XprvSeed`, `ElectrumSeed`, `AezeedSeed`, `Slip39Seed`) and the `seed_bytes` / `get_root(network)` contract are gone with the on-device seed manager._
 
 ### Code review expectations for sensitive changes
 For changes touching entropy, seed generation/import, key derivation, signing, or secret storage:
@@ -166,20 +165,13 @@ The following table lists every code path where user-supplied strings feed into 
 
 | Code path | Normalized? | Where |
 |-----------|-------------|-------|
-| BIP-39 passphrase | ✅ NFKD | `Seed.set_passphrase()` in `seed.py` |
-| BIP-39 mnemonic | ✅ NFKD | `Seed.__init__()` in `seed.py` |
-| SLIP-39 passphrase | ✅ NFKD | `Slip39Seed.set_slip39_passphrase()` in `seed.py` |
-| Electrum passphrase | ✅ NFKD + lower() | `ElectrumSeed.normalize_electrum_passphrase()` in `seed.py` |
-| Aezeed passphrase | ✅ NFKD (inherited) | Via `Seed.set_passphrase()` before reaching `aezeed.decode_mnemonic()` |
 | Encrypted QR password | ✅ NFKD | `Cipher.__init__()` in `kef.py` |
-| Dice / coin-flip entropy | N/A (ASCII-only) | Input constrained to `1-6` / `0-1` by keyboard UI |
-| GPG name / email | N/A (ASCII keyboard) | Input constrained to ASCII by on-screen keyboard |
-| GPG expiration dates | ✅ dash-normalized | `_normalize_date_input()` in `tools_views.py` |
+| Keycard pairing password | ✅ NFKD | `derive_pairing_secret()` in `helpers/keycard/crypto.py` |
+| BIP-137 message body | UTF-8 only (no NFKD by spec) | `helpers/bitcoin/message_sign.message_digest()` |
 
-When adding a **new** code path that derives keys or produces deterministic output from user-supplied strings, always NFKD-normalize the input before encoding to bytes.
+When adding a **new** code path that derives keys or produces deterministic output from user-supplied strings, always NFKD-normalize the input before encoding to bytes. BIP-137 is the exception (the spec hashes the raw UTF-8 bytes).
 
 ### Date and numeric input
-- When parsing dates from user input, always use `_normalize_date_input()` (in `tools_views.py`) to replace non-ASCII dashes (fullwidth `\uff0d`, en-dash `\u2013`, em-dash `\u2014`, Unicode minus `\u2212`) with ASCII hyphen-minus before calling `strptime` / `fromisoformat`.
 - When converting user-provided numeric strings use `try/except ValueError` around `int()` / `float()` instead of pre-checking with `.isdigit()`.  Python's `.isdigit()` returns `True` for non-ASCII Unicode digit characters (e.g. superscript `¹²³`) that `int()` / `float()` cannot convert, so the pre-check gives a false positive and the subsequent conversion raises `ValueError`.
 - If an ASCII-only digit check is truly needed, combine `.isascii()` and `.isdigit()`, or test membership in `"0123456789"`.
 
@@ -189,9 +181,24 @@ When adding a **new** code path that derives keys or produces deterministic outp
 - When adding new user-input parsing, add tests that exercise at least one non-ASCII variant (e.g. a fullwidth digit, a non-ASCII dash) to catch locale-dependent regressions.
 - Be aware that the same Unicode character can have multiple representations (e.g. `é` can be U+00E9 [NFC] or U+0065 U+0301 [NFD]). macOS file-system APIs and some input methods produce NFD; most other systems produce NFC. NFKD normalization collapses both forms into a single canonical byte sequence.
 
-## Ethereum + Keycard integration
+## Keycard-only firmware (Bitcoin + Ethereum)
 
-This fork extends SeedSigner to sign Ethereum transactions using a Status Keycard (or compatible JavaCard applet, e.g. cards initialised via `keycard-shell`). **Bitcoin remains the headline experience**; the Keycard flow lives entirely under `Tools > Smartcard Tools > Keycard` and shares no code paths with the BIP39/PSBT flow.
+This fork is a **Keycard / SeedKeeper-only** firmware: the on-device seed manager and the legacy PSBT signer were removed. All signing happens via a Status Keycard (or compatible JavaCard applet, e.g. cards initialised via `keycard-shell`). Both Bitcoin (BIP-84 P2WPKH, BIP-137 messages) and Ethereum (legacy / EIP-1559 / typed-data / personal-message) flows live under `Tools > Keycard`; SeedKeeper xprv storage stays under `Cards > SeedKeeper`.
+
+### Bitcoin module layout (added by the keycard-only refactor)
+
+| Path | Responsibility |
+|------|----------------|
+| `src/seedsigner/helpers/bitcoin/` | Chain-agnostic primitives: `address` (P2WPKH bech32), `xpub` (build_hdkey / serialize_xpub / wpkh_descriptor), `message_sign` (BIP-137), `psbt_helpers` (wrapper over `embit.psbt.PSBT`: parse + extract + sighash + add_partial_signature), `ur_codec` (UR `crypto-psbt` / `crypto-account` encoders) |
+| `src/seedsigner/helpers/keycard_btc_signer.py` | Bridge: `export_xpub(client, path)`, `sign_psbt(client, parsed)`, `sign_message(client, msg, path)`, `path_str_to_components`, `compress_pubkey`, `encode_der_signature` |
+| `src/seedsigner/views/keycard_views.py` (Bitcoin section) | `ToolsKeycardBitcoinMenuView` + `ToolsKeycardBtcExportXpubView` + `ToolsKeycardBtcSignPsbtScanView` / `ReviewView` / `FinalizeView` + `ToolsKeycardBtcSignMessageStartView` / `ScanView` / `FinalizeView` |
+| `scripts/keycard_smoke_test.py --btc` | Hardware end-to-end: export xpub at `m/84'/0'/0'` + BIP-137 sign "test" at `m/84'/0'/0'/0/0` |
+
+MVP scope: BIP-84 P2WPKH single-sig, mainnet only. Multisig P2WSH / wrapped P2SH (BIP-49) / taproot P2TR are deliberately out of scope; the module boundaries mirror `keycard-shell`'s input-type discriminator so they can be added without a refactor. PSBTs are capped at 40 inputs / 40 outputs.
+
+Defaults: account path `m/84'/0'/0'` (`DEFAULT_BTC_ACCOUNT_PATH`), per-address default `m/84'/0'/0'/0/0` (`DEFAULT_BTC_PATH`). xpub export emits a neutral `xpub...` plus the canonical descriptor `wpkh([fp/84h/0h/0h]xpub.../<0;1>/*)` with the BIP-380 checksum.
+
+### Ethereum module layout (pre-existing, unchanged)
 
 ### Module layout
 
