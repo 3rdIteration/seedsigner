@@ -18,7 +18,7 @@ The main computing platform and camera are typically used together:
 Notes:
 * You may need to solder the 40 GPIO pins (20 pins per row) to the Raspberry Pi Zero board. If you don't want to solder, most stores offer the board "with headers" already soldered on.
 * The Pi Zero "W" or "2W" is often easier to find but has wifi/Bluetooth hardware. You can still use these boards and can optionally [disable the wifi/Bluetooth hardware](https://github.com/DesobedienteTecnologico/rpi_disable_wifi_and_bt_by_hardware).
-* Raspberry Pi 1 is also compatible, but will require a [hardware modification to the Waveshare LCD Hat](./docs/legacy_hardware.md).
+* Raspberry Pi 1 is also compatible, but will require a [hardware modification to the Waveshare LCD Hat](./legacy_hardware.md).
 
 - **Luckfox Pico Boards**:
   - Luckfox Pico Mini (requires adaptor board)
