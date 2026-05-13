@@ -198,17 +198,29 @@ MVP scope: BIP-84 P2WPKH single-sig, mainnet only. Multisig P2WSH / wrapped P2SH
 
 Defaults: account path `m/84'/0'/0'` (`DEFAULT_BTC_ACCOUNT_PATH`), per-address default `m/84'/0'/0'/0/0` (`DEFAULT_BTC_PATH`). xpub export emits a neutral `xpub...` plus the canonical descriptor `wpkh([fp/84h/0h/0h]xpub.../<0;1>/*)` with the BIP-380 checksum.
 
-### Ethereum module layout (pre-existing, unchanged)
-
-### Module layout
+### Ethereum module layout (pre-existing)
 
 | Path | Responsibility |
 |------|----------------|
 | `src/seedsigner/helpers/ethereum/` | Chain-agnostic primitives: `rlp`, `keccak`, `address` (EIP-55), `tx_legacy` (EIP-155), `tx_eip1559`, `eip712`, `personal_sign`, `ur_codec` (UR `eth-sign-request` / `eth-signature`) |
-| `src/seedsigner/helpers/keycard/` | Card protocol: `commands` (APDU builders), `responses` (TLV/DER), `crypto` (PBKDF2/AES-CBC/ECDH), `secure_channel`, `client`, `reader` (PC/SC), `secrets` (CSPRNG PIN/PUK/password), `pairing_storage` (AES-GCM blob on microSD), `ui_helpers` (path/pubkey/PIN helpers shared by views) |
-| `src/seedsigner/helpers/keycard_signer.py` | Glue: `signing_hash_for(request)` + `compute_v(request, rec_id)` |
-| `src/seedsigner/views/keycard_views.py` | UI: `Tools > Keycard` menu, init/pair/unpair, generate-key, export address, sign-eth scan→review→sign→QR |
-| `scripts/keycard_smoke_test.py` | Hardware-only end-to-end check (SELECT → PAIR → SC → VERIFY_PIN → DERIVE → EXPORT → SIGN+recover) |
+| `src/seedsigner/helpers/keycard/` | Card protocol: `commands` (APDU builders: SELECT, PAIR, OPEN_SC, VERIFY_PIN, DERIVE, EXPORT, SIGN, **GENERATE_MNEMONIC**, LOAD_KEY, GENERATE_KEY, FACTORY_RESET, …), `responses` (TLV/DER + `parse_generate_mnemonic`), `crypto` (PBKDF2/AES-CBC/ECDH), `secure_channel`, `client`, `reader` (PC/SC), `secrets` (CSPRNG PIN/PUK/password), `pairing_storage` (AES-GCM blob on microSD), `ui_helpers` (path/pubkey/PIN helpers shared by views) |
+| `src/seedsigner/helpers/keycard_signer.py` | ETH glue: `signing_hash_for(request)` + `compute_v(request, rec_id)` |
+| `src/seedsigner/views/keycard_views.py` | UI: `Tools > Keycard` menu, init/pair/unpair, **on-card Generate (Status applet GENERATE_MNEMONIC → host renders words → user confirms → LOAD_KEY)** + Show-mnemonic-and-import, ETH sign chain, **Bitcoin sub-menu** (see above) |
+| `scripts/keycard_smoke_test.py` | Hardware-only end-to-end check (SELECT → PAIR → SC → VERIFY_PIN → DERIVE → EXPORT → SIGN+recover; `--btc` adds export_xpub + BIP-137 sign_message) |
+
+### Setup chain: Generate vs Show-mnemonic
+
+The Setup wizard (`Tools > Keycard > Setup > Generate key`) offers two
+provisioning sub-flows. Both go through the same `LOAD_KEY` finaliser
+so the *on-card* state is identical; they differ only in where the
+entropy comes from and whether the host ever displays the words.
+
+| Sub-flow | Where entropy is generated | Mnemonic shown? | When to use |
+|----------|---------------------------|-----------------|-------------|
+| **GENERATE MNEMONIC** (on-card) | Status applet's TRNG | No (default) — words exist only as indices in transit; host derives seed, sends LOAD_KEY, then `wipe_list()`s the buffer | Air-gapped, no paper backup desired |
+| **Show + Import** | Host (`helpers/mnemonic_generation.generate_mnemonic_from_bytes`) | Yes — user copies the 12/24 words to paper, then confirms via quiz before LOAD_KEY | Air-gapped, user wants a paper backup |
+
+Both paths scrub `controller.pending_keycard_mnemonic` / `pending_keycard_passphrase` on every terminal branch (success, back, error) and on `MainMenuView` re-entry. Regression cover: `tests/test_keycard_setup_chain.py`.
 
 ### Protocol compatibility — DO NOT change without coordinating with existing cards
 
