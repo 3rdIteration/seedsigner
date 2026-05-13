@@ -14,7 +14,7 @@ from .commands import (
 )
 from .responses import (
     SelectResponse, SignatureResponse, StatusResponse,
-    parse_select, parse_signature, parse_status,
+    parse_generate_mnemonic, parse_select, parse_signature, parse_status,
 )
 from .secure_channel import (
     PairingInfo, SecureChannel, SecureChannelError,
@@ -198,6 +198,29 @@ class KeycardClient:
 
     def generate_key(self) -> bytes:
         return self._transmit_protected(commands.INS_GENERATE_KEY, 0x00, 0x00)
+
+    def generate_mnemonic(self, word_count: int) -> List[int]:
+        """Ask the card to generate a fresh BIP-39 mnemonic.
+
+        The card supplies the entropy and returns the wordlist indices
+        (16-bit big-endian, one pair per word) over the secure channel.
+        The host is responsible for mapping indices to words and deriving
+        the 64-byte BIP-39 seed before sending it back via LOAD KEY.
+
+        Requires an open secure channel; PIN verification is NOT required
+        (matches the Status applet spec — GENERATE MNEMONIC has no key-
+        material precondition).
+        """
+        if word_count not in commands.GENERATE_MNEMONIC_VALID_WORD_COUNTS:
+            raise ValueError(
+                f"word_count must be one of "
+                f"{commands.GENERATE_MNEMONIC_VALID_WORD_COUNTS}"
+            )
+        p1 = word_count // 3
+        resp = self._transmit_protected(
+            commands.INS_GENERATE_MNEMONIC, p1, 0x00,
+        )
+        return parse_generate_mnemonic(resp, word_count)
 
     def load_bip39_seed(self, seed64: bytes) -> None:
         """Push a 64-byte BIP-39 seed to the card via LOAD KEY P1=0x02.

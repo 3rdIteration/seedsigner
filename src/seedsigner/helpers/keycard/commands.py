@@ -238,6 +238,33 @@ def generate_key() -> List[int]:
     return build_apdu(CLA_PROPRIETARY, INS_GENERATE_KEY, 0x00, 0x00)
 
 
+GENERATE_MNEMONIC_VALID_WORD_COUNTS = (12, 15, 18, 21, 24)
+
+
+def generate_mnemonic(word_count: int) -> List[int]:
+    """GENERATE MNEMONIC APDU.
+
+    P1 is the "checksum size" word — Status applet uses the same parameter
+    naming as BIP-39 entropy/32: 4→12 words, 5→15, 6→18, 7→21, 8→24.
+
+    Response body is ``2 * word_count`` bytes: pairs of 16-bit big-endian
+    indices into the BIP-39 wordlist. Caller is responsible for mapping
+    indices to words.
+
+    Sent over the secure channel; does NOT require PIN verification.
+    """
+    if word_count not in GENERATE_MNEMONIC_VALID_WORD_COUNTS:
+        raise ValueError(
+            f"word_count must be one of {GENERATE_MNEMONIC_VALID_WORD_COUNTS}"
+        )
+    p1 = word_count // 3
+    # Le=0x00 → request "all available" bytes; secure-channel wrapper will
+    # honour Lr from the card.
+    return build_apdu(
+        CLA_PROPRIETARY, INS_GENERATE_MNEMONIC, p1, 0x00, b"", le=0x00,
+    )
+
+
 def load_bip39_seed(seed64: bytes) -> List[int]:
     """LOAD KEY APDU for the 64-byte BIP-39 seed.
 

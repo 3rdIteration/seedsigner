@@ -120,6 +120,29 @@ def parse_status(response: bytes) -> StatusResponse:
     return StatusResponse(pin_retries=pin_retries, puk_retries=puk_retries, key_initialised=key_init)
 
 
+def parse_generate_mnemonic(response: bytes, word_count: int) -> List[int]:
+    """Parse GENERATE MNEMONIC response into a list of BIP-39 word indices.
+
+    The card returns ``2 * word_count`` bytes: 16-bit big-endian indices,
+    one per word. Each index must be in 0..2047 (BIP-39 wordlist size).
+    """
+    expected_len = 2 * word_count
+    if len(response) != expected_len:
+        raise ValueError(
+            f"GENERATE MNEMONIC: expected {expected_len} bytes, "
+            f"got {len(response)}"
+        )
+    indices: List[int] = []
+    for i in range(word_count):
+        idx = int.from_bytes(response[2 * i : 2 * i + 2], "big")
+        if idx >= 2048:
+            raise ValueError(
+                f"GENERATE MNEMONIC: word index {idx} out of BIP-39 range"
+            )
+        indices.append(idx)
+    return indices
+
+
 @dataclass(frozen=True)
 class SignatureResponse:
     public_key: bytes  # 65 bytes uncompressed
