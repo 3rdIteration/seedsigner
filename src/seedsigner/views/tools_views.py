@@ -31,11 +31,10 @@ from seedsigner.gui.screens import (
 )
 from seedsigner.gui.screens.scan_screens import ScanScreen
 from seedsigner.gui.screens.tools_screens import (
-    ToolsAddressExplorerAddressTypeScreen, ToolsTextQRTextEntryScreen, ToolsTextQRReviewTextScreen,
+    ToolsTextQRTextEntryScreen, ToolsTextQRReviewTextScreen,
     ToolsTextQRTranscribeModePromptScreen, ToolsTranscribeTextQRWholeQRScreen, ToolsTranscribeTextQRZoomedInScreen,
     ToolsTranscribeTextQRConfirmQRPromptScreen, ToolsCommonFilterScreen, ToolsNetworkInfoScreen,
     ToolsBatteryCalibrationIntroScreen, ToolsBatteryCalibrationStartScreen, ToolsBatteryCalibrationRunningScreen)
-from seedsigner.helpers import embit_utils
 from seedsigner.helpers.iso7816 import format_sw_error
 from seedsigner.models.decode_qr import DecodeQR
 from seedsigner.models.encode_qr import GenericStaticQrEncoder
@@ -77,8 +76,6 @@ from binascii import unhexlify, hexlify
 
 class ToolsMenuView(View):
     SEEDS = ButtonOption("Seeds", SeedSignerIconConstants.SEEDS)
-    ADDRESS_EXPLORER = ButtonOption("Address Explorer")
-    VERIFY_ADDRESS = ButtonOption("Verify address")
     TEXTQRCODE = ButtonOption("Text QR Code")
     MICROSD = ButtonOption("MicroSD Tools")
     BATTERY_CALIBRATION = ButtonOption("Battery Calibration")
@@ -93,8 +90,6 @@ class ToolsMenuView(View):
         battery_calibration_button = self.BATTERY_CALIBRATION if BatteryHat.get_instance().is_enabled() else None
 
         button_data.extend([
-            self.ADDRESS_EXPLORER,
-            self.VERIFY_ADDRESS,
             self.TEXTQRCODE,
             self.MICROSD,
             battery_calibration_button,
@@ -117,13 +112,6 @@ class ToolsMenuView(View):
         elif button_data[selected_menu_num] == self.SEEDS:
             from seedsigner.views.seed_views import SeedsMenuView
             return Destination(SeedsMenuView)
-
-        elif button_data[selected_menu_num] == self.ADDRESS_EXPLORER:
-            return Destination(ToolsAddressExplorerSelectSourceView)
-
-        elif button_data[selected_menu_num] == self.VERIFY_ADDRESS:
-            from seedsigner.views.scan_views import ScanAddressView
-            return Destination(ScanAddressView)
 
         elif button_data[selected_menu_num] == self.TEXTQRCODE:
             return Destination(ToolsTextQRView)
@@ -276,310 +264,6 @@ class ToolsNetworkInfoView(View):
 
 """****************************************************************************
     Image entropy Views
-****************************************************************************"""
-class ToolsAddressExplorerSelectSourceView(View):
-    SCAN_SEED = ButtonOption("Scan a seed", SeedSignerIconConstants.QRCODE)
-    SCAN_DESCRIPTOR = ButtonOption("Scan wallet descriptor", SeedSignerIconConstants.QRCODE)
-    TYPE_12WORD = ButtonOption("Enter 12-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=12)
-    TYPE_15WORD = ButtonOption("Enter 15-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=15)
-    TYPE_18WORD = ButtonOption("Enter 18-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=18)
-    TYPE_21WORD = ButtonOption("Enter 21-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=21)
-    TYPE_24WORD = ButtonOption("Enter 24-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=24)
-    LOADED_DESCRIPTOR = ButtonOption("Loaded Multisig Descriptor")
-    SATOCHIP = ButtonOption("Load from Satochip", SeedSignerIconConstants.FINGERPRINT)
-    TYPE_ELECTRUM = ButtonOption("Electrum Seed", FontAwesomeIconConstants.KEYBOARD)
-
-    def run(self):
-        from seedsigner.controller import Controller
-
-        seeds = self.controller.storage.seeds
-        button_data = []
-        for seed in seeds:
-            button_str = seed.get_fingerprint(self.settings.get_value(SettingsConstants.SETTING__NETWORK))
-            button_data.append(ButtonOption(button_str, SeedSignerIconConstants.FINGERPRINT))
-
-        if self.controller.multisig_wallet_descriptor:
-            button_data.append(self.LOADED_DESCRIPTOR)
-
-        seed_lengths = self.settings.get_value(SettingsConstants.SETTING__SEED_WORD_LENGTHS)
-        options = {
-            12: self.TYPE_12WORD,
-            15: self.TYPE_15WORD,
-            18: self.TYPE_18WORD,
-            21: self.TYPE_21WORD,
-            24: self.TYPE_24WORD,
-        }
-        button_data = (
-            button_data
-            + [self.SCAN_SEED, self.SCAN_DESCRIPTOR, self.SATOCHIP]
-            + [options[l] for l in seed_lengths]
-        )
-        if self.settings.get_value(SettingsConstants.SETTING__ELECTRUM_SEEDS) == SettingsConstants.OPTION__ENABLED:
-            button_data.append(self.TYPE_ELECTRUM)
-
-        selected_menu_num = self.run_screen(
-            ButtonListScreen,
-            title=_("Address Explorer"),
-            button_data=button_data,
-            is_button_text_centered=False,
-            is_bottom_list=True,
-        )
-
-        if selected_menu_num == RET_CODE__BACK_BUTTON:
-            return Destination(BackStackView)
-
-        # Most of the options require us to go through a side flow(s) before we can
-        # continue to the address explorer. Set the Controller-level flow so that it
-        # knows to re-route us once the side flow is complete.        
-        self.controller.resume_main_flow = Controller.FLOW__ADDRESS_EXPLORER
-
-        if len(seeds) > 0 and selected_menu_num < len(seeds):
-            # User selected one of the n seeds
-            return Destination(
-                SeedExportXpubScriptTypeView,
-                view_args=dict(
-                    seed_num=selected_menu_num,
-                    sig_type=SettingsConstants.SINGLE_SIG,
-                )
-            )
-        
-        
-        elif button_data[selected_menu_num] == self.LOADED_DESCRIPTOR:
-            return Destination(ToolsAddressExplorerAddressTypeView)
-
-        elif button_data[selected_menu_num] == self.SCAN_SEED:
-            from seedsigner.views.scan_views import ScanSeedQRView
-            return Destination(ScanSeedQRView)
-
-        elif button_data[selected_menu_num] == self.SCAN_DESCRIPTOR:
-            from seedsigner.views.scan_views import ScanWalletDescriptorView
-            return Destination(ScanWalletDescriptorView)
-
-        elif button_data[selected_menu_num] == self.SATOCHIP:
-            return Destination(SatochipLoadDescriptorScriptTypeView)
-
-        elif button_data[selected_menu_num] in [self.TYPE_12WORD, self.TYPE_15WORD, self.TYPE_18WORD, self.TYPE_21WORD, self.TYPE_24WORD]:
-            from seedsigner.views.seed_views import SeedMnemonicEntryView
-
-            self.controller.storage.init_pending_mnemonic(num_words=button_data[selected_menu_num].return_data)
-
-            return Destination(SeedMnemonicEntryView)
-
-        elif button_data[selected_menu_num] == self.TYPE_ELECTRUM:
-            from seedsigner.views.seed_views import SeedElectrumMnemonicStartView
-            return Destination(SeedElectrumMnemonicStartView)
-
-
-
-class ToolsAddressExplorerAddressTypeView(View):
-    # TRANSLATOR_NOTE: label for addresses where others send us incoming payments
-    RECEIVE = ButtonOption("Receive Addresses")
-
-    # TRANSLATOR_NOTE: label for addresses that collect the change from our own outgoing payments
-    CHANGE = ButtonOption("Change Addresses")
-
-
-    def __init__(self, seed_num: int = None, script_type: str = None, custom_derivation: str = None, account: int = 0):
-        """
-            If the explorer source is a seed, `seed_num` and `script_type` must be
-            specified. `custom_derivation` can be specified as needed.
-
-            If the source is a multisig or single sig wallet descriptor, `seed_num`,
-            `script_type`, and `custom_derivation` should be `None`.
-        """
-        super().__init__()
-        self.seed_num = seed_num
-        self.script_type = script_type
-        self.custom_derivation = custom_derivation
-        self.account = account
-    
-        network = self.settings.get_value(SettingsConstants.SETTING__NETWORK)
-
-        # Store everything in the Controller's `address_explorer_data` so we don't have
-        # to keep passing vals around from View to View and recalculating.
-        data = dict(
-            seed_num=seed_num,
-            network=self.settings.get_value(SettingsConstants.SETTING__NETWORK),
-            embit_network=SettingsConstants.map_network_to_embit(network),
-            script_type=script_type,
-            account=account,
-        )
-        if self.seed_num is not None:
-            self.seed = self.controller.storage.seeds[seed_num]
-            data["seed_num"] = self.seed
-            seed_derivation_override = self.seed.derivation_override(sig_type=SettingsConstants.SINGLE_SIG)
-
-            if self.script_type == SettingsConstants.CUSTOM_DERIVATION:
-                derivation_path = self.custom_derivation
-            elif seed_derivation_override:
-                derivation_path = seed_derivation_override
-            else:
-                from seedsigner.helpers import embit_utils
-                derivation_path = embit_utils.get_standard_derivation_path(
-                    network=self.settings.get_value(SettingsConstants.SETTING__NETWORK),
-                    wallet_type=SettingsConstants.SINGLE_SIG,
-                    script_type=self.script_type,
-                    account=self.account,
-                )
-
-            data["derivation_path"] = derivation_path
-            data["xpub"] = self.seed.get_xpub(derivation_path, network=network)
-        
-        else:
-            data["wallet_descriptor"] = self.controller.multisig_wallet_descriptor
-
-        self.controller.address_explorer_data = data
-
-
-    def run(self):
-        from seedsigner.gui.screens.tools_screens import ToolsAddressExplorerAddressTypeScreen
-        data = self.controller.address_explorer_data
-
-        wallet_descriptor_display_name = None
-        if "wallet_descriptor" in data:
-            wallet_descriptor_display_name = data["wallet_descriptor"].brief_policy.replace(" (sorted)", "")
-            wallet_descriptor_display_name = " / ".join(wallet_descriptor_display_name.split(" of ")) # i18n w/o l10n since coming from non-l10n embit
-
-        script_type = data["script_type"] if "script_type" in data else None
-
-        button_data = [self.RECEIVE, self.CHANGE]
-
-        selected_menu_num = self.run_screen(
-            ToolsAddressExplorerAddressTypeScreen,
-            button_data=button_data,
-            fingerprint=self.seed.get_fingerprint() if self.seed_num is not None else None,
-            wallet_descriptor_display_name=wallet_descriptor_display_name,
-            script_type=script_type,
-            custom_derivation_path=self.custom_derivation,
-        )
-
-        if selected_menu_num == RET_CODE__BACK_BUTTON:
-            # If we entered this flow via an already-loaded seed's SeedOptionsView, we
-            # need to clear the `resume_main_flow` so that we don't get stuck in a 
-            # SeedOptionsView redirect loop.
-            # TODO: Refactor to a cleaner `BackStack.get_previous_View_cls()`
-            if len(self.controller.back_stack) > 1 and self.controller.back_stack[-2].View_cls == SeedOptionsView:
-                # The BackStack has the current View on the top with the real "back" in second position.
-                self.controller.resume_main_flow = None
-                self.controller.address_explorer_data = None
-            return Destination(BackStackView)
-        
-        elif button_data[selected_menu_num] in [self.RECEIVE, self.CHANGE]:
-            return Destination(ToolsAddressExplorerAddressListView, view_args=dict(is_change=button_data[selected_menu_num] == self.CHANGE))
-
-
-
-class ToolsAddressExplorerAddressListView(View):
-    def __init__(self, is_change: bool = False, start_index: int = 0, selected_button_index: int = 0, initial_scroll: int = 0):
-        super().__init__()
-        self.is_change = is_change
-        self.start_index = start_index
-        self.selected_button_index = selected_button_index
-        self.initial_scroll = initial_scroll
-
-
-    def run(self):
-        from seedsigner.gui.screens.tools_screens import ToolsAddressExplorerAddressListScreen
-        self.loading_screen = None
-
-        addresses = []
-        button_data = []
-        data = self.controller.address_explorer_data
-        addrs_per_screen = 10
-
-        addr_storage_key = "receive_addrs"
-        if self.is_change:
-            addr_storage_key = "change_addrs"
-
-        if addr_storage_key in data and len(data[addr_storage_key]) >= self.start_index + addrs_per_screen:
-            # We already calculated this range of addresses; just retrieve them
-            addresses = data[addr_storage_key][self.start_index:self.start_index + addrs_per_screen]
-
-        else:
-            try:
-                from seedsigner.gui.screens.screen import LoadingScreenThread
-                from seedsigner.helpers import embit_utils
-                # TRANSLATOR_NOTE: a status message that our payment addresses are being calculated
-                self.loading_screen = LoadingScreenThread(text=_("Calculating addrs..."))
-                self.loading_screen.start()
-
-                if addr_storage_key not in data:
-                    data[addr_storage_key] = []
-
-                if "xpub" in data:
-                    # Single sig explore from seed
-                    if "script_type" in data and data["script_type"] != SettingsConstants.CUSTOM_DERIVATION:
-                        # Standard derivation path
-                        for i in range(self.start_index, self.start_index + addrs_per_screen):
-                            address = embit_utils.get_single_sig_address(xpub=data["xpub"], script_type=data["script_type"], index=i, is_change=self.is_change, embit_network=data["embit_network"])
-                            addresses.append(address)
-                            data[addr_storage_key].append(address)
-                    else:
-                        # TODO: Custom derivation path
-                        raise Exception(_("Custom Derivation address explorer not yet implemented"))
-
-                elif "wallet_descriptor" in data:
-                    from embit.descriptor import Descriptor
-                    descriptor: Descriptor = data["wallet_descriptor"]
-                    for i in range(self.start_index, self.start_index + addrs_per_screen):
-                        address = embit_utils.get_multisig_address(descriptor=descriptor, index=i, is_change=self.is_change, embit_network=data["embit_network"])
-                        addresses.append(address)
-                        data[addr_storage_key].append(address)
-
-            finally:
-                # Everything is set. Stop the loading screen
-                self.loading_screen.stop()
-
-        selected_menu_num = self.run_screen(
-            ToolsAddressExplorerAddressListScreen,
-            title=_("Receive Addrs") if not self.is_change else _("Change Addrs"),
-            start_index=self.start_index,
-            addresses=addresses,
-            selected_button=self.selected_button_index,
-            scroll_y_initial_offset=self.initial_scroll,
-        )
-
-        if selected_menu_num == RET_CODE__BACK_BUTTON:
-            return Destination(BackStackView)
-        
-        if selected_menu_num == len(addresses):
-            # User clicked NEXT
-            return Destination(ToolsAddressExplorerAddressListView, view_args=dict(is_change=self.is_change, start_index=self.start_index + addrs_per_screen))
-        
-        # Preserve the list's current scroll so we can return to the same spot
-        initial_scroll = self.screen.buttons[0].scroll_y
-
-        index = selected_menu_num + self.start_index
-        return Destination(ToolsAddressExplorerAddressView, view_args=dict(index=index, address=addresses[selected_menu_num], is_change=self.is_change, start_index=self.start_index, parent_initial_scroll=initial_scroll), skip_current_view=True)
-
-
-
-class ToolsAddressExplorerAddressView(View):
-    # TODO: pull address str from controller.address_explorer_data and pass addr_storage_key and addr_index instead
-    def __init__(self, index: int, address: str, is_change: bool, start_index: int, parent_initial_scroll: int = 0):
-        super().__init__()
-        self.index = index
-        self.address = address
-        self.is_change = is_change
-        self.start_index = start_index
-        self.parent_initial_scroll = parent_initial_scroll
-
-    
-    def run(self):
-        from seedsigner.gui.screens.screen import QRDisplayScreen
-        from seedsigner.models.encode_qr import GenericStaticQrEncoder
-
-        qr_encoder = GenericStaticQrEncoder(data=self.address)
-        self.run_screen(
-            QRDisplayScreen,
-            qr_encoder=qr_encoder,
-        )
-    
-        # Exiting/Cancelling the QR display screen always returns to the list
-        return Destination(ToolsAddressExplorerAddressListView, view_args=dict(is_change=self.is_change, start_index=self.start_index, selected_button_index=self.index - self.start_index, initial_scroll=self.parent_initial_scroll), skip_current_view=True)
-
-"""****************************************************************************
-    Text QR Code Views
 ****************************************************************************"""
 class ToolsTextQRView(View):
     def run(self):
