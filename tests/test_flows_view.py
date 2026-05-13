@@ -8,7 +8,7 @@ from base import FlowTest, FlowStep
 
 from seedsigner.gui.screens.screen import RET_CODE__POWER_BUTTON
 from seedsigner.models.settings import Settings
-from seedsigner.views.tools_views import ToolsCalcFinalWordNumWordsView, ToolsMenuView
+from seedsigner.views.tools_views import ToolsMenuView
 from seedsigner.views.view import MainMenuView, NotYetImplementedView, PowerOptionsView, PowerOffView, RestartView, UnhandledExceptionView, View
 
 
@@ -62,8 +62,7 @@ class TestViewFlows(FlowTest):
         """
         self.run_sequence([
             FlowStep(MainMenuView, button_data_selection=MainMenuView.TOOLS),
-            FlowStep(ToolsMenuView, button_data_selection=ToolsMenuView.KEYBOARD),
-            FlowStep(ToolsCalcFinalWordNumWordsView, screen_return_value=Exception("Test exception")),  # <-- force an exception
+            FlowStep(ToolsMenuView, screen_return_value=Exception("Test exception")),  # <-- force an exception
             FlowStep(UnhandledExceptionView),
             FlowStep(MainMenuView),
         ])

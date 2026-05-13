@@ -10,7 +10,7 @@ from seedsigner.views import scan_views
 from seedsigner.views.psbt_views import PSBTSelectSeedView
 from seedsigner.views.seed_views import SeedBackupView, SeedMnemonicEntryView, SeedOptionsView, SeedsMenuView
 from seedsigner.views.view import Destination, MainMenuView, PowerOptionsView, UnhandledExceptionView, View
-from seedsigner.views.tools_views import ToolsMenuView, ToolsCalcFinalWordNumWordsView
+from seedsigner.views.tools_views import ToolsMenuView, ToolsBatteryCalibrationView
 
 
 
@@ -21,11 +21,13 @@ class TestFlowTest(FlowTest):
         Basic test to ensure the FlowTest can flow through a sequence of Views and
         terminate via the StopControllerCommand.
         """
+        # FlowTest sample sequence: navigate into Tools and back. The Tools
+        # entries that used to be exercised here (calc-12th-word, seed flow)
+        # are gone, so we just check the Tools menu opens.
         self.run_sequence([
             FlowStep(MainMenuView, button_data_selection=MainMenuView.TOOLS),
-            FlowStep(ToolsMenuView, button_data_selection=ToolsMenuView.KEYBOARD),
-            FlowStep(ToolsCalcFinalWordNumWordsView, button_data_selection=ToolsCalcFinalWordNumWordsView.TWELVE),
-            FlowStep(SeedMnemonicEntryView),
+            FlowStep(ToolsMenuView, screen_return_value=RET_CODE__BACK_BUTTON),
+            FlowStep(MainMenuView),
         ])
 
 
@@ -125,7 +127,8 @@ class TestFlowTest(FlowTest):
         """
         # Don't have to start at the MainMenuView; can jump straight in
         self.run_sequence([
-            FlowStep(ToolsCalcFinalWordNumWordsView),
+            FlowStep(ToolsMenuView, screen_return_value=RET_CODE__BACK_BUTTON),
+            FlowStep(MainMenuView),
         ])
 
         # And again, but this time with a View that requires input view_args
