@@ -386,6 +386,89 @@ class TestKeycardMenuRouting(unittest.TestCase):
             "Stale ToolsKeycardPinManagementMenuView class is still present",
         )
 
+    def test_rename_persists_label_without_password_prompt(self):
+        """Renaming a Keycard instance must NEVER prompt for the pairing
+        password. Labels are display strings (not secrets) and live in a
+        plaintext per-UID file; the rename flow must work even when
+        there is no on-disk pairing blob (the v3.2+ ephemeral case).
+        """
+        from unittest.mock import patch
+
+        from seedsigner.helpers.keycard import pairing_storage
+        from seedsigner.helpers.keycard.global_platform import AppletInstance
+        from seedsigner.views import keycard_views
+        from seedsigner.views.keycard_views import (
+            KEYCARD_APPLET_AID, ToolsKeycardInstancesRenameView,
+        )
+
+        instance_aid = KEYCARD_APPLET_AID + b"\x01\x01"
+        instance_uid = b"\xAB" * 16
+
+        view = ToolsKeycardInstancesRenameView.__new__(
+            ToolsKeycardInstancesRenameView,
+        )
+        view.controller = MagicMock()
+        # run_screen returns the index of the chosen instance (first one).
+        view.run_screen = MagicMock(return_value=0)
+
+        fake_select = MagicMock()
+        fake_select.instance_uid = instance_uid
+        fake_client = MagicMock()
+        fake_client.select.return_value = fake_select
+
+        save_calls = []
+        update_calls = []
+
+        def fake_save_label_only(uid, label):
+            save_calls.append((bytes(uid), label))
+
+        def fake_update_label(*args, **kwargs):
+            update_calls.append(args)
+            # Pretend no persistent blob exists for this UID — the
+            # silent best-effort blob-trailer refresh should swallow
+            # PairingStorageError and move on.
+            raise pairing_storage.PairingStorageError("no blob")
+
+        with patch.object(
+            keycard_views, "_open_isd_channel",
+            return_value=(
+                MagicMock(),
+                [AppletInstance(aid=instance_aid, life_cycle=0, privileges=0)],
+                MagicMock(),
+            ),
+        ), patch.object(
+            keycard_views, "_instances_or_probe_fallback",
+            side_effect=lambda controller, instances, conn: instances,
+        ), patch(
+            "seedsigner.helpers.keycard.reader.wait_for_card",
+            return_value=MagicMock(),
+        ), patch(
+            "seedsigner.helpers.keycard.reader.release_other_smartcard_holders",
+        ), patch(
+            "seedsigner.helpers.keycard.client.KeycardClient",
+            return_value=fake_client,
+        ), patch.object(
+            keycard_views, "prompt_for_text", return_value="Cold Wallet",
+        ) as prompt_text, patch.object(
+            pairing_storage, "save_label_only",
+            side_effect=fake_save_label_only,
+        ), patch.object(
+            pairing_storage, "update_label", side_effect=fake_update_label,
+        ):
+            view.run()
+
+        # Exactly one prompt: for the wallet name. The Pairing-password
+        # prompt would be a SECOND prompt_for_text call — its absence is
+        # the regression guard for the original UX bug.
+        self.assertEqual(prompt_text.call_count, 1)
+        # The plaintext label file got the new name keyed by instance UID.
+        self.assertEqual(save_calls, [(instance_uid, "Cold Wallet")])
+        # The in-memory cache reflects the rename so subsequent renders
+        # don't fall back to the AID hex.
+        view.controller.set_label_for.assert_called_with(
+            instance_uid, "Cold Wallet",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

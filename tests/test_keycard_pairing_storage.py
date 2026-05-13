@@ -364,3 +364,103 @@ class TestUpdateLabel:
     def test_update_label_no_blob_raises(self, storage_dir):
         with pytest.raises(PairingStorageError):
             pairing_storage.update_label("pw", b"\xCC" * 16, "X")
+
+
+class TestLabelOnly:
+    def test_round_trip(self, storage_dir):
+        uid = b"\xAA" * 16
+        pairing_storage.save_label_only(uid, "Alpha")
+        assert pairing_storage.load_label_only(uid) == "Alpha"
+
+    def test_overwrite(self, storage_dir):
+        uid = b"\xAA" * 16
+        pairing_storage.save_label_only(uid, "Alpha")
+        pairing_storage.save_label_only(uid, "Beta")
+        assert pairing_storage.load_label_only(uid) == "Beta"
+
+    def test_clear_with_none_deletes_file(self, storage_dir):
+        uid = b"\xAA" * 16
+        pairing_storage.save_label_only(uid, "Alpha")
+        assert pairing_storage.load_label_only(uid) == "Alpha"
+        pairing_storage.save_label_only(uid, None)
+        assert pairing_storage.load_label_only(uid) is None
+
+    def test_clear_with_empty_deletes_file(self, storage_dir):
+        uid = b"\xAA" * 16
+        pairing_storage.save_label_only(uid, "Alpha")
+        pairing_storage.save_label_only(uid, "")
+        assert pairing_storage.load_label_only(uid) is None
+
+    def test_clear_when_absent_is_noop(self, storage_dir):
+        uid = b"\xAA" * 16
+        # No file present — should not raise.
+        pairing_storage.save_label_only(uid, None)
+        assert pairing_storage.load_label_only(uid) is None
+
+    def test_load_missing_returns_none(self, storage_dir):
+        assert pairing_storage.load_label_only(b"\xBB" * 16) is None
+
+    def test_per_uid_isolation(self, storage_dir):
+        uid_a = b"\xAA" * 16
+        uid_b = b"\xBB" * 16
+        pairing_storage.save_label_only(uid_a, "Alpha")
+        pairing_storage.save_label_only(uid_b, "Beta")
+        assert pairing_storage.load_label_only(uid_a) == "Alpha"
+        assert pairing_storage.load_label_only(uid_b) == "Beta"
+
+    def test_remove(self, storage_dir):
+        uid = b"\xAA" * 16
+        pairing_storage.save_label_only(uid, "Alpha")
+        assert pairing_storage.remove_label_only(uid) is True
+        assert pairing_storage.load_label_only(uid) is None
+        # Second remove returns False.
+        assert pairing_storage.remove_label_only(uid) is False
+
+    def test_remove_all(self, storage_dir):
+        for i in range(3):
+            uid = bytes([0xA0 + i]) * 16
+            pairing_storage.save_label_only(uid, f"Card {i}")
+        count = pairing_storage.remove_all_label_only(base_dir=storage_dir)
+        assert count == 3
+        for i in range(3):
+            uid = bytes([0xA0 + i]) * 16
+            assert pairing_storage.load_label_only(uid) is None
+
+    def test_remove_all_ignores_pairing_blobs(self, sample_pairing, storage_dir):
+        # Pairing blob present too — should be untouched by label cleanup.
+        uid = b"\xAA" * 16
+        pairing_storage.save("pw", sample_pairing, uid, label="Original")
+        pairing_storage.save_label_only(uid, "From rename")
+        count = pairing_storage.remove_all_label_only(base_dir=storage_dir)
+        assert count == 1
+        # Blob still loadable; label inside the blob is unchanged.
+        loaded = pairing_storage.load("pw", instance_uid=uid)
+        assert loaded is not None
+        assert loaded.label == "Original"
+
+    def test_unicode_label_round_trip(self, storage_dir):
+        uid = b"\xAA" * 16
+        # UTF-8 multibyte must round-trip cleanly. "Café" = 5 UTF-8 bytes.
+        pairing_storage.save_label_only(uid, "Café")
+        assert pairing_storage.load_label_only(uid) == "Café"
+
+    def test_too_long_label_rejected(self, storage_dir):
+        uid = b"\xAA" * 16
+        oversized = "x" * (pairing_storage.LABEL_MAX_LEN + 1)
+        with pytest.raises(ValueError):
+            pairing_storage.save_label_only(uid, oversized)
+
+    def test_no_magic_prefix_returns_none(self, storage_dir):
+        uid = b"\xAA" * 16
+        target = pairing_storage._label_path_for_uid(uid)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(b"raw bytes without the magic prefix")
+        assert pairing_storage.load_label_only(uid) is None
+
+    def test_label_file_independent_of_pairing_blob(self, storage_dir):
+        # The label can be persisted without ever creating a pairing blob —
+        # this is the v3.2+ ephemeral-card case.
+        uid = b"\xAA" * 16
+        pairing_storage.save_label_only(uid, "Alpha")
+        assert pairing_storage.load("pw", instance_uid=uid) is None
+        assert pairing_storage.load_label_only(uid) == "Alpha"

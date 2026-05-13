@@ -68,6 +68,15 @@ PER_UID_PREFIX = "keycard_pairing_"
 PER_UID_SUFFIX = ".bin"
 FINGERPRINT_LEN_HEX = 16  # 8 bytes of SHA-256(instance_uid)
 
+# Per-UID plaintext wallet name. Labels are display strings, not
+# secrets — they exist so the user can tell their cards apart in the
+# UI. Stored separately from the encrypted pairing blob so it works
+# uniformly for v3.2+ ephemeral cards (no on-disk blob) and avoids
+# asking the user for a pairing password just to rename a wallet.
+LABEL_FILE_PREFIX = "keycard_label_"
+LABEL_FILE_SUFFIX = ".txt"
+LABEL_FILE_MAGIC = b"kclbl1\n"
+
 
 class PairingStorageError(Exception):
     pass
@@ -180,6 +189,107 @@ def _path_for_uid(instance_uid: bytes, *, base_dir: Optional[Path] = None) -> Pa
     if base_dir is not None:
         return base_dir / filename
     return get_storage_path(filename)
+
+
+def _label_path_for_uid(instance_uid: bytes, *,
+                       base_dir: Optional[Path] = None) -> Path:
+    fp = fingerprint_for_uid(instance_uid)
+    filename = f"{LABEL_FILE_PREFIX}{fp}{LABEL_FILE_SUFFIX}"
+    if base_dir is not None:
+        return base_dir / filename
+    return get_storage_path(filename)
+
+
+def save_label_only(instance_uid: bytes, label: Optional[str], *,
+                    base_dir: Optional[Path] = None) -> Path:
+    """Persist a wallet name in a per-UID plaintext file.
+
+    Labels are display strings, not secrets — plaintext storage is
+    sufficient and avoids forcing the user to enter a pairing password
+    just to rename a wallet (which doesn't work at all for v3.2+
+    ephemeral cards, since they have no on-disk pairing blob).
+
+    Passing ``label=None`` or ``""`` deletes any existing file.
+    """
+    target = _label_path_for_uid(instance_uid, base_dir=base_dir)
+    if not label:
+        try:
+            target.unlink()
+        except FileNotFoundError:
+            pass
+        return target
+    encoded = label.encode("utf-8")
+    if len(encoded) > LABEL_MAX_LEN:
+        raise ValueError(f"label exceeds {LABEL_MAX_LEN} UTF-8 bytes")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    tmp = target.with_suffix(target.suffix + ".tmp")
+    tmp.write_bytes(LABEL_FILE_MAGIC + encoded)
+    os.replace(tmp, target)
+    try:
+        os.chmod(target, 0o600)
+    except Exception:
+        pass
+    return target
+
+
+def load_label_only(instance_uid: bytes, *,
+                    base_dir: Optional[Path] = None) -> Optional[str]:
+    """Read the per-UID label file. ``None`` if absent or malformed."""
+    target = _label_path_for_uid(instance_uid, base_dir=base_dir)
+    if not target.exists():
+        return None
+    try:
+        data = target.read_bytes()
+    except OSError:
+        return None
+    if not data.startswith(LABEL_FILE_MAGIC):
+        return None
+    encoded = data[len(LABEL_FILE_MAGIC):]
+    if not encoded:
+        return None
+    if len(encoded) > LABEL_MAX_LEN:
+        return None
+    try:
+        decoded = encoded.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+    return decoded if decoded else None
+
+
+def remove_label_only(instance_uid: bytes, *,
+                      base_dir: Optional[Path] = None) -> bool:
+    """Delete the per-UID label file if present."""
+    target = _label_path_for_uid(instance_uid, base_dir=base_dir)
+    try:
+        target.unlink()
+        return True
+    except FileNotFoundError:
+        return False
+
+
+def remove_all_label_only(*, base_dir: Optional[Path] = None) -> int:
+    """Delete every per-UID label file. Returns the count removed."""
+    if base_dir is None:
+        try:
+            base_dir = get_storage_path().parent
+        except Exception:
+            return 0
+    if not base_dir.exists():
+        return 0
+    removed = 0
+    for entry in sorted(base_dir.iterdir()):
+        if not entry.is_file():
+            continue
+        name = entry.name
+        if name.startswith(LABEL_FILE_PREFIX) and name.endswith(LABEL_FILE_SUFFIX):
+            try:
+                entry.unlink()
+                removed += 1
+            except FileNotFoundError:
+                pass
+            except OSError:
+                logger.exception("could not remove label file %s", entry)
+    return removed
 
 
 @dataclass(frozen=True)

@@ -58,6 +58,7 @@ from seedsigner.helpers.keycard.ui_helpers import (
     prompt_for_pin,
     prompt_for_text,
     select_with_autodetect,
+    try_silent_ephemeral_pair,
     wipe_bytearray,
 )
 from seedsigner.helpers.secure_delete import wipe_string
@@ -950,9 +951,27 @@ class ToolsKeycardPairView(View):
                 )
 
         self.controller.set_pairing_for(instance_uid, pairing)
+        # The plaintext label file is the authoritative wallet name
+        # going forward (works for ephemeral and persistent cards).
+        # Persist any pending label captured at Init, else fall back to
+        # whatever was already on disk (label file first, then the
+        # blob's trailer for backward compat with older blobs).
+        final_label = pending_label
+        if final_label is None:
+            try:
+                final_label = pairing_storage.load_label_only(instance_uid)
+            except Exception:
+                final_label = None
+            if final_label is None:
+                final_label = effective_label
+        if pending_label is not None:
+            try:
+                pairing_storage.save_label_only(instance_uid, pending_label)
+            except Exception:
+                logger.exception("could not persist label file")
         # Cache the human-readable wallet name so List/Switch/Delete
         # views can show it instead of just the AID hex.
-        self.controller.set_label_for(instance_uid, effective_label)
+        self.controller.set_label_for(instance_uid, final_label)
         # Consume the pending label once it has been written to disk.
         # We clear it on the "disk" path too: a label captured at Init
         # is only meaningful for a brand-new card whose first PAIR
@@ -1001,20 +1020,24 @@ class ToolsKeycardPairView(View):
         session, since the on-card ephemeral key is cleared on every
         applet deselect.
         """
+        from seedsigner.helpers.keycard import pairing_storage
+
         # Reuse the cached secret if any — equivalent of "Already paired".
+        # No status screen: silent return so the user is dropped back where
+        # they came from instead of bouncing through an "OK" confirmation.
         if self.controller.get_ephemeral_secret_for(instance_uid) is not None:
-            self.run_screen(
-                LargeIconStatusScreen,
-                title="Already paired",
-                status_headline=None,
-                text="Ephemeral pairing\nactive this boot.",
-                show_back_button=False,
-                button_data=[ButtonOption("OK")],
-            )
-            return Destination(ToolsKeycardMenuView, skip_current_view=True)
+            # Make sure the in-memory label cache reflects any name set
+            # in a previous boot, even when we short-circuit the pair.
+            if self.controller.get_label_for(instance_uid) is None:
+                try:
+                    stored_label = pairing_storage.load_label_only(instance_uid)
+                except Exception:
+                    stored_label = None
+                if stored_label is not None:
+                    self.controller.set_label_for(instance_uid, stored_label)
+            return Destination(BackStackView)
 
         secret_used: Optional[bytes] = None
-        used_default = False
         try:
             # 1. PBKDF2 from the well-known default password.
             default_secret = derive_pairing_secret(DEFAULT_PAIRING_PASSWORD)
@@ -1023,7 +1046,6 @@ class ToolsKeycardPairView(View):
                     client, SecureChannelError, default_secret,
                 ) is not None:
                     secret_used = default_secret
-                    used_default = True
             except Exception as exc:
                 logger.exception("ephemeral PAIR (default pwd) failed")
                 title, body = classify_card_error(
@@ -1038,7 +1060,6 @@ class ToolsKeycardPairView(View):
                         client, SecureChannelError, raw_psk,
                     ) is not None:
                         secret_used = raw_psk
-                        used_default = True
                 except Exception as exc:
                     logger.exception("ephemeral PAIR (shell PSK) failed")
                     title, body = classify_card_error(
@@ -1118,20 +1139,31 @@ class ToolsKeycardPairView(View):
         except Exception:
             pass
 
-        pwd_label = "default password" if used_default else "custom password"
-        text = (
-            "Ephemeral pairing\n"
-            f"{pwd_label}\nNo disk persistence."
-        )
-        self.run_screen(
-            LargeIconStatusScreen,
-            title="Paired",
-            status_headline=None,
-            text=text,
-            show_back_button=False,
-            button_data=[ButtonOption("OK")],
-        )
-        return Destination(ToolsKeycardMenuView, skip_current_view=True)
+        # Persist any pending label captured at Init, and seed the
+        # in-memory cache from the plaintext label file so subsequent
+        # views (List / Switch / Rename) show the wallet name across
+        # boots — ephemeral pairing never writes a pairing blob, so
+        # the label file is the only persistent name for these cards.
+        pending_label = getattr(self.controller, "pending_keycard_label", None)
+        if pending_label is not None:
+            try:
+                pairing_storage.save_label_only(instance_uid, pending_label)
+            except Exception:
+                logger.exception("could not persist label file")
+            self.controller.set_label_for(instance_uid, pending_label)
+            self.controller.pending_keycard_label = None
+        else:
+            try:
+                stored_label = pairing_storage.load_label_only(instance_uid)
+            except Exception:
+                stored_label = None
+            if stored_label is not None:
+                self.controller.set_label_for(instance_uid, stored_label)
+
+        # No "Paired" status screen: v3.2 ephemeral pairing is a transparent
+        # session-bootstrap step, not a user-facing action. Silently return
+        # so the user lands back in whichever flow triggered the pairing.
+        return Destination(BackStackView)
 
 
 class ToolsKeycardRemovePairingView(View):
@@ -1281,6 +1313,10 @@ class ToolsKeycardRemovePairingView(View):
             pairing_storage.remove(instance_uid=instance_uid)
         except Exception:
             logger.exception("could not remove unpaired storage")
+        try:
+            pairing_storage.remove_label_only(instance_uid)
+        except Exception:
+            logger.exception("could not remove unpaired label file")
 
     def _remove_all_local(self) -> Destination:
         from seedsigner.helpers.keycard import pairing_storage
@@ -1297,6 +1333,10 @@ class ToolsKeycardRemovePairingView(View):
             return Destination(BackStackView)
 
         count = pairing_storage.remove_all()
+        try:
+            pairing_storage.remove_all_label_only()
+        except Exception:
+            logger.exception("could not remove label files")
         self.controller.forget_all_pairings()
         self._show_done("Removed", f"Removed {count} pairing(s).")
         return Destination(ToolsKeycardMenuView, skip_current_view=True)
@@ -1350,7 +1390,8 @@ class ToolsKeycardGenerateKeyView(View):
         from seedsigner.helpers.keycard import KeycardCardChangedError
 
         if not self.controller.has_any_keycard_auth():
-            return Destination(ToolsKeycardPairView)
+            if not try_silent_ephemeral_pair(self):
+                return Destination(ToolsKeycardPairView)
 
         ret = self.run_screen(
             DireWarningScreen,
@@ -1682,7 +1723,8 @@ class ToolsKeycardPairWalletView(View):
         from seedsigner.models.encode_qr import EthHDKeyQrEncoder
 
         if not self.controller.has_any_keycard_auth():
-            return Destination(ToolsKeycardPairView)
+            if not try_silent_ephemeral_pair(self):
+                return Destination(ToolsKeycardPairView)
 
         master_pub = parent_pub = None
         account_pub = chain_code = None
@@ -1822,7 +1864,8 @@ class ToolsKeycardWalletsListView(View):
         )
 
         if not self.controller.has_any_keycard_auth():
-            return Destination(ToolsKeycardPairView)
+            if not try_silent_ephemeral_pair(self):
+                return Destination(ToolsKeycardPairView)
 
         cache = _wallets_cache_for_active_aid(self.controller)
         end_index = self.start_index + WALLETS_PER_PAGE
@@ -2260,11 +2303,15 @@ class ToolsKeycardInstancesRenameView(View):
     """Rename the wallet label associated with a Keycard instance.
 
     Lists the keycard-prefixed instances on the inserted card, lets the
-    user pick one, captures the new name, and re-encrypts the on-disk
-    pairing blob with the updated label. Tries the well-known pairing
-    passwords (KeycardDefaultPairing, keycard-shell raw PSK) silently
-    first; only prompts the user for a pairing password when both
-    silent paths fail to decrypt — same UX pattern as the Pair flow.
+    user pick one, captures the new name, and writes the label to a
+    plaintext per-UID file. Labels are display strings (not secrets),
+    so the rename never needs a pairing password — important for v3.2+
+    ephemeral cards that have no on-disk pairing blob to update at all.
+
+    For backward compatibility, if a persistent-pairing blob does exist
+    and was encrypted with one of the well-known default passwords
+    (``KeycardDefaultPairing`` or the keycard-shell raw PSK), the
+    blob's label trailer is also refreshed best-effort.
     """
 
     def run(self):
@@ -2330,43 +2377,30 @@ class ToolsKeycardInstancesRenameView(View):
         stripped = raw.strip()
         new_label = stripped if stripped else None
 
-        silent_pwds = [
+        try:
+            pairing_storage.save_label_only(instance_uid, new_label)
+        except ValueError as exc:
+            return _error_destination("Name too long", str(exc))
+        except OSError:
+            return _error_destination(
+                "Storage error", "Insert microSD and retry.",
+            )
+
+        # Best-effort: refresh the label trailer in the persistent
+        # pairing blob too, when one exists and was encrypted with one
+        # of the well-known defaults. Pure cosmetic — the plaintext
+        # label file is the authoritative source going forward.
+        for storage_pwd in (
             DEFAULT_PAIRING_PASSWORD,
             "raw-psk:" + KEYCARD_SHELL_DEFAULT_PSK.hex(),
-        ]
-        updated = False
-        for storage_pwd in silent_pwds:
+        ):
             try:
                 pairing_storage.update_label(storage_pwd, instance_uid, new_label)
-                updated = True
                 break
             except pairing_storage.PairingStorageError:
                 continue
             except OSError:
-                return _error_destination(
-                    "Storage error", "Insert microSD and retry.",
-                )
-
-        if not updated:
-            password = prompt_for_text(self, "Pairing password")
-            if password is None:
-                return Destination(BackStackView)
-            try:
-                try:
-                    pairing_storage.update_label(password, instance_uid, new_label)
-                except pairing_storage.PairingStorageError:
-                    return _error_destination(
-                        "Wrong password", "Could not decrypt blob.",
-                    )
-                except OSError:
-                    return _error_destination(
-                        "Storage error", "Insert microSD and retry.",
-                    )
-            finally:
-                try:
-                    wipe_string(password)
-                except Exception:
-                    pass
+                break
 
         # Reflect the change in the controller cache so the next
         # screen render shows the new name.
@@ -2430,6 +2464,11 @@ class ToolsKeycardInstancesDeleteView(View):
         if confirm_ret == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
 
+        # Look up the UID we cached at SELECT time, before we DELETE
+        # the applet — afterwards the AID no longer responds to SELECT
+        # so the mapping must come from the in-memory cache.
+        deleted_uid = self.controller.get_uid_for_aid(target)
+
         try:
             delete_aid(channel, target, with_related=True)
         except Exception as exc:
@@ -2437,11 +2476,21 @@ class ToolsKeycardInstancesDeleteView(View):
             title, body = classify_card_error(exc, default_title="Delete failed")
             return _error_destination(title, body)
 
-        # Drop any cached pairing whose previously-observed UID we
-        # can't tie to this AID. Best-effort: we don't know the
-        # mapping AID → instance_uid here without re-SELECTing the
-        # applet (which we just deleted). Leave the cache for now;
-        # next operation will get KeycardCardChangedError if needed.
+        # Drop any cached pairing/label whose UID we previously
+        # observed via SELECT. If we never paired with this AID this
+        # boot the cache lookup misses; that's fine — there's no local
+        # state to clear in that case anyway.
+        if deleted_uid is not None:
+            from seedsigner.helpers.keycard import pairing_storage
+            self.controller.forget_pairing_for(deleted_uid)
+            try:
+                pairing_storage.remove(instance_uid=deleted_uid)
+            except Exception:
+                logger.exception("could not remove deleted pairing blob")
+            try:
+                pairing_storage.remove_label_only(deleted_uid)
+            except Exception:
+                logger.exception("could not remove deleted label file")
 
         # If the deleted AID was the active one, fall back to default.
         if self.controller.active_keycard_aid == target:
@@ -2540,7 +2589,8 @@ class ToolsKeycardSignEthStartView(View):
         # Keycard menu instead of bouncing back here and re-launching
         # the camera.
         if not self.controller.has_any_keycard_auth():
-            return Destination(ToolsKeycardPairView, skip_current_view=True)
+            if not try_silent_ephemeral_pair(self):
+                return Destination(ToolsKeycardPairView, skip_current_view=True)
         return Destination(ScanEthSignRequestView, skip_current_view=True)
 
 
@@ -2770,7 +2820,8 @@ class ToolsKeycardSignEthFinalizeView(View):
         if request is None:
             return _error_destination("No request", "Lost request mid-flow")
         if not self.controller.has_any_keycard_auth():
-            return Destination(ToolsKeycardPairView)
+            if not try_silent_ephemeral_pair(self):
+                return Destination(ToolsKeycardPairView)
 
         try:
             from seedsigner.helpers.keycard_signer import sign_with_keycard

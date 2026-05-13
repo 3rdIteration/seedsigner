@@ -475,6 +475,91 @@ def identify_inserted_card(parent_view: "View") -> Tuple["KeycardClient", bytes]
     return client, uid
 
 
+def try_silent_ephemeral_pair(parent_view: "View") -> bool:
+    """Best-effort silent v3.2+ ephemeral pairing of the inserted card.
+
+    SELECTs the card, and if it supports ephemeral pairing, tries the
+    well-known keycard-cli default password (PBKDF2) then the
+    keycard-shell raw PSK. On success caches the 32-byte secret on the
+    controller and returns True. Returns False on any failure (no card,
+    pre-3.2 card, wrong credentials, transient I/O error) without
+    raising — callers fall back to the explicit ``ToolsKeycardPairView``.
+
+    The helper is the inline-friendly equivalent of the silent steps
+    performed by ``ToolsKeycardPairView._run_ephemeral``: any view that
+    would otherwise round-trip the user through the Pair menu can call
+    this first and continue with the requested action.
+    """
+    from seedsigner.helpers.keycard.client import KeycardClient
+    from seedsigner.helpers.keycard.commands import (
+        PAIR_P2_EPHEMERAL, supports_ephemeral_pairing,
+    )
+    from seedsigner.helpers.keycard.crypto import (
+        KEYCARD_SHELL_DEFAULT_PSK, derive_pairing_secret,
+    )
+    from seedsigner.helpers.keycard.reader import (
+        release_other_smartcard_holders, wait_for_card,
+    )
+
+    # keycard-cli / keycard-shell default password (kept in sync with
+    # the constant in views.keycard_views; duplicated here to avoid a
+    # views→helpers import cycle).
+    DEFAULT_PAIRING_PASSWORD = "KeycardDefaultPairing"
+
+    try:
+        release_other_smartcard_holders(parent_view.controller)
+        connection = wait_for_card(timeout_s=2.0)
+        client = KeycardClient(connection)
+        info = select_with_autodetect(client, parent_view.controller)
+    except Exception:
+        return False
+
+    if info.app_version == 0:
+        return False
+    if not supports_ephemeral_pairing(info.app_version):
+        return False
+
+    instance_uid = bytes(info.instance_uid)
+    parent_view.controller.last_keycard_uid = instance_uid
+    parent_view.controller.remember_aid_for_uid(
+        parent_view.controller.active_keycard_aid, instance_uid,
+    )
+
+    # Already have a cached ephemeral secret for this card — nothing to do.
+    if parent_view.controller.get_ephemeral_secret_for(instance_uid) is not None:
+        return True
+
+    default_secret = derive_pairing_secret(DEFAULT_PAIRING_PASSWORD)
+    paired = False
+    try:
+        try:
+            client.pair(default_secret, p2=PAIR_P2_EPHEMERAL)
+            parent_view.controller.set_ephemeral_secret_for(
+                instance_uid, default_secret,
+            )
+            paired = True
+        except Exception:
+            try:
+                client.pair(KEYCARD_SHELL_DEFAULT_PSK, p2=PAIR_P2_EPHEMERAL)
+                parent_view.controller.set_ephemeral_secret_for(
+                    instance_uid, KEYCARD_SHELL_DEFAULT_PSK,
+                )
+                paired = True
+            except Exception:
+                paired = False
+    finally:
+        # Wipe the freshly-derived default secret (the module-level shell
+        # PSK is a constant and must stay intact).
+        try:
+            buf = bytearray(default_secret)
+            for i in range(len(buf)):
+                buf[i] = 0
+        except Exception:
+            pass
+
+    return paired
+
+
 def classify_card_error(
     exc: BaseException,
     *,
