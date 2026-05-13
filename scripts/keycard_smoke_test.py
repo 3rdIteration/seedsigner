@@ -62,6 +62,12 @@ def main() -> int:
         help="also exercise SIGN against a fixed test digest (consumes a PIN attempt on bad PIN)",
     )
     parser.add_argument(
+        "--btc",
+        action="store_true",
+        help="after the ETH checks, also exercise the BTC path: export "
+             "xpub at m/84'/0'/0' + BIP-137 sign \"test\" at m/84'/0'/0'/0/0.",
+    )
+    parser.add_argument(
         "--keep-pairing",
         action="store_true",
         help="do not unpair this slot when the test completes",
@@ -175,6 +181,35 @@ def main() -> int:
                 _fail("SIGN response pubkey differs from EXPORT pubkey!")
                 return 7
             _ok("SIGN response pubkey matches EXPORT pubkey")
+
+        if args.btc:
+            _step("BTC: export xpub @ m/84'/0'/0'")
+            try:
+                from seedsigner.helpers.keycard_btc_signer import (
+                    export_xpub, sign_message as btc_sign_message,
+                )
+            except Exception as exc:
+                _fail(f"could not import bitcoin signer helpers: {exc}")
+                traceback.print_exc()
+                return 8
+            try:
+                xpub_export = export_xpub(client, "m/84'/0'/0'")
+            except Exception as exc:
+                _fail(f"export_xpub failed: {exc}")
+                traceback.print_exc()
+                return 8
+            _ok(f"master fingerprint: {xpub_export.master_fingerprint.hex()}")
+            _ok(f"xpub: {xpub_export.xpub_base58}")
+            _ok(f"descriptor: {xpub_export.descriptor}")
+
+            _step("BTC: BIP-137 sign \"test\" @ m/84'/0'/0'/0/0")
+            try:
+                sig_b64 = btc_sign_message(client, "test", "m/84'/0'/0'/0/0")
+            except Exception as exc:
+                _fail(f"sign_message failed: {exc}")
+                traceback.print_exc()
+                return 9
+            _ok(f"signature: {sig_b64}")
 
         _step("DONE")
         _ok("all checks passed")
