@@ -304,58 +304,6 @@ class SettingsConstants:
     ALL_SCARD_PIN_ATTEMPTS = [(i, str(i)) for i in range(SCARD_PIN_ATTEMPTS_MIN, SCARD_PIN_ATTEMPTS_MAX + 1)]
     DEFAULT_SCARD_PIN_ATTEMPTS = 5
 
-    # Satochip signing behavior
-    SATOCHIP_TIMEOUT_MIN = 0.25
-    SATOCHIP_TIMEOUT_MAX = 1
-
-    ALL_SATOCHIP_TIMEOUTS = [
-        (i, f"{i:g}s")
-        for i in [x * 0.25 for x in range(int(SATOCHIP_TIMEOUT_MIN / 0.25), int(SATOCHIP_TIMEOUT_MAX / 0.25) + 1)]
-    ]
-    DEFAULT_SATOCHIP_TIMEOUT = 0.5
-
-    SATOCHIP_MSG_TIMEOUT_MIN = 0.5
-    SATOCHIP_MSG_TIMEOUT_MAX = 2
-
-    ALL_SATOCHIP_MSG_TIMEOUTS = [
-        (i / 4, f"{i / 4:g}s")
-        for i in range(int(SATOCHIP_MSG_TIMEOUT_MIN * 4), int(SATOCHIP_MSG_TIMEOUT_MAX * 4) + 1)
-    ]
-    DEFAULT_SATOCHIP_MSG_TIMEOUT = 1.25
-
-    SATOCHIP_PRE_DUMMY_MAX_MIN = 0
-    SATOCHIP_PRE_DUMMY_MAX_MAX = 12
-    ALL_SATOCHIP_PRE_DUMMY_MAX = [
-        (i, str(i))
-        for i in range(SATOCHIP_PRE_DUMMY_MAX_MIN, SATOCHIP_PRE_DUMMY_MAX_MAX + 1)
-    ]
-    DEFAULT_SATOCHIP_PRE_DUMMY_MAX = 6
-
-    SATOCHIP_POST_DUMMY_MAX_MIN = 0
-    SATOCHIP_POST_DUMMY_MAX_MAX = 12
-    ALL_SATOCHIP_POST_DUMMY_MAX = [
-        (i, str(i))
-        for i in range(
-            SATOCHIP_POST_DUMMY_MAX_MIN, SATOCHIP_POST_DUMMY_MAX_MAX + 1
-        )
-    ]
-    DEFAULT_SATOCHIP_POST_DUMMY_MAX = 6
-
-    SATOCHIP_IN_TX_DUMMY_MAX_MIN = 1
-    SATOCHIP_IN_TX_DUMMY_MAX_MAX = 5
-    ALL_SATOCHIP_IN_TX_DUMMY_MAX = [
-        (i, str(i))
-        for i in range(SATOCHIP_IN_TX_DUMMY_MAX_MIN, SATOCHIP_IN_TX_DUMMY_MAX_MAX + 1)
-    ]
-    DEFAULT_SATOCHIP_IN_TX_DUMMY_MAX = 3
-
-    SATOCHIP_DUMMY_PROB_MIN = 0
-    SATOCHIP_DUMMY_PROB_MAX = 100
-    ALL_SATOCHIP_DUMMY_PROB = [
-        (i, f"{i}%") for i in range(SATOCHIP_DUMMY_PROB_MIN, SATOCHIP_DUMMY_PROB_MAX + 1, 5)
-    ]
-    DEFAULT_SATOCHIP_DUMMY_PROB = 50
-
     @classmethod
     def map_network_to_embit(cls, network) -> str:
         # Note these are `embit` constants; do not wrap for translation
@@ -490,13 +438,6 @@ class SettingsConstants:
     SETTING__WIF_KEYS = "wif_keys"
     SETTING__BIP38_KEYS = "bip38_keys"
     SETTING__GPG_KEY_TYPES = "gpg_key_types"
-
-    SETTING__SATOCHIP_SIGN_TIMEOUT = "satochip_sign_timeout"
-    SETTING__SATOCHIP_MSG_SIGN_TIMEOUT = "satochip_msg_sign_timeout"
-    SETTING__SATOCHIP_MAX_PRE_DUMMIES = "satochip_max_pre_dummies"
-    SETTING__SATOCHIP_MAX_POST_DUMMIES = "satochip_max_post_dummies"
-    SETTING__SATOCHIP_MAX_IN_TX_DUMMIES = "satochip_max_in_tx_dummies"
-    SETTING__SATOCHIP_DUMMY_PROBABILITY = "satochip_dummy_probability"
 
     SETTING__DEBUG = "debug"
 
@@ -1129,61 +1070,6 @@ class SettingsDefinition:
                       display_name=_mft("Show partner logos"),
                       visibility=SettingsConstants.VISIBILITY__ADVANCED,
                       default_value=SettingsConstants.OPTION__ENABLED),
-
-        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
-                      attr_name=SettingsConstants.SETTING__SATOCHIP_SIGN_TIMEOUT,
-                      abbreviated_name="satotime",
-                      display_name="Satochip tx sign timeout",
-                      type=SettingsConstants.TYPE__SELECT_1,
-                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
-                      selection_options=SettingsConstants.ALL_SATOCHIP_TIMEOUTS,
-                      default_value=SettingsConstants.DEFAULT_SATOCHIP_TIMEOUT),
-
-        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
-                      attr_name=SettingsConstants.SETTING__SATOCHIP_MSG_SIGN_TIMEOUT,
-                      abbreviated_name="satomsig",
-                      display_name="Satochip message sign timeout",
-                      type=SettingsConstants.TYPE__SELECT_1,
-                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
-                      selection_options=SettingsConstants.ALL_SATOCHIP_MSG_TIMEOUTS,
-                      default_value=SettingsConstants.DEFAULT_SATOCHIP_MSG_TIMEOUT),
-
-        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
-                      attr_name=SettingsConstants.SETTING__SATOCHIP_MAX_PRE_DUMMIES,
-                      abbreviated_name="satopre",
-                      display_name="Satochip pre-sign dummies",
-                      type=SettingsConstants.TYPE__SELECT_1,
-                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
-                      selection_options=SettingsConstants.ALL_SATOCHIP_PRE_DUMMY_MAX,
-                      default_value=SettingsConstants.DEFAULT_SATOCHIP_PRE_DUMMY_MAX),
-
-        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
-                      attr_name=SettingsConstants.SETTING__SATOCHIP_MAX_POST_DUMMIES,
-                      abbreviated_name="satopost",
-                      display_name="Satochip post-sign dummies",
-                      type=SettingsConstants.TYPE__SELECT_1,
-                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
-                      selection_options=SettingsConstants.ALL_SATOCHIP_POST_DUMMY_MAX,
-                      default_value=SettingsConstants.DEFAULT_SATOCHIP_POST_DUMMY_MAX),
-
-        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
-                      attr_name=SettingsConstants.SETTING__SATOCHIP_MAX_IN_TX_DUMMIES,
-                      abbreviated_name="satointx",
-                      display_name="Satochip in-tx dummies",
-                      type=SettingsConstants.TYPE__SELECT_1,
-                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
-                      selection_options=SettingsConstants.ALL_SATOCHIP_IN_TX_DUMMY_MAX,
-                      default_value=SettingsConstants.DEFAULT_SATOCHIP_IN_TX_DUMMY_MAX),
-
-        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
-                      attr_name=SettingsConstants.SETTING__SATOCHIP_DUMMY_PROBABILITY,
-                      abbreviated_name="satoprob",
-                      display_name="Satochip dummy prob",
-                      type=SettingsConstants.TYPE__SELECT_1,
-                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
-                      selection_options=SettingsConstants.ALL_SATOCHIP_DUMMY_PROB,
-                      default_value=SettingsConstants.DEFAULT_SATOCHIP_DUMMY_PROB),
-
 
         # Hardware config
         SettingsEntry(category=SettingsConstants.CATEGORY__SYSTEM,

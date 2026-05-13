@@ -135,29 +135,7 @@ def _patched_card_connector(setup_done: bool, status_payload_ok=True):
     return connector
 
 
-class TestProbeSatochipFamily(unittest.TestCase):
-    def test_satochip_initialised(self):
-        from seedsigner.helpers.card_probe import probe_card
-        connector = _patched_card_connector(setup_done=True)
-        with _patch_reader_present(), \
-             patch("pysatochip.CardConnector.CardConnector",
-                   return_value=connector):
-            res = probe_card("satochip", controller=MagicMock())
-        self.assertTrue(res.present)
-        self.assertTrue(res.kind_match)
-        self.assertTrue(res.initialised)
-
-    def test_satochip_uninitialised(self):
-        from seedsigner.helpers.card_probe import probe_card
-        connector = _patched_card_connector(setup_done=False)
-        with _patch_reader_present(), \
-             patch("pysatochip.CardConnector.CardConnector",
-                   return_value=connector):
-            res = probe_card("satochip", controller=MagicMock())
-        self.assertTrue(res.present)
-        self.assertTrue(res.kind_match)
-        self.assertFalse(res.initialised)
-
+class TestProbeSeedKeeper(unittest.TestCase):
     def test_seedkeeper_initialised(self):
         from seedsigner.helpers.card_probe import probe_card
         connector = _patched_card_connector(setup_done=True)
@@ -168,22 +146,33 @@ class TestProbeSatochipFamily(unittest.TestCase):
         self.assertTrue(res.present)
         self.assertTrue(res.initialised)
 
+    def test_seedkeeper_uninitialised(self):
+        from seedsigner.helpers.card_probe import probe_card
+        connector = _patched_card_connector(setup_done=False)
+        with _patch_reader_present(), \
+             patch("pysatochip.CardConnector.CardConnector",
+                   return_value=connector):
+            res = probe_card("seedkeeper", controller=MagicMock())
+        self.assertTrue(res.present)
+        self.assertTrue(res.kind_match)
+        self.assertFalse(res.initialised)
+
     def test_connector_raises_card_absent(self):
         from seedsigner.helpers.card_probe import probe_card
         with _patch_reader_absent(), \
              patch("pysatochip.CardConnector.CardConnector",
                    side_effect=Exception("no card")):
-            res = probe_card("satochip", controller=MagicMock())
+            res = probe_card("seedkeeper", controller=MagicMock())
         self.assertFalse(res.present)
 
     def test_connector_raises_card_present(self):
         """Reader has *something* but pysatochip rejects it — likely a
-        Keycard or a card we can't talk to with the Satochip applet."""
+        Keycard or a card we can't talk to with the SeedKeeper applet."""
         from seedsigner.helpers.card_probe import probe_card
         with _patch_reader_present(), \
              patch("pysatochip.CardConnector.CardConnector",
                    side_effect=Exception("applet not found")):
-            res = probe_card("satochip", controller=MagicMock())
+            res = probe_card("seedkeeper", controller=MagicMock())
         self.assertTrue(res.present)
         self.assertFalse(res.kind_match)
 
@@ -203,11 +192,10 @@ class TestProbeInstalledApplets(unittest.TestCase):
     """
 
     _KEYCARD_PREFIX = bytes.fromhex("A000000804000101")
-    _SATOCHIP_AID = bytes([0x53, 0x61, 0x74, 0x6f, 0x43, 0x68, 0x69, 0x70])
     _SEEDKEEPER_AID = bytes([0x53, 0x65, 0x65, 0x64, 0x4b, 0x65, 0x65, 0x70, 0x65, 0x72])
 
     def _patched_stack(self, *, keycard_installed_suffix=None,
-                       satochip_installed=False, seedkeeper_installed=False):
+                       seedkeeper_installed=False):
         """Return a context manager whose mocked ``transmit`` matches the
         APDU's AID against the expected outcomes.
 
@@ -219,7 +207,6 @@ class TestProbeInstalledApplets(unittest.TestCase):
         from seedsigner.helpers.keycard.commands import APDUError
 
         keycard_prefix = self._KEYCARD_PREFIX
-        satochip_aid = self._SATOCHIP_AID
         seedkeeper_aid = self._SEEDKEEPER_AID
 
         class _MockClient:
@@ -232,10 +219,6 @@ class TestProbeInstalledApplets(unittest.TestCase):
                 if aid.startswith(keycard_prefix) and len(aid) == 9:
                     suffix = aid[-1]
                     if keycard_installed_suffix is not None and suffix == keycard_installed_suffix:
-                        return b""
-                    raise APDUError(0x6A82, "applet not found")
-                if aid == satochip_aid:
-                    if satochip_installed:
                         return b""
                     raise APDUError(0x6A82, "applet not found")
                 if aid == seedkeeper_aid:
@@ -259,12 +242,10 @@ class TestProbeInstalledApplets(unittest.TestCase):
     def test_all_installed(self):
         from seedsigner.helpers.card_probe import probe_installed_applets
         with self._patched_stack(keycard_installed_suffix=0x01,
-                                  satochip_installed=True,
                                   seedkeeper_installed=True):
             state = probe_installed_applets(MagicMock())
         self.assertTrue(state.present)
         self.assertTrue(state.keycard_installed)
-        self.assertTrue(state.satochip_installed)
         self.assertTrue(state.seedkeeper_installed)
 
     def test_none_installed(self):
@@ -273,7 +254,6 @@ class TestProbeInstalledApplets(unittest.TestCase):
             state = probe_installed_applets(MagicMock())
         self.assertTrue(state.present)
         self.assertFalse(state.keycard_installed)
-        self.assertFalse(state.satochip_installed)
         self.assertFalse(state.seedkeeper_installed)
 
     def test_only_keycard(self):
@@ -281,7 +261,6 @@ class TestProbeInstalledApplets(unittest.TestCase):
         with self._patched_stack(keycard_installed_suffix=0x01):
             state = probe_installed_applets(MagicMock())
         self.assertTrue(state.keycard_installed)
-        self.assertFalse(state.satochip_installed)
         self.assertFalse(state.seedkeeper_installed)
 
     def test_keycard_non_default_suffix(self):
@@ -302,13 +281,12 @@ class TestProbeInstalledApplets(unittest.TestCase):
             state = probe_installed_applets(controller)
         self.assertTrue(state.keycard_installed)
 
-    def test_only_satochip(self):
+    def test_only_seedkeeper(self):
         from seedsigner.helpers.card_probe import probe_installed_applets
-        with self._patched_stack(satochip_installed=True):
+        with self._patched_stack(seedkeeper_installed=True):
             state = probe_installed_applets(MagicMock())
         self.assertFalse(state.keycard_installed)
-        self.assertTrue(state.satochip_installed)
-        self.assertFalse(state.seedkeeper_installed)
+        self.assertTrue(state.seedkeeper_installed)
 
     def test_no_reader_returns_absent(self):
         from seedsigner.helpers.card_probe import probe_installed_applets
@@ -356,11 +334,11 @@ class TestRunCardGate(unittest.TestCase):
         view = self._make_view(run_screen_return=0)
         wrong = ProbeResult(present=True, kind_match=False, initialised=False)
         with patch("seedsigner.helpers.card_probe.probe_card", return_value=wrong):
-            result = run_card_gate(view, "satochip", title="Satochip",
+            result = run_card_gate(view, "seedkeeper", title="SeedKeeper",
                                    setup_view=MagicMock())
         from seedsigner.views.view import CardsInstallAppletView
         self.assertIs(result.View_cls, CardsInstallAppletView)
-        self.assertEqual(result.view_args.get("kind"), "satochip")
+        self.assertEqual(result.view_args.get("kind"), "seedkeeper")
         self.assertTrue(result.skip_current_view)
 
     def test_wrong_applet_cancel_pops_back(self):
@@ -368,7 +346,7 @@ class TestRunCardGate(unittest.TestCase):
         view = self._make_view(run_screen_return=1)  # Cancel
         wrong = ProbeResult(present=True, kind_match=False, initialised=False)
         with patch("seedsigner.helpers.card_probe.probe_card", return_value=wrong):
-            result = run_card_gate(view, "satochip", title="Satochip",
+            result = run_card_gate(view, "seedkeeper", title="SeedKeeper",
                                    setup_view=MagicMock())
         from seedsigner.views.view import BackStackView
         self.assertIs(result.View_cls, BackStackView)

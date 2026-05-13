@@ -1,10 +1,10 @@
 """Card-applet probe used by the Cards top-level menu.
 
-Each app View (Keycard / Satochip / SeedKeeper) calls :func:`probe_card`
-on entry to decide whether to show its menu, route to the setup wizard,
-or snap back to MainMenu with a "No card" toast. The probe is
-intentionally cheap (single SELECT + at most one GET STATUS) and never
-prompts for a PIN — the view layer is responsible for the next step.
+Each app View (Keycard / SeedKeeper) calls :func:`probe_card` on entry
+to decide whether to show its menu, route to the setup wizard, or snap
+back to MainMenu with a "No card" toast. The probe is intentionally
+cheap (single SELECT + at most one GET STATUS) and never prompts for
+a PIN — the view layer is responsible for the next step.
 
 Threat model: no seed material flows here. Caches/secret state in the
 controller are not touched. The probe opens its own connection and
@@ -24,16 +24,13 @@ from typing import Literal, Optional
 logger = logging.getLogger(__name__)
 
 
-CardKind = Literal["keycard", "satochip", "seedkeeper"]
+CardKind = Literal["keycard", "seedkeeper"]
 
 
 # Cleartext AIDs we SELECT-probe to enumerate installed applets. Keycard
 # uses a stable package prefix + 1-byte instance suffix; cards initialised
 # by keycard-shell may live at any suffix in 0x01..0x0F (matches the range
-# autodetected by `select_with_autodetect`). pysatochip's CardConnector
-# encodes Satochip / SeedKeeper AIDs as lists, but they are the same bytes
-# we need here.
-APPLET_AID_SATOCHIP = bytes([0x53, 0x61, 0x74, 0x6f, 0x43, 0x68, 0x69, 0x70])  # "SatoChip"
+# autodetected by `select_with_autodetect`).
 APPLET_AID_SEEDKEEPER = bytes([0x53, 0x65, 0x65, 0x64, 0x4b, 0x65, 0x65, 0x70, 0x65, 0x72])  # "SeedKeeper"
 
 
@@ -55,7 +52,6 @@ class CardInstalledState:
 
     present: bool                       # any card detected at all
     keycard_installed: bool
-    satochip_installed: bool
     seedkeeper_installed: bool
 
 
@@ -67,8 +63,8 @@ def probe_card(kind: CardKind, controller, timeout_s: float = 1.5) -> ProbeResul
     """
     if kind == "keycard":
         return _probe_keycard(controller, timeout_s=timeout_s)
-    if kind in ("satochip", "seedkeeper"):
-        return _probe_satochip_family(kind, controller, timeout_s=timeout_s)
+    if kind == "seedkeeper":
+        return _probe_seedkeeper(controller, timeout_s=timeout_s)
     raise ValueError(f"unknown card kind: {kind!r}")
 
 
@@ -127,11 +123,11 @@ def _probe_keycard(controller, timeout_s: float) -> ProbeResult:
 
 
 # ---------------------------------------------------------------------------
-# Satochip / SeedKeeper (pysatochip)
+# SeedKeeper (pysatochip)
 # ---------------------------------------------------------------------------
 
 
-def _probe_satochip_family(kind: CardKind, controller, timeout_s: float) -> ProbeResult:
+def _probe_seedkeeper(controller, timeout_s: float) -> ProbeResult:
     try:
         from pysatochip.CardConnector import CardConnector
     except Exception as exc:  # pragma: no cover — only fires when lib missing
@@ -152,7 +148,7 @@ def _probe_satochip_family(kind: CardKind, controller, timeout_s: float) -> Prob
     connector = None
     try:
         try:
-            connector = CardConnector(card_filter=[kind])
+            connector = CardConnector(card_filter=["seedkeeper"])
         except Exception as exc:
             # Most common cause: no card / wrong applet. Treat as "wrong
             # kind" only if we can confirm a card is present at all.
@@ -218,7 +214,7 @@ def run_card_gate(view, kind: CardKind, *, title: str, setup_view):
     - **OK**: returns ``None`` so the caller proceeds to its menu.
 
     ``view`` is the calling View (used for ``run_screen`` and
-    ``controller``). ``title`` is the screen header (e.g. "Satochip").
+    ``controller``). ``title`` is the screen header (e.g. "SeedKeeper").
     """
     from seedsigner.views.view import BackStackView, Destination, MainMenuView
 
@@ -287,7 +283,7 @@ def probe_installed_applets(controller, timeout_s: float = 1.5) -> CardInstalled
     never raises — readers without a card or without smartcard support
     return ``present=False`` and all flags ``False``.
     """
-    state = CardInstalledState(False, False, False, False)
+    state = CardInstalledState(False, False, False)
     try:
         from seedsigner.helpers.keycard.client import KeycardClient
         from seedsigner.helpers.keycard.commands import APDUError
@@ -339,19 +335,16 @@ def probe_installed_applets(controller, timeout_s: float = 1.5) -> CardInstalled
             except Exception as exc:
                 logger.debug("SELECT %s failed: %s", aid.hex(), exc)
 
-        # Satochip / SeedKeeper: single fixed AID each.
-        for aid, flag in (
-            (APPLET_AID_SATOCHIP, "satochip_installed"),
-            (APPLET_AID_SEEDKEEPER, "seedkeeper_installed"),
-        ):
-            apdu = [0x00, 0xA4, 0x04, 0x00, len(aid)] + list(aid)
-            try:
-                client.transmit(apdu)
-                setattr(state, flag, True)
-            except APDUError:
-                pass
-            except Exception as exc:
-                logger.debug("SELECT %s failed: %s", aid.hex(), exc)
+        # SeedKeeper: single fixed AID.
+        aid = APPLET_AID_SEEDKEEPER
+        apdu = [0x00, 0xA4, 0x04, 0x00, len(aid)] + list(aid)
+        try:
+            client.transmit(apdu)
+            state.seedkeeper_installed = True
+        except APDUError:
+            pass
+        except Exception as exc:
+            logger.debug("SELECT %s failed: %s", aid.hex(), exc)
         return state
     finally:
         if connection is not None:

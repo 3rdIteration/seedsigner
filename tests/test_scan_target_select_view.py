@@ -43,12 +43,12 @@ def _make_view():
 
 def _absent_state():
     from seedsigner.helpers.card_probe import CardInstalledState
-    return CardInstalledState(False, False, False, False)
+    return CardInstalledState(False, False, False)
 
 
-def _present_state(keycard=False, satochip=False, seedkeeper=False):
+def _present_state(keycard=False, seedkeeper=False):
     from seedsigner.helpers.card_probe import CardInstalledState
-    return CardInstalledState(True, keycard, satochip, seedkeeper)
+    return CardInstalledState(True, keycard, seedkeeper)
 
 
 class TestScanTargetSelectShape(unittest.TestCase):

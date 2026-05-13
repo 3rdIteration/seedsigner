@@ -238,6 +238,21 @@ class MainMenuView(View):
         controller.psbt_from_microsd = False
         controller.psbt_microsd_save_path = None
         controller.psbt_microsd_seed_warning_shown = False
+        # Safety net: ensure no transient Keycard-setup mnemonic / passphrase
+        # survives a backtrack to Home. The Setup chain wipes these on its
+        # terminal paths too; this is belt-and-braces.
+        try:
+            from seedsigner.helpers.secure_delete import wipe_list
+            from seedsigner.helpers.keycard.ui_helpers import wipe_bytearray
+            if controller.pending_keycard_mnemonic is not None:
+                wipe_list(controller.pending_keycard_mnemonic)
+                controller.pending_keycard_mnemonic = None
+            if controller.pending_keycard_passphrase is not None:
+                wipe_bytearray(controller.pending_keycard_passphrase)
+                controller.pending_keycard_passphrase = None
+        except Exception:
+            controller.pending_keycard_mnemonic = None
+            controller.pending_keycard_passphrase = None
         if controller.auto_wiped:
             controller.auto_wiped = False
             controller.activate_toast(InfoToast(label_text=_("Data wiped after inactivity")))
@@ -383,7 +398,6 @@ class CardsMenuView(View):
     """
 
     SEEDKEEPER_LABEL = "SeedKeeper"
-    SATOCHIP_LABEL = "Satochip"
     KEYCARD_LABEL = "Keycard"
     FACTORY_RESET_LABEL = "Factory reset card"
 
@@ -426,8 +440,8 @@ class CardsMenuView(View):
                 if not state.present:
                     # No card → bounce back to MainMenu with a toast. Every
                     # entry in this menu either requires a card to do anything
-                    # useful (Keycard/Satochip/SeedKeeper sub-flows) or wipes
-                    # one (Factory reset), so there is nothing to do here
+                    # useful (Keycard/SeedKeeper sub-flows) or wipes one
+                    # (Factory reset), so there is nothing to do here
                     # without a card.
                     from seedsigner.gui.toast import InfoToast
                     try:
@@ -448,14 +462,13 @@ class CardsMenuView(View):
                     return ButtonOption(label, right_icon_name=icon)
 
                 seedkeeper_btn = _entry(self.SEEDKEEPER_LABEL, state.seedkeeper_installed)
-                satochip_btn = _entry(self.SATOCHIP_LABEL, state.satochip_installed)
                 keycard_btn = _entry(self.KEYCARD_LABEL, state.keycard_installed)
                 factory_reset_btn = ButtonOption(
                     self.FACTORY_RESET_LABEL,
                     icon_name=FontAwesomeIconConstants.LOCK,
                 )
 
-                button_data = [seedkeeper_btn, satochip_btn, keycard_btn, factory_reset_btn]
+                button_data = [seedkeeper_btn, keycard_btn, factory_reset_btn]
 
                 selected_menu_num = self.run_screen(
                     ButtonListScreen,
@@ -485,9 +498,6 @@ class CardsMenuView(View):
                 if chosen is seedkeeper_btn:
                     from seedsigner.views.tools_views import ToolsSeedkeeperView
                     return Destination(ToolsSeedkeeperView)
-                if chosen is satochip_btn:
-                    from seedsigner.views.tools_views import ToolsSatochipView
-                    return Destination(ToolsSatochipView)
                 if chosen is keycard_btn:
                     from seedsigner.views.keycard_views import ToolsKeycardMenuView
                     return Destination(ToolsKeycardMenuView)
@@ -503,7 +513,6 @@ _DEFAULT_CAP_BY_KIND = {
     # Keycard load files on user cards, and a fresh install fails with
     # "Applet loading not allowed" without this flag. Per-applet
     # uninstall views already use ``-force`` for the same reason.
-    "satochip": ("SatoChip-0.12-official.cap", "--install {cap} -force"),
     # `{params}` is filled at install time from the storage chooser
     # (Change 3 below); 1FFF = 8 KB is the default.
     "seedkeeper": ("SeedKeeper-0.2-official.cap", "--install {cap} --params {params} -force"),
@@ -683,9 +692,6 @@ class CardsInstallAppletView(View):
         if self.kind == "keycard":
             from seedsigner.views.keycard_views import ToolsKeycardInitView
             return Destination(ToolsKeycardInitView, skip_current_view=True)
-        if self.kind == "satochip":
-            from seedsigner.views.tools_views import ToolsSatochipSetupView
-            return Destination(ToolsSatochipSetupView, skip_current_view=True)
         if self.kind == "seedkeeper":
             from seedsigner.views.tools_views import ToolsSeedkeeperSetupView
             return Destination(ToolsSeedkeeperSetupView, skip_current_view=True)
@@ -715,8 +721,8 @@ class CardsFactoryResetView(View):
 
     - Keycard: cleartext ``FACTORY_RESET`` APDU wipes PIN / PUK / master
       key (applet stays loaded; data is gone).
-    - Satochip / SeedKeeper: cannot be removed without ISD keys; surface
-      a clear notice so the user knows the limit.
+    - SeedKeeper: cannot be removed without ISD keys; surface a clear
+      notice so the user knows the limit.
     """
 
     def run(self):
@@ -791,8 +797,6 @@ def _attempt_globalplatform_wipe(view):
     targets: list[tuple[str, str, bool]] = []
     if state.seedkeeper_installed:
         targets.append(("SeedKeeper", "536565644b6565706572", False))
-    if state.satochip_installed:
-        targets.append(("Satochip", "5361746f43686970", False))
     targets.append(("Keycard", "A0000008040001", not state.keycard_installed))
 
     deleted: list[str] = []
@@ -835,10 +839,10 @@ def _attempt_globalplatform_wipe(view):
 def _attempt_soft_reset(view, state):
     """Per-applet wipe when GlobalPlatform is unavailable.
 
-    Currently only Keycard has a cleartext self-wipe path. Satochip and
-    SeedKeeper would need their PINs to drive a meaningful reset, which
-    we don't want to gate the operation on — instead we report that the
-    user must wipe those from a PC.
+    Currently only Keycard has a cleartext self-wipe path. SeedKeeper
+    would need its PIN to drive a meaningful reset, which we don't want
+    to gate the operation on — instead we report that the user must
+    wipe it from a PC.
     """
     report = ["ISD keys rotated."]
 
@@ -865,8 +869,8 @@ def _attempt_soft_reset(view, state):
     else:
         report.append("Keycard: not installed.")
 
-    if state.satochip_installed or state.seedkeeper_installed:
-        report.append("Satochip / SeedKeeper: wipe from PC.")
+    if state.seedkeeper_installed:
+        report.append("SeedKeeper: wipe from PC.")
     return report
 
 

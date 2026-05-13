@@ -10,9 +10,8 @@ expect ``hashlib.new('ripemd160')`` to be available and will raise a
 
 To make the behaviour consistent across platforms we try to create the hash and
 if it fails we patch ``hashlib.new`` to delegate RIPEMD160 to PyCryptodome's
-implementation.  This keeps the rest of the codebase unchanged and fixes the
-signing and xpub export flows for Satochip cards on the stripped-down system
-image.
+implementation.  This keeps the rest of the codebase unchanged on the
+stripped-down system image.
 """
 
 from __future__ import annotations

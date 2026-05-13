@@ -59,7 +59,6 @@ def _present_state(**flags):
     return CardInstalledState(
         True,
         flags.get("keycard", False),
-        flags.get("satochip", False),
         flags.get("seedkeeper", False),
     )
 
@@ -67,16 +66,15 @@ def _present_state(**flags):
 def _absent_state():
     """Reader has no card at all (probe returns ``present=False``)."""
     from seedsigner.helpers.card_probe import CardInstalledState
-    return CardInstalledState(False, False, False, False)
+    return CardInstalledState(False, False, False)
 
 
 def _present_but_empty_state():
-    """Card in reader, but no Keycard / Satochip / SeedKeeper applets
-    detected. This is the "clean card, default ISD keys" scenario the
-    factory-reset path must still target Keycard against (orphan-load-
-    file recovery)."""
+    """Card in reader, but no Keycard / SeedKeeper applets detected. This
+    is the "clean card, default ISD keys" scenario the factory-reset path
+    must still target Keycard against (orphan-load-file recovery)."""
     from seedsigner.helpers.card_probe import CardInstalledState
-    return CardInstalledState(True, False, False, False)
+    return CardInstalledState(True, False, False)
 
 
 class TestKeycardInstallPreDelete(unittest.TestCase):
@@ -384,19 +382,19 @@ class TestFactoryResetAlwaysTargetsKeycard(unittest.TestCase):
         self.assertEqual(result, ["Deleted: Keycard."])
 
     def test_all_present_deletes_in_order(self):
-        state = _present_state(keycard=True, satochip=True, seedkeeper=True)
+        state = _present_state(keycard=True, seedkeeper=True)
         result, calls = self._capture_calls(state, lambda _: True)
         names_in_call_order = [args[2] for (args, _) in calls]
         self.assertEqual(
             names_in_call_order,
-            ["Deleting SeedKeeper", "Deleting Satochip", "Deleting Keycard"],
+            ["Deleting SeedKeeper", "Deleting Keycard"],
         )
-        self.assertEqual(result, ["Deleted: SeedKeeper, Satochip, Keycard."])
+        self.assertEqual(result, ["Deleted: SeedKeeper, Keycard."])
 
     def test_isd_keys_rotated_falls_back(self):
         # Probe sees Keycard installed but every delete fails →
         # caller should fall back to soft-reset (return None).
-        state = _present_state(keycard=True, satochip=True)
+        state = _present_state(keycard=True, seedkeeper=True)
 
         result, _ = self._capture_calls(state, lambda _: None)
         self.assertIsNone(result)

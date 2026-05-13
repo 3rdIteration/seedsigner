@@ -299,8 +299,8 @@ class CardInsertedToast(DefaultToast):
     """
 
     def __init__(self, kind: str, activation_delay: int = 0, duration: int = 3):
-        # ``kind`` is one of "Keycard", "Satochip", "SeedKeeper"; the
-        # caller is responsible for passing a user-friendly label.
+        # ``kind`` is one of "Keycard", "SeedKeeper"; the caller is
+        # responsible for passing a user-friendly label.
         label = f"{kind} inserted"
         super().__init__(label_text=label, activation_delay=activation_delay, duration=duration)
 

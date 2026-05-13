@@ -55,7 +55,6 @@ class TestBIP38Settings(BaseTest):
 
         # Build button list as PSBTSelectSeedView would
         buttons = [
-            psbt_views.PSBTSelectSeedView.SATOCHIP,
             psbt_views.PSBTSelectSeedView.SCAN_SEED,
         ]
         if self.settings.get_value(SettingsConstants.SETTING__WIF_KEYS) == SettingsConstants.OPTION__ENABLED:

@@ -1,6 +1,6 @@
 """Tests for the top-level Cards menu.
 
-Pins the 4-entry shape (SeedKeeper / Satochip / Keycard / Factory
+Pins the 3-entry shape (SeedKeeper / Keycard / Factory
 Reset), confirms install-state checkmarks render, and that each entry
 routes to the correct destination. The legacy
 ``Tools > Smartcard Tools`` indirection and the ``CardManagementView``
@@ -45,7 +45,7 @@ def _make_view():
 
 def _absent_state():
     from seedsigner.helpers.card_probe import CardInstalledState
-    return CardInstalledState(False, False, False, False)
+    return CardInstalledState(False, False, False)
 
 
 def _present_state(**flags):
@@ -53,7 +53,6 @@ def _present_state(**flags):
     return CardInstalledState(
         True,
         flags.get("keycard", False),
-        flags.get("satochip", False),
         flags.get("seedkeeper", False),
     )
 
@@ -62,7 +61,6 @@ class TestCardsMenuShape(unittest.TestCase):
     def test_labels(self):
         from seedsigner.views.view import CardsMenuView
         self.assertEqual(CardsMenuView.SEEDKEEPER_LABEL, "SeedKeeper")
-        self.assertEqual(CardsMenuView.SATOCHIP_LABEL, "Satochip")
         self.assertEqual(CardsMenuView.KEYCARD_LABEL, "Keycard")
         self.assertEqual(CardsMenuView.FACTORY_RESET_LABEL, "Factory reset card")
 
@@ -97,17 +95,16 @@ class TestCardsMenuRendering(unittest.TestCase):
     def test_present_card_renders_checkmarks(self):
         from seedsigner.gui.components import SeedSignerIconConstants
         _, buttons = self._run_and_capture(
-            _present_state(keycard=True, satochip=False, seedkeeper=True),
+            _present_state(keycard=True, seedkeeper=True),
             selected_index=0,
         )
         labels = [b.button_label for b in buttons]
         self.assertEqual(
-            labels, ["SeedKeeper", "Satochip", "Keycard", "Factory reset card"],
+            labels, ["SeedKeeper", "Keycard", "Factory reset card"],
         )
-        # Order is SeedKeeper, Satochip, Keycard.
+        # Order is SeedKeeper, Keycard, Factory reset.
         self.assertEqual(buttons[0].right_icon_name, SeedSignerIconConstants.CHECK)
-        self.assertEqual(buttons[1].right_icon_name, SeedSignerIconConstants.CHECKBOX)
-        self.assertEqual(buttons[2].right_icon_name, SeedSignerIconConstants.CHECK)
+        self.assertEqual(buttons[1].right_icon_name, SeedSignerIconConstants.CHECK)
 
 
 class TestCardsMenuGate(unittest.TestCase):
@@ -166,19 +163,14 @@ class TestCardsMenuRouting(unittest.TestCase):
         dest = self._route(0)
         self.assertIs(dest.View_cls, ToolsSeedkeeperView)
 
-    def test_satochip_routes(self):
-        from seedsigner.views.tools_views import ToolsSatochipView
-        dest = self._route(1)
-        self.assertIs(dest.View_cls, ToolsSatochipView)
-
     def test_keycard_routes(self):
         from seedsigner.views.keycard_views import ToolsKeycardMenuView
-        dest = self._route(2)
+        dest = self._route(1)
         self.assertIs(dest.View_cls, ToolsKeycardMenuView)
 
     def test_factory_reset_routes(self):
         from seedsigner.views.view import CardsFactoryResetView
-        dest = self._route(3)
+        dest = self._route(2)
         self.assertIs(dest.View_cls, CardsFactoryResetView)
 
 

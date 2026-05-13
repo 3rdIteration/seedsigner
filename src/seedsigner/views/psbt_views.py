@@ -27,7 +27,6 @@ logger = logging.getLogger(__name__)
 
 class PSBTSelectSeedView(View):
     SCAN_SEED = ButtonOption("Scan a seed", SeedSignerIconConstants.QRCODE)
-    SATOCHIP = ButtonOption("Use Satochip card", SeedSignerIconConstants.FINGERPRINT)
     TYPE_12WORD = ButtonOption("Enter 12-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=12)
     TYPE_15WORD = ButtonOption("Enter 15-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=15)
     TYPE_18WORD = ButtonOption("Enter 18-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=18)
@@ -83,7 +82,6 @@ class PSBTSelectSeedView(View):
 
             button_data.append(ButtonOption(button_str, SeedSignerIconConstants.FINGERPRINT))
 
-        button_data.append(self.SATOCHIP)
         button_data.append(self.SCAN_SEED)
         if self.settings.get_value(SettingsConstants.SETTING__WIF_KEYS) == SettingsConstants.OPTION__ENABLED:
             button_data.append(self.SCAN_WIF)
@@ -147,156 +145,6 @@ class PSBTSelectSeedView(View):
                 return Destination(PSBTSelectSeedView)
             from seedsigner.views.scan_views import ScanBIP38QRView
             return Destination(ScanBIP38QRView)
-
-        elif button_data[selected_menu_num] == self.SATOCHIP:
-            from seedsigner.helpers import seedkeeper_utils
-            from embit.bip32 import HDKey
-
-            connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satochip"])
-            if not connector:
-                return Destination(PSBTSelectSeedView, clear_history=True)
-
-            psbt = self.controller.psbt
-            is_multisig_psbt = False
-            try:
-                if psbt and psbt.inputs:
-                    first_input = psbt.inputs[0]
-                    if first_input.witness_utxo:
-                        script_pubkey = first_input.witness_utxo.script_pubkey
-                    elif first_input.non_witness_utxo:
-                        script_pubkey = first_input.script_pubkey
-                    else:
-                        script_pubkey = None
-
-                    if script_pubkey is not None:
-                        policy = PSBTParser._get_policy(first_input, script_pubkey, psbt.xpubs)
-                        is_multisig_psbt = isinstance(policy, dict) and "m" in policy
-            except Exception as exc:
-                logger.debug("Unable to determine PSBT policy", exc_info=exc)
-
-            if is_multisig_psbt:
-                try:
-                    parser = PSBTParser(psbt)
-                    parser.parse()
-                except Exception as e:
-                    logger.exception("Failed to parse PSBT with Satochip data")
-                    self.run_screen(
-                        WarningScreen,
-                        title="Failed",
-                        status_headline=None,
-                        text=str(e),
-                    )
-                    return Destination(PSBTSelectSeedView, clear_history=True)
-
-                self.controller.psbt_parser = parser
-                self.controller.psbt_seed = None
-                self.controller.psbt_sign_with_satochip = True
-                return Destination(PSBTOverviewView)
-
-            network = self.settings.get_value(SettingsConstants.SETTING__NETWORK)
-            is_mainnet = network == SettingsConstants.MAINNET
-            first_der = next(iter(self.controller.psbt.inputs[0].bip32_derivations.values())).derivation
-            account_path = []
-            HARDENED_INDEX = 0x80000000
-            for idx in first_der:
-                if idx & HARDENED_INDEX:
-                    account_path.append(idx)
-                else:
-                    break
-
-            account_path_str = "m"
-            for i in account_path:
-                hardened = bool(i & HARDENED_INDEX)
-                index = i & 0x7FFFFFFF
-                suffix = "'" if hardened else ""
-                account_path_str += f"/{index}{suffix}"
-
-            purpose = account_path[0] & 0x7FFFFFFF if account_path else 0
-            xtype = {
-                44: "standard",
-                49: "p2wpkh-p2sh",
-                84: "p2wpkh",
-                48: "p2wsh-p2sh" if len(account_path) > 3 and (account_path[3] & 0x7FFFFFFF) == 1 else "p2wsh",
-            }.get(purpose, "standard")
-
-            from seedsigner.gui.screens.screen import LoadingScreenThread
-            loading = LoadingScreenThread(text=_("Parsing PSBT..."))
-            loading.start()
-            loading_stopped = False
-            try:
-                try:
-                    account_xpub = connector.card_bip32_get_xpub(account_path_str, xtype, is_mainnet)
-                    master_xpub = connector.card_bip32_get_xpub("", xtype, is_mainnet)
-                except Exception as e:
-                    logger.exception("Failed to export xpub from Satochip card")
-                    loading.stop()
-                    loading_stopped = True
-                    self.run_screen(
-                        WarningScreen,
-                        title="Failed",
-                        status_headline=None,
-                        text=str(e),
-                    )
-                    return Destination(PSBTSelectSeedView, clear_history=True)
-
-                root_key = HDKey.from_base58(account_xpub)
-                master_fp = HDKey.from_base58(master_xpub).my_fingerprint
-
-                try:
-                    self.controller.psbt_parser = PSBTParser(
-                        self.controller.psbt,
-                        seed=None,
-                        root=root_key,
-                        root_path=account_path,
-                        master_fingerprint=master_fp,
-                        network=network,
-                    )
-                except Exception as e:
-                    logger.exception("Failed to parse PSBT with Satochip data")
-                    loading.stop()
-                    loading_stopped = True
-                    self.run_screen(
-                        WarningScreen,
-                        title="Failed",
-                        status_headline=None,
-                        text=str(e),
-                    )
-                    return Destination(PSBTSelectSeedView, clear_history=True)
-
-                card_fingerprints = {hexlify(master_fp).decode()}
-                try:
-                    card_fingerprints.add(hexlify(root_key.child(0).fingerprint).decode())
-                except Exception:
-                    pass
-
-                psbt_fingerprints = set(PSBTParser.get_input_fingerprints(self.controller.psbt))
-                if not card_fingerprints.intersection(psbt_fingerprints):
-                    logger.warning(
-                        "Satochip fingerprint mismatch: card %s vs psbt %s",
-                        sorted(card_fingerprints),
-                        sorted(psbt_fingerprints),
-                    )
-                    self.controller.psbt_parser = None
-                    self.controller.psbt_sign_with_satochip = False
-                    loading.stop()
-                    loading_stopped = True
-                    self.run_screen(
-                        WarningScreen,
-                        title=_("Fingerprint mismatch"),
-                        status_icon_name=SeedSignerIconConstants.WARNING,
-                        status_headline=_("Card cannot sign PSBT"),
-                        text=_(
-                            "Card fingerprint ({}) not in PSBT signers."
-                        ).format(sorted(card_fingerprints)[0]),
-                    )
-                    return Destination(PSBTSelectSeedView, clear_history=True)
-            finally:
-                if not loading_stopped:
-                    loading.stop()
-
-            self.controller.psbt_seed = None
-            self.controller.psbt_sign_with_satochip = True
-            return Destination(PSBTOverviewView)
 
         elif button_data[selected_menu_num] in [self.TYPE_12WORD, self.TYPE_15WORD, self.TYPE_18WORD, self.TYPE_21WORD, self.TYPE_24WORD]:
             if not ensure_microsd_seed_warning():
@@ -913,7 +761,7 @@ class PSBTFinalizeView(View):
             # Should not be able to get here
             return Destination(MainMenuView)
 
-        if not self.controller.psbt_sign_with_satochip and psbt_parser is None:
+        if psbt_parser is None:
             return Destination(MainMenuView)
 
         selected_menu_num = self.run_screen(
@@ -926,22 +774,11 @@ class PSBTFinalizeView(View):
 
         sig_cnt = PSBTParser.sig_count(psbt)
 
-        connector = None
-        if self.controller.psbt_sign_with_satochip:
-            from seedsigner.helpers import seedkeeper_utils
-            connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satochip"])
-            if not connector:
-                return Destination(PSBTFinalizeView)
-
         from seedsigner.gui.screens.screen import LoadingScreenThread
         loading = LoadingScreenThread(text=_("Signing PSBT..."))
         loading.start()
         try:
-            if self.controller.psbt_sign_with_satochip:
-                from seedsigner.helpers.satochip_signer import sign_psbt_with_satochip
-                sign_psbt_with_satochip(psbt, connector)
-            else:
-                psbt.sign_with(psbt_parser.root)
+            psbt.sign_with(psbt_parser.root)
             if isinstance(self.controller.psbt_seed, WIFKey):
                 tx = finalize_psbt(psbt)
                 self.controller.signed_tx_hex = tx.serialize().hex() if tx else None
@@ -949,21 +786,13 @@ class PSBTFinalizeView(View):
                 self.controller.signed_tx_hex = None
 
             trimmed_psbt = PSBTParser.trim(psbt)
-        except Exception:
-            if self.controller.psbt_sign_with_satochip:
-                logger.exception("Failed to sign PSBT with Satochip")
-                return Destination(PSBTFinalizeView)
-            raise
         finally:
             loading.stop()
 
         if sig_cnt == PSBTParser.sig_count(trimmed_psbt):
-            if self.controller.psbt_sign_with_satochip:
-                return Destination(PSBTFinalizeView)
             return Destination(PSBTSigningErrorView)
 
         self.controller.psbt = trimmed_psbt
-        self.controller.psbt_sign_with_satochip = False
         return Destination(PSBTSignedQRDisplayView)
 
 
