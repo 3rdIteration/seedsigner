@@ -57,28 +57,23 @@ from pysatochip.CardConnector import CardConnector, UnexpectedSW12Error
 from binascii import unhexlify, hexlify
 
 class ToolsMenuView(View):
-    SEEDS = ButtonOption("Seeds", SeedSignerIconConstants.SEEDS)
     TEXTQRCODE = ButtonOption("Text QR Code")
     MICROSD = ButtonOption("MicroSD Tools")
     BATTERY_CALIBRATION = ButtonOption("Battery Calibration")
-    CLEAR_DESCRIPTOR = ButtonOption("Clear Multisig Descriptor")
     NETWORK_INFO = ButtonOption("Network Info")
     STEALTH_BOOT = ButtonOption("Stealth boot")
 
     def run(self):
-        button_data = [self.SEEDS]
-
         from seedsigner.hardware.battery_hat import BatteryHat
         battery_calibration_button = self.BATTERY_CALIBRATION if BatteryHat.get_instance().is_enabled() else None
 
-        button_data.extend([
+        button_data = [
             self.TEXTQRCODE,
             self.MICROSD,
             battery_calibration_button,
             self.NETWORK_INFO if Path("/usr/bin/network-info").is_file() else None,
-            self.CLEAR_DESCRIPTOR,
             self.STEALTH_BOOT,
-        ])
+        ]
         button_data = [button for button in button_data if button is not None]
 
         selected_menu_num = self.run_screen(
@@ -91,10 +86,6 @@ class ToolsMenuView(View):
         if selected_menu_num == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
 
-        elif button_data[selected_menu_num] == self.SEEDS:
-            from seedsigner.views.seed_views import SeedsMenuView
-            return Destination(SeedsMenuView)
-
         elif button_data[selected_menu_num] == self.TEXTQRCODE:
             return Destination(ToolsTextQRView)
 
@@ -106,17 +97,6 @@ class ToolsMenuView(View):
 
         elif button_data[selected_menu_num] == self.NETWORK_INFO:
             return Destination(ToolsNetworkInfoView)
-
-        elif button_data[selected_menu_num] == self.CLEAR_DESCRIPTOR:
-            self.controller.multisig_wallet_descriptor = None
-            self.run_screen(
-                LargeIconStatusScreen,
-                title="Success",
-                status_headline=None,
-                text=f"Multisig Descriptor Cleared",
-                show_back_button=False,
-            )
-            return Destination(BackStackView)
 
         elif button_data[selected_menu_num] == self.STEALTH_BOOT:
             from seedsigner.views.stealth_views import ToolsStealthBootView
