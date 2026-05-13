@@ -11,7 +11,7 @@ There are two case variants here:
 | Luckfox Pico Mini | `luckfox_pico_mini_mainbody.stl` |
 | Luckfox Pico Pro/Max | `luckfox_pico_max_mainbody.stl` |
 
-The case top (`luckfox_pico_common_casetop.stl`) is shared between both variants. The Pico Mini version also includes a microSD cover (`luckfox_pico_mini_micosd_cover.stl`).
+The case top (`luckfox_pico_common_casetop.stl`) is shared between both variants. The Pico Mini version also includes a microSD cover (`luckfox_pico_mini_micosd_cover.stl`; filename intentionally uses `micosd`).
 
 ## Source File
 
