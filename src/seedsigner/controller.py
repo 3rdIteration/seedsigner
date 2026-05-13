@@ -152,7 +152,7 @@ class Controller(Singleton):
         rather than at the top in order avoid circular imports.
     """
     
-    VERSION = "SeSi-0.8.6+ShSi-B9"
+    VERSION = "SeSi-0.8.6+ShSi-B10"
 
     # Declare class member vars with type hints to enable richer IDE support throughout
     # the code.

@@ -1,12 +1,14 @@
 """Factory for selecting the appropriate display backend."""
 
 DISPLAY_TYPE__ST7789 = "st7789"
+DISPLAY_TYPE__ST7735 = "st7735"
 DISPLAY_TYPE__ILI9341 = "ili9341"
 DISPLAY_TYPE__ILI9486 = "ili9486"
 DISPLAY_TYPE__DESKTOP = "desktop"
 
 ALL_DISPLAY_TYPES = [
     DISPLAY_TYPE__ST7789,
+    DISPLAY_TYPE__ST7735,
     DISPLAY_TYPE__ILI9341,
     DISPLAY_TYPE__ILI9486,
     DISPLAY_TYPE__DESKTOP,
@@ -37,6 +39,12 @@ class DisplayDriver:
                 # Have to swap width and height; screen is natively 240x320
                 self.display = ST7789(width=height, height=width)
         
+        elif self.display_type == DISPLAY_TYPE__ST7735:
+            if width != 128 or height != 128:
+                raise ValueError("ST7735 display only supports 128x128 resolution")
+            from seedsigner.hardware.displays.ST7735 import ST7735
+            self.display = ST7735()
+
         elif self.display_type == DISPLAY_TYPE__ILI9341:
             from seedsigner.hardware.displays.ili9341 import ILI9341
             self.display = ILI9341()

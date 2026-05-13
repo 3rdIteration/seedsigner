@@ -17,9 +17,6 @@ run-name: >-
 
 on:
   pull_request:
-    # Build on changes to this workflow files in PRs to test proposed changes
-    paths:
-      - '.github/workflows/build.yml'
   push:
     branches:
       - main
@@ -43,7 +40,7 @@ on:
         default: dev
         required: true
       target:
-        description: Build target profile (e.g., pi0, pi2, pi02w, pi4)
+        description: Build target profile (pi0, pi2, pi02w, pi4, or "all" for every target)
         required: false
         default: pi0
       smartcard:
@@ -73,6 +70,11 @@ on:
 permissions:
   contents: read
 
+# Cancel in-progress builds when a PR is updated; unique per-PR or per-SHA
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
 jobs:
   build:
     name: >-
@@ -89,15 +91,23 @@ jobs:
         || ''
       }}
     runs-on: ubuntu-latest
-    # Prevent resource consuming cron triggered runs in forks
-    if: (!github.event.repository.fork || github.event_name == 'workflow_dispatch')
     env:
       DOCKER_DEFAULT_PLATFORM: linux/amd64
     strategy:
       fail-fast: false
       matrix:
-        target: [ "${{ github.event_name == 'workflow_dispatch' && github.event.inputs.target || 'pi0' }}" ]
-        # Default target pi0 to keep within 500mb storage limit for Github free
+        # PRs build both pi0 and pi02w; push defaults to pi0;
+        # workflow_dispatch uses user input ("all" expands to every target)
+        target: >-
+          ${{
+            github.event_name == 'pull_request'
+              && fromJSON('["pi0", "pi02w"]')
+            || github.event_name == 'workflow_dispatch'
+              && (github.event.inputs.target == 'all'
+                && fromJSON('["pi0", "pi02w", "pi2", "pi4"]')
+                || fromJSON(format('["{0}"]', github.event.inputs.target || 'pi0')))
+            || fromJSON('["pi0"]')
+          }}
     steps:
       - name: checkout seedsigner-os
         uses: actions/checkout@v4
@@ -121,7 +131,11 @@ jobs:
             APP_REPO_URL="https://github.com/${APP_REPO_INPUT}"
           fi
 
-          APP_REF="${{ github.event_name == 'workflow_dispatch' && github.event.inputs['source-ref'] || github.sha }}"
+          APP_REF="${{
+            github.event_name == 'workflow_dispatch' && github.event.inputs['source-ref']
+            || github.event_name == 'pull_request' && github.event.pull_request.head.sha
+            || github.sha
+          }}"
 
           if [[ "${{ github.event_name }}" = "workflow_dispatch" ]] && ! [[ "${APP_REF}" =~ ^[0-9a-fA-F]{7,40}$ ]]; then
             APP_REF_ARG="--app-branch=${APP_REF}"
@@ -193,9 +207,9 @@ jobs:
           shopt -s nullglob
           zip_files=(*.img.zip)
 
-          if ((${#zip_files[@]})); then
-            unzip -o "${zip_files[@]}"
-          fi
+          for zip in "${zip_files[@]}"; do
+            unzip -o "$zip"
+          done
 
           if ((${#zip_files[@]})); then
             sha256sum "${zip_files[@]}"
@@ -260,9 +274,9 @@ jobs:
           shopt -s nullglob
           zip_files=(*.img.zip)
 
-          if ((${#zip_files[@]})); then
-            unzip -o "${zip_files[@]}"
-          fi
+          for zip in "${zip_files[@]}"; do
+            unzip -o "$zip"
+          done
 
           img_files=(*.img)
 

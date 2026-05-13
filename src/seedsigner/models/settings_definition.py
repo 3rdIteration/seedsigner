@@ -465,6 +465,7 @@ class SettingsConstants:
     SETTING__PARTNER_LOGOS = "partner_logos"
     SETTING__PLAINTEXTQR = "plaintextqr"
     SETTING__ENCRYPTED_QR = "encrypted_qr"
+    SETTING__AMBIGUOUS_QR = "ambiguous_qr_preference"
     SETTING__ENCRYPTION_MODE = "version"
     SETTING__ENCRYPTION_ITER = "pbkdf2_iterations"
     SETTING__WIF_KEYS = "wif_keys"
@@ -484,23 +485,28 @@ class SettingsConstants:
     # Hardware config settings
     DISPLAY_CONFIGURATION__ST7789__240x240 = "st7789_240x240"  # default; original Waveshare 1.3" display hat
     DISPLAY_CONFIGURATION__ST7789__320x240 = "st7789_320x240"    # natively portrait dimensions; we apply a 90° rotation
+    DISPLAY_CONFIGURATION__ST7735__128x128 = "st7735_128x128"    # Waveshare 1.44" LCD HAT; ST7735S controller
     DISPLAY_CONFIGURATION__ILI9341__320x240 = "ili9341_320x240"  # natively portrait dimensions; we apply a 90° rotation
     DISPLAY_CONFIGURATION__ILI9486__480x320 = "ili9486_480x320"  # natively portrait dimensions; we apply a 90° rotation
     DISPLAY_CONFIGURATION__DESKTOP__240x240 = "desktop_240x240"  # pygame-based desktop simulation
     DISPLAY_CONFIGURATION__DESKTOP__320x240 = "desktop_320x240"
+    DISPLAY_CONFIGURATION__DESKTOP__128x128 = "desktop_128x128"
     if USING_MOCK_GPIO:
         ALL_DISPLAY_CONFIGURATIONS = [
             (DISPLAY_CONFIGURATION__ST7789__240x240, "st7789 240x240"),
             (DISPLAY_CONFIGURATION__ST7789__320x240, "st7789 320x240"),
+            (DISPLAY_CONFIGURATION__ST7735__128x128, "st7735 128x128"),
             (DISPLAY_CONFIGURATION__ILI9341__320x240, "ili9341 320x240 (beta)"),
             (DISPLAY_CONFIGURATION__DESKTOP__240x240, "desktop 240x240"),
             (DISPLAY_CONFIGURATION__DESKTOP__320x240, "desktop 320x240"),
+            (DISPLAY_CONFIGURATION__DESKTOP__128x128, "desktop 128x128"),
             # (DISPLAY_CONFIGURATION__ILI9486__320x480, "ili9486 480x320"),  # TODO: Enable when ili9486 driver performance is improved
         ]
     else:
         ALL_DISPLAY_CONFIGURATIONS = [
             (DISPLAY_CONFIGURATION__ST7789__240x240, "st7789 240x240"),
             (DISPLAY_CONFIGURATION__ST7789__320x240, "st7789 320x240"),
+            (DISPLAY_CONFIGURATION__ST7735__128x128, "st7735 128x128"),
             (DISPLAY_CONFIGURATION__ILI9341__320x240, "ili9341 320x240 (beta)"),
             # (DISPLAY_CONFIGURATION__ILI9486__320x480, "ili9486 480x320"),  # TODO: Enable when ili9486 driver performance is improved
         ]
@@ -559,13 +565,19 @@ class SettingsConstants:
     ENCRYPTION_MODE_CBCV1 = "AES-CBC v1"
     ENCRYPTION_MODE       = ENCRYPTION_MODE_GCM
     ENCRYPTION_ITERATIONS = 10
+    AMBIGUOUS_QR_PROMPT  = "prompt"
+    AMBIGUOUS_QR_COMPACT = "compactseedqr"
+    AMBIGUOUS_QR_ENCRYPTED = "encryptedseedqr"
+    ALL_AMBIGUOUS_QR_OPTIONS = [
+        (AMBIGUOUS_QR_COMPACT, _mft("Prefer CompactSeedQR")),
+        (AMBIGUOUS_QR_ENCRYPTED, _mft("Prefer EncryptedQR")),
+        (AMBIGUOUS_QR_PROMPT, _mft("Ask each time")),
+    ]
     ALL_ENCRYPTION_MODES = [
         ENCRYPTION_MODE_ECB,
         ENCRYPTION_MODE_CBC,
         ENCRYPTION_MODE_CTR,
         ENCRYPTION_MODE_GCM,
-        ENCRYPTION_MODE_ECBV1,
-        ENCRYPTION_MODE_CBCV1,
     ]
 
     ALL_SEED_WORD_LENGTHS = [
@@ -942,6 +954,14 @@ class SettingsDefinition:
                       type=SettingsConstants.TYPE__FREE_ENTRY,
                       visibility=SettingsConstants.VISIBILITY__ADVANCED,
                       default_value=SettingsConstants.ENCRYPTION_ITERATIONS),
+
+        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
+                      attr_name=SettingsConstants.SETTING__AMBIGUOUS_QR,
+                      display_name=_mft("Ambiguous QR"),
+                      type=SettingsConstants.TYPE__SELECT_1,
+                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
+                      selection_options=SettingsConstants.ALL_AMBIGUOUS_QR_OPTIONS,
+                      default_value=SettingsConstants.AMBIGUOUS_QR_PROMPT),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
                       attr_name=SettingsConstants.SETTING__WIF_KEYS,

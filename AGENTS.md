@@ -27,6 +27,42 @@ When stacking multiple `TextArea` components (e.g. on `LargeIconStatusScreen` su
 - Keep `src/seedsigner/hardware/io_config.json` and `docs/io_config.md` consistent whenever pin mappings or profile details are changed.
 - If the JSON and documentation conflict and the correct source of truth is unclear, explicitly ask the user how they want the conflict resolved before finalizing changes.
 
+## Persistent settings and platform-detected defaults
+
+`Settings.get_instance()` in `src/seedsigner/models/settings.py` initialises settings in three layers, applied in order so that each layer overrides the previous:
+
+1. **Code defaults** — `SettingsDefinition.get_defaults()`
+2. **Platform-detected defaults** — hardware-specific values (display config, camera rotation) computed once via `get_platform_default_*()` methods
+3. **User-persisted settings** — loaded from the settings JSON file on disk
+
+Because user settings are applied **last**, they naturally take priority over platform defaults without any additional guard logic.
+
+### How it works
+
+Platform defaults are computed into a `platform_defaults` dict at the top of `get_instance()`. When a settings file (or template) is loaded, `platform_defaults` are merged in as fallbacks for any keys the file doesn't contain (`loaded.setdefault(key, value)`), then `settings.update(loaded)` applies everything at once. When no file is loaded (test environment or first boot without template), platform defaults are written directly to `settings._data`.
+
+### Rules
+
+- **User-persisted settings must always take priority over platform-detected defaults.** The current layered approach guarantees this: platform defaults are merged as fallbacks before user settings are applied.
+- When adding a **new** platform-detected default, add it to the `platform_defaults` dict in `get_instance()`:
+  ```python
+  platform_defaults = {
+      SettingsConstants.SETTING__DISPLAY_CONFIGURATION: Settings.get_platform_default_display_config(),
+      SettingsConstants.SETTING__CAMERA_ROTATION: Settings.get_platform_default_camera_rotation(),
+      SettingsConstants.SETTING__MY_NEW_SETTING: Settings.get_platform_default_my_new_setting(),
+  }
+  ```
+  No additional guard logic is needed — `loaded.setdefault()` ensures the user's saved value wins when present.
+
+### Currently platform-detected settings
+
+| Setting constant | Platform default method |
+|-----------------|------------------------|
+| `SETTING__DISPLAY_CONFIGURATION` | `get_platform_default_display_config()` |
+| `SETTING__CAMERA_ROTATION` | `get_platform_default_camera_rotation()` |
+
+Any **new** hardware-detected setting that can also be changed by the user must be added to this table and to the `platform_defaults` dict. Failing to do so will cause the platform default to not be applied.
+
 ## Security-first development guidance
 
 Because this project handles private key material for an air-gapped signer, **security takes precedence over convenience**. Treat all entropy and key-handling paths as high-risk code.

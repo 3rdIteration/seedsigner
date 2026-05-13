@@ -2963,9 +2963,11 @@ class SeedWordsBackupTestView(View):
                 self.cur_index = int(random.random() * len(self.mnemonic_list))
 
         real_word = ButtonOption(self.mnemonic_list[self.cur_index])
-        fake_word1 = ButtonOption(bip39.WORDLIST[int(random.random() * 2047)])
-        fake_word2 = ButtonOption(bip39.WORDLIST[int(random.random() * 2047)])
-        fake_word3 = ButtonOption(bip39.WORDLIST[int(random.random() * 2047)])
+        # Create independent copies so the shared global wordlist strings
+        # aren't at risk of corruption via wipe_string/ctypes.memset.
+        fake_word1 = ButtonOption("".join(bip39.WORDLIST[int(random.random() * 2047)]))
+        fake_word2 = ButtonOption("".join(bip39.WORDLIST[int(random.random() * 2047)]))
+        fake_word3 = ButtonOption("".join(bip39.WORDLIST[int(random.random() * 2047)]))
 
         button_data = [real_word, fake_word1, fake_word2, fake_word3]
         random.shuffle(button_data)
