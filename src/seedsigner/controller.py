@@ -6,13 +6,9 @@ from gettext import gettext as _
 from pathlib import Path
 
 from embit.descriptor import Descriptor
-from embit.psbt import PSBT
 from PIL.Image import Image
 
 from seedsigner.gui.toast import BaseToastOverlayManagerThread
-from seedsigner.models.psbt_parser import PSBTParser
-from seedsigner.models.seed import Seed
-from seedsigner.models.seed_storage import SeedStorage
 from seedsigner.models.encryptedqr import EncryptedQRStorage
 from seedsigner.models.settings import Settings
 from seedsigner.models.singleton import Singleton
@@ -98,12 +94,7 @@ class BackgroundImportThread(BaseThread):
             # print(time.time() - last, module_name)
 
         time_import('embit')
-        time_import('seedsigner.helpers.embit_utils')
 
-        # Do costly initializations
-        time_import('seedsigner.models.seed_storage')
-        from seedsigner.models.seed_storage import SeedStorage
-        Controller.get_instance()._storage = SeedStorage()
         time_import('seedsigner.models.encryptedqr')
         from seedsigner.models.encryptedqr import EncryptedQRStorage
         Controller.get_instance()._storage2 = EncryptedQRStorage()
@@ -111,11 +102,11 @@ class BackgroundImportThread(BaseThread):
         # Get MainMenuView ready to respond quickly
         time_import('seedsigner.views.scan_views')
 
-        time_import('seedsigner.views.seed_views')
-
         time_import('seedsigner.views.tools_views')
 
         time_import('seedsigner.views.settings_views')
+
+        time_import('seedsigner.views.keycard_views')
 
 
 class WipeTimerThread(BaseThread):
@@ -156,15 +147,14 @@ class Controller(Singleton):
 
     # Declare class member vars with type hints to enable richer IDE support throughout
     # the code.
-    _storage: SeedStorage = None   # TODO: Rename "storage" to something more indicative of its temp, in-memory state
     _storage2: EncryptedQRStorage = None
     settings: Settings = None
 
     # TODO: Refactor these flow-related attrs that survive across multiple Screens.
     # TODO: Should all in-memory flow-related attrs get wiped on MainMenuView?
-    psbt: PSBT = None
-    psbt_seed: Seed = None
-    psbt_parser: PSBTParser = None
+    psbt = None
+    psbt_seed = None
+    psbt_parser = None
     psbt_sign_with_satochip: bool = False
     psbt_from_microsd: bool = False
     psbt_microsd_save_path: Path | None = None
@@ -354,6 +344,14 @@ class Controller(Singleton):
         # the next successful pairing save. Cleared once consumed so
         # subsequent re-pairings of *other* cards don't pick it up.
         controller.pending_keycard_label = None
+        # Transient state for the post-init Setup chain (Generate / Import →
+        # backup → LOAD_KEY → optional Seedkeeper save). Mnemonic words are
+        # stored as ``"".join(WORDLIST[i])`` copies so wiping them does NOT
+        # corrupt the shared BIP-39 wordlist (CLAUDE.md "Secure wipe and
+        # shared wordlist safety"). Both are wiped on flow exit and on
+        # ``MainMenuView`` entry.
+        controller.pending_keycard_mnemonic = None
+        controller.pending_keycard_passphrase = None
         # Address cache for "View wallets". Initialised here so the
         # attribute is always a dict by the time any view touches it.
         controller.keycard_wallets_data = {}
@@ -769,13 +767,28 @@ class Controller(Singleton):
             self.keycard_pairings[self.last_keycard_uid] = value
 
 
-    @property
-    def storage(self):
-        while not self._storage:
-            # Wait for the BackgroundImportThread to finish initializing the storage.
-            # This is a rare timing issue that likely only occurs in the test suite.
-            time.sleep(0.001)
-        return self._storage
+    class _StubStorage:
+        """Placeholder shim left over from the deleted on-device seed
+        manager. Some SeedKeeper / DIY views still reach for
+        ``controller.storage.seeds`` etc.; expose an empty list and
+        harmless no-ops so those paths fall through cleanly until the
+        SeedKeeper rewrite lands.
+        """
+        seeds: list = []
+
+        def init_pending_mnemonic(self, *args, **kwargs):
+            return None
+
+        def update_pending_mnemonic(self, *args, **kwargs):
+            return None
+
+        def finalize_pending_seed(self, *args, **kwargs):
+            return None
+
+        def clear_pending_seed(self, *args, **kwargs):
+            return None
+
+    storage = _StubStorage()
 
 
     @property
@@ -799,18 +812,9 @@ class Controller(Singleton):
         return self.hardware_rng_monitor.failure_reason()
 
 
-    def get_seed(self, seed_num: int) -> Seed:
-        if seed_num < len(self.storage.seeds):
-            return self.storage.seeds[seed_num]
-        else:
-            raise Exception(f"There is no seed_num {seed_num}; only {len(self.storage.seeds)} in memory.")
-
-
-    def discard_seed(self, seed_num: int):
-        if seed_num < len(self.storage.seeds):
-            del self.storage.seeds[seed_num]
-        else:
-            raise Exception(f"There is no seed_num {seed_num}; only {len(self.storage.seeds)} in memory.")
+    # Legacy ``get_seed`` / ``discard_seed`` deleted with the on-device
+    # seed management. Keycard / SeedKeeper flows manage key material
+    # via their own card-side state.
 
 
     def pop_prev_from_back_stack(self):
@@ -1098,25 +1102,16 @@ class Controller(Singleton):
         logger.info("Controller: wipe timer triggered; wiping data")
 
         # Wipe sensitive in-memory data
-        self.storage.seeds = []
-        self.storage.clear_pending_seed()
         if self._storage2:
             self._storage2.clear_encryptedqr()
 
         self.psbt = None
         self.psbt_parser = None
         self.psbt_seed = None
-        self.psbt_sign_with_satochip = False
-        self.sign_message_with_satochip = False
         self.multisig_wallet_descriptor = None
         self.unverified_address = None
-        self.address_explorer_data = None
-        self.sign_message_data = None
         self.resume_main_flow = None
         self.forget_satochip_session()
-        self.GPG_Admin_PIN = None
-        self.image_entropy_preview_frames = None
-        self.image_entropy_final_image = None
         # Wipe cached Keycard PINs; pairings are intentionally kept so
         # the user can resume after a wipe-timer trigger by entering
         # the PIN again, without re-pairing.

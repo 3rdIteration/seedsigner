@@ -119,7 +119,7 @@ def test_calculate_checksum_uses_configured_wordlist(monkeypatch):
         called["from_bytes_wordlist"] = wordlist
         return "abandon " * 11 + "about"
 
-    monkeypatch.setattr(mnemonic_generation.Seed, "get_wordlist", fake_get_wordlist)
+    monkeypatch.setattr(mnemonic_generation, "_get_wordlist", fake_get_wordlist)
     monkeypatch.setattr(mnemonic_generation.bip39, "mnemonic_to_bytes", fake_mnemonic_to_bytes)
     monkeypatch.setattr(mnemonic_generation.bip39, "mnemonic_from_bytes", fake_mnemonic_from_bytes)
 

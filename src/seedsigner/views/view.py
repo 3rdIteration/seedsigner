@@ -233,11 +233,7 @@ class MainMenuView(View):
         from seedsigner.gui.toast import InfoToast
 
         controller = Controller.get_instance()
-        controller.storage.discard_pending_slip39_shares()
         controller.tools_common_card_filter = None
-        controller.psbt_from_microsd = False
-        controller.psbt_microsd_save_path = None
-        controller.psbt_microsd_seed_warning_shown = False
         # Safety net: ensure no transient Keycard-setup mnemonic / passphrase
         # survives a backtrack to Home. The Setup chain wipes these on its
         # terminal paths too; this is belt-and-braces.

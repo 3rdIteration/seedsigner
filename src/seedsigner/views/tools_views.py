@@ -39,25 +39,7 @@ from seedsigner.helpers.iso7816 import format_sw_error
 from seedsigner.models.decode_qr import DecodeQR
 from seedsigner.models.encode_qr import GenericStaticQrEncoder
 from seedsigner.gui.screens.screen import ButtonOption
-from seedsigner.models.seed import Seed
-from seedsigner.models.seed import XprvSeed
 from seedsigner.models.settings_definition import SettingsConstants
-from seedsigner.views.seed_views import (
-    SeedDiscardView,
-    SeedFinalizeView,
-    SeedMnemonicEntryView,
-    SeedOptionsView,
-    SeedWordsWarningView,
-    SeedExportXpubScriptTypeView,
-    SeedExportXpubVerifyAddressView,
-    LoadSeedView,
-    SeedSlip39CreateFromBytesView,
-    SeedSlip39RegenerateSharesView,
-    AccountNumberView,
-    SeedElectrumMnemonicStartView,
-    SeedSlip39MnemonicStartView,
-    SeedKeeperSelectView,
-)
 
 from .view import View, Destination, BackStackView, MainMenuView
 

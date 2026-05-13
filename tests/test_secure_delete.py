@@ -81,36 +81,32 @@ def test_wipe_list_with_independent_copies_wipes_correctly():
 
 
 def test_full_lifecycle_wordlist_integrity():
-    """Simulate a complete seed entry lifecycle and verify wordlist integrity.
+    """Direct-wordlist-ref + wipe_list still leaves the global wordlist
+    intact when each stored word is first copied via ``"".join(word)``.
 
-    This covers the full path: store words (via "".join), discard pending
-    mnemonic (which calls wipe_list), and verify the global wordlist is
-    still intact.
+    The on-device seed-entry flow that previously exercised this through
+    ``SeedStorage`` is gone (keycard-only firmware), so we drive the same
+    contract here with a plain ``list`` to keep the regression coverage.
     """
-    from seedsigner.models.seed_storage import SeedStorage
     import os
+    from seedsigner.helpers.secure_delete import wipe_list
 
-    # Generate a valid mnemonic
     entropy = os.urandom(16)
     mnemonic_str = bip39.mnemonic_from_bytes(entropy)
     valid_words = mnemonic_str.split()
 
-    # Save originals for comparison
     original_wordlist = ["".join(w) for w in bip39.WORDLIST]
 
-    # Simulate: enter words (as direct wordlist refs, worst case)
-    storage = SeedStorage()
-    storage.init_pending_mnemonic(num_words=12)
-    for i, word in enumerate(valid_words):
-        idx = bip39.WORDLIST.index(word)
-        storage.update_pending_mnemonic(bip39.WORDLIST[idx], i)
+    pending: list[str] = []
+    for word in valid_words:
+        # The safe pattern callers must use anywhere they save a word
+        # looked up from the global wordlist: build an independent copy.
+        pending.append("".join(word))
 
-    # Discard (triggers wipe_list)
-    storage.discard_pending_mnemonic()
+    wipe_list(pending)
 
-    # Verify full wordlist integrity
     for i in range(2048):
         assert bip39.WORDLIST[i] == original_wordlist[i], (
-            f"WORDLIST[{i}] corrupted after discard: "
+            f"WORDLIST[{i}] corrupted after wipe_list: "
             f"expected {original_wordlist[i]!r}, got {bip39.WORDLIST[i]!r}"
         )

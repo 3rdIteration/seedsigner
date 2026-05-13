@@ -5,7 +5,13 @@ import math
 
 from embit import bip39
 from seedsigner.models.settings_definition import SettingsConstants
-from seedsigner.models.seed import Seed
+
+
+def _get_wordlist(wordlist_language_code: str = SettingsConstants.WORDLIST_LANGUAGE__ENGLISH):
+    """BIP-39 wordlist lookup. Only English is currently shipped."""
+    if wordlist_language_code == SettingsConstants.WORDLIST_LANGUAGE__ENGLISH:
+        return bip39.WORDLIST
+    raise Exception(f"Unrecognized wordlist_language_code {wordlist_language_code}")
 
 """
     This is SeedSigner's internal mnemonic generation utility.
@@ -67,7 +73,7 @@ def calculate_checksum(mnemonic: list | str, wordlist_language_code: str = Setti
     if len(mnemonic) in [11, 14, 17, 20, 23]:
         # Create an independent copy so the caller's list doesn't hold
         # a direct reference to the shared global wordlist string.
-        temp_final_word = "".join(Seed.get_wordlist(wordlist_language_code)[0])
+        temp_final_word = "".join(_get_wordlist(wordlist_language_code)[0])
         mnemonic.append(temp_final_word)
 
     if len(mnemonic) not in SUPPORTED_WORD_LENGTHS:
@@ -79,7 +85,7 @@ def calculate_checksum(mnemonic: list | str, wordlist_language_code: str = Setti
     # Convert the resulting mnemonic to bytes, but we `ignore_checksum` validation
     # because we assume it's incorrect since we either let the user select their own
     # final word OR we injected the 0000 word from the wordlist.
-    mnemonic_bytes = bip39.mnemonic_to_bytes(unicodedata.normalize("NFKD", " ".join(mnemonic_copy)), ignore_checksum=True, wordlist=Seed.get_wordlist(wordlist_language_code))
+    mnemonic_bytes = bip39.mnemonic_to_bytes(unicodedata.normalize("NFKD", " ".join(mnemonic_copy)), ignore_checksum=True, wordlist=_get_wordlist(wordlist_language_code))
 
     # This function will convert the bytes back into a mnemonic, but it will also
     # calculate the proper checksum bits while doing so. For a 12-word seed it will just
@@ -90,14 +96,14 @@ def calculate_checksum(mnemonic: list | str, wordlist_language_code: str = Setti
     # strings via ctypes.memset.
     return ["".join(w) for w in bip39.mnemonic_from_bytes(
         mnemonic_bytes,
-        wordlist=Seed.get_wordlist(wordlist_language_code),
+        wordlist=_get_wordlist(wordlist_language_code),
     ).split()]
 
 
 
 def generate_mnemonic_from_bytes(entropy_bytes, wordlist_language_code: str = SettingsConstants.WORDLIST_LANGUAGE__ENGLISH) -> list[str]:
     # Create independent copies so wipe_list() won't corrupt global wordlist.
-    return ["".join(w) for w in bip39.mnemonic_from_bytes(entropy_bytes, wordlist=Seed.get_wordlist(wordlist_language_code)).split()]
+    return ["".join(w) for w in bip39.mnemonic_from_bytes(entropy_bytes, wordlist=_get_wordlist(wordlist_language_code)).split()]
 
 
 
@@ -122,7 +128,7 @@ def generate_mnemonic_from_dice(roll_data: str, wordlist_language_code: str = Se
     entropy_bytes = entropy_bytes[:ENTROPY_BYTES_REQUIRED[word_length]]
 
     # Create independent copies so wipe_list() won't corrupt global wordlist.
-    return ["".join(w) for w in bip39.mnemonic_from_bytes(entropy_bytes, wordlist=Seed.get_wordlist(wordlist_language_code)).split()]
+    return ["".join(w) for w in bip39.mnemonic_from_bytes(entropy_bytes, wordlist=_get_wordlist(wordlist_language_code)).split()]
 
 
 def generate_bytes_from_dice(roll_data: str, length_bytes: int | None = None) -> bytes:
@@ -159,7 +165,7 @@ def generate_mnemonic_from_coin_flips(coin_flips: str, wordlist_language_code: s
     entropy_bytes = entropy_bytes[:ENTROPY_BYTES_REQUIRED[word_length]]
 
     # Create independent copies so wipe_list() won't corrupt global wordlist.
-    return ["".join(w) for w in bip39.mnemonic_from_bytes(entropy_bytes, wordlist=Seed.get_wordlist(wordlist_language_code)).split()]
+    return ["".join(w) for w in bip39.mnemonic_from_bytes(entropy_bytes, wordlist=_get_wordlist(wordlist_language_code)).split()]
 
 
 
@@ -173,7 +179,7 @@ def get_partial_final_word(coin_flips: str, wordlist_language_code: str = Settin
 
     # Create an independent copy to avoid holding a direct reference
     # to the shared global wordlist string.
-    return "".join(Seed.get_wordlist(wordlist_language_code)[wordlist_index])
+    return "".join(_get_wordlist(wordlist_language_code)[wordlist_index])
 
 
 
@@ -184,7 +190,7 @@ def generate_mnemonic_from_image(image, wordlist_language_code: str = SettingsCo
     hash = hashlib.sha256(image.tobytes())
 
     # Create independent copies so wipe_list() won't corrupt global wordlist.
-    return ["".join(w) for w in bip39.mnemonic_from_bytes(hash.digest(), wordlist=Seed.get_wordlist(wordlist_language_code)).split()]
+    return ["".join(w) for w in bip39.mnemonic_from_bytes(hash.digest(), wordlist=_get_wordlist(wordlist_language_code)).split()]
 
 
 def _shannon_entropy(data: bytes | str) -> float:

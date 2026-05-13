@@ -13,7 +13,13 @@ from seedsigner.helpers.ur2.ur import UR
 from seedsigner.helpers.ur2.cbor_lite import CBOREncoder
 from urtypes.bytes import Bytes
 from seedsigner.helpers.qr import QR
-from seedsigner.models.seed import Seed
+from embit import bip39
+
+
+class Seed:  # legacy shim — encoders that referenced ``Seed.get_wordlist``
+    @staticmethod
+    def get_wordlist(_lang=None):
+        return bip39.WORDLIST
 from seedsigner.models.settings import SettingsConstants
 
 from urtypes.crypto import PSBT as UR_PSBT

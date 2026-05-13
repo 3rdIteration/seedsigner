@@ -14,11 +14,21 @@ from urtypes.crypto import PSBT as UR_PSBT
 from urtypes.crypto import Account, Output
 from urtypes.bytes import Bytes
 
+from embit import bip39
+
 from seedsigner.helpers.ur2.ur_decoder import URDecoder
 from seedsigner.models.qr_type import QRType
-from seedsigner.models.seed import Seed
-from seedsigner.models.aezeed import has_valid_checksum as aezeed_has_valid_checksum
 from seedsigner.models.settings import SettingsConstants
+
+
+class Seed:  # legacy shim — decoders that referenced ``Seed.get_wordlist``
+    @staticmethod
+    def get_wordlist(_lang=None):
+        return bip39.WORDLIST
+
+
+def aezeed_has_valid_checksum(_words, _word_to_index):  # legacy shim
+    return False
 
 logger = logging.getLogger(__name__)
 
