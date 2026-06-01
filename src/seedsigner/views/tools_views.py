@@ -2219,6 +2219,7 @@ class ToolsSeedkeeperView(View):
     DELETE_SECRET = ButtonOption("Delete Secret from Card")
     LOAD_DESCRIPTOR = ButtonOption("Load MultiSig Descriptor")
     SAVE_DESCRIPTOR = ButtonOption("Save MultiSig Descriptor")
+    CONFIGURE_NDEF = ButtonOption("Configure NDEF")
     CLONE_SECRETS = ButtonOption("Clone Card Secrets")
 
     def run(self):
@@ -2228,6 +2229,7 @@ class ToolsSeedkeeperView(View):
             self.DELETE_SECRET,
             self.LOAD_DESCRIPTOR,
             self.SAVE_DESCRIPTOR,
+            self.CONFIGURE_NDEF,
             self.CLONE_SECRETS,
             self.VIEW_FREE_SPACE,
         ]
@@ -2256,6 +2258,9 @@ class ToolsSeedkeeperView(View):
         
         elif button_data[selected_menu_num] == self.SAVE_DESCRIPTOR:
             return Destination(ToolsSeedkeeperSaveDescriptorView)
+
+        elif button_data[selected_menu_num] == self.CONFIGURE_NDEF:
+            return Destination(ToolsSeedkeeperNdefView)
 
         elif button_data[selected_menu_num] == self.VIEW_FREE_SPACE:
             return Destination(ToolsSeedkeeperFreeSpaceView)
@@ -2315,6 +2320,141 @@ class ToolsSeedkeeperFreeSpaceView(View):
         finally:
             if connector:
                 seedkeeper_utils.disconnect_smartcard_connections(self.controller)
+
+
+class ToolsSeedkeeperNdefView(View):
+    VIEW_NDEF = ButtonOption("View NDEF")
+    SET_SEEDKEEPER_NDEF = ButtonOption("Use Seedkeeper App Link")
+    CLEAR_NDEF = ButtonOption("Clear NDEF")
+    SET_CUSTOM_NDEF = ButtonOption("Set Custom NDEF (HEX)")
+
+    _SEEDKEEPER_APP_NDEF_HEX = (
+        "0029d40f17616e64726f69642e636f6d3a706b676f72672e7361746f636869702e736565646b6565706572"
+    )
+    _EMPTY_NDEF_HEX = "0003D00000"
+
+    def run(self):
+        connector = seedkeeper_utils.init_satochip(
+            self,
+            init_card_filter=["seedkeeper"],
+            require_pin=True,
+        )
+        if not connector:
+            return Destination(BackStackView)
+
+        while True:
+            button_data = [
+                self.VIEW_NDEF,
+                self.SET_SEEDKEEPER_NDEF,
+                self.CLEAR_NDEF,
+                self.SET_CUSTOM_NDEF,
+            ]
+
+            selected_menu_num = self.run_screen(
+                ButtonListScreen,
+                title="Seedkeeper NDEF",
+                is_button_text_centered=False,
+                button_data=button_data,
+                show_back_button=True,
+            )
+
+            if selected_menu_num == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+
+            selected = button_data[selected_menu_num]
+
+            if selected == self.VIEW_NDEF:
+                return self._view_ndef(connector)
+
+            if selected == self.SET_SEEDKEEPER_NDEF:
+                return self._set_ndef(connector, self._SEEDKEEPER_APP_NDEF_HEX, "Seedkeeper app link set")
+
+            if selected == self.CLEAR_NDEF:
+                return self._set_ndef(connector, self._EMPTY_NDEF_HEX, "NDEF cleared")
+
+            if selected == self.SET_CUSTOM_NDEF:
+                ret = seed_screens.SeedAddPassphraseScreen(title="NDEF HEX").display()
+                if isinstance(ret, dict) and "is_back_button" in ret:
+                    continue
+
+                ndef_hex = ret.get("passphrase", "").strip()
+                if not ndef_hex:
+                    self.run_screen(
+                        WarningScreen,
+                        title="Invalid NDEF",
+                        status_headline=None,
+                        text="Hex value required",
+                        show_back_button=True,
+                    )
+                    continue
+
+                return self._set_ndef(connector, ndef_hex, "NDEF updated")
+
+    def _view_ndef(self, connector):
+        try:
+            _, sw1, sw2, ndef_bytes = connector.card_get_ndef()
+            if sw1 != 0x90 or sw2 != 0x00:
+                raise RuntimeError(format_sw_error(sw1, sw2))
+
+            ndef_hex = ndef_bytes.hex().upper()
+            if not ndef_hex:
+                ndef_hex = "(empty)"
+
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="NDEF",
+                status_headline=None,
+                text=ndef_hex,
+                status_icon_name="",
+                show_back_button=True,
+            )
+            return Destination(BackStackView)
+        except Exception as e:
+            self.run_screen(
+                WarningScreen,
+                title="Failed",
+                status_headline=None,
+                text=str(e)[:100],
+                show_back_button=True,
+            )
+            return Destination(BackStackView)
+
+    def _set_ndef(self, connector, ndef_hex: str, success_text: str):
+        try:
+            normalized = ndef_hex.replace(" ", "")
+            ndef_bytes = bytes.fromhex(normalized)
+        except ValueError:
+            self.run_screen(
+                WarningScreen,
+                title="Invalid NDEF",
+                status_headline=None,
+                text="Invalid hex string",
+                show_back_button=True,
+            )
+            return Destination(BackStackView)
+
+        try:
+            _, sw1, sw2 = connector.card_set_ndef(ndef_bytes)
+            if sw1 != 0x90 or sw2 != 0x00:
+                raise RuntimeError(format_sw_error(sw1, sw2))
+
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Success",
+                status_headline=None,
+                text=success_text,
+                show_back_button=False,
+            )
+            return Destination(MainMenuView)
+        except Exception as e:
+            self.run_screen(
+                WarningScreen,
+                title="Failed",
+                status_headline=None,
+                text=str(e)[:100],
+                show_back_button=True,
+            )
+            return Destination(BackStackView)
 
 
 class ToolsSeedkeeperCloneSecretsView(View):
