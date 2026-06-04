@@ -202,16 +202,15 @@ def prompt_for_pin(parent_view: "View", title: str) -> Optional[bytearray]:
     APDU exchange is done. Returns ``None`` if the user backs out.
     """
     from seedsigner.gui.screens import RET_CODE__BACK_BUTTON, WarningScreen
-    from seedsigner.gui.screens import seed_screens
+    from seedsigner.gui.screens.screen import KeycardPINEntryScreen
 
     while True:
-        ret = seed_screens.SeedAddPassphraseScreen(
-            title=title,
-            initial_keyboard=seed_screens.SeedAddPassphraseScreen.KEYBOARD__DIGITS_BUTTON_TEXT,
-        ).display()
-        if isinstance(ret, dict) and "is_back_button" in ret:
+        # Dedicated masked PIN pad: exactly PIN_LENGTH slots, digits only,
+        # auto-submits once the last slot is filled.
+        ret = KeycardPINEntryScreen(title=title, num_digits=PIN_LENGTH).display()
+        if ret == RET_CODE__BACK_BUTTON:
             return None
-        pin_str = ret.get("passphrase", "") if isinstance(ret, dict) else ""
+        pin_str = ret if isinstance(ret, str) else ""
         if len(pin_str) == PIN_LENGTH and pin_str.isdigit() and pin_str.isascii():
             buf = bytearray(pin_str.encode("ascii"))
             try:

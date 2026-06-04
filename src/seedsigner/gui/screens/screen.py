@@ -12,7 +12,7 @@ from seedsigner.helpers.l10n import mark_for_translation as _mft
 from seedsigner.gui.components import (GUIConstants,
     BaseComponent, Button, FontAwesomeIconConstants, Icon, IconButton,
     LargeIconButton, SeedSignerIconConstants, TopNav, TextArea, load_image)
-from seedsigner.gui.keyboard import Keyboard, TextEntryDisplay
+from seedsigner.gui.keyboard import Keyboard, TextEntryDisplay, MaskedPINEntryDisplay
 from seedsigner.hardware.buttons import HardwareButtonsConstants, HardwareButtons, OverrideInterrupt
 from seedsigner.models.encode_qr import BaseQrEncoder
 from seedsigner.models.settings import SettingsConstants
@@ -1365,6 +1365,43 @@ class KeyboardScreen(BaseTopNavScreen):
                 self.title = _("Roll {}".format(self.cursor_position + 1))
         """
         return False
+
+
+
+@dataclass
+class KeycardPINEntryScreen(KeyboardScreen):
+    """Fixed-length, masked numeric PIN entry.
+
+    A thin specialisation of :class:`KeyboardScreen`: a digits-only keyboard
+    paired with a :class:`MaskedPINEntryDisplay` so the user sees exactly how
+    many of the expected digits remain. The screen auto-returns the entered
+    string once all ``num_digits`` slots are filled — there is no Save button
+    and no keyboard switching, so the user can't wander into letters/symbols
+    the way the open-ended passphrase keyboard allowed.
+
+    Returns the entered digit string, or ``RET_CODE__BACK_BUTTON`` if the
+    user backs out via the top-nav.
+    """
+    num_digits: int = 6
+
+    def __post_init__(self):
+        self.rows = 3
+        self.cols = 5
+        self.keys_charset = "0123456789"
+        self.show_save_button = False
+        self.return_after_n_chars = self.num_digits
+
+        super().__post_init__()
+
+        # Swap the plain text display for a masked, fixed-slot one. Reuse the
+        # rect KeyboardScreen already computed so the keyboard layout is
+        # untouched.
+        self.text_entry_display = MaskedPINEntryDisplay(
+            num_slots=self.num_digits,
+            canvas=self.renderer.canvas,
+            rect=self.text_entry_display.rect,
+            is_centered=False,
+        )
 
 
 

@@ -651,3 +651,63 @@ class TextEntryDisplay(TextEntryDisplayConstants):
         # Paste the display onto the main canvas
         self.canvas.paste(image, (self.rect[0], self.rect[1]))
 
+
+
+@dataclass
+class MaskedPINEntryDisplay(TextEntryDisplay):
+    """A fixed-slot, masked variant of :class:`TextEntryDisplay` for PIN entry.
+
+    Renders ``num_slots`` evenly-spaced rounded boxes. Each entered digit is
+    shown as a filled accent dot — never the digit itself — so the user can
+    see how many of the expected digits remain without exposing the PIN to a
+    shoulder-surfer. The next slot to be filled is outlined in the accent
+    colour as a cursor cue. Unlike the open-ended passphrase text field, the
+    slot count makes the expected length unmistakable.
+    """
+    num_slots: int = 6
+    # Start empty. The base ``TextEntryDisplay`` defaults ``cur_text`` to a
+    # single space so its block/bar cursor always has a glyph to draw; for the
+    # masked PIN pad that phantom character renders the first slot as already
+    # filled, so the first real keypress (``len`` 1 -> 1 filled slot) appears
+    # to do nothing and the dots lag a digit behind. An empty default keeps the
+    # filled-slot count in lockstep with the digits actually entered.
+    cur_text: str = ""
+
+    def render(self, cur_text=None, cursor_position=None):
+        if cur_text is not None:
+            self.cur_text = cur_text
+        filled = min(len(self.cur_text), self.num_slots)
+
+        image = Image.new("RGB", (self.width + 1, self.height + 1), GUIConstants.BACKGROUND_COLOR)
+        draw = ImageDraw.Draw(image)
+
+        slot_gap = GUIConstants.COMPONENT_PADDING
+        slot_size = min(
+            self.height,
+            int((self.width - (self.num_slots - 1) * slot_gap) / self.num_slots),
+        )
+        total_width = self.num_slots * slot_size + (self.num_slots - 1) * slot_gap
+        x = int((self.width - total_width) / 2)
+        y = int((self.height - slot_size) / 2)
+        dot_radius = max(3, int(slot_size * 0.22))
+
+        for i in range(self.num_slots):
+            is_cursor = (i == filled and filled < self.num_slots)
+            draw.rounded_rectangle(
+                (x, y, x + slot_size, y + slot_size),
+                radius=4,
+                fill=GUIConstants.BUTTON_BACKGROUND_COLOR,
+                outline=GUIConstants.ACCENT_COLOR if is_cursor else GUIConstants.INACTIVE_COLOR,
+                width=2 if is_cursor else 1,
+            )
+            if i < filled:
+                cx = x + slot_size // 2
+                cy = y + slot_size // 2
+                draw.ellipse(
+                    (cx - dot_radius, cy - dot_radius, cx + dot_radius, cy + dot_radius),
+                    fill=GUIConstants.ACCENT_COLOR,
+                )
+            x += slot_size + slot_gap
+
+        self.canvas.paste(image, (self.rect[0], self.rect[1]))
+
