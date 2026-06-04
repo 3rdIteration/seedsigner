@@ -110,8 +110,17 @@ def hash_struct(types: Dict[str, List[Dict[str, str]]], primary: str, data: Dict
     return keccak256(encode_data(types, primary, data))
 
 
+def domain_separator(typed_data: Dict[str, Any]) -> bytes:
+    return hash_struct(typed_data["types"], "EIP712Domain", typed_data["domain"])
+
+
+def message_hash(typed_data: Dict[str, Any]) -> bytes:
+    return hash_struct(
+        typed_data["types"], typed_data["primaryType"], typed_data["message"]
+    )
+
+
 def signing_hash(typed_data: Dict[str, Any]) -> bytes:
-    types = typed_data["types"]
-    domain_sep = hash_struct(types, "EIP712Domain", typed_data["domain"])
-    message_hash = hash_struct(types, typed_data["primaryType"], typed_data["message"])
-    return keccak256(b"\x19\x01" + domain_sep + message_hash)
+    return keccak256(
+        b"\x19\x01" + domain_separator(typed_data) + message_hash(typed_data)
+    )

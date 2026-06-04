@@ -24,6 +24,7 @@ so existing callers and tests keep working.
 
 from __future__ import annotations
 
+import json
 import logging
 import time
 import unicodedata
@@ -111,10 +112,8 @@ class ToolsKeycardMenuView(View):
     ``ToolsKeycardInitView``.
     """
 
-    SIGN_ETH = ButtonOption("Sign ETH")
+    ETHEREUM = ButtonOption("Ethereum")
     BITCOIN = ButtonOption("Bitcoin")
-    VIEW_WALLETS = ButtonOption("View wallets")
-    EXPORT_PUBKEY = ButtonOption("Export ETH xpub")
     SETUP = ButtonOption("Setup")
     MANAGE = ButtonOption("Manage")
 
@@ -126,14 +125,7 @@ class ToolsKeycardMenuView(View):
         if gate is not None:
             return gate
 
-        button_data = [
-            self.SIGN_ETH,
-            self.BITCOIN,
-            self.VIEW_WALLETS,
-            self.EXPORT_PUBKEY,
-            self.SETUP,
-            self.MANAGE,
-        ]
+        button_data = [self.ETHEREUM, self.BITCOIN, self.SETUP, self.MANAGE]
         selected = self.run_screen(
             ButtonListScreen,
             title="Keycard",
@@ -144,14 +136,10 @@ class ToolsKeycardMenuView(View):
             return Destination(BackStackView)
 
         chosen = button_data[selected]
-        if chosen == self.SIGN_ETH:
-            return Destination(ToolsKeycardSignEthStartView)
+        if chosen == self.ETHEREUM:
+            return Destination(ToolsKeycardEthereumMenuView)
         if chosen == self.BITCOIN:
             return Destination(ToolsKeycardBitcoinMenuView)
-        if chosen == self.VIEW_WALLETS:
-            return Destination(ToolsKeycardWalletsListView)
-        if chosen == self.EXPORT_PUBKEY:
-            return Destination(ToolsKeycardPairWalletView)
         if chosen == self.SETUP:
             return Destination(ToolsKeycardSetupMenuView)
         if chosen == self.MANAGE:
@@ -474,7 +462,6 @@ class ToolsKeycardInitView(View):
     attacker a slot but not the seed.
     """
 
-    CONTINUE = ButtonOption("Continue")
     INITIALISE = ButtonOption("Initialise card")
 
     def run(self):
@@ -489,17 +476,6 @@ class ToolsKeycardInitView(View):
             )
         except ImportError as exc:
             return _error_destination("Keycard support unavailable", str(exc))
-
-        ret = self.run_screen(
-            DireWarningScreen,
-            title="Initialise?",
-            status_headline=None,
-            text="This wipes any existing PIN/PUK/pairing on the card.",
-            show_back_button=True,
-            button_data=[self.CONTINUE],
-        )
-        if ret == RET_CODE__BACK_BUTTON:
-            return Destination(BackStackView)
 
         pin_buf: Optional[bytearray] = None
         confirm_buf: Optional[bytearray] = None
@@ -1409,7 +1385,7 @@ class ToolsKeycardGenerateKeyView(View):
             DireWarningScreen,
             title="Generate seed?",
             status_headline=None,
-            text="Card generates a new\nseed. Replaces any existing\nkey on this card.",
+            text="Card generates a new\nseed and loads it on-card.",
             show_back_button=True,
             button_data=[self.CONFIRM],
         )
@@ -1426,7 +1402,7 @@ class ToolsKeycardGenerateKeyView(View):
 
 
 class ToolsKeycardImportSeedView(View):
-    """Push a BIP-39 seedphrase onto the card via LOAD_KEY P1=0x02.
+    """Push a BIP-39 seedphrase onto the card via LOAD_KEY P1=0x03.
 
     Threat model
     ------------
@@ -1464,7 +1440,7 @@ class ToolsKeycardImportSeedView(View):
             DireWarningScreen,
             title="Import to card?",
             status_headline=None,
-            text="Seed leaves device once,\nencrypted to card. Replaces\nany existing key on card.",
+            text="Seed leaves device once,\nencrypted to card.",
             show_back_button=True,
             button_data=[ButtonOption("Continue")],
         )
@@ -2492,10 +2468,6 @@ class ToolsKeycardPairWalletView(View):
         return Destination(ToolsKeycardMenuView, skip_current_view=True)
 
 
-# Backwards-compatible alias for any external importer (tests, scripts).
-ToolsKeycardExportPubkeyView = ToolsKeycardPairWalletView
-
-
 # ---------------------------------------------------------------------------
 # View wallets — paginated list of m/44'/60'/0'/0/i addresses for the
 # active Keycard instance. Mirrors the Bitcoin Address Explorer pattern
@@ -3308,15 +3280,16 @@ class ScanEthSignRequestView(ScanView):
 
 
 class ToolsKeycardSignEthOverviewView(View):
-    """Page 1/N — kind, chain, path, address. Continues to TX details."""
+    """First step of the linear sign wizard — kind, chain, path, address.
+    A single primary action; the top-nav back arrow cancels the flow."""
     CONTINUE = ButtonOption("Continue")
-    CANCEL = ButtonOption("Cancel")
 
     def run(self):
         request: Optional[EthSignRequest] = getattr(self.controller, "eth_sign_request", None)
         if request is None:
             return _error_destination("No request", "Scan one first")
 
+        from seedsigner.helpers.ethereum.chains import chain_label
         kind = DATA_TYPE_LABELS.get(request.data_type, f"type {request.data_type}")
         path = _format_path(request.derivation_path.components)
         addr_line = ""
@@ -3324,33 +3297,33 @@ class ToolsKeycardSignEthOverviewView(View):
             addr_line = f"\n{to_checksum_address(request.address)}"
         text = (
             f"{kind}\n"
-            f"chain {request.chain_id}\n"
+            f"{chain_label(request.chain_id)}\n"
             f"path {path}{addr_line}"
         )
-        button_data = [self.CONTINUE, self.CANCEL]
         ret = self.run_screen(
             LargeIconStatusScreen,
-            title="Sign ETH? 1/N",
+            title="Sign ETH?",
             status_icon_size=0,
             status_headline=None,
             text=text,
             is_button_text_centered=False,
-            button_data=button_data,
-            show_back_button=False,
+            button_data=[self.CONTINUE],
+            show_back_button=True,
         )
-        if ret == RET_CODE__BACK_BUTTON or button_data[ret] == self.CANCEL:
+        if ret == RET_CODE__BACK_BUTTON:
             self.controller.eth_sign_request = None
             return Destination(BackStackView)
         return Destination(ToolsKeycardSignEthDetailsView)
 
 
 class ToolsKeycardSignEthDetailsView(View):
-    """Page 2/N — to/value/gas for legacy/EIP1559; raw hash for typed-data;
-    decoded text for personal-sign. Confirms directly if no calldata follows.
+    """Second step — to/value/gas for legacy/EIP1559; typed-data summary;
+    decoded text for personal-sign.  A single Continue advances the wizard:
+    to the ERC-8213 digest screen when one applies (tx with calldata, EIP-712
+    typed data), to the raw-data viewer for personal-sign, otherwise straight
+    to the final Confirm gate.  The top-nav back arrow returns to Overview.
     """
-    SHOW_DATA = ButtonOption("Show data")
-    CONFIRM = ButtonOption("Confirm & sign")
-    CANCEL = ButtonOption("Cancel")
+    CONTINUE = ButtonOption("Continue")
 
     def run(self):
         request: Optional[EthSignRequest] = getattr(self.controller, "eth_sign_request", None)
@@ -3358,7 +3331,8 @@ class ToolsKeycardSignEthDetailsView(View):
             return _error_destination("No request", "Lost mid-flow")
 
         tx = _eth_tx_summary(request)
-        has_data = False
+        has_digest = False  # tx with calldata, or EIP-712 typed-data
+        has_data_only = False  # personal-sign / unknown — drill straight into data
         if tx is not None:
             to_bytes = tx.get("to") or b""
             to_str = "(create)" if not to_bytes else to_checksum_address(to_bytes)
@@ -3370,7 +3344,7 @@ class ToolsKeycardSignEthDetailsView(View):
                 f"value {_format_wei(tx['value'])}\n"
                 f"gas {tx.get('gas_limit', 0)}"
             )
-            has_data = bool(tx.get("data"))
+            has_digest = bool(tx.get("data"))
         elif request.data_type == DATA_TYPE_PERSONAL_MESSAGE:
             try:
                 msg = bytes(request.sign_data).decode("utf-8")
@@ -3378,22 +3352,105 @@ class ToolsKeycardSignEthDetailsView(View):
                 msg = bytes(request.sign_data).hex()
             preview = msg if len(msg) <= 80 else msg[:78] + "…"
             text = f"message:\n{preview}"
+            has_data_only = bool(request.sign_data)
         elif request.data_type == DATA_TYPE_TYPED_DATA:
-            digest = bytes(request.sign_data).hex()
-            text = f"EIP-712 hash:\n{digest[:32]}\n{digest[32:64] if len(digest) >= 64 else ''}"
-            has_data = len(bytes(request.sign_data)) > 0
+            try:
+                typed = json.loads(bytes(request.sign_data).decode("utf-8"))
+                primary = typed.get("primaryType", "?")
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                primary = "?"
+            text = f"EIP-712 typed data\nprimary: {primary}"
+            has_digest = True
         else:
             text = f"raw\n{bytes(request.sign_data)[:32].hex()}…"
-            has_data = True
-
-        if has_data:
-            button_data = [self.SHOW_DATA, self.CONFIRM, self.CANCEL]
-        else:
-            button_data = [self.CONFIRM, self.CANCEL]
+            has_data_only = True
 
         ret = self.run_screen(
             LargeIconStatusScreen,
-            title="TX details 2/N",
+            title="TX details",
+            status_icon_size=0,
+            status_headline=None,
+            text=text,
+            is_button_text_centered=False,
+            button_data=[self.CONTINUE],
+            show_back_button=True,
+        )
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        if has_digest:
+            # Human-readable decode (what the tx does) before the digest hashes.
+            return Destination(ToolsKeycardSignEthDecodedView, view_args={"page": 0})
+        if has_data_only:
+            return Destination(ToolsKeycardSignEthDataView, view_args={"page": 0})
+        return Destination(ToolsKeycardSignEthConfirmView)
+
+
+class ToolsKeycardSignEthDecodedView(View):
+    """Human-readable decode of *what the transaction does* — a transfer, an
+    approve, a swap, … — shown between Details and the digest screens.
+
+    Display-only: nothing here changes the bytes that get signed; the ERC-8213
+    calldata digest / EIP-712 hashes on the following screens remain the source
+    of truth.  An unknown function selector renders an explicit blind-signing
+    warning instead of hiding it.  Long values are truncated (the raw-hex
+    "Show data" drill-down stays available for byte-exact review).
+
+    Paginated like the digest/data views: one primary button (Next page, or
+    Continue on the last page) plus a "Show data" drill-down; the top-nav back
+    arrow walks back one page at a time.
+    """
+    NEXT = ButtonOption("Next page")
+    CONTINUE = ButtonOption("Continue")
+    SHOW_DATA = ButtonOption("Show data")
+
+    def __init__(self, page: int = 0):
+        super().__init__()
+        self.page = max(0, page)
+
+    def _pages(self, request: "EthSignRequest"):
+        from seedsigner.helpers.ethereum import calldata_decoder
+
+        tx = _eth_tx_summary(request)
+        if tx is not None:
+            data = tx.get("data") or b""
+            if not data:
+                return []
+            return calldata_decoder.pages_for_calldata(
+                data, chain_id=request.chain_id, to_address=tx.get("to") or None,
+            )
+        if request.data_type == DATA_TYPE_TYPED_DATA:
+            try:
+                typed = json.loads(bytes(request.sign_data).decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                return []
+            return calldata_decoder.render_typed_data_pages(typed)
+        return []
+
+    def run(self):
+        request: Optional[EthSignRequest] = getattr(self.controller, "eth_sign_request", None)
+        if request is None:
+            return _error_destination("No request", "Lost mid-flow")
+
+        pages = self._pages(request)
+        if not pages:
+            # Nothing to decode → straight to the digest screens.
+            return Destination(
+                ToolsKeycardSignEthDigestView, view_args={"page": 0},
+                skip_current_view=True,
+            )
+
+        total = len(pages)
+        page = min(self.page, total - 1)
+        header, body = pages[page]
+        counter = f" {page + 1}/{total}" if total > 1 else ""
+        text = f"{header}\n{body}"
+
+        is_last = page >= total - 1
+        button_data = [self.CONTINUE if is_last else self.NEXT, self.SHOW_DATA]
+
+        ret = self.run_screen(
+            LargeIconStatusScreen,
+            title=f"Decoded{counter}",
             status_icon_size=0,
             status_headline=None,
             text=text,
@@ -3402,25 +3459,121 @@ class ToolsKeycardSignEthDetailsView(View):
             show_back_button=True,
         )
         if ret == RET_CODE__BACK_BUTTON:
+            # Pages are pushed normally, so back walks back one page at a time.
             return Destination(BackStackView)
-        if button_data[ret] == self.CANCEL:
-            self.controller.eth_sign_request = None
+        choice = button_data[ret]
+        if choice == self.NEXT:
+            return Destination(
+                ToolsKeycardSignEthDecodedView, view_args={"page": page + 1},
+            )
+        if choice == self.SHOW_DATA:
+            return Destination(
+                ToolsKeycardSignEthDataView, view_args={"page": 0},
+            )
+        return Destination(ToolsKeycardSignEthDigestView, view_args={"page": 0})
+
+
+class ToolsKeycardSignEthDigestView(View):
+    """ERC-8213 digest screens, inserted between Details and the raw-data
+    viewer so the user can verify a single 32-byte hash against a second
+    device instead of paging through hex.
+
+    - legacy/EIP-1559 tx with non-empty data: 1 page (Calldata digest).
+    - EIP-712 typed-data: 3 pages (EIP-712 digest, Domain hash, Message hash).
+    - empty calldata / personal-sign / unknown: no pages → skip to Confirm.
+
+    Linear-wizard navigation: a single primary button (Next page, or Continue
+    on the last page) plus an optional "Show data" drill-down — never more than
+    two buttons, so the hash is never crowded.  The top-nav back arrow walks
+    back one page at a time (pages are pushed normally, not skipped).
+    """
+    NEXT = ButtonOption("Next page")
+    CONTINUE = ButtonOption("Continue")
+    SHOW_DATA = ButtonOption("Show data")
+
+    def __init__(self, page: int = 0):
+        super().__init__()
+        self.page = max(0, page)
+
+    def _pages(self, request: "EthSignRequest"):
+        from seedsigner.helpers.ethereum import eip712
+        from seedsigner.helpers.ethereum.erc8213 import compute_calldata_digest
+
+        tx = _eth_tx_summary(request)
+        if tx is not None:
+            data = tx.get("data") or b""
+            if not data:
+                return []
+            return [("Calldata digest", compute_calldata_digest(data))]
+        if request.data_type == DATA_TYPE_TYPED_DATA:
+            try:
+                typed = json.loads(bytes(request.sign_data).decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                return []
+            return [
+                ("EIP-712 digest", eip712.signing_hash(typed)),
+                ("Domain hash",    eip712.domain_separator(typed)),
+                ("Message hash",   eip712.message_hash(typed)),
+            ]
+        return []
+
+    def run(self):
+        request: Optional[EthSignRequest] = getattr(self.controller, "eth_sign_request", None)
+        if request is None:
+            return _error_destination("No request", "Lost mid-flow")
+
+        pages = self._pages(request)
+        if not pages:
+            return Destination(
+                ToolsKeycardSignEthConfirmView, skip_current_view=True,
+            )
+
+        total = len(pages)
+        page = min(self.page, total - 1)
+        label, digest = pages[page]
+        digest_hex = digest.hex()
+        text = f"{label}\n{digest_hex[:32]}\n{digest_hex[32:]}"
+
+        is_last = page >= total - 1
+        button_data = [self.CONTINUE if is_last else self.NEXT, self.SHOW_DATA]
+
+        ret = self.run_screen(
+            LargeIconStatusScreen,
+            title=f"Digest {page + 1}/{total}",
+            status_icon_size=0,
+            status_headline=None,
+            text=text,
+            is_button_text_centered=False,
+            button_data=button_data,
+            show_back_button=True,
+        )
+        if ret == RET_CODE__BACK_BUTTON:
+            # Pages are pushed normally, so back pops one digest page at a
+            # time and finally returns to the Details step.
             return Destination(BackStackView)
-        if button_data[ret] == self.SHOW_DATA:
-            return Destination(ToolsKeycardSignEthDataView, view_args={"page": 0})
-        return Destination(ToolsKeycardSignEthFinalizeView)
+        choice = button_data[ret]
+        if choice == self.NEXT:
+            return Destination(
+                ToolsKeycardSignEthDigestView, view_args={"page": page + 1},
+            )
+        if choice == self.SHOW_DATA:
+            return Destination(
+                ToolsKeycardSignEthDataView, view_args={"page": 0},
+            )
+        return Destination(ToolsKeycardSignEthConfirmView)
 
 
 class ToolsKeycardSignEthDataView(View):
-    """Page 3/N — paginated calldata hex (or raw payload for typed-data).
+    """Optional raw-data drill-down — paginated calldata hex (or raw payload
+    for typed-data).
 
     96 hex chars per page (= 48 bytes), wrapped 24 chars per line so the
-    240px screen displays four lines without overflow.
+    240px screen displays four lines without overflow.  Linear-wizard
+    navigation: one primary button (Next page, or Continue on the last page);
+    the top-nav back arrow walks back one page at a time.
     """
     NEXT = ButtonOption("Next page")
-    PREV = ButtonOption("Previous")
-    CONFIRM = ButtonOption("Confirm & sign")
-    CANCEL = ButtonOption("Cancel")
+    CONTINUE = ButtonOption("Continue")
 
     PAGE_HEX_CHARS = 96
     LINE_HEX_CHARS = 24
@@ -3443,7 +3596,7 @@ class ToolsKeycardSignEthDataView(View):
 
         if not data:
             return Destination(
-                ToolsKeycardSignEthFinalizeView, skip_current_view=True,
+                ToolsKeycardSignEthConfirmView, skip_current_view=True,
             )
 
         hex_data = data.hex()
@@ -3456,13 +3609,8 @@ class ToolsKeycardSignEthDataView(View):
             for i in range(0, len(chunk), self.LINE_HEX_CHARS)
         )
 
-        button_data = []
-        if page < total_pages - 1:
-            button_data.append(self.NEXT)
-        if page > 0:
-            button_data.append(self.PREV)
-        button_data.append(self.CONFIRM)
-        button_data.append(self.CANCEL)
+        is_last = page >= total_pages - 1
+        button_data = [self.CONTINUE if is_last else self.NEXT]
 
         ret = self.run_screen(
             LargeIconStatusScreen,
@@ -3475,23 +3623,41 @@ class ToolsKeycardSignEthDataView(View):
             show_back_button=True,
         )
         if ret == RET_CODE__BACK_BUTTON:
+            # Pages are pushed normally, so back walks back one page at a time.
             return Destination(BackStackView)
         choice = button_data[ret]
-        if choice == self.CANCEL:
-            self.controller.eth_sign_request = None
-            return Destination(BackStackView)
         if choice == self.NEXT:
             return Destination(
-                ToolsKeycardSignEthDataView,
-                view_args={"page": page + 1},
-                skip_current_view=True,
+                ToolsKeycardSignEthDataView, view_args={"page": page + 1},
             )
-        if choice == self.PREV:
-            return Destination(
-                ToolsKeycardSignEthDataView,
-                view_args={"page": page - 1},
-                skip_current_view=True,
-            )
+        return Destination(ToolsKeycardSignEthConfirmView)
+
+
+class ToolsKeycardSignEthConfirmView(View):
+    """Final confirmation gate before the card signs.  Deliberately a single
+    action so the summary is never crowded by buttons; the top-nav back arrow
+    returns to the previous review step."""
+    CONFIRM = ButtonOption("Confirm & sign")
+
+    def run(self):
+        request: Optional[EthSignRequest] = getattr(self.controller, "eth_sign_request", None)
+        if request is None:
+            return _error_destination("No request", "Lost mid-flow")
+
+        path = _format_path(request.derivation_path.components)
+        text = f"Sign with Keycard?\nchain {request.chain_id}  {path}"
+        ret = self.run_screen(
+            LargeIconStatusScreen,
+            title="Confirm",
+            status_icon_size=0,
+            status_headline=None,
+            text=text,
+            is_button_text_centered=False,
+            button_data=[self.CONFIRM],
+            show_back_button=True,
+        )
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
         return Destination(ToolsKeycardSignEthFinalizeView)
 
 
@@ -3615,8 +3781,48 @@ class KeycardErrorView(View):
 # happens on the success path and in every error branch.
 
 
+class ToolsKeycardEthereumMenuView(View):
+    """Ethereum submenu, mirrors the Bitcoin one.
+
+    ``Sign request`` is chain-agnostic across the ETH request kinds
+    (legacy tx, EIP-1559, EIP-712 typed data, personal_sign) — the
+    start view auto-detects from the scanned ``eth-sign-request`` UR.
+    """
+
+    EXPORT_XPUB = ButtonOption("Connect software wallet")
+    SIGN_REQUEST = ButtonOption("Sign request")
+    VIEW_WALLETS = ButtonOption("View wallets")
+
+    def run(self):
+        from seedsigner.helpers.card_probe import run_card_gate
+        gate = run_card_gate(
+            self, "keycard", title="Ethereum", setup_view=ToolsKeycardInitView,
+        )
+        if gate is not None:
+            return gate
+
+        button_data = [self.EXPORT_XPUB, self.SIGN_REQUEST, self.VIEW_WALLETS]
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Ethereum",
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        chosen = button_data[selected]
+        if chosen == self.EXPORT_XPUB:
+            return Destination(ToolsKeycardPairWalletView)
+        if chosen == self.SIGN_REQUEST:
+            return Destination(ToolsKeycardSignEthStartView)
+        if chosen == self.VIEW_WALLETS:
+            return Destination(ToolsKeycardWalletsListView)
+        return Destination(NotYetImplementedView)
+
+
 class ToolsKeycardBitcoinMenuView(View):
-    EXPORT_XPUB = ButtonOption("Export xpub")
+    EXPORT_XPUB = ButtonOption("Connect software wallet")
     SIGN_PSBT = ButtonOption("Sign PSBT")
     SIGN_MESSAGE = ButtonOption("Sign message")
 
@@ -3872,12 +4078,17 @@ class ToolsKeycardBtcSignMessageStartView(View):
 
 class ToolsKeycardBtcSignMessageScanView(ScanView):
     instructions_text = "Scan message QR"
-    invalid_qr_type_message = "Expected a text / bytes QR"
+    invalid_qr_type_message = "Expected a text / signmessage QR"
 
     @property
     def is_valid_qr_type(self):
-        # Accept either a UR ``bytes`` payload or a single-frame text QR.
-        return getattr(self.decoder, "is_text", False) or getattr(self.decoder, "is_bytes", False)
+        # Accept Sparrow's ``signmessage <path> ascii:<msg>`` QR, a UR
+        # ``bytes`` payload, or any single-frame text QR.
+        return (
+            getattr(self.decoder, "is_sign_message", False)
+            or getattr(self.decoder, "is_text", False)
+            or getattr(self.decoder, "is_bytes", False)
+        )
 
     def run(self):
         from seedsigner.gui.screens.scan_screens import ScanScreen
@@ -3894,24 +4105,46 @@ class ToolsKeycardBtcSignMessageScanView(ScanView):
         if not self.decoder.is_complete:
             return Destination(ToolsKeycardBitcoinMenuView, clear_history=True)
 
-        # Extract the message body. ``decode_qr`` exposes ``get_text()``
-        # for UR text and TextQrDecoder; raw bytes are surfaced via
-        # ``get_qr_data()`` in the existing scan helpers.
+        # Sparrow / Specter "signmessage" QR carries both the message and the
+        # derivation path the host expects us to sign with.
+        if getattr(self.decoder, "is_sign_message", False):
+            data = self.decoder.get_qr_data() or {}
+            message = data.get("message")
+            derivation_path = data.get("derivation_path")
+            if not isinstance(message, str) or not message:
+                return _error_destination(
+                    "Wrong QR type", "Could not extract a message from the QR.",
+                )
+            return Destination(
+                ToolsKeycardBtcSignMessageFinalizeView,
+                view_args=dict(message=message, derivation_path=derivation_path),
+            )
+
+        # Otherwise fall back to a plain text / UR-bytes payload, signed at
+        # the default BIP-84 path.
         try:
             message = self.decoder.get_text()
         except Exception:
+            message = None
+        if message is None:
             try:
-                message = self.decoder.get_qr_data()
+                raw = self.decoder.get_qr_data()
             except Exception:
                 return _error_destination(
                     "Wrong QR type", "Could not extract a message from the QR.",
                 )
-        if not isinstance(message, str):
-            try:
-                message = message.decode("utf-8")
-            except Exception:
+            if isinstance(raw, (bytes, bytearray)):
+                try:
+                    message = bytes(raw).decode("utf-8")
+                except UnicodeDecodeError:
+                    return _error_destination(
+                        "Unsupported encoding", "Message must be UTF-8 text.",
+                    )
+            elif isinstance(raw, str):
+                message = raw
+            else:
                 return _error_destination(
-                    "Unsupported encoding", "Message must be UTF-8 text.",
+                    "Wrong QR type", "Could not extract a message from the QR.",
                 )
 
         return Destination(
@@ -3921,9 +4154,10 @@ class ToolsKeycardBtcSignMessageScanView(ScanView):
 
 
 class ToolsKeycardBtcSignMessageFinalizeView(View):
-    def __init__(self, message: str):
+    def __init__(self, message: str, derivation_path: str | None = None):
         super().__init__()
         self.message = message
+        self.derivation_path = derivation_path
 
     def run(self):
         from seedsigner.helpers.keycard import (
@@ -3940,9 +4174,10 @@ class ToolsKeycardBtcSignMessageFinalizeView(View):
         except ImportError as exc:
             return _error_destination("BTC support unavailable", str(exc))
 
+        path = self.derivation_path or DEFAULT_BTC_PATH
         try:
             client, _ = _open_unlocked_session_cached_or_prompt(self)
-            sig_b64 = kc_sign_message(client, self.message, DEFAULT_BTC_PATH)
+            sig_b64 = kc_sign_message(client, self.message, path)
         except KeycardPinPromptCancelled:
             return Destination(BackStackView)
         except KeycardCardChangedError:

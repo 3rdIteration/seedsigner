@@ -1,0 +1,186 @@
+# Extended Ethereum function-signature hints (UNVERIFIED) -------------------
+#
+# One canonical function signature per line. Loaded lazily by
+# helpers/ethereum/signature_db.py to give more contract calls a
+# human-readable name during signing.
+#
+# TRUST: these are *unverified hints*. The decoder labels them "(unverified)",
+# the ERC-8213 / EIP-712 digests stay the source of truth, and a selector that
+# matches more than one signature is shown as ambiguous, not guessed. Selectors
+# are computed via keccak(signature), so a typo just yields a dead entry, never
+# a wrong-but-confident decode. Entries already in the curated registry are
+# ignored (the trusted name wins).
+#
+# TO EXTEND with the full 4byte directory (or any larger dump), drop a file
+# named  eth_signatures.txt  on the microSD card (same one-signature-per-line
+# format). It is merged on top of this baseline, capped for RAM, and likewise
+# treated as unverified. Comments (#) and blank lines are ignored.
+#
+# Format rules: canonical types only, NO spaces, full type names (uint256 not
+# uint). Supported: address bool uint<N> int<N> bytes string bytes<N> arrays
+# tuples.
+
+# --- ERC-20 extras ----------------------------------------------------------
+transferAndCall(address,uint256)
+transferAndCall(address,uint256,bytes)
+burnFrom(address,uint256)
+safeMint(address,uint256)
+safeMint(address)
+pause()
+unpause()
+
+# --- ERC-721 / ERC-1155 -----------------------------------------------------
+safeBatchTransferFrom(address,address,uint256[],uint256[],bytes)
+mintBatch(address,uint256[],uint256[],bytes)
+burnBatch(address,uint256[],uint256[])
+setTokenURI(uint256,string)
+setBaseURI(string)
+
+# --- Wrapped native (WETH-like) extras --------------------------------------
+depositTo(address)
+withdrawTo(address,uint256)
+
+# --- Uniswap V2 router (extras beyond curated swaps) ------------------------
+addLiquidityETH(address,uint256,uint256,uint256,address,uint256)
+removeLiquidityETH(address,uint256,uint256,uint256,address,uint256)
+swapTokensForExactETH(uint256,uint256,address[],address,uint256)
+
+# --- Uniswap V3 (router02 / position manager) -------------------------------
+refundETH()
+sweepToken(address,uint256,address)
+selfPermit(address,uint256,uint256,uint8,bytes32,bytes32)
+mint((address,address,uint24,int24,int24,uint256,uint256,uint256,uint256,address,uint256))
+increaseLiquidity((uint256,uint256,uint256,uint256,uint256,uint256))
+decreaseLiquidity((uint256,uint128,uint256,uint256,uint256))
+collect((uint256,address,uint128,uint128))
+
+# --- Permit2 ----------------------------------------------------------------
+transferFrom(address,address,uint160,address)
+invalidateNonces(address,address,uint48)
+lockdown((address,address)[])
+
+# --- Aave V2 / V3 -----------------------------------------------------------
+deposit(address,uint256,address,uint16)
+supply(address,uint256,address,uint16)
+withdraw(address,uint256,address)
+borrow(address,uint256,uint256,uint16,address)
+repay(address,uint256,uint256,address)
+setUserUseReserveAsCollateral(address,bool)
+liquidationCall(address,address,address,uint256,bool)
+flashLoan(address,address[],uint256[],uint256[],address,bytes,uint16)
+flashLoanSimple(address,address,uint256,bytes,uint16)
+
+# --- Compound v2 / v3 -------------------------------------------------------
+redeem(uint256)
+redeemUnderlying(uint256)
+borrow(uint256)
+repayBorrow(uint256)
+repayBorrowBehalf(address,uint256)
+liquidateBorrow(address,uint256,address)
+enterMarkets(address[])
+exitMarket(address)
+claimComp(address)
+supplyTo(address,address,uint256)
+
+# --- Staking / liquid staking / ERC-4626 vaults -----------------------------
+submit(address)
+requestWithdrawals(uint256[],address)
+claimWithdrawal(uint256)
+exit()
+deposit(uint256,address)
+mint(uint256,address)
+
+# --- Curve ------------------------------------------------------------------
+exchange(int128,int128,uint256,uint256)
+exchange(uint256,uint256,uint256,uint256)
+exchange_underlying(int128,int128,uint256,uint256)
+add_liquidity(uint256[2],uint256)
+add_liquidity(uint256[3],uint256)
+remove_liquidity(uint256,uint256[2])
+remove_liquidity(uint256,uint256[3])
+remove_liquidity_one_coin(uint256,int128,uint256)
+
+# --- Governance / ownership -------------------------------------------------
+acceptOwnership()
+delegateBySig(address,uint256,uint256,uint8,bytes32,bytes32)
+castVote(uint256,uint8)
+castVoteWithReason(uint256,uint8,string)
+castVoteBySig(uint256,uint8,uint8,bytes32,bytes32)
+propose(address[],uint256[],bytes[],string)
+queue(address[],uint256[],bytes[],bytes32)
+execute(address[],uint256[],bytes[],bytes32)
+cancel(uint256)
+
+# --- Gnosis Safe ------------------------------------------------------------
+execTransaction(address,uint256,bytes,uint8,uint256,uint256,uint256,address,address,bytes)
+approveHash(bytes32)
+addOwnerWithThreshold(address,uint256)
+removeOwner(address,address,uint256)
+swapOwner(address,address,address)
+changeThreshold(uint256)
+enableModule(address)
+disableModule(address,address)
+
+# --- Multicall aggregators --------------------------------------------------
+aggregate((address,bytes)[])
+tryAggregate(bool,(address,bytes)[])
+
+# --- ENS --------------------------------------------------------------------
+setName(string)
+setAddr(bytes32,address)
+setResolver(bytes32,address)
+
+# --- Misc common ------------------------------------------------------------
+wrap(uint256)
+unwrap(uint256)
+claim(uint256)
+claim(uint256[])
+claim(address,uint256)
+harvest()
+compound()
+depositAll()
+withdrawAll()
+
+# --- Privacy / mixers (Tornado Cash core + proxy/router) --------------------
+deposit(bytes32)
+withdraw(bytes,bytes32,bytes32,address,address,uint256,uint256)
+deposit(address,bytes32,bytes)
+withdraw(address,bytes,bytes32,bytes32,address,address,uint256,uint256)
+backupNotes(bytes[])
+echo(bytes)
+register((address,bytes))
+onTokenTransfer(address,uint256,bytes)
+
+# --- Tornado Cash governance ------------------------------------------------
+lock(address,uint256,uint256,uint8,bytes32,bytes32)
+lockWithApproval(uint256)
+unlock(uint256)
+undelegate()
+propose(address,string)
+proposeByDelegate(address,address,string)
+castVote(uint256,bool)
+castDelegatedVote(address[],uint256,bool)
+executeProposal(uint256)
+
+# --- Relayer registry -------------------------------------------------------
+register(string,uint256,address[])
+registerWorker(address,address)
+unregisterWorker(address)
+stakeToRelayer(address,uint256)
+setMinStakeAmount(uint256)
+nullifyBalance(address)
+
+# --- Validators / staking (Beacon deposit, Rocket Pool, EigenLayer) ---------
+deposit(bytes,bytes,bytes,bytes32)
+stakeRPL(uint256)
+withdrawRPL(uint256)
+depositIntoStrategy(address,address,uint256)
+delegateTo(address,(bytes,uint256),bytes32)
+undelegate(address)
+stake(bytes,bytes,bytes32)
+
+# --- ENS registry -----------------------------------------------------------
+setOwner(bytes32,address)
+setSubnodeOwner(bytes32,bytes32,address)
+setSubnodeRecord(bytes32,bytes32,address,address,uint64)
+setRecord(bytes32,address,address,uint64)

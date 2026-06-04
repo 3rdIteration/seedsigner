@@ -3,6 +3,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from seedsigner.helpers.ethereum import eip712
 from seedsigner.helpers.ethereum.keccak import keccak256
 from seedsigner.helpers.ethereum.personal_sign import personal_sign_hash
 from seedsigner.helpers.ethereum.tx_legacy import LegacyTx
@@ -117,3 +118,63 @@ class TestComputeV:
         req = make_request(DATA_TYPE_PERSONAL_MESSAGE, b"x", chain_id=1)
         assert compute_v(req, 0) == 27
         assert compute_v(req, 1) == 28
+
+
+ETHER_MAIL = {
+    "types": {
+        "EIP712Domain": [
+            {"name": "name", "type": "string"},
+            {"name": "version", "type": "string"},
+            {"name": "chainId", "type": "uint256"},
+            {"name": "verifyingContract", "type": "address"},
+        ],
+        "Person": [
+            {"name": "name", "type": "string"},
+            {"name": "wallet", "type": "address"},
+        ],
+        "Mail": [
+            {"name": "from", "type": "Person"},
+            {"name": "to", "type": "Person"},
+            {"name": "contents", "type": "string"},
+        ],
+    },
+    "primaryType": "Mail",
+    "domain": {
+        "name": "Ether Mail", "version": "1", "chainId": 1,
+        "verifyingContract": "0xCcCCccccCCCCcCCCCCCcCcCccCcCCCcCcccccccC",
+    },
+    "message": {
+        "from": {"name": "Cow", "wallet": "0xCD2a3d9F938E13CD947Ec05AbC7FE734Df8DD826"},
+        "to": {"name": "Bob", "wallet": "0xbBbBBBBbbBBBbbbBbbBbbbbBBbBbbbbBbBbbBBbB"},
+        "contents": "Hello, Bob!",
+    },
+}
+
+
+class TestEIP712NamedHashes:
+    """Cross-check the named hashes from EIP-712's "Ether Mail" worked example."""
+
+    def test_domain_separator(self):
+        # Value from EIP-712 spec.
+        assert eip712.domain_separator(ETHER_MAIL).hex() == (
+            "f2cee375fa42b42143804025fc449deafd50cc031ca257e0b194a650a912090f"
+        )
+
+    def test_message_hash(self):
+        # Value from EIP-712 spec (hashStruct of the Mail message).
+        assert eip712.message_hash(ETHER_MAIL).hex() == (
+            "c52c0ee5d84264471806290a3f2c4cecfc5490626bf912d01f240d7a274b371e"
+        )
+
+    def test_signing_hash_uses_named_helpers(self):
+        # Same final digest as TestSigningHash.test_typed_data_eip712,
+        # rebuilt from the public domain/message helpers.
+        expected = keccak256(
+            b"\x19\x01"
+            + eip712.domain_separator(ETHER_MAIL)
+            + eip712.message_hash(ETHER_MAIL)
+        )
+        assert eip712.signing_hash(ETHER_MAIL) == expected
+        assert eip712.signing_hash(ETHER_MAIL).hex() == (
+            "be609aee343fb3c4b28e1df9e632fca64fcfaede20f02e86244efddf30957bd2"
+        )

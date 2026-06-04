@@ -2,6 +2,7 @@ import pytest
 
 from seedsigner.helpers.ethereum import rlp
 from seedsigner.helpers.ethereum.address import pubkey_to_address, to_checksum_address
+from seedsigner.helpers.ethereum.erc8213 import compute_calldata_digest
 from seedsigner.helpers.ethereum.keccak import keccak256
 
 
@@ -15,6 +16,42 @@ class TestKeccak:
         assert keccak256(b"abc").hex() == (
             "4e03657aea45a94fc7d47ba826c8d667c0d1e6e33a64a036ec44f58fa12d6c45"
         )
+
+
+class TestCalldataDigest:
+    def test_empty(self):
+        # ERC-8213: keccak256( 32-byte BE length || calldata ).
+        # Empty calldata → keccak256( 32 zero bytes ).
+        expected = keccak256(b"\x00" * 32)
+        assert compute_calldata_digest(b"") == expected
+
+    def test_matches_reference_python_impl(self):
+        # ERC-8213 reference snippet: length.to_bytes(32, "big") + calldata,
+        # keccak256 of the concatenation.  An ERC-20 transfer(address,uint256)
+        # is exactly 4 + 32 + 32 = 68 bytes (selector + 2 padded args).
+        calldata = bytes.fromhex(
+            "a9059cbb"
+            "0000000000000000000000001111111111111111111111111111111111111111"
+            "00000000000000000000000000000000000000000000000000000000000003e8"
+        )
+        assert len(calldata) == 68
+        length_word = (68).to_bytes(32, "big")
+        assert compute_calldata_digest(calldata) == keccak256(length_word + calldata)
+
+    def test_length_endianness(self):
+        # Length is big-endian: a 1-byte zero payload differs from empty.
+        assert compute_calldata_digest(b"\x00") != compute_calldata_digest(b"")
+        assert compute_calldata_digest(b"\x00").hex() == (
+            keccak256((1).to_bytes(32, "big") + b"\x00").hex()
+        )
+
+    def test_length_word_dominates(self):
+        # Same data, different length-prefix interpretation would collide if
+        # we used the wrong endianness or width.  Sanity-check against a
+        # hand-built non-32-byte length encoding.
+        calldata = b"\xde\xad\xbe\xef"
+        wrong = keccak256(b"\x04" + calldata)  # 1-byte length
+        assert compute_calldata_digest(calldata) != wrong
 
 
 class TestRLPEncode:

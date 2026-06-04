@@ -202,10 +202,10 @@ Defaults: account path `m/84'/0'/0'` (`DEFAULT_BTC_ACCOUNT_PATH`), per-address d
 
 | Path | Responsibility |
 |------|----------------|
-| `src/seedsigner/helpers/ethereum/` | Chain-agnostic primitives: `rlp`, `keccak`, `address` (EIP-55), `tx_legacy` (EIP-155), `tx_eip1559`, `eip712`, `personal_sign`, `ur_codec` (UR `eth-sign-request` / `eth-signature`) |
+| `src/seedsigner/helpers/ethereum/` | Chain-agnostic primitives: `rlp`, `keccak`, `address` (EIP-55), `tx_legacy` (EIP-155), `tx_eip1559`, `eip712` (exposes `domain_separator`, `message_hash`, `signing_hash`), `personal_sign`, `erc8213` (`compute_calldata_digest`: `keccak256(uint256_be(len) ‖ calldata)`), `ur_codec` (UR `eth-sign-request` / `eth-signature`) |
 | `src/seedsigner/helpers/keycard/` | Card protocol: `commands` (APDU builders: SELECT, PAIR, OPEN_SC, VERIFY_PIN, DERIVE, EXPORT, SIGN, **GENERATE_MNEMONIC**, LOAD_KEY, GENERATE_KEY, FACTORY_RESET, …), `responses` (TLV/DER + `parse_generate_mnemonic`), `crypto` (PBKDF2/AES-CBC/ECDH), `secure_channel`, `client`, `reader` (PC/SC), `secrets` (CSPRNG PIN/PUK/password), `pairing_storage` (AES-GCM blob on microSD), `ui_helpers` (path/pubkey/PIN helpers shared by views) |
 | `src/seedsigner/helpers/keycard_signer.py` | ETH glue: `signing_hash_for(request)` + `compute_v(request, rec_id)` |
-| `src/seedsigner/views/keycard_views.py` | UI: `Tools > Keycard` menu, init/pair/unpair, **on-card Generate (Status applet GENERATE_MNEMONIC → host renders words → user confirms → LOAD_KEY)** + Show-mnemonic-and-import, ETH sign chain, **Bitcoin sub-menu** (see above) |
+| `src/seedsigner/views/keycard_views.py` | UI: `Tools > Keycard` menu, init/pair/unpair, **on-card Generate (Status applet GENERATE_MNEMONIC → host renders words → user confirms → LOAD_KEY)** + Show-mnemonic-and-import, ETH sign chain (Overview → Details → **ERC-8213 Digest screen** → optional raw-data viewer → Finalize; digest screen shows Calldata Digest for txs with non-empty data, or three pages — EIP-712 Digest + Domain Hash + Message Hash — for typed-data; skipped for empty calldata and personal-sign), **Bitcoin sub-menu** (see above) |
 | `scripts/keycard_smoke_test.py` | Hardware-only end-to-end check (SELECT → PAIR → SC → VERIFY_PIN → DERIVE → EXPORT → SIGN+recover; `--btc` adds export_xpub + BIP-137 sign_message) |
 
 ### Setup chain: Generate vs Show-mnemonic

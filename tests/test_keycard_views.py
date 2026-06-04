@@ -56,9 +56,11 @@ class TestKeycardMenuRouting(unittest.TestCase):
     """Smoke tests for the reorganised Keycard menu hierarchy:
 
         Keycard (top)
-          ├─ Sign ETH       → ToolsKeycardSignEthStartView
-          ├─ View wallets   → ToolsKeycardWalletsListView
-          ├─ Export xpub    → ToolsKeycardPairWalletView
+          ├─ Ethereum ›     → ToolsKeycardEthereumMenuView
+          │   ├─ Connect w/ Software Wallet → ToolsKeycardPairWalletView
+          │   ├─ Sign request  → ToolsKeycardSignEthStartView
+          │   └─ View wallets  → ToolsKeycardWalletsListView
+          ├─ Bitcoin ›      → ToolsKeycardBitcoinMenuView
           ├─ Setup ›        → ToolsKeycardSetupMenuView
           │   ├─ Initialise card → ToolsKeycardInitView
           │   ├─ Generate key    → ToolsKeycardGenerateKeyView
@@ -91,18 +93,14 @@ class TestKeycardMenuRouting(unittest.TestCase):
     def test_top_menu_routes(self):
         from seedsigner.views.keycard_views import (
             ToolsKeycardMenuView,
-            ToolsKeycardSignEthStartView,
+            ToolsKeycardEthereumMenuView,
             ToolsKeycardBitcoinMenuView,
-            ToolsKeycardWalletsListView,
-            ToolsKeycardPairWalletView,
             ToolsKeycardSetupMenuView,
             ToolsKeycardManageMenuView,
         )
         expected = [
-            ToolsKeycardSignEthStartView,
+            ToolsKeycardEthereumMenuView,
             ToolsKeycardBitcoinMenuView,
-            ToolsKeycardWalletsListView,
-            ToolsKeycardPairWalletView,
             ToolsKeycardSetupMenuView,
             ToolsKeycardManageMenuView,
         ]
@@ -110,6 +108,24 @@ class TestKeycardMenuRouting(unittest.TestCase):
             dest = self._route(ToolsKeycardMenuView, i)
             self.assertIs(dest.View_cls, view_cls,
                           f"top menu index {i} routes to {dest.View_cls.__name__}, "
+                          f"expected {view_cls.__name__}")
+
+    def test_ethereum_menu_routes(self):
+        from seedsigner.views.keycard_views import (
+            ToolsKeycardEthereumMenuView,
+            ToolsKeycardPairWalletView,
+            ToolsKeycardSignEthStartView,
+            ToolsKeycardWalletsListView,
+        )
+        expected = [
+            ToolsKeycardPairWalletView,
+            ToolsKeycardSignEthStartView,
+            ToolsKeycardWalletsListView,
+        ]
+        for i, view_cls in enumerate(expected):
+            dest = self._route(ToolsKeycardEthereumMenuView, i)
+            self.assertIs(dest.View_cls, view_cls,
+                          f"ETH menu index {i} routes to {dest.View_cls.__name__}, "
                           f"expected {view_cls.__name__}")
 
     def test_bitcoin_menu_routes(self):
@@ -488,6 +504,665 @@ class TestKeycardMenuRouting(unittest.TestCase):
         view.controller.set_label_for.assert_called_with(
             instance_uid, "Cold Wallet",
         )
+
+
+# EIP-712 "Ether Mail" worked example from the spec.  Also used in
+# test_keycard_signer.py — kept inline here because the tests/ directory
+# isn't a package, so cross-test imports don't resolve.
+_ETHER_MAIL = {
+    "types": {
+        "EIP712Domain": [
+            {"name": "name", "type": "string"},
+            {"name": "version", "type": "string"},
+            {"name": "chainId", "type": "uint256"},
+            {"name": "verifyingContract", "type": "address"},
+        ],
+        "Person": [
+            {"name": "name", "type": "string"},
+            {"name": "wallet", "type": "address"},
+        ],
+        "Mail": [
+            {"name": "from", "type": "Person"},
+            {"name": "to", "type": "Person"},
+            {"name": "contents", "type": "string"},
+        ],
+    },
+    "primaryType": "Mail",
+    "domain": {
+        "name": "Ether Mail", "version": "1", "chainId": 1,
+        "verifyingContract": "0xCcCCccccCCCCcCCCCCCcCcCccCcCCCcCcccccccC",
+    },
+    "message": {
+        "from": {"name": "Cow", "wallet": "0xCD2a3d9F938E13CD947Ec05AbC7FE734Df8DD826"},
+        "to": {"name": "Bob", "wallet": "0xbBbBBBBbbBBBbbbBbbBbbbbBBbBbbbbBbBbbBBbB"},
+        "contents": "Hello, Bob!",
+    },
+}
+
+
+class TestEthDigestView(unittest.TestCase):
+    """ERC-8213: the digest screen inserted between Details and the raw-data
+    viewer.  Single page for transactions (Calldata digest); three pages for
+    EIP-712 typed-data (digest + domain hash + message hash); skipped for
+    legacy tx without calldata, personal-sign, and anything else.
+    """
+
+    @staticmethod
+    def _make_view(request, page=0):
+        from seedsigner.views.keycard_views import ToolsKeycardSignEthDigestView
+
+        view = ToolsKeycardSignEthDigestView.__new__(ToolsKeycardSignEthDigestView)
+        view.page = page
+        view.run_screen = MagicMock(return_value=0)
+        view.controller = MagicMock()
+        view.controller.eth_sign_request = request
+        return view
+
+    def _make_legacy_request(self, data: bytes):
+        from seedsigner.helpers.ethereum.tx_legacy import LegacyTx
+        from seedsigner.helpers.ethereum.ur_codec import (
+            CryptoKeypath, DATA_TYPE_LEGACY_TX, EthSignRequest,
+        )
+        tx = LegacyTx(
+            nonce=0, gas_price=10**9, gas_limit=100000,
+            to=bytes.fromhex("1111111111111111111111111111111111111111"),
+            value=0, data=data, chain_id=1,
+        )
+        return EthSignRequest(
+            request_id=b"\xaa" * 16,
+            sign_data=tx.signing_bytes(),
+            data_type=DATA_TYPE_LEGACY_TX,
+            chain_id=1,
+            derivation_path=CryptoKeypath(
+                components=[44 | 0x80000000, 60 | 0x80000000, 0],
+            ),
+        )
+
+    def _make_typed_data_request(self):
+        import json as _json
+        from seedsigner.helpers.ethereum.ur_codec import (
+            CryptoKeypath, DATA_TYPE_TYPED_DATA, EthSignRequest,
+        )
+        ETHER_MAIL = _ETHER_MAIL
+        return EthSignRequest(
+            request_id=b"\xbb" * 16,
+            sign_data=_json.dumps(ETHER_MAIL).encode("utf-8"),
+            data_type=DATA_TYPE_TYPED_DATA,
+            chain_id=1,
+            derivation_path=CryptoKeypath(
+                components=[44 | 0x80000000, 60 | 0x80000000, 0],
+            ),
+        )
+
+    def test_calldata_legacy_shows_one_page(self):
+        from seedsigner.helpers.ethereum.erc8213 import compute_calldata_digest
+
+        calldata = bytes.fromhex("a9059cbb" + "00" * 60 + "01" + "00" * 3)
+        request = self._make_legacy_request(calldata)
+        view = self._make_view(request, page=0)
+
+        from seedsigner.views.keycard_views import ToolsKeycardSignEthConfirmView
+        dest = view.run()
+
+        view.run_screen.assert_called_once()
+        kwargs = view.run_screen.call_args.kwargs
+        digest_hex = compute_calldata_digest(calldata).hex()
+        self.assertIn("Calldata digest", kwargs["text"])
+        self.assertIn(digest_hex[:32], kwargs["text"])
+        self.assertIn(digest_hex[32:], kwargs["text"])
+        self.assertEqual(kwargs["title"], "Digest 1/1")
+        # Linear wizard: at most two buttons so the hash is never crowded.
+        self.assertLessEqual(len(kwargs["button_data"]), 2)
+        # Button index 0 is CONTINUE on the (single, last) page; we return 0,
+        # so routing goes to the final Confirm gate.
+        self.assertIs(dest.View_cls, ToolsKeycardSignEthConfirmView)
+        # Button index 1 is the optional "Show data" drill-down.
+        view.run_screen.return_value = 1
+        dest = view.run()
+        self.assertEqual(dest.View_cls.__name__, "ToolsKeycardSignEthDataView")
+
+    def test_empty_calldata_skips_digest_screen(self):
+        request = self._make_legacy_request(b"")
+        view = self._make_view(request)
+
+        from seedsigner.views.keycard_views import ToolsKeycardSignEthConfirmView
+        dest = view.run()
+
+        view.run_screen.assert_not_called()
+        self.assertIs(dest.View_cls, ToolsKeycardSignEthConfirmView)
+        self.assertTrue(dest.skip_current_view)
+
+    def test_personal_sign_skips_digest_screen(self):
+        from seedsigner.helpers.ethereum.ur_codec import (
+            CryptoKeypath, DATA_TYPE_PERSONAL_MESSAGE, EthSignRequest,
+        )
+        request = EthSignRequest(
+            request_id=b"\xcc" * 16,
+            sign_data=b"hello",
+            data_type=DATA_TYPE_PERSONAL_MESSAGE,
+            chain_id=1,
+            derivation_path=CryptoKeypath(
+                components=[44 | 0x80000000, 60 | 0x80000000, 0],
+            ),
+        )
+        view = self._make_view(request)
+        dest = view.run()
+
+        view.run_screen.assert_not_called()
+        self.assertEqual(dest.View_cls.__name__, "ToolsKeycardSignEthConfirmView")
+        self.assertTrue(dest.skip_current_view)
+
+    def test_typed_data_three_pages(self):
+        from seedsigner.helpers.ethereum import eip712
+        ETHER_MAIL = _ETHER_MAIL
+
+        request = self._make_typed_data_request()
+
+        # Page 0: EIP-712 digest.
+        view = self._make_view(request, page=0)
+        view.run_screen.return_value = 0  # NEXT
+        dest = view.run()
+        kwargs = view.run_screen.call_args.kwargs
+        self.assertEqual(kwargs["title"], "Digest 1/3")
+        self.assertIn("EIP-712 digest", kwargs["text"])
+        self.assertIn(eip712.signing_hash(ETHER_MAIL).hex()[:32], kwargs["text"])
+        self.assertEqual(dest.View_cls.__name__, "ToolsKeycardSignEthDigestView")
+        self.assertEqual(dest.view_args["page"], 1)
+
+        # Page 1: Domain hash.
+        view = self._make_view(request, page=1)
+        view.run_screen.return_value = 0  # NEXT
+        dest = view.run()
+        kwargs = view.run_screen.call_args.kwargs
+        self.assertEqual(kwargs["title"], "Digest 2/3")
+        self.assertIn("Domain hash", kwargs["text"])
+        self.assertIn(eip712.domain_separator(ETHER_MAIL).hex()[:32], kwargs["text"])
+        self.assertEqual(dest.view_args["page"], 2)
+
+        # Page 2: Message hash — last page, so the primary button is CONTINUE
+        # (NEXT is absent) and it advances to the final Confirm gate.
+        view = self._make_view(request, page=2)
+        view.run_screen.return_value = 0  # CONTINUE
+        dest = view.run()
+        kwargs = view.run_screen.call_args.kwargs
+        self.assertEqual(kwargs["title"], "Digest 3/3")
+        self.assertIn("Message hash", kwargs["text"])
+        self.assertIn(eip712.message_hash(ETHER_MAIL).hex()[:32], kwargs["text"])
+        self.assertLessEqual(len(kwargs["button_data"]), 2)
+        self.assertEqual(dest.View_cls.__name__, "ToolsKeycardSignEthConfirmView")
+
+
+class TestEthDetailsViewRouting(unittest.TestCase):
+    """Details view routes to ToolsKeycardSignEthDecodedView (the human-readable
+    decode step) for txs with calldata and for EIP-712 typed-data; the decode
+    step then leads on to the digest screens.  Bug where typed-data showed the
+    first 64 hex chars of the raw JSON as the "EIP-712 hash" is also gone.
+    """
+
+    @staticmethod
+    def _make_view(request, click_index=0):
+        from seedsigner.views.keycard_views import ToolsKeycardSignEthDetailsView
+
+        view = ToolsKeycardSignEthDetailsView.__new__(ToolsKeycardSignEthDetailsView)
+        view.run_screen = MagicMock(return_value=click_index)
+        view.controller = MagicMock()
+        view.controller.eth_sign_request = request
+        return view
+
+    def test_typed_data_does_not_fake_an_eip712_hash(self):
+        # The pre-ERC-8213 code printed the first 64 hex chars of the raw
+        # JSON payload and labelled it "EIP-712 hash:".  Make sure that
+        # exact misleading string is gone.
+        import json as _json
+        from seedsigner.helpers.ethereum.ur_codec import (
+            CryptoKeypath, DATA_TYPE_TYPED_DATA, EthSignRequest,
+        )
+        ETHER_MAIL = _ETHER_MAIL
+
+        request = EthSignRequest(
+            request_id=b"\xdd" * 16,
+            sign_data=_json.dumps(ETHER_MAIL).encode("utf-8"),
+            data_type=DATA_TYPE_TYPED_DATA,
+            chain_id=1,
+            derivation_path=CryptoKeypath(
+                components=[44 | 0x80000000, 60 | 0x80000000, 0],
+            ),
+        )
+        view = self._make_view(request, click_index=0)  # click SHOW_DIGEST
+        dest = view.run()
+
+        kwargs = view.run_screen.call_args.kwargs
+        # No bogus hex preview.
+        self.assertNotIn("EIP-712 hash:", kwargs["text"])
+        # And we DO show the primary type so the user has a sanity hook.
+        self.assertIn("EIP-712 typed data", kwargs["text"])
+        self.assertIn("Mail", kwargs["text"])
+        # Routes onward to the human-readable decode step.
+        self.assertEqual(dest.View_cls.__name__, "ToolsKeycardSignEthDecodedView")
+
+    def test_tx_with_calldata_routes_to_decoded(self):
+        # Legacy tx with non-empty data → the decode step is now the
+        # entry-point, ahead of the digest screens.
+        from seedsigner.helpers.ethereum.tx_legacy import LegacyTx
+        from seedsigner.helpers.ethereum.ur_codec import (
+            CryptoKeypath, DATA_TYPE_LEGACY_TX, EthSignRequest,
+        )
+        tx = LegacyTx(
+            nonce=0, gas_price=10**9, gas_limit=21000,
+            to=bytes.fromhex("11" * 20), value=0,
+            data=b"\xde\xad\xbe\xef", chain_id=1,
+        )
+        request = EthSignRequest(
+            request_id=b"\xee" * 16,
+            sign_data=tx.signing_bytes(),
+            data_type=DATA_TYPE_LEGACY_TX,
+            chain_id=1,
+            derivation_path=CryptoKeypath(
+                components=[44 | 0x80000000, 60 | 0x80000000, 0],
+            ),
+        )
+        view = self._make_view(request, click_index=0)  # Continue
+        dest = view.run()
+        self.assertEqual(dest.View_cls.__name__, "ToolsKeycardSignEthDecodedView")
+
+
+class TestEthDecodedView(unittest.TestCase):
+    """Human-readable decode step between Details and the digest screens.
+
+    Known calldata renders the function name + parameters; an unknown selector
+    renders a blind-signing warning; EIP-712 typed-data renders message fields.
+    Continue → digest screens, "Show data" → raw-hex viewer, and empty calldata
+    skips straight to the digest.  Display-only: nothing here is signed.
+    """
+
+    USDC = "a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
+
+    @staticmethod
+    def _make_view(request, page=0, ret=0):
+        from seedsigner.views.keycard_views import ToolsKeycardSignEthDecodedView
+
+        view = ToolsKeycardSignEthDecodedView.__new__(ToolsKeycardSignEthDecodedView)
+        view.page = page
+        view.run_screen = MagicMock(return_value=ret)
+        view.controller = MagicMock()
+        view.controller.eth_sign_request = request
+        return view
+
+    def _legacy_to(self, to_hex: str, data: bytes):
+        from seedsigner.helpers.ethereum.tx_legacy import LegacyTx
+        from seedsigner.helpers.ethereum.ur_codec import (
+            CryptoKeypath, DATA_TYPE_LEGACY_TX, EthSignRequest,
+        )
+        tx = LegacyTx(
+            nonce=0, gas_price=10**9, gas_limit=100000,
+            to=bytes.fromhex(to_hex), value=0, data=data, chain_id=1,
+        )
+        return EthSignRequest(
+            request_id=b"\xaa" * 16,
+            sign_data=tx.signing_bytes(),
+            data_type=DATA_TYPE_LEGACY_TX,
+            chain_id=1,
+            derivation_path=CryptoKeypath(
+                components=[44 | 0x80000000, 60 | 0x80000000, 0],
+            ),
+        )
+
+    @staticmethod
+    def _transfer_calldata(to_hex: str, amount: int) -> bytes:
+        from seedsigner.helpers.ethereum.function_registry import function_selector
+        return (function_selector("transfer(address,uint256)")
+                + bytes(12) + bytes.fromhex(to_hex) + amount.to_bytes(32, "big"))
+
+    def test_known_transfer_decodes_token_aware(self):
+        # tx.to is the USDC contract → amount renders with the token symbol.
+        data = self._transfer_calldata("11" * 20, 5_000_000)
+        request = self._legacy_to(self.USDC, data)
+
+        view = self._make_view(request, page=0, ret=0)  # NEXT (page 0 of 2)
+        dest = view.run()
+        kwargs = view.run_screen.call_args.kwargs
+        self.assertEqual(kwargs["title"], "Decoded 1/2")
+        self.assertIn("transfer", kwargs["text"])
+        # second page carries the token-aware amount, last-page Continue→Digest
+        view = self._make_view(request, page=1, ret=0)  # CONTINUE
+        dest = view.run()
+        kwargs = view.run_screen.call_args.kwargs
+        self.assertIn("5 USDC", kwargs["text"])
+        self.assertEqual(dest.View_cls.__name__, "ToolsKeycardSignEthDigestView")
+
+    def test_show_data_drilldown(self):
+        data = self._transfer_calldata("11" * 20, 1)
+        request = self._legacy_to(self.USDC, data)
+        view = self._make_view(request, page=0, ret=1)  # SHOW_DATA
+        dest = view.run()
+        self.assertEqual(dest.View_cls.__name__, "ToolsKeycardSignEthDataView")
+
+    def test_unknown_selector_blind_warning(self):
+        request = self._legacy_to("11" * 20, bytes.fromhex("deadbeef") + bytes(32))
+        view = self._make_view(request, page=0, ret=0)  # CONTINUE (single page)
+        dest = view.run()
+        kwargs = view.run_screen.call_args.kwargs
+        self.assertIn("Blind signing", kwargs["text"])
+        self.assertIn("deadbeef", kwargs["text"])
+        self.assertEqual(dest.View_cls.__name__, "ToolsKeycardSignEthDigestView")
+
+    def test_empty_calldata_skips_to_digest(self):
+        request = self._legacy_to("11" * 20, b"")
+        view = self._make_view(request)
+        dest = view.run()
+        view.run_screen.assert_not_called()
+        self.assertEqual(dest.View_cls.__name__, "ToolsKeycardSignEthDigestView")
+        self.assertTrue(dest.skip_current_view)
+
+    def test_typed_data_message_pages_then_digest(self):
+        import json as _json
+        from seedsigner.helpers.ethereum.ur_codec import (
+            CryptoKeypath, DATA_TYPE_TYPED_DATA, EthSignRequest,
+        )
+        request = EthSignRequest(
+            request_id=b"\xbb" * 16,
+            sign_data=_json.dumps(_ETHER_MAIL).encode("utf-8"),
+            data_type=DATA_TYPE_TYPED_DATA,
+            chain_id=1,
+            derivation_path=CryptoKeypath(
+                components=[44 | 0x80000000, 60 | 0x80000000, 0],
+            ),
+        )
+        # Page 0 shows the EIP-712 domain/primary type.
+        view = self._make_view(request, page=0, ret=0)  # NEXT
+        view.run()
+        kwargs = view.run_screen.call_args.kwargs
+        self.assertIn("Mail", kwargs["text"])
+        # A high page index clamps to the last page → Continue advances to the
+        # digest hashes (without needing to know the exact page count).
+        view = self._make_view(request, page=99, ret=0)  # CONTINUE on last page
+        dest = view.run()
+        self.assertEqual(dest.View_cls.__name__, "ToolsKeycardSignEthDigestView")
+
+
+def _make_legacy_request(data: bytes):
+    """Standalone helper mirroring TestEthDigestView._make_legacy_request so
+    the data/confirm test classes can build a request without inheritance."""
+    from seedsigner.helpers.ethereum.tx_legacy import LegacyTx
+    from seedsigner.helpers.ethereum.ur_codec import (
+        CryptoKeypath, DATA_TYPE_LEGACY_TX, EthSignRequest,
+    )
+    tx = LegacyTx(
+        nonce=0, gas_price=10**9, gas_limit=100000,
+        to=bytes.fromhex("11" * 20),
+        value=0, data=data, chain_id=1,
+    )
+    return EthSignRequest(
+        request_id=b"\xaa" * 16,
+        sign_data=tx.signing_bytes(),
+        data_type=DATA_TYPE_LEGACY_TX,
+        chain_id=1,
+        derivation_path=CryptoKeypath(
+            components=[44 | 0x80000000, 60 | 0x80000000, 0],
+        ),
+    )
+
+
+class TestEthDataView(unittest.TestCase):
+    """Optional raw-data drill-down.  Linear-wizard navigation: one primary
+    button (Next page / Continue), top-nav back walks back a page; never more
+    than one list button so the hex is never crowded."""
+
+    @staticmethod
+    def _make_view(request, page=0, ret=0):
+        from seedsigner.views.keycard_views import ToolsKeycardSignEthDataView
+
+        view = ToolsKeycardSignEthDataView.__new__(ToolsKeycardSignEthDataView)
+        view.page = page
+        view.run_screen = MagicMock(return_value=ret)
+        view.controller = MagicMock()
+        view.controller.eth_sign_request = request
+        return view
+
+    def test_multi_page_next_then_continue(self):
+        # 200 bytes of calldata → 400 hex chars → ceil(400/96) = 5 pages.
+        request = _make_legacy_request(bytes(range(200)))
+
+        # First page: NEXT advances; single list button.
+        view = self._make_view(request, page=0, ret=0)
+        dest = view.run()
+        kwargs = view.run_screen.call_args.kwargs
+        self.assertEqual(kwargs["title"], "Data 1/5")
+        self.assertEqual(len(kwargs["button_data"]), 1)
+        self.assertEqual(dest.View_cls.__name__, "ToolsKeycardSignEthDataView")
+        self.assertEqual(dest.view_args["page"], 1)
+        # Pages push normally (no skip) so back walks back one page at a time.
+        self.assertFalse(getattr(dest, "skip_current_view", False))
+
+        # Last page: CONTINUE advances to the Confirm gate.
+        view = self._make_view(request, page=4, ret=0)
+        dest = view.run()
+        kwargs = view.run_screen.call_args.kwargs
+        self.assertEqual(kwargs["title"], "Data 5/5")
+        self.assertEqual(len(kwargs["button_data"]), 1)
+        self.assertEqual(dest.View_cls.__name__, "ToolsKeycardSignEthConfirmView")
+
+    def test_back_returns_to_back_stack(self):
+        from seedsigner.gui.screens import RET_CODE__BACK_BUTTON
+        from seedsigner.views.view import BackStackView
+
+        request = _make_legacy_request(bytes(range(200)))
+        view = self._make_view(request, page=2, ret=RET_CODE__BACK_BUTTON)
+        dest = view.run()
+        self.assertIs(dest.View_cls, BackStackView)
+
+    def test_empty_data_skips_to_confirm(self):
+        request = _make_legacy_request(b"")
+        view = self._make_view(request, page=0)
+        dest = view.run()
+        view.run_screen.assert_not_called()
+        self.assertEqual(dest.View_cls.__name__, "ToolsKeycardSignEthConfirmView")
+        self.assertTrue(dest.skip_current_view)
+
+
+class TestEthConfirmView(unittest.TestCase):
+    """Final confirmation gate: one action, advances to Finalize; back arrow
+    returns to the previous review step."""
+
+    @staticmethod
+    def _make_view(request, ret=0):
+        from seedsigner.views.keycard_views import ToolsKeycardSignEthConfirmView
+
+        view = ToolsKeycardSignEthConfirmView.__new__(ToolsKeycardSignEthConfirmView)
+        view.run_screen = MagicMock(return_value=ret)
+        view.controller = MagicMock()
+        view.controller.eth_sign_request = request
+        return view
+
+    def test_confirm_advances_to_finalize(self):
+        from seedsigner.views.keycard_views import ToolsKeycardSignEthFinalizeView
+
+        request = _make_legacy_request(b"\xde\xad\xbe\xef")
+        view = self._make_view(request, ret=0)
+        dest = view.run()
+        kwargs = view.run_screen.call_args.kwargs
+        self.assertEqual(kwargs["title"], "Confirm")
+        self.assertEqual(len(kwargs["button_data"]), 1)
+        self.assertIs(dest.View_cls, ToolsKeycardSignEthFinalizeView)
+
+    def test_back_returns_to_back_stack(self):
+        from seedsigner.gui.screens import RET_CODE__BACK_BUTTON
+        from seedsigner.views.view import BackStackView
+
+        request = _make_legacy_request(b"\xde\xad\xbe\xef")
+        view = self._make_view(request, ret=RET_CODE__BACK_BUTTON)
+        dest = view.run()
+        self.assertIs(dest.View_cls, BackStackView)
+
+
+class TestEthSignButtonBudget(unittest.TestCase):
+    """Regression guard: the text-behind-buttons bug was caused by stacking
+    up to five buttons on LargeIconStatusScreen, which collapsed the TextArea.
+    Every signing review screen must keep at most two list buttons."""
+
+    def _button_data(self, view):
+        view.run()
+        return view.run_screen.call_args.kwargs["button_data"]
+
+    def test_overview_and_details_single_button(self):
+        from seedsigner.views.keycard_views import (
+            ToolsKeycardSignEthOverviewView, ToolsKeycardSignEthDetailsView,
+        )
+        request = _make_legacy_request(b"\xde\xad\xbe\xef")
+        for cls in (ToolsKeycardSignEthOverviewView, ToolsKeycardSignEthDetailsView):
+            view = cls.__new__(cls)
+            view.run_screen = MagicMock(return_value=0)
+            view.controller = MagicMock()
+            view.controller.eth_sign_request = request
+            self.assertLessEqual(len(self._button_data(view)), 2, cls.__name__)
+
+    def test_digest_pages_at_most_two_buttons(self):
+        from seedsigner.helpers.ethereum.ur_codec import (
+            CryptoKeypath, DATA_TYPE_TYPED_DATA, EthSignRequest,
+        )
+        import json as _json
+        from seedsigner.views.keycard_views import ToolsKeycardSignEthDigestView
+
+        request = EthSignRequest(
+            request_id=b"\xbb" * 16,
+            sign_data=_json.dumps(_ETHER_MAIL).encode("utf-8"),
+            data_type=DATA_TYPE_TYPED_DATA,
+            chain_id=1,
+            derivation_path=CryptoKeypath(
+                components=[44 | 0x80000000, 60 | 0x80000000, 0],
+            ),
+        )
+        for page in range(3):
+            view = ToolsKeycardSignEthDigestView.__new__(ToolsKeycardSignEthDigestView)
+            view.page = page
+            view.run_screen = MagicMock(return_value=0)
+            view.controller = MagicMock()
+            view.controller.eth_sign_request = request
+            view.run()
+            button_data = view.run_screen.call_args.kwargs["button_data"]
+            self.assertLessEqual(len(button_data), 2, f"page {page}")
+
+
+class TestBtcSignMessageScanRouting(unittest.TestCase):
+    """Sparrow generates ``signmessage <path> ascii:<msg>`` QRs, which the
+    decoder surfaces as ``QRType.SIGN_MESSAGE``. The pre-fix scan view only
+    accepted ``is_text`` / ``is_bytes`` and bailed out with
+    "Unsupported encoding. Message must be UTF-8 text.". These tests pin
+    the accepted QR types and the path propagation so the regression
+    cannot come back.
+    """
+
+    @staticmethod
+    def _make_scan_view(decoder):
+        from seedsigner.views.keycard_views import ToolsKeycardBtcSignMessageScanView
+
+        view = ToolsKeycardBtcSignMessageScanView.__new__(
+            ToolsKeycardBtcSignMessageScanView,
+        )
+        view.decoder = decoder
+        view.controller = MagicMock()
+        view.run_screen = MagicMock(return_value=0)
+        return view
+
+    def test_sign_message_qr_is_accepted(self):
+        decoder = MagicMock()
+        decoder.is_sign_message = True
+        decoder.is_text = False
+        decoder.is_bytes = False
+        view = self._make_scan_view(decoder)
+        self.assertTrue(view.is_valid_qr_type)
+
+    def test_sparrow_qr_routes_to_finalize_with_path(self):
+        from seedsigner.views.keycard_views import (
+            ToolsKeycardBtcSignMessageFinalizeView,
+        )
+
+        decoder = MagicMock()
+        decoder.is_complete = True
+        decoder.is_sign_message = True
+        decoder.is_text = False
+        decoder.is_bytes = False
+        decoder.get_qr_data.return_value = {
+            "derivation_path": "m/84'/0'/0'/0/0",
+            "message": "Hello from Sparrow",
+        }
+        view = self._make_scan_view(decoder)
+
+        dest = view.run()
+
+        self.assertIs(dest.View_cls, ToolsKeycardBtcSignMessageFinalizeView)
+        self.assertEqual(dest.view_args["message"], "Hello from Sparrow")
+        self.assertEqual(dest.view_args["derivation_path"], "m/84'/0'/0'/0/0")
+
+    def test_finalize_view_uses_qr_path_when_provided(self):
+        from unittest.mock import patch
+
+        from seedsigner.views import keycard_views
+        from seedsigner.views.keycard_views import (
+            ToolsKeycardBtcSignMessageFinalizeView,
+        )
+
+        view = ToolsKeycardBtcSignMessageFinalizeView.__new__(
+            ToolsKeycardBtcSignMessageFinalizeView,
+        )
+        view.message = "hello"
+        view.derivation_path = "m/84'/0'/0'/0/3"
+        view.controller = MagicMock()
+        view.controller.has_any_keycard_auth.return_value = True
+        view.run_screen = MagicMock(return_value=0)
+
+        fake_client = MagicMock()
+        sign_calls = []
+
+        def fake_sign(client, message, path):
+            sign_calls.append((message, path))
+            return "Hb64sig=="
+
+        with patch.object(
+            keycard_views, "_open_unlocked_session_cached_or_prompt",
+            return_value=(fake_client, MagicMock()),
+        ), patch(
+            "seedsigner.helpers.keycard_btc_signer.sign_message",
+            side_effect=fake_sign,
+        ):
+            view.run()
+
+        self.assertEqual(sign_calls, [("hello", "m/84'/0'/0'/0/3")])
+
+    def test_finalize_view_falls_back_to_default_path(self):
+        from unittest.mock import patch
+
+        from seedsigner.helpers.bitcoin import DEFAULT_BTC_PATH
+        from seedsigner.views import keycard_views
+        from seedsigner.views.keycard_views import (
+            ToolsKeycardBtcSignMessageFinalizeView,
+        )
+
+        view = ToolsKeycardBtcSignMessageFinalizeView.__new__(
+            ToolsKeycardBtcSignMessageFinalizeView,
+        )
+        view.message = "hello"
+        view.derivation_path = None
+        view.controller = MagicMock()
+        view.controller.has_any_keycard_auth.return_value = True
+        view.run_screen = MagicMock(return_value=0)
+
+        sign_calls = []
+
+        def fake_sign(client, message, path):
+            sign_calls.append((message, path))
+            return "Hb64sig=="
+
+        with patch.object(
+            keycard_views, "_open_unlocked_session_cached_or_prompt",
+            return_value=(MagicMock(), MagicMock()),
+        ), patch(
+            "seedsigner.helpers.keycard_btc_signer.sign_message",
+            side_effect=fake_sign,
+        ):
+            view.run()
+
+        self.assertEqual(sign_calls, [("hello", DEFAULT_BTC_PATH)])
 
 
 if __name__ == "__main__":
