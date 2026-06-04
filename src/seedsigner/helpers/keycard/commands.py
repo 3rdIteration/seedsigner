@@ -44,10 +44,13 @@ INS_FACTORY_RESET = 0xFD
 FACTORY_RESET_P1_MAGIC = 0xAA
 FACTORY_RESET_P2_MAGIC = 0x55
 
-# LOAD KEY P1 (key import format)
-LOAD_KEY_P1_EXTENDED_PRIVKEY = 0x01
-LOAD_KEY_P1_BIP39_SEED = 0x02
-LOAD_KEY_P1_PUBKEY_DERIVATION = 0x03
+# LOAD KEY P1 (key import format) — Status Keycard applet:
+#   0x01 = EC keypair TLV (no chain code)
+#   0x02 = extended EC keypair TLV (privkey + 32-byte chain code)
+#   0x03 = 64-byte BIP-39 binary seed (raw, no TLV) — what we send
+LOAD_KEY_P1_EC = 0x01
+LOAD_KEY_P1_EXT_EC = 0x02
+LOAD_KEY_P1_BIP39_SEED = 0x03
 
 # DERIVE KEY P1 source
 DERIVE_P1_FROM_MASTER = 0x00

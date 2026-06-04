@@ -61,7 +61,7 @@ class TestLoadBip39SeedApdu(unittest.TestCase):
         every keycard-shell-initialised card."""
         from seedsigner.helpers.keycard import commands
         self.assertEqual(commands.INS_LOAD_KEY, 0xD0)
-        self.assertEqual(commands.LOAD_KEY_P1_BIP39_SEED, 0x02)
+        self.assertEqual(commands.LOAD_KEY_P1_BIP39_SEED, 0x03)
 
 
 class TestLoadBip39SeedClient(unittest.TestCase):

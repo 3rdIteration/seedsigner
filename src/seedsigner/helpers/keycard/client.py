@@ -223,7 +223,7 @@ class KeycardClient:
         return parse_generate_mnemonic(resp, word_count)
 
     def load_bip39_seed(self, seed64: bytes) -> None:
-        """Push a 64-byte BIP-39 seed to the card via LOAD KEY P1=0x02.
+        """Push a 64-byte BIP-39 seed to the card via LOAD KEY P1=0x03.
 
         Requires an open secure channel and a verified PIN. The card
         replaces any existing master key.
