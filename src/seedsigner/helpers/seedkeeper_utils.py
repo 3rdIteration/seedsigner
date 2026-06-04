@@ -1,4 +1,3 @@
-from pysatochip.CardConnector import CardConnector
 from pysatochip.JCconstants import (
     JCconstants,
     SEEDKEEPER_DIC_TYPE,
@@ -16,6 +15,7 @@ from seedsigner.gui.screens import (
 )
 from seedsigner.gui.screens.screen import LoadingScreenThread
 from seedsigner.helpers.iso7816 import format_sw_error
+from seedsigner.helpers.keycard_connector import KeycardSatochipConnector
 
 
 import os
@@ -25,6 +25,54 @@ import platform
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+def _requested_satochip_flow(init_card_filter) -> bool:
+    if init_card_filter is None:
+        return False
+    values = init_card_filter
+    if not isinstance(values, (list, tuple, set)):
+        values = [values]
+    return any(str(v).lower() == "satochip" for v in values)
+
+
+def _init_legacy_connector(init_card_filter):
+    from pysatochip.CardConnector import CardConnector
+
+    return CardConnector(card_filter=init_card_filter)
+
+
+def _init_card_connector(init_card_filter, backend_preference: str | None = None):
+    """Create the most appropriate connector for the requested card flow.
+
+    Selection is controlled by ``SEEDSIGNER_SMARTCARD_BACKEND``:
+    - ``auto`` (default): try pysatochip first, then keycard for satochip flows
+    - ``pysatochip``: force legacy backend
+    - ``keycard``: force keycard compat backend (satochip flow only)
+    """
+
+    backend_pref = (backend_preference or os.environ.get("SEEDSIGNER_SMARTCARD_BACKEND", "auto")).strip().lower()
+    keycard_allowed = _requested_satochip_flow(init_card_filter)
+
+    if backend_pref == "keycard":
+        if not keycard_allowed:
+            raise Exception("Keycard backend only supports satochip card flows")
+        return KeycardSatochipConnector.create(card_filter=init_card_filter)
+
+    if backend_pref == "pysatochip":
+        return _init_legacy_connector(init_card_filter)
+
+    # auto backend
+    try:
+        return _init_legacy_connector(init_card_filter)
+    except Exception as legacy_error:
+        if not keycard_allowed:
+            raise legacy_error
+        try:
+            logger.info("pysatochip init failed; trying keycard compat backend")
+            return KeycardSatochipConnector.create(card_filter=init_card_filter)
+        except Exception:
+            raise legacy_error
 
 
 def calculate_seedkeeper_secret_size(secret_dic: dict) -> int:
@@ -145,7 +193,7 @@ def disconnect_smartcard_connections(controller):
         pass
 
 
-def init_satochip(parentObject, init_card_filter=None, require_pin=True):
+def init_satochip(parentObject, init_card_filter=None, require_pin=True, backend_preference: str | None = None):
     from seedsigner.models.settings import (
         Settings,
         SettingsConstants,
@@ -155,6 +203,9 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True):
     # Check for existing card connector
     print("Checking existing card connector...")
     Satochip_Connector = getattr(parentObject.controller, "Satochip_Connector", None)
+    controller_backend_pref = backend_preference
+    if controller_backend_pref is None:
+        controller_backend_pref = getattr(parentObject.controller, "smartcard_backend_preference", None)
 
     # If a specific applet/card filter is requested, do not reuse an existing
     # connector that may still be attached to a previous flow/card type.
@@ -184,7 +235,10 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True):
         if Satochip_Connector is None:
             print("No Working CardConnector, Connecting")
             print("Card Filter:", init_card_filter)
-            Satochip_Connector = CardConnector(card_filter=init_card_filter)
+            Satochip_Connector = _init_card_connector(
+                init_card_filter,
+                backend_preference=controller_backend_pref,
+            )
     except Exception as e:
         parentObject.run_screen(
             WarningScreen,
@@ -340,6 +394,16 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True):
                 return None
 
     else:
+        if getattr(Satochip_Connector, "is_keycard_backend", False):
+            parentObject.run_screen(
+                WarningScreen,
+                title="Card Uninitialised",
+                status_headline=None,
+                text="Initialize Keycard first\nusing keycard-cli.",
+                show_back_button=True,
+            )
+            return None
+
         print("Card Needs Initial Setup")
         parentObject.run_screen(
             WarningScreen,

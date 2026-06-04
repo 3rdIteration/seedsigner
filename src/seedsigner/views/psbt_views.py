@@ -83,7 +83,11 @@ class PSBTSelectSeedView(View):
 
             button_data.append(ButtonOption(button_str, SeedSignerIconConstants.FINGERPRINT))
 
-        button_data.append(self.SATOCHIP)
+        if (
+            self.settings.get_value(SettingsConstants.SETTING__SATOCHIP_SUPPORT)
+            == SettingsConstants.OPTION__ENABLED
+        ):
+            button_data.append(self.SATOCHIP)
         button_data.append(self.SCAN_SEED)
         if self.settings.get_value(SettingsConstants.SETTING__WIF_KEYS) == SettingsConstants.OPTION__ENABLED:
             button_data.append(self.SCAN_WIF)

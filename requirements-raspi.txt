@@ -1,3 +1,4 @@
 spidev==3.5
 python-periphery==2.4.1
 pyscard==2.3.1
+keycard

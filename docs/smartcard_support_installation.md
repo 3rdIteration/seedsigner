@@ -80,6 +80,38 @@ _Choose option 1 to install Rust_
     cd pysatochip
     python setup.py install
 
+### Optional: Keycard Backend (pysatochip compatibility layer)
+
+SeedSigner can now use the `keycard-cli` Python compatibility adapter for
+Satochip-style flows (xpub export and signing).
+
+1. Install the module:
+
+    cd ~/keycard-cli/python
+    pip3 install -e .
+
+2. Select backend behavior with environment variables:
+
+    export SEEDSIGNER_SMARTCARD_BACKEND=auto
+
+Available values:
+
+- `auto` (default): use pysatochip first, then fall back to keycard compat for `satochip` flows.
+- `pysatochip`: force legacy pysatochip backend.
+- `keycard`: force keycard compat backend for `satochip` flows.
+
+If `keycard_cli` is not installed in the active environment, you can also point
+SeedSigner to a checkout directly:
+
+    export SEEDSIGNER_KEYCARD_CLI_PATH=/home/pi/keycard-cli/python
+
+For cards configured with a custom Keycard pairing password, set:
+
+    export SEEDSIGNER_KEYCARD_PAIRING_PASSWORD='your-pairing-password'
+
+When using the keycard backend, uninitialised cards must be initialised with
+`keycard-cli` tooling first.
+
 ### LibNFC + IFDNFC (Optional: Needed for PN352 connected via GPIO Pins)
 
 **Install LibNFC**

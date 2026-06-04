@@ -8,8 +8,24 @@ from datetime import datetime
 from binascii import a2b_base64, b2a_base64
 from enum import IntEnum
 from embit import psbt, bip39, ec, bip32
-from pyzbar import pyzbar
-from pyzbar.pyzbar import ZBarSymbol
+
+_ZBAR_IMPORT_ERROR = None
+try:
+    from pyzbar import pyzbar
+    from pyzbar.pyzbar import ZBarSymbol
+except Exception as exc:  # pragma: no cover - depends on host runtime libs
+    pyzbar = None
+    ZBarSymbol = None
+    _ZBAR_IMPORT_ERROR = exc
+
+_OPENCV_IMPORT_ERROR = None
+try:
+    import cv2
+    import numpy as np
+except Exception as exc:  # pragma: no cover - depends on host runtime libs
+    cv2 = None
+    np = None
+    _OPENCV_IMPORT_ERROR = exc
 from urtypes.crypto import PSBT as UR_PSBT
 from urtypes.crypto import Account, Output
 from urtypes.bytes import Bytes
@@ -60,6 +76,41 @@ class DecodeQR:
         self.is_encryptionkey = is_encryptionkey
         self.is_text = is_text
         self.is_nonUTF8 = False
+
+
+    @staticmethod
+    def is_qr_scanner_available() -> bool:
+        return (
+            (pyzbar is not None and ZBarSymbol is not None)
+            or DecodeQR._opencv_available_desktop()
+        )
+
+
+    @staticmethod
+    def _opencv_available_desktop() -> bool:
+        if cv2 is None or np is None:
+            return False
+
+        try:
+            from seedsigner.hardware.microsd import MicroSD
+
+            return MicroSD.is_desktop_mode()
+        except Exception:
+            return False
+
+
+    @staticmethod
+    def get_qr_scanner_error() -> str:
+        if DecodeQR.is_qr_scanner_available():
+            return ""
+        errors = []
+        if _ZBAR_IMPORT_ERROR is not None:
+            errors.append(f"zbar backend unavailable: {_ZBAR_IMPORT_ERROR}")
+        if _OPENCV_IMPORT_ERROR is not None:
+            errors.append(f"opencv backend unavailable: {_OPENCV_IMPORT_ERROR}")
+        if errors:
+            return " | ".join(errors)
+        return "QR scanning backend unavailable"
 
 
     def add_image(self, image):
@@ -458,15 +509,61 @@ class DecodeQR:
         if image is None:
             return None
 
-        barcodes = pyzbar.decode(image, symbols=[ZBarSymbol.QRCODE], binary=is_binary)
+        if pyzbar is not None and ZBarSymbol is not None:
+            barcodes = pyzbar.decode(image, symbols=[ZBarSymbol.QRCODE], binary=is_binary)
 
-        # if barcodes:
-            # print("--------------- extract_qr_data ---------------")
-            # print(barcodes)
+            # if barcodes:
+                # print("--------------- extract_qr_data ---------------")
+                # print(barcodes)
 
-        for barcode in barcodes:
-            # Only pull and return the first barcode
-            return barcode.data
+            for barcode in barcodes:
+                # Only pull and return the first barcode
+                return barcode.data
+
+        if DecodeQR._opencv_available_desktop():
+            return DecodeQR._extract_qr_data_opencv(image, is_binary=is_binary)
+
+        if not DecodeQR.is_qr_scanner_available():
+            # Keep non-camera flows operational when zbar shared libraries are missing.
+            logger.warning("QR scanning unavailable: %s", DecodeQR.get_qr_scanner_error())
+            return None
+
+        return None
+
+
+    @staticmethod
+    def _extract_qr_data_opencv(image, is_binary: bool = False) -> bytes | None:
+        try:
+            if isinstance(image, np.ndarray):
+                frame = image
+            else:
+                frame = np.array(image.convert("RGB"))
+
+            if frame.ndim == 3:
+                gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
+            else:
+                gray = frame
+
+            detector = cv2.QRCodeDetector()
+            data, _points, _straight_qrcode = detector.detectAndDecode(gray)
+
+            if not data:
+                ok, decoded_infos, _points_multi, _straight_multi = detector.detectAndDecodeMulti(gray)
+                if ok and decoded_infos:
+                    for candidate in decoded_infos:
+                        if candidate:
+                            data = candidate
+                            break
+
+            if not data:
+                return None
+
+            if is_binary:
+                return data.encode("utf-8")
+            return data.encode("utf-8")
+        except Exception as exc:
+            logger.debug("OpenCV QR decode failed: %s", exc)
+            return None
 
 
     @staticmethod

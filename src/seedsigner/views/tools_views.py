@@ -1091,11 +1091,13 @@ class ToolsAddressExplorerSelectSourceView(View):
             21: self.TYPE_21WORD,
             24: self.TYPE_24WORD,
         }
-        button_data = (
-            button_data
-            + [self.SCAN_SEED, self.SCAN_DESCRIPTOR, self.SATOCHIP]
-            + [options[l] for l in seed_lengths]
-        )
+        button_data = button_data + [self.SCAN_SEED, self.SCAN_DESCRIPTOR]
+        if (
+            self.settings.get_value(SettingsConstants.SETTING__SATOCHIP_SUPPORT)
+            == SettingsConstants.OPTION__ENABLED
+        ):
+            button_data.append(self.SATOCHIP)
+        button_data += [options[l] for l in seed_lengths]
         if self.settings.get_value(SettingsConstants.SETTING__ELECTRUM_SEEDS) == SettingsConstants.OPTION__ENABLED:
             button_data.append(self.TYPE_ELECTRUM)
 
@@ -1392,11 +1394,25 @@ class ToolsTextQRView(View):
 class ToolsSmartcardMenuView(View):
     COMMON = ButtonOption("Common Functions")
     SATOCHIP = ButtonOption("Satochip Functions")
+    KEYCARD = ButtonOption("KeyCard Functions")
     SEEDKEEPER = ButtonOption("SeedKeeper Functions")
     Satochip_DIY = ButtonOption("DIY Tools")
 
     def run(self):
-        button_data = [self.COMMON, self.SEEDKEEPER, self.SATOCHIP, self.Satochip_DIY]
+        button_data = [self.COMMON, self.SEEDKEEPER]
+        satochip_enabled = (
+            self.settings.get_value(SettingsConstants.SETTING__SATOCHIP_SUPPORT)
+            == SettingsConstants.OPTION__ENABLED
+        )
+        keycard_enabled = (
+            self.settings.get_value(SettingsConstants.SETTING__KEYCARD_SUPPORT)
+            == SettingsConstants.OPTION__ENABLED
+        )
+        if satochip_enabled:
+            button_data.append(self.SATOCHIP)
+        if keycard_enabled:
+            button_data.append(self.KEYCARD)
+        button_data.append(self.Satochip_DIY)
 
         selected_menu_num = self.run_screen(
             ButtonListScreen,
@@ -1409,15 +1425,23 @@ class ToolsSmartcardMenuView(View):
             return Destination(BackStackView)
 
         elif button_data[selected_menu_num] == self.COMMON:
+            self.controller.smartcard_backend_preference = None
             return Destination(ToolsCommonView)
         
         elif button_data[selected_menu_num] == self.SATOCHIP:
+            self.controller.smartcard_backend_preference = None
             return Destination(ToolsSatochipView)
+
+        elif button_data[selected_menu_num] == self.KEYCARD:
+            self.controller.smartcard_backend_preference = "keycard"
+            return Destination(ToolsKeycardView)
         
         elif button_data[selected_menu_num] == self.SEEDKEEPER:
+            self.controller.smartcard_backend_preference = None
             return Destination(ToolsSeedkeeperView)
 
         elif button_data[selected_menu_num] == self.Satochip_DIY:
+            self.controller.smartcard_backend_preference = None
             return Destination(ToolsSatochipDIYView)
 
 class ToolsCommonView(View):
@@ -3349,6 +3373,327 @@ class ToolsSatochipView(View):
             return Destination(ToolsSatochipLoadPsbtView)
         elif button_data[selected_menu_num] == self.ADVANCED:
             return Destination(ToolsSatochipAdvancedView)
+
+
+class ToolsKeycardView(View):
+    IMPORT_SEED = ButtonOption("Initialise with Seed")
+    EXPORT_XPUB = ButtonOption("Export Xpub")
+    LOAD_DESCRIPTOR = ButtonOption("Load as Descriptor")
+    LOAD_PSBT = ButtonOption("Load PSBT")
+    CHANGE_PIN = ButtonOption("Change PIN")
+    CHANGE_PUK = ButtonOption("Set PUK")
+    UNBLOCK_PIN = ButtonOption("Unblock PIN with PUK")
+    SET_NAME = ButtonOption("Set Name")
+    REMOVE_SEED = ButtonOption("Remove Seed")
+    FACTORY_RESET = ButtonOption("Factory Reset Card")
+
+    def run(self):
+        self.controller.smartcard_backend_preference = "keycard"
+        button_data = [
+            self.IMPORT_SEED,
+            self.EXPORT_XPUB,
+            self.LOAD_DESCRIPTOR,
+            self.LOAD_PSBT,
+            self.CHANGE_PIN,
+            self.CHANGE_PUK,
+            self.UNBLOCK_PIN,
+            self.SET_NAME,
+            self.REMOVE_SEED,
+            self.FACTORY_RESET,
+        ]
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title="KeyCard",
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        elif button_data[selected_menu_num] == self.IMPORT_SEED:
+            return Destination(ToolsSatochipImportSeedView)
+
+        elif button_data[selected_menu_num] == self.EXPORT_XPUB:
+            return Destination(SatochipExportXpubSigTypeView)
+
+        elif button_data[selected_menu_num] == self.LOAD_DESCRIPTOR:
+            return Destination(SatochipLoadDescriptorScriptTypeView)
+
+        elif button_data[selected_menu_num] == self.LOAD_PSBT:
+            return Destination(ToolsSatochipLoadPsbtView)
+
+        elif button_data[selected_menu_num] == self.CHANGE_PIN:
+            return Destination(ToolsKeycardChangePinView)
+
+        elif button_data[selected_menu_num] == self.CHANGE_PUK:
+            return Destination(ToolsKeycardChangePukView)
+
+        elif button_data[selected_menu_num] == self.UNBLOCK_PIN:
+            return Destination(ToolsKeycardUnblockPinView)
+
+        elif button_data[selected_menu_num] == self.SET_NAME:
+            return Destination(ToolsKeycardSetNameView)
+
+        elif button_data[selected_menu_num] == self.REMOVE_SEED:
+            return Destination(ToolsKeycardRemoveSeedView)
+
+        elif button_data[selected_menu_num] == self.FACTORY_RESET:
+            return Destination(ToolsKeycardFactoryResetView)
+
+
+class ToolsKeycardChangePinView(View):
+    def run(self):
+        connector = seedkeeper_utils.init_satochip(
+            self,
+            init_card_filter=["satochip"],
+            backend_preference="keycard",
+        )
+        if not connector:
+            return Destination(BackStackView)
+
+        new_pin_str = seedkeeper_utils.prompt_for_pin(self, "New PIN")
+        if new_pin_str is None:
+            return Destination(BackStackView)
+
+        new_pin = list(new_pin_str.encode("utf-8"))
+        _response, sw1, sw2 = connector.card_change_PIN(0, connector.pin, new_pin)
+        if sw1 == 0x90 and sw2 == 0x00:
+            self.controller.Satochip_PIN = new_pin
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Success",
+                status_headline=None,
+                text="PIN Updated",
+                show_back_button=False,
+            )
+        else:
+            self.run_screen(
+                WarningScreen,
+                title="Failed",
+                status_headline=None,
+                text="PIN update failed",
+                show_back_button=True,
+            )
+        return Destination(MainMenuView)
+
+
+class ToolsKeycardChangePukView(View):
+    def run(self):
+        connector = seedkeeper_utils.init_satochip(
+            self,
+            init_card_filter=["satochip"],
+            backend_preference="keycard",
+        )
+        if not connector:
+            return Destination(BackStackView)
+
+        ret = seed_screens.SeedAddPassphraseScreen(title="New PUK").display()
+        if "is_back_button" in ret:
+            return Destination(BackStackView)
+
+        new_puk_str = ret.get("passphrase", "")
+        if len(new_puk_str) < 4:
+            self.run_screen(
+                WarningScreen,
+                title="Invalid PUK",
+                status_headline=None,
+                text="PUK must be at least 4 chars",
+                show_back_button=True,
+            )
+            return Destination(BackStackView)
+
+        _response, sw1, sw2 = connector.card_change_PUK(0, [], list(new_puk_str.encode("utf-8")))
+        if sw1 == 0x90 and sw2 == 0x00:
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Success",
+                status_headline=None,
+                text="PUK Updated",
+                show_back_button=False,
+            )
+        else:
+            self.run_screen(
+                WarningScreen,
+                title="Failed",
+                status_headline=None,
+                text="PUK update failed",
+                show_back_button=True,
+            )
+        return Destination(MainMenuView)
+
+
+class ToolsKeycardUnblockPinView(View):
+    def run(self):
+        connector = seedkeeper_utils.init_satochip(
+            self,
+            init_card_filter=["satochip"],
+            require_pin=False,
+            backend_preference="keycard",
+        )
+        if not connector:
+            return Destination(BackStackView)
+
+        puk_ret = seed_screens.SeedAddPassphraseScreen(title="PUK").display()
+        if "is_back_button" in puk_ret:
+            return Destination(BackStackView)
+        puk_str = puk_ret.get("passphrase", "")
+        if len(puk_str) < 4:
+            self.run_screen(
+                WarningScreen,
+                title="Invalid PUK",
+                status_headline=None,
+                text="PUK must be at least 4 chars",
+                show_back_button=True,
+            )
+            return Destination(BackStackView)
+
+        new_pin_str = seedkeeper_utils.prompt_for_pin(self, "New PIN")
+        if new_pin_str is None:
+            return Destination(BackStackView)
+
+        _response, sw1, sw2 = connector.card_unblock_PIN(
+            0,
+            list(puk_str.encode("utf-8")),
+            list(new_pin_str.encode("utf-8")),
+        )
+        if sw1 == 0x90 and sw2 == 0x00:
+            self.controller.Satochip_PIN = list(new_pin_str.encode("utf-8"))
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Success",
+                status_headline=None,
+                text="PIN Unblocked",
+                show_back_button=False,
+            )
+        else:
+            self.run_screen(
+                WarningScreen,
+                title="Failed",
+                status_headline=None,
+                text="PIN unblock failed",
+                show_back_button=True,
+            )
+        return Destination(MainMenuView)
+
+
+class ToolsKeycardSetNameView(View):
+    def run(self):
+        connector = seedkeeper_utils.init_satochip(
+            self,
+            init_card_filter=["satochip"],
+            backend_preference="keycard",
+        )
+        if not connector:
+            return Destination(BackStackView)
+
+        ret = seed_screens.SeedAddPassphraseScreen(title="New Name").display()
+        if "is_back_button" in ret:
+            return Destination(BackStackView)
+        label = ret.get("passphrase", "")
+
+        _response, sw1, sw2 = connector.card_set_label(label)
+        if sw1 == 0x90 and sw2 == 0x00:
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Success",
+                status_headline=None,
+                text="Name Updated",
+                show_back_button=False,
+            )
+        else:
+            self.run_screen(
+                WarningScreen,
+                title="Failed",
+                status_headline=None,
+                text="Name update failed",
+                show_back_button=True,
+            )
+        return Destination(MainMenuView)
+
+
+class ToolsKeycardRemoveSeedView(View):
+    def run(self):
+        connector = seedkeeper_utils.init_satochip(
+            self,
+            init_card_filter=["satochip"],
+            backend_preference="keycard",
+        )
+        if not connector:
+            return Destination(BackStackView)
+
+        ret = self.run_screen(
+            DireWarningScreen,
+            title="Warning",
+            status_headline=None,
+            text="Remove key from card?",
+            show_back_button=True,
+            button_data=[ButtonOption("Remove")],
+        )
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        _response, sw1, sw2 = connector.card_remove_key()
+        if sw1 == 0x90 and sw2 == 0x00:
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Success",
+                status_headline=None,
+                text="Seed Removed",
+                show_back_button=False,
+            )
+        else:
+            self.run_screen(
+                WarningScreen,
+                title="Failed",
+                status_headline=None,
+                text="Remove seed failed",
+                show_back_button=True,
+            )
+        return Destination(MainMenuView)
+
+
+class ToolsKeycardFactoryResetView(View):
+    def run(self):
+        connector = seedkeeper_utils.init_satochip(
+            self,
+            init_card_filter=["satochip"],
+            backend_preference="keycard",
+        )
+        if not connector:
+            return Destination(BackStackView)
+
+        ret = self.run_screen(
+            DireWarningScreen,
+            title="Warning",
+            status_headline=None,
+            text="Factory reset without backup loses funds.",
+            show_back_button=True,
+            button_data=[ButtonOption("Reset")],
+        )
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        _response, sw1, sw2 = connector.card_reset_factory()
+        if sw1 == 0x90 and sw2 == 0x00:
+            self.controller.Satochip_PIN = None
+            self.controller.Satochip_Connector = None
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Success",
+                status_headline=None,
+                text="Card Factory Reset",
+                show_back_button=False,
+            )
+        else:
+            self.run_screen(
+                WarningScreen,
+                title="Failed",
+                status_headline=None,
+                text="Factory reset failed",
+                show_back_button=True,
+            )
+        return Destination(MainMenuView)
 
 
 class ToolsSatochipLoadPsbtView(View):

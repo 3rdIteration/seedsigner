@@ -161,7 +161,10 @@ class SeedSelectSeedView(View):
         for seed in seeds:
             button_str = seed.get_fingerprint(self.settings.get_value(SettingsConstants.SETTING__NETWORK))
             button_data.append(ButtonOption(button_str, SeedSignerIconConstants.FINGERPRINT, icon_color="blue"))
-        if self.flow in [Controller.FLOW__SIGN_MESSAGE, Controller.FLOW__VERIFY_SINGLESIG_ADDR]:
+        if (
+            self.flow in [Controller.FLOW__SIGN_MESSAGE, Controller.FLOW__VERIFY_SINGLESIG_ADDR]
+            and self.settings.get_value(SettingsConstants.SETTING__SATOCHIP_SUPPORT) == SettingsConstants.OPTION__ENABLED
+        ):
             button_data.append(self.SATOCHIP)
 
         button_data.append(self.SCAN_SEED)

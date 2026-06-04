@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from binascii import b2a_base64
+import hashlib
 import logging
 import os
 import random
@@ -155,6 +156,26 @@ def format_path_string(path: str) -> str:
     if path == "" or path == "m":
         return "m"
     return "m/" + path
+
+
+def _compact_size(value: int) -> bytes:
+    if value < 0xFD:
+        return bytes([value])
+    if value <= 0xFFFF:
+        return b"\xfd" + value.to_bytes(2, "little")
+    if value <= 0xFFFFFFFF:
+        return b"\xfe" + value.to_bytes(4, "little")
+    return b"\xff" + value.to_bytes(8, "little")
+
+
+def _bitcoin_message_digest(message: str) -> bytes:
+    payload = message.encode("utf-8")
+    serialized = (
+        b"\x18Bitcoin Signed Message:\n"
+        + _compact_size(len(payload))
+        + payload
+    )
+    return hashlib.sha256(hashlib.sha256(serialized).digest()).digest()
 
 
 def sign_psbt_with_satochip(psbt: PSBT, connector) -> int:
@@ -327,9 +348,14 @@ def sign_message_with_satochip(derivation_path: str, message: str, connector) ->
     timeout = settings.get_value(SettingsConstants.SETTING__SATOCHIP_MSG_SIGN_TIMEOUT)
     path = format_path_string(derivation_path)
     key, _chaincode = _get_extended_key(connector, path)
+
+    message_payload = message
+    if getattr(connector, "requires_message_digest", False):
+        message_payload = _bitcoin_message_digest(message)
+
     try:
         _resp, sw1, sw2, compsig = _call_with_timeout(
-            connector.card_sign_message, timeout, 0xFF, key, message
+            connector.card_sign_message, timeout, 0xFF, key, message_payload
         )
     except TimeoutError:
         raise Exception("Satochip signing timed out")
