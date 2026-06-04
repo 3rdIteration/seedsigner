@@ -99,6 +99,7 @@ Because this project handles private key material for an air-gapped signer, **se
 | `helpers/mnemonic_generation.py` | `calculate_checksum()` | Temp final word (`wordlist[0]`) appended to caller's list — used by the Keycard generate-mnemonic-visible flow |
 | `helpers/mnemonic_generation.py` | `generate_mnemonic_from_bytes()` etc. | Each word in the returned list is independently allocated via `"".join(w)` |
 | `views/keycard_views.py` | `_capture_via_keyboard()` | BIP-39 word into a per-session list before `wipe_list()` clears it |
+| `views/keycard_views.py` | `_capture_via_hex()` | Words from `bip39.mnemonic_from_bytes` (NGRAVE hex import) copied via `"".join(w)`; entropy `bytearray` wiped in a `finally` |
 
 The SeedSigner SeedQR / SLIP-39 / on-device seed-entry call sites that this table used to track are gone (see "On-device seed handling — removed"). Any **new** code path that looks up a word from a shared wordlist and stores it in a list that could be wiped must follow the same `"".join(word)` pattern and ship a regression test that wipes the list and asserts the global wordlist is still intact (see `tests/test_secure_delete.py::test_full_lifecycle_wordlist_integrity` for an example).
 
@@ -185,6 +186,8 @@ When adding a **new** code path that derives keys or produces deterministic outp
 
 This fork is a **Keycard / SeedKeeper-only** firmware: the on-device seed manager and the legacy PSBT signer were removed. All signing happens via a Status Keycard (or compatible JavaCard applet, e.g. cards initialised via `keycard-shell`). Both Bitcoin (BIP-84 P2WPKH, BIP-137 messages) and Ethereum (legacy / EIP-1559 / typed-data / personal-message) flows live under `Tools > Keycard`; SeedKeeper xprv storage stays under `Cards > SeedKeeper`.
 
+The **Satochip-as-Bitcoin-wallet** flows (on-card PSBT signing, xpub-export-to-coordinator, descriptor load/save, the DIY JavaCard-applet builder) were removed along with the broken `seed_views` / `psbt_views` / `bip38` imports they carried — a reachability sweep from the live menu roots confirmed the whole subtree was already orphaned. The Satochip/SeedKeeper applet is now used **only** as a secret vault (`ToolsSeedkeeper*`: view / save-password / delete / clone secrets, free space). Regression guard: `tests/test_no_broken_view_imports.py`.
+
 ### Bitcoin module layout (added by the keycard-only refactor)
 
 | Path | Responsibility |
@@ -205,7 +208,7 @@ Defaults: account path `m/84'/0'/0'` (`DEFAULT_BTC_ACCOUNT_PATH`), per-address d
 | `src/seedsigner/helpers/ethereum/` | Chain-agnostic primitives: `rlp`, `keccak`, `address` (EIP-55), `tx_legacy` (EIP-155), `tx_eip1559`, `eip712` (exposes `domain_separator`, `message_hash`, `signing_hash`), `personal_sign`, `erc8213` (`compute_calldata_digest`: `keccak256(uint256_be(len) ‖ calldata)`), `ur_codec` (UR `eth-sign-request` / `eth-signature`) |
 | `src/seedsigner/helpers/keycard/` | Card protocol: `commands` (APDU builders: SELECT, PAIR, OPEN_SC, VERIFY_PIN, DERIVE, EXPORT, SIGN, **GENERATE_MNEMONIC**, LOAD_KEY, GENERATE_KEY, FACTORY_RESET, …), `responses` (TLV/DER + `parse_generate_mnemonic`), `crypto` (PBKDF2/AES-CBC/ECDH), `secure_channel`, `client`, `reader` (PC/SC), `secrets` (CSPRNG PIN/PUK/password), `pairing_storage` (AES-GCM blob on microSD), `ui_helpers` (path/pubkey/PIN helpers shared by views) |
 | `src/seedsigner/helpers/keycard_signer.py` | ETH glue: `signing_hash_for(request)` + `compute_v(request, rec_id)` |
-| `src/seedsigner/views/keycard_views.py` | UI: `Tools > Keycard` menu, init/pair/unpair, **on-card Generate (Status applet GENERATE_MNEMONIC → host renders words → user confirms → LOAD_KEY)** + Show-mnemonic-and-import, ETH sign chain (Overview → Details → **ERC-8213 Digest screen** → optional raw-data viewer → Finalize; digest screen shows Calldata Digest for txs with non-empty data, or three pages — EIP-712 Digest + Domain Hash + Message Hash — for typed-data; skipped for empty calldata and personal-sign), **Bitcoin sub-menu** (see above) |
+| `src/seedsigner/views/keycard_views.py` | UI: `Tools > Keycard` menu, init/pair/unpair, **on-card Generate (Status applet GENERATE_MNEMONIC → host renders words → user confirms → LOAD_KEY)** + Show-mnemonic-and-import + **Import existing seed (SeedQR / 12-24 words / NGRAVE hex)** + **Seedkeeper backup at creation (this card or swap to a separate card)**, ETH sign chain (Overview → Details → **ERC-8213 Digest screen** → optional raw-data viewer → Finalize; digest screen shows Calldata Digest for txs with non-empty data, or three pages — EIP-712 Digest + Domain Hash + Message Hash — for typed-data; skipped for empty calldata and personal-sign), **Bitcoin sub-menu** (see above) |
 | `scripts/keycard_smoke_test.py` | Hardware-only end-to-end check (SELECT → PAIR → SC → VERIFY_PIN → DERIVE → EXPORT → SIGN+recover; `--btc` adds export_xpub + BIP-137 sign_message) |
 
 ### Setup chain: Generate vs Show-mnemonic
@@ -219,8 +222,20 @@ entropy comes from and whether the host ever displays the words.
 |----------|---------------------------|-----------------|-------------|
 | **GENERATE MNEMONIC** (on-card) | Status applet's TRNG | No (default) — words exist only as indices in transit; host derives seed, sends LOAD_KEY, then `wipe_list()`s the buffer | Air-gapped, no paper backup desired |
 | **Show + Import** | Host (`helpers/mnemonic_generation.generate_mnemonic_from_bytes`) | Yes — user copies the 12/24 words to paper, then confirms via quiz before LOAD_KEY | Air-gapped, user wants a paper backup |
+| **Import existing seed** (`ToolsKeycardImportSeedView`) | Off-device | n/a — user supplies it | Restoring a known seed: **Scan SeedQR**, **Type 12/24 words**, or **Import hex (NGRAVE)** |
 
-Both paths scrub `controller.pending_keycard_mnemonic` / `pending_keycard_passphrase` on every terminal branch (success, back, error) and on `MainMenuView` re-entry. Regression cover: `tests/test_keycard_setup_chain.py`.
+The **Import hex (NGRAVE)** source takes the NGRAVE "Perfect Key" — the 256-bit BIP-39 *entropy* (64 hex chars = 24 words; 32 hex = 12 words) — via QR scan or the dedicated `0-9 a-f` keyboard (`KeycardHexEntryScreen`), runs it through `bip39.mnemonic_from_bytes`, then joins the **same** validate → derive seed64 → `LOAD_KEY P1=0x03` pipeline as the mnemonic import. The entropy buffer is wiped and words are independent copies (never `WORDLIST` references).
+
+All paths scrub `controller.pending_keycard_mnemonic` / `pending_keycard_passphrase` on every terminal branch (success, back, error) and on `MainMenuView` re-entry. Regression cover: `tests/test_keycard_setup_chain.py`, `tests/test_keycard_hex_import.py`.
+
+### SeedKeeper backup at key creation
+
+Card creation is the **only** moment the host holds the seed — once `LOAD_KEY` seals it in the Keycard it can only be signed with, never read back. So immediately after `LOAD_KEY` (for both the on-card Generate and the Import paths) `ToolsKeycardSeedkeeperOfferView` offers to mirror the seed onto a Seedkeeper applet as a typed "BIP39 mnemonic" (iOS-compatible) or "Password" secret. Two destinations:
+
+- **This card** — a Seedkeeper applet co-resident on the same physical card (only offered when `probe_installed_applets` finds one; note the iOS-coexistence crash below).
+- **Another card** — `ToolsKeycardSeedkeeperSwapInsertView` prompts the user to swap in a *separate* Seedkeeper card, re-probes, then saves. The pending mnemonic survives the swap on the controller and is wiped on every terminal branch + `MainMenuView` re-entry. Treat seizure mid-swap as a likely seed compromise (wipe is best-effort).
+
+There is deliberately **no** path to read the seed back off the Keycard later — the backup window is creation-time only.
 
 ### Protocol compatibility — DO NOT change without coordinating with existing cards
 
