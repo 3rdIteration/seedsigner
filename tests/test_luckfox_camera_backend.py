@@ -47,6 +47,7 @@ def test_camera_luckfox_stream_prefers_v4l2(monkeypatch):
     monkeypatch.setattr("seedsigner.hardware.pivideostream.VideoStream", FakeVideoStream)
 
     camera_class = _get_camera_class()
+    monkeypatch.setattr(camera_class, "_is_qr_density_boost_enabled", staticmethod(lambda: False))
     camera = camera_class.__new__(camera_class)
     camera._video_stream = None
     camera._camera_index = 0
@@ -80,6 +81,7 @@ def test_camera_rpi_stream_uses_io_config(monkeypatch):
     monkeypatch.setattr("seedsigner.hardware.pivideostream.VideoStream", FakeVideoStream)
 
     camera_class = _get_camera_class()
+    monkeypatch.setattr(camera_class, "_is_qr_density_boost_enabled", staticmethod(lambda: False))
     camera = camera_class.__new__(camera_class)
     camera._video_stream = None
     camera._camera_index = 0
@@ -96,6 +98,54 @@ def test_camera_rpi_stream_uses_io_config(monkeypatch):
     assert captured["resolution"] == (1280, 720)
     assert captured["framerate"] == 4
     assert captured["started"] is True
+
+
+def test_camera_rpi_stream_qr_density_boost_overrides_io_config(monkeypatch):
+    """When the Dense QR scan toggle is on, capture jumps to 480x480@8 and
+    forces a short fixed exposure on both libcamera (Picamera2) and mmal
+    (legacy PiCamera) stacks regardless of the io_config defaults."""
+    captured = {}
+
+    class FakeVideoStream:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+        def start(self):
+            captured["started"] = True
+
+    monkeypatch.setattr("seedsigner.hardware.pivideostream.VideoStream", FakeVideoStream)
+
+    camera_class = _get_camera_class()
+    monkeypatch.setattr(camera_class, "_is_qr_density_boost_enabled", staticmethod(lambda: True))
+    camera = camera_class.__new__(camera_class)
+    camera._video_stream = None
+    camera._camera_index = 0
+    camera._runtime_profile = "rpi_40"
+    camera._hardware_camera_config = {
+        "resolution": (480, 480),
+        "framerate": 4,
+    }
+
+    camera.start_video_stream_mode(resolution=(512, 384), framerate=12, format="bgr")
+
+    assert captured["resolution"] == (480, 480)
+    assert captured["framerate"] == 8
+    picamera2_controls = captured["camera_config"].get("picamera2_controls")
+    assert picamera2_controls is not None
+    assert picamera2_controls["AeEnable"] is False
+    assert picamera2_controls["ExposureTime"] == 5000
+    assert picamera2_controls["AnalogueGain"] == 2.0
+    assert picamera2_controls["NoiseReductionMode"] == 0
+    assert picamera2_controls["AfMode"] == 2
+    legacy_controls = captured["camera_config"].get("picamera_legacy_controls")
+    assert legacy_controls is not None
+    assert legacy_controls["shutter_speed"] == 5000
+    assert "exposure_compensation" not in legacy_controls
+    assert legacy_controls["drc_strength"] == "high"
+    assert legacy_controls["exposure_mode"] == "off"
+    assert legacy_controls["iso"] == 100
+    assert legacy_controls["awb_mode"] == "off"
+    assert legacy_controls["video_denoise"] is False
 
 
 def test_v4l2_frame_size_calculation():

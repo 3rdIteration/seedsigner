@@ -42,6 +42,93 @@ LUCKFOX_DEVICE_FALLBACKS = ("/dev/video12", "/dev/video11", "/dev/video13", "/de
 MIN_LUCKFOX_CAPTURE_AREA = 320 * 240
 PICAMERA2_PREVIEW_RESOLUTION = (240, 240)
 
+DIAG_BOOT_DEVICE_CANDIDATES = (
+    "/dev/disk/by-label/SEEDSIGNROS",
+    "/dev/disk/by-uuid/BA5E-BA11",
+    "/dev/mmcblk0p1",
+    "/dev/mmcblk1p1",
+)
+DIAG_LOG_FILENAME = "camera_diag.log"
+DIAG_MAX_BYTES = 64 * 1024
+
+
+def _probe_hardware_info() -> dict:
+    info = {"picamera2_available": PICAMERA2_AVAILABLE,
+            "picamera_available": PICAMERA_AVAILABLE,
+            "cv2_available": cv2 is not None}
+    try:
+        with open("/proc/device-tree/model", "rb") as f:
+            info["device_tree_model"] = f.read().decode(errors="replace").strip("\x00\n ")
+    except Exception:
+        info["device_tree_model"] = None
+    try:
+        cpu = {}
+        with open("/proc/cpuinfo", "r") as f:
+            for line in f:
+                if ":" not in line:
+                    continue
+                key, value = line.split(":", 1)
+                key = key.strip()
+                if key in {"model name", "Hardware", "Revision", "Serial", "Model"}:
+                    cpu[key] = value.strip()
+        info["cpuinfo"] = cpu
+    except Exception:
+        info["cpuinfo"] = {}
+    try:
+        with open("/proc/meminfo", "r") as f:
+            for line in f:
+                if line.startswith("MemTotal:"):
+                    info["mem_total"] = line.split(":", 1)[1].strip()
+                    break
+    except Exception:
+        pass
+    return info
+
+
+def _emit_camera_diagnostic(payload: dict) -> None:
+    """Best-effort append-to-FAT-boot-partition so the user can read the log on
+    a host after pulling the SD. Silent no-op when not running on a Pi with a
+    SeedSigner boot partition mountable as vfat."""
+    import json
+    if os.name == "nt":
+        return
+    boot_dev = next((d for d in DIAG_BOOT_DEVICE_CANDIDATES if os.path.exists(d)), None)
+    if not boot_dev:
+        return
+    mountpoint = "/tmp/seedsigner_boot_diag"
+    try:
+        os.makedirs(mountpoint, exist_ok=True)
+    except Exception:
+        return
+    try:
+        result = subprocess.run(
+            ["mount", "-t", "vfat", "-o", "rw,sync", boot_dev, mountpoint],
+            capture_output=True, text=True, check=False, timeout=5,
+        )
+        if result.returncode != 0:
+            logger.info("Camera diag: mount %s -> %s failed (%s)",
+                        boot_dev, mountpoint, result.stderr.strip())
+            return
+        try:
+            target = os.path.join(mountpoint, DIAG_LOG_FILENAME)
+            try:
+                if os.path.getsize(target) > DIAG_MAX_BYTES:
+                    with open(target, "r") as f:
+                        tail = f.readlines()[-50:]
+                    with open(target, "w") as f:
+                        f.writelines(tail)
+            except FileNotFoundError:
+                pass
+            except Exception:
+                logger.exception("Camera diag: failed to trim log")
+            with open(target, "a") as f:
+                f.write(json.dumps(payload, default=str, sort_keys=True) + "\n")
+            subprocess.run(["sync"], check=False, timeout=5)
+        finally:
+            subprocess.run(["umount", mountpoint], check=False, timeout=5)
+    except Exception:
+        logger.exception("Camera diag: write failed")
+
 
 class VideoStream:
     """Continuously capture frames in a background thread."""
@@ -83,9 +170,16 @@ class VideoStream:
 
         if PICAMERA2_AVAILABLE and not self._prefer_v4l2:
             self.camera = Picamera2()
+            # FrameRate must go through create_video_configuration because it
+            # influences sensor mode selection. Everything else (AeEnable,
+            # ExposureTime, AnalogueGain, AfMode, …) is a runtime control and
+            # libcamera ignores those if you only pass them to configure(); they
+            # have to be applied via set_controls() after start().
+            raw_controls = dict(self._camera_config.get("picamera2_controls") or {})
+            config_framerate = raw_controls.pop("FrameRate", float(framerate))
             config_kwargs = {
                 "main": {"size": resolution, "format": "RGB888"},
-                "controls": {"FrameRate": float(framerate)},
+                "controls": {"FrameRate": float(config_framerate)},
             }
             if resolution[0] >= PICAMERA2_PREVIEW_RESOLUTION[0] and resolution[1] >= PICAMERA2_PREVIEW_RESOLUTION[1]:
                 # Keep decode on the main stream, but expose a smaller luma-only
@@ -107,6 +201,39 @@ class VideoStream:
                     raise
             self.camera.configure(config)
             self.camera.start()
+            set_controls_error = None
+            if raw_controls:
+                # Best-effort: libcamera silently drops controls the sensor
+                # doesn't support (e.g. AfMode on Module 1/2). We log but don't
+                # fail — the camera is still usable with defaults.
+                try:
+                    self.camera.set_controls(raw_controls)
+                except Exception as exc:
+                    logger.exception("Failed to apply Picamera2 runtime controls: %s", raw_controls)
+                    set_controls_error = repr(exc)
+            metadata_after_start = None
+            try:
+                metadata_after_start = self.camera.capture_metadata()
+            except Exception as exc:
+                metadata_after_start = {"_error": repr(exc)}
+            camera_controls_supported = None
+            try:
+                camera_controls_supported = self.camera.camera_controls
+            except Exception:
+                pass
+            _emit_camera_diagnostic({
+                "ts": time.time(),
+                "stage": "picamera2_init",
+                "hardware": _probe_hardware_info(),
+                "configured_resolution": list(resolution),
+                "configured_framerate": framerate,
+                "config_framerate_used": float(config_framerate),
+                "runtime_controls_requested": raw_controls,
+                "runtime_controls_set_error": set_controls_error,
+                "metadata_after_start": metadata_after_start,
+                "camera_controls_supported": camera_controls_supported,
+                "has_lores_stream": self._picamera2_has_lores,
+            })
             self.use_picamera2 = True
             return
 
@@ -117,6 +244,63 @@ class VideoStream:
                 logger.warning("PiCamera init failed; retrying once after brief delay")
                 time.sleep(0.5)
                 self.camera = PiCamera(resolution=resolution, framerate=framerate, **kwargs)
+            # Legacy PiCamera (Pi Zero v1 / ARMv6) uses object attributes for
+            # exposure/gain/awb tuning. Critical ordering: set shutter_speed
+            # and iso first, wait long enough for the sensor's AE to converge
+            # onto our request, THEN flip exposure_mode='off' to *lock* it.
+            # If exposure_mode='off' is set before the warmup, the firmware
+            # clamps to whatever it had — observed 10000µs even when 4000µs
+            # was requested.
+            legacy_controls = self._camera_config.get("picamera_legacy_controls") or {}
+            lock_keys = {"exposure_mode", "awb_mode"}
+            awb_gains_value = legacy_controls.get("awb_gains")
+            warmup_attrs = {k: v for k, v in legacy_controls.items()
+                            if k not in lock_keys and k != "awb_gains"}
+            applied = {}
+            errors = {}
+            for attr, value in warmup_attrs.items():
+                try:
+                    setattr(self.camera, attr, value)
+                    applied[attr] = value
+                except Exception as exc:
+                    errors[attr] = repr(exc)
+                    logger.exception("Failed to set PiCamera attr %s=%r", attr, value)
+            time.sleep(2.5)
+            pre_lock_readback = self._snapshot_picamera_state()
+            # Now lock: exposure_mode='off' freezes the converged exposure;
+            # awb_mode='off' + our gains freezes WB at our reproducible target.
+            if "exposure_mode" in legacy_controls:
+                try:
+                    self.camera.exposure_mode = legacy_controls["exposure_mode"]
+                    applied["exposure_mode"] = legacy_controls["exposure_mode"]
+                except Exception as exc:
+                    errors["exposure_mode"] = repr(exc)
+            if "awb_mode" in legacy_controls:
+                try:
+                    self.camera.awb_mode = legacy_controls["awb_mode"]
+                    applied["awb_mode"] = legacy_controls["awb_mode"]
+                except Exception as exc:
+                    errors["awb_mode"] = repr(exc)
+            if awb_gains_value is not None:
+                try:
+                    self.camera.awb_gains = tuple(awb_gains_value)
+                    applied["awb_gains"] = awb_gains_value
+                except Exception as exc:
+                    errors["awb_gains"] = repr(exc)
+            time.sleep(0.5)
+            post_lock_readback = self._snapshot_picamera_state()
+            _emit_camera_diagnostic({
+                "ts": time.time(),
+                "stage": "picamera_legacy_init",
+                "hardware": _probe_hardware_info(),
+                "configured_resolution": list(resolution),
+                "configured_framerate": framerate,
+                "legacy_controls_requested": legacy_controls,
+                "legacy_controls_applied": applied,
+                "legacy_controls_errors": errors,
+                "pre_lock_readback": pre_lock_readback,
+                "post_lock_readback": post_lock_readback,
+            })
             self.raw_capture = PiRGBArray(self.camera, size=resolution)
             self.stream = self.camera.capture_continuous(
                 self.raw_capture,
@@ -136,6 +320,21 @@ class VideoStream:
             )
 
         self.camera = self._open_cv_capture()
+
+    def _snapshot_picamera_state(self) -> dict:
+        readback = {}
+        for attr in (
+            "resolution", "framerate", "shutter_speed", "exposure_speed",
+            "exposure_mode", "iso", "analog_gain", "digital_gain",
+            "awb_mode", "awb_gains", "video_denoise", "image_denoise",
+            "sharpness", "contrast", "brightness", "saturation",
+            "exposure_compensation", "drc_strength",
+        ):
+            try:
+                readback[attr] = getattr(self.camera, attr, "<missing>")
+            except Exception as exc:
+                readback[attr] = f"<error: {exc!r}>"
+        return readback
 
     def _is_v4l2_available(self) -> bool:
         try:

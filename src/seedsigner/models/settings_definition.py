@@ -416,6 +416,7 @@ class SettingsConstants:
     SETTING__PASSPHRASE = "passphrase"
     SETTING__CAMERA_ROTATION = "camera_rotation"
     SETTING__CAMERA_DEVICE = "camera_device"
+    SETTING__QR_DENSITY_BOOST = "qr_density_boost"
     SETTING__COMPACT_SEEDQR = "compact_seedqr"
     SETTING__BIP85_CHILD_SEEDS = "bip85_child_seeds"
     SETTING__SLIP39_SEEDS = "slip39_seeds"
@@ -910,6 +911,14 @@ class SettingsDefinition:
                       visibility=SettingsConstants.VISIBILITY__ADVANCED,
                       selection_options=SettingsConstants.ALL_CAMERA_ROTATIONS,
                       default_value=SettingsConstants.CAMERA_ROTATION__0),
+
+        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
+                      attr_name=SettingsConstants.SETTING__QR_DENSITY_BOOST,
+                      abbreviated_name="qrboost",
+                      display_name=_mft("Dense QR scan"),
+                      help_text=_mft("Higher capture res + sharpening for dense QR"),
+                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
+                      default_value=SettingsConstants.OPTION__ENABLED),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
                       attr_name=SettingsConstants.SETTING__COMPACT_SEEDQR,

@@ -479,15 +479,118 @@ class DecodeQR:
         if image is None:
             return None
 
+        # 1) Direct pyzbar pass — happy path, no preprocessing cost.
         barcodes = pyzbar.decode(image, symbols=[ZBarSymbol.QRCODE], binary=is_binary)
-
-        # if barcodes:
-            # print("--------------- extract_qr_data ---------------")
-            # print(barcodes)
-
         for barcode in barcodes:
-            # Only pull and return the first barcode
             return barcode.data
+
+        # The extra passes below are gated on the "Dense QR scan" user setting so
+        # devices that decode fine on pyzbar alone don't pay the per-frame cost.
+        if not DecodeQR._density_boost_enabled():
+            return None
+
+        # 2) Retry after an unsharp mask — recovers dense / slightly-blurry frames.
+        sharpened = DecodeQR._maybe_sharpen(image)
+        if sharpened is not None:
+            barcodes = pyzbar.decode(sharpened, symbols=[ZBarSymbol.QRCODE], binary=is_binary)
+            for barcode in barcodes:
+                return barcode.data
+
+        # 3) Retry after histogram equalization — recovers over-exposed frames
+        #    where bright modules clip and pyzbar loses the contrast pattern.
+        equalized = DecodeQR._maybe_equalize(image)
+        if equalized is not None:
+            barcodes = pyzbar.decode(equalized, symbols=[ZBarSymbol.QRCODE], binary=is_binary)
+            for barcode in barcodes:
+                return barcode.data
+
+        # 4) Optional zxing-cpp fallback — only if the package is installed.
+        return DecodeQR._zxing_fallback(image, is_binary=is_binary)
+
+
+    @staticmethod
+    def _density_boost_enabled() -> bool:
+        try:
+            from seedsigner.models.settings import Settings
+            return (
+                Settings.get_instance().get_value(SettingsConstants.SETTING__QR_DENSITY_BOOST)
+                == SettingsConstants.OPTION__ENABLED
+            )
+        except Exception:
+            return False
+
+
+    @staticmethod
+    def _maybe_sharpen(image):
+        try:
+            from PIL import Image as PILImage, ImageFilter
+        except Exception:
+            return None
+        if isinstance(image, PILImage.Image):
+            pil = image
+        else:
+            ndim = getattr(image, "ndim", None)
+            if ndim is None:
+                return None
+            try:
+                if ndim == 2:
+                    pil = PILImage.fromarray(image, "L")
+                else:
+                    pil = PILImage.fromarray(image, "RGB")
+            except Exception:
+                return None
+        try:
+            return pil.filter(ImageFilter.UnsharpMask(radius=1.0, percent=180, threshold=2))
+        except Exception:
+            return None
+
+
+    @staticmethod
+    def _maybe_equalize(image):
+        try:
+            from PIL import Image as PILImage, ImageOps
+        except Exception:
+            return None
+        if isinstance(image, PILImage.Image):
+            pil = image
+        else:
+            ndim = getattr(image, "ndim", None)
+            if ndim is None:
+                return None
+            try:
+                if ndim == 2:
+                    pil = PILImage.fromarray(image, "L")
+                else:
+                    pil = PILImage.fromarray(image, "RGB")
+            except Exception:
+                return None
+        try:
+            if pil.mode != "L":
+                pil = pil.convert("L")
+            return ImageOps.equalize(pil)
+        except Exception:
+            return None
+
+
+    @staticmethod
+    def _zxing_fallback(image, is_binary: bool):
+        try:
+            import zxingcpp  # type: ignore
+        except Exception:
+            return None
+        try:
+            results = zxingcpp.read_barcodes(image, formats=zxingcpp.BarcodeFormat.QRCode)
+        except Exception:
+            return None
+        if not results:
+            return None
+        first = results[0]
+        if is_binary and getattr(first, "bytes", None):
+            return bytes(first.bytes)
+        text = getattr(first, "text", None)
+        if text is None:
+            return None
+        return text.encode() if is_binary else text
 
 
     @staticmethod

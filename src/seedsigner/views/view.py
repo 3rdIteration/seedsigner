@@ -268,7 +268,12 @@ class MainMenuView(View):
             return Destination(MainMenuView)
 
         if button_data[selected_menu_num] == self.SCAN:
-            return Destination(ScanTargetSelectView)
+            # Keycard-only firmware: no "scan with" chooser. HomeScanView
+            # checks the reader up front ("Insert card" if absent), pairs
+            # silently, then hands off to the generic scanner which routes
+            # PSBT -> Keycard BTC, eth-sign-request -> Keycard ETH.
+            from seedsigner.views.scan_views import HomeScanView
+            return Destination(HomeScanView)
 
         elif button_data[selected_menu_num] == self.CARDS:
             return Destination(CardsMenuView)
@@ -280,105 +285,6 @@ class MainMenuView(View):
         elif button_data[selected_menu_num] == self.SETTINGS:
             from seedsigner.views.settings_views import SettingsMenuView
             return Destination(SettingsMenuView)
-
-
-
-class ScanTargetSelectView(View):
-    """
-    Two-option chooser shown between MainMenuView.SCAN and the camera.
-    Lets the user pick whether the scan should be handled by the default
-    SeedSigner decoder (BTC/PSBT/seeds/settings/etc.) or by the Keycard
-    Ethereum sign-request flow.
-
-    Keycard is always tappable; the right-icon flips between CHECK (card
-    present, applet installed, pairing saved) and INFO (needs setup) so
-    the user gets a hint before tapping.
-    """
-
-    SEEDSIGNER = ButtonOption("SeedSigner", SeedSignerIconConstants.SCAN)
-    KEYCARD_LABEL = "Keycard (Ethereum)"
-
-    def run(self):
-        from seedsigner.gui.screens.screen import ButtonListScreen
-        from seedsigner.hardware.buttons import HardwareButtons
-        from seedsigner.helpers.card_probe import probe_installed_applets
-
-        controller = self.controller
-        try:
-            hw_inputs = HardwareButtons.get_instance()
-        except Exception:
-            hw_inputs = None
-
-        # Same box pattern as CardsMenuView: the listener flag is the
-        # ground truth for "card-inserted vs back press", since the two
-        # return codes both happen to be 1000.
-        refresh_requested = [False]
-
-        def _on_card_inserted(*_args, **_kwargs):
-            refresh_requested[0] = True
-            if hw_inputs is not None:
-                try:
-                    hw_inputs.trigger_override()
-                except Exception:
-                    pass
-
-        controller.register_card_inserted_listener(_on_card_inserted)
-        try:
-            while True:
-                refresh_requested[0] = False
-                try:
-                    state = probe_installed_applets(controller)
-                except Exception:
-                    state = None
-                try:
-                    has_auth = controller.has_any_keycard_auth()
-                except Exception:
-                    has_auth = False
-                keycard_ready = bool(
-                    state and state.present and state.keycard_installed and has_auth
-                )
-
-                keycard_btn = ButtonOption(
-                    self.KEYCARD_LABEL,
-                    right_icon_name=(
-                        SeedSignerIconConstants.CHECK if keycard_ready
-                        else SeedSignerIconConstants.INFO
-                    ),
-                )
-                button_data = [self.SEEDSIGNER, keycard_btn]
-
-                selected = self.run_screen(
-                    ButtonListScreen,
-                    title=_("Scan with"),
-                    is_button_text_centered=False,
-                    button_data=button_data,
-                )
-
-                if selected == RET_CODE__POWER_BUTTON:
-                    return Destination(PowerOptionsView)
-                if selected == RET_CODE__DISPLAY_TOGGLE:
-                    return Destination(ScanTargetSelectView)
-
-                if refresh_requested[0]:
-                    continue
-
-                if selected == RET_CODE__BACK_BUTTON:
-                    return Destination(BackStackView)
-
-                if button_data[selected] == self.SEEDSIGNER:
-                    # No skip_current_view: ScanView's wrong-QR-type error
-                    # path pops the back stack, so the user lands back on
-                    # this chooser instead of MainMenu.
-                    from seedsigner.views.scan_views import ScanView
-                    return Destination(ScanView)
-
-                # Keycard: ToolsKeycardSignEthStartView handles both
-                # "no auth → pair view" and "auth → scan", both with
-                # skip_current_view=True internally.
-                from seedsigner.views.keycard_views import ToolsKeycardSignEthStartView
-                return Destination(ToolsKeycardSignEthStartView, skip_current_view=True)
-        finally:
-            controller.unregister_card_inserted_listener(_on_card_inserted)
 
 
 

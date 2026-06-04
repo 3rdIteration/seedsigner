@@ -3,12 +3,11 @@
 The legacy SeedSigner scan flow (SeedQR / SLIP-39 / WIF / BIP38 /
 Encrypted QR / wallet descriptor / address / sign-message / time / aezeed
 ambiguity) was bound to the on-device seed manager. With the keycard-only
-firmware the only QR payloads we still consume here are settings QRs and
-PSBTs. Bitcoin signing is wired in once the new Tools > Keycard > Bitcoin
-flow lands (commit C10); for now PSBT scanning surfaces a stub error.
+firmware the payloads we still consume here are settings QRs, PSBTs (BTC
+Keycard sign flow) and UR ``eth-sign-request`` (ETH Keycard sign flow).
 
-The ``ScanView`` base class is also reused by ``ScanEthSignRequestView`` in
-``keycard_views.py`` (UR ``eth-sign-request``).
+The ``ScanView`` base class is also reused by ``ScanEthSignRequestView`` and
+``ToolsKeycardBtcSignPsbtScanView`` in ``keycard_views.py``.
 """
 
 import logging
@@ -18,17 +17,73 @@ from gettext import gettext as _
 
 from seedsigner.gui.screens.screen import (
     RET_CODE__BACK_BUTTON, ButtonListScreen, ButtonOption,
-    LargeIconStatusScreen, WarningScreen,
+    ErrorScreen, LargeIconStatusScreen, WarningScreen,
 )
 from seedsigner.helpers.l10n import mark_for_translation as _mft
 from seedsigner.models.decode_qr import DecodeQR, DecodeQRStatus
 from seedsigner.models.settings import SettingsConstants
 from seedsigner.views.view import (
-    BackStackView, ErrorView, MainMenuView, NotYetImplementedView, View,
+    BackStackView, ErrorView, MainMenuView, View,
     Destination,
 )
 
 logger = logging.getLogger(__name__)
+
+
+class HomeScanView(View):
+    """Home > Scan entry point for the keycard-only firmware.
+
+    There is no "scan with" chooser any more: every payload we can act on
+    needs a card (PSBT -> Keycard BTC sign, ``eth-sign-request`` -> Keycard
+    ETH sign; a settings QR is the only card-less payload and still imports).
+    So the reader is checked up front — no card means an "Insert card" error
+    *before* the camera opens, instead of letting the user scan + review and
+    only discover the missing card at sign time.
+
+    When a card is present it is paired silently (best-effort, default
+    credentials) so the later sign step doesn't interrupt the flow for a
+    pairing password, then control passes to the generic :class:`ScanView`
+    which decodes the QR and routes it to the matching keycard flow.
+    """
+
+    def run(self):
+        from seedsigner.helpers.card_probe import probe_card
+
+        # A reader/driver hiccup or a missing PCSC stack surfaces as "no card"
+        # rather than a crash; the user can reseat and retry. The probe opens
+        # and releases its own connection, so it never holds the reader past
+        # this view.
+        try:
+            present = probe_card("keycard", self.controller).present
+        except Exception:
+            logger.exception("home-scan card probe failed")
+            present = False
+
+        if not present:
+            self.run_screen(
+                ErrorScreen,
+                title=_("Insert card"),
+                status_headline=None,
+                text=_("No card detected.\nInsert a card and try again."),
+                show_back_button=False,
+                button_data=[ButtonOption("OK")],
+            )
+            return Destination(MainMenuView, clear_history=True)
+
+        # Best-effort: pair the inserted card now (default credentials) so a
+        # later sign step doesn't interrupt mid-review for a pairing password.
+        # Fully non-fatal — the sign flows re-try and fall back to the Pair
+        # view for cards that use a custom pairing password.
+        try:
+            if not self.controller.has_any_keycard_auth():
+                from seedsigner.helpers.keycard.ui_helpers import (
+                    try_silent_ephemeral_pair,
+                )
+                try_silent_ephemeral_pair(self)
+        except Exception:
+            logger.exception("home-scan silent pairing failed")
+
+        return Destination(ScanView, skip_current_view=True)
 
 
 class ScanView(View):
@@ -82,12 +137,41 @@ class ScanView(View):
                 return Destination(SettingsIngestSettingsQRView, view_args=dict(data=data))
 
             if self.decoder.is_psbt:
-                # Bitcoin PSBT signing via Keycard is added in a later
-                # commit (C10). For now surface a clear "not yet" so the
-                # scan doesn't silently swallow the payload.
-                return Destination(NotYetImplementedView)
+                self.controller.psbt = self.decoder.get_psbt()
+                from seedsigner.views.keycard_views import ToolsKeycardBtcSignPsbtReviewView
+                return Destination(ToolsKeycardBtcSignPsbtReviewView, skip_current_view=True)
 
-            return Destination(NotYetImplementedView)
+            if self.decoder.is_eth_sign_request:
+                try:
+                    request = self.decoder.get_eth_sign_request()
+                except Exception as exc:
+                    logger.exception("eth-sign-request parsing failed")
+                    return Destination(ErrorView, view_args=dict(
+                        title=_("Invalid request"),
+                        status_headline=_("Could not decode"),
+                        text=str(exc)[:120],
+                        button_text=_("Back"),
+                        next_destination=Destination(BackStackView, skip_current_view=True),
+                    ))
+                if request is None:
+                    return Destination(ErrorView, view_args=dict(
+                        title=_("Invalid request"),
+                        status_headline=_("No data decoded"),
+                        text=_("The scanned QR was empty or malformed."),
+                        button_text=_("Back"),
+                        next_destination=Destination(BackStackView, skip_current_view=True),
+                    ))
+                self.controller.eth_sign_request = request
+                from seedsigner.views.keycard_views import ToolsKeycardSignEthOverviewView
+                return Destination(ToolsKeycardSignEthOverviewView, skip_current_view=True)
+
+            return Destination(ErrorView, view_args=dict(
+                title=_("Unsupported"),
+                status_headline=_("QR not supported"),
+                text=_("received {}").format(self.decoder.qr_type),
+                button_text=_("Back"),
+                next_destination=Destination(BackStackView, skip_current_view=True),
+            ))
 
         if self.decoder.is_invalid:
             self.controller.resume_main_flow = None

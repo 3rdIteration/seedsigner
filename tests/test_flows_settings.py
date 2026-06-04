@@ -10,7 +10,7 @@ from seedsigner.models.settings import Settings
 from seedsigner.models.settings_definition import SettingsDefinition, SettingsConstants
 from seedsigner.gui.screens.screen import RET_CODE__BACK_BUTTON, ButtonOption
 from seedsigner.hardware.microsd import MicroSD
-from seedsigner.views.view import MainMenuView, ScanTargetSelectView
+from seedsigner.views.view import MainMenuView
 from seedsigner.views import scan_views, settings_views
 
 
@@ -147,14 +147,27 @@ class TestSettingsFlows(FlowTest):
             view.decoder.add_data(settingsqr_data_not_persistent)
 
         def _run_test(initial_setting_state: str, load_settingsqr_into_decoder: Callable, expected_setting_state: str):
+            from seedsigner.helpers.card_probe import ProbeResult
+
             self.settings.set_value(SettingsConstants.SETTING__PERSISTENT_SETTINGS, initial_setting_state)
-            self.run_sequence([
-                FlowStep(MainMenuView, button_data_selection=MainMenuView.SCAN),
-                FlowStep(ScanTargetSelectView, button_data_selection=ScanTargetSelectView.SEEDSIGNER),
-                FlowStep(scan_views.ScanView, before_run=load_settingsqr_into_decoder),  # simulate read message QR; ret val is ignored
-                FlowStep(settings_views.SettingsIngestSettingsQRView),   # ret val is ignored
-                FlowStep(MainMenuView),
-            ])
+            # Home > Scan now routes through HomeScanView, which probes the
+            # reader before the camera. Pretend a card is present so the
+            # settings-QR scan is reachable, and stub the silent pairing
+            # (it would otherwise attempt real card I/O).
+            with patch(
+                "seedsigner.helpers.card_probe.probe_card",
+                return_value=ProbeResult(present=True, kind_match=True, initialised=True),
+            ), patch(
+                "seedsigner.helpers.keycard.ui_helpers.try_silent_ephemeral_pair",
+                return_value=True,
+            ):
+                self.run_sequence([
+                    FlowStep(MainMenuView, button_data_selection=MainMenuView.SCAN),
+                    FlowStep(scan_views.HomeScanView, is_redirect=True),  # card present -> hand off to ScanView
+                    FlowStep(scan_views.ScanView, before_run=load_settingsqr_into_decoder),  # simulate read message QR; ret val is ignored
+                    FlowStep(settings_views.SettingsIngestSettingsQRView),   # ret val is ignored
+                    FlowStep(MainMenuView),
+                ])
 
             assert self.settings.get_value(SettingsConstants.SETTING__PERSISTENT_SETTINGS) == expected_setting_state
 

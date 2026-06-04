@@ -32,6 +32,16 @@ class Camera(Singleton):
     def _is_raspberry_pi_profile(runtime_profile: str) -> bool:
         return runtime_profile in {"rpi_26", "rpi_40"}
 
+    @staticmethod
+    def _is_qr_density_boost_enabled() -> bool:
+        try:
+            return (
+                Settings.get_instance().get_value(SettingsConstants.SETTING__QR_DENSITY_BOOST)
+                == SettingsConstants.OPTION__ENABLED
+            )
+        except Exception:
+            return False
+
     @classmethod
     def _get_hardware_camera_config(cls):
         runtime_profile = Settings.RUNTIME_PROFILE
@@ -126,6 +136,39 @@ class Camera(Singleton):
             stream_resolution = tuple(stream_camera_config["resolution"])
         if stream_camera_config.get("framerate"):
             stream_framerate = int(stream_camera_config["framerate"])
+        # User-facing "Dense QR scan" toggle. Tuning is calibrated for a Pi
+        # Zero v1 + ZeroCam (OV5647 fixed-lens) scanning a bright phone/laptop
+        # screen at close range. Two control dicts are populated so both
+        # stacks honor the tuning:
+        #   - picamera2_controls: applied post-start via set_controls() on
+        #     libcamera-based Pi (Pi Zero 2 W, Pi 4/5).
+        #   - picamera_legacy_controls: applied via attribute set on the
+        #     mmal-based PiCamera (Pi Zero v1 ARMv6), where Picamera2 isn't
+        #     available — see warmup-then-lock sequence in pivideostream.py.
+        if self._is_qr_density_boost_enabled():
+            stream_resolution = (480, 480)
+            stream_framerate = 8
+            stream_camera_config.setdefault("picamera2_controls", {
+                "AeEnable": False,
+                "ExposureTime": 5000,
+                "AnalogueGain": 2.0,
+                "NoiseReductionMode": 0,
+                "Sharpness": 2.0,
+                "AfMode": 2,
+                "AfRange": 1,
+                "AfSpeed": 1,
+            })
+            stream_camera_config.setdefault("picamera_legacy_controls", {
+                "shutter_speed": 5000,
+                "exposure_mode": "off",
+                "iso": 100,
+                "awb_mode": "off",
+                "awb_gains": (1.5, 1.0),
+                "drc_strength": "high",
+                "video_denoise": False,
+                "image_denoise": False,
+                "sharpness": 50,
+            })
         if prefer_v4l2:
             stream_camera_config["resolution"] = tuple(stream_resolution)
 
