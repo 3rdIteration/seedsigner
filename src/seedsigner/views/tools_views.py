@@ -33,7 +33,7 @@ from seedsigner.gui.screens.scan_screens import ScanScreen
 from seedsigner.gui.screens.tools_screens import (
     ToolsTextQRTextEntryScreen, ToolsTextQRReviewTextScreen,
     ToolsTextQRTranscribeModePromptScreen, ToolsTranscribeTextQRWholeQRScreen, ToolsTranscribeTextQRZoomedInScreen,
-    ToolsTranscribeTextQRConfirmQRPromptScreen, ToolsCommonFilterScreen, ToolsNetworkInfoScreen,
+    ToolsTranscribeTextQRConfirmQRPromptScreen, ToolsNetworkInfoScreen,
     ToolsBatteryCalibrationIntroScreen, ToolsBatteryCalibrationStartScreen, ToolsBatteryCalibrationRunningScreen)
 from seedsigner.helpers.iso7816 import format_sw_error
 from seedsigner.models.decode_qr import DecodeQR

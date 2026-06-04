@@ -44,18 +44,6 @@ class SettingsConstants:
     ]
 
     # User-facing selection options
-    COORDINATOR__BLUE_WALLET = "bw"
-    COORDINATOR__NUNCHUK = "nun"
-    COORDINATOR__SPARROW = "spa"
-    COORDINATOR__SPECTER_DESKTOP = "spd"
-    COORDINATOR__KEEPER = "kpr"
-    ALL_COORDINATORS = [
-        (COORDINATOR__BLUE_WALLET, "BlueWallet"),
-        (COORDINATOR__NUNCHUK, "Nunchuk"),
-        (COORDINATOR__SPARROW, "Sparrow"),
-        (COORDINATOR__SPECTER_DESKTOP, "Specter Desktop"),
-        (COORDINATOR__KEEPER, "Keeper"),
-    ]
 
     # Over-specifying current and possible future locales to reduce/eliminate main repo
     # changes when adding/testing new languages.
@@ -350,23 +338,12 @@ class SettingsConstants:
 
     SINGLE_SIG = "ss"
     MULTISIG = "ms"
-    ALL_SIG_TYPES = [
-        (SINGLE_SIG, _mft("Single Sig")),
-        (MULTISIG, _mft("Multisig")),
-    ]
 
     LEGACY_P2PKH = "leg"
     NATIVE_SEGWIT = "nat"
     NESTED_SEGWIT = "nes"
     TAPROOT = "tr"
     CUSTOM_DERIVATION = "cus"
-    ALL_SCRIPT_TYPES = [
-        (NATIVE_SEGWIT, _mft("Native Segwit")),
-        (NESTED_SEGWIT, _mft("Nested Segwit")),
-        (LEGACY_P2PKH, _mft("Legacy")),
-        (TAPROOT, _mft("Taproot")),
-        (CUSTOM_DERIVATION, _mft("Custom Derivation")),
-    ]
 
     WORDLIST_LANGUAGE__ENGLISH = "en"
     WORDLIST_LANGUAGE__CHINESE_SIMPLIFIED = "zh_Hans_CN"
@@ -392,7 +369,6 @@ class SettingsConstants:
     SETTING__LOCALE = "locale"
     SETTING__WORDLIST_LANGUAGE = "wordlist_language"
     SETTING__PERSISTENT_SETTINGS = "persistent_settings"
-    SETTING__COORDINATORS = "coordinators"
     SETTING__BTC_DENOMINATION = "denomination"
     SETTING__SMARTCARD_INTERFACES = "smartcard_interfaces"
     SETTING__CACHE_SCARD_PIN = "cache_scard_pin"
@@ -408,25 +384,15 @@ class SettingsConstants:
     SETTING__NETWORK = "network"
     SETTING__QR_DENSITY = "qr_density"
     SETTING__XPUB_EXPORT = "xpub_export"
-    SETTING__SIG_TYPES = "sig_types"
-    SETTING__SCRIPT_TYPES = "script_types"
     SETTING__ACCOUNT_PROMPT = "account_prompt"
     SETTING__SEED_WORD_LENGTHS = "seed_word_lengths"
     SETTING__XPUB_DETAILS = "xpub_details"
-    SETTING__PASSPHRASE = "passphrase"
     SETTING__CAMERA_ROTATION = "camera_rotation"
     SETTING__CAMERA_DEVICE = "camera_device"
     SETTING__QR_DENSITY_BOOST = "qr_density_boost"
-    SETTING__COMPACT_SEEDQR = "compact_seedqr"
-    SETTING__BIP85_CHILD_SEEDS = "bip85_child_seeds"
-    SETTING__SLIP39_SEEDS = "slip39_seeds"
-    SETTING__AEZEED_SEEDS = "aezeed_seeds"
-    SETTING__SLIP39_EXTENDABLE = "slip39_extendable"
-    SETTING__ELECTRUM_SEEDS = "electrum_seeds"
     SETTING__BITBOX_BACKUP = "bitbox_backup"
     SETTING__PASSPORT_BACKUP = "passport_backup"
     SETTING__TAPSIGNER_BACKUP = "tapsigner_backup"
-    SETTING__MESSAGE_SIGNING = "message_signing"
     SETTING__PRIVACY_WARNINGS = "privacy_warnings"
     SETTING__DIRE_WARNINGS = "dire_warnings"
     SETTING__QR_BRIGHTNESS_TIPS = "qr_brightness_tips"
@@ -438,7 +404,6 @@ class SettingsConstants:
     SETTING__ENCRYPTION_ITER = "pbkdf2_iterations"
     SETTING__WIF_KEYS = "wif_keys"
     SETTING__BIP38_KEYS = "bip38_keys"
-    SETTING__GPG_KEY_TYPES = "gpg_key_types"
 
     SETTING__DEBUG = "debug"
 
@@ -515,10 +480,6 @@ class SettingsConstants:
     ]
 
     # Electrum seed constants
-    ELECTRUM_SEED_STANDARD = "01"
-    ELECTRUM_SEED_SEGWIT = "100"
-    ELECTRUM_SEED_2FA = "101"
-    ELECTRUM_PBKDF2_ROUNDS=2048
 
     # Label strings
     LABEL__BIP39_PASSPHRASE = _mft("BIP-39 Passphrase")
@@ -560,42 +521,9 @@ class SettingsConstants:
     ]
 
     # GPG key type constants
-    GPG_KEY_TYPE__ED25519 = "ed25519"
-    GPG_KEY_TYPE__P256 = "p256"
-    GPG_KEY_TYPE__P384 = "p384"
-    GPG_KEY_TYPE__P521 = "p521"
-    GPG_KEY_TYPE__BRAINPOOL_P256 = "brainpoolp256r1"
-    GPG_KEY_TYPE__BRAINPOOL_P384 = "brainpoolp384r1"
-    GPG_KEY_TYPE__BRAINPOOL_P512 = "brainpoolp512r1"
-    GPG_KEY_TYPE__RSA2048 = "rsa2048"
-    GPG_KEY_TYPE__RSA3072 = "rsa3072"
-    GPG_KEY_TYPE__RSA4096 = "rsa4096"
-    GPG_KEY_TYPE__SECP256K1 = "secp256k1"
 
-    ALL_GPG_KEY_TYPES = [
-        (GPG_KEY_TYPE__ED25519, "ECC Ed25519"),
-        (GPG_KEY_TYPE__P256, "ECC NIST P-256"),
-        (GPG_KEY_TYPE__P384, "ECC NIST P-384"),
-        (GPG_KEY_TYPE__P521, "ECC NIST P-521"),
-        (GPG_KEY_TYPE__BRAINPOOL_P256, "ECC Brainpool P-256"),
-        (GPG_KEY_TYPE__BRAINPOOL_P384, "ECC Brainpool P-384"),
-        (GPG_KEY_TYPE__BRAINPOOL_P512, "ECC Brainpool P-512"),
-        (GPG_KEY_TYPE__RSA2048, "RSA 2048"),
-        (GPG_KEY_TYPE__RSA3072, "RSA 3072"),
-        (GPG_KEY_TYPE__RSA4096, "RSA 4096"),
-        (GPG_KEY_TYPE__SECP256K1, "ECC secp256k1"),
-    ]
 
     # Default GPG key types match the "Generate New" menu
-    DEFAULT_GPG_KEY_TYPES = [
-        GPG_KEY_TYPE__ED25519,
-        GPG_KEY_TYPE__P256,
-        GPG_KEY_TYPE__BRAINPOOL_P256,
-        GPG_KEY_TYPE__RSA2048,
-        GPG_KEY_TYPE__RSA3072,
-        GPG_KEY_TYPE__RSA4096,
-        GPG_KEY_TYPE__SECP256K1,
-    ]
 
 
 @dataclass
@@ -756,19 +684,6 @@ class SettingsDefinition:
                       help_text=SettingsConstants.PERSISTENT_SETTINGS__SD_INSERTED__HELP_TEXT,
                       default_value=SettingsConstants.OPTION__ENABLED),
 
-        SettingsEntry(category=SettingsConstants.CATEGORY__WALLET,
-                      attr_name=SettingsConstants.SETTING__COORDINATORS,
-                      abbreviated_name="coords",
-                      display_name=_mft("Coordinator software"),
-                      type=SettingsConstants.TYPE__MULTISELECT,
-                      selection_options=SettingsConstants.ALL_COORDINATORS,
-                      default_value=[
-                          SettingsConstants.COORDINATOR__BLUE_WALLET,
-                          SettingsConstants.COORDINATOR__NUNCHUK,
-                          SettingsConstants.COORDINATOR__SPARROW,
-                          SettingsConstants.COORDINATOR__SPECTER_DESKTOP,
-                      ]),
-
         SettingsEntry(category=SettingsConstants.CATEGORY__SYSTEM,
                       attr_name=SettingsConstants.SETTING__BTC_DENOMINATION,
                       abbreviated_name="denom",
@@ -857,24 +772,6 @@ class SettingsDefinition:
                       default_value=SettingsConstants.OPTION__ENABLED),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
-                      attr_name=SettingsConstants.SETTING__SIG_TYPES,
-                      abbreviated_name="sigs",
-                      display_name=_mft("Sig types"),
-                      type=SettingsConstants.TYPE__MULTISELECT,
-                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
-                      selection_options=SettingsConstants.ALL_SIG_TYPES,
-                      default_value=SettingsConstants.ALL_SIG_TYPES),
-
-        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
-                      attr_name=SettingsConstants.SETTING__SCRIPT_TYPES,
-                      abbreviated_name="scripts",
-                      display_name=_mft("Script types"),
-                      type=SettingsConstants.TYPE__MULTISELECT,
-                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
-                      selection_options=SettingsConstants.ALL_SCRIPT_TYPES,
-                      default_value=[SettingsConstants.NATIVE_SEGWIT, SettingsConstants.NESTED_SEGWIT, SettingsConstants.TAPROOT]),
-
-        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
                       attr_name=SettingsConstants.SETTING__SEED_WORD_LENGTHS,
                       abbreviated_name="seedlen",
                       display_name=_mft("Seed word lengths"),
@@ -896,14 +793,6 @@ class SettingsDefinition:
                       default_value=SettingsConstants.OPTION__DISABLED),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
-                      attr_name=SettingsConstants.SETTING__PASSPHRASE,
-                      display_name=_mft("BIP-39 passphrase"),
-                      type=SettingsConstants.TYPE__SELECT_1,
-                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
-                      selection_options=SettingsConstants.OPTIONS__ENABLED_DISABLED_REQUIRED,
-                      default_value=SettingsConstants.OPTION__ENABLED),
-
-        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
                       attr_name=SettingsConstants.SETTING__CAMERA_ROTATION,
                       abbreviated_name="camera",
                       display_name=_mft("Camera rotation"),
@@ -917,12 +806,6 @@ class SettingsDefinition:
                       abbreviated_name="qrboost",
                       display_name=_mft("Dense QR scan"),
                       help_text=_mft("Higher capture res + sharpening for dense QR"),
-                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
-                      default_value=SettingsConstants.OPTION__ENABLED),
-
-        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
-                      attr_name=SettingsConstants.SETTING__COMPACT_SEEDQR,
-                      display_name=_mft("Compact SeedQR"),
                       visibility=SettingsConstants.VISIBILITY__ADVANCED,
                       default_value=SettingsConstants.OPTION__ENABLED),
 
@@ -974,52 +857,6 @@ class SettingsDefinition:
                       default_value=SettingsConstants.OPTION__DISABLED),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
-                      attr_name=SettingsConstants.SETTING__GPG_KEY_TYPES,
-                      abbreviated_name="gpgkeys",
-                      display_name=_mft("GPG key types"),
-                      type=SettingsConstants.TYPE__MULTISELECT,
-                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
-                      selection_options=SettingsConstants.ALL_GPG_KEY_TYPES,
-                      default_value=SettingsConstants.DEFAULT_GPG_KEY_TYPES),
-
-        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
-                      attr_name=SettingsConstants.SETTING__BIP85_CHILD_SEEDS,
-                      abbreviated_name="bip85",
-                      display_name=_mft("BIP-85 child seeds"),
-                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
-                      default_value=SettingsConstants.OPTION__ENABLED),
-
-        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
-                      attr_name=SettingsConstants.SETTING__SLIP39_SEEDS,
-                      abbreviated_name="slip39",
-                      display_name=_mft("SLIP39 seeds"),
-                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
-                      default_value=SettingsConstants.OPTION__DISABLED),
-
-        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
-                      attr_name=SettingsConstants.SETTING__AEZEED_SEEDS,
-                      abbreviated_name="aezeed",
-                      display_name=_mft("Aezeed seeds"),
-                      help_text=_mft("LND-compatible, 24 words"),
-                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
-                      default_value=SettingsConstants.OPTION__DISABLED),
-
-        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
-                      attr_name=SettingsConstants.SETTING__SLIP39_EXTENDABLE,
-                      abbreviated_name="slip39ext",
-                      display_name=_mft("Extendable SLIP39 shares"),
-                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
-                      default_value=SettingsConstants.OPTION__ENABLED),
-
-        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
-                      attr_name=SettingsConstants.SETTING__ELECTRUM_SEEDS,
-                      abbreviated_name="electrum",
-                      display_name=_mft("Electrum seeds"),
-                      help_text=_mft("Native Segwit only"),
-                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
-                      default_value=SettingsConstants.OPTION__DISABLED),
-
-        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
                       attr_name=SettingsConstants.SETTING__BITBOX_BACKUP,
                       abbreviated_name="bitbox",
                       display_name=_mft("BitBox02 backups"),
@@ -1038,12 +875,6 @@ class SettingsDefinition:
                       abbreviated_name="tapsigner",
                       display_name=_mft("TAPSIGNER backups"),
                       visibility=SettingsConstants.VISIBILITY__HIDDEN,
-                      default_value=SettingsConstants.OPTION__DISABLED),
-
-        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
-                      attr_name=SettingsConstants.SETTING__MESSAGE_SIGNING,
-                      display_name=_mft("Message signing"),
-                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
                       default_value=SettingsConstants.OPTION__DISABLED),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,

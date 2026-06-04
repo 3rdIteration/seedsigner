@@ -30,12 +30,10 @@ class TestSettings(BaseTest):
         """
         from seedsigner.models.settings_definition import SettingsDefinition
 
-        # SLIP39_SEEDS defaults to DISABLED; flip it to ENABLED and
-        # confirm reset returns it to DISABLED. PERSISTENT_SETTINGS is
-        # a poor choice for this test because it defaults to ENABLED,
-        # which matches the post-set value and would mask a broken
-        # reset.
-        setting = SettingsConstants.SETTING__SLIP39_SEEDS
+        # Pick a simple toggle, flip it away from its default, and confirm
+        # reset restores the default. The non-default is computed from the
+        # default so this works regardless of which way the default points.
+        setting = SettingsConstants.SETTING__XPUB_EXPORT
         default = SettingsDefinition.get_settings_entry(setting).default_value
         non_default = (
             SettingsConstants.OPTION__ENABLED
@@ -58,12 +56,11 @@ class TestSettings(BaseTest):
         return the resulting config_name and formatted settings_update_dict.
         """
         settings_name = "Test SettingsQR"
-        settingsqr_data = f"""settings::v1 name={ settings_name.replace(" ", "_") } persistent=D coords=spa,spd denom=thr network=M qr_density=M xpub_export=E sigs=ss,ms scripts=nat,nes,tr xpub_details=E passphrase=E camera=180 compact_seedqr=E bip85=D priv_warn=E dire_warn=E partners=E"""
+        settingsqr_data = f"""settings::v1 name={ settings_name.replace(" ", "_") } persistent=D denom=thr network=M qr_density=M xpub_export=E xpub_details=E camera=180 priv_warn=E dire_warn=E partners=E"""
 
         # First explicitly set settings that differ from the settingsqr_data
-        self.settings.set_value(SettingsConstants.SETTING__COMPACT_SEEDQR, SettingsConstants.OPTION__DISABLED)
+        self.settings.set_value(SettingsConstants.SETTING__XPUB_EXPORT, SettingsConstants.OPTION__DISABLED)
         self.settings.set_value(SettingsConstants.SETTING__DIRE_WARNINGS, SettingsConstants.OPTION__DISABLED)
-        self.settings.set_value(SettingsConstants.SETTING__COORDINATORS, [SettingsConstants.COORDINATOR__BLUE_WALLET, SettingsConstants.COORDINATOR__SPARROW])
 
         # Now parse the settingsqr_data
         config_name, settings_update_dict = Settings.parse_settingsqr(settingsqr_data)
@@ -71,13 +68,8 @@ class TestSettings(BaseTest):
         self.settings.update(new_settings=settings_update_dict)
 
         # Now verify that the settings were updated correctly
-        assert self.settings.get_value(SettingsConstants.SETTING__COMPACT_SEEDQR) == SettingsConstants.OPTION__ENABLED
+        assert self.settings.get_value(SettingsConstants.SETTING__XPUB_EXPORT) == SettingsConstants.OPTION__ENABLED
         assert self.settings.get_value(SettingsConstants.SETTING__DIRE_WARNINGS) == SettingsConstants.OPTION__ENABLED
-
-        coordinators = self.settings.get_value(SettingsConstants.SETTING__COORDINATORS)
-        assert SettingsConstants.COORDINATOR__BLUE_WALLET not in coordinators
-        assert SettingsConstants.COORDINATOR__SPARROW in coordinators
-        assert SettingsConstants.COORDINATOR__SPECTER_DESKTOP in coordinators
     
 
     def test_settingsqr_version(self):
@@ -126,7 +118,7 @@ class TestSettings(BaseTest):
 
     def test_settingsqr_parses_line_break_separators(self):
         """ SettingsQR parser should read line breaks as acceptable separators """
-        settingsqr_data = "settings::v1\nname=Foo\nsigs=ss,ms\nscripts=nat,nes,tr\nxpub_export=E\n"
+        settingsqr_data = "settings::v1\nname=Foo\nxpub_export=E\nxpub_details=E\ndire_warn=D\n"
         config_name, settings_update_dict = Settings.parse_settingsqr(settingsqr_data)
 
         assert len(settings_update_dict.keys()) == 3
