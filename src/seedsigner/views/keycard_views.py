@@ -2107,11 +2107,20 @@ class ToolsKeycardGenerateSeedLoadView(View):
 
 
 class ToolsKeycardSeedkeeperOfferView(View):
-    """If a Seedkeeper applet is on the same card, offer to save the seed.
+    """Offer to back up the just-loaded seed onto a Seedkeeper applet.
 
-    Probes the card via ``probe_installed_applets``. If absent, wipes
-    the pending mnemonic and returns straight to the Keycard menu —
-    the user never sees an unnecessary prompt.
+    The card-creation moment is the *only* window in which the host holds
+    the seed: once it is sealed in the Keycard it can never be read back,
+    only signed with. So this is where we offer a Seedkeeper backup.
+
+    Two destinations are supported (chosen on the next screen):
+
+    * **This card** — a Seedkeeper applet co-resident on the same physical
+      card (only offered when ``probe_installed_applets`` detects one).
+    * **Another card** — a *separate* Seedkeeper card the user swaps in.
+      This avoids the iOS-app coexistence crash documented in AGENTS.md.
+
+    Skipping wipes the pending mnemonic and returns to the Keycard menu.
     """
 
     YES = ButtonOption("Save backup")
@@ -2123,26 +2132,7 @@ class ToolsKeycardSeedkeeperOfferView(View):
             release_other_smartcard_holders,
         )
 
-        # Give up the existing SC connection cleanly before re-probing.
-        try:
-            release_other_smartcard_holders(self.controller)
-        except Exception:
-            pass
-
-        try:
-            state = probe_installed_applets(self.controller)
-        except Exception:
-            state = None
-
-        seedkeeper_present = bool(
-            state and getattr(state, "seedkeeper_installed", False)
-        )
-        if not seedkeeper_present:
-            _wipe_pending_setup_state(self.controller)
-            return Destination(
-                ToolsKeycardMenuView, clear_history=True,
-            )
-
+        # Ask first — we don't need a card present to pose the question.
         selected = self.run_screen(
             ButtonListScreen,
             title="Save to Seedkeeper?",
@@ -2156,6 +2146,106 @@ class ToolsKeycardSeedkeeperOfferView(View):
             return Destination(
                 ToolsKeycardMenuView, clear_history=True,
             )
+
+        # Probe the currently-inserted card to learn whether a Seedkeeper
+        # applet is co-resident (so we can offer "This card").
+        try:
+            release_other_smartcard_holders(self.controller)
+        except Exception:
+            pass
+        try:
+            state = probe_installed_applets(self.controller)
+        except Exception:
+            state = None
+        same_card = bool(state and getattr(state, "seedkeeper_installed", False))
+
+        if same_card:
+            return Destination(ToolsKeycardSeedkeeperDestChooserView)
+        # No co-resident Seedkeeper — the only option is a separate card.
+        return Destination(ToolsKeycardSeedkeeperSwapInsertView)
+
+
+class ToolsKeycardSeedkeeperDestChooserView(View):
+    """Pick whether to back up to the same card or a separate Seedkeeper.
+
+    Only reached when a Seedkeeper applet is co-resident on the current
+    card; otherwise ``ToolsKeycardSeedkeeperOfferView`` jumps straight to
+    the swap flow.
+    """
+
+    THIS_CARD = ButtonOption("This card")
+    OTHER_CARD = ButtonOption("Another card")
+
+    def run(self):
+        button_data = [self.THIS_CARD, self.OTHER_CARD]
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Save backup to",
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+        if selected == RET_CODE__BACK_BUTTON:
+            _wipe_pending_setup_state(self.controller)
+            return Destination(ToolsKeycardMenuView, clear_history=True)
+        if button_data[selected] == self.THIS_CARD:
+            return Destination(ToolsKeycardSeedkeeperFormatChooserView)
+        return Destination(ToolsKeycardSeedkeeperSwapInsertView)
+
+
+class ToolsKeycardSeedkeeperSwapInsertView(View):
+    """Prompt the user to swap in a separate Seedkeeper card, then verify it.
+
+    Threat model: the pending mnemonic lives in
+    ``controller.pending_keycard_mnemonic`` across the physical card swap —
+    a longer host-memory exposure than a same-card backup. Every exit path
+    here (cancel, no-card, error) wipes it; ``MainMenuView`` re-entry wipes
+    it again as a backstop. Seizure mid-swap should be treated as a likely
+    seed compromise (the wipe is best-effort given CPython's GC).
+    """
+
+    CONTINUE = ButtonOption("Continue")
+    RETRY = ButtonOption("Retry")
+
+    def run(self):
+        from seedsigner.helpers.card_probe import probe_installed_applets
+        from seedsigner.helpers.keycard.reader import (
+            release_other_smartcard_holders,
+        )
+
+        ret = self.run_screen(
+            WarningScreen,
+            title="Insert Seedkeeper",
+            status_headline=None,
+            text="Remove Keycard, insert\nyour Seedkeeper card.",
+            show_back_button=True,
+            button_data=[self.CONTINUE],
+        )
+        if ret == RET_CODE__BACK_BUTTON:
+            _wipe_pending_setup_state(self.controller)
+            return Destination(ToolsKeycardMenuView, clear_history=True)
+
+        try:
+            release_other_smartcard_holders(self.controller)
+        except Exception:
+            pass
+        try:
+            state = probe_installed_applets(self.controller)
+        except Exception:
+            state = None
+
+        if not (state and getattr(state, "seedkeeper_installed", False)):
+            retry = self.run_screen(
+                WarningScreen,
+                title="No Seedkeeper",
+                status_headline=None,
+                text="No Seedkeeper card\ndetected.",
+                show_back_button=True,
+                button_data=[self.RETRY],
+            )
+            if retry == RET_CODE__BACK_BUTTON:
+                _wipe_pending_setup_state(self.controller)
+                return Destination(ToolsKeycardMenuView, clear_history=True)
+            return Destination(ToolsKeycardSeedkeeperSwapInsertView)
 
         return Destination(ToolsKeycardSeedkeeperFormatChooserView)
 

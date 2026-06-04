@@ -175,100 +175,149 @@ class TestPassphrasePromptNoPassphrase(unittest.TestCase):
 
 
 class TestSeedkeeperOffer(unittest.TestCase):
-    def test_absent_seedkeeper_skips_to_menu_and_wipes(self):
-        """If no Seedkeeper applet is present we must NOT prompt; the
-        mnemonic gets wiped on the way out."""
+    def _offer_view(self, run_screen_return, seedkeeper_installed):
         from seedsigner.views.keycard_views import (
-            ToolsKeycardMenuView,
             ToolsKeycardSeedkeeperOfferView,
         )
-
         view = ToolsKeycardSeedkeeperOfferView.__new__(
             ToolsKeycardSeedkeeperOfferView,
         )
-        view.run_screen = MagicMock()
+        view.run_screen = MagicMock(return_value=run_screen_return)
         view.controller = MagicMock()
-        view.controller.pending_keycard_mnemonic = ["alpha", "bravo"]
+        view.controller.pending_keycard_mnemonic = ["a", "b"]
         view.controller.pending_keycard_passphrase = bytearray(b"pp")
-
         fake_state = MagicMock()
-        fake_state.seedkeeper_installed = False
+        fake_state.seedkeeper_installed = seedkeeper_installed
+        return view, fake_state
 
+    def _run(self, view, fake_state):
         with patch(
             "seedsigner.helpers.card_probe.probe_installed_applets",
             return_value=fake_state,
         ), patch(
             "seedsigner.helpers.keycard.reader.release_other_smartcard_holders",
         ):
-            dest = view.run()
+            return view.run()
 
+    def test_skip_wipes_and_returns_to_menu(self):
+        from seedsigner.views.keycard_views import ToolsKeycardMenuView
+        view, fake_state = self._offer_view(1, True)  # NO
+        dest = self._run(view, fake_state)
         self.assertIs(dest.View_cls, ToolsKeycardMenuView)
         self.assertIsNone(view.controller.pending_keycard_mnemonic)
         self.assertIsNone(view.controller.pending_keycard_passphrase)
-        # No screen prompt should have been shown.
-        view.run_screen.assert_not_called()
 
-    def test_present_seedkeeper_prompts_user(self):
+    def test_save_same_card_routes_to_dest_chooser(self):
+        from seedsigner.views.keycard_views import (
+            ToolsKeycardSeedkeeperDestChooserView,
+        )
+        view, fake_state = self._offer_view(0, True)  # YES, co-resident
+        dest = self._run(view, fake_state)
+        self.assertIs(dest.View_cls, ToolsKeycardSeedkeeperDestChooserView)
+        # Mnemonic must still be live; we'll need it for the save.
+        self.assertEqual(view.controller.pending_keycard_mnemonic, ["a", "b"])
+
+    def test_save_without_co_resident_routes_to_swap(self):
+        """Key improvement: a backup is offered even when no Seedkeeper is
+        on the current card — the user swaps in a separate one."""
+        from seedsigner.views.keycard_views import (
+            ToolsKeycardSeedkeeperSwapInsertView,
+        )
+        view, fake_state = self._offer_view(0, False)  # YES, none co-resident
+        dest = self._run(view, fake_state)
+        self.assertIs(dest.View_cls, ToolsKeycardSeedkeeperSwapInsertView)
+        self.assertEqual(view.controller.pending_keycard_mnemonic, ["a", "b"])
+
+
+class TestSeedkeeperDestChooser(unittest.TestCase):
+    def _view(self, run_screen_return):
+        from seedsigner.views.keycard_views import (
+            ToolsKeycardSeedkeeperDestChooserView,
+        )
+        view = ToolsKeycardSeedkeeperDestChooserView.__new__(
+            ToolsKeycardSeedkeeperDestChooserView,
+        )
+        view.run_screen = MagicMock(return_value=run_screen_return)
+        view.controller = MagicMock()
+        view.controller.pending_keycard_mnemonic = ["a"]
+        view.controller.pending_keycard_passphrase = bytearray(b"p")
+        return view
+
+    def test_this_card_routes_to_format(self):
         from seedsigner.views.keycard_views import (
             ToolsKeycardSeedkeeperFormatChooserView,
-            ToolsKeycardSeedkeeperOfferView,
         )
+        dest = self._view(0).run()
+        self.assertIs(dest.View_cls, ToolsKeycardSeedkeeperFormatChooserView)
 
-        view = ToolsKeycardSeedkeeperOfferView.__new__(
-            ToolsKeycardSeedkeeperOfferView,
-        )
-        view.run_screen = MagicMock(return_value=0)  # YES
-        view.controller = MagicMock()
-        view.controller.pending_keycard_mnemonic = ["a", "b"]
-        view.controller.pending_keycard_passphrase = bytearray()
-
-        fake_state = MagicMock()
-        fake_state.seedkeeper_installed = True
-
-        with patch(
-            "seedsigner.helpers.card_probe.probe_installed_applets",
-            return_value=fake_state,
-        ), patch(
-            "seedsigner.helpers.keycard.reader.release_other_smartcard_holders",
-        ):
-            dest = view.run()
-
-        self.assertIs(
-            dest.View_cls, ToolsKeycardSeedkeeperFormatChooserView,
-        )
-        # Mnemonic must still be live; we'll need it for the save.
-        self.assertEqual(
-            view.controller.pending_keycard_mnemonic, ["a", "b"],
-        )
-
-    def test_present_seedkeeper_user_declines_wipes_and_returns(self):
+    def test_other_card_routes_to_swap(self):
         from seedsigner.views.keycard_views import (
-            ToolsKeycardMenuView,
-            ToolsKeycardSeedkeeperOfferView,
+            ToolsKeycardSeedkeeperSwapInsertView,
         )
+        dest = self._view(1).run()
+        self.assertIs(dest.View_cls, ToolsKeycardSeedkeeperSwapInsertView)
 
-        view = ToolsKeycardSeedkeeperOfferView.__new__(
-            ToolsKeycardSeedkeeperOfferView,
-        )
-        view.run_screen = MagicMock(return_value=1)  # NO
-        view.controller = MagicMock()
-        view.controller.pending_keycard_mnemonic = ["a", "b"]
-        view.controller.pending_keycard_passphrase = bytearray(b"x")
-
-        fake_state = MagicMock()
-        fake_state.seedkeeper_installed = True
-
-        with patch(
-            "seedsigner.helpers.card_probe.probe_installed_applets",
-            return_value=fake_state,
-        ), patch(
-            "seedsigner.helpers.keycard.reader.release_other_smartcard_holders",
-        ):
-            dest = view.run()
-
+    def test_back_wipes_and_returns_to_menu(self):
+        from seedsigner.gui.screens import RET_CODE__BACK_BUTTON
+        from seedsigner.views.keycard_views import ToolsKeycardMenuView
+        view = self._view(RET_CODE__BACK_BUTTON)
+        dest = view.run()
         self.assertIs(dest.View_cls, ToolsKeycardMenuView)
         self.assertIsNone(view.controller.pending_keycard_mnemonic)
-        self.assertIsNone(view.controller.pending_keycard_passphrase)
+
+
+class TestSeedkeeperSwapInsert(unittest.TestCase):
+    def _view(self, *, run_screen):
+        from seedsigner.views.keycard_views import (
+            ToolsKeycardSeedkeeperSwapInsertView,
+        )
+        view = ToolsKeycardSeedkeeperSwapInsertView.__new__(
+            ToolsKeycardSeedkeeperSwapInsertView,
+        )
+        view.run_screen = run_screen
+        view.controller = MagicMock()
+        view.controller.pending_keycard_mnemonic = ["a"]
+        view.controller.pending_keycard_passphrase = bytearray(b"p")
+        return view
+
+    def _run(self, view, seedkeeper_installed):
+        fake_state = MagicMock()
+        fake_state.seedkeeper_installed = seedkeeper_installed
+        with patch(
+            "seedsigner.helpers.card_probe.probe_installed_applets",
+            return_value=fake_state,
+        ), patch(
+            "seedsigner.helpers.keycard.reader.release_other_smartcard_holders",
+        ):
+            return view.run()
+
+    def test_seedkeeper_found_routes_to_format(self):
+        from seedsigner.views.keycard_views import (
+            ToolsKeycardSeedkeeperFormatChooserView,
+        )
+        view = self._view(run_screen=MagicMock(return_value=0))  # Continue
+        dest = self._run(view, seedkeeper_installed=True)
+        self.assertIs(dest.View_cls, ToolsKeycardSeedkeeperFormatChooserView)
+        self.assertEqual(view.controller.pending_keycard_mnemonic, ["a"])
+
+    def test_continue_back_wipes_and_returns_to_menu(self):
+        from seedsigner.gui.screens import RET_CODE__BACK_BUTTON
+        from seedsigner.views.keycard_views import ToolsKeycardMenuView
+        view = self._view(run_screen=MagicMock(return_value=RET_CODE__BACK_BUTTON))
+        dest = self._run(view, seedkeeper_installed=True)
+        self.assertIs(dest.View_cls, ToolsKeycardMenuView)
+        self.assertIsNone(view.controller.pending_keycard_mnemonic)
+
+    def test_no_card_then_cancel_wipes(self):
+        from seedsigner.gui.screens import RET_CODE__BACK_BUTTON
+        from seedsigner.views.keycard_views import ToolsKeycardMenuView
+        # First screen: Continue (0); retry screen: Back.
+        view = self._view(
+            run_screen=MagicMock(side_effect=[0, RET_CODE__BACK_BUTTON]),
+        )
+        dest = self._run(view, seedkeeper_installed=False)
+        self.assertIs(dest.View_cls, ToolsKeycardMenuView)
+        self.assertIsNone(view.controller.pending_keycard_mnemonic)
 
 
 class TestFormatChooser(unittest.TestCase):
