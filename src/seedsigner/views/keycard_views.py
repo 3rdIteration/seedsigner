@@ -1426,6 +1426,7 @@ class ToolsKeycardImportSeedView(View):
     SCAN = ButtonOption("Scan SeedQR")
     TYPE_12 = ButtonOption("Type 12 words")
     TYPE_24 = ButtonOption("Type 24 words")
+    HEX = ButtonOption("Import hex (NGRAVE)")
     CONFIRM = ButtonOption("Push to card")
     SKIP_PASSPHRASE = ButtonOption("No passphrase")
     SET_PASSPHRASE = ButtonOption("Set passphrase")
@@ -1448,7 +1449,7 @@ class ToolsKeycardImportSeedView(View):
             return Destination(BackStackView)
 
         # 2. Pick the input method.
-        button_data = [self.SCAN, self.TYPE_12, self.TYPE_24]
+        button_data = [self.SCAN, self.TYPE_12, self.TYPE_24, self.HEX]
         choice_ret = self.run_screen(
             ButtonListScreen,
             title="Source",
@@ -1469,6 +1470,8 @@ class ToolsKeycardImportSeedView(View):
             # 3. Capture the mnemonic.
             if choice == self.SCAN:
                 phrase = self._capture_via_scan()
+            elif choice == self.HEX:
+                phrase = self._capture_via_hex()
             else:
                 num_words = 12 if choice == self.TYPE_12 else 24
                 phrase = self._capture_via_keyboard(num_words)
@@ -1635,6 +1638,82 @@ class ToolsKeycardImportSeedView(View):
                 return None
             words.append(ret)
         return words
+
+    def _capture_via_hex(self) -> Optional[list]:
+        """Capture an NGRAVE "Perfect Key" (or raw BIP-39 entropy) in hex.
+
+        The NGRAVE hex *is* the BIP-39 entropy: 64 hex chars (256-bit) maps
+        to the 24-word mnemonic, exactly the ``Entropy`` field in the Ian
+        Coleman tool. 32 hex chars (128-bit → 12 words) is also accepted.
+
+        Returns the BIP-39 word list (fresh string copies, never references
+        into the shared WORDLIST), or ``None`` on back-out / invalid input.
+        The intermediate entropy buffer is wiped before returning.
+        """
+        from seedsigner.gui.screens.screen import KeycardHexEntryScreen
+        from embit import bip39
+
+        SCAN_HEX = ButtonOption("Scan QR")
+        TYPE_HEX = ButtonOption("Type hex")
+        method_data = [SCAN_HEX, TYPE_HEX]
+        method = self.run_screen(
+            ButtonListScreen,
+            title="Hex source",
+            is_button_text_centered=False,
+            button_data=method_data,
+            show_back_button=True,
+        )
+        if method == RET_CODE__BACK_BUTTON:
+            return None
+
+        if method_data[method] == SCAN_HEX:
+            raw = self._scan_hex_text()
+        else:
+            ret = KeycardHexEntryScreen(title="Enter hex").display()
+            raw = ret if isinstance(ret, str) else None
+        if not raw:
+            return None
+
+        # Normalise: strip whitespace / optional 0x, lower-case.
+        cleaned = "".join(raw.split()).lower()
+        if cleaned.startswith("0x"):
+            cleaned = cleaned[2:]
+        if len(cleaned) not in (32, 64) or any(
+            c not in "0123456789abcdef" for c in cleaned
+        ):
+            self.run_screen(
+                WarningScreen,
+                title="Invalid hex",
+                status_headline=None,
+                text="Need 32 or 64 hex\nchars (12 or 24 words).",
+                show_back_button=False,
+                button_data=[ButtonOption("OK")],
+            )
+            return None
+
+        entropy = bytearray.fromhex(cleaned)
+        try:
+            mnemonic = bip39.mnemonic_from_bytes(bytes(entropy))
+        finally:
+            _wipe_bytearray(entropy)
+        # Fresh copies so the caller's wipe never touches the WORDLIST.
+        return ["".join(w) for w in mnemonic.split()]
+
+    def _scan_hex_text(self) -> Optional[str]:
+        """Scan a plain-text QR and return its raw payload (the hex string)."""
+        from seedsigner.gui.screens.scan_screens import ScanScreen
+        from seedsigner.models.decode_qr import DecodeQR
+
+        decoder = DecodeQR(is_text=True)
+        self.run_screen(
+            ScanScreen,
+            instructions_text="Scan hex QR",
+            decoder=decoder,
+        )
+        time.sleep(0.1)
+        if not decoder.is_complete:
+            return None
+        return decoder.get_text()
 
 
 # ---------------------------------------------------------------------------

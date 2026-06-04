@@ -1404,6 +1404,23 @@ class KeycardPINEntryScreen(KeyboardScreen):
         )
 
 
+@dataclass
+class KeycardHexEntryScreen(KeyboardScreen):
+    """Hex-only keyboard for entering raw entropy / an NGRAVE "Perfect Key".
+
+    A 16-key ``0-9 a-f`` keyboard (plus the inherited backspace) with a Save
+    button. Unlike the PIN pad the length is variable — 32 hex chars = 12
+    words, 64 = 24 words — so the user submits with the Save (KEY3) button
+    rather than auto-returning at a fixed length. Returns the entered hex
+    string (lower-case, stripped) or ``RET_CODE__BACK_BUTTON``.
+    """
+    def __post_init__(self):
+        self.rows = 4
+        self.cols = 5  # 4x5 = 20 cells fit 16 hex keys + the 2-slot backspace
+        self.keys_charset = "0123456789abcdef"
+        self.show_save_button = True
+        super().__post_init__()
+
 
 @dataclass
 class MainMenuScreen(LargeButtonScreen):
