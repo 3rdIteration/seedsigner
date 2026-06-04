@@ -147,12 +147,6 @@ class DecodeQR:
             elif self.qr_type == QRType.ENCRYPTION_KEY:
                 self.decoder = EncryptionKeyQrDecoder()
 
-            elif self.qr_type == QRType.WIF:
-                self.decoder = WifQrDecoder()
-
-            elif self.qr_type == QRType.BIP38:
-                self.decoder = Bip38QrDecoder()
-
             elif self.qr_type == QRType.SET_TIME:
                 self.decoder = TimeQrDecoder()
 
@@ -291,14 +285,6 @@ class DecodeQR:
         if self.is_encryptionkey:
             return self.decoder.get_encryption_key()
 
-    def get_wif(self):
-        if self.is_wif:
-            return self.decoder.get_wif()
-
-    def get_bip38(self):
-        if self.is_bip38:
-            return self.decoder.get_bip38()
-
 
     def get_public_data(self):
         if self.is_encrypted_seedqr:
@@ -427,15 +413,6 @@ class DecodeQR:
     @property
     def is_time(self):
         return self.qr_type == QRType.SET_TIME
-
-    @property
-    def is_wif(self):
-        return self.qr_type == QRType.WIF
-
-    @property
-    def is_bip38(self):
-        return self.qr_type == QRType.BIP38
-        
 
     @property
     def is_wallet_descriptor(self):
@@ -782,25 +759,10 @@ class DecodeQR:
             elif DecodeQR.is_base43_psbt(s):
                 return QRType.PSBT__BASE43
 
-            # WIF private key
-            try:
-                ec.PrivateKey.from_wif(s.strip())
-                return QRType.WIF
-            except Exception:
-                pass
-
             try:
                 hdkey = bip32.HDKey.from_string(s.strip())
                 if hdkey.is_private:
                     return QRType.SEED__XPRV
-            except Exception:
-                pass
-
-            # BIP38 encrypted key
-            try:
-                from seedsigner.models.bip38 import BIP38Key
-                BIP38Key(s.strip())
-                return QRType.BIP38
             except Exception:
                 pass
 
@@ -1664,54 +1626,6 @@ class EncryptionKeyQrDecoder(BaseSingleFrameQrDecoder):
 
     def get_encryption_key(self):
         return self.encryption_key
-
-
-class WifQrDecoder(BaseSingleFrameQrDecoder):
-    """Decodes single frame representing a WIF-encoded private key."""
-
-    def __init__(self):
-        super().__init__()
-        self.wif = None
-
-    def add(self, segment, qr_type=QRType.WIF):
-        if qr_type == QRType.WIF:
-            try:
-                ec.PrivateKey.from_wif(segment)
-                self.wif = segment
-                self.complete = True
-                self.collected_segments = 1
-                return DecodeQRStatus.COMPLETE
-            except Exception as e:
-                logger.exception(repr(e))
-        return DecodeQRStatus.INVALID
-
-    def get_wif(self):
-        return self.wif
-
-
-class Bip38QrDecoder(BaseSingleFrameQrDecoder):
-    """Decodes single frame representing a BIP38-encrypted private key."""
-
-    def __init__(self):
-        super().__init__()
-        self.bip38 = None
-
-    def add(self, segment, qr_type=QRType.BIP38):
-        if qr_type == QRType.BIP38:
-            try:
-                from seedsigner.models.bip38 import BIP38Key
-                BIP38Key(segment)
-                self.bip38 = segment
-                self.complete = True
-                self.collected_segments = 1
-                return DecodeQRStatus.COMPLETE
-            except Exception as e:
-                logger.exception(repr(e))
-        return DecodeQRStatus.INVALID
-
-    def get_bip38(self):
-        return self.bip38
-
 
 
 class EncryptedQrDecoder(BaseSingleFrameQrDecoder):

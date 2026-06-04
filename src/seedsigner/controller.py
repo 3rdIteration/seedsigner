@@ -222,9 +222,7 @@ class Controller(Singleton):
         "CardsInstallAppletView",
     })
     _CARD_VIEW_CLASSNAME_PREFIXES = (
-        "ToolsSatochip",
         "ToolsSeedkeeper",
-        "Satochip",
     )
     _pending_card_removed_redirect: bool = False
 

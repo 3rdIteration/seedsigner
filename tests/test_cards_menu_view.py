@@ -306,12 +306,9 @@ class TestCardRemovedRedirect(unittest.TestCase):
         c = self._stub_controller(None)
         self.assertTrue(c._is_card_view(ToolsKeycardMenuView))
 
-    def test_is_card_view_true_for_satochip_and_seedkeeper_prefixes(self):
-        from seedsigner.views.tools_views import (
-            ToolsSatochipView, ToolsSeedkeeperView,
-        )
+    def test_is_card_view_true_for_seedkeeper_prefix(self):
+        from seedsigner.views.tools_views import ToolsSeedkeeperView
         c = self._stub_controller(None)
-        self.assertTrue(c._is_card_view(ToolsSatochipView))
         self.assertTrue(c._is_card_view(ToolsSeedkeeperView))
 
     def test_is_card_view_false_for_main_menu(self):
