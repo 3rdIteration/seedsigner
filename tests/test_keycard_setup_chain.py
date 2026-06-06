@@ -217,15 +217,15 @@ class TestSeedkeeperOffer(unittest.TestCase):
         # Mnemonic must still be live; we'll need it for the save.
         self.assertEqual(view.controller.pending_keycard_mnemonic, ["a", "b"])
 
-    def test_save_without_co_resident_routes_to_swap(self):
-        """Key improvement: a backup is offered even when no Seedkeeper is
-        on the current card — the user swaps in a separate one."""
+    def test_save_without_co_resident_also_routes_to_dest_chooser(self):
+        """The Offer no longer probes — it always hands off to the
+        destination chooser, which decides what to probe / install."""
         from seedsigner.views.keycard_views import (
-            ToolsKeycardSeedkeeperSwapInsertView,
+            ToolsKeycardSeedkeeperDestChooserView,
         )
         view, fake_state = self._offer_view(0, False)  # YES, none co-resident
         dest = self._run(view, fake_state)
-        self.assertIs(dest.View_cls, ToolsKeycardSeedkeeperSwapInsertView)
+        self.assertIs(dest.View_cls, ToolsKeycardSeedkeeperDestChooserView)
         self.assertEqual(view.controller.pending_keycard_mnemonic, ["a", "b"])
 
 
@@ -243,12 +243,13 @@ class TestSeedkeeperDestChooser(unittest.TestCase):
         view.controller.pending_keycard_passphrase = bytearray(b"p")
         return view
 
-    def test_this_card_routes_to_format(self):
+    def test_this_card_routes_to_this_card_view(self):
         from seedsigner.views.keycard_views import (
-            ToolsKeycardSeedkeeperFormatChooserView,
+            ToolsKeycardSeedkeeperThisCardView,
         )
         dest = self._view(0).run()
-        self.assertIs(dest.View_cls, ToolsKeycardSeedkeeperFormatChooserView)
+        self.assertIs(dest.View_cls, ToolsKeycardSeedkeeperThisCardView)
+        self.assertEqual(dest.view_args["remaining"], [])
 
     def test_other_card_routes_to_swap(self):
         from seedsigner.views.keycard_views import (
@@ -256,6 +257,14 @@ class TestSeedkeeperDestChooser(unittest.TestCase):
         )
         dest = self._view(1).run()
         self.assertIs(dest.View_cls, ToolsKeycardSeedkeeperSwapInsertView)
+
+    def test_both_routes_to_this_card_with_remaining(self):
+        from seedsigner.views.keycard_views import (
+            ToolsKeycardSeedkeeperThisCardView,
+        )
+        dest = self._view(2).run()
+        self.assertIs(dest.View_cls, ToolsKeycardSeedkeeperThisCardView)
+        self.assertEqual(dest.view_args["remaining"], ["other"])
 
     def test_back_wipes_and_returns_to_menu(self):
         from seedsigner.gui.screens import RET_CODE__BACK_BUTTON
@@ -329,9 +338,11 @@ class TestFormatChooser(unittest.TestCase):
         view = _make_view(
             ToolsKeycardSeedkeeperFormatChooserView, run_screen_returns=0,
         )
+        view.remaining = []
         dest = view.run()
         self.assertIs(dest.View_cls, ToolsKeycardSeedkeeperSaveRunView)
         self.assertEqual(dest.view_args["secret_type"], "bip39")
+        self.assertEqual(dest.view_args["remaining"], [])
 
     def test_picks_password(self):
         from seedsigner.views.keycard_views import (
@@ -341,8 +352,180 @@ class TestFormatChooser(unittest.TestCase):
         view = _make_view(
             ToolsKeycardSeedkeeperFormatChooserView, run_screen_returns=1,
         )
+        view.remaining = []
         dest = view.run()
         self.assertEqual(dest.view_args["secret_type"], "password")
+
+    def test_remaining_threaded_through(self):
+        from seedsigner.views.keycard_views import (
+            ToolsKeycardSeedkeeperFormatChooserView,
+        )
+        view = _make_view(
+            ToolsKeycardSeedkeeperFormatChooserView, run_screen_returns=0,
+        )
+        view.remaining = ["other"]
+        dest = view.run()
+        self.assertEqual(dest.view_args["remaining"], ["other"])
+
+
+class TestSeedkeeperThisCard(unittest.TestCase):
+    """Change 4: 'This card' probes, offers to install Seedkeeper when
+    missing, and threads `remaining` to the format step."""
+
+    def _view(self, *, run_screen, remaining=None):
+        from seedsigner.views.keycard_views import (
+            ToolsKeycardSeedkeeperThisCardView,
+        )
+        view = ToolsKeycardSeedkeeperThisCardView.__new__(
+            ToolsKeycardSeedkeeperThisCardView,
+        )
+        view.run_screen = run_screen
+        view.remaining = remaining or []
+        view.controller = MagicMock()
+        view.controller.pending_keycard_mnemonic = ["a"]
+        view.controller.pending_keycard_passphrase = bytearray(b"p")
+        return view
+
+    def _probe(self, seedkeeper_installed):
+        fake_state = MagicMock()
+        fake_state.seedkeeper_installed = seedkeeper_installed
+        return patch(
+            "seedsigner.helpers.card_probe.probe_installed_applets",
+            return_value=fake_state,
+        ), patch(
+            "seedsigner.helpers.keycard.reader.release_other_smartcard_holders",
+        )
+
+    def test_present_routes_to_format(self):
+        from seedsigner.views.keycard_views import (
+            ToolsKeycardSeedkeeperFormatChooserView,
+        )
+        view = self._view(run_screen=MagicMock(), remaining=["other"])
+        p1, p2 = self._probe(True)
+        with p1, p2:
+            dest = view.run()
+        self.assertIs(dest.View_cls, ToolsKeycardSeedkeeperFormatChooserView)
+        self.assertEqual(dest.view_args["remaining"], ["other"])
+        self.assertEqual(view.controller.pending_keycard_mnemonic, ["a"])
+
+    def test_absent_install_ok_routes_to_format(self):
+        from seedsigner.views.keycard_views import (
+            ToolsKeycardSeedkeeperFormatChooserView,
+        )
+        # No applet → "No Seedkeeper applet" screen; user picks Install (0).
+        view = self._view(run_screen=MagicMock(return_value=0))
+        p1, p2 = self._probe(False)
+        with p1, p2, patch(
+            "seedsigner.views.view.install_seedkeeper_applet", return_value=None,
+        ):
+            dest = view.run()
+        self.assertIs(dest.View_cls, ToolsKeycardSeedkeeperFormatChooserView)
+        self.assertEqual(view.controller.pending_keycard_mnemonic, ["a"])
+
+    def test_absent_cancel_wipes_and_returns_to_menu(self):
+        from seedsigner.views.keycard_views import ToolsKeycardMenuView
+        # No applet → user picks Cancel (1).
+        view = self._view(run_screen=MagicMock(return_value=1))
+        p1, p2 = self._probe(False)
+        with p1, p2:
+            dest = view.run()
+        self.assertIs(dest.View_cls, ToolsKeycardMenuView)
+        self.assertIsNone(view.controller.pending_keycard_mnemonic)
+
+
+class TestSeedkeeperSaveRun(unittest.TestCase):
+    """Change 5 (keep seed on error) + Change 4 (Both sequencing)."""
+
+    def _view(self, *, remaining=None, run_screen=None):
+        from seedsigner.views.keycard_views import (
+            ToolsKeycardSeedkeeperSaveRunView,
+        )
+        view = ToolsKeycardSeedkeeperSaveRunView.__new__(
+            ToolsKeycardSeedkeeperSaveRunView,
+        )
+        view.secret_type = "bip39"
+        view.remaining = remaining or []
+        view.run_screen = run_screen or MagicMock(return_value=0)
+        view.controller = MagicMock()
+        view.controller.pending_keycard_mnemonic = ["a", "b"]
+        view.controller.pending_keycard_passphrase = bytearray(b"")
+        return view
+
+    def _patch_label(self):
+        fake_screen = MagicMock()
+        fake_screen.display.return_value = {"passphrase": "lbl"}
+        return patch(
+            "seedsigner.gui.screens.seed_screens.SeedAddPassphraseScreen",
+            return_value=fake_screen,
+        )
+
+    def test_init_satochip_none_keeps_seed_and_returns_to_chooser(self):
+        from seedsigner.views.keycard_views import (
+            ToolsKeycardSeedkeeperDestChooserView,
+        )
+        view = self._view()
+        with self._patch_label(), patch(
+            "seedsigner.helpers.seedkeeper_utils.init_satochip", return_value=None,
+        ):
+            dest = view.run()
+        # Seed NOT wiped — the user can retry / pick another destination.
+        self.assertIs(dest.View_cls, ToolsKeycardSeedkeeperDestChooserView)
+        self.assertEqual(view.controller.pending_keycard_mnemonic, ["a", "b"])
+
+    def test_save_error_keeps_seed_and_offers_retry(self):
+        view = self._view()
+        with self._patch_label(), patch(
+            "seedsigner.helpers.seedkeeper_utils.init_satochip",
+            return_value=MagicMock(),
+        ), patch(
+            "seedsigner.helpers.seedkeeper_utils.ensure_seedkeeper_capacity",
+            side_effect=RuntimeError("boom"),
+        ):
+            dest = view.run()
+        # _backup_error_retry shows a Retry screen (run_screen returns 0 =
+        # Retry) and routes back to the destination chooser; seed preserved.
+        from seedsigner.views.keycard_views import (
+            ToolsKeycardSeedkeeperDestChooserView,
+        )
+        self.assertIs(dest.View_cls, ToolsKeycardSeedkeeperDestChooserView)
+        self.assertEqual(view.controller.pending_keycard_mnemonic, ["a", "b"])
+
+    def test_both_success_routes_to_swap_without_wipe(self):
+        from seedsigner.views.keycard_views import (
+            ToolsKeycardSeedkeeperSwapInsertView,
+        )
+        view = self._view(remaining=["other"])
+        with self._patch_label(), patch(
+            "seedsigner.helpers.seedkeeper_utils.init_satochip",
+            return_value=MagicMock(),
+        ), patch(
+            "seedsigner.helpers.seedkeeper_utils.ensure_seedkeeper_capacity",
+            return_value=(True, 10, 1000),
+        ), patch(
+            "seedsigner.gui.screens.screen.LoadingScreenThread",
+            return_value=MagicMock(),
+        ):
+            dest = view.run()
+        # First leg saved; seed kept for the second card.
+        self.assertIs(dest.View_cls, ToolsKeycardSeedkeeperSwapInsertView)
+        self.assertEqual(view.controller.pending_keycard_mnemonic, ["a", "b"])
+
+    def test_single_success_wipes_and_returns_to_menu(self):
+        from seedsigner.views.keycard_views import ToolsKeycardMenuView
+        view = self._view(remaining=[])
+        with self._patch_label(), patch(
+            "seedsigner.helpers.seedkeeper_utils.init_satochip",
+            return_value=MagicMock(),
+        ), patch(
+            "seedsigner.helpers.seedkeeper_utils.ensure_seedkeeper_capacity",
+            return_value=(True, 10, 1000),
+        ), patch(
+            "seedsigner.gui.screens.screen.LoadingScreenThread",
+            return_value=MagicMock(),
+        ):
+            dest = view.run()
+        self.assertIs(dest.View_cls, ToolsKeycardMenuView)
+        self.assertIsNone(view.controller.pending_keycard_mnemonic)
 
 
 class TestInitTailRoutesToChooser(unittest.TestCase):
@@ -373,28 +556,39 @@ class TestInitTailRoutesToChooser(unittest.TestCase):
         )
 
 
-class TestSetupMenuStillIntact(unittest.TestCase):
-    """Per plan, the standalone Setup-menu entries stay where they are
-    so users can re-run each step individually."""
+class TestSetupEntriesReachableAfterReorg(unittest.TestCase):
+    """The scope-bucket reorg dropped the standalone ``Setup`` menu:
+    ``Initialise card`` now lives under ``Card`` and ``Generate key`` /
+    ``Import seed`` under ``This instance``. This pins that every Setup
+    step is still reachable so users can re-run each individually."""
 
-    def test_setup_menu_routes(self):
+    def test_generate_and_import_reachable_from_this_instance(self):
         from seedsigner.views.keycard_views import (
             ToolsKeycardGenerateKeyView,
             ToolsKeycardImportSeedView,
-            ToolsKeycardInitView,
-            ToolsKeycardSetupMenuView,
+            ToolsKeycardThisInstanceMenuView,
         )
-        expected = [
-            ToolsKeycardInitView,
-            ToolsKeycardGenerateKeyView,
-            ToolsKeycardImportSeedView,
-        ]
-        for i, view_cls in enumerate(expected):
+        # This instance menu: Generate key (0), Import seed (1), ...
+        expected = {
+            0: ToolsKeycardGenerateKeyView,
+            1: ToolsKeycardImportSeedView,
+        }
+        for i, view_cls in expected.items():
             view = _make_view(
-                ToolsKeycardSetupMenuView, run_screen_returns=i,
+                ToolsKeycardThisInstanceMenuView, run_screen_returns=i,
             )
             dest = view.run()
             self.assertIs(dest.View_cls, view_cls)
+
+    def test_init_reachable_from_card_menu(self):
+        from seedsigner.views.keycard_views import (
+            ToolsKeycardCardMenuView,
+            ToolsKeycardInitView,
+        )
+        # Card menu: Initialise card is the first entry.
+        view = _make_view(ToolsKeycardCardMenuView, run_screen_returns=0)
+        dest = view.run()
+        self.assertIs(dest.View_cls, ToolsKeycardInitView)
 
 
 if __name__ == "__main__":

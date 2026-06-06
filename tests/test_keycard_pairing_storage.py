@@ -270,47 +270,26 @@ class TestRemoveBackwardsCompat:
 
 
 # ---------------------------------------------------------------------------
-# Label trailer (wallet name)
+# Blob format (instance naming removed — label trailer is always empty now,
+# but the read path stays backward-compatible with older blobs)
 # ---------------------------------------------------------------------------
 
 
-class TestLabelRoundTrip:
-    def test_label_round_trip(self, sample_pairing, sample_uid):
-        blob = encrypt_pairing("pw", sample_pairing, sample_uid, label="My Wallet")
-        stored = decrypt_pairing("pw", blob)
-        assert stored.label == "My Wallet"
-        assert stored.pairing.pairing_key == sample_pairing.pairing_key
-        assert stored.instance_uid == sample_uid
-
-    def test_label_none_round_trip(self, sample_pairing, sample_uid):
+class TestBlobFormat:
+    def test_round_trip_label_always_none(self, sample_pairing, sample_uid):
+        # Instance naming was removed; blobs always decode with label=None.
         blob = encrypt_pairing("pw", sample_pairing, sample_uid)
         stored = decrypt_pairing("pw", blob)
         assert stored.label is None
+        assert stored.pairing.pairing_key == sample_pairing.pairing_key
+        assert stored.instance_uid == sample_uid
 
-    def test_label_empty_string_treated_as_none(self, sample_pairing, sample_uid):
-        blob = encrypt_pairing("pw", sample_pairing, sample_uid, label="")
-        stored = decrypt_pairing("pw", blob)
-        assert stored.label is None
-
-    def test_blob_length_constant_with_or_without_label(
-        self, sample_pairing, sample_uid,
-    ):
-        empty = encrypt_pairing("pw", sample_pairing, sample_uid, label=None)
-        named = encrypt_pairing("pw", sample_pairing, sample_uid, label="X" * 16)
-        assert len(empty) == len(named)
-
-    def test_label_too_long_rejected(self, sample_pairing, sample_uid):
-        too_long = "x" * 17  # 17 ASCII bytes > LABEL_MAX_LEN (16)
-        with pytest.raises(ValueError):
-            encrypt_pairing("pw", sample_pairing, sample_uid, label=too_long)
-
-    def test_label_utf8_multibyte_counts_in_bytes(self, sample_pairing, sample_uid):
-        # "ñ" is 2 UTF-8 bytes; 8 of them = 16 bytes (fits exactly).
-        ok = "ñ" * 8
-        encrypt_pairing("pw", sample_pairing, sample_uid, label=ok)  # no raise
-        # 9 of them = 18 bytes -> over the cap.
-        with pytest.raises(ValueError):
-            encrypt_pairing("pw", sample_pairing, sample_uid, label="ñ" * 9)
+    def test_blob_length_stable(self, sample_pairing, sample_uid):
+        # The empty label trailer keeps the on-disk size constant across
+        # writes (only the random salt/nonce differ, both fixed length).
+        a = encrypt_pairing("pw", sample_pairing, sample_uid)
+        b = encrypt_pairing("pw", sample_pairing, sample_uid)
+        assert len(a) == len(b)
 
 
 class TestLegacyBlobNoTrailer:
@@ -343,124 +322,40 @@ class TestLegacyBlobNoTrailer:
         assert stored.instance_uid == sample_uid
         assert stored.pairing.pairing_index == sample_pairing.pairing_index
 
+    def test_legacy_blob_with_name_still_loads(self, sample_pairing, sample_uid):
+        """A blob written by older firmware that DID set a wallet name must
+        still load — pairing + UID intact — even though naming was removed.
 
-class TestUpdateLabel:
-    def test_update_label_round_trip(self, sample_pairing, storage_dir):
-        uid = b"\xAA" * 16
-        pairing_storage.save("pw", sample_pairing, uid, label="Alpha")
-        pairing_storage.update_label("pw", uid, "Beta")
-        loaded = pairing_storage.load("pw", instance_uid=uid)
-        assert loaded.label == "Beta"
-        assert loaded.pairing.pairing_index == sample_pairing.pairing_index
-        assert loaded.pairing.pairing_key == sample_pairing.pairing_key
+        We hand-build a blob whose trailer carries a populated label.
+        """
+        from Cryptodome.Cipher import AES
 
-    def test_update_label_clear(self, sample_pairing, storage_dir):
-        uid = b"\xAA" * 16
-        pairing_storage.save("pw", sample_pairing, uid, label="Alpha")
-        pairing_storage.update_label("pw", uid, None)
-        loaded = pairing_storage.load("pw", instance_uid=uid)
-        assert loaded.label is None
+        password = pairing_storage._normalise_password("pw")
+        salt = os.urandom(pairing_storage.SALT_LEN)
+        nonce = os.urandom(pairing_storage.NONCE_LEN)
+        key = pairing_storage._derive_storage_key(password, salt)
+        name = b"Cold Wallet"
+        trailer = (
+            bytes([pairing_storage.LABEL_TAG, len(name)])
+            + name
+            + b"\x00" * (pairing_storage.LABEL_MAX_LEN - len(name))
+        )
+        payload = (
+            bytes([sample_pairing.pairing_index])
+            + sample_pairing.pairing_key
+            + bytes([len(sample_uid)])
+            + bytes(sample_uid)
+            + trailer
+        )
+        cipher = AES.new(key, AES.MODE_GCM, nonce=nonce)
+        ciphertext, tag = cipher.encrypt_and_digest(payload)
+        blob = (
+            bytes([pairing_storage.STORAGE_VERSION]) + salt + nonce + tag + ciphertext
+        )
 
-    def test_update_label_no_blob_raises(self, storage_dir):
-        with pytest.raises(PairingStorageError):
-            pairing_storage.update_label("pw", b"\xCC" * 16, "X")
-
-
-class TestLabelOnly:
-    def test_round_trip(self, storage_dir):
-        uid = b"\xAA" * 16
-        pairing_storage.save_label_only(uid, "Alpha")
-        assert pairing_storage.load_label_only(uid) == "Alpha"
-
-    def test_overwrite(self, storage_dir):
-        uid = b"\xAA" * 16
-        pairing_storage.save_label_only(uid, "Alpha")
-        pairing_storage.save_label_only(uid, "Beta")
-        assert pairing_storage.load_label_only(uid) == "Beta"
-
-    def test_clear_with_none_deletes_file(self, storage_dir):
-        uid = b"\xAA" * 16
-        pairing_storage.save_label_only(uid, "Alpha")
-        assert pairing_storage.load_label_only(uid) == "Alpha"
-        pairing_storage.save_label_only(uid, None)
-        assert pairing_storage.load_label_only(uid) is None
-
-    def test_clear_with_empty_deletes_file(self, storage_dir):
-        uid = b"\xAA" * 16
-        pairing_storage.save_label_only(uid, "Alpha")
-        pairing_storage.save_label_only(uid, "")
-        assert pairing_storage.load_label_only(uid) is None
-
-    def test_clear_when_absent_is_noop(self, storage_dir):
-        uid = b"\xAA" * 16
-        # No file present — should not raise.
-        pairing_storage.save_label_only(uid, None)
-        assert pairing_storage.load_label_only(uid) is None
-
-    def test_load_missing_returns_none(self, storage_dir):
-        assert pairing_storage.load_label_only(b"\xBB" * 16) is None
-
-    def test_per_uid_isolation(self, storage_dir):
-        uid_a = b"\xAA" * 16
-        uid_b = b"\xBB" * 16
-        pairing_storage.save_label_only(uid_a, "Alpha")
-        pairing_storage.save_label_only(uid_b, "Beta")
-        assert pairing_storage.load_label_only(uid_a) == "Alpha"
-        assert pairing_storage.load_label_only(uid_b) == "Beta"
-
-    def test_remove(self, storage_dir):
-        uid = b"\xAA" * 16
-        pairing_storage.save_label_only(uid, "Alpha")
-        assert pairing_storage.remove_label_only(uid) is True
-        assert pairing_storage.load_label_only(uid) is None
-        # Second remove returns False.
-        assert pairing_storage.remove_label_only(uid) is False
-
-    def test_remove_all(self, storage_dir):
-        for i in range(3):
-            uid = bytes([0xA0 + i]) * 16
-            pairing_storage.save_label_only(uid, f"Card {i}")
-        count = pairing_storage.remove_all_label_only(base_dir=storage_dir)
-        assert count == 3
-        for i in range(3):
-            uid = bytes([0xA0 + i]) * 16
-            assert pairing_storage.load_label_only(uid) is None
-
-    def test_remove_all_ignores_pairing_blobs(self, sample_pairing, storage_dir):
-        # Pairing blob present too — should be untouched by label cleanup.
-        uid = b"\xAA" * 16
-        pairing_storage.save("pw", sample_pairing, uid, label="Original")
-        pairing_storage.save_label_only(uid, "From rename")
-        count = pairing_storage.remove_all_label_only(base_dir=storage_dir)
-        assert count == 1
-        # Blob still loadable; label inside the blob is unchanged.
-        loaded = pairing_storage.load("pw", instance_uid=uid)
-        assert loaded is not None
-        assert loaded.label == "Original"
-
-    def test_unicode_label_round_trip(self, storage_dir):
-        uid = b"\xAA" * 16
-        # UTF-8 multibyte must round-trip cleanly. "Café" = 5 UTF-8 bytes.
-        pairing_storage.save_label_only(uid, "Café")
-        assert pairing_storage.load_label_only(uid) == "Café"
-
-    def test_too_long_label_rejected(self, storage_dir):
-        uid = b"\xAA" * 16
-        oversized = "x" * (pairing_storage.LABEL_MAX_LEN + 1)
-        with pytest.raises(ValueError):
-            pairing_storage.save_label_only(uid, oversized)
-
-    def test_no_magic_prefix_returns_none(self, storage_dir):
-        uid = b"\xAA" * 16
-        target = pairing_storage._label_path_for_uid(uid)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(b"raw bytes without the magic prefix")
-        assert pairing_storage.load_label_only(uid) is None
-
-    def test_label_file_independent_of_pairing_blob(self, storage_dir):
-        # The label can be persisted without ever creating a pairing blob —
-        # this is the v3.2+ ephemeral-card case.
-        uid = b"\xAA" * 16
-        pairing_storage.save_label_only(uid, "Alpha")
-        assert pairing_storage.load("pw", instance_uid=uid) is None
-        assert pairing_storage.load_label_only(uid) == "Alpha"
+        stored = decrypt_pairing("pw", blob)
+        assert stored.instance_uid == sample_uid
+        assert stored.pairing.pairing_key == sample_pairing.pairing_key
+        # The old name still decodes from the trailer (nothing reads it now,
+        # but the load must not fail on its presence).
+        assert stored.label == "Cold Wallet"

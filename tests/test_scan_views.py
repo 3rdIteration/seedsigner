@@ -152,8 +152,8 @@ def _make_home_scan_view(has_auth=False):
 
 class TestHomeScanCardGate(unittest.TestCase):
     """Home > Scan checks the reader before opening the camera: no card ->
-    'Insert card' error + return home; card present -> silent pair + hand
-    off to the generic ScanView."""
+    subtle 'Insert a card first' toast + return home (like the Cards menu);
+    card present -> silent pair + hand off to the generic ScanView."""
 
     def _present(self):
         from seedsigner.helpers.card_probe import ProbeResult
@@ -163,32 +163,43 @@ class TestHomeScanCardGate(unittest.TestCase):
         from seedsigner.helpers.card_probe import ProbeResult
         return ProbeResult(present=False, kind_match=False, initialised=False)
 
-    def test_no_card_shows_error_and_returns_home(self):
-        from unittest.mock import patch
+    def test_no_card_toasts_and_returns_home(self):
+        from unittest.mock import MagicMock, patch
         from seedsigner.views.view import MainMenuView
 
         view = _make_home_scan_view()
+        fake_toast_instance = MagicMock(name="InfoToast_instance")
+        fake_toast_cls = MagicMock(return_value=fake_toast_instance)
         with patch("seedsigner.helpers.card_probe.probe_card",
-                   return_value=self._absent()):
+                   return_value=self._absent()), \
+             patch("seedsigner.gui.toast.InfoToast", fake_toast_cls):
             dest = view.run()
 
-        # "Insert card" error screen shown, then snap back to Home.
-        view.run_screen.assert_called_once()
+        # Subtle toast (no full-screen error), then snap back to Home.
+        view.run_screen.assert_not_called()
+        fake_toast_cls.assert_called_once()
+        self.assertIn(
+            "Insert a card", fake_toast_cls.call_args.kwargs["label_text"],
+        )
+        view.controller.activate_toast.assert_called_once_with(fake_toast_instance)
         self.assertIs(dest.View_cls, MainMenuView)
         self.assertTrue(dest.clear_history)
 
     def test_probe_exception_treated_as_no_card(self):
         """A reader/driver hiccup must not crash — it falls through to the
-        same 'Insert card' path."""
-        from unittest.mock import patch
+        same subtle 'Insert a card first' path."""
+        from unittest.mock import MagicMock, patch
         from seedsigner.views.view import MainMenuView
 
         view = _make_home_scan_view()
+        fake_toast_cls = MagicMock(return_value=MagicMock())
         with patch("seedsigner.helpers.card_probe.probe_card",
-                   side_effect=RuntimeError("reader exploded")):
+                   side_effect=RuntimeError("reader exploded")), \
+             patch("seedsigner.gui.toast.InfoToast", fake_toast_cls):
             dest = view.run()
 
-        view.run_screen.assert_called_once()
+        view.run_screen.assert_not_called()
+        view.controller.activate_toast.assert_called_once()
         self.assertIs(dest.View_cls, MainMenuView)
 
     def test_card_present_pairs_then_routes_to_scan(self):

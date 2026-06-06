@@ -26,11 +26,11 @@ Plaintext payload::
 The instance UID lets us refuse to load a blob that doesn't match the
 card currently in the reader.
 
-The label trailer is written for every new blob (since v1) but is
-*optional* on read: blobs written before the label trailer existed
-have no trailer bytes and decode with ``label=None``. The label slot
-is constant length (16 bytes, zero-padded) so the on-disk ciphertext
-size does not leak whether a name was set.
+The label trailer is still written for every new blob (always empty
+now — instance naming was removed) and is *optional* on read: blobs
+written before the trailer existed, or by older firmware that set a
+name, both decode without error. The slot is constant length so the
+on-disk ciphertext size is independent of any legacy name.
 """
 
 from __future__ import annotations
@@ -68,15 +68,6 @@ PER_UID_PREFIX = "keycard_pairing_"
 PER_UID_SUFFIX = ".bin"
 FINGERPRINT_LEN_HEX = 16  # 8 bytes of SHA-256(instance_uid)
 
-# Per-UID plaintext wallet name. Labels are display strings, not
-# secrets — they exist so the user can tell their cards apart in the
-# UI. Stored separately from the encrypted pairing blob so it works
-# uniformly for v3.2+ ephemeral cards (no on-disk blob) and avoids
-# asking the user for a pairing password just to rename a wallet.
-LABEL_FILE_PREFIX = "keycard_label_"
-LABEL_FILE_SUFFIX = ".txt"
-LABEL_FILE_MAGIC = b"kclbl1\n"
-
 
 class PairingStorageError(Exception):
     pass
@@ -93,7 +84,6 @@ def encrypt_pairing(
     password: str,
     pairing: PairingInfo,
     instance_uid: bytes,
-    label: Optional[str] = None,
 ) -> bytes:
     if len(pairing.pairing_key) != 32:
         raise ValueError("pairing key must be 32 bytes")
@@ -101,14 +91,15 @@ def encrypt_pairing(
         raise ValueError("pairing index must fit in one byte")
     if len(instance_uid) > 0xFF:
         raise ValueError("instance UID too long")
-    label_bytes = _encode_label(label)
     password = _normalise_password(password)
+    # Instance naming was removed; the trailer is still emitted (empty) so
+    # the on-disk blob structure stays byte-compatible with older firmware.
     payload = (
         bytes([pairing.pairing_index])
         + pairing.pairing_key
         + bytes([len(instance_uid)])
         + bytes(instance_uid)
-        + _build_label_trailer(label_bytes)
+        + _build_label_trailer(b"")
     )
     salt = os.urandom(SALT_LEN)
     nonce = os.urandom(NONCE_LEN)
@@ -191,107 +182,6 @@ def _path_for_uid(instance_uid: bytes, *, base_dir: Optional[Path] = None) -> Pa
     return get_storage_path(filename)
 
 
-def _label_path_for_uid(instance_uid: bytes, *,
-                       base_dir: Optional[Path] = None) -> Path:
-    fp = fingerprint_for_uid(instance_uid)
-    filename = f"{LABEL_FILE_PREFIX}{fp}{LABEL_FILE_SUFFIX}"
-    if base_dir is not None:
-        return base_dir / filename
-    return get_storage_path(filename)
-
-
-def save_label_only(instance_uid: bytes, label: Optional[str], *,
-                    base_dir: Optional[Path] = None) -> Path:
-    """Persist a wallet name in a per-UID plaintext file.
-
-    Labels are display strings, not secrets — plaintext storage is
-    sufficient and avoids forcing the user to enter a pairing password
-    just to rename a wallet (which doesn't work at all for v3.2+
-    ephemeral cards, since they have no on-disk pairing blob).
-
-    Passing ``label=None`` or ``""`` deletes any existing file.
-    """
-    target = _label_path_for_uid(instance_uid, base_dir=base_dir)
-    if not label:
-        try:
-            target.unlink()
-        except FileNotFoundError:
-            pass
-        return target
-    encoded = label.encode("utf-8")
-    if len(encoded) > LABEL_MAX_LEN:
-        raise ValueError(f"label exceeds {LABEL_MAX_LEN} UTF-8 bytes")
-    target.parent.mkdir(parents=True, exist_ok=True)
-    tmp = target.with_suffix(target.suffix + ".tmp")
-    tmp.write_bytes(LABEL_FILE_MAGIC + encoded)
-    os.replace(tmp, target)
-    try:
-        os.chmod(target, 0o600)
-    except Exception:
-        pass
-    return target
-
-
-def load_label_only(instance_uid: bytes, *,
-                    base_dir: Optional[Path] = None) -> Optional[str]:
-    """Read the per-UID label file. ``None`` if absent or malformed."""
-    target = _label_path_for_uid(instance_uid, base_dir=base_dir)
-    if not target.exists():
-        return None
-    try:
-        data = target.read_bytes()
-    except OSError:
-        return None
-    if not data.startswith(LABEL_FILE_MAGIC):
-        return None
-    encoded = data[len(LABEL_FILE_MAGIC):]
-    if not encoded:
-        return None
-    if len(encoded) > LABEL_MAX_LEN:
-        return None
-    try:
-        decoded = encoded.decode("utf-8")
-    except UnicodeDecodeError:
-        return None
-    return decoded if decoded else None
-
-
-def remove_label_only(instance_uid: bytes, *,
-                      base_dir: Optional[Path] = None) -> bool:
-    """Delete the per-UID label file if present."""
-    target = _label_path_for_uid(instance_uid, base_dir=base_dir)
-    try:
-        target.unlink()
-        return True
-    except FileNotFoundError:
-        return False
-
-
-def remove_all_label_only(*, base_dir: Optional[Path] = None) -> int:
-    """Delete every per-UID label file. Returns the count removed."""
-    if base_dir is None:
-        try:
-            base_dir = get_storage_path().parent
-        except Exception:
-            return 0
-    if not base_dir.exists():
-        return 0
-    removed = 0
-    for entry in sorted(base_dir.iterdir()):
-        if not entry.is_file():
-            continue
-        name = entry.name
-        if name.startswith(LABEL_FILE_PREFIX) and name.endswith(LABEL_FILE_SUFFIX):
-            try:
-                entry.unlink()
-                removed += 1
-            except FileNotFoundError:
-                pass
-            except OSError:
-                logger.exception("could not remove label file %s", entry)
-    return removed
-
-
 @dataclass(frozen=True)
 class StoredFingerprint:
     """One entry returned by :func:`list_pairings` for the Forget UI."""
@@ -328,14 +218,14 @@ def list_pairings(*, base_dir: Optional[Path] = None) -> List[StoredFingerprint]
 
 
 def save(password: str, pairing: PairingInfo, instance_uid: bytes,
-         path: Optional[Path] = None, label: Optional[str] = None) -> Path:
+         path: Optional[Path] = None) -> Path:
     """Persist a pairing.
 
     With ``path`` explicit (test path) writes there. Otherwise writes to
     the per-UID file and, if a legacy single-card file exists, removes
     it so we don't keep stale duplicates.
     """
-    blob = encrypt_pairing(password, pairing, instance_uid, label=label)
+    blob = encrypt_pairing(password, pairing, instance_uid)
     if path is None:
         target = _path_for_uid(instance_uid)
         legacy = get_storage_path()
@@ -357,20 +247,6 @@ def save(password: str, pairing: PairingInfo, instance_uid: bytes,
         except Exception:
             logger.exception("could not remove legacy pairing file %s", legacy)
     return target
-
-
-def update_label(password: str, instance_uid: bytes,
-                 new_label: Optional[str]) -> Path:
-    """Re-encrypt the per-UID blob with a new label, keeping pairing intact.
-
-    Raises ``PairingStorageError`` if the blob cannot be loaded (no file,
-    wrong password) and lets ``OSError`` propagate to the caller so the
-    UI can surface microSD-missing failures.
-    """
-    stored = load(password, instance_uid=instance_uid)
-    if stored is None:
-        raise PairingStorageError("no stored pairing for this card")
-    return save(password, stored.pairing, instance_uid, label=new_label)
 
 
 def load(password: str, instance_uid: Optional[bytes] = None,
@@ -458,16 +334,6 @@ def remove_all(*, base_dir: Optional[Path] = None) -> int:
         except OSError:
             logger.exception("could not remove pairing file %s", entry.path)
     return removed
-
-
-def _encode_label(label: Optional[str]) -> bytes:
-    """Return the UTF-8 bytes of ``label`` (empty if None) and enforce cap."""
-    if label is None or label == "":
-        return b""
-    encoded = label.encode("utf-8")
-    if len(encoded) > LABEL_MAX_LEN:
-        raise ValueError(f"label exceeds {LABEL_MAX_LEN} UTF-8 bytes")
-    return encoded
 
 
 def _build_label_trailer(label_bytes: bytes) -> bytes:

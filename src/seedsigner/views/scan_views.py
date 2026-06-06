@@ -17,7 +17,7 @@ from gettext import gettext as _
 
 from seedsigner.gui.screens.screen import (
     RET_CODE__BACK_BUTTON, ButtonListScreen, ButtonOption,
-    ErrorScreen, LargeIconStatusScreen, WarningScreen,
+    LargeIconStatusScreen, WarningScreen,
 )
 from seedsigner.helpers.l10n import mark_for_translation as _mft
 from seedsigner.models.decode_qr import DecodeQR, DecodeQRStatus
@@ -60,14 +60,16 @@ class HomeScanView(View):
             present = False
 
         if not present:
-            self.run_screen(
-                ErrorScreen,
-                title=_("Insert card"),
-                status_headline=None,
-                text=_("No card detected.\nInsert a card and try again."),
-                show_back_button=False,
-                button_data=[ButtonOption("OK")],
-            )
+            # Subtle toast (matches CardsMenuView) instead of a heavy
+            # full-screen error: every Home>Scan payload needs a card, so
+            # bounce home with a gentle "Insert a card first" hint.
+            try:
+                from seedsigner.gui.toast import InfoToast
+                self.controller.activate_toast(
+                    InfoToast(label_text=_("Insert a card first"))
+                )
+            except Exception:
+                logger.exception("InfoToast dispatch failed in HomeScanView")
             return Destination(MainMenuView, clear_history=True)
 
         # Best-effort: pair the inserted card now (default credentials) so a

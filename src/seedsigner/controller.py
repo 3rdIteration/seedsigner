@@ -308,16 +308,8 @@ class Controller(Singleton):
         # password. ``keycard_pairing`` (singular) is a back-compat shim
         # that surfaces the most-recently-seen pairing.
         controller.keycard_pairings = {}
-        # Per-instance wallet name, keyed by ``instance_uid``. Populated
-        # opportunistically as we load pairings from disk so that the
-        # Instances list/switch/delete views can show human-readable
-        # names. Memory-only: the authoritative copy lives encrypted on
-        # the microSD card via ``pairing_storage``.
-        controller.keycard_labels = {}
-        # AID → instance_uid mapping captured at SELECT time. Lets the
-        # Manage Instances views look up the label for any AID returned
-        # by GET STATUS once the user has paired that instance this
-        # boot. Cleared by ``forget_pairing_for`` for that UID.
+        # AID → instance_uid mapping captured at SELECT time. Cleared by
+        # ``forget_pairing_for`` for that UID.
         controller.keycard_aid_to_uid = {}
         # ``keycard_ephemeral_secrets`` caches the 32-byte pairing
         # secret (NOT the pairing key) for cards that use v3.2 ephemeral
@@ -338,10 +330,6 @@ class Controller(Singleton):
         # published AID; the Manage Instances flow updates it.
         from seedsigner.helpers.keycard.commands import APPLET_AID as _DEFAULT_KEYCARD_AID
         controller.active_keycard_aid = _DEFAULT_KEYCARD_AID
-        # Wallet name captured during Init that should be written into
-        # the next successful pairing save. Cleared once consumed so
-        # subsequent re-pairings of *other* cards don't pick it up.
-        controller.pending_keycard_label = None
         # Transient state for the post-init Setup chain (Generate / Import →
         # backup → LOAD_KEY → optional Seedkeeper save). Mnemonic words are
         # stored as ``"".join(WORDLIST[i])`` copies so wiping them does NOT
@@ -429,22 +417,6 @@ class Controller(Singleton):
         self.keycard_pairings[bytes(instance_uid)] = pairing
         self.last_keycard_uid = bytes(instance_uid)
 
-    def get_label_for(self, instance_uid):
-        """Return the cached wallet name for ``instance_uid`` or None."""
-        if instance_uid is None:
-            return None
-        return self.keycard_labels.get(bytes(instance_uid))
-
-    def set_label_for(self, instance_uid, label) -> None:
-        """Cache (or overwrite) the wallet name for ``instance_uid``."""
-        if instance_uid is None:
-            return
-        key = bytes(instance_uid)
-        if label:
-            self.keycard_labels[key] = label
-        else:
-            self.keycard_labels.pop(key, None)
-
     def remember_aid_for_uid(self, aid, instance_uid) -> None:
         """Record the AID→UID mapping observed at SELECT time."""
         if aid is None or instance_uid is None:
@@ -460,7 +432,6 @@ class Controller(Singleton):
         if instance_uid is None:
             return
         self.keycard_pairings.pop(bytes(instance_uid), None)
-        self.keycard_labels.pop(bytes(instance_uid), None)
         uid_b = bytes(instance_uid)
         for aid_key, mapped_uid in list(self.keycard_aid_to_uid.items()):
             if mapped_uid == uid_b:
@@ -477,7 +448,6 @@ class Controller(Singleton):
 
     def forget_all_pairings(self) -> None:
         self.keycard_pairings.clear()
-        self.keycard_labels.clear()
         self.keycard_aid_to_uid.clear()
         for uid in list(self.keycard_ephemeral_secrets.keys()):
             self.forget_ephemeral_secret_for(uid)

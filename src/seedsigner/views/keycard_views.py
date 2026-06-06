@@ -103,8 +103,21 @@ DEFAULT_PAIRING_PASSWORD = "KeycardDefaultPairing"
 
 
 class ToolsKeycardMenuView(View):
-    """Top-level Keycard menu. Daily-use ops at the top, setup and
-    maintenance hidden behind submenus to keep the list scannable.
+    """Top-level Keycard menu, organised by *scope* so the user always
+    knows what each branch acts on:
+
+    * **Ethereum / Bitcoin** — sign / export with the active instance's
+      key (daily-use ops, kept at the top).
+    * **This instance** — everything else that acts on the active
+      instance: load a key (generate / import), change PIN, pairing,
+      factory reset.
+    * **Instances** — manage the *set* of applet instances on the card
+      (list / switch active / create / delete).
+    * **Card** — whole-card / package ops (initialise, status, uninstall
+      the applet package).
+
+    Branches that act on one instance carry the active instance label
+    (``Inst N``) in their title; card-wide branches do not.
 
     On entry the card is probed (see ``card_probe.run_card_gate``):
     a missing card snaps back to ``MainMenuView`` with a "No card"
@@ -114,8 +127,9 @@ class ToolsKeycardMenuView(View):
 
     ETHEREUM = ButtonOption("Ethereum")
     BITCOIN = ButtonOption("Bitcoin")
-    SETUP = ButtonOption("Setup")
-    MANAGE = ButtonOption("Manage")
+    THIS_INSTANCE = ButtonOption("This instance")
+    INSTANCES = ButtonOption("Instances")
+    CARD = ButtonOption("Card")
 
     def run(self):
         from seedsigner.helpers.card_probe import run_card_gate
@@ -125,10 +139,19 @@ class ToolsKeycardMenuView(View):
         if gate is not None:
             return gate
 
-        button_data = [self.ETHEREUM, self.BITCOIN, self.SETUP, self.MANAGE]
+        button_data = [
+            self.ETHEREUM,
+            self.BITCOIN,
+            self.THIS_INSTANCE,
+            self.INSTANCES,
+            self.CARD,
+        ]
+        # Surface the active instance in the title so the user always
+        # knows which instance signing / export will use this session.
+        active = _format_instance_label(self.controller.active_keycard_aid)
         selected = self.run_screen(
             ButtonListScreen,
-            title="Keycard",
+            title=f"Keycard · {active}",
             is_button_text_centered=False,
             button_data=button_data,
         )
@@ -140,25 +163,103 @@ class ToolsKeycardMenuView(View):
             return Destination(ToolsKeycardEthereumMenuView)
         if chosen == self.BITCOIN:
             return Destination(ToolsKeycardBitcoinMenuView)
-        if chosen == self.SETUP:
-            return Destination(ToolsKeycardSetupMenuView)
-        if chosen == self.MANAGE:
-            return Destination(ToolsKeycardManageMenuView)
+        if chosen == self.THIS_INSTANCE:
+            return Destination(ToolsKeycardThisInstanceMenuView)
+        if chosen == self.INSTANCES:
+            return Destination(ToolsKeycardInstancesMenuView)
+        if chosen == self.CARD:
+            return Destination(ToolsKeycardCardMenuView)
         return Destination(NotYetImplementedView)
 
 
-class ToolsKeycardSetupMenuView(View):
-    """Provisioning flows for a fresh/blank card."""
+class ToolsKeycardThisInstanceMenuView(View):
+    """Operations that act on the **active** instance's key/identity:
+    load a key (generate / import), change PIN, pairing, factory reset.
 
-    INIT = ButtonOption("Initialise card")
+    The title carries the active instance label so the scope of every
+    child action is explicit.
+    """
+
     GENERATE_KEY = ButtonOption("Generate key")
     IMPORT_SEED = ButtonOption("Import seed")
+    CHANGE_PIN = ButtonOption("Change PIN")
+    PAIRING = ButtonOption("Pairing")
+    FACTORY_RESET = ButtonOption("Factory reset")
 
     def run(self):
-        button_data = [self.INIT, self.GENERATE_KEY, self.IMPORT_SEED]
+        active = _format_instance_label(self.controller.active_keycard_aid)
+        button_data = [
+            self.GENERATE_KEY,
+            self.IMPORT_SEED,
+            self.CHANGE_PIN,
+            self.PAIRING,
+            self.FACTORY_RESET,
+        ]
         selected = self.run_screen(
             ButtonListScreen,
-            title="Setup",
+            title=f"This instance · {active}",
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        chosen = button_data[selected]
+        if chosen == self.GENERATE_KEY:
+            return Destination(ToolsKeycardGenerateKeyView)
+        if chosen == self.IMPORT_SEED:
+            return Destination(ToolsKeycardImportSeedView)
+        if chosen == self.CHANGE_PIN:
+            return Destination(ToolsKeycardChangePinView)
+        if chosen == self.PAIRING:
+            return Destination(ToolsKeycardPairingMenuView)
+        if chosen == self.FACTORY_RESET:
+            return Destination(ToolsKeycardFactoryResetView)
+        return Destination(NotYetImplementedView)
+
+
+class ToolsKeycardPairingMenuView(View):
+    """Pairing ops for the active instance: pair a new slot, or remove
+    a pairing. Both act on the active instance, so the title carries its
+    label."""
+
+    PAIR = ButtonOption("Pair card")
+    REMOVE_PAIRING = ButtonOption("Remove pairing")
+
+    def run(self):
+        active = _format_instance_label(self.controller.active_keycard_aid)
+        button_data = [self.PAIR, self.REMOVE_PAIRING]
+        selected = self.run_screen(
+            ButtonListScreen,
+            title=f"Pairing · {active}",
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        chosen = button_data[selected]
+        if chosen == self.PAIR:
+            return Destination(ToolsKeycardPairView)
+        if chosen == self.REMOVE_PAIRING:
+            return Destination(ToolsKeycardRemovePairingView)
+        return Destination(NotYetImplementedView)
+
+
+class ToolsKeycardCardMenuView(View):
+    """Whole-card / package ops that are *not* tied to a single
+    instance: initialise a blank card, read card status, uninstall the
+    Keycard package (removes every instance). No instance label in the
+    title — these act on the card, not one instance.
+    """
+
+    INIT = ButtonOption("Initialise card")
+    STATUS = ButtonOption("Status")
+    UNINSTALL = ButtonOption("Uninstall applet")
+
+    def run(self):
+        button_data = [self.INIT, self.STATUS, self.UNINSTALL]
+        selected = self.run_screen(
+            ButtonListScreen,
+            title="Card",
             is_button_text_centered=False,
             button_data=button_data,
         )
@@ -167,83 +268,8 @@ class ToolsKeycardSetupMenuView(View):
         chosen = button_data[selected]
         if chosen == self.INIT:
             return Destination(ToolsKeycardInitView)
-        if chosen == self.GENERATE_KEY:
-            return Destination(ToolsKeycardGenerateKeyView)
-        if chosen == self.IMPORT_SEED:
-            return Destination(ToolsKeycardImportSeedView)
-        return Destination(NotYetImplementedView)
-
-
-class ToolsKeycardManageMenuView(View):
-    """Maintenance flows: introspection, credential rotation,
-    multi-instance management, plus the destructive ops behind
-    ``Advanced``."""
-
-    STATUS = ButtonOption("Status")
-    CHANGE_PIN = ButtonOption("Change PIN")
-    INSTANCES = ButtonOption("Instances")
-    ADVANCED = ButtonOption("Advanced")
-
-    def run(self):
-        button_data = [
-            self.STATUS,
-            self.CHANGE_PIN,
-            self.INSTANCES,
-            self.ADVANCED,
-        ]
-        selected = self.run_screen(
-            ButtonListScreen,
-            title="Manage",
-            is_button_text_centered=False,
-            button_data=button_data,
-        )
-        if selected == RET_CODE__BACK_BUTTON:
-            return Destination(BackStackView)
-        chosen = button_data[selected]
         if chosen == self.STATUS:
             return Destination(ToolsKeycardStatusView)
-        if chosen == self.CHANGE_PIN:
-            return Destination(ToolsKeycardChangePinView)
-        if chosen == self.INSTANCES:
-            return Destination(ToolsKeycardInstancesMenuView)
-        if chosen == self.ADVANCED:
-            return Destination(ToolsKeycardAdvancedMenuView)
-        return Destination(NotYetImplementedView)
-
-
-class ToolsKeycardAdvancedMenuView(View):
-    """Houses operations the casual user shouldn't see in the main menu:
-    manual pair refresh, pairing removal, factory reset.
-    """
-
-    PAIR = ButtonOption("Pair card")
-    REMOVE_PAIRING = ButtonOption("Remove pairing")
-    FACTORY_RESET = ButtonOption("Factory reset")
-    UNINSTALL = ButtonOption("Uninstall applet")
-
-    def run(self):
-        button_data = [
-            self.PAIR,
-            self.REMOVE_PAIRING,
-            self.FACTORY_RESET,
-            self.UNINSTALL,
-        ]
-        selected = self.run_screen(
-            ButtonListScreen,
-            title="Advanced",
-            is_button_text_centered=False,
-            button_data=button_data,
-        )
-        if selected == RET_CODE__BACK_BUTTON:
-            return Destination(BackStackView)
-
-        chosen = button_data[selected]
-        if chosen == self.PAIR:
-            return Destination(ToolsKeycardPairView)
-        if chosen == self.REMOVE_PAIRING:
-            return Destination(ToolsKeycardRemovePairingView)
-        if chosen == self.FACTORY_RESET:
-            return Destination(ToolsKeycardFactoryResetView)
         if chosen == self.UNINSTALL:
             return Destination(ToolsKeycardUninstallAppletView)
         return Destination(NotYetImplementedView)
@@ -371,19 +397,22 @@ class ToolsKeycardStatusView(View):
 
 
 class ToolsKeycardFactoryResetView(View):
-    """Wipe everything on the card: PIN, PUK, pairings, master key.
+    """Factory-reset the **active instance**: PIN, PUK, pairings, key.
 
-    The applet supports this on Status firmware revisions that include
-    INS_FACTORY_RESET (0xFD). On older applets the call returns
+    ``INS_FACTORY_RESET`` (0xFD) resets the applet *instance* we SELECT
+    (the active one) back to its post-install state — other instances on
+    the card are not touched. On older applets the call returns
     `0x6D00` "instruction not supported"; we surface that with a
     pointer to keycard-shell as a fallback.
 
-    On success we also drop the device's persisted pairing storage and
-    in-memory cache: nothing on this device should reference the now-
-    blank card any more.
+    On success we also drop the device's persisted pairing blob and
+    in-memory cache **for just this instance** (looked up by the
+    instance UID observed at SELECT), so other instances' saved
+    pairings survive. If the UID can't be determined we fall back to a
+    full clear, so a card we just blanked never keeps a stale pairing.
     """
 
-    CONFIRM = ButtonOption("Wipe card")
+    CONFIRM = ButtonOption("Wipe")
 
     def run(self):
         try:
@@ -396,11 +425,12 @@ class ToolsKeycardFactoryResetView(View):
         except ImportError as exc:
             return _error_destination("Keycard support unavailable", str(exc))
 
+        label = _format_instance_label(self.controller.active_keycard_aid)
         ret = self.run_screen(
             DireWarningScreen,
-            title="Factory reset?",
+            title=f"Wipe {label}?",
             status_headline=None,
-            text="Wipes EVERYTHING on the\ncard. Cannot be undone.",
+            text="Erases the key & PIN on\nthis instance. Cannot undo.",
             show_back_button=True,
             button_data=[self.CONFIRM],
         )
@@ -412,6 +442,14 @@ class ToolsKeycardFactoryResetView(View):
             connection = wait_for_card(timeout_s=5.0)
             client = KeycardClient(connection)
             select_with_autodetect(client, self.controller)
+            # Capture the instance UID *before* the reset blanks it, so we
+            # can drop only this instance's saved pairing afterwards.
+            select_resp = client.select_response
+            reset_uid = (
+                bytes(select_resp.instance_uid)
+                if select_resp and select_resp.instance_uid
+                else None
+            )
             client.factory_reset()
         except APDUError as exc:
             logger.warning("FACTORY_RESET unsupported: %s", exc)
@@ -427,16 +465,26 @@ class ToolsKeycardFactoryResetView(View):
             title, body = classify_card_error(exc, default_title="Reset failed")
             return _error_destination(title, body)
 
-        # Drop the device's local state for the now-blank card.
+        # Drop the device's local state for the now-blank instance. The
+        # reset only wipes the active instance on-card, so we forget just
+        # that instance's pairing — other instances are untouched. If the
+        # UID is unknown, fall back to a full clear so a card we just
+        # blanked never keeps a stale pairing.
         try:
-            pairing_storage.remove_all()
+            if reset_uid:
+                pairing_storage.remove(instance_uid=reset_uid)
+            else:
+                pairing_storage.remove_all()
         except Exception:
-            logger.exception("could not clear local pairings after factory reset")
-        self.controller.forget_all_pairings()
+            logger.exception("could not clear local pairing(s) after factory reset")
+        if reset_uid:
+            self.controller.forget_pairing_for(reset_uid)
+        else:
+            self.controller.forget_all_pairings()
 
         self.run_screen(
             LargeIconStatusScreen,
-            title="Card wiped",
+            title=f"{label} wiped",
             status_headline=None,
             text="Run Init to reuse it.",
             show_back_button=False,
@@ -468,6 +516,7 @@ class ToolsKeycardInitView(View):
         import hmac
 
         try:
+            from seedsigner.helpers.card_probe import probe_card
             from seedsigner.helpers.keycard import secrets as kc_secrets
             from seedsigner.helpers.keycard.client import KeycardClient
             from seedsigner.helpers.keycard.crypto import derive_pairing_secret
@@ -476,6 +525,19 @@ class ToolsKeycardInitView(View):
             )
         except ImportError as exc:
             return _error_destination("Keycard support unavailable", str(exc))
+
+        # Bail out *before* asking for PIN/PUK if the inserted card is already
+        # initialised — otherwise client.init() below would reject it with the
+        # cryptic SW=0x6D00 only after the user has set and confirmed a PIN. The
+        # probe is read-only and never prompts. Only block on a definitely
+        # initialised Keycard; no card / non-Keycard / pre-init all fall through
+        # to the normal flow (and the post-SELECT guard below is the backstop).
+        probe = probe_card("keycard", self.controller)
+        if probe.present and probe.kind_match and probe.initialised:
+            return _error_destination(
+                "Already initialised",
+                "Use Factory reset to\nwipe and re-init.",
+            )
 
         pin_buf: Optional[bytearray] = None
         confirm_buf: Optional[bytearray] = None
@@ -507,18 +569,6 @@ class ToolsKeycardInitView(View):
                     button_data=[ButtonOption("Retry")],
                 )
 
-            # Optional wallet name — captured here, persisted by the
-            # next successful pair in ToolsKeycardPairView via the
-            # controller's pending_keycard_label slot. Empty/cancelled
-            # => no label (anonymous wallet).
-            label_raw = prompt_for_text(self, "Wallet name (optional)", max_len=16)
-            if label_raw is None:
-                label_clean = None
-            else:
-                stripped = label_raw.strip()
-                label_clean = stripped if stripped else None
-            self.controller.pending_keycard_label = label_clean
-
             puk = kc_secrets.generate_puk()
 
             ret = self.run_screen(
@@ -530,14 +580,21 @@ class ToolsKeycardInitView(View):
                 button_data=[self.INITIALISE],
             )
             if ret == RET_CODE__BACK_BUTTON:
-                self.controller.pending_keycard_label = None
                 return Destination(BackStackView)
 
             try:
                 release_other_smartcard_holders(self.controller)
                 connection = wait_for_card(timeout_s=5.0)
                 client = KeycardClient(connection)
-                select_with_autodetect(client, self.controller)
+                info = select_with_autodetect(client, self.controller)
+                # Authoritative backstop: catches the race where no card was
+                # present at the early probe but an already-initialised card is
+                # inserted before INIT. app_version != 0 means initialised.
+                if info.app_version != 0:
+                    return _error_destination(
+                        "Already initialised",
+                        "Use Factory reset to\nwipe and re-init.",
+                    )
                 secret = derive_pairing_secret(DEFAULT_PAIRING_PASSWORD)
                 client.init(bytes(pin_buf), puk.encode("ascii"), secret)
             except Exception as exc:
@@ -678,13 +735,11 @@ def _try_pair_with_raw_psk(
     SecureChannelError,
     psk: bytes,
     instance_uid: bytes,
-    label: Optional[str] = None,
-) -> Tuple[Optional[object], Optional[str], Optional[str]]:
+) -> Tuple[Optional[object], Optional[str]]:
     """Attempt to pair using a raw 32-byte pairing secret (no PBKDF2).
 
-    Returns ``(pairing, source, effective_label)`` where
-    ``effective_label`` is the label stored on disk (``"disk"`` path)
-    or the one we just wrote (``"pair"`` path); ``None`` on mismatch.
+    Returns ``(pairing, source)`` where ``source`` is ``"disk"`` or
+    ``"pair"`` on success; ``(None, None)`` on cryptogram mismatch.
     """
     if len(psk) != 32:
         raise ValueError("PSK must be 32 bytes")
@@ -696,19 +751,19 @@ def _try_pair_with_raw_psk(
             logger.info("saved pairing rejected: %s", exc)
             stored = None
         if stored is not None and stored.instance_uid == instance_uid:
-            return stored.pairing, "disk", stored.label
+            return stored.pairing, "disk"
 
         try:
             pairing = client.pair(psk)
         except SecureChannelError as exc:
             if "cryptogram" in str(exc).lower():
-                return None, None, None  # PSK does not match — fall through
+                return None, None  # PSK does not match — fall through
             raise
         try:
-            pairing_storage.save(storage_pwd, pairing, instance_uid, label=label)
+            pairing_storage.save(storage_pwd, pairing, instance_uid)
         except Exception:
             logger.exception("could not persist pairing")
-        return pairing, "pair", label
+        return pairing, "pair"
     finally:
         try:
             wipe_string(storage_pwd)
@@ -723,14 +778,11 @@ def _try_pair_with_password(
     SecureChannelError,
     pwd: str,
     instance_uid: bytes,
-    label: Optional[str] = None,
-) -> Tuple[Optional[object], Optional[str], Optional[str]]:
+) -> Tuple[Optional[object], Optional[str]]:
     """Attempt to obtain a PairingInfo for ``instance_uid`` using ``pwd``.
 
-    Returns ``(pairing, source, effective_label)`` where ``source`` is
-    ``"disk"`` or ``"pair"`` on success, and ``effective_label`` is the
-    label that ended up on disk (if any). ``(None, None, None)`` on
-    cryptogram mismatch.
+    Returns ``(pairing, source)`` where ``source`` is ``"disk"`` or
+    ``"pair"`` on success; ``(None, None)`` on cryptogram mismatch.
     """
     # Force a fresh str object — prevents wipe_string from zeroing the
     # caller's buffer or any interned constant (e.g. DEFAULT_PAIRING_PASSWORD).
@@ -743,21 +795,21 @@ def _try_pair_with_password(
             logger.info("saved pairing rejected: %s", exc)
             stored = None
         if stored is not None and stored.instance_uid == instance_uid:
-            return stored.pairing, "disk", stored.label
+            return stored.pairing, "disk"
 
         try:
             secret = derive_pairing_secret(normalised)
             pairing = client.pair(secret)
         except SecureChannelError as exc:
             if "cryptogram" in str(exc).lower():
-                return None, None, None  # wrong password — caller falls through
+                return None, None  # wrong password — caller falls through
             raise
         try:
-            pairing_storage.save(normalised, pairing, instance_uid, label=label)
+            pairing_storage.save(normalised, pairing, instance_uid)
         except Exception:
             logger.exception("could not persist pairing")
             # Non-fatal: keep the in-memory pairing.
-        return pairing, "pair", label
+        return pairing, "pair"
     finally:
         for s in (fresh, normalised):
             try:
@@ -871,23 +923,19 @@ class ToolsKeycardPairView(View):
         #
         # PAIR step-1 cryptogram mismatches do NOT consume a card slot,
         # so trying both silently is free for cards using neither default.
-        pending_label = getattr(self.controller, "pending_keycard_label", None)
         used_default = False
         pairing = None
         source = None
-        effective_label = None
         try:
-            pairing, source, effective_label = _try_pair_with_password(
+            pairing, source = _try_pair_with_password(
                 client, pairing_storage, derive_pairing_secret,
                 SecureChannelError,
                 DEFAULT_PAIRING_PASSWORD, instance_uid,
-                label=pending_label,
             )
             if pairing is None:
-                pairing, source, effective_label = _try_pair_with_raw_psk(
+                pairing, source = _try_pair_with_raw_psk(
                     client, pairing_storage, SecureChannelError,
                     KEYCARD_SHELL_DEFAULT_PSK, instance_uid,
-                    label=pending_label,
                 )
         except Exception as exc:
             logger.exception("Keycard PAIR (default secrets) failed")
@@ -912,11 +960,10 @@ class ToolsKeycardPairView(View):
                 _wipe_bytearray(password_buf)
                 return _error_destination("Bad password", str(exc))
             try:
-                pairing, source, effective_label = _try_pair_with_password(
+                pairing, source = _try_pair_with_password(
                     client, pairing_storage, derive_pairing_secret,
                     SecureChannelError,
                     custom, instance_uid,
-                    label=pending_label,
                 )
             except Exception as exc:
                 _wipe_bytearray(password_buf)
@@ -936,34 +983,6 @@ class ToolsKeycardPairView(View):
                 )
 
         self.controller.set_pairing_for(instance_uid, pairing)
-        # The plaintext label file is the authoritative wallet name
-        # going forward (works for ephemeral and persistent cards).
-        # Persist any pending label captured at Init, else fall back to
-        # whatever was already on disk (label file first, then the
-        # blob's trailer for backward compat with older blobs).
-        final_label = pending_label
-        if final_label is None:
-            try:
-                final_label = pairing_storage.load_label_only(instance_uid)
-            except Exception:
-                final_label = None
-            if final_label is None:
-                final_label = effective_label
-        if pending_label is not None:
-            try:
-                pairing_storage.save_label_only(instance_uid, pending_label)
-            except Exception:
-                logger.exception("could not persist label file")
-        # Cache the human-readable wallet name so List/Switch/Delete
-        # views can show it instead of just the AID hex.
-        self.controller.set_label_for(instance_uid, final_label)
-        # Consume the pending label once it has been written to disk.
-        # We clear it on the "disk" path too: a label captured at Init
-        # is only meaningful for a brand-new card whose first PAIR
-        # writes a fresh blob; if we ended up reading an existing blob
-        # the label was already set there and the pending value is
-        # stale (likely from a previous Init that never paired).
-        self.controller.pending_keycard_label = None
 
         if source == "disk":
             detail = "loaded from disk"
@@ -1005,21 +1024,10 @@ class ToolsKeycardPairView(View):
         session, since the on-card ephemeral key is cleared on every
         applet deselect.
         """
-        from seedsigner.helpers.keycard import pairing_storage
-
         # Reuse the cached secret if any — equivalent of "Already paired".
         # No status screen: silent return so the user is dropped back where
         # they came from instead of bouncing through an "OK" confirmation.
         if self.controller.get_ephemeral_secret_for(instance_uid) is not None:
-            # Make sure the in-memory label cache reflects any name set
-            # in a previous boot, even when we short-circuit the pair.
-            if self.controller.get_label_for(instance_uid) is None:
-                try:
-                    stored_label = pairing_storage.load_label_only(instance_uid)
-                except Exception:
-                    stored_label = None
-                if stored_label is not None:
-                    self.controller.set_label_for(instance_uid, stored_label)
             return Destination(BackStackView)
 
         secret_used: Optional[bytes] = None
@@ -1123,27 +1131,6 @@ class ToolsKeycardPairView(View):
                 buf[i] = 0
         except Exception:
             pass
-
-        # Persist any pending label captured at Init, and seed the
-        # in-memory cache from the plaintext label file so subsequent
-        # views (List / Switch / Rename) show the wallet name across
-        # boots — ephemeral pairing never writes a pairing blob, so
-        # the label file is the only persistent name for these cards.
-        pending_label = getattr(self.controller, "pending_keycard_label", None)
-        if pending_label is not None:
-            try:
-                pairing_storage.save_label_only(instance_uid, pending_label)
-            except Exception:
-                logger.exception("could not persist label file")
-            self.controller.set_label_for(instance_uid, pending_label)
-            self.controller.pending_keycard_label = None
-        else:
-            try:
-                stored_label = pairing_storage.load_label_only(instance_uid)
-            except Exception:
-                stored_label = None
-            if stored_label is not None:
-                self.controller.set_label_for(instance_uid, stored_label)
 
         # No "Paired" status screen: v3.2 ephemeral pairing is a transparent
         # session-bootstrap step, not a user-facing action. Silently return
@@ -1298,10 +1285,6 @@ class ToolsKeycardRemovePairingView(View):
             pairing_storage.remove(instance_uid=instance_uid)
         except Exception:
             logger.exception("could not remove unpaired storage")
-        try:
-            pairing_storage.remove_label_only(instance_uid)
-        except Exception:
-            logger.exception("could not remove unpaired label file")
 
     def _remove_all_local(self) -> Destination:
         from seedsigner.helpers.keycard import pairing_storage
@@ -1318,10 +1301,6 @@ class ToolsKeycardRemovePairingView(View):
             return Destination(BackStackView)
 
         count = pairing_storage.remove_all()
-        try:
-            pairing_storage.remove_all_label_only()
-        except Exception:
-            logger.exception("could not remove label files")
         self.controller.forget_all_pairings()
         self._show_done("Removed", f"Removed {count} pairing(s).")
         return Destination(ToolsKeycardMenuView, skip_current_view=True)
@@ -1744,12 +1723,42 @@ def _wipe_pending_setup_state(controller) -> None:
         controller.pending_keycard_passphrase = None
 
 
+def _backup_error_retry(view, title: str, body: str) -> Destination:
+    """Backup wizard error → Retry / Cancel, WITHOUT losing the seed.
+
+    Card creation is the only window in which the host holds the seed, so
+    a transient backup failure (save error, capacity, probe failure, card
+    removed) must NOT drop ``pending_keycard_mnemonic`` — otherwise the
+    user can never back it up. Retry returns to the destination chooser
+    (re-pick This / Another / Both); only an explicit Cancel (back button)
+    wipes and exits to the Keycard menu. The ``MainMenuView`` re-entry
+    backstop still wipes if the user navigates Home.
+
+    Security tradeoff: the seed (already sealed in the Keycard via
+    LOAD_KEY) persists in host memory across retries within this wizard.
+    Bounded to the wizard session; wiped on success, Cancel, and Home.
+    """
+    ret = view.run_screen(
+        WarningScreen,
+        title=title,
+        status_headline=None,
+        text=body[:120],
+        show_back_button=True,  # back == Cancel
+        button_data=[ButtonOption("Retry")],
+    )
+    if ret == RET_CODE__BACK_BUTTON:
+        _wipe_pending_setup_state(view.controller)
+        return Destination(ToolsKeycardMenuView, clear_history=True)
+    return Destination(ToolsKeycardSeedkeeperDestChooserView)
+
+
 class ToolsKeycardSetupChooseSeedView(View):
     """Post-Init chooser: Generate a new seed on card, or Import one.
 
     Reached from ``ToolsKeycardInitView`` on a freshly-initialised card.
-    Backing out lands on the Setup menu (via BackStack) — the user can
-    still re-run either path later from there.
+    Backing out lands on the Card menu (via BackStack) — the user can
+    still re-run either path later from ``This instance`` (Generate key
+    / Import seed).
     """
 
     GENERATE = ButtonOption("Generate new seed")
@@ -2192,26 +2201,20 @@ class ToolsKeycardSeedkeeperOfferView(View):
     the seed: once it is sealed in the Keycard it can never be read back,
     only signed with. So this is where we offer a Seedkeeper backup.
 
-    Two destinations are supported (chosen on the next screen):
+    Three destinations are offered on the next screen (``This card`` /
+    ``Another card`` / ``Both``). If the Keycard's card has no Seedkeeper
+    applet, the ``This card`` path offers to install one first.
 
-    * **This card** — a Seedkeeper applet co-resident on the same physical
-      card (only offered when ``probe_installed_applets`` detects one).
-    * **Another card** — a *separate* Seedkeeper card the user swaps in.
-      This avoids the iOS-app coexistence crash documented in AGENTS.md.
-
-    Skipping wipes the pending mnemonic and returns to the Keycard menu.
+    Skipping wipes the pending mnemonic and returns to the Keycard menu;
+    that is a user-driven exit, so dropping the seed is correct here.
     """
 
     YES = ButtonOption("Save backup")
     NO = ButtonOption("Skip")
 
     def run(self):
-        from seedsigner.helpers.card_probe import probe_installed_applets
-        from seedsigner.helpers.keycard.reader import (
-            release_other_smartcard_holders,
-        )
-
-        # Ask first — we don't need a card present to pose the question.
+        # Ask first — we don't need a card present to pose the question,
+        # and the destination chooser decides what to probe / install.
         selected = self.run_screen(
             ButtonListScreen,
             title="Save to Seedkeeper?",
@@ -2225,38 +2228,26 @@ class ToolsKeycardSeedkeeperOfferView(View):
             return Destination(
                 ToolsKeycardMenuView, clear_history=True,
             )
-
-        # Probe the currently-inserted card to learn whether a Seedkeeper
-        # applet is co-resident (so we can offer "This card").
-        try:
-            release_other_smartcard_holders(self.controller)
-        except Exception:
-            pass
-        try:
-            state = probe_installed_applets(self.controller)
-        except Exception:
-            state = None
-        same_card = bool(state and getattr(state, "seedkeeper_installed", False))
-
-        if same_card:
-            return Destination(ToolsKeycardSeedkeeperDestChooserView)
-        # No co-resident Seedkeeper — the only option is a separate card.
-        return Destination(ToolsKeycardSeedkeeperSwapInsertView)
+        return Destination(ToolsKeycardSeedkeeperDestChooserView)
 
 
 class ToolsKeycardSeedkeeperDestChooserView(View):
-    """Pick whether to back up to the same card or a separate Seedkeeper.
+    """Pick where to back up: this card, a separate card, or both.
 
-    Only reached when a Seedkeeper applet is co-resident on the current
-    card; otherwise ``ToolsKeycardSeedkeeperOfferView`` jumps straight to
-    the swap flow.
+    * **This card** — back up to a Seedkeeper applet on the same physical
+      card (installing the applet first if it isn't present).
+    * **Another card** — swap in a *separate* Seedkeeper card.
+    * **Both** — this card AND a separate card.
+
+    Backing out is a user-driven exit, so it wipes the pending seed.
     """
 
     THIS_CARD = ButtonOption("This card")
     OTHER_CARD = ButtonOption("Another card")
+    BOTH = ButtonOption("Both")
 
     def run(self):
-        button_data = [self.THIS_CARD, self.OTHER_CARD]
+        button_data = [self.THIS_CARD, self.OTHER_CARD, self.BOTH]
         selected = self.run_screen(
             ButtonListScreen,
             title="Save backup to",
@@ -2266,9 +2257,87 @@ class ToolsKeycardSeedkeeperDestChooserView(View):
         if selected == RET_CODE__BACK_BUTTON:
             _wipe_pending_setup_state(self.controller)
             return Destination(ToolsKeycardMenuView, clear_history=True)
-        if button_data[selected] == self.THIS_CARD:
-            return Destination(ToolsKeycardSeedkeeperFormatChooserView)
-        return Destination(ToolsKeycardSeedkeeperSwapInsertView)
+        chosen = button_data[selected]
+        if chosen == self.THIS_CARD:
+            return Destination(
+                ToolsKeycardSeedkeeperThisCardView, view_args={"remaining": []},
+            )
+        if chosen == self.OTHER_CARD:
+            return Destination(ToolsKeycardSeedkeeperSwapInsertView)
+        # Both: save to this card first, then swap to a separate card.
+        return Destination(
+            ToolsKeycardSeedkeeperThisCardView,
+            view_args={"remaining": ["other"]},
+        )
+
+
+class ToolsKeycardSeedkeeperThisCardView(View):
+    """Back up to a Seedkeeper applet on the Keycard's own card.
+
+    Probes the inserted card; if no Seedkeeper applet is present, offers
+    to install one (reusing the GlobalPlatform install + iOS-coexistence
+    warning shared with the Cards menu). A freshly-installed applet has
+    no PIN yet — the save step's ``init_satochip`` runs ``card_setup``
+    (PIN prompt) inline. ``remaining`` carries any *further* destinations
+    (e.g. ``["other"]`` for the Both flow) through to the save step.
+
+    Threat model: the pending seed now survives a same-card applet
+    install (``gp.jar`` shells out, taking seconds) before the first
+    save. Wipe is best-effort on every terminal branch + MainMenu.
+    """
+
+    INSTALL = ButtonOption("Install")
+    CANCEL = ButtonOption("Cancel")
+
+    def __init__(self, remaining=None):
+        super().__init__()
+        self.remaining = remaining or []
+
+    def run(self):
+        from seedsigner.helpers.card_probe import probe_installed_applets
+        from seedsigner.helpers.keycard.reader import (
+            release_other_smartcard_holders,
+        )
+
+        try:
+            release_other_smartcard_holders(self.controller)
+        except Exception:
+            pass
+        try:
+            state = probe_installed_applets(self.controller)
+        except Exception:
+            state = None
+
+        has_seedkeeper = bool(
+            state and getattr(state, "seedkeeper_installed", False)
+        )
+        if not has_seedkeeper:
+            sel = self.run_screen(
+                ButtonListScreen,
+                title="No Seedkeeper applet",
+                is_button_text_centered=False,
+                button_data=[self.INSTALL, self.CANCEL],
+            )
+            if sel == RET_CODE__BACK_BUTTON or (
+                [self.INSTALL, self.CANCEL][sel] == self.CANCEL
+            ):
+                # User-driven exit → wipe.
+                _wipe_pending_setup_state(self.controller)
+                return Destination(ToolsKeycardMenuView, clear_history=True)
+            from seedsigner.views.view import install_seedkeeper_applet
+            result = install_seedkeeper_applet(self)
+            if result is not None:
+                # "back" (user cancelled a prompt) or "error" (warning
+                # already shown). Keep the seed; let the user retry.
+                return _backup_error_retry(
+                    self, "Install failed",
+                    "Could not install\nSeedkeeper applet.",
+                )
+
+        return Destination(
+            ToolsKeycardSeedkeeperFormatChooserView,
+            view_args={"remaining": self.remaining},
+        )
 
 
 class ToolsKeycardSeedkeeperSwapInsertView(View):
@@ -2335,6 +2404,10 @@ class ToolsKeycardSeedkeeperFormatChooserView(View):
     MNEMONIC = ButtonOption("BIP39 mnemonic")
     PASSWORD = ButtonOption("UTF-8 password")
 
+    def __init__(self, remaining=None):
+        super().__init__()
+        self.remaining = remaining or []
+
     def run(self):
         button_data = [self.MNEMONIC, self.PASSWORD]
         selected = self.run_screen(
@@ -2349,7 +2422,7 @@ class ToolsKeycardSeedkeeperFormatChooserView(View):
         secret_type = "bip39" if chosen == self.MNEMONIC else "password"
         return Destination(
             ToolsKeycardSeedkeeperSaveRunView,
-            view_args={"secret_type": secret_type},
+            view_args={"secret_type": secret_type, "remaining": self.remaining},
             skip_current_view=True,
         )
 
@@ -2365,9 +2438,12 @@ class ToolsKeycardSeedkeeperSaveRunView(View):
     controller.
     """
 
-    def __init__(self, secret_type: str = "bip39"):
+    def __init__(self, secret_type: str = "bip39", remaining=None):
         super().__init__()
         self.secret_type = secret_type
+        # Further destinations still to write after this one (e.g.
+        # ``["other"]`` for the Both flow). Tracked purely as a view-arg.
+        self.remaining = remaining or []
 
     def run(self):
         from seedsigner.gui.screens import seed_screens
@@ -2377,6 +2453,8 @@ class ToolsKeycardSeedkeeperSaveRunView(View):
         try:
             from pysatochip.CardConnector import UnexpectedSW12Error
         except Exception as exc:
+            # Irrecoverable (pysatochip missing) — retrying won't help, so
+            # this is the one error path that still wipes the seed.
             _wipe_pending_setup_state(self.controller)
             return _error_destination(
                 "Seedkeeper unavailable", str(exc),
@@ -2399,18 +2477,19 @@ class ToolsKeycardSeedkeeperSaveRunView(View):
         if isinstance(label_ret, dict) and "is_back_button" in label_ret:
             return Destination(BackStackView)
         if not isinstance(label_ret, dict):
-            _wipe_pending_setup_state(self.controller)
-            return _error_destination(
-                "Bad label", "Could not read label",
-            )
+            # Transient: keep the seed, let the user retry the backup.
+            return _backup_error_retry(self, "Bad label", "Could not read label")
         label = label_ret.get("passphrase", "").strip() or "Keycard backup"
 
         Satochip_Connector = seedkeeper_utils.init_satochip(
             self, init_card_filter=["seedkeeper"],
         )
         if not Satochip_Connector:
-            _wipe_pending_setup_state(self.controller)
-            return Destination(BackStackView)
+            # PIN cancelled or card not reachable — init_satochip already
+            # surfaced the reason. Keep the seed and return to the
+            # destination chooser so the user can retry or pick another
+            # target (a back-out there wipes).
+            return Destination(ToolsKeycardSeedkeeperDestChooserView)
 
         export_rights = "Plaintext export allowed"
         if self.secret_type == "bip39":
@@ -2450,13 +2529,11 @@ class ToolsKeycardSeedkeeperSaveRunView(View):
                 Satochip_Connector, secret_dic,
             )
         except Exception as exc:
-            _wipe_pending_setup_state(self.controller)
-            return _error_destination("Seedkeeper error", str(exc))
+            return _backup_error_retry(self, "Seedkeeper error", str(exc))
 
         if not fits:
-            _wipe_pending_setup_state(self.controller)
-            return _error_destination(
-                "Not enough space",
+            return _backup_error_retry(
+                self, "Not enough space",
                 seedkeeper_utils.format_seedkeeper_space_error(required, free),
             )
 
@@ -2468,19 +2545,30 @@ class ToolsKeycardSeedkeeperSaveRunView(View):
         except UnexpectedSW12Error as exc:
             if loading is not None:
                 loading.stop()
-            _wipe_pending_setup_state(self.controller)
             from seedsigner.helpers.iso7816 import format_sw_error
             if exc.sw1 == 0x6A and exc.sw2 == 0x84:
                 err = "Not enough space on Seedkeeper"
             else:
                 err = format_sw_error(exc.sw1, exc.sw2)
-            return _error_destination("Save failed", err)
+            return _backup_error_retry(self, "Save failed", err)
         except Exception as exc:
             if loading is not None:
                 loading.stop()
-            _wipe_pending_setup_state(self.controller)
             logger.exception("Seedkeeper import failed")
-            return _error_destination("Save failed", str(exc))
+            return _backup_error_retry(self, "Save failed", str(exc))
+
+        # Saved successfully. If a further destination remains (the Both
+        # flow), DON'T wipe yet — swap to a separate card and save again.
+        if "other" in self.remaining:
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Saved (1 of 2)",
+                status_headline=None,
+                text="Now back up to a\nseparate card.",
+                show_back_button=False,
+                button_data=[ButtonOption("Continue")],
+            )
+            return Destination(ToolsKeycardSeedkeeperSwapInsertView)
 
         _wipe_pending_setup_state(self.controller)
         self.run_screen(
@@ -2728,7 +2816,7 @@ class ToolsKeycardWalletsListView(View):
                     loading_screen.stop()
 
         addresses = cache[self.start_index:end_index]
-        active_aid_short = _format_aid_short(self.controller.active_keycard_aid)
+        active_aid_short = _format_instance_label(self.controller.active_keycard_aid)
 
         selected = self.run_screen(
             ToolsAddressExplorerAddressListScreen,
@@ -2818,33 +2906,23 @@ def _format_aid_short(aid: bytes) -> str:
     return hexstr[:6] + "…" + hexstr[-4:]
 
 
-def _instance_uid_for_aid(controller, aid: bytes) -> Optional[bytes]:
-    """Best-effort: return the cached ``instance_uid`` that maps to ``aid``.
+def _format_instance_label(aid: bytes) -> str:
+    """Human-readable name for a Keycard instance: ``Inst N``.
 
-    Uses the controller's AID→UID map populated at SELECT time. Falls
-    back to ``None`` for AIDs we have never paired this boot, in which
-    case the caller renders the AID hex.
+    Keycard instance AIDs are ``KEYCARD_APPLET_AID`` + ``0x01`` + a
+    one-byte instance index (see :func:`_next_free_instance_aid`). We
+    surface that index as ``Inst N`` so the user has a stable, readable
+    handle on which instance every signing / export / wipe acts on,
+    instead of the cryptic truncated AID hex. AIDs that don't match the
+    instance pattern fall back to the short hex form.
     """
-    if not hasattr(controller, "get_uid_for_aid"):
-        return None
-    return controller.get_uid_for_aid(aid)
-
-
-def _format_instance_label(aid: bytes, controller) -> str:
-    """Render an instance row as ``"<label>  (<aid>)"`` when known.
-
-    Falls back to the short AID alone when no label is cached this
-    session — e.g. card inserted for the first time without a Pair.
-    """
-    short_aid = _format_aid_short(aid)
-    uid = _instance_uid_for_aid(controller, aid)
-    label = controller.get_label_for(uid) if uid else None
-    if not label:
-        return short_aid
-    text = f"{label}  ({short_aid})"
-    if len(text) > 26:
-        text = text[:25] + "…"
-    return text
+    if (
+        len(aid) == len(KEYCARD_APPLET_AID) + 2
+        and aid.startswith(KEYCARD_APPLET_AID)
+        and aid[-2] == 0x01
+    ):
+        return f"Inst {aid[-1]}"
+    return _format_aid_short(aid)
 
 
 def _next_free_instance_aid(existing: list) -> bytes:
@@ -2883,14 +2961,11 @@ class ToolsKeycardInstancesMenuView(View):
     LIST = ButtonOption("List instances")
     SWITCH = ButtonOption("Switch active")
     CREATE = ButtonOption("Create instance")
-    RENAME = ButtonOption("Rename instance")
     DELETE = ButtonOption("Delete instance")
 
     def run(self):
-        active = _format_instance_label(
-            self.controller.active_keycard_aid, self.controller,
-        )
-        button_data = [self.LIST, self.SWITCH, self.CREATE, self.RENAME, self.DELETE]
+        active = _format_instance_label(self.controller.active_keycard_aid)
+        button_data = [self.LIST, self.SWITCH, self.CREATE, self.DELETE]
         ret = self.run_screen(
             ButtonListScreen,
             title=f"Active: {active}",
@@ -2907,8 +2982,6 @@ class ToolsKeycardInstancesMenuView(View):
             return Destination(ToolsKeycardInstancesSwitchView)
         if chosen == self.CREATE:
             return Destination(ToolsKeycardInstancesCreateView)
-        if chosen == self.RENAME:
-            return Destination(ToolsKeycardInstancesRenameView)
         if chosen == self.DELETE:
             return Destination(ToolsKeycardInstancesDeleteView)
         return Destination(BackStackView)
@@ -2977,11 +3050,15 @@ class ToolsKeycardInstancesListView(View):
         keycard_instances = [
             i for i in instances if i.aid.startswith(KEYCARD_APPLET_AID)
         ]
-        if not instances:
-            text = "No applet instances\nfound."
+        if not keycard_instances:
+            text = "No Keycard instances\nfound."
         else:
+            active = self.controller.active_keycard_aid
+            # Mark the active instance with a leading "» " so the user can
+            # see at a glance which AID signing will use.
             lines = [
-                _format_instance_label(i.aid, self.controller) for i in instances
+                ("» " if i.aid == active else "  ") + _format_instance_label(i.aid)
+                for i in keycard_instances
             ]
             text = "\n".join(lines[:6])
         self.run_screen(
@@ -3019,8 +3096,11 @@ class ToolsKeycardInstancesSwitchView(View):
             )
 
         from seedsigner.helpers.keycard.global_platform import MAX_KEYCARD_INSTANCES
+        active = self.controller.active_keycard_aid
         button_data = [
-            ButtonOption(_format_instance_label(i.aid, self.controller))
+            ButtonOption(
+                ("» " if i.aid == active else "") + _format_instance_label(i.aid)
+            )
             for i in candidates
         ]
         ret = self.run_screen(
@@ -3045,7 +3125,7 @@ class ToolsKeycardInstancesSwitchView(View):
             LargeIconStatusScreen,
             title="Active set",
             status_headline=None,
-            text=_format_aid_short(chosen),
+            text=_format_instance_label(chosen),
             show_back_button=False,
             button_data=[ButtonOption("OK")],
         )
@@ -3125,124 +3205,6 @@ class ToolsKeycardInstancesCreateView(View):
         return Destination(ToolsKeycardInstancesMenuView, skip_current_view=True)
 
 
-class ToolsKeycardInstancesRenameView(View):
-    """Rename the wallet label associated with a Keycard instance.
-
-    Lists the keycard-prefixed instances on the inserted card, lets the
-    user pick one, captures the new name, and writes the label to a
-    plaintext per-UID file. Labels are display strings (not secrets),
-    so the rename never needs a pairing password — important for v3.2+
-    ephemeral cards that have no on-disk pairing blob to update at all.
-
-    For backward compatibility, if a persistent-pairing blob does exist
-    and was encrypted with one of the well-known default passwords
-    (``KeycardDefaultPairing`` or the keycard-shell raw PSK), the
-    blob's label trailer is also refreshed best-effort.
-    """
-
-    def run(self):
-        try:
-            from seedsigner.helpers.keycard import pairing_storage
-            from seedsigner.helpers.keycard.client import KeycardClient
-            from seedsigner.helpers.keycard.crypto import KEYCARD_SHELL_DEFAULT_PSK
-            from seedsigner.helpers.keycard.reader import (
-                release_other_smartcard_holders, wait_for_card,
-            )
-        except ImportError as exc:
-            return _error_destination("Keycard support unavailable", str(exc))
-
-        try:
-            channel, instances, isd_connection = _open_isd_channel(self.controller)
-        except Exception as exc:
-            logger.exception("GP open failed")
-            title, body = classify_card_error(exc, default_title="GP failed")
-            return _error_destination(title, body)
-
-        instances = _instances_or_probe_fallback(
-            self.controller, instances, isd_connection,
-        )
-        candidates = [
-            i for i in instances if i.aid.startswith(KEYCARD_APPLET_AID)
-        ]
-        if not candidates:
-            return _error_destination(
-                "No instances", "No Keycard applet found.",
-            )
-
-        button_data = [
-            ButtonOption(_format_instance_label(i.aid, self.controller))
-            for i in candidates
-        ]
-        ret = self.run_screen(
-            ButtonListScreen,
-            title="Rename?",
-            is_button_text_centered=False,
-            button_data=button_data,
-            show_back_button=True,
-        )
-        if ret == RET_CODE__BACK_BUTTON:
-            return Destination(BackStackView)
-        target_aid = candidates[ret].aid
-
-        # Resolve instance_uid via SELECT against the chosen AID.
-        try:
-            release_other_smartcard_holders(self.controller)
-            connection = wait_for_card(timeout_s=5.0)
-            client = KeycardClient(connection)
-            select_info = client.select(aid=target_aid)
-        except Exception as exc:
-            logger.exception("Keycard SELECT failed")
-            title, body = classify_card_error(exc, default_title="SELECT failed")
-            return _error_destination(title, body)
-        instance_uid = bytes(select_info.instance_uid)
-        self.controller.remember_aid_for_uid(target_aid, instance_uid)
-
-        raw = prompt_for_text(self, "New wallet name", max_len=16)
-        if raw is None:
-            return Destination(BackStackView)
-        stripped = raw.strip()
-        new_label = stripped if stripped else None
-
-        try:
-            pairing_storage.save_label_only(instance_uid, new_label)
-        except ValueError as exc:
-            return _error_destination("Name too long", str(exc))
-        except OSError:
-            return _error_destination(
-                "Storage error", "Insert microSD and retry.",
-            )
-
-        # Best-effort: refresh the label trailer in the persistent
-        # pairing blob too, when one exists and was encrypted with one
-        # of the well-known defaults. Pure cosmetic — the plaintext
-        # label file is the authoritative source going forward.
-        for storage_pwd in (
-            DEFAULT_PAIRING_PASSWORD,
-            "raw-psk:" + KEYCARD_SHELL_DEFAULT_PSK.hex(),
-        ):
-            try:
-                pairing_storage.update_label(storage_pwd, instance_uid, new_label)
-                break
-            except pairing_storage.PairingStorageError:
-                continue
-            except OSError:
-                break
-
-        # Reflect the change in the controller cache so the next
-        # screen render shows the new name.
-        self.controller.set_label_for(instance_uid, new_label)
-
-        self.run_screen(
-            LargeIconStatusScreen,
-            title="Renamed",
-            status_headline=None,
-            text=new_label or "(no name)",
-            show_back_button=False,
-            button_data=[ButtonOption("OK")],
-        )
-        return Destination(ToolsKeycardInstancesMenuView, skip_current_view=True)
-
-
 class ToolsKeycardInstancesDeleteView(View):
     """Delete an applet instance and drop its local pairing."""
 
@@ -3265,8 +3227,7 @@ class ToolsKeycardInstancesDeleteView(View):
             )
 
         button_data = [
-            ButtonOption(_format_instance_label(i.aid, self.controller))
-            for i in candidates
+            ButtonOption(_format_aid_short(i.aid)) for i in candidates
         ]
         ret = self.run_screen(
             ButtonListScreen,
@@ -3302,10 +3263,10 @@ class ToolsKeycardInstancesDeleteView(View):
             title, body = classify_card_error(exc, default_title="Delete failed")
             return _error_destination(title, body)
 
-        # Drop any cached pairing/label whose UID we previously
-        # observed via SELECT. If we never paired with this AID this
-        # boot the cache lookup misses; that's fine — there's no local
-        # state to clear in that case anyway.
+        # Drop any cached pairing whose UID we previously observed via
+        # SELECT. If we never paired with this AID this boot the cache
+        # lookup misses; that's fine — there's no local state to clear
+        # in that case anyway.
         if deleted_uid is not None:
             from seedsigner.helpers.keycard import pairing_storage
             self.controller.forget_pairing_for(deleted_uid)
@@ -3313,10 +3274,6 @@ class ToolsKeycardInstancesDeleteView(View):
                 pairing_storage.remove(instance_uid=deleted_uid)
             except Exception:
                 logger.exception("could not remove deleted pairing blob")
-            try:
-                pairing_storage.remove_label_only(deleted_uid)
-            except Exception:
-                logger.exception("could not remove deleted label file")
 
         # If the deleted AID was the active one, fall back to default.
         if self.controller.active_keycard_aid == target:
@@ -3859,6 +3816,15 @@ class ToolsKeycardSignEthFinalizeView(View):
             return Destination(ToolsKeycardPairView)
         except Exception as exc:
             logger.exception("Keycard signing failed")
+            from seedsigner.helpers.keycard.reader import (
+                NoCardError, NoReaderError,
+            )
+            if isinstance(exc, (NoCardError, NoReaderError)):
+                # No card → subtle toast + stay on the Confirm screen, which
+                # re-reads controller.eth_sign_request. Don't drop the request.
+                return _no_card_toast_or_error(
+                    self, exc, default_title="Signing failed",
+                )
             self.controller.eth_sign_request = None
             self.controller.eth_signature = None
             title, body = classify_card_error(exc, default_title="Signing failed")
@@ -3906,6 +3872,33 @@ def _error_destination(
         },
         skip_current_view=True,
     )
+
+
+def _no_card_toast_or_error(view, exc, *, default_title: str, stay=None):
+    """Card-absent → subtle toast + stay; otherwise the standard error.
+
+    When the caught exception is simply "no card / no reader in the
+    slot", a full ``ErrorScreen`` is heavy-handed: the user just needs
+    to insert a card and retry. Mirror the Cards-menu UX
+    (``CardsMenuView``) — flash an ``InfoToast`` reading "Insert a card
+    first" and return ``stay`` (default: one step back via
+    ``BackStackView``) so any already-scanned PSBT / message survives.
+
+    Any other exception falls through to ``classify_card_error`` +
+    ``_error_destination`` exactly as before.
+    """
+    from seedsigner.helpers.keycard.reader import NoCardError, NoReaderError
+    if isinstance(exc, (NoCardError, NoReaderError)):
+        from seedsigner.gui.toast import InfoToast
+        try:
+            view.controller.activate_toast(
+                InfoToast(label_text="Insert a card first")
+            )
+        except Exception:
+            logger.exception("InfoToast dispatch failed")
+        return stay if stay is not None else Destination(BackStackView)
+    title, body = classify_card_error(exc, default_title=default_title)
+    return _error_destination(title, body, return_to_main=True)
 
 
 class KeycardErrorView(View):
@@ -3971,9 +3964,10 @@ class ToolsKeycardEthereumMenuView(View):
             return gate
 
         button_data = [self.EXPORT_XPUB, self.SIGN_REQUEST, self.VIEW_WALLETS]
+        active = _format_instance_label(self.controller.active_keycard_aid)
         selected = self.run_screen(
             ButtonListScreen,
-            title="Ethereum",
+            title=f"Ethereum · {active}",
             is_button_text_centered=False,
             button_data=button_data,
         )
@@ -4004,9 +3998,10 @@ class ToolsKeycardBitcoinMenuView(View):
             return gate
 
         button_data = [self.EXPORT_XPUB, self.SIGN_PSBT, self.SIGN_MESSAGE]
+        active = _format_instance_label(self.controller.active_keycard_aid)
         selected = self.run_screen(
             ButtonListScreen,
-            title="Bitcoin",
+            title=f"Bitcoin · {active}",
             is_button_text_centered=False,
             button_data=button_data,
         )
@@ -4056,8 +4051,8 @@ class ToolsKeycardBtcExportXpubView(View):
             return Destination(ToolsKeycardPairView)
         except Exception as exc:
             logger.exception("Keycard export_xpub failed")
-            title, body = classify_card_error(exc, default_title="Export failed")
-            return _error_destination(title, body, return_to_main=True)
+            # No card → subtle toast + back one step (no scanned data here).
+            return _no_card_toast_or_error(self, exc, default_title="Export failed")
 
         # Brief headline + path before showing the QR.
         self.run_screen(
@@ -4157,6 +4152,17 @@ class ToolsKeycardBtcSignPsbtReviewView(View):
             return Destination(ToolsKeycardPairView)
         except Exception as exc:
             logger.exception("Keycard fingerprint probe failed")
+            from seedsigner.helpers.keycard.reader import (
+                NoCardError, NoReaderError,
+            )
+            if isinstance(exc, (NoCardError, NoReaderError)):
+                # No card → subtle toast + re-enter this review view (which
+                # re-reads the already-scanned controller.psbt) so the user
+                # can insert a card and retry without re-scanning.
+                return _no_card_toast_or_error(
+                    self, exc, default_title="Probe failed",
+                    stay=Destination(ToolsKeycardBtcSignPsbtReviewView),
+                )
             self.controller.psbt = None
             title, body = classify_card_error(exc, default_title="Probe failed")
             return _error_destination(title, body, return_to_main=True)
@@ -4217,6 +4223,17 @@ class ToolsKeycardBtcSignPsbtFinalizeView(View):
             return Destination(ToolsKeycardPairView)
         except Exception as exc:
             logger.exception("Keycard sign_psbt failed")
+            from seedsigner.helpers.keycard.reader import (
+                NoCardError, NoReaderError,
+            )
+            if isinstance(exc, (NoCardError, NoReaderError)):
+                # No card → subtle toast + re-enter this finalize view (the
+                # parsed PSBT stays on controller.btc_parsed_psbt) so the
+                # user can insert a card and retry without re-scanning.
+                return _no_card_toast_or_error(
+                    self, exc, default_title="Signing failed",
+                    stay=Destination(ToolsKeycardBtcSignPsbtFinalizeView),
+                )
             self.controller.psbt = None
             self.controller.btc_parsed_psbt = None
             title, body = classify_card_error(exc, default_title="Signing failed")
@@ -4353,6 +4370,23 @@ class ToolsKeycardBtcSignMessageFinalizeView(View):
             return Destination(ToolsKeycardPairView)
         except Exception as exc:
             logger.exception("Keycard sign_message failed")
+            from seedsigner.helpers.keycard.reader import (
+                NoCardError, NoReaderError,
+            )
+            if isinstance(exc, (NoCardError, NoReaderError)):
+                # No card → subtle toast + re-enter this finalize view with
+                # the same message/path so the user can insert a card and
+                # retry without re-scanning.
+                return _no_card_toast_or_error(
+                    self, exc, default_title="Signing failed",
+                    stay=Destination(
+                        ToolsKeycardBtcSignMessageFinalizeView,
+                        view_args=dict(
+                            message=self.message,
+                            derivation_path=self.derivation_path,
+                        ),
+                    ),
+                )
             title, body = classify_card_error(exc, default_title="Signing failed")
             return _error_destination(title, body, return_to_main=True)
 

@@ -52,24 +52,92 @@ class TestErrorDestination(unittest.TestCase):
         self.assertEqual(dest.view_args["message"], "no card detected")
 
 
+class TestNoCardToast(unittest.TestCase):
+    """Change 6: camera/scan sign flows show a subtle 'Insert a card first'
+    toast (like the Cards menu) and stay, instead of a heavy ErrorScreen."""
+
+    def test_helper_toasts_and_stays_on_no_card(self):
+        from unittest.mock import patch
+
+        from seedsigner.helpers.keycard.reader import NoCardError
+        from seedsigner.views import keycard_views
+        from seedsigner.views.view import BackStackView
+
+        view = MagicMock()
+        fake_toast_instance = MagicMock(name="InfoToast_instance")
+        fake_toast_cls = MagicMock(return_value=fake_toast_instance)
+        with patch("seedsigner.gui.toast.InfoToast", fake_toast_cls):
+            dest = keycard_views._no_card_toast_or_error(
+                view, NoCardError("no card"), default_title="Signing failed",
+            )
+        # Subtle toast dispatched, default destination is BackStackView.
+        fake_toast_cls.assert_called_once()
+        self.assertEqual(
+            fake_toast_cls.call_args.kwargs["label_text"], "Insert a card first",
+        )
+        view.controller.activate_toast.assert_called_once_with(fake_toast_instance)
+        self.assertIs(dest.View_cls, BackStackView)
+
+    def test_helper_falls_back_to_error_for_other_exceptions(self):
+        from seedsigner.views import keycard_views
+
+        view = MagicMock()
+        dest = keycard_views._no_card_toast_or_error(
+            view, RuntimeError("boom"), default_title="Signing failed",
+        )
+        self.assertFalse(view.controller.activate_toast.called)
+        self.assertIs(dest.View_cls, keycard_views.KeycardErrorView)
+        self.assertTrue(dest.view_args["return_to_main"])
+
+    def test_eth_finalize_no_card_preserves_request_and_stays(self):
+        from unittest.mock import patch
+
+        from seedsigner.helpers.keycard.reader import NoCardError
+        from seedsigner.views import keycard_views
+        from seedsigner.views.keycard_views import ToolsKeycardSignEthFinalizeView
+        from seedsigner.views.view import BackStackView
+
+        view = ToolsKeycardSignEthFinalizeView.__new__(ToolsKeycardSignEthFinalizeView)
+        view.controller = MagicMock()
+        sentinel_request = object()
+        view.controller.eth_sign_request = sentinel_request
+        view.controller.has_any_keycard_auth.return_value = True
+
+        fake_toast_cls = MagicMock(return_value=MagicMock())
+        with patch.object(
+            keycard_views, "_open_unlocked_session_cached_or_prompt",
+            side_effect=NoCardError("no card"),
+        ), patch("seedsigner.gui.toast.InfoToast", fake_toast_cls):
+            dest = view.run()
+
+        # Scanned request preserved (NOT nulled) so retry needs no re-scan.
+        self.assertIs(view.controller.eth_sign_request, sentinel_request)
+        self.assertTrue(view.controller.activate_toast.called)
+        self.assertIs(dest.View_cls, BackStackView)
+
+
 class TestKeycardMenuRouting(unittest.TestCase):
-    """Smoke tests for the reorganised Keycard menu hierarchy:
+    """Smoke tests for the scope-organised Keycard menu hierarchy:
 
         Keycard (top)
-          ├─ Ethereum ›     → ToolsKeycardEthereumMenuView
-          │   ├─ Connect w/ Software Wallet → ToolsKeycardPairWalletView
+          ├─ Ethereum ›       → ToolsKeycardEthereumMenuView
+          │   ├─ Connect software wallet → ToolsKeycardPairWalletView
           │   ├─ Sign request  → ToolsKeycardSignEthStartView
           │   └─ View wallets  → ToolsKeycardWalletsListView
-          ├─ Bitcoin ›      → ToolsKeycardBitcoinMenuView
-          ├─ Setup ›        → ToolsKeycardSetupMenuView
-          │   ├─ Initialise card → ToolsKeycardInitView
-          │   ├─ Generate key    → ToolsKeycardGenerateKeyView
-          │   └─ Import seed     → ToolsKeycardImportSeedView
-          └─ Manage ›       → ToolsKeycardManageMenuView
-              ├─ Status      → ToolsKeycardStatusView
-              ├─ Change PIN  → ToolsKeycardChangePinView
-              ├─ Instances   → ToolsKeycardInstancesMenuView
-              └─ Advanced ›  → ToolsKeycardAdvancedMenuView
+          ├─ Bitcoin ›        → ToolsKeycardBitcoinMenuView
+          ├─ This instance ›  → ToolsKeycardThisInstanceMenuView
+          │   ├─ Generate key  → ToolsKeycardGenerateKeyView
+          │   ├─ Import seed   → ToolsKeycardImportSeedView
+          │   ├─ Change PIN    → ToolsKeycardChangePinView
+          │   ├─ Pairing ›     → ToolsKeycardPairingMenuView
+          │   │   ├─ Pair card      → ToolsKeycardPairView
+          │   │   └─ Remove pairing → ToolsKeycardRemovePairingView
+          │   └─ Factory reset → ToolsKeycardFactoryResetView
+          ├─ Instances ›      → ToolsKeycardInstancesMenuView
+          └─ Card ›           → ToolsKeycardCardMenuView
+              ├─ Initialise card  → ToolsKeycardInitView
+              ├─ Status           → ToolsKeycardStatusView
+              └─ Uninstall applet → ToolsKeycardUninstallAppletView
 
     Each parametrised case mocks ``run_screen`` to return a specific
     button index and asserts the resulting ``Destination`` routes to the
@@ -95,14 +163,16 @@ class TestKeycardMenuRouting(unittest.TestCase):
             ToolsKeycardMenuView,
             ToolsKeycardEthereumMenuView,
             ToolsKeycardBitcoinMenuView,
-            ToolsKeycardSetupMenuView,
-            ToolsKeycardManageMenuView,
+            ToolsKeycardThisInstanceMenuView,
+            ToolsKeycardInstancesMenuView,
+            ToolsKeycardCardMenuView,
         )
         expected = [
             ToolsKeycardEthereumMenuView,
             ToolsKeycardBitcoinMenuView,
-            ToolsKeycardSetupMenuView,
-            ToolsKeycardManageMenuView,
+            ToolsKeycardThisInstanceMenuView,
+            ToolsKeycardInstancesMenuView,
+            ToolsKeycardCardMenuView,
         ]
         for i, view_cls in enumerate(expected):
             dest = self._route(ToolsKeycardMenuView, i)
@@ -146,56 +216,54 @@ class TestKeycardMenuRouting(unittest.TestCase):
                           f"BTC menu index {i} routes to {dest.View_cls.__name__}, "
                           f"expected {view_cls.__name__}")
 
-    def test_setup_menu_routes(self):
+    def test_this_instance_menu_routes(self):
         from seedsigner.views.keycard_views import (
-            ToolsKeycardSetupMenuView,
-            ToolsKeycardInitView,
+            ToolsKeycardThisInstanceMenuView,
             ToolsKeycardGenerateKeyView,
             ToolsKeycardImportSeedView,
+            ToolsKeycardChangePinView,
+            ToolsKeycardPairingMenuView,
+            ToolsKeycardFactoryResetView,
         )
         expected = [
-            ToolsKeycardInitView,
             ToolsKeycardGenerateKeyView,
             ToolsKeycardImportSeedView,
+            ToolsKeycardChangePinView,
+            ToolsKeycardPairingMenuView,
+            ToolsKeycardFactoryResetView,
         ]
         for i, view_cls in enumerate(expected):
-            dest = self._route(ToolsKeycardSetupMenuView, i)
+            dest = self._route(ToolsKeycardThisInstanceMenuView, i)
             self.assertIs(dest.View_cls, view_cls)
 
-    def test_manage_menu_routes(self):
+    def test_pairing_menu_routes(self):
         from seedsigner.views.keycard_views import (
-            ToolsKeycardManageMenuView,
-            ToolsKeycardStatusView,
-            ToolsKeycardChangePinView,
-            ToolsKeycardInstancesMenuView,
-            ToolsKeycardAdvancedMenuView,
-        )
-        expected = [
-            ToolsKeycardStatusView,
-            ToolsKeycardChangePinView,
-            ToolsKeycardInstancesMenuView,
-            ToolsKeycardAdvancedMenuView,
-        ]
-        for i, view_cls in enumerate(expected):
-            dest = self._route(ToolsKeycardManageMenuView, i)
-            self.assertIs(dest.View_cls, view_cls)
-
-    def test_advanced_menu_routes(self):
-        from seedsigner.views.keycard_views import (
-            ToolsKeycardAdvancedMenuView,
+            ToolsKeycardPairingMenuView,
             ToolsKeycardPairView,
             ToolsKeycardRemovePairingView,
-            ToolsKeycardFactoryResetView,
-            ToolsKeycardUninstallAppletView,
         )
         expected = [
             ToolsKeycardPairView,
             ToolsKeycardRemovePairingView,
-            ToolsKeycardFactoryResetView,
+        ]
+        for i, view_cls in enumerate(expected):
+            dest = self._route(ToolsKeycardPairingMenuView, i)
+            self.assertIs(dest.View_cls, view_cls)
+
+    def test_card_menu_routes(self):
+        from seedsigner.views.keycard_views import (
+            ToolsKeycardCardMenuView,
+            ToolsKeycardInitView,
+            ToolsKeycardStatusView,
+            ToolsKeycardUninstallAppletView,
+        )
+        expected = [
+            ToolsKeycardInitView,
+            ToolsKeycardStatusView,
             ToolsKeycardUninstallAppletView,
         ]
         for i, view_cls in enumerate(expected):
-            dest = self._route(ToolsKeycardAdvancedMenuView, i)
+            dest = self._route(ToolsKeycardCardMenuView, i)
             self.assertIs(dest.View_cls, view_cls)
 
     def test_wallets_cache_invalidation_drops_only_active_aid(self):
@@ -284,6 +352,7 @@ class TestKeycardMenuRouting(unittest.TestCase):
         The PIN bytes passed to ``client.init`` must be the matched pair
         ``b"333333"``; the mismatched values must never reach the card.
         """
+        from types import SimpleNamespace
         from unittest.mock import patch
 
         from seedsigner.gui.screens import RET_CODE__BACK_BUTTON  # noqa: F401
@@ -323,6 +392,9 @@ class TestKeycardMenuRouting(unittest.TestCase):
 
         with patch.object(keycard_views, "prompt_for_pin", side_effect=fake_prompt_for_pin), \
              patch.object(keycard_views, "prompt_for_text", return_value=None), \
+             patch("seedsigner.helpers.card_probe.probe_card",
+                   return_value=SimpleNamespace(
+                       present=False, kind_match=False, initialised=False)), \
              patch("seedsigner.helpers.keycard.reader.wait_for_card",
                    return_value=fake_connection), \
              patch("seedsigner.helpers.keycard.reader.release_other_smartcard_holders"), \
@@ -330,20 +402,21 @@ class TestKeycardMenuRouting(unittest.TestCase):
                    return_value=fake_client), \
              patch("seedsigner.helpers.keycard.crypto.derive_pairing_secret",
                    return_value=b"\x11" * 32), \
-             patch.object(keycard_views, "select_with_autodetect"):
+             patch.object(keycard_views, "select_with_autodetect",
+                          return_value=SimpleNamespace(app_version=0)):
             view.run()
 
         self.assertEqual(prompt_calls["n"], 4)
         self.assertEqual(captured["pin"], b"333333")
         self.assertEqual(len(captured["puk"]), 12)  # PUK_LENGTH
-        # No label entered -> pending_keycard_label must be cleared.
-        self.assertIsNone(view.controller.pending_keycard_label)
 
-    def test_init_captures_wallet_label_for_pair(self):
-        """Init must stash the typed wallet name in
-        ``controller.pending_keycard_label`` so the next PAIR persists
-        it alongside the pairing blob.
+    def test_init_already_initialised_blocks_before_pin(self):
+        """An already-initialised card must short-circuit Init *before*
+        any PIN/PUK prompt — the early read-only probe sees
+        ``initialised=True`` and returns the "Already initialised" error
+        without ever calling ``prompt_for_pin`` or ``client.init``.
         """
+        from types import SimpleNamespace
         from unittest.mock import patch
 
         from seedsigner.views import keycard_views
@@ -351,25 +424,62 @@ class TestKeycardMenuRouting(unittest.TestCase):
 
         view = ToolsKeycardInitView.__new__(ToolsKeycardInitView)
         view.controller = MagicMock()
-        view.controller.pending_keycard_label = None
         view.run_screen = MagicMock(return_value=0)
 
+        fake_client = MagicMock()
+
+        with patch.object(keycard_views, "prompt_for_pin") as prompt_mock, \
+             patch("seedsigner.helpers.card_probe.probe_card",
+                   return_value=SimpleNamespace(
+                       present=True, kind_match=True, initialised=True)), \
+             patch("seedsigner.helpers.keycard.client.KeycardClient",
+                   return_value=fake_client):
+            dest = view.run()
+
+        prompt_mock.assert_not_called()
+        fake_client.init.assert_not_called()
+        self.assertIs(dest.View_cls, keycard_views.KeycardErrorView)
+        self.assertEqual(dest.view_args["title"], "Already initialised")
+
+    def test_init_late_guard_blocks_after_select(self):
+        """Backstop: if no card was present at the early probe but an
+        already-initialised card is inserted before INIT, the
+        post-SELECT check (``app_version != 0``) must error out instead
+        of letting ``client.init`` fail with the cryptic SW=0x6D00.
+        """
+        from types import SimpleNamespace
+        from unittest.mock import patch
+
+        from seedsigner.views import keycard_views
+        from seedsigner.views.keycard_views import ToolsKeycardInitView
+
+        view = ToolsKeycardInitView.__new__(ToolsKeycardInitView)
+        view.controller = MagicMock()
+        view.run_screen = MagicMock(return_value=0)
+
+        fake_client = MagicMock()
+        fake_connection = MagicMock()
+
         with patch.object(keycard_views, "prompt_for_pin",
-                          side_effect=[bytearray(b"123456"), bytearray(b"123456")]), \
-             patch.object(keycard_views, "prompt_for_text",
-                          return_value="  Cold Wallet  "), \
+                          return_value=bytearray(b"123456")), \
+             patch.object(keycard_views, "prompt_for_text", return_value=None), \
+             patch("seedsigner.helpers.card_probe.probe_card",
+                   return_value=SimpleNamespace(
+                       present=False, kind_match=False, initialised=False)), \
              patch("seedsigner.helpers.keycard.reader.wait_for_card",
-                   return_value=MagicMock()), \
+                   return_value=fake_connection), \
              patch("seedsigner.helpers.keycard.reader.release_other_smartcard_holders"), \
              patch("seedsigner.helpers.keycard.client.KeycardClient",
-                   return_value=MagicMock()), \
+                   return_value=fake_client), \
              patch("seedsigner.helpers.keycard.crypto.derive_pairing_secret",
                    return_value=b"\x11" * 32), \
-             patch.object(keycard_views, "select_with_autodetect"):
-            view.run()
+             patch.object(keycard_views, "select_with_autodetect",
+                          return_value=SimpleNamespace(app_version=0x0300)):
+            dest = view.run()
 
-        # Whitespace-stripped, ready for pairing_storage.save.
-        self.assertEqual(view.controller.pending_keycard_label, "Cold Wallet")
+        fake_client.init.assert_not_called()
+        self.assertIs(dest.View_cls, keycard_views.KeycardErrorView)
+        self.assertEqual(dest.view_args["title"], "Already initialised")
 
     def test_instance_cap_blocks_create_at_four(self):
         """``ToolsKeycardInstancesCreateView`` must short-circuit to an
@@ -415,95 +525,235 @@ class TestKeycardMenuRouting(unittest.TestCase):
     def test_pin_management_view_removed(self):
         """``ToolsKeycardPinManagementMenuView`` was a one-entry indirection
         ("Change PIN" was the only item); since Change PIN now hangs
-        directly off Manage, the intermediate menu has been removed."""
+        directly off ``This instance``, the intermediate menu has been
+        removed."""
         from seedsigner.views import keycard_views
         self.assertFalse(
             hasattr(keycard_views, "ToolsKeycardPinManagementMenuView"),
             "Stale ToolsKeycardPinManagementMenuView class is still present",
         )
 
-    def test_rename_persists_label_without_password_prompt(self):
-        """Renaming a Keycard instance must NEVER prompt for the pairing
-        password. Labels are display strings (not secrets) and live in a
-        plaintext per-UID file; the rename flow must work even when
-        there is no on-disk pairing blob (the v3.2+ ephemeral case).
-        """
+    def test_rename_view_removed(self):
+        """Instance *naming* was removed entirely: user-assigned names only
+        ever lived on the microSD (never on the smartcard) and rarely
+        rendered in the instance lists. The standalone Rename view must be
+        gone, and the controller's label cache/methods with it.
+
+        Note: ``_format_instance_label`` exists again but is unrelated to
+        naming — it derives a stable ``Inst N`` index purely from the AID
+        (see :func:`test_format_instance_label`), with no microSD state."""
+        from seedsigner.controller import Controller
+        from seedsigner.views import keycard_views
+        self.assertFalse(
+            hasattr(keycard_views, "ToolsKeycardInstancesRenameView"),
+            "Stale ToolsKeycardInstancesRenameView class is still present",
+        )
+        self.assertFalse(
+            hasattr(Controller, "set_label_for"),
+            "Stale Controller.set_label_for is still present",
+        )
+
+    def test_format_instance_label(self):
+        """``_format_instance_label`` renders Keycard instance AIDs as the
+        human-readable ``Inst N`` (N = the trailing instance byte), and
+        falls back to the short-hex form for AIDs outside that pattern."""
+        from seedsigner.views import keycard_views
+        from seedsigner.views.keycard_views import KEYCARD_APPLET_AID
+
+        self.assertEqual(
+            keycard_views._format_instance_label(KEYCARD_APPLET_AID + b"\x01\x01"),
+            "Inst 1",
+        )
+        self.assertEqual(
+            keycard_views._format_instance_label(KEYCARD_APPLET_AID + b"\x01\x03"),
+            "Inst 3",
+        )
+        # Non-instance AID (e.g. a SeedKeeper applet) → short-hex fallback.
+        seedkeeper = bytes.fromhex("5361746f6368697000")
+        self.assertEqual(
+            keycard_views._format_instance_label(seedkeeper),
+            keycard_views._format_aid_short(seedkeeper),
+        )
+
+    def test_instances_list_shows_only_keycard_instances(self):
+        """``ToolsKeycardInstancesListView`` must render only Keycard-prefixed
+        instances (filtered), not every applet GET STATUS returns, and must
+        mark the active instance with a leading "» "."""
         from unittest.mock import patch
 
-        from seedsigner.helpers.keycard import pairing_storage
         from seedsigner.helpers.keycard.global_platform import AppletInstance
         from seedsigner.views import keycard_views
         from seedsigner.views.keycard_views import (
-            KEYCARD_APPLET_AID, ToolsKeycardInstancesRenameView,
+            KEYCARD_APPLET_AID, ToolsKeycardInstancesListView,
         )
 
-        instance_aid = KEYCARD_APPLET_AID + b"\x01\x01"
-        instance_uid = b"\xAB" * 16
+        active_aid = KEYCARD_APPLET_AID + b"\x01\x01"
+        other_keycard = KEYCARD_APPLET_AID + b"\x01\x02"
+        seedkeeper_aid = bytes.fromhex("5361746f6368697000")  # non-Keycard
+        instances = [
+            AppletInstance(aid=active_aid, life_cycle=0, privileges=0),
+            AppletInstance(aid=other_keycard, life_cycle=0, privileges=0),
+            AppletInstance(aid=seedkeeper_aid, life_cycle=0, privileges=0),
+        ]
 
-        view = ToolsKeycardInstancesRenameView.__new__(
-            ToolsKeycardInstancesRenameView,
-        )
+        view = ToolsKeycardInstancesListView.__new__(ToolsKeycardInstancesListView)
         view.controller = MagicMock()
-        # run_screen returns the index of the chosen instance (first one).
-        view.run_screen = MagicMock(return_value=0)
+        view.controller.active_keycard_aid = active_aid
+        captured = {}
 
-        fake_select = MagicMock()
-        fake_select.instance_uid = instance_uid
-        fake_client = MagicMock()
-        fake_client.select.return_value = fake_select
+        def fake_run_screen(screen_cls, **kwargs):
+            captured.update(kwargs)
+            return 0
 
-        save_calls = []
-        update_calls = []
-
-        def fake_save_label_only(uid, label):
-            save_calls.append((bytes(uid), label))
-
-        def fake_update_label(*args, **kwargs):
-            update_calls.append(args)
-            # Pretend no persistent blob exists for this UID — the
-            # silent best-effort blob-trailer refresh should swallow
-            # PairingStorageError and move on.
-            raise pairing_storage.PairingStorageError("no blob")
+        view.run_screen = fake_run_screen
 
         with patch.object(
             keycard_views, "_open_isd_channel",
-            return_value=(
-                MagicMock(),
-                [AppletInstance(aid=instance_aid, life_cycle=0, privileges=0)],
-                MagicMock(),
-            ),
+            return_value=(MagicMock(), instances, MagicMock()),
         ), patch.object(
             keycard_views, "_instances_or_probe_fallback",
-            side_effect=lambda controller, instances, conn: instances,
-        ), patch(
-            "seedsigner.helpers.keycard.reader.wait_for_card",
-            return_value=MagicMock(),
-        ), patch(
-            "seedsigner.helpers.keycard.reader.release_other_smartcard_holders",
-        ), patch(
-            "seedsigner.helpers.keycard.client.KeycardClient",
-            return_value=fake_client,
-        ), patch.object(
-            keycard_views, "prompt_for_text", return_value="Cold Wallet",
-        ) as prompt_text, patch.object(
-            pairing_storage, "save_label_only",
-            side_effect=fake_save_label_only,
-        ), patch.object(
-            pairing_storage, "update_label", side_effect=fake_update_label,
+            side_effect=lambda controller, inst, conn: inst,
         ):
             view.run()
 
-        # Exactly one prompt: for the wallet name. The Pairing-password
-        # prompt would be a SECOND prompt_for_text call — its absence is
-        # the regression guard for the original UX bug.
-        self.assertEqual(prompt_text.call_count, 1)
-        # The plaintext label file got the new name keyed by instance UID.
-        self.assertEqual(save_calls, [(instance_uid, "Cold Wallet")])
-        # The in-memory cache reflects the rename so subsequent renders
-        # don't fall back to the AID hex.
-        view.controller.set_label_for.assert_called_with(
-            instance_uid, "Cold Wallet",
+        text = captured["text"]
+        # Two Keycard instances shown, the SeedKeeper applet filtered out.
+        self.assertEqual(captured["title"], "Instances (2/4)")
+        self.assertNotIn("5361746f", text)
+        # Active marked with the readable instance label, the other not.
+        active_label = keycard_views._format_instance_label(active_aid)
+        self.assertIn("» " + active_label, text)
+
+    def test_instances_switch_marks_active(self):
+        """``ToolsKeycardInstancesSwitchView`` must mark exactly one option —
+        the active instance — with a leading "» "."""
+        from unittest.mock import patch
+
+        from seedsigner.helpers.keycard.global_platform import AppletInstance
+        from seedsigner.views import keycard_views
+        from seedsigner.views.keycard_views import (
+            KEYCARD_APPLET_AID, ToolsKeycardInstancesSwitchView,
         )
+
+        active_aid = KEYCARD_APPLET_AID + b"\x01\x01"
+        other_aid = KEYCARD_APPLET_AID + b"\x01\x02"
+        instances = [
+            AppletInstance(aid=active_aid, life_cycle=0, privileges=0),
+            AppletInstance(aid=other_aid, life_cycle=0, privileges=0),
+        ]
+
+        view = ToolsKeycardInstancesSwitchView.__new__(ToolsKeycardInstancesSwitchView)
+        view.controller = MagicMock()
+        view.controller.active_keycard_aid = active_aid
+        captured = {}
+
+        def fake_run_screen(screen_cls, **kwargs):
+            captured.update(kwargs)
+            return RET_CODE__BACK_BUTTON
+
+        view.run_screen = fake_run_screen
+
+        from seedsigner.gui.screens import RET_CODE__BACK_BUTTON
+
+        with patch.object(
+            keycard_views, "_open_isd_channel",
+            return_value=(MagicMock(), instances, MagicMock()),
+        ), patch.object(
+            keycard_views, "_instances_or_probe_fallback",
+            side_effect=lambda controller, inst, conn: inst,
+        ):
+            view.run()
+
+        labels = [b.button_label for b in captured["button_data"]]
+        marked = [lbl for lbl in labels if lbl.startswith("» ")]
+        self.assertEqual(len(marked), 1)
+        self.assertIn(keycard_views._format_instance_label(active_aid), marked[0])
+
+    def test_main_menu_title_shows_active_instance(self):
+        """The main Keycard menu title must surface the active instance label."""
+        from unittest.mock import patch
+
+        from seedsigner.views import keycard_views
+        from seedsigner.views.keycard_views import (
+            KEYCARD_APPLET_AID, ToolsKeycardMenuView,
+        )
+
+        active_aid = KEYCARD_APPLET_AID + b"\x01\x01"
+        view = ToolsKeycardMenuView.__new__(ToolsKeycardMenuView)
+        view.controller = MagicMock()
+        view.controller.active_keycard_aid = active_aid
+        captured = {}
+
+        def fake_run_screen(screen_cls, **kwargs):
+            captured.update(kwargs)
+            return RET_CODE__BACK_BUTTON
+
+        view.run_screen = fake_run_screen
+
+        from seedsigner.gui.screens import RET_CODE__BACK_BUTTON
+
+        with patch(
+            "seedsigner.helpers.card_probe.run_card_gate", return_value=None,
+        ):
+            view.run()
+
+        self.assertIn(
+            keycard_views._format_instance_label(active_aid), captured["title"]
+        )
+        self.assertEqual(captured["title"], "Keycard · Inst 1")
+
+
+class TestFactoryResetCleanupScope(unittest.TestCase):
+    """Factory reset blanks only the *active* instance on-card, so the
+    device-side pairing cleanup must be scoped to that instance's UID —
+    other instances' saved pairings must survive. When the UID can't be
+    determined it falls back to a full clear so a just-blanked card never
+    keeps a stale pairing."""
+
+    def _run_reset(self, reset_uid):
+        from unittest.mock import patch
+
+        from seedsigner.helpers.keycard import pairing_storage
+        from seedsigner.views import keycard_views
+        from seedsigner.views.keycard_views import (
+            KEYCARD_APPLET_AID, ToolsKeycardFactoryResetView,
+        )
+
+        view = ToolsKeycardFactoryResetView.__new__(ToolsKeycardFactoryResetView)
+        view.controller = MagicMock()
+        view.controller.active_keycard_aid = KEYCARD_APPLET_AID + b"\x01\x01"
+        # run_screen: DireWarning confirm (0, not BACK) then OK (0).
+        view.run_screen = MagicMock(return_value=0)
+
+        fake_client = MagicMock()
+        fake_client.select_response.instance_uid = reset_uid
+        fake_client.factory_reset.return_value = None
+
+        with patch.object(pairing_storage, "remove") as remove_one, \
+             patch.object(pairing_storage, "remove_all") as remove_all, \
+             patch("seedsigner.helpers.keycard.reader.wait_for_card",
+                   return_value=MagicMock()), \
+             patch("seedsigner.helpers.keycard.reader.release_other_smartcard_holders"), \
+             patch("seedsigner.helpers.keycard.client.KeycardClient",
+                   return_value=fake_client), \
+             patch.object(keycard_views, "select_with_autodetect"):
+            view.run()
+        return view.controller, remove_one, remove_all
+
+    def test_known_uid_scopes_cleanup_to_instance(self):
+        uid = bytes.fromhex("aabbccddeeff0011")
+        controller, remove_one, remove_all = self._run_reset(uid)
+        remove_one.assert_called_once_with(instance_uid=uid)
+        remove_all.assert_not_called()
+        controller.forget_pairing_for.assert_called_once_with(uid)
+        controller.forget_all_pairings.assert_not_called()
+
+    def test_unknown_uid_falls_back_to_full_clear(self):
+        controller, remove_one, remove_all = self._run_reset(None)
+        remove_all.assert_called_once()
+        remove_one.assert_not_called()
+        controller.forget_all_pairings.assert_called_once()
+        controller.forget_pairing_for.assert_not_called()
 
 
 # EIP-712 "Ether Mail" worked example from the spec.  Also used in

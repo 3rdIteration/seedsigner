@@ -208,12 +208,40 @@ Defaults: account path `m/84'/0'/0'` (`DEFAULT_BTC_ACCOUNT_PATH`), per-address d
 | `src/seedsigner/helpers/ethereum/` | Chain-agnostic primitives: `rlp`, `keccak`, `address` (EIP-55), `tx_legacy` (EIP-155), `tx_eip1559`, `eip712` (exposes `domain_separator`, `message_hash`, `signing_hash`), `personal_sign`, `erc8213` (`compute_calldata_digest`: `keccak256(uint256_be(len) ‖ calldata)`), `ur_codec` (UR `eth-sign-request` / `eth-signature`) |
 | `src/seedsigner/helpers/keycard/` | Card protocol: `commands` (APDU builders: SELECT, PAIR, OPEN_SC, VERIFY_PIN, DERIVE, EXPORT, SIGN, **GENERATE_MNEMONIC**, LOAD_KEY, GENERATE_KEY, FACTORY_RESET, …), `responses` (TLV/DER + `parse_generate_mnemonic`), `crypto` (PBKDF2/AES-CBC/ECDH), `secure_channel`, `client`, `reader` (PC/SC), `secrets` (CSPRNG PIN/PUK/password), `pairing_storage` (AES-GCM blob on microSD), `ui_helpers` (path/pubkey/PIN helpers shared by views) |
 | `src/seedsigner/helpers/keycard_signer.py` | ETH glue: `signing_hash_for(request)` + `compute_v(request, rec_id)` |
-| `src/seedsigner/views/keycard_views.py` | UI: `Tools > Keycard` menu, init/pair/unpair, **on-card Generate (Status applet GENERATE_MNEMONIC → host renders words → user confirms → LOAD_KEY)** + Show-mnemonic-and-import + **Import existing seed (SeedQR / 12-24 words / NGRAVE hex)** + **Seedkeeper backup at creation (this card or swap to a separate card)**, ETH sign chain (Overview → Details → **ERC-8213 Digest screen** → optional raw-data viewer → Finalize; digest screen shows Calldata Digest for txs with non-empty data, or three pages — EIP-712 Digest + Domain Hash + Message Hash — for typed-data; skipped for empty calldata and personal-sign), **Bitcoin sub-menu** (see above) |
+| `src/seedsigner/views/keycard_views.py` | UI: `Tools > Keycard` menu, init/pair/unpair, **on-card Generate (Status applet GENERATE_MNEMONIC → host renders words → user confirms → LOAD_KEY)** + Show-mnemonic-and-import + **Import existing seed (SeedQR / 12-24 words / NGRAVE hex)** + **Seedkeeper backup at creation (this card / another card / both, installing the applet when missing)**, ETH sign chain (Overview → Details → **ERC-8213 Digest screen** → optional raw-data viewer → Finalize; digest screen shows Calldata Digest for txs with non-empty data, or three pages — EIP-712 Digest + Domain Hash + Message Hash — for typed-data; skipped for empty calldata and personal-sign), **Bitcoin sub-menu** (see above) |
 | `scripts/keycard_smoke_test.py` | Hardware-only end-to-end check (SELECT → PAIR → SC → VERIFY_PIN → DERIVE → EXPORT → SIGN+recover; `--btc` adds export_xpub + BIP-137 sign_message) |
+
+### Menu organisation (scope buckets)
+
+The `Tools > Keycard` menu is organised by the **scope** each branch acts
+on, so the user always knows what a given operation touches. The active
+instance is shown as a readable **`Inst N`** label (`_format_instance_label`,
+derived from the AID's trailing instance byte — *not* a user-assigned name)
+in the title of every instance-scoped branch.
+
+| Branch | Scope | Entries |
+|--------|-------|---------|
+| `Ethereum` / `Bitcoin` (titled `· Inst N`) | active instance | sign / export with the instance key |
+| `This instance · Inst N` | active instance | Generate key, Import seed, Change PIN, `Pairing ›` (Pair card / Remove pairing), Factory reset |
+| `Instances` (titled `Active: Inst N`) | the *set* of instances on the card | List / Switch active / Create / Delete |
+| `Card` | whole card / package | Initialise card, Status, Uninstall applet |
+
+`Generate key` / `Import seed` are reachable both from `This instance` and
+from the post-Init chooser (`ToolsKeycardSetupChooseSeedView`). The view
+classes are `ToolsKeycardThisInstanceMenuView`, `ToolsKeycardPairingMenuView`,
+`ToolsKeycardCardMenuView` (the old `Setup` / `Manage` / `Advanced` menus
+were collapsed into these). Routing cover: `tests/test_keycard_views.py`.
+
+`Factory reset` (`INS_FACTORY_RESET`) blanks **only the active instance**
+on-card; the device-side cleanup is scoped to match — it drops just that
+instance's pairing blob + cached pairing/PIN (by the UID seen at SELECT),
+leaving other instances' pairings intact, and falls back to a full clear
+only when the UID can't be determined. Cover:
+`tests/test_keycard_views.py::TestFactoryResetCleanupScope`.
 
 ### Setup chain: Generate vs Show-mnemonic
 
-The Setup wizard (`Tools > Keycard > Setup > Generate key`) offers two
+The Setup wizard (`Tools > Keycard > This instance > Generate key`) offers two
 provisioning sub-flows. Both go through the same `LOAD_KEY` finaliser
 so the *on-card* state is identical; they differ only in where the
 entropy comes from and whether the host ever displays the words.
@@ -226,16 +254,23 @@ entropy comes from and whether the host ever displays the words.
 
 The **Import hex (NGRAVE)** source takes the NGRAVE "Perfect Key" — the 256-bit BIP-39 *entropy* (64 hex chars = 24 words; 32 hex = 12 words) — via QR scan or the dedicated `0-9 a-f` keyboard (`KeycardHexEntryScreen`), runs it through `bip39.mnemonic_from_bytes`, then joins the **same** validate → derive seed64 → `LOAD_KEY P1=0x03` pipeline as the mnemonic import. The entropy buffer is wiped and words are independent copies (never `WORDLIST` references).
 
-All paths scrub `controller.pending_keycard_mnemonic` / `pending_keycard_passphrase` on every terminal branch (success, back, error) and on `MainMenuView` re-entry. Regression cover: `tests/test_keycard_setup_chain.py`, `tests/test_keycard_hex_import.py`.
+The mnemonic / passphrase are scrubbed on **success**, on a **user-driven exit** (Skip / Cancel / back at any chooser), and on `MainMenuView` re-entry. A **transient backup error does NOT wipe** them (see the backup section's retry rule below) — the only backup window must survive a recoverable failure. Regression cover: `tests/test_keycard_setup_chain.py`, `tests/test_keycard_hex_import.py`.
 
 ### SeedKeeper backup at key creation
 
-Card creation is the **only** moment the host holds the seed — once `LOAD_KEY` seals it in the Keycard it can only be signed with, never read back. So immediately after `LOAD_KEY` (for both the on-card Generate and the Import paths) `ToolsKeycardSeedkeeperOfferView` offers to mirror the seed onto a Seedkeeper applet as a typed "BIP39 mnemonic" (iOS-compatible) or "Password" secret. Two destinations:
+Card creation is the **only** moment the host holds the seed — once `LOAD_KEY` seals it in the Keycard it can only be signed with, never read back. So immediately after `LOAD_KEY` (for both the on-card Generate and the Import paths) `ToolsKeycardSeedkeeperOfferView` offers to mirror the seed onto a Seedkeeper applet as a typed "BIP39 mnemonic" (iOS-compatible) or "Password" secret. The offer always hands off to `ToolsKeycardSeedkeeperDestChooserView`, which presents **three** destinations:
 
-- **This card** — a Seedkeeper applet co-resident on the same physical card (only offered when `probe_installed_applets` finds one; note the iOS-coexistence crash below).
-- **Another card** — `ToolsKeycardSeedkeeperSwapInsertView` prompts the user to swap in a *separate* Seedkeeper card, re-probes, then saves. The pending mnemonic survives the swap on the controller and is wiped on every terminal branch + `MainMenuView` re-entry. Treat seizure mid-swap as a likely seed compromise (wipe is best-effort).
+- **This card** — `ToolsKeycardSeedkeeperThisCardView` probes the inserted card; if no Seedkeeper applet is present it offers to **install** one via the shared `install_seedkeeper_applet()` helper in `views/view.py` (GP `gp.jar` install + the iOS-coexistence `DireWarningScreen` + storage chooser). A freshly-installed applet has no PIN; `seedkeeper_utils.init_satochip` runs `card_setup` (PIN prompt) inline at save time. Then save.
+- **Another card** — `ToolsKeycardSeedkeeperSwapInsertView` prompts the user to swap in a *separate* Seedkeeper card, re-probes, then saves.
+- **Both** — save to **this card** (install if needed) **and** a separate card. Tracked purely via the `remaining=["other"]` view-arg threaded through FormatChooser → SaveRunView; after the first save succeeds the SaveRunView shows "Saved (1 of 2)" and routes to the swap flow **without wiping**, then the second save wipes and exits.
 
-There is deliberately **no** path to read the seed back off the Keycard later — the backup window is creation-time only.
+**Error vs. user-exit wipe rule (security tradeoff):** a *transient* backup failure (save error, capacity, probe failure, install failure, card removed) routes through `_backup_error_retry()` — it shows a Retry/Cancel screen and, on **Retry**, returns to the destination chooser **without wiping** the pending seed, so the user can recover the only backup window. The seed is wiped only on **success**, an explicit **Cancel** (back button), and the `MainMenuView` re-entry backstop. The one exception that still wipes immediately is "Seedkeeper unavailable" (pysatochip import failure — unrecoverable). Consequence: the seed (already sealed in the Keycard via LOAD_KEY) now lives in host memory across retries and across a same-card install / second-card swap within the wizard. Bounded to the wizard session; wipe is best-effort (CPython GC). Treat seizure mid-backup as a likely seed compromise.
+
+The pending mnemonic survives card swaps on the controller. There is deliberately **no** path to read the seed back off the Keycard later — the backup window is creation-time only.
+
+### No-card UX in scan/sign flows
+
+When a Keycard sign/export flow (ETH finalize, BTC export-xpub / PSBT review / PSBT finalize / message finalize) hits `NoCardError`/`NoReaderError`, it does **not** show the heavy `ErrorScreen`. Instead `_no_card_toast_or_error()` (in `keycard_views.py`) flashes the same subtle `InfoToast("Insert a card first")` the Cards menu uses and **stays** — re-entering the holding view (or `BackStackView`) so the user can insert a card and retry **without re-scanning**. Critically, the no-card branch must **not** null the scanned state (`eth_sign_request` / `psbt` / `btc_parsed_psbt` / the message view-arg) — that is what makes retry-without-rescan work. Any *other* exception still falls through to `classify_card_error` + `_error_destination(..., return_to_main=True)` as before. `KeycardCardChangedError` is unchanged (re-pair).
 
 ### Protocol compatibility — DO NOT change without coordinating with existing cards
 
@@ -302,7 +337,7 @@ Capture the output to a local file (do **not** commit — the pubkey is fine but
 
 ### Multi-instance management (GlobalPlatform / SCP02)
 
-Multiple Keycard applet instances can live on the same physical card, each with its own AID, `instance_uid`, PIN, pairing slots and master key. SeedSigner manages them via `Tools > Keycard > Manage instances`.
+Multiple Keycard applet instances can live on the same physical card, each with its own AID, `instance_uid`, PIN, pairing slots and master key. SeedSigner manages them via `Tools > Keycard > Instances`.
 
 **Pre-conditions:**
 
@@ -331,9 +366,12 @@ The commands we send (`INSTALL [for install]`, `DELETE`, `GET STATUS`) carry no 
 - We allocate new instance AIDs by bumping the last byte: `…0102`, `…0103`, … up to `…010F`.
 - Each instance generates its own random `instance_uid` at INIT time, so the per-UID pairing storage in `helpers/keycard/pairing_storage.py` Just Works for multi-instance setups — no schema change needed.
 
+**Instances menu** (`Tools > Keycard > Instances`, titled `Active: Inst N`): `List instances` / `Switch active` / `Create instance` / `Delete instance`. **There is no instance naming.** A previous "Rename instance" feature and the whole label subsystem were removed: instance names only ever lived in a microSD-side label file / pairing-blob trailer (never on the smartcard) and rarely rendered in the lists (only the instance paired this session had a cached UID). Every list now renders instances by the readable **`Inst N`** label (`_format_instance_label`, derived from the AID's trailing instance byte — falls back to short-AID hex for non-instance AIDs). `List instances` / `Switch active` show only **Keycard-prefixed** instances (filtered by `KEYCARD_APPLET_AID`), never other applets (e.g. SeedKeeper). The `pairing_storage` blob still emits a fixed-size empty label trailer so existing paired cards keep loading (`decrypt_pairing` ignores it); do **not** rely on `StoredPairing.label`.
+
 **Active instance for the session:**
 
-- `Controller.active_keycard_aid` (defaults to the published Status AID) is the AID we SELECT for every Keycard operation. The Manage Instances flow lets the user switch it.
+- `Controller.active_keycard_aid` (defaults to the published Status AID) is the AID we SELECT for every Keycard operation. The Instances flow lets the user switch it.
+- The active instance is surfaced as the readable **`Inst N`** label in the **main Keycard menu title** (`Keycard · Inst N`), in every instance-scoped submenu title (`Ethereum · Inst N`, `Bitcoin · Inst N`, `This instance · Inst N`, `Pairing · Inst N`, `Active: Inst N`), and marked with a leading `» ` in both the `List instances` and `Switch active` views, so the user always knows which instance signing/export will use.
 - After DELETE, if the deleted AID was the active one we fall back to the default. After INSTALL, the new AID does NOT auto-become active — the user explicitly switches.
 
 **Threat-model additions:**
