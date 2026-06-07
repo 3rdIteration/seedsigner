@@ -91,6 +91,42 @@ CURATED = [
     # --- batching --------------------------------------------------------
     ("multicall(bytes[])", ["calls"], KIND_GENERIC),
     ("multicall(uint256,bytes[])", ["deadline", "calls"], KIND_GENERIC),
+    # --- 1inch AggregationRouter V5 --------------------------------------
+    # Every selector below is asserted against its known on-chain value in
+    # tests/test_ethereum_signature_index.py (TestCuratedProtocolSelectors).
+    ("swap(address,(address,address,address,address,uint256,uint256,uint256),bytes,bytes)",
+     ["executor", "desc", "permit", "data"], KIND_SWAP),                       # 0x12aa3caf
+    ("unoswap(address,uint256,uint256,uint256[])",
+     ["srcToken", "amount", "minReturn", "pools"], KIND_SWAP),                 # 0x0502b1c5
+    ("unoswapTo(address,address,uint256,uint256,uint256[])",
+     ["recipient", "srcToken", "amount", "minReturn", "pools"], KIND_SWAP),    # 0xf78dc253
+    # --- 0x Exchange Proxy ------------------------------------------------
+    ("transformERC20(address,address,uint256,uint256,(uint32,bytes)[])",
+     ["inputToken", "outputToken", "inputAmount", "minOutputAmount", "transformations"],
+     KIND_SWAP),                                                              # 0x415565b0
+    # --- CowSwap GPv2Settlement ------------------------------------------
+    ("settle(address[],uint256[],(uint256,uint256,address,uint256,uint256,uint32,bytes32,uint256,uint256,uint256,bytes)[],(address,uint256,bytes)[][3])",
+     ["tokens", "clearingPrices", "trades", "interactions"], KIND_GENERIC),    # 0x13d79a0b
+    # --- Seaport 1.x (OpenSea) -------------------------------------------
+    # Large nested structs; we surface the verified function name (and decode
+    # params best-effort) instead of blind-signing. param_names label the
+    # top-level args only.
+    ("fulfillBasicOrder((address,uint256,uint256,address,address,address,uint256,uint256,uint8,uint256,uint256,bytes32,uint256,bytes32,bytes32,uint256,(uint256,address)[],bytes))",
+     ["parameters"], KIND_GENERIC),                                           # 0xfb0f3ee1
+    ("fulfillBasicOrder_efficient_6GL6yc((address,uint256,uint256,address,address,address,uint256,uint256,uint8,uint256,uint256,bytes32,uint256,bytes32,bytes32,uint256,(uint256,address)[],bytes))",
+     ["parameters"], KIND_GENERIC),                                           # 0x00000000
+    ("fulfillOrder(((address,address,(uint8,address,uint256,uint256,uint256)[],(uint8,address,uint256,uint256,uint256,address)[],uint8,uint256,uint256,bytes32,uint256,bytes32,uint256),bytes),bytes32)",
+     ["order", "fulfillerConduitKey"], KIND_GENERIC),                         # 0xb3a34c4c
+    ("fulfillAdvancedOrder(((address,address,(uint8,address,uint256,uint256,uint256)[],(uint8,address,uint256,uint256,uint256,address)[],uint8,uint256,uint256,bytes32,uint256,bytes32,uint256),uint120,uint120,bytes,bytes),(uint256,uint8,uint256,uint256,bytes32[])[],bytes32,address)",
+     ["advancedOrder", "criteriaResolvers", "fulfillerConduitKey", "recipient"], KIND_GENERIC),  # 0xe7acab24
+    ("fulfillAvailableOrders(((address,address,(uint8,address,uint256,uint256,uint256)[],(uint8,address,uint256,uint256,uint256,address)[],uint8,uint256,uint256,bytes32,uint256,bytes32,uint256),bytes)[],(uint256,uint256)[][],(uint256,uint256)[][],bytes32,uint256)",
+     ["orders", "offerFulfillments", "considerationFulfillments", "fulfillerConduitKey", "maximumFulfilled"], KIND_GENERIC),  # 0xed98a574
+    ("fulfillAvailableAdvancedOrders(((address,address,(uint8,address,uint256,uint256,uint256)[],(uint8,address,uint256,uint256,uint256,address)[],uint8,uint256,uint256,bytes32,uint256,bytes32,uint256),uint120,uint120,bytes,bytes)[],(uint256,uint8,uint256,uint256,bytes32[])[],(uint256,uint256)[][],(uint256,uint256)[][],bytes32,address,uint256)",
+     ["advancedOrders", "criteriaResolvers", "offerFulfillments", "considerationFulfillments", "fulfillerConduitKey", "recipient", "maximumFulfilled"], KIND_GENERIC),  # 0x87201b41
+    ("matchOrders(((address,address,(uint8,address,uint256,uint256,uint256)[],(uint8,address,uint256,uint256,uint256,address)[],uint8,uint256,uint256,bytes32,uint256,bytes32,uint256),bytes)[],((uint256,uint256)[],(uint256,uint256)[])[])",
+     ["orders", "fulfillments"], KIND_GENERIC),                              # 0xa8174404
+    ("matchAdvancedOrders(((address,address,(uint8,address,uint256,uint256,uint256)[],(uint8,address,uint256,uint256,uint256,address)[],uint8,uint256,uint256,bytes32,uint256,bytes32,uint256),uint120,uint120,bytes,bytes)[],(uint256,uint8,uint256,uint256,bytes32[])[],((uint256,uint256)[],(uint256,uint256)[])[],address)",
+     ["advancedOrders", "criteriaResolvers", "fulfillments", "recipient"], KIND_GENERIC),  # 0xf2d12b12
 ]
 
 

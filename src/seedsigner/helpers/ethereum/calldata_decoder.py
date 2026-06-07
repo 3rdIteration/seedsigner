@@ -93,7 +93,7 @@ def _decode_extended(selector: bytes, params_data: bytes) -> DecodedCall:
     No match → blind.  Multiple matches (selector collision) → ambiguous, never
     guessed.  Single match → decode generically but flagged ``verified=False``.
     """
-    sigs = signature_db.resolve_extended(selector)
+    sigs = signature_db.resolve_all(selector)
     if not sigs:
         return DecodedCall(known=False, selector=selector)
     if len(sigs) > 1:

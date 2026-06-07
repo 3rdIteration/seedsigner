@@ -39,6 +39,22 @@ C = "3333333333333333333333333333333333333333"
 USDC = bytes.fromhex("a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48")
 
 
+@pytest.fixture(autouse=True)
+def _isolate_signature_db():
+    # Decoder tests assert on curated/blind behaviour and must be independent of
+    # whatever extended text DB or bundled binary index ships in resources/.
+    # Turn both extended layers OFF by default; tests that exercise the extended
+    # path patch resolve_all explicitly.
+    from seedsigner.helpers.ethereum import signature_db
+    signature_db._reset()
+    signature_db._TEST_PATHS = []                 # no text baseline / microSD
+    signature_db._TEST_INDEX_PATHS = ("/nonexistent/idx", "/nonexistent/blob")
+    yield
+    signature_db._reset()
+    signature_db._TEST_PATHS = None
+    signature_db._TEST_INDEX_PATHS = None
+
+
 # --- type parsing -----------------------------------------------------------
 
 class TestTypeParsing:
@@ -215,7 +231,9 @@ class TestRegistry:
         assert e is not None and e.kind == KIND_GENERIC and e.param_names is None
 
     def test_resolve_unknown(self):
-        assert resolve(bytes.fromhex("00000000")) is None
+        # NB: 0x00000000 is NOT unknown — it's Seaport's
+        # fulfillBasicOrder_efficient_6GL6yc (curated). Use a true sentinel.
+        assert resolve(bytes.fromhex("99887766")) is None
 
     def test_swap_is_swap_kind(self):
         e = resolve(function_selector(
@@ -286,8 +304,8 @@ class TestRendering:
         from seedsigner.helpers.ethereum import signature_db
         sig = "supply(address,uint256,address,uint16)"
         sel = function_selector(sig)
-        # Force the extended DB to return exactly this signature.
-        monkeypatch.setattr(signature_db, "resolve_extended",
+        # Force the extended layer to return exactly this signature.
+        monkeypatch.setattr(signature_db, "resolve_all",
                             lambda s: [sig] if s == sel else [])
         data = sel + aw(A) + w(1000) + aw(B) + w(7)
         d = decode_calldata(data)
@@ -298,7 +316,7 @@ class TestRendering:
     def test_extended_collision_is_ambiguous(self, monkeypatch):
         from seedsigner.helpers.ethereum import signature_db
         sel = bytes.fromhex("12345678")
-        monkeypatch.setattr(signature_db, "resolve_extended",
+        monkeypatch.setattr(signature_db, "resolve_all",
                             lambda s: ["foo(uint256)", "bar(address)"] if s == sel else [])
         d = decode_calldata(sel + w(1))
         assert d.ambiguous and d.verified is False and len(d.candidates) == 2
@@ -308,7 +326,7 @@ class TestRendering:
 
     def test_extended_miss_is_blind(self, monkeypatch):
         from seedsigner.helpers.ethereum import signature_db
-        monkeypatch.setattr(signature_db, "resolve_extended", lambda s: [])
+        monkeypatch.setattr(signature_db, "resolve_all", lambda s: [])
         d = decode_calldata(bytes.fromhex("deadbeef") + w(0))
         assert d.known is False
 
