@@ -6,6 +6,21 @@ For TextArea-based informational screens (especially ButtonListScreen flows), ke
 
 If additional detail is needed, prefer a second screen instead of longer text.
 
+## Display resize safety guidance
+
+The canvas size (240×240) can differ from the physical display size (e.g. 128×128 on ST7735). `Renderer._resize_for_display()` handles the downscale automatically.
+
+**Rules — always follow these when adding any UI rendering code:**
+
+- **Never call `renderer.disp.show_image()` directly.** Always use the renderer helper methods instead:
+  - `renderer.show_image()` — renders the current canvas (or a provided image) to the display.
+  - `renderer.show_image(image, show_direct=True)` — renders a raw image frame directly (e.g. camera frames), bypassing the canvas.
+  - `renderer.show_image_pan(...)` — animated pan with automatic resize.
+  - `renderer.display_blank_screen()` — clears the display.
+- All of the above call `_resize_for_display()` internally. Calling `disp.show_image()` directly skips that step and will crash on any display smaller than 240×240 with `"Image must be same dimensions as display"`.
+- If you ever need to call `disp.show_image()` directly for a valid reason, wrap the image first: `renderer.disp.show_image(renderer._resize_for_display(image), 0, 0)`.
+- When reviewing or writing code that renders images, confirm every `disp.show_image()` call goes through one of the approved renderer helpers. This applies to screen classes, screensavers, toasts, and any background threads that draw to the display.
+
 ## Screen layout and vertical space guidance
 
 The display is 240×240 pixels. Key layout constants (from `GUIConstants`):
