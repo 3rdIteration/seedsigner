@@ -998,6 +998,100 @@ class LargeIconStatusScreen(ButtonListScreen):
             ))
 
 
+@dataclass
+class StorageBar(BaseComponent):
+    """Horizontal occupation gauge: the filled portion = ``percent`` of the
+    track width. Drawn with the same rounded-rectangle idiom as the QR scan
+    progress bar."""
+    screen_x: int = 0
+    screen_y: int = 0
+    width: int = 0
+    height: int = GUIConstants.BUTTON_HEIGHT
+    percent: float = 0.0  # 0..100
+    radius: int = 8
+
+    def render(self):
+        # Unfilled track.
+        self.image_draw.rounded_rectangle(
+            (
+                (self.screen_x, self.screen_y),
+                (self.screen_x + self.width, self.screen_y + self.height),
+            ),
+            radius=self.radius,
+            fill=GUIConstants.INACTIVE_COLOR,
+        )
+        pct = max(0.0, min(100.0, self.percent))
+        fill_w = int(pct * self.width / 100.0)
+        if fill_w <= 0:
+            return
+        # Turn red when nearly full; otherwise the regular accent green.
+        color = GUIConstants.ERROR_COLOR if pct >= 90 else GUIConstants.SUCCESS_COLOR
+        # Clamp the corner radius so a very thin fill still renders cleanly.
+        fr = min(self.radius, fill_w // 2, self.height // 2)
+        self.image_draw.rounded_rectangle(
+            (
+                (self.screen_x, self.screen_y),
+                (self.screen_x + fill_w, self.screen_y + self.height),
+            ),
+            radius=fr,
+            fill=color,
+        )
+
+
+@dataclass
+class KeycardStorageScreen(ButtonListScreen):
+    """Card-memory overview: a percentage headline, an occupation bar, and a
+    used / total / free breakdown. ``total_bytes`` is ``free + used`` (the
+    card never reports its true capacity); see ``views.view`` accounting."""
+    used_bytes: int = 0
+    total_bytes: int = 0
+    free_bytes: int = 0
+
+    def __post_init__(self):
+        self.button_data = [ButtonOption("OK")]
+        self.is_bottom_list = True
+        super().__post_init__()
+
+        pct = 0
+        if self.total_bytes > 0:
+            pct = int(round(self.used_bytes * 100 / self.total_bytes))
+
+        def _kib(n):
+            return f"{n / 1024:.1f}"
+
+        next_y = self.top_nav.height + GUIConstants.COMPONENT_PADDING
+
+        # TRANSLATOR_NOTE: {} is the percentage of card memory in use
+        headline = TextArea(
+            text=_("{}% used").format(pct),
+            font_size=GUIConstants.get_body_font_size() + 4,
+            width=self.canvas_width,
+            screen_y=next_y,
+        )
+        self.components.append(headline)
+        next_y += headline.height + GUIConstants.COMPONENT_PADDING
+
+        bar = StorageBar(
+            screen_x=GUIConstants.EDGE_PADDING,
+            screen_y=next_y,
+            width=self.canvas_width - 2 * GUIConstants.EDGE_PADDING,
+            height=GUIConstants.BUTTON_HEIGHT,
+            percent=pct,
+        )
+        self.components.append(bar)
+        next_y += bar.height + GUIConstants.COMPONENT_PADDING
+
+        # TRANSLATOR_NOTE: {} are used, total, and free card memory in KiB
+        detail = _("{} / {} KB used\n{} KB free").format(
+            _kib(self.used_bytes), _kib(self.total_bytes), _kib(self.free_bytes),
+        )
+        self.components.append(TextArea(
+            text=detail,
+            width=self.canvas_width,
+            screen_y=next_y,
+        ))
+
+
 
 class WarningEdgesThread(BaseThread):
     def __init__(self, args):

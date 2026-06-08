@@ -453,6 +453,120 @@ _KEYCARD_CREATE_COMMANDS = [
 ]
 
 
+# ---------------------------------------------------------------------------
+# Card storage accounting
+#
+# The card reports only its *free* persistent memory (GlobalPlatform GET DATA
+# 0xFF21), never its total capacity, and cards differ — so we size each
+# installable app from its `.cap` file on disk and derive everything from
+# that: used = Σ(installed app footprints), total = free + used. The cap file
+# is normally a slight over-estimate of the on-card code footprint (it carries
+# Debug/Export components that aren't loaded), which keeps the pre-install
+# check conservative. `APP_NV_OVERHEAD_BYTES` is a calibration knob if a
+# hardware measurement (free-before minus free-after an install) shows the
+# cap-file size diverges from the real footprint.
+# ---------------------------------------------------------------------------
+APP_NV_OVERHEAD_BYTES = 0
+# SeedKeeper's footprint also includes the data-object store allocated at
+# install time. The chosen size isn't queryable afterwards, so the occupation
+# bar assumes the default; the pre-install check uses the exact chosen value.
+SEEDKEEPER_DEFAULT_STORE_BYTES = 0x2000  # 8 KB, matches _SEEDKEEPER_STORAGE_DEFAULT_INDEX
+
+
+def store_bytes_from_param(param: str) -> int:
+    """Bytes reserved by a SeedKeeper ``--params`` data-store value.
+
+    The chooser params encode ``store_size - 1`` in hex (``0FFF`` → 4 KB,
+    ``1FFF`` → 8 KB, … ``FFFF`` → 64 KB), so the size is ``int(param, 16) + 1``.
+    """
+    return int(param, 16) + 1
+
+
+def cap_size_for_kind(kind: str):
+    """On-disk size (bytes) of an installable kind's ``.cap``, or ``None``.
+
+    ``None`` when the kind is unknown or the cap file is missing from the
+    firmware image — callers treat that as "size unknown" and skip the app.
+    """
+    from seedsigner.hardware.microsd import MicroSD
+
+    info = _DEFAULT_CAP_BY_KIND.get(kind)
+    if info is None:
+        return None
+    cap_path = MicroSD.get_microsd_dir() / "javacard-cap" / info[0]
+    try:
+        return cap_path.stat().st_size
+    except OSError:
+        return None
+
+
+def required_nv_for_install(kind: str, storage_param: str = None,
+                            overhead: int = APP_NV_OVERHEAD_BYTES):
+    """Estimated free NV memory (bytes) needed to install ``kind``.
+
+    ``cap_size + overhead`` (+ the exact chosen data store for SeedKeeper).
+    Returns ``None`` if the cap size can't be determined, so the pre-install
+    check skips rather than blocking a valid install.
+    """
+    cap_size = cap_size_for_kind(kind)
+    if cap_size is None:
+        return None
+    required = cap_size + overhead
+    if kind == "seedkeeper":
+        required += (store_bytes_from_param(storage_param)
+                     if storage_param else SEEDKEEPER_DEFAULT_STORE_BYTES)
+    return required
+
+
+def estimated_used_nv(probe,
+                      seedkeeper_default_store: int = SEEDKEEPER_DEFAULT_STORE_BYTES) -> int:
+    """Estimated NV memory (bytes) consumed by the apps we manage.
+
+    Sums the cap-file footprint of whichever of our two apps the ``probe``
+    reports installed (+ the default data store for SeedKeeper, whose actual
+    allocation isn't queryable after install). Apps with an unreadable cap
+    size contribute 0.
+    """
+    used = 0
+    if getattr(probe, "keycard_installed", False):
+        used += cap_size_for_kind("keycard") or 0
+    if getattr(probe, "seedkeeper_installed", False):
+        used += (cap_size_for_kind("seedkeeper") or 0) + seedkeeper_default_store
+    return used
+
+
+def _warn_if_low_space(view, kind: str, storage_param: str = None):
+    """Soft pre-install free-space check. Never hard-blocks.
+
+    Returns ``"back"`` if the user cancels at the warning, otherwise ``None``
+    (including when free memory or the required size can't be read — we don't
+    block an install we can't prove will fail). Mirrors the existing
+    cross-applet ``DireWarningScreen`` override pattern.
+    """
+    from seedsigner.gui.screens.screen import DireWarningScreen
+    from seedsigner.helpers.keycard.ui_helpers import query_card_memory
+
+    required = required_nv_for_install(kind, storage_param)
+    if required is None:
+        return None
+    mem = query_card_memory(view)
+    if mem is None or mem.free_nv >= required:
+        return None
+    ret = view.run_screen(
+        DireWarningScreen,
+        title=_("Low space"),
+        status_headline=None,
+        # TRANSLATOR_NOTE: shown before installing an applet when the card's
+        # free memory looks too small for it.
+        text=_("Card may be too full for\nthis applet."),
+        show_back_button=True,
+        button_data=[ButtonOption("Install anyway")],
+    )
+    if ret == RET_CODE__BACK_BUTTON:
+        return "back"
+    return None
+
+
 def install_seedkeeper_applet(view):
     """Install the SeedKeeper applet via GlobalPlatform (``gp.jar``).
 
@@ -515,6 +629,9 @@ def install_seedkeeper_applet(view):
     if selected == RET_CODE__BACK_BUTTON:
         return "back"
     storage_param = options[selected].return_data or "1FFF"
+
+    if _warn_if_low_space(view, "seedkeeper", storage_param) == "back":
+        return "back"
 
     command = single_cmd_template.format(cap=str(cap_path), params=storage_param)
     result = seedkeeper_utils.run_globalplatform(
@@ -600,6 +717,9 @@ class CardsInstallAppletView(View):
             )
             if ret == RET_CODE__BACK_BUTTON:
                 return Destination(BackStackView)
+
+        if _warn_if_low_space(self, "keycard") == "back":
+            return Destination(BackStackView)
 
         # Belt-and-braces: cascade-delete any prior Keycard package
         # before --load. probe_installed_applets only SELECTs against

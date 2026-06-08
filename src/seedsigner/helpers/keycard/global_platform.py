@@ -61,9 +61,16 @@ CLA_GP_MAC = 0x84  # GP CLA with secure-messaging bit set (CMAC)
 INS_INITIALIZE_UPDATE = 0x50
 INS_EXTERNAL_AUTHENTICATE = 0x82
 INS_GET_STATUS_GP = 0xF2
+INS_GET_DATA = 0xCA
 INS_INSTALL = 0xE6
 INS_DELETE = 0xE4
 INS_SELECT = 0xA4
+
+# GET DATA tag for "Extended Card Resources Information" (GlobalPlatform
+# Amendment / ETSI TS 102 226): free persistent + volatile memory and the
+# number of installed applications. Sent as P1=0xFF, P2=0x21.
+GET_DATA_P1_EXT_CARD_RESOURCES = 0xFF
+GET_DATA_P2_EXT_CARD_RESOURCES = 0x21
 
 # GET STATUS P1 selectors (we only need applets/instances).
 GP_STATUS_P1_APPLICATIONS = 0x40
@@ -272,6 +279,24 @@ class GpSecureChannel:
             last_error = format_sw_error(sw1, sw2)
         raise GpProtocolError(f"no ISD AID accepted: {last_error}")
 
+    def get_extended_card_resources(self) -> "CardMemory":
+        """Read GET DATA 0xFF21 (Extended Card Resources Information).
+
+        Issued in the clear right after :meth:`select_isd` — this
+        publicly-readable data object needs no secure channel (the same way
+        ``gp --info`` reports free memory before authenticating). Raises
+        :class:`GpProtocolError` (via :meth:`_transmit_raw`) if the card
+        does not expose the tag, e.g. SW=0x6A88; callers treat that as
+        "storage info unavailable".
+        """
+        resp = self._transmit_raw(
+            [0x00, INS_GET_DATA,
+             GET_DATA_P1_EXT_CARD_RESOURCES, GET_DATA_P2_EXT_CARD_RESOURCES,
+             0x00],
+            command_label="GET DATA[FF21]",
+        )
+        return parse_extended_card_resources(resp)
+
     def open(self, host_challenge: Optional[bytes] = None) -> GpSession:
         """Run INITIALIZE UPDATE + EXTERNAL AUTHENTICATE, returning the
         active session."""
@@ -424,6 +449,71 @@ class AppletInstance:
     aid: bytes
     life_cycle: int
     privileges: int
+
+
+@dataclass(frozen=True)
+class CardMemory:
+    """Free-memory snapshot from GET DATA 0xFF21.
+
+    ``free_nv`` is the free persistent (EEPROM) memory in bytes — the only
+    figure that matters for whether an applet will fit. ``free_volatile``
+    is free transient (RAM) memory; ``num_apps`` is the number of installed
+    applications the card reports. The card does **not** expose its *total*
+    capacity, so callers derive ``total`` themselves (free + known footprint
+    of the installed apps).
+    """
+    free_nv: int
+    free_volatile: int
+    num_apps: int
+
+
+def parse_extended_card_resources(data: bytes) -> CardMemory:
+    """Parse a GET DATA 0xFF21 (Extended Card Resources Information) response.
+
+    Layout (GlobalPlatform Amendment / ETSI TS 102 226)::
+
+        FF 21 LL
+           81 LL  <number of installed applications>
+           82 LL  <free non-volatile (persistent) memory, big-endian>
+           83 LL  <free volatile (transient) memory, big-endian>
+
+    Some cards return the bare inner TLVs without the outer ``FF21`` wrapper;
+    both forms are accepted. Inner values are big-endian unsigned ints (1–4
+    bytes); missing tags default to 0.
+    """
+    body = data
+    # Strip an optional outer FF21 template (its length may be short- or
+    # long-form). The inner SIMPLE-TLV objects always use short-form lengths.
+    if len(body) >= 2 and body[0] == 0xFF and body[1] == 0x21:
+        idx = 2
+        if idx < len(body) and (body[idx] & 0x80):
+            # Long-form: low 7 bits = number of subsequent length bytes.
+            num_len_bytes = body[idx] & 0x7F
+            idx += 1 + num_len_bytes
+        else:
+            idx += 1
+        body = body[idx:]
+
+    num_apps = 0
+    free_nv = 0
+    free_volatile = 0
+    cur = 0
+    while cur + 1 < len(body):
+        tag = body[cur]
+        length = body[cur + 1]
+        value = body[cur + 2:cur + 2 + length]
+        if len(value) < length:
+            break  # truncated entry — bail rather than misparse
+        value_int = int.from_bytes(value, "big") if value else 0
+        if tag == 0x81:
+            num_apps = value_int
+        elif tag == 0x82:
+            free_nv = value_int
+        elif tag == 0x83:
+            free_volatile = value_int
+        cur += 2 + length
+    return CardMemory(free_nv=free_nv, free_volatile=free_volatile,
+                      num_apps=num_apps)
 
 
 def _get_status_pages(channel: GpSecureChannel, p2_first: int) -> bytes:

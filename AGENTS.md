@@ -224,7 +224,7 @@ in the title of every instance-scoped branch.
 | `Ethereum` / `Bitcoin` (titled `· Inst N`) | active instance | sign / export with the instance key |
 | `This instance · Inst N` | active instance | Generate key, Import seed, Change PIN, `Pairing ›` (Pair card / Remove pairing), Factory reset, Lock card |
 | `Instances` (titled `Active: Inst N`) | the *set* of instances on the card | List / Switch active / Create / Delete |
-| `Card` | whole card / package | Initialise card, Status, Uninstall applet |
+| `Card` | whole card / package | Initialise card, Status, Storage, Uninstall applet |
 | `Lock card` | cached card auth (all instances) | Drop cached PINs so the next op re-prompts (`ToolsKeycardLockView`) |
 
 `Generate key` / `Import seed` are reachable both from `This instance` and

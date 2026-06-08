@@ -161,6 +161,7 @@ class TestKeycardMenuRouting(unittest.TestCase):
           └─ Card ›           → ToolsKeycardCardMenuView
               ├─ Initialise card  → ToolsKeycardInitView
               ├─ Status           → ToolsKeycardStatusView
+              ├─ Storage          → ToolsKeycardStorageView
               └─ Uninstall applet → ToolsKeycardUninstallAppletView
 
     Each parametrised case mocks ``run_screen`` to return a specific
@@ -283,11 +284,13 @@ class TestKeycardMenuRouting(unittest.TestCase):
             ToolsKeycardCardMenuView,
             ToolsKeycardInitView,
             ToolsKeycardStatusView,
+            ToolsKeycardStorageView,
             ToolsKeycardUninstallAppletView,
         )
         expected = [
             ToolsKeycardInitView,
             ToolsKeycardStatusView,
+            ToolsKeycardStorageView,
             ToolsKeycardUninstallAppletView,
         ]
         for i, view_cls in enumerate(expected):
@@ -1689,6 +1692,286 @@ class TestBtcSignMessageScanRouting(unittest.TestCase):
             view.run()
 
         self.assertEqual(sign_calls, [("hello", DEFAULT_BTC_PATH)])
+
+
+class TestWrongCardDetection(unittest.TestCase):
+    """Reject a scanned ETH request / BTC PSBT that belongs to a *different*
+    wallet than the one on the active card, BEFORE signing — replicating
+    keycard-shell's early 'wrong keycard' reject (which today only surfaces
+    much later, on the online app, after we've already signed and shown a QR).
+    """
+
+    # 0x04-prefixed uncompressed pubkey; arbitrary bytes (no curve check in
+    # compress_pubkey / pubkey_to_address, both are pure hashes).
+    PUB65 = b"\x04" + bytes(range(64))
+
+    class _FakeClient:
+        """Stand-in Keycard client: records derivations, returns a fixed
+        pubkey in the bare ``0x80 0x41 04...`` TLV form accepted by both
+        ``extract_pubkey`` and ``keycard_btc_signer._parse_pubkey_only``."""
+
+        def __init__(self, pub65):
+            self.pub65 = pub65
+            self.derived = []
+
+        def derive_key(self, components, source=0):
+            self.derived.append(list(components))
+
+        def export_pubkey(self, path_components=None, extended=False):
+            return bytes([0x80, 0x41]) + self.pub65
+
+    def _make_request(self, *, address=None, source_fingerprint=None):
+        from seedsigner.helpers.ethereum.ur_codec import (
+            CryptoKeypath, DATA_TYPE_LEGACY_TX, EthSignRequest,
+        )
+        return EthSignRequest(
+            request_id=b"\x11" * 16,
+            sign_data=b"\x00",
+            data_type=DATA_TYPE_LEGACY_TX,
+            chain_id=1,
+            derivation_path=CryptoKeypath(
+                components=[44 | 0x80000000, 60 | 0x80000000, 0 | 0x80000000, 0, 0],
+                source_fingerprint=source_fingerprint,
+            ),
+            address=address,
+        )
+
+    # ---- card-identity helpers --------------------------------------
+
+    def test_card_eth_address_matches_local_derivation(self):
+        from seedsigner.views import keycard_views
+        from seedsigner.helpers.ethereum.address import (
+            pubkey_to_address, to_checksum_address,
+        )
+        client = self._FakeClient(self.PUB65)
+        components = [44 | 0x80000000, 60 | 0x80000000, 0 | 0x80000000, 0, 0]
+        addr = keycard_views._card_eth_address_at(client, components)
+        self.assertEqual(addr, to_checksum_address(pubkey_to_address(self.PUB65)))
+        # Derived at the requested full path (from master).
+        self.assertEqual(client.derived[-1], components)
+
+    def test_card_master_fingerprint(self):
+        from seedsigner.views import keycard_views
+        from seedsigner.helpers.bitcoin import xpub as btc_xpub
+        from seedsigner.helpers.keycard_btc_signer import compress_pubkey
+        client = self._FakeClient(self.PUB65)
+        fp = keycard_views._card_master_fingerprint(client)
+        self.assertEqual(fp, btc_xpub.pubkey_fingerprint(compress_pubkey(self.PUB65)))
+        # Derived from the master (empty path).
+        self.assertEqual(client.derived[-1], [])
+
+    # ---- _eth_request_card_mismatch ---------------------------------
+
+    def test_mismatch_by_address(self):
+        from seedsigner.views import keycard_views
+        client = self._FakeClient(self.PUB65)
+        req = self._make_request(address=b"\x42" * 20)  # not our derived addr
+        self.assertTrue(keycard_views._eth_request_card_mismatch(client, req))
+
+    def test_match_by_address(self):
+        from seedsigner.views import keycard_views
+        from seedsigner.helpers.ethereum.address import pubkey_to_address
+        client = self._FakeClient(self.PUB65)
+        req = self._make_request(address=pubkey_to_address(self.PUB65))
+        self.assertFalse(keycard_views._eth_request_card_mismatch(client, req))
+
+    def test_mismatch_by_fingerprint(self):
+        from seedsigner.views import keycard_views
+        client = self._FakeClient(self.PUB65)
+        req = self._make_request(source_fingerprint=b"\xde\xad\xbe\xef")
+        self.assertTrue(keycard_views._eth_request_card_mismatch(client, req))
+
+    def test_match_by_fingerprint(self):
+        from seedsigner.views import keycard_views
+        from seedsigner.helpers.bitcoin import xpub as btc_xpub
+        from seedsigner.helpers.keycard_btc_signer import compress_pubkey
+        client = self._FakeClient(self.PUB65)
+        fp = btc_xpub.pubkey_fingerprint(compress_pubkey(self.PUB65))
+        req = self._make_request(source_fingerprint=fp)
+        self.assertFalse(keycard_views._eth_request_card_mismatch(client, req))
+
+    def test_no_identity_cannot_verify_proceeds(self):
+        """A request carrying neither address nor fingerprint can't be
+        verified — don't block a possibly-valid signature, and don't even
+        touch the card."""
+        from seedsigner.views import keycard_views
+        client = self._FakeClient(self.PUB65)
+        req = self._make_request()
+        self.assertFalse(keycard_views._eth_request_card_mismatch(client, req))
+        self.assertEqual(client.derived, [])
+
+    def test_address_preferred_over_fingerprint(self):
+        """With both present the address is authoritative (also catches a
+        wrong derivation path): a matching fingerprint must NOT rescue a
+        mismatched address."""
+        from seedsigner.views import keycard_views
+        from seedsigner.helpers.bitcoin import xpub as btc_xpub
+        from seedsigner.helpers.keycard_btc_signer import compress_pubkey
+        client = self._FakeClient(self.PUB65)
+        matching_fp = btc_xpub.pubkey_fingerprint(compress_pubkey(self.PUB65))
+        req = self._make_request(address=b"\x42" * 20, source_fingerprint=matching_fp)
+        self.assertTrue(keycard_views._eth_request_card_mismatch(client, req))
+
+    # ---- ETH verify-card view routing -------------------------------
+
+    def _make_verify_view(self, request):
+        from seedsigner.views.keycard_views import ToolsKeycardSignEthVerifyCardView
+        view = ToolsKeycardSignEthVerifyCardView.__new__(ToolsKeycardSignEthVerifyCardView)
+        view.controller = MagicMock()
+        view.controller.eth_sign_request = request
+        view.controller.has_any_keycard_auth.return_value = True
+        return view
+
+    def test_scan_routes_to_verify_view(self):
+        from seedsigner.views.keycard_views import (
+            ScanEthSignRequestView, ToolsKeycardSignEthVerifyCardView,
+        )
+        view = ScanEthSignRequestView.__new__(ScanEthSignRequestView)
+        view.run_screen = MagicMock()
+        view.controller = MagicMock()
+        view.decoder = MagicMock()
+        view.decoder.is_complete = True
+        req = self._make_request(address=b"\x42" * 20)
+        view.decoder.get_eth_sign_request.return_value = req
+        dest = view.run()
+        self.assertIs(view.controller.eth_sign_request, req)
+        self.assertIs(dest.View_cls, ToolsKeycardSignEthVerifyCardView)
+
+    def test_verify_view_mismatch_routes_to_error_and_clears(self):
+        from unittest.mock import patch
+        from seedsigner.views import keycard_views
+        from seedsigner.views.keycard_views import KeycardErrorView
+        req = self._make_request(address=b"\x42" * 20)
+        view = self._make_verify_view(req)
+        with patch.object(
+            keycard_views, "_open_unlocked_session_cached_or_prompt",
+            return_value=(MagicMock(), MagicMock()),
+        ), patch.object(
+            keycard_views, "_eth_request_card_mismatch", return_value=True,
+        ):
+            dest = view.run()
+        self.assertIs(dest.View_cls, KeycardErrorView)
+        self.assertEqual(dest.view_args["title"], "Wrong card")
+        self.assertTrue(dest.view_args["return_to_main"])
+        # Bad request dropped so it can't leak into a later flow.
+        self.assertIsNone(view.controller.eth_sign_request)
+
+    def test_verify_view_match_routes_to_overview(self):
+        from unittest.mock import patch
+        from seedsigner.views import keycard_views
+        from seedsigner.views.keycard_views import ToolsKeycardSignEthOverviewView
+        req = self._make_request(address=b"\x42" * 20)
+        view = self._make_verify_view(req)
+        with patch.object(
+            keycard_views, "_open_unlocked_session_cached_or_prompt",
+            return_value=(MagicMock(), MagicMock()),
+        ), patch.object(
+            keycard_views, "_eth_request_card_mismatch", return_value=False,
+        ):
+            dest = view.run()
+        self.assertIs(dest.View_cls, ToolsKeycardSignEthOverviewView)
+        self.assertIs(view.controller.eth_sign_request, req)
+
+    def test_verify_view_no_card_preserves_request_and_stays(self):
+        from unittest.mock import patch
+        from seedsigner.helpers.keycard.reader import NoCardError
+        from seedsigner.views import keycard_views
+        from seedsigner.views.keycard_views import ToolsKeycardSignEthVerifyCardView
+        req = self._make_request(address=b"\x42" * 20)
+        view = self._make_verify_view(req)
+        with patch.object(
+            keycard_views, "_open_unlocked_session_cached_or_prompt",
+            side_effect=NoCardError("no card"),
+        ), patch("seedsigner.gui.toast.InfoToast", MagicMock()):
+            dest = view.run()
+        # Request preserved + stay on the verify view → retry without re-scan.
+        self.assertIs(view.controller.eth_sign_request, req)
+        self.assertIs(dest.View_cls, ToolsKeycardSignEthVerifyCardView)
+        self.assertTrue(view.controller.activate_toast.called)
+
+    # ---- BTC PSBT ownership check -----------------------------------
+
+    class _FakeDer:
+        def __init__(self, fp):
+            self.fingerprint = fp
+
+    class _FakeInput:
+        def __init__(self, fps):
+            self.bip32_derivations = {i: TestWrongCardDetection._FakeDer(fp)
+                                      for i, fp in enumerate(fps)}
+
+    class _FakePsbt:
+        def __init__(self, inputs):
+            self.inputs = inputs
+
+    def _make_btc_review_view(self, psbt):
+        from seedsigner.views.keycard_views import ToolsKeycardBtcSignPsbtReviewView
+        view = ToolsKeycardBtcSignPsbtReviewView.__new__(ToolsKeycardBtcSignPsbtReviewView)
+        view.controller = MagicMock()
+        view.controller.has_any_keycard_auth.return_value = True
+        view.controller.psbt = psbt
+        return view
+
+    def test_btc_review_rejects_wrong_wallet(self):
+        from unittest.mock import patch
+        from seedsigner.views import keycard_views
+        from seedsigner.views.keycard_views import KeycardErrorView
+        card_fp = b"\xaa\xbb\xcc\xdd"
+        other_fp = b"\x11\x22\x33\x44"
+        view = self._make_btc_review_view(self._FakePsbt([self._FakeInput([other_fp])]))
+        with patch.object(
+            keycard_views, "_open_unlocked_session_cached_or_prompt",
+            return_value=(MagicMock(), MagicMock()),
+        ), patch.object(
+            keycard_views, "_card_master_fingerprint", return_value=card_fp,
+        ):
+            dest = view.run()
+        self.assertIs(dest.View_cls, KeycardErrorView)
+        self.assertEqual(dest.view_args["title"], "Wrong card")
+        self.assertTrue(dest.view_args["return_to_main"])
+        self.assertIsNone(view.controller.psbt)
+
+    def test_btc_review_accepts_matching_wallet(self):
+        from unittest.mock import patch
+        from seedsigner.views import keycard_views
+        from seedsigner.views.keycard_views import ToolsKeycardBtcSignPsbtFinalizeView
+        from seedsigner.helpers.bitcoin import psbt_helpers
+        card_fp = b"\xaa\xbb\xcc\xdd"
+        view = self._make_btc_review_view(self._FakePsbt([self._FakeInput([card_fp])]))
+        view.run_screen = MagicMock(return_value=0)  # press "Sign"
+        fake_parsed = MagicMock()
+        fake_parsed.inputs = []
+        fake_parsed.outputs = []
+        fake_parsed.fee_sats = 0
+        with patch.object(
+            keycard_views, "_open_unlocked_session_cached_or_prompt",
+            return_value=(MagicMock(), MagicMock()),
+        ), patch.object(
+            keycard_views, "_card_master_fingerprint", return_value=card_fp,
+        ), patch.object(psbt_helpers, "extract", return_value=fake_parsed):
+            dest = view.run()
+        self.assertIs(dest.View_cls, ToolsKeycardBtcSignPsbtFinalizeView)
+
+    def test_btc_review_no_hints_keeps_extract_error(self):
+        """A PSBT with NO bip32 derivations anywhere must keep extract()'s
+        own 'missing hints' error, not be mislabeled 'Wrong card'."""
+        from unittest.mock import patch
+        from seedsigner.views import keycard_views
+        from seedsigner.views.keycard_views import KeycardErrorView
+        from seedsigner.helpers.bitcoin import psbt_helpers
+        view = self._make_btc_review_view(self._FakePsbt([self._FakeInput([])]))
+        with patch.object(
+            keycard_views, "_open_unlocked_session_cached_or_prompt",
+            return_value=(MagicMock(), MagicMock()),
+        ), patch.object(
+            keycard_views, "_card_master_fingerprint", return_value=b"\xaa\xbb\xcc\xdd",
+        ), patch.object(
+            psbt_helpers, "extract",
+            side_effect=ValueError("input 0: PSBT missing BIP-32 derivation hints"),
+        ):
+            dest = view.run()
+        self.assertIs(dest.View_cls, KeycardErrorView)
+        self.assertEqual(dest.view_args["title"], "PSBT rejected")
 
 
 if __name__ == "__main__":

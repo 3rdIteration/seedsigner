@@ -3447,3 +3447,43 @@ msgstr ""
 msgid "Option Disabled"
 msgstr ""
 
+#: src/seedsigner/views/keycard_views.py
+msgid "Storage"
+msgstr ""
+
+#: src/seedsigner/views/view.py
+msgid "Low space"
+msgstr ""
+
+#: src/seedsigner/views/view.py
+msgid "Card may be too full for\nthis applet."
+msgstr ""
+
+#: src/seedsigner/gui/screens/screen.py
+msgid "{}% used"
+msgstr ""
+
+#: src/seedsigner/gui/screens/screen.py
+msgid "{} / {} KB used\n{} KB free"
+msgstr ""
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Storage info not available\non this card."
+msgstr ""
+
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Check failed"
+msgstr ""
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Wrong card"
+msgstr ""
+
+#: src/seedsigner/views/keycard_views.py
+msgid "This request is for a different wallet. Try another keycard."
+msgstr ""
+
+#: src/seedsigner/views/keycard_views.py
+msgid "This PSBT is for a different wallet. Try another keycard."
+msgstr ""

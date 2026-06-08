@@ -294,10 +294,11 @@ class ToolsKeycardCardMenuView(View):
 
     INIT = ButtonOption("Initialise card")
     STATUS = ButtonOption("Status")
+    STORAGE = ButtonOption("Storage")
     UNINSTALL = ButtonOption("Uninstall applet")
 
     def run(self):
-        button_data = [self.INIT, self.STATUS, self.UNINSTALL]
+        button_data = [self.INIT, self.STATUS, self.STORAGE, self.UNINSTALL]
         selected = self.run_screen(
             ButtonListScreen,
             title=_("Card"),
@@ -311,6 +312,8 @@ class ToolsKeycardCardMenuView(View):
             return Destination(ToolsKeycardInitView)
         if chosen == self.STATUS:
             return Destination(ToolsKeycardStatusView)
+        if chosen == self.STORAGE:
+            return Destination(ToolsKeycardStorageView)
         if chosen == self.UNINSTALL:
             return Destination(ToolsKeycardUninstallAppletView)
         return Destination(NotYetImplementedView)
@@ -428,6 +431,51 @@ class ToolsKeycardStatusView(View):
             text=text,
             show_back_button=False,
             button_data=[ButtonOption("OK")],
+        )
+        return Destination(BackStackView)
+
+
+class ToolsKeycardStorageView(View):
+    """Card-memory overview with an occupation bar.
+
+    Reads free NV memory via GlobalPlatform GET DATA 0xFF21 and estimates
+    the used portion from the on-card footprint of the apps installed on the
+    card. The card never reports its true capacity, so the bar's total is
+    ``free + used``. Degrades to an "unavailable" message when the card
+    doesn't expose the memory tag.
+    """
+
+    def run(self):
+        from seedsigner.gui.screens.screen import KeycardStorageScreen
+        from seedsigner.helpers.card_probe import probe_installed_applets
+        from seedsigner.helpers.keycard.ui_helpers import query_card_memory
+        from seedsigner.views.view import estimated_used_nv
+
+        mem = query_card_memory(self)
+        if mem is None:
+            self.run_screen(
+                LargeIconStatusScreen,
+                title=_("Storage"),
+                status_headline=None,
+                text=_("Storage info not available\non this card."),
+                show_back_button=False,
+                button_data=[ButtonOption("OK")],
+            )
+            return Destination(BackStackView)
+
+        try:
+            probe = probe_installed_applets(self.controller)
+        except Exception:
+            probe = None
+        used = estimated_used_nv(probe) if probe is not None else 0
+        total = mem.free_nv + used
+
+        self.run_screen(
+            KeycardStorageScreen,
+            title=_("Storage"),
+            used_bytes=used,
+            total_bytes=total,
+            free_bytes=mem.free_nv,
         )
         return Destination(BackStackView)
 
@@ -3562,6 +3610,63 @@ class ScanEthSignRequestView(ScanView):
             return _error_destination(_("Invalid request"), _("No data decoded"))
 
         self.controller.eth_sign_request = request
+        return Destination(ToolsKeycardSignEthVerifyCardView)
+
+
+class ToolsKeycardSignEthVerifyCardView(View):
+    """Between scan and review: confirm the scanned request actually belongs
+    to the wallet on the active card/instance *before* any review or signing.
+
+    Replicates keycard-shell's early "wrong keycard" reject so we never sign —
+    and never display a signature QR — for another wallet (which today only
+    fails much later, on the online app). The card is unlocked here using the
+    cached PIN when available and is only prompted for when it isn't; the PIN
+    then stays cached, so the later Finalize step doesn't re-prompt."""
+
+    def run(self):
+        from seedsigner.helpers.keycard import (
+            KeycardCardChangedError, KeycardPinPromptCancelled,
+        )
+
+        request: Optional[EthSignRequest] = getattr(self.controller, "eth_sign_request", None)
+        if request is None:
+            return _error_destination(_("No request"), _("Scan one first"))
+        if not self.controller.has_any_keycard_auth():
+            if not try_silent_ephemeral_pair(self):
+                return Destination(ToolsKeycardPairView)
+
+        try:
+            client, _unused = _open_unlocked_session_cached_or_prompt(self)
+            mismatch = _eth_request_card_mismatch(client, request)
+        except KeycardPinPromptCancelled:
+            return Destination(BackStackView)
+        except KeycardCardChangedError:
+            self.controller.eth_sign_request = None
+            return Destination(ToolsKeycardPairView)
+        except Exception as exc:
+            logger.exception("Keycard identity check failed")
+            from seedsigner.helpers.keycard.reader import (
+                NoCardError, NoReaderError,
+            )
+            if isinstance(exc, (NoCardError, NoReaderError)):
+                # No card → subtle toast + stay on this verify view, which
+                # re-reads controller.eth_sign_request. Don't drop the request
+                # so the user can insert a card and retry without re-scanning.
+                return _no_card_toast_or_error(
+                    self, exc, default_title=_("Check failed"),
+                    stay=Destination(ToolsKeycardSignEthVerifyCardView),
+                )
+            self.controller.eth_sign_request = None
+            title, body = classify_card_error(exc, default_title=_("Check failed"))
+            return _error_destination(title, body, return_to_main=True)
+
+        if mismatch:
+            self.controller.eth_sign_request = None
+            return _error_destination(
+                _("Wrong card"),
+                _("This request is for a different wallet. Try another keycard."),
+                return_to_main=True,
+            )
         return Destination(ToolsKeycardSignEthOverviewView)
 
 
@@ -4032,6 +4137,57 @@ def _error_destination(
     )
 
 
+def _card_master_fingerprint(client) -> bytes:
+    """Derive the card's BIP-32 master fingerprint (HASH160 of the master
+    pubkey, first 4 bytes).
+
+    Identifies the *wallet/seed*, NOT the physical card: two cards holding
+    the same mnemonic share it, and a card's real vs. decoy (duress) wallet
+    share it too (same master key, only the chain code differs). So comparing
+    it never rejects an equivalent card and never leaks the decoy — it differs
+    only when the underlying seed differs. Requires an unlocked session."""
+    from seedsigner.helpers.bitcoin import xpub as btc_xpub
+    from seedsigner.helpers.keycard import commands as kc_cmds
+    from seedsigner.helpers.keycard_btc_signer import (
+        _parse_pubkey_only, compress_pubkey,
+    )
+
+    client.derive_key([], source=kc_cmds.DERIVE_P1_FROM_MASTER)
+    master_resp = client.export_pubkey(path_components=None, extended=False)
+    master_pub = _parse_pubkey_only(master_resp)
+    return btc_xpub.pubkey_fingerprint(compress_pubkey(master_pub))
+
+
+def _card_eth_address_at(client, components) -> str:
+    """Derive the EIP-55 checksummed ETH address at ``components`` (a full
+    path from the master, hardened bits set) from the card. Mirrors the
+    "View wallets" derivation. Requires an unlocked session."""
+    client.derive_key(list(components))
+    raw = client.export_pubkey()
+    pub = _extract_pubkey(raw)
+    if pub is None:
+        raise ValueError("EXPORT KEY returned no public key")
+    return to_checksum_address(pubkey_to_address(pub))
+
+
+def _eth_request_card_mismatch(client, request) -> bool:
+    """True iff the scanned ETH request demonstrably belongs to a *different*
+    wallet than the one on the unlocked card.
+
+    Prefers the explicit signing address when the request carries one (also
+    catches a wrong derivation path); otherwise falls back to the master
+    fingerprint. Returns ``False`` when the request carries neither — there is
+    then nothing to verify against, so we don't block a possibly-valid sign."""
+    address = getattr(request, "address", None)
+    if address:
+        derived = _card_eth_address_at(client, request.derivation_path.components)
+        return derived.lower() != to_checksum_address(address).lower()
+    source_fp = getattr(request.derivation_path, "source_fingerprint", None)
+    if source_fp:
+        return bytes(source_fp) != _card_master_fingerprint(client)
+    return False
+
+
 def _no_card_toast_or_error(view, exc, *, default_title: str, stay=None):
     """Card-absent → subtle toast + stay; otherwise the standard error.
 
@@ -4298,21 +4454,13 @@ class ToolsKeycardBtcSignPsbtReviewView(View):
 
         try:
             from seedsigner.helpers.bitcoin import psbt_helpers
-            from seedsigner.helpers.keycard_btc_signer import (
-                compress_pubkey, path_str_to_components,
-            )
-            from seedsigner.helpers.bitcoin import xpub as btc_xpub
-            from seedsigner.helpers.keycard import commands as kc_cmds
+            from seedsigner.helpers import keycard_btc_signer  # noqa: F401  (availability probe)
         except ImportError as exc:
             return _error_destination(_("BTC support unavailable"), str(exc))
 
         try:
             client, _unused = _open_unlocked_session_cached_or_prompt(self)
-            client.derive_key([], source=kc_cmds.DERIVE_P1_FROM_MASTER)
-            master_resp = client.export_pubkey(path_components=None, extended=False)
-            from seedsigner.helpers.keycard_btc_signer import _parse_pubkey_only
-            master_pub = _parse_pubkey_only(master_resp)
-            master_fingerprint = btc_xpub.pubkey_fingerprint(compress_pubkey(master_pub))
+            master_fingerprint = _card_master_fingerprint(client)
         except KeycardPinPromptCancelled:
             return Destination(BackStackView)
         except KeycardCardChangedError:
@@ -4334,6 +4482,27 @@ class ToolsKeycardBtcSignPsbtReviewView(View):
             self.controller.psbt = None
             title, body = classify_card_error(exc, default_title=_("Probe failed"))
             return _error_destination(title, body, return_to_main=True)
+
+        # Reject a PSBT that belongs to a *different* wallet up front: at least
+        # one input's BIP-32 origin fingerprint must match this card's master
+        # fingerprint. Without this, _first_bip32_derivation falls back to the
+        # first derivation and we'd produce a valid-looking signature for
+        # someone else's key — caught only later by the online wallet. Mirrors
+        # keycard-shell's early "wrong keycard". (A PSBT with no derivation
+        # hints at all is left to extract(), which raises its own error.)
+        has_any_derivation = any(inp.bip32_derivations for inp in psbt.inputs)
+        belongs = any(
+            der.fingerprint == master_fingerprint
+            for inp in psbt.inputs
+            for der in inp.bip32_derivations.values()
+        )
+        if has_any_derivation and not belongs:
+            self.controller.psbt = None
+            return _error_destination(
+                _("Wrong card"),
+                _("This PSBT is for a different wallet. Try another keycard."),
+                return_to_main=True,
+            )
 
         try:
             parsed = psbt_helpers.extract(psbt, master_fingerprint)

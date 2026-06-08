@@ -26,6 +26,7 @@ from seedsigner.helpers.secure_delete import wipe_string
 
 if TYPE_CHECKING:
     from seedsigner.helpers.keycard.client import KeycardClient
+    from seedsigner.helpers.keycard.global_platform import CardMemory
     from seedsigner.helpers.keycard.secure_channel import PairingInfo
     from seedsigner.views.view import View
 
@@ -452,6 +453,44 @@ def open_unlocked_session_cached_or_prompt(
         )
     finally:
         wipe_bytearray(pin)
+
+
+def query_card_memory(parent_view: "View") -> Optional["CardMemory"]:
+    """Read free card memory via GlobalPlatform GET DATA 0xFF21.
+
+    Opens a transient connection, SELECTs the ISD, reads the Extended Card
+    Resources Information (free persistent / volatile memory + app count) in
+    the clear — no ISD authentication needed — then **releases the reader**
+    so a subsequent ``gp.jar`` install can grab it.
+
+    Returns ``None`` on any failure (no card/reader, unsupported tag,
+    protocol error) so callers can degrade gracefully: the Storage view
+    shows an "unavailable" message and the pre-install check simply skips
+    rather than blocking a valid install.
+    """
+    from seedsigner.helpers import seedkeeper_utils
+    from seedsigner.helpers.keycard.global_platform import GpSecureChannel
+    from seedsigner.helpers.keycard.reader import (
+        release_other_smartcard_holders, wait_for_card,
+    )
+
+    try:
+        release_other_smartcard_holders(parent_view.controller)
+        connection = wait_for_card(timeout_s=5.0)
+        channel = GpSecureChannel(connection)
+        channel.select_isd()
+        return channel.get_extended_card_resources()
+    except Exception as exc:
+        logger.info("query_card_memory unavailable: %s", exc)
+        return None
+    finally:
+        # Drop the PC/SC handle so gp.jar / the next CardConnector start fresh.
+        try:
+            seedkeeper_utils.disconnect_smartcard_connections(
+                parent_view.controller,
+            )
+        except Exception:
+            logger.debug("query_card_memory cleanup failed", exc_info=True)
 
 
 def identify_inserted_card(parent_view: "View") -> Tuple["KeycardClient", bytes]:

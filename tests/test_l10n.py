@@ -137,6 +137,11 @@ class TestPortugueseKeycard(BaseTest):
         assert _("Lock card") == "Bloquear cartão"
         assert _("Insert a card first") == "Insira primeiro um cartão"
 
+        # Card-storage feature strings.
+        assert _("Storage") == "Armazenamento"
+        assert _("Low space") == "Pouco espaço"
+        assert "{}" in _("{}% used")
+
         # f-string templates keep their placeholders intact post-translation.
         assert "{}" in _("Keycard · {}")
         assert _("Keycard · {}").format("Inst 1") == "Keycard · Inst 1"

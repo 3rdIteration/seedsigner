@@ -1,0 +1,323 @@
+"""Tests for the Keycard "Storage" feature.
+
+Covers:
+- ``parse_extended_card_resources`` (GET DATA 0xFF21 TLV parser) across the
+  wrapped / bare / multi-byte / missing-tag / truncated encodings.
+- ``GpSecureChannel.get_extended_card_resources`` end-to-end against a fake
+  PC/SC connection (success + unsupported-tag → raises).
+- The per-app size helpers in ``views/view.py`` used for both the occupation
+  bar and the pre-install free-space check.
+- ``_warn_if_low_space`` soft-warning behaviour (warn / override / skip).
+- ``ToolsKeycardStorageView`` routing: renders the bar screen when memory is
+  available and an "unavailable" message otherwise.
+"""
+
+from __future__ import annotations
+
+import os
+import sys
+import types
+import unittest
+from unittest.mock import MagicMock, patch
+
+
+SRC_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src"))
+if SRC_ROOT not in sys.path:
+    sys.path.insert(0, SRC_ROOT)
+
+
+def _install_hw_mocks():
+    for mod in [
+        "RPi", "RPi.GPIO", "pyzbar", "pyzbar.pyzbar", "smbus2",
+        "smartcard", "smartcard.System", "smartcard.CardMonitoring", "pygame",
+        "pysatochip.JCconstants", "pysatochip.util", "pysatochip.CardConnector",
+        "periphery",
+    ]:
+        sys.modules.setdefault(mod, MagicMock())
+
+
+_install_hw_mocks()
+
+
+# ---------------------------------------------------------------------------
+# parse_extended_card_resources
+# ---------------------------------------------------------------------------
+class TestParseExtendedCardResources(unittest.TestCase):
+    def _parse(self, hexstr):
+        from seedsigner.helpers.keycard.global_platform import (
+            parse_extended_card_resources,
+        )
+        return parse_extended_card_resources(bytes.fromhex(hexstr))
+
+    def test_wrapped_template(self):
+        # FF21 len=09 { 81 01 02 | 82 02 7FFF | 83 02 0F00 }
+        m = self._parse("FF2109 810102 82027FFF 83020F00".replace(" ", ""))
+        self.assertEqual(m.num_apps, 2)
+        self.assertEqual(m.free_nv, 0x7FFF)
+        self.assertEqual(m.free_volatile, 0x0F00)
+
+    def test_bare_inner_tlvs(self):
+        m = self._parse("810103 8203010000 830200FF".replace(" ", ""))
+        self.assertEqual(m.num_apps, 3)
+        self.assertEqual(m.free_nv, 0x010000)  # 3-byte value
+        self.assertEqual(m.free_volatile, 0x00FF)
+
+    def test_missing_volatile_defaults_zero(self):
+        m = self._parse("810101 82021000".replace(" ", ""))
+        self.assertEqual(m.num_apps, 1)
+        self.assertEqual(m.free_nv, 0x1000)
+        self.assertEqual(m.free_volatile, 0)
+
+    def test_long_form_outer_length(self):
+        # FF21 81 09 { ... } — long-form length on the outer template.
+        m = self._parse("FF2181 09 810102 82027FFF 83020F00".replace(" ", ""))
+        self.assertEqual(m.free_nv, 0x7FFF)
+        self.assertEqual(m.num_apps, 2)
+
+    def test_truncated_entry_bails(self):
+        # 82 claims 4 bytes but only 1 is present → stop, don't crash.
+        m = self._parse("810101 8204AB".replace(" ", ""))
+        self.assertEqual(m.num_apps, 1)
+        self.assertEqual(m.free_nv, 0)
+
+    def test_empty_input(self):
+        m = self._parse("")
+        self.assertEqual((m.num_apps, m.free_nv, m.free_volatile), (0, 0, 0))
+
+
+# ---------------------------------------------------------------------------
+# GpSecureChannel.get_extended_card_resources
+# ---------------------------------------------------------------------------
+class _FakeConn:
+    """Minimal PC/SC connection: SELECT always 9000, GET DATA configurable."""
+
+    def __init__(self, get_data_resp, get_data_sw=(0x90, 0x00)):
+        self.get_data_resp = list(get_data_resp)
+        self.get_data_sw = get_data_sw
+
+    def transmit(self, apdu):
+        ins = apdu[1]
+        if ins == 0xA4:          # SELECT ISD
+            return ([], 0x90, 0x00)
+        if ins == 0xCA:          # GET DATA
+            return (self.get_data_resp, self.get_data_sw[0], self.get_data_sw[1])
+        return ([], 0x90, 0x00)
+
+
+class TestGetExtendedCardResources(unittest.TestCase):
+    def test_reads_free_memory(self):
+        from seedsigner.helpers.keycard.global_platform import GpSecureChannel
+        resp = bytes.fromhex("FF2109 810102 82027FFF 83020F00".replace(" ", ""))
+        ch = GpSecureChannel(_FakeConn(resp))
+        ch.select_isd()
+        mem = ch.get_extended_card_resources()
+        self.assertEqual(mem.free_nv, 0x7FFF)
+        self.assertEqual(mem.num_apps, 2)
+
+    def test_unsupported_tag_raises(self):
+        from seedsigner.helpers.keycard.global_platform import (
+            GpSecureChannel, GpProtocolError,
+        )
+        # GET DATA returns 6A88 "referenced data not found".
+        ch = GpSecureChannel(_FakeConn(b"", get_data_sw=(0x6A, 0x88)))
+        ch.select_isd()
+        with self.assertRaises(GpProtocolError):
+            ch.get_extended_card_resources()
+
+
+# ---------------------------------------------------------------------------
+# query_card_memory degrade-to-None
+# ---------------------------------------------------------------------------
+class TestQueryCardMemory(unittest.TestCase):
+    def test_returns_none_on_failure(self):
+        from seedsigner.helpers.keycard import ui_helpers
+        from seedsigner.helpers.keycard import reader as reader_mod
+        from seedsigner.helpers import seedkeeper_utils
+
+        view = MagicMock()
+        with patch.object(reader_mod, "release_other_smartcard_holders"), \
+             patch.object(reader_mod, "wait_for_card",
+                          side_effect=Exception("no card")), \
+             patch.object(seedkeeper_utils, "disconnect_smartcard_connections"):
+            self.assertIsNone(ui_helpers.query_card_memory(view))
+
+
+# ---------------------------------------------------------------------------
+# view.py size helpers
+# ---------------------------------------------------------------------------
+class TestSizeHelpers(unittest.TestCase):
+    def test_store_bytes_from_param(self):
+        from seedsigner.views.view import store_bytes_from_param
+        self.assertEqual(store_bytes_from_param("0FFF"), 4 * 1024)
+        self.assertEqual(store_bytes_from_param("1FFF"), 8 * 1024)
+        self.assertEqual(store_bytes_from_param("FFFF"), 64 * 1024)
+
+    def test_required_nv_keycard(self):
+        from seedsigner.views import view as view_mod
+        with patch.object(view_mod, "cap_size_for_kind", return_value=30000):
+            self.assertEqual(view_mod.required_nv_for_install("keycard"), 30000)
+
+    def test_required_nv_seedkeeper_adds_store(self):
+        from seedsigner.views import view as view_mod
+        with patch.object(view_mod, "cap_size_for_kind", return_value=10000):
+            req = view_mod.required_nv_for_install("seedkeeper", "0FFF")
+            self.assertEqual(req, 10000 + 4 * 1024)
+
+    def test_required_nv_seedkeeper_default_store(self):
+        from seedsigner.views import view as view_mod
+        with patch.object(view_mod, "cap_size_for_kind", return_value=10000):
+            req = view_mod.required_nv_for_install("seedkeeper")
+            self.assertEqual(req, 10000 + view_mod.SEEDKEEPER_DEFAULT_STORE_BYTES)
+
+    def test_required_nv_none_when_cap_unknown(self):
+        from seedsigner.views import view as view_mod
+        with patch.object(view_mod, "cap_size_for_kind", return_value=None):
+            self.assertIsNone(view_mod.required_nv_for_install("keycard"))
+
+    def test_estimated_used_nv(self):
+        from seedsigner.views import view as view_mod
+
+        sizes = {"keycard": 30000, "seedkeeper": 10000}
+
+        def both(installed_keycard, installed_seedkeeper):
+            probe = types.SimpleNamespace(
+                keycard_installed=installed_keycard,
+                seedkeeper_installed=installed_seedkeeper,
+            )
+            with patch.object(view_mod, "cap_size_for_kind",
+                              side_effect=lambda k: sizes[k]):
+                return view_mod.estimated_used_nv(probe)
+
+        self.assertEqual(both(False, False), 0)
+        self.assertEqual(both(True, False), 30000)
+        self.assertEqual(
+            both(True, True),
+            30000 + 10000 + view_mod.SEEDKEEPER_DEFAULT_STORE_BYTES,
+        )
+
+
+# ---------------------------------------------------------------------------
+# _warn_if_low_space
+# ---------------------------------------------------------------------------
+class TestWarnIfLowSpace(unittest.TestCase):
+    def _mem(self, free_nv):
+        from seedsigner.helpers.keycard.global_platform import CardMemory
+        return CardMemory(free_nv=free_nv, free_volatile=0, num_apps=1)
+
+    def test_warns_and_back_cancels(self):
+        from seedsigner.views import view as view_mod
+        from seedsigner.helpers.keycard import ui_helpers
+        from seedsigner.gui.screens import RET_CODE__BACK_BUTTON
+        from seedsigner.gui.screens.screen import DireWarningScreen
+
+        view = MagicMock()
+        view.run_screen = MagicMock(return_value=RET_CODE__BACK_BUTTON)
+        with patch.object(view_mod, "cap_size_for_kind", return_value=30000), \
+             patch.object(ui_helpers, "query_card_memory",
+                          return_value=self._mem(1000)):
+            result = view_mod._warn_if_low_space(view, "keycard")
+        self.assertEqual(result, "back")
+        self.assertIs(view.run_screen.call_args.args[0], DireWarningScreen)
+
+    def test_override_proceeds(self):
+        from seedsigner.views import view as view_mod
+        from seedsigner.helpers.keycard import ui_helpers
+
+        view = MagicMock()
+        view.run_screen = MagicMock(return_value=0)  # "Install anyway"
+        with patch.object(view_mod, "cap_size_for_kind", return_value=30000), \
+             patch.object(ui_helpers, "query_card_memory",
+                          return_value=self._mem(1000)):
+            self.assertIsNone(view_mod._warn_if_low_space(view, "keycard"))
+        self.assertTrue(view.run_screen.called)
+
+    def test_enough_space_no_warning(self):
+        from seedsigner.views import view as view_mod
+        from seedsigner.helpers.keycard import ui_helpers
+
+        view = MagicMock()
+        view.run_screen = MagicMock()
+        with patch.object(view_mod, "cap_size_for_kind", return_value=30000), \
+             patch.object(ui_helpers, "query_card_memory",
+                          return_value=self._mem(100000)):
+            self.assertIsNone(view_mod._warn_if_low_space(view, "keycard"))
+        view.run_screen.assert_not_called()
+
+    def test_unreadable_memory_skips(self):
+        from seedsigner.views import view as view_mod
+        from seedsigner.helpers.keycard import ui_helpers
+
+        view = MagicMock()
+        view.run_screen = MagicMock()
+        with patch.object(view_mod, "cap_size_for_kind", return_value=30000), \
+             patch.object(ui_helpers, "query_card_memory", return_value=None):
+            self.assertIsNone(view_mod._warn_if_low_space(view, "keycard"))
+        view.run_screen.assert_not_called()
+
+    def test_unknown_cap_size_skips(self):
+        from seedsigner.views import view as view_mod
+        from seedsigner.helpers.keycard import ui_helpers
+
+        view = MagicMock()
+        view.run_screen = MagicMock()
+        with patch.object(view_mod, "cap_size_for_kind", return_value=None), \
+             patch.object(ui_helpers, "query_card_memory") as q:
+            self.assertIsNone(view_mod._warn_if_low_space(view, "keycard"))
+        view.run_screen.assert_not_called()
+        q.assert_not_called()  # short-circuits before touching the card
+
+
+# ---------------------------------------------------------------------------
+# ToolsKeycardStorageView
+# ---------------------------------------------------------------------------
+class TestStorageView(unittest.TestCase):
+    def _make_view(self):
+        from seedsigner.views.keycard_views import ToolsKeycardStorageView
+        view = ToolsKeycardStorageView.__new__(ToolsKeycardStorageView)
+        view.controller = MagicMock()
+        view.run_screen = MagicMock(return_value=0)
+        return view
+
+    def test_unavailable_when_no_memory(self):
+        from seedsigner.helpers.keycard import ui_helpers
+        from seedsigner.gui.screens.screen import (
+            KeycardStorageScreen, LargeIconStatusScreen,
+        )
+        from seedsigner.views.view import BackStackView
+
+        view = self._make_view()
+        with patch.object(ui_helpers, "query_card_memory", return_value=None):
+            dest = view.run()
+
+        self.assertIs(view.run_screen.call_args.args[0], LargeIconStatusScreen)
+        self.assertIs(dest.View_cls, BackStackView)
+        # The bar screen must NOT have been used.
+        self.assertNotEqual(view.run_screen.call_args.args[0], KeycardStorageScreen)
+
+    def test_renders_bar_with_computed_totals(self):
+        from seedsigner.views import view as view_mod
+        from seedsigner.helpers.keycard import ui_helpers
+        from seedsigner.helpers import card_probe as card_probe_mod
+        from seedsigner.helpers.keycard.global_platform import CardMemory
+        from seedsigner.gui.screens.screen import KeycardStorageScreen
+
+        view = self._make_view()
+        mem = CardMemory(free_nv=50000, free_volatile=0, num_apps=2)
+        probe = types.SimpleNamespace(
+            keycard_installed=True, seedkeeper_installed=False,
+        )
+        with patch.object(ui_helpers, "query_card_memory", return_value=mem), \
+             patch.object(card_probe_mod, "probe_installed_applets",
+                          return_value=probe), \
+             patch.object(view_mod, "estimated_used_nv", return_value=20000):
+            view.run()
+
+        kwargs = view.run_screen.call_args.kwargs
+        self.assertIs(view.run_screen.call_args.args[0], KeycardStorageScreen)
+        self.assertEqual(kwargs["free_bytes"], 50000)
+        self.assertEqual(kwargs["used_bytes"], 20000)
+        self.assertEqual(kwargs["total_bytes"], 70000)
+
+
+if __name__ == "__main__":
+    unittest.main()
