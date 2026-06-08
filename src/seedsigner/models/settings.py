@@ -75,6 +75,7 @@ def _is_i2c_device_detected(address_hex: str, bus_candidates: tuple[int, ...] = 
                 capture_output=True,
                 text=True,
                 check=False,
+                timeout=1,
             )
             if result.returncode != 0:
                 continue
