@@ -145,24 +145,30 @@ class TestKeycardMenuRouting(unittest.TestCase):
 
         Keycard (top)
           ├─ Ethereum ›       → ToolsKeycardEthereumMenuView
-          │   ├─ Connect software wallet → ToolsKeycardPairWalletView
           │   ├─ Sign request  → ToolsKeycardSignEthStartView
-          │   └─ View wallets  → ToolsKeycardWalletsListView
+          │   ├─ View wallets  → ToolsKeycardWalletsListView
+          │   └─ Connect software wallet → ToolsKeycardPairWalletView
           ├─ Bitcoin ›        → ToolsKeycardBitcoinMenuView
-          ├─ This instance ›  → ToolsKeycardThisInstanceMenuView
-          │   ├─ Generate key  → ToolsKeycardGenerateKeyView
-          │   ├─ Import seed   → ToolsKeycardImportSeedView
-          │   ├─ Change PIN    → ToolsKeycardChangePinView
-          │   ├─ Pairing ›     → ToolsKeycardPairingMenuView
-          │   │   ├─ Pair card      → ToolsKeycardPairView
-          │   │   └─ Remove pairing → ToolsKeycardRemovePairingView
-          │   └─ Factory reset → ToolsKeycardFactoryResetView
-          ├─ Instances ›      → ToolsKeycardInstancesMenuView
-          └─ Card ›           → ToolsKeycardCardMenuView
-              ├─ Initialise card  → ToolsKeycardInitView
-              ├─ Status           → ToolsKeycardStatusView
-              ├─ Storage          → ToolsKeycardStorageView
-              └─ Uninstall applet → ToolsKeycardUninstallAppletView
+          ├─ Switch instance  → ToolsKeycardInstancesSwitchView
+          ├─ Lock card        → ToolsKeycardLockView
+          └─ Settings ›       → ToolsKeycardSettingsMenuView
+              ├─ This instance ›  → ToolsKeycardThisInstanceMenuView
+              │   ├─ Generate key  → ToolsKeycardGenerateKeyView
+              │   ├─ Import seed   → ToolsKeycardImportSeedView
+              │   ├─ Change PIN    → ToolsKeycardChangePinView
+              │   ├─ Pairing ›     → ToolsKeycardPairingMenuView
+              │   │   ├─ Pair card      → ToolsKeycardPairView
+              │   │   └─ Remove pairing → ToolsKeycardRemovePairingView
+              │   └─ Factory reset → ToolsKeycardFactoryResetView
+              ├─ Instances ›      → ToolsKeycardInstancesMenuView
+              │   ├─ List instances   → ToolsKeycardInstancesListView
+              │   ├─ Create instance  → ToolsKeycardInstancesCreateView
+              │   └─ Delete instance  → ToolsKeycardInstancesDeleteView
+              └─ Card ›           → ToolsKeycardCardMenuView
+                  ├─ Initialise card  → ToolsKeycardInitView
+                  ├─ Status           → ToolsKeycardStatusView
+                  ├─ Storage          → ToolsKeycardStorageView
+                  └─ Uninstall applet → ToolsKeycardUninstallAppletView
 
     Each parametrised case mocks ``run_screen`` to return a specific
     button index and asserts the resulting ``Destination`` routes to the
@@ -188,23 +194,39 @@ class TestKeycardMenuRouting(unittest.TestCase):
             ToolsKeycardMenuView,
             ToolsKeycardEthereumMenuView,
             ToolsKeycardBitcoinMenuView,
-            ToolsKeycardThisInstanceMenuView,
-            ToolsKeycardInstancesMenuView,
-            ToolsKeycardCardMenuView,
+            ToolsKeycardInstancesSwitchView,
             ToolsKeycardLockView,
+            ToolsKeycardSettingsMenuView,
         )
         expected = [
             ToolsKeycardEthereumMenuView,
             ToolsKeycardBitcoinMenuView,
-            ToolsKeycardThisInstanceMenuView,
-            ToolsKeycardInstancesMenuView,
-            ToolsKeycardCardMenuView,
+            ToolsKeycardInstancesSwitchView,
             ToolsKeycardLockView,
+            ToolsKeycardSettingsMenuView,
         ]
         for i, view_cls in enumerate(expected):
             dest = self._route(ToolsKeycardMenuView, i)
             self.assertIs(dest.View_cls, view_cls,
                           f"top menu index {i} routes to {dest.View_cls.__name__}, "
+                          f"expected {view_cls.__name__}")
+
+    def test_settings_menu_routes(self):
+        from seedsigner.views.keycard_views import (
+            ToolsKeycardSettingsMenuView,
+            ToolsKeycardThisInstanceMenuView,
+            ToolsKeycardInstancesMenuView,
+            ToolsKeycardCardMenuView,
+        )
+        expected = [
+            ToolsKeycardThisInstanceMenuView,
+            ToolsKeycardInstancesMenuView,
+            ToolsKeycardCardMenuView,
+        ]
+        for i, view_cls in enumerate(expected):
+            dest = self._route(ToolsKeycardSettingsMenuView, i)
+            self.assertIs(dest.View_cls, view_cls,
+                          f"settings menu index {i} routes to {dest.View_cls.__name__}, "
                           f"expected {view_cls.__name__}")
 
     def test_ethereum_menu_routes(self):
@@ -215,9 +237,9 @@ class TestKeycardMenuRouting(unittest.TestCase):
             ToolsKeycardWalletsListView,
         )
         expected = [
-            ToolsKeycardPairWalletView,
             ToolsKeycardSignEthStartView,
             ToolsKeycardWalletsListView,
+            ToolsKeycardPairWalletView,
         ]
         for i, view_cls in enumerate(expected):
             dest = self._route(ToolsKeycardEthereumMenuView, i)
@@ -233,9 +255,9 @@ class TestKeycardMenuRouting(unittest.TestCase):
             ToolsKeycardBtcSignMessageStartView,
         )
         expected = [
-            ToolsKeycardBtcExportXpubView,
             ToolsKeycardBtcSignPsbtScanView,
             ToolsKeycardBtcSignMessageStartView,
+            ToolsKeycardBtcExportXpubView,
         ]
         for i, view_cls in enumerate(expected):
             dest = self._route(ToolsKeycardBitcoinMenuView, i)

@@ -3487,3 +3487,7 @@ msgstr ""
 #: src/seedsigner/views/keycard_views.py
 msgid "This PSBT is for a different wallet. Try another keycard."
 msgstr ""
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Switch instance"
+msgstr ""

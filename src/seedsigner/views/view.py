@@ -370,7 +370,7 @@ class CardsMenuView(View):
                     icon_name=FontAwesomeIconConstants.LOCK,
                 )
 
-                button_data = [seedkeeper_btn, keycard_btn, factory_reset_btn]
+                button_data = [keycard_btn, seedkeeper_btn, factory_reset_btn]
 
                 selected_menu_num = self.run_screen(
                     ButtonListScreen,

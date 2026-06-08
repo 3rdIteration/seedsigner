@@ -108,18 +108,15 @@ DEFAULT_PAIRING_PASSWORD = "KeycardDefaultPairing"
 
 
 class ToolsKeycardMenuView(View):
-    """Top-level Keycard menu, organised by *scope* so the user always
-    knows what each branch acts on:
+    """Top-level Keycard menu, trimmed to the daily-use ops so the common
+    path is short:
 
-    * **Ethereum / Bitcoin** — sign / export with the active instance's
-      key (daily-use ops, kept at the top).
-    * **This instance** — everything else that acts on the active
-      instance: load a key (generate / import), change PIN, pairing,
-      factory reset.
-    * **Instances** — manage the *set* of applet instances on the card
-      (list / switch active / create / delete).
-    * **Card** — whole-card / package ops (initialise, status, uninstall
-      the applet package).
+    * **Ethereum / Bitcoin** — sign / export with the active instance's key.
+    * **Switch instance** — change the active applet instance (the rest of
+      the instance-set ops live under Settings ▸ Instances).
+    * **Lock card** — drop cached PINs so the next op re-prompts.
+    * **Settings** — everything less frequent: this-instance key/PIN/pairing
+      ops, the instance set (list/create/delete), and whole-card ops.
 
     Branches that act on one instance carry the active instance label
     (``Inst N``) in their title; card-wide branches do not.
@@ -132,10 +129,9 @@ class ToolsKeycardMenuView(View):
 
     ETHEREUM = ButtonOption("Ethereum")
     BITCOIN = ButtonOption("Bitcoin")
-    THIS_INSTANCE = ButtonOption("This instance")
-    INSTANCES = ButtonOption("Instances")
-    CARD = ButtonOption("Card")
+    SWITCH_INSTANCE = ButtonOption("Switch instance")
     LOCK = ButtonOption("Lock card")
+    SETTINGS = ButtonOption("Settings")
 
     def run(self):
         from seedsigner.helpers.card_probe import run_card_gate
@@ -148,10 +144,9 @@ class ToolsKeycardMenuView(View):
         button_data = [
             self.ETHEREUM,
             self.BITCOIN,
-            self.THIS_INSTANCE,
-            self.INSTANCES,
-            self.CARD,
+            self.SWITCH_INSTANCE,
             self.LOCK,
+            self.SETTINGS,
         ]
         # Surface the active instance in the title so the user always
         # knows which instance signing / export will use this session.
@@ -170,14 +165,47 @@ class ToolsKeycardMenuView(View):
             return Destination(ToolsKeycardEthereumMenuView)
         if chosen == self.BITCOIN:
             return Destination(ToolsKeycardBitcoinMenuView)
+        if chosen == self.SWITCH_INSTANCE:
+            return Destination(ToolsKeycardInstancesSwitchView)
+        if chosen == self.LOCK:
+            return Destination(ToolsKeycardLockView)
+        if chosen == self.SETTINGS:
+            return Destination(ToolsKeycardSettingsMenuView)
+        return Destination(NotYetImplementedView)
+
+
+class ToolsKeycardSettingsMenuView(View):
+    """Less-frequent Keycard management, grouped out of the daily-use menu:
+
+    * **This instance** — load a key (generate / import), change PIN,
+      pairing, factory reset for the active instance.
+    * **Instances** — manage the *set* of applet instances (list / create /
+      delete). Switching the active instance is promoted to the top menu.
+    * **Card** — whole-card / package ops (initialise, status, storage,
+      uninstall the applet package).
+    """
+
+    THIS_INSTANCE = ButtonOption("This instance")
+    INSTANCES = ButtonOption("Instances")
+    CARD = ButtonOption("Card")
+
+    def run(self):
+        button_data = [self.THIS_INSTANCE, self.INSTANCES, self.CARD]
+        selected = self.run_screen(
+            ButtonListScreen,
+            title=_("Settings"),
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        chosen = button_data[selected]
         if chosen == self.THIS_INSTANCE:
             return Destination(ToolsKeycardThisInstanceMenuView)
         if chosen == self.INSTANCES:
             return Destination(ToolsKeycardInstancesMenuView)
         if chosen == self.CARD:
             return Destination(ToolsKeycardCardMenuView)
-        if chosen == self.LOCK:
-            return Destination(ToolsKeycardLockView)
         return Destination(NotYetImplementedView)
 
 
@@ -3169,13 +3197,14 @@ class ToolsKeycardInstancesMenuView(View):
     """
 
     LIST = ButtonOption("List instances")
-    SWITCH = ButtonOption("Switch active")
     CREATE = ButtonOption("Create instance")
     DELETE = ButtonOption("Delete instance")
 
     def run(self):
         active = _format_instance_label(self.controller.active_keycard_aid)
-        button_data = [self.LIST, self.SWITCH, self.CREATE, self.DELETE]
+        # "Switch active" now lives on the top Keycard menu ("Switch
+        # instance"); this submenu manages the instance *set* only.
+        button_data = [self.LIST, self.CREATE, self.DELETE]
         ret = self.run_screen(
             ButtonListScreen,
             title=_("Active: {}").format(active),
@@ -3188,8 +3217,6 @@ class ToolsKeycardInstancesMenuView(View):
         chosen = button_data[ret]
         if chosen == self.LIST:
             return Destination(ToolsKeycardInstancesListView)
-        if chosen == self.SWITCH:
-            return Destination(ToolsKeycardInstancesSwitchView)
         if chosen == self.CREATE:
             return Destination(ToolsKeycardInstancesCreateView)
         if chosen == self.DELETE:
@@ -3346,7 +3373,10 @@ class ToolsKeycardInstancesSwitchView(View):
             show_back_button=False,
             button_data=[ButtonOption("OK")],
         )
-        return Destination(ToolsKeycardInstancesMenuView, skip_current_view=True)
+        # "Switch instance" is launched from the top Keycard menu, so return
+        # there (re-rendering its title with the new active instance) rather
+        # than to the Instances submenu.
+        return Destination(ToolsKeycardMenuView, clear_history=True)
 
 
 class ToolsKeycardInstancesCreateView(View):
@@ -4316,7 +4346,7 @@ class ToolsKeycardEthereumMenuView(View):
         if gate is not None:
             return gate
 
-        button_data = [self.EXPORT_XPUB, self.SIGN_REQUEST, self.VIEW_WALLETS]
+        button_data = [self.SIGN_REQUEST, self.VIEW_WALLETS, self.EXPORT_XPUB]
         active = _format_instance_label(self.controller.active_keycard_aid)
         selected = self.run_screen(
             ButtonListScreen,
@@ -4350,7 +4380,7 @@ class ToolsKeycardBitcoinMenuView(View):
         if gate is not None:
             return gate
 
-        button_data = [self.EXPORT_XPUB, self.SIGN_PSBT, self.SIGN_MESSAGE]
+        button_data = [self.SIGN_PSBT, self.SIGN_MESSAGE, self.EXPORT_XPUB]
         active = _format_instance_label(self.controller.active_keycard_aid)
         selected = self.run_screen(
             ButtonListScreen,
