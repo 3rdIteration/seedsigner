@@ -58,8 +58,9 @@ class OpeningSplashScreen(LogoScreen):
 
         background = Image.new("RGBA", size=self.logo.size, color="black")
         if not self.is_screenshot_renderer:
-            # Fade in alpha
-            for i in range(250, -1, -25):
+            # Fade in alpha. Keep this short — on the Pi Zero each step is a
+            # full SPI refresh, so too many frames delay the readable splash.
+            for i in range(250, -1, -50):
                 self.logo.putalpha(255 - i)
                 self.renderer.canvas.paste(
                     Image.alpha_composite(background, self.logo),
@@ -111,8 +112,13 @@ class OpeningSplashScreen(LogoScreen):
         _draw_line(controller.PRODUCT_TAGLINE, tagline_font, GUIConstants.LABEL_FONT_COLOR)
 
         if not self.is_screenshot_renderer:
-            # Hold on the splash screen for a moment
-            time.sleep(2)
+            # Push the finished splash (card + text) to the display, THEN hold
+            # long enough to read it. The fade above only ever showed the card;
+            # without this show_image the text is drawn to the canvas but never
+            # displayed during the hold (it would only flash as the splash tears
+            # down). Show first, then sleep.
+            self.renderer.show_image()
+            time.sleep(3)
 
 
 
