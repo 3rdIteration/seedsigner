@@ -3113,8 +3113,12 @@ class ToolsSeedkeeperLoadDescriptorView(View):
                         secret_dict['secret'] = unhexlify(secret_dict['secret'])[1:].decode()
                         secret_template = secret_template.replace(xpub_secret_label, secret_dict['secret'])
                 
-            # Depending on where the descriptor came from whem imported into the SeedKeeper, it may need some characters swapped to work with Embit
+            # Depending on where the descriptor came from when imported into the SeedKeeper, it may need some characters swapped to work with Embit
             secret_template = secret_template.replace("<","{").replace(">","}").replace(";",",")
+
+            # Ensure keys include branch/index wildcards so the Address Explorer
+            # derives distinct per-index addresses for receive and change.
+            secret_template = embit_utils.normalize_descriptor_str(secret_template)
 
             self.controller.multisig_wallet_descriptor = Descriptor.from_string(secret_template)
             

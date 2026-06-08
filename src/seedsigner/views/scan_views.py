@@ -211,22 +211,13 @@ class ScanView(View):
             elif self.decoder.is_wallet_descriptor:
                 from embit.descriptor import Descriptor
                 from seedsigner.views.seed_views import MultisigWalletDescriptorView
+                from seedsigner.helpers import embit_utils
 
                 descriptor_str = self.decoder.get_wallet_descriptor()
 
-                try:
-                    # We need to replace `/0/*` wildcards with `/{0,1}/*` in order to use
-                    # the Descriptor to verify change, too.
-                    orig_descriptor_str = descriptor_str
-                    if len(re.findall (r'\[([0-9,a-f,A-F]+?)(\/[0-9,\/,h\']+?)\].*?(\/0\/\*)', descriptor_str)) > 0:
-                        p = re.compile(r'(\[[0-9,a-f,A-F]+?\/[0-9,\/,h\']+?\].*?)(\/0\/\*)')
-                        descriptor_str = p.sub(r'\1/{0,1}/*', descriptor_str)
-                    elif len(re.findall (r'(\[[0-9,a-f,A-F]+?\/[0-9,\/,h,\']+?\][a-z,A-Z,0-9]*?)([\,,\)])', descriptor_str)) > 0:
-                        p = re.compile(r'(\[[0-9,a-f,A-F]+?\/[0-9,\/,h,\']+?\][a-z,A-Z,0-9]*?)([\,,\)])')
-                        descriptor_str = p.sub(r'\1/{0,1}/*\2', descriptor_str)
-                except Exception as e:
-                    logger.info(repr(e), exc_info=True)
-                    descriptor_str = orig_descriptor_str
+                # Ensure keys include branch/index wildcards so the Address Explorer
+                # and change verification work correctly for all descriptor formats.
+                descriptor_str = embit_utils.normalize_descriptor_str(descriptor_str)
 
                 descriptor = Descriptor.from_string(descriptor_str)
 
