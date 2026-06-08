@@ -466,6 +466,7 @@ class ToolsBatteryCalibrationView(View):
             self.run_screen(
                 WarningScreen,
                 title=_("microSD card not detected"),
+                status_headline=None,
                 text=_("Insert a microSD card to save the discharge log."),
                 button_data=[ButtonOption(_("Back"))],
             )

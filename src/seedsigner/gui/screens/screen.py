@@ -1104,6 +1104,7 @@ class ErrorScreen(WarningScreen):
     title: str = _mft("Error")
     status_icon_name: str = SeedSignerIconConstants.ERROR
     status_color: str = GUIConstants.ERROR_COLOR
+    status_headline: str = None
 
 
 
