@@ -3,6 +3,7 @@ import hashlib
 import json
 import logging
 import os
+import sys
 import time
 import platform
 import binascii
@@ -42,7 +43,7 @@ from seedsigner.helpers.iso7816 import format_sw_error
 from seedsigner.models.decode_qr import DecodeQR
 from seedsigner.models.encode_qr import GenericStaticQrEncoder
 from seedsigner.gui.screens.screen import ButtonOption
-from seedsigner.models.seed import Seed
+from seedsigner.models.seed import Seed, InvalidSeedException
 from seedsigner.models.seed import XprvSeed
 from seedsigner.models.settings_definition import SettingsConstants
 from seedsigner.views.seed_views import (
@@ -4766,6 +4767,81 @@ class ToolsSatochipDIYView(View):
 
 JAVACARD_KEYS_MICROSD_FILENAME = "javacard-keys.txt"
 JAVACARD_KEYS_SEEDKEEPER_PREFIX = "jc_keys_"
+SPECTER_JAVACARD_DEFAULT_AID = "B00B5111CB01"
+
+
+def _candidate_specter_card_paths() -> list[Path]:
+    candidates: list[Path] = []
+    env_path = (
+        os.environ.get("SEEDSIGNER_SPECTER_CARD_PY_PATH")
+        or os.environ.get("SEEDSIGNER_SPECTER_JAVACARD_PATH")
+    )
+    if env_path:
+        candidates.append(Path(env_path).expanduser())
+
+    repo_root = Path(__file__).resolve().parents[3]
+    candidates.append(repo_root.parent / "specter-javacard" / "py")
+    candidates.append(repo_root / "specter-javacard" / "py")
+    return candidates
+
+
+def _get_specter_card_api():
+    try:
+        from specter_card import Card, MemoryCardApplet, SecureApplet
+        return Card, MemoryCardApplet, SecureApplet
+    except Exception:
+        pass
+
+    for candidate in _candidate_specter_card_paths():
+        try:
+            if not candidate.exists() or not candidate.is_dir():
+                continue
+            candidate_str = str(candidate)
+            if candidate_str not in sys.path:
+                sys.path.insert(0, candidate_str)
+            from specter_card import Card, MemoryCardApplet, SecureApplet
+            return Card, MemoryCardApplet, SecureApplet
+        except Exception:
+            continue
+
+    raise ImportError(
+        "Unable to load specter_card module. Install specter-javacard py module or set SEEDSIGNER_SPECTER_CARD_PY_PATH."
+    )
+
+
+def _normalize_bip39_mnemonic_text(text: str) -> str:
+    mnemonic = " ".join((text or "").strip().lower().split())
+    if not mnemonic:
+        raise ValueError("No mnemonic data found on card")
+    words = mnemonic.split(" ")
+    if len(words) not in (12, 15, 18, 21, 24):
+        raise ValueError("Stored data is not a 12/15/18/21/24-word mnemonic")
+    return mnemonic
+
+
+def _unlock_specter_card_if_needed(parent_view, secure_applet, secure_channel) -> bool:
+    status = secure_applet.pin_status(secure_channel)
+    if status.get("status") in ("disabled", "unlocked", "no_pin"):
+        return True
+    if status.get("status") != "locked":
+        return True
+
+    ret = seed_screens.SeedAddPassphraseScreen(title="Card PIN").display()
+    if isinstance(ret, dict) and "is_back_button" in ret:
+        return False
+    pin = ret.get("passphrase", "")
+    if not pin:
+        parent_view.run_screen(
+            WarningScreen,
+            title="Invalid PIN",
+            status_headline=None,
+            text="PIN cannot be empty.",
+            show_back_button=False,
+            button_data=[ButtonOption("I Understand")],
+        )
+        return False
+    secure_applet.unlock(secure_channel, pin.encode("utf-8"))
+    return True
 
 
 def _normalize_javacard_key(value: str) -> str:
@@ -4876,6 +4952,8 @@ def _decode_seedkeeper_text(secret_dict: dict) -> str:
 class ToolsJavacardKeysView(View):
     LOAD_KEYS = ButtonOption("Load Keys")
     SAVE_KEYS = ButtonOption("Save Keys")
+    LOAD_MNEMONIC = ButtonOption("Load Mnemonic")
+    SAVE_MNEMONIC = ButtonOption("Save Mnemonic")
     UNLOCK_CARD = ButtonOption("Unlock Card")
     LOCK_CARD = ButtonOption("Lock Card")
     CLEAR_KEYS = ButtonOption("Clear Loaded Keys")
@@ -4884,6 +4962,8 @@ class ToolsJavacardKeysView(View):
         button_data = [
             self.LOAD_KEYS,
             self.SAVE_KEYS,
+            self.LOAD_MNEMONIC,
+            self.SAVE_MNEMONIC,
             self.UNLOCK_CARD,
             self.LOCK_CARD,
             self.CLEAR_KEYS,
@@ -4903,11 +4983,174 @@ class ToolsJavacardKeysView(View):
             return Destination(ToolsJavacardLoadKeysView)
         if choice == self.SAVE_KEYS:
             return Destination(ToolsJavacardSaveKeysView)
+        if choice == self.LOAD_MNEMONIC:
+            return Destination(ToolsJavacardLoadMnemonicView)
+        if choice == self.SAVE_MNEMONIC:
+            return Destination(ToolsJavacardSaveMnemonicView)
         if choice == self.UNLOCK_CARD:
             return Destination(ToolsJavacardUnlockCardView)
         if choice == self.LOCK_CARD:
             return Destination(ToolsJavacardLockCardView)
         return Destination(ToolsJavacardClearKeysView)
+
+
+class ToolsJavacardLoadMnemonicView(View):
+    def run(self):
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+
+        conn = None
+        secure_channel = None
+        try:
+            Card, MemoryCardApplet, SecureApplet = _get_specter_card_api()
+            conn = Card(SPECTER_JAVACARD_DEFAULT_AID)
+            conn.connect()
+            secure_applet = SecureApplet(conn)
+            memory_applet = MemoryCardApplet(conn)
+            secure_channel = secure_applet.open_secure_channel()
+            if not _unlock_specter_card_if_needed(self, secure_applet, secure_channel):
+                return Destination(BackStackView)
+
+            loading = LoadingScreenThread(text="Loading Mnemonic\n\n\n\n\n\n")
+            loading.start()
+            raw = memory_applet.get_data(secure_channel)
+            loading.stop()
+            if not raw:
+                self.run_screen(
+                    WarningScreen,
+                    title="No Mnemonic Found",
+                    status_headline=None,
+                    text="No data found on Specter Javacard.",
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
+
+            mnemonic_text = _normalize_bip39_mnemonic_text(raw.decode("utf-8"))
+            mnemonic_words = mnemonic_text.split(" ")
+            self.controller.storage.init_pending_mnemonic(num_words=len(mnemonic_words))
+            for i, word in enumerate(mnemonic_words):
+                self.controller.storage.update_pending_mnemonic(word, i)
+            self.controller.storage.convert_pending_mnemonic_to_pending_seed(
+                wordlist_language_code=self.settings.get_value(SettingsConstants.SETTING__WORDLIST_LANGUAGE),
+            )
+            return Destination(SeedFinalizeView)
+        except InvalidSeedException:
+            self.run_screen(
+                WarningScreen,
+                title="Invalid Mnemonic",
+                status_headline=None,
+                text="Stored data is not a valid BIP39 mnemonic.",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+        except Exception as exc:
+            self.run_screen(
+                WarningScreen,
+                title="Load Failed",
+                status_headline=None,
+                text=str(exc),
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+        finally:
+            if secure_channel is not None:
+                try:
+                    secure_channel.close()
+                except Exception:
+                    pass
+            if conn is not None:
+                try:
+                    conn.disconnect()
+                except Exception:
+                    pass
+
+
+class ToolsJavacardSaveMnemonicView(View):
+    def run(self):
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+
+        bip39_seeds: list[tuple[int, Seed]] = []
+        for i, seed in enumerate(self.controller.storage.seeds):
+            if type(seed) is Seed:
+                bip39_seeds.append((i, seed))
+
+        if not bip39_seeds:
+            self.run_screen(
+                WarningScreen,
+                title="No BIP39 Seed",
+                status_headline=None,
+                text="Load a BIP39 seed before saving.",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        selected_seed = bip39_seeds[0][1]
+        if len(bip39_seeds) > 1:
+            options = []
+            for _, seed in bip39_seeds:
+                fingerprint = seed.get_fingerprint(self.settings.get_value(SettingsConstants.SETTING__NETWORK))
+                options.append(ButtonOption(fingerprint, SeedSignerIconConstants.FINGERPRINT))
+            selected = self.run_screen(
+                ButtonListScreen,
+                title="Select Seed",
+                is_button_text_centered=False,
+                button_data=options,
+                show_back_button=True,
+            )
+            if selected == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+            selected_seed = bip39_seeds[selected][1]
+
+        mnemonic_text = " ".join(selected_seed.mnemonic_list).strip()
+        conn = None
+        secure_channel = None
+        try:
+            Card, MemoryCardApplet, SecureApplet = _get_specter_card_api()
+            conn = Card(SPECTER_JAVACARD_DEFAULT_AID)
+            conn.connect()
+            secure_applet = SecureApplet(conn)
+            memory_applet = MemoryCardApplet(conn)
+            secure_channel = secure_applet.open_secure_channel()
+            if not _unlock_specter_card_if_needed(self, secure_applet, secure_channel):
+                return Destination(BackStackView)
+
+            loading = LoadingScreenThread(text="Saving Mnemonic\n\n\n\n\n\n")
+            loading.start()
+            memory_applet.store_data(secure_channel, mnemonic_text.encode("utf-8"))
+            loading.stop()
+
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Saved",
+                status_headline=None,
+                text="Mnemonic saved to Specter Javacard",
+                show_back_button=False,
+            )
+            return Destination(BackStackView)
+        except Exception as exc:
+            self.run_screen(
+                WarningScreen,
+                title="Save Failed",
+                status_headline=None,
+                text=str(exc),
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+        finally:
+            if secure_channel is not None:
+                try:
+                    secure_channel.close()
+                except Exception:
+                    pass
+            if conn is not None:
+                try:
+                    conn.disconnect()
+                except Exception:
+                    pass
 
 
 class ToolsJavacardLoadKeysView(View):
