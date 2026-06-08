@@ -32,7 +32,7 @@ def _load(tmp_path, lines):
 
 class TestSignatureDbLoad:
     def test_single_signature_resolves(self, tmp_path):
-        sig = "supply(address,uint256,address,uint16)"
+        sig = "poolSupply(address,uint256,address,uint16)"
         db = _load(tmp_path, [sig])
         assert db.resolve_extended(function_selector(sig)) == [sig]
 
@@ -111,7 +111,7 @@ class TestBaselineResource:
         signature_db._reset()
         signature_db._TEST_PATHS = None  # use the real shipped baseline
         # A non-curated baseline entry resolves...
-        sel = function_selector("supply(address,uint256,address,uint16)")
-        assert "supply(address,uint256,address,uint16)" in signature_db.resolve_extended(sel)
+        sel = function_selector("transferAndCall(address,uint256)")
+        assert "transferAndCall(address,uint256)" in signature_db.resolve_extended(sel)
         # ...and a curated selector is excluded from the extended layer.
         assert signature_db.resolve_extended(bytes.fromhex("a9059cbb")) == []

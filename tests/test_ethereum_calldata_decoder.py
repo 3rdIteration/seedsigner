@@ -181,6 +181,43 @@ class TestHardening:
             decode_parameters(types, data)
 
 
+# --- strict (collision-disambiguation) decode -------------------------------
+
+class TestStrictDecode:
+    """``decode_parameters_strict`` is the oracle that breaks 4-byte collisions:
+    a candidate must decode AND consume the calldata exactly."""
+
+    def test_exact_fit_accepted(self):
+        _, types = parse_signature("transfer(address,uint256)")
+        abi_decode.decode_parameters_strict(types, aw(A) + w(5))  # no raise
+
+    def test_trailing_word_rejected(self):
+        # Right shape for the prefix, but a whole extra word is left unread.
+        _, types = parse_signature("transfer(address,uint256)")
+        with pytest.raises(ValueError):
+            abi_decode.decode_parameters_strict(types, aw(A) + w(5) + w(0))
+
+    def test_too_short_rejected(self):
+        _, types = parse_signature("transfer(address,uint256,uint256)")
+        with pytest.raises(ValueError):
+            abi_decode.decode_parameters_strict(types, aw(A) + w(5))
+
+    def test_non_aligned_region_rejected(self):
+        _, types = parse_signature("f(uint256)")
+        with pytest.raises(ValueError):
+            abi_decode.decode_parameters_strict(types, w(1)[:31])
+
+    def test_dynamic_tail_padding_allowed(self):
+        # A trailing bytes field of length 5 pads to 32; strict must accept it.
+        _, types = parse_signature("f(bytes)")
+        data = w(0x20) + w(5) + b"hello" + bytes(27)
+        abi_decode.decode_parameters_strict(types, data)  # no raise
+
+    def test_empty_params_accepted(self):
+        _, types = parse_signature("claim()")
+        abi_decode.decode_parameters_strict(types, b"")  # no raise
+
+
 # --- decode_calldata never raises -------------------------------------------
 
 class TestDecodeCalldata:
@@ -302,20 +339,23 @@ class TestRendering:
 
     def test_extended_single_match_is_unverified(self, monkeypatch):
         from seedsigner.helpers.ethereum import signature_db
-        sig = "supply(address,uint256,address,uint16)"
+        sig = "poolSupply(address,uint256,address,uint16)"
         sel = function_selector(sig)
         # Force the extended layer to return exactly this signature.
         monkeypatch.setattr(signature_db, "resolve_all",
                             lambda s: [sig] if s == sel else [])
         data = sel + aw(A) + w(1000) + aw(B) + w(7)
         d = decode_calldata(data)
-        assert d.known and d.verified is False and d.name == "supply"
+        assert d.known and d.verified is False and d.name == "poolSupply"
         pages = render_pages(d)
-        assert any("supply (unverified)" in t for t, _ in pages)
+        assert any("poolSupply (unverified)" in t for t, _ in pages)
 
     def test_extended_collision_is_ambiguous(self, monkeypatch):
         from seedsigner.helpers.ethereum import signature_db
         sel = bytes.fromhex("12345678")
+        # Both candidates are a single static word, so both fit the bytes — the
+        # decode-consistency filter cannot separate them and the honest
+        # "ambiguous" warning stands.
         monkeypatch.setattr(signature_db, "resolve_all",
                             lambda s: ["foo(uint256)", "bar(address)"] if s == sel else [])
         d = decode_calldata(sel + w(1))
@@ -323,6 +363,67 @@ class TestRendering:
         pages = render_pages(d)
         assert pages[0][0] == "Ambiguous"
         assert "2 possible" in pages[0][1]
+
+    def test_extended_collision_disambiguated_by_shape(self, monkeypatch):
+        # Same selector, two candidates of DIFFERENT shape against real bytes:
+        # only the 2-word one fits, so the filter picks it (still unverified).
+        from seedsigner.helpers.ethereum import signature_db
+        sel = bytes.fromhex("12345678")
+        winner = "transfer(address,uint256)"           # 2 static words — fits
+        loser = "ping(uint256)"                         # 1 word — leaves a tail
+        monkeypatch.setattr(signature_db, "resolve_all",
+                            lambda s: [loser, winner] if s == sel else [])
+        d = decode_calldata(sel + aw(A) + w(5))
+        assert d.known and not d.ambiguous and d.verified is False
+        assert d.name == "transfer" and d.signature == winner
+
+    def test_extended_collision_none_consistent_stays_ambiguous(self, monkeypatch):
+        # Neither candidate fits the bytes → never guess, keep ambiguity.
+        from seedsigner.helpers.ethereum import signature_db
+        sel = bytes.fromhex("12345678")
+        monkeypatch.setattr(signature_db, "resolve_all",
+                            lambda s: ["a(uint256,uint256)", "b(address,address,address)"]
+                            if s == sel else [])
+        d = decode_calldata(sel + w(1))   # 1 word fits neither
+        assert d.ambiguous and d.verified is False
+
+    def test_aave_supply_curated_friendly_names(self):
+        # A representative popular-dApp pack entry: verified + friendly labels.
+        sel = function_selector("supply(address,uint256,address,uint16)")
+        data = sel + aw(A) + w(5_000_000) + aw(B) + w(0)
+        d = decode_calldata(data, chain_id=1, to_address=USDC)
+        assert d.known and d.verified is True
+        assert [p[0] for p in d.params] == ["asset", "amount", "onBehalfOf", "referralCode"]
+        bodies = "\n".join(b for _, b in render_pages(d, 1, USDC))
+        assert "5 USDC" in bodies   # amount label + known token → token-formatted
+
+    def test_cowswap_ethflow_create_order_decodes(self):
+        # Regression for the live report: CoWSwapEthFlow.createOrder (0x322bba21)
+        # used to blind-sign. It is now curated → verified, named, fields decoded.
+        calldata = bytes.fromhex(
+            "322bba21"
+            "00000000000000000000000077777feddddffc19ff86db637967013e6c6a116c"
+            "00000000000000000000000028907f21f43b419f34226d6f10acbcf1832b1d4d"
+            "000000000000000000000000000000000000000000000000016345785d8a0000"
+            "0000000000000000000000000000000000000000000000018655e768e1acfe3e"
+            "09c64b5ae5907560b943efb6b391a7068f5948348d1ec9bad824f38c871e3acd"
+            "0000000000000000000000000000000000000000000000000000000000000000"
+            "000000000000000000000000000000000000000000000000000000006a26d71b"
+            "0000000000000000000000000000000000000000000000000000000000000000"
+            "0000000000000000000000000000000000000000000000000000000047a8abf2"
+        )
+        to = bytes.fromhex("bA3cB449bD2B4ADddBc894D8697F5170800EAdeC")
+        d = decode_calldata(calldata, chain_id=1, to_address=to)
+        assert d.known and d.verified is True and not d.ambiguous
+        assert d.name == "createOrder" and d.kind == KIND_SWAP
+        (label, t, order) = d.params[0]
+        assert label == "order"
+        assert order[0] == bytes.fromhex("77777feddddffc19ff86db637967013e6c6a116c")  # buyToken
+        assert order[2] == 10 ** 17        # sellAmount = 0.1 ETH (matches tx value)
+        assert order[6] == 0x6a26d71b      # validTo
+        assert order[7] is False           # partiallyFillable
+        # Not blind: a readable page is produced.
+        assert not any(t0 == "Blind signing" for t0, _ in render_pages(d, 1, to))
 
     def test_extended_miss_is_blind(self, monkeypatch):
         from seedsigner.helpers.ethereum import signature_db

@@ -210,7 +210,7 @@ class TestGeneratorRoundTrip:
 
     def test_round_trip(self, tmp_path):
         inp = self._dump(tmp_path, [
-            "supply(address,uint256,address,uint16)",
+            "poolSupply(address,uint256,address,uint16)",
             "borrow(uint256)",
         ])
         out_i = str(tmp_path / "i.bin")
@@ -218,7 +218,7 @@ class TestGeneratorRoundTrip:
         build(inp, out_i, out_b, verbose=False)
         sdb._reset()
         sdb._TEST_INDEX_PATHS = (out_i, out_b)
-        for sig in ("supply(address,uint256,address,uint16)", "borrow(uint256)"):
+        for sig in ("poolSupply(address,uint256,address,uint16)", "borrow(uint256)"):
             assert sdb.resolve_bundled(function_selector(sig)) == [sig]
 
     def test_dedup_comments_and_invalid_skipped(self, tmp_path):
@@ -262,7 +262,7 @@ class TestResolveAllUnion:
     def test_union_of_layers(self, tmp_path):
         # binary index carries one selector; text DB carries another.
         bin_sig = "alpha(uint256)"
-        txt_sig = "supply(address,uint256,address,uint16)"
+        txt_sig = "poolSupply(address,uint256,address,uint16)"
         _install(tmp_path, [(function_selector(bin_sig), bin_sig)])
         txt = tmp_path / "t.txt"
         txt.write_text(txt_sig + "\n", encoding="utf-8")
@@ -271,7 +271,7 @@ class TestResolveAllUnion:
         assert sdb.resolve_all(function_selector(txt_sig)) == [txt_sig]
 
     def test_dedup_across_layers(self, tmp_path):
-        sig = "supply(address,uint256,address,uint16)"
+        sig = "poolSupply(address,uint256,address,uint16)"
         sel = function_selector(sig)
         _install(tmp_path, [(sel, sig)])
         txt = tmp_path / "t.txt"
@@ -308,6 +308,10 @@ class TestCuratedProtocolSelectors:
         "f78dc253": "unoswapTo",
         "415565b0": "transformERC20",
         "13d79a0b": "settle",
+        "ec6cb13f": "setPreSignature",
+        "15337bc0": "invalidateOrder",
+        "322bba21": "createOrder",
+        "7bc41b96": "invalidateOrder",
         "fb0f3ee1": "fulfillBasicOrder",
         "00000000": "fulfillBasicOrder_efficient_6GL6yc",
         "b3a34c4c": "fulfillOrder",
@@ -316,6 +320,58 @@ class TestCuratedProtocolSelectors:
         "87201b41": "fulfillAvailableAdvancedOrders",
         "a8174404": "matchOrders",
         "f2d12b12": "matchAdvancedOrders",
+        # --- popular-dApp pack (corroborated against the bundled 4byte set) ---
+        # Uniswap Universal Router
+        "3593564c": "execute",
+        "24856bc3": "execute",
+        # Permit2
+        "2b67b570": "permit",
+        "2a2d80d1": "permit",
+        "36c78516": "transferFrom",
+        "cc53287f": "lockdown",
+        # Safe (Gnosis Safe)
+        "6a761202": "execTransaction",
+        "d4d9bdcd": "approveHash",
+        "0d582f13": "addOwnerWithThreshold",
+        "f8dc5dd9": "removeOwner",
+        "e318b52b": "swapOwner",
+        "694e80c3": "changeThreshold",
+        "610b5925": "enableModule",
+        "e009cfde": "disableModule",
+        # Aave V3 Pool
+        "617ba037": "supply",
+        "69328dec": "withdraw",
+        "a415bcad": "borrow",
+        "573ade81": "repay",
+        "5a3b74b9": "setUserUseReserveAsCollateral",
+        # Compound III (Comet)
+        "f2b9fdb8": "supply",
+        "f3fef3a3": "withdraw",
+        "4232cd63": "supplyTo",
+        "c3b35a7e": "withdrawTo",
+        # Lido
+        "a1903eab": "submit",
+        "ea598cb0": "wrap",
+        "de0e9a3e": "unwrap",
+        # ENS
+        "f14fcbc8": "commit",
+        "acf1a841": "renew",
+        "74694a2b": "register",
+        "d5fa2b00": "setAddr",
+        "c47f0027": "setName",
+        # Curve
+        "3df02124": "exchange",
+        "5b41b908": "exchange",
+        "0b4c7e4d": "add_liquidity",
+        "4515cef3": "add_liquidity",
+        "5b36389c": "remove_liquidity",
+        # 0x classic VIP swaps
+        "d9627aa4": "sellToUniswap",
+        "3598d8ab": "sellEthForTokenToUniswapV3",
+        "803ba26d": "sellTokenForEthToUniswapV3",
+        "6af479b2": "sellTokenForTokenToUniswapV3",
+        # ERC-4626
+        "94bf804d": "mint",
     }
 
     def test_selectors_and_names(self):

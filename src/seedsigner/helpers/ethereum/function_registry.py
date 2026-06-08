@@ -107,6 +107,17 @@ CURATED = [
     # --- CowSwap GPv2Settlement ------------------------------------------
     ("settle(address[],uint256[],(uint256,uint256,address,uint256,uint256,uint32,bytes32,uint256,uint256,uint256,bytes)[],(address,uint256,bytes)[][3])",
      ["tokens", "clearingPrices", "trades", "interactions"], KIND_GENERIC),    # 0x13d79a0b
+    ("setPreSignature(bytes,bool)", ["orderUid", "signed"], KIND_GENERIC),     # 0xec6cb13f
+    ("invalidateOrder(bytes)", ["orderUid"], KIND_GENERIC),                    # 0x15337bc0
+    # --- CowSwap CoWSwapEthFlow (native-ETH orders) ----------------------
+    # Single tuple param = EthFlowOrder.Data
+    # (buyToken, receiver, sellAmount, buyAmount, appData, feeAmount, validTo,
+    #  partiallyFillable, quoteId). param_names label the top-level arg only;
+    # the tuple fields render positionally (order.0 … order.8).
+    ("createOrder((address,address,uint256,uint256,bytes32,uint256,uint32,bool,int64))",
+     ["order"], KIND_SWAP),                                                    # 0x322bba21
+    ("invalidateOrder((address,address,uint256,uint256,bytes32,uint256,uint32,bool,int64))",
+     ["order"], KIND_GENERIC),                                                 # 0x7bc41b96
     # --- Seaport 1.x (OpenSea) -------------------------------------------
     # Large nested structs; we surface the verified function name (and decode
     # params best-effort) instead of blind-signing. param_names label the
@@ -127,6 +138,76 @@ CURATED = [
      ["orders", "fulfillments"], KIND_GENERIC),                              # 0xa8174404
     ("matchAdvancedOrders(((address,address,(uint8,address,uint256,uint256,uint256)[],(uint8,address,uint256,uint256,uint256,address)[],uint8,uint256,uint256,bytes32,uint256,bytes32,uint256),uint120,uint120,bytes,bytes)[],(uint256,uint8,uint256,uint256,bytes32[])[],((uint256,uint256)[],(uint256,uint256)[])[],address)",
      ["advancedOrders", "criteriaResolvers", "fulfillments", "recipient"], KIND_GENERIC),  # 0xf2d12b12
+    # --- Uniswap Universal Router ----------------------------------------
+    # The dominant Uniswap entrypoint. Commands/inputs are an opaque program;
+    # the digest + raw-data screens stay the source of truth for the details.
+    ("execute(bytes,bytes[],uint256)", ["commands", "inputs", "deadline"], KIND_SWAP),     # 0x3593564c
+    ("execute(bytes,bytes[])", ["commands", "inputs"], KIND_GENERIC),                      # 0x24856bc3
+    # --- Permit2 (canonical 0x000000000022D473030F116dDEE9F6B43aC78BA3) ---
+    ("permit(address,((address,uint160,uint48,uint48),address,uint256),bytes)",
+     ["owner", "permitSingle", "signature"], KIND_PERMIT),                                 # 0x2b67b570
+    ("permit(address,((address,uint160,uint48,uint48)[],address,uint256),bytes)",
+     ["owner", "permitBatch", "signature"], KIND_PERMIT),                                  # 0x2a2d80d1
+    ("transferFrom(address,address,uint160,address)",
+     ["from", "to", "amount", "token"], KIND_TRANSFER),                                    # 0x36c78516
+    ("lockdown((address,address)[])", ["approvals"], KIND_APPROVE),                        # 0xcc53287f
+    # --- Safe (Gnosis Safe) multisig -------------------------------------
+    ("execTransaction(address,uint256,bytes,uint8,uint256,uint256,uint256,address,address,bytes)",
+     ["to", "value", "data", "operation", "safeTxGas", "baseGas", "gasPrice",
+      "gasToken", "refundReceiver", "signatures"], KIND_GENERIC),                         # 0x6a761202
+    ("approveHash(bytes32)", ["hashToApprove"], KIND_GENERIC),                            # 0xd4d9bdcd
+    ("addOwnerWithThreshold(address,uint256)", ["owner", "_threshold"], KIND_GENERIC),    # 0x0d582f13
+    ("removeOwner(address,address,uint256)",
+     ["prevOwner", "owner", "_threshold"], KIND_GENERIC),                                 # 0xf8dc5dd9
+    ("swapOwner(address,address,address)",
+     ["prevOwner", "oldOwner", "newOwner"], KIND_GENERIC),                                # 0xe318b52b
+    ("changeThreshold(uint256)", ["_threshold"], KIND_GENERIC),                           # 0x694e80c3
+    ("enableModule(address)", ["module"], KIND_GENERIC),                                  # 0x610b5925
+    ("disableModule(address,address)", ["prevModule", "module"], KIND_GENERIC),           # 0xe009cfde
+    # --- Aave V3 Pool ----------------------------------------------------
+    ("supply(address,uint256,address,uint16)",
+     ["asset", "amount", "onBehalfOf", "referralCode"], KIND_GENERIC),                    # 0x617ba037
+    ("withdraw(address,uint256,address)", ["asset", "amount", "to"], KIND_GENERIC),       # 0x69328dec
+    ("borrow(address,uint256,uint256,uint16,address)",
+     ["asset", "amount", "interestRateMode", "referralCode", "onBehalfOf"], KIND_GENERIC),  # 0xa415bcad
+    ("repay(address,uint256,uint256,address)",
+     ["asset", "amount", "interestRateMode", "onBehalfOf"], KIND_GENERIC),                # 0x573ade81
+    ("setUserUseReserveAsCollateral(address,bool)",
+     ["asset", "useAsCollateral"], KIND_GENERIC),                                         # 0x5a3b74b9
+    # --- Compound III (Comet) --------------------------------------------
+    ("supply(address,uint256)", ["asset", "amount"], KIND_GENERIC),                       # 0xf2b9fdb8
+    ("withdraw(address,uint256)", ["asset", "amount"], KIND_GENERIC),                     # 0xf3fef3a3
+    ("supplyTo(address,address,uint256)", ["dst", "asset", "amount"], KIND_GENERIC),      # 0x4232cd63
+    ("withdrawTo(address,address,uint256)", ["to", "asset", "amount"], KIND_GENERIC),     # 0xc3b35a7e
+    # --- Lido (stETH / wstETH) -------------------------------------------
+    ("submit(address)", ["referral"], KIND_WRAP),                                         # 0xa1903eab
+    ("wrap(uint256)", ["stETHAmount"], KIND_WRAP),                                        # 0xea598cb0
+    ("unwrap(uint256)", ["wstETHAmount"], KIND_WRAP),                                     # 0xde0e9a3e
+    # --- ENS (ETHRegistrarController / resolver) -------------------------
+    ("commit(bytes32)", ["commitment"], KIND_GENERIC),                                    # 0xf14fcbc8
+    ("renew(string,uint256)", ["name", "duration"], KIND_GENERIC),                        # 0xacf1a841
+    ("register(string,address,uint256,bytes32,address,bytes[],bool,uint16)",
+     ["name", "owner", "duration", "secret", "resolver", "data", "reverseRecord",
+      "ownerControlledFuses"], KIND_GENERIC),                                             # 0x74694a2b
+    ("setAddr(bytes32,address)", ["node", "a"], KIND_GENERIC),                            # 0xd5fa2b00
+    ("setName(string)", ["name"], KIND_GENERIC),                                          # 0xc47f0027
+    # --- Curve StableSwap / crypto pools ---------------------------------
+    ("exchange(int128,int128,uint256,uint256)", ["i", "j", "dx", "min_dy"], KIND_SWAP),  # 0x3df02124
+    ("exchange(uint256,uint256,uint256,uint256)", ["i", "j", "dx", "min_dy"], KIND_SWAP),  # 0x5b41b908
+    ("add_liquidity(uint256[2],uint256)", ["amounts", "min_mint_amount"], KIND_GENERIC),  # 0x0b4c7e4d
+    ("add_liquidity(uint256[3],uint256)", ["amounts", "min_mint_amount"], KIND_GENERIC),  # 0x4515cef3
+    ("remove_liquidity(uint256,uint256[2])", ["_amount", "min_amounts"], KIND_GENERIC),   # 0x5b36389c
+    # --- 0x classic VIP swaps --------------------------------------------
+    ("sellToUniswap(address[],uint256,uint256,bool)",
+     ["tokens", "sellAmount", "minBuyAmount", "isSushi"], KIND_SWAP),                     # 0xd9627aa4
+    ("sellEthForTokenToUniswapV3(bytes,uint256,address)",
+     ["encodedPath", "minBuyAmount", "recipient"], KIND_SWAP),                            # 0x3598d8ab
+    ("sellTokenForEthToUniswapV3(bytes,uint256,uint256,address)",
+     ["encodedPath", "sellAmount", "minBuyAmount", "recipient"], KIND_SWAP),              # 0x803ba26d
+    ("sellTokenForTokenToUniswapV3(bytes,uint256,uint256,address)",
+     ["encodedPath", "sellAmount", "minBuyAmount", "recipient"], KIND_SWAP),              # 0x6af479b2
+    # --- ERC-4626 vault --------------------------------------------------
+    ("mint(uint256,address)", ["shares", "receiver"], KIND_GENERIC),                      # 0x94bf804d
 ]
 
 
@@ -149,8 +230,6 @@ LONG_TAIL = [
     "claim()",
     "claimRewards()",
     "getReward()",
-    "execute(bytes,bytes[])",
-    "execute(bytes,bytes[],uint256)",
     "swapExactTokensForTokensSupportingFeeOnTransferTokens(uint256,uint256,address[],address,uint256)",
     "swapExactETHForTokensSupportingFeeOnTransferTokens(uint256,address[],address,uint256)",
     "swapExactTokensForETHSupportingFeeOnTransferTokens(uint256,uint256,address[],address,uint256)",

@@ -189,6 +189,9 @@ def type_str(t: ABIType) -> str:
 class _Ctx:
     data: bytes
     steps: int = 0
+    # Highest byte offset any read touched — the "consumed" high-water mark used
+    # by decode_parameters_strict to detect trailing bytes a candidate ignores.
+    max_end: int = 0
 
     def tick(self) -> None:
         self.steps += 1
@@ -198,6 +201,8 @@ class _Ctx:
     def need(self, end: int) -> None:
         if end > len(self.data):
             raise ValueError("calldata too short")
+        if end > self.max_end:
+            self.max_end = end
 
 
 def _read_word(ctx: _Ctx, pos: int) -> bytes:
@@ -301,3 +306,28 @@ def decode_parameters(types: List[ABIType], data: bytes) -> list:
     """
     ctx = _Ctx(data=bytes(data))
     return _decode_components(types, ctx, 0)
+
+
+def decode_parameters_strict(types: List[ABIType], data: bytes) -> list:
+    """Decode, but additionally require the parameter region to be ABI-*tight*.
+
+    "Tight" means: 32-byte aligned, and fully consumed — no whole 32-byte word
+    left unread at the tail (a final dynamic field's <32-byte padding is allowed
+    for). This is the disambiguation oracle used when a single 4-byte selector
+    maps to several candidate signatures: a wrong-shape candidate almost always
+    either runs out of data (``_decode_components`` raises) or leaves an unused
+    word at the end (rejected here), so usually only the real signature fits the
+    exact bytes. False rejections only ever downgrade to "ambiguous", never to a
+    wrong-but-confident decode, so erring strict is safe.
+
+    Raises ``ValueError`` when the candidate does not fit the bytes exactly.
+    """
+    data = bytes(data)
+    if len(data) % 32 != 0:
+        raise ValueError("parameter region not 32-byte aligned")
+    ctx = _Ctx(data=data)
+    values = _decode_components(types, ctx, 0)
+    consumed = (ctx.max_end + 31) & ~31  # round the final field over its padding
+    if consumed != len(data):
+        raise ValueError("calldata not fully consumed")
+    return values

@@ -90,18 +90,49 @@ def decode_calldata(data: bytes, chain_id: int = None, to_address: bytes = None)
 def _decode_extended(selector: bytes, params_data: bytes) -> DecodedCall:
     """Resolve via the unverified extended signature DB.
 
-    No match → blind.  Multiple matches (selector collision) → ambiguous, never
-    guessed.  Single match → decode generically but flagged ``verified=False``.
+    No match → blind.  Single match → decode generically, flagged
+    ``verified=False``.  Multiple matches (a 4-byte selector collision) → first
+    try to break the tie by **decode-consistency**: decode each candidate against
+    the actual calldata and keep only those that fit it exactly.  The 4byte
+    directory is full of same-selector junk with different argument shapes, so
+    usually only the real signature survives.  If exactly one survives we decode
+    it (still ``verified=False``); if 0 or >1 survive we keep the honest
+    ambiguity warning rather than guess.
     """
     sigs = signature_db.resolve_all(selector)
     if not sigs:
         return DecodedCall(known=False, selector=selector)
     if len(sigs) > 1:
+        survivors = _consistent_candidates(sigs, params_data)
+        if len(survivors) == 1:
+            return _decode_known_sig(selector, survivors[0], params_data)
         return DecodedCall(
             known=True, selector=selector, ambiguous=True, verified=False,
             candidates=sigs,
         )
-    sig = sigs[0]
+    return _decode_known_sig(selector, sigs[0], params_data)
+
+
+def _consistent_candidates(sigs: List[str], params_data: bytes) -> List[str]:
+    """Subset of candidate signatures that ABI-decode the calldata *exactly*.
+
+    Lets the bytes themselves break a 4-byte collision without trusting the DB:
+    a candidate survives only if it parses and the parameter region is fully
+    consumed (``abi_decode.decode_parameters_strict``).
+    """
+    survivors: List[str] = []
+    for sig in sigs:
+        try:
+            _name, types = abi_decode.parse_signature(sig)
+            abi_decode.decode_parameters_strict(types, params_data)
+        except ValueError:
+            continue
+        survivors.append(sig)
+    return survivors
+
+
+def _decode_known_sig(selector: bytes, sig: str, params_data: bytes) -> DecodedCall:
+    """Decode a single resolved (but unverified) signature against the calldata."""
     try:
         name, types = abi_decode.parse_signature(sig)
         values = abi_decode.decode_parameters(types, params_data)
