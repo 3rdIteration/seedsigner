@@ -271,6 +271,7 @@ class LoadSeedView(View):
     TYPE_AEZEED = ButtonOption("Enter Aezeed seed", FontAwesomeIconConstants.KEYBOARD)
     TYPE_SLIP39 = ButtonOption("SLIP-39 Shares", FontAwesomeIconConstants.KEYBOARD)
     IMPORT_SEEDKEEPER = ButtonOption("From SeedKeeper", FontAwesomeIconConstants.LOCK)
+    IMPORT_SPECTER_DIY = ButtonOption("From Specter-DIY", FontAwesomeIconConstants.LOCK)
     BITBOX_BACKUP = ButtonOption("BitBox02 backup", SeedSignerIconConstants.MICROSD)
     PASSPORT_BACKUP = ButtonOption("Passport backup", SeedSignerIconConstants.MICROSD)
     TAPSIGNER_BACKUP = ButtonOption("TAPSIGNER backup", SeedSignerIconConstants.MICROSD)
@@ -292,6 +293,9 @@ class LoadSeedView(View):
 
         if self.settings.get_value(SettingsConstants.SETTING__SMARTCARD_SUPPORT) == SettingsConstants.OPTION__ENABLED:
             button_data.append(self.IMPORT_SEEDKEEPER)
+
+        if self.settings.get_value(SettingsConstants.SETTING__SPECTER_DIY_SUPPORT) == SettingsConstants.OPTION__ENABLED:
+            button_data.append(self.IMPORT_SPECTER_DIY)
 
         if self.settings.get_value(SettingsConstants.SETTING__SLIP39_SEEDS) == SettingsConstants.OPTION__ENABLED:
             button_data.append(self.TYPE_SLIP39)
@@ -333,6 +337,10 @@ class LoadSeedView(View):
 
         elif button_data[selected_menu_num] == self.IMPORT_SEEDKEEPER:
             return Destination(SeedKeeperSelectView)
+
+        elif button_data[selected_menu_num] == self.IMPORT_SPECTER_DIY:
+            from .tools_views import ToolsJavacardLoadMnemonicView
+            return Destination(ToolsJavacardLoadMnemonicView)
 
         elif button_data[selected_menu_num] == self.TYPE_ELECTRUM:
             return Destination(SeedElectrumMnemonicStartView)
@@ -2124,6 +2132,7 @@ class SeedBackupView(View):
     EXPORT_SEEDQR = ButtonOption("Export as SeedQR")
     EXPORT_PLAINTEXTQR = ButtonOption("Export as Plaintext QR")
     TO_SEEDKEEPER = ButtonOption("To SeedKeeper")
+    TO_SPECTER_DIY = ButtonOption("To Specter-DIY")
     REGENERATE_SHARES = ButtonOption("Regenerate Shares")
 
     def __init__(self, seed_num):
@@ -2137,6 +2146,8 @@ class SeedBackupView(View):
         button_data = [self.VIEW_WORDS]
         if self.settings.get_value(SettingsConstants.SETTING__SMARTCARD_SUPPORT) == SettingsConstants.OPTION__ENABLED:
             button_data.append(self.TO_SEEDKEEPER)
+        if self.settings.get_value(SettingsConstants.SETTING__SPECTER_DIY_SUPPORT) == SettingsConstants.OPTION__ENABLED:
+            button_data.append(self.TO_SPECTER_DIY)
         if isinstance(self.seed, Slip39Seed):
             button_data.append(self.REGENERATE_SHARES)
 
@@ -2174,6 +2185,10 @@ class SeedBackupView(View):
             if isinstance(self.seed, Slip39Seed):
                 return Destination(SeedSlip39SelectShareView, view_args={"seed_num": self.seed_num, "next_view": SaveToSeedkeeperView})
             return Destination(SaveToSeedkeeperView, view_args={"seed_num": self.seed_num})
+
+        elif button_data[selected_menu_num] == self.TO_SPECTER_DIY:
+            from .tools_views import ToolsJavacardSaveMnemonicView
+            return Destination(ToolsJavacardSaveMnemonicView)
 
         elif button_data[selected_menu_num] == self.REGENERATE_SHARES:
             return Destination(SeedSlip39RegenerateSharesView, view_args={"seed_num": self.seed_num})

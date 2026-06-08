@@ -1397,6 +1397,7 @@ class ToolsSmartcardMenuView(View):
     SATOCHIP = ButtonOption("Satochip Functions")
     KEYCARD = ButtonOption("KeyCard Functions")
     SEEDKEEPER = ButtonOption("SeedKeeper Functions")
+    SPECTER_DIY = ButtonOption("Specter-DIY Functions")
     Satochip_DIY = ButtonOption("DIY Tools")
 
     def run(self):
@@ -1409,10 +1410,16 @@ class ToolsSmartcardMenuView(View):
             self.settings.get_value(SettingsConstants.SETTING__KEYCARD_SUPPORT)
             == SettingsConstants.OPTION__ENABLED
         )
+        specter_diy_enabled = (
+            self.settings.get_value(SettingsConstants.SETTING__SPECTER_DIY_SUPPORT)
+            == SettingsConstants.OPTION__ENABLED
+        )
         if satochip_enabled:
             button_data.append(self.SATOCHIP)
         if keycard_enabled:
             button_data.append(self.KEYCARD)
+        if specter_diy_enabled:
+            button_data.append(self.SPECTER_DIY)
         button_data.append(self.Satochip_DIY)
 
         selected_menu_num = self.run_screen(
@@ -1440,6 +1447,9 @@ class ToolsSmartcardMenuView(View):
         elif button_data[selected_menu_num] == self.SEEDKEEPER:
             self.controller.smartcard_backend_preference = None
             return Destination(ToolsSeedkeeperView)
+
+        elif button_data[selected_menu_num] == self.SPECTER_DIY:
+            return Destination(ToolsSpecterDIYView)
 
         elif button_data[selected_menu_num] == self.Satochip_DIY:
             self.controller.smartcard_backend_preference = None
@@ -4705,6 +4715,139 @@ class SatochipLoadDescriptorDetailsView(View):
         )
 
         return Destination(MainMenuView)
+
+
+class ToolsSpecterDIYView(View):
+    CHANGE_PIN = ButtonOption("Change Card PIN")
+    LOAD_MNEMONIC = ButtonOption("Load Mnemonic")
+    SAVE_MNEMONIC = ButtonOption("Save Mnemonic")
+
+    def run(self):
+        button_data = [self.CHANGE_PIN, self.LOAD_MNEMONIC, self.SAVE_MNEMONIC]
+
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title="Specter-DIY",
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        choice = button_data[selected_menu_num]
+        if choice == self.CHANGE_PIN:
+            return Destination(ToolsSpecterDIYChangePinView)
+        if choice == self.LOAD_MNEMONIC:
+            return Destination(ToolsJavacardLoadMnemonicView)
+        return Destination(ToolsJavacardSaveMnemonicView)
+
+
+class ToolsSpecterDIYChangePinView(View):
+    def run(self):
+        conn = None
+        secure_channel = None
+        try:
+            Card, MemoryCardApplet, SecureApplet = _get_specter_card_api()
+            conn = Card(SPECTER_JAVACARD_DEFAULT_AID)
+            conn.connect()
+            secure_applet = SecureApplet(conn)
+            secure_channel = secure_applet.open_secure_channel()
+
+            status = secure_applet.pin_status(secure_channel)
+            pin_status = status.get("status")
+
+            if pin_status in ("disabled", "no_pin"):
+                # PIN is not set; prompt user to set a new PIN
+                ret = seed_screens.SeedAddPassphraseScreen(title="Set New PIN").display()
+                if isinstance(ret, dict) and "is_back_button" in ret:
+                    return Destination(BackStackView)
+                new_pin = ret.get("passphrase", "")
+                if not new_pin:
+                    self.run_screen(
+                        WarningScreen,
+                        title="Invalid PIN",
+                        status_headline=None,
+                        text="PIN cannot be empty.",
+                        show_back_button=False,
+                        button_data=[ButtonOption("I Understand")],
+                    )
+                    return Destination(BackStackView)
+                secure_applet.set_pin(secure_channel, new_pin.encode("utf-8"))
+                self.run_screen(
+                    LargeIconStatusScreen,
+                    title="PIN Set",
+                    status_headline=None,
+                    text="Card PIN has been set.",
+                    show_back_button=False,
+                )
+                return Destination(BackStackView)
+
+            # PIN is set; unlock first if locked, then prompt for old and new PIN
+            if not _unlock_specter_card_if_needed(self, secure_applet, secure_channel):
+                return Destination(BackStackView)
+
+            ret = seed_screens.SeedAddPassphraseScreen(title="Current PIN").display()
+            if isinstance(ret, dict) and "is_back_button" in ret:
+                return Destination(BackStackView)
+            old_pin = ret.get("passphrase", "")
+            if not old_pin:
+                self.run_screen(
+                    WarningScreen,
+                    title="Invalid PIN",
+                    status_headline=None,
+                    text="PIN cannot be empty.",
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
+
+            ret = seed_screens.SeedAddPassphraseScreen(title="New PIN").display()
+            if isinstance(ret, dict) and "is_back_button" in ret:
+                return Destination(BackStackView)
+            new_pin = ret.get("passphrase", "")
+            if not new_pin:
+                self.run_screen(
+                    WarningScreen,
+                    title="Invalid PIN",
+                    status_headline=None,
+                    text="PIN cannot be empty.",
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
+
+            secure_applet.change_pin(secure_channel, old_pin.encode("utf-8"), new_pin.encode("utf-8"))
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="PIN Changed",
+                status_headline=None,
+                text="Card PIN has been changed.",
+                show_back_button=False,
+            )
+            return Destination(BackStackView)
+        except Exception as exc:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text=str(exc),
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+        finally:
+            if secure_channel is not None:
+                try:
+                    secure_channel.close()
+                except Exception:
+                    pass
+            if conn is not None:
+                try:
+                    conn.disconnect()
+                except Exception:
+                    pass
+
 
 class ToolsSatochipDIYView(View):
     MANAGE_KEYS = ButtonOption("Card Keys")
