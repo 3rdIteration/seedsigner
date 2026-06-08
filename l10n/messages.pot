@@ -1123,11 +1123,7 @@ msgid "Cache Smartcard Pin"
 msgstr ""
 
 #: src/seedsigner/models/settings_definition.py
-msgid ""
-"Disabled (default) wipes the verified PIN on every Home navigation so the"
-" next operation re-prompts. Enabled keeps it in RAM until reboot or card "
-"swap for fewer prompts. (Instance switch, Lock card and card removal "
-"always wipe, regardless of this setting.)"
+msgid "Off (default): re-enter PIN after returning Home. On: keep PIN in RAM until reboot for fewer prompts."
 msgstr ""
 
 #: src/seedsigner/models/settings_definition.py

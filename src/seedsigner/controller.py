@@ -488,6 +488,15 @@ class Controller(Singleton):
     def forget_all_pins(self) -> None:
         for uid in list(self.keycard_pins.keys()):
             self.forget_pin_for(uid)
+        # Derived addresses are only valid under an authenticated PIN session.
+        # Dropping all PINs must drop all cached View-wallets addresses so the
+        # next derivation runs against whichever PIN is entered next (incl. the
+        # duress PIN -> on-card decoy wallet). Without this, locking / removing /
+        # returning Home would re-prompt for a PIN but still show the previous
+        # PIN's addresses, defeating the duress wallet. See Threat model in
+        # CLAUDE.md.
+        if self.keycard_wallets_data is not None:
+            self.keycard_wallets_data.clear()
 
     # ---- Satochip / SeedKeeper session ----
 

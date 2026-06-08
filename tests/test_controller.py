@@ -222,4 +222,34 @@ class TestController(BaseTest):
         assert controller.keycard_pins == {}
         assert cached == bytearray(b"\x00" * 6)
 
+    def test_forget_all_pins_clears_wallet_address_cache(self):
+        """Regression (duress PIN): derived View-wallets addresses must be
+        dropped together with the PINs. Otherwise locking / removing the card
+        / returning Home re-prompts for a PIN but still shows the previous
+        PIN's addresses, so the on-card decoy wallet never appears. Every path
+        that lets the user enter a *different* PIN (Lock card, card removal,
+        Home with caching off, instance switch) routes through
+        ``forget_all_pins`` -> ``wipe_card_session_secrets``."""
+        controller = Controller.get_instance()
+        controller.keycard_pins = {}
+        controller.set_pin_for(b"\x22" * 16, bytearray(b"123456"))
+        aid_hex = bytes(controller.active_keycard_aid).hex()
+        controller.keycard_wallets_data = {aid_hex: ["0xOLD1", "0xOLD2"]}
+
+        controller.forget_all_pins()
+
+        assert controller.keycard_pins == {}
+        assert controller.keycard_wallets_data == {}
+
+        # The public wipe entry point must behave identically (it delegates to
+        # forget_all_pins) and must tolerate a None cache.
+        controller.set_pin_for(b"\x33" * 16, bytearray(b"654321"))
+        controller.keycard_wallets_data = {aid_hex: ["0xSTALE"]}
+        controller.wipe_card_session_secrets()
+        assert controller.keycard_wallets_data == {}
+
+        controller.keycard_wallets_data = None
+        controller.forget_all_pins()  # must not raise on a None cache
+        assert controller.keycard_wallets_data is None
+
 

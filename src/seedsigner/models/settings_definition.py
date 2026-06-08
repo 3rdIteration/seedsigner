@@ -709,7 +709,7 @@ class SettingsDefinition:
                     attr_name=SettingsConstants.SETTING__CACHE_SCARD_PIN,
                     abbreviated_name="cachepin",
                     display_name=_mft("Cache Smartcard Pin"),
-                    help_text=_mft("Disabled (default) wipes the verified PIN on every Home navigation so the next operation re-prompts. Enabled keeps it in RAM until reboot or card swap for fewer prompts. (Instance switch, Lock card and card removal always wipe, regardless of this setting.)"),
+                    help_text=_mft("Off (default): re-enter PIN after returning Home. On: keep PIN in RAM until reboot for fewer prompts."),
                     type=SettingsConstants.TYPE__SELECT_1,
                     selection_options=SettingsConstants.OPTIONS__ENABLED_DISABLED,
                     default_value=SettingsConstants.OPTION__DISABLED),
