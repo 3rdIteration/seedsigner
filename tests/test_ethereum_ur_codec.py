@@ -125,3 +125,47 @@ class TestEthSignature:
             EthSignature(
                 request_id=b"\x00" * 16, signature=b"\x00" * 64,
             ).to_cbor()
+
+
+class TestSourceFingerprintNormalization:
+    """The UR/Keystone spec encodes source-fingerprint as a CBOR uint32, so a
+    real wallet's request decodes it to an int. The decoder must normalize it
+    to 4 bytes (our own encoder emits a 4-byte string; both must work)."""
+
+    def test_as_fingerprint_bytes_int(self):
+        from seedsigner.helpers.ethereum.ur_codec import _as_fingerprint_bytes
+        assert _as_fingerprint_bytes(0xDEADBEEF) == b"\xde\xad\xbe\xef"
+        assert _as_fingerprint_bytes(0) == b"\x00\x00\x00\x00"
+        assert _as_fingerprint_bytes(0xFFFFFFFF) == b"\xff\xff\xff\xff"
+
+    def test_as_fingerprint_bytes_bytes(self):
+        from seedsigner.helpers.ethereum.ur_codec import _as_fingerprint_bytes
+        assert _as_fingerprint_bytes(b"\xde\xad\xbe\xef") == b"\xde\xad\xbe\xef"
+
+    def test_as_fingerprint_bytes_none(self):
+        from seedsigner.helpers.ethereum.ur_codec import _as_fingerprint_bytes
+        assert _as_fingerprint_bytes(None) is None
+
+    def test_as_fingerprint_bytes_rejects_bad(self):
+        from seedsigner.helpers.ethereum.ur_codec import _as_fingerprint_bytes
+        for bad in (-1, 0x1_0000_0000, b"\x00\x00\x00", b"\x00" * 5, True, "deadbeef"):
+            with pytest.raises(ValueError):
+                _as_fingerprint_bytes(bad)
+
+    def test_decoder_accepts_uint32_fingerprint(self):
+        """A crypto-keypath whose source-fingerprint is a CBOR uint32 (the
+        spec form, what Keystone/Frame/keycard-shell emit) decodes to 4 bytes
+        — the real-world case our earlier bytes-only tests missed."""
+        from seedsigner.helpers.ethereum.ur_codec import (
+            CBOR_TAG_KEYPATH, CryptoKeypath, Tagging,
+        )
+        kp = CryptoKeypath.from_cbor_value(
+            Tagging(CBOR_TAG_KEYPATH, {1: [44, True, 60, True, 0, True], 2: 0xDEADBEEF})
+        )
+        assert kp.source_fingerprint == b"\xde\xad\xbe\xef"
+        assert kp.components == [44 | 0x80000000, 60 | 0x80000000, 0 | 0x80000000]
+
+    def test_bytes_round_trip_still_works(self, basic_request):
+        # Our own encoder emits a 4-byte string; round-trip must stay 4 bytes.
+        back = EthSignRequest.from_cbor(basic_request.to_cbor())
+        assert back.derivation_path.source_fingerprint == b"\xde\xad\xbe\xef"

@@ -1826,6 +1826,27 @@ class TestWrongCardDetection(unittest.TestCase):
         self.assertFalse(keycard_views._eth_request_card_mismatch(client, req))
         self.assertEqual(client.derived, [])
 
+    def test_mismatch_by_int_fingerprint(self):
+        """Real wallets (Keystone/Frame/keycard-shell) encode the fingerprint
+        as a uint32 → it decodes to an int. Must compare correctly and NOT
+        crash on bytes(<int>). This is the case the device hit in the wild."""
+        from seedsigner.views import keycard_views
+        client = self._FakeClient(self.PUB65)
+        # 0xDEADBEEF as an int, NOT bytes — differs from the card fp.
+        req = self._make_request(source_fingerprint=0xDEADBEEF)
+        self.assertTrue(keycard_views._eth_request_card_mismatch(client, req))
+
+    def test_match_by_int_fingerprint(self):
+        from seedsigner.views import keycard_views
+        from seedsigner.helpers.bitcoin import xpub as btc_xpub
+        from seedsigner.helpers.keycard_btc_signer import compress_pubkey
+        client = self._FakeClient(self.PUB65)
+        fp_int = int.from_bytes(
+            btc_xpub.pubkey_fingerprint(compress_pubkey(self.PUB65)), "big"
+        )
+        req = self._make_request(source_fingerprint=fp_int)
+        self.assertFalse(keycard_views._eth_request_card_mismatch(client, req))
+
     def test_address_preferred_over_fingerprint(self):
         """With both present the address is authoritative (also catches a
         wrong derivation path): a matching fingerprint must NOT rescue a
@@ -1914,6 +1935,59 @@ class TestWrongCardDetection(unittest.TestCase):
         self.assertIs(view.controller.eth_sign_request, req)
         self.assertIs(dest.View_cls, ToolsKeycardSignEthVerifyCardView)
         self.assertTrue(view.controller.activate_toast.called)
+
+    # ---- Finalize defense in depth ----------------------------------
+
+    def test_finalize_rejects_mismatch_without_signing(self):
+        """Even if the verify view were bypassed, Finalize must re-check and
+        refuse to sign for another wallet."""
+        from unittest.mock import patch
+        from seedsigner.views import keycard_views
+        from seedsigner.views.keycard_views import (
+            ToolsKeycardSignEthFinalizeView, KeycardErrorView,
+        )
+        req = self._make_request(source_fingerprint=0xDEADBEEF)
+        view = ToolsKeycardSignEthFinalizeView.__new__(ToolsKeycardSignEthFinalizeView)
+        view.controller = MagicMock()
+        view.controller.eth_sign_request = req
+        view.controller.has_any_keycard_auth.return_value = True
+        with patch.object(
+            keycard_views, "_open_unlocked_session_cached_or_prompt",
+            return_value=(MagicMock(), MagicMock()),
+        ), patch.object(
+            keycard_views, "_eth_request_card_mismatch", return_value=True,
+        ), patch(
+            "seedsigner.helpers.keycard_signer.sign_with_keycard",
+        ) as mock_sign:
+            dest = view.run()
+        mock_sign.assert_not_called()
+        self.assertIs(dest.View_cls, KeycardErrorView)
+        self.assertEqual(dest.view_args["title"], "Wrong card")
+        self.assertIsNone(view.controller.eth_sign_request)
+
+    def test_finalize_signs_when_match(self):
+        from unittest.mock import patch
+        from seedsigner.views import keycard_views
+        from seedsigner.views.keycard_views import (
+            ToolsKeycardSignEthFinalizeView, ToolsKeycardSignEthQrDisplayView,
+        )
+        req = self._make_request(source_fingerprint=0xDEADBEEF)
+        view = ToolsKeycardSignEthFinalizeView.__new__(ToolsKeycardSignEthFinalizeView)
+        view.controller = MagicMock()
+        view.controller.eth_sign_request = req
+        view.controller.has_any_keycard_auth.return_value = True
+        with patch.object(
+            keycard_views, "_open_unlocked_session_cached_or_prompt",
+            return_value=(MagicMock(), MagicMock()),
+        ), patch.object(
+            keycard_views, "_eth_request_card_mismatch", return_value=False,
+        ), patch(
+            "seedsigner.helpers.keycard_signer.sign_with_keycard",
+            return_value=MagicMock(),
+        ) as mock_sign:
+            dest = view.run()
+        mock_sign.assert_called_once()
+        self.assertIs(dest.View_cls, ToolsKeycardSignEthQrDisplayView)
 
     # ---- BTC PSBT ownership check -----------------------------------
 

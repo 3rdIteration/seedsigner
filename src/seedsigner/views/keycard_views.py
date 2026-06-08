@@ -4079,6 +4079,19 @@ class ToolsKeycardSignEthFinalizeView(View):
 
         try:
             client, _unused = _open_unlocked_session_cached_or_prompt(self)
+            # Defense in depth: even though ToolsKeycardSignEthVerifyCardView
+            # already gated this after the scan, re-confirm right before the
+            # irreversible sign so a routing change / alternate entry can never
+            # produce a signature for another wallet. (No-identity requests
+            # still pass — by design.)
+            if _eth_request_card_mismatch(client, request):
+                self.controller.eth_sign_request = None
+                self.controller.eth_signature = None
+                return _error_destination(
+                    _("Wrong card"),
+                    _("This request is for a different wallet. Try another keycard."),
+                    return_to_main=True,
+                )
             signature = sign_with_keycard(client, request)
         except KeycardPinPromptCancelled:
             return Destination(BackStackView)
@@ -4192,8 +4205,15 @@ def _eth_request_card_mismatch(client, request) -> bool:
         derived = _card_eth_address_at(client, request.derivation_path.components)
         return derived.lower() != to_checksum_address(address).lower()
     source_fp = getattr(request.derivation_path, "source_fingerprint", None)
-    if source_fp:
-        return bytes(source_fp) != _card_master_fingerprint(client)
+    if source_fp is not None:
+        # Real-world requests (Keystone/Frame/keycard-shell) encode the
+        # fingerprint as a uint32 → it decodes to an int. Normalize to 4 bytes
+        # so we compare correctly and never hit bytes(<int>) (which would
+        # allocate a giant buffer, not the fingerprint).
+        from seedsigner.helpers.ethereum.ur_codec import _as_fingerprint_bytes
+        fp = _as_fingerprint_bytes(source_fp)
+        if fp is not None:
+            return fp != _card_master_fingerprint(client)
     return False
 
 

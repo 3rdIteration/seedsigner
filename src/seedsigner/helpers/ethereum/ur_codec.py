@@ -24,6 +24,31 @@ def _unwrap_tagged(value, expected_tag: Optional[int] = None):
     return value
 
 
+def _as_fingerprint_bytes(value):
+    """Normalize a crypto-keypath ``source-fingerprint`` to 4 bytes (or None).
+
+    The UR/Keystone spec encodes ``source-fingerprint`` as a CBOR **uint32**,
+    so a spec-compliant request (MetaMask/Keystone/Frame/keycard-shell, …)
+    decodes it to a Python ``int``. Some encoders — including our own
+    ``to_cbor_value`` — instead emit a 4-byte byte string. Accept both and
+    always return 4 bytes so downstream comparisons (and the wrong-card check)
+    are uniform and never hit ``bytes(<int>)`` (which would allocate a buffer
+    of that *length*, not those *bytes*)."""
+    if value is None:
+        return None
+    if isinstance(value, bool):  # bool is an int subclass — reject explicitly
+        raise ValueError("source-fingerprint must be uint32 or 4-byte string")
+    if isinstance(value, int):
+        if value < 0 or value > 0xFFFFFFFF:
+            raise ValueError("source-fingerprint uint32 out of range")
+        return value.to_bytes(4, "big")
+    if isinstance(value, (bytes, bytearray)):
+        if len(value) != 4:
+            raise ValueError("source-fingerprint must be 4 bytes")
+        return bytes(value)
+    raise ValueError("source-fingerprint must be uint32 or 4-byte string")
+
+
 # Keystone data-type registry
 DATA_TYPE_LEGACY_TX = 1
 DATA_TYPE_TYPED_DATA = 2
@@ -76,7 +101,7 @@ class CryptoKeypath:
             components.append(index)
         return cls(
             components=components,
-            source_fingerprint=body.get(2),
+            source_fingerprint=_as_fingerprint_bytes(body.get(2)),
             depth=body.get(3),
         )
 
