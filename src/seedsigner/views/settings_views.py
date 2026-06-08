@@ -87,7 +87,7 @@ class SettingsMenuView(View):
             )
 
         elif self.visibility == SettingsConstants.VISIBILITY__HARDWARE:
-            title = "Hardware"
+            title = _("Hardware")
             button_data.append(self.SYSTEM_INFO)
             button_data.append(self.BATTERY_INFO)
             button_data.append(self.IO_TEST)
@@ -210,10 +210,10 @@ class SettingPBKDF2IterationsView(View):
 
         elif not 1 <= int(ret_value) <= 50:
             WarningScreen(
-                title="PBKDF2 Iterations Error",
+                title=_("PBKDF2 Iterations Error"),
                 show_back_button=False,
-                status_headline=f"out of range",
-                text=f"Value must be between 1 and 50",
+                status_headline=_("out of range"),
+                text=_("Value must be between 1 and 50"),
                 button_data=[ButtonOption("Try Again")]
             ).display()
 
@@ -453,7 +453,7 @@ class SCardReaderTestView(View):
                 print(available_readers_text)
                 self.run_screen(
                         LargeIconStatusScreen,
-                        title="Found Readers:",
+                        title=_("Found Readers:"),
                         status_headline=None,
                         text=available_readers_text,
                         show_back_button=False,
@@ -461,9 +461,9 @@ class SCardReaderTestView(View):
             else:
                 self.run_screen(
                         WarningScreen,
-                        title="Failure",
+                        title=_("Failure"),
                         status_headline=None,
-                        text=f"No Smartcard readers found...",
+                        text=_("No Smartcard readers found..."),
                         show_back_button=True,
                     )
                 return Destination(BackStackView)
@@ -471,9 +471,9 @@ class SCardReaderTestView(View):
         except ListReadersException:
             self.run_screen(
                     WarningScreen,
-                    title="PCSC Failure",
+                    title=_("PCSC Failure"),
                     status_headline=None,
-                    text=f"Unable to list readers (A restart may help, possibly faulty reader)",
+                    text=_("Unable to list readers (A restart may help, possibly faulty reader)"),
                     show_back_button=True,
                 )
             return Destination(BackStackView)
@@ -481,9 +481,9 @@ class SCardReaderTestView(View):
         except EstablishContextException:
             self.run_screen(
                     WarningScreen,
-                    title="PCSC Failure",
+                    title=_("PCSC Failure"),
                     status_headline=None,
-                    text=f"Unable to establish PCSC context(A restart may help, possibly faulty reader)",
+                    text=_("Unable to establish PCSC context(A restart may help, possibly faulty reader)"),
                     show_back_button=True,
                 )
             return Destination(BackStackView)
@@ -498,7 +498,7 @@ class SCARDTestView(View):
         import time
         from seedsigner.gui.screens import (RET_CODE__BACK_BUTTON, ButtonListScreen, WarningScreen, DireWarningScreen, seed_screens, LargeIconStatusScreen)
 
-        self.loading_screen = LoadingScreenThread(text="Scanning for Smart Card")
+        self.loading_screen = LoadingScreenThread(text=_("Scanning for Smart Card"))
         self.loading_screen.start()
 
         from smartcard.CardType import ATRCardType
@@ -523,9 +523,9 @@ class SCARDTestView(View):
                 self.loading_screen.stop()
                 self.run_screen(
                         WarningScreen,
-                        title="Failure",
+                        title=_("Failure"),
                         status_headline=None,
-                        text=f"No Smartcard detected...",
+                        text=_("No Smartcard detected..."),
                         show_back_button=True,
                     )
                 return Destination(BackStackView)
@@ -537,7 +537,7 @@ class SCARDTestView(View):
 
             self.run_screen(
                     LargeIconStatusScreen,
-                    title="Found SmartCard",
+                    title=_("Found SmartCard"),
                     status_headline=None,
                     text=card_atr,
                     show_back_button=False,
@@ -546,9 +546,9 @@ class SCARDTestView(View):
             self.loading_screen.stop()
             self.run_screen(
                     WarningScreen,
-                    title="PCSC Failure",
+                    title=_("PCSC Failure"),
                     status_headline=None,
-                    text=f"Unable to list readers (A restart may help, possibly faulty reader)",
+                    text=_("Unable to list readers (A restart may help, possibly faulty reader)"),
                     show_back_button=True,
                 )
             return Destination(BackStackView)
@@ -557,9 +557,9 @@ class SCARDTestView(View):
             self.loading_screen.stop()
             self.run_screen(
                     WarningScreen,
-                    title="PCSC Failure",
+                    title=_("PCSC Failure"),
                     status_headline=None,
-                    text=f"Unable to establish PCSC context(A restart may help, possibly faulty reader)",
+                    text=_("Unable to establish PCSC context(A restart may help, possibly faulty reader)"),
                     show_back_button=True,
                 )
             return Destination(BackStackView)
@@ -574,7 +574,7 @@ class NFCTestView(View):
         import time
         from seedsigner.gui.screens import (RET_CODE__BACK_BUTTON, ButtonListScreen, WarningScreen, DireWarningScreen, seed_screens, LargeIconStatusScreen)
 
-        self.loading_screen = LoadingScreenThread(text="Scanning for NFC Tag")
+        self.loading_screen = LoadingScreenThread(text=_("Scanning for NFC Tag"))
         self.loading_screen.start()
 
         os.system("ifdnfc-activate no") # Need to disable IFD-NFC to be able to scan using libnfc-bindings...
@@ -591,9 +591,9 @@ class NFCTestView(View):
             print('ERROR: Unable to open NFC device.')
             self.run_screen(
                 WarningScreen,
-                title="NFC Failure",
+                title=_("NFC Failure"),
                 status_headline=None,
-                text=f"ERROR: Unable to open NFC device. \n(May not be connected)",
+                text=_("ERROR: Unable to open NFC device. \n(May not be connected)"),
                 show_back_button=True,
             )
             return Destination(BackStackView)
@@ -603,9 +603,9 @@ class NFCTestView(View):
             print('ERROR: Unable to init NFC device.')
             self.run_screen(
                 WarningScreen,
-                title="NFC Failure",
+                title=_("NFC Failure"),
                 status_headline=None,
-                text=f"ERROR: Unable to init NFC device.",
+                text=_("ERROR: Unable to init NFC device."),
                 show_back_button=True,
             )
             return Destination(BackStackView)
@@ -644,7 +644,7 @@ class NFCTestView(View):
 
             self.run_screen(
                 LargeIconStatusScreen,
-                title="Found NFC Tag",
+                title=_("Found NFC Tag"),
                 status_headline=None,
                 text=foundtext,
                 show_back_button=False,
@@ -653,18 +653,18 @@ class NFCTestView(View):
             print('Warning: IFD-NFC Conflict.')
             self.run_screen(
                 WarningScreen,
-                title="NFC Conflict",
+                title=_("NFC Conflict"),
                 status_headline=None,
-                text=f"Can't scan when IFD-NFC Active",
+                text=_("Can't scan when IFD-NFC Active"),
                 show_back_button=True,
             )
         else:
             print('Warning: No NFC Tag Detected.')
             self.run_screen(
                 WarningScreen,
-                title="Warning",
+                title=_("Warning"),
                 status_headline=None,
-                text=f"Warning: No NFC Tag Detected.",
+                text=_("Warning: No NFC Tag Detected."),
                 show_back_button=True,
             )
 
@@ -684,7 +684,7 @@ class RestartPCSCView(View):
         import os
         import time
         # Restart PCSC (Just do this all the time if anything has changed)
-        self.loading_screen = LoadingScreenThread(text="Restarting PCSC")
+        self.loading_screen = LoadingScreenThread(text=_("Restarting PCSC"))
         self.loading_screen.start()
         print(self.settings.HOSTNAME)
         if self.settings.HOSTNAME == "seedsigner-os":

@@ -1,4 +1,5 @@
 import gettext
+from gettext import gettext as _
 import logging
 import json
 import os
@@ -499,7 +500,7 @@ class Settings(Singleton):
                 logger.debug("Disabling USB")
                 rpi_type = _get_rpi_type()
                 try:
-                    self.loading_screen = seedsigner.gui.screens.screen.LoadingScreenThread(text="Disabling USB Ports")
+                    self.loading_screen = seedsigner.gui.screens.screen.LoadingScreenThread(text=_("Disabling USB Ports"))
                     self.loading_screen.start()
                 except:
                     pass
@@ -527,7 +528,7 @@ class Settings(Singleton):
                 logger.debug("Enabling USB")
                 rpi_type = _get_rpi_type()
                 try:
-                    self.loading_screen = seedsigner.gui.screens.screen.LoadingScreenThread(text="Enabling USB Ports")
+                    self.loading_screen = seedsigner.gui.screens.screen.LoadingScreenThread(text=_("Enabling USB Ports"))
                     self.loading_screen.start()
                 except:
                     pass
@@ -555,18 +556,18 @@ class Settings(Singleton):
 
                     if "Zero" in rpi_type or "Model A" in rpi_type: # For RPi0, 02w or model A devices
                         screen = seedsigner.gui.screens.screen.WarningScreen(
-                            title="Notice",
+                            title=_("Notice"),
                             status_headline=None,
-                            text="Enabling USB ports on this device requires a device restart (Full power cycle)",
+                            text=_("Enabling USB ports on this device requires a device restart (Full power cycle)"),
                             show_back_button=False
                         )
                         screen.display()
 
                     if "Unknown" in rpi_type: # For unknown RPi devices
                         screen = seedsigner.gui.screens.screen.WarningScreen(
-                            title="Notice",
-                            status_headline="Unable to detect RPi Model",
-                            text="Enabling USB ports on this device likely requires a restart (Full power cycle)",
+                            title=_("Notice"),
+                            status_headline=_("Unable to detect RPi Model"),
+                            text=_("Enabling USB ports on this device likely requires a restart (Full power cycle)"),
                             show_back_button=False
                         )
                         screen.display()
@@ -579,7 +580,7 @@ class Settings(Singleton):
             if "phoenix-usb" in value and "phoenix-usb" not in self._data[attr_name]:
                 logger.debug("Phoenix Enabled")
                 try:
-                    self.loading_screen = seedsigner.gui.screens.screen.LoadingScreenThread(text="Starting OpenCT")
+                    self.loading_screen = seedsigner.gui.screens.screen.LoadingScreenThread(text=_("Starting OpenCT"))
                     self.loading_screen.start()
                 except:
                     pass
@@ -595,7 +596,7 @@ class Settings(Singleton):
             if "phoenix-usb" not in value and "phoenix-usb" in self._data[attr_name]:
                 logger.debug("Phoenix Disabled")
                 try:
-                    self.loading_screen = seedsigner.gui.screens.screen.LoadingScreenThread(text="Stopping OpenCT")
+                    self.loading_screen = seedsigner.gui.screens.screen.LoadingScreenThread(text=_("Stopping OpenCT"))
                     self.loading_screen.start()
                 except:
                     pass
@@ -610,7 +611,7 @@ class Settings(Singleton):
 
             if "pn532" in value and "pn532" not in self._data[attr_name]:
                 try:
-                    self.loading_screen = seedsigner.gui.screens.screen.LoadingScreenThread(text="Enabling PN532")
+                    self.loading_screen = seedsigner.gui.screens.screen.LoadingScreenThread(text=_("Enabling PN532"))
                     self.loading_screen.start()
                 except:
                     pass
@@ -623,7 +624,7 @@ class Settings(Singleton):
 
             if "pn532" not in value and "pn532" in self._data[attr_name]:
                 try:
-                    self.loading_screen = seedsigner.gui.screens.screen.LoadingScreenThread(text="Disabling PN532")
+                    self.loading_screen = seedsigner.gui.screens.screen.LoadingScreenThread(text=_("Disabling PN532"))
                     self.loading_screen.start()
                 except:
                     pass
@@ -636,7 +637,7 @@ class Settings(Singleton):
 
             # Restart PCSC (Just do this all the time if anything has changed)
             try:
-                self.loading_screen = seedsigner.gui.screens.screen.LoadingScreenThread(text="Restarting PCSC")
+                self.loading_screen = seedsigner.gui.screens.screen.LoadingScreenThread(text=_("Restarting PCSC"))
                 self.loading_screen.start()
             except:
                 pass

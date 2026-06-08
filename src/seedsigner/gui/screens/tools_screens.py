@@ -38,7 +38,7 @@ class ToolsNetworkInfoScreen(ButtonListScreen):
         if len(self.paged_info) == 1:
             self.title = _("Network Info")
         else:
-            self.title = f"""Network Info (pt {self.page_num + 1}/{len(self.paged_info)})"""
+            self.title = _("Network Info (pt {}/{})").format(self.page_num + 1, len(self.paged_info))
 
         self.is_bottom_list = True
         button_label = _("Next") if self.page_num < len(self.paged_info) - 1 else _("Done")
@@ -712,7 +712,7 @@ class ToolsTextQRTranscribeModePromptScreen(ButtonListScreen):
         super().__post_init__()
 
         self.components.append(TextArea(
-            text="The QR codes output in both modes may differ, but both are valid QR codes.",
+            text=_("The QR codes output in both modes may differ, but both are valid QR codes."),
             screen_y=self.top_nav.height,
             height=self.buttons[0].screen_y - self.top_nav.height,
         ))
@@ -725,7 +725,7 @@ class ToolsTranscribeTextQRWholeQRScreen(WarningEdgesMixin, ButtonListScreen):
     num_modules: int = None
 
     def __post_init__(self):
-        self.title = "Transcribe Text QR"
+        self.title = _("Transcribe Text QR")
         button_label = _("Begin {}x{}").format(self.num_modules, self.num_modules)
         self.button_data = [ButtonOption(button_label)]
         self.is_bottom_list = True
@@ -937,7 +937,7 @@ class ToolsTranscribeTextQRConfirmQRPromptScreen(ButtonListScreen):
         super().__post_init__()
 
         self.components.append(TextArea(
-            text="Optionally scan your transcribed text QR code to confirm that it reads back correctly.",
+            text=_("Optionally scan your transcribed text QR code to confirm that it reads back correctly."),
             screen_y=self.top_nav.height,
             height=self.buttons[0].screen_y - self.top_nav.height,
         ))

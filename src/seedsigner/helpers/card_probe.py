@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from gettext import gettext as _
 from typing import Literal, Optional
 
 logger = logging.getLogger(__name__)
@@ -227,7 +228,7 @@ def run_card_gate(view, kind: CardKind, *, title: str, setup_view):
         try:
             from seedsigner.gui.toast import InfoToast
             view.controller.activate_toast(
-                InfoToast(label_text="No card — returned home")
+                InfoToast(label_text=_("No card — returned home"))
             )
         except Exception:
             logger.exception("InfoToast dispatch failed in run_card_gate")
@@ -238,9 +239,9 @@ def run_card_gate(view, kind: CardKind, *, title: str, setup_view):
         # Offer the install path before the user is stuck with a
         # warning-and-back dead end.
         from seedsigner.gui.screens.screen import ButtonListScreen
-        from seedsigner.gui.screens.screen import ButtonOption as _ButtonOption
-        install_btn = _ButtonOption("Install applet")
-        cancel_btn = _ButtonOption("Cancel")
+        from seedsigner.gui.screens.screen import ButtonOption
+        install_btn = ButtonOption("Install applet")
+        cancel_btn = ButtonOption("Cancel")
         selected = view.run_screen(
             ButtonListScreen,
             title=title,

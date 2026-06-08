@@ -1804,7 +1804,7 @@ class SeedSignMessageConfirmMessageScreen(ButtonListScreen):
         if len(self.sign_message_data["paged_message"]) == 1:
             self.title = _("Review Message")
         else:
-            self.title = f"""Message (pt {self.page_num + 1}/{len(self.sign_message_data["paged_message"])})"""
+            self.title = _("Message (pt {}/{})").format(self.page_num + 1, len(self.sign_message_data["paged_message"]))
         self.is_bottom_list = True
         self.is_button_text_centered = True
         self.button_data = [ButtonOption("Next")]

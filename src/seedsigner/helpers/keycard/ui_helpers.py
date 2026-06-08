@@ -18,8 +18,10 @@ Threat model recap (see also ``AGENTS.md`` > Ethereum + Keycard):
 from __future__ import annotations
 
 import logging
+from gettext import gettext as _
 from typing import TYPE_CHECKING, Optional, Tuple
 
+from seedsigner.helpers.l10n import mark_for_translation as _mft
 from seedsigner.helpers.secure_delete import wipe_string
 
 if TYPE_CHECKING:
@@ -562,7 +564,7 @@ def try_silent_ephemeral_pair(parent_view: "View") -> bool:
 def classify_card_error(
     exc: BaseException,
     *,
-    default_title: str = "Card error",
+    default_title: str = _mft("Card error"),
 ) -> Tuple[str, str]:
     """Map a Keycard-flow exception to a user-friendly ``(title, body)``.
 
@@ -594,17 +596,17 @@ def classify_card_error(
     from seedsigner.helpers.keycard.secure_channel import SecureChannelError
 
     if isinstance(exc, NoReaderError):
-        return ("No reader", "Connect a card reader\nand retry.")
+        return (_("No reader"), _("Connect a card reader\nand retry."))
     if isinstance(exc, NoCardError):
-        return ("No card", "Insert a card and retry.")
+        return (_("No card"), _("Insert a card and retry."))
     if isinstance(exc, KeycardCardChangedError):
-        return ("Card changed", "Pair the inserted card\nfirst.")
+        return (_("Card changed"), _("Pair the inserted card\nfirst."))
     if isinstance(exc, KeycardNotInitialisedError):
-        return ("Not initialised",
-                "Run Setup ›\nInitialise card first.")
+        return (_("Not initialised"),
+                _("Run Setup ›\nInitialise card first."))
     if isinstance(exc, KeycardNoMasterKeyError):
-        return ("No key on card",
-                "Generate key or\nimport seed first.")
+        return (_("No key on card"),
+                _("Generate key or\nimport seed first."))
     if isinstance(exc, SecureChannelError):
         # The "cryptogram mismatch" failure is only ever caused by a
         # wrong pairing password (PAIR step 1 cryptogram check); other
@@ -612,29 +614,31 @@ def classify_card_error(
         # are genuine secure-channel issues.
         msg = str(exc)
         if "cryptogram" in msg.lower():
-            return ("Wrong password",
-                    "Pairing password did\nnot match this card.")
+            return (_("Wrong password"),
+                    _("Pairing password did\nnot match this card."))
         # Surface the underlying reason so a stale pairing on disk, a
         # MAC mismatch, or a truncated OPEN response can be diagnosed
         # without attaching a debugger.
         detail = (msg or "unknown")[:60]
-        return ("Secure channel", f"SC open failed:\n{detail}")
+        return (_("Secure channel"), _("SC open failed:\n{}").format(detail))
     if isinstance(exc, PairingStorageError):
-        return ("Storage error", str(exc)[:100])
+        return (_("Storage error"), str(exc)[:100])
     if isinstance(exc, APDUError):
         sw = exc.sw
         if sw == 0x6A82:
-            return ("Applet not found",
-                    "Try Manage › Instances\nto switch active AID.")
+            return (_("Applet not found"),
+                    _("Try Manage › Instances\nto switch active AID."))
         if sw in (0x6982, 0x6985):
-            return ("Card refused",
-                    f"Auth/condition not met\n(SW={sw:04X}).")
+            return (_("Card refused"),
+                    _("Auth/condition not met\n(SW={}).").format(f"{sw:04X}"))
         if (sw & 0xFFF0) == 0x63C0:
             tries = sw & 0x000F
-            return ("Wrong PIN", f"{tries} tries left.")
+            # TRANSLATOR_NOTE: {} is the number of remaining PIN attempts
+            return (_("Wrong PIN"), _("{} tries left.").format(tries))
         if (sw & 0xFF00) == 0x6D00:
-            return ("Not supported",
-                    "Card does not implement\nthis op.")
-        short = ISO7816_STATUS_WORDS.get(sw, "Card error")
-        return (default_title, f"SW={sw:04X}\n{short}"[:100])
-    return (default_title, str(exc)[:100])
+            return (_("Not supported"),
+                    _("Card does not implement\nthis op."))
+        short = ISO7816_STATUS_WORDS.get(sw, _("Card error"))
+        # TRANSLATOR_NOTE: {} placeholders are a hex status word and a short reason
+        return (_(default_title), (_("SW={}\n{}").format(f"{sw:04X}", short))[:100])
+    return (_(default_title), str(exc)[:100])

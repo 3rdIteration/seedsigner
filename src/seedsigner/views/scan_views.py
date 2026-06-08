@@ -126,7 +126,7 @@ class ScanView(View):
         if self.decoder.is_complete:
             if not self.is_valid_qr_type:
                 return Destination(ErrorView, view_args=dict(
-                    title="Error",
+                    title=_("Error"),
                     status_headline=_("Wrong QR Type"),
                     text=_(self.invalid_qr_type_message) + f""", received "{self.decoder.qr_type.replace("__", ": ").replace("_", " ")}\" format""",
                     button_text=_("Back"),
@@ -188,7 +188,7 @@ class ScanInvalidQRTypeView(View):
     def run(self):
         self.run_screen(
             WarningScreen,
-            title="Error",
+            title=_("Error"),
             status_headline=_("Unrecognised QR"),
             text=_("Scanned QR code was not in a supported format."),
             show_back_button=False,

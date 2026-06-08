@@ -282,7 +282,7 @@ class ToolsSeedkeeperView(View):
     def run(self):
         from seedsigner.helpers.card_probe import run_card_gate
         gate = run_card_gate(
-            self, "seedkeeper", title="SeedKeeper",
+            self, "seedkeeper", title=_("SeedKeeper"),
             setup_view=ToolsSeedkeeperSetupView,
         )
         if gate is not None:
@@ -299,7 +299,7 @@ class ToolsSeedkeeperView(View):
 
         selected_menu_num = self.run_screen(
             ButtonListScreen,
-            title="SeedKeeper",
+            title=_("SeedKeeper"),
             is_button_text_centered=False,
             button_data=button_data
         )
@@ -345,7 +345,7 @@ class ToolsSeedkeeperFreeSpaceView(View):
             except Exception as exc:
                 self.run_screen(
                     WarningScreen,
-                    title="Error",
+                    title=_("Error"),
                     status_headline=None,
                     text=str(exc),
                     show_back_button=True,
@@ -353,11 +353,12 @@ class ToolsSeedkeeperFreeSpaceView(View):
                 return Destination(BackStackView)
 
             free_kib = free_bytes / 1024
-            text = f"{free_bytes} bytes free\n({free_kib:.1f} KiB)"
+            # TRANSLATOR_NOTE: {} are free space in bytes and the same in KiB
+            text = _("{} bytes free\n({:.1f} KiB)").format(free_bytes, free_kib)
 
             self.run_screen(
                 LargeIconStatusScreen,
-                title="Seedkeeper Free Space",
+                title=_("Seedkeeper Free Space"),
                 status_headline=None,
                 text=text,
                 show_back_button=True,
@@ -367,7 +368,7 @@ class ToolsSeedkeeperFreeSpaceView(View):
         except Exception as exc:
             self.run_screen(
                 WarningScreen,
-                title="Error",
+                title=_("Error"),
                 status_headline=None,
                 text=str(exc),
                 show_back_button=True,
@@ -388,7 +389,7 @@ class ToolsSeedkeeperCloneSecretsView(View):
         try:
             insert_prompt = self.run_screen(
                 LargeIconStatusScreen,
-                title="Insert Source Card",
+                title=_("Insert Source Card"),
                 status_headline=None,
                 text=(
                     "Insert the source Seedkeeper card to copy secrets from, "
@@ -410,7 +411,7 @@ class ToolsSeedkeeperCloneSecretsView(View):
             if not connector:
                 return None
 
-            loading_screen = LoadingScreenThread(text="Reading Source Card\n\n\n\n\n\n")
+            loading_screen = LoadingScreenThread(text=_("Reading Source Card\n\n\n\n\n\n"))
             loading_screen.start()
 
             headers = connector.seedkeeper_list_secret_headers()
@@ -443,20 +444,20 @@ class ToolsSeedkeeperCloneSecretsView(View):
             if not exportable_secrets:
                 self.run_screen(
                     WarningScreen,
-                    title="No Exportable Secrets",
+                    title=_("No Exportable Secrets"),
                     status_headline=None,
-                    text="Source card has no secrets that can be cloned.",
+                    text=_("Source card has no secrets that can be cloned."),
                     show_back_button=False,
                 )
                 return None
 
-            summary_lines = [f"Secrets ready: {len(exportable_secrets)}"]
+            summary_lines = [_("Secrets ready: {}").format(len(exportable_secrets))]
             if skipped_unexportable:
-                summary_lines.append(f"Skipped (locked): {skipped_unexportable}")
+                summary_lines.append(_("Skipped (locked): {}").format(skipped_unexportable))
 
             self.run_screen(
                 LargeIconStatusScreen,
-                title="Source Ready",
+                title=_("Source Ready"),
                 status_headline=None,
                 text="\n".join(summary_lines),
                 show_back_button=False,
@@ -469,7 +470,7 @@ class ToolsSeedkeeperCloneSecretsView(View):
                 loading_screen.stop()
             self.run_screen(
                 WarningScreen,
-                title="Error",
+                title=_("Error"),
                 status_headline=None,
                 text=str(exc),
                 show_back_button=True,
@@ -490,7 +491,7 @@ class ToolsSeedkeeperCloneSecretsView(View):
         try:
             insert_prompt = self.run_screen(
                 LargeIconStatusScreen,
-                title="Insert Destination Card",
+                title=_("Insert Destination Card"),
                 status_headline=None,
                 text=(
                     "Insert the destination Seedkeeper card to copy secrets to, "
@@ -515,7 +516,7 @@ class ToolsSeedkeeperCloneSecretsView(View):
                     "Re-insert a Seedkeeper card to retry."
                 )
 
-            loading_screen = LoadingScreenThread(text="Writing Destination Card\n\n\n\n\n\n")
+            loading_screen = LoadingScreenThread(text=_("Writing Destination Card\n\n\n\n\n\n"))
             loading_screen.start()
 
             dest_headers = connector.seedkeeper_list_secret_headers()
@@ -596,12 +597,10 @@ class ToolsSeedkeeperCloneSecretsView(View):
 
             self.run_screen(
                 LargeIconStatusScreen,
-                title="Clone Complete",
+                title=_("Clone Complete"),
                 status_headline=None,
-                text=(
-                    f"Imported: {imported}\n"
-                    f"Skipped Existing: {skipped_existing}\n"
-                    f"Skipped Unsupported: {skipped_unsupported}"
+                text=_("Imported: {}\nSkipped Existing: {}\nSkipped Unsupported: {}").format(
+                    imported, skipped_existing, skipped_unsupported
                 ),
                 show_back_button=False,
                 button_data=[ButtonOption("Continue")],
@@ -632,7 +631,7 @@ class ToolsSeedkeeperCloneSecretsView(View):
             if result is False:
                 retry_choice = self.run_screen(
                     WarningScreen,
-                    title="Clone Failed",
+                    title=_("Clone Failed"),
                     status_headline=None,
                     text=error_message or "Unable to write to destination card.",
                     show_back_button=False,
@@ -649,7 +648,7 @@ class ToolsSeedkeeperCloneSecretsView(View):
 
             choice = self.run_screen(
                 ButtonListScreen,
-                title="Clone Another Card?",
+                title=_("Clone Another Card?"),
                 is_button_text_centered=False,
                 button_data=[ButtonOption("Yes"), ButtonOption("No")],
                 show_back_button=True,
@@ -677,7 +676,7 @@ class ToolsSeedkeeperViewSecretsView(View):
             if not Satochip_Connector:
                 return Destination(BackStackView)
 
-            self.loading_screen = LoadingScreenThread(text="Listing Secrets\n\n\n\n\n\n")
+            self.loading_screen = LoadingScreenThread(text=_("Listing Secrets\n\n\n\n\n\n"))
             self.loading_screen.start()
 
             headers = Satochip_Connector.seedkeeper_list_secret_headers()
@@ -715,7 +714,7 @@ class ToolsSeedkeeperViewSecretsView(View):
                 fingerprint = header['fingerprint']
 
                 if export_rights == 'Plaintext export allowed':
-                    if len(label) == 0: label = "Unnamed Secret"
+                    if len(label) == 0: label = _("Unnamed Secret")
                     headers_parsed.append((sid, label))
                     button_data.append(ButtonOption(label))
 
@@ -723,16 +722,16 @@ class ToolsSeedkeeperViewSecretsView(View):
             if len(headers_parsed) < 1:
                 self.run_screen(
                 WarningScreen,
-                title="No Secrets to Load",
+                title=_("No Secrets to Load"),
                 status_headline=None,
-                text=f"No Secrets to Load from Seedkeeper",
+                text=_("No Secrets to Load from Seedkeeper"),
                 show_back_button=False,
                 )   
                 return Destination(BackStackView)
 
             selected_menu_num = self.run_screen(
                 ButtonListScreen,
-                title="Select Secret",
+                title=_("Select Secret"),
                 is_button_text_centered=False,
                 button_data=button_data,
                 show_back_button=True,
@@ -741,7 +740,7 @@ class ToolsSeedkeeperViewSecretsView(View):
             if selected_menu_num == RET_CODE__BACK_BUTTON:
                 return Destination(BackStackView)
 
-            self.loading_screen = LoadingScreenThread(text="Loading Secret\n\n\n\n\n\n")
+            self.loading_screen = LoadingScreenThread(text=_("Loading Secret\n\n\n\n\n\n"))
             self.loading_screen.start()
 
             secret_dict = Satochip_Connector.seedkeeper_export_secret(headers_parsed[selected_menu_num][0], None)
@@ -873,7 +872,7 @@ class ToolsSeedkeeperViewSecretsView(View):
             self.loading_screen.stop()
             self.run_screen(
                 WarningScreen,
-                title="Error",
+                title=_("Error"),
                 status_headline=None,
                 text=str(e),
                 show_back_button=True,
@@ -900,11 +899,11 @@ class ToolsSeedkeeperImportPasswordView(View):
     def run(self):
         from seedsigner.gui.screens.screen import LoadingScreenThread
 
-        secret_label = seed_screens.SeedAddPassphraseScreen(title="Secret Label").display()
+        secret_label = seed_screens.SeedAddPassphraseScreen(title=_("Secret Label")).display()
         if "is_back_button" in secret_label:
             return Destination(BackStackView)
 
-        secret_text = seed_screens.SeedAddPassphraseScreen(title="Secret Text").display()
+        secret_text = seed_screens.SeedAddPassphraseScreen(title=_("Secret Text")).display()
         if "is_back_button" in secret_text:
             return Destination(BackStackView)
 
@@ -934,7 +933,7 @@ class ToolsSeedkeeperImportPasswordView(View):
         except Exception as e:
             self.run_screen(
                 WarningScreen,
-                title="Error",
+                title=_("Error"),
                 status_headline=None,
                 text=str(e),
                 show_back_button=False,
@@ -945,7 +944,7 @@ class ToolsSeedkeeperImportPasswordView(View):
         if not fits:
             self.run_screen(
                 WarningScreen,
-                title="Not Enough Space",
+                title=_("Not Enough Space"),
                 status_headline=None,
                 text=seedkeeper_utils.format_seedkeeper_space_error(required_bytes, free_bytes),
                 show_back_button=False,
@@ -953,7 +952,7 @@ class ToolsSeedkeeperImportPasswordView(View):
             )
             return Destination(BackStackView)
         try:
-            self.loading_screen = LoadingScreenThread(text="Saving Secret\n\n\n\n\n\n")
+            self.loading_screen = LoadingScreenThread(text=_("Saving Secret\n\n\n\n\n\n"))
             self.loading_screen.start()
 
             (sid, fingerprint) = Satochip_Connector.seedkeeper_import_secret(secret_dic)
@@ -963,9 +962,9 @@ class ToolsSeedkeeperImportPasswordView(View):
             logger.info("Imported - SID:", sid, " Fingerprint:", fingerprint)
             self.run_screen(
                 LargeIconStatusScreen,
-                title="Success",
+                title=_("Success"),
                 status_headline=None,
-                text=f"Password Imported",
+                text=_("Password Imported"),
                 show_back_button=False,
             )
         except Exception as e:
@@ -973,9 +972,9 @@ class ToolsSeedkeeperImportPasswordView(View):
             self.loading_screen.stop()
             self.run_screen(
                 WarningScreen,
-                title="Failed",
+                title=_("Failed"),
                 status_headline=None,
-                text=f"Password Import Failed",
+                text=_("Password Import Failed"),
                 show_back_button=False,
             )
         
@@ -996,7 +995,7 @@ class ToolsSeedkeeperDeleteSecretView(View):
             if status['protocol_minor_version'] == 1:
                 raise ValueError("Secret deletion is not supported on Seedkeeper v1")
 
-            self.loading_screen = LoadingScreenThread(text="Listing Secrets\n\n\n\n\n\n")
+            self.loading_screen = LoadingScreenThread(text=_("Listing Secrets\n\n\n\n\n\n"))
             self.loading_screen.start()
 
             headers = Satochip_Connector.seedkeeper_list_secret_headers()
@@ -1034,7 +1033,7 @@ class ToolsSeedkeeperDeleteSecretView(View):
                 fingerprint = header['fingerprint']
 
                 if export_rights == 'Plaintext export allowed':
-                    if len(label) == 0: label = "Unnamed Secret"
+                    if len(label) == 0: label = _("Unnamed Secret")
                     headers_parsed.append((sid, label))
                     button_data.append(ButtonOption(label))
 
@@ -1042,16 +1041,16 @@ class ToolsSeedkeeperDeleteSecretView(View):
             if len(headers_parsed) < 1:
                 self.run_screen(
                 WarningScreen,
-                title="No Secrets to Load",
+                title=_("No Secrets to Load"),
                 status_headline=None,
-                text=f"No Secrets to Load from Seedkeeper",
+                text=_("No Secrets to Load from Seedkeeper"),
                 show_back_button=False,
                 )   
                 return Destination(BackStackView)
 
             selected_menu_num = self.run_screen(
                 ButtonListScreen,
-                title="Select Secret",
+                title=_("Select Secret"),
                 is_button_text_centered=False,
                 button_data=button_data,
                 show_back_button=True,
@@ -1061,14 +1060,14 @@ class ToolsSeedkeeperDeleteSecretView(View):
                 return Destination(BackStackView)
 
             warning_screen_num = DireWarningScreen(
-                status_headline="Delete Confirmation",
-                text="This will delete this secret, this cannot be un-done",
+                status_headline=_("Delete Confirmation"),
+                text=_("This will delete this secret, this cannot be un-done"),
             ).display()
 
             if warning_screen_num == RET_CODE__BACK_BUTTON:
                 return Destination(BackStackView)
 
-            self.loading_screen = LoadingScreenThread(text="Deleting Secret\n\n\n\n\n\n")
+            self.loading_screen = LoadingScreenThread(text=_("Deleting Secret\n\n\n\n\n\n"))
             self.loading_screen.start()
 
             result = Satochip_Connector.seedkeeper_reset_secret(headers_parsed[selected_menu_num][0])
@@ -1076,7 +1075,7 @@ class ToolsSeedkeeperDeleteSecretView(View):
             self.loading_screen.stop()
 
             LargeIconStatusScreen(
-                text="Secret Deleted",
+                text=_("Secret Deleted"),
             ).display()
 
             return Destination(BackStackView)
@@ -1086,7 +1085,7 @@ class ToolsSeedkeeperDeleteSecretView(View):
             self.loading_screen.stop()
             self.run_screen(
                 WarningScreen,
-                title="Error",
+                title=_("Error"),
                 status_headline=None,
                 text=str(e),
                 show_back_button=True,
@@ -1100,7 +1099,7 @@ class ToolsSeedkeeperAdvancedView(View):
         button_data = [self.UNINSTALL]
         selected = self.run_screen(
             ButtonListScreen,
-            title="SeedKeeper Advanced",
+            title=_("SeedKeeper Advanced"),
             is_button_text_centered=False,
             button_data=button_data,
         )
@@ -1119,9 +1118,9 @@ class ToolsSeedkeeperUninstallAppletView(View):
         )
         ret = self.run_screen(
             DireWarningScreen,
-            title="Uninstall",
+            title=_("Uninstall"),
             status_headline=None,
-            text="Delete the SeedKeeper applet?\nUser data will be lost.",
+            text=_("Delete the SeedKeeper applet?\nUser data will be lost."),
             show_back_button=True,
             button_data=[ButtonOption("Delete")],
         )
@@ -1130,16 +1129,16 @@ class ToolsSeedkeeperUninstallAppletView(View):
 
         result = seedkeeper_utils.run_globalplatform(
             self, f"--delete 536565644b6565706572 -force",
-            "Deleting SeedKeeper applet", None,
+            _("Deleting SeedKeeper applet"), None,
         )
         if result is None:
             return Destination(BackStackView)
 
         self.run_screen(
             LargeIconStatusScreen,
-            title="Uninstall",
+            title=_("Uninstall"),
             status_headline=None,
-            text="SeedKeeper applet removed.",
+            text=_("SeedKeeper applet removed."),
             show_back_button=False,
             button_data=[ButtonOption("OK")],
         )
@@ -1171,7 +1170,7 @@ class ToolsMicroSDMenuView(View):
 
         selected_menu_num = self.run_screen(
             ButtonListScreen,
-            title="MicroSD Tools",
+            title=_("MicroSD Tools"),
             is_button_text_centered=False,
             button_data=button_data
         )
@@ -1183,9 +1182,9 @@ class ToolsMicroSDMenuView(View):
         if MicroSD.is_desktop_mode():
             self.run_screen(
                 WarningScreen,
-                title="Unavailable",
+                title=_("Unavailable"),
                 status_headline=None,
-                text="MicroSD tools are not supported on desktop.",
+                text=_("MicroSD tools are not supported on desktop."),
                 show_back_button=False,
                 button_data=[ButtonOption("OK")],
             )
@@ -1215,9 +1214,9 @@ class ToolsMicroSDFlashView(View):
         if len(self.controller.storage.seeds) > 0:
             ret = self.run_screen(
                 WarningScreen,
-                title="WARNING",
+                title=_("WARNING"),
                 status_headline=None,
-                text="These tools read from the microSD card and may leak loaded secrets.",
+                text=_("These tools read from the microSD card and may leak loaded secrets."),
                 show_back_button=True,
                 button_data=[ButtonOption("Continue")]
             )
@@ -1237,7 +1236,7 @@ class ToolsMicroSDFlashView(View):
 
         selected_file_num = self.run_screen(
             ButtonListScreen,
-            title="Select Image",
+            title=_("Select Image"),
             is_button_text_centered=False,
             button_data=microsd_images_buttons
         )
@@ -1255,18 +1254,18 @@ class ToolsMicroSDFlashView(View):
             if len(data.stderr) > 1:
                 self.run_screen(
                     WarningScreen,
-                    title="Error",
+                    title=_("Error"),
                     status_headline=None,
-                    text="data.stderr",
+                    text=data.stderr,
                     show_back_button=False,
                 )
                 return Destination(MainMenuView)
 
             ret = self.run_screen(
                 WarningScreen,
-                title="Notice",
+                title=_("Notice"),
                 status_headline=None,
-                text="Insert MicroSD to be Flashed",
+                text=_("Insert MicroSD to be Flashed"),
                 show_back_button=True,
                 button_data=[ButtonOption("Continue")]
             )
@@ -1274,7 +1273,7 @@ class ToolsMicroSDFlashView(View):
             if ret == RET_CODE__BACK_BUTTON:
                 return Destination(BackStackView)
 
-            self.loading_screen = LoadingScreenThread(text="Flashing MicroSD\n\n\n\n\n\n")
+            self.loading_screen = LoadingScreenThread(text=_("Flashing MicroSD\n\n\n\n\n\n"))
             self.loading_screen.start()
 
             # Unmount everything
@@ -1316,7 +1315,7 @@ class ToolsMicroSDFlashView(View):
             if inNum != outNum:
                 self.run_screen(
                     WarningScreen,
-                    title="Error",
+                    title=_("Error"),
                     status_headline=None,
                     text=data.stderr,
                     show_back_button=False,
@@ -1325,9 +1324,9 @@ class ToolsMicroSDFlashView(View):
             else:
                 ret = self.run_screen(
                     LargeIconStatusScreen,
-                    title="Success",
+                    title=_("Success"),
                     status_headline=None,
-                    text=f"MicroSD Flashed",
+                    text=_("MicroSD Flashed"),
                     show_back_button=False,
                     button_data=[ButtonOption("Verify"),ButtonOption("Skip Verification")]
                 )
@@ -1348,9 +1347,9 @@ class ToolsMicroSDVerifyWarningView(View):
     def run(self):
         ret = self.run_screen(
             WarningScreen,
-            title="Checksum Note",
+            title=_("Checksum Note"),
             status_headline=None,
-            text="Verification test will\nonly pass for freshly\nflashed (or Read Only)\nMicroSD Cards.",
+            text=_("Verification test will\nonly pass for freshly\nflashed (or Read Only)\nMicroSD Cards."),
             show_back_button=True,
             button_data=[ButtonOption("Continue")]
         )
@@ -1383,7 +1382,7 @@ class ToolsMicroSDVerifyView(View):
         import os
         from seedsigner.gui.screens.screen import LoadingScreenThread
 
-        self.loading_screen = LoadingScreenThread(text="Reading MicroSD\n\n\n\n\n\n")
+        self.loading_screen = LoadingScreenThread(text=_("Reading MicroSD\n\n\n\n\n\n"))
         self.loading_screen.start()
 
         microsd_dev = find_sd_card_device()
@@ -1404,8 +1403,8 @@ class ToolsMicroSDVerifyView(View):
             image_name = self.known_checksums[checksum]
             self.run_screen(
                 LargeIconStatusScreen,
-                title="Success",
-                status_headline="Matched Checksum",
+                title=_("Success"),
+                status_headline=_("Matched Checksum"),
                 text=image_name[:20] + "\n" + image_name[20:40] + "\n" + image_name[40:60], #Split for images where the filename is too long to fit on the screen
                 show_back_button=False,
                 button_data=[ButtonOption("Continue")]
@@ -1416,7 +1415,7 @@ class ToolsMicroSDVerifyView(View):
 
             self.run_screen(
                 WarningScreen,
-                title="Unfamilliar Checksum",
+                title=_("Unfamilliar Checksum"),
                 status_headline=None,
                 text=formatted_checksum,
                 show_back_button=False,
@@ -1441,9 +1440,9 @@ class ToolsMicroSDWipeZeroView(View):
 
         wipe_selection = self.run_screen(
                 LargeIconStatusScreen,
-                title="Wipe MicroSD",
+                title=_("Wipe MicroSD"),
                 status_headline=None,
-                text = "Select amount to wipe (Larger takes longer)",
+                text = _("Select amount to wipe (Larger takes longer)"),
                 status_icon_size=0,
                 show_back_button=True,
                 button_data=button_data,
@@ -1460,9 +1459,9 @@ class ToolsMicroSDWipeZeroView(View):
 
         ret = self.run_screen(
             WarningScreen,
-            title="Notice",
+            title=_("Notice"),
             status_headline=None,
-            text="Insert MicroSD to be Wiped",
+            text=_("Insert MicroSD to be Wiped"),
             show_back_button=True,
             button_data=[ButtonOption("Continue")]
         )
@@ -1470,7 +1469,7 @@ class ToolsMicroSDWipeZeroView(View):
         if ret == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
 
-        self.loading_screen = LoadingScreenThread(text="Wiping MicroSD\n\n\n\n\n\n(This takes a while)")
+        self.loading_screen = LoadingScreenThread(text=_("Wiping MicroSD\n\n\n\n\n\n(This takes a while)"))
         self.loading_screen.start()
 
         # Unmount everything
@@ -1510,7 +1509,7 @@ class ToolsMicroSDWipeZeroView(View):
         if inNum != outNum:
             self.run_screen(
                 WarningScreen,
-                title="Error",
+                title=_("Error"),
                 status_headline=None,
                 text=data.stderr,
                 show_back_button=False,
@@ -1519,9 +1518,9 @@ class ToolsMicroSDWipeZeroView(View):
         else:
             self.run_screen(
                 LargeIconStatusScreen,
-                title="Success",
+                title=_("Success"),
                 status_headline=None,
-                text=f"MicroSD Wiped",
+                text=_("MicroSD Wiped"),
                 show_back_button=False,
                 button_data=[ButtonOption("Continue")]
             )
@@ -1543,9 +1542,9 @@ class ToolsMicroSDWipeRandomView(View):
 
         wipe_selection = self.run_screen(
                 LargeIconStatusScreen,
-                title="Wipe MicroSD",
+                title=_("Wipe MicroSD"),
                 status_headline=None,
-                text = "Select amount to wipe (Larger takes longer)",
+                text = _("Select amount to wipe (Larger takes longer)"),
                 status_icon_size=0,
                 show_back_button=True,
                 button_data=button_data,
@@ -1562,9 +1561,9 @@ class ToolsMicroSDWipeRandomView(View):
 
         ret = self.run_screen(
             WarningScreen,
-            title="Notice",
+            title=_("Notice"),
             status_headline=None,
-            text="Insert MicroSD to be Wiped",
+            text=_("Insert MicroSD to be Wiped"),
             show_back_button=True,
             button_data=[ButtonOption("Continue")]
         )
@@ -1572,7 +1571,7 @@ class ToolsMicroSDWipeRandomView(View):
         if ret == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
 
-        self.loading_screen = LoadingScreenThread(text="Wiping MicroSD\n\n\n\n\n\n(This takes a while)")
+        self.loading_screen = LoadingScreenThread(text=_("Wiping MicroSD\n\n\n\n\n\n(This takes a while)"))
         self.loading_screen.start()
 
         dd_cmd = ["dd", f"if=/dev/urandom", f"of={microsd_dev}", "bs=1M"] + wipesize_cmd_string.split()
@@ -1604,7 +1603,7 @@ class ToolsMicroSDWipeRandomView(View):
         if inNum != outNum:
             self.run_screen(
                 WarningScreen,
-                title="Error",
+                title=_("Error"),
                 status_headline=None,
                 text=data.stderr,
                 show_back_button=False,
@@ -1613,9 +1612,9 @@ class ToolsMicroSDWipeRandomView(View):
         else:
             self.run_screen(
                 LargeIconStatusScreen,
-                title="Success",
+                title=_("Success"),
                 status_headline=None,
-                text=f"MicroSD Wiped",
+                text=_("MicroSD Wiped"),
                 show_back_button=False,
                 button_data=[ButtonOption("Continue")]
             )
@@ -1677,7 +1676,7 @@ class ToolsTextQRTextEntryExitDialogView(View):
             WarningScreen,
             title=_("Discard text?"),
             status_headline=None,
-            text=f"Your current text entry will be erased",
+            text=_("Your current text entry will be erased"),
             show_back_button=False,
             button_data=button_data
         )
@@ -1945,8 +1944,8 @@ class ToolsTextQRScanQRCodeView(View):
             DireWarningScreen(
                 title=_("Error!"),
                 show_back_button=False,
-                status_headline="Invalid Text QR Code",
-                text=f"Non UTF-8 data detected."
+                status_headline=_("Invalid Text QR Code"),
+                text=_("Non UTF-8 data detected.")
             ).display()
             return Destination(BackStackView)
 

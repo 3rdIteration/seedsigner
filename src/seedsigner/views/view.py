@@ -299,9 +299,9 @@ class CardsMenuView(View):
     card. Factory Reset wipes every installed applet at the bottom.
     """
 
-    SEEDKEEPER_LABEL = "SeedKeeper"
-    KEYCARD_LABEL = "Keycard"
-    FACTORY_RESET_LABEL = "Factory reset card"
+    SEEDKEEPER_LABEL = _mft("SeedKeeper")
+    KEYCARD_LABEL = _mft("Keycard")
+    FACTORY_RESET_LABEL = _mft("Factory reset card")
 
     def run(self):
         from seedsigner.gui.screens.screen import ButtonListScreen
@@ -431,11 +431,11 @@ _DEFAULT_CAP_BY_KIND = {
 # applet's max. (4/8/16/32/64 KB → 0FFF/1FFF/3FFF/7FFF/FFFF.) Matches
 # the chooser previously offered by the DIY-tools view (PR #189).
 _SEEDKEEPER_STORAGE_OPTIONS = [
-    ("4 KB", "0FFF"),
-    ("8 KB (default)", "1FFF"),
-    ("16 KB", "3FFF"),
-    ("32 KB", "7FFF"),
-    ("64 KB", "FFFF"),
+    (_mft("4 KB"), "0FFF"),
+    (_mft("8 KB (default)"), "1FFF"),
+    (_mft("16 KB"), "3FFF"),
+    (_mft("32 KB"), "7FFF"),
+    (_mft("64 KB"), "FFFF"),
 ]
 _SEEDKEEPER_STORAGE_DEFAULT_INDEX = 1  # 8 KB
 
@@ -480,8 +480,8 @@ def install_seedkeeper_applet(view):
     cap_path = MicroSD.get_microsd_dir() / "javacard-cap" / cap_name
     if not cap_path.exists():
         _show_warning(
-            view, "Install",
-            f"Applet bundle missing:\n{cap_name}\nRebuild seedsigner-os.",
+            view, _("Install"),
+            _("Applet bundle missing:\n{}\nRebuild seedsigner-os.").format(cap_name),
         )
         return "error"
 
@@ -492,9 +492,9 @@ def install_seedkeeper_applet(view):
     if installed is not None and installed.present and installed.keycard_installed:
         ret = view.run_screen(
             DireWarningScreen,
-            title="Compatibility",
+            title=_("Compatibility"),
             status_headline=None,
-            text="iOS Seedkeeper app crashes when\nKeycard shares a card.",
+            text=_("iOS Seedkeeper app crashes when\nKeycard shares a card."),
             show_back_button=True,
             button_data=[ButtonOption("Install anyway")],
         )
@@ -507,7 +507,7 @@ def install_seedkeeper_applet(view):
     ]
     selected = view.run_screen(
         ButtonListScreen,
-        title="Select Storage",
+        title=_("Select Storage"),
         is_button_text_centered=False,
         button_data=options,
         selected_button=_SEEDKEEPER_STORAGE_DEFAULT_INDEX,
@@ -518,10 +518,10 @@ def install_seedkeeper_applet(view):
 
     command = single_cmd_template.format(cap=str(cap_path), params=storage_param)
     result = seedkeeper_utils.run_globalplatform(
-        view, command, "Installing seedkeeper", None,
+        view, command, _("Installing seedkeeper"), None,
     )
     if result is None:
-        _show_warning(view, "Install", "seedkeeper install failed.")
+        _show_warning(view, _("Install"), _("seedkeeper install failed."))
         return "error"
 
     # gp.jar leaves scdaemon holding the reader; reset PC/SC state so the
@@ -549,7 +549,7 @@ class CardsInstallAppletView(View):
 
         info = _DEFAULT_CAP_BY_KIND.get(self.kind)
         if info is None:
-            return _show_warning(self, "Install", f"Unknown applet kind: {self.kind}")
+            return _show_warning(self, _("Install"), _("Unknown applet kind: {}").format(self.kind))
 
         if self.kind == "seedkeeper":
             result = install_seedkeeper_applet(self)
@@ -558,9 +558,9 @@ class CardsInstallAppletView(View):
                 return Destination(BackStackView)
             self.run_screen(
                 LargeIconStatusScreen,
-                title="Install",
+                title=_("Install"),
                 status_headline=None,
-                text="Seedkeeper applet installed.\nSet a device PIN to continue.",
+                text=_("Seedkeeper applet installed.\nSet a device PIN to continue."),
                 show_back_button=False,
                 button_data=[ButtonOption("Set up")],
             )
@@ -572,8 +572,8 @@ class CardsInstallAppletView(View):
         cap_path = MicroSD.get_microsd_dir() / "javacard-cap" / cap_name
         if not cap_path.exists():
             return _show_warning(
-                self, "Install",
-                f"Applet bundle missing:\n{cap_name}\nRebuild seedsigner-os.",
+                self, _("Install"),
+                _("Applet bundle missing:\n{}\nRebuild seedsigner-os.").format(cap_name),
             )
 
         # Cross-applet compatibility check. The presence of the Keycard
@@ -592,9 +592,9 @@ class CardsInstallAppletView(View):
         if installed is not None and installed.present and installed.seedkeeper_installed:
             ret = self.run_screen(
                 DireWarningScreen,
-                title="Compatibility",
+                title=_("Compatibility"),
                 status_headline=None,
-                text="iOS Seedkeeper app crashes when\nKeycard shares a card.",
+                text=_("iOS Seedkeeper app crashes when\nKeycard shares a card."),
                 show_back_button=True,
                 button_data=[ButtonOption("Install anyway")],
             )
@@ -613,22 +613,23 @@ class CardsInstallAppletView(View):
         # gp.jar emits "Applet is not present on card" — expected.
         seedkeeper_utils.run_globalplatform(
             self, "--delete A0000008040001 -force",
-            "Preparing Keycard install", None,
+            _("Preparing Keycard install"), None,
             suppress_failure_dialog=True,
         )
         # Multi-step recipe: --load then create the signing instance.
-        steps = [(f"--load {cap_path} -force", "Loading Keycard package")]
+        steps = [(f"--load {cap_path} -force", _("Loading Keycard package"))]
         steps.extend(
-            (cmd, "Creating Keycard signing instance")
+            (cmd, _("Creating Keycard signing instance"))
             for cmd in _KEYCARD_CREATE_COMMANDS
         )
         for index, (command, label) in enumerate(steps):
             result = seedkeeper_utils.run_globalplatform(self, command, label, None)
             if result is None:
+                # TRANSLATOR_NOTE: {} are current step, total steps, and step label
                 return _show_warning(
-                    self, "Install",
-                    f"Keycard install failed at step "
-                    f"{index + 1}/{len(steps)}:\n{label}.",
+                    self, _("Install"),
+                    _("Keycard install failed at step "
+                      "{}/{}:\n{}.").format(index + 1, len(steps), label),
                 )
 
         # gp.jar leaves scdaemon holding the reader and may invalidate any
@@ -641,9 +642,9 @@ class CardsInstallAppletView(View):
 
         self.run_screen(
             LargeIconStatusScreen,
-            title="Install",
+            title=_("Install"),
             status_headline=None,
-            text="Keycard applet installed.\nSet a device PIN to continue.",
+            text=_("Keycard applet installed.\nSet a device PIN to continue."),
             show_back_button=False,
             button_data=[ButtonOption("Set up")],
         )
@@ -735,11 +736,11 @@ def _attempt_globalplatform_wipe(view):
         from seedsigner.helpers import seedkeeper_utils
         from seedsigner.helpers.card_probe import probe_installed_applets
     except ImportError as exc:
-        return ["GlobalPlatform stack missing:", str(exc)]
+        return [_("GlobalPlatform stack missing:"), str(exc)]
 
     state = probe_installed_applets(view.controller)
     if not state.present:
-        return ["No card detected."]
+        return [_("No card detected.")]
 
     # Each entry: (display name, AID hex passed to ``gp.jar --delete``,
     # suppress_failure_dialog). For Keycard we *always* attempt the
@@ -758,7 +759,7 @@ def _attempt_globalplatform_wipe(view):
     for name, aid_hex, suppress in targets:
         result = seedkeeper_utils.run_globalplatform(
             view, f"--delete {aid_hex} -force",
-            f"Deleting {name}", None,
+            _("Deleting {}").format(name), None,
             suppress_failure_dialog=suppress,
         )
         if result is None:
@@ -774,7 +775,7 @@ def _attempt_globalplatform_wipe(view):
     # Keycard package delete also failed silently. Keep the old "nothing
     # to do" message instead of falling through to an empty report.
     if not deleted and not skipped:
-        return ["No applets to delete."]
+        return [_("No applets to delete.")]
 
     # If none of the gp.jar deletes succeeded, this is most likely an
     # ISD-keys-rotated card. Surface as None so the caller falls back
@@ -798,7 +799,7 @@ def _attempt_soft_reset(view, state):
     to gate the operation on — instead we report that the user must
     wipe it from a PC.
     """
-    report = ["ISD keys rotated."]
+    report = [_("ISD keys rotated.")]
 
     if state.keycard_installed:
         try:
@@ -812,19 +813,19 @@ def _attempt_soft_reset(view, state):
             try:
                 client = KeycardClient(connection)
                 client.transmit(factory_reset())
-                report.append("Keycard data wiped.")
+                report.append(_("Keycard data wiped."))
             finally:
                 try:
                     connection.disconnect()
                 except Exception:
                     pass
         except Exception as exc:
-            report.append(f"Keycard wipe failed: {exc}")
+            report.append(_("Keycard wipe failed: {}").format(exc))
     else:
-        report.append("Keycard: not installed.")
+        report.append(_("Keycard: not installed."))
 
     if state.seedkeeper_installed:
-        report.append("SeedKeeper: wipe from PC.")
+        report.append(_("SeedKeeper: wipe from PC."))
     return report
 
 

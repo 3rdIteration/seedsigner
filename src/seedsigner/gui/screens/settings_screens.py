@@ -66,7 +66,7 @@ class SettingsEntryUpdateSelectionScreen(ButtonListScreen):
 @dataclass
 class SettingPBFDK2IterationsScreen(KeyboardScreen):
     def __post_init__(self):
-        self.title = "PBKDF2 Iter.(in units of 10k)"
+        self.title = _("PBKDF2 Iter.(in units of 10k)")
         self.user_input = ""
 
         # Specify the keys in the keyboard
@@ -403,7 +403,7 @@ class BatteryInfoScreen(BaseTopNavScreen):
 
         start_y = self.top_nav.height + 2 * GUIConstants.COMPONENT_PADDING
         self.voltage_text = TextArea(
-            text="Load Voltage: --",
+            text=_("Load Voltage: --"),
             is_text_centered=True,
             screen_y=start_y,
             font_size=self.info_font_size,
@@ -412,7 +412,7 @@ class BatteryInfoScreen(BaseTopNavScreen):
 
         start_y += self.voltage_text.height + GUIConstants.COMPONENT_PADDING
         self.current_text = TextArea(
-            text="Current: --",
+            text=_("Current: --"),
             is_text_centered=True,
             screen_y=start_y,
             font_size=self.info_font_size,
@@ -421,7 +421,7 @@ class BatteryInfoScreen(BaseTopNavScreen):
 
         start_y += self.current_text.height + GUIConstants.COMPONENT_PADDING
         self.power_text = TextArea(
-            text="Power: --",
+            text=_("Power: --"),
             is_text_centered=True,
             screen_y=start_y,
             font_size=self.info_font_size,
@@ -430,7 +430,7 @@ class BatteryInfoScreen(BaseTopNavScreen):
 
         start_y += self.power_text.height + GUIConstants.COMPONENT_PADDING
         self.percent_text = TextArea(
-            text="Percent: --%",
+            text=_("Percent: --%"),
             is_text_centered=True,
             screen_y=start_y,
             font_size=self.info_font_size,
@@ -439,7 +439,7 @@ class BatteryInfoScreen(BaseTopNavScreen):
 
         start_y += self.percent_text.height + GUIConstants.COMPONENT_PADDING
         self.curve_text = TextArea(
-            text="Curve: --",
+            text=_("Curve: --"),
             is_text_centered=True,
             screen_y=start_y,
             font_size=self.info_font_size,
@@ -489,26 +489,26 @@ class BatteryInfoScreen(BaseTopNavScreen):
                     percent = self.battery_hat.get_percent()
                 with self.screen.renderer.lock:
                     if voltage is not None:
-                        voltage_text = f"Load Voltage: {voltage:.3f} V"
+                        voltage_text = _("Load Voltage: {:.3f} V").format(voltage)
                     else:
-                        voltage_text = "Load Voltage: --"
+                        voltage_text = _("Load Voltage: --")
                     if current is not None:
-                        current_text = f"Current: {current/1000:.3f} A"
+                        current_text = _("Current: {:.3f} A").format(current/1000)
                     else:
-                        current_text = "Current: --"
+                        current_text = _("Current: --")
                     if power is not None:
-                        power_text = f"Power: {power:.3f} W"
+                        power_text = _("Power: {:.3f} W").format(power)
                     else:
-                        power_text = "Power: --"
+                        power_text = _("Power: --")
                     if percent is not None:
-                        percent_text = f"Percent: {percent:.1f}%"
+                        percent_text = _("Percent: {:.1f}%").format(percent)
                     else:
-                        percent_text = "Percent: --%"
+                        percent_text = _("Percent: --%")
                     curve_label = self.battery_hat.get_curve_label()
                     if curve_label:
-                        curve_text = f"Curve: {curve_label}"
+                        curve_text = _("Curve: {}").format(curve_label)
                     else:
-                        curve_text = "Curve: default"
+                        curve_text = _("Curve: default")
                     self.screen._replace_info_text("voltage_text", voltage_text)
                     self.screen._replace_info_text("current_text", current_text)
                     self.screen._replace_info_text("power_text", power_text)

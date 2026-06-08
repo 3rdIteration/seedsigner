@@ -13,6 +13,8 @@ place they get touched in the regular UI.
 
 from __future__ import annotations
 
+from gettext import gettext as _
+
 from seedsigner.gui.screens import (
     RET_CODE__BACK_BUTTON,
     ButtonListScreen,
@@ -90,7 +92,7 @@ class ToolsStealthBootView(View):
             except InvalidSequenceError:
                 seq_label = "(invalid)"
 
-        title = f"Stealth: {'ON' if enabled else 'OFF'}"
+        title = _("Stealth: {}").format(_("ON") if enabled else _("OFF"))
         button_data = [self.TOGGLE, self.EDIT, self.VIEW, self.DONE]
         ret = self.run_screen(
             ButtonListScreen,
@@ -107,9 +109,9 @@ class ToolsStealthBootView(View):
             if not enabled and seq_label in ("(none)", "(invalid)"):
                 self.run_screen(
                     WarningScreen,
-                    title="No sequence",
+                    title=_("No sequence"),
                     status_headline=None,
-                    text="Record an unlock\nsequence first.",
+                    text=_("Record an unlock\nsequence first."),
                     show_back_button=True,
                 )
                 return Destination(ToolsStealthBootView, skip_current_view=True)
@@ -120,7 +122,7 @@ class ToolsStealthBootView(View):
         if button_data[ret] == self.VIEW:
             self.run_screen(
                 LargeIconStatusScreen,
-                title="Unlock sequence",
+                title=_("Unlock sequence"),
                 status_headline=None,
                 text=seq_label[:120],
                 show_back_button=False,
@@ -156,18 +158,19 @@ class ToolsStealthBootRecordView(View):
                     color=(8, 12, 18),
                 )
                 draw = ImageDraw.Draw(img)
-                draw.text((6, 4), "Record sequence", fill=(220, 220, 220))
+                draw.text((6, 4), _("Record sequence"), fill=(220, 220, 220))
                 draw.text((6, 22),
-                          "Press up to 12 keys.",
+                          _("Press up to 12 keys."),
                           fill=(160, 180, 200))
                 draw.text((6, 36),
-                          "Press joystick to save.",
+                          _("Press joystick to save."),
                           fill=(160, 180, 200))
                 pretty = " ".join(
                     s.replace("KEY_", "").replace("KEY", "K")
                     for s in recorded
-                ) or "(none yet)"
-                draw.text((6, 70), f"Got: {pretty}", fill=(180, 220, 200))
+                ) or _("(none yet)")
+                # TRANSLATOR_NOTE: {} is the keys recorded so far
+                draw.text((6, 70), _("Got: {}").format(pretty), fill=(180, 220, 200))
                 renderer.show_image(img)
 
         _render()
@@ -183,9 +186,9 @@ class ToolsStealthBootRecordView(View):
                     )
                 self.run_screen(
                     WarningScreen,
-                    title="Too short" if len(recorded) < 3 else "Too long",
+                    title=_("Too short") if len(recorded) < 3 else _("Too long"),
                     status_headline=None,
-                    text=f"Need 3..{_MAX_SEQUENCE_LEN} keys, got {len(recorded)}.",
+                    text=_("Need 3..{} keys, got {}.").format(_MAX_SEQUENCE_LEN, len(recorded)),
                     show_back_button=True,
                 )
                 _render()
@@ -217,7 +220,7 @@ class ToolsStealthBootConfirmRecordView(View):
         except InvalidSequenceError as exc:
             self.run_screen(
                 WarningScreen,
-                title="Invalid",
+                title=_("Invalid"),
                 status_headline=None,
                 text=str(exc)[:120],
                 show_back_button=False,
@@ -228,10 +231,10 @@ class ToolsStealthBootConfirmRecordView(View):
         button_data = [self.SAVE, self.DISCARD]
         ret = self.run_screen(
             LargeIconStatusScreen,
-            title="Save sequence?",
+            title=_("Save sequence?"),
             status_icon_size=0,
             status_headline=pretty[:60],
-            text="Save this sequence?",
+            text=_("Save this sequence?"),
             is_button_text_centered=False,
             button_data=button_data,
         )
@@ -241,9 +244,9 @@ class ToolsStealthBootConfirmRecordView(View):
         _set_sequence(self.recorded)
         self.run_screen(
             LargeIconStatusScreen,
-            title="Saved",
+            title=_("Saved"),
             status_headline=None,
-            text="New unlock sequence stored.",
+            text=_("New unlock sequence stored."),
             show_back_button=False,
             button_data=[ButtonOption("OK")],
         )

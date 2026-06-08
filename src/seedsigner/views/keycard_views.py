@@ -28,6 +28,8 @@ import json
 import logging
 import time
 import unicodedata
+from gettext import gettext as _
+from gettext import ngettext
 from typing import List, Optional, Tuple
 
 from seedsigner.gui.screens import (
@@ -62,6 +64,7 @@ from seedsigner.helpers.keycard.ui_helpers import (
     try_silent_ephemeral_pair,
     wipe_bytearray,
 )
+from seedsigner.helpers.l10n import mark_for_translation as _mft
 from seedsigner.helpers.secure_delete import wipe_string
 from seedsigner.models.encode_qr import EthSignatureQrEncoder
 from seedsigner.models.settings_definition import SettingsConstants
@@ -81,11 +84,13 @@ _open_unlocked_session_cached_or_prompt = open_unlocked_session_cached_or_prompt
 
 logger = logging.getLogger(__name__)
 
+# User-facing transaction-type labels (shown on the ETH sign overview).
+# Marked with _mft so they're extracted; the display site wraps with _().
 DATA_TYPE_LABELS = {
-    DATA_TYPE_LEGACY_TX: "Legacy / EIP-155",
-    DATA_TYPE_TYPED_DATA: "EIP-712 typed data",
-    DATA_TYPE_PERSONAL_MESSAGE: "Personal sign",
-    DATA_TYPE_TYPED_TX: "EIP-1559",
+    DATA_TYPE_LEGACY_TX: _mft("Legacy / EIP-155"),
+    DATA_TYPE_TYPED_DATA: _mft("EIP-712 typed data"),
+    DATA_TYPE_PERSONAL_MESSAGE: _mft("Personal sign"),
+    DATA_TYPE_TYPED_TX: _mft("EIP-1559"),
 }
 
 PIN_LENGTH = 6
@@ -130,11 +135,12 @@ class ToolsKeycardMenuView(View):
     THIS_INSTANCE = ButtonOption("This instance")
     INSTANCES = ButtonOption("Instances")
     CARD = ButtonOption("Card")
+    LOCK = ButtonOption("Lock card")
 
     def run(self):
         from seedsigner.helpers.card_probe import run_card_gate
         gate = run_card_gate(
-            self, "keycard", title="Keycard", setup_view=ToolsKeycardInitView,
+            self, "keycard", title=_("Keycard"), setup_view=ToolsKeycardInitView,
         )
         if gate is not None:
             return gate
@@ -145,13 +151,14 @@ class ToolsKeycardMenuView(View):
             self.THIS_INSTANCE,
             self.INSTANCES,
             self.CARD,
+            self.LOCK,
         ]
         # Surface the active instance in the title so the user always
         # knows which instance signing / export will use this session.
         active = _format_instance_label(self.controller.active_keycard_aid)
         selected = self.run_screen(
             ButtonListScreen,
-            title=f"Keycard · {active}",
+            title=_("Keycard · {}").format(active),
             is_button_text_centered=False,
             button_data=button_data,
         )
@@ -169,6 +176,8 @@ class ToolsKeycardMenuView(View):
             return Destination(ToolsKeycardInstancesMenuView)
         if chosen == self.CARD:
             return Destination(ToolsKeycardCardMenuView)
+        if chosen == self.LOCK:
+            return Destination(ToolsKeycardLockView)
         return Destination(NotYetImplementedView)
 
 
@@ -185,6 +194,7 @@ class ToolsKeycardThisInstanceMenuView(View):
     CHANGE_PIN = ButtonOption("Change PIN")
     PAIRING = ButtonOption("Pairing")
     FACTORY_RESET = ButtonOption("Factory reset")
+    LOCK = ButtonOption("Lock card")
 
     def run(self):
         active = _format_instance_label(self.controller.active_keycard_aid)
@@ -194,10 +204,11 @@ class ToolsKeycardThisInstanceMenuView(View):
             self.CHANGE_PIN,
             self.PAIRING,
             self.FACTORY_RESET,
+            self.LOCK,
         ]
         selected = self.run_screen(
             ButtonListScreen,
-            title=f"This instance · {active}",
+            title=_("This instance · {}").format(active),
             is_button_text_centered=False,
             button_data=button_data,
         )
@@ -214,7 +225,37 @@ class ToolsKeycardThisInstanceMenuView(View):
             return Destination(ToolsKeycardPairingMenuView)
         if chosen == self.FACTORY_RESET:
             return Destination(ToolsKeycardFactoryResetView)
+        if chosen == self.LOCK:
+            return Destination(ToolsKeycardLockView)
         return Destination(NotYetImplementedView)
+
+
+class ToolsKeycardLockView(View):
+    """Drop all cached card PINs (and any Satochip session) so the next
+    operation re-prompts for the PIN.
+
+    The name is deliberately neutral ("Lock card"): it must NOT hint that
+    re-authenticating with a *different* PIN can reach an on-card decoy
+    (duress) wallet. To anyone watching, this just relocks the card.
+
+    Reuses ``Controller.wipe_card_session_secrets()`` so locking is
+    semantically identical to a card-removal wipe. NOT gated on
+    ``SETTING__CACHE_SCARD_PIN`` — it must work even when PIN caching is
+    enabled, otherwise the duress wallet stays unreachable for power
+    users who keep caching on.
+    """
+
+    def run(self):
+        self.controller.wipe_card_session_secrets()
+        self.run_screen(
+            LargeIconStatusScreen,
+            title=_("Card locked"),
+            status_headline=None,
+            text=_("PIN cleared.\nYou'll be asked for it next time."),
+            show_back_button=False,
+            button_data=[ButtonOption("OK")],
+        )
+        return Destination(ToolsKeycardMenuView, clear_history=True)
 
 
 class ToolsKeycardPairingMenuView(View):
@@ -230,7 +271,7 @@ class ToolsKeycardPairingMenuView(View):
         button_data = [self.PAIR, self.REMOVE_PAIRING]
         selected = self.run_screen(
             ButtonListScreen,
-            title=f"Pairing · {active}",
+            title=_("Pairing · {}").format(active),
             is_button_text_centered=False,
             button_data=button_data,
         )
@@ -259,7 +300,7 @@ class ToolsKeycardCardMenuView(View):
         button_data = [self.INIT, self.STATUS, self.UNINSTALL]
         selected = self.run_screen(
             ButtonListScreen,
-            title="Card",
+            title=_("Card"),
             is_button_text_centered=False,
             button_data=button_data,
         )
@@ -290,9 +331,9 @@ class ToolsKeycardUninstallAppletView(View):
 
         ret = self.run_screen(
             DireWarningScreen,
-            title="Uninstall",
+            title=_("Uninstall"),
             status_headline=None,
-            text="Delete the Keycard package?\nMaster key will be lost.",
+            text=_("Delete the Keycard package?\nMaster key will be lost."),
             show_back_button=True,
             button_data=[ButtonOption("Delete")],
         )
@@ -305,13 +346,13 @@ class ToolsKeycardUninstallAppletView(View):
                 release_other_smartcard_holders, wait_for_card,
             )
         except ImportError as exc:
-            return _error_destination("Keycard support unavailable", str(exc))
+            return _error_destination(_("Keycard support unavailable"), str(exc))
 
         try:
             release_other_smartcard_holders(self.controller)
             connection = wait_for_card(timeout_s=5.0)
         except Exception as exc:
-            return _error_destination("Card not reachable", str(exc))
+            return _error_destination(_("Card not reachable"), str(exc))
 
         try:
             channel = gp.GpSecureChannel(connection)
@@ -320,15 +361,15 @@ class ToolsKeycardUninstallAppletView(View):
                 channel.open()
             except Exception as exc:
                 return _error_destination(
-                    "ISD keys required",
-                    "Default ISD keys missing.\nWipe via PC or full Factory Reset.",
+                    _("ISD keys required"),
+                    _("Default ISD keys missing.\nWipe via PC or full Factory Reset."),
                 )
             # Package AID for Status Keycard.
             package_aid = bytes.fromhex("A0000008040001")
             try:
                 gp.delete_aid(channel, package_aid, with_related=True)
             except Exception as exc:
-                return _error_destination("Uninstall failed", str(exc))
+                return _error_destination(_("Uninstall failed"), str(exc))
         finally:
             try:
                 connection.disconnect()
@@ -340,9 +381,9 @@ class ToolsKeycardUninstallAppletView(View):
 
         self.run_screen(
             LargeIconStatusScreen,
-            title="Uninstall",
+            title=_("Uninstall"),
             status_headline=None,
-            text="Keycard package removed.",
+            text=_("Keycard package removed."),
             show_back_button=False,
             button_data=[ButtonOption("OK")],
         )
@@ -363,7 +404,7 @@ class ToolsKeycardStatusView(View):
                 release_other_smartcard_holders, wait_for_card,
             )
         except ImportError as exc:
-            return _error_destination("Keycard support unavailable", str(exc))
+            return _error_destination(_("Keycard support unavailable"), str(exc))
 
         try:
             release_other_smartcard_holders(self.controller)
@@ -375,14 +416,14 @@ class ToolsKeycardStatusView(View):
             return _error_destination(title, body)
 
         version = f"{(info.app_version >> 8) & 0xFF}.{info.app_version & 0xFF}"
-        text = (
-            f"Applet v{version}\n"
-            f"Pairing slots: {info.free_pairing_slots}\n"
-            f"Key on card: {'yes' if info.key_uid else 'no'}"
+        text = _("Applet v{}\nPairing slots: {}\nKey on card: {}").format(
+            version,
+            info.free_pairing_slots,
+            _("yes") if info.key_uid else _("no"),
         )
         self.run_screen(
             LargeIconStatusScreen,
-            title="Keycard",
+            title=_("Keycard"),
             status_headline=None,
             text=text,
             show_back_button=False,
@@ -423,14 +464,14 @@ class ToolsKeycardFactoryResetView(View):
                 release_other_smartcard_holders, wait_for_card,
             )
         except ImportError as exc:
-            return _error_destination("Keycard support unavailable", str(exc))
+            return _error_destination(_("Keycard support unavailable"), str(exc))
 
         label = _format_instance_label(self.controller.active_keycard_aid)
         ret = self.run_screen(
             DireWarningScreen,
-            title=f"Wipe {label}?",
+            title=_("Wipe {}?").format(label),
             status_headline=None,
-            text="Erases the key & PIN on\nthis instance. Cannot undo.",
+            text=_("Erases the key & PIN on\nthis instance. Cannot undo."),
             show_back_button=True,
             button_data=[self.CONFIRM],
         )
@@ -455,14 +496,14 @@ class ToolsKeycardFactoryResetView(View):
             logger.warning("FACTORY_RESET unsupported: %s", exc)
             if (exc.sw & 0xFF00) == 0x6D00:
                 return _error_destination(
-                    "Not supported",
-                    "Update applet, or use\nkeycard-shell on PC.",
+                    _("Not supported"),
+                    _("Update applet, or use\nkeycard-shell on PC."),
                 )
-            title, body = classify_card_error(exc, default_title="Reset failed")
+            title, body = classify_card_error(exc, default_title=_("Reset failed"))
             return _error_destination(title, body)
         except Exception as exc:
             logger.exception("FACTORY_RESET failed")
-            title, body = classify_card_error(exc, default_title="Reset failed")
+            title, body = classify_card_error(exc, default_title=_("Reset failed"))
             return _error_destination(title, body)
 
         # Drop the device's local state for the now-blank instance. The
@@ -484,9 +525,9 @@ class ToolsKeycardFactoryResetView(View):
 
         self.run_screen(
             LargeIconStatusScreen,
-            title=f"{label} wiped",
+            title=_("{} wiped").format(label),
             status_headline=None,
-            text="Run Init to reuse it.",
+            text=_("Run Init to reuse it."),
             show_back_button=False,
             button_data=[ButtonOption("OK")],
         )
@@ -511,6 +552,8 @@ class ToolsKeycardInitView(View):
     """
 
     INITIALISE = ButtonOption("Initialise card")
+    SKIP_DURESS = ButtonOption("Skip")
+    SET_DURESS = ButtonOption("Set duress PIN")
 
     def run(self):
         import hmac
@@ -524,7 +567,7 @@ class ToolsKeycardInitView(View):
                 release_other_smartcard_holders, wait_for_card,
             )
         except ImportError as exc:
-            return _error_destination("Keycard support unavailable", str(exc))
+            return _error_destination(_("Keycard support unavailable"), str(exc))
 
         # Bail out *before* asking for PIN/PUK if the inserted card is already
         # initialised — otherwise client.init() below would reject it with the
@@ -535,12 +578,14 @@ class ToolsKeycardInitView(View):
         probe = probe_card("keycard", self.controller)
         if probe.present and probe.kind_match and probe.initialised:
             return _error_destination(
-                "Already initialised",
-                "Use Factory reset to\nwipe and re-init.",
+                _("Already initialised"),
+                _("Use Factory reset to\nwipe and re-init."),
             )
 
         pin_buf: Optional[bytearray] = None
         confirm_buf: Optional[bytearray] = None
+        duress_buf: Optional[bytearray] = None
+        duress_confirm_buf: Optional[bytearray] = None
         try:
             # Loop until two identical PIN entries succeed or the user backs out.
             while True:
@@ -562,20 +607,107 @@ class ToolsKeycardInitView(View):
                 confirm_buf = None
                 self.run_screen(
                     WarningScreen,
-                    title="PINs differ",
+                    title=_("PINs differ"),
                     status_headline=None,
-                    text="Try again.",
+                    text=_("Try again."),
                     show_back_button=True,
                     button_data=[ButtonOption("Retry")],
                 )
 
             puk = kc_secrets.generate_puk()
 
+            # Optional duress (alt) PIN — provisioned here at INIT (there is
+            # no add-it-from-a-main-PIN-session route). Entering it later
+            # unlocks a decoy wallet derived from the SAME seed via an
+            # alternate chain code, routed transparently on-card. It MUST
+            # differ from the main PIN: an equal alt PIN makes verifyPIN match
+            # both and route to the decoy, shadowing the real wallet until the
+            # two PINs are made distinct again (recoverable, but a footgun).
+            duress_button_data = [self.SKIP_DURESS, self.SET_DURESS]
+            duress_choice = self.run_screen(
+                LargeIconStatusScreen,
+                title=_("Duress PIN"),
+                status_icon_size=0,
+                status_headline=None,
+                text=(
+                    "A 2nd PIN that unlocks a decoy wallet instead of your "
+                    "real one. Settable only now, never later."
+                ),
+                button_data=duress_button_data,
+            )
+            if duress_choice == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+            if duress_button_data[duress_choice] == self.SET_DURESS:
+                # Entry+confirm loop mirroring the main PIN loop above. The
+                # only exits are: a valid duress PIN that differs from the
+                # main PIN, or the user backing out of a PIN screen (which
+                # skips duress and proceeds with a normal init — the main PIN
+                # is already committed).
+                while True:
+                    duress_buf = prompt_for_pin(self, "Set duress PIN")
+                    if duress_buf is None:
+                        break
+                    duress_confirm_buf = prompt_for_pin(self, "Confirm duress PIN")
+                    if duress_confirm_buf is None:
+                        wipe_bytearray(duress_buf)
+                        duress_buf = None
+                        break
+                    if not hmac.compare_digest(
+                        bytes(duress_buf), bytes(duress_confirm_buf)
+                    ):
+                        wipe_bytearray(duress_buf)
+                        wipe_bytearray(duress_confirm_buf)
+                        duress_buf = None
+                        duress_confirm_buf = None
+                        self.run_screen(
+                            WarningScreen,
+                            title=_("Duress PINs differ"),
+                            status_headline=None,
+                            text=_("Try again."),
+                            show_back_button=True,
+                            button_data=[ButtonOption("Retry")],
+                        )
+                        continue
+                    wipe_bytearray(duress_confirm_buf)
+                    duress_confirm_buf = None
+                    if hmac.compare_digest(bytes(pin_buf), bytes(duress_buf)):
+                        wipe_bytearray(duress_buf)
+                        duress_buf = None
+                        self.run_screen(
+                            WarningScreen,
+                            title=_("Must differ"),
+                            status_headline=None,
+                            text=_("Duress PIN can't equal\nyour main PIN."),
+                            show_back_button=True,
+                            button_data=[ButtonOption("Retry")],
+                        )
+                        continue
+                    break
+
+            # keycard-shell parity: if no duress PIN was chosen, still set an
+            # explicit *random* one (CSPRNG, guaranteed != main) instead of
+            # letting the applet fall back to its predictable PUK[:6] default
+            # decoy. The value is never shown — the card simply has no usable
+            # decoy unless the owner deliberately picked one above.
+            if duress_buf is None:
+                while True:
+                    random_duress = kc_secrets.generate_pin()
+                    duress_buf = bytearray(random_duress.encode("ascii"))
+                    try:
+                        wipe_string(random_duress)
+                    except Exception:
+                        pass
+                    if not hmac.compare_digest(bytes(pin_buf), bytes(duress_buf)):
+                        break
+                    wipe_bytearray(duress_buf)
+                    duress_buf = None
+
             ret = self.run_screen(
                 WarningScreen,
-                title="Write this down",
+                title=_("Write this down"),
                 status_headline=None,
-                text=f"PUK  {puk}",
+                # TRANSLATOR_NOTE: {} is the card's PUK code (12 digits)
+                text=_("PUK  {}").format(puk),
                 show_back_button=True,
                 button_data=[self.INITIALISE],
             )
@@ -592,21 +724,24 @@ class ToolsKeycardInitView(View):
                 # inserted before INIT. app_version != 0 means initialised.
                 if info.app_version != 0:
                     return _error_destination(
-                        "Already initialised",
-                        "Use Factory reset to\nwipe and re-init.",
+                        _("Already initialised"),
+                        _("Use Factory reset to\nwipe and re-init."),
                     )
                 secret = derive_pairing_secret(DEFAULT_PAIRING_PASSWORD)
-                client.init(bytes(pin_buf), puk.encode("ascii"), secret)
+                client.init(
+                    bytes(pin_buf), puk.encode("ascii"), secret,
+                    duress_pin=(bytes(duress_buf) if duress_buf is not None else None),
+                )
             except Exception as exc:
                 logger.exception("Keycard INIT failed")
-                title, body = classify_card_error(exc, default_title="INIT failed")
+                title, body = classify_card_error(exc, default_title=_("INIT failed"))
                 return _error_destination(title, body)
 
             self.run_screen(
                 LargeIconStatusScreen,
-                title="Initialised",
+                title=_("Initialised"),
                 status_headline=None,
-                text="PIN/PUK set.\nNow load a seed.",
+                text=_("PIN/PUK set.\nNow load a seed."),
                 show_back_button=False,
                 button_data=[ButtonOption("OK")],
             )
@@ -621,6 +756,10 @@ class ToolsKeycardInitView(View):
                 wipe_bytearray(pin_buf)
             if confirm_buf is not None:
                 wipe_bytearray(confirm_buf)
+            if duress_buf is not None:
+                wipe_bytearray(duress_buf)
+            if duress_confirm_buf is not None:
+                wipe_bytearray(duress_confirm_buf)
 
 
 # ---------------------------------------------------------------------------
@@ -647,8 +786,8 @@ class ToolsKeycardChangePinView(View):
         confirm_pin: Optional[bytearray] = None
         try:
             try:
-                client, _ = _open_unlocked_session_cached_or_prompt(
-                    self, pin_title="Current PIN", require_key=False,
+                client, _unused = _open_unlocked_session_cached_or_prompt(
+                    self, pin_title=_("Current PIN"), require_key=False,
                 )
             except KeycardPinPromptCancelled:
                 return Destination(BackStackView)
@@ -660,7 +799,7 @@ class ToolsKeycardChangePinView(View):
             except Exception as exc:
                 logger.exception("Keycard CHANGE PIN: session open failed")
                 title, body = classify_card_error(
-                    exc, default_title="Change PIN failed",
+                    exc, default_title=_("Change PIN failed"),
                 )
                 return _error_destination(title, body)
 
@@ -677,7 +816,7 @@ class ToolsKeycardChangePinView(View):
                 return Destination(BackStackView)
             if bytes(new_pin) != bytes(confirm_pin):
                 return _error_destination(
-                    "Mismatch", "New PINs do not\nmatch. Retry.",
+                    _("Mismatch"), _("New PINs do not\nmatch. Retry."),
                 )
 
             try:
@@ -685,7 +824,7 @@ class ToolsKeycardChangePinView(View):
             except Exception as exc:
                 logger.exception("Keycard CHANGE PIN failed")
                 title, body = classify_card_error(
-                    exc, default_title="Change PIN failed",
+                    exc, default_title=_("Change PIN failed"),
                 )
                 return _error_destination(title, body)
 
@@ -694,9 +833,9 @@ class ToolsKeycardChangePinView(View):
 
             self.run_screen(
                 LargeIconStatusScreen,
-                title="PIN changed",
+                title=_("PIN changed"),
                 status_headline=None,
-                text="New PIN active.\nUse it on next op.",
+                text=_("New PIN active.\nUse it on next op."),
                 show_back_button=False,
                 button_data=[ButtonOption("OK")],
             )
@@ -852,7 +991,7 @@ class ToolsKeycardPairView(View):
                 PairingInfo, SecureChannelError,
             )
         except ImportError as exc:
-            return _error_destination("Keycard support unavailable", str(exc))
+            return _error_destination(_("Keycard support unavailable"), str(exc))
 
         try:
             release_other_smartcard_holders(self.controller)
@@ -866,8 +1005,8 @@ class ToolsKeycardPairView(View):
 
         if select_info.app_version == 0:
             return _error_destination(
-                "Not initialised",
-                "Run Setup ›\nInitialise card first.",
+                _("Not initialised"),
+                _("Run Setup ›\nInitialise card first."),
             )
 
         instance_uid = bytes(select_info.instance_uid)
@@ -895,9 +1034,14 @@ class ToolsKeycardPairView(View):
         if self.controller.get_pairing_for(instance_uid) is not None:
             self.run_screen(
                 LargeIconStatusScreen,
-                title="Already paired",
+                title=_("Already paired"),
                 status_headline=None,
-                text=f"Paired this session.\n{free_slots} slot(s) free on card.",
+                # TRANSLATOR_NOTE: {} is the number of free pairing slots on the card
+                text=ngettext(
+                    "Paired this session.\n{} slot free on card.",
+                    "Paired this session.\n{} slots free on card.",
+                    free_slots,
+                ).format(free_slots),
                 show_back_button=False,
                 button_data=[ButtonOption("OK")],
             )
@@ -909,8 +1053,8 @@ class ToolsKeycardPairView(View):
         # prompt.
         if free_slots == 0:
             return _error_destination(
-                "No free slots",
-                "Card is full. Unpair on a\npaired device, or reset.",
+                _("No free slots"),
+                _("Card is full. Unpair on a\npaired device, or reset."),
             )
 
         # --- Silent fast paths -------------------------------------
@@ -939,7 +1083,7 @@ class ToolsKeycardPairView(View):
                 )
         except Exception as exc:
             logger.exception("Keycard PAIR (default secrets) failed")
-            title, body = classify_card_error(exc, default_title="PAIR failed")
+            title, body = classify_card_error(exc, default_title=_("PAIR failed"))
             return _error_destination(title, body)
 
         used_default = pairing is not None
@@ -958,7 +1102,7 @@ class ToolsKeycardPairView(View):
                 custom = password_buf.decode("utf-8")
             except Exception as exc:
                 _wipe_bytearray(password_buf)
-                return _error_destination("Bad password", str(exc))
+                return _error_destination(_("Bad password"), str(exc))
             try:
                 pairing, source = _try_pair_with_password(
                     client, pairing_storage, derive_pairing_secret,
@@ -968,7 +1112,7 @@ class ToolsKeycardPairView(View):
             except Exception as exc:
                 _wipe_bytearray(password_buf)
                 logger.exception("Keycard PAIR (custom pwd) failed")
-                title, body = classify_card_error(exc, default_title="PAIR failed")
+                title, body = classify_card_error(exc, default_title=_("PAIR failed"))
                 return _error_destination(title, body)
             finally:
                 try:
@@ -978,26 +1122,26 @@ class ToolsKeycardPairView(View):
             _wipe_bytearray(password_buf)
             if pairing is None:
                 return _error_destination(
-                    "Wrong password",
-                    "Pairing password did\nnot match this card.",
+                    _("Wrong password"),
+                    _("Pairing password did\nnot match this card."),
                 )
 
         self.controller.set_pairing_for(instance_uid, pairing)
 
         if source == "disk":
-            detail = "loaded from disk"
+            detail = _("loaded from disk")
         else:
             # PAIR consumed a slot, so the cached count is 1 stale.
             free_slots = max(0, free_slots - 1)
-            detail = "saved for next boot"
-        pwd_label = "default password" if used_default else "custom password"
-        text = (
-            f"Slot {pairing.pairing_index} ({free_slots} free)\n"
-            f"{pwd_label}\n{detail}"
+            detail = _("saved for next boot")
+        pwd_label = _("default password") if used_default else _("custom password")
+        # TRANSLATOR_NOTE: {} are slot index, free-slot count, password kind, detail line
+        text = _("Slot {} ({} free)\n{}\n{}").format(
+            pairing.pairing_index, free_slots, pwd_label, detail
         )
         self.run_screen(
             LargeIconStatusScreen,
-            title="Paired",
+            title=_("Paired"),
             status_headline=None,
             text=text,
             show_back_button=False,
@@ -1042,7 +1186,7 @@ class ToolsKeycardPairView(View):
             except Exception as exc:
                 logger.exception("ephemeral PAIR (default pwd) failed")
                 title, body = classify_card_error(
-                    exc, default_title="PAIR failed",
+                    exc, default_title=_("PAIR failed"),
                 )
                 return _error_destination(title, body)
 
@@ -1056,7 +1200,7 @@ class ToolsKeycardPairView(View):
                 except Exception as exc:
                     logger.exception("ephemeral PAIR (shell PSK) failed")
                     title, body = classify_card_error(
-                        exc, default_title="PAIR failed",
+                        exc, default_title=_("PAIR failed"),
                     )
                     return _error_destination(title, body)
         finally:
@@ -1086,7 +1230,7 @@ class ToolsKeycardPairView(View):
                 custom = password_buf.decode("utf-8")
             except Exception as exc:
                 _wipe_bytearray(password_buf)
-                return _error_destination("Bad password", str(exc))
+                return _error_destination(_("Bad password"), str(exc))
             normalised = unicodedata.normalize("NFKD", custom)
             try:
                 custom_secret = derive_pairing_secret(normalised)
@@ -1097,7 +1241,7 @@ class ToolsKeycardPairView(View):
                 except Exception as exc:
                     logger.exception("ephemeral PAIR (custom pwd) failed")
                     title, body = classify_card_error(
-                        exc, default_title="PAIR failed",
+                        exc, default_title=_("PAIR failed"),
                     )
                     return _error_destination(title, body)
                 if paired is None:
@@ -1109,8 +1253,8 @@ class ToolsKeycardPairView(View):
                     except Exception:
                         pass
                     return _error_destination(
-                        "Wrong password",
-                        "Pairing password did\nnot match this card.",
+                        _("Wrong password"),
+                        _("Pairing password did\nnot match this card."),
                     )
                 secret_used = custom_secret
             finally:
@@ -1187,11 +1331,12 @@ class ToolsKeycardRemovePairingView(View):
             button_data.append(self.UNPAIR_CARD)
         button_data.append(self.LOCAL_ALL)
         for entry in entries:
-            label = ("Card legacy" if entry.is_legacy
-                     else f"Card {entry.fingerprint[:4]}…{entry.fingerprint[-4:]}")
+            label = (_("Card legacy") if entry.is_legacy
+                     else _("Card {}…{}").format(entry.fingerprint[:4], entry.fingerprint[-4:]))
             button_data.append(ButtonOption(label))
 
-        title = "Remove pairing" if instance_uid is not None else f"Remove ({len(entries)} saved)"
+        title = (_("Remove pairing") if instance_uid is not None
+                 else _("Remove ({} saved)").format(len(entries)))
         ret = self.run_screen(
             ButtonListScreen,
             title=title,
@@ -1225,12 +1370,12 @@ class ToolsKeycardRemovePairingView(View):
             self.controller.get_ephemeral_secret_for(instance_uid) is not None
         )
         if is_ephemeral:
-            confirm_text = "Forgets ephemeral\npairing for this boot."
+            confirm_text = _("Forgets ephemeral\npairing for this boot.")
         else:
-            confirm_text = "Frees the card slot\nand deletes local copy."
+            confirm_text = _("Frees the card slot\nand deletes local copy.")
         ret = self.run_screen(
             WarningScreen,
-            title="Unpair card?",
+            title=_("Unpair card?"),
             status_headline=None,
             text=confirm_text,
             show_back_button=True,
@@ -1258,24 +1403,24 @@ class ToolsKeycardRemovePairingView(View):
         if unpair_failed_exc is not None:
             confirm = self.run_screen(
                 WarningScreen,
-                title="UNPAIR failed",
+                title=_("UNPAIR failed"),
                 status_headline=None,
-                text="Card slot stays in use.\nRemove local only?",
+                text=_("Card slot stays in use.\nRemove local only?"),
                 show_back_button=True,
                 button_data=[ButtonOption("Remove local")],
             )
             if confirm == RET_CODE__BACK_BUTTON:
                 title, body = classify_card_error(
-                    unpair_failed_exc, default_title="UNPAIR failed",
+                    unpair_failed_exc, default_title=_("UNPAIR failed"),
                 )
                 return _error_destination(title, body)
             self._drop_local_for_uid(instance_uid)
-            self._show_done("Removed local",
+            self._show_done(_("Removed local"),
                             "Slot still in use\non the card.")
             return Destination(ToolsKeycardMenuView, skip_current_view=True)
 
         self._drop_local_for_uid(instance_uid)
-        self._show_done("Unpaired", "Slot freed; local removed.")
+        self._show_done(_("Unpaired"), _("Slot freed; local removed."))
         return Destination(ToolsKeycardMenuView, skip_current_view=True)
 
     def _drop_local_for_uid(self, instance_uid: bytes) -> None:
@@ -1291,9 +1436,9 @@ class ToolsKeycardRemovePairingView(View):
 
         ret = self.run_screen(
             DireWarningScreen,
-            title="Remove all?",
+            title=_("Remove all?"),
             status_headline=None,
-            text="Local only. Slots stay\nused on the cards.",
+            text=_("Local only. Slots stay\nused on the cards."),
             show_back_button=True,
             button_data=[ButtonOption("Remove all")],
         )
@@ -1302,7 +1447,11 @@ class ToolsKeycardRemovePairingView(View):
 
         count = pairing_storage.remove_all()
         self.controller.forget_all_pairings()
-        self._show_done("Removed", f"Removed {count} pairing(s).")
+        # TRANSLATOR_NOTE: {} is the number of removed saved pairings
+        self._show_done(
+            _("Removed"),
+            ngettext("Removed {} pairing.", "Removed {} pairings.", count).format(count),
+        )
         return Destination(ToolsKeycardMenuView, skip_current_view=True)
 
     def _remove_local_entry(self, entry) -> Destination:
@@ -1310,9 +1459,9 @@ class ToolsKeycardRemovePairingView(View):
 
         ret = self.run_screen(
             WarningScreen,
-            title="Remove?",
+            title=_("Remove?"),
             status_headline=None,
-            text=f"Local only.\n{entry.path.name[:24]}",
+            text=_("Local only.\n{}").format(entry.path.name[:24]),
             show_back_button=True,
             button_data=[ButtonOption("Remove")],
         )
@@ -1326,8 +1475,8 @@ class ToolsKeycardRemovePairingView(View):
                     self.controller.forget_pairing_for(uid)
 
         self._show_done(
-            "Removed" if removed else "Not found",
-            "Saved pairing removed." if removed else "Already gone.",
+            _("Removed") if removed else _("Not found"),
+            _("Saved pairing removed.") if removed else _("Already gone."),
         )
         return Destination(ToolsKeycardRemovePairingView, skip_current_view=True)
 
@@ -1362,9 +1511,9 @@ class ToolsKeycardGenerateKeyView(View):
     def run(self):
         ret = self.run_screen(
             DireWarningScreen,
-            title="Generate seed?",
+            title=_("Generate seed?"),
             status_headline=None,
-            text="Card generates a new\nseed and loads it on-card.",
+            text=_("Card generates a new\nseed and loads it on-card."),
             show_back_button=True,
             button_data=[self.CONFIRM],
         )
@@ -1418,9 +1567,9 @@ class ToolsKeycardImportSeedView(View):
         # 1. Strong warning + confirm to enter the flow.
         warn_ret = self.run_screen(
             DireWarningScreen,
-            title="Import to card?",
+            title=_("Import to card?"),
             status_headline=None,
-            text="Seed leaves device once,\nencrypted to card.",
+            text=_("Seed leaves device once,\nencrypted to card."),
             show_back_button=True,
             button_data=[ButtonOption("Continue")],
         )
@@ -1431,7 +1580,7 @@ class ToolsKeycardImportSeedView(View):
         button_data = [self.SCAN, self.TYPE_12, self.TYPE_24, self.HEX]
         choice_ret = self.run_screen(
             ButtonListScreen,
-            title="Source",
+            title=_("Source"),
             is_button_text_centered=False,
             button_data=button_data,
             show_back_button=True,
@@ -1466,14 +1615,14 @@ class ToolsKeycardImportSeedView(View):
             try:
                 bip39.mnemonic_to_seed(mnemonic, password="")
             except Exception:
-                return _error_destination("Invalid seed",
+                return _error_destination(_("Invalid seed"),
                                           "Checksum failed.")
 
             # 5. Optional passphrase.
             pp_choice_data = [self.SKIP_PASSPHRASE, self.SET_PASSPHRASE]
             pp_choice = self.run_screen(
                 ButtonListScreen,
-                title="Passphrase?",
+                title=_("Passphrase?"),
                 is_button_text_centered=False,
                 button_data=pp_choice_data,
                 show_back_button=True,
@@ -1493,7 +1642,7 @@ class ToolsKeycardImportSeedView(View):
                 try:
                     passphrase = passphrase_buf.decode("utf-8")
                 except Exception as exc:
-                    return _error_destination("Bad passphrase", str(exc))
+                    return _error_destination(_("Bad passphrase"), str(exc))
 
             # 6. Compute seed + master fingerprint for confirmation.
             try:
@@ -1503,14 +1652,14 @@ class ToolsKeycardImportSeedView(View):
                 fingerprint = root.my_fingerprint.hex()
             except Exception as exc:
                 logger.exception("seed derivation failed")
-                return _error_destination("Derive failed", str(exc))
+                return _error_destination(_("Derive failed"), str(exc))
 
             # 7. Confirmation screen showing master fingerprint.
             confirm_ret = self.run_screen(
                 WarningScreen,
-                title="Push?",
+                title=_("Push?"),
                 status_headline=None,
-                text=f"Master fp:\n{fingerprint}\nVerify before push.",
+                text=_("Master fp:\n{}\nVerify before push.").format(fingerprint),
                 show_back_button=True,
                 button_data=[self.CONFIRM],
             )
@@ -1519,7 +1668,7 @@ class ToolsKeycardImportSeedView(View):
 
             # 8. Push (PIN handled by the wrapper — cached or prompted).
             try:
-                client, _ = _open_unlocked_session_cached_or_prompt(
+                client, _unused = _open_unlocked_session_cached_or_prompt(
                     self, require_key=False,
                 )
                 client.load_bip39_seed(bytes(seed64))
@@ -1529,7 +1678,7 @@ class ToolsKeycardImportSeedView(View):
                 return Destination(ToolsKeycardPairView)
             except Exception as exc:
                 logger.exception("LOAD_KEY failed")
-                title, body = classify_card_error(exc, default_title="Push failed")
+                title, body = classify_card_error(exc, default_title=_("Push failed"))
                 return _error_destination(title, body)
 
             # The on-card master key just changed — any cached View-wallets
@@ -1538,9 +1687,9 @@ class ToolsKeycardImportSeedView(View):
 
             self.run_screen(
                 LargeIconStatusScreen,
-                title="Wallet imported",
+                title=_("Wallet imported"),
                 status_headline=None,
-                text=f"Master fp:\n{fingerprint}",
+                text=_("Master fp:\n{}").format(fingerprint),
                 show_back_button=False,
                 button_data=[ButtonOption("OK")],
             )
@@ -1584,7 +1733,7 @@ class ToolsKeycardImportSeedView(View):
         decoder = DecodeQR()
         self.run_screen(
             ScanScreen,
-            instructions_text="Scan SeedQR",
+            instructions_text=_("Scan SeedQR"),
             decoder=decoder,
         )
         time.sleep(0.1)
@@ -1607,7 +1756,7 @@ class ToolsKeycardImportSeedView(View):
         for i in range(num_words):
             ret = self.run_screen(
                 seed_screens.SeedMnemonicEntryScreen,
-                title=f"Word #{i + 1}",
+                title=_("Word #{}").format(i + 1),
                 initial_letters=["a"],
                 wordlist=wordlist,
             )
@@ -1637,7 +1786,7 @@ class ToolsKeycardImportSeedView(View):
         method_data = [SCAN_HEX, TYPE_HEX]
         method = self.run_screen(
             ButtonListScreen,
-            title="Hex source",
+            title=_("Hex source"),
             is_button_text_centered=False,
             button_data=method_data,
             show_back_button=True,
@@ -1648,7 +1797,7 @@ class ToolsKeycardImportSeedView(View):
         if method_data[method] == SCAN_HEX:
             raw = self._scan_hex_text()
         else:
-            ret = KeycardHexEntryScreen(title="Enter hex").display()
+            ret = KeycardHexEntryScreen(title=_("Enter hex")).display()
             raw = ret if isinstance(ret, str) else None
         if not raw:
             return None
@@ -1662,9 +1811,9 @@ class ToolsKeycardImportSeedView(View):
         ):
             self.run_screen(
                 WarningScreen,
-                title="Invalid hex",
+                title=_("Invalid hex"),
                 status_headline=None,
-                text="Need 32 or 64 hex\nchars (12 or 24 words).",
+                text=_("Need 32 or 64 hex\nchars (12 or 24 words)."),
                 show_back_button=False,
                 button_data=[ButtonOption("OK")],
             )
@@ -1686,7 +1835,7 @@ class ToolsKeycardImportSeedView(View):
         decoder = DecodeQR(is_text=True)
         self.run_screen(
             ScanScreen,
-            instructions_text="Scan hex QR",
+            instructions_text=_("Scan hex QR"),
             decoder=decoder,
         )
         time.sleep(0.1)
@@ -1768,7 +1917,7 @@ class ToolsKeycardSetupChooseSeedView(View):
         button_data = [self.GENERATE, self.IMPORT]
         selected = self.run_screen(
             ButtonListScreen,
-            title="Load seed",
+            title=_("Load seed"),
             is_button_text_centered=False,
             button_data=button_data,
         )
@@ -1792,7 +1941,7 @@ class ToolsKeycardGenerateMnemonicLengthView(View):
         button_data = [self.WORDS_12, self.WORDS_24]
         selected = self.run_screen(
             ButtonListScreen,
-            title="Mnemonic length",
+            title=_("Mnemonic length"),
             is_button_text_centered=False,
             button_data=button_data,
         )
@@ -1826,7 +1975,7 @@ class ToolsKeycardGenerateMnemonicRunView(View):
         _wipe_pending_setup_state(self.controller)
 
         try:
-            client, _ = _open_unlocked_session_cached_or_prompt(
+            client, _unused = _open_unlocked_session_cached_or_prompt(
                 self, require_key=False,
             )
             indices = client.generate_mnemonic(self.word_count)
@@ -1837,7 +1986,7 @@ class ToolsKeycardGenerateMnemonicRunView(View):
         except Exception as exc:
             logger.exception("GENERATE_MNEMONIC failed")
             title, body = classify_card_error(
-                exc, default_title="Generate failed",
+                exc, default_title=_("Generate failed"),
             )
             return _error_destination(title, body)
 
@@ -1850,7 +1999,7 @@ class ToolsKeycardGenerateMnemonicRunView(View):
         for idx in indices:
             if idx < 0 or idx >= len(wordlist):
                 return _error_destination(
-                    "Bad mnemonic", f"Index {idx} out of range",
+                    _("Bad mnemonic"), _("Index {} out of range").format(idx),
                 )
             words.append("".join(wordlist[idx]))
 
@@ -1895,7 +2044,7 @@ class ToolsKeycardGenerateSeedWordsView(View):
         button_data = [self.DONE if is_last_page else self.NEXT]
 
         selected = seed_screens.SeedWordsScreen(
-            title=f"Seed Words: {self.page_index + 1}/{num_pages}",
+            title=_("Seed Words: {}/{}").format(self.page_index + 1, num_pages),
             words=words,
             page_index=self.page_index,
             num_pages=num_pages,
@@ -1990,19 +2139,20 @@ class ToolsKeycardGenerateSeedBackupQuizView(View):
                 self.cur_index = int(random.random() * len(mnemonic))
 
         real = ButtonOption(mnemonic[self.cur_index])
-        # `"".join(...)` keeps wipes off the shared global wordlist.
-        fake_options = [
-            ButtonOption("".join(bip39.WORDLIST[
-                int(random.random() * 2047)
-            ]))
-            for _ in range(3)
-        ]
+        # `"".join(...)` keeps wipes off the shared global wordlist. The word
+        # is built in a local first so the string extractor never sees a
+        # literal first arg to ButtonOption (a random BIP-39 word is not UI
+        # copy, and `ButtonOption("".join(...))` would mark an empty msgid).
+        fake_options = []
+        for _attempt in range(3):
+            fake_word = "".join(bip39.WORDLIST[int(random.random() * 2047)])
+            fake_options.append(ButtonOption(fake_word))
         button_data = [real] + fake_options
         random.shuffle(button_data)
 
         selected = self.run_screen(
             ButtonListScreen,
-            title=f"Verify Word #{self.cur_index + 1}",
+            title=_("Verify Word #{}").format(self.cur_index + 1),
             show_back_button=False,
             button_data=button_data,
             is_bottom_list=True,
@@ -2047,9 +2197,9 @@ class ToolsKeycardGenerateSeedBackupMistakeView(View):
         text = f'Word #{self.cur_index + 1} is not "{self.wrong_word}".'
         selected = self.run_screen(
             DireWarningScreen,
-            title="Verification error",
+            title=_("Verification error"),
             show_back_button=False,
-            status_headline="Wrong word!",
+            status_headline=_("Wrong word!"),
             button_data=[self.REVIEW, self.RETRY],
             text=text,
         )
@@ -2083,7 +2233,7 @@ class ToolsKeycardGenerateSeedPassphrasePromptView(View):
         button_data = [self.SKIP, self.SET]
         selected = self.run_screen(
             ButtonListScreen,
-            title="Passphrase?",
+            title=_("Passphrase?"),
             is_button_text_centered=False,
             button_data=button_data,
         )
@@ -2144,7 +2294,7 @@ class ToolsKeycardGenerateSeedLoadView(View):
                 passphrase_str = passphrase_buf.decode("utf-8")
             except Exception as exc:
                 _wipe_pending_setup_state(self.controller)
-                return _error_destination("Bad passphrase", str(exc))
+                return _error_destination(_("Bad passphrase"), str(exc))
 
             try:
                 derived = bip39.mnemonic_to_seed(
@@ -2156,10 +2306,10 @@ class ToolsKeycardGenerateSeedLoadView(View):
             except Exception as exc:
                 logger.exception("seed derivation failed")
                 _wipe_pending_setup_state(self.controller)
-                return _error_destination("Derive failed", str(exc))
+                return _error_destination(_("Derive failed"), str(exc))
 
             try:
-                client, _ = _open_unlocked_session_cached_or_prompt(
+                client, _unused = _open_unlocked_session_cached_or_prompt(
                     self, require_key=False,
                 )
                 client.load_bip39_seed(bytes(seed64))
@@ -2173,7 +2323,7 @@ class ToolsKeycardGenerateSeedLoadView(View):
                 logger.exception("LOAD_KEY failed")
                 _wipe_pending_setup_state(self.controller)
                 title, body = classify_card_error(
-                    exc, default_title="Push failed",
+                    exc, default_title=_("Push failed"),
                 )
                 return _error_destination(title, body)
 
@@ -2181,9 +2331,9 @@ class ToolsKeycardGenerateSeedLoadView(View):
 
             self.run_screen(
                 LargeIconStatusScreen,
-                title="Seed loaded",
+                title=_("Seed loaded"),
                 status_headline=None,
-                text=f"Master fp:\n{fingerprint}",
+                text=_("Master fp:\n{}").format(fingerprint),
                 show_back_button=False,
                 button_data=[ButtonOption("OK")],
             )
@@ -2217,7 +2367,7 @@ class ToolsKeycardSeedkeeperOfferView(View):
         # and the destination chooser decides what to probe / install.
         selected = self.run_screen(
             ButtonListScreen,
-            title="Save to Seedkeeper?",
+            title=_("Save to Seedkeeper?"),
             is_button_text_centered=False,
             button_data=[self.YES, self.NO],
         )
@@ -2250,7 +2400,7 @@ class ToolsKeycardSeedkeeperDestChooserView(View):
         button_data = [self.THIS_CARD, self.OTHER_CARD, self.BOTH]
         selected = self.run_screen(
             ButtonListScreen,
-            title="Save backup to",
+            title=_("Save backup to"),
             is_button_text_centered=False,
             button_data=button_data,
         )
@@ -2314,7 +2464,7 @@ class ToolsKeycardSeedkeeperThisCardView(View):
         if not has_seedkeeper:
             sel = self.run_screen(
                 ButtonListScreen,
-                title="No Seedkeeper applet",
+                title=_("No Seedkeeper applet"),
                 is_button_text_centered=False,
                 button_data=[self.INSTALL, self.CANCEL],
             )
@@ -2362,9 +2512,9 @@ class ToolsKeycardSeedkeeperSwapInsertView(View):
 
         ret = self.run_screen(
             WarningScreen,
-            title="Insert Seedkeeper",
+            title=_("Insert Seedkeeper"),
             status_headline=None,
-            text="Remove Keycard, insert\nyour Seedkeeper card.",
+            text=_("Remove Keycard, insert\nyour Seedkeeper card."),
             show_back_button=True,
             button_data=[self.CONTINUE],
         )
@@ -2384,9 +2534,9 @@ class ToolsKeycardSeedkeeperSwapInsertView(View):
         if not (state and getattr(state, "seedkeeper_installed", False)):
             retry = self.run_screen(
                 WarningScreen,
-                title="No Seedkeeper",
+                title=_("No Seedkeeper"),
                 status_headline=None,
-                text="No Seedkeeper card\ndetected.",
+                text=_("No Seedkeeper card\ndetected."),
                 show_back_button=True,
                 button_data=[self.RETRY],
             )
@@ -2412,7 +2562,7 @@ class ToolsKeycardSeedkeeperFormatChooserView(View):
         button_data = [self.MNEMONIC, self.PASSWORD]
         selected = self.run_screen(
             ButtonListScreen,
-            title="Backup format",
+            title=_("Backup format"),
             is_button_text_centered=False,
             button_data=button_data,
         )
@@ -2457,7 +2607,7 @@ class ToolsKeycardSeedkeeperSaveRunView(View):
             # this is the one error path that still wipes the seed.
             _wipe_pending_setup_state(self.controller)
             return _error_destination(
-                "Seedkeeper unavailable", str(exc),
+                _("Seedkeeper unavailable"), str(exc),
             )
 
         mnemonic = self.controller.pending_keycard_mnemonic
@@ -2472,7 +2622,7 @@ class ToolsKeycardSeedkeeperSaveRunView(View):
             passphrase_str = ""
 
         label_ret = seed_screens.SeedAddPassphraseScreen(
-            title="Secret label",
+            title=_("Secret label"),
         ).display()
         if isinstance(label_ret, dict) and "is_back_button" in label_ret:
             return Destination(BackStackView)
@@ -2538,7 +2688,7 @@ class ToolsKeycardSeedkeeperSaveRunView(View):
             )
 
         try:
-            loading = LoadingScreenThread(text="Saving secret\n\n\n\n\n\n")
+            loading = LoadingScreenThread(text=_("Saving secret\n\n\n\n\n\n"))
             loading.start()
             Satochip_Connector.seedkeeper_import_secret(secret_dic)
             loading.stop()
@@ -2562,9 +2712,9 @@ class ToolsKeycardSeedkeeperSaveRunView(View):
         if "other" in self.remaining:
             self.run_screen(
                 LargeIconStatusScreen,
-                title="Saved (1 of 2)",
+                title=_("Saved (1 of 2)"),
                 status_headline=None,
-                text="Now back up to a\nseparate card.",
+                text=_("Now back up to a\nseparate card."),
                 show_back_button=False,
                 button_data=[ButtonOption("Continue")],
             )
@@ -2573,9 +2723,9 @@ class ToolsKeycardSeedkeeperSaveRunView(View):
         _wipe_pending_setup_state(self.controller)
         self.run_screen(
             LargeIconStatusScreen,
-            title="Backup saved",
+            title=_("Backup saved"),
             status_headline=None,
-            text="Mnemonic stored on Seedkeeper.",
+            text=_("Mnemonic stored on Seedkeeper."),
             show_back_button=False,
             button_data=[ButtonOption("OK")],
         )
@@ -2659,7 +2809,7 @@ class ToolsKeycardPairWalletView(View):
         results: dict = {}
 
         try:
-            client, _ = _open_unlocked_session_cached_or_prompt(self)
+            client, _unused = _open_unlocked_session_cached_or_prompt(self)
             for label, path, ext in steps:
                 client.derive_key(path)
                 raw = client.export_pubkey(extended=ext)
@@ -2682,14 +2832,15 @@ class ToolsKeycardPairWalletView(View):
             return Destination(ToolsKeycardPairView)
         except Exception as exc:
             logger.exception("Keycard EXPORT (pair-wallet) failed")
-            title, body = classify_card_error(exc, default_title="Export failed")
+            title, body = classify_card_error(exc, default_title=_("Export failed"))
             return _error_destination(title, body)
 
         if failed_step is not None:
             head_hex = failed_head.hex() if failed_head else "(empty)"
             return _error_destination(
-                "Parse fail",
-                f"Step {failed_step}\nresp={head_hex}",
+                _("Parse fail"),
+                # TRANSLATOR_NOTE: {} are a step number and a hex response dump
+                _("Step {}\nresp={}").format(failed_step, head_hex),
             )
 
         master_pub = results["master"]
@@ -2702,7 +2853,7 @@ class ToolsKeycardPairWalletView(View):
             parent_fp = _hash160(_compress_pubkey(parent_pub))[:4]
             address = to_checksum_address(pubkey_to_address(first_addr_pub))
         except Exception as exc:
-            return _error_destination("Bad pubkey", str(exc))
+            return _error_destination(_("Bad pubkey"), str(exc))
 
         encoder = EthHDKeyQrEncoder(
             pubkey=account_pub,
@@ -2716,7 +2867,7 @@ class ToolsKeycardPairWalletView(View):
         text = f"m/44'/60'/0'/0/0\n{address[:21]}\n{address[21:]}"
         self.run_screen(
             LargeIconStatusScreen,
-            title="ETH address",
+            title=_("ETH address"),
             status_headline=None,
             text=text,
             show_back_button=False,
@@ -2787,8 +2938,8 @@ class ToolsKeycardWalletsListView(View):
         if len(cache) < end_index:
             loading_screen = None
             try:
-                client, _ = _open_unlocked_session_cached_or_prompt(self)
-                loading_screen = LoadingScreenThread(text="Deriving addrs...")
+                client, _unused = _open_unlocked_session_cached_or_prompt(self)
+                loading_screen = LoadingScreenThread(text=_("Deriving addrs..."))
                 loading_screen.start()
                 for i in range(len(cache), end_index):
                     client.derive_key([44 | _H, 60 | _H, 0 | _H, 0, i])
@@ -2796,8 +2947,10 @@ class ToolsKeycardWalletsListView(View):
                     pub = _extract_pubkey(raw)
                     if pub is None:
                         return _error_destination(
-                            "Parse fail",
-                            f"Index {i}\nresp={raw[:16].hex() if raw else '(empty)'}",
+                            _("Parse fail"),
+                            # TRANSLATOR_NOTE: {} are an index and a hex response dump
+                            _("Index {}\nresp={}").format(
+                                i, raw[:16].hex() if raw else '(empty)'),
                         )
                     addr = to_checksum_address(pubkey_to_address(pub))
                     cache.append(addr)
@@ -2808,7 +2961,7 @@ class ToolsKeycardWalletsListView(View):
             except Exception as exc:
                 logger.exception("Keycard View wallets failed")
                 title, body = classify_card_error(
-                    exc, default_title="Derive failed",
+                    exc, default_title=_("Derive failed"),
                 )
                 return _error_destination(title, body)
             finally:
@@ -2820,7 +2973,7 @@ class ToolsKeycardWalletsListView(View):
 
         selected = self.run_screen(
             ToolsAddressExplorerAddressListScreen,
-            title=f"Wallets ({active_aid_short})",
+            title=_("Wallets ({})").format(active_aid_short),
             start_index=self.start_index,
             addresses=addresses,
             selected_button=self.selected_button_index,
@@ -2921,7 +3074,7 @@ def _format_instance_label(aid: bytes) -> str:
         and aid.startswith(KEYCARD_APPLET_AID)
         and aid[-2] == 0x01
     ):
-        return f"Inst {aid[-1]}"
+        return _("Inst {}").format(aid[-1])
     return _format_aid_short(aid)
 
 
@@ -2968,7 +3121,7 @@ class ToolsKeycardInstancesMenuView(View):
         button_data = [self.LIST, self.SWITCH, self.CREATE, self.DELETE]
         ret = self.run_screen(
             ButtonListScreen,
-            title=f"Active: {active}",
+            title=_("Active: {}").format(active),
             is_button_text_centered=False,
             button_data=button_data,
             show_back_button=True,
@@ -3035,7 +3188,7 @@ class ToolsKeycardInstancesListView(View):
             channel, instances, isd_connection = _open_isd_channel(self.controller)
         except Exception as exc:
             logger.exception("GP list_instances failed")
-            title, body = classify_card_error(exc, default_title="GP failed")
+            title, body = classify_card_error(exc, default_title=_("GP failed"))
             return _error_destination(title, body)
 
         # Some cards / Card Manager configurations don't expose installed
@@ -3051,7 +3204,7 @@ class ToolsKeycardInstancesListView(View):
             i for i in instances if i.aid.startswith(KEYCARD_APPLET_AID)
         ]
         if not keycard_instances:
-            text = "No Keycard instances\nfound."
+            text = _("No Keycard instances\nfound.")
         else:
             active = self.controller.active_keycard_aid
             # Mark the active instance with a leading "» " so the user can
@@ -3063,7 +3216,7 @@ class ToolsKeycardInstancesListView(View):
             text = "\n".join(lines[:6])
         self.run_screen(
             LargeIconStatusScreen,
-            title=f"Instances ({len(keycard_instances)}/{MAX_KEYCARD_INSTANCES})",
+            title=_("Instances ({}/{})").format(len(keycard_instances), MAX_KEYCARD_INSTANCES),
             status_headline=None,
             text=text,
             show_back_button=False,
@@ -3078,7 +3231,7 @@ class ToolsKeycardInstancesSwitchView(View):
             channel, instances, isd_connection = _open_isd_channel(self.controller)
         except Exception as exc:
             logger.exception("GP list_instances failed")
-            title, body = classify_card_error(exc, default_title="GP failed")
+            title, body = classify_card_error(exc, default_title=_("GP failed"))
             return _error_destination(title, body)
 
         instances = _instances_or_probe_fallback(
@@ -3091,8 +3244,8 @@ class ToolsKeycardInstancesSwitchView(View):
         ]
         if not candidates:
             return _error_destination(
-                "No instances",
-                "No Keycard applet found on this card.",
+                _("No instances"),
+                _("No Keycard applet found on this card."),
             )
 
         from seedsigner.helpers.keycard.global_platform import MAX_KEYCARD_INSTANCES
@@ -3105,7 +3258,7 @@ class ToolsKeycardInstancesSwitchView(View):
         ]
         ret = self.run_screen(
             ButtonListScreen,
-            title=f"Pick active ({len(candidates)}/{MAX_KEYCARD_INSTANCES})",
+            title=_("Pick active ({}/{})").format(len(candidates), MAX_KEYCARD_INSTANCES),
             is_button_text_centered=False,
             button_data=button_data,
             show_back_button=True,
@@ -3115,6 +3268,13 @@ class ToolsKeycardInstancesSwitchView(View):
 
         chosen = candidates[ret].aid
         self.controller.active_keycard_aid = chosen
+        # Switching the active instance must not carry the previous
+        # instance's unlocked PIN across — the next op should re-prompt so
+        # the user can, if needed, type a different (e.g. duress) PIN.
+        # Drop all cached PINs: reader-independent, and the active AID→UID
+        # map is too often empty to scope this safely. One extra prompt is
+        # the documented acceptable cost (see wipe_card_session_secrets).
+        self.controller.forget_all_pins()
         # Drop any cached wallets list whose AID no longer matches the
         # current active. Cheap to recompute and avoids showing stale
         # addresses derived against a different instance's master key.
@@ -3123,7 +3283,7 @@ class ToolsKeycardInstancesSwitchView(View):
 
         self.run_screen(
             LargeIconStatusScreen,
-            title="Active set",
+            title=_("Active set"),
             status_headline=None,
             text=_format_instance_label(chosen),
             show_back_button=False,
@@ -3147,7 +3307,7 @@ class ToolsKeycardInstancesCreateView(View):
             channel, instances, isd_connection = _open_isd_channel(self.controller)
         except Exception as exc:
             logger.exception("GP open failed")
-            title, body = classify_card_error(exc, default_title="GP open failed")
+            title, body = classify_card_error(exc, default_title=_("GP open failed"))
             return _error_destination(title, body)
 
         existing_aids = [i.aid for i in instances]
@@ -3156,19 +3316,19 @@ class ToolsKeycardInstancesCreateView(View):
         )
         if keycard_count >= MAX_KEYCARD_INSTANCES:
             return _error_destination(
-                "Maximum reached",
-                f"Delete one of the {MAX_KEYCARD_INSTANCES} instances first.",
+                _("Maximum reached"),
+                _("Delete one of the {} instances first.").format(MAX_KEYCARD_INSTANCES),
             )
         try:
             new_aid = _next_free_instance_aid(existing_aids)
         except Exception as exc:
-            return _error_destination("No slot", str(exc))
+            return _error_destination(_("No slot"), str(exc))
 
         ret = self.run_screen(
             DireWarningScreen,
-            title="Create instance?",
+            title=_("Create instance?"),
             status_headline=None,
-            text=f"New AID:\n{_format_aid_short(new_aid)}\nCard must have package.",
+            text=_("New AID:\n{}\nCard must have package.").format(_format_aid_short(new_aid)),
             show_back_button=True,
             button_data=[self.CONFIRM],
         )
@@ -3188,17 +3348,17 @@ class ToolsKeycardInstancesCreateView(View):
             # satisfied (0x6982)" — surface that directly so the user
             # has the SW to share if reporting. Keep within 2 lines.
             detail = str(exc)[:80]
-            return _error_destination("Install failed", detail)
+            return _error_destination(_("Install failed"), detail)
         except Exception as exc:
             logger.exception("INSTALL [for install] failed")
-            title, body = classify_card_error(exc, default_title="Install failed")
+            title, body = classify_card_error(exc, default_title=_("Install failed"))
             return _error_destination(title, body)
 
         self.run_screen(
             LargeIconStatusScreen,
-            title="Created",
+            title=_("Created"),
             status_headline=None,
-            text=f"AID:\n{_format_aid_short(new_aid)}\nRun Init next.",
+            text=_("AID:\n{}\nRun Init next.").format(_format_aid_short(new_aid)),
             show_back_button=False,
             button_data=[ButtonOption("OK")],
         )
@@ -3215,7 +3375,7 @@ class ToolsKeycardInstancesDeleteView(View):
             channel, instances, isd_connection = _open_isd_channel(self.controller)
         except Exception as exc:
             logger.exception("GP open failed")
-            title, body = classify_card_error(exc, default_title="GP failed")
+            title, body = classify_card_error(exc, default_title=_("GP failed"))
             return _error_destination(title, body)
 
         candidates = [
@@ -3223,7 +3383,7 @@ class ToolsKeycardInstancesDeleteView(View):
         ]
         if not candidates:
             return _error_destination(
-                "No instances", "Nothing to delete.",
+                _("No instances"), _("Nothing to delete."),
             )
 
         button_data = [
@@ -3231,7 +3391,7 @@ class ToolsKeycardInstancesDeleteView(View):
         ]
         ret = self.run_screen(
             ButtonListScreen,
-            title="Delete?",
+            title=_("Delete?"),
             is_button_text_centered=False,
             button_data=button_data,
             show_back_button=True,
@@ -3242,9 +3402,9 @@ class ToolsKeycardInstancesDeleteView(View):
 
         confirm_ret = self.run_screen(
             DireWarningScreen,
-            title="Confirm delete?",
+            title=_("Confirm delete?"),
             status_headline=None,
-            text=f"Delete instance\n{_format_aid_short(target)}?",
+            text=_("Delete instance\n{}?").format(_format_aid_short(target)),
             show_back_button=True,
             button_data=[ButtonOption("Delete")],
         )
@@ -3260,7 +3420,7 @@ class ToolsKeycardInstancesDeleteView(View):
             delete_aid(channel, target, with_related=True)
         except Exception as exc:
             logger.exception("DELETE failed")
-            title, body = classify_card_error(exc, default_title="Delete failed")
+            title, body = classify_card_error(exc, default_title=_("Delete failed"))
             return _error_destination(title, body)
 
         # Drop any cached pairing whose UID we previously observed via
@@ -3285,7 +3445,7 @@ class ToolsKeycardInstancesDeleteView(View):
 
         self.run_screen(
             LargeIconStatusScreen,
-            title="Deleted",
+            title=_("Deleted"),
             status_headline=None,
             text=_format_aid_short(target),
             show_back_button=False,
@@ -3385,7 +3545,7 @@ class ScanEthSignRequestView(ScanView):
     def run(self):
         self.run_screen(
             ScanScreen,
-            instructions_text="Scan ETH sign request",
+            instructions_text=_("Scan ETH sign request"),
             decoder=self.decoder,
         )
         time.sleep(0.1)
@@ -3397,9 +3557,9 @@ class ScanEthSignRequestView(ScanView):
             request = self.decoder.get_eth_sign_request()
         except Exception as exc:
             logger.exception("eth-sign-request parsing failed")
-            return _error_destination("Invalid request", str(exc))
+            return _error_destination(_("Invalid request"), str(exc))
         if request is None:
-            return _error_destination("Invalid request", "No data decoded")
+            return _error_destination(_("Invalid request"), _("No data decoded"))
 
         self.controller.eth_sign_request = request
         return Destination(ToolsKeycardSignEthOverviewView)
@@ -3413,22 +3573,22 @@ class ToolsKeycardSignEthOverviewView(View):
     def run(self):
         request: Optional[EthSignRequest] = getattr(self.controller, "eth_sign_request", None)
         if request is None:
-            return _error_destination("No request", "Scan one first")
+            return _error_destination(_("No request"), _("Scan one first"))
 
         from seedsigner.helpers.ethereum.chains import chain_label
-        kind = DATA_TYPE_LABELS.get(request.data_type, f"type {request.data_type}")
+        kind = DATA_TYPE_LABELS.get(request.data_type)
+        kind = _(kind) if kind else _("type {}").format(request.data_type)
         path = _format_path(request.derivation_path.components)
         addr_line = ""
         if request.address:
             addr_line = f"\n{to_checksum_address(request.address)}"
-        text = (
-            f"{kind}\n"
-            f"{chain_label(request.chain_id)}\n"
-            f"path {path}{addr_line}"
+        # TRANSLATOR_NOTE: {} are tx-type label, chain name, derivation path, optional address
+        text = _("{}\n{}\npath {}{}").format(
+            kind, chain_label(request.chain_id), path, addr_line
         )
         ret = self.run_screen(
             LargeIconStatusScreen,
-            title="Sign ETH?",
+            title=_("Sign ETH?"),
             status_icon_size=0,
             status_headline=None,
             text=text,
@@ -3454,21 +3614,19 @@ class ToolsKeycardSignEthDetailsView(View):
     def run(self):
         request: Optional[EthSignRequest] = getattr(self.controller, "eth_sign_request", None)
         if request is None:
-            return _error_destination("No request", "Lost mid-flow")
+            return _error_destination(_("No request"), _("Lost mid-flow"))
 
         tx = _eth_tx_summary(request)
         has_digest = False  # tx with calldata, or EIP-712 typed-data
         has_data_only = False  # personal-sign / unknown — drill straight into data
         if tx is not None:
             to_bytes = tx.get("to") or b""
-            to_str = "(create)" if not to_bytes else to_checksum_address(to_bytes)
+            to_str = _("(create)") if not to_bytes else to_checksum_address(to_bytes)
             # Truncate the address middle so the line still fits on a 240px screen.
             if len(to_str) > 14:
                 to_str = f"{to_str[:8]}…{to_str[-4:]}"
-            text = (
-                f"to {to_str}\n"
-                f"value {_format_wei(tx['value'])}\n"
-                f"gas {tx.get('gas_limit', 0)}"
+            text = _("to {}\nvalue {}\ngas {}").format(
+                to_str, _format_wei(tx['value']), tx.get('gas_limit', 0)
             )
             has_digest = bool(tx.get("data"))
         elif request.data_type == DATA_TYPE_PERSONAL_MESSAGE:
@@ -3477,7 +3635,7 @@ class ToolsKeycardSignEthDetailsView(View):
             except Exception:
                 msg = bytes(request.sign_data).hex()
             preview = msg if len(msg) <= 80 else msg[:78] + "…"
-            text = f"message:\n{preview}"
+            text = _("message:\n{}").format(preview)
             has_data_only = bool(request.sign_data)
         elif request.data_type == DATA_TYPE_TYPED_DATA:
             try:
@@ -3485,15 +3643,15 @@ class ToolsKeycardSignEthDetailsView(View):
                 primary = typed.get("primaryType", "?")
             except (UnicodeDecodeError, json.JSONDecodeError):
                 primary = "?"
-            text = f"EIP-712 typed data\nprimary: {primary}"
+            text = _("EIP-712 typed data\nprimary: {}").format(primary)
             has_digest = True
         else:
-            text = f"raw\n{bytes(request.sign_data)[:32].hex()}…"
+            text = _("raw\n{}…").format(bytes(request.sign_data)[:32].hex())
             has_data_only = True
 
         ret = self.run_screen(
             LargeIconStatusScreen,
-            title="TX details",
+            title=_("TX details"),
             status_icon_size=0,
             status_headline=None,
             text=text,
@@ -3555,7 +3713,7 @@ class ToolsKeycardSignEthDecodedView(View):
     def run(self):
         request: Optional[EthSignRequest] = getattr(self.controller, "eth_sign_request", None)
         if request is None:
-            return _error_destination("No request", "Lost mid-flow")
+            return _error_destination(_("No request"), _("Lost mid-flow"))
 
         pages = self._pages(request)
         if not pages:
@@ -3576,7 +3734,7 @@ class ToolsKeycardSignEthDecodedView(View):
 
         ret = self.run_screen(
             LargeIconStatusScreen,
-            title=f"Decoded{counter}",
+            title=_("Decoded{}").format(counter),
             status_icon_size=0,
             status_headline=None,
             text=text,
@@ -3630,23 +3788,23 @@ class ToolsKeycardSignEthDigestView(View):
             data = tx.get("data") or b""
             if not data:
                 return []
-            return [("Calldata digest", compute_calldata_digest(data))]
+            return [(_("Calldata digest"), compute_calldata_digest(data))]
         if request.data_type == DATA_TYPE_TYPED_DATA:
             try:
                 typed = json.loads(bytes(request.sign_data).decode("utf-8"))
             except (UnicodeDecodeError, json.JSONDecodeError):
                 return []
             return [
-                ("EIP-712 digest", eip712.signing_hash(typed)),
-                ("Domain hash",    eip712.domain_separator(typed)),
-                ("Message hash",   eip712.message_hash(typed)),
+                (_("EIP-712 digest"), eip712.signing_hash(typed)),
+                (_("Domain hash"),    eip712.domain_separator(typed)),
+                (_("Message hash"),   eip712.message_hash(typed)),
             ]
         return []
 
     def run(self):
         request: Optional[EthSignRequest] = getattr(self.controller, "eth_sign_request", None)
         if request is None:
-            return _error_destination("No request", "Lost mid-flow")
+            return _error_destination(_("No request"), _("Lost mid-flow"))
 
         pages = self._pages(request)
         if not pages:
@@ -3665,7 +3823,7 @@ class ToolsKeycardSignEthDigestView(View):
 
         ret = self.run_screen(
             LargeIconStatusScreen,
-            title=f"Digest {page + 1}/{total}",
+            title=_("Digest {}/{}").format(page + 1, total),
             status_icon_size=0,
             status_headline=None,
             text=text,
@@ -3711,7 +3869,7 @@ class ToolsKeycardSignEthDataView(View):
     def run(self):
         request: Optional[EthSignRequest] = getattr(self.controller, "eth_sign_request", None)
         if request is None:
-            return _error_destination("No request", "Lost mid-flow")
+            return _error_destination(_("No request"), _("Lost mid-flow"))
 
         tx = _eth_tx_summary(request)
         if tx is not None:
@@ -3740,7 +3898,7 @@ class ToolsKeycardSignEthDataView(View):
 
         ret = self.run_screen(
             LargeIconStatusScreen,
-            title=f"Data {page + 1}/{total_pages}",
+            title=_("Data {}/{}").format(page + 1, total_pages),
             status_icon_size=0,
             status_headline=None,
             text=wrapped,
@@ -3768,13 +3926,13 @@ class ToolsKeycardSignEthConfirmView(View):
     def run(self):
         request: Optional[EthSignRequest] = getattr(self.controller, "eth_sign_request", None)
         if request is None:
-            return _error_destination("No request", "Lost mid-flow")
+            return _error_destination(_("No request"), _("Lost mid-flow"))
 
         path = _format_path(request.derivation_path.components)
-        text = f"Sign with Keycard?\nchain {request.chain_id}  {path}"
+        text = _("Sign with Keycard?\nchain {}  {}").format(request.chain_id, path)
         ret = self.run_screen(
             LargeIconStatusScreen,
-            title="Confirm",
+            title=_("Confirm"),
             status_icon_size=0,
             status_headline=None,
             text=text,
@@ -3795,7 +3953,7 @@ class ToolsKeycardSignEthFinalizeView(View):
 
         request: Optional[EthSignRequest] = getattr(self.controller, "eth_sign_request", None)
         if request is None:
-            return _error_destination("No request", "Lost request mid-flow")
+            return _error_destination(_("No request"), _("Lost request mid-flow"))
         if not self.controller.has_any_keycard_auth():
             if not try_silent_ephemeral_pair(self):
                 return Destination(ToolsKeycardPairView)
@@ -3803,10 +3961,10 @@ class ToolsKeycardSignEthFinalizeView(View):
         try:
             from seedsigner.helpers.keycard_signer import sign_with_keycard
         except ImportError as exc:
-            return _error_destination("Keycard support unavailable", str(exc))
+            return _error_destination(_("Keycard support unavailable"), str(exc))
 
         try:
-            client, _ = _open_unlocked_session_cached_or_prompt(self)
+            client, _unused = _open_unlocked_session_cached_or_prompt(self)
             signature = sign_with_keycard(client, request)
         except KeycardPinPromptCancelled:
             return Destination(BackStackView)
@@ -3823,11 +3981,11 @@ class ToolsKeycardSignEthFinalizeView(View):
                 # No card → subtle toast + stay on the Confirm screen, which
                 # re-reads controller.eth_sign_request. Don't drop the request.
                 return _no_card_toast_or_error(
-                    self, exc, default_title="Signing failed",
+                    self, exc, default_title=_("Signing failed"),
                 )
             self.controller.eth_sign_request = None
             self.controller.eth_signature = None
-            title, body = classify_card_error(exc, default_title="Signing failed")
+            title, body = classify_card_error(exc, default_title=_("Signing failed"))
             return _error_destination(title, body, return_to_main=True)
 
         self.controller.eth_signature = signature
@@ -3838,7 +3996,7 @@ class ToolsKeycardSignEthQrDisplayView(View):
     def run(self):
         signature = getattr(self.controller, "eth_signature", None)
         if signature is None:
-            return _error_destination("No signature", "Nothing to display")
+            return _error_destination(_("No signature"), _("Nothing to display"))
 
         from seedsigner.gui.screens.screen import QRDisplayScreen
 
@@ -3889,10 +4047,20 @@ def _no_card_toast_or_error(view, exc, *, default_title: str, stay=None):
     """
     from seedsigner.helpers.keycard.reader import NoCardError, NoReaderError
     if isinstance(exc, (NoCardError, NoReaderError)):
+        # Card confirmed absent during an op — drop cached PINs so a
+        # re-inserted card (possibly a different one) is re-authenticated.
+        # Reader-independent backstop for the PC/SC 'removed' event, which
+        # is unreliable on contactless readers. This touches ONLY the PIN
+        # cache, not scanned state (eth_sign_request / psbt / message), so
+        # retry-without-rescan still holds — it just re-prompts for the PIN.
+        try:
+            view.controller.wipe_card_session_secrets()
+        except Exception:
+            logger.exception("wipe on no-card observation failed")
         from seedsigner.gui.toast import InfoToast
         try:
             view.controller.activate_toast(
-                InfoToast(label_text="Insert a card first")
+                InfoToast(label_text=_("Insert a card first"))
             )
         except Exception:
             logger.exception("InfoToast dispatch failed")
@@ -3958,7 +4126,7 @@ class ToolsKeycardEthereumMenuView(View):
     def run(self):
         from seedsigner.helpers.card_probe import run_card_gate
         gate = run_card_gate(
-            self, "keycard", title="Ethereum", setup_view=ToolsKeycardInitView,
+            self, "keycard", title=_("Ethereum"), setup_view=ToolsKeycardInitView,
         )
         if gate is not None:
             return gate
@@ -3967,7 +4135,7 @@ class ToolsKeycardEthereumMenuView(View):
         active = _format_instance_label(self.controller.active_keycard_aid)
         selected = self.run_screen(
             ButtonListScreen,
-            title=f"Ethereum · {active}",
+            title=_("Ethereum · {}").format(active),
             is_button_text_centered=False,
             button_data=button_data,
         )
@@ -3992,7 +4160,7 @@ class ToolsKeycardBitcoinMenuView(View):
     def run(self):
         from seedsigner.helpers.card_probe import run_card_gate
         gate = run_card_gate(
-            self, "keycard", title="Bitcoin", setup_view=ToolsKeycardInitView,
+            self, "keycard", title=_("Bitcoin"), setup_view=ToolsKeycardInitView,
         )
         if gate is not None:
             return gate
@@ -4001,7 +4169,7 @@ class ToolsKeycardBitcoinMenuView(View):
         active = _format_instance_label(self.controller.active_keycard_aid)
         selected = self.run_screen(
             ButtonListScreen,
-            title=f"Bitcoin · {active}",
+            title=_("Bitcoin · {}").format(active),
             is_button_text_centered=False,
             button_data=button_data,
         )
@@ -4040,10 +4208,10 @@ class ToolsKeycardBtcExportXpubView(View):
             from seedsigner.helpers.bitcoin import DEFAULT_BTC_ACCOUNT_PATH
             from seedsigner.helpers.keycard_btc_signer import export_xpub
         except ImportError as exc:
-            return _error_destination("BTC support unavailable", str(exc))
+            return _error_destination(_("BTC support unavailable"), str(exc))
 
         try:
-            client, _ = _open_unlocked_session_cached_or_prompt(self)
+            client, _unused = _open_unlocked_session_cached_or_prompt(self)
             xpub_export = export_xpub(client, DEFAULT_BTC_ACCOUNT_PATH)
         except KeycardPinPromptCancelled:
             return Destination(BackStackView)
@@ -4052,14 +4220,14 @@ class ToolsKeycardBtcExportXpubView(View):
         except Exception as exc:
             logger.exception("Keycard export_xpub failed")
             # No card → subtle toast + back one step (no scanned data here).
-            return _no_card_toast_or_error(self, exc, default_title="Export failed")
+            return _no_card_toast_or_error(self, exc, default_title=_("Export failed"))
 
         # Brief headline + path before showing the QR.
         self.run_screen(
             LargeIconStatusScreen,
-            title="BIP-84 xpub",
+            title=_("BIP-84 xpub"),
             status_headline=None,
-            text=f"fp {xpub_export.master_fingerprint.hex()}\n{DEFAULT_BTC_ACCOUNT_PATH}",
+            text=_("fp {}\n{}").format(xpub_export.master_fingerprint.hex(), DEFAULT_BTC_ACCOUNT_PATH),
             show_back_button=False,
             button_data=[ButtonOption("Show QR")],
         )
@@ -4077,8 +4245,8 @@ class ToolsKeycardBtcSignPsbtScanView(ScanView):
     review screen. Any other QR type triggers the standard wrong-type
     error.
     """
-    instructions_text = "Scan PSBT"
-    invalid_qr_type_message = "Expected a PSBT QR"
+    instructions_text = _("Scan PSBT")
+    invalid_qr_type_message = _mft("Expected a PSBT QR")
 
     @property
     def is_valid_qr_type(self):
@@ -4100,8 +4268,8 @@ class ToolsKeycardBtcSignPsbtScanView(ScanView):
             return Destination(ToolsKeycardBitcoinMenuView, clear_history=True)
         if not self.decoder.is_psbt:
             return _error_destination(
-                "Wrong QR type",
-                "Expected a PSBT but got: " + (self.decoder.qr_type or "?"),
+                _("Wrong QR type"),
+                _("Expected a PSBT but got: ") + (self.decoder.qr_type or "?"),
                 return_to_main=False,
             )
 
@@ -4122,7 +4290,7 @@ class ToolsKeycardBtcSignPsbtReviewView(View):
 
         psbt = getattr(self.controller, "psbt", None)
         if psbt is None:
-            return _error_destination("No PSBT", "Lost PSBT mid-flow")
+            return _error_destination(_("No PSBT"), _("Lost PSBT mid-flow"))
 
         if not self.controller.has_any_keycard_auth():
             if not try_silent_ephemeral_pair(self):
@@ -4136,10 +4304,10 @@ class ToolsKeycardBtcSignPsbtReviewView(View):
             from seedsigner.helpers.bitcoin import xpub as btc_xpub
             from seedsigner.helpers.keycard import commands as kc_cmds
         except ImportError as exc:
-            return _error_destination("BTC support unavailable", str(exc))
+            return _error_destination(_("BTC support unavailable"), str(exc))
 
         try:
-            client, _ = _open_unlocked_session_cached_or_prompt(self)
+            client, _unused = _open_unlocked_session_cached_or_prompt(self)
             client.derive_key([], source=kc_cmds.DERIVE_P1_FROM_MASTER)
             master_resp = client.export_pubkey(path_components=None, extended=False)
             from seedsigner.helpers.keycard_btc_signer import _parse_pubkey_only
@@ -4160,18 +4328,18 @@ class ToolsKeycardBtcSignPsbtReviewView(View):
                 # re-reads the already-scanned controller.psbt) so the user
                 # can insert a card and retry without re-scanning.
                 return _no_card_toast_or_error(
-                    self, exc, default_title="Probe failed",
+                    self, exc, default_title=_("Probe failed"),
                     stay=Destination(ToolsKeycardBtcSignPsbtReviewView),
                 )
             self.controller.psbt = None
-            title, body = classify_card_error(exc, default_title="Probe failed")
+            title, body = classify_card_error(exc, default_title=_("Probe failed"))
             return _error_destination(title, body, return_to_main=True)
 
         try:
             parsed = psbt_helpers.extract(psbt, master_fingerprint)
         except ValueError as exc:
             self.controller.psbt = None
-            return _error_destination("PSBT rejected", str(exc), return_to_main=True)
+            return _error_destination(_("PSBT rejected"), str(exc), return_to_main=True)
 
         self.controller.btc_parsed_psbt = parsed
 
@@ -4179,12 +4347,14 @@ class ToolsKeycardBtcSignPsbtReviewView(View):
         total_out = sum(v.amount_sats for v in parsed.outputs if not v.is_change)
         ret = self.run_screen(
             LargeIconStatusScreen,
-            title="Review PSBT",
+            title=_("Review PSBT"),
             status_headline=None,
-            text=(
-                f"in: {len(parsed.inputs)}\n"
-                f"out: {sum(1 for v in parsed.outputs if not v.is_change)} ({total_out} sat)\n"
-                f"fee: {parsed.fee_sats} sat"
+            # TRANSLATOR_NOTE: PSBT summary — input count, output count (with sat total), fee in sats
+            text=_("in: {}\nout: {} ({} sat)\nfee: {} sat").format(
+                len(parsed.inputs),
+                sum(1 for v in parsed.outputs if not v.is_change),
+                total_out,
+                parsed.fee_sats,
             ),
             show_back_button=True,
             button_data=[ButtonOption("Sign")],
@@ -4205,15 +4375,15 @@ class ToolsKeycardBtcSignPsbtFinalizeView(View):
 
         parsed = getattr(self.controller, "btc_parsed_psbt", None)
         if parsed is None:
-            return _error_destination("No PSBT", "Lost PSBT mid-flow")
+            return _error_destination(_("No PSBT"), _("Lost PSBT mid-flow"))
 
         try:
             from seedsigner.helpers.keycard_btc_signer import sign_psbt as kc_sign_psbt
         except ImportError as exc:
-            return _error_destination("BTC support unavailable", str(exc))
+            return _error_destination(_("BTC support unavailable"), str(exc))
 
         try:
-            client, _ = _open_unlocked_session_cached_or_prompt(self)
+            client, _unused = _open_unlocked_session_cached_or_prompt(self)
             kc_sign_psbt(client, parsed)
         except KeycardPinPromptCancelled:
             return Destination(BackStackView)
@@ -4231,12 +4401,12 @@ class ToolsKeycardBtcSignPsbtFinalizeView(View):
                 # parsed PSBT stays on controller.btc_parsed_psbt) so the
                 # user can insert a card and retry without re-scanning.
                 return _no_card_toast_or_error(
-                    self, exc, default_title="Signing failed",
+                    self, exc, default_title=_("Signing failed"),
                     stay=Destination(ToolsKeycardBtcSignPsbtFinalizeView),
                 )
             self.controller.psbt = None
             self.controller.btc_parsed_psbt = None
-            title, body = classify_card_error(exc, default_title="Signing failed")
+            title, body = classify_card_error(exc, default_title=_("Signing failed"))
             return _error_destination(title, body, return_to_main=True)
 
         from seedsigner.gui.screens.screen import QRDisplayScreen
@@ -4263,8 +4433,8 @@ class ToolsKeycardBtcSignMessageStartView(View):
 
 
 class ToolsKeycardBtcSignMessageScanView(ScanView):
-    instructions_text = "Scan message QR"
-    invalid_qr_type_message = "Expected a text / signmessage QR"
+    instructions_text = _("Scan message QR")
+    invalid_qr_type_message = _mft("Expected a text / signmessage QR")
 
     @property
     def is_valid_qr_type(self):
@@ -4299,7 +4469,7 @@ class ToolsKeycardBtcSignMessageScanView(ScanView):
             derivation_path = data.get("derivation_path")
             if not isinstance(message, str) or not message:
                 return _error_destination(
-                    "Wrong QR type", "Could not extract a message from the QR.",
+                    _("Wrong QR type"), _("Could not extract a message from the QR."),
                 )
             return Destination(
                 ToolsKeycardBtcSignMessageFinalizeView,
@@ -4317,20 +4487,20 @@ class ToolsKeycardBtcSignMessageScanView(ScanView):
                 raw = self.decoder.get_qr_data()
             except Exception:
                 return _error_destination(
-                    "Wrong QR type", "Could not extract a message from the QR.",
+                    _("Wrong QR type"), _("Could not extract a message from the QR."),
                 )
             if isinstance(raw, (bytes, bytearray)):
                 try:
                     message = bytes(raw).decode("utf-8")
                 except UnicodeDecodeError:
                     return _error_destination(
-                        "Unsupported encoding", "Message must be UTF-8 text.",
+                        _("Unsupported encoding"), _("Message must be UTF-8 text."),
                     )
             elif isinstance(raw, str):
                 message = raw
             else:
                 return _error_destination(
-                    "Wrong QR type", "Could not extract a message from the QR.",
+                    _("Wrong QR type"), _("Could not extract a message from the QR."),
                 )
 
         return Destination(
@@ -4358,11 +4528,11 @@ class ToolsKeycardBtcSignMessageFinalizeView(View):
             from seedsigner.helpers.bitcoin import DEFAULT_BTC_PATH
             from seedsigner.helpers.keycard_btc_signer import sign_message as kc_sign_message
         except ImportError as exc:
-            return _error_destination("BTC support unavailable", str(exc))
+            return _error_destination(_("BTC support unavailable"), str(exc))
 
         path = self.derivation_path or DEFAULT_BTC_PATH
         try:
-            client, _ = _open_unlocked_session_cached_or_prompt(self)
+            client, _unused = _open_unlocked_session_cached_or_prompt(self)
             sig_b64 = kc_sign_message(client, self.message, path)
         except KeycardPinPromptCancelled:
             return Destination(BackStackView)
@@ -4378,7 +4548,7 @@ class ToolsKeycardBtcSignMessageFinalizeView(View):
                 # the same message/path so the user can insert a card and
                 # retry without re-scanning.
                 return _no_card_toast_or_error(
-                    self, exc, default_title="Signing failed",
+                    self, exc, default_title=_("Signing failed"),
                     stay=Destination(
                         ToolsKeycardBtcSignMessageFinalizeView,
                         view_args=dict(
@@ -4387,7 +4557,7 @@ class ToolsKeycardBtcSignMessageFinalizeView(View):
                         ),
                     ),
                 )
-            title, body = classify_card_error(exc, default_title="Signing failed")
+            title, body = classify_card_error(exc, default_title=_("Signing failed"))
             return _error_destination(title, body, return_to_main=True)
 
         from seedsigner.gui.screens.screen import QRDisplayScreen

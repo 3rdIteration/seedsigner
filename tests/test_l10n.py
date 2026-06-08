@@ -109,3 +109,44 @@ class TestMarkForTranslation(BaseTest):
             home = _mft("Home")
 
         assert _(BarClass.home) != "Home"
+
+
+
+class TestPortugueseKeycard(BaseTest):
+    """European Portuguese (pt_PT) catalog regression.
+
+    Proves end-to-end that (a) pt_PT is auto-detected from its compiled
+    .mo, and (b) the newly-wrapped Keycard / feature strings actually
+    resolve to their Portuguese values (i.e. the _() wrapping "took" and
+    the strings vary by the selected language).
+    """
+
+    def test_pt_pt_is_detected(self):
+        detected = dict(SettingsConstants.get_detected_languages())
+        assert SettingsConstants.LOCALE__PORTUGUESE_PT in detected
+        assert detected[SettingsConstants.LOCALE__PORTUGUESE_PT] == "Português (Portugal)"
+
+    def test_keycard_strings_translate_to_portuguese(self):
+        settings = Settings.get_instance()
+        settings.set_value(SettingsConstants.SETTING__LOCALE, SettingsConstants.LOCALE__PORTUGUESE_PT)
+
+        # Representative strings from the keycard / cards / settings flows
+        # that were raw English literals before the l10n pass.
+        assert _("Card locked") == "Cartão bloqueado"
+        assert _("Generate key") == "Gerar chave"
+        assert _("Lock card") == "Bloquear cartão"
+        assert _("Insert a card first") == "Insira primeiro um cartão"
+
+        # f-string templates keep their placeholders intact post-translation.
+        assert "{}" in _("Keycard · {}")
+        assert _("Keycard · {}").format("Inst 1") == "Keycard · Inst 1"
+
+    def test_strings_vary_by_language(self):
+        settings = Settings.get_instance()
+
+        settings.set_value(SettingsConstants.SETTING__LOCALE, SettingsConstants.LOCALE__PORTUGUESE_PT)
+        pt = _("Generate key")
+
+        settings.set_value(SettingsConstants.SETTING__LOCALE, SettingsConstants.LOCALE__ENGLISH)
+        assert _("Generate key") == "Generate key"
+        assert pt != _("Generate key")

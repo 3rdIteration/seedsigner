@@ -14,8 +14,10 @@ from seedsigner.gui.screens import (
     LargeIconStatusScreen,
     KeyboardScreen,
 )
+from gettext import gettext as _
 from seedsigner.gui.screens.screen import LoadingScreenThread
 from seedsigner.helpers.iso7816 import format_sw_error
+from seedsigner.helpers.l10n import mark_for_translation as _mft
 
 
 import os
@@ -113,9 +115,9 @@ def prompt_for_pin(parent_view, title: str):
 
         parent_view.run_screen(
             WarningScreen,
-            title="Invalid PIN",
+            title=_("Invalid PIN"),
             status_headline=None,
-            text=f"PIN must be between {JCconstants.PIN_MIN_SIZE} and {JCconstants.PIN_MAX_SIZE} characters.",
+            text=_("PIN must be between {} and {} characters.").format(JCconstants.PIN_MIN_SIZE, JCconstants.PIN_MAX_SIZE),
             show_back_button=True,
         )
 
@@ -188,7 +190,7 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True):
     except Exception as e:
         parentObject.run_screen(
             WarningScreen,
-            title="Failure",
+            title=_("Failure"),
             status_headline=None,
             text=str(e),
             show_back_button=True,
@@ -200,7 +202,7 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True):
     # confuses the user — an uninstantiated card has no PIN to enter, and
     # the next screen would ask for a brand-new one anyway.
 
-    parentObject.loading_screen = LoadingScreenThread(text="Connecting to Card")
+    parentObject.loading_screen = LoadingScreenThread(text=_("Connecting to Card"))
     parentObject.loading_screen.start()
 
     # Spam connecting for 5 seconds to give the user time to insert the card
@@ -259,9 +261,9 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True):
 
         parentObject.run_screen(
             WarningScreen,
-            title="Unable to Connect",
+            title=_("Unable to Connect"),
             status_headline=None,
-            text=f"Unable to find {filter_str} \n(or Applet)\n\nTry Re-Inserting Card",
+            text=_("Unable to find {} \n(or Applet)\n\nTry Re-Inserting Card").format(filter_str),
             show_back_button=True,
         )
         return None
@@ -305,7 +307,7 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True):
             Satochip_Connector.set_pin(0, card_pin)
 
             try:
-                parentObject.loading_screen = LoadingScreenThread(text="Verifying PIN")
+                parentObject.loading_screen = LoadingScreenThread(text=_("Verifying PIN"))
                 parentObject.loading_screen.start()
 
                 print("Verifying PIN")
@@ -319,7 +321,7 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True):
                 else:
                     parentObject.run_screen(
                         WarningScreen,
-                        title="Failure",
+                        title=_("Failure"),
                         status_headline=None,
                         text=format_sw_error(sw1, sw2),
                         show_back_button=True,
@@ -341,7 +343,7 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True):
 
                 parentObject.run_screen(
                     WarningScreen,
-                    title="Failed",
+                    title=_("Failed"),
                     status_headline=None,
                     text=str(e)[:100],
                     show_back_button=True,
@@ -401,7 +403,7 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True):
             print("ERROR: Setup Failed")
             parentObject.run_screen(
                 WarningScreen,
-                title="Invalid PIN",
+                title=_("Invalid PIN"),
                 status_headline=None,
                 text=format_sw_error(sw1, sw2),
                 show_back_button=True,
@@ -412,9 +414,9 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True):
             print("Setup Succeeded")
             parentObject.run_screen(
                 LargeIconStatusScreen,
-                title="Success",
+                title=_("Success"),
                 status_headline=None,
-                text=f"Card Setup Complete",
+                text=_("Card Setup Complete"),
                 show_back_button=False,
             )
             # Save the PIN for the newly set up card...
@@ -432,7 +434,7 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True):
 
 
 def run_globalplatform(
-    parentObject, command, loadingText="Loading", successtext="Success",
+    parentObject, command, loadingText=_mft("Loading"), successtext=_mft("Success"),
     suppress_failure_dialog: bool = False,
 ):
     import shlex
@@ -443,7 +445,7 @@ def run_globalplatform(
         SettingsDefinition,
     )
 
-    parentObject.loading_screen = LoadingScreenThread(text=loadingText)
+    parentObject.loading_screen = LoadingScreenThread(text=_(loadingText))
     parentObject.loading_screen.start()
 
     hostname = platform.uname()[1]
@@ -548,15 +550,15 @@ def run_globalplatform(
             data = run_globalplatform(
                 parentObject,
                 command,
-                loadingText="Uninstalling",
-                successtext="Mis-Installed Applet Uninstalled",
+                loadingText=_mft("Uninstalling"),
+                successtext=_mft("Mis-Installed Applet Uninstalled"),
             )
             if data is None:
-                msg = "Mis-Installed Applet Uninstalled, try uninstalling it again..."
+                msg = _("Mis-Installed Applet Uninstalled, try uninstalling it again...")
                 logger.error(msg)
                 parentObject.run_screen(
                     WarningScreen,
-                    title="Failed",
+                    title=_("Failed"),
                     status_headline=None,
                     text=msg,
                     show_back_button=False,
@@ -570,7 +572,7 @@ def run_globalplatform(
                 LargeIconStatusScreen,
                 title="Success",
                 status_headline=None,
-                text=successtext,
+                text=_(successtext),
                 show_back_button=False,
             )
 
