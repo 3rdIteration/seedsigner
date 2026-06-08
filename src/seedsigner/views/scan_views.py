@@ -164,8 +164,14 @@ class ScanView(View):
                         next_destination=Destination(BackStackView, skip_current_view=True),
                     ))
                 self.controller.eth_sign_request = request
-                from seedsigner.views.keycard_views import ToolsKeycardSignEthOverviewView
-                return Destination(ToolsKeycardSignEthOverviewView, skip_current_view=True)
+                # Route through the card-identity gate (not straight to the
+                # Overview) so a request for another wallet is rejected before
+                # any review/sign — same as the Tools > Keycard > Ethereum
+                # entry. The PSBT branch above already lands on the Review view,
+                # which performs the equivalent master-fingerprint ownership
+                # check, so Bitcoin is covered too.
+                from seedsigner.views.keycard_views import ToolsKeycardSignEthVerifyCardView
+                return Destination(ToolsKeycardSignEthVerifyCardView, skip_current_view=True)
 
             return Destination(ErrorView, view_args=dict(
                 title=_("Unsupported"),

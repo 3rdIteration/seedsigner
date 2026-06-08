@@ -81,11 +81,14 @@ class TestScanViewDispatch(unittest.TestCase):
         # parse it without re-scanning.
         self.assertIs(view.controller.psbt, psbt_sentinel)
 
-    def test_eth_sign_request_routes_to_overview(self):
-        """A scanned UR eth-sign-request lands on the Keycard ETH
-        overview (the start of the Sign chain)."""
+    def test_eth_sign_request_routes_to_verify_card(self):
+        """A scanned UR eth-sign-request from the *generic* (homescreen) scan
+        must land on the card-identity gate — NOT straight on the Overview —
+        so a request for another wallet is rejected before review/sign, same
+        as the Tools > Keycard > Ethereum entry. Regression: it used to route
+        to the Overview and skip every verification (and the PIN)."""
         from seedsigner.models.qr_type import QRType
-        from seedsigner.views.keycard_views import ToolsKeycardSignEthOverviewView
+        from seedsigner.views.keycard_views import ToolsKeycardSignEthVerifyCardView
 
         req_sentinel = object()
         view = _make_scan_view(
@@ -94,7 +97,7 @@ class TestScanViewDispatch(unittest.TestCase):
         )
         dest = view.run()
 
-        self.assertIs(dest.View_cls, ToolsKeycardSignEthOverviewView)
+        self.assertIs(dest.View_cls, ToolsKeycardSignEthVerifyCardView)
         self.assertTrue(dest.skip_current_view)
         self.assertIs(view.controller.eth_sign_request, req_sentinel)
 
