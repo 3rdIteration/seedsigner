@@ -78,6 +78,12 @@ def _is_i2c_device_detected(address_hex: str, bus_candidates: tuple[int, ...] = 
                 timeout=1,
             )
             if result.returncode != 0:
+                logger.debug(
+                    "i2cdetect failed on /dev/i2c-%s (rc=%s): %s",
+                    bus_number,
+                    result.returncode,
+                    (result.stderr or "").strip(),
+                )
                 continue
             if f" {normalized} " in f" {result.stdout.lower()} ":
                 logger.info("Detected I2C device at 0x%s on /dev/i2c-%s", normalized, bus_number)
