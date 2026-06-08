@@ -105,7 +105,7 @@ class TestController(BaseTest):
         assert controller.settings.get_value(SettingsConstants.SETTING__PARTNER_LOGOS) == SettingsConstants.OPTION__ENABLED
 
         # Hidden Settings defaults
-        assert controller.settings.get_value(SettingsConstants.SETTING__QR_BRIGHTNESS) == 62
+        assert controller.settings.get_value(SettingsConstants.SETTING__QR_BRIGHTNESS) == 255
 
 
     def test_keycard_pin_cache_lifecycle(self):

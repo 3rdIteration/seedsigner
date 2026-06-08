@@ -223,7 +223,7 @@ class Destination:
 #########################################################################################
 class MainMenuView(View):
     SCAN = ButtonOption("Scan", SeedSignerIconConstants.SCAN)
-    CARDS = ButtonOption("Cards", FontAwesomeIconConstants.ID_CARD)
+    CARDS = ButtonOption("Smartcards", FontAwesomeIconConstants.ID_CARD)
     TOOLS = ButtonOption("Tools", SeedSignerIconConstants.TOOLS)
     SETTINGS = ButtonOption("Settings", SeedSignerIconConstants.SETTINGS)
 
@@ -374,7 +374,7 @@ class CardsMenuView(View):
 
                 selected_menu_num = self.run_screen(
                     ButtonListScreen,
-                    title=_("Cards"),
+                    title=_("Smartcards"),
                     is_button_text_centered=False,
                     button_data=button_data,
                 )

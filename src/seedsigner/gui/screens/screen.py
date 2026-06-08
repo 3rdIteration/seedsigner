@@ -153,7 +153,7 @@ class LoadingScreenThread(BaseThread):
         from seedsigner.gui.renderer import Renderer
         renderer: Renderer = Renderer.get_instance()
 
-        center_image = load_image("btc_logo_60x60.png")
+        center_image = load_image("eth_logo_60x60.png")
         orbit_gap = 2*GUIConstants.COMPONENT_PADDING
         bounding_box = (
             int((renderer.canvas_width - center_image.width)/2 - orbit_gap),
@@ -163,8 +163,8 @@ class LoadingScreenThread(BaseThread):
         )
         position = 0
         arc_sweep = 45
-        arc_color = "#ff9416"
-        arc_trailing_color = "#80490b"
+        arc_color = "#8C6DFD"
+        arc_trailing_color = "#4B3A99"
 
         # Need to flush the screen
         with renderer.lock:

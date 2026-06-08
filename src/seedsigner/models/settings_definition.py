@@ -908,7 +908,11 @@ class SettingsDefinition:
                       attr_name=SettingsConstants.SETTING__PARTNER_LOGOS,
                       abbreviated_name="partners",
                       display_name=_mft("Show partner logos"),
-                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
+                      # Hidden: the opening splash now always shows our own
+                      # KeyCard Signer branding instead of upstream partner
+                      # logos, so this toggle no longer affects anything. Kept
+                      # (not removed) only for SettingsQR back-compat (`partners=`).
+                      visibility=SettingsConstants.VISIBILITY__HIDDEN,
                       default_value=SettingsConstants.OPTION__ENABLED),
 
         # Hardware config
@@ -956,7 +960,11 @@ class SettingsDefinition:
                       display_name=_mft("QR background color"),
                       type=SettingsConstants.TYPE__FREE_ENTRY,
                       visibility=SettingsConstants.VISIBILITY__HIDDEN,
-                      default_value=62),
+                      # 255 = white QR background = max contrast for scanning.
+                      # The signed-tx QR (and all QRs) now open at full
+                      # brightness by default; the QRDisplayScreen still lets
+                      # the user dim it (and persists their choice) per-use.
+                      default_value=255),
 
         # Stealth boot: managed only via Tools > Advanced > Stealth boot.
         SettingsEntry(category=SettingsConstants.CATEGORY__SYSTEM,

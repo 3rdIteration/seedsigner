@@ -143,7 +143,11 @@ class Controller(Singleton):
         rather than at the top in order avoid circular imports.
     """
     
-    VERSION = "SeSi-0.8.6+ShSi-B10"
+    VERSION = "0.8.6 · B10"
+    # Branding shown on the opening splash (see views/screensaver.py). Kept as
+    # plain brand strings (not translated), consistent with VERSION.
+    PRODUCT_NAME = "KeyCard Signer"
+    PRODUCT_TAGLINE = "A SeedSigner fork for smartcards"
 
     # Declare class member vars with type hints to enable richer IDE support throughout
     # the code.

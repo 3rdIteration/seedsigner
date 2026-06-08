@@ -1,15 +1,11 @@
 import logging
-import os
 import random
 import time
 
 from dataclasses import dataclass
-from gettext import gettext as _
 
 from seedsigner.gui.components import Fonts, GUIConstants, load_image
 from seedsigner.gui.screens.screen import BaseScreen
-from seedsigner.models.settings import Settings
-from seedsigner.models.settings_definition import SettingsConstants
 from seedsigner.views.view import View
 
 logger = logging.getLogger(__name__)
@@ -20,45 +16,29 @@ logger = logging.getLogger(__name__)
 class LogoScreen(BaseScreen):
     def __init__(self):
         super().__init__()
-        self.logo = load_image("logo_black_240.png")
-
-        self.partners = [
-            "sese",
-        ]
-
-        self.partner_logos: dict = {}
-        for partner in self.partners:
-            logo_url = os.path.join("partners", f"{partner}_logo.png")
-            self.partner_logos[partner] = load_image(logo_url)
+        self.logo = load_image("keycard_240.png")
 
 
     def _run(self):
         pass
 
 
-    def get_random_partner(self) -> str:
-        return self.partners[random.randrange(len(self.partners))]
-
-
 
 @dataclass
 class OpeningSplashView(View):
     is_screenshot_renderer: bool = False
-    force_partner_logos: bool|None = None
 
     def run(self):
         self.run_screen(
             OpeningSplashScreen,
             is_screenshot_renderer=self.is_screenshot_renderer,
-            force_partner_logos=self.force_partner_logos
         )
 
 
 
 class OpeningSplashScreen(LogoScreen):
-    def __init__(self, is_screenshot_renderer=False, force_partner_logos=None):
+    def __init__(self, is_screenshot_renderer=False):
         self.is_screenshot_renderer = is_screenshot_renderer
-        self.force_partner_logos = force_partner_logos
         super().__init__()
 
 
@@ -73,16 +53,8 @@ class OpeningSplashScreen(LogoScreen):
         # instantiated. This is a hack to clear the screen for now.
         self.clear_screen()
 
-        show_partner_logos = Settings.get_instance().get_value(SettingsConstants.SETTING__PARTNER_LOGOS) == SettingsConstants.OPTION__ENABLED
-        if self.force_partner_logos is not None:
-            show_partner_logos = self.force_partner_logos
-
         logo_offset_x = int((self.canvas_width - self.logo.width)/2)
-
-        if show_partner_logos:
-            logo_offset_y = -56
-        else:
-            logo_offset_y = 0
+        logo_offset_y = 0
 
         background = Image.new("RGBA", size=self.logo.size, color="black")
         if not self.is_screenshot_renderer:
@@ -98,43 +70,45 @@ class OpeningSplashScreen(LogoScreen):
             # Skip animation for the screenshot generator
             self.renderer.canvas.paste(self.logo, (logo_offset_x, logo_offset_y))
 
-        # Display version num below SeedSigner logo
-        font = Fonts.get_font(GUIConstants.get_body_font_name(), GUIConstants.get_top_nav_title_font_size())
-        version = f"{controller.VERSION}"
+        # Branding beneath the keycard art: product name, version, and the
+        # "SeedSigner fork for smartcards" tagline. This is our own splash; the
+        # upstream partner-logo block was replaced by this branding.
+        cx = int(self.renderer.canvas_width / 2)
+        max_text_w = self.renderer.canvas_width - 2 * GUIConstants.EDGE_PADDING
 
-        # The logo png is 240x240, but the actual logo is 70px tall, vertically centered
-        logo_height = 70
-        version_x = int(self.renderer.canvas_width/2)
-        version_y = int(self.canvas_height/2) + int(logo_height/2) + logo_offset_y + GUIConstants.COMPONENT_PADDING
-        self.renderer.draw.text(xy=(version_x, version_y), text=version, font=font, fill=GUIConstants.ACCENT_COLOR, anchor="mt")
+        def _fit_font(text, font_name, start_size, min_size=9):
+            """Largest size at or below ``start_size`` that fits ``max_text_w``.
 
-        if not self.is_screenshot_renderer:
-            self.renderer.show_image()
+            The branding strings are fixed (untranslated) Latin text, but the
+            locale body font's metrics vary, so auto-fit guarantees no overflow
+            of the 240px width on any locale."""
+            size = start_size
+            while size > min_size:
+                font = Fonts.get_font(font_name, size)
+                (left, _t, right, _b) = font.getbbox(text, anchor="lt")
+                if (right - left) <= max_text_w:
+                    break
+                size -= 1
+            return Fonts.get_font(font_name, size)
 
-        if show_partner_logos:
-            if not self.is_screenshot_renderer:
-                # Hold on the version num for a moment
-                time.sleep(1)
+        name_font = _fit_font(controller.PRODUCT_NAME, GUIConstants.get_top_nav_title_font_name(), GUIConstants.get_top_nav_title_font_size())
+        version_font = Fonts.get_font(GUIConstants.get_body_font_name(), GUIConstants.get_body_font_size())
+        tagline_font = _fit_font(controller.PRODUCT_TAGLINE, GUIConstants.get_body_font_name(), GUIConstants.get_button_font_size())
 
-            # Set up the partner logo
-            partner_logo: Image.Image = self.partner_logos[self.get_random_partner()]
-            font = Fonts.get_font(GUIConstants.get_top_nav_title_font_name(), GUIConstants.get_body_font_size())
-            # TRANSLATOR_NOTE: This is on the opening splash screen, displayed above the Seedsigner logo
-            sponsor_text = _("An unofficial fork of:")
-            (left, top, tw, th) = font.getbbox(sponsor_text, anchor="lt")
+        # The keycard art occupies the upper band of the 240x240 png (y: 44..150,
+        # see scripts/gen_keycard_image.py); the text stacks beneath it.
+        card_art_bottom = 150
+        text_y = card_art_bottom + logo_offset_y + GUIConstants.COMPONENT_PADDING
 
-            x = int((self.renderer.canvas_width) / 2)
-            y = self.canvas_height - GUIConstants.COMPONENT_PADDING - partner_logo.height - int(GUIConstants.COMPONENT_PADDING/2) - th
-            self.renderer.draw.text(xy=(x, y), text=sponsor_text, font=font, fill="#ccc", anchor="mt")
-            self.renderer.canvas.paste(
-                partner_logo,
-                (
-                    int((self.renderer.canvas_width - partner_logo.width) / 2),
-                    y + th + int(GUIConstants.COMPONENT_PADDING/2)
-                )
-            )
+        def _draw_line(text, font, fill):
+            nonlocal text_y
+            (left, top, right, bottom) = font.getbbox(text, anchor="lt")
+            self.renderer.draw.text(xy=(cx, text_y), text=text, font=font, fill=fill, anchor="mt")
+            text_y += (bottom - top) + int(GUIConstants.COMPONENT_PADDING / 2)
 
-            self.renderer.show_image()
+        _draw_line(controller.PRODUCT_NAME, name_font, GUIConstants.BODY_FONT_COLOR)
+        _draw_line(f"{controller.VERSION}", version_font, GUIConstants.ACCENT_COLOR)
+        _draw_line(controller.PRODUCT_TAGLINE, tagline_font, GUIConstants.LABEL_FONT_COLOR)
 
         if not self.is_screenshot_renderer:
             # Hold on the splash screen for a moment
