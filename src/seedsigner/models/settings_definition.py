@@ -290,7 +290,7 @@ class SettingsConstants:
     SCARD_PIN_ATTEMPTS_MIN = 2
     SCARD_PIN_ATTEMPTS_MAX = 10
     ALL_SCARD_PIN_ATTEMPTS = [(i, str(i)) for i in range(SCARD_PIN_ATTEMPTS_MIN, SCARD_PIN_ATTEMPTS_MAX + 1)]
-    DEFAULT_SCARD_PIN_ATTEMPTS = 5
+    DEFAULT_SCARD_PIN_ATTEMPTS = 3
 
     @classmethod
     def map_network_to_embit(cls, network) -> str:

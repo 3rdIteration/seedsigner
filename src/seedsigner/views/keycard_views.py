@@ -776,9 +776,18 @@ class ToolsKeycardInitView(View):
                         _("Use Factory reset to\nwipe and re-init."),
                     )
                 secret = derive_pairing_secret(DEFAULT_PAIRING_PASSWORD)
+                # Honour the user-configurable PIN-attempt limit (Settings >
+                # Smartcard PIN Attempts, 2..10). The wizard always sets a
+                # duress PIN above, so INIT uses the 58-byte form that carries
+                # maxPINAttempts on-card — the setting reliably takes effect.
+                from seedsigner.models.settings import Settings
+                max_pin_attempts = Settings.get_instance().get_value(
+                    SettingsConstants.SETTING__SCARD_PIN_ATTEMPTS
+                )
                 client.init(
                     bytes(pin_buf), puk.encode("ascii"), secret,
                     duress_pin=(bytes(duress_buf) if duress_buf is not None else None),
+                    max_pin_attempts=max_pin_attempts,
                 )
             except Exception as exc:
                 logger.exception("Keycard INIT failed")

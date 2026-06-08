@@ -415,7 +415,8 @@ class TestKeycardMenuRouting(unittest.TestCase):
         fake_connection = MagicMock()
         captured = {}
 
-        def fake_init(pin_bytes, puk_bytes, secret, duress_pin=None):
+        def fake_init(pin_bytes, puk_bytes, secret, duress_pin=None,
+                      max_pin_attempts=None):
             captured["pin"] = bytes(pin_bytes)
             captured["puk"] = bytes(puk_bytes)
             captured["duress"] = bytes(duress_pin) if duress_pin is not None else None
@@ -520,15 +521,17 @@ class TestKeycardMenuRouting(unittest.TestCase):
         self.assertIs(dest.View_cls, keycard_views.KeycardErrorView)
         self.assertEqual(dest.view_args["title"], "Already initialised")
 
-    def _drive_duress_init(self, prompt_returns, duress_choice):
+    def _drive_duress_init(self, prompt_returns, duress_choice, pin_attempts=5):
         """Run ``ToolsKeycardInitView`` with scripted PIN prompts and a given
         "Duress PIN" chooser selection.
 
         ``prompt_returns`` is the ordered list returned by successive
         ``prompt_for_pin`` calls (each a ``bytearray`` or ``None``).
         ``duress_choice`` is the index the "Duress PIN" explainer/chooser
-        screen returns (0 = Skip, 1 = Set duress PIN). Returns
-        ``(captured, shown_titles, dest)``.
+        screen returns (0 = Skip, 1 = Set duress PIN). ``pin_attempts`` is
+        the value the ``SETTING__SCARD_PIN_ATTEMPTS`` lookup returns (the
+        wizard forwards it to ``client.init`` as ``max_pin_attempts``).
+        Returns ``(captured, shown_titles, dest)``.
         """
         from types import SimpleNamespace
         from unittest.mock import patch
@@ -561,12 +564,17 @@ class TestKeycardMenuRouting(unittest.TestCase):
         fake_connection = MagicMock()
         captured = {}
 
-        def fake_init(pin_bytes, puk_bytes, secret, duress_pin=None):
+        def fake_init(pin_bytes, puk_bytes, secret, duress_pin=None,
+                      max_pin_attempts=None):
             captured["pin"] = bytes(pin_bytes)
             captured["puk"] = bytes(puk_bytes)
             captured["duress"] = bytes(duress_pin) if duress_pin is not None else None
+            captured["max_pin_attempts"] = max_pin_attempts
 
         fake_client.init.side_effect = fake_init
+
+        fake_settings = MagicMock()
+        fake_settings.get_value.return_value = pin_attempts
 
         with patch.object(keycard_views, "prompt_for_pin", side_effect=fake_prompt_for_pin), \
              patch("seedsigner.helpers.card_probe.probe_card",
@@ -579,6 +587,8 @@ class TestKeycardMenuRouting(unittest.TestCase):
                    return_value=fake_client), \
              patch("seedsigner.helpers.keycard.crypto.derive_pairing_secret",
                    return_value=b"\x11" * 32), \
+             patch("seedsigner.models.settings.Settings.get_instance",
+                   return_value=fake_settings), \
              patch.object(keycard_views, "select_with_autodetect",
                           return_value=SimpleNamespace(app_version=0)):
             dest = view.run()
@@ -605,6 +615,22 @@ class TestKeycardMenuRouting(unittest.TestCase):
         self.assertEqual(captured["duress"], b"654321")
         self.assertIn("Duress PIN", shown)
         self.assertIs(dest.View_cls, keycard_views.ToolsKeycardSetupChooseSeedView)
+
+    def test_init_forwards_pin_attempts_setting(self):
+        """The 'Smartcard PIN Attempts' setting is forwarded to
+        ``client.init`` as ``max_pin_attempts`` so Keycard instances honour
+        the configured limit instead of the hardcoded applet default."""
+        captured, _shown, _dest = self._drive_duress_init(
+            prompt_returns=[
+                bytearray(b"111111"),  # main PIN
+                bytearray(b"111111"),  # confirm main
+                bytearray(b"654321"),  # duress PIN
+                bytearray(b"654321"),  # confirm duress
+            ],
+            duress_choice=1,
+            pin_attempts=7,
+        )
+        self.assertEqual(captured["max_pin_attempts"], 7)
 
     def test_init_duress_equal_main_reprompts(self):
         """A duress PIN equal to the main PIN must be rejected (the applet

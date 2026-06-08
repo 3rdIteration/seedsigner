@@ -345,14 +345,24 @@ builder/tests only).
   way to set the alt PIN without also sending the two attempt-limit bytes). The
   no-duress path still sends the byte-identical **50-byte** form. Assembled by
   `commands.build_init_plaintext(...)`; `init_encrypted` is unchanged (it only
-  sees opaque ciphertext). The two attempt limits are fixed at
-  `DEFAULT_MAX_PIN_ATTEMPTS = 3` / `DEFAULT_MAX_PUK_ATTEMPTS = 5`, matching
-  `KeycardApplet.java`'s **`DEFAULT_PIN_MAX_RETRIES` (3) / `DEFAULT_PUK_MAX_RETRIES`
-  (5)** — the exact limits a classic 50-byte init applies — so enabling duress
-  does **not** change the card's retry limits. (`PIN_MAX_RETRIES` (10) /
-  `PUK_MAX_RETRIES` (12) are only the upper *bounds* the applet accepts, not the
-  defaults; the applet enforces PIN ∈ 2..10 and PUK ∈ 3..12.) **Keep these two
-  constants in sync with the applet.**
+  sees opaque ciphertext). The two attempt-limit bytes carry
+  **maxPINAttempts** and **maxPUKAttempts**. The **PUK** limit is fixed at
+  `DEFAULT_MAX_PUK_ATTEMPTS = 5` (matches `KeycardApplet.java`'s
+  `DEFAULT_PUK_MAX_RETRIES`). The **PIN** limit is **user-configurable** via
+  `SETTING__SCARD_PIN_ATTEMPTS` ("Smartcard PIN Attempts", default **3**,
+  range 2..10): `ToolsKeycardInitView` reads it and forwards it to
+  `client.init(..., max_pin_attempts=...)` → `build_init_plaintext` (the byte
+  was already on the wire — the wizard always sends the 58-byte duress form —
+  so this just makes it come from the setting instead of the hardcoded
+  `DEFAULT_MAX_PIN_ATTEMPTS = 3`). The applet enforces **PIN ∈ 2..10** and
+  **PUK ∈ 3..12** (`PIN_MAX_RETRIES` (10) / `PUK_MAX_RETRIES` (12) are the
+  upper *bounds*, not defaults), so every setting value is valid on-card. The
+  same setting also drives **Satochip/SeedKeeper** `card_setup`
+  (`seedkeeper_utils.py`). Note the limit is baked in at INIT — **changing the
+  setting does not retroactively alter already-initialised cards**; re-init
+  (Factory reset) is required. `DEFAULT_MAX_PUK_ATTEMPTS` (and the
+  `DEFAULT_MAX_PIN_ATTEMPTS` fallback for the builder/test 50-byte path) must
+  **stay in sync with the applet**.
 - **No version gate.** INIT runs against a *pre-init* applet whose SELECT returns
   `app_version == 0` / `capabilities == 0` (sentinel), so there is nothing
   reliable to gate on; the 58-byte form is supported across the applet 3.x line

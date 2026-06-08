@@ -55,7 +55,8 @@ class KeycardClient:
         return self._select_response
 
     def init(self, pin: bytes, puk: bytes, pairing_secret: bytes,
-             duress_pin: Optional[bytes] = None) -> None:
+             duress_pin: Optional[bytes] = None,
+             max_pin_attempts: int = commands.DEFAULT_MAX_PIN_ATTEMPTS) -> None:
         """Run INIT against a pre-init applet using the one-shot encrypted format.
 
         Status Keycard rejects plaintext INIT data with SW=6A80; the
@@ -68,9 +69,17 @@ class KeycardClient:
         The plaintext is the 50-byte classic form
         ``PIN(6) || PUK(12) || pairing_secret(32)`` unless ``duress_pin``
         is given, in which case it is the 58-byte form that also carries
-        the applet's alt PIN. Entering the alt (duress) PIN later unlocks a
-        decoy wallet (same master key, alternate chain code) transparently
-        on-card — see ``commands.build_init_plaintext``.
+        ``maxPINAttempts`` / ``maxPUKAttempts`` and the applet's alt PIN.
+        Entering the alt (duress) PIN later unlocks a decoy wallet (same
+        master key, alternate chain code) transparently on-card — see
+        ``commands.build_init_plaintext``.
+
+        ``max_pin_attempts`` is the number of consecutive wrong-PIN entries
+        the card tolerates before locking the PIN (recoverable only with the
+        PUK). It is only emitted on the wire in the 58-byte form, i.e. when
+        ``duress_pin`` is set — which the Init wizard always does (random on
+        Skip), so the value reliably takes effect. The applet accepts PIN
+        retries in 2..10; out-of-range values are rejected on-card.
 
         Caller must have run ``select()`` first so the card pubkey is
         cached on ``self._select_response``.
@@ -92,7 +101,10 @@ class KeycardClient:
         # PIN and (when set) the duress PIN, so it is the most secret buffer
         # in this method.
         plaintext = bytearray(
-            commands.build_init_plaintext(pin, puk, pairing_secret, duress_pin=duress_pin)
+            commands.build_init_plaintext(
+                pin, puk, pairing_secret,
+                duress_pin=duress_pin, max_pin_attempts=max_pin_attempts,
+            )
         )
         try:
             shared_x = crypto.secp256k1_ecdh(
