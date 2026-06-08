@@ -88,7 +88,8 @@ def _is_i2c_device_detected(address_hex: str, bus_candidates: tuple[int, ...] = 
             if f" {normalized} " in f" {result.stdout.lower()} " or " uu " in f" {result.stdout.lower()} ":
                 logger.info("Detected I2C device at 0x%s on /dev/i2c-%s", normalized, bus_number)
                 return True
-        except Exception:
+        except Exception as e:
+            logger.debug("I2C probe failed on /dev/i2c-%s: %s", bus_number, e)
             continue
     return False
 
