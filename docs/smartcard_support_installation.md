@@ -262,3 +262,14 @@ The key file can include either a single key or an ENC/MAC/DEK key set. When sav
 file is stored at the card root as `javacard-keys.txt`. You can also save/load the same plaintext
 format on a Seedkeeper card; the entries are labeled with the `jc_keys` prefix so the same parser
 can be used for both locations.
+
+### Javacard DIY BIP39 Mnemonics (Specter JavaCard)
+The same **Card Keys** menu now includes **Load Mnemonic** and **Save Mnemonic** options for
+Specter JavaCard `MemoryCard` applets. This uses the Specter Python module (`specter_card`) to
+open a secure channel and read/write mnemonic text.
+
+If the module is not installed globally, set:
+
+    export SEEDSIGNER_SPECTER_CARD_PY_PATH=/path/to/specter-javacard/py
+
+The loader expects a standard 12/15/18/21/24-word BIP39 mnemonic payload.
