@@ -406,6 +406,26 @@ class TestPinCacheBehaviour(unittest.TestCase):
             open_unlocked_session(view, pin=pin)
         view.controller.set_pin_for.assert_called_once_with(self.UID, pin)
 
+    def test_duress_pin_reaches_card_after_lock(self):
+        """After a Lock card (cache dropped → get_pin_for None), supplying a
+        *different* PIN sends that value to the card so the on-card duress
+        routing can select the decoy wallet. This is the end-to-end intent
+        of the Lock action: a different PIN actually reaches VERIFY_PIN."""
+        from seedsigner.helpers.keycard.ui_helpers import open_unlocked_session
+
+        client = MagicMock()
+        client.select.return_value = self._select_info()
+        # cached_pin=None models the post-Lock state (real PIN wiped).
+        view = self._mock_view(cached_pin=None)
+        duress = bytearray(b"654321")
+
+        p1, p2 = self._patch_hardware(client)
+        with p1, p2:
+            open_unlocked_session(view, pin=duress)
+
+        client.verify_pin.assert_called_once_with(bytes(duress))
+        view.controller.set_pin_for.assert_called_once_with(self.UID, duress)
+
     def test_bad_pin_sw_63cx_wipes_cache(self):
         from seedsigner.helpers.keycard.commands import APDUError
         from seedsigner.helpers.keycard.ui_helpers import open_unlocked_session

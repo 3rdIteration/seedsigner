@@ -198,12 +198,28 @@ class TestController(BaseTest):
         assert cached_pin == [0, 0, 0, 0, 0, 0]
 
 
-    def test_cache_scard_pin_default_is_enabled(self):
-        """Phase 3 default flip: PINs persist across Home navigations
-        unless the user explicitly opts out of caching."""
+    def test_cache_scard_pin_default_is_disabled(self):
+        """Security default: PIN caching is OFF out of the box, so
+        returning Home wipes the verified PIN and the next op re-prompts.
+        Power users can opt back into stickier caching (Enabled)."""
         controller = Controller.get_instance()
         assert controller.settings.get_value(
             SettingsConstants.SETTING__CACHE_SCARD_PIN
-        ) == SettingsConstants.OPTION__ENABLED
+        ) == SettingsConstants.OPTION__DISABLED
+
+    def test_wipe_card_session_secrets_clears_pins(self):
+        """The canonical 'drop all cached card auth' entry point (used by
+        card removal, the no-card backstop, and the Lock card action) must
+        empty the PIN cache and zero the underlying bytearrays."""
+        controller = Controller.get_instance()
+        controller.keycard_pins = {}
+        uid = b"\x11" * 16
+        controller.set_pin_for(uid, bytearray(b"123456"))
+        cached = controller.keycard_pins[uid]
+
+        controller.wipe_card_session_secrets()
+
+        assert controller.keycard_pins == {}
+        assert cached == bytearray(b"\x00" * 6)
 
 

@@ -6,6 +6,7 @@ https://github.com/status-im/status-keycard/blob/master/src/main/java/im/status/
 
 from __future__ import annotations
 
+import hmac
 from typing import Iterable, List, Optional
 
 # Application AID published by Status Keycard.
@@ -156,6 +157,77 @@ def init(pin: bytes, puk: bytes, pairing_secret: bytes) -> List[int]:
     return build_apdu(
         CLA_PROPRIETARY, INS_INIT, 0x00, 0x00,
         bytes(pin) + bytes(puk) + bytes(pairing_secret),
+    )
+
+
+# INIT max-attempts defaults. The 50-byte INIT form lets the applet apply its
+# own compiled-in retry limits; the moment we send the 58-byte form (to set a
+# duress/alt PIN) we MUST supply both counters — there is no "use default"
+# sentinel. These mirror KeycardApplet.java's DEFAULT_PIN_MAX_RETRIES (3) /
+# DEFAULT_PUK_MAX_RETRIES (5) — the exact limits a classic 50-byte init
+# applies — so enabling the duress PIN does NOT silently change the card's
+# retry limits. (The applet validates PIN in 2..PIN_MAX_RETRIES=10 and PUK in
+# 3..PUK_MAX_RETRIES=12, so raising these is allowed if ever desired.) Keep in
+# sync with the applet.
+DEFAULT_MAX_PIN_ATTEMPTS = 3
+DEFAULT_MAX_PUK_ATTEMPTS = 5
+
+
+def build_init_plaintext(
+    pin: bytes,
+    puk: bytes,
+    pairing_secret: bytes,
+    duress_pin: Optional[bytes] = None,
+    max_pin_attempts: int = DEFAULT_MAX_PIN_ATTEMPTS,
+    max_puk_attempts: int = DEFAULT_MAX_PUK_ATTEMPTS,
+) -> bytes:
+    """Assemble the cleartext INIT payload (the bytes the applet decrypts).
+
+    The Status Keycard applet's INIT accepts exactly three payload lengths
+    (see ``KeycardApplet.processInit``):
+
+    * 50 bytes — ``PIN(6) || PUK(12) || pairingSecret(32)`` (classic form;
+      applet uses its own retry limits and defaults the alt PIN to PUK[:6]).
+    * 52 bytes — ``+ maxPINAttempts(1) || maxPUKAttempts(1)``.
+    * 58 bytes — ``+ altPIN(6)`` — the duress PIN.
+
+    Without ``duress_pin`` this returns the 50-byte form, byte-identical to
+    the historic ``client.init`` behaviour. With ``duress_pin`` it returns
+    the 58-byte form (the only way to set the alt PIN forces the two
+    max-attempts bytes too).
+
+    The alt/duress PIN MUST differ from the main PIN: the applet's
+    ``verifyPIN`` matches *both* an equal alt PIN and routes to the decoy
+    chain code, so only the decoy is reachable until the two PINs are made
+    distinct again (the real key material is never lost — `verifyPIN`
+    re-decides routing on every unlock — but it is a confusing footgun). We
+    reject the collision here as defence in depth (the UI guards it too).
+    """
+    if len(pin) != 6:
+        raise ValueError("PIN must be 6 ASCII digits")
+    if len(puk) != 12:
+        raise ValueError("PUK must be 12 ASCII digits")
+    if len(pairing_secret) != 32:
+        raise ValueError("pairing secret must be 32 bytes")
+
+    if duress_pin is None:
+        return bytes(pin) + bytes(puk) + bytes(pairing_secret)
+
+    if len(duress_pin) != 6:
+        raise ValueError("duress PIN must be 6 ASCII digits")
+    if not 1 <= max_pin_attempts <= 0xFF:
+        raise ValueError("max_pin_attempts must be 1..255")
+    if not 1 <= max_puk_attempts <= 0xFF:
+        raise ValueError("max_puk_attempts must be 1..255")
+    if hmac.compare_digest(bytes(pin), bytes(duress_pin)):
+        raise ValueError("duress PIN must differ from main PIN")
+
+    return (
+        bytes(pin)
+        + bytes(puk)
+        + bytes(pairing_secret)
+        + bytes([max_pin_attempts, max_puk_attempts])
+        + bytes(duress_pin)
     )
 
 

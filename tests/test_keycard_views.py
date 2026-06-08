@@ -89,6 +89,30 @@ class TestNoCardToast(unittest.TestCase):
         self.assertIs(dest.View_cls, keycard_views.KeycardErrorView)
         self.assertTrue(dest.view_args["return_to_main"])
 
+    def test_no_card_wipes_cached_pin(self):
+        """Card confirmed absent → drop cached PINs (reader-independent
+        backstop for the unreliable PC/SC 'removed' event on contactless
+        readers). A non-card error must NOT wipe."""
+        from unittest.mock import patch
+
+        from seedsigner.helpers.keycard.reader import NoCardError, NoReaderError
+        from seedsigner.views import keycard_views
+
+        for exc in (NoCardError("no card"), NoReaderError("no reader")):
+            view = MagicMock()
+            with patch("seedsigner.gui.toast.InfoToast", MagicMock()):
+                keycard_views._no_card_toast_or_error(
+                    view, exc, default_title="Signing failed",
+                )
+            view.controller.wipe_card_session_secrets.assert_called_once()
+
+        # Other exceptions fall through to the error screen without wiping.
+        view = MagicMock()
+        keycard_views._no_card_toast_or_error(
+            view, RuntimeError("boom"), default_title="Signing failed",
+        )
+        self.assertFalse(view.controller.wipe_card_session_secrets.called)
+
     def test_eth_finalize_no_card_preserves_request_and_stays(self):
         from unittest.mock import patch
 
@@ -166,6 +190,7 @@ class TestKeycardMenuRouting(unittest.TestCase):
             ToolsKeycardThisInstanceMenuView,
             ToolsKeycardInstancesMenuView,
             ToolsKeycardCardMenuView,
+            ToolsKeycardLockView,
         )
         expected = [
             ToolsKeycardEthereumMenuView,
@@ -173,6 +198,7 @@ class TestKeycardMenuRouting(unittest.TestCase):
             ToolsKeycardThisInstanceMenuView,
             ToolsKeycardInstancesMenuView,
             ToolsKeycardCardMenuView,
+            ToolsKeycardLockView,
         ]
         for i, view_cls in enumerate(expected):
             dest = self._route(ToolsKeycardMenuView, i)
@@ -224,6 +250,7 @@ class TestKeycardMenuRouting(unittest.TestCase):
             ToolsKeycardChangePinView,
             ToolsKeycardPairingMenuView,
             ToolsKeycardFactoryResetView,
+            ToolsKeycardLockView,
         )
         expected = [
             ToolsKeycardGenerateKeyView,
@@ -231,6 +258,7 @@ class TestKeycardMenuRouting(unittest.TestCase):
             ToolsKeycardChangePinView,
             ToolsKeycardPairingMenuView,
             ToolsKeycardFactoryResetView,
+            ToolsKeycardLockView,
         ]
         for i, view_cls in enumerate(expected):
             dest = self._route(ToolsKeycardThisInstanceMenuView, i)
@@ -384,9 +412,10 @@ class TestKeycardMenuRouting(unittest.TestCase):
         fake_connection = MagicMock()
         captured = {}
 
-        def fake_init(pin_bytes, puk_bytes, secret):
+        def fake_init(pin_bytes, puk_bytes, secret, duress_pin=None):
             captured["pin"] = bytes(pin_bytes)
             captured["puk"] = bytes(puk_bytes)
+            captured["duress"] = bytes(duress_pin) if duress_pin is not None else None
 
         fake_client.init.side_effect = fake_init
 
@@ -409,6 +438,13 @@ class TestKeycardMenuRouting(unittest.TestCase):
         self.assertEqual(prompt_calls["n"], 4)
         self.assertEqual(captured["pin"], b"333333")
         self.assertEqual(len(captured["puk"]), 12)  # PUK_LENGTH
+        # run_screen returns 0 → "Skip" on the Duress PIN chooser. To match
+        # keycard-shell, Skip still provisions a *random* duress PIN (≠ main)
+        # rather than leaving the applet's PUK[:6] default.
+        self.assertIsNotNone(captured["duress"])
+        self.assertEqual(len(captured["duress"]), 6)
+        self.assertTrue(captured["duress"].isdigit())
+        self.assertNotEqual(captured["duress"], captured["pin"])
 
     def test_init_already_initialised_blocks_before_pin(self):
         """An already-initialised card must short-circuit Init *before*
@@ -480,6 +516,129 @@ class TestKeycardMenuRouting(unittest.TestCase):
         fake_client.init.assert_not_called()
         self.assertIs(dest.View_cls, keycard_views.KeycardErrorView)
         self.assertEqual(dest.view_args["title"], "Already initialised")
+
+    def _drive_duress_init(self, prompt_returns, duress_choice):
+        """Run ``ToolsKeycardInitView`` with scripted PIN prompts and a given
+        "Duress PIN" chooser selection.
+
+        ``prompt_returns`` is the ordered list returned by successive
+        ``prompt_for_pin`` calls (each a ``bytearray`` or ``None``).
+        ``duress_choice`` is the index the "Duress PIN" explainer/chooser
+        screen returns (0 = Skip, 1 = Set duress PIN). Returns
+        ``(captured, shown_titles, dest)``.
+        """
+        from types import SimpleNamespace
+        from unittest.mock import patch
+
+        from seedsigner.views import keycard_views
+        from seedsigner.views.keycard_views import ToolsKeycardInitView
+
+        view = ToolsKeycardInitView.__new__(ToolsKeycardInitView)
+        view.controller = MagicMock()
+
+        shown = []
+
+        def fake_run_screen(screen_cls, **kwargs):
+            title = kwargs.get("title")
+            shown.append(title)
+            if title == "Duress PIN":
+                return duress_choice
+            return 0
+
+        view.run_screen = fake_run_screen
+
+        prompt_state = {"n": 0}
+
+        def fake_prompt_for_pin(parent, title):
+            buf = prompt_returns[prompt_state["n"]]
+            prompt_state["n"] += 1
+            return buf
+
+        fake_client = MagicMock()
+        fake_connection = MagicMock()
+        captured = {}
+
+        def fake_init(pin_bytes, puk_bytes, secret, duress_pin=None):
+            captured["pin"] = bytes(pin_bytes)
+            captured["puk"] = bytes(puk_bytes)
+            captured["duress"] = bytes(duress_pin) if duress_pin is not None else None
+
+        fake_client.init.side_effect = fake_init
+
+        with patch.object(keycard_views, "prompt_for_pin", side_effect=fake_prompt_for_pin), \
+             patch("seedsigner.helpers.card_probe.probe_card",
+                   return_value=SimpleNamespace(
+                       present=False, kind_match=False, initialised=False)), \
+             patch("seedsigner.helpers.keycard.reader.wait_for_card",
+                   return_value=fake_connection), \
+             patch("seedsigner.helpers.keycard.reader.release_other_smartcard_holders"), \
+             patch("seedsigner.helpers.keycard.client.KeycardClient",
+                   return_value=fake_client), \
+             patch("seedsigner.helpers.keycard.crypto.derive_pairing_secret",
+                   return_value=b"\x11" * 32), \
+             patch.object(keycard_views, "select_with_autodetect",
+                          return_value=SimpleNamespace(app_version=0)):
+            dest = view.run()
+
+        captured["init_called"] = fake_client.init.called
+        return captured, shown, dest
+
+    def test_init_with_duress_passes_duress_bytes(self):
+        """'Set duress PIN' + a distinct 6-digit PIN forwards it to
+        ``client.init`` as ``duress_pin`` and still chains to the seed
+        chooser."""
+        from seedsigner.views import keycard_views
+
+        captured, shown, dest = self._drive_duress_init(
+            prompt_returns=[
+                bytearray(b"111111"),  # main PIN
+                bytearray(b"111111"),  # confirm main
+                bytearray(b"654321"),  # duress PIN
+                bytearray(b"654321"),  # confirm duress
+            ],
+            duress_choice=1,
+        )
+        self.assertEqual(captured["pin"], b"111111")
+        self.assertEqual(captured["duress"], b"654321")
+        self.assertIn("Duress PIN", shown)
+        self.assertIs(dest.View_cls, keycard_views.ToolsKeycardSetupChooseSeedView)
+
+    def test_init_duress_equal_main_reprompts(self):
+        """A duress PIN equal to the main PIN must be rejected (the applet
+        would route to the decoy and lose the real wallet), show the
+        "Must differ" warning, and re-prompt — the equal value never
+        reaches ``client.init``."""
+        captured, shown, dest = self._drive_duress_init(
+            prompt_returns=[
+                bytearray(b"111111"),  # main PIN
+                bytearray(b"111111"),  # confirm main
+                bytearray(b"111111"),  # duress == main → rejected
+                bytearray(b"111111"),  # confirm duress
+                bytearray(b"654321"),  # retry duress → OK
+                bytearray(b"654321"),  # confirm retry
+            ],
+            duress_choice=1,
+        )
+        self.assertIn("Must differ", shown)
+        self.assertEqual(captured["duress"], b"654321")
+
+    def test_init_duress_cancel_uses_random_duress(self):
+        """Backing out of the duress PIN entry doesn't abort init (the main
+        PIN is already committed); to match keycard-shell it provisions a
+        *random* duress PIN (≠ main) rather than leaving the PUK[:6] default."""
+        captured, shown, dest = self._drive_duress_init(
+            prompt_returns=[
+                bytearray(b"111111"),  # main PIN
+                bytearray(b"111111"),  # confirm main
+                None,                  # back out of duress entry
+            ],
+            duress_choice=1,
+        )
+        self.assertTrue(captured["init_called"])
+        self.assertEqual(len(captured["duress"]), 6)
+        self.assertTrue(captured["duress"].isdigit())
+        self.assertNotEqual(captured["duress"], b"111111")
+        self.assertEqual(captured["pin"], b"111111")
 
     def test_instance_cap_blocks_create_at_four(self):
         """``ToolsKeycardInstancesCreateView`` must short-circuit to an
@@ -701,6 +860,123 @@ class TestKeycardMenuRouting(unittest.TestCase):
             keycard_views._format_instance_label(active_aid), captured["title"]
         )
         self.assertEqual(captured["title"], "Keycard · Inst 1")
+
+
+class TestPinLockLifecycle(unittest.TestCase):
+    """PIN cache must be droppable on demand (Lock card) and on instance
+    switch, so the user can re-enter a different (e.g. duress) PIN without
+    a factory reset / reboot."""
+
+    def test_lock_view_wipes_and_returns_to_menu(self):
+        from seedsigner.views import keycard_views
+        from seedsigner.views.keycard_views import (
+            ToolsKeycardLockView, ToolsKeycardMenuView,
+        )
+
+        view = ToolsKeycardLockView.__new__(ToolsKeycardLockView)
+        view.controller = MagicMock()
+        view.run_screen = MagicMock(return_value=0)
+
+        dest = view.run()
+
+        view.controller.wipe_card_session_secrets.assert_called_once()
+        self.assertIs(dest.View_cls, ToolsKeycardMenuView)
+        self.assertTrue(dest.clear_history)
+
+    def test_lock_view_name_is_neutral(self):
+        """The Lock action must never reveal the decoy/duress wallet:
+        no screen string may mention duress/decoy/alt."""
+        from seedsigner.views.keycard_views import ToolsKeycardLockView
+
+        view = ToolsKeycardLockView.__new__(ToolsKeycardLockView)
+        view.controller = MagicMock()
+        captured = {}
+
+        def fake_run_screen(screen_cls, **kwargs):
+            captured.update(kwargs)
+            return 0
+
+        view.run_screen = fake_run_screen
+        view.run()
+
+        haystack = (captured.get("title", "") + " " + captured.get("text", "")).lower()
+        for forbidden in ("duress", "decoy", "alt"):
+            self.assertNotIn(forbidden, haystack)
+
+    def test_instance_switch_wipes_cached_pins(self):
+        from unittest.mock import patch
+
+        from seedsigner.helpers.keycard.global_platform import AppletInstance
+        from seedsigner.views import keycard_views
+        from seedsigner.views.keycard_views import (
+            KEYCARD_APPLET_AID, ToolsKeycardInstancesSwitchView,
+        )
+
+        active_aid = KEYCARD_APPLET_AID + b"\x01\x01"
+        other_aid = KEYCARD_APPLET_AID + b"\x01\x02"
+        instances = [
+            AppletInstance(aid=active_aid, life_cycle=0, privileges=0),
+            AppletInstance(aid=other_aid, life_cycle=0, privileges=0),
+        ]
+
+        view = ToolsKeycardInstancesSwitchView.__new__(ToolsKeycardInstancesSwitchView)
+        view.controller = MagicMock()
+        view.controller.active_keycard_aid = active_aid
+        view.controller.keycard_wallets_data = {}
+
+        # First call (ButtonListScreen) picks index 1 (the *other* instance);
+        # any later screen (the "Active set" status) just returns OK.
+        calls = {"n": 0}
+
+        def fake_run_screen(screen_cls, **kwargs):
+            calls["n"] += 1
+            return 1 if calls["n"] == 1 else 0
+
+        view.run_screen = fake_run_screen
+
+        with patch.object(
+            keycard_views, "_open_isd_channel",
+            return_value=(MagicMock(), instances, MagicMock()),
+        ), patch.object(
+            keycard_views, "_instances_or_probe_fallback",
+            side_effect=lambda controller, inst, conn: inst,
+        ):
+            view.run()
+
+        # Active instance changed AND the cached PIN(s) were dropped so the
+        # next op re-prompts.
+        self.assertEqual(view.controller.active_keycard_aid, other_aid)
+        view.controller.forget_all_pins.assert_called_once()
+
+    def test_cancelled_instance_switch_does_not_wipe(self):
+        """Backing out of the switch must NOT wipe cached PINs."""
+        from unittest.mock import patch
+
+        from seedsigner.gui.screens import RET_CODE__BACK_BUTTON
+        from seedsigner.helpers.keycard.global_platform import AppletInstance
+        from seedsigner.views import keycard_views
+        from seedsigner.views.keycard_views import (
+            KEYCARD_APPLET_AID, ToolsKeycardInstancesSwitchView,
+        )
+
+        active_aid = KEYCARD_APPLET_AID + b"\x01\x01"
+        instances = [AppletInstance(aid=active_aid, life_cycle=0, privileges=0)]
+
+        view = ToolsKeycardInstancesSwitchView.__new__(ToolsKeycardInstancesSwitchView)
+        view.controller = MagicMock()
+        view.controller.active_keycard_aid = active_aid
+        view.run_screen = MagicMock(return_value=RET_CODE__BACK_BUTTON)
+
+        with patch.object(
+            keycard_views, "_open_isd_channel",
+            return_value=(MagicMock(), instances, MagicMock()),
+        ), patch.object(
+            keycard_views, "_instances_or_probe_fallback",
+            side_effect=lambda controller, inst, conn: inst,
+        ):
+            view.run()
+
+        self.assertFalse(view.controller.forget_all_pins.called)
 
 
 class TestFactoryResetCleanupScope(unittest.TestCase):

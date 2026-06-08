@@ -54,15 +54,23 @@ class KeycardClient:
         self._select_response = parse_select(resp)
         return self._select_response
 
-    def init(self, pin: bytes, puk: bytes, pairing_secret: bytes) -> None:
+    def init(self, pin: bytes, puk: bytes, pairing_secret: bytes,
+             duress_pin: Optional[bytes] = None) -> None:
         """Run INIT against a pre-init applet using the one-shot encrypted format.
 
         Status Keycard rejects plaintext INIT data with SW=6A80; the
         applet expects ``client_pubkey(65) || iv(16) || AES-256-CBC(
-        PIN(6) || PUK(12) || pairing_secret(32) )`` where the AES key is
-        the raw X-coordinate of ECDH(client_priv, card_static_pub) and
-        padding is ISO 9797-1 method 2 (matches the secure-channel
-        ``oneShotEncrypt`` in ``SecureChannel.java``).
+        plaintext )`` where the AES key is the raw X-coordinate of
+        ECDH(client_priv, card_static_pub) and padding is ISO 9797-1
+        method 2 (matches the secure-channel ``oneShotEncrypt`` in
+        ``SecureChannel.java``).
+
+        The plaintext is the 50-byte classic form
+        ``PIN(6) || PUK(12) || pairing_secret(32)`` unless ``duress_pin``
+        is given, in which case it is the 58-byte form that also carries
+        the applet's alt PIN. Entering the alt (duress) PIN later unlocks a
+        decoy wallet (same master key, alternate chain code) transparently
+        on-card — see ``commands.build_init_plaintext``.
 
         Caller must have run ``select()`` first so the card pubkey is
         cached on ``self._select_response``.
@@ -80,21 +88,27 @@ class KeycardClient:
 
         client_priv, client_pub = crypto.secp256k1_generate_keypair()
         shared_x = b""
+        # Mutable so we can zero it in the finally — it carries BOTH the main
+        # PIN and (when set) the duress PIN, so it is the most secret buffer
+        # in this method.
+        plaintext = bytearray(
+            commands.build_init_plaintext(pin, puk, pairing_secret, duress_pin=duress_pin)
+        )
         try:
             shared_x = crypto.secp256k1_ecdh(
                 client_priv, self._select_response.secp256k1_pubkey,
             )
             iv = crypto.random_bytes(16)
-            plaintext = bytes(pin) + bytes(puk) + bytes(pairing_secret)
-            ciphertext = crypto.aes_cbc_encrypt(shared_x, iv, plaintext)
+            ciphertext = crypto.aes_cbc_encrypt(shared_x, iv, bytes(plaintext))
             self.transmit(
                 commands.init_encrypted(client_pub, iv, ciphertext),
             )
         finally:
-            # Best-effort wipe of the ephemeral private key + AES key.
-            for buf in (client_priv, shared_x):
+            # Best-effort wipe of the ephemeral private key, AES key and the
+            # PIN-bearing plaintext.
+            for buf in (client_priv, shared_x, plaintext):
                 try:
-                    ba = bytearray(buf)
+                    ba = buf if isinstance(buf, bytearray) else bytearray(buf)
                     for i in range(len(ba)):
                         ba[i] = 0
                 except Exception:

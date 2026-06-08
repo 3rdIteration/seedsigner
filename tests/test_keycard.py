@@ -92,6 +92,68 @@ class TestApduBuilders:
         with pytest.raises(ValueError):
             commands.init_encrypted(b"\x04" + b"\x11" * 64, b"\x22" * 16, b"\x33" * 63)
 
+    def test_build_init_plaintext_no_duress_is_50_bytes(self):
+        pin = b"123456"
+        puk = b"123456789012"
+        secret = b"\x00" * 32
+        plaintext = commands.build_init_plaintext(pin, puk, secret)
+        assert len(plaintext) == 50
+        assert plaintext[0:6] == pin
+        assert plaintext[6:18] == puk
+        assert plaintext[18:50] == secret
+
+    def test_build_init_plaintext_duress_is_58_bytes(self):
+        pin = b"123456"
+        puk = b"123456789012"
+        secret = b"\x44" * 32
+        duress = b"654321"
+        plaintext = commands.build_init_plaintext(pin, puk, secret, duress_pin=duress)
+        # PIN(6) || PUK(12) || secret(32) || maxPIN(1) || maxPUK(1) || altPIN(6)
+        assert len(plaintext) == 58
+        assert plaintext[0:6] == pin
+        assert plaintext[6:18] == puk
+        assert plaintext[18:50] == secret
+        assert plaintext[50] == commands.DEFAULT_MAX_PIN_ATTEMPTS == 3
+        assert plaintext[51] == commands.DEFAULT_MAX_PUK_ATTEMPTS == 5
+        assert plaintext[52:58] == duress
+
+    def test_build_init_plaintext_custom_attempt_limits(self):
+        plaintext = commands.build_init_plaintext(
+            b"123456", b"123456789012", b"\x00" * 32,
+            duress_pin=b"654321", max_pin_attempts=3, max_puk_attempts=5,
+        )
+        assert plaintext[50] == 3
+        assert plaintext[51] == 5
+
+    def test_build_init_plaintext_rejects_duress_equal_main(self):
+        with pytest.raises(ValueError, match="differ"):
+            commands.build_init_plaintext(
+                b"123456", b"123456789012", b"\x00" * 32, duress_pin=b"123456",
+            )
+
+    def test_build_init_plaintext_validates_lengths(self):
+        good_puk = b"123456789012"
+        with pytest.raises(ValueError):
+            commands.build_init_plaintext(b"12345", good_puk, b"\x00" * 32)
+        with pytest.raises(ValueError):
+            commands.build_init_plaintext(b"123456", b"0011", b"\x00" * 32)
+        with pytest.raises(ValueError):
+            commands.build_init_plaintext(b"123456", good_puk, b"\x00" * 31)
+        with pytest.raises(ValueError):
+            commands.build_init_plaintext(
+                b"123456", good_puk, b"\x00" * 32, duress_pin=b"12345",
+            )
+        with pytest.raises(ValueError):
+            commands.build_init_plaintext(
+                b"123456", good_puk, b"\x00" * 32, duress_pin=b"654321",
+                max_pin_attempts=0,
+            )
+        with pytest.raises(ValueError):
+            commands.build_init_plaintext(
+                b"123456", good_puk, b"\x00" * 32, duress_pin=b"654321",
+                max_puk_attempts=256,
+            )
+
     def test_sign_requires_32_byte_hash(self):
         with pytest.raises(ValueError):
             commands.sign(b"\x00" * 31)

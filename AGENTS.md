@@ -222,15 +222,25 @@ in the title of every instance-scoped branch.
 | Branch | Scope | Entries |
 |--------|-------|---------|
 | `Ethereum` / `Bitcoin` (titled `· Inst N`) | active instance | sign / export with the instance key |
-| `This instance · Inst N` | active instance | Generate key, Import seed, Change PIN, `Pairing ›` (Pair card / Remove pairing), Factory reset |
+| `This instance · Inst N` | active instance | Generate key, Import seed, Change PIN, `Pairing ›` (Pair card / Remove pairing), Factory reset, Lock card |
 | `Instances` (titled `Active: Inst N`) | the *set* of instances on the card | List / Switch active / Create / Delete |
 | `Card` | whole card / package | Initialise card, Status, Uninstall applet |
+| `Lock card` | cached card auth (all instances) | Drop cached PINs so the next op re-prompts (`ToolsKeycardLockView`) |
 
 `Generate key` / `Import seed` are reachable both from `This instance` and
 from the post-Init chooser (`ToolsKeycardSetupChooseSeedView`). The view
 classes are `ToolsKeycardThisInstanceMenuView`, `ToolsKeycardPairingMenuView`,
 `ToolsKeycardCardMenuView` (the old `Setup` / `Manage` / `Advanced` menus
 were collapsed into these). Routing cover: `tests/test_keycard_views.py`.
+
+`Lock card` (`ToolsKeycardLockView`) is reachable both from the **top-level**
+Keycard menu (quick shortcut, last entry) and from `This instance`. It calls
+`Controller.wipe_card_session_secrets()` (drop all cached PINs + any Satochip
+session), then the next operation re-prompts for the PIN. The label is
+deliberately **neutral** — it must NOT reference duress/decoy/alt — because
+re-entering a *different* PIN at that prompt is how the user reaches the on-card
+decoy wallet (see [Duress (alt) PIN](#duress-alt-pin)). Cover:
+`tests/test_keycard_views.py::TestPinLockLifecycle`.
 
 `Factory reset` (`INS_FACTORY_RESET`) blanks **only the active instance**
 on-card; the device-side cleanup is scoped to match — it drops just that
@@ -255,6 +265,107 @@ entropy comes from and whether the host ever displays the words.
 The **Import hex (NGRAVE)** source takes the NGRAVE "Perfect Key" — the 256-bit BIP-39 *entropy* (64 hex chars = 24 words; 32 hex = 12 words) — via QR scan or the dedicated `0-9 a-f` keyboard (`KeycardHexEntryScreen`), runs it through `bip39.mnemonic_from_bytes`, then joins the **same** validate → derive seed64 → `LOAD_KEY P1=0x03` pipeline as the mnemonic import. The entropy buffer is wiped and words are independent copies (never `WORDLIST` references).
 
 The mnemonic / passphrase are scrubbed on **success**, on a **user-driven exit** (Skip / Cancel / back at any chooser), and on `MainMenuView` re-entry. A **transient backup error does NOT wipe** them (see the backup section's retry rule below) — the only backup window must survive a recoverable failure. Regression cover: `tests/test_keycard_setup_chain.py`, `tests/test_keycard_hex_import.py`.
+
+### Duress (alt) PIN
+
+The Init wizard (`ToolsKeycardInitView`, `Tools > Keycard > Card > Initialise
+card`) optionally sets a **duress PIN** — the Status applet's native **"alt
+PIN"** feature (exactly what keycard-shell exposes). It is offered **after** the
+main PIN+PUK and **before** the PUK-display screen as a single
+`LargeIconStatusScreen` titled "Duress PIN" that explains the concept ("A 2nd
+PIN that unlocks a decoy wallet instead of your real one. Settable only now,
+never later.") and carries the **Skip** / **Set duress PIN** buttons.
+
+**Skip still sets a *random* duress PIN (keycard-shell parity).** Picking
+**Skip** (or backing out of the duress entry) does **not** fall back to the
+applet's predictable PUK[:6] default — instead the view generates a random
+6-digit duress PIN (CSPRNG via `kc_secrets.generate_pin()`, looped until it
+differs from the main PIN) and sends the 58-byte form anyway. This mirrors
+keycard-shell's `keycard_random_duress()` and means a Skipped card simply has
+**no usable decoy** (nobody knows the random value) rather than a decoy openable
+by anyone who learns the PUK's first 6 digits. Consequence: the 50-byte INIT
+form is no longer emitted by the Init wizard in practice (the pure
+`build_init_plaintext(..., duress_pin=None)` 50-byte path is retained for the
+builder/tests only).
+
+- **What it does:** entering the duress PIN at any later sign/export/unlock
+  prompt transparently unlocks a **decoy wallet** — the applet routes
+  `verifyPIN` to an **alternate chain code** over the *same* master key, so the
+  *same* BIP-32 paths derive different (but valid) addresses. This is handled
+  **entirely on-card**: there is **no host-side routing or derivation**, and no
+  separate decoy seed. Whichever PIN the user types selects the real or decoy
+  wallet automatically. Because each card can host multiple applet instances and
+  each instance is INIT'd separately, the duress PIN is naturally **per-instance**.
+- **Reaching the decoy without a factory reset / reboot.** The applet decides
+  routing on *every* `verifyPIN`, but the host caches the verified PIN
+  (`Controller.keycard_pins`) and re-sends it without re-prompting, so once you
+  unlock with the **real** PIN every later op silently re-authenticates as the
+  real wallet. To switch to the decoy, drop the cached PIN so the next op
+  re-prompts, then type the **duress** PIN. Any of these does it: **Lock card**
+  (`Tools > Keycard > Lock card`, instant and reader-independent), **return to
+  Home** (default behaviour — `SETTING__CACHE_SCARD_PIN` is Disabled), **switch
+  the active instance**, or **remove the card**. Previously only a factory reset
+  or reboot cleared the cache. See [Threat model and memory hygiene](#threat-model-and-memory-hygiene).
+- **Changed only from its own session — never cross-managed.** There is no
+  *dedicated* change route for the alt PIN (`changePIN` P1 covers only PIN / PUK /
+  pairing secret), so you **cannot manage the duress PIN from a main-PIN
+  session** (and vice versa). But `changeUserPIN` does `pin.update(...)` on
+  **whichever PIN authenticated the current session** (`pin` is set to `altPIN`
+  by `verifyPIN` when you unlocked with the duress PIN), so the duress PIN **can
+  be changed** by opening Change PIN and entering the *current duress PIN* as the
+  "Current PIN", then a new one. Symmetrically the **main PIN is only changeable
+  from a main-PIN session**. You cannot *add* a second alt slot nor *remove* the
+  alt PIN — there is always exactly one (defaulting to PUK[:6]); only a Factory
+  reset + re-init provisions one from scratch. `changePIN` also requires
+  `pin.isValidated()` (a PIN must have been verified this session).
+- **Must differ from the main PIN.** If they are equal the applet matches *both*
+  and routes to the decoy (`verifyPIN` resp `== 3`), so **only the decoy is
+  reachable until the two PINs are made distinct again**. This is *recoverable*,
+  not fatal: `verifyPIN` re-decides routing on every unlock and the master key /
+  `masterChainCode` are never touched, so changing the alt PIN to a distinct
+  value restores main-PIN access (no factory reset needed). Note that in the
+  collision state the shared value authenticates as the *alt* PIN, so a Change
+  PIN there edits the **alt** PIN — exactly what breaks the collision. The
+  applet itself does **not** reject `alt == main` at INIT (`processInit` has no
+  such check), so the host rejects it in two places to avoid the footgun:
+  `ToolsKeycardInitView` (re-prompts with a "Must differ" warning) and
+  `commands.build_init_plaintext` (raises `ValueError`). The host **cannot**
+  guard against a collision created *later* via Change PIN (it can never read the
+  other PIN), so that remains the user's responsibility.
+- **Applet's own default (we bypass it):** if an INIT *omits* the alt PIN
+  (50/52-byte form) the applet defaults it to the **first 6 digits of the PUK**,
+  derived once at INIT (a later PUK change does **not** re-derive it, though it
+  can still be changed via the duress-session route above by authenticating with
+  PUK[:6]). Our wizard never relies on this — it always sends an explicit alt PIN
+  (user-chosen, or random on Skip) — precisely because the PUK[:6] default is
+  predictable to anyone who learns the PUK.
+- **Wire format:** setting an alt PIN forces the applet's **58-byte** INIT form
+  `PIN(6) ‖ PUK(12) ‖ pairingSecret(32) ‖ maxPINAttempts(1) ‖ maxPUKAttempts(1)
+  ‖ altPIN(6)` (the applet only accepts 50 / 52 / 58 byte payloads — there is no
+  way to set the alt PIN without also sending the two attempt-limit bytes). The
+  no-duress path still sends the byte-identical **50-byte** form. Assembled by
+  `commands.build_init_plaintext(...)`; `init_encrypted` is unchanged (it only
+  sees opaque ciphertext). The two attempt limits are fixed at
+  `DEFAULT_MAX_PIN_ATTEMPTS = 3` / `DEFAULT_MAX_PUK_ATTEMPTS = 5`, matching
+  `KeycardApplet.java`'s **`DEFAULT_PIN_MAX_RETRIES` (3) / `DEFAULT_PUK_MAX_RETRIES`
+  (5)** — the exact limits a classic 50-byte init applies — so enabling duress
+  does **not** change the card's retry limits. (`PIN_MAX_RETRIES` (10) /
+  `PUK_MAX_RETRIES` (12) are only the upper *bounds* the applet accepts, not the
+  defaults; the applet enforces PIN ∈ 2..10 and PUK ∈ 3..12.) **Keep these two
+  constants in sync with the applet.**
+- **No version gate.** INIT runs against a *pre-init* applet whose SELECT returns
+  `app_version == 0` / `capabilities == 0` (sentinel), so there is nothing
+  reliable to gate on; the 58-byte form is supported across the applet 3.x line
+  this fork targets, and an improbable rejection surfaces cleanly via
+  `classify_card_error` (SW 0x6A80 / 0x6D00).
+- **Memory hygiene:** the duress PIN bytearray is wiped on every exit path like
+  the main PIN (outer `finally` in the view); the 58-byte INIT plaintext (which
+  holds **both** PINs) is held in a `bytearray` and zeroed in `client.init`'s
+  `finally` after encryption.
+
+Regression cover: `tests/test_keycard.py::TestApduBuilders` (50- vs 58-byte
+layout, `duress == main` rejection, length validation) and
+`tests/test_keycard_views.py` (set / decline / equal-main re-prompt / cancel).
 
 ### SeedKeeper backup at key creation
 
@@ -313,10 +424,18 @@ The user enters the pairing password **once per boot**. The decrypted pairing ke
 
 ### Threat model and memory hygiene
 
-- **PIN never cached.** It lives in a `bytearray` for the duration of one APDU exchange. After the operation, `wipe_bytearray()` zeros every byte. Then the operation closes its connection.
+- **PIN cached per-instance, but droppable on demand.** The verified PIN is held in `Controller.keycard_pins` — a dict keyed by `instance_uid`, values are `bytearray` (`controller.py`, helpers `get_pin_for` / `set_pin_for` / `forget_pin_for` / `forget_all_pins`). After the first VERIFY_PIN, subsequent operations on the same instance re-use the cached value **without re-prompting** (`open_unlocked_session`, `ui_helpers.py`). The cache is dropped on **all** of:
+  - **return to Home** when `SETTING__CACHE_SCARD_PIN` is Disabled — **now the default** (`controller.py` MainMenu wipe);
+  - the **Lock card** action (see below) — `wipe_card_session_secrets()`;
+  - **active-instance switch** (`ToolsKeycardInstancesSwitchView` → `forget_all_pins()`);
+  - any op **observing `NoCardError`/`NoReaderError`** — reader-independent backstop in `_no_card_toast_or_error`;
+  - the PC/SC **`removed`** event (`card_monitor.py` → `wipe_card_session_secrets()`);
+  - a **bad PIN** (SW=0x63CX), which drops that UID's entry before propagating.
+  The Lock / instance-switch / no-card wipes are **intentionally NOT gated** on `SETTING__CACHE_SCARD_PIN` — they fire even when caching is Enabled, otherwise the duress wallet stays unreachable for power users. **Migration:** flipping the default to Disabled only affects fresh installs / never-set keys; a user with a persisted settings file keeps whatever `cachepin` value they already saved (most likely the old `Enabled`). Those users are still protected by the four ungated wipes above.
+- **Lock card (reach the decoy without a reset).** `Tools > Keycard > Lock card` (also under `This instance`) calls `wipe_card_session_secrets()` so the **next** operation re-prompts for the PIN. This is the supported, reader-independent way to re-authenticate with a **different** PIN — including the **duress (alt) PIN** to reach the on-card decoy wallet — with **no factory reset / reboot**. The label is deliberately neutral: no UI string may reference duress/decoy/alt (preserving the stealth property). See [Duress (alt) PIN](#duress-alt-pin).
 - **Pairing password never cached.** Captured into a `bytearray`, NFKD-normalised, used to derive both the on-card secret and the on-disk storage key, then the bytearray and the intermediate normalised string are wiped (best-effort — see below).
 - **Pairing key cached.** As above: held in memory until the user exits the session or chooses "Forget saved pairing".
-- **Wipe is best-effort.** `helpers/secure_delete.wipe_string()` and our `wipe_bytearray()` cannot defeat Python's GC, copy-on-write inside CPython, or the C runtime's allocator. **Assume any value that exists in memory at the moment of physical seizure is recoverable.** Mitigation: short-lived sessions, PIN re-entry per operation, no debug logging of secrets.
+- **Wipe is best-effort.** `helpers/secure_delete.wipe_string()` and our `wipe_bytearray()` (and the in-place zeroing of the cached PIN bytearray) cannot defeat Python's GC, copy-on-write inside CPython, or the C runtime's allocator. **Assume any value that exists in memory at the moment of physical seizure is recoverable** — including the cached PIN, which now persists across operations until one of the wipe triggers above fires. Mitigation: short-lived sessions, Lock card / Home between operations, no debug logging of secrets.
 - **Bitcoin paths untouched.** No Keycard or Ethereum module imports from `seedsigner.models.seed*` or any BIP39 path. The `Controller` holds Keycard state in dedicated attributes (`keycard_pairing`, `eth_sign_request`, `eth_signature`) that are reset on flow exit / `MainMenuView`.
 
 ### Extension points (when adding new ETH features)
