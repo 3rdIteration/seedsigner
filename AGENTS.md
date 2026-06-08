@@ -226,7 +226,7 @@ in the title of every instance-scoped branch.
 | Branch | Scope | Entries |
 |--------|-------|---------|
 | `Ethereum` / `Bitcoin` (titled `· Inst N`) | active instance | sign / export with the instance key; `Connect software wallet` (xpub/account export) is the **last** entry in each |
-| `Switch instance` | the *set* of instances | picks the active instance (`ToolsKeycardInstancesSwitchView`), then returns to the top menu. **Hidden when the card holds only one instance** — the menu reads `Controller.keycard_instance_count` (filled in once per card session by `card_probe.count_keycard_instances`, a cleartext-SELECT probe) and shows the entry only when the count is *not* exactly 1, so an unknown/under-count never hides the only way to switch |
+| `Switch instance` | the *set* of instances | picks the active instance (`ToolsKeycardInstancesSwitchView`), then returns to the top menu. **Hidden when the card holds only one instance** — the menu reads `Controller.keycard_instance_count` (filled in once per card session by `keycard_views._count_keycard_instances`, which enumerates via **GET STATUS over the ISD** — the same authoritative path Switch/Create/Delete use, so it counts instances at *any* AID, not a guessed/capped range) and shows the entry whenever the count is *not* exactly 1. The count is `None` (→ entry shown) on no card / non-default ISD keys / GET STATUS unsupported, so we never hide the only way to switch on a guess |
 | `Lock card` | cached card auth (all instances) | Drop cached PINs so the next op re-prompts (`ToolsKeycardLockView`) |
 | `Settings` | mixed | container (`ToolsKeycardSettingsMenuView`) for the buckets below |
 

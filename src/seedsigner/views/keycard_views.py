@@ -134,9 +134,7 @@ class ToolsKeycardMenuView(View):
     SETTINGS = ButtonOption("Settings")
 
     def run(self):
-        from seedsigner.helpers.card_probe import (
-            count_keycard_instances, run_card_gate,
-        )
+        from seedsigner.helpers.card_probe import run_card_gate
         gate = run_card_gate(
             self, "keycard", title=_("Keycard"), setup_view=ToolsKeycardInitView,
         )
@@ -145,12 +143,15 @@ class ToolsKeycardMenuView(View):
 
         # "Switch instance" is only meaningful when the card holds more
         # than one instance. Resolve the count from the session cache,
-        # probing the card once (cleartext SELECT, no PIN) when unknown;
-        # only hide the entry when we're confident there's exactly one.
+        # enumerating the card's instances once (authoritative GET STATUS,
+        # no PIN) when unknown. ``None`` means "couldn't determine" — keep
+        # the entry visible; only hide it when we're confident there's
+        # exactly one.
         count = self.controller.keycard_instance_count
         if count is None:
-            count = count_keycard_instances(self.controller)
-            self.controller.keycard_instance_count = count
+            count = _count_keycard_instances(self.controller)
+            if count is not None:
+                self.controller.keycard_instance_count = count
 
         button_data = [self.ETHEREUM, self.BITCOIN]
         if count != 1:
@@ -3281,6 +3282,44 @@ def _open_isd_channel(controller):
     channel.open()
     instances = list_instances(channel)
     return channel, instances, connection
+
+
+def _count_keycard_instances(controller):
+    """Best-effort count of Keycard applet instances on the inserted card.
+
+    Authoritative: opens the ISD GP channel and reads GET STATUS — the same
+    enumeration the Manage Instances / Switch flows use — then filters to
+    ``KEYCARD_APPLET_AID``. GET STATUS returns the instances' *real* AIDs,
+    so it counts every instance regardless of suffix and is **not** capped
+    at ``MAX_KEYCARD_INSTANCES``.
+
+    Returns ``None`` whenever the count can't be trusted — no card,
+    non-default ISD keys, GET STATUS unsupported (empty), or any error — so
+    the caller keeps "Switch instance" visible rather than hide the only way
+    to switch on a guess. We deliberately do **not** fall back to the
+    cleartext-SELECT AID probe here: it only knows the standard
+    ``…0101``–``…0104`` suffixes and would under-count instances installed
+    at other AIDs (the cause of the "Switch instance vanished on a
+    multi-instance card" bug).
+    """
+    connection = None
+    try:
+        _channel, instances, connection = _open_isd_channel(controller)
+        keycard_instances = [
+            i for i in instances if i.aid.startswith(KEYCARD_APPLET_AID)
+        ]
+        # Empty -> GET STATUS unsupported / nothing reported: treat as
+        # "unknown" (None) so we don't hide on a false zero/one.
+        return len(keycard_instances) if keycard_instances else None
+    except Exception:
+        logger.debug("keycard instance count failed", exc_info=True)
+        return None
+    finally:
+        if connection is not None:
+            try:
+                connection.disconnect()
+            except Exception:
+                pass
 
 
 def _instances_or_probe_fallback(controller, instances, connection):

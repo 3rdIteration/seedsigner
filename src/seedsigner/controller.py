@@ -341,10 +341,11 @@ class Controller(Singleton):
         from seedsigner.helpers.keycard.commands import APPLET_AID as _DEFAULT_KEYCARD_AID
         controller.active_keycard_aid = _DEFAULT_KEYCARD_AID
         # Cached count of Keycard applet instances on the inserted card.
-        # ``None`` means "unknown — re-probe": the top Keycard menu fills
-        # this in (via ``card_probe.count_keycard_instances``) to decide
-        # whether to show "Switch instance" (only meaningful with >1). It
-        # is reset to ``None`` whenever the card may have changed (see
+        # ``None`` means "unknown — re-enumerate": the top Keycard menu
+        # fills this in (via ``keycard_views._count_keycard_instances``,
+        # which reads GET STATUS over the ISD) to decide whether to show
+        # "Switch instance" (only meaningful with >1). It is reset to
+        # ``None`` whenever the card may have changed (see
         # ``wipe_card_session_secrets``) and updated by the create/delete/
         # switch flows that already enumerate instances.
         controller.keycard_instance_count = None

@@ -193,8 +193,9 @@ class TestKeycardMenuRouting(unittest.TestCase):
         """Route the top Keycard menu with a fixed cached instance count.
 
         Setting ``keycard_instance_count`` to a concrete int means the
-        menu reads it instead of probing the card (``count_keycard_instances``
-        is only called when the cached value is ``None``).
+        menu reads it instead of enumerating the card
+        (``_count_keycard_instances`` is only called when the cached value
+        is ``None``).
         """
         from seedsigner.views.keycard_views import ToolsKeycardMenuView
         import seedsigner.helpers.card_probe as card_probe_mod
@@ -964,6 +965,78 @@ class TestKeycardMenuRouting(unittest.TestCase):
             keycard_views._format_instance_label(active_aid), captured["title"]
         )
         self.assertEqual(captured["title"], "Keycard · Inst 1")
+
+
+class TestCountKeycardInstances(unittest.TestCase):
+    """``_count_keycard_instances`` drives whether "Switch instance" shows.
+
+    It must count via the authoritative GET STATUS enumeration (the real
+    AIDs the card reports) and NOT a guessed/capped AID range — otherwise a
+    multi-instance card whose instances sit at non-standard suffixes would
+    under-count to 1 and wrongly hide "Switch instance" (the reported bug).
+    """
+
+    def _instances(self, *aids):
+        from seedsigner.helpers.keycard.global_platform import AppletInstance
+        return [AppletInstance(aid=a, life_cycle=0, privileges=0) for a in aids]
+
+    def test_counts_all_reported_keycard_instances(self):
+        from unittest.mock import patch
+        from seedsigner.views import keycard_views
+        from seedsigner.views.keycard_views import (
+            KEYCARD_APPLET_AID, _count_keycard_instances,
+        )
+        # Five instances, including suffixes BEYOND MAX_KEYCARD_INSTANCES
+        # (the cleartext probe would have missed these), plus one
+        # non-Keycard applet that must be filtered out.
+        aids = [KEYCARD_APPLET_AID + bytes([0x01, n]) for n in range(1, 6)]
+        non_keycard = bytes.fromhex("5365656448656570657200")  # "SeedHeeper"-ish
+        instances = self._instances(*aids, non_keycard)
+        conn = MagicMock()
+        with patch.object(
+            keycard_views, "_open_isd_channel",
+            return_value=(MagicMock(), instances, conn),
+        ):
+            self.assertEqual(_count_keycard_instances(MagicMock()), 5)
+        conn.disconnect.assert_called_once()
+
+    def test_single_instance_counts_one(self):
+        from unittest.mock import patch
+        from seedsigner.views import keycard_views
+        from seedsigner.views.keycard_views import (
+            KEYCARD_APPLET_AID, _count_keycard_instances,
+        )
+        instances = self._instances(KEYCARD_APPLET_AID + b"\x01\x01")
+        with patch.object(
+            keycard_views, "_open_isd_channel",
+            return_value=(MagicMock(), instances, MagicMock()),
+        ):
+            self.assertEqual(_count_keycard_instances(MagicMock()), 1)
+
+    def test_empty_enumeration_returns_none(self):
+        """No Keycard instances reported (GET STATUS unsupported/empty) →
+        None, so the caller keeps the entry visible rather than hide on a
+        false zero."""
+        from unittest.mock import patch
+        from seedsigner.views import keycard_views
+        from seedsigner.views.keycard_views import _count_keycard_instances
+        with patch.object(
+            keycard_views, "_open_isd_channel",
+            return_value=(MagicMock(), [], MagicMock()),
+        ):
+            self.assertIsNone(_count_keycard_instances(MagicMock()))
+
+    def test_error_returns_none(self):
+        """Any failure (no card / non-default ISD keys) → None → entry stays
+        visible; never hide the only way to switch on an error."""
+        from unittest.mock import patch
+        from seedsigner.views import keycard_views
+        from seedsigner.views.keycard_views import _count_keycard_instances
+        with patch.object(
+            keycard_views, "_open_isd_channel",
+            side_effect=RuntimeError("no ISD keys"),
+        ):
+            self.assertIsNone(_count_keycard_instances(MagicMock()))
 
 
 class TestPinLockLifecycle(unittest.TestCase):
