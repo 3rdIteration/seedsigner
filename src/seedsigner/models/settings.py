@@ -112,7 +112,7 @@ def _maybe_activate_pn532_on_startup(settings_obj: "Settings") -> None:
             logger.debug("Skipping PN532 startup activation: PN532 not detected on I2C")
             return
 
-        subprocess.run(["ifdnfc-activate", "yes"], check=False)
+        subprocess.run(["ifdnfc-activate", "yes"], check=False, timeout=5)
         logger.info("Activated PN532 IFD-NFC on startup")
     except Exception as e:
         logger.warning("PN532 startup activation failed: %s", e)
