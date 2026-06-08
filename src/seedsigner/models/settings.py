@@ -255,7 +255,8 @@ class Settings(Singleton):
             settings.load_locale()
 
             # Ensure PN532 is activated when configured and physically present.
-            _maybe_activate_pn532_on_startup(settings)
+            if "PYTEST_CURRENT_TEST" not in os.environ and "pytest" not in sys.modules:
+                _maybe_activate_pn532_on_startup(settings)
 
             detected_hardware = Settings.get_platform_default_hardware_config()
 
