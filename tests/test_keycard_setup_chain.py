@@ -558,9 +558,9 @@ class TestInitTailRoutesToChooser(unittest.TestCase):
 
 class TestSetupEntriesReachableAfterReorg(unittest.TestCase):
     """The scope-bucket reorg dropped the standalone ``Setup`` menu:
-    ``Initialise card`` now lives under ``Card`` and ``Generate key`` /
-    ``Import seed`` under ``This instance``. This pins that every Setup
-    step is still reachable so users can re-run each individually."""
+    ``Generate key`` / ``Import seed`` and (now) ``Initialise instance``
+    all live under ``This instance``. This pins that every Setup step is
+    still reachable so users can re-run each individually."""
 
     def test_generate_and_import_reachable_from_this_instance(self):
         from seedsigner.views.keycard_views import (
@@ -580,13 +580,14 @@ class TestSetupEntriesReachableAfterReorg(unittest.TestCase):
             dest = view.run()
             self.assertIs(dest.View_cls, view_cls)
 
-    def test_init_reachable_from_card_menu(self):
+    def test_init_reachable_from_this_instance(self):
         from seedsigner.views.keycard_views import (
-            ToolsKeycardCardMenuView,
             ToolsKeycardInitView,
+            ToolsKeycardThisInstanceMenuView,
         )
-        # Card menu: Initialise card is the first entry.
-        view = _make_view(ToolsKeycardCardMenuView, run_screen_returns=0)
+        # This instance menu: Generate (0), Import (1), Change PIN (2),
+        # Pairing (3), Initialise instance (4), ...
+        view = _make_view(ToolsKeycardThisInstanceMenuView, run_screen_returns=4)
         dest = view.run()
         self.assertIs(dest.View_cls, ToolsKeycardInitView)
 

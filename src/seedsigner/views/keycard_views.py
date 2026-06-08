@@ -134,20 +134,28 @@ class ToolsKeycardMenuView(View):
     SETTINGS = ButtonOption("Settings")
 
     def run(self):
-        from seedsigner.helpers.card_probe import run_card_gate
+        from seedsigner.helpers.card_probe import (
+            count_keycard_instances, run_card_gate,
+        )
         gate = run_card_gate(
             self, "keycard", title=_("Keycard"), setup_view=ToolsKeycardInitView,
         )
         if gate is not None:
             return gate
 
-        button_data = [
-            self.ETHEREUM,
-            self.BITCOIN,
-            self.SWITCH_INSTANCE,
-            self.LOCK,
-            self.SETTINGS,
-        ]
+        # "Switch instance" is only meaningful when the card holds more
+        # than one instance. Resolve the count from the session cache,
+        # probing the card once (cleartext SELECT, no PIN) when unknown;
+        # only hide the entry when we're confident there's exactly one.
+        count = self.controller.keycard_instance_count
+        if count is None:
+            count = count_keycard_instances(self.controller)
+            self.controller.keycard_instance_count = count
+
+        button_data = [self.ETHEREUM, self.BITCOIN]
+        if count != 1:
+            button_data.append(self.SWITCH_INSTANCE)
+        button_data += [self.LOCK, self.SETTINGS]
         # Surface the active instance in the title so the user always
         # knows which instance signing / export will use this session.
         active = _format_instance_label(self.controller.active_keycard_aid)
@@ -177,20 +185,18 @@ class ToolsKeycardMenuView(View):
 class ToolsKeycardSettingsMenuView(View):
     """Less-frequent Keycard management, grouped out of the daily-use menu:
 
-    * **This instance** — load a key (generate / import), change PIN,
-      pairing, factory reset for the active instance.
-    * **Instances** — manage the *set* of applet instances (list / create /
-      delete). Switching the active instance is promoted to the top menu.
-    * **Card** — whole-card / package ops (initialise, status, storage,
-      uninstall the applet package).
+    * **Manage Instances** — everything about the applet instances: the
+      active one's key/PIN/pairing/init ops (``This instance``) plus
+      create / delete of the instance *set*.
+    * **Card** — whole-card / package ops (status, storage, uninstall the
+      applet package).
     """
 
-    THIS_INSTANCE = ButtonOption("This instance")
-    INSTANCES = ButtonOption("Instances")
+    MANAGE_INSTANCES = ButtonOption("Manage Instances")
     CARD = ButtonOption("Card")
 
     def run(self):
-        button_data = [self.THIS_INSTANCE, self.INSTANCES, self.CARD]
+        button_data = [self.MANAGE_INSTANCES, self.CARD]
         selected = self.run_screen(
             ButtonListScreen,
             title=_("Settings"),
@@ -200,9 +206,7 @@ class ToolsKeycardSettingsMenuView(View):
         if selected == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
         chosen = button_data[selected]
-        if chosen == self.THIS_INSTANCE:
-            return Destination(ToolsKeycardThisInstanceMenuView)
-        if chosen == self.INSTANCES:
+        if chosen == self.MANAGE_INSTANCES:
             return Destination(ToolsKeycardInstancesMenuView)
         if chosen == self.CARD:
             return Destination(ToolsKeycardCardMenuView)
@@ -221,16 +225,22 @@ class ToolsKeycardThisInstanceMenuView(View):
     IMPORT_SEED = ButtonOption("Import seed")
     CHANGE_PIN = ButtonOption("Change PIN")
     PAIRING = ButtonOption("Pairing")
+    INIT = ButtonOption("Initialise instance")
     FACTORY_RESET = ButtonOption("Factory reset")
     LOCK = ButtonOption("Lock card")
 
     def run(self):
         active = _format_instance_label(self.controller.active_keycard_aid)
+        # Daily-use key ops up top; the rarer lifecycle ops (Initialise /
+        # Factory reset) group at the bottom. "Initialise instance" runs
+        # INIT against this instance's applet — it lives here, not under
+        # Card, because INIT provisions one instance, not the whole card.
         button_data = [
             self.GENERATE_KEY,
             self.IMPORT_SEED,
             self.CHANGE_PIN,
             self.PAIRING,
+            self.INIT,
             self.FACTORY_RESET,
             self.LOCK,
         ]
@@ -251,6 +261,8 @@ class ToolsKeycardThisInstanceMenuView(View):
             return Destination(ToolsKeycardChangePinView)
         if chosen == self.PAIRING:
             return Destination(ToolsKeycardPairingMenuView)
+        if chosen == self.INIT:
+            return Destination(ToolsKeycardInitView)
         if chosen == self.FACTORY_RESET:
             return Destination(ToolsKeycardFactoryResetView)
         if chosen == self.LOCK:
@@ -315,18 +327,20 @@ class ToolsKeycardPairingMenuView(View):
 
 class ToolsKeycardCardMenuView(View):
     """Whole-card / package ops that are *not* tied to a single
-    instance: initialise a blank card, read card status, uninstall the
-    Keycard package (removes every instance). No instance label in the
-    title — these act on the card, not one instance.
+    instance: read card status / storage, uninstall the Keycard package
+    (removes every instance). No instance label in the title — these act
+    on the card, not one instance.
+
+    Initialising an instance moved to ``This instance ▸ Initialise
+    instance`` (INIT provisions one instance, not the whole card).
     """
 
-    INIT = ButtonOption("Initialise card")
     STATUS = ButtonOption("Status")
     STORAGE = ButtonOption("Storage")
     UNINSTALL = ButtonOption("Uninstall applet")
 
     def run(self):
-        button_data = [self.INIT, self.STATUS, self.STORAGE, self.UNINSTALL]
+        button_data = [self.STATUS, self.STORAGE, self.UNINSTALL]
         selected = self.run_screen(
             ButtonListScreen,
             title=_("Card"),
@@ -336,8 +350,6 @@ class ToolsKeycardCardMenuView(View):
         if selected == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
         chosen = button_data[selected]
-        if chosen == self.INIT:
-            return Destination(ToolsKeycardInitView)
         if chosen == self.STATUS:
             return Destination(ToolsKeycardStatusView)
         if chosen == self.STORAGE:
@@ -1091,7 +1103,7 @@ class ToolsKeycardPairView(View):
         if select_info.app_version == 0:
             return _error_destination(
                 _("Not initialised"),
-                _("Run Setup ›\nInitialise card first."),
+                _("Initialise this\ninstance first."),
             )
 
         instance_uid = bytes(select_info.instance_uid)
@@ -3188,26 +3200,47 @@ def _next_free_instance_aid(existing: list) -> bytes:
 
 
 class ToolsKeycardInstancesMenuView(View):
-    """Top-level Manage Instances menu.
+    """Manage Instances menu.
 
-    All four operations talk to the Card Manager (ISD), not the Keycard
-    applet itself. The user must be aware their card uses the GP
-    default ISD keys (`404142...4F`); we don't try to brute-force or
-    prompt for alternates here.
+    Groups everything about the applet instances: the **active** one's
+    key / PIN / pairing / init ops (``This instance``) and create / delete
+    of the instance *set*. The create/delete ops talk to the Card Manager
+    (ISD); the card must use the GP default ISD keys (`404142...4F`) — we
+    don't brute-force or prompt for alternates here.
+
+    On first entry per boot a one-screen explainer describes what
+    instances are (several keys on one card); later entries skip it
+    (``Controller.keycard_instances_intro_shown``).
     """
 
-    LIST = ButtonOption("List instances")
+    THIS_INSTANCE = ButtonOption("This instance")
     CREATE = ButtonOption("Create instance")
     DELETE = ButtonOption("Delete instance")
 
     def run(self):
+        # Show the explainer once per boot, then fall through to the menu.
+        if not self.controller.keycard_instances_intro_shown:
+            self.controller.keycard_instances_intro_shown = True
+            ret = self.run_screen(
+                LargeIconStatusScreen,
+                title=_("Instances"),
+                status_icon_size=0,
+                status_headline=None,
+                text=_(
+                    "One card can hold several keys (\"instances\"), "
+                    "each with its own PIN & seed."
+                ),
+                show_back_button=True,
+                button_data=[ButtonOption("Continue")],
+            )
+            if ret == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+
         active = _format_instance_label(self.controller.active_keycard_aid)
-        # "Switch active" now lives on the top Keycard menu ("Switch
-        # instance"); this submenu manages the instance *set* only.
-        button_data = [self.LIST, self.CREATE, self.DELETE]
+        button_data = [self.THIS_INSTANCE, self.CREATE, self.DELETE]
         ret = self.run_screen(
             ButtonListScreen,
-            title=_("Active: {}").format(active),
+            title=_("Manage Inst · {}").format(active),
             is_button_text_centered=False,
             button_data=button_data,
             show_back_button=True,
@@ -3215,8 +3248,8 @@ class ToolsKeycardInstancesMenuView(View):
         if ret == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
         chosen = button_data[ret]
-        if chosen == self.LIST:
-            return Destination(ToolsKeycardInstancesListView)
+        if chosen == self.THIS_INSTANCE:
+            return Destination(ToolsKeycardThisInstanceMenuView)
         if chosen == self.CREATE:
             return Destination(ToolsKeycardInstancesCreateView)
         if chosen == self.DELETE:
@@ -3266,49 +3299,6 @@ def _instances_or_probe_fallback(controller, instances, connection):
     return [AppletInstance(aid=aid, life_cycle=0, privileges=0) for aid in aids]
 
 
-class ToolsKeycardInstancesListView(View):
-    def run(self):
-        try:
-            channel, instances, isd_connection = _open_isd_channel(self.controller)
-        except Exception as exc:
-            logger.exception("GP list_instances failed")
-            title, body = classify_card_error(exc, default_title=_("GP failed"))
-            return _error_destination(title, body)
-
-        # Some cards / Card Manager configurations don't expose installed
-        # applets via GET STATUS. Fall back to probing known Keycard AIDs
-        # via cleartext SELECT — this terminates the GP channel as a side
-        # effect, which is fine because we don't issue more GP commands.
-        instances = _instances_or_probe_fallback(
-            self.controller, instances, isd_connection,
-        )
-
-        from seedsigner.helpers.keycard.global_platform import MAX_KEYCARD_INSTANCES
-        keycard_instances = [
-            i for i in instances if i.aid.startswith(KEYCARD_APPLET_AID)
-        ]
-        if not keycard_instances:
-            text = _("No Keycard instances\nfound.")
-        else:
-            active = self.controller.active_keycard_aid
-            # Mark the active instance with a leading "» " so the user can
-            # see at a glance which AID signing will use.
-            lines = [
-                ("» " if i.aid == active else "  ") + _format_instance_label(i.aid)
-                for i in keycard_instances
-            ]
-            text = "\n".join(lines[:6])
-        self.run_screen(
-            LargeIconStatusScreen,
-            title=_("Instances ({}/{})").format(len(keycard_instances), MAX_KEYCARD_INSTANCES),
-            status_headline=None,
-            text=text,
-            show_back_button=False,
-            button_data=[ButtonOption("OK")],
-        )
-        return Destination(BackStackView)
-
-
 class ToolsKeycardInstancesSwitchView(View):
     def run(self):
         try:
@@ -3331,6 +3321,10 @@ class ToolsKeycardInstancesSwitchView(View):
                 _("No instances"),
                 _("No Keycard applet found on this card."),
             )
+
+        # Free, accurate refresh of the count the top menu uses to decide
+        # whether to show "Switch instance".
+        self.controller.keycard_instance_count = len(candidates)
 
         from seedsigner.helpers.keycard.global_platform import MAX_KEYCARD_INSTANCES
         active = self.controller.active_keycard_aid
@@ -3441,6 +3435,10 @@ class ToolsKeycardInstancesCreateView(View):
             title, body = classify_card_error(exc, default_title=_("Install failed"))
             return _error_destination(title, body)
 
+        # Instance set changed — force the top menu to re-probe the count
+        # (so "Switch instance" reappears now that there are >1).
+        self.controller.keycard_instance_count = None
+
         self.run_screen(
             LargeIconStatusScreen,
             title=_("Created"),
@@ -3529,6 +3527,9 @@ class ToolsKeycardInstancesDeleteView(View):
         # the fallback default, in case both pointed at the same blob).
         if self.controller.keycard_wallets_data is not None:
             self.controller.keycard_wallets_data.pop(bytes(target).hex(), None)
+        # Instance set changed — re-probe the count on the next top menu
+        # render (so "Switch instance" hides again once only one is left).
+        self.controller.keycard_instance_count = None
 
         self.run_screen(
             LargeIconStatusScreen,

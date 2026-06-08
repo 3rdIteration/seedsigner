@@ -226,26 +226,29 @@ in the title of every instance-scoped branch.
 | Branch | Scope | Entries |
 |--------|-------|---------|
 | `Ethereum` / `Bitcoin` (titled `· Inst N`) | active instance | sign / export with the instance key; `Connect software wallet` (xpub/account export) is the **last** entry in each |
-| `Switch instance` | the *set* of instances | promoted from the old `Instances` submenu to the top menu — picks the active instance (`ToolsKeycardInstancesSwitchView`), then returns to the top menu |
+| `Switch instance` | the *set* of instances | picks the active instance (`ToolsKeycardInstancesSwitchView`), then returns to the top menu. **Hidden when the card holds only one instance** — the menu reads `Controller.keycard_instance_count` (filled in once per card session by `card_probe.count_keycard_instances`, a cleartext-SELECT probe) and shows the entry only when the count is *not* exactly 1, so an unknown/under-count never hides the only way to switch |
 | `Lock card` | cached card auth (all instances) | Drop cached PINs so the next op re-prompts (`ToolsKeycardLockView`) |
 | `Settings` | mixed | container (`ToolsKeycardSettingsMenuView`) for the buckets below |
 
-**`Settings`** (`ToolsKeycardSettingsMenuView`) → `This instance` / `Instances` / `Card`:
+**`Settings`** (`ToolsKeycardSettingsMenuView`) → `Manage Instances` / `Card`:
 
 | Branch | Scope | Entries |
 |--------|-------|---------|
-| `This instance · Inst N` | active instance | Generate key, Import seed, Change PIN, `Pairing ›` (Pair card / Remove pairing), Factory reset, Lock card |
-| `Instances` (titled `Active: Inst N`) | the *set* of instances on the card | List / Create / Delete (Switch lives on the top menu now) |
-| `Card` | whole card / package | Initialise card, Status, Storage, Uninstall applet |
+| `Manage Instances` (titled `Manage Inst · Inst N`) | instances | `This instance ›`, Create instance, Delete instance. On first entry per boot a one-screen explainer (`Controller.keycard_instances_intro_shown`) describes what instances are, then the menu. (`ToolsKeycardInstancesMenuView`) |
+| `This instance · Inst N` | active instance | Generate key, Import seed, Change PIN, `Pairing ›` (Pair card / Remove pairing), `Initialise instance` (runs INIT on this instance), Factory reset, Lock card |
+| `Card` | whole card / package | Status, Storage, Uninstall applet |
 
-`Generate key` / `Import seed` are reachable both from `Settings ▸ This instance`
-and from the post-Init chooser (`ToolsKeycardSetupChooseSeedView`). The view
-classes are `ToolsKeycardThisInstanceMenuView`, `ToolsKeycardPairingMenuView`,
+`This instance` is reached via `Settings ▸ Manage Instances ▸ This instance`.
+`Generate key` / `Import seed` are reachable both there and from the post-Init
+chooser (`ToolsKeycardSetupChooseSeedView`). `Initialise instance` is the INIT
+wizard (`ToolsKeycardInitView`) — it provisions **one instance**, so it lives
+under `This instance`, not `Card`. The view classes are
+`ToolsKeycardThisInstanceMenuView`, `ToolsKeycardPairingMenuView`,
 `ToolsKeycardCardMenuView` (the old `Setup` / `Manage` / `Advanced` menus
 were collapsed into these). Routing cover: `tests/test_keycard_views.py`.
 
 `Lock card` (`ToolsKeycardLockView`) is reachable both from the **top-level**
-Keycard menu (quick shortcut) and from `Settings ▸ This instance`. It calls
+Keycard menu (quick shortcut) and from `Settings ▸ Manage Instances ▸ This instance`. It calls
 `Controller.wipe_card_session_secrets()` (drop all cached PINs + any Satochip
 session), then the next operation re-prompts for the PIN. The label is
 deliberately **neutral** — it must NOT reference duress/decoy/alt — because
@@ -262,7 +265,7 @@ only when the UID can't be determined. Cover:
 
 ### Setup chain: Generate vs Show-mnemonic
 
-The Setup wizard (`Tools > Keycard > This instance > Generate key`) offers two
+The Setup wizard (`Tools > Keycard > Settings > Manage Instances > This instance > Generate key`) offers two
 provisioning sub-flows. Both go through the same `LOAD_KEY` finaliser
 so the *on-card* state is identical; they differ only in where the
 entropy comes from and whether the host ever displays the words.
@@ -478,7 +481,7 @@ Capture the output to a local file (do **not** commit — the pubkey is fine but
 
 ### Multi-instance management (GlobalPlatform / SCP02)
 
-Multiple Keycard applet instances can live on the same physical card, each with its own AID, `instance_uid`, PIN, pairing slots and master key. SeedSigner manages them via `Tools > Keycard > Instances`.
+Multiple Keycard applet instances can live on the same physical card, each with its own AID, `instance_uid`, PIN, pairing slots and master key. SeedSigner manages them via `Tools > Keycard > Settings > Manage Instances` (plus the top-level `Switch instance`, shown only when >1 instance exists).
 
 **Pre-conditions:**
 
@@ -507,12 +510,12 @@ The commands we send (`INSTALL [for install]`, `DELETE`, `GET STATUS`) carry no 
 - We allocate new instance AIDs by bumping the last byte: `…0102`, `…0103`, … up to `…010F`.
 - Each instance generates its own random `instance_uid` at INIT time, so the per-UID pairing storage in `helpers/keycard/pairing_storage.py` Just Works for multi-instance setups — no schema change needed.
 
-**Instances menu** (`Tools > Keycard > Settings > Instances`, titled `Active: Inst N`): `List instances` / `Create instance` / `Delete instance`. Switching the active instance is its own top-level entry (`Switch instance` → `ToolsKeycardInstancesSwitchView`), not part of this submenu. **There is no instance naming.** A previous "Rename instance" feature and the whole label subsystem were removed: instance names only ever lived in a microSD-side label file / pairing-blob trailer (never on the smartcard) and rarely rendered in the lists (only the instance paired this session had a cached UID). Every list now renders instances by the readable **`Inst N`** label (`_format_instance_label`, derived from the AID's trailing instance byte — falls back to short-AID hex for non-instance AIDs). `List instances` / `Switch active` show only **Keycard-prefixed** instances (filtered by `KEYCARD_APPLET_AID`), never other applets (e.g. SeedKeeper). The `pairing_storage` blob still emits a fixed-size empty label trailer so existing paired cards keep loading (`decrypt_pairing` ignores it); do **not** rely on `StoredPairing.label`.
+**Manage Instances menu** (`Tools > Keycard > Settings > Manage Instances`, titled `Manage Inst · Inst N`): `This instance ›` / `Create instance` / `Delete instance`, preceded once per boot by a one-screen explainer (`ToolsKeycardInstancesMenuView`). There is **no** standalone "List instances" view anymore — `Switch instance` (its own top-level entry, `ToolsKeycardInstancesSwitchView`, **hidden when only one instance**) is the read-out of the instance set. **There is no instance naming.** A previous "Rename instance" feature and the whole label subsystem were removed: instance names only ever lived in a microSD-side label file / pairing-blob trailer (never on the smartcard) and rarely rendered in the lists (only the instance paired this session had a cached UID). Every list now renders instances by the readable **`Inst N`** label (`_format_instance_label`, derived from the AID's trailing instance byte — falls back to short-AID hex for non-instance AIDs). `Switch instance` shows only **Keycard-prefixed** instances (filtered by `KEYCARD_APPLET_AID`), never other applets (e.g. SeedKeeper). The `pairing_storage` blob still emits a fixed-size empty label trailer so existing paired cards keep loading (`decrypt_pairing` ignores it); do **not** rely on `StoredPairing.label`.
 
 **Active instance for the session:**
 
 - `Controller.active_keycard_aid` (defaults to the published Status AID) is the AID we SELECT for every Keycard operation. The Instances flow lets the user switch it.
-- The active instance is surfaced as the readable **`Inst N`** label in the **main Keycard menu title** (`Keycard · Inst N`), in every instance-scoped submenu title (`Ethereum · Inst N`, `Bitcoin · Inst N`, `This instance · Inst N`, `Pairing · Inst N`, `Active: Inst N`), and marked with a leading `» ` in both the `List instances` and `Switch instance` views, so the user always knows which instance signing/export will use.
+- The active instance is surfaced as the readable **`Inst N`** label in the **main Keycard menu title** (`Keycard · Inst N`), in every instance-scoped submenu title (`Ethereum · Inst N`, `Bitcoin · Inst N`, `This instance · Inst N`, `Pairing · Inst N`, `Manage Inst · Inst N`), and marked with a leading `» ` in the `Switch instance` view, so the user always knows which instance signing/export will use.
 - After DELETE, if the deleted AID was the active one we fall back to the default. After INSTALL, the new AID does NOT auto-become active — the user explicitly switches.
 
 **Threat-model additions:**

@@ -1,7 +1,7 @@
 """Tests for the top-level Cards menu.
 
-Pins the 3-entry shape (SeedKeeper / Keycard / Factory
-Reset), confirms install-state checkmarks render, and that each entry
+Pins the 3-entry shape (Keycard / SeedKeeper / Factory
+reset), confirms install-state checkmarks render, and that each entry
 routes to the correct destination. The legacy
 ``Tools > Smartcard Tools`` indirection and the ``CardManagementView``
 "Initialise blank card" picker were removed once the per-app probe
@@ -72,7 +72,7 @@ class TestCardsMenuShape(unittest.TestCase):
 
 
 class TestCardsMenuRendering(unittest.TestCase):
-    """The menu must show 4 entries with install-state checkmarks when
+    """The menu must show 3 entries with install-state checkmarks when
     a card is present. The absent-card path is covered by
     :class:`TestCardsMenuGate` below."""
 
@@ -100,9 +100,9 @@ class TestCardsMenuRendering(unittest.TestCase):
         )
         labels = [b.button_label for b in buttons]
         self.assertEqual(
-            labels, ["SeedKeeper", "Keycard", "Factory reset card"],
+            labels, ["Keycard", "SeedKeeper", "Factory reset card"],
         )
-        # Order is SeedKeeper, Keycard, Factory reset.
+        # Order is Keycard, SeedKeeper, Factory reset.
         self.assertEqual(buttons[0].right_icon_name, SeedSignerIconConstants.CHECK)
         self.assertEqual(buttons[1].right_icon_name, SeedSignerIconConstants.CHECK)
 
@@ -158,15 +158,15 @@ class TestCardsMenuRouting(unittest.TestCase):
         ):
             return v.run()
 
-    def test_seedkeeper_routes(self):
-        from seedsigner.views.tools_views import ToolsSeedkeeperView
-        dest = self._route(0)
-        self.assertIs(dest.View_cls, ToolsSeedkeeperView)
-
     def test_keycard_routes(self):
         from seedsigner.views.keycard_views import ToolsKeycardMenuView
-        dest = self._route(1)
+        dest = self._route(0)
         self.assertIs(dest.View_cls, ToolsKeycardMenuView)
+
+    def test_seedkeeper_routes(self):
+        from seedsigner.views.tools_views import ToolsSeedkeeperView
+        dest = self._route(1)
+        self.assertIs(dest.View_cls, ToolsSeedkeeperView)
 
     def test_factory_reset_routes(self):
         from seedsigner.views.view import CardsFactoryResetView
@@ -182,7 +182,7 @@ class TestCardsMenuRefreshOnInsert(unittest.TestCase):
 
     def test_refreshes_on_insert_then_routes(self):
         from seedsigner.hardware.buttons import HardwareButtonsConstants
-        from seedsigner.views.tools_views import ToolsSeedkeeperView
+        from seedsigner.views.keycard_views import ToolsKeycardMenuView
 
         v = _make_view()
 
@@ -230,8 +230,9 @@ class TestCardsMenuRefreshOnInsert(unittest.TestCase):
 
         # Probe ran twice (once before each render).
         self.assertEqual(probe_count[0], 2)
-        # Routing on the second iteration matches the user's choice.
-        self.assertIs(dest.View_cls, ToolsSeedkeeperView)
+        # Routing on the second iteration matches the user's choice
+        # (index 0 is Keycard, the first Cards-menu entry).
+        self.assertIs(dest.View_cls, ToolsKeycardMenuView)
         # Listener was unregistered in the finally block.
         self.assertNotIn("ins", registered)
         # CardsMenuView no longer subscribes to removals; the central

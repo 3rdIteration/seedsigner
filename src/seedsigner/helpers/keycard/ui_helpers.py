@@ -642,7 +642,7 @@ def classify_card_error(
         return (_("Card changed"), _("Pair the inserted card\nfirst."))
     if isinstance(exc, KeycardNotInitialisedError):
         return (_("Not initialised"),
-                _("Run Setup ›\nInitialise card first."))
+                _("Initialise this\ninstance first."))
     if isinstance(exc, KeycardNoMasterKeyError):
         return (_("No key on card"),
                 _("Generate key or\nimport seed first."))

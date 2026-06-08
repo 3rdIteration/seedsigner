@@ -149,23 +149,23 @@ class TestKeycardMenuRouting(unittest.TestCase):
           │   ├─ View wallets  → ToolsKeycardWalletsListView
           │   └─ Connect software wallet → ToolsKeycardPairWalletView
           ├─ Bitcoin ›        → ToolsKeycardBitcoinMenuView
-          ├─ Switch instance  → ToolsKeycardInstancesSwitchView
+          ├─ Switch instance  → ToolsKeycardInstancesSwitchView  (only if >1 instance)
           ├─ Lock card        → ToolsKeycardLockView
           └─ Settings ›       → ToolsKeycardSettingsMenuView
-              ├─ This instance ›  → ToolsKeycardThisInstanceMenuView
-              │   ├─ Generate key  → ToolsKeycardGenerateKeyView
-              │   ├─ Import seed   → ToolsKeycardImportSeedView
-              │   ├─ Change PIN    → ToolsKeycardChangePinView
-              │   ├─ Pairing ›     → ToolsKeycardPairingMenuView
-              │   │   ├─ Pair card      → ToolsKeycardPairView
-              │   │   └─ Remove pairing → ToolsKeycardRemovePairingView
-              │   └─ Factory reset → ToolsKeycardFactoryResetView
-              ├─ Instances ›      → ToolsKeycardInstancesMenuView
-              │   ├─ List instances   → ToolsKeycardInstancesListView
+              ├─ Manage Instances › → ToolsKeycardInstancesMenuView
+              │   │  (once/session explainer first)
+              │   ├─ This instance ›  → ToolsKeycardThisInstanceMenuView
+              │   │   ├─ Generate key  → ToolsKeycardGenerateKeyView
+              │   │   ├─ Import seed   → ToolsKeycardImportSeedView
+              │   │   ├─ Change PIN    → ToolsKeycardChangePinView
+              │   │   ├─ Pairing ›     → ToolsKeycardPairingMenuView
+              │   │   │   ├─ Pair card      → ToolsKeycardPairView
+              │   │   │   └─ Remove pairing → ToolsKeycardRemovePairingView
+              │   │   ├─ Initialise instance → ToolsKeycardInitView
+              │   │   └─ Factory reset → ToolsKeycardFactoryResetView
               │   ├─ Create instance  → ToolsKeycardInstancesCreateView
               │   └─ Delete instance  → ToolsKeycardInstancesDeleteView
               └─ Card ›           → ToolsKeycardCardMenuView
-                  ├─ Initialise card  → ToolsKeycardInitView
                   ├─ Status           → ToolsKeycardStatusView
                   ├─ Storage          → ToolsKeycardStorageView
                   └─ Uninstall applet → ToolsKeycardUninstallAppletView
@@ -189,9 +189,26 @@ class TestKeycardMenuRouting(unittest.TestCase):
         with patch.object(card_probe_mod, "run_card_gate", return_value=None):
             return view.run()
 
-    def test_top_menu_routes(self):
+    def _route_top(self, instance_count, button_index):
+        """Route the top Keycard menu with a fixed cached instance count.
+
+        Setting ``keycard_instance_count`` to a concrete int means the
+        menu reads it instead of probing the card (``count_keycard_instances``
+        is only called when the cached value is ``None``).
+        """
+        from seedsigner.views.keycard_views import ToolsKeycardMenuView
+        import seedsigner.helpers.card_probe as card_probe_mod
+        from unittest.mock import patch
+        view = ToolsKeycardMenuView.__new__(ToolsKeycardMenuView)
+        view.run_screen = MagicMock(return_value=button_index)
+        view.controller = MagicMock()
+        view.controller.keycard_instance_count = instance_count
+        with patch.object(card_probe_mod, "run_card_gate", return_value=None):
+            return view.run()
+
+    def test_top_menu_routes_multi_instance(self):
+        """With >1 instance, "Switch instance" is present (5 entries)."""
         from seedsigner.views.keycard_views import (
-            ToolsKeycardMenuView,
             ToolsKeycardEthereumMenuView,
             ToolsKeycardBitcoinMenuView,
             ToolsKeycardInstancesSwitchView,
@@ -206,20 +223,45 @@ class TestKeycardMenuRouting(unittest.TestCase):
             ToolsKeycardSettingsMenuView,
         ]
         for i, view_cls in enumerate(expected):
-            dest = self._route(ToolsKeycardMenuView, i)
+            dest = self._route_top(2, i)
             self.assertIs(dest.View_cls, view_cls,
                           f"top menu index {i} routes to {dest.View_cls.__name__}, "
                           f"expected {view_cls.__name__}")
 
+    def test_top_menu_hides_switch_when_single_instance(self):
+        """With exactly 1 instance, "Switch instance" is omitted (4 entries)
+        and the remaining entries still route correctly."""
+        from seedsigner.views.keycard_views import (
+            ToolsKeycardEthereumMenuView,
+            ToolsKeycardBitcoinMenuView,
+            ToolsKeycardInstancesSwitchView,
+            ToolsKeycardLockView,
+            ToolsKeycardSettingsMenuView,
+        )
+        expected = [
+            ToolsKeycardEthereumMenuView,
+            ToolsKeycardBitcoinMenuView,
+            ToolsKeycardLockView,
+            ToolsKeycardSettingsMenuView,
+        ]
+        for i, view_cls in enumerate(expected):
+            dest = self._route_top(1, i)
+            self.assertIs(dest.View_cls, view_cls,
+                          f"top menu index {i} routes to {dest.View_cls.__name__}, "
+                          f"expected {view_cls.__name__}")
+        # No index in the single-instance menu routes to the switch view.
+        self.assertNotIn(
+            ToolsKeycardInstancesSwitchView,
+            [self._route_top(1, i).View_cls for i in range(len(expected))],
+        )
+
     def test_settings_menu_routes(self):
         from seedsigner.views.keycard_views import (
             ToolsKeycardSettingsMenuView,
-            ToolsKeycardThisInstanceMenuView,
             ToolsKeycardInstancesMenuView,
             ToolsKeycardCardMenuView,
         )
         expected = [
-            ToolsKeycardThisInstanceMenuView,
             ToolsKeycardInstancesMenuView,
             ToolsKeycardCardMenuView,
         ]
@@ -227,6 +269,30 @@ class TestKeycardMenuRouting(unittest.TestCase):
             dest = self._route(ToolsKeycardSettingsMenuView, i)
             self.assertIs(dest.View_cls, view_cls,
                           f"settings menu index {i} routes to {dest.View_cls.__name__}, "
+                          f"expected {view_cls.__name__}")
+
+    def test_manage_instances_menu_routes(self):
+        """Manage Instances groups This instance + Create + Delete.
+
+        The controller MagicMock makes ``keycard_instances_intro_shown``
+        truthy, so the once-per-session explainer is skipped and the first
+        ``run_screen`` call is the menu itself.
+        """
+        from seedsigner.views.keycard_views import (
+            ToolsKeycardInstancesMenuView,
+            ToolsKeycardThisInstanceMenuView,
+            ToolsKeycardInstancesCreateView,
+            ToolsKeycardInstancesDeleteView,
+        )
+        expected = [
+            ToolsKeycardThisInstanceMenuView,
+            ToolsKeycardInstancesCreateView,
+            ToolsKeycardInstancesDeleteView,
+        ]
+        for i, view_cls in enumerate(expected):
+            dest = self._route(ToolsKeycardInstancesMenuView, i)
+            self.assertIs(dest.View_cls, view_cls,
+                          f"manage-instances index {i} routes to {dest.View_cls.__name__}, "
                           f"expected {view_cls.__name__}")
 
     def test_ethereum_menu_routes(self):
@@ -272,6 +338,7 @@ class TestKeycardMenuRouting(unittest.TestCase):
             ToolsKeycardImportSeedView,
             ToolsKeycardChangePinView,
             ToolsKeycardPairingMenuView,
+            ToolsKeycardInitView,
             ToolsKeycardFactoryResetView,
             ToolsKeycardLockView,
         )
@@ -280,6 +347,7 @@ class TestKeycardMenuRouting(unittest.TestCase):
             ToolsKeycardImportSeedView,
             ToolsKeycardChangePinView,
             ToolsKeycardPairingMenuView,
+            ToolsKeycardInitView,
             ToolsKeycardFactoryResetView,
             ToolsKeycardLockView,
         ]
@@ -304,13 +372,11 @@ class TestKeycardMenuRouting(unittest.TestCase):
     def test_card_menu_routes(self):
         from seedsigner.views.keycard_views import (
             ToolsKeycardCardMenuView,
-            ToolsKeycardInitView,
             ToolsKeycardStatusView,
             ToolsKeycardStorageView,
             ToolsKeycardUninstallAppletView,
         )
         expected = [
-            ToolsKeycardInitView,
             ToolsKeycardStatusView,
             ToolsKeycardStorageView,
             ToolsKeycardUninstallAppletView,
@@ -785,54 +851,41 @@ class TestKeycardMenuRouting(unittest.TestCase):
             keycard_views._format_aid_short(seedkeeper),
         )
 
-    def test_instances_list_shows_only_keycard_instances(self):
-        """``ToolsKeycardInstancesListView`` must render only Keycard-prefixed
-        instances (filtered), not every applet GET STATUS returns, and must
-        mark the active instance with a leading "» "."""
-        from unittest.mock import patch
-
-        from seedsigner.helpers.keycard.global_platform import AppletInstance
-        from seedsigner.views import keycard_views
+    def test_manage_instances_intro_once_per_session(self):
+        """The Manage Instances explainer shows once per boot, then later
+        entries go straight to the menu."""
+        from seedsigner.gui.screens.screen import (
+            ButtonListScreen, LargeIconStatusScreen,
+        )
         from seedsigner.views.keycard_views import (
-            KEYCARD_APPLET_AID, ToolsKeycardInstancesListView,
+            KEYCARD_APPLET_AID, ToolsKeycardInstancesMenuView,
+            ToolsKeycardThisInstanceMenuView,
         )
 
-        active_aid = KEYCARD_APPLET_AID + b"\x01\x01"
-        other_keycard = KEYCARD_APPLET_AID + b"\x01\x02"
-        seedkeeper_aid = bytes.fromhex("5361746f6368697000")  # non-Keycard
-        instances = [
-            AppletInstance(aid=active_aid, life_cycle=0, privileges=0),
-            AppletInstance(aid=other_keycard, life_cycle=0, privileges=0),
-            AppletInstance(aid=seedkeeper_aid, life_cycle=0, privileges=0),
-        ]
-
-        view = ToolsKeycardInstancesListView.__new__(ToolsKeycardInstancesListView)
+        view = ToolsKeycardInstancesMenuView.__new__(ToolsKeycardInstancesMenuView)
         view.controller = MagicMock()
-        view.controller.active_keycard_aid = active_aid
-        captured = {}
+        view.controller.active_keycard_aid = KEYCARD_APPLET_AID + b"\x01\x01"
+        view.controller.keycard_instances_intro_shown = False
+
+        screens = []
 
         def fake_run_screen(screen_cls, **kwargs):
-            captured.update(kwargs)
-            return 0
+            screens.append(screen_cls)
+            return 0  # Continue, then first menu entry (This instance)
 
         view.run_screen = fake_run_screen
 
-        with patch.object(
-            keycard_views, "_open_isd_channel",
-            return_value=(MagicMock(), instances, MagicMock()),
-        ), patch.object(
-            keycard_views, "_instances_or_probe_fallback",
-            side_effect=lambda controller, inst, conn: inst,
-        ):
-            view.run()
+        # First entry: explainer screen, then the menu.
+        dest = view.run()
+        self.assertEqual(screens, [LargeIconStatusScreen, ButtonListScreen])
+        self.assertTrue(view.controller.keycard_instances_intro_shown)
+        self.assertIs(dest.View_cls, ToolsKeycardThisInstanceMenuView)
 
-        text = captured["text"]
-        # Two Keycard instances shown, the SeedKeeper applet filtered out.
-        self.assertEqual(captured["title"], "Instances (2/4)")
-        self.assertNotIn("5361746f", text)
-        # Active marked with the readable instance label, the other not.
-        active_label = keycard_views._format_instance_label(active_aid)
-        self.assertIn("» " + active_label, text)
+        # Second entry: explainer skipped, straight to the menu.
+        screens.clear()
+        dest = view.run()
+        self.assertEqual(screens, [ButtonListScreen])
+        self.assertIs(dest.View_cls, ToolsKeycardThisInstanceMenuView)
 
     def test_instances_switch_marks_active(self):
         """``ToolsKeycardInstancesSwitchView`` must mark exactly one option —

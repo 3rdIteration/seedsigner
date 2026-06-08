@@ -3491,3 +3491,18 @@ msgstr ""
 #: src/seedsigner/views/keycard_views.py
 msgid "Switch instance"
 msgstr ""
+
+msgid "Manage Instances"
+msgstr ""
+
+msgid "Manage Inst · {}"
+msgstr ""
+
+msgid "Initialise instance"
+msgstr ""
+
+msgid "One card can hold several keys (\"instances\"), each with its own PIN & seed."
+msgstr ""
+
+msgid "Initialise this\ninstance first."
+msgstr ""

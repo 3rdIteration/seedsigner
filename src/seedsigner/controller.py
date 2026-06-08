@@ -181,6 +181,12 @@ class Controller(Singleton):
     # invalidated when the user switches/deletes an instance.
     keycard_wallets_data: dict = None
 
+    # Session cache of how many Keycard instances are on the inserted card
+    # (``None`` = unknown / re-probe) and a once-per-boot flag for the
+    # Manage Instances explainer. See ``get_instance`` for details.
+    keycard_instance_count: int = None
+    keycard_instances_intro_shown: bool = False
+
     sign_message_data: dict = None
     gpg_keys_imported: bool = False
     gpg_pending_message: str = None
@@ -334,6 +340,18 @@ class Controller(Singleton):
         # published AID; the Manage Instances flow updates it.
         from seedsigner.helpers.keycard.commands import APPLET_AID as _DEFAULT_KEYCARD_AID
         controller.active_keycard_aid = _DEFAULT_KEYCARD_AID
+        # Cached count of Keycard applet instances on the inserted card.
+        # ``None`` means "unknown — re-probe": the top Keycard menu fills
+        # this in (via ``card_probe.count_keycard_instances``) to decide
+        # whether to show "Switch instance" (only meaningful with >1). It
+        # is reset to ``None`` whenever the card may have changed (see
+        # ``wipe_card_session_secrets``) and updated by the create/delete/
+        # switch flows that already enumerate instances.
+        controller.keycard_instance_count = None
+        # Session-only UX gate: show the Manage Instances explainer once
+        # per boot, then go straight to the menu. NOT security state, so
+        # it is deliberately not reset on card removal.
+        controller.keycard_instances_intro_shown = False
         # Transient state for the post-init Setup chain (Generate / Import →
         # backup → LOAD_KEY → optional Seedkeeper save). Mnemonic words are
         # stored as ``"".join(WORDLIST[i])`` copies so wiping them does NOT
@@ -523,6 +541,10 @@ class Controller(Singleton):
             self.forget_satochip_session()
         except Exception:
             logger.exception("forget_satochip_session failed in wipe_card_session_secrets")
+        # The inserted card may have been removed/swapped — the cached
+        # instance count is no longer trustworthy. Force a re-probe on the
+        # next top Keycard menu render.
+        self.keycard_instance_count = None
 
     def _is_card_view(self, view_cls) -> bool:
         """True iff ``view_cls`` belongs to the card-views subtree.
