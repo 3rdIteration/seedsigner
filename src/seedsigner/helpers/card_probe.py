@@ -6,10 +6,12 @@ back to MainMenu with a "No card" toast. The probe is intentionally
 cheap (single SELECT + at most one GET STATUS) and never prompts for
 a PIN — the view layer is responsible for the next step.
 
-Threat model: no seed material flows here. Caches/secret state in the
-controller are not touched. The probe opens its own connection and
-releases it before returning so the active session for each app remains
-the source of truth for ongoing ops.
+Threat model: no seed material flows here. ``probe_card`` touches no
+controller state; ``run_card_gate`` records only the **non-secret** active
+AID→instance-UID mapping (so display can resolve instance names) and no
+secret/auth state. The probe opens its own connection and releases it before
+returning so the active session for each app remains the source of truth for
+ongoing ops.
 
 The :func:`run_card_gate` helper wraps the probe + branching logic so
 each app View can call a single function on entry.
@@ -220,6 +222,20 @@ def run_card_gate(view, kind: CardKind, *, title: str, setup_view):
     from seedsigner.views.view import BackStackView, Destination, MainMenuView
 
     probe = probe_card(kind, view.controller)
+
+    # Record the active instance's AID→UID mapping (public identity, not
+    # secret state) so display helpers can resolve a user-assigned instance
+    # name at menu-render time — the probe already SELECTed the card and holds
+    # its UID, which would otherwise be unknown until the first signing op
+    # (e.g. an instance name would vanish until then after a reboot). Cleared
+    # on card-change like the rest of the per-card session state.
+    if kind == "keycard" and probe.instance_uid:
+        try:
+            view.controller.remember_aid_for_uid(
+                view.controller.active_keycard_aid, probe.instance_uid,
+            )
+        except Exception:
+            logger.debug("could not record probed keycard UID", exc_info=True)
 
     if not probe.present:
         # Card was pulled (or never present) between CardsMenuView and

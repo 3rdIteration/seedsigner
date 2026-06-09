@@ -315,6 +315,36 @@ class TestRunCardGate(unittest.TestCase):
                                    setup_view=MagicMock())
         self.assertIsNone(result)
 
+    def test_keycard_gate_records_active_aid_to_uid(self):
+        """The gate persists the probed instance UID for the active AID so a
+        user-assigned instance name resolves at menu-render time — e.g. after a
+        reboot, before any signing op has SELECTed the card."""
+        from seedsigner.helpers.card_probe import ProbeResult, run_card_gate
+        view = self._make_view()
+        view.controller.active_keycard_aid = bytes.fromhex("A0000008040001010101")
+        uid = b"\x11" * 16
+        ok = ProbeResult(present=True, kind_match=True, initialised=True,
+                         instance_uid=uid)
+        with patch("seedsigner.helpers.card_probe.probe_card", return_value=ok):
+            result = run_card_gate(view, "keycard", title="Keycard",
+                                   setup_view=MagicMock())
+        self.assertIsNone(result)
+        view.controller.remember_aid_for_uid.assert_called_once_with(
+            view.controller.active_keycard_aid, uid,
+        )
+
+    def test_seedkeeper_gate_does_not_record_keycard_uid(self):
+        """Only the Keycard path records the AID→UID mapping; SeedKeeper has
+        its own UID handling and must not write the keycard map."""
+        from seedsigner.helpers.card_probe import ProbeResult, run_card_gate
+        view = self._make_view()
+        ok = ProbeResult(present=True, kind_match=True, initialised=True,
+                         instance_uid=b"\x22" * 16)
+        with patch("seedsigner.helpers.card_probe.probe_card", return_value=ok):
+            run_card_gate(view, "seedkeeper", title="SeedKeeper",
+                          setup_view=MagicMock())
+        view.controller.remember_aid_for_uid.assert_not_called()
+
     def test_routes_to_setup_when_uninitialised(self):
         from seedsigner.helpers.card_probe import ProbeResult, run_card_gate
         view = self._make_view()
