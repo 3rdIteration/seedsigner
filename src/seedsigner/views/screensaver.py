@@ -5,6 +5,7 @@ import time
 
 from dataclasses import dataclass
 from gettext import gettext as _
+from PIL import Image
 
 from seedsigner.gui.components import Fonts, GUIConstants, load_image
 from seedsigner.gui.screens.screen import BaseScreen
@@ -14,13 +15,44 @@ from seedsigner.views.view import View
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_LOGO_IMAGE = "logo_black_240.png"
+CUSTOM_LOGO_FILENAME = "seedsigner_logo.png"
+
+
+def load_boot_logo_image() -> Image.Image:
+    from seedsigner.hardware.microsd import MicroSD
+
+    default_logo = load_image(DEFAULT_LOGO_IMAGE)
+    custom_logo_path = MicroSD.get_microsd_dir() / CUSTOM_LOGO_FILENAME
+
+    if not custom_logo_path.is_file():
+        return default_logo
+
+    try:
+        with Image.open(custom_logo_path) as custom_logo:
+            custom_logo = custom_logo.convert("RGB")
+
+        if custom_logo.size != default_logo.size:
+            logger.warning(
+                "Custom logo ignored: expected %s, got %s (%s)",
+                default_logo.size,
+                custom_logo.size,
+                custom_logo_path,
+            )
+            return default_logo
+
+        return custom_logo
+    except Exception:
+        logger.warning("Failed to load custom logo at %s", custom_logo_path, exc_info=True)
+        return default_logo
+
 
 
 # TODO: This early code is now outdated vis-a-vis Screen vs View distinctions
 class LogoScreen(BaseScreen):
     def __init__(self):
         super().__init__()
-        self.logo = load_image("logo_black_240.png")
+        self.logo = load_boot_logo_image()
 
         self.partners = [
             "sese",
@@ -144,29 +176,13 @@ class OpeningSplashScreen(LogoScreen):
 
 class ScreensaverScreen(LogoScreen):
     def __init__(self, buttons):
-        from PIL import Image
         super().__init__()
 
         self.buttons = buttons
 
-        # Paste the logo in a bigger image that is the canvas + the logo dims (half the
-        # logo will render off the canvas at each edge).
-        self.image = Image.new("RGB", (self.renderer.canvas_width + self.logo.width, self.renderer.canvas_height + self.logo.height), (0,0,0))
-
-        # Place the logo centered on the larger image
-        logo_x = int((self.image.width - self.logo.width) / 2)
-        logo_y = int((self.image.height - self.logo.height) / 2)
-        self.image.paste(self.logo, (logo_x, logo_y))
-
         self.min_coords = (0, 0)
         self.max_coords = (self.renderer.canvas_width, self.renderer.canvas_height)
-
-        # Update our first rendering position so we're centered
-        self.cur_x = int(self.logo.width / 2)
-        self.cur_y = int(self.logo.height / 2)
-
-        self.increment_x = self.rand_increment()
-        self.increment_y = self.rand_increment()
+        self._refresh_screensaver_image()
 
         self._is_running = False
         self.last_screen = None
@@ -185,10 +201,32 @@ class ScreensaverScreen(LogoScreen):
             return -1.0 * increment
         return increment
 
+    
+    def _refresh_screensaver_image(self):
+        self.logo = load_boot_logo_image()
+
+        # Paste the logo in a bigger image that is the canvas + the logo dims (half the
+        # logo will render off the canvas at each edge).
+        self.image = Image.new("RGB", (self.renderer.canvas_width + self.logo.width, self.renderer.canvas_height + self.logo.height), (0,0,0))
+
+        # Place the logo centered on the larger image
+        logo_x = int((self.image.width - self.logo.width) / 2)
+        logo_y = int((self.image.height - self.logo.height) / 2)
+        self.image.paste(self.logo, (logo_x, logo_y))
+
+        # Update rendering position so we're centered
+        self.cur_x = int(self.logo.width / 2)
+        self.cur_y = int(self.logo.height / 2)
+        self.increment_x = self.rand_increment()
+        self.increment_y = self.rand_increment()
+
 
     def start(self):
         if self.is_running:
             return
+
+        # Re-check logo source each time so SD removal falls back to bundled default.
+        self._refresh_screensaver_image()
 
         self._is_running = True
 
@@ -209,7 +247,7 @@ class ScreensaverScreen(LogoScreen):
                     crop = self.image.crop((
                         self.cur_x, self.cur_y,
                         self.cur_x + self.renderer.canvas_width, self.cur_y + self.renderer.canvas_height))
-                    self.renderer.disp.show_image(self.renderer._resize_for_display(crop), 0, 0)
+                    self.renderer.show_image(crop, show_direct=True)
 
                     self.cur_x += self.increment_x
                     self.cur_y += self.increment_y
@@ -254,5 +292,4 @@ class ScreensaverScreen(LogoScreen):
 
     def stop(self):
         self._is_running = False
-
 

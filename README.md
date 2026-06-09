@@ -209,6 +209,19 @@ Users familiar with older versions of the SeedSigner software might be surprised
 
 Once the files have all finished downloading, follow the steps below to verify the download before continuing on to write the software onto a MicroSD card. Next, insert the MicroSD into your assembled hardware and connect the USB power. Allow about 45 seconds for our logo to appear, and then you can begin using your SeedSigner! 
 
+### Optional: Custom boot and screensaver logo
+
+You can override the default logo by placing a file named **`seedsigner_logo.png`** in the **root of the MicroSD card**.
+
+Requirements:
+- **File format:** PNG
+- **Dimensions:** **240 × 240** pixels
+- **Filename:** `seedsigner_logo.png` (exact name)
+
+Behavior:
+- If the file is present and valid, it is used for both the boot splash and screensaver.
+- If it is missing, unreadable, invalid, or the MicroSD is not available (for example removed after boot), SeedSigner automatically falls back to the bundled default logo.
+
 [Our previous software versions are available here](https://github.com/SeedSigner/seedsigner/releases). Choose a specific version and then expand the *Assets* sub-heading to display the .img file binary and also the 2 associated signature files. **Note:** The prior version files will have lower numbers than the scripts and examples provided in this document, but the naming format will be the same, so you can edit them as required for signature verification etc.   
 
 
