@@ -264,6 +264,11 @@ def select_with_autodetect(client, controller):
     Returns the ``SelectResponse`` from the successful SELECT. Raises
     the original ``APDUError(0x6A82)`` if no candidate matches, so
     callers see the canonical "Applet not found" classification.
+
+    Every successful SELECT records the AID→``instance_uid`` mapping
+    (``remember_aid_for_uid``). This is the single choke-point that keeps
+    ``keycard_aid_to_uid`` authoritative for the active instance, so
+    instance-name display never has to guess via ``last_keycard_uid``.
     """
     from seedsigner.helpers.keycard.commands import APDUError
 
@@ -272,11 +277,14 @@ def select_with_autodetect(client, controller):
     )
     last_exc: Optional[APDUError] = None
     try:
-        return client.select(aid=target)
+        info = client.select(aid=target)
     except APDUError as exc:
         if exc.sw != 0x6A82:
             raise
         last_exc = exc
+    else:
+        controller.remember_aid_for_uid(target, info.instance_uid)
+        return info
 
     for suffix in _KNOWN_INSTANCE_SUFFIXES:
         candidate = _KEYCARD_INSTANCE_PREFIX + suffix
@@ -289,6 +297,7 @@ def select_with_autodetect(client, controller):
                 continue
             raise
         controller.active_keycard_aid = candidate
+        controller.remember_aid_for_uid(candidate, info.instance_uid)
         return info
 
     assert last_exc is not None

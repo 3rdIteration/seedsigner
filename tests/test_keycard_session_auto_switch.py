@@ -58,7 +58,18 @@ class _Controller:
         self.keycard_pairings = {}
         self.keycard_ephemeral_secrets = {}
         self.keycard_pins = {}
+        self.keycard_aid_to_uid = {}
         self.last_keycard_uid = None
+
+    def remember_aid_for_uid(self, aid, uid):
+        if aid is None or uid is None:
+            return
+        self.keycard_aid_to_uid[bytes(aid)] = bytes(uid)
+
+    def get_uid_for_aid(self, aid):
+        if aid is None:
+            return None
+        return self.keycard_aid_to_uid.get(bytes(aid))
 
     def get_pairing_for(self, uid):
         if uid is None:

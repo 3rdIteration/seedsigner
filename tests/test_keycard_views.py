@@ -2332,5 +2332,174 @@ class TestWrongCardDetection(unittest.TestCase):
         self.assertEqual(dest.view_args["title"], "PSBT rejected")
 
 
+class TestInstanceNameResolution(unittest.TestCase):
+    """Regression cover for the instance-name→AID resolution bugs:
+
+    * a name must never bleed from one instance onto another via the
+      global ``last_keycard_uid`` (the "merging the device id with the
+      name" symptom);
+    * enumeration must resolve **every** instance's UID so non-active rows
+      show their real name, not just ``Inst N``;
+    * card-specific AID→UID state must be cleared on swap so a re-inserted
+      different card can't render the previous card's name.
+    """
+
+    def _bare_controller(self):
+        """A Controller with only the attributes the name path touches —
+        avoids the heavy ``get_instance()`` singleton/thread setup."""
+        from seedsigner.controller import Controller
+        from seedsigner.helpers.keycard.commands import APPLET_AID
+        c = Controller.__new__(Controller)
+        c.keycard_aid_to_uid = {}
+        c.keycard_instance_names = {}
+        c.last_keycard_uid = None
+        c.active_keycard_aid = APPLET_AID
+        return c
+
+    def test_name_does_not_bleed_via_last_keycard_uid(self):
+        """The active AID with NO exact AID→UID entry must resolve to None
+        even when ``last_keycard_uid`` points at a *different*, named
+        instance — no fallback guess."""
+        from unittest.mock import patch
+        c = self._bare_controller()
+        other_uid = b"\x22" * 16
+        c.last_keycard_uid = other_uid  # a different instance was selected
+        # other_uid HAS a name on disk; the active AID has no mapping.
+        with patch(
+            "seedsigner.helpers.keycard.instance_names.get_name",
+            return_value="Other",
+        ) as get_name:
+            self.assertIsNone(c.get_instance_name_for_aid(c.active_keycard_aid))
+        get_name.assert_not_called()  # never even looked the other name up
+
+    def test_name_resolves_for_mapped_aid(self):
+        """Positive path: once an AID→UID entry exists, the disk name is
+        returned and cached."""
+        from unittest.mock import patch
+        c = self._bare_controller()
+        uid = b"\x11" * 16
+        c.remember_aid_for_uid(c.active_keycard_aid, uid)
+        with patch(
+            "seedsigner.helpers.keycard.instance_names.get_name",
+            return_value="Cold",
+        ) as get_name:
+            self.assertEqual(c.get_instance_name_for_aid(c.active_keycard_aid), "Cold")
+            # Cached: a second read does not hit disk again.
+            self.assertEqual(c.get_instance_name_for_aid(c.active_keycard_aid), "Cold")
+        get_name.assert_called_once()
+
+    def test_select_with_autodetect_records_aid_to_uid(self):
+        """Every successful SELECT must record the AID→UID mapping, so the
+        active instance's name resolves without the removed fallback."""
+        from types import SimpleNamespace
+        from seedsigner.helpers.keycard.ui_helpers import select_with_autodetect
+        c = self._bare_controller()
+        uid = b"\x33" * 16
+
+        class FakeClient:
+            def select(self, aid=None):
+                return SimpleNamespace(instance_uid=uid)
+
+        info = select_with_autodetect(FakeClient(), c)
+        self.assertEqual(info.instance_uid, uid)
+        self.assertEqual(c.get_uid_for_aid(c.active_keycard_aid), uid)
+
+    def test_wipe_clears_aid_to_uid_and_last_uid(self):
+        """Card-removed wipe drops the AID→UID map and last UID — a swapped
+        card reuses the same AIDs with different UIDs."""
+        c = self._bare_controller()
+        c.keycard_pins = {}
+        c.keycard_wallets_data = {}
+        c.keycard_instance_count = 3
+        c.forget_satochip_session = lambda: None
+        c.keycard_aid_to_uid = {c.active_keycard_aid: b"\x44" * 16}
+        c.keycard_instance_names = {b"\x44" * 16: "Hot"}
+        c.last_keycard_uid = b"\x44" * 16
+
+        c.wipe_card_session_secrets()
+
+        self.assertEqual(c.keycard_aid_to_uid, {})
+        self.assertIsNone(c.last_keycard_uid)
+        self.assertEqual(c.keycard_instance_names, {})
+
+    def test_resolve_instance_uids_selects_each_aid(self):
+        """``_resolve_instance_uids`` SELECTs every AID and records its UID;
+        a per-AID failure is swallowed (that row stays ``Inst N``)."""
+        from types import SimpleNamespace
+        from seedsigner.views.keycard_views import (
+            _resolve_instance_uids, KEYCARD_APPLET_AID,
+        )
+        from seedsigner.helpers.keycard.client import KeycardClient
+        from unittest.mock import patch
+        c = self._bare_controller()
+        aid1 = KEYCARD_APPLET_AID + b"\x01\x01"
+        aid2 = KEYCARD_APPLET_AID + b"\x01\x02"
+        uids = {aid1: b"\xa1" * 16, aid2: b"\xa2" * 16}
+
+        def fake_select(self, aid=None):
+            if aid not in uids:
+                raise RuntimeError("boom")
+            return SimpleNamespace(instance_uid=uids[aid])
+
+        with patch.object(KeycardClient, "select", fake_select):
+            _resolve_instance_uids(c, MagicMock(), [aid1, aid2])
+
+        self.assertEqual(c.get_uid_for_aid(aid1), uids[aid1])
+        self.assertEqual(c.get_uid_for_aid(aid2), uids[aid2])
+
+    def test_switch_view_shows_real_names_for_all_instances(self):
+        """End-to-end: the Switch list resolves UIDs for every instance, so
+        BOTH rows render their stored name — not just the active one."""
+        from unittest.mock import patch
+        from seedsigner.views import keycard_views
+        from seedsigner.views.keycard_views import (
+            ToolsKeycardInstancesSwitchView, KEYCARD_APPLET_AID,
+        )
+        from seedsigner.helpers.keycard.global_platform import AppletInstance
+
+        aid1 = KEYCARD_APPLET_AID + b"\x01\x01"
+        aid2 = KEYCARD_APPLET_AID + b"\x01\x02"
+        uid1, uid2 = b"\xb1" * 16, b"\xb2" * 16
+        names = {uid1: "Alice", uid2: "Bob"}
+        instances = [
+            AppletInstance(aid=aid1, life_cycle=0, privileges=0),
+            AppletInstance(aid=aid2, life_cycle=0, privileges=0),
+        ]
+
+        c = self._bare_controller()
+        # Active is neither row, so neither gets the "» " active marker.
+        c.active_keycard_aid = KEYCARD_APPLET_AID + b"\x01\x09"
+
+        view = ToolsKeycardInstancesSwitchView.__new__(ToolsKeycardInstancesSwitchView)
+        view.controller = c
+        captured = {}
+
+        from seedsigner.gui.screens.screen import RET_CODE__BACK_BUTTON
+
+        def fake_run_screen(screen_cls, **kwargs):
+            captured["button_data"] = kwargs["button_data"]
+            return RET_CODE__BACK_BUTTON
+
+        view.run_screen = fake_run_screen
+
+        def fake_resolve(controller, connection, aids):
+            controller.remember_aid_for_uid(aid1, uid1)
+            controller.remember_aid_for_uid(aid2, uid2)
+
+        with patch.object(
+            keycard_views, "_open_isd_channel",
+            return_value=(MagicMock(), instances, MagicMock()),
+        ), patch.object(
+            keycard_views, "_resolve_instance_uids", side_effect=fake_resolve,
+        ), patch(
+            "seedsigner.helpers.keycard.instance_names.get_name",
+            side_effect=lambda uid, **kw: names.get(bytes(uid)),
+        ):
+            view.run()
+
+        labels = [b.button_label for b in captured["button_data"]]
+        self.assertEqual(labels, ["Alice", "Bob"])
+
+
 if __name__ == "__main__":
     unittest.main()

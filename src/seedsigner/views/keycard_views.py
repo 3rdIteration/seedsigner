@@ -3401,6 +3401,33 @@ def _open_isd_channel(controller):
     return channel, instances, connection
 
 
+def _resolve_instance_uids(controller, connection, aids):
+    """SELECT each AID to learn its ``instance_uid`` and cache the AID→UID map.
+
+    Enumeration (``GET STATUS``) returns only AIDs, so without this the only
+    instance we can name is one that happened to be SELECTed this session.
+    SELECT is unauthenticated (no PIN) and there are at most
+    ``MAX_KEYCARD_INSTANCES`` (4) candidates, so resolving every UID is cheap.
+    Best-effort: a per-AID failure just leaves that row on the ``Inst N``
+    label. Must run **after** any GP/``GET STATUS`` work on ``connection`` —
+    SELECTing an applet deselects the ISD and breaks the GP channel.
+    """
+    if connection is None:
+        return
+    try:
+        from seedsigner.helpers.keycard.client import KeycardClient
+        client = KeycardClient(connection)
+    except Exception:
+        logger.debug("instance UID resolve: client init failed", exc_info=True)
+        return
+    for aid in aids:
+        try:
+            info = client.select(aid=aid)
+            controller.remember_aid_for_uid(aid, info.instance_uid)
+        except Exception:
+            logger.debug("instance UID resolve failed for %s", aid.hex(), exc_info=True)
+
+
 def _count_keycard_instances(controller):
     """Best-effort count of Keycard applet instances on the inserted card.
 
@@ -3425,6 +3452,13 @@ def _count_keycard_instances(controller):
         keycard_instances = [
             i for i in instances if i.aid.startswith(KEYCARD_APPLET_AID)
         ]
+        # Resolve each instance's UID now (cheap, no PIN) so the top-menu
+        # title shows the active instance's real name on first entry, not just
+        # after the first signing op. Runs after GET STATUS; breaks the GP
+        # channel, which we no longer use.
+        _resolve_instance_uids(
+            controller, connection, [i.aid for i in keycard_instances]
+        )
         # Empty -> GET STATUS unsupported / nothing reported: treat as
         # "unknown" (None) so we don't hide on a false zero/one.
         return len(keycard_instances) if keycard_instances else None
@@ -3481,6 +3515,13 @@ class ToolsKeycardInstancesSwitchView(View):
         # Free, accurate refresh of the count the top menu uses to decide
         # whether to show "Switch instance".
         self.controller.keycard_instance_count = len(candidates)
+
+        # Resolve every instance's UID (cheap SELECT, no PIN) so each row
+        # renders its real name, not just the active one. Best-effort: an
+        # unresolved row falls back to "Inst N".
+        _resolve_instance_uids(
+            self.controller, isd_connection, [i.aid for i in candidates]
+        )
 
         from seedsigner.helpers.keycard.global_platform import MAX_KEYCARD_INSTANCES
         active = self.controller.active_keycard_aid
