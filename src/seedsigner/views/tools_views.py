@@ -1672,6 +1672,7 @@ class ToolsCommonNdefView(View):
             return Destination(BackStackView)
 
 
+class ToolsSmartcardInfoView(View):
     def run(self):
 
         allowed = ["satochip", "seedkeeper", "satodime"]
