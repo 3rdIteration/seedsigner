@@ -14,8 +14,6 @@ class QRType:
     SEED__FOUR_LETTER_MNEMONIC = "seed__four_letter_mnemonic"
     SEED__ENCRYPTEDQR = "seed__encryptedqr"
     SEED__AMBIGUOUS_QR = "seed__ambiguous_qr"
-    SEED__SLIP39 = "seed__slip39"
-    SEED__XPRV = "seed__xprv"
 
     SETTINGS = "settings"
 
@@ -33,9 +31,6 @@ class QRType:
     SET_TIME = "set_time"
 
     PASSPHRASE = "passphrase"
-
-    WIF = "wif"
-    BIP38 = "bip38"
 
     ENCRYPTION_KEY = "encryption_key"
 

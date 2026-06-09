@@ -268,7 +268,9 @@ class TestSignatureParser:
             + b"\x02" + bytes([len(s)]) + s
         )
         body = bytes([0x80, len(pub)]) + pub + der
-        resp = bytes([0xA0, len(body)]) + body
+        # Template body is >127 bytes: the card encodes the length with the
+        # BER long form (0x81 LL), which is what the applet actually emits.
+        resp = bytes([0xA0, 0x81, len(body)]) + body
 
         sig = parse_signature(resp)
         assert sig.public_key == pub
@@ -285,7 +287,7 @@ class TestSignatureParser:
             + b"\x02" + bytes([len(s)]) + s
         )
         body = bytes([0x80, len(pub)]) + pub + der
-        resp = bytes([0xA0, len(body)]) + body
+        resp = bytes([0xA0, 0x81, len(body)]) + body
 
         sig = parse_signature(resp)
         assert len(sig.r) == 32
@@ -525,3 +527,95 @@ class TestKeycardClientChangePin:
         assert captured["p1"] == 0x00
         assert captured["p2"] == 0x00
         assert captured["data"] == b"654321"
+
+
+class TestTlvParser:
+    def test_short_form_roundtrip(self):
+        from seedsigner.helpers.keycard.responses import parse_tlv
+        tag, body, nxt = parse_tlv(b"\xA3\x02\xAB\xCD")
+        assert (tag, body, nxt) == (0xA3, b"\xAB\xCD", 4)
+
+    def test_extended_form_roundtrip(self):
+        from seedsigner.helpers.keycard.responses import parse_tlv
+        payload = b"\xA0\x81\x03\x01\x02\x03"
+        tag, body, nxt = parse_tlv(payload)
+        assert (tag, body, nxt) == (0xA0, b"\x01\x02\x03", 6)
+
+    def test_truncated_after_tag_raises(self):
+        from seedsigner.helpers.keycard.responses import parse_tlv
+        with pytest.raises(ValueError, match="length byte"):
+            parse_tlv(b"\xA3")
+
+    def test_truncated_extended_length_raises(self):
+        from seedsigner.helpers.keycard.responses import parse_tlv
+        with pytest.raises(ValueError, match="extended length"):
+            parse_tlv(b"\xA3\x81")
+
+    def test_declared_length_past_end_raises(self):
+        from seedsigner.helpers.keycard.responses import parse_tlv
+        with pytest.raises(ValueError, match="extends past end"):
+            parse_tlv(b"\xA3\x05\x01")
+
+    def test_unsupported_long_form_raises(self):
+        from seedsigner.helpers.keycard.responses import parse_tlv
+        with pytest.raises(ValueError, match="unsupported length form"):
+            parse_tlv(b"\xA3\x82\x01\x00")
+
+
+class TestStatusParser:
+    @staticmethod
+    def _status_response(pin: int, puk: int, key_init: bool = True) -> bytes:
+        body = (
+            bytes([0x02, 0x01, pin])
+            + bytes([0x02, 0x01, puk])
+            + bytes([0x01, 0x01, 0xFF if key_init else 0x00])
+        )
+        return bytes([0xA3, len(body)]) + body
+
+    def test_normal_counts(self):
+        from seedsigner.helpers.keycard.responses import parse_status
+        st = parse_status(self._status_response(3, 5))
+        assert st.pin_retries == 3
+        assert st.puk_retries == 5
+        assert st.key_initialised is True
+
+    def test_blocked_pin_still_reports_puk_retries(self):
+        # Regression: the old value-based disambiguation of the repeated
+        # 0x02 tag misread a blocked PIN (0 retries) — the PUK count was
+        # written into pin_retries and puk_retries stayed 0.
+        from seedsigner.helpers.keycard.responses import parse_status
+        st = parse_status(self._status_response(0, 5))
+        assert st.pin_retries == 0
+        assert st.puk_retries == 5
+
+    def test_key_not_initialised(self):
+        from seedsigner.helpers.keycard.responses import parse_status
+        st = parse_status(self._status_response(3, 5, key_init=False))
+        assert st.key_initialised is False
+
+
+class TestDerSignatureBounds:
+    """A truncated DER signature must raise — never produce a silently
+    zero-padded (wrong) r/s."""
+
+    def test_declared_body_past_buffer_raises(self):
+        from seedsigner.helpers.keycard.responses import _parse_der_signature
+        with pytest.raises(ValueError, match="declared length"):
+            _parse_der_signature(b"\x30\x06\x02\x01\x01")
+
+    def test_r_integer_overrun_raises(self):
+        from seedsigner.helpers.keycard.responses import _parse_der_signature
+        # body claims rlen=5 but only 2 bytes follow.
+        with pytest.raises(ValueError, match=r"INTEGER \(r\)"):
+            _parse_der_signature(b"\x30\x04\x02\x05\x01\x01")
+
+    def test_missing_s_integer_raises(self):
+        from seedsigner.helpers.keycard.responses import _parse_der_signature
+        # r consumes the whole body; s is absent.
+        with pytest.raises(ValueError, match=r"INTEGER \(s\)"):
+            _parse_der_signature(b"\x30\x04\x02\x02\x01\x01")
+
+    def test_unsupported_length_form_raises(self):
+        from seedsigner.helpers.keycard.responses import _parse_der_signature
+        with pytest.raises(ValueError, match="unsupported length form"):
+            _parse_der_signature(b"\x30\x82\x00\x04\x02\x01\x01\x02")

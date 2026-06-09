@@ -402,8 +402,6 @@ class SettingsConstants:
     SETTING__AMBIGUOUS_QR = "ambiguous_qr_preference"
     SETTING__ENCRYPTION_MODE = "version"
     SETTING__ENCRYPTION_ITER = "pbkdf2_iterations"
-    SETTING__WIF_KEYS = "wif_keys"
-    SETTING__BIP38_KEYS = "bip38_keys"
 
     SETTING__DEBUG = "debug"
 
@@ -483,7 +481,6 @@ class SettingsConstants:
 
     # Label strings
     LABEL__BIP39_PASSPHRASE = _mft("BIP-39 Passphrase")
-    LABEL__AEZEED_PASSPHRASE = _mft("Aezeed Passphrase")
     # TRANSLATOR_NOTE: Terminology used by Electrum seeds; equivalent to bip39 passphrase
     custom_extension = _mft("Custom Extension")
     LABEL__CUSTOM_EXTENSION = custom_extension
@@ -843,18 +840,6 @@ class SettingsDefinition:
                       visibility=SettingsConstants.VISIBILITY__ADVANCED,
                       selection_options=SettingsConstants.ALL_AMBIGUOUS_QR_OPTIONS,
                       default_value=SettingsConstants.AMBIGUOUS_QR_PROMPT),
-
-        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
-                      attr_name=SettingsConstants.SETTING__WIF_KEYS,
-                      display_name=_mft("WIF keys"),
-                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
-                      default_value=SettingsConstants.OPTION__DISABLED),
-
-        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
-                      attr_name=SettingsConstants.SETTING__BIP38_KEYS,
-                      display_name=_mft("BIP38 keys"),
-                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
-                      default_value=SettingsConstants.OPTION__DISABLED),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
                       attr_name=SettingsConstants.SETTING__BITBOX_BACKUP,

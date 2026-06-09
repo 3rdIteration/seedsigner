@@ -783,10 +783,10 @@ class ToolsKeycardInitView(View):
         try:
             # Loop until two identical PIN entries succeed or the user backs out.
             while True:
-                pin_buf = prompt_for_pin(self, "Set PIN (6 digits)")
+                pin_buf = prompt_for_pin(self, _("Set PIN (6 digits)"))
                 if pin_buf is None:
                     return Destination(BackStackView)
-                confirm_buf = prompt_for_pin(self, "Confirm PIN")
+                confirm_buf = prompt_for_pin(self, _("Confirm PIN"))
                 if confirm_buf is None:
                     wipe_bytearray(pin_buf)
                     pin_buf = None
@@ -823,10 +823,7 @@ class ToolsKeycardInitView(View):
                 title=_("Duress PIN"),
                 status_icon_size=0,
                 status_headline=None,
-                text=(
-                    "A 2nd PIN that unlocks a decoy wallet instead of your "
-                    "real one. Settable only now, never later."
-                ),
+                text=_("A 2nd PIN that unlocks a decoy wallet instead of your real one. Settable only now, never later."),
                 button_data=duress_button_data,
             )
             if duress_choice == RET_CODE__BACK_BUTTON:
@@ -838,10 +835,10 @@ class ToolsKeycardInitView(View):
                 # skips duress and proceeds with a normal init — the main PIN
                 # is already committed).
                 while True:
-                    duress_buf = prompt_for_pin(self, "Set duress PIN")
+                    duress_buf = prompt_for_pin(self, _("Set duress PIN"))
                     if duress_buf is None:
                         break
-                    duress_confirm_buf = prompt_for_pin(self, "Confirm duress PIN")
+                    duress_confirm_buf = prompt_for_pin(self, _("Confirm duress PIN"))
                     if duress_confirm_buf is None:
                         wipe_bytearray(duress_buf)
                         duress_buf = None
@@ -1011,10 +1008,10 @@ class ToolsKeycardChangePinView(View):
                 bytes(select_resp.instance_uid) if select_resp else b""
             )
 
-            new_pin = prompt_for_pin(self, "New PIN")
+            new_pin = prompt_for_pin(self, _("New PIN"))
             if new_pin is None:
                 return Destination(BackStackView)
-            confirm_pin = prompt_for_pin(self, "Confirm new PIN")
+            confirm_pin = prompt_for_pin(self, _("Confirm new PIN"))
             if confirm_pin is None:
                 return Destination(BackStackView)
             if bytes(new_pin) != bytes(confirm_pin):
@@ -1755,12 +1752,16 @@ class ToolsKeycardImportSeedView(View):
     """
 
     SCAN = ButtonOption("Scan SeedQR")
-    TYPE_12 = ButtonOption("Type 12 words")
-    TYPE_24 = ButtonOption("Type 24 words")
+    TYPE_WORDS = ButtonOption("Type words")
     HEX = ButtonOption("Import hex (NGRAVE)")
     CONFIRM = ButtonOption("Push to card")
     SKIP_PASSPHRASE = ButtonOption("No passphrase")
     SET_PASSPHRASE = ButtonOption("Set passphrase")
+    WORDS_12 = ButtonOption("12 words")
+    WORDS_15 = ButtonOption("15 words")
+    WORDS_18 = ButtonOption("18 words")
+    WORDS_21 = ButtonOption("21 words")
+    WORDS_24 = ButtonOption("24 words")
 
     def run(self):
         from seedsigner.helpers.keycard import (
@@ -1780,7 +1781,7 @@ class ToolsKeycardImportSeedView(View):
             return Destination(BackStackView)
 
         # 2. Pick the input method.
-        button_data = [self.SCAN, self.TYPE_12, self.TYPE_24, self.HEX]
+        button_data = [self.SCAN, self.TYPE_WORDS, self.HEX]
         choice_ret = self.run_screen(
             ButtonListScreen,
             title=_("Source"),
@@ -1791,6 +1792,23 @@ class ToolsKeycardImportSeedView(View):
         if choice_ret == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
         choice = button_data[choice_ret]
+
+        num_words = None
+        if choice == self.TYPE_WORDS:
+            count_data = [
+                self.WORDS_12, self.WORDS_15, self.WORDS_18,
+                self.WORDS_21, self.WORDS_24,
+            ]
+            count_ret = self.run_screen(
+                ButtonListScreen,
+                title=_("Mnemonic length"),
+                is_button_text_centered=False,
+                button_data=count_data,
+                show_back_button=True,
+            )
+            if count_ret == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+            num_words = (12, 15, 18, 21, 24)[count_ret]
 
         # Buffers we must wipe on every exit path.
         words: list = []
@@ -1804,7 +1822,6 @@ class ToolsKeycardImportSeedView(View):
             elif choice == self.HEX:
                 phrase = self._capture_via_hex()
             else:
-                num_words = 12 if choice == self.TYPE_12 else 24
                 phrase = self._capture_via_keyboard(num_words)
             if phrase is None:
                 return Destination(BackStackView)
@@ -1945,7 +1962,7 @@ class ToolsKeycardImportSeedView(View):
         if not decoder.is_seed:
             raise RuntimeError("Not a seed QR")
         phrase = decoder.get_seed_phrase()
-        if not phrase or len(phrase) not in (12, 18, 21, 24):
+        if not phrase or len(phrase) not in (12, 15, 18, 21, 24):
             raise RuntimeError(f"Unexpected seed length: {len(phrase) if phrase else 0}")
         return list(phrase)
 

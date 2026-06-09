@@ -3551,3 +3551,33 @@ msgstr ""
 
 msgid "No Keycard applet\non this card."
 msgstr ""
+
+msgid "Type words"
+msgstr ""
+
+msgid "15 words"
+msgstr ""
+
+msgid "18 words"
+msgstr ""
+
+msgid "21 words"
+msgstr ""
+
+msgid "Confirm duress PIN"
+msgstr ""
+
+msgid "A 2nd PIN that unlocks a decoy wallet instead of your real one. Settable only now, never later."
+msgstr ""
+
+msgid "New PIN"
+msgstr ""
+
+msgid "Confirm new PIN"
+msgstr ""
+
+msgid "Set PIN (6 digits)"
+msgstr ""
+
+msgid "Confirm PIN"
+msgstr ""

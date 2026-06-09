@@ -7,28 +7,22 @@ from datetime import datetime
 
 from binascii import a2b_base64, b2a_base64
 from enum import IntEnum
-from embit import psbt, bip39, ec, bip32
+from embit import psbt, bip39
 from pyzbar import pyzbar
 from pyzbar.pyzbar import ZBarSymbol
 from urtypes.crypto import PSBT as UR_PSBT
 from urtypes.crypto import Account, Output
 from urtypes.bytes import Bytes
 
-from embit import bip39
-
 from seedsigner.helpers.ur2.ur_decoder import URDecoder
 from seedsigner.models.qr_type import QRType
 from seedsigner.models.settings import SettingsConstants
 
 
-class Seed:  # legacy shim — decoders that referenced ``Seed.get_wordlist``
-    @staticmethod
-    def get_wordlist(_lang=None):
-        return bip39.WORDLIST
-
-
-def aezeed_has_valid_checksum(_words, _word_to_index):  # legacy shim
-    return False
+# Precomputed once at import: the first-4-letters form of the BIP-39 wordlist
+# (every BIP-39 word is unique in its first four letters). Lookup table only —
+# never stored in wipeable lists, so sharing string objects with WORDLIST is fine.
+_4LETTER_WORDLIST = [word[:4] for word in bip39.WORDLIST]
 
 logger = logging.getLogger(__name__)
 
@@ -110,12 +104,6 @@ class DecodeQR:
 
             elif self.qr_type in [QRType.SEED__SEEDQR, QRType.SEED__COMPACTSEEDQR, QRType.SEED__MNEMONIC, QRType.SEED__FOUR_LETTER_MNEMONIC, QRType.SEED__UR2]:
                 self.decoder = SeedQrDecoder(wordlist_language_code=self.wordlist_language_code)
-
-            elif self.qr_type == QRType.SEED__SLIP39:
-                self.decoder = Slip39ShareDecoder()
-
-            elif self.qr_type == QRType.SEED__XPRV:
-                self.decoder = XprvQrDecoder()
 
             elif self.qr_type == QRType.SETTINGS:
                 self.decoder = SettingsQrDecoder()  # Settings config
@@ -243,18 +231,6 @@ class DecodeQR:
     def get_seed_phrase(self):
         if self.is_seed:
             return self.decoder.get_seed_phrase()
-
-    def get_seed_type(self):
-        if self.is_seed:
-            return self.decoder.get_seed_type()
-
-    def get_xprv(self):
-        if self.is_xprv:
-            return self.decoder.get_xprv()
-
-    def get_slip39_share(self):
-        if self.is_slip39_share:
-            return self.decoder.get_share()
 
 
     def get_settings_data(self):
@@ -386,15 +362,6 @@ class DecodeQR:
             QRType.SEED__MNEMONIC,
             QRType.SEED__FOUR_LETTER_MNEMONIC,
         ]
-
-    @property
-    def is_slip39_share(self) -> bool:
-        return self.qr_type == QRType.SEED__SLIP39
-
-    @property
-    def is_xprv(self) -> bool:
-        return self.qr_type == QRType.SEED__XPRV
-    
 
     @property
     def is_json(self):
@@ -597,19 +564,6 @@ class DecodeQR:
         if public_data:
             candidate_types.append(QRType.SEED__ENCRYPTEDQR)
 
-        try:
-            text = segment.decode("utf-8").strip()
-        except Exception:
-            text = None
-
-        if text:
-            try:
-                hdkey = bip32.HDKey.from_string(text)
-                if hdkey.is_private:
-                    candidate_types.append(QRType.SEED__XPRV)
-            except Exception:
-                pass
-
         return PayloadAnalysis(
             segment=segment,
             candidate_types=candidate_types,
@@ -735,17 +689,7 @@ class DecodeQR:
                 return QRType.SET_TIME
 
             # Seed
-            # create 4 letter wordlist only if not PSBT (performance gain)
-            wordlist = Seed.get_wordlist(wordlist_language_code)
-            try:
-                _4LETTER_WORDLIST = [word[:4].strip() for word in wordlist]
-            except:
-                _4LETTER_WORDLIST = []
-
-            from importlib import import_module
-            slip39_wordlist = import_module("shamir_mnemonic.wordlist").WORDLIST
-
-            if all(x in wordlist for x in s.strip().lower().split()):
+            if all(x in bip39.WORDLIST for x in s.strip().lower().split()):
                 # checks if all words in list are in bip39 word list
                 return QRType.SEED__MNEMONIC
 
@@ -753,18 +697,8 @@ class DecodeQR:
                 # checks if all 4 letter words are in list are in 4 letter bip39 word list
                 return QRType.SEED__FOUR_LETTER_MNEMONIC
 
-            elif all(x in slip39_wordlist for x in s.strip().lower().split()):
-                return QRType.SEED__SLIP39
-
             elif DecodeQR.is_base43_psbt(s):
                 return QRType.PSBT__BASE43
-
-            try:
-                hdkey = bip32.HDKey.from_string(s.strip())
-                if hdkey.is_private:
-                    return QRType.SEED__XPRV
-            except Exception:
-                pass
 
         except UnicodeDecodeError:
             # Probably this isn't meant to be string data; check if it's valid byte data
@@ -1122,9 +1056,7 @@ class SeedQrDecoder(BaseSingleFrameQrDecoder):
         super().__init__()
         self.seed_phrase = []
         self.wordlist_language_code = wordlist_language_code
-        self.wordlist = Seed.get_wordlist(wordlist_language_code)
-        self.word_to_index = {word: idx for idx, word in enumerate(self.wordlist)}
-        self.seed_type = "bip39"
+        self.wordlist = bip39.WORDLIST
 
 
     def add(self, segment, qr_type=QRType.SEED__SEEDQR):
@@ -1147,7 +1079,6 @@ class SeedQrDecoder(BaseSingleFrameQrDecoder):
                 if len(self.seed_phrase) > 0:
                     if not self.has_valid_word_count():
                         return DecodeQRStatus.INVALID
-                    self.seed_type = "bip39"
                     self.complete = True
                     self.collected_segments = 1
                     return DecodeQRStatus.COMPLETE
@@ -1164,7 +1095,6 @@ class SeedQrDecoder(BaseSingleFrameQrDecoder):
                 self.seed_phrase = ["".join(w) for w in bip39.mnemonic_from_bytes(segment).split()]
                 if not self.has_valid_word_count():
                     return DecodeQRStatus.INVALID
-                self.seed_type = "bip39"
                 self.complete = True
                 self.collected_segments = 1
                 return DecodeQRStatus.COMPLETE
@@ -1174,29 +1104,12 @@ class SeedQrDecoder(BaseSingleFrameQrDecoder):
 
         elif qr_type == QRType.SEED__MNEMONIC:
             try:
-                seed_phrase_list = self.seed_phrase = segment.strip().lower().split()
+                seed_phrase_list = segment.strip().lower().split()
+                self.seed_phrase = seed_phrase_list
                 if not self.has_valid_word_count():
                     return DecodeQRStatus.INVALID
-
-                is_valid_bip39 = False
-                try:
-                    Seed(seed_phrase_list, passphrase="", wordlist_language_code=self.wordlist_language_code)
-                    is_valid_bip39 = True
-                except Exception:
-                    is_valid_bip39 = False
-
-                is_valid_aezeed = len(seed_phrase_list) == 24 and aezeed_has_valid_checksum(seed_phrase_list, self.word_to_index)
-
-                if is_valid_aezeed and is_valid_bip39:
-                    self.seed_type = "ambiguous"
-                elif is_valid_aezeed:
-                    self.seed_type = "aezeed"
-                elif is_valid_bip39:
-                    self.seed_type = "bip39"
-                else:
+                if not bip39.mnemonic_is_valid(" ".join(seed_phrase_list)):
                     return DecodeQRStatus.INVALID
-
-                self.seed_phrase = seed_phrase_list
                 self.complete = True
                 self.collected_segments = 1
                 return DecodeQRStatus.COMPLETE
@@ -1208,24 +1121,19 @@ class SeedQrDecoder(BaseSingleFrameQrDecoder):
                 seed_phrase_list = segment.strip().lower().split()
                 words = []
                 for s in seed_phrase_list:
-                    # TODO: Pre-calculate this once on startup
-                    _4LETTER_WORDLIST = [word[:4].strip() for word in self.wordlist]
                     # Create an independent copy to avoid holding a
                     # direct reference to the shared global wordlist.
                     words.append("".join(self.wordlist[_4LETTER_WORDLIST.index(s)]))
 
-                # embit mnemonic code to validate
-                seed = Seed(words, passphrase="", wordlist_language_code=self.wordlist_language_code)
-                if not seed:
-                    return DecodeQRStatus.INVALID
                 self.seed_phrase = words
                 if not self.has_valid_word_count():
                     return DecodeQRStatus.INVALID
-                self.seed_type = "bip39"
+                if not bip39.mnemonic_is_valid(" ".join(words)):
+                    return DecodeQRStatus.INVALID
                 self.complete = True
                 self.collected_segments = 1
                 return DecodeQRStatus.COMPLETE
-            except Exception as e:
+            except Exception:
                 return DecodeQRStatus.INVALID
 
         else:
@@ -1236,62 +1144,8 @@ class SeedQrDecoder(BaseSingleFrameQrDecoder):
             return self.seed_phrase[:]
         return []
 
-    def get_seed_type(self):
-        if self.complete:
-            return self.seed_type
-        return None
-
     def has_valid_word_count(self):
         return len(self.seed_phrase) in (12, 15, 18, 21, 24)
-
-
-class Slip39ShareDecoder(BaseSingleFrameQrDecoder):
-    """Decodes a single-frame SLIP-39 share"""
-    def __init__(self):
-        super().__init__()
-        self.share = None
-
-    def add(self, segment, qr_type=QRType.SEED__SLIP39):
-        if qr_type == QRType.SEED__SLIP39:
-            try:
-                if isinstance(segment, bytes):
-                    segment = segment.decode("utf-8")
-                segment = segment.lower()
-                from shamir_mnemonic import Share as Slip39Share
-                Slip39Share.from_mnemonic(segment)
-                self.share = segment
-                self.complete = True
-                self.collected_segments = 1
-                return DecodeQRStatus.COMPLETE
-            except Exception:
-                pass
-        return DecodeQRStatus.INVALID
-
-    def get_share(self):
-        return self.share
-
-
-class XprvQrDecoder(BaseSingleFrameQrDecoder):
-    def __init__(self):
-        super().__init__()
-        self.xprv = None
-
-    def add(self, segment, qr_type=QRType.SEED__XPRV):
-        if qr_type == QRType.SEED__XPRV:
-            try:
-                key = bip32.HDKey.from_string(segment.strip())
-                if not key.is_private:
-                    return DecodeQRStatus.INVALID
-                self.xprv = segment.strip()
-                self.complete = True
-                self.collected_segments = 1
-                return DecodeQRStatus.COMPLETE
-            except Exception:
-                return DecodeQRStatus.INVALID
-        return DecodeQRStatus.INVALID
-
-    def get_xprv(self):
-        return self.xprv
 
 
 class AmbiguousQrDecoder(BaseSingleFrameQrDecoder):
@@ -1369,15 +1223,23 @@ class SignMessageQrDecoder(BaseSingleFrameQrDecoder):
 
             signmessage {derivation_path} ascii:{message}
         """
+        # Untrusted scanned input: validate the shape before indexing.
         parts = segment.split()
-        self.derivation_path = parts[1].replace("h", "'")
-        fmt = parts[2].split(":")[0]
-        self.message = segment.split(f"{fmt}:")[1]
+        if len(parts) < 3 or parts[0] != "signmessage":
+            return DecodeQRStatus.INVALID
 
+        fmt = parts[2].split(":")[0]
         # TODO: support formats other than ascii?
         if fmt != "ascii":
             logger.info(f"Sign message: Unsupported format: {fmt}")
             return DecodeQRStatus.INVALID
+
+        split_message = segment.split(f"{fmt}:", 1)
+        if len(split_message) < 2 or not split_message[1]:
+            return DecodeQRStatus.INVALID
+
+        self.derivation_path = parts[1].replace("h", "'")
+        self.message = split_message[1]
 
         self.complete = True
         self.collected_segments = 1

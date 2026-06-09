@@ -618,5 +618,26 @@ class TestScpIdValidation(unittest.TestCase):
             gp.open(host_challenge=b"\x01" * 8)
 
 
+class TestStatusTlvParserTruncation(unittest.TestCase):
+    """Truncated GET STATUS entries must bail cleanly, never IndexError."""
+
+    def test_truncated_entries_bail_without_crashing(self):
+        from seedsigner.helpers.keycard.global_platform import _parse_status_tlv
+
+        aid = bytes.fromhex("A000000804000101")
+        # AID length claims more bytes than the entry holds.
+        bad_aid = bytes([0xE3, 0x03, 0x4F, 0x10, 0xAA])
+        # Entry ends right after a 0x9F tag byte.
+        bad_9f = bytes([0xE3, 0x01, 0x9F])
+        # Valid AID followed by a 0xC5 whose value byte is missing.
+        body = bytes([0x4F, len(aid)]) + aid + bytes([0xC5, 0x01])
+        bad_c5 = bytes([0xE3, len(body)]) + body
+
+        self.assertEqual(_parse_status_tlv(bad_aid), [])
+        self.assertEqual(_parse_status_tlv(bad_9f), [])
+        parsed = _parse_status_tlv(bad_c5)
+        self.assertEqual([p.aid for p in parsed], [aid])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -711,25 +711,41 @@ def _parse_status_tlv(payload: bytes) -> List[AppletInstance]:
         privs = 0
         bcur = 0
         while bcur < len(body):
+            # Truncated entries bail rather than misparse (same policy as
+            # the outer loop) — a malformed GET STATUS must not IndexError.
             tag = body[bcur]
             if tag == 0x4F:
+                if bcur + 1 >= len(body):
+                    break
                 ll = body[bcur + 1]
+                if bcur + 2 + ll > len(body):
+                    break
                 aid = bytes(body[bcur + 2:bcur + 2 + ll])
                 bcur += 2 + ll
             elif tag == 0x9F:
                 # Two-byte tag 9F70 (life cycle) — accept any length.
+                if bcur + 2 >= len(body):
+                    break
                 tag2 = body[bcur + 1]
                 ll = body[bcur + 2]
+                if bcur + 3 + ll > len(body):
+                    break
                 if tag2 == 0x70 and ll >= 1:
                     life = body[bcur + 3]
                 bcur += 3 + ll
             elif tag == 0xC5:
+                if bcur + 1 >= len(body):
+                    break
                 ll = body[bcur + 1]
+                if bcur + 2 + ll > len(body):
+                    break
                 if ll >= 1:
                     privs = body[bcur + 2]
                 bcur += 2 + ll
             else:
                 # Unknown tag: skip what we can.
+                if bcur + 1 >= len(body):
+                    break
                 ll = body[bcur + 1]
                 bcur += 2 + ll
         if aid:

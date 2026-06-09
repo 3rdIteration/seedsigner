@@ -274,7 +274,7 @@ entropy comes from and whether the host ever displays the words.
 |----------|---------------------------|-----------------|-------------|
 | **GENERATE MNEMONIC** (on-card) | Status applet's TRNG | No (default) — words exist only as indices in transit; host derives seed, sends LOAD_KEY, then `wipe_list()`s the buffer | Air-gapped, no paper backup desired |
 | **Show + Import** | Host (`helpers/mnemonic_generation.generate_mnemonic_from_bytes`) | Yes — user copies the 12/24 words to paper, then confirms via quiz before LOAD_KEY | Air-gapped, user wants a paper backup |
-| **Import existing seed** (`ToolsKeycardImportSeedView`) | Off-device | n/a — user supplies it | Restoring a known seed: **Scan SeedQR**, **Type 12/24 words**, or **Import hex (NGRAVE)** |
+| **Import existing seed** (`ToolsKeycardImportSeedView`) | Off-device | n/a — user supplies it | Restoring a known seed: **Scan SeedQR** (also accepts mnemonic-text and 4-letter QRs, any valid BIP-39 length), **Type words** (12/15/18/21/24 chooser), or **Import hex (NGRAVE)** |
 
 The **Import hex (NGRAVE)** source takes the NGRAVE "Perfect Key" — the 256-bit BIP-39 *entropy* (64 hex chars = 24 words; 32 hex = 12 words) — via QR scan or the dedicated `0-9 a-f` keyboard (`KeycardHexEntryScreen`), runs it through `bip39.mnemonic_from_bytes`, then joins the **same** validate → derive seed64 → `LOAD_KEY P1=0x03` pipeline as the mnemonic import. The entropy buffer is wiped and words are independent copies (never `WORDLIST` references).
 
