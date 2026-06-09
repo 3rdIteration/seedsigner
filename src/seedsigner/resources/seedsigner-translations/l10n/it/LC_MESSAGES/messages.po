@@ -1,0 +1,3846 @@
+# Italian translations for seedsigner.
+# Copyright (C) 2025 ORGANIZATION
+# This file is distributed under the same license as the seedsigner project.
+# FIRST AUTHOR <EMAIL@ADDRESS>, 2025.
+#
+# Translators:
+# Valerio Vaccaro <valerio.vaccaro@gmail.com>, 2022
+# M P, 2024
+# btc venice, 2025
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: seedsigner 0.8.5-rc1\n"
+"Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
+"POT-Creation-Date: 2026-06-08 14:56+0100\n"
+"PO-Revision-Date: 2022-04-29 13:50+0000\n"
+"Last-Translator: btc venice, 2025\n"
+"Language: it\n"
+"Language-Team: Italian "
+"(https://app.transifex.com/seedsigner/teams/135832/it/)\n"
+"Plural-Forms: nplurals=3; plural=n == 1 ? 0 : n != 0 && n % 1000000 == 0 "
+"? 1 : 2;\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.16.0\n"
+
+#: src/seedsigner/controller.py src/seedsigner/views/view.py
+msgid "Data wiped after inactivity"
+msgstr "Dati cancellati per inattività"
+
+#. Testnet bitcoin
+#: src/seedsigner/gui/components.py
+msgid "tBtc"
+msgstr "tBtc"
+
+#. Testnet sats
+#: src/seedsigner/gui/components.py
+msgid "tSats"
+msgstr "tSats"
+
+#: src/seedsigner/gui/components.py src/seedsigner/gui/screens/psbt_screens.py
+msgid "btc"
+msgstr "btc"
+
+#: src/seedsigner/gui/components.py src/seedsigner/gui/screens/psbt_screens.py
+#: src/seedsigner/models/settings_definition.py
+msgid "sats"
+msgstr "sats"
+
+#: src/seedsigner/gui/toast.py
+msgid ""
+"You can remove\n"
+"the SD card now"
+msgstr ""
+"Ora puoi rimuovere\n"
+"la scheda SD"
+
+#: src/seedsigner/gui/toast.py
+msgid "SD card removed"
+msgstr "Scheda SD rimossa"
+
+#: src/seedsigner/gui/toast.py
+msgid "SD card inserted"
+msgstr "Scheda SD inserita"
+
+#: src/seedsigner/gui/screens/psbt_screens.py
+#: src/seedsigner/views/keycard_views.py
+msgid "Review PSBT"
+msgstr "Controlla la PSBT"
+
+#: src/seedsigner/gui/screens/psbt_screens.py
+msgid "Review Details"
+msgstr "Controlla i Dettagli"
+
+#: src/seedsigner/gui/screens/psbt_screens.py
+msgid "1 input"
+msgstr "1 input"
+
+#: src/seedsigner/gui/screens/psbt_screens.py
+msgid "input 1"
+msgstr "input 1"
+
+#: src/seedsigner/gui/screens/psbt_screens.py
+msgid "input 2"
+msgstr "input 2"
+
+#. Indicates that items have been omitted from a series: e.g. "1, 2, 3, [...],
+#. 8"
+#: src/seedsigner/gui/screens/psbt_screens.py
+msgid "[ ... ]"
+msgstr "[ ... ]"
+
+#. Input number will be inserted (e.g. "input 3")
+#: src/seedsigner/gui/screens/psbt_screens.py
+msgid "input {}"
+msgstr "input {}"
+
+#. Ellipsis ("...") characters used to truncate an address (e.g. "bc1qabc...")
+#: src/seedsigner/gui/screens/psbt_screens.py
+msgid "..."
+msgstr "..."
+
+#: src/seedsigner/gui/screens/psbt_screens.py
+msgid "self-transfer"
+msgstr "auto-trasferimento"
+
+#: src/seedsigner/gui/screens/psbt_screens.py
+msgid "recipient 1"
+msgstr "destinatario 1"
+
+#. Inserts the recipient number (e.g. the fifth one is: "recipient 5")
+#: src/seedsigner/gui/screens/psbt_screens.py
+msgid "recipient {}"
+msgstr "destinatario {}"
+
+#: src/seedsigner/gui/screens/psbt_screens.py
+msgid "fee"
+msgstr "fee"
+
+#. Technical term, should probably NOT be translated in most languages
+#: src/seedsigner/gui/screens/psbt_screens.py
+msgid "OP_RETURN"
+msgstr "OP_RETURN"
+
+#. Label for a change output in the PSBT Overview flow diagram
+#: src/seedsigner/gui/screens/psbt_screens.py
+msgid "change"
+msgstr "resto"
+
+#: src/seedsigner/gui/screens/psbt_screens.py
+msgid "PSBT Math"
+msgstr "PSBT Math"
+
+#: src/seedsigner/gui/screens/psbt_screens.py
+msgid "Review Recipients"
+msgstr "Verifica i destinatari"
+
+#: src/seedsigner/gui/screens/psbt_screens.py
+msgid "input"
+msgid_plural "inputs"
+msgstr[0] "input"
+msgstr[1] "inputs"
+msgstr[2] "inputs"
+
+#: src/seedsigner/gui/screens/psbt_screens.py
+msgid "recipient"
+msgid_plural "recipients"
+msgstr[0] "destinatario"
+msgstr[1] "destinatari"
+msgstr[2] "destinatari"
+
+#. Denonination is inserted (e.g. your "btc change" or "sats change")
+#: src/seedsigner/gui/screens/psbt_screens.py
+msgid "{} change"
+msgstr "{} resto"
+
+#: src/seedsigner/gui/screens/psbt_screens.py
+msgid "Multisig"
+msgstr "Multisig"
+
+#: src/seedsigner/gui/screens/psbt_screens.py
+msgid "Change"
+msgstr "Resto"
+
+#. Abbreviation for receive address
+#: src/seedsigner/gui/screens/psbt_screens.py
+msgid "Addr"
+msgstr "Indir"
+
+#: src/seedsigner/gui/screens/psbt_screens.py
+msgid "Address verified!"
+msgstr "Indirizzo verificato!"
+
+#. Shown when displaying OP_RETURN as non-human-readable hexadecimal data
+#: src/seedsigner/gui/screens/psbt_screens.py
+msgid "raw hex data"
+msgstr "raw hex data"
+
+#: src/seedsigner/gui/screens/psbt_screens.py
+#: src/seedsigner/views/keycard_views.py
+msgid "Sign PSBT"
+msgstr "Firma la PSBT"
+
+#: src/seedsigner/gui/screens/psbt_screens.py
+msgid "Click to approve this transaction"
+msgstr "Clicca per approvare questa transazione"
+
+#: src/seedsigner/gui/screens/scan_screens.py
+msgid "back"
+msgstr "indietro"
+
+#: src/seedsigner/gui/screens/scan_screens.py
+msgid "Starting camera..."
+msgstr "Avvio fotocamera..."
+
+#. Inserts the percentage value of the animated QR scan progress
+#: src/seedsigner/gui/screens/scan_screens.py
+msgid "{}%"
+msgstr "{}%"
+
+#: src/seedsigner/gui/screens/scan_screens.py
+msgid "Decrypt?"
+msgstr "Decifrare?"
+
+#: src/seedsigner/gui/screens/scan_screens.py
+msgid "Select QR Type"
+msgstr "Seleziona tipo QR"
+
+#: src/seedsigner/gui/screens/scan_screens.py
+msgid "Encryption Key"
+msgstr "Chiave di cifratura"
+
+#: src/seedsigner/gui/screens/scan_screens.py
+msgid "Review Encryption Key"
+msgstr "Verifica chiave di cifratura"
+
+#. Increase QR code screen brightness
+#: src/seedsigner/gui/screens/screen.py
+msgid "Brighter"
+msgstr "Chiaro"
+
+#. Decrease QR code screen brightness
+#: src/seedsigner/gui/screens/screen.py
+msgid "Darker"
+msgstr "Scuro"
+
+#: src/seedsigner/gui/screens/screen.py
+#: src/seedsigner/gui/screens/seed_screens.py
+#: src/seedsigner/views/tools_views.py
+msgid "Success!"
+msgstr "Successo!"
+
+#: src/seedsigner/gui/screens/screen.py
+#: src/seedsigner/gui/screens/seed_screens.py
+#: src/seedsigner/views/keycard_views.py src/seedsigner/views/scan_views.py
+#: src/seedsigner/views/stealth_views.py src/seedsigner/views/tools_views.py
+#: src/seedsigner/views/view.py
+msgid "OK"
+msgstr "OK"
+
+#: src/seedsigner/gui/screens/screen.py
+msgid "Caution"
+msgstr "Attenzione"
+
+#: src/seedsigner/gui/screens/screen.py
+msgid "Privacy Leak!"
+msgstr "Potenziale compromissione della privacy!"
+
+#: src/seedsigner/gui/screens/screen.py src/seedsigner/views/desktop_warning.py
+#: src/seedsigner/views/developer_os_warning.py
+#: src/seedsigner/views/tools_views.py
+msgid "I Understand"
+msgstr "Ho Capito"
+
+#: src/seedsigner/gui/screens/screen.py
+msgid "Classified Info!"
+msgstr "Informazione Riservata!"
+
+#: src/seedsigner/gui/screens/screen.py src/seedsigner/views/scan_views.py
+#: src/seedsigner/views/tools_views.py src/seedsigner/views/view.py
+msgid "Error"
+msgstr "Errore"
+
+#: src/seedsigner/gui/screens/screen.py
+msgid "Restarting"
+msgstr "Riavvio in corso"
+
+#: src/seedsigner/gui/screens/screen.py
+msgid ""
+"SeedSigner is restarting.\n"
+"\n"
+"All in-memory data will be wiped."
+msgstr ""
+"SeedSigner stà ripartendo. \n"
+"\n"
+"Tutti i dati in memoria saranno cancellati."
+
+#: src/seedsigner/gui/screens/screen.py
+msgid "Powering Off"
+msgstr "Spegnimento in corso"
+
+#: src/seedsigner/gui/screens/screen.py
+msgid "Please wait about 30 seconds before disconnecting power."
+msgstr "Attendi 30 secondi prima di disconnettere l'alimentazione."
+
+#: src/seedsigner/gui/screens/screen.py
+msgid "Just Unplug It"
+msgstr "Ora scollegalo"
+
+#: src/seedsigner/gui/screens/screen.py
+msgid "It is safe to disconnect power at any time."
+msgstr "È possibile scollegare l'alimentazione in qualsiasi momento."
+
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Finalize Seed"
+msgstr "Finalizza Seed"
+
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "fingerprint"
+msgstr "fingerprint"
+
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Backup Seed"
+msgstr "Backup Seed"
+
+#. Additional explainer for the two seed backup options (mnemonic phrase and
+#. SeedQR).
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Backups do not include your passphrase."
+msgstr "Il backup non include la tua \"passphrase\"."
+
+#. Displays the page number and total: (e.g. page 1 of 6)
+#: src/seedsigner/gui/screens/seed_screens.py
+#: src/seedsigner/views/keycard_views.py
+msgid "Seed Words: {}/{}"
+msgstr "Parole del Seed: {}/{}"
+
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "BIP-85 Index"
+msgstr "BIP-85 Index"
+
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Verify Backup?"
+msgstr "Vuoi verificare il backup?"
+
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Optionally verify that your mnemonic backup is correct."
+msgstr "Puoi verificare che il backup della mnemonica sia corretto."
+
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Account Number"
+msgstr "Numero conto"
+
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Derivation Path"
+msgstr "Derivation Path"
+
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Xpub Details"
+msgstr "Dettagli Xpub"
+
+#. Short for "BIP32 Master Fingerprint"
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Fingerprint"
+msgstr "Fingerprint"
+
+#. Short for "Derivation Path"
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Derivation"
+msgstr "Derivazione"
+
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Xpub"
+msgstr "Xpub"
+
+#: src/seedsigner/gui/screens/seed_screens.py
+#: src/seedsigner/models/settings_definition.py
+msgid "BIP-39 Passphrase"
+msgstr "BIP-39 Passphrase"
+
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Verify Passphrase"
+msgstr "Verifica Passphrase"
+
+#. Describes the effect of applying a BIP-39 passphrase; it changes the seed's
+#. fingerprint
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "changes fingerprint"
+msgstr "cambio di fingerprint"
+
+#. Refers to the SeedQR type: Standard or Compact or encrypted
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Standard"
+msgstr "Standard"
+
+#. Briefly explains the Standard SeedQR data format
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "BIP-39 wordlist indices"
+msgstr "BIP-39 wordlist indices"
+
+#. Refers to the SeedQR type: Standard or Compact or encrypted
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Compact"
+msgstr "Compattato"
+
+#. Briefly explains the Compact SeedQR data format
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Raw entropy bits"
+msgstr "Raw entropy bits"
+
+#. Refers to the SeedQR type: Standard or Compact or encrypted
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Encrypted"
+msgstr "Cifrato"
+
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Encrypted entropy bits"
+msgstr "Bit di entropia cifrati"
+
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Transcribe SeedQR"
+msgstr "Trascrivi SeedQR"
+
+#. Refers to the QR code size: 21x21, 25x25, or 29x29
+#: src/seedsigner/gui/screens/seed_screens.py
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Begin {}x{}"
+msgstr "Inizia {}x{}"
+
+#: src/seedsigner/gui/screens/seed_screens.py
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "click to exit"
+msgstr "clicca per uscire"
+
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid ""
+"Optionally scan your transcribed SeedQR to confirm that it reads back "
+"correctly."
+msgstr ""
+"Puoi effettuare lo scan del tuo SeedQR per verificare che si legga "
+"correttamente."
+
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Verify Address"
+msgstr "Verifica Indirizzo"
+
+#. Inserts the nth address number (e.g. "Checking address 7")
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Checking address {}"
+msgstr "Controllo indirizzo {}"
+
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Address Verified"
+msgstr "Indirizzo Verificato"
+
+#. Describes the address type (change or receive)
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "change address"
+msgstr "indirizzo di resto"
+
+#. Describes the address type (change or receive)
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "receive address"
+msgstr "indirizzo di ricezione"
+
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Non-standard path!"
+msgstr "Percorso non standard!"
+
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Multisig Verification"
+msgstr "Verifica Multisig"
+
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid ""
+"Load your multisig wallet descriptor to verify your receive/self-transfer"
+" or change address."
+msgstr ""
+"Importa il descriptor del wallet multisig per verificare l'indirizzo di "
+"ricezione o l'indirizzo di resto."
+
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Descriptor Loaded"
+msgstr "Descriptor Importato"
+
+#. Label for the multisig wallet's signing policy (e.g. 2-of-3)
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Policy"
+msgstr "Policy"
+
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Signing Keys"
+msgstr "Chiavi di firma"
+
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Review Message"
+msgstr "Rivedi Messaggio"
+
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Message (pt {}/{})"
+msgstr "Messaggio (pt {}/{})"
+
+#: src/seedsigner/gui/screens/seed_screens.py
+#: src/seedsigner/gui/screens/tools_screens.py
+#: src/seedsigner/views/keycard_views.py
+msgid "Next"
+msgstr "Avanti"
+
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Confirm Address"
+msgstr "Conferma indirizzo"
+
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Sign Message"
+msgstr "Firma un messaggio"
+
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "derivation path"
+msgstr "derivation path"
+
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Mnemonic ID"
+msgstr "ID mnemonico"
+
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Review Mnemonic ID"
+msgstr "Verifica ID mnemonico"
+
+#: src/seedsigner/gui/screens/seed_screens.py
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "The QR codes output in both modes may differ, but both are valid QR codes."
+msgstr ""
+"I codici QR prodotti nelle due modalità possono differire, ma entrambi "
+"sono validi."
+
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Transcribe Encrypted QR"
+msgstr "Trascrivi EncryptedQR"
+
+#: src/seedsigner/gui/screens/settings_screens.py
+#: src/seedsigner/views/settings_views.py src/seedsigner/views/view.py
+msgid "Settings"
+msgstr "Impostazioni"
+
+#: src/seedsigner/gui/screens/settings_screens.py
+#: src/seedsigner/views/settings_views.py
+msgid "No options available"
+msgstr "Nessuna opzione disponibile"
+
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "PBKDF2 Iter.(in units of 10k)"
+msgstr "Iter. PBKDF2 (in unità di 10k)"
+
+#. Short for "Input/Output"; screen to make sure the buttons and camera are
+#. working properly
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "I/O Test"
+msgstr "I/O Test"
+
+#. Blank the screen
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "Clear"
+msgstr "Pulisci"
+
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "Exit"
+msgstr "Esci"
+
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "Capturing image..."
+msgstr "Sto catturando l'immagine.."
+
+#: src/seedsigner/gui/screens/settings_screens.py
+#: src/seedsigner/views/settings_views.py
+msgid "Donate"
+msgstr "Donazioni"
+
+#. If your language uses the percent sign ("%"), your translation must also use
+#. two percent signs ("%%") due to python formatting oddities. "100%%" will be
+#. rendered as "100%".
+#: src/seedsigner/gui/screens/settings_screens.py
+#, python-format
+msgid ""
+"SeedSigner is 100%% free & open source, funded solely by the Bitcoin "
+"community.\n"
+"\n"
+"Donate onchain or LN at:"
+msgstr ""
+"SeedSigner è al 100%% libero e open source, finanziato esclusivamente "
+"dalla comunità Bitcoin.\n"
+"\n"
+"Donate onchain o via LN a:"
+
+#: src/seedsigner/gui/screens/settings_screens.py
+#: src/seedsigner/views/settings_views.py
+msgid "Battery Info"
+msgstr "Info batteria"
+
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "Load Voltage: --"
+msgstr "Tensione carico: --"
+
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "Current: --"
+msgstr "Corrente: --"
+
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "Power: --"
+msgstr "Potenza: --"
+
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "Percent: --%"
+msgstr "Percentuale: --%"
+
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "Curve: --"
+msgstr "Curva: --"
+
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "Load Voltage: {:.3f} V"
+msgstr "Load Voltage: {:.3f} V"
+
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "Current: {:.3f} A"
+msgstr "Current: {:.3f} A"
+
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "Power: {:.3f} W"
+msgstr "Power: {:.3f} W"
+
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "Percent: {:.1f}%"
+msgstr "Percent: {:.1f}%"
+
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "Curve: {}"
+msgstr "Curve: {}"
+
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "Curve: default"
+msgstr "Curva: predefinita"
+
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "System Info"
+msgstr "Info sistema"
+
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "Platform: {platform_name}"
+msgstr "Platform: {platform_name}"
+
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "Variant: {platform_variant}"
+msgstr "Variant: {platform_variant}"
+
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "Serial (CPU): {system_serial}"
+msgstr "Serial (CPU): {system_serial}"
+
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "Serial (MicroSD): {microsd_serial}"
+msgstr "Serial (MicroSD): {microsd_serial}"
+
+#: src/seedsigner/gui/screens/settings_screens.py
+#: src/seedsigner/views/settings_views.py
+msgid "Settings QR"
+msgstr "Impostazioni QR"
+
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "Settings updated..."
+msgstr "Impostazioni aggiornate.."
+
+#: src/seedsigner/gui/screens/settings_screens.py src/seedsigner/views/view.py
+msgid "Home"
+msgstr "Home"
+
+#: src/seedsigner/gui/screens/tools_screens.py
+#: src/seedsigner/views/tools_views.py
+msgid "Network Info"
+msgstr "Info rete"
+
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Network Info (pt {}/{})"
+msgstr "Info rete (pt {}/{})"
+
+#: src/seedsigner/gui/screens/tools_screens.py
+#: src/seedsigner/views/keycard_views.py src/seedsigner/views/stealth_views.py
+#: src/seedsigner/views/tools_views.py src/seedsigner/views/view.py
+msgid "Done"
+msgstr "Fatto"
+
+#: src/seedsigner/gui/screens/tools_screens.py
+#: src/seedsigner/views/tools_views.py
+msgid "Battery Calibration"
+msgstr "Calibrazione batteria"
+
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Charge the battery fully. Select Next to start the discharge test."
+msgstr ""
+"Carica completamente la batteria. Seleziona Avanti per avviare il test di"
+" scarica."
+
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Start"
+msgstr "Avvia"
+
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Test runs until empty. Leave the device unplugged."
+msgstr ""
+"Il test prosegue fino a batteria scarica. Lascia il dispositivo "
+"scollegato."
+
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Charging detected"
+msgstr "Carica rilevata"
+
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Discharging"
+msgstr "In scarica"
+
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Elapsed: "
+msgstr "Trascorso: "
+
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Voltage: "
+msgstr "Tensione: "
+
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Current: "
+msgstr "Corrente: "
+
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Status: "
+msgstr "Stato: "
+
+#: src/seedsigner/gui/screens/tools_screens.py
+#: src/seedsigner/views/tools_views.py
+msgid "Text to Encode"
+msgstr "Testo da codificare"
+
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Transcribe Text QR"
+msgstr "Trascrivi QR testo"
+
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid ""
+"Optionally scan your transcribed text QR code to confirm that it reads "
+"back correctly."
+msgstr ""
+"Facoltativamente scansiona il QR testo trascritto per confermare che si "
+"rilegga correttamente."
+
+#. Insert the number of addrs displayed per screen (e.g. "Next 10")
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Next {}"
+msgstr "Prossimi {}"
+
+#: src/seedsigner/helpers/card_probe.py
+msgid "No card — returned home"
+msgstr "Nessuna card — tornato alla home"
+
+#: src/seedsigner/helpers/card_probe.py
+msgid "Install applet"
+msgstr "Installa applet"
+
+#: src/seedsigner/helpers/card_probe.py src/seedsigner/views/keycard_views.py
+msgid "Cancel"
+msgstr "Cancella"
+
+#: src/seedsigner/helpers/seedkeeper_utils.py
+msgid "Invalid PIN"
+msgstr "PIN non valido"
+
+#: src/seedsigner/helpers/seedkeeper_utils.py
+msgid "PIN must be between {} and {} characters."
+msgstr "Il PIN deve avere tra {} e {} caratteri."
+
+#: src/seedsigner/helpers/seedkeeper_utils.py
+#: src/seedsigner/views/settings_views.py
+msgid "Failure"
+msgstr "Errore"
+
+#: src/seedsigner/helpers/seedkeeper_utils.py
+msgid "Connecting to Card"
+msgstr "Connessione alla card"
+
+#: src/seedsigner/helpers/seedkeeper_utils.py
+msgid "Unable to Connect"
+msgstr "Impossibile connettersi"
+
+#: src/seedsigner/helpers/seedkeeper_utils.py
+msgid ""
+"Unable to find {} \n"
+"(or Applet)\n"
+"\n"
+"Try Re-Inserting Card"
+msgstr ""
+"Impossibile trovare {} \n"
+"(o l'applet)\n"
+"\n"
+"Prova a reinserire la card"
+
+#: src/seedsigner/helpers/seedkeeper_utils.py
+msgid "Verifying PIN"
+msgstr "Verifica del PIN"
+
+#: src/seedsigner/helpers/seedkeeper_utils.py
+#: src/seedsigner/views/tools_views.py
+msgid "Failed"
+msgstr "Fallito"
+
+#: src/seedsigner/helpers/seedkeeper_utils.py
+#: src/seedsigner/views/tools_views.py
+msgid "Success"
+msgstr "Successo"
+
+#: src/seedsigner/helpers/seedkeeper_utils.py
+msgid "Card Setup Complete"
+msgstr "Configurazione card completata"
+
+#: src/seedsigner/helpers/seedkeeper_utils.py
+msgid "Loading"
+msgstr "Caricamento"
+
+#: src/seedsigner/helpers/seedkeeper_utils.py
+msgid "Uninstalling"
+msgstr "Disinstallazione"
+
+#: src/seedsigner/helpers/seedkeeper_utils.py
+msgid "Mis-Installed Applet Uninstalled"
+msgstr "Applet mal installata disinstallata"
+
+#: src/seedsigner/helpers/seedkeeper_utils.py
+msgid "Mis-Installed Applet Uninstalled, try uninstalling it again..."
+msgstr "Applet mal installata disinstallata, prova a disinstallarla di nuovo..."
+
+#: src/seedsigner/helpers/keycard/ui_helpers.py
+msgid "Card error"
+msgstr "Errore scheda"
+
+#: src/seedsigner/helpers/keycard/ui_helpers.py
+msgid "No reader"
+msgstr "Nessun lettore"
+
+#: src/seedsigner/helpers/keycard/ui_helpers.py
+msgid ""
+"Connect a card reader\n"
+"and retry."
+msgstr ""
+"Collega un lettore\n"
+"e riprova."
+
+#: src/seedsigner/helpers/keycard/ui_helpers.py
+msgid "No card"
+msgstr "Nessuna scheda"
+
+#: src/seedsigner/helpers/keycard/ui_helpers.py
+msgid "Insert a card and retry."
+msgstr "Inserisci una scheda e riprova."
+
+#: src/seedsigner/helpers/keycard/ui_helpers.py
+msgid "Card changed"
+msgstr "Scheda cambiata"
+
+#: src/seedsigner/helpers/keycard/ui_helpers.py
+msgid ""
+"Pair the inserted card\n"
+"first."
+msgstr ""
+"Accoppia prima la\n"
+"scheda inserita."
+
+#: src/seedsigner/helpers/keycard/ui_helpers.py
+#: src/seedsigner/views/keycard_views.py
+msgid "Not initialised"
+msgstr "Non inizializzata"
+
+#: src/seedsigner/helpers/keycard/ui_helpers.py
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"Run Setup ›\n"
+"Initialise card first."
+msgstr ""
+"Esegui Setup ›\n"
+"Inizializza prima la scheda."
+
+#: src/seedsigner/helpers/keycard/ui_helpers.py
+msgid "No key on card"
+msgstr "Nessuna chiave su scheda"
+
+#: src/seedsigner/helpers/keycard/ui_helpers.py
+msgid ""
+"Generate key or\n"
+"import seed first."
+msgstr ""
+"Genera una chiave o\n"
+"importa un seed prima."
+
+#: src/seedsigner/helpers/keycard/ui_helpers.py
+#: src/seedsigner/views/keycard_views.py
+msgid "Wrong password"
+msgstr "Password errata"
+
+#: src/seedsigner/helpers/keycard/ui_helpers.py
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"Pairing password did\n"
+"not match this card."
+msgstr ""
+"La password di accoppiamento\n"
+"non corrisponde a questa scheda."
+
+#: src/seedsigner/helpers/keycard/ui_helpers.py
+msgid "Secure channel"
+msgstr "Canale sicuro"
+
+#: src/seedsigner/helpers/keycard/ui_helpers.py
+msgid ""
+"SC open failed:\n"
+"{}"
+msgstr ""
+"Apertura SC fallita:\n"
+"{}"
+
+#: src/seedsigner/helpers/keycard/ui_helpers.py
+msgid "Storage error"
+msgstr "Errore archiviazione"
+
+#: src/seedsigner/helpers/keycard/ui_helpers.py
+msgid "Applet not found"
+msgstr "Applet non trovato"
+
+#: src/seedsigner/helpers/keycard/ui_helpers.py
+msgid ""
+"Try Manage › Instances\n"
+"to switch active AID."
+msgstr ""
+"Prova Gestisci › Istanze\n"
+"per cambiare AID attivo."
+
+#: src/seedsigner/helpers/keycard/ui_helpers.py
+msgid "Card refused"
+msgstr "Scheda ha rifiutato"
+
+#: src/seedsigner/helpers/keycard/ui_helpers.py
+msgid ""
+"Auth/condition not met\n"
+"(SW={})."
+msgstr ""
+"Auth/condition not met\n"
+"(SW={})."
+
+#. {} is the number of remaining PIN attempts
+#: src/seedsigner/helpers/keycard/ui_helpers.py
+msgid "Wrong PIN"
+msgstr "PIN errato"
+
+#: src/seedsigner/helpers/keycard/ui_helpers.py
+msgid "{} tries left."
+msgstr "{} tentativi rimasti."
+
+#: src/seedsigner/helpers/keycard/ui_helpers.py
+#: src/seedsigner/views/keycard_views.py
+msgid "Not supported"
+msgstr "Non supportato"
+
+#: src/seedsigner/helpers/keycard/ui_helpers.py
+msgid ""
+"Card does not implement\n"
+"this op."
+msgstr ""
+"La scheda non implementa\n"
+"questa operazione."
+
+#: src/seedsigner/helpers/keycard/ui_helpers.py
+msgid ""
+"SW={}\n"
+"{}"
+msgstr ""
+"SW={}\n"
+"{}"
+
+#: src/seedsigner/models/settings.py
+msgid "Disabling USB Ports"
+msgstr "Disattivazione porte USB"
+
+#: src/seedsigner/models/settings.py
+msgid "Enabling USB Ports"
+msgstr "Attivazione porte USB"
+
+#: src/seedsigner/models/settings.py src/seedsigner/views/tools_views.py
+msgid "Notice"
+msgstr "Avviso"
+
+#: src/seedsigner/models/settings.py
+msgid ""
+"Enabling USB ports on this device requires a device restart (Full power "
+"cycle)"
+msgstr ""
+"Attivare le porte USB su questo dispositivo richiede un riavvio "
+"(spegnimento completo)"
+
+#: src/seedsigner/models/settings.py
+msgid "Unable to detect RPi Model"
+msgstr "Impossibile rilevare il modello RPi"
+
+#: src/seedsigner/models/settings.py
+msgid ""
+"Enabling USB ports on this device likely requires a restart (Full power "
+"cycle)"
+msgstr ""
+"Attivare le porte USB su questo dispositivo richiede probabilmente un "
+"riavvio (spegnimento completo)"
+
+#: src/seedsigner/models/settings.py
+msgid "Starting OpenCT"
+msgstr "Avvio di OpenCT"
+
+#: src/seedsigner/models/settings.py
+msgid "Stopping OpenCT"
+msgstr "Arresto di OpenCT"
+
+#: src/seedsigner/models/settings.py
+msgid "Enabling PN532"
+msgstr "Attivazione PN532"
+
+#: src/seedsigner/models/settings.py
+msgid "Disabling PN532"
+msgstr "Disattivazione PN532"
+
+#: src/seedsigner/models/settings.py src/seedsigner/views/settings_views.py
+msgid "Restarting PCSC"
+msgstr "Riavvio PCSC"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Enabled"
+msgstr "Abilitato"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Disabled"
+msgstr "Disabilitato"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Prompt"
+msgstr "Prompt"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Required"
+msgstr "Obbligatorio"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "BTC"
+msgstr "BTC"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Threshold at 0.01"
+msgstr "Soglia a 0.01"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "BTC | sats hybrid"
+msgstr "BTC | sats"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "0°"
+msgstr "0°"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "90°"
+msgstr "90°"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "180°"
+msgstr "180°"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "270°"
+msgstr "270°"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Camera 0"
+msgstr "Camera 0"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Camera 1"
+msgstr "Camera 1"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Camera 2"
+msgstr "Camera 2"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Camera 3"
+msgstr "Camera 3"
+
+#. QR code density option: Low, Medium, High
+#: src/seedsigner/models/settings_definition.py
+msgid "Low"
+msgstr "Bassa"
+
+#. QR code density option: Low, Medium, High
+#: src/seedsigner/models/settings_definition.py
+msgid "Medium"
+msgstr "Media"
+
+#. QR code density option: Low, Medium, High
+#: src/seedsigner/models/settings_definition.py
+msgid "High"
+msgstr "Alta"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Mainnet"
+msgstr "Mainnet"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Testnet"
+msgstr "Testnet"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Regtest"
+msgstr "Regtest"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Store Settings on SD card"
+msgstr "Salva le Impostazioni nella SD card"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Insert SD card to enable"
+msgstr "Inserisci SD card per abilitare"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "5 minutes"
+msgstr "5 minuti"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "10 minutes"
+msgstr "10 minuti"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "15 minutes"
+msgstr "15 minuti"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "30 minutes"
+msgstr "30 minuti"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Off"
+msgstr "Off"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "1 minute"
+msgstr "1 minuto"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "2 minutes"
+msgstr "2 minuti"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Aezeed Passphrase"
+msgstr "Aezeed Passphrase"
+
+#. Terminology used by Electrum seeds; equivalent to bip39 passphrase
+#: src/seedsigner/models/settings_definition.py
+msgid "Custom Extension"
+msgstr "Estensione personalizzata"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Prefer CompactSeedQR"
+msgstr "Preferisci CompactSeedQR"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Prefer EncryptedQR"
+msgstr "Preferisci EncryptedQR"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Ask each time"
+msgstr "Chiedi ogni volta"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Language"
+msgstr "Lingua"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Mnemonic language"
+msgstr "Lingua della mnemonica"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Persistent settings"
+msgstr "Impostazioni persistenti"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Denomination display"
+msgstr "Visualizzazione denominazione"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Smartcard Interfaces"
+msgstr "Interfacce smartcard"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Cache Smartcard Pin"
+msgstr "Memorizza PIN smartcard"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Off (default): re-enter PIN after returning Home. On: keep PIN in RAM until reboot for fewer prompts."
+msgstr "Disattivato (predef.): richiede il PIN al ritorno alla Home. Attivato: tiene il PIN in RAM fino al riavvio."
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Auto PIN on insert"
+msgstr "PIN automatico all'inserimento"
+
+#: src/seedsigner/models/settings_definition.py
+msgid ""
+"Show a toast notification when a recognised card is inserted, prompting "
+"you to enter the PIN once. Off by default for low-profile use."
+msgstr ""
+"Mostra una notifica toast quando una card riconosciuta viene inserita, "
+"chiedendoti di inserire il PIN una volta. Disattivato per impostazione "
+"predefinita per un uso discreto."
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Smartcard PIN Attempts"
+msgstr "Tentativi PIN smartcard"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Wipe Timer"
+msgstr "Timer cancellazione"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Screensaver"
+msgstr "Salvaschermo"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Bitcoin network"
+msgstr "Rete Bitcoin"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "QR code density"
+msgstr "Densità QR code"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Xpub export"
+msgstr "Esporta Xpub"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Seed word lengths"
+msgstr "Lunghezze parole seed"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Show xpub details"
+msgstr "Mostra dettagli xpub"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "BIP32 account prompt"
+msgstr "Richiesta conto BIP32"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Camera rotation"
+msgstr "Rotazione telecamera"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Dense QR scan"
+msgstr "Scansione QR densi"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Higher capture res + sharpening for dense QR"
+msgstr "Risoluzione più alta + nitidezza per QR densi"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "PlaintextQR"
+msgstr "PlaintextQR"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "EncryptedQR"
+msgstr "EncryptedQR"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Encryption Mode"
+msgstr "Modalità di cifratura"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Encryption Iter.(PBKDF2)"
+msgstr "Iter. cifratura (PBKDF2)"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Ambiguous QR"
+msgstr "QR ambiguo"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "WIF keys"
+msgstr "Chiavi WIF"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "BIP38 keys"
+msgstr "Chiavi BIP38"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "BitBox02 backups"
+msgstr "BitBox02 backups"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Passport backups"
+msgstr "Passport backups"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "TAPSIGNER backups"
+msgstr "TAPSIGNER backups"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Smartcard support"
+msgstr "Supporto smartcard"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Show privacy warnings"
+msgstr "Mostra avvisi sulla privacy"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Show dire warnings"
+msgstr "Mostra avvisi gravi"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Show QR brightness tips"
+msgstr "Mostra suggerimenti sulla luminosità del QR"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Show partner logos"
+msgstr "Mostra loghi dei partner"
+
+#. Hardware settings option to specify the screen driver (e.g. st7789 vs
+#. ili9341)
+#: src/seedsigner/models/settings_definition.py
+msgid "Display type"
+msgstr "Tipo display"
+
+#. Hardware settings option to invert how the screen driver displays colors.
+#: src/seedsigner/models/settings_definition.py
+msgid "Invert colors"
+msgstr "Inverti colori"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Camera source"
+msgstr "Sorgente fotocamera"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "QR background color"
+msgstr "Colore sfondo QR"
+
+#: src/seedsigner/models/settings_definition.py
+#: src/seedsigner/views/tools_views.py
+msgid "Stealth boot"
+msgstr "Avvio stealth"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Stealth unlock sequence"
+msgstr "Sequenza di sblocco stealth"
+
+#: src/seedsigner/views/desktop_warning.py
+msgid "Desktop Mode"
+msgstr "Modalità desktop"
+
+#: src/seedsigner/views/desktop_warning.py
+#: src/seedsigner/views/developer_os_warning.py
+msgid "Not secure!"
+msgstr "Non sicuro!"
+
+#: src/seedsigner/views/desktop_warning.py
+msgid ""
+"This desktop version is for testing only.\n"
+"Do NOT use with real seeds or private keys."
+msgstr ""
+"Questa versione desktop è solo per test.\n"
+"NON usarla con seed o chiavi private reali."
+
+#: src/seedsigner/views/developer_os_warning.py
+msgid "Development Build"
+msgstr "Build di sviluppo"
+
+#: src/seedsigner/views/developer_os_warning.py
+msgid ""
+"This SeedSignerOS development build is for testing only.\n"
+"Do NOT use with real seeds or private keys."
+msgstr ""
+"Questa build di sviluppo SeedSignerOS è solo per test.\n"
+"NON usarla con seed o chiavi private reali."
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Legacy / EIP-155"
+msgstr "Legacy / EIP-155"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "EIP-712 typed data"
+msgstr "EIP-712 typed data"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Personal sign"
+msgstr "Firma personale"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "EIP-1559"
+msgstr "EIP-1559"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Ethereum"
+msgstr "Ethereum"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Bitcoin"
+msgstr "Bitcoin"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "This instance"
+msgstr "Questa istanza"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Instances"
+msgstr "Istanze"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Card"
+msgstr "Scheda"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Lock card"
+msgstr "Blocca scheda"
+
+#: src/seedsigner/views/keycard_views.py src/seedsigner/views/view.py
+msgid "Keycard"
+msgstr "Keycard"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Keycard · {}"
+msgstr "Keycard · {}"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Generate key"
+msgstr "Genera chiave"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Import seed"
+msgstr "Importa seed"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Change PIN"
+msgstr "Cambia PIN"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Pairing"
+msgstr "Accoppiamento"
+
+#: src/seedsigner/views/keycard_views.py src/seedsigner/views/view.py
+msgid "Factory reset"
+msgstr "Reset di fabbrica"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "This instance · {}"
+msgstr "Questa istanza · {}"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Card locked"
+msgstr "Scheda bloccata"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"PIN cleared.\n"
+"You'll be asked for it next time."
+msgstr ""
+"PIN azzerato.\n"
+"Ti verrà richiesto la prossima volta."
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Pair card"
+msgstr "Accoppia scheda"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Remove pairing"
+msgstr "Rimuovi accoppiamento"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Pairing · {}"
+msgstr "Accoppiamento · {}"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Initialise card"
+msgstr "Inizializza scheda"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Status"
+msgstr "Stato"
+
+#: src/seedsigner/views/keycard_views.py src/seedsigner/views/tools_views.py
+msgid "Uninstall applet"
+msgstr "Disinstalla applet"
+
+#: src/seedsigner/views/keycard_views.py src/seedsigner/views/tools_views.py
+msgid "Uninstall"
+msgstr "Disinstalla"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"Delete the Keycard package?\n"
+"Master key will be lost."
+msgstr ""
+"Eliminare il pacchetto Keycard?\n"
+"La chiave master andrà persa."
+
+#: src/seedsigner/views/keycard_views.py src/seedsigner/views/tools_views.py
+msgid "Delete"
+msgstr "Elimina"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Keycard support unavailable"
+msgstr "Supporto Keycard non disponibile"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Card not reachable"
+msgstr "Scheda non raggiungibile"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "ISD keys required"
+msgstr "Chiavi ISD richieste"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"Default ISD keys missing.\n"
+"Wipe via PC or full Factory Reset."
+msgstr ""
+"Chiavi ISD predefinite assenti.\n"
+"Cancella da PC o reset di fabbrica completo."
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Uninstall failed"
+msgstr "Disinstallazione fallita"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Keycard package removed."
+msgstr "Pacchetto Keycard rimosso."
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"Applet v{}\n"
+"Pairing slots: {}\n"
+"Key on card: {}"
+msgstr ""
+"Applet v{}\n"
+"Slot accoppiamento: {}\n"
+"Chiave su scheda: {}"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "yes"
+msgstr "sì"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "no"
+msgstr "no"
+
+#: src/seedsigner/views/keycard_views.py src/seedsigner/views/view.py
+msgid "Wipe"
+msgstr "Cancella"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Wipe {}?"
+msgstr "Cancellare {}?"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"Erases the key & PIN on\n"
+"this instance. Cannot undo."
+msgstr ""
+"Cancella la chiave e il PIN\n"
+"di questa istanza. Irreversibile."
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"Update applet, or use\n"
+"keycard-shell on PC."
+msgstr ""
+"Aggiorna l'applet o usa\n"
+"keycard-shell su PC."
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Reset failed"
+msgstr "Reset fallito"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "{} wiped"
+msgstr "{} cancellata"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Run Init to reuse it."
+msgstr "Esegui Init per riusarla."
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Skip"
+msgstr "Salta"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Set duress PIN"
+msgstr "Imposta PIN coercizione"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Already initialised"
+msgstr "Già inizializzata"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"Use Factory reset to\n"
+"wipe and re-init."
+msgstr ""
+"Usa Reset di fabbrica per\n"
+"cancellare e re-inizializzare."
+
+#: src/seedsigner/views/keycard_views.py
+msgid "PINs differ"
+msgstr "PIN differiscono"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Try again."
+msgstr "Riprova."
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Retry"
+msgstr "Riprova"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Duress PIN"
+msgstr "PIN coercizione"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Duress PINs differ"
+msgstr "PIN coercizione differiscono"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Must differ"
+msgstr "Deve differire"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"Duress PIN can't equal\n"
+"your main PIN."
+msgstr ""
+"Il PIN coercizione non può\n"
+"essere uguale al PIN principale."
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Write this down"
+msgstr "Annota questo"
+
+#. {} is the card's PUK code (12 digits)
+#: src/seedsigner/views/keycard_views.py
+msgid "PUK  {}"
+msgstr "PUK  {}"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "INIT failed"
+msgstr "INIT fallito"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Initialised"
+msgstr "Inizializzata"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"PIN/PUK set.\n"
+"Now load a seed."
+msgstr ""
+"PIN/PUK impostati.\n"
+"Ora carica un seed."
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Current PIN"
+msgstr "PIN attuale"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Change PIN failed"
+msgstr "Cambio PIN fallito"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Mismatch"
+msgstr "Non corrispondono"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"New PINs do not\n"
+"match. Retry."
+msgstr ""
+"I nuovi PIN non\n"
+"corrispondono. Riprova."
+
+#: src/seedsigner/views/keycard_views.py
+msgid "PIN changed"
+msgstr "PIN cambiato"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"New PIN active.\n"
+"Use it on next op."
+msgstr ""
+"Nuovo PIN attivo.\n"
+"Usalo alla prossima operazione."
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Already paired"
+msgstr "Già accoppiata"
+
+#. {} is the number of free pairing slots on the card
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"Paired this session.\n"
+"{} slot free on card."
+msgid_plural ""
+"Paired this session.\n"
+"{} slots free on card."
+msgstr[0] ""
+"Accoppiata in questa sessione.\n"
+"{} slot libero su scheda."
+msgstr[1] ""
+"Accoppiata in questa sessione.\n"
+"{} slot liberi su scheda."
+msgstr[2] ""
+"Accoppiata in questa sessione.\n"
+"{} slot liberi su scheda."
+
+#: src/seedsigner/views/keycard_views.py
+msgid "No free slots"
+msgstr "Nessuno slot libero"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"Card is full. Unpair on a\n"
+"paired device, or reset."
+msgstr ""
+"Scheda piena. Disaccoppia su un\n"
+"dispositivo accoppiato, o resetta."
+
+#: src/seedsigner/views/keycard_views.py
+msgid "PAIR failed"
+msgstr "PAIR fallito"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Bad password"
+msgstr "Password errata"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "loaded from disk"
+msgstr "caricata da disco"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "saved for next boot"
+msgstr "salvata per il prossimo avvio"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "default password"
+msgstr "password predefinita"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "custom password"
+msgstr "password personalizzata"
+
+#. {} are slot index, free-slot count, password kind, detail line
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"Slot {} ({} free)\n"
+"{}\n"
+"{}"
+msgstr ""
+"Slot {} ({} liberi)\n"
+"{}\n"
+"{}"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Paired"
+msgstr "Accoppiata"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Unpair this card"
+msgstr "Disaccoppia questa scheda"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Remove all (local)"
+msgstr "Rimuovi tutto (locale)"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Card legacy"
+msgstr "Scheda legacy"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Card {}…{}"
+msgstr "Scheda {}…{}"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Remove ({} saved)"
+msgstr "Rimuovi ({} salvati)"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"Forgets ephemeral\n"
+"pairing for this boot."
+msgstr ""
+"Dimentica l'accoppiamento\n"
+"effimero di questo avvio."
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"Frees the card slot\n"
+"and deletes local copy."
+msgstr ""
+"Libera lo slot della scheda\n"
+"ed elimina la copia locale."
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Unpair card?"
+msgstr "Disaccoppiare la scheda?"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Unpair"
+msgstr "Disaccoppia"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "UNPAIR failed"
+msgstr "UNPAIR fallito"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"Card slot stays in use.\n"
+"Remove local only?"
+msgstr ""
+"Lo slot della scheda resta in uso.\n"
+"Rimuovere solo il locale?"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Remove local"
+msgstr "Rimuovi locale"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Removed local"
+msgstr "Locale rimosso"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Unpaired"
+msgstr "Disaccoppiata"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Slot freed; local removed."
+msgstr "Slot liberato; locale rimosso."
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Remove all?"
+msgstr "Rimuovere tutto?"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"Local only. Slots stay\n"
+"used on the cards."
+msgstr ""
+"Solo locale. Gli slot restano\n"
+"in uso sulle schede."
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Remove all"
+msgstr "Rimuovi tutto"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Removed"
+msgstr "Rimosso"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Removed {} pairing."
+msgid_plural "Removed {} pairings."
+msgstr[0] "Rimosso {} accoppiamento."
+msgstr[1] "Rimossi {} accoppiamenti."
+msgstr[2] "Rimossi {} accoppiamenti."
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Remove?"
+msgstr "Rimuovere?"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"Local only.\n"
+"{}"
+msgstr ""
+"Solo locale.\n"
+"{}"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Remove"
+msgstr "Rimuovi"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Not found"
+msgstr "Non trovato"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Saved pairing removed."
+msgstr "Accoppiamento salvato rimosso."
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Already gone."
+msgstr "Già rimosso."
+
+#: src/seedsigner/views/keycard_views.py src/seedsigner/views/tools_views.py
+msgid "Continue"
+msgstr "Continua"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Generate seed?"
+msgstr "Generare il seed?"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"Card generates a new\n"
+"seed and loads it on-card."
+msgstr ""
+"La scheda genera un nuovo\n"
+"seed e lo carica on-card."
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Scan SeedQR"
+msgstr "Scansiona un SeedQR"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Type 12 words"
+msgstr "Digita 12 parole"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Type 24 words"
+msgstr "Digita 24 parole"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Import hex (NGRAVE)"
+msgstr "Importa hex (NGRAVE)"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Push to card"
+msgstr "Invia alla scheda"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "No passphrase"
+msgstr "Nessuna passphrase"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Set passphrase"
+msgstr "Imposta passphrase"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Import to card?"
+msgstr "Importare sulla scheda?"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"Seed leaves device once,\n"
+"encrypted to card."
+msgstr ""
+"Il seed lascia il dispositivo una\n"
+"volta, cifrato per la scheda."
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Source"
+msgstr "Sorgente"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Invalid seed"
+msgstr "Seed non valido"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Passphrase?"
+msgstr "Passphrase?"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Bad passphrase"
+msgstr "Passphrase errata"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Derive failed"
+msgstr "Derivazione fallita"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Push?"
+msgstr "Inviare?"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"Master fp:\n"
+"{}\n"
+"Verify before push."
+msgstr ""
+"Fp master:\n"
+"{}\n"
+"Verifica prima dell'invio."
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Push failed"
+msgstr "Invio fallito"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Wallet imported"
+msgstr "Wallet importato"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"Master fp:\n"
+"{}"
+msgstr ""
+"Fp master:\n"
+"{}"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Word #{}"
+msgstr "Parola #{}"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Scan QR"
+msgstr "Scansiona QR"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Type hex"
+msgstr "Digita hex"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Hex source"
+msgstr "Sorgente hex"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Enter hex"
+msgstr "Inserisci hex"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Invalid hex"
+msgstr "Hex non valido"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"Need 32 or 64 hex\n"
+"chars (12 or 24 words)."
+msgstr ""
+"Servono 32 o 64 caratteri\n"
+"hex (12 o 24 parole)."
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Scan hex QR"
+msgstr "Scansiona QR hex"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Generate new seed"
+msgstr "Genera nuovo seed"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Import existing seed"
+msgstr "Importa seed esistente"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Load seed"
+msgstr "Importa Seed"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "12 words"
+msgstr "12 parole"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "24 words"
+msgstr "24 parole"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Mnemonic length"
+msgstr "Lunghezza mnemonico"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Generate failed"
+msgstr "Generazione fallita"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Bad mnemonic"
+msgstr "Mnemonico errato"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Index {} out of range"
+msgstr "Indice {} fuori intervallo"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Verify words"
+msgstr "Verifica parole"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Verify Word #{}"
+msgstr "Verifica parola #{}"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Review words"
+msgstr "Rivedi parole"
+
+#: src/seedsigner/views/keycard_views.py src/seedsigner/views/settings_views.py
+#: src/seedsigner/views/tools_views.py
+msgid "Try Again"
+msgstr "Riprova"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Verification error"
+msgstr "Errore di verifica"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Wrong word!"
+msgstr "Parola errata!"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Seed loaded"
+msgstr "Seed caricato"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Save backup"
+msgstr "Salva backup"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Save to Seedkeeper?"
+msgstr "Salvare su Seedkeeper?"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "This card"
+msgstr "Questa scheda"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Another card"
+msgstr "Altra scheda"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Both"
+msgstr "Entrambe"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Save backup to"
+msgstr "Salva backup su"
+
+#: src/seedsigner/views/keycard_views.py src/seedsigner/views/view.py
+msgid "Install"
+msgstr "Installa"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "No Seedkeeper applet"
+msgstr "Nessun applet Seedkeeper"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Insert Seedkeeper"
+msgstr "Inserisci Seedkeeper"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"Remove Keycard, insert\n"
+"your Seedkeeper card."
+msgstr ""
+"Rimuovi la Keycard, inserisci\n"
+"la tua scheda Seedkeeper."
+
+#: src/seedsigner/views/keycard_views.py
+msgid "No Seedkeeper"
+msgstr "Nessuna Seedkeeper"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"No Seedkeeper card\n"
+"detected."
+msgstr ""
+"Nessuna scheda Seedkeeper\n"
+"rilevata."
+
+#: src/seedsigner/views/keycard_views.py
+msgid "BIP39 mnemonic"
+msgstr "Mnemonico BIP39"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "UTF-8 password"
+msgstr "Password UTF-8"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Backup format"
+msgstr "Formato backup"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Seedkeeper unavailable"
+msgstr "Seedkeeper non disponibile"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Secret label"
+msgstr "Etichetta segreto"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"Saving secret\n"
+"\n"
+"\n"
+"\n"
+"\n"
+"\n"
+msgstr ""
+"Salvataggio segreto\n"
+"\n"
+"\n"
+"\n"
+"\n"
+"\n"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Saved (1 of 2)"
+msgstr "Salvato (1 di 2)"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"Now back up to a\n"
+"separate card."
+msgstr ""
+"Ora esegui il backup su una\n"
+"scheda separata."
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Backup saved"
+msgstr "Backup salvato"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Mnemonic stored on Seedkeeper."
+msgstr "Mnemonico memorizzato su Seedkeeper."
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Export failed"
+msgstr "Esportazione fallita"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Parse fail"
+msgstr "Analisi fallita"
+
+#. {} are a step number and a hex response dump
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"Step {}\n"
+"resp={}"
+msgstr ""
+"Passo {}\n"
+"resp={}"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Bad pubkey"
+msgstr "Pubkey errata"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "ETH address"
+msgstr "Indirizzo ETH"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Deriving addrs..."
+msgstr "Derivazione indirizzi..."
+
+#. {} are an index and a hex response dump
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"Index {}\n"
+"resp={}"
+msgstr ""
+"Indice {}\n"
+"resp={}"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Wallets ({})"
+msgstr "Wallet ({})"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Inst {}"
+msgstr "Inst {}"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "List instances"
+msgstr "Elenca istanze"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Switch active"
+msgstr "Cambia attiva"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Create instance"
+msgstr "Crea istanza"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Delete instance"
+msgstr "Elimina istanza"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Active: {}"
+msgstr "Attiva: {}"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "GP failed"
+msgstr "GP fallito"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"No Keycard instances\n"
+"found."
+msgstr ""
+"Nessuna istanza Keycard\n"
+"trovata."
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Instances ({}/{})"
+msgstr "Istanze ({}/{})"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "No instances"
+msgstr "Nessuna istanza"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "No Keycard applet found on this card."
+msgstr "Nessun applet Keycard trovato su questa scheda."
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Pick active ({}/{})"
+msgstr "Scegli attiva ({}/{})"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Active set"
+msgstr "Attiva impostata"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Create"
+msgstr "Crea"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "GP open failed"
+msgstr "Apertura GP fallita"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Maximum reached"
+msgstr "Massimo raggiunto"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Delete one of the {} instances first."
+msgstr "Elimina prima una delle {} istanze."
+
+#: src/seedsigner/views/keycard_views.py
+msgid "No slot"
+msgstr "Nessuno slot"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Create instance?"
+msgstr "Creare l'istanza?"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"New AID:\n"
+"{}\n"
+"Card must have package."
+msgstr ""
+"Nuovo AID:\n"
+"{}\n"
+"La scheda deve avere il pacchetto."
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Install failed"
+msgstr "Installazione fallita"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Created"
+msgstr "Creata"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"AID:\n"
+"{}\n"
+"Run Init next."
+msgstr ""
+"AID:\n"
+"{}\n"
+"Esegui Init dopo."
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Nothing to delete."
+msgstr "Niente da eliminare."
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Delete?"
+msgstr "Eliminare?"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Confirm delete?"
+msgstr "Confermare l'eliminazione?"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"Delete instance\n"
+"{}?"
+msgstr ""
+"Eliminare l'istanza\n"
+"{}?"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Delete failed"
+msgstr "Eliminazione fallita"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Deleted"
+msgstr "Eliminata"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Scan ETH sign request"
+msgstr "Scansiona richiesta firma ETH"
+
+#: src/seedsigner/views/keycard_views.py src/seedsigner/views/scan_views.py
+msgid "Invalid request"
+msgstr "Richiesta non valida"
+
+#: src/seedsigner/views/keycard_views.py src/seedsigner/views/scan_views.py
+msgid "No data decoded"
+msgstr "Nessun dato decodificato"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "No request"
+msgstr "Nessuna richiesta"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Scan one first"
+msgstr "Scansionane prima una"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "type {}"
+msgstr "type {}"
+
+#. {} are tx-type label, chain name, derivation path, optional address
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"{}\n"
+"{}\n"
+"path {}{}"
+msgstr ""
+"{}\n"
+"{}\n"
+"path {}{}"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Sign ETH?"
+msgstr "Firmare ETH?"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Lost mid-flow"
+msgstr "Perso a metà flusso"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "(create)"
+msgstr "(crea)"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"to {}\n"
+"value {}\n"
+"gas {}"
+msgstr ""
+"a {}\n"
+"valore {}\n"
+"gas {}"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"message:\n"
+"{}"
+msgstr ""
+"messaggio:\n"
+"{}"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"EIP-712 typed data\n"
+"primary: {}"
+msgstr ""
+"Dati tipizzati EIP-712\n"
+"primario: {}"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"raw\n"
+"{}…"
+msgstr ""
+"raw\n"
+"{}…"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "TX details"
+msgstr "Dettagli TX"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Next page"
+msgstr "Pagina successiva"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Show data"
+msgstr "Mostra dati"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Decoded{}"
+msgstr "Decodificato{}"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Calldata digest"
+msgstr "Calldata digest"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "EIP-712 digest"
+msgstr "EIP-712 digest"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Domain hash"
+msgstr "Domain hash"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Message hash"
+msgstr "Message hash"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Digest {}/{}"
+msgstr "Digest {}/{}"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Data {}/{}"
+msgstr "Dati {}/{}"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Confirm & sign"
+msgstr "Conferma e firma"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"Sign with Keycard?\n"
+"chain {}  {}"
+msgstr ""
+"Firmare con Keycard?\n"
+"chain {}  {}"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Confirm"
+msgstr "Conferma"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Lost request mid-flow"
+msgstr "Richiesta persa a metà flusso"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Signing failed"
+msgstr "Firma fallita"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "No signature"
+msgstr "Nessuna firma"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Nothing to display"
+msgstr "Niente da mostrare"
+
+#: src/seedsigner/views/keycard_views.py src/seedsigner/views/scan_views.py
+#: src/seedsigner/views/view.py
+msgid "Insert a card first"
+msgstr "Inserisci prima una scheda"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Connect software wallet"
+msgstr "Collega wallet software"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Sign request"
+msgstr "Richiesta firma"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "View wallets"
+msgstr "Vedi wallet"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Ethereum · {}"
+msgstr "Ethereum · {}"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Sign message"
+msgstr "Firma messaggio"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Bitcoin · {}"
+msgstr "Bitcoin · {}"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "BTC support unavailable"
+msgstr "Supporto BTC non disponibile"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "BIP-84 xpub"
+msgstr "Xpub BIP-84"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"fp {}\n"
+"{}"
+msgstr ""
+"fp {}\n"
+"{}"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Show QR"
+msgstr "Mostra QR"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Scan PSBT"
+msgstr "Scansiona PSBT"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Expected a PSBT QR"
+msgstr "Atteso un QR PSBT"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Wrong QR type"
+msgstr "Tipo QR errato"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Expected a PSBT but got: "
+msgstr "Atteso un PSBT ma ricevuto: "
+
+#: src/seedsigner/views/keycard_views.py
+msgid "No PSBT"
+msgstr "Nessun PSBT"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Lost PSBT mid-flow"
+msgstr "PSBT perso a metà flusso"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Probe failed"
+msgstr "Sondaggio fallito"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "PSBT rejected"
+msgstr "PSBT rifiutato"
+
+#. PSBT summary — input count, output count (with sat total), fee in sats
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"in: {}\n"
+"out: {} ({} sat)\n"
+"fee: {} sat"
+msgstr ""
+"in: {}\n"
+"out: {} ({} sat)\n"
+"comm.: {} sat"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Sign"
+msgstr "Firma"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Scan message QR"
+msgstr "Scansiona QR messaggio"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Expected a text / signmessage QR"
+msgstr "Atteso un QR testo / signmessage"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Could not extract a message from the QR."
+msgstr "Impossibile estrarre un messaggio dal QR."
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Unsupported encoding"
+msgstr "Codifica non supportata"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Message must be UTF-8 text."
+msgstr "Il messaggio deve essere testo UTF-8."
+
+#: src/seedsigner/views/scan_views.py
+msgid "Scan a QR code"
+msgstr "Scansiona un QR code"
+
+#: src/seedsigner/views/scan_views.py
+msgid "QRCode not recognized or not yet supported."
+msgstr "QR code non riconosciuto o non ancora supportato."
+
+#: src/seedsigner/views/scan_views.py
+msgid "Wrong QR Type"
+msgstr "Tipologia QR errata"
+
+#: src/seedsigner/views/scan_views.py src/seedsigner/views/settings_views.py
+#: src/seedsigner/views/tools_views.py
+msgid "Back"
+msgstr "Indietro"
+
+#: src/seedsigner/views/scan_views.py
+msgid "Could not decode"
+msgstr "Impossibile decodificare"
+
+#: src/seedsigner/views/scan_views.py
+msgid "The scanned QR was empty or malformed."
+msgstr "Il QR scansionato era vuoto o malformato."
+
+#: src/seedsigner/views/scan_views.py
+msgid "Unsupported"
+msgstr "Non supportato"
+
+#: src/seedsigner/views/scan_views.py
+msgid "QR not supported"
+msgstr "QR non supportato"
+
+#: src/seedsigner/views/scan_views.py
+msgid "received {}"
+msgstr "ricevuto {}"
+
+#: src/seedsigner/views/scan_views.py
+msgid "Unrecognised QR"
+msgstr "QR non riconosciuto"
+
+#: src/seedsigner/views/scan_views.py
+msgid "Scanned QR code was not in a supported format."
+msgstr "Il codice QR scansionato non è in un formato supportato."
+
+#. This is on the opening splash screen, displayed above the Seedsigner logo
+#: src/seedsigner/views/screensaver.py
+msgid "An unofficial fork of:"
+msgstr "Un fork non ufficiale di:"
+
+#: src/seedsigner/views/settings_views.py src/seedsigner/views/tools_views.py
+msgid "Advanced"
+msgstr "Avanzate"
+
+#: src/seedsigner/views/settings_views.py
+msgid "Hardware"
+msgstr "Hardware"
+
+#: src/seedsigner/views/settings_views.py
+msgid "I/O test"
+msgstr "Test I/O"
+
+#: src/seedsigner/views/settings_views.py
+msgid "Test Smartcard"
+msgstr "Testa smartcard"
+
+#: src/seedsigner/views/settings_views.py
+msgid "List card readers"
+msgstr "Elenca lettori schede"
+
+#: src/seedsigner/views/settings_views.py
+msgid "Test NFC Scan"
+msgstr "Testa scansione NFC"
+
+#: src/seedsigner/views/settings_views.py
+msgid "Restart PCSC"
+msgstr "Riavvia PCSC"
+
+#: src/seedsigner/views/settings_views.py
+msgid "Battery info"
+msgstr "Info batteria"
+
+#: src/seedsigner/views/settings_views.py
+msgid "System info"
+msgstr "Info sistema"
+
+#: src/seedsigner/views/settings_views.py
+msgid "Load Backup Files"
+msgstr "Carica file di backup"
+
+#: src/seedsigner/views/settings_views.py
+msgid "Dev Options"
+msgstr "Opzioni sviluppatore"
+
+#: src/seedsigner/views/settings_views.py
+msgid "PBKDF2 Iterations Error"
+msgstr "Errore iterazioni PBKDF2"
+
+#: src/seedsigner/views/settings_views.py
+msgid "out of range"
+msgstr "fuori intervallo"
+
+#: src/seedsigner/views/settings_views.py
+msgid "Value must be between 1 and 50"
+msgstr "Il valore deve essere tra 1 e 50"
+
+#: src/seedsigner/views/settings_views.py
+msgid "Persistent Settings enabled. Settings saved to SD card."
+msgstr ""
+"Impostazioni persistenti abilitati. Tutte le impostazioni sono state "
+"salvate sulla SD card."
+
+#: src/seedsigner/views/settings_views.py
+msgid "Settings updated in temporary memory"
+msgstr "Impostazioni aggiornate per la sessione corrente."
+
+#: src/seedsigner/views/settings_views.py
+msgid "Found Readers:"
+msgstr "Lettori trovati:"
+
+#: src/seedsigner/views/settings_views.py
+msgid "No Smartcard readers found..."
+msgstr "Nessun lettore smartcard trovato..."
+
+#: src/seedsigner/views/settings_views.py
+msgid "PCSC Failure"
+msgstr "Errore PCSC"
+
+#: src/seedsigner/views/settings_views.py
+msgid "Unable to list readers (A restart may help, possibly faulty reader)"
+msgstr ""
+"Impossibile elencare i lettori (un riavvio può aiutare, lettore forse "
+"difettoso)"
+
+#: src/seedsigner/views/settings_views.py
+msgid ""
+"Unable to establish PCSC context(A restart may help, possibly faulty "
+"reader)"
+msgstr ""
+"Impossibile stabilire il contesto PCSC (un riavvio può aiutare, lettore "
+"forse difettoso)"
+
+#: src/seedsigner/views/settings_views.py
+msgid "Scanning for Smart Card"
+msgstr "Ricerca smart card"
+
+#: src/seedsigner/views/settings_views.py
+msgid "No Smartcard detected..."
+msgstr "Nessuna smartcard rilevata..."
+
+#: src/seedsigner/views/settings_views.py
+msgid "Found SmartCard"
+msgstr "Smartcard trovata"
+
+#: src/seedsigner/views/settings_views.py
+msgid "Scanning for NFC Tag"
+msgstr "Ricerca tag NFC"
+
+#: src/seedsigner/views/settings_views.py
+msgid "NFC Failure"
+msgstr "Errore NFC"
+
+#: src/seedsigner/views/settings_views.py
+msgid ""
+"ERROR: Unable to open NFC device. \n"
+"(May not be connected)"
+msgstr ""
+"ERRORE: impossibile aprire il dispositivo NFC. \n"
+"(Forse non collegato)"
+
+#: src/seedsigner/views/settings_views.py
+msgid "ERROR: Unable to init NFC device."
+msgstr "ERRORE: impossibile inizializzare il dispositivo NFC."
+
+#: src/seedsigner/views/settings_views.py
+msgid "Found NFC Tag"
+msgstr "Tag NFC trovato"
+
+#: src/seedsigner/views/settings_views.py
+msgid "NFC Conflict"
+msgstr "Conflitto NFC"
+
+#: src/seedsigner/views/settings_views.py
+msgid "Can't scan when IFD-NFC Active"
+msgstr "Impossibile scansionare con IFD-NFC attivo"
+
+#: src/seedsigner/views/settings_views.py
+msgid "Warning"
+msgstr "Avviso"
+
+#: src/seedsigner/views/settings_views.py
+msgid "Warning: No NFC Tag Detected."
+msgstr "Avviso: nessun tag NFC rilevato."
+
+#: src/seedsigner/views/settings_views.py
+msgid "No compatible battery monitor detected"
+msgstr "Nessun monitor batteria compatibile rilevato"
+
+#: src/seedsigner/views/settings_views.py src/seedsigner/views/tools_views.py
+msgid "Unavailable"
+msgstr "Non disponibile"
+
+#: src/seedsigner/views/stealth_views.py
+msgid "Toggle on/off"
+msgstr "Attiva/disattiva"
+
+#: src/seedsigner/views/stealth_views.py
+msgid "Edit unlock sequence"
+msgstr "Modifica sequenza di sblocco"
+
+#: src/seedsigner/views/stealth_views.py
+msgid "View current"
+msgstr "Vedi attuale"
+
+#: src/seedsigner/views/stealth_views.py
+msgid "Stealth: {}"
+msgstr "Stealth: {}"
+
+#: src/seedsigner/views/stealth_views.py
+msgid "ON"
+msgstr "ON"
+
+#: src/seedsigner/views/stealth_views.py
+msgid "OFF"
+msgstr "OFF"
+
+#: src/seedsigner/views/stealth_views.py
+msgid "No sequence"
+msgstr "Nessuna sequenza"
+
+#: src/seedsigner/views/stealth_views.py
+msgid ""
+"Record an unlock\n"
+"sequence first."
+msgstr ""
+"Registra prima una\n"
+"sequenza di sblocco."
+
+#: src/seedsigner/views/stealth_views.py
+msgid "Unlock sequence"
+msgstr "Sequenza di sblocco"
+
+#: src/seedsigner/views/stealth_views.py
+msgid "Record sequence"
+msgstr "Registra sequenza"
+
+#: src/seedsigner/views/stealth_views.py
+msgid "Press up to 12 keys."
+msgstr "Premi fino a 12 tasti."
+
+#: src/seedsigner/views/stealth_views.py
+msgid "Press joystick to save."
+msgstr "Premi il joystick per salvare."
+
+#: src/seedsigner/views/stealth_views.py
+msgid "(none yet)"
+msgstr "(ancora nessuna)"
+
+#. {} is the keys recorded so far
+#: src/seedsigner/views/stealth_views.py
+msgid "Got: {}"
+msgstr "Ottenuto: {}"
+
+#: src/seedsigner/views/stealth_views.py
+msgid "Too short"
+msgstr "Troppo corta"
+
+#: src/seedsigner/views/stealth_views.py
+msgid "Too long"
+msgstr "Troppo lunga"
+
+#: src/seedsigner/views/stealth_views.py
+msgid "Need 3..{} keys, got {}."
+msgstr "Servono 3..{} tasti, ottenuti {}."
+
+#: src/seedsigner/views/stealth_views.py
+msgid "Save"
+msgstr "Salva"
+
+#: src/seedsigner/views/stealth_views.py
+msgid "Discard"
+msgstr "Scarta"
+
+#: src/seedsigner/views/stealth_views.py
+msgid "Invalid"
+msgstr "Non valida"
+
+#: src/seedsigner/views/stealth_views.py
+msgid "Save sequence?"
+msgstr "Salvare la sequenza?"
+
+#: src/seedsigner/views/stealth_views.py
+msgid "Save this sequence?"
+msgstr "Salvare questa sequenza?"
+
+#: src/seedsigner/views/stealth_views.py
+msgid "Saved"
+msgstr "Salvata"
+
+#: src/seedsigner/views/stealth_views.py
+msgid "New unlock sequence stored."
+msgstr "Nuova sequenza di sblocco memorizzata."
+
+#: src/seedsigner/views/tools_views.py
+msgid "Text QR Code"
+msgstr "QR di testo"
+
+#: src/seedsigner/views/tools_views.py
+msgid "MicroSD Tools"
+msgstr "Strumenti MicroSD"
+
+#: src/seedsigner/views/tools_views.py src/seedsigner/views/view.py
+msgid "Tools"
+msgstr "Strumenti"
+
+#: src/seedsigner/views/tools_views.py
+msgid "microSD card not detected"
+msgstr "Scheda microSD non rilevata"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Insert a microSD card to save the discharge log."
+msgstr "Inserisci una scheda microSD per salvare il log di scarica."
+
+#: src/seedsigner/views/tools_views.py
+msgid "Unable to load network information."
+msgstr "Impossibile caricare le informazioni di rete."
+
+#: src/seedsigner/views/tools_views.py
+msgid "Encode text"
+msgstr "Codifica testo"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Decode QR code"
+msgstr "Decodifica QR"
+
+#: src/seedsigner/views/tools_views.py
+msgid "View Free Space"
+msgstr "Vedi spazio libero"
+
+#: src/seedsigner/views/tools_views.py
+msgid "View Secrets on Card"
+msgstr "Vedi segreti su scheda"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Save Password to Card"
+msgstr "Salva password su scheda"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Delete Secret from Card"
+msgstr "Elimina segreto da scheda"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Clone Card Secrets"
+msgstr "Clona segreti scheda"
+
+#: src/seedsigner/views/tools_views.py src/seedsigner/views/view.py
+msgid "SeedKeeper"
+msgstr "SeedKeeper"
+
+#. {} are free space in bytes and the same in KiB
+#: src/seedsigner/views/tools_views.py
+msgid ""
+"{} bytes free\n"
+"({:.1f} KiB)"
+msgstr ""
+"{} byte liberi\n"
+"({:.1f} KiB)"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Seedkeeper Free Space"
+msgstr "Spazio libero Seedkeeper"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Insert Source Card"
+msgstr "Inserisci scheda sorgente"
+
+#: src/seedsigner/views/tools_views.py
+msgid ""
+"Reading Source Card\n"
+"\n"
+"\n"
+"\n"
+"\n"
+"\n"
+msgstr ""
+"Lettura scheda sorgente\n"
+"\n"
+"\n"
+"\n"
+"\n"
+"\n"
+
+#: src/seedsigner/views/tools_views.py
+msgid "No Exportable Secrets"
+msgstr "Nessun segreto esportabile"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Source card has no secrets that can be cloned."
+msgstr "La scheda sorgente non ha segreti clonabili."
+
+#: src/seedsigner/views/tools_views.py
+msgid "Secrets ready: {}"
+msgstr "Segreti pronti: {}"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Skipped (locked): {}"
+msgstr "Saltati (bloccati): {}"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Source Ready"
+msgstr "Sorgente pronta"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Insert Destination Card"
+msgstr "Inserisci scheda destinazione"
+
+#: src/seedsigner/views/tools_views.py
+msgid ""
+"Writing Destination Card\n"
+"\n"
+"\n"
+"\n"
+"\n"
+"\n"
+msgstr ""
+"Scrittura scheda destinazione\n"
+"\n"
+"\n"
+"\n"
+"\n"
+"\n"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Clone Complete"
+msgstr "Clonazione completata"
+
+#: src/seedsigner/views/tools_views.py
+msgid ""
+"Imported: {}\n"
+"Skipped Existing: {}\n"
+"Skipped Unsupported: {}"
+msgstr ""
+"Importati: {}\n"
+"Saltati esistenti: {}\n"
+"Saltati non supportati: {}"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Clone Failed"
+msgstr "Clonazione fallita"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Exit to Home"
+msgstr "Esci a Home"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Clone Another Card?"
+msgstr "Clonare un'altra scheda?"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Yes"
+msgstr "Sì"
+
+#: src/seedsigner/views/tools_views.py
+msgid "No"
+msgstr "No"
+
+#: src/seedsigner/views/tools_views.py
+msgid ""
+"Listing Secrets\n"
+"\n"
+"\n"
+"\n"
+"\n"
+"\n"
+msgstr ""
+"Elenco segreti\n"
+"\n"
+"\n"
+"\n"
+"\n"
+"\n"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Unnamed Secret"
+msgstr "Segreto senza nome"
+
+#: src/seedsigner/views/tools_views.py
+msgid "No Secrets to Load"
+msgstr "Nessun segreto da caricare"
+
+#: src/seedsigner/views/tools_views.py
+msgid "No Secrets to Load from Seedkeeper"
+msgstr "Nessun segreto da caricare da Seedkeeper"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Select Secret"
+msgstr "Seleziona segreto"
+
+#: src/seedsigner/views/tools_views.py
+msgid ""
+"Loading Secret\n"
+"\n"
+"\n"
+"\n"
+"\n"
+"\n"
+msgstr ""
+"Caricamento segreto\n"
+"\n"
+"\n"
+"\n"
+"\n"
+"\n"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Show as QR"
+msgstr "Mostra come QR"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Secret Label"
+msgstr "Etichetta segreto"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Secret Text"
+msgstr "Testo segreto"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Not Enough Space"
+msgstr "Spazio insufficiente"
+
+#: src/seedsigner/views/tools_views.py
+msgid ""
+"Saving Secret\n"
+"\n"
+"\n"
+"\n"
+"\n"
+"\n"
+msgstr ""
+"Salvataggio segreto\n"
+"\n"
+"\n"
+"\n"
+"\n"
+"\n"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Password Imported"
+msgstr "Password importata"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Password Import Failed"
+msgstr "Importazione password fallita"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Delete Confirmation"
+msgstr "Conferma eliminazione"
+
+#: src/seedsigner/views/tools_views.py
+msgid "This will delete this secret, this cannot be un-done"
+msgstr "Questo eliminerà il segreto, l'operazione è irreversibile"
+
+#: src/seedsigner/views/tools_views.py
+msgid ""
+"Deleting Secret\n"
+"\n"
+"\n"
+"\n"
+"\n"
+"\n"
+msgstr ""
+"Eliminazione segreto\n"
+"\n"
+"\n"
+"\n"
+"\n"
+"\n"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Secret Deleted"
+msgstr "Segreto eliminato"
+
+#: src/seedsigner/views/tools_views.py
+msgid "SeedKeeper Advanced"
+msgstr "SeedKeeper avanzate"
+
+#: src/seedsigner/views/tools_views.py
+msgid ""
+"Delete the SeedKeeper applet?\n"
+"User data will be lost."
+msgstr ""
+"Eliminare l'applet SeedKeeper?\n"
+"I dati utente andranno persi."
+
+#: src/seedsigner/views/tools_views.py
+msgid "Deleting SeedKeeper applet"
+msgstr "Eliminazione applet SeedKeeper"
+
+#: src/seedsigner/views/tools_views.py
+msgid "SeedKeeper applet removed."
+msgstr "Applet SeedKeeper rimosso."
+
+#: src/seedsigner/views/tools_views.py
+msgid "Flash Image"
+msgstr "Scrivi immagine"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Verify MicroSD"
+msgstr "Verifica MicroSD"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Wipe (Zero)"
+msgstr "Cancella (zero)"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Wipe (Random)"
+msgstr "Cancella (casuale)"
+
+#: src/seedsigner/views/tools_views.py
+msgid "MicroSD tools are not supported on desktop."
+msgstr "Gli strumenti MicroSD non sono supportati su desktop."
+
+#: src/seedsigner/views/tools_views.py
+msgid "WARNING"
+msgstr "ATTENZIONE"
+
+#: src/seedsigner/views/tools_views.py
+msgid "These tools read from the microSD card and may leak loaded secrets."
+msgstr ""
+"Questi strumenti leggono dalla scheda microSD e possono esporre segreti "
+"caricati."
+
+#: src/seedsigner/views/tools_views.py
+msgid "Select Image"
+msgstr "Seleziona immagine"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Insert MicroSD to be Flashed"
+msgstr "Inserisci la MicroSD da scrivere"
+
+#: src/seedsigner/views/tools_views.py
+msgid ""
+"Flashing MicroSD\n"
+"\n"
+"\n"
+"\n"
+"\n"
+"\n"
+msgstr ""
+"Scrittura MicroSD\n"
+"\n"
+"\n"
+"\n"
+"\n"
+"\n"
+
+#: src/seedsigner/views/tools_views.py
+msgid "MicroSD Flashed"
+msgstr "MicroSD scritta"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Verify"
+msgstr "Verifica"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Skip Verification"
+msgstr "Salta verifica"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Checksum Note"
+msgstr "Nota checksum"
+
+#: src/seedsigner/views/tools_views.py
+msgid ""
+"Verification test will\n"
+"only pass for freshly\n"
+"flashed (or Read Only)\n"
+"MicroSD Cards."
+msgstr ""
+"Il test di verifica avrà\n"
+"esito positivo solo per\n"
+"MicroSD appena scritte\n"
+"(o di sola lettura)."
+
+#: src/seedsigner/views/tools_views.py
+msgid ""
+"Reading MicroSD\n"
+"\n"
+"\n"
+"\n"
+"\n"
+"\n"
+msgstr ""
+"Lettura MicroSD\n"
+"\n"
+"\n"
+"\n"
+"\n"
+"\n"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Matched Checksum"
+msgstr "Checksum corrispondente"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Unfamilliar Checksum"
+msgstr "Checksum sconosciuto"
+
+#: src/seedsigner/views/tools_views.py
+msgid "64MB"
+msgstr "64MB"
+
+#: src/seedsigner/views/tools_views.py
+msgid "256MB"
+msgstr "256MB"
+
+#: src/seedsigner/views/tools_views.py
+msgid "All"
+msgstr "Tutto"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Wipe MicroSD"
+msgstr "Cancella MicroSD"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Select amount to wipe (Larger takes longer)"
+msgstr "Seleziona la quantità da cancellare (più grande richiede più tempo)"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Insert MicroSD to be Wiped"
+msgstr "Inserisci la MicroSD da cancellare"
+
+#: src/seedsigner/views/tools_views.py
+msgid ""
+"Wiping MicroSD\n"
+"\n"
+"\n"
+"\n"
+"\n"
+"\n"
+"(This takes a while)"
+msgstr ""
+"Cancellazione MicroSD\n"
+"\n"
+"\n"
+"\n"
+"\n"
+"\n"
+"(Richiede un po' di tempo)"
+
+#: src/seedsigner/views/tools_views.py
+msgid "MicroSD Wiped"
+msgstr "MicroSD cancellata"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Edit text"
+msgstr "Modifica testo"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Discard text"
+msgstr "Scarta testo"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Discard text?"
+msgstr "Scartare il testo?"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Your current text entry will be erased"
+msgstr "Il testo attualmente inserito verrà cancellato"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Generate QR code"
+msgstr "Genera QR"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Transcribe mode"
+msgstr "Modalità trascrizione"
+
+#: src/seedsigner/views/tools_views.py
+msgid "FullScreen mode"
+msgstr "Modalità schermo intero"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Transcribe Mode ?"
+msgstr "Modalità trascrizione?"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Confirm text QR code"
+msgstr "Conferma QR testo"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Confirm Text QR ?"
+msgstr "Confermare QR testo?"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Scan text QR code"
+msgstr "Scansiona QR testo"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Confirm Text QR Code"
+msgstr "Conferma QR testo"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Error!"
+msgstr "Errore!"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Your transcribed text QR code does not match your original text!"
+msgstr "Il QR testo trascritto non corrisponde al testo originale!"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Review text QR code"
+msgstr "Rivedi QR testo"
+
+#: src/seedsigner/views/tools_views.py
+msgid ""
+"Your transcribed text QR code successfully scanned and yielded the same "
+"text."
+msgstr ""
+"Il QR testo trascritto è stato scansionato con successo e ha prodotto lo "
+"stesso testo."
+
+#: src/seedsigner/views/tools_views.py
+msgid "Confirm Text QR"
+msgstr "Conferma QR testo"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Your transcribed text QR code could not be read!"
+msgstr "Impossibile leggere il QR testo trascritto!"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Invalid Text QR Code"
+msgstr "QR testo non valido"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Non UTF-8 data detected."
+msgstr "Rilevati dati non UTF-8."
+
+#: src/seedsigner/views/tools_views.py
+msgid "Edit & Generate QR code"
+msgstr "Modifica e genera QR"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Decoded Text"
+msgstr "Testo decodificato"
+
+#: src/seedsigner/views/view.py
+msgid "Scan"
+msgstr "Scansiona"
+
+#: src/seedsigner/views/view.py
+msgid "Cards"
+msgstr "Schede"
+
+#: src/seedsigner/views/view.py
+msgid "Factory reset card"
+msgstr "Reset di fabbrica scheda"
+
+#: src/seedsigner/views/view.py
+msgid "4 KB"
+msgstr "4 KB"
+
+#: src/seedsigner/views/view.py
+msgid "8 KB (default)"
+msgstr "8 KB (default)"
+
+#: src/seedsigner/views/view.py
+msgid "16 KB"
+msgstr "16 KB"
+
+#: src/seedsigner/views/view.py
+msgid "32 KB"
+msgstr "32 KB"
+
+#: src/seedsigner/views/view.py
+msgid "64 KB"
+msgstr "64 KB"
+
+#: src/seedsigner/views/view.py
+msgid ""
+"Applet bundle missing:\n"
+"{}\n"
+"Rebuild seedsigner-os."
+msgstr ""
+"Bundle applet mancante:\n"
+"{}\n"
+"Ricompila seedsigner-os."
+
+#: src/seedsigner/views/view.py
+msgid "Compatibility"
+msgstr "Compatibilità"
+
+#: src/seedsigner/views/view.py
+msgid ""
+"iOS Seedkeeper app crashes when\n"
+"Keycard shares a card."
+msgstr ""
+"L'app iOS Seedkeeper va in crash quando\n"
+"la Keycard condivide una scheda."
+
+#: src/seedsigner/views/view.py
+msgid "Install anyway"
+msgstr "Installa comunque"
+
+#: src/seedsigner/views/view.py
+msgid "Select Storage"
+msgstr "Seleziona archiviazione"
+
+#: src/seedsigner/views/view.py
+msgid "Installing seedkeeper"
+msgstr "Installazione seedkeeper"
+
+#: src/seedsigner/views/view.py
+msgid "seedkeeper install failed."
+msgstr "installazione seedkeeper fallita."
+
+#: src/seedsigner/views/view.py
+msgid "Unknown applet kind: {}"
+msgstr "Tipo applet sconosciuto: {}"
+
+#: src/seedsigner/views/view.py
+msgid ""
+"Seedkeeper applet installed.\n"
+"Set a device PIN to continue."
+msgstr ""
+"Applet Seedkeeper installato.\n"
+"Imposta un PIN dispositivo per continuare."
+
+#: src/seedsigner/views/view.py
+msgid "Set up"
+msgstr "Configura"
+
+#: src/seedsigner/views/view.py
+msgid "Preparing Keycard install"
+msgstr "Preparazione installazione Keycard"
+
+#: src/seedsigner/views/view.py
+msgid "Loading Keycard package"
+msgstr "Caricamento pacchetto Keycard"
+
+#: src/seedsigner/views/view.py
+msgid "Creating Keycard signing instance"
+msgstr "Creazione istanza di firma Keycard"
+
+#: src/seedsigner/views/view.py
+msgid ""
+"Keycard install failed at step {}/{}:\n"
+"{}."
+msgstr ""
+"Installazione Keycard fallita al passo {}/{}:\n"
+"{}."
+
+#: src/seedsigner/views/view.py
+msgid ""
+"Keycard applet installed.\n"
+"Set a device PIN to continue."
+msgstr ""
+"Applet Keycard installato.\n"
+"Imposta un PIN dispositivo per continuare."
+
+#: src/seedsigner/views/view.py
+msgid "Wipe every applet on this card?"
+msgstr "Cancellare ogni applet su questa scheda?"
+
+#: src/seedsigner/views/view.py
+msgid "GlobalPlatform stack missing:"
+msgstr "Stack GlobalPlatform mancante:"
+
+#: src/seedsigner/views/view.py
+msgid "No card detected."
+msgstr "Nessuna scheda rilevata."
+
+#: src/seedsigner/views/view.py
+msgid "Deleting {}"
+msgstr "Eliminazione {}"
+
+#: src/seedsigner/views/view.py
+msgid "No applets to delete."
+msgstr "Nessun applet da eliminare."
+
+#: src/seedsigner/views/view.py
+msgid "ISD keys rotated."
+msgstr "Chiavi ISD ruotate."
+
+#: src/seedsigner/views/view.py
+msgid "Keycard data wiped."
+msgstr "Dati Keycard cancellati."
+
+#: src/seedsigner/views/view.py
+msgid "Keycard wipe failed: {}"
+msgstr "Cancellazione Keycard fallita: {}"
+
+#: src/seedsigner/views/view.py
+msgid "Keycard: not installed."
+msgstr "Keycard: non installato."
+
+#: src/seedsigner/views/view.py
+msgid "SeedKeeper: wipe from PC."
+msgstr "SeedKeeper: cancella da PC."
+
+#: src/seedsigner/views/view.py
+msgid "Restart"
+msgstr "Riavvia"
+
+#: src/seedsigner/views/view.py
+msgid "Power Off"
+msgstr "Spegni"
+
+#: src/seedsigner/views/view.py
+msgid "Reset / Power"
+msgstr "Reset"
+
+#: src/seedsigner/views/view.py
+msgid "This is still on our to-do list!"
+msgstr "Questo è ancora nella lista delle cose da fare!"
+
+#: src/seedsigner/views/view.py
+msgid "Work In Progress"
+msgstr "Lavori in corso"
+
+#: src/seedsigner/views/view.py
+msgid "Not Yet Implemented"
+msgstr "Non ancora implementato"
+
+#: src/seedsigner/views/view.py
+msgid "Back to Main Menu"
+msgstr "Torna al menù principale"
+
+#. The network setting (mainnet/testnet/regtest) doesn't match the provided
+#. derivation path
+#: src/seedsigner/views/view.py
+msgid "Network Mismatch"
+msgstr "Network Mismatch"
+
+#. Button option to alter a setting
+#: src/seedsigner/views/view.py
+msgid "Change Setting"
+msgstr "Modifica Impostazioni"
+
+#. Inserts mainnet/testnet/regtest and derivation path
+#: src/seedsigner/views/view.py
+msgid "Current network setting ({}) doesn't match {}."
+msgstr "Le attuali impostazioni del network ({}) non coincidono con {}."
+
+#: src/seedsigner/views/view.py
+msgid "System Error"
+msgstr "Errore di sistema"
+
+#: src/seedsigner/views/view.py
+msgid "Update Setting"
+msgstr "Aggiorna Impostazioni"
+
+#. Inserts the name of a settings option (e.g. "Persistent Settings" is
+#. currently...)
+#: src/seedsigner/views/view.py
+msgid "\"{}\" is currently disabled in Settings."
+msgstr "\"{}\" è attualmente disabilitato nelle Impostazioni."
+
+#: src/seedsigner/views/view.py
+msgid "Option Disabled"
+msgstr "Opzione disabilitata"
+
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Storage"
+msgstr "Memoria"
+
+#: src/seedsigner/views/view.py
+msgid "Low space"
+msgstr "Poco spazio"
+
+#: src/seedsigner/views/view.py
+msgid "Card may be too full for\nthis applet."
+msgstr "La scheda potrebbe essere piena\nper questa applet."
+
+#: src/seedsigner/gui/screens/screen.py
+msgid "{}% used"
+msgstr "{}% usato"
+
+#: src/seedsigner/gui/screens/screen.py
+msgid "{} / {} KB used\n{} KB free"
+msgstr "{} / {} KB usati\n{} KB liberi"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Storage info not available\non this card."
+msgstr "Info memoria non disponibile\nsu questa scheda."
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Check failed"
+msgstr "Verifica fallita"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Wrong card"
+msgstr "Carta errata"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "This request is for a different wallet. Try another keycard."
+msgstr "Questa richiesta è per un altro portafoglio. Prova un'altra keycard."
+
+#: src/seedsigner/views/keycard_views.py
+msgid "This PSBT is for a different wallet. Try another keycard."
+msgstr "Questo PSBT è per un altro portafoglio. Prova un'altra keycard."
+
+#: src/seedsigner/views/view.py
+msgid "Smartcards"
+msgstr "Smartcard"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Switch instance"
+msgstr "Cambia istanza"
+
+msgid "Manage Instances"
+msgstr "Gestisci istanze"
+
+msgid "Manage Inst · {}"
+msgstr "Gest. ist · {}"
+
+msgid "Initialise instance"
+msgstr "Inizializza istanza"
+
+msgid "One card can hold several keys (\"instances\"), each with its own PIN & seed."
+msgstr "Una carta può contenere più chiavi («istanze»), ognuna con PIN e seed propri."
+
+msgid "Initialise this\ninstance first."
+msgstr "Inizializza prima\nquesta istanza."
+
+msgid "Manage Card"
+msgstr "Gestisci carta"
+
+msgid "Rename instance"
+msgstr "Rinomina istanza"
+
+msgid "Instance name"
+msgstr "Nome istanza"
+
+msgid "Pairing password"
+msgstr "Password di accoppiamento"
+
+msgid "Not available"
+msgstr "Non disponibile"
+
+msgid "Enable Persistent Settings\nand insert a microSD."
+msgstr "Attiva Impostazioni persistenti\ne inserisci una microSD."
+
+msgid "No saved pairing"
+msgstr "Nessun accoppiamento"
+
+msgid "Pair this instance\nfirst, then rename."
+msgstr "Accoppia prima questa\nistanza, poi rinomina."
+
+msgid "Renamed"
+msgstr "Rinominato"
+
+msgid "Now shown as {}."
+msgstr "Ora mostrato come {}."
+
+msgid "Save failed"
+msgstr "Salvataggio non riuscito"
+
+msgid "Could not write the\nname to the microSD."
+msgstr "Impossibile scrivere il\nnome sulla microSD."
+
+msgid "Rename failed"
+msgstr "Rinomina non riuscita"
+
+msgid "No instance"
+msgstr "Nessuna istanza"
+
+msgid "No Keycard applet\non this card."
+msgstr "Nessun applet Keycard\nsu questa carta."
+
+msgid "Type words"
+msgstr "Digita parole"
+
+msgid "15 words"
+msgstr "15 parole"
+
+msgid "18 words"
+msgstr "18 parole"
+
+msgid "21 words"
+msgstr "21 parole"
+
+msgid "Confirm duress PIN"
+msgstr "Conferma PIN coercizione"
+
+msgid "A 2nd PIN that unlocks a decoy wallet instead of your real one. Settable only now, never later."
+msgstr "Un 2º PIN che sblocca un portafoglio esca invece di quello reale. Impostabile solo ora, mai più tardi."
+
+msgid "New PIN"
+msgstr "Nuovo PIN"
+
+msgid "Confirm new PIN"
+msgstr "Conferma nuovo PIN"
+
+msgid "Set PIN (6 digits)"
+msgstr "Imposta PIN (6 cifre)"
+
+msgid "Confirm PIN"
+msgstr "Conferma PIN"

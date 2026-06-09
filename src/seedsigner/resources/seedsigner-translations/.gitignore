@@ -1,0 +1,5 @@
+.DS_Store
+
+# Unlike upstream, this fork checks in the compiled *.mo alongside each
+# *.po: babel is not part of the local build, the catalogs are compiled
+# manually with msgfmt, and gettext loads the .mo at runtime.

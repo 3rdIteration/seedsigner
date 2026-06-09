@@ -1,0 +1,91 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - dev
+      - main
+  pull_request:
+
+concurrency:
+  # Concurrency group that uses the workflow name and PR number if available
+  # or commit SHA as a fallback. If a new build is triggered under that
+  # concurrency group while a previous build is running it will be canceled.
+  # Repeated pushes to a PR will cancel all previous builds, while multiple
+  # merges to main will not cancel.
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      # head_ref: source branch name of a PR; null when action isn't a PR.
+      # sha: hash of a commit / merge.
+      INCOMING_CHANGES_REF: ${{ github.head_ref || github.sha }}
+    steps:
+      - name: Checkout main repo 'dev'
+        uses: actions/checkout@v4
+        with:
+          repository: 'SeedSigner/seedsigner'
+          ref: dev
+          submodules: true
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Install dependencies
+        run: |
+          sudo apt-get install libzbar0
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r tests/requirements.txt -r l10n/requirements-l10n.txt
+          pip install -e .
+      - name: Generate current 'dev' screenshots
+        run: |
+          mkdir -p artifacts/dev
+          python -m pytest tests/screenshot_generator/generator.py
+          sleep 10
+          mv ./seedsigner-screenshots/* ./artifacts/dev/
+      - name: Checkout updated translations (PR)
+        uses: actions/checkout@v4
+        if: ${{ github.event_name == 'pull_request' }}
+        with:
+          path: src/seedsigner/resources/seedsigner-translations
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Checkout updated translations (Push)
+        uses: actions/checkout@v4
+        if: ${{ github.event_name == 'push' }}
+        with:
+          path: src/seedsigner/resources/seedsigner-translations
+          ref: ${{ github.sha }}
+      - name: Compile updated translations catalogs
+        run: |
+          python setup.py compile_catalog
+          cd src/seedsigner/resources/seedsigner-translations
+          git status
+      - name: Generate latest screenshots
+        run: |
+          rm -rf seedsigner-screenshots
+          mkdir -p artifacts/incoming
+          python -m pytest tests/screenshot_generator/generator.py
+          sleep 10
+          mv ./seedsigner-screenshots/* ./artifacts/incoming/
+      - name: Diff screenshots
+        run: |
+          mkdir -p artifacts/diff
+          python src/seedsigner/resources/seedsigner-translations/.github/diff_report/diff_screenshots.py ./artifacts/dev ./artifacts/incoming ./artifacts/diff $INCOMING_CHANGES_REF
+      - name: Clean up artifacts
+        run: |
+          rm -rf ./artifacts/incoming
+          rm -rf ./artifacts/dev
+          mv ./artifacts/diff/* ./artifacts
+          rmdir ./artifacts/diff
+      - name: Archive CI Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-artifacts
+          path: artifacts/**
+          retention-days: 60
+        # Upload also when tests fail. The workflow result (red/green) will
+        # be not effected by this.
+        if: always()

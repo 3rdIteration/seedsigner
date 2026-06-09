@@ -1,0 +1,3801 @@
+# Chinese (Simplified) translations for seedsigner.
+# Copyright (C) 2025 ORGANIZATION
+# This file is distributed under the same license as the seedsigner project.
+# FIRST AUTHOR <EMAIL@ADDRESS>, 2025.
+#
+# Translators:
+# Ouou Ahah, 2025
+# Tang ZHONGCHEN, 2025
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: seedsigner 0.8.5-rc1\n"
+"Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
+"POT-Creation-Date: 2026-06-08 14:56+0100\n"
+"PO-Revision-Date: 2022-04-29 13:50+0000\n"
+"Last-Translator: Tang ZHONGCHEN, 2025\n"
+"Language: zh_Hans\n"
+"Language-Team: Chinese Simplified "
+"(https://app.transifex.com/seedsigner/teams/135832/zh-Hans/)\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.16.0\n"
+
+#: src/seedsigner/controller.py src/seedsigner/views/view.py
+msgid "Data wiped after inactivity"
+msgstr "闲置后数据已擦除"
+
+#. Testnet bitcoin
+#: src/seedsigner/gui/components.py
+msgid "tBtc"
+msgstr "tBtc"
+
+#. Testnet sats
+#: src/seedsigner/gui/components.py
+msgid "tSats"
+msgstr "tSats"
+
+#: src/seedsigner/gui/components.py src/seedsigner/gui/screens/psbt_screens.py
+msgid "btc"
+msgstr "btc"
+
+#: src/seedsigner/gui/components.py src/seedsigner/gui/screens/psbt_screens.py
+#: src/seedsigner/models/settings_definition.py
+msgid "sats"
+msgstr "sats"
+
+#: src/seedsigner/gui/toast.py
+msgid ""
+"You can remove\n"
+"the SD card now"
+msgstr ""
+"您现在可以取出\n"
+"SD卡了"
+
+#: src/seedsigner/gui/toast.py
+msgid "SD card removed"
+msgstr "SD 卡已移除"
+
+#: src/seedsigner/gui/toast.py
+msgid "SD card inserted"
+msgstr "SD 卡已插入"
+
+#: src/seedsigner/gui/screens/psbt_screens.py
+#: src/seedsigner/views/keycard_views.py
+msgid "Review PSBT"
+msgstr "审核 PSBT"
+
+#: src/seedsigner/gui/screens/psbt_screens.py
+msgid "Review Details"
+msgstr "查看详情"
+
+#: src/seedsigner/gui/screens/psbt_screens.py
+msgid "1 input"
+msgstr "1 个输入"
+
+#: src/seedsigner/gui/screens/psbt_screens.py
+msgid "input 1"
+msgstr "输入 1"
+
+#: src/seedsigner/gui/screens/psbt_screens.py
+msgid "input 2"
+msgstr "输入 2"
+
+#. Indicates that items have been omitted from a series: e.g. "1, 2, 3, [...],
+#. 8"
+#: src/seedsigner/gui/screens/psbt_screens.py
+msgid "[ ... ]"
+msgstr "[ ... ]"
+
+#. Input number will be inserted (e.g. "input 3")
+#: src/seedsigner/gui/screens/psbt_screens.py
+msgid "input {}"
+msgstr "输入 {}"
+
+#. Ellipsis ("...") characters used to truncate an address (e.g. "bc1qabc...")
+#: src/seedsigner/gui/screens/psbt_screens.py
+msgid "..."
+msgstr "..."
+
+#: src/seedsigner/gui/screens/psbt_screens.py
+msgid "self-transfer"
+msgstr "自我转账"
+
+#: src/seedsigner/gui/screens/psbt_screens.py
+msgid "recipient 1"
+msgstr "收款人 1"
+
+#. Inserts the recipient number (e.g. the fifth one is: "recipient 5")
+#: src/seedsigner/gui/screens/psbt_screens.py
+msgid "recipient {}"
+msgstr "收款人 {}"
+
+#: src/seedsigner/gui/screens/psbt_screens.py
+msgid "fee"
+msgstr "矿工费"
+
+#. Technical term, should probably NOT be translated in most languages
+#: src/seedsigner/gui/screens/psbt_screens.py
+msgid "OP_RETURN"
+msgstr "OP_RETURN"
+
+#. Label for a change output in the PSBT Overview flow diagram
+#: src/seedsigner/gui/screens/psbt_screens.py
+msgid "change"
+msgstr "找零"
+
+#: src/seedsigner/gui/screens/psbt_screens.py
+msgid "PSBT Math"
+msgstr "PSBT 运算"
+
+#: src/seedsigner/gui/screens/psbt_screens.py
+msgid "Review Recipients"
+msgstr "查看收款人"
+
+#: src/seedsigner/gui/screens/psbt_screens.py
+msgid "input"
+msgid_plural "inputs"
+msgstr[0] "输入"
+
+#: src/seedsigner/gui/screens/psbt_screens.py
+msgid "recipient"
+msgid_plural "recipients"
+msgstr[0] "收款人"
+
+#. Denonination is inserted (e.g. your "btc change" or "sats change")
+#: src/seedsigner/gui/screens/psbt_screens.py
+msgid "{} change"
+msgstr "{} 找零"
+
+#: src/seedsigner/gui/screens/psbt_screens.py
+msgid "Multisig"
+msgstr "多重签名"
+
+#: src/seedsigner/gui/screens/psbt_screens.py
+msgid "Change"
+msgstr "找零"
+
+#. Abbreviation for receive address
+#: src/seedsigner/gui/screens/psbt_screens.py
+msgid "Addr"
+msgstr "地址"
+
+#: src/seedsigner/gui/screens/psbt_screens.py
+msgid "Address verified!"
+msgstr "地址已验证！"
+
+#. Shown when displaying OP_RETURN as non-human-readable hexadecimal data
+#: src/seedsigner/gui/screens/psbt_screens.py
+msgid "raw hex data"
+msgstr "原始十六进制数据"
+
+#: src/seedsigner/gui/screens/psbt_screens.py
+#: src/seedsigner/views/keycard_views.py
+msgid "Sign PSBT"
+msgstr "签署 PSBT"
+
+#: src/seedsigner/gui/screens/psbt_screens.py
+msgid "Click to approve this transaction"
+msgstr "点击确认交易"
+
+#: src/seedsigner/gui/screens/scan_screens.py
+msgid "back"
+msgstr "返回"
+
+#: src/seedsigner/gui/screens/scan_screens.py
+msgid "Starting camera..."
+msgstr "正在启动相机..."
+
+#. Inserts the percentage value of the animated QR scan progress
+#: src/seedsigner/gui/screens/scan_screens.py
+msgid "{}%"
+msgstr "{}%"
+
+#: src/seedsigner/gui/screens/scan_screens.py
+msgid "Decrypt?"
+msgstr "解密？"
+
+#: src/seedsigner/gui/screens/scan_screens.py
+msgid "Select QR Type"
+msgstr "选择 QR 类型"
+
+#: src/seedsigner/gui/screens/scan_screens.py
+msgid "Encryption Key"
+msgstr "加密密钥"
+
+#: src/seedsigner/gui/screens/scan_screens.py
+msgid "Review Encryption Key"
+msgstr "核对加密密钥"
+
+#. Increase QR code screen brightness
+#: src/seedsigner/gui/screens/screen.py
+msgid "Brighter"
+msgstr "增加亮度"
+
+#. Decrease QR code screen brightness
+#: src/seedsigner/gui/screens/screen.py
+msgid "Darker"
+msgstr "降低亮度"
+
+#: src/seedsigner/gui/screens/screen.py
+#: src/seedsigner/gui/screens/seed_screens.py
+#: src/seedsigner/views/tools_views.py
+msgid "Success!"
+msgstr "操作成功！"
+
+#: src/seedsigner/gui/screens/screen.py
+#: src/seedsigner/gui/screens/seed_screens.py
+#: src/seedsigner/views/keycard_views.py src/seedsigner/views/scan_views.py
+#: src/seedsigner/views/stealth_views.py src/seedsigner/views/tools_views.py
+#: src/seedsigner/views/view.py
+msgid "OK"
+msgstr "确定"
+
+#: src/seedsigner/gui/screens/screen.py
+msgid "Caution"
+msgstr "注意"
+
+#: src/seedsigner/gui/screens/screen.py
+msgid "Privacy Leak!"
+msgstr "隐私泄露！"
+
+#: src/seedsigner/gui/screens/screen.py src/seedsigner/views/desktop_warning.py
+#: src/seedsigner/views/developer_os_warning.py
+#: src/seedsigner/views/tools_views.py
+msgid "I Understand"
+msgstr "我明白"
+
+#: src/seedsigner/gui/screens/screen.py
+msgid "Classified Info!"
+msgstr "机密信息！"
+
+#: src/seedsigner/gui/screens/screen.py src/seedsigner/views/scan_views.py
+#: src/seedsigner/views/tools_views.py src/seedsigner/views/view.py
+msgid "Error"
+msgstr "出错"
+
+#: src/seedsigner/gui/screens/screen.py
+msgid "Restarting"
+msgstr "正在重启"
+
+#: src/seedsigner/gui/screens/screen.py
+msgid ""
+"SeedSigner is restarting.\n"
+"\n"
+"All in-memory data will be wiped."
+msgstr ""
+"SeedSigner 正在重启。\n"
+"\n"
+"所有的内存数据都将被清除。"
+
+#: src/seedsigner/gui/screens/screen.py
+msgid "Powering Off"
+msgstr "正在关机"
+
+#: src/seedsigner/gui/screens/screen.py
+msgid "Please wait about 30 seconds before disconnecting power."
+msgstr "请等待约 30 秒后再断电"
+
+#: src/seedsigner/gui/screens/screen.py
+msgid "Just Unplug It"
+msgstr "拔出电源线即可"
+
+#: src/seedsigner/gui/screens/screen.py
+msgid "It is safe to disconnect power at any time."
+msgstr "可随时断电，已确保安全"
+
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Finalize Seed"
+msgstr "最终确认助记词"
+
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "fingerprint"
+msgstr "指纹"
+
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Backup Seed"
+msgstr "备份助记词"
+
+#. Additional explainer for the two seed backup options (mnemonic phrase and
+#. SeedQR).
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Backups do not include your passphrase."
+msgstr "备份不包含您的密码短语"
+
+#. Displays the page number and total: (e.g. page 1 of 6)
+#: src/seedsigner/gui/screens/seed_screens.py
+#: src/seedsigner/views/keycard_views.py
+msgid "Seed Words: {}/{}"
+msgstr "助记词: {}/{}"
+
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "BIP-85 Index"
+msgstr "BIP-85 索引"
+
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Verify Backup?"
+msgstr "验证备份？"
+
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Optionally verify that your mnemonic backup is correct."
+msgstr "可选验证助记词备份是否正确"
+
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Account Number"
+msgstr "账户编号"
+
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Derivation Path"
+msgstr "派生路径"
+
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Xpub Details"
+msgstr "扩展公钥详情"
+
+#. Short for "BIP32 Master Fingerprint"
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Fingerprint"
+msgstr "指纹"
+
+#. Short for "Derivation Path"
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Derivation"
+msgstr "派生路径"
+
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Xpub"
+msgstr "Xpub"
+
+#: src/seedsigner/gui/screens/seed_screens.py
+#: src/seedsigner/models/settings_definition.py
+msgid "BIP-39 Passphrase"
+msgstr "BIP-39 密码短语"
+
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Verify Passphrase"
+msgstr "验证密码短语"
+
+#. Describes the effect of applying a BIP-39 passphrase; it changes the seed's
+#. fingerprint
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "changes fingerprint"
+msgstr "修改指纹"
+
+#. Refers to the SeedQR type: Standard or Compact or encrypted
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Standard"
+msgstr "标准型"
+
+#. Briefly explains the Standard SeedQR data format
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "BIP-39 wordlist indices"
+msgstr "BIP-39 单词表索引"
+
+#. Refers to the SeedQR type: Standard or Compact or encrypted
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Compact"
+msgstr "紧凑型"
+
+#. Briefly explains the Compact SeedQR data format
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Raw entropy bits"
+msgstr "原始熵位"
+
+#. Refers to the SeedQR type: Standard or Compact or encrypted
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Encrypted"
+msgstr "已加密"
+
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Encrypted entropy bits"
+msgstr "已加密熵位"
+
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Transcribe SeedQR"
+msgstr "抄写 SeedQR"
+
+#. Refers to the QR code size: 21x21, 25x25, or 29x29
+#: src/seedsigner/gui/screens/seed_screens.py
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Begin {}x{}"
+msgstr "开始 {}x{}"
+
+#: src/seedsigner/gui/screens/seed_screens.py
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "click to exit"
+msgstr "点击退出"
+
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid ""
+"Optionally scan your transcribed SeedQR to confirm that it reads back "
+"correctly."
+msgstr "可选择扫描您抄写的 SeedQR，以确认是否读取正确"
+
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Verify Address"
+msgstr "验证地址"
+
+#. Inserts the nth address number (e.g. "Checking address 7")
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Checking address {}"
+msgstr "核对地址 {}"
+
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Address Verified"
+msgstr "地址验证成功"
+
+#. Describes the address type (change or receive)
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "change address"
+msgstr "找零地址"
+
+#. Describes the address type (change or receive)
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "receive address"
+msgstr "收款地址"
+
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Non-standard path!"
+msgstr "非标准路径！"
+
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Multisig Verification"
+msgstr "多重签名验证"
+
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid ""
+"Load your multisig wallet descriptor to verify your receive/self-transfer"
+" or change address."
+msgstr "加载您的多重签名钱包描述符，以验证您的接收、自我转账或找零地址。"
+
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Descriptor Loaded"
+msgstr "描述符已加载"
+
+#. Label for the multisig wallet's signing policy (e.g. 2-of-3)
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Policy"
+msgstr "政策"
+
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Signing Keys"
+msgstr "签名密钥"
+
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Review Message"
+msgstr "查看留言"
+
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Message (pt {}/{})"
+msgstr "消息（第 {}/{} 部分）"
+
+#: src/seedsigner/gui/screens/seed_screens.py
+#: src/seedsigner/gui/screens/tools_screens.py
+#: src/seedsigner/views/keycard_views.py
+msgid "Next"
+msgstr "下一步"
+
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Confirm Address"
+msgstr "确认地址"
+
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Sign Message"
+msgstr "签署留言"
+
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "derivation path"
+msgstr "派生路径"
+
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Mnemonic ID"
+msgstr "助记词 ID"
+
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Review Mnemonic ID"
+msgstr "核对助记词 ID"
+
+#: src/seedsigner/gui/screens/seed_screens.py
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "The QR codes output in both modes may differ, but both are valid QR codes."
+msgstr "两种模式输出的 QR 码可能不同，但都是有效的 QR 码。"
+
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Transcribe Encrypted QR"
+msgstr "抄录 EncryptedQR"
+
+#: src/seedsigner/gui/screens/settings_screens.py
+#: src/seedsigner/views/settings_views.py src/seedsigner/views/view.py
+msgid "Settings"
+msgstr "设置"
+
+#: src/seedsigner/gui/screens/settings_screens.py
+#: src/seedsigner/views/settings_views.py
+msgid "No options available"
+msgstr "无可用选项"
+
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "PBKDF2 Iter.(in units of 10k)"
+msgstr "PBKDF2 迭代（单位为 1 万次）"
+
+#. Short for "Input/Output"; screen to make sure the buttons and camera are
+#. working properly
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "I/O Test"
+msgstr "I/O 测试"
+
+#. Blank the screen
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "Clear"
+msgstr "清除"
+
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "Exit"
+msgstr "退出"
+
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "Capturing image..."
+msgstr "正在拍摄图像..."
+
+#: src/seedsigner/gui/screens/settings_screens.py
+#: src/seedsigner/views/settings_views.py
+msgid "Donate"
+msgstr "打赏"
+
+#. If your language uses the percent sign ("%"), your translation must also use
+#. two percent signs ("%%") due to python formatting oddities. "100%%" will be
+#. rendered as "100%".
+#: src/seedsigner/gui/screens/settings_screens.py
+#, python-format
+msgid ""
+"SeedSigner is 100%% free & open source, funded solely by the Bitcoin "
+"community.\n"
+"\n"
+"Donate onchain or LN at:"
+msgstr ""
+"SeedSigner 是 100%% 自由和开源的，由比特币社区独立资助。\n"
+"\n"
+"请通过链上或闪电网络捐赠："
+
+#: src/seedsigner/gui/screens/settings_screens.py
+#: src/seedsigner/views/settings_views.py
+msgid "Battery Info"
+msgstr "电池信息"
+
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "Load Voltage: --"
+msgstr "负载电压：--"
+
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "Current: --"
+msgstr "电流：--"
+
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "Power: --"
+msgstr "功率：--"
+
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "Percent: --%"
+msgstr "电量：--%"
+
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "Curve: --"
+msgstr "曲线：--"
+
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "Load Voltage: {:.3f} V"
+msgstr "Load Voltage: {:.3f} V"
+
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "Current: {:.3f} A"
+msgstr "Current: {:.3f} A"
+
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "Power: {:.3f} W"
+msgstr "Power: {:.3f} W"
+
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "Percent: {:.1f}%"
+msgstr "Percent: {:.1f}%"
+
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "Curve: {}"
+msgstr "Curve: {}"
+
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "Curve: default"
+msgstr "曲线：默认"
+
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "System Info"
+msgstr "系统信息"
+
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "Platform: {platform_name}"
+msgstr "Platform: {platform_name}"
+
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "Variant: {platform_variant}"
+msgstr "Variant: {platform_variant}"
+
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "Serial (CPU): {system_serial}"
+msgstr "Serial (CPU): {system_serial}"
+
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "Serial (MicroSD): {microsd_serial}"
+msgstr "Serial (MicroSD): {microsd_serial}"
+
+#: src/seedsigner/gui/screens/settings_screens.py
+#: src/seedsigner/views/settings_views.py
+msgid "Settings QR"
+msgstr "设置二维码"
+
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "Settings updated..."
+msgstr "设置已更新..."
+
+#: src/seedsigner/gui/screens/settings_screens.py src/seedsigner/views/view.py
+msgid "Home"
+msgstr "主页"
+
+#: src/seedsigner/gui/screens/tools_screens.py
+#: src/seedsigner/views/tools_views.py
+msgid "Network Info"
+msgstr "网络信息"
+
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Network Info (pt {}/{})"
+msgstr "网络信息（第 {}/{} 部分）"
+
+#: src/seedsigner/gui/screens/tools_screens.py
+#: src/seedsigner/views/keycard_views.py src/seedsigner/views/stealth_views.py
+#: src/seedsigner/views/tools_views.py src/seedsigner/views/view.py
+msgid "Done"
+msgstr "完成"
+
+#: src/seedsigner/gui/screens/tools_screens.py
+#: src/seedsigner/views/tools_views.py
+msgid "Battery Calibration"
+msgstr "电池校准"
+
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Charge the battery fully. Select Next to start the discharge test."
+msgstr "请将电池充满。选择“下一步”开始放电测试。"
+
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Start"
+msgstr "开始"
+
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Test runs until empty. Leave the device unplugged."
+msgstr "测试将持续到电量耗尽。请勿连接电源。"
+
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Charging detected"
+msgstr "检测到充电"
+
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Discharging"
+msgstr "放电中"
+
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Elapsed: "
+msgstr "已用时: "
+
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Voltage: "
+msgstr "电压: "
+
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Current: "
+msgstr "电流: "
+
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Status: "
+msgstr "状态: "
+
+#: src/seedsigner/gui/screens/tools_screens.py
+#: src/seedsigner/views/tools_views.py
+msgid "Text to Encode"
+msgstr "待编码文本"
+
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Transcribe Text QR"
+msgstr "抄录文本 QR"
+
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid ""
+"Optionally scan your transcribed text QR code to confirm that it reads "
+"back correctly."
+msgstr "可选：扫描你抄录的文本 QR 码，确认能正确读回。"
+
+#. Insert the number of addrs displayed per screen (e.g. "Next 10")
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Next {}"
+msgstr "下一步 {}"
+
+#: src/seedsigner/helpers/card_probe.py
+msgid "No card — returned home"
+msgstr "未检测到卡 — 已返回主页"
+
+#: src/seedsigner/helpers/card_probe.py
+msgid "Install applet"
+msgstr "安装 applet"
+
+#: src/seedsigner/helpers/card_probe.py src/seedsigner/views/keycard_views.py
+msgid "Cancel"
+msgstr "取消"
+
+#: src/seedsigner/helpers/seedkeeper_utils.py
+msgid "Invalid PIN"
+msgstr "PIN 无效"
+
+#: src/seedsigner/helpers/seedkeeper_utils.py
+msgid "PIN must be between {} and {} characters."
+msgstr "PIN 长度须在 {} 到 {} 个字符之间。"
+
+#: src/seedsigner/helpers/seedkeeper_utils.py
+#: src/seedsigner/views/settings_views.py
+msgid "Failure"
+msgstr "失败"
+
+#: src/seedsigner/helpers/seedkeeper_utils.py
+msgid "Connecting to Card"
+msgstr "正在连接卡片"
+
+#: src/seedsigner/helpers/seedkeeper_utils.py
+msgid "Unable to Connect"
+msgstr "无法连接"
+
+#: src/seedsigner/helpers/seedkeeper_utils.py
+msgid ""
+"Unable to find {} \n"
+"(or Applet)\n"
+"\n"
+"Try Re-Inserting Card"
+msgstr ""
+"未找到 {} \n"
+"（或 applet）\n"
+"\n"
+"请重新插入卡片"
+
+#: src/seedsigner/helpers/seedkeeper_utils.py
+msgid "Verifying PIN"
+msgstr "正在验证 PIN"
+
+#: src/seedsigner/helpers/seedkeeper_utils.py
+#: src/seedsigner/views/tools_views.py
+msgid "Failed"
+msgstr "失败"
+
+#: src/seedsigner/helpers/seedkeeper_utils.py
+#: src/seedsigner/views/tools_views.py
+msgid "Success"
+msgstr "成功"
+
+#: src/seedsigner/helpers/seedkeeper_utils.py
+msgid "Card Setup Complete"
+msgstr "卡片设置完成"
+
+#: src/seedsigner/helpers/seedkeeper_utils.py
+msgid "Loading"
+msgstr "正在加载"
+
+#: src/seedsigner/helpers/seedkeeper_utils.py
+msgid "Uninstalling"
+msgstr "正在卸载"
+
+#: src/seedsigner/helpers/seedkeeper_utils.py
+msgid "Mis-Installed Applet Uninstalled"
+msgstr "已卸载错误安装的 applet"
+
+#: src/seedsigner/helpers/seedkeeper_utils.py
+msgid "Mis-Installed Applet Uninstalled, try uninstalling it again..."
+msgstr "已卸载错误安装的 applet，请再次尝试卸载……"
+
+#: src/seedsigner/helpers/keycard/ui_helpers.py
+msgid "Card error"
+msgstr "卡片错误"
+
+#: src/seedsigner/helpers/keycard/ui_helpers.py
+msgid "No reader"
+msgstr "无读卡器"
+
+#: src/seedsigner/helpers/keycard/ui_helpers.py
+msgid ""
+"Connect a card reader\n"
+"and retry."
+msgstr ""
+"请连接读卡器\n"
+"后重试。"
+
+#: src/seedsigner/helpers/keycard/ui_helpers.py
+msgid "No card"
+msgstr "无卡片"
+
+#: src/seedsigner/helpers/keycard/ui_helpers.py
+msgid "Insert a card and retry."
+msgstr "请插入卡片后重试。"
+
+#: src/seedsigner/helpers/keycard/ui_helpers.py
+msgid "Card changed"
+msgstr "卡片已更换"
+
+#: src/seedsigner/helpers/keycard/ui_helpers.py
+msgid ""
+"Pair the inserted card\n"
+"first."
+msgstr ""
+"请先配对已插入的\n"
+"卡片。"
+
+#: src/seedsigner/helpers/keycard/ui_helpers.py
+#: src/seedsigner/views/keycard_views.py
+msgid "Not initialised"
+msgstr "未初始化"
+
+#: src/seedsigner/helpers/keycard/ui_helpers.py
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"Run Setup ›\n"
+"Initialise card first."
+msgstr ""
+"请先运行“设置 ›”\n"
+"初始化卡片。"
+
+#: src/seedsigner/helpers/keycard/ui_helpers.py
+msgid "No key on card"
+msgstr "卡上无密钥"
+
+#: src/seedsigner/helpers/keycard/ui_helpers.py
+msgid ""
+"Generate key or\n"
+"import seed first."
+msgstr ""
+"请先生成密钥或\n"
+"导入种子。"
+
+#: src/seedsigner/helpers/keycard/ui_helpers.py
+#: src/seedsigner/views/keycard_views.py
+msgid "Wrong password"
+msgstr "密码错误"
+
+#: src/seedsigner/helpers/keycard/ui_helpers.py
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"Pairing password did\n"
+"not match this card."
+msgstr ""
+"配对密码与此卡\n"
+"不匹配。"
+
+#: src/seedsigner/helpers/keycard/ui_helpers.py
+msgid "Secure channel"
+msgstr "安全通道"
+
+#: src/seedsigner/helpers/keycard/ui_helpers.py
+msgid ""
+"SC open failed:\n"
+"{}"
+msgstr ""
+"SC 打开失败：\n"
+"{}"
+
+#: src/seedsigner/helpers/keycard/ui_helpers.py
+msgid "Storage error"
+msgstr "存储错误"
+
+#: src/seedsigner/helpers/keycard/ui_helpers.py
+msgid "Applet not found"
+msgstr "未找到 Applet"
+
+#: src/seedsigner/helpers/keycard/ui_helpers.py
+msgid ""
+"Try Manage › Instances\n"
+"to switch active AID."
+msgstr ""
+"请尝试“管理 › 实例”\n"
+"切换活动 AID。"
+
+#: src/seedsigner/helpers/keycard/ui_helpers.py
+msgid "Card refused"
+msgstr "卡片已拒绝"
+
+#: src/seedsigner/helpers/keycard/ui_helpers.py
+msgid ""
+"Auth/condition not met\n"
+"(SW={})."
+msgstr ""
+"Auth/condition not met\n"
+"(SW={})."
+
+#. {} is the number of remaining PIN attempts
+#: src/seedsigner/helpers/keycard/ui_helpers.py
+msgid "Wrong PIN"
+msgstr "PIN 错误"
+
+#: src/seedsigner/helpers/keycard/ui_helpers.py
+msgid "{} tries left."
+msgstr "还剩 {} 次。"
+
+#: src/seedsigner/helpers/keycard/ui_helpers.py
+#: src/seedsigner/views/keycard_views.py
+msgid "Not supported"
+msgstr "不支持"
+
+#: src/seedsigner/helpers/keycard/ui_helpers.py
+msgid ""
+"Card does not implement\n"
+"this op."
+msgstr ""
+"卡片未实现\n"
+"此操作。"
+
+#: src/seedsigner/helpers/keycard/ui_helpers.py
+msgid ""
+"SW={}\n"
+"{}"
+msgstr ""
+"SW={}\n"
+"{}"
+
+#: src/seedsigner/models/settings.py
+msgid "Disabling USB Ports"
+msgstr "正在禁用 USB 端口"
+
+#: src/seedsigner/models/settings.py
+msgid "Enabling USB Ports"
+msgstr "正在启用 USB 端口"
+
+#: src/seedsigner/models/settings.py src/seedsigner/views/tools_views.py
+msgid "Notice"
+msgstr "提示"
+
+#: src/seedsigner/models/settings.py
+msgid ""
+"Enabling USB ports on this device requires a device restart (Full power "
+"cycle)"
+msgstr "在本设备上启用 USB 端口需要重启设备（完全断电重启）"
+
+#: src/seedsigner/models/settings.py
+msgid "Unable to detect RPi Model"
+msgstr "无法检测 RPi 型号"
+
+#: src/seedsigner/models/settings.py
+msgid ""
+"Enabling USB ports on this device likely requires a restart (Full power "
+"cycle)"
+msgstr "在本设备上启用 USB 端口可能需要重启（完全断电重启）"
+
+#: src/seedsigner/models/settings.py
+msgid "Starting OpenCT"
+msgstr "正在启动 OpenCT"
+
+#: src/seedsigner/models/settings.py
+msgid "Stopping OpenCT"
+msgstr "正在停止 OpenCT"
+
+#: src/seedsigner/models/settings.py
+msgid "Enabling PN532"
+msgstr "正在启用 PN532"
+
+#: src/seedsigner/models/settings.py
+msgid "Disabling PN532"
+msgstr "正在禁用 PN532"
+
+#: src/seedsigner/models/settings.py src/seedsigner/views/settings_views.py
+msgid "Restarting PCSC"
+msgstr "正在重启 PCSC"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Enabled"
+msgstr "已启用"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Disabled"
+msgstr "已禁用"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Prompt"
+msgstr "提示"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Required"
+msgstr "所需"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "BTC"
+msgstr "BTC"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Threshold at 0.01"
+msgstr "临界值为 0.01"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "BTC | sats hybrid"
+msgstr "BTC | sats 混合型"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "0°"
+msgstr "0°"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "90°"
+msgstr "90°"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "180°"
+msgstr "180°"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "270°"
+msgstr "270°"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Camera 0"
+msgstr "Camera 0"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Camera 1"
+msgstr "Camera 1"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Camera 2"
+msgstr "Camera 2"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Camera 3"
+msgstr "Camera 3"
+
+#. QR code density option: Low, Medium, High
+#: src/seedsigner/models/settings_definition.py
+msgid "Low"
+msgstr "低"
+
+#. QR code density option: Low, Medium, High
+#: src/seedsigner/models/settings_definition.py
+msgid "Medium"
+msgstr "中"
+
+#. QR code density option: Low, Medium, High
+#: src/seedsigner/models/settings_definition.py
+msgid "High"
+msgstr "高"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Mainnet"
+msgstr "主网"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Testnet"
+msgstr "测试网"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Regtest"
+msgstr "回归测试网"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Store Settings on SD card"
+msgstr "将设置保存到 SD 卡"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Insert SD card to enable"
+msgstr "插入SD卡以启用"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "5 minutes"
+msgstr "5 分钟"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "10 minutes"
+msgstr "10 分钟"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "15 minutes"
+msgstr "15 分钟"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "30 minutes"
+msgstr "30 分钟"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Off"
+msgstr "关闭"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "1 minute"
+msgstr "1 分钟"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "2 minutes"
+msgstr "2 分钟"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Aezeed Passphrase"
+msgstr "Aezeed Passphrase"
+
+#. Terminology used by Electrum seeds; equivalent to bip39 passphrase
+#: src/seedsigner/models/settings_definition.py
+msgid "Custom Extension"
+msgstr "自定义扩展功能"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Prefer CompactSeedQR"
+msgstr "优先 CompactSeedQR"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Prefer EncryptedQR"
+msgstr "优先 EncryptedQR"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Ask each time"
+msgstr "每次询问"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Language"
+msgstr "语言"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Mnemonic language"
+msgstr "助记词语言"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Persistent settings"
+msgstr "持久性设置"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Denomination display"
+msgstr "单位显示"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Smartcard Interfaces"
+msgstr "智能卡接口"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Cache Smartcard Pin"
+msgstr "缓存智能卡 PIN"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Off (default): re-enter PIN after returning Home. On: keep PIN in RAM until reboot for fewer prompts."
+msgstr "关闭（默认）：返回主页后需重新输入 PIN。开启：PIN 保留在内存中直到重启。"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Auto PIN on insert"
+msgstr "插卡时自动提示 PIN"
+
+#: src/seedsigner/models/settings_definition.py
+msgid ""
+"Show a toast notification when a recognised card is inserted, prompting "
+"you to enter the PIN once. Off by default for low-profile use."
+msgstr "识别到已知卡片插入时弹出提示，引导您输入一次 PIN。默认关闭以保持低调。"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Smartcard PIN Attempts"
+msgstr "智能卡 PIN 尝试次数"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Wipe Timer"
+msgstr "擦除计时器"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Screensaver"
+msgstr "屏保"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Bitcoin network"
+msgstr "比特币网络"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "QR code density"
+msgstr "二维码密度"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Xpub export"
+msgstr "导出 Xpub"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Seed word lengths"
+msgstr "种子词长度"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Show xpub details"
+msgstr "显示 xpub 详情"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "BIP32 account prompt"
+msgstr "BIP32 账户提示"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Camera rotation"
+msgstr "摄像头旋转"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Dense QR scan"
+msgstr "密集 QR 扫描"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Higher capture res + sharpening for dense QR"
+msgstr "为密集 QR 提供更高分辨率采集与锐化"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "PlaintextQR"
+msgstr "PlaintextQR"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "EncryptedQR"
+msgstr "EncryptedQR"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Encryption Mode"
+msgstr "加密模式"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Encryption Iter.(PBKDF2)"
+msgstr "加密迭代次数(PBKDF2)"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Ambiguous QR"
+msgstr "模糊 QR"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "WIF keys"
+msgstr "WIF 密钥"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "BIP38 keys"
+msgstr "BIP38 密钥"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "BitBox02 backups"
+msgstr "BitBox02 backups"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Passport backups"
+msgstr "Passport backups"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "TAPSIGNER backups"
+msgstr "TAPSIGNER backups"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Smartcard support"
+msgstr "智能卡支持"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Show privacy warnings"
+msgstr "显示隐私警告"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Show dire warnings"
+msgstr "显示严重警告"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Show QR brightness tips"
+msgstr "显示二维码亮度提示"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Show partner logos"
+msgstr "显示合作伙伴商标"
+
+#. Hardware settings option to specify the screen driver (e.g. st7789 vs
+#. ili9341)
+#: src/seedsigner/models/settings_definition.py
+msgid "Display type"
+msgstr "显示类型"
+
+#. Hardware settings option to invert how the screen driver displays colors.
+#: src/seedsigner/models/settings_definition.py
+msgid "Invert colors"
+msgstr "反转颜色"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Camera source"
+msgstr "相机来源"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "QR background color"
+msgstr "二维码背景颜色"
+
+#: src/seedsigner/models/settings_definition.py
+#: src/seedsigner/views/tools_views.py
+msgid "Stealth boot"
+msgstr "隐身启动"
+
+#: src/seedsigner/models/settings_definition.py
+msgid "Stealth unlock sequence"
+msgstr "隐身解锁序列"
+
+#: src/seedsigner/views/desktop_warning.py
+msgid "Desktop Mode"
+msgstr "桌面模式"
+
+#: src/seedsigner/views/desktop_warning.py
+#: src/seedsigner/views/developer_os_warning.py
+msgid "Not secure!"
+msgstr "不安全！"
+
+#: src/seedsigner/views/desktop_warning.py
+msgid ""
+"This desktop version is for testing only.\n"
+"Do NOT use with real seeds or private keys."
+msgstr ""
+"此桌面版本仅供测试。\n"
+"请勿用于真实种子或私钥。"
+
+#: src/seedsigner/views/developer_os_warning.py
+msgid "Development Build"
+msgstr "开发版本"
+
+#: src/seedsigner/views/developer_os_warning.py
+msgid ""
+"This SeedSignerOS development build is for testing only.\n"
+"Do NOT use with real seeds or private keys."
+msgstr ""
+"此 SeedSignerOS 开发版本仅供测试。\n"
+"请勿用于真实种子或私钥。"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Legacy / EIP-155"
+msgstr "Legacy / EIP-155"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "EIP-712 typed data"
+msgstr "EIP-712 typed data"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Personal sign"
+msgstr "个人签名"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "EIP-1559"
+msgstr "EIP-1559"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Ethereum"
+msgstr "Ethereum"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Bitcoin"
+msgstr "Bitcoin"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "This instance"
+msgstr "此实例"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Instances"
+msgstr "实例"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Card"
+msgstr "卡片"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Lock card"
+msgstr "锁定卡片"
+
+#: src/seedsigner/views/keycard_views.py src/seedsigner/views/view.py
+msgid "Keycard"
+msgstr "Keycard"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Keycard · {}"
+msgstr "Keycard · {}"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Generate key"
+msgstr "生成密钥"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Import seed"
+msgstr "导入种子"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Change PIN"
+msgstr "修改 PIN"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Pairing"
+msgstr "配对"
+
+#: src/seedsigner/views/keycard_views.py src/seedsigner/views/view.py
+msgid "Factory reset"
+msgstr "恢复出厂设置"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "This instance · {}"
+msgstr "此实例 · {}"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Card locked"
+msgstr "卡片已锁定"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"PIN cleared.\n"
+"You'll be asked for it next time."
+msgstr ""
+"PIN 已清除。\n"
+"下次操作时将再次询问。"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Pair card"
+msgstr "配对卡片"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Remove pairing"
+msgstr "移除配对"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Pairing · {}"
+msgstr "配对 · {}"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Initialise card"
+msgstr "初始化卡片"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Status"
+msgstr "状态"
+
+#: src/seedsigner/views/keycard_views.py src/seedsigner/views/tools_views.py
+msgid "Uninstall applet"
+msgstr "卸载 Applet"
+
+#: src/seedsigner/views/keycard_views.py src/seedsigner/views/tools_views.py
+msgid "Uninstall"
+msgstr "卸载"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"Delete the Keycard package?\n"
+"Master key will be lost."
+msgstr ""
+"删除 Keycard 套件？\n"
+"主密钥将丢失。"
+
+#: src/seedsigner/views/keycard_views.py src/seedsigner/views/tools_views.py
+msgid "Delete"
+msgstr "删除"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Keycard support unavailable"
+msgstr "Keycard 支持不可用"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Card not reachable"
+msgstr "无法访问卡片"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "ISD keys required"
+msgstr "需要 ISD 密钥"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"Default ISD keys missing.\n"
+"Wipe via PC or full Factory Reset."
+msgstr ""
+"缺少默认 ISD 密钥。\n"
+"请用电脑擦除或完整恢复出厂设置。"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Uninstall failed"
+msgstr "卸载失败"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Keycard package removed."
+msgstr "已移除 Keycard 套件。"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"Applet v{}\n"
+"Pairing slots: {}\n"
+"Key on card: {}"
+msgstr ""
+"Applet v{}\n"
+"配对槽位：{}\n"
+"卡上密钥：{}"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "yes"
+msgstr "是"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "no"
+msgstr "否"
+
+#: src/seedsigner/views/keycard_views.py src/seedsigner/views/view.py
+msgid "Wipe"
+msgstr "擦除"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Wipe {}?"
+msgstr "擦除 {}？"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"Erases the key & PIN on\n"
+"this instance. Cannot undo."
+msgstr ""
+"将擦除此实例上的密钥\n"
+"与 PIN。无法撤销。"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"Update applet, or use\n"
+"keycard-shell on PC."
+msgstr ""
+"请更新 Applet，或在电脑\n"
+"上使用 keycard-shell。"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Reset failed"
+msgstr "重置失败"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "{} wiped"
+msgstr "{} 已擦除"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Run Init to reuse it."
+msgstr "运行 Init 即可重新使用。"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Skip"
+msgstr "跳过"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Set duress PIN"
+msgstr "设置胁迫 PIN"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Already initialised"
+msgstr "已初始化"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"Use Factory reset to\n"
+"wipe and re-init."
+msgstr ""
+"请用恢复出厂设置\n"
+"擦除并重新初始化。"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "PINs differ"
+msgstr "PIN 不一致"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Try again."
+msgstr "请重试。"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Retry"
+msgstr "重试"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Duress PIN"
+msgstr "胁迫 PIN"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Duress PINs differ"
+msgstr "胁迫 PIN 不一致"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Must differ"
+msgstr "必须不同"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"Duress PIN can't equal\n"
+"your main PIN."
+msgstr ""
+"胁迫 PIN 不能与\n"
+"主 PIN 相同。"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Write this down"
+msgstr "请记下此内容"
+
+#. {} is the card's PUK code (12 digits)
+#: src/seedsigner/views/keycard_views.py
+msgid "PUK  {}"
+msgstr "PUK  {}"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "INIT failed"
+msgstr "INIT 失败"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Initialised"
+msgstr "已初始化"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"PIN/PUK set.\n"
+"Now load a seed."
+msgstr ""
+"PIN/PUK 已设置。\n"
+"现在加载种子。"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Current PIN"
+msgstr "当前 PIN"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Change PIN failed"
+msgstr "修改 PIN 失败"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Mismatch"
+msgstr "不匹配"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"New PINs do not\n"
+"match. Retry."
+msgstr ""
+"新 PIN 不\n"
+"匹配。请重试。"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "PIN changed"
+msgstr "PIN 已修改"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"New PIN active.\n"
+"Use it on next op."
+msgstr ""
+"新 PIN 已生效。\n"
+"下次操作时使用。"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Already paired"
+msgstr "已配对"
+
+#. {} is the number of free pairing slots on the card
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"Paired this session.\n"
+"{} slot free on card."
+msgid_plural ""
+"Paired this session.\n"
+"{} slots free on card."
+msgstr[0] ""
+"本次会话已配对。\n"
+"卡上 {} 个槽位空闲。"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "No free slots"
+msgstr "无空闲槽位"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"Card is full. Unpair on a\n"
+"paired device, or reset."
+msgstr ""
+"卡片已满。请在已配对设备上\n"
+"解除配对，或重置。"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "PAIR failed"
+msgstr "PAIR 失败"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Bad password"
+msgstr "密码错误"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "loaded from disk"
+msgstr "从磁盘加载"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "saved for next boot"
+msgstr "已保存供下次启动"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "default password"
+msgstr "默认密码"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "custom password"
+msgstr "自定义密码"
+
+#. {} are slot index, free-slot count, password kind, detail line
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"Slot {} ({} free)\n"
+"{}\n"
+"{}"
+msgstr ""
+"槽位 {}（{} 空闲）\n"
+"{}\n"
+"{}"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Paired"
+msgstr "已配对"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Unpair this card"
+msgstr "解除此卡配对"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Remove all (local)"
+msgstr "全部移除（本地）"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Card legacy"
+msgstr "旧版卡片"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Card {}…{}"
+msgstr "卡片 {}…{}"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Remove ({} saved)"
+msgstr "移除（已保存 {} 个）"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"Forgets ephemeral\n"
+"pairing for this boot."
+msgstr ""
+"忘记本次启动的\n"
+"临时配对。"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"Frees the card slot\n"
+"and deletes local copy."
+msgstr ""
+"释放卡片槽位\n"
+"并删除本地副本。"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Unpair card?"
+msgstr "解除卡片配对？"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Unpair"
+msgstr "解除配对"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "UNPAIR failed"
+msgstr "UNPAIR 失败"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"Card slot stays in use.\n"
+"Remove local only?"
+msgstr ""
+"卡片槽位仍被占用。\n"
+"仅移除本地？"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Remove local"
+msgstr "移除本地"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Removed local"
+msgstr "已移除本地"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Unpaired"
+msgstr "已解除配对"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Slot freed; local removed."
+msgstr "槽位已释放；本地已移除。"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Remove all?"
+msgstr "全部移除？"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"Local only. Slots stay\n"
+"used on the cards."
+msgstr ""
+"仅本地。卡片上的槽位\n"
+"仍被占用。"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Remove all"
+msgstr "全部移除"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Removed"
+msgstr "已移除"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Removed {} pairing."
+msgid_plural "Removed {} pairings."
+msgstr[0] "已移除 {} 个配对。"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Remove?"
+msgstr "移除？"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"Local only.\n"
+"{}"
+msgstr ""
+"仅本地。\n"
+"{}"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Remove"
+msgstr "移除"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Not found"
+msgstr "未找到"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Saved pairing removed."
+msgstr "已移除保存的配对。"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Already gone."
+msgstr "已不存在。"
+
+#: src/seedsigner/views/keycard_views.py src/seedsigner/views/tools_views.py
+msgid "Continue"
+msgstr "继续"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Generate seed?"
+msgstr "生成种子？"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"Card generates a new\n"
+"seed and loads it on-card."
+msgstr ""
+"卡片将生成新种子\n"
+"并在卡上加载。"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Scan SeedQR"
+msgstr "扫描 SeedQR"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Type 12 words"
+msgstr "输入 12 个词"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Type 24 words"
+msgstr "输入 24 个词"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Import hex (NGRAVE)"
+msgstr "导入十六进制（NGRAVE）"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Push to card"
+msgstr "推送到卡片"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "No passphrase"
+msgstr "无口令"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Set passphrase"
+msgstr "设置口令"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Import to card?"
+msgstr "导入到卡片？"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"Seed leaves device once,\n"
+"encrypted to card."
+msgstr ""
+"种子将加密后\n"
+"一次性离开设备至卡片。"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Source"
+msgstr "来源"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Invalid seed"
+msgstr "种子无效"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Passphrase?"
+msgstr "口令？"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Bad passphrase"
+msgstr "口令错误"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Derive failed"
+msgstr "派生失败"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Push?"
+msgstr "推送？"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"Master fp:\n"
+"{}\n"
+"Verify before push."
+msgstr ""
+"主指纹：\n"
+"{}\n"
+"推送前请核对。"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Push failed"
+msgstr "推送失败"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Wallet imported"
+msgstr "钱包已导入"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"Master fp:\n"
+"{}"
+msgstr ""
+"主指纹：\n"
+"{}"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Word #{}"
+msgstr "第 {} 个词"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Scan QR"
+msgstr "扫描 QR"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Type hex"
+msgstr "输入十六进制"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Hex source"
+msgstr "十六进制来源"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Enter hex"
+msgstr "输入十六进制"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Invalid hex"
+msgstr "十六进制无效"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"Need 32 or 64 hex\n"
+"chars (12 or 24 words)."
+msgstr ""
+"需要 32 或 64 个十六进制\n"
+"字符（12 或 24 个词）。"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Scan hex QR"
+msgstr "扫描十六进制 QR"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Generate new seed"
+msgstr "生成新种子"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Import existing seed"
+msgstr "导入现有种子"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Load seed"
+msgstr "加载助记词"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "12 words"
+msgstr "12 个单词"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "24 words"
+msgstr "24 个单词"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Mnemonic length"
+msgstr "助记词长度"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Generate failed"
+msgstr "生成失败"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Bad mnemonic"
+msgstr "助记词错误"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Index {} out of range"
+msgstr "索引 {} 超出范围"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Verify words"
+msgstr "核对词"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Verify Word #{}"
+msgstr "验证单词 #{}"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Review words"
+msgstr "复查词"
+
+#: src/seedsigner/views/keycard_views.py src/seedsigner/views/settings_views.py
+#: src/seedsigner/views/tools_views.py
+msgid "Try Again"
+msgstr "重试"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Verification error"
+msgstr "验证错误"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Wrong word!"
+msgstr "词错误！"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Seed loaded"
+msgstr "种子已加载"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Save backup"
+msgstr "保存备份"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Save to Seedkeeper?"
+msgstr "保存到 Seedkeeper？"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "This card"
+msgstr "此卡片"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Another card"
+msgstr "另一张卡片"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Both"
+msgstr "两者"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Save backup to"
+msgstr "备份保存到"
+
+#: src/seedsigner/views/keycard_views.py src/seedsigner/views/view.py
+msgid "Install"
+msgstr "安装"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "No Seedkeeper applet"
+msgstr "无 Seedkeeper applet"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Insert Seedkeeper"
+msgstr "插入 Seedkeeper"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"Remove Keycard, insert\n"
+"your Seedkeeper card."
+msgstr ""
+"取出 Keycard，插入\n"
+"你的 Seedkeeper 卡片。"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "No Seedkeeper"
+msgstr "无 Seedkeeper"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"No Seedkeeper card\n"
+"detected."
+msgstr ""
+"未检测到\n"
+"Seedkeeper 卡片。"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "BIP39 mnemonic"
+msgstr "BIP39 助记词"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "UTF-8 password"
+msgstr "UTF-8 密码"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Backup format"
+msgstr "备份格式"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Seedkeeper unavailable"
+msgstr "Seedkeeper 不可用"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Secret label"
+msgstr "密文标签"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"Saving secret\n"
+"\n"
+"\n"
+"\n"
+"\n"
+"\n"
+msgstr ""
+"正在保存密文\n"
+"\n"
+"\n"
+"\n"
+"\n"
+"\n"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Saved (1 of 2)"
+msgstr "已保存（2 之 1）"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"Now back up to a\n"
+"separate card."
+msgstr ""
+"现在备份到\n"
+"另一张卡片。"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Backup saved"
+msgstr "备份已保存"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Mnemonic stored on Seedkeeper."
+msgstr "助记词已存入 Seedkeeper。"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Export failed"
+msgstr "导出失败"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Parse fail"
+msgstr "解析失败"
+
+#. {} are a step number and a hex response dump
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"Step {}\n"
+"resp={}"
+msgstr ""
+"步骤 {}\n"
+"resp={}"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Bad pubkey"
+msgstr "公钥错误"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "ETH address"
+msgstr "ETH 地址"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Deriving addrs..."
+msgstr "正在派生地址..."
+
+#. {} are an index and a hex response dump
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"Index {}\n"
+"resp={}"
+msgstr ""
+"索引 {}\n"
+"resp={}"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Wallets ({})"
+msgstr "钱包（{}）"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Inst {}"
+msgstr "Inst {}"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "List instances"
+msgstr "列出实例"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Switch active"
+msgstr "切换活动"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Create instance"
+msgstr "创建实例"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Delete instance"
+msgstr "删除实例"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Active: {}"
+msgstr "活动：{}"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "GP failed"
+msgstr "GP 失败"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"No Keycard instances\n"
+"found."
+msgstr ""
+"未找到 Keycard\n"
+"实例。"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Instances ({}/{})"
+msgstr "实例（{}/{}）"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "No instances"
+msgstr "无实例"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "No Keycard applet found on this card."
+msgstr "此卡片上未找到 Keycard applet。"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Pick active ({}/{})"
+msgstr "选择活动（{}/{}）"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Active set"
+msgstr "已设为活动"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Create"
+msgstr "创建"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "GP open failed"
+msgstr "GP 打开失败"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Maximum reached"
+msgstr "已达上限"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Delete one of the {} instances first."
+msgstr "请先删除 {} 个实例中的一个。"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "No slot"
+msgstr "无槽位"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Create instance?"
+msgstr "创建实例？"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"New AID:\n"
+"{}\n"
+"Card must have package."
+msgstr ""
+"新 AID：\n"
+"{}\n"
+"卡片须含套件。"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Install failed"
+msgstr "安装失败"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Created"
+msgstr "已创建"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"AID:\n"
+"{}\n"
+"Run Init next."
+msgstr ""
+"AID：\n"
+"{}\n"
+"接下来运行 Init。"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Nothing to delete."
+msgstr "无可删除内容。"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Delete?"
+msgstr "删除？"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Confirm delete?"
+msgstr "确认删除？"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"Delete instance\n"
+"{}?"
+msgstr ""
+"删除实例\n"
+"{}？"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Delete failed"
+msgstr "删除失败"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Deleted"
+msgstr "已删除"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Scan ETH sign request"
+msgstr "扫描 ETH 签名请求"
+
+#: src/seedsigner/views/keycard_views.py src/seedsigner/views/scan_views.py
+msgid "Invalid request"
+msgstr "请求无效"
+
+#: src/seedsigner/views/keycard_views.py src/seedsigner/views/scan_views.py
+msgid "No data decoded"
+msgstr "未解码出数据"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "No request"
+msgstr "无请求"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Scan one first"
+msgstr "请先扫描一个"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "type {}"
+msgstr "type {}"
+
+#. {} are tx-type label, chain name, derivation path, optional address
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"{}\n"
+"{}\n"
+"path {}{}"
+msgstr ""
+"{}\n"
+"{}\n"
+"path {}{}"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Sign ETH?"
+msgstr "签署 ETH？"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Lost mid-flow"
+msgstr "流程中途丢失"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "(create)"
+msgstr "（创建）"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"to {}\n"
+"value {}\n"
+"gas {}"
+msgstr ""
+"至 {}\n"
+"金额 {}\n"
+"gas {}"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"message:\n"
+"{}"
+msgstr ""
+"消息：\n"
+"{}"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"EIP-712 typed data\n"
+"primary: {}"
+msgstr ""
+"EIP-712 类型化数据\n"
+"主类型：{}"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"raw\n"
+"{}…"
+msgstr ""
+"raw\n"
+"{}…"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "TX details"
+msgstr "TX 详情"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Next page"
+msgstr "下一页"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Show data"
+msgstr "显示数据"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Decoded{}"
+msgstr "已解码{}"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Calldata digest"
+msgstr "Calldata digest"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "EIP-712 digest"
+msgstr "EIP-712 digest"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Domain hash"
+msgstr "Domain hash"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Message hash"
+msgstr "Message hash"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Digest {}/{}"
+msgstr "摘要 {}/{}"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Data {}/{}"
+msgstr "数据 {}/{}"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Confirm & sign"
+msgstr "确认并签名"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"Sign with Keycard?\n"
+"chain {}  {}"
+msgstr ""
+"用 Keycard 签名？\n"
+"链 {}  {}"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Confirm"
+msgstr "确认"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Lost request mid-flow"
+msgstr "流程中途丢失请求"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Signing failed"
+msgstr "签名失败"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "No signature"
+msgstr "无签名"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Nothing to display"
+msgstr "无内容可显示"
+
+#: src/seedsigner/views/keycard_views.py src/seedsigner/views/scan_views.py
+#: src/seedsigner/views/view.py
+msgid "Insert a card first"
+msgstr "请先插入卡片"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Connect software wallet"
+msgstr "连接软件钱包"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Sign request"
+msgstr "签名请求"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "View wallets"
+msgstr "查看钱包"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Ethereum · {}"
+msgstr "Ethereum · {}"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Sign message"
+msgstr "签署消息"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Bitcoin · {}"
+msgstr "Bitcoin · {}"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "BTC support unavailable"
+msgstr "BTC 支持不可用"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "BIP-84 xpub"
+msgstr "BIP-84 xpub"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"fp {}\n"
+"{}"
+msgstr ""
+"fp {}\n"
+"{}"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Show QR"
+msgstr "显示 QR"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Scan PSBT"
+msgstr "扫描 PSBT"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Expected a PSBT QR"
+msgstr "应为 PSBT QR"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Wrong QR type"
+msgstr "QR 类型错误"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Expected a PSBT but got: "
+msgstr "应为 PSBT，但收到: "
+
+#: src/seedsigner/views/keycard_views.py
+msgid "No PSBT"
+msgstr "无 PSBT"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Lost PSBT mid-flow"
+msgstr "流程中途丢失 PSBT"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Probe failed"
+msgstr "探测失败"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "PSBT rejected"
+msgstr "PSBT 被拒绝"
+
+#. PSBT summary — input count, output count (with sat total), fee in sats
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"in: {}\n"
+"out: {} ({} sat)\n"
+"fee: {} sat"
+msgstr ""
+"输入：{}\n"
+"输出：{}（{} sat）\n"
+"手续费：{} sat"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Sign"
+msgstr "签名"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Scan message QR"
+msgstr "扫描消息 QR"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Expected a text / signmessage QR"
+msgstr "应为文本 / signmessage QR"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Could not extract a message from the QR."
+msgstr "无法从 QR 中提取消息。"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Unsupported encoding"
+msgstr "不支持的编码"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Message must be UTF-8 text."
+msgstr "消息必须是 UTF-8 文本。"
+
+#: src/seedsigner/views/scan_views.py
+msgid "Scan a QR code"
+msgstr " 扫描一个二维码"
+
+#: src/seedsigner/views/scan_views.py
+msgid "QRCode not recognized or not yet supported."
+msgstr "二维码未被识别或尚未被支持。"
+
+#: src/seedsigner/views/scan_views.py
+msgid "Wrong QR Type"
+msgstr "错误的二维码类型"
+
+#: src/seedsigner/views/scan_views.py src/seedsigner/views/settings_views.py
+#: src/seedsigner/views/tools_views.py
+msgid "Back"
+msgstr "返回"
+
+#: src/seedsigner/views/scan_views.py
+msgid "Could not decode"
+msgstr "无法解码"
+
+#: src/seedsigner/views/scan_views.py
+msgid "The scanned QR was empty or malformed."
+msgstr "扫描的 QR 为空或格式错误。"
+
+#: src/seedsigner/views/scan_views.py
+msgid "Unsupported"
+msgstr "不支持"
+
+#: src/seedsigner/views/scan_views.py
+msgid "QR not supported"
+msgstr "不支持的 QR"
+
+#: src/seedsigner/views/scan_views.py
+msgid "received {}"
+msgstr "已接收 {}"
+
+#: src/seedsigner/views/scan_views.py
+msgid "Unrecognised QR"
+msgstr "无法识别的 QR"
+
+#: src/seedsigner/views/scan_views.py
+msgid "Scanned QR code was not in a supported format."
+msgstr "扫描的 QR 码格式不受支持。"
+
+#. This is on the opening splash screen, displayed above the Seedsigner logo
+#: src/seedsigner/views/screensaver.py
+msgid "An unofficial fork of:"
+msgstr "非官方分支，源自："
+
+#: src/seedsigner/views/settings_views.py src/seedsigner/views/tools_views.py
+msgid "Advanced"
+msgstr "高级"
+
+#: src/seedsigner/views/settings_views.py
+msgid "Hardware"
+msgstr "硬件"
+
+#: src/seedsigner/views/settings_views.py
+msgid "I/O test"
+msgstr "I/O 测试"
+
+#: src/seedsigner/views/settings_views.py
+msgid "Test Smartcard"
+msgstr "测试智能卡"
+
+#: src/seedsigner/views/settings_views.py
+msgid "List card readers"
+msgstr "列出读卡器"
+
+#: src/seedsigner/views/settings_views.py
+msgid "Test NFC Scan"
+msgstr "测试 NFC 扫描"
+
+#: src/seedsigner/views/settings_views.py
+msgid "Restart PCSC"
+msgstr "重启 PCSC"
+
+#: src/seedsigner/views/settings_views.py
+msgid "Battery info"
+msgstr "电池信息"
+
+#: src/seedsigner/views/settings_views.py
+msgid "System info"
+msgstr "系统信息"
+
+#: src/seedsigner/views/settings_views.py
+msgid "Load Backup Files"
+msgstr "加载备份文件"
+
+#: src/seedsigner/views/settings_views.py
+msgid "Dev Options"
+msgstr "开发人员选项"
+
+#: src/seedsigner/views/settings_views.py
+msgid "PBKDF2 Iterations Error"
+msgstr "PBKDF2 迭代次数错误"
+
+#: src/seedsigner/views/settings_views.py
+msgid "out of range"
+msgstr "超出范围"
+
+#: src/seedsigner/views/settings_views.py
+msgid "Value must be between 1 and 50"
+msgstr "数值必须在 1 到 50 之间"
+
+#: src/seedsigner/views/settings_views.py
+msgid "Persistent Settings enabled. Settings saved to SD card."
+msgstr "启用持久性设置。设置已保存到SD卡。"
+
+#: src/seedsigner/views/settings_views.py
+msgid "Settings updated in temporary memory"
+msgstr "临时内存中的设置已更新"
+
+#: src/seedsigner/views/settings_views.py
+msgid "Found Readers:"
+msgstr "已找到读卡器："
+
+#: src/seedsigner/views/settings_views.py
+msgid "No Smartcard readers found..."
+msgstr "未找到智能卡读卡器..."
+
+#: src/seedsigner/views/settings_views.py
+msgid "PCSC Failure"
+msgstr "PCSC 故障"
+
+#: src/seedsigner/views/settings_views.py
+msgid "Unable to list readers (A restart may help, possibly faulty reader)"
+msgstr "无法列出读卡器（重启可能有帮助，可能读卡器故障）"
+
+#: src/seedsigner/views/settings_views.py
+msgid ""
+"Unable to establish PCSC context(A restart may help, possibly faulty "
+"reader)"
+msgstr "无法建立 PCSC 上下文（重启可能有帮助，可能读卡器故障）"
+
+#: src/seedsigner/views/settings_views.py
+msgid "Scanning for Smart Card"
+msgstr "正在扫描智能卡"
+
+#: src/seedsigner/views/settings_views.py
+msgid "No Smartcard detected..."
+msgstr "未检测到智能卡..."
+
+#: src/seedsigner/views/settings_views.py
+msgid "Found SmartCard"
+msgstr "已找到智能卡"
+
+#: src/seedsigner/views/settings_views.py
+msgid "Scanning for NFC Tag"
+msgstr "正在扫描 NFC 标签"
+
+#: src/seedsigner/views/settings_views.py
+msgid "NFC Failure"
+msgstr "NFC 故障"
+
+#: src/seedsigner/views/settings_views.py
+msgid ""
+"ERROR: Unable to open NFC device. \n"
+"(May not be connected)"
+msgstr ""
+"错误：无法打开 NFC 设备。\n"
+"（可能未连接）"
+
+#: src/seedsigner/views/settings_views.py
+msgid "ERROR: Unable to init NFC device."
+msgstr "错误：无法初始化 NFC 设备。"
+
+#: src/seedsigner/views/settings_views.py
+msgid "Found NFC Tag"
+msgstr "已找到 NFC 标签"
+
+#: src/seedsigner/views/settings_views.py
+msgid "NFC Conflict"
+msgstr "NFC 冲突"
+
+#: src/seedsigner/views/settings_views.py
+msgid "Can't scan when IFD-NFC Active"
+msgstr "IFD-NFC 启用时无法扫描"
+
+#: src/seedsigner/views/settings_views.py
+msgid "Warning"
+msgstr "警告"
+
+#: src/seedsigner/views/settings_views.py
+msgid "Warning: No NFC Tag Detected."
+msgstr "警告：未检测到 NFC 标签。"
+
+#: src/seedsigner/views/settings_views.py
+msgid "No compatible battery monitor detected"
+msgstr "未检测到兼容的电池监测器"
+
+#: src/seedsigner/views/settings_views.py src/seedsigner/views/tools_views.py
+msgid "Unavailable"
+msgstr "不可用"
+
+#: src/seedsigner/views/stealth_views.py
+msgid "Toggle on/off"
+msgstr "开/关切换"
+
+#: src/seedsigner/views/stealth_views.py
+msgid "Edit unlock sequence"
+msgstr "编辑解锁序列"
+
+#: src/seedsigner/views/stealth_views.py
+msgid "View current"
+msgstr "查看当前"
+
+#: src/seedsigner/views/stealth_views.py
+msgid "Stealth: {}"
+msgstr "隐身：{}"
+
+#: src/seedsigner/views/stealth_views.py
+msgid "ON"
+msgstr "开"
+
+#: src/seedsigner/views/stealth_views.py
+msgid "OFF"
+msgstr "关"
+
+#: src/seedsigner/views/stealth_views.py
+msgid "No sequence"
+msgstr "无序列"
+
+#: src/seedsigner/views/stealth_views.py
+msgid ""
+"Record an unlock\n"
+"sequence first."
+msgstr ""
+"请先录制解锁\n"
+"序列。"
+
+#: src/seedsigner/views/stealth_views.py
+msgid "Unlock sequence"
+msgstr "解锁序列"
+
+#: src/seedsigner/views/stealth_views.py
+msgid "Record sequence"
+msgstr "录制序列"
+
+#: src/seedsigner/views/stealth_views.py
+msgid "Press up to 12 keys."
+msgstr "按下最多 12 个键。"
+
+#: src/seedsigner/views/stealth_views.py
+msgid "Press joystick to save."
+msgstr "按摇杆保存。"
+
+#: src/seedsigner/views/stealth_views.py
+msgid "(none yet)"
+msgstr "（尚无）"
+
+#. {} is the keys recorded so far
+#: src/seedsigner/views/stealth_views.py
+msgid "Got: {}"
+msgstr "已获取：{}"
+
+#: src/seedsigner/views/stealth_views.py
+msgid "Too short"
+msgstr "太短"
+
+#: src/seedsigner/views/stealth_views.py
+msgid "Too long"
+msgstr "太长"
+
+#: src/seedsigner/views/stealth_views.py
+msgid "Need 3..{} keys, got {}."
+msgstr "需要 3..{} 个键，已获取 {} 个。"
+
+#: src/seedsigner/views/stealth_views.py
+msgid "Save"
+msgstr "保存"
+
+#: src/seedsigner/views/stealth_views.py
+msgid "Discard"
+msgstr "废弃"
+
+#: src/seedsigner/views/stealth_views.py
+msgid "Invalid"
+msgstr "无效"
+
+#: src/seedsigner/views/stealth_views.py
+msgid "Save sequence?"
+msgstr "保存序列？"
+
+#: src/seedsigner/views/stealth_views.py
+msgid "Save this sequence?"
+msgstr "保存此序列？"
+
+#: src/seedsigner/views/stealth_views.py
+msgid "Saved"
+msgstr "已保存"
+
+#: src/seedsigner/views/stealth_views.py
+msgid "New unlock sequence stored."
+msgstr "已存储新的解锁序列。"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Text QR Code"
+msgstr "文本 QR 码"
+
+#: src/seedsigner/views/tools_views.py
+msgid "MicroSD Tools"
+msgstr "MicroSD 工具"
+
+#: src/seedsigner/views/tools_views.py src/seedsigner/views/view.py
+msgid "Tools"
+msgstr "工具"
+
+#: src/seedsigner/views/tools_views.py
+msgid "microSD card not detected"
+msgstr "未检测到 microSD 卡"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Insert a microSD card to save the discharge log."
+msgstr "请插入 microSD 卡以保存放电日志。"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Unable to load network information."
+msgstr "无法加载网络信息。"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Encode text"
+msgstr "编码文本"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Decode QR code"
+msgstr "解码 QR 码"
+
+#: src/seedsigner/views/tools_views.py
+msgid "View Free Space"
+msgstr "查看可用空间"
+
+#: src/seedsigner/views/tools_views.py
+msgid "View Secrets on Card"
+msgstr "查看卡上密文"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Save Password to Card"
+msgstr "保存密码到卡片"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Delete Secret from Card"
+msgstr "从卡片删除密文"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Clone Card Secrets"
+msgstr "克隆卡片密文"
+
+#: src/seedsigner/views/tools_views.py src/seedsigner/views/view.py
+msgid "SeedKeeper"
+msgstr "SeedKeeper"
+
+#. {} are free space in bytes and the same in KiB
+#: src/seedsigner/views/tools_views.py
+msgid ""
+"{} bytes free\n"
+"({:.1f} KiB)"
+msgstr ""
+"{} 字节可用\n"
+"（{:.1f} KiB）"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Seedkeeper Free Space"
+msgstr "Seedkeeper 可用空间"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Insert Source Card"
+msgstr "插入源卡片"
+
+#: src/seedsigner/views/tools_views.py
+msgid ""
+"Reading Source Card\n"
+"\n"
+"\n"
+"\n"
+"\n"
+"\n"
+msgstr ""
+"正在读取源卡片\n"
+"\n"
+"\n"
+"\n"
+"\n"
+"\n"
+
+#: src/seedsigner/views/tools_views.py
+msgid "No Exportable Secrets"
+msgstr "无可导出密文"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Source card has no secrets that can be cloned."
+msgstr "源卡片无可克隆的密文。"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Secrets ready: {}"
+msgstr "就绪密文：{}"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Skipped (locked): {}"
+msgstr "已跳过（已锁）：{}"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Source Ready"
+msgstr "源卡片就绪"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Insert Destination Card"
+msgstr "插入目标卡片"
+
+#: src/seedsigner/views/tools_views.py
+msgid ""
+"Writing Destination Card\n"
+"\n"
+"\n"
+"\n"
+"\n"
+"\n"
+msgstr ""
+"正在写入目标卡片\n"
+"\n"
+"\n"
+"\n"
+"\n"
+"\n"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Clone Complete"
+msgstr "克隆完成"
+
+#: src/seedsigner/views/tools_views.py
+msgid ""
+"Imported: {}\n"
+"Skipped Existing: {}\n"
+"Skipped Unsupported: {}"
+msgstr ""
+"已导入：{}\n"
+"已跳过已存在：{}\n"
+"已跳过不支持：{}"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Clone Failed"
+msgstr "克隆失败"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Exit to Home"
+msgstr "退出到主页"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Clone Another Card?"
+msgstr "克隆另一张卡片？"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Yes"
+msgstr "是"
+
+#: src/seedsigner/views/tools_views.py
+msgid "No"
+msgstr "否"
+
+#: src/seedsigner/views/tools_views.py
+msgid ""
+"Listing Secrets\n"
+"\n"
+"\n"
+"\n"
+"\n"
+"\n"
+msgstr ""
+"正在列出密文\n"
+"\n"
+"\n"
+"\n"
+"\n"
+"\n"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Unnamed Secret"
+msgstr "未命名密文"
+
+#: src/seedsigner/views/tools_views.py
+msgid "No Secrets to Load"
+msgstr "无可加载密文"
+
+#: src/seedsigner/views/tools_views.py
+msgid "No Secrets to Load from Seedkeeper"
+msgstr "Seedkeeper 中无可加载密文"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Select Secret"
+msgstr "选择密文"
+
+#: src/seedsigner/views/tools_views.py
+msgid ""
+"Loading Secret\n"
+"\n"
+"\n"
+"\n"
+"\n"
+"\n"
+msgstr ""
+"正在加载密文\n"
+"\n"
+"\n"
+"\n"
+"\n"
+"\n"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Show as QR"
+msgstr "显示为 QR"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Secret Label"
+msgstr "密文标签"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Secret Text"
+msgstr "密文内容"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Not Enough Space"
+msgstr "空间不足"
+
+#: src/seedsigner/views/tools_views.py
+msgid ""
+"Saving Secret\n"
+"\n"
+"\n"
+"\n"
+"\n"
+"\n"
+msgstr ""
+"正在保存密文\n"
+"\n"
+"\n"
+"\n"
+"\n"
+"\n"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Password Imported"
+msgstr "密码已导入"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Password Import Failed"
+msgstr "密码导入失败"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Delete Confirmation"
+msgstr "删除确认"
+
+#: src/seedsigner/views/tools_views.py
+msgid "This will delete this secret, this cannot be un-done"
+msgstr "这将删除此密文，无法撤销"
+
+#: src/seedsigner/views/tools_views.py
+msgid ""
+"Deleting Secret\n"
+"\n"
+"\n"
+"\n"
+"\n"
+"\n"
+msgstr ""
+"正在删除密文\n"
+"\n"
+"\n"
+"\n"
+"\n"
+"\n"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Secret Deleted"
+msgstr "密文已删除"
+
+#: src/seedsigner/views/tools_views.py
+msgid "SeedKeeper Advanced"
+msgstr "SeedKeeper 高级"
+
+#: src/seedsigner/views/tools_views.py
+msgid ""
+"Delete the SeedKeeper applet?\n"
+"User data will be lost."
+msgstr ""
+"删除 SeedKeeper applet？\n"
+"用户数据将丢失。"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Deleting SeedKeeper applet"
+msgstr "正在删除 SeedKeeper applet"
+
+#: src/seedsigner/views/tools_views.py
+msgid "SeedKeeper applet removed."
+msgstr "已移除 SeedKeeper applet。"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Flash Image"
+msgstr "刷写镜像"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Verify MicroSD"
+msgstr "校验 MicroSD"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Wipe (Zero)"
+msgstr "擦除（置零）"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Wipe (Random)"
+msgstr "擦除（随机）"
+
+#: src/seedsigner/views/tools_views.py
+msgid "MicroSD tools are not supported on desktop."
+msgstr "桌面端不支持 MicroSD 工具。"
+
+#: src/seedsigner/views/tools_views.py
+msgid "WARNING"
+msgstr "警告"
+
+#: src/seedsigner/views/tools_views.py
+msgid "These tools read from the microSD card and may leak loaded secrets."
+msgstr "这些工具会读取 microSD 卡，可能泄露已加载的密文。"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Select Image"
+msgstr "选择镜像"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Insert MicroSD to be Flashed"
+msgstr "插入待刷写的 MicroSD"
+
+#: src/seedsigner/views/tools_views.py
+msgid ""
+"Flashing MicroSD\n"
+"\n"
+"\n"
+"\n"
+"\n"
+"\n"
+msgstr ""
+"正在刷写 MicroSD\n"
+"\n"
+"\n"
+"\n"
+"\n"
+"\n"
+
+#: src/seedsigner/views/tools_views.py
+msgid "MicroSD Flashed"
+msgstr "MicroSD 已刷写"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Verify"
+msgstr "验证"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Skip Verification"
+msgstr "跳过验证"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Checksum Note"
+msgstr "校验和说明"
+
+#: src/seedsigner/views/tools_views.py
+msgid ""
+"Verification test will\n"
+"only pass for freshly\n"
+"flashed (or Read Only)\n"
+"MicroSD Cards."
+msgstr ""
+"校验测试仅对刚刷写\n"
+"（或只读）的 MicroSD\n"
+"卡通过。"
+
+#: src/seedsigner/views/tools_views.py
+msgid ""
+"Reading MicroSD\n"
+"\n"
+"\n"
+"\n"
+"\n"
+"\n"
+msgstr ""
+"正在读取 MicroSD\n"
+"\n"
+"\n"
+"\n"
+"\n"
+"\n"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Matched Checksum"
+msgstr "校验和匹配"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Unfamilliar Checksum"
+msgstr "校验和未知"
+
+#: src/seedsigner/views/tools_views.py
+msgid "64MB"
+msgstr "64MB"
+
+#: src/seedsigner/views/tools_views.py
+msgid "256MB"
+msgstr "256MB"
+
+#: src/seedsigner/views/tools_views.py
+msgid "All"
+msgstr "全部"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Wipe MicroSD"
+msgstr "擦除 MicroSD"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Select amount to wipe (Larger takes longer)"
+msgstr "选择擦除量（越大越慢）"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Insert MicroSD to be Wiped"
+msgstr "插入待擦除的 MicroSD"
+
+#: src/seedsigner/views/tools_views.py
+msgid ""
+"Wiping MicroSD\n"
+"\n"
+"\n"
+"\n"
+"\n"
+"\n"
+"(This takes a while)"
+msgstr ""
+"正在擦除 MicroSD\n"
+"\n"
+"\n"
+"\n"
+"\n"
+"\n"
+"（需要一段时间）"
+
+#: src/seedsigner/views/tools_views.py
+msgid "MicroSD Wiped"
+msgstr "MicroSD 已擦除"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Edit text"
+msgstr "编辑文本"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Discard text"
+msgstr "放弃文本"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Discard text?"
+msgstr "放弃文本？"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Your current text entry will be erased"
+msgstr "你当前输入的文本将被清除"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Generate QR code"
+msgstr "生成 QR 码"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Transcribe mode"
+msgstr "抄录模式"
+
+#: src/seedsigner/views/tools_views.py
+msgid "FullScreen mode"
+msgstr "全屏模式"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Transcribe Mode ?"
+msgstr "抄录模式？"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Confirm text QR code"
+msgstr "确认文本 QR 码"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Confirm Text QR ?"
+msgstr "确认文本 QR？"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Scan text QR code"
+msgstr "扫描文本 QR 码"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Confirm Text QR Code"
+msgstr "确认文本 QR 码"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Error!"
+msgstr "出错！"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Your transcribed text QR code does not match your original text!"
+msgstr "你抄录的文本 QR 码与原文不符！"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Review text QR code"
+msgstr "复查文本 QR 码"
+
+#: src/seedsigner/views/tools_views.py
+msgid ""
+"Your transcribed text QR code successfully scanned and yielded the same "
+"text."
+msgstr "你抄录的文本 QR 码扫描成功，文本一致。"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Confirm Text QR"
+msgstr "确认文本 QR"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Your transcribed text QR code could not be read!"
+msgstr "无法读取你抄录的文本 QR 码！"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Invalid Text QR Code"
+msgstr "无效的文本 QR 码"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Non UTF-8 data detected."
+msgstr "检测到非 UTF-8 数据。"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Edit & Generate QR code"
+msgstr "编辑并生成 QR 码"
+
+#: src/seedsigner/views/tools_views.py
+msgid "Decoded Text"
+msgstr "已解码文本"
+
+#: src/seedsigner/views/view.py
+msgid "Scan"
+msgstr "扫描"
+
+#: src/seedsigner/views/view.py
+msgid "Cards"
+msgstr "卡片"
+
+#: src/seedsigner/views/view.py
+msgid "Factory reset card"
+msgstr "恢复出厂设置卡片"
+
+#: src/seedsigner/views/view.py
+msgid "4 KB"
+msgstr "4 KB"
+
+#: src/seedsigner/views/view.py
+msgid "8 KB (default)"
+msgstr "8 KB (default)"
+
+#: src/seedsigner/views/view.py
+msgid "16 KB"
+msgstr "16 KB"
+
+#: src/seedsigner/views/view.py
+msgid "32 KB"
+msgstr "32 KB"
+
+#: src/seedsigner/views/view.py
+msgid "64 KB"
+msgstr "64 KB"
+
+#: src/seedsigner/views/view.py
+msgid ""
+"Applet bundle missing:\n"
+"{}\n"
+"Rebuild seedsigner-os."
+msgstr ""
+"缺少 Applet 套件：\n"
+"{}\n"
+"请重新构建 seedsigner-os。"
+
+#: src/seedsigner/views/view.py
+msgid "Compatibility"
+msgstr "兼容性"
+
+#: src/seedsigner/views/view.py
+msgid ""
+"iOS Seedkeeper app crashes when\n"
+"Keycard shares a card."
+msgstr ""
+"当 Keycard 与之共用一张卡片时，\n"
+"iOS Seedkeeper 应用会崩溃。"
+
+#: src/seedsigner/views/view.py
+msgid "Install anyway"
+msgstr "仍然安装"
+
+#: src/seedsigner/views/view.py
+msgid "Select Storage"
+msgstr "选择存储"
+
+#: src/seedsigner/views/view.py
+msgid "Installing seedkeeper"
+msgstr "正在安装 seedkeeper"
+
+#: src/seedsigner/views/view.py
+msgid "seedkeeper install failed."
+msgstr "seedkeeper 安装失败。"
+
+#: src/seedsigner/views/view.py
+msgid "Unknown applet kind: {}"
+msgstr "未知 applet 类型：{}"
+
+#: src/seedsigner/views/view.py
+msgid ""
+"Seedkeeper applet installed.\n"
+"Set a device PIN to continue."
+msgstr ""
+"Seedkeeper applet 已安装。\n"
+"请设置设备 PIN 以继续。"
+
+#: src/seedsigner/views/view.py
+msgid "Set up"
+msgstr "设置"
+
+#: src/seedsigner/views/view.py
+msgid "Preparing Keycard install"
+msgstr "正在准备 Keycard 安装"
+
+#: src/seedsigner/views/view.py
+msgid "Loading Keycard package"
+msgstr "正在加载 Keycard 套件"
+
+#: src/seedsigner/views/view.py
+msgid "Creating Keycard signing instance"
+msgstr "正在创建 Keycard 签名实例"
+
+#: src/seedsigner/views/view.py
+msgid ""
+"Keycard install failed at step {}/{}:\n"
+"{}."
+msgstr ""
+"Keycard 安装在步骤 {}/{} 失败：\n"
+"{}。"
+
+#: src/seedsigner/views/view.py
+msgid ""
+"Keycard applet installed.\n"
+"Set a device PIN to continue."
+msgstr ""
+"Keycard applet 已安装。\n"
+"请设置设备 PIN 以继续。"
+
+#: src/seedsigner/views/view.py
+msgid "Wipe every applet on this card?"
+msgstr "擦除此卡片上的所有 applet？"
+
+#: src/seedsigner/views/view.py
+msgid "GlobalPlatform stack missing:"
+msgstr "缺少 GlobalPlatform 组件："
+
+#: src/seedsigner/views/view.py
+msgid "No card detected."
+msgstr "未检测到卡片。"
+
+#: src/seedsigner/views/view.py
+msgid "Deleting {}"
+msgstr "正在删除 {}"
+
+#: src/seedsigner/views/view.py
+msgid "No applets to delete."
+msgstr "无 applet 可删除。"
+
+#: src/seedsigner/views/view.py
+msgid "ISD keys rotated."
+msgstr "ISD 密钥已轮换。"
+
+#: src/seedsigner/views/view.py
+msgid "Keycard data wiped."
+msgstr "Keycard 数据已擦除。"
+
+#: src/seedsigner/views/view.py
+msgid "Keycard wipe failed: {}"
+msgstr "Keycard 擦除失败：{}"
+
+#: src/seedsigner/views/view.py
+msgid "Keycard: not installed."
+msgstr "Keycard：未安装。"
+
+#: src/seedsigner/views/view.py
+msgid "SeedKeeper: wipe from PC."
+msgstr "SeedKeeper：请用电脑擦除。"
+
+#: src/seedsigner/views/view.py
+msgid "Restart"
+msgstr "重启"
+
+#: src/seedsigner/views/view.py
+msgid "Power Off"
+msgstr "关机"
+
+#: src/seedsigner/views/view.py
+msgid "Reset / Power"
+msgstr "重置 / 电源"
+
+#: src/seedsigner/views/view.py
+msgid "This is still on our to-do list!"
+msgstr "这仍在我们的待办事项清单中！"
+
+#: src/seedsigner/views/view.py
+msgid "Work In Progress"
+msgstr "工作进展中"
+
+#: src/seedsigner/views/view.py
+msgid "Not Yet Implemented"
+msgstr "尚未实施"
+
+#: src/seedsigner/views/view.py
+msgid "Back to Main Menu"
+msgstr "返回主页"
+
+#. The network setting (mainnet/testnet/regtest) doesn't match the provided
+#. derivation path
+#: src/seedsigner/views/view.py
+msgid "Network Mismatch"
+msgstr "网络不匹配"
+
+#. Button option to alter a setting
+#: src/seedsigner/views/view.py
+msgid "Change Setting"
+msgstr "修改设置"
+
+#. Inserts mainnet/testnet/regtest and derivation path
+#: src/seedsigner/views/view.py
+msgid "Current network setting ({}) doesn't match {}."
+msgstr "当前网络设置 ({}) 与 {} 不匹配。"
+
+#: src/seedsigner/views/view.py
+msgid "System Error"
+msgstr "系统出错"
+
+#: src/seedsigner/views/view.py
+msgid "Update Setting"
+msgstr "更新设置"
+
+#. Inserts the name of a settings option (e.g. "Persistent Settings" is
+#. currently...)
+#: src/seedsigner/views/view.py
+msgid "\"{}\" is currently disabled in Settings."
+msgstr "设置中的 ”{}\" 目前处于被禁用的状态。"
+
+#: src/seedsigner/views/view.py
+msgid "Option Disabled"
+msgstr "选项已被禁用"
+
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Storage"
+msgstr "存储"
+
+#: src/seedsigner/views/view.py
+msgid "Low space"
+msgstr "空间不足"
+
+#: src/seedsigner/views/view.py
+msgid "Card may be too full for\nthis applet."
+msgstr "卡片空间可能不足\n以安装此 Applet。"
+
+#: src/seedsigner/gui/screens/screen.py
+msgid "{}% used"
+msgstr "已用 {}%"
+
+#: src/seedsigner/gui/screens/screen.py
+msgid "{} / {} KB used\n{} KB free"
+msgstr "已用 {} / {} KB\n剩余 {} KB"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Storage info not available\non this card."
+msgstr "此卡片无法获取\n存储信息。"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Check failed"
+msgstr "检查失败"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Wrong card"
+msgstr "卡片错误"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "This request is for a different wallet. Try another keycard."
+msgstr "此请求针对另一个钱包。请尝试其他 keycard。"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "This PSBT is for a different wallet. Try another keycard."
+msgstr "此 PSBT 针对另一个钱包。请尝试其他 keycard。"
+
+#: src/seedsigner/views/view.py
+msgid "Smartcards"
+msgstr "智能卡"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Switch instance"
+msgstr "切换实例"
+
+msgid "Manage Instances"
+msgstr "管理实例"
+
+msgid "Manage Inst · {}"
+msgstr "管理实例 · {}"
+
+msgid "Initialise instance"
+msgstr "初始化实例"
+
+msgid "One card can hold several keys (\"instances\"), each with its own PIN & seed."
+msgstr "一张卡可容纳多个密钥（“实例”），每个都有独立的 PIN 和种子。"
+
+msgid "Initialise this\ninstance first."
+msgstr "请先初始化\n该实例。"
+
+msgid "Manage Card"
+msgstr "管理卡片"
+
+msgid "Rename instance"
+msgstr "重命名实例"
+
+msgid "Instance name"
+msgstr "实例名称"
+
+msgid "Pairing password"
+msgstr "配对密码"
+
+msgid "Not available"
+msgstr "不可用"
+
+msgid "Enable Persistent Settings\nand insert a microSD."
+msgstr "启用持久化设置\n并插入microSD卡。"
+
+msgid "No saved pairing"
+msgstr "无配对记录"
+
+msgid "Pair this instance\nfirst, then rename."
+msgstr "请先配对此实例，\n然后再重命名。"
+
+msgid "Renamed"
+msgstr "已重命名"
+
+msgid "Now shown as {}."
+msgstr "现在显示为 {}。"
+
+msgid "Save failed"
+msgstr "保存失败"
+
+msgid "Could not write the\nname to the microSD."
+msgstr "无法将名称\n写入microSD卡。"
+
+msgid "Rename failed"
+msgstr "重命名失败"
+
+msgid "No instance"
+msgstr "无实例"
+
+msgid "No Keycard applet\non this card."
+msgstr "此卡上没有Keycard\n小程序。"
+
+msgid "Type words"
+msgstr "输入单词"
+
+msgid "15 words"
+msgstr "15 个单词"
+
+msgid "18 words"
+msgstr "18 个单词"
+
+msgid "21 words"
+msgstr "21 个单词"
+
+msgid "Confirm duress PIN"
+msgstr "确认胁迫 PIN"
+
+msgid "A 2nd PIN that unlocks a decoy wallet instead of your real one. Settable only now, never later."
+msgstr "第二个 PIN，解锁诱饵钱包而非真实钱包。只能现在设置，以后无法设置。"
+
+msgid "New PIN"
+msgstr "新 PIN"
+
+msgid "Confirm new PIN"
+msgstr "确认新 PIN"
+
+msgid "Set PIN (6 digits)"
+msgstr "设置 PIN（6 位数字）"
+
+msgid "Confirm PIN"
+msgstr "确认 PIN"
