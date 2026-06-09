@@ -326,19 +326,19 @@ def probe_installed_applets(controller, timeout_s: float = 1.5) -> CardInstalled
         state.present = True
         client = KeycardClient(connection)
 
-        # Keycard: probe the whole 0x01..0x0F instance-suffix range,
-        # preferring the currently-active AID first. Mirrors
-        # `select_with_autodetect` so a keycard-shell-initialised card on
-        # a non-default suffix is still flagged as installed.
-        from seedsigner.helpers.keycard.ui_helpers import (
-            _KEYCARD_INSTANCE_PREFIX, _KNOWN_INSTANCE_SUFFIXES,
+        # Keycard: probe the instance-suffix range in BOTH the 9-byte and
+        # 10-byte conventions, preferring the currently-active AID first.
+        # Mirrors `select_with_autodetect` (shared candidate builder) so a
+        # keycard-shell-initialised card on a non-default suffix — or a
+        # legacy 10-byte instance — is still flagged as installed.
+        from seedsigner.helpers.keycard.global_platform import (
+            keycard_instance_aid_candidates,
         )
         candidates: list[bytes] = []
         active = getattr(controller, "active_keycard_aid", None)
         if active:
             candidates.append(bytes(active))
-        for suffix in _KNOWN_INSTANCE_SUFFIXES:
-            candidate = _KEYCARD_INSTANCE_PREFIX + suffix
+        for candidate in keycard_instance_aid_candidates():
             if candidate not in candidates:
                 candidates.append(candidate)
         for aid in candidates:

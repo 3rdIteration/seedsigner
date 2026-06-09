@@ -413,7 +413,7 @@ Cards initialised by `keycard-cli` / `keycard-shell` ship with very specific pro
 
 | Parameter | Value | Source |
 |-----------|-------|--------|
-| Applet AID | `A0000008040001010101` | Status Keycard published AID, hard-coded in `commands.py` |
+| Applet AID (`commands.APPLET_AID`) | `A0000008040001010101` (10-byte) | The **SELECT first-try / default-active** target, hard-coded in `commands.py`. Kept as-is for back-compat. Note this is the **10-byte legacy** form; *created* instances now use the **9-byte canonical** `A000000804000101 + slot` (see "AID conventions" below), and `select_with_autodetect` probes both — so on a 9-byte card the 10-byte first-try `0x6A82`s and the probe finds the real instance. Do not change `APPLET_AID` to 9-byte without hardware-verifying every SELECT path (smoke test calls bare `client.select()` with no autodetect). |
 | Pairing-password KDF | PBKDF2-HMAC-**SHA256**, 50000 iter | `crypto.derive_pairing_secret()` — matches keycard-cli/shell defaults |
 | Pairing-password salt | `b"Keycard Pairing Password Salt"` | Same constant as keycard-cli |
 | Password Unicode normalisation | NFKD before UTF-8 encode | Already done at every entry point (PairView, smoke test) |
@@ -506,9 +506,30 @@ The commands we send (`INSTALL [for install]`, `DELETE`, `GET STATUS`) carry no 
 
 **AID conventions:**
 
-- Status applet binary: `A000000804000101`
-- Default first instance: `A0000008040001010101`
-- We allocate new instance AIDs by bumping the last byte: `…0102`, `…0103`, … up to `…010F`.
+- Status applet binary (prefix): `A000000804000101` (`KEYCARD_APPLET_AID`, 8 bytes).
+- **Two instance-AID forms exist in the wild, and the slot index is always the
+  last byte of both:**
+  - **9-byte canonical** `prefix + slot` (e.g. `A00000080400010101`) — what
+    keycard-cli / keycard-shell and real Status cards use. **This is the form
+    SeedSigner now mints** (`_next_free_instance_aid`).
+  - **10-byte legacy** `prefix + 0x01 + slot` (e.g. `A0000008040001010101`,
+    which equals `commands.APPLET_AID`) — minted by older SeedSigner builds.
+- `_next_free_instance_aid` computes occupied slots from the **last byte** of
+  **every** prefix-matching AID regardless of length, mints the **9-byte**
+  next-free slot, and never returns an AID that already exists. (The old code
+  only recognised the 10-byte form, so on a real 9-byte card it judged slot 1
+  free and minted `…0101` = `APPLET_AID`, which collided with the existing
+  instance **and stole the boot-default slot** — that was the bug.)
+- Both forms are SELECT-probed everywhere via one shared builder,
+  `global_platform.keycard_instance_aid_candidates` (consumed by
+  `select_with_autodetect`, `probe_keycard_instance_aids`, and `card_probe`),
+  so an instance of either convention is always found and the three probe
+  sites can't drift apart again.
+- `_format_instance_label` renders `Inst N` (N = last byte) for **both** forms.
+  A 9-byte and a 10-byte AID at the same slot therefore share an `Inst N`
+  label, so destructive screens (Delete) additionally show the **full AID**
+  (`_format_aid_short` no longer truncates ≤12-byte AIDs) — the label alone is
+  not a safe delete key.
 - Each instance generates its own random `instance_uid` at INIT time, so the per-UID pairing storage in `helpers/keycard/pairing_storage.py` Just Works for multi-instance setups — no schema change needed.
 
 **Manage Instances menu** (`Tools > Keycard > Settings > Manage Instances`, titled `Manage Inst · Inst N`): `This instance ›` / `Create instance` / `Delete instance`, preceded once per boot by a one-screen explainer (`ToolsKeycardInstancesMenuView`). There is **no** standalone "List instances" view anymore — `Switch instance` (its own top-level entry, `ToolsKeycardInstancesSwitchView`, **hidden when only one instance**) is the read-out of the instance set. Every list renders instances by the readable **`Inst N`** label (`_format_instance_label`, derived from the AID's trailing instance byte — falls back to short-AID hex for non-instance AIDs). `Switch instance` shows only **Keycard-prefixed** instances (filtered by `KEYCARD_APPLET_AID`), never other applets (e.g. SeedKeeper).

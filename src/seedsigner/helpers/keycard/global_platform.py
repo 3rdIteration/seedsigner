@@ -593,6 +593,33 @@ def list_instances(channel: GpSecureChannel) -> List[AppletInstance]:
 MAX_KEYCARD_INSTANCES = 4
 
 
+def keycard_instance_aid_candidates(prefix: bytes = bytes.fromhex("A000000804000101"),
+                                    slots=None) -> List[bytes]:
+    """Ordered, de-duped *suffixed* instance-AID candidates to probe by SELECT.
+
+    Status cards initialised by keycard-cli/keycard-shell use the **9-byte
+    canonical** instance AID ``prefix + slot``; instances minted by older
+    SeedSigner builds use the **10-byte legacy** form ``prefix + 0x01 + slot``.
+    We emit both so either is found regardless of which tool created it, the
+    9-byte (real-card) form first. The bare ``prefix`` is **not** included —
+    callers that want it (the GET-STATUS-empty fallback) prepend it themselves.
+
+    Centralising this is deliberate: the suffix-probe loop used to be copied in
+    three places with two different conventions, which is the drift that let a
+    new instance collide with an existing slot.
+    """
+    if slots is None:
+        slots = range(0x01, 0x01 + MAX_KEYCARD_INSTANCES)
+    out: List[bytes] = []
+    seen = set()
+    for x in slots:
+        for cand in (prefix + bytes([x]), prefix + bytes([0x01, x])):
+            if cand not in seen:
+                seen.add(cand)
+                out.append(cand)
+    return out
+
+
 def probe_keycard_instance_aids(connection,
                                 package_prefix: bytes = bytes.fromhex("A000000804000101"),
                                 instance_byte_range: range = range(0x01, 0x01 + MAX_KEYCARD_INSTANCES)
@@ -604,7 +631,9 @@ def probe_keycard_instance_aids(connection,
     SELECTing it. Sends one SELECT per candidate AID:
 
     * Bare ``package_prefix`` (no extra suffix), then
-    * ``package_prefix || 0x01 || X`` for each ``X`` in ``instance_byte_range``.
+    * both the 9-byte ``package_prefix || X`` and 10-byte
+      ``package_prefix || 0x01 || X`` forms for each ``X`` in
+      ``instance_byte_range`` (see :func:`keycard_instance_aid_candidates`).
 
     Returns the AIDs that responded with SW=9000. Note: this side-effect
     SELECTs the *last responding* applet on the card, so callers should
@@ -612,9 +641,9 @@ def probe_keycard_instance_aids(connection,
     this returns.
     """
     found: List[bytes] = []
-    candidates: List[bytes] = [package_prefix]
-    for b in instance_byte_range:
-        candidates.append(package_prefix + bytes([0x01, b]))
+    candidates: List[bytes] = [package_prefix] + keycard_instance_aid_candidates(
+        package_prefix, instance_byte_range,
+    )
     for aid in candidates:
         apdu = [0x00, 0xA4, 0x04, 0x00, len(aid)] + list(aid) + [0x00]
         try:

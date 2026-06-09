@@ -2501,5 +2501,131 @@ class TestInstanceNameResolution(unittest.TestCase):
         self.assertEqual(labels, ["Alice", "Bob"])
 
 
+class TestInstanceAidAllocation(unittest.TestCase):
+    """Regression cover for the instance-AID collision bug: a new instance
+    must never reuse an occupied slot, must mint the 9-byte canonical form,
+    and must never equal the 10-byte ``APPLET_AID`` default (which would steal
+    the boot-default slot from a real card)."""
+
+    def _prefix(self):
+        from seedsigner.views.keycard_views import KEYCARD_APPLET_AID
+        return KEYCARD_APPLET_AID
+
+    def test_next_free_aid_skips_9byte_occupied_slots(self):
+        """The exact trezor-card failure: three 9-byte instances occupy slots
+        1-3, so the next AID is the 9-byte slot 4 — NOT a colliding ...0101."""
+        from seedsigner.views.keycard_views import _next_free_instance_aid
+        from seedsigner.helpers.keycard.commands import APPLET_AID
+        p = self._prefix()
+        existing = [p + bytes([0x01]), p + bytes([0x02]), p + bytes([0x03])]
+        result = _next_free_instance_aid(existing)
+        self.assertEqual(result, p + bytes([0x04]))
+        self.assertEqual(len(result), len(p) + 1)       # 9-byte canonical
+        self.assertNotIn(result, existing)
+        self.assertNotEqual(result, APPLET_AID)         # not the 10-byte default
+
+    def test_next_free_aid_never_emits_existing(self):
+        """A 9-byte and a 10-byte AID at the SAME slot 1 → next is slot 2,
+        and never equals either existing AID."""
+        from seedsigner.views.keycard_views import _next_free_instance_aid
+        p = self._prefix()
+        existing = [p + bytes([0x01]), p + bytes([0x01, 0x01])]  # both slot 1
+        result = _next_free_instance_aid(existing)
+        self.assertEqual(result, p + bytes([0x02]))
+        self.assertNotIn(result, existing)
+
+    def test_next_free_aid_empty_mints_9byte_canonical(self):
+        from seedsigner.views.keycard_views import _next_free_instance_aid
+        from seedsigner.helpers.keycard.commands import APPLET_AID
+        p = self._prefix()
+        result = _next_free_instance_aid([])
+        self.assertEqual(result, p + bytes([0x01]))
+        self.assertEqual(len(result), len(p) + 1)
+        self.assertNotEqual(result, APPLET_AID)
+
+    def test_next_free_aid_mixed_lengths_fill_smallest(self):
+        """Slot 1 (9-byte) and slot 3 (10-byte) used → returns slot 2."""
+        from seedsigner.views.keycard_views import _next_free_instance_aid
+        p = self._prefix()
+        existing = [p + bytes([0x01]), p + bytes([0x01, 0x03])]
+        self.assertEqual(_next_free_instance_aid(existing), p + bytes([0x02]))
+
+    def test_next_free_aid_full_raises(self):
+        from seedsigner.views.keycard_views import _next_free_instance_aid
+        p = self._prefix()
+        existing = [
+            p + bytes([0x01]),            # slot 1 (9-byte)
+            p + bytes([0x01, 0x02]),      # slot 2 (10-byte)
+            p + bytes([0x03]),            # slot 3 (9-byte)
+            p + bytes([0x01, 0x04]),      # slot 4 (10-byte)
+        ]
+        with self.assertRaises(RuntimeError):
+            _next_free_instance_aid(existing)
+
+    def test_format_instance_label_both_forms(self):
+        from seedsigner.views import keycard_views
+        p = self._prefix()
+        # 9-byte canonical → Inst N (was previously short-hex)
+        self.assertEqual(keycard_views._format_instance_label(p + bytes([0x02])), "Inst 2")
+        # 10-byte legacy → Inst N
+        self.assertEqual(keycard_views._format_instance_label(p + bytes([0x01, 0x03])), "Inst 3")
+        # A 9-byte and a 10-byte AID at the same slot BOTH render Inst 1
+        # (intended ambiguity; the Delete screen disambiguates via full AID).
+        self.assertEqual(keycard_views._format_instance_label(p + bytes([0x01])), "Inst 1")
+        self.assertEqual(keycard_views._format_instance_label(p + bytes([0x01, 0x01])), "Inst 1")
+
+    def test_format_aid_short_full_for_short_aids(self):
+        from seedsigner.views import keycard_views
+        p = self._prefix()
+        nine = keycard_views._format_aid_short(p + bytes([0x01]))      # a00000080400010101
+        ten = keycard_views._format_aid_short(p + bytes([0x01, 0x01]))  # a0000008040001010101
+        self.assertNotIn("…", nine)
+        self.assertNotIn("…", ten)
+        self.assertNotEqual(nine, ten)                 # distinguishable now
+        self.assertEqual(nine, (p + bytes([0x01])).hex())
+        # A genuinely long AID (>12 bytes) still truncates.
+        long_aid = bytes(range(13))
+        self.assertIn("…", keycard_views._format_aid_short(long_aid))
+
+    def test_delete_view_full_aid_disambiguates(self):
+        """Two same-slot instances (9-byte + 10-byte ...0101) must render as
+        DISTINCT Delete rows so the destructive pick can't hit the wrong one."""
+        from unittest.mock import patch
+        from seedsigner.views import keycard_views
+        from seedsigner.views.keycard_views import (
+            ToolsKeycardInstancesDeleteView, KEYCARD_APPLET_AID,
+        )
+        from seedsigner.helpers.keycard.global_platform import AppletInstance
+        from seedsigner.gui.screens.screen import RET_CODE__BACK_BUTTON
+
+        nine = KEYCARD_APPLET_AID + bytes([0x01])
+        ten = KEYCARD_APPLET_AID + bytes([0x01, 0x01])
+        instances = [
+            AppletInstance(aid=nine, life_cycle=0, privileges=0),
+            AppletInstance(aid=ten, life_cycle=0, privileges=0),
+        ]
+        view = ToolsKeycardInstancesDeleteView.__new__(ToolsKeycardInstancesDeleteView)
+        view.controller = MagicMock()
+        view.controller.get_instance_name_for_aid.return_value = None  # no names
+        captured = {}
+
+        def fake_run_screen(screen_cls, **kwargs):
+            captured["button_data"] = kwargs["button_data"]
+            return RET_CODE__BACK_BUTTON
+
+        view.run_screen = fake_run_screen
+        with patch.object(
+            keycard_views, "_open_isd_channel",
+            return_value=(MagicMock(), instances, MagicMock()),
+        ):
+            view.run()
+
+        labels = [b.button_label for b in captured["button_data"]]
+        self.assertEqual(len(labels), 2)
+        self.assertNotEqual(labels[0], labels[1])        # disambiguated
+        self.assertIn(nine.hex(), labels[0])
+        self.assertIn(ten.hex(), labels[1])
+
+
 if __name__ == "__main__":
     unittest.main()

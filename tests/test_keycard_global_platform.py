@@ -520,6 +520,24 @@ class TestListInstancesFallbacks(unittest.TestCase):
         self.assertEqual(result, [])
 
 
+class TestKeycardInstanceAidCandidates(unittest.TestCase):
+    def test_emits_both_forms_deduped_9byte_first(self):
+        from seedsigner.helpers.keycard.global_platform import (
+            keycard_instance_aid_candidates,
+        )
+        p = bytes.fromhex("A000000804000101")
+        cands = keycard_instance_aid_candidates(p, slots=range(0x01, 0x03))
+        # slots 1,2 → 9-byte then 10-byte each = 4 entries, no bare prefix.
+        self.assertEqual(cands, [
+            p + bytes([0x01]),        # 9-byte slot 1
+            p + bytes([0x01, 0x01]),  # 10-byte slot 1
+            p + bytes([0x02]),        # 9-byte slot 2
+            p + bytes([0x01, 0x02]),  # 10-byte slot 2
+        ])
+        self.assertEqual(len(cands), len(set(cands)))  # de-duped
+        self.assertNotIn(p, cands)                     # bare prefix excluded
+
+
 class TestProbeKeycardInstanceAids(unittest.TestCase):
     def test_finds_aid_via_select(self):
         from seedsigner.helpers.keycard.global_platform import (
@@ -547,8 +565,33 @@ class TestProbeKeycardInstanceAids(unittest.TestCase):
             conn, package_prefix=prefix, instance_byte_range=range(0x01, 0x05),
         )
         self.assertEqual(found, [target])
-        # Bare prefix + 4 instance suffixes = 5 SELECTs total.
-        self.assertEqual(len(conn.calls), 5)
+        # Bare prefix + both forms (9-byte ``prefix+X`` and 10-byte
+        # ``prefix+01+X``) for each of 4 slots = 1 + 8 = 9 SELECTs total.
+        self.assertEqual(len(conn.calls), 9)
+
+    def test_probes_both_aid_conventions(self):
+        """A 9-byte canonical instance is found even though older builds only
+        probed the 10-byte form (and vice-versa)."""
+        from seedsigner.helpers.keycard.global_platform import (
+            probe_keycard_instance_aids,
+        )
+
+        prefix = bytes.fromhex("A000000804000101")
+        nine_byte = prefix + bytes([0x02])          # canonical real-card form
+        ten_byte = prefix + bytes([0x01, 0x03])     # legacy SeedSigner form
+
+        class _Conn:
+            def transmit(self, apdu):
+                aid = bytes(apdu[5:5 + apdu[4]])
+                if aid in (nine_byte, ten_byte):
+                    return ([], 0x90, 0x00)
+                return ([], 0x6A, 0x82)
+
+        found = probe_keycard_instance_aids(
+            _Conn(), package_prefix=prefix, instance_byte_range=range(0x01, 0x05),
+        )
+        self.assertIn(nine_byte, found)
+        self.assertIn(ten_byte, found)
 
 
 class TestScpIdValidation(unittest.TestCase):

@@ -3257,7 +3257,12 @@ def _format_aid_short(aid: bytes) -> str:
     if len(aid) == 0:
         return "(empty)"
     hexstr = aid.hex()
-    if len(hexstr) <= 16:
+    # Keycard instance AIDs are ≤10 bytes (≤20 hex) and all share the same
+    # 8-byte prefix, so the old first-6+last-4 truncation rendered two
+    # distinct instances (e.g. 9-byte ``…0101`` vs 10-byte ``…0101``)
+    # identically. Show short AIDs in FULL so they can be told apart — only
+    # truncate genuinely long (>12-byte) AIDs.
+    if len(hexstr) <= 24:
         return hexstr
     return hexstr[:6] + "…" + hexstr[-4:]
 
@@ -3265,17 +3270,21 @@ def _format_aid_short(aid: bytes) -> str:
 def _format_instance_label(aid: bytes) -> str:
     """Human-readable name for a Keycard instance: ``Inst N``.
 
-    Keycard instance AIDs are ``KEYCARD_APPLET_AID`` + ``0x01`` + a
-    one-byte instance index (see :func:`_next_free_instance_aid`). We
-    surface that index as ``Inst N`` so the user has a stable, readable
-    handle on which instance every signing / export / wipe acts on,
-    instead of the cryptic truncated AID hex. AIDs that don't match the
-    instance pattern fall back to the short hex form.
+    Keycard instance AIDs are ``KEYCARD_APPLET_AID`` + a one-byte instance
+    index — either the 9-byte canonical form (``prefix + slot``, real cards)
+    or the 10-byte legacy form (``prefix + 0x01 + slot``, older SeedSigner
+    builds). In **both** the index is the last byte, which we surface as
+    ``Inst N`` so the user has a stable handle on which instance every
+    signing / export / wipe acts on, instead of cryptic AID hex. AIDs that
+    don't match the instance pattern fall back to the short hex form.
+
+    Note a 9-byte ``…0101`` and a 10-byte ``…0101`` both render ``Inst 1``;
+    that residual ambiguity is why destructive screens (Delete) also show the
+    full AID — the label alone is not a safe delete key.
     """
     if (
-        len(aid) == len(KEYCARD_APPLET_AID) + 2
-        and aid.startswith(KEYCARD_APPLET_AID)
-        and aid[-2] == 0x01
+        aid.startswith(KEYCARD_APPLET_AID)
+        and len(aid) in (len(KEYCARD_APPLET_AID) + 1, len(KEYCARD_APPLET_AID) + 2)
     ):
         return _("Inst {}").format(aid[-1])
     return _format_aid_short(aid)
@@ -3294,24 +3303,35 @@ def _instance_display_name(controller, aid: bytes) -> str:
 
 
 def _next_free_instance_aid(existing: list) -> bytes:
-    """Suggest the next instance AID by bumping the last byte.
+    """Suggest the next free instance AID, in the 9-byte canonical form.
 
-    Status default instance AID ends in ``...0101``. We look at every
-    existing instance whose AID begins with ``KEYCARD_APPLET_AID`` +
-    one byte and pick the smallest unused last byte.
+    The slot index is the **last byte** of an instance AID in *both* the
+    9-byte canonical form (``KEYCARD_APPLET_AID + slot``, used by
+    keycard-cli/keycard-shell and real cards) and the 10-byte legacy form
+    (``KEYCARD_APPLET_AID + 0x01 + slot``, minted by older SeedSigner builds).
+    We therefore mark a slot used from the last byte of **every** AID under
+    the applet prefix, regardless of length — so a 9-byte ``…0103`` correctly
+    occupies slot 3. (The old code only recognised the 10-byte form, so it
+    treated real 9-byte instances as absent and minted a colliding ``…0101``
+    that equalled ``APPLET_AID`` and stole the boot-default slot.)
+
+    New instances are minted in the **9-byte canonical form** to match real
+    cards, and we never return an AID that already exists.
     """
     from seedsigner.helpers.keycard.global_platform import MAX_KEYCARD_INSTANCES
+    existing_set = {bytes(a) for a in existing}
     used = set()
-    for aid in existing:
-        if (
-            len(aid) == len(KEYCARD_APPLET_AID) + 2
-            and aid.startswith(KEYCARD_APPLET_AID)
-            and aid[-2] == 0x01
-        ):
+    for aid in existing_set:
+        if aid.startswith(KEYCARD_APPLET_AID) and len(aid) > len(KEYCARD_APPLET_AID):
             used.add(aid[-1])
     for candidate in range(0x01, 0x01 + MAX_KEYCARD_INSTANCES):
-        if candidate not in used:
-            return KEYCARD_APPLET_AID + bytes([0x01, candidate])
+        if candidate in used:
+            continue
+        new_aid = KEYCARD_APPLET_AID + bytes([candidate])
+        if new_aid in existing_set:
+            # Defensive: a same-slot AID of a different length already exists.
+            continue
+        return new_aid
     raise RuntimeError(
         f"no free instance slot (max {MAX_KEYCARD_INSTANCES})"
     )
@@ -3669,8 +3689,19 @@ class ToolsKeycardInstancesDeleteView(View):
                 _("No instances"), _("Nothing to delete."),
             )
 
+        # Label each row with the resolved name (if cached this session) AND
+        # the FULL AID. The full AID is the load-bearing disambiguator: two
+        # instances can share an ``Inst N`` label (a 9-byte and a 10-byte AID
+        # at the same slot), and deleting the wrong one is destructive. We do
+        # NOT call ``_resolve_instance_uids`` here — it SELECTs each AID, which
+        # deselects the ISD and would break the GP channel we still need for
+        # ``delete_aid``; we rely on the session AID→UID cache + the full AID.
         button_data = [
-            ButtonOption(_format_aid_short(i.aid)) for i in candidates
+            ButtonOption(
+                _instance_display_name(self.controller, i.aid)
+                + " " + i.aid.hex()
+            )
+            for i in candidates
         ]
         ret = self.run_screen(
             ButtonListScreen,
@@ -3687,7 +3718,9 @@ class ToolsKeycardInstancesDeleteView(View):
             DireWarningScreen,
             title=_("Confirm delete?"),
             status_headline=None,
-            text=_("Delete instance\n{}?").format(_format_aid_short(target)),
+            text=_("Delete {}\n{}?").format(
+                _instance_display_name(self.controller, target), target.hex()
+            ),
             show_back_button=True,
             button_data=[ButtonOption("Delete")],
         )
@@ -3718,9 +3751,12 @@ class ToolsKeycardInstancesDeleteView(View):
             except Exception:
                 logger.exception("could not remove deleted pairing blob")
 
-        # If the deleted AID was the active one, fall back to default.
+        # If the deleted AID was the active one, fall back to the 9-byte
+        # canonical default slot. The default SELECT (10-byte APPLET_AID)
+        # still first-tries then probes both forms, so a 9- or 10-byte
+        # remaining instance is resolved regardless.
         if self.controller.active_keycard_aid == target:
-            self.controller.active_keycard_aid = KEYCARD_APPLET_AID + b"\x01\x01"
+            self.controller.active_keycard_aid = KEYCARD_APPLET_AID + b"\x01"
         # Invalidate the cached wallet list for the deleted AID (and
         # the fallback default, in case both pointed at the same blob).
         if self.controller.keycard_wallets_data is not None:

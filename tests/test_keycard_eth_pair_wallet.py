@@ -241,6 +241,29 @@ class TestSelectWithAutodetect(unittest.TestCase):
         self.assertIs(result, info)
         self.assertEqual(controller.active_keycard_aid, self.PREFIX + b"\x03")
 
+    def test_probes_legacy_10byte_form(self):
+        """Autodetect must also find a legacy 10-byte instance (prefix+01+X),
+        not just the 9-byte canonical form."""
+        from seedsigner.helpers.keycard.commands import APDUError
+        from seedsigner.helpers.keycard.ui_helpers import select_with_autodetect
+
+        client = MagicMock()
+        info = self._info()
+        ten_byte = self.PREFIX + b"\x01\x02"  # legacy slot-2 form
+
+        def fake_select(aid):
+            if aid == ten_byte:
+                return info
+            raise APDUError(0x6A82, "not found")
+
+        client.select.side_effect = fake_select
+        controller = MagicMock()
+        controller.active_keycard_aid = self.PREFIX + b"\x01"
+
+        result = select_with_autodetect(client, controller)
+        self.assertIs(result, info)
+        self.assertEqual(controller.active_keycard_aid, ten_byte)
+
     def test_raises_original_6a82_when_no_candidate_matches(self):
         from seedsigner.helpers.keycard.commands import APDUError
         from seedsigner.helpers.keycard.ui_helpers import select_with_autodetect

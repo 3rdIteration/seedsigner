@@ -244,11 +244,10 @@ def _active_aid(parent_view: "View"):
 # The last byte is the instance suffix; cards initialised by keycard-shell
 # may live at a suffix other than 0x01.
 _KEYCARD_INSTANCE_PREFIX = bytes.fromhex("A000000804000101")
-# Suffix probe range mirrors MAX_KEYCARD_INSTANCES in global_platform.
-from .global_platform import MAX_KEYCARD_INSTANCES as _MAX_KC_INSTANCES
-_KNOWN_INSTANCE_SUFFIXES = [
-    bytes([b]) for b in range(0x01, 0x01 + _MAX_KC_INSTANCES)
-]
+# Instance-AID candidates to probe (both 9-byte and 10-byte conventions) come
+# from the shared ``global_platform.keycard_instance_aid_candidates`` builder,
+# so the three probe sites (here, ``probe_keycard_instance_aids``, and
+# ``card_probe``) can never drift apart again.
 
 
 def select_with_autodetect(client, controller):
@@ -286,8 +285,10 @@ def select_with_autodetect(client, controller):
         controller.remember_aid_for_uid(target, info.instance_uid)
         return info
 
-    for suffix in _KNOWN_INSTANCE_SUFFIXES:
-        candidate = _KEYCARD_INSTANCE_PREFIX + suffix
+    from seedsigner.helpers.keycard.global_platform import (
+        keycard_instance_aid_candidates,
+    )
+    for candidate in keycard_instance_aid_candidates(_KEYCARD_INSTANCE_PREFIX):
         if candidate == target:
             continue
         try:
