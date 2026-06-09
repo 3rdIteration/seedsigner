@@ -1,5 +1,6 @@
 import base64
 import hashlib
+import hmac
 import json
 import logging
 import os
@@ -4721,9 +4722,10 @@ class ToolsSpecterDIYView(View):
     CHANGE_PIN = ButtonOption("Change Card PIN")
     LOAD_MNEMONIC = ButtonOption("Load Mnemonic")
     SAVE_MNEMONIC = ButtonOption("Save Mnemonic")
+    WIPE_MNEMONIC = ButtonOption("Wipe Seed")
 
     def run(self):
-        button_data = [self.CHANGE_PIN, self.LOAD_MNEMONIC, self.SAVE_MNEMONIC]
+        button_data = [self.CHANGE_PIN, self.LOAD_MNEMONIC, self.SAVE_MNEMONIC, self.WIPE_MNEMONIC]
 
         selected_menu_num = self.run_screen(
             ButtonListScreen,
@@ -4740,7 +4742,84 @@ class ToolsSpecterDIYView(View):
             return Destination(ToolsSpecterDIYChangePinView)
         if choice == self.LOAD_MNEMONIC:
             return Destination(ToolsJavacardLoadMnemonicView)
-        return Destination(ToolsJavacardSaveMnemonicView)
+        if choice == self.SAVE_MNEMONIC:
+            return Destination(ToolsJavacardSaveMnemonicView)
+        return Destination(ToolsJavacardWipeMnemonicView)
+
+
+class ToolsJavacardWipeMnemonicView(View):
+    def run(self):
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+
+        conn = None
+        secure_channel = None
+        try:
+            Card, MemoryCardApplet, SecureApplet = _get_specter_card_api()
+            conn = Card(SPECTER_JAVACARD_DEFAULT_AID)
+            conn.connect()
+            secure_applet = SecureApplet(conn)
+            memory_applet = MemoryCardApplet(conn)
+            secure_channel = _open_specter_secure_channel(secure_applet)
+            if not _unlock_specter_card_if_needed(self, secure_applet, secure_channel):
+                return Destination(BackStackView)
+
+            existing_data = memory_applet.get_data(secure_channel)
+            if not existing_data:
+                self.run_screen(
+                    WarningScreen,
+                    title="No Seed Found",
+                    status_headline=None,
+                    text="No seed data found on Specter Javacard.",
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
+
+            confirm = self.run_screen(
+                WarningScreen,
+                title="Wipe Seed?",
+                status_headline=None,
+                text="Delete stored seed data from card?",
+                show_back_button=False,
+                button_data=[ButtonOption("Wipe Seed"), ButtonOption("Cancel")],
+            )
+            if confirm != 0:
+                return Destination(BackStackView)
+
+            loading = LoadingScreenThread(text="Wiping Seed\n\n\n\n\n\n")
+            loading.start()
+            memory_applet.store_data(secure_channel, b"")
+            loading.stop()
+
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Seed Wiped",
+                status_headline=None,
+                text="Seed data deleted from Specter Javacard",
+                show_back_button=False,
+            )
+            return Destination(BackStackView)
+        except Exception as exc:
+            self.run_screen(
+                WarningScreen,
+                title="Wipe Failed",
+                status_headline=None,
+                text=str(exc),
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+        finally:
+            if secure_channel is not None:
+                try:
+                    secure_channel.close()
+                except Exception:
+                    pass
+            if conn is not None:
+                try:
+                    conn.disconnect()
+                except Exception:
+                    pass
 
 
 class ToolsSpecterDIYChangePinView(View):
@@ -4752,17 +4831,20 @@ class ToolsSpecterDIYChangePinView(View):
             conn = Card(SPECTER_JAVACARD_DEFAULT_AID)
             conn.connect()
             secure_applet = SecureApplet(conn)
-            secure_channel = secure_applet.open_secure_channel()
+            secure_channel = _open_specter_secure_channel(secure_applet)
 
             status = secure_applet.pin_status(secure_channel)
             pin_status = status.get("status")
 
+            if pin_status == "bricked":
+                _show_specter_card_bricked_warning(self)
+                return Destination(BackStackView)
+
             if pin_status in ("disabled", "no_pin"):
                 # PIN is not set; prompt user to set a new PIN
-                ret = seed_screens.SeedAddPassphraseScreen(title="Set New PIN").display()
-                if isinstance(ret, dict) and "is_back_button" in ret:
+                new_pin = _prompt_specter_new_pin(self, "Set New PIN")
+                if new_pin is None:
                     return Destination(BackStackView)
-                new_pin = ret.get("passphrase", "")
                 if not new_pin:
                     self.run_screen(
                         WarningScreen,
@@ -4783,10 +4865,7 @@ class ToolsSpecterDIYChangePinView(View):
                 )
                 return Destination(BackStackView)
 
-            # PIN is set; unlock first if locked, then prompt for old and new PIN
-            if not _unlock_specter_card_if_needed(self, secure_applet, secure_channel):
-                return Destination(BackStackView)
-
+            # PIN is set; prompt for the current PIN once, then the new PIN.
             ret = seed_screens.SeedAddPassphraseScreen(title="Current PIN").display()
             if isinstance(ret, dict) and "is_back_button" in ret:
                 return Destination(BackStackView)
@@ -4802,10 +4881,9 @@ class ToolsSpecterDIYChangePinView(View):
                 )
                 return Destination(BackStackView)
 
-            ret = seed_screens.SeedAddPassphraseScreen(title="New PIN").display()
-            if isinstance(ret, dict) and "is_back_button" in ret:
+            new_pin = _prompt_specter_new_pin(self, "New PIN")
+            if new_pin is None:
                 return Destination(BackStackView)
-            new_pin = ret.get("passphrase", "")
             if not new_pin:
                 self.run_screen(
                     WarningScreen,
@@ -4817,7 +4895,13 @@ class ToolsSpecterDIYChangePinView(View):
                 )
                 return Destination(BackStackView)
 
-            secure_applet.change_pin(secure_channel, old_pin.encode("utf-8"), new_pin.encode("utf-8"))
+            try:
+                secure_applet.change_pin(secure_channel, old_pin.encode("utf-8"), new_pin.encode("utf-8"))
+            except Exception as exc:
+                if _is_specter_pin_error(exc):
+                    _show_specter_incorrect_pin_warning(self, secure_applet, secure_channel)
+                    return Destination(BackStackView)
+                raise
             self.run_screen(
                 LargeIconStatusScreen,
                 title="PIN Changed",
@@ -4962,8 +5046,140 @@ def _normalize_bip39_mnemonic_text(text: str) -> str:
     return mnemonic
 
 
+def _show_specter_card_bricked_warning(parent_view) -> None:
+    parent_view.run_screen(
+        WarningScreen,
+        title="Card Locked",
+        status_headline=None,
+        text=(
+            "PIN attempts exhausted. Reinstall Specter-DIY applet.\n"
+            "No factory reset available."
+        ),
+        show_back_button=False,
+        button_data=[ButtonOption("I Understand")],
+    )
+
+
+def _open_specter_secure_channel(secure_applet):
+    last_error = None
+    for mode in ("ee", "es", "ss"):
+        try:
+            return secure_applet.open_secure_channel(mode=mode)
+        except TypeError:
+            return secure_applet.open_secure_channel()
+        except Exception as exc:
+            last_error = exc
+    if last_error is not None:
+        raise last_error
+    return secure_applet.open_secure_channel()
+
+
+def _specter_compact_size(value: int) -> bytes:
+    if value < 0xFD:
+        return bytes([value])
+    if value <= 0xFFFF:
+        return b"\xfd" + value.to_bytes(2, "little")
+    if value <= 0xFFFFFFFF:
+        return b"\xfe" + value.to_bytes(4, "little")
+    return b"\xff" + value.to_bytes(8, "little")
+
+
+def _specter_tagged_hash(tag: str, data: bytes) -> bytes:
+    hashtag = hashlib.sha256(tag.encode("utf-8")).digest()
+    return hashlib.sha256(hashtag + hashtag + data).digest()
+
+
+def _specter_aead_encrypt(key: bytes, adata: bytes, plaintext: bytes) -> bytes:
+    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+
+    aes_key = _specter_tagged_hash("aes", key)
+    hmac_key = _specter_tagged_hash("hmac", key)
+
+    body = _specter_compact_size(len(adata)) + adata
+    if plaintext:
+        iv = os.urandom(16)
+        padded = plaintext + b"\x80"
+        if len(padded) % 16 != 0:
+            padded += b"\x00" * (16 - (len(padded) % 16))
+        enc = Cipher(algorithms.AES(aes_key), modes.CBC(iv)).encryptor()
+        body += iv + enc.update(padded) + enc.finalize()
+
+    mac = hmac.new(hmac_key, body, digestmod="sha256").digest()
+    return body + mac
+
+
+def _serialize_specter_plaintext_blob(entropy: bytes) -> bytes:
+    if len(entropy) not in (16, 20, 24, 28, 32):
+        raise ValueError("Invalid BIP39 entropy length")
+
+    adata = b"sdiy\x00" + (b"\x00" * 4)
+    key = b"\xcc" * 32
+    tlv = b"\x02" + bytes([len(entropy)]) + entropy
+    return _specter_aead_encrypt(key=key, adata=adata, plaintext=tlv)
+
+
+def _is_specter_pin_error(exc: Exception) -> bool:
+    err = str(exc).lower()
+    return "0502" in err or "0503" in err
+
+
+def _show_specter_incorrect_pin_warning(parent_view, secure_applet, secure_channel) -> None:
+    attempts_left = None
+    try:
+        status = secure_applet.pin_status(secure_channel)
+        if status.get("status") == "bricked":
+            _show_specter_card_bricked_warning(parent_view)
+            return
+        attempts_left = status.get("attempts_left")
+    except Exception:
+        pass
+
+    if isinstance(attempts_left, int):
+        attempt_word = "attempt" if attempts_left == 1 else "attempts"
+        text = f"PIN is incorrect.\n{attempts_left} {attempt_word} remaining."
+    else:
+        text = "PIN is incorrect."
+
+    parent_view.run_screen(
+        WarningScreen,
+        title="Incorrect PIN",
+        status_headline=None,
+        text=text,
+        show_back_button=False,
+        button_data=[ButtonOption("I Understand")],
+    )
+
+
+def _prompt_specter_new_pin(parent_view, title: str) -> str | None:
+    while True:
+        ret = seed_screens.SeedAddPassphraseScreen(title=title).display()
+        if isinstance(ret, dict) and "is_back_button" in ret:
+            return None
+
+        pin = ret.get("passphrase", "")
+        if all(ch in "0123456789" for ch in pin):
+            return pin
+
+        selected = parent_view.run_screen(
+            WarningScreen,
+            title="Non-Numeric PIN",
+            status_headline=None,
+            text=(
+                "Specter-DIY hardware supports PIN digits 0-9.\n"
+                "Use this PIN anyway?"
+            ),
+            show_back_button=False,
+            button_data=[ButtonOption("Continue"), ButtonOption("Enter Different PIN")],
+        )
+        if selected == 0:
+            return pin
+
+
 def _unlock_specter_card_if_needed(parent_view, secure_applet, secure_channel) -> bool:
     status = secure_applet.pin_status(secure_channel)
+    if status.get("status") == "bricked":
+        _show_specter_card_bricked_warning(parent_view)
+        return False
     if status.get("status") in ("disabled", "unlocked", "no_pin"):
         return True
     if status.get("status") != "locked":
@@ -4983,8 +5199,14 @@ def _unlock_specter_card_if_needed(parent_view, secure_applet, secure_channel) -
             button_data=[ButtonOption("I Understand")],
         )
         return False
-    secure_applet.unlock(secure_channel, pin.encode("utf-8"))
-    return True
+    try:
+        secure_applet.unlock(secure_channel, pin.encode("utf-8"))
+        return True
+    except Exception as exc:
+        if _is_specter_pin_error(exc):
+            _show_specter_incorrect_pin_warning(parent_view, secure_applet, secure_channel)
+            return False
+        raise
 
 
 def _normalize_javacard_key(value: str) -> str:
@@ -5149,7 +5371,7 @@ class ToolsJavacardLoadMnemonicView(View):
             conn.connect()
             secure_applet = SecureApplet(conn)
             memory_applet = MemoryCardApplet(conn)
-            secure_channel = secure_applet.open_secure_channel()
+            secure_channel = _open_specter_secure_channel(secure_applet)
             if not _unlock_specter_card_if_needed(self, secure_applet, secure_channel):
                 return Destination(BackStackView)
 
@@ -5168,7 +5390,17 @@ class ToolsJavacardLoadMnemonicView(View):
                 )
                 return Destination(BackStackView)
 
-            mnemonic_text = _normalize_bip39_mnemonic_text(raw.decode("utf-8"))
+            decoded = memory_applet.decode_diy_data(secure_channel)
+            mnemonic_text = decoded.get("mnemonic")
+            if not mnemonic_text:
+                entropy = decoded.get("entropy")
+                if entropy:
+                    from embit import bip39
+                    mnemonic_text = bip39.mnemonic_from_bytes(entropy)
+            if not mnemonic_text:
+                raise ValueError("Stored data could not be decoded as Specter-DIY mnemonic")
+
+            mnemonic_text = _normalize_bip39_mnemonic_text(mnemonic_text)
             mnemonic_words = mnemonic_text.split(" ")
             self.controller.storage.init_pending_mnemonic(num_words=len(mnemonic_words))
             for i, word in enumerate(mnemonic_words):
@@ -5251,18 +5483,54 @@ class ToolsJavacardSaveMnemonicView(View):
         conn = None
         secure_channel = None
         try:
+            from embit import bip39
+
             Card, MemoryCardApplet, SecureApplet = _get_specter_card_api()
             conn = Card(SPECTER_JAVACARD_DEFAULT_AID)
             conn.connect()
             secure_applet = SecureApplet(conn)
             memory_applet = MemoryCardApplet(conn)
-            secure_channel = secure_applet.open_secure_channel()
+            secure_channel = _open_specter_secure_channel(secure_applet)
             if not _unlock_specter_card_if_needed(self, secure_applet, secure_channel):
                 return Destination(BackStackView)
 
+            status = secure_applet.pin_status(secure_channel)
+            existing_data = memory_applet.get_data(secure_channel)
+
+            if status.get("status") in ("disabled", "no_pin") and not existing_data:
+                new_pin = _prompt_specter_new_pin(self, "Create PIN")
+                if new_pin is None:
+                    return Destination(BackStackView)
+                if not new_pin:
+                    self.run_screen(
+                        WarningScreen,
+                        title="Invalid PIN",
+                        status_headline=None,
+                        text="PIN cannot be empty.",
+                        show_back_button=False,
+                        button_data=[ButtonOption("I Understand")],
+                    )
+                    return Destination(BackStackView)
+                secure_applet.set_pin(secure_channel, new_pin.encode("utf-8"))
+
+            if existing_data:
+                overwrite = self.run_screen(
+                    WarningScreen,
+                    title="Overwrite Data?",
+                    status_headline=None,
+                    text="Card already has data. Overwrite it?",
+                    show_back_button=False,
+                    button_data=[ButtonOption("Overwrite"), ButtonOption("Abort Save")],
+                )
+                if overwrite != 0:
+                    return Destination(BackStackView)
+
+            entropy = bip39.mnemonic_to_bytes(mnemonic_text)
+            payload = _serialize_specter_plaintext_blob(entropy)
+
             loading = LoadingScreenThread(text="Saving Mnemonic\n\n\n\n\n\n")
             loading.start()
-            memory_applet.store_data(secure_channel, mnemonic_text.encode("utf-8"))
+            memory_applet.store_data(secure_channel, payload)
             loading.stop()
 
             self.run_screen(
