@@ -216,7 +216,7 @@ class ToolsKeycardSettingsMenuView(View):
 
 class ToolsKeycardThisInstanceMenuView(View):
     """Operations that act on the **active** instance's key/identity:
-    load a key (generate / import), change PIN, pairing, factory reset.
+    load a key (generate / import), change PIN, rename, factory reset.
 
     The title carries the active instance label so the scope of every
     child action is explicit.
@@ -225,7 +225,6 @@ class ToolsKeycardThisInstanceMenuView(View):
     GENERATE_KEY = ButtonOption("Generate key")
     IMPORT_SEED = ButtonOption("Import seed")
     CHANGE_PIN = ButtonOption("Change PIN")
-    PAIRING = ButtonOption("Pairing")
     RENAME = ButtonOption("Rename instance")
     INIT = ButtonOption("Initialise instance")
     FACTORY_RESET = ButtonOption("Factory reset")
@@ -241,12 +240,10 @@ class ToolsKeycardThisInstanceMenuView(View):
             self.GENERATE_KEY,
             self.IMPORT_SEED,
             self.CHANGE_PIN,
-            self.PAIRING,
         ]
-        # Naming is stored in the on-disk pairing blob, so the entry only
-        # appears when we can actually persist (Persistent Settings + microSD;
-        # and not an ephemeral-paired instance). Otherwise the instance stays
-        # labelled by its applet index ("Inst N").
+        # Naming is stored in a plaintext microSD file, so the entry only
+        # appears when we can actually persist (Persistent Settings + microSD).
+        # Otherwise the instance stays labelled by its applet index ("Inst N").
         if _instance_rename_available(self.controller):
             button_data.append(self.RENAME)
         button_data += [
@@ -269,8 +266,6 @@ class ToolsKeycardThisInstanceMenuView(View):
             return Destination(ToolsKeycardImportSeedView)
         if chosen == self.CHANGE_PIN:
             return Destination(ToolsKeycardChangePinView)
-        if chosen == self.PAIRING:
-            return Destination(ToolsKeycardPairingMenuView)
         if chosen == self.RENAME:
             return Destination(ToolsKeycardThisInstanceRenameView)
         if chosen == self.INIT:
@@ -282,43 +277,29 @@ class ToolsKeycardThisInstanceMenuView(View):
         return Destination(NotYetImplementedView)
 
 
-def _instance_rename_available(controller) -> bool:
-    """Whether the Rename-instance flow can run for the active instance.
+def _instance_rename_available(controller=None) -> bool:
+    """Whether the Rename-instance flow can run.
 
-    The name is stored inside the on-disk pairing blob, so naming needs
-    Persistent Settings on **and** a microSD present. Ephemeral-paired
-    (v3.2+) instances never persist a blob, so we hide it for those when we
-    can tell (their UID is cached as an ephemeral secret).
+    Naming is stored in a plaintext microSD file (``instance_names``), so it
+    needs Persistent Settings on **and** a microSD present. It works for every
+    card — including v3.2+ ephemeral-paired ones — because the name does not
+    live in the pairing blob.
     """
-    from seedsigner.hardware.microsd import MicroSD
-    from seedsigner.models.settings import Settings
-
-    if Settings.get_instance().get_value(
-        SettingsConstants.SETTING__PERSISTENT_SETTINGS
-    ) != SettingsConstants.OPTION__ENABLED:
-        return False
-    if not MicroSD.get_instance().is_inserted:
-        return False
-    uid = controller.get_uid_for_aid(controller.active_keycard_aid)
-    if uid is None:
-        uid = controller.last_keycard_uid
-    if uid is not None and controller.get_ephemeral_secret_for(uid) is not None:
-        return False
-    return True
+    from seedsigner.helpers.keycard import instance_names
+    return instance_names.is_enabled()
 
 
 class ToolsKeycardThisInstanceRenameView(View):
     """Set / change the active instance's name.
 
-    The name is written into the (encrypted) label slot of the on-disk
-    pairing blob, keyed by ``instance_uid``. It therefore requires a saved
-    pairing and the pairing password (which is never cached). When set, the
-    name replaces the ``Inst N`` label everywhere the active instance is
-    shown.
+    The name is stored in a plaintext microSD file keyed by ``instance_uid``
+    (see ``instance_names``), independent of the pairing blob — so it works
+    for ephemeral-paired cards too and needs no pairing password. When set, it
+    replaces the ``Inst N`` label everywhere the active instance is shown.
     """
 
     def run(self):
-        from seedsigner.helpers.keycard import pairing_storage
+        from seedsigner.helpers.keycard import instance_names
         from seedsigner.helpers.keycard.commands import APDUError
         from seedsigner.helpers.keycard.reader import NoCardError, NoReaderError
         from seedsigner.helpers.keycard.ui_helpers import identify_inserted_card
@@ -355,58 +336,32 @@ class ToolsKeycardThisInstanceRenameView(View):
                 return _error_destination(title, body)
             self.controller.remember_aid_for_uid(active_aid, uid)
 
-        # Pairing password — needed to read & re-encrypt the blob.
-        pwd = _prompt_for_text(self, _("Pairing password"))
-        if pwd is None:
+        name = _prompt_for_text(self, _("Instance name"), max_len=instance_names.NAME_MAX_LEN)
+        if name is None:
             return Destination(BackStackView)
 
         try:
-            # Validate the password and that a blob exists before asking for
-            # the name (fail fast).
-            try:
-                stored = pairing_storage.load(pwd, instance_uid=uid)
-            except pairing_storage.PairingStorageError:
-                return _error_destination(
-                    _("Wrong password"),
-                    _("Pairing password did\nnot match this card."),
-                )
-            if stored is None:
-                return _error_destination(
-                    _("No saved pairing"),
-                    _("Pair this instance\nfirst, then rename."),
-                )
+            instance_names.set_name(uid, name)
+        except Exception:
+            logger.exception("instance_names.set_name failed")
+            return _error_destination(
+                _("Save failed"),
+                _("Could not write the\nname to the microSD."),
+            )
 
-            name = _prompt_for_text(self, _("Instance name"), max_len=16)
-            if name is None:
-                return Destination(BackStackView)
+        # Cache exactly what landed on disk (set_name normalises/clamps).
+        stored = instance_names.get_name(uid)
+        self.controller.set_instance_name_for(uid, stored)
 
-            try:
-                pairing_storage.set_label(pwd, uid, name)
-            except Exception:
-                logger.exception("set_label failed")
-                return _error_destination(
-                    _("Save failed"),
-                    _("Could not write the\nname to the microSD."),
-                )
-
-            # Cache exactly what landed on disk: the storage layer clamps the
-            # name to a 16-*byte* slot (codepoint-safe), which can differ from
-            # the typed string for multi-byte names. Re-read so the session
-            # label matches what a later boot will show.
-            reloaded = pairing_storage.load(pwd, instance_uid=uid)
-            name = reloaded.label if reloaded and reloaded.label else name
-            self.controller.set_instance_name_for(uid, name)
-        finally:
-            try:
-                wipe_string(pwd)
-            except Exception:
-                pass
+        if not stored:
+            # Whitespace-only input clears the name; just return quietly.
+            return Destination(ToolsKeycardThisInstanceMenuView, skip_current_view=True)
 
         self.run_screen(
             LargeIconStatusScreen,
             title=_("Renamed"),
             status_headline=None,
-            text=_("Now shown as {}.").format(name),
+            text=_("Now shown as {}.").format(stored),
             show_back_button=False,
             button_data=[ButtonOption("OK")],
         )
@@ -749,6 +704,14 @@ class ToolsKeycardFactoryResetView(View):
                 pairing_storage.remove_all()
         except Exception:
             logger.exception("could not clear local pairing(s) after factory reset")
+        # The instance is now blank; drop its persisted name too (the reset
+        # regenerates the UID, so the new instance starts as "Inst N").
+        if reset_uid:
+            try:
+                from seedsigner.helpers.keycard import instance_names
+                instance_names.remove_name(reset_uid)
+            except Exception:
+                logger.exception("could not clear instance name after factory reset")
         if reset_uid:
             self.controller.forget_pairing_for(reset_uid)
         else:
@@ -1114,12 +1077,11 @@ def _try_pair_with_raw_psk(
     SecureChannelError,
     psk: bytes,
     instance_uid: bytes,
-) -> Tuple[Optional[object], Optional[str], Optional[str]]:
+) -> Tuple[Optional[object], Optional[str]]:
     """Attempt to pair using a raw 32-byte pairing secret (no PBKDF2).
 
-    Returns ``(pairing, source, label)`` where ``source`` is ``"disk"`` or
-    ``"pair"`` on success and ``label`` is the stored instance name (only
-    on the ``"disk"`` path); ``(None, None, None)`` on cryptogram mismatch.
+    Returns ``(pairing, source)`` where ``source`` is ``"disk"`` or
+    ``"pair"`` on success; ``(None, None)`` on cryptogram mismatch.
     """
     if len(psk) != 32:
         raise ValueError("PSK must be 32 bytes")
@@ -1131,19 +1093,19 @@ def _try_pair_with_raw_psk(
             logger.info("saved pairing rejected: %s", exc)
             stored = None
         if stored is not None and stored.instance_uid == instance_uid:
-            return stored.pairing, "disk", stored.label
+            return stored.pairing, "disk"
 
         try:
             pairing = client.pair(psk)
         except SecureChannelError as exc:
             if "cryptogram" in str(exc).lower():
-                return None, None, None  # PSK does not match — fall through
+                return None, None  # PSK does not match — fall through
             raise
         try:
             pairing_storage.save(storage_pwd, pairing, instance_uid)
         except Exception:
             logger.exception("could not persist pairing")
-        return pairing, "pair", None
+        return pairing, "pair"
     finally:
         try:
             wipe_string(storage_pwd)
@@ -1158,12 +1120,11 @@ def _try_pair_with_password(
     SecureChannelError,
     pwd: str,
     instance_uid: bytes,
-) -> Tuple[Optional[object], Optional[str], Optional[str]]:
+) -> Tuple[Optional[object], Optional[str]]:
     """Attempt to obtain a PairingInfo for ``instance_uid`` using ``pwd``.
 
-    Returns ``(pairing, source, label)`` where ``source`` is ``"disk"`` or
-    ``"pair"`` on success and ``label`` is the stored instance name (only
-    on the ``"disk"`` path); ``(None, None, None)`` on cryptogram mismatch.
+    Returns ``(pairing, source)`` where ``source`` is ``"disk"`` or
+    ``"pair"`` on success; ``(None, None)`` on cryptogram mismatch.
     """
     # Force a fresh str object — prevents wipe_string from zeroing the
     # caller's buffer or any interned constant (e.g. DEFAULT_PAIRING_PASSWORD).
@@ -1176,21 +1137,21 @@ def _try_pair_with_password(
             logger.info("saved pairing rejected: %s", exc)
             stored = None
         if stored is not None and stored.instance_uid == instance_uid:
-            return stored.pairing, "disk", stored.label
+            return stored.pairing, "disk"
 
         try:
             secret = derive_pairing_secret(normalised)
             pairing = client.pair(secret)
         except SecureChannelError as exc:
             if "cryptogram" in str(exc).lower():
-                return None, None, None  # wrong password — caller falls through
+                return None, None  # wrong password — caller falls through
             raise
         try:
             pairing_storage.save(normalised, pairing, instance_uid)
         except Exception:
             logger.exception("could not persist pairing")
             # Non-fatal: keep the in-memory pairing.
-        return pairing, "pair", None
+        return pairing, "pair"
     finally:
         for s in (fresh, normalised):
             try:
@@ -1312,15 +1273,14 @@ class ToolsKeycardPairView(View):
         used_default = False
         pairing = None
         source = None
-        label = None
         try:
-            pairing, source, label = _try_pair_with_password(
+            pairing, source = _try_pair_with_password(
                 client, pairing_storage, derive_pairing_secret,
                 SecureChannelError,
                 DEFAULT_PAIRING_PASSWORD, instance_uid,
             )
             if pairing is None:
-                pairing, source, label = _try_pair_with_raw_psk(
+                pairing, source = _try_pair_with_raw_psk(
                     client, pairing_storage, SecureChannelError,
                     KEYCARD_SHELL_DEFAULT_PSK, instance_uid,
                 )
@@ -1347,7 +1307,7 @@ class ToolsKeycardPairView(View):
                 _wipe_bytearray(password_buf)
                 return _error_destination(_("Bad password"), str(exc))
             try:
-                pairing, source, label = _try_pair_with_password(
+                pairing, source = _try_pair_with_password(
                     client, pairing_storage, derive_pairing_secret,
                     SecureChannelError,
                     custom, instance_uid,
@@ -1370,10 +1330,6 @@ class ToolsKeycardPairView(View):
                 )
 
         self.controller.set_pairing_for(instance_uid, pairing)
-        # Cache the user-assigned name read off the blob (only present on the
-        # "disk" path). This is the one moment per boot we hold the pairing
-        # password, so the encrypted label slot decodes for free here.
-        self.controller.set_instance_name_for(instance_uid, label)
 
         if source == "disk":
             detail = _("loaded from disk")

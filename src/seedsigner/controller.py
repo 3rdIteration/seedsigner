@@ -461,14 +461,14 @@ class Controller(Singleton):
     # ---- Keycard instance names ----
 
     def set_instance_name_for(self, instance_uid, name) -> None:
-        """Cache (or clear, when ``name`` is falsy) the name for ``instance_uid``."""
+        """Cache the resolved name for ``instance_uid`` (``None`` = no name).
+
+        We store ``None`` rather than dropping the key so a later lazy-load
+        treats it as "already known" and does not re-read the microSD.
+        """
         if instance_uid is None:
             return
-        key = bytes(instance_uid)
-        if name:
-            self.keycard_instance_names[key] = name
-        else:
-            self.keycard_instance_names.pop(key, None)
+        self.keycard_instance_names[bytes(instance_uid)] = name or None
 
     def get_instance_name_for(self, instance_uid):
         if instance_uid is None:
@@ -476,10 +476,12 @@ class Controller(Singleton):
         return self.keycard_instance_names.get(bytes(instance_uid))
 
     def get_instance_name_for_aid(self, aid):
-        """Resolve a display name by AID via the session AID→UID map.
+        """Resolve a display name by AID, lazy-loading from the microSD.
 
-        Falls back to ``last_keycard_uid`` for the active instance, whose
-        UID we always learn at SELECT even before its AID is mapped.
+        The session AID→UID map (or ``last_keycard_uid`` for the active
+        instance) gives us the UID; the name itself is read once from the
+        ``instance_names`` JSON file and cached (including ``None``) so titles
+        don't hit the card on every render.
         """
         if aid is None:
             return None
@@ -490,7 +492,17 @@ class Controller(Singleton):
             and bytes(aid) == bytes(self.active_keycard_aid)
         ):
             uid = self.last_keycard_uid
-        return self.get_instance_name_for(uid)
+        if uid is None:
+            return None
+        key = bytes(uid)
+        if key not in self.keycard_instance_names:
+            try:
+                from seedsigner.helpers.keycard import instance_names
+                self.keycard_instance_names[key] = instance_names.get_name(key)
+            except Exception:
+                logger.exception("instance name lookup failed")
+                self.keycard_instance_names[key] = None
+        return self.keycard_instance_names[key]
 
     def forget_pairing_for(self, instance_uid) -> None:
         if instance_uid is None:

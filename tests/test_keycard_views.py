@@ -333,8 +333,8 @@ class TestKeycardMenuRouting(unittest.TestCase):
                           f"expected {view_cls.__name__}")
 
     def test_this_instance_menu_routes(self):
-        """With naming unavailable (no persistable blob), the Rename entry is
-        hidden and the 7 base entries route as before."""
+        """With naming unavailable (Persistent Settings off / no microSD), the
+        Rename entry is hidden. The Pairing entry was removed entirely."""
         from unittest.mock import patch
         from seedsigner.views import keycard_views
         from seedsigner.views.keycard_views import (
@@ -342,7 +342,6 @@ class TestKeycardMenuRouting(unittest.TestCase):
             ToolsKeycardGenerateKeyView,
             ToolsKeycardImportSeedView,
             ToolsKeycardChangePinView,
-            ToolsKeycardPairingMenuView,
             ToolsKeycardInitView,
             ToolsKeycardFactoryResetView,
             ToolsKeycardLockView,
@@ -351,7 +350,6 @@ class TestKeycardMenuRouting(unittest.TestCase):
             ToolsKeycardGenerateKeyView,
             ToolsKeycardImportSeedView,
             ToolsKeycardChangePinView,
-            ToolsKeycardPairingMenuView,
             ToolsKeycardInitView,
             ToolsKeycardFactoryResetView,
             ToolsKeycardLockView,
@@ -361,9 +359,22 @@ class TestKeycardMenuRouting(unittest.TestCase):
                 dest = self._route(ToolsKeycardThisInstanceMenuView, i)
                 self.assertIs(dest.View_cls, view_cls)
 
+    def test_this_instance_menu_no_pairing_entry(self):
+        """The Pairing submenu is no longer reachable from This instance."""
+        from unittest.mock import patch
+        from seedsigner.views import keycard_views
+        from seedsigner.views.keycard_views import (
+            ToolsKeycardThisInstanceMenuView, ToolsKeycardPairingMenuView,
+        )
+        for avail, count in ((True, 7), (False, 6)):
+            with patch.object(keycard_views, "_instance_rename_available", return_value=avail):
+                routed = [self._route(ToolsKeycardThisInstanceMenuView, i).View_cls
+                          for i in range(count)]
+            self.assertNotIn(ToolsKeycardPairingMenuView, routed)
+
     def test_this_instance_menu_shows_rename_when_available(self):
-        """When naming is available the Rename entry appears after Pairing and
-        routes to the new view; the rest still route correctly."""
+        """When naming is available the Rename entry appears after Change PIN
+        and routes to the new view; the rest still route correctly."""
         from unittest.mock import patch
         from seedsigner.views import keycard_views
         from seedsigner.views.keycard_views import (
@@ -371,7 +382,6 @@ class TestKeycardMenuRouting(unittest.TestCase):
             ToolsKeycardGenerateKeyView,
             ToolsKeycardImportSeedView,
             ToolsKeycardChangePinView,
-            ToolsKeycardPairingMenuView,
             ToolsKeycardThisInstanceRenameView,
             ToolsKeycardInitView,
             ToolsKeycardFactoryResetView,
@@ -381,7 +391,6 @@ class TestKeycardMenuRouting(unittest.TestCase):
             ToolsKeycardGenerateKeyView,
             ToolsKeycardImportSeedView,
             ToolsKeycardChangePinView,
-            ToolsKeycardPairingMenuView,
             ToolsKeycardThisInstanceRenameView,
             ToolsKeycardInitView,
             ToolsKeycardFactoryResetView,
@@ -391,6 +400,30 @@ class TestKeycardMenuRouting(unittest.TestCase):
             for i, view_cls in enumerate(expected):
                 dest = self._route(ToolsKeycardThisInstanceMenuView, i)
                 self.assertIs(dest.View_cls, view_cls)
+
+    def test_rename_view_happy_path(self):
+        """Rename resolves the UID, prompts a name (no password), writes it via
+        instance_names, updates the controller cache, and returns to the menu."""
+        from unittest.mock import patch
+        from seedsigner.views import keycard_views
+        from seedsigner.views.keycard_views import (
+            ToolsKeycardThisInstanceRenameView, ToolsKeycardThisInstanceMenuView,
+        )
+        view = ToolsKeycardThisInstanceRenameView.__new__(
+            ToolsKeycardThisInstanceRenameView
+        )
+        view.run_screen = MagicMock()
+        view.controller = MagicMock()
+        uid = b"\x11" * 16
+        view.controller.get_uid_for_aid.return_value = uid  # no SELECT needed
+        with patch.object(keycard_views, "_instance_rename_available", return_value=True), \
+             patch.object(keycard_views, "_prompt_for_text", return_value="Cold"), \
+             patch("seedsigner.helpers.keycard.instance_names.set_name") as set_name, \
+             patch("seedsigner.helpers.keycard.instance_names.get_name", return_value="Cold"):
+            dest = view.run()
+        set_name.assert_called_once_with(uid, "Cold")
+        view.controller.set_instance_name_for.assert_called_once_with(uid, "Cold")
+        self.assertIs(dest.View_cls, ToolsKeycardThisInstanceMenuView)
 
     def test_rename_view_gated_when_unavailable(self):
         """The Rename view itself refuses (no prompt) when naming is gated
