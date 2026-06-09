@@ -84,6 +84,7 @@ def encrypt_pairing(
     password: str,
     pairing: PairingInfo,
     instance_uid: bytes,
+    label: str = "",
 ) -> bytes:
     if len(pairing.pairing_key) != 32:
         raise ValueError("pairing key must be 32 bytes")
@@ -92,14 +93,15 @@ def encrypt_pairing(
     if len(instance_uid) > 0xFF:
         raise ValueError("instance UID too long")
     password = _normalise_password(password)
-    # Instance naming was removed; the trailer is still emitted (empty) so
-    # the on-disk blob structure stays byte-compatible with older firmware.
+    # The trailer carries the optional user-assigned instance name. It is a
+    # constant-size slot, so an empty ``label`` reproduces the byte-identical
+    # blob older firmware wrote (and stays forward/backward compatible).
     payload = (
         bytes([pairing.pairing_index])
         + pairing.pairing_key
         + bytes([len(instance_uid)])
         + bytes(instance_uid)
-        + _build_label_trailer(b"")
+        + _build_label_trailer(_encode_label(label))
     )
     salt = os.urandom(SALT_LEN)
     nonce = os.urandom(NONCE_LEN)
@@ -218,14 +220,17 @@ def list_pairings(*, base_dir: Optional[Path] = None) -> List[StoredFingerprint]
 
 
 def save(password: str, pairing: PairingInfo, instance_uid: bytes,
-         path: Optional[Path] = None) -> Path:
+         path: Optional[Path] = None, label: str = "") -> Path:
     """Persist a pairing.
 
     With ``path`` explicit (test path) writes there. Otherwise writes to
     the per-UID file and, if a legacy single-card file exists, removes
     it so we don't keep stale duplicates.
+
+    ``label`` is the optional user-assigned instance name (defaults to
+    empty, so existing callers keep writing nameless blobs).
     """
-    blob = encrypt_pairing(password, pairing, instance_uid)
+    blob = encrypt_pairing(password, pairing, instance_uid, label)
     if path is None:
         target = _path_for_uid(instance_uid)
         legacy = get_storage_path()
@@ -247,6 +252,25 @@ def save(password: str, pairing: PairingInfo, instance_uid: bytes,
         except Exception:
             logger.exception("could not remove legacy pairing file %s", legacy)
     return target
+
+
+def set_label(password: str, instance_uid: bytes, label: str,
+              path: Optional[Path] = None) -> Path:
+    """Re-write an existing pairing blob with a new instance name.
+
+    Loads the per-UID blob (verifying the password), then re-encrypts it
+    in place, preserving ``pairing_index`` / ``pairing_key`` /
+    ``instance_uid`` and changing only the label slot.
+
+    Raises ``PairingStorageError`` if no blob exists for this instance, or
+    if the password does not decrypt it (the wrong password makes
+    :func:`load` raise from :func:`decrypt_pairing`).
+    """
+    stored = load(password, instance_uid=instance_uid, path=path)
+    if stored is None:
+        raise PairingStorageError("no saved pairing for this instance")
+    return save(password, stored.pairing, stored.instance_uid,
+                path=path, label=label)
 
 
 def load(password: str, instance_uid: Optional[bytes] = None,
@@ -334,6 +358,29 @@ def remove_all(*, base_dir: Optional[Path] = None) -> int:
         except OSError:
             logger.exception("could not remove pairing file %s", entry.path)
     return removed
+
+
+def _encode_label(label: str) -> bytes:
+    """NFC-normalise and UTF-8 encode an instance name, clamped to the slot.
+
+    Truncation is codepoint-safe: we never split a multi-byte character,
+    so the stored bytes always decode back to valid UTF-8.
+    """
+    if not label:
+        return b""
+    normalised = unicodedata.normalize("NFC", label)
+    encoded = normalised.encode("utf-8")
+    if len(encoded) <= LABEL_MAX_LEN:
+        return encoded
+    # Trim to the last whole codepoint that fits within the slot.
+    truncated = encoded[:LABEL_MAX_LEN]
+    while truncated:
+        try:
+            truncated.decode("utf-8")
+            return truncated
+        except UnicodeDecodeError:
+            truncated = truncated[:-1]
+    return b""
 
 
 def _build_label_trailer(label_bytes: bytes) -> bytes:

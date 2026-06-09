@@ -3506,3 +3506,48 @@ msgstr ""
 
 msgid "Initialise this\ninstance first."
 msgstr ""
+
+msgid "Manage Card"
+msgstr ""
+
+msgid "Rename instance"
+msgstr ""
+
+msgid "Instance name"
+msgstr ""
+
+msgid "Pairing password"
+msgstr ""
+
+msgid "Not available"
+msgstr ""
+
+msgid "Enable Persistent Settings\nand insert a microSD."
+msgstr ""
+
+msgid "No saved pairing"
+msgstr ""
+
+msgid "Pair this instance\nfirst, then rename."
+msgstr ""
+
+msgid "Renamed"
+msgstr ""
+
+msgid "Now shown as {}."
+msgstr ""
+
+msgid "Save failed"
+msgstr ""
+
+msgid "Could not write the\nname to the microSD."
+msgstr ""
+
+msgid "Rename failed"
+msgstr ""
+
+msgid "No instance"
+msgstr ""
+
+msgid "No Keycard applet\non this card."
+msgstr ""

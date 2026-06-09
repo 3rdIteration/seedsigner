@@ -321,6 +321,13 @@ class Controller(Singleton):
         # AID → instance_uid mapping captured at SELECT time. Cleared by
         # ``forget_pairing_for`` for that UID.
         controller.keycard_aid_to_uid = {}
+        # User-assigned instance names keyed by ``instance_uid`` (bytes).
+        # Populated at pairing LOAD time — the only moment per boot we hold
+        # the pairing password and can read the encrypted label slot off the
+        # blob. Display is by AID (resolved to a UID via
+        # ``keycard_aid_to_uid``); falls back to the ``Inst N`` label when no
+        # name is cached. Wiped alongside the pairing it describes.
+        controller.keycard_instance_names = {}
         # ``keycard_ephemeral_secrets`` caches the 32-byte pairing
         # secret (NOT the pairing key) for cards that use v3.2 ephemeral
         # pairing. The on-card key is wiped on every applet deselect, so
@@ -451,10 +458,47 @@ class Controller(Singleton):
             return None
         return self.keycard_aid_to_uid.get(bytes(aid))
 
+    # ---- Keycard instance names ----
+
+    def set_instance_name_for(self, instance_uid, name) -> None:
+        """Cache (or clear, when ``name`` is falsy) the name for ``instance_uid``."""
+        if instance_uid is None:
+            return
+        key = bytes(instance_uid)
+        if name:
+            self.keycard_instance_names[key] = name
+        else:
+            self.keycard_instance_names.pop(key, None)
+
+    def get_instance_name_for(self, instance_uid):
+        if instance_uid is None:
+            return None
+        return self.keycard_instance_names.get(bytes(instance_uid))
+
+    def get_instance_name_for_aid(self, aid):
+        """Resolve a display name by AID via the session AID→UID map.
+
+        Falls back to ``last_keycard_uid`` for the active instance, whose
+        UID we always learn at SELECT even before its AID is mapped.
+        """
+        if aid is None:
+            return None
+        uid = self.get_uid_for_aid(aid)
+        if (
+            uid is None
+            and self.last_keycard_uid is not None
+            and bytes(aid) == bytes(self.active_keycard_aid)
+        ):
+            uid = self.last_keycard_uid
+        return self.get_instance_name_for(uid)
+
     def forget_pairing_for(self, instance_uid) -> None:
         if instance_uid is None:
             return
         self.keycard_pairings.pop(bytes(instance_uid), None)
+        # The name lives in (and is read from) the pairing blob, so it must
+        # not outlive the pairing it describes.
+        self.keycard_instance_names.pop(bytes(instance_uid), None)
         uid_b = bytes(instance_uid)
         for aid_key, mapped_uid in list(self.keycard_aid_to_uid.items()):
             if mapped_uid == uid_b:
@@ -472,6 +516,7 @@ class Controller(Singleton):
     def forget_all_pairings(self) -> None:
         self.keycard_pairings.clear()
         self.keycard_aid_to_uid.clear()
+        self.keycard_instance_names.clear()
         for uid in list(self.keycard_ephemeral_secrets.keys()):
             self.forget_ephemeral_secret_for(uid)
         self.forget_all_pins()
@@ -542,6 +587,12 @@ class Controller(Singleton):
             self.forget_satochip_session()
         except Exception:
             logger.exception("forget_satochip_session failed in wipe_card_session_secrets")
+        # The inserted card may have been removed/swapped — a cached name (not
+        # a secret, but card-specific) must not render against a different card.
+        try:
+            self.keycard_instance_names.clear()
+        except Exception:
+            logger.exception("clearing keycard_instance_names failed in wipe_card_session_secrets")
         # The inserted card may have been removed/swapped — the cached
         # instance count is no longer trustworthy. Force a re-probe on the
         # next top Keycard menu render.

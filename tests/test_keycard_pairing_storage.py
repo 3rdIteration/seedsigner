@@ -270,14 +270,15 @@ class TestRemoveBackwardsCompat:
 
 
 # ---------------------------------------------------------------------------
-# Blob format (instance naming removed — label trailer is always empty now,
-# but the read path stays backward-compatible with older blobs)
+# Blob format (the label trailer carries the optional instance name; the
+# read path stays backward-compatible with older blobs)
 # ---------------------------------------------------------------------------
 
 
 class TestBlobFormat:
-    def test_round_trip_label_always_none(self, sample_pairing, sample_uid):
-        # Instance naming was removed; blobs always decode with label=None.
+    def test_default_blob_label_none(self, sample_pairing, sample_uid):
+        # With no name supplied, blobs decode with label=None (the slot is
+        # present but empty), byte-compatible with what older firmware wrote.
         blob = encrypt_pairing("pw", sample_pairing, sample_uid)
         stored = decrypt_pairing("pw", blob)
         assert stored.label is None
@@ -285,11 +286,12 @@ class TestBlobFormat:
         assert stored.instance_uid == sample_uid
 
     def test_blob_length_stable(self, sample_pairing, sample_uid):
-        # The empty label trailer keeps the on-disk size constant across
-        # writes (only the random salt/nonce differ, both fixed length).
+        # The fixed-size label slot keeps the on-disk size constant whether or
+        # not a name is set (only the random salt/nonce differ, both fixed).
         a = encrypt_pairing("pw", sample_pairing, sample_uid)
         b = encrypt_pairing("pw", sample_pairing, sample_uid)
-        assert len(a) == len(b)
+        labelled = encrypt_pairing("pw", sample_pairing, sample_uid, "Cold")
+        assert len(a) == len(b) == len(labelled)
 
 
 class TestLegacyBlobNoTrailer:
@@ -356,6 +358,60 @@ class TestLegacyBlobNoTrailer:
         stored = decrypt_pairing("pw", blob)
         assert stored.instance_uid == sample_uid
         assert stored.pairing.pairing_key == sample_pairing.pairing_key
-        # The old name still decodes from the trailer (nothing reads it now,
-        # but the load must not fail on its presence).
+        # The old name still decodes from the trailer.
         assert stored.label == "Cold Wallet"
+
+
+# ---------------------------------------------------------------------------
+# Instance naming (label slot in the encrypted blob)
+# ---------------------------------------------------------------------------
+
+
+class TestLabel:
+    def test_round_trip_with_label(self, sample_pairing, sample_uid):
+        blob = encrypt_pairing("pw", sample_pairing, sample_uid, "Cold")
+        stored = decrypt_pairing("pw", blob)
+        assert stored.label == "Cold"
+        assert stored.pairing.pairing_key == sample_pairing.pairing_key
+        assert stored.instance_uid == sample_uid
+
+    def test_empty_label_decodes_none(self, sample_pairing, sample_uid):
+        blob = encrypt_pairing("pw", sample_pairing, sample_uid, "")
+        assert decrypt_pairing("pw", blob).label is None
+
+    def test_ascii_label_truncated_to_16_bytes(self, sample_pairing, sample_uid):
+        # 20 ASCII chars -> clamped to the 16-byte slot.
+        blob = encrypt_pairing("pw", sample_pairing, sample_uid, "A" * 20)
+        assert decrypt_pairing("pw", blob).label == "A" * 16
+
+    def test_multibyte_label_clamps_on_codepoint_boundary(self, sample_pairing, sample_uid):
+        # "é" is 2 bytes in UTF-8; 10 of them = 20 bytes -> 8 fit in 16 bytes,
+        # and the truncation must NOT split a codepoint (still valid UTF-8).
+        blob = encrypt_pairing("pw", sample_pairing, sample_uid, "é" * 10)
+        label = decrypt_pairing("pw", blob).label
+        assert label == "é" * 8
+        assert len(label.encode("utf-8")) <= pairing_storage.LABEL_MAX_LEN
+
+    def test_set_label_updates_existing_blob(self, tmp_path, sample_pairing, sample_uid):
+        path = tmp_path / "pairing.bin"
+        save("pw", sample_pairing, sample_uid, path=path)
+        assert load("pw", path=path).label is None
+
+        pairing_storage.set_label("pw", sample_uid, "New", path=path)
+        stored = load("pw", path=path)
+        assert stored.label == "New"
+        # Pairing material preserved.
+        assert stored.pairing.pairing_index == sample_pairing.pairing_index
+        assert stored.pairing.pairing_key == sample_pairing.pairing_key
+        assert stored.instance_uid == sample_uid
+
+    def test_set_label_no_blob_raises(self, tmp_path, sample_uid):
+        path = tmp_path / "missing.bin"
+        with pytest.raises(PairingStorageError):
+            pairing_storage.set_label("pw", sample_uid, "Name", path=path)
+
+    def test_set_label_wrong_password_raises(self, tmp_path, sample_pairing, sample_uid):
+        path = tmp_path / "pairing.bin"
+        save("pw", sample_pairing, sample_uid, path=path)
+        with pytest.raises(PairingStorageError):
+            pairing_storage.set_label("wrong", sample_uid, "Name", path=path)

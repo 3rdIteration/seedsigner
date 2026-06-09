@@ -333,6 +333,10 @@ class TestKeycardMenuRouting(unittest.TestCase):
                           f"expected {view_cls.__name__}")
 
     def test_this_instance_menu_routes(self):
+        """With naming unavailable (no persistable blob), the Rename entry is
+        hidden and the 7 base entries route as before."""
+        from unittest.mock import patch
+        from seedsigner.views import keycard_views
         from seedsigner.views.keycard_views import (
             ToolsKeycardThisInstanceMenuView,
             ToolsKeycardGenerateKeyView,
@@ -352,9 +356,60 @@ class TestKeycardMenuRouting(unittest.TestCase):
             ToolsKeycardFactoryResetView,
             ToolsKeycardLockView,
         ]
-        for i, view_cls in enumerate(expected):
-            dest = self._route(ToolsKeycardThisInstanceMenuView, i)
-            self.assertIs(dest.View_cls, view_cls)
+        with patch.object(keycard_views, "_instance_rename_available", return_value=False):
+            for i, view_cls in enumerate(expected):
+                dest = self._route(ToolsKeycardThisInstanceMenuView, i)
+                self.assertIs(dest.View_cls, view_cls)
+
+    def test_this_instance_menu_shows_rename_when_available(self):
+        """When naming is available the Rename entry appears after Pairing and
+        routes to the new view; the rest still route correctly."""
+        from unittest.mock import patch
+        from seedsigner.views import keycard_views
+        from seedsigner.views.keycard_views import (
+            ToolsKeycardThisInstanceMenuView,
+            ToolsKeycardGenerateKeyView,
+            ToolsKeycardImportSeedView,
+            ToolsKeycardChangePinView,
+            ToolsKeycardPairingMenuView,
+            ToolsKeycardThisInstanceRenameView,
+            ToolsKeycardInitView,
+            ToolsKeycardFactoryResetView,
+            ToolsKeycardLockView,
+        )
+        expected = [
+            ToolsKeycardGenerateKeyView,
+            ToolsKeycardImportSeedView,
+            ToolsKeycardChangePinView,
+            ToolsKeycardPairingMenuView,
+            ToolsKeycardThisInstanceRenameView,
+            ToolsKeycardInitView,
+            ToolsKeycardFactoryResetView,
+            ToolsKeycardLockView,
+        ]
+        with patch.object(keycard_views, "_instance_rename_available", return_value=True):
+            for i, view_cls in enumerate(expected):
+                dest = self._route(ToolsKeycardThisInstanceMenuView, i)
+                self.assertIs(dest.View_cls, view_cls)
+
+    def test_rename_view_gated_when_unavailable(self):
+        """The Rename view itself refuses (no prompt) when naming is gated
+        off, returning the neutral "Not available" error."""
+        from unittest.mock import patch
+        from seedsigner.views import keycard_views
+        from seedsigner.views.keycard_views import (
+            ToolsKeycardThisInstanceRenameView, KeycardErrorView,
+        )
+        view = ToolsKeycardThisInstanceRenameView.__new__(
+            ToolsKeycardThisInstanceRenameView
+        )
+        view.run_screen = MagicMock()
+        view.controller = MagicMock()
+        with patch.object(keycard_views, "_instance_rename_available", return_value=False):
+            dest = view.run()
+        self.assertIs(dest.View_cls, KeycardErrorView)
+        self.assertEqual(dest.view_args["title"], "Not available")
+        view.run_screen.assert_not_called()
 
     def test_pairing_menu_routes(self):
         from seedsigner.views.keycard_views import (
@@ -810,25 +865,47 @@ class TestKeycardMenuRouting(unittest.TestCase):
             "Stale ToolsKeycardPinManagementMenuView class is still present",
         )
 
-    def test_rename_view_removed(self):
-        """Instance *naming* was removed entirely: user-assigned names only
-        ever lived on the microSD (never on the smartcard) and rarely
-        rendered in the instance lists. The standalone Rename view must be
-        gone, and the controller's label cache/methods with it.
-
-        Note: ``_format_instance_label`` exists again but is unrelated to
-        naming — it derives a stable ``Inst N`` index purely from the AID
-        (see :func:`test_format_instance_label`), with no microSD state."""
+    def test_instance_naming_present(self):
+        """Instance naming is back, microSD-only: the name lives in the
+        pairing blob's label slot (per-UID), read into a controller cache at
+        pairing-load and rendered via ``_instance_display_name``. The new
+        ``This instance ▸ Rename`` view exists and the controller exposes the
+        name-cache helpers. The OLD label subsystem (``set_label_for`` and the
+        standalone ``ToolsKeycardInstancesRenameView``) stays gone."""
         from seedsigner.controller import Controller
         from seedsigner.views import keycard_views
-        self.assertFalse(
-            hasattr(keycard_views, "ToolsKeycardInstancesRenameView"),
-            "Stale ToolsKeycardInstancesRenameView class is still present",
+        self.assertTrue(
+            hasattr(keycard_views, "ToolsKeycardThisInstanceRenameView"),
+            "Rename view is missing",
         )
-        self.assertFalse(
-            hasattr(Controller, "set_label_for"),
-            "Stale Controller.set_label_for is still present",
-        )
+        self.assertTrue(hasattr(keycard_views, "_instance_display_name"))
+        for meth in ("set_instance_name_for", "get_instance_name_for",
+                     "get_instance_name_for_aid"):
+            self.assertTrue(hasattr(Controller, meth), f"Controller.{meth} missing")
+        # Old subsystem must not resurface.
+        self.assertFalse(hasattr(Controller, "set_label_for"))
+        self.assertFalse(hasattr(keycard_views, "ToolsKeycardInstancesRenameView"))
+
+    def test_instance_display_name_resolution(self):
+        """``_instance_display_name`` returns a cached name when present and
+        falls back to the ``Inst N`` label otherwise — including the
+        load-bearing guard against a bare MagicMock leaking into a title."""
+        from seedsigner.views import keycard_views
+        from seedsigner.views.keycard_views import KEYCARD_APPLET_AID
+        aid = KEYCARD_APPLET_AID + b"\x01\x01"
+
+        named = MagicMock()
+        named.get_instance_name_for_aid.return_value = "Cold"
+        self.assertEqual(keycard_views._instance_display_name(named, aid), "Cold")
+
+        unnamed = MagicMock()
+        unnamed.get_instance_name_for_aid.return_value = None
+        self.assertEqual(keycard_views._instance_display_name(unnamed, aid), "Inst 1")
+
+        # A bare MagicMock returns a truthy Mock — must fall back, not leak it.
+        self.assertEqual(keycard_views._instance_display_name(MagicMock(), aid), "Inst 1")
+        # No controller at all.
+        self.assertEqual(keycard_views._instance_display_name(None, aid), "Inst 1")
 
     def test_format_instance_label(self):
         """``_format_instance_label`` renders Keycard instance AIDs as the

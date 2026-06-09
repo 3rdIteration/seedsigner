@@ -159,7 +159,7 @@ class ToolsKeycardMenuView(View):
         button_data += [self.LOCK, self.SETTINGS]
         # Surface the active instance in the title so the user always
         # knows which instance signing / export will use this session.
-        active = _format_instance_label(self.controller.active_keycard_aid)
+        active = _instance_display_name(self.controller, self.controller.active_keycard_aid)
         selected = self.run_screen(
             ButtonListScreen,
             title=_("Keycard · {}").format(active),
@@ -189,12 +189,12 @@ class ToolsKeycardSettingsMenuView(View):
     * **Manage Instances** — everything about the applet instances: the
       active one's key/PIN/pairing/init ops (``This instance``) plus
       create / delete of the instance *set*.
-    * **Card** — whole-card / package ops (status, storage, uninstall the
-      applet package).
+    * **Manage Card** — whole-card / package ops (status, storage, uninstall
+      the applet package).
     """
 
     MANAGE_INSTANCES = ButtonOption("Manage Instances")
-    CARD = ButtonOption("Card")
+    CARD = ButtonOption("Manage Card")
 
     def run(self):
         button_data = [self.MANAGE_INSTANCES, self.CARD]
@@ -226,12 +226,13 @@ class ToolsKeycardThisInstanceMenuView(View):
     IMPORT_SEED = ButtonOption("Import seed")
     CHANGE_PIN = ButtonOption("Change PIN")
     PAIRING = ButtonOption("Pairing")
+    RENAME = ButtonOption("Rename instance")
     INIT = ButtonOption("Initialise instance")
     FACTORY_RESET = ButtonOption("Factory reset")
     LOCK = ButtonOption("Lock card")
 
     def run(self):
-        active = _format_instance_label(self.controller.active_keycard_aid)
+        active = _instance_display_name(self.controller, self.controller.active_keycard_aid)
         # Daily-use key ops up top; the rarer lifecycle ops (Initialise /
         # Factory reset) group at the bottom. "Initialise instance" runs
         # INIT against this instance's applet — it lives here, not under
@@ -241,6 +242,14 @@ class ToolsKeycardThisInstanceMenuView(View):
             self.IMPORT_SEED,
             self.CHANGE_PIN,
             self.PAIRING,
+        ]
+        # Naming is stored in the on-disk pairing blob, so the entry only
+        # appears when we can actually persist (Persistent Settings + microSD;
+        # and not an ephemeral-paired instance). Otherwise the instance stays
+        # labelled by its applet index ("Inst N").
+        if _instance_rename_available(self.controller):
+            button_data.append(self.RENAME)
+        button_data += [
             self.INIT,
             self.FACTORY_RESET,
             self.LOCK,
@@ -262,6 +271,8 @@ class ToolsKeycardThisInstanceMenuView(View):
             return Destination(ToolsKeycardChangePinView)
         if chosen == self.PAIRING:
             return Destination(ToolsKeycardPairingMenuView)
+        if chosen == self.RENAME:
+            return Destination(ToolsKeycardThisInstanceRenameView)
         if chosen == self.INIT:
             return Destination(ToolsKeycardInitView)
         if chosen == self.FACTORY_RESET:
@@ -269,6 +280,137 @@ class ToolsKeycardThisInstanceMenuView(View):
         if chosen == self.LOCK:
             return Destination(ToolsKeycardLockView)
         return Destination(NotYetImplementedView)
+
+
+def _instance_rename_available(controller) -> bool:
+    """Whether the Rename-instance flow can run for the active instance.
+
+    The name is stored inside the on-disk pairing blob, so naming needs
+    Persistent Settings on **and** a microSD present. Ephemeral-paired
+    (v3.2+) instances never persist a blob, so we hide it for those when we
+    can tell (their UID is cached as an ephemeral secret).
+    """
+    from seedsigner.hardware.microsd import MicroSD
+    from seedsigner.models.settings import Settings
+
+    if Settings.get_instance().get_value(
+        SettingsConstants.SETTING__PERSISTENT_SETTINGS
+    ) != SettingsConstants.OPTION__ENABLED:
+        return False
+    if not MicroSD.get_instance().is_inserted:
+        return False
+    uid = controller.get_uid_for_aid(controller.active_keycard_aid)
+    if uid is None:
+        uid = controller.last_keycard_uid
+    if uid is not None and controller.get_ephemeral_secret_for(uid) is not None:
+        return False
+    return True
+
+
+class ToolsKeycardThisInstanceRenameView(View):
+    """Set / change the active instance's name.
+
+    The name is written into the (encrypted) label slot of the on-disk
+    pairing blob, keyed by ``instance_uid``. It therefore requires a saved
+    pairing and the pairing password (which is never cached). When set, the
+    name replaces the ``Inst N`` label everywhere the active instance is
+    shown.
+    """
+
+    def run(self):
+        from seedsigner.helpers.keycard import pairing_storage
+        from seedsigner.helpers.keycard.commands import APDUError
+        from seedsigner.helpers.keycard.reader import NoCardError, NoReaderError
+        from seedsigner.helpers.keycard.ui_helpers import identify_inserted_card
+
+        # Defensive gate (the menu already hides the entry when unavailable).
+        if not _instance_rename_available(self.controller):
+            return _error_destination(
+                _("Not available"),
+                _("Enable Persistent Settings\nand insert a microSD."),
+            )
+
+        active_aid = self.controller.active_keycard_aid
+
+        # Resolve the active instance UID (prefer the session map; SELECT only
+        # if we must).
+        uid = self.controller.get_uid_for_aid(active_aid)
+        if uid is None:
+            try:
+                _client, uid = identify_inserted_card(self)
+            except (NoCardError, NoReaderError) as exc:
+                return _no_card_toast_or_error(self, exc, default_title=_("Rename failed"))
+            except APDUError as exc:
+                if exc.sw == 0x6A82:
+                    return _error_destination(
+                        _("No instance"),
+                        _("No Keycard applet\non this card."),
+                    )
+                logger.exception("Rename SELECT failed")
+                title, body = classify_card_error(exc)
+                return _error_destination(title, body)
+            except Exception as exc:
+                logger.exception("Rename SELECT failed")
+                title, body = classify_card_error(exc)
+                return _error_destination(title, body)
+            self.controller.remember_aid_for_uid(active_aid, uid)
+
+        # Pairing password — needed to read & re-encrypt the blob.
+        pwd = _prompt_for_text(self, _("Pairing password"))
+        if pwd is None:
+            return Destination(BackStackView)
+
+        try:
+            # Validate the password and that a blob exists before asking for
+            # the name (fail fast).
+            try:
+                stored = pairing_storage.load(pwd, instance_uid=uid)
+            except pairing_storage.PairingStorageError:
+                return _error_destination(
+                    _("Wrong password"),
+                    _("Pairing password did\nnot match this card."),
+                )
+            if stored is None:
+                return _error_destination(
+                    _("No saved pairing"),
+                    _("Pair this instance\nfirst, then rename."),
+                )
+
+            name = _prompt_for_text(self, _("Instance name"), max_len=16)
+            if name is None:
+                return Destination(BackStackView)
+
+            try:
+                pairing_storage.set_label(pwd, uid, name)
+            except Exception:
+                logger.exception("set_label failed")
+                return _error_destination(
+                    _("Save failed"),
+                    _("Could not write the\nname to the microSD."),
+                )
+
+            # Cache exactly what landed on disk: the storage layer clamps the
+            # name to a 16-*byte* slot (codepoint-safe), which can differ from
+            # the typed string for multi-byte names. Re-read so the session
+            # label matches what a later boot will show.
+            reloaded = pairing_storage.load(pwd, instance_uid=uid)
+            name = reloaded.label if reloaded and reloaded.label else name
+            self.controller.set_instance_name_for(uid, name)
+        finally:
+            try:
+                wipe_string(pwd)
+            except Exception:
+                pass
+
+        self.run_screen(
+            LargeIconStatusScreen,
+            title=_("Renamed"),
+            status_headline=None,
+            text=_("Now shown as {}.").format(name),
+            show_back_button=False,
+            button_data=[ButtonOption("OK")],
+        )
+        return Destination(ToolsKeycardThisInstanceMenuView, skip_current_view=True)
 
 
 class ToolsKeycardLockView(View):
@@ -308,7 +450,7 @@ class ToolsKeycardPairingMenuView(View):
     REMOVE_PAIRING = ButtonOption("Remove pairing")
 
     def run(self):
-        active = _format_instance_label(self.controller.active_keycard_aid)
+        active = _instance_display_name(self.controller, self.controller.active_keycard_aid)
         button_data = [self.PAIR, self.REMOVE_PAIRING]
         selected = self.run_screen(
             ButtonListScreen,
@@ -344,7 +486,7 @@ class ToolsKeycardCardMenuView(View):
         button_data = [self.STATUS, self.STORAGE, self.UNINSTALL]
         selected = self.run_screen(
             ButtonListScreen,
-            title=_("Card"),
+            title=_("Manage Card"),
             is_button_text_centered=False,
             button_data=button_data,
         )
@@ -555,7 +697,7 @@ class ToolsKeycardFactoryResetView(View):
         except ImportError as exc:
             return _error_destination(_("Keycard support unavailable"), str(exc))
 
-        label = _format_instance_label(self.controller.active_keycard_aid)
+        label = _instance_display_name(self.controller, self.controller.active_keycard_aid)
         ret = self.run_screen(
             DireWarningScreen,
             title=_("Wipe {}?").format(label),
@@ -972,11 +1114,12 @@ def _try_pair_with_raw_psk(
     SecureChannelError,
     psk: bytes,
     instance_uid: bytes,
-) -> Tuple[Optional[object], Optional[str]]:
+) -> Tuple[Optional[object], Optional[str], Optional[str]]:
     """Attempt to pair using a raw 32-byte pairing secret (no PBKDF2).
 
-    Returns ``(pairing, source)`` where ``source`` is ``"disk"`` or
-    ``"pair"`` on success; ``(None, None)`` on cryptogram mismatch.
+    Returns ``(pairing, source, label)`` where ``source`` is ``"disk"`` or
+    ``"pair"`` on success and ``label`` is the stored instance name (only
+    on the ``"disk"`` path); ``(None, None, None)`` on cryptogram mismatch.
     """
     if len(psk) != 32:
         raise ValueError("PSK must be 32 bytes")
@@ -988,19 +1131,19 @@ def _try_pair_with_raw_psk(
             logger.info("saved pairing rejected: %s", exc)
             stored = None
         if stored is not None and stored.instance_uid == instance_uid:
-            return stored.pairing, "disk"
+            return stored.pairing, "disk", stored.label
 
         try:
             pairing = client.pair(psk)
         except SecureChannelError as exc:
             if "cryptogram" in str(exc).lower():
-                return None, None  # PSK does not match — fall through
+                return None, None, None  # PSK does not match — fall through
             raise
         try:
             pairing_storage.save(storage_pwd, pairing, instance_uid)
         except Exception:
             logger.exception("could not persist pairing")
-        return pairing, "pair"
+        return pairing, "pair", None
     finally:
         try:
             wipe_string(storage_pwd)
@@ -1015,11 +1158,12 @@ def _try_pair_with_password(
     SecureChannelError,
     pwd: str,
     instance_uid: bytes,
-) -> Tuple[Optional[object], Optional[str]]:
+) -> Tuple[Optional[object], Optional[str], Optional[str]]:
     """Attempt to obtain a PairingInfo for ``instance_uid`` using ``pwd``.
 
-    Returns ``(pairing, source)`` where ``source`` is ``"disk"`` or
-    ``"pair"`` on success; ``(None, None)`` on cryptogram mismatch.
+    Returns ``(pairing, source, label)`` where ``source`` is ``"disk"`` or
+    ``"pair"`` on success and ``label`` is the stored instance name (only
+    on the ``"disk"`` path); ``(None, None, None)`` on cryptogram mismatch.
     """
     # Force a fresh str object — prevents wipe_string from zeroing the
     # caller's buffer or any interned constant (e.g. DEFAULT_PAIRING_PASSWORD).
@@ -1032,21 +1176,21 @@ def _try_pair_with_password(
             logger.info("saved pairing rejected: %s", exc)
             stored = None
         if stored is not None and stored.instance_uid == instance_uid:
-            return stored.pairing, "disk"
+            return stored.pairing, "disk", stored.label
 
         try:
             secret = derive_pairing_secret(normalised)
             pairing = client.pair(secret)
         except SecureChannelError as exc:
             if "cryptogram" in str(exc).lower():
-                return None, None  # wrong password — caller falls through
+                return None, None, None  # wrong password — caller falls through
             raise
         try:
             pairing_storage.save(normalised, pairing, instance_uid)
         except Exception:
             logger.exception("could not persist pairing")
             # Non-fatal: keep the in-memory pairing.
-        return pairing, "pair"
+        return pairing, "pair", None
     finally:
         for s in (fresh, normalised):
             try:
@@ -1168,14 +1312,15 @@ class ToolsKeycardPairView(View):
         used_default = False
         pairing = None
         source = None
+        label = None
         try:
-            pairing, source = _try_pair_with_password(
+            pairing, source, label = _try_pair_with_password(
                 client, pairing_storage, derive_pairing_secret,
                 SecureChannelError,
                 DEFAULT_PAIRING_PASSWORD, instance_uid,
             )
             if pairing is None:
-                pairing, source = _try_pair_with_raw_psk(
+                pairing, source, label = _try_pair_with_raw_psk(
                     client, pairing_storage, SecureChannelError,
                     KEYCARD_SHELL_DEFAULT_PSK, instance_uid,
                 )
@@ -1202,7 +1347,7 @@ class ToolsKeycardPairView(View):
                 _wipe_bytearray(password_buf)
                 return _error_destination(_("Bad password"), str(exc))
             try:
-                pairing, source = _try_pair_with_password(
+                pairing, source, label = _try_pair_with_password(
                     client, pairing_storage, derive_pairing_secret,
                     SecureChannelError,
                     custom, instance_uid,
@@ -1225,6 +1370,10 @@ class ToolsKeycardPairView(View):
                 )
 
         self.controller.set_pairing_for(instance_uid, pairing)
+        # Cache the user-assigned name read off the blob (only present on the
+        # "disk" path). This is the one moment per boot we hold the pairing
+        # password, so the encrypted label slot decodes for free here.
+        self.controller.set_instance_name_for(instance_uid, label)
 
         if source == "disk":
             detail = _("loaded from disk")
@@ -3067,7 +3216,7 @@ class ToolsKeycardWalletsListView(View):
                     loading_screen.stop()
 
         addresses = cache[self.start_index:end_index]
-        active_aid_short = _format_instance_label(self.controller.active_keycard_aid)
+        active_aid_short = _instance_display_name(self.controller, self.controller.active_keycard_aid)
 
         selected = self.run_screen(
             ToolsAddressExplorerAddressListScreen,
@@ -3176,6 +3325,18 @@ def _format_instance_label(aid: bytes) -> str:
     return _format_aid_short(aid)
 
 
+def _instance_display_name(controller, aid: bytes) -> str:
+    """User-assigned instance name if one is cached, else the ``Inst N`` label.
+
+    The ``isinstance(name, str)`` guard is load-bearing: routing tests pass a
+    bare ``MagicMock`` controller whose ``get_instance_name_for_aid`` returns a
+    truthy Mock — without the guard that Mock would leak into a title's
+    ``.format`` call. A real, non-empty name wins; everything else falls back.
+    """
+    name = controller.get_instance_name_for_aid(aid) if controller is not None else None
+    return name if isinstance(name, str) and name else _format_instance_label(aid)
+
+
 def _next_free_instance_aid(existing: list) -> bytes:
     """Suggest the next instance AID by bumping the last byte.
 
@@ -3237,7 +3398,7 @@ class ToolsKeycardInstancesMenuView(View):
             if ret == RET_CODE__BACK_BUTTON:
                 return Destination(BackStackView)
 
-        active = _format_instance_label(self.controller.active_keycard_aid)
+        active = _instance_display_name(self.controller, self.controller.active_keycard_aid)
         button_data = [self.THIS_INSTANCE, self.CREATE, self.DELETE]
         ret = self.run_screen(
             ButtonListScreen,
@@ -3369,7 +3530,8 @@ class ToolsKeycardInstancesSwitchView(View):
         active = self.controller.active_keycard_aid
         button_data = [
             ButtonOption(
-                ("» " if i.aid == active else "") + _format_instance_label(i.aid)
+                ("» " if i.aid == active else "")
+                + _instance_display_name(self.controller, i.aid)
             )
             for i in candidates
         ]
@@ -3402,7 +3564,7 @@ class ToolsKeycardInstancesSwitchView(View):
             LargeIconStatusScreen,
             title=_("Active set"),
             status_headline=None,
-            text=_format_instance_label(chosen),
+            text=_instance_display_name(self.controller, chosen),
             show_back_button=False,
             button_data=[ButtonOption("OK")],
         )
@@ -4387,7 +4549,7 @@ class ToolsKeycardEthereumMenuView(View):
             return gate
 
         button_data = [self.SIGN_REQUEST, self.VIEW_WALLETS, self.EXPORT_XPUB]
-        active = _format_instance_label(self.controller.active_keycard_aid)
+        active = _instance_display_name(self.controller, self.controller.active_keycard_aid)
         selected = self.run_screen(
             ButtonListScreen,
             title=_("Ethereum · {}").format(active),
@@ -4421,7 +4583,7 @@ class ToolsKeycardBitcoinMenuView(View):
             return gate
 
         button_data = [self.SIGN_PSBT, self.SIGN_MESSAGE, self.EXPORT_XPUB]
-        active = _format_instance_label(self.controller.active_keycard_aid)
+        active = _instance_display_name(self.controller, self.controller.active_keycard_aid)
         selected = self.run_screen(
             ButtonListScreen,
             title=_("Bitcoin · {}").format(active),
