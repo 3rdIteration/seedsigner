@@ -2,9 +2,24 @@
 
 All notable changes to this project are documented in this file.
 
-Entries marked "(SeedSigner official)" originate from the upstream project, while "(smartcard fork)" indicates releases and changes unique to this repository.
+Entries marked "(SeedSigner official)" originate from the upstream project, "(smartcard fork)" indicates releases inherited from 3rdIteration/seedsigner, and "(Keycard edition)" indicates releases of this fork.
 
-## Unreleased - SS0.8.6+Satochip+Earthdiver-B4 (smartcard fork)
+## 2026-06-10 - Keycard-Edition-B1 (Keycard edition)
+
+First release of the Keycard-only fork ("SeedSigner — Keycard Edition"). Keys never live on the device — they live on a PIN-protected smartcard.
+
+- On-device seed manager and host-side PSBT signer removed entirely; every signature is produced inside a Status Keycard (applet 3.x) secure element
+- Bitcoin over Keycard: BIP-84 P2WPKH PSBT signing via animated QR, xpub + descriptor export ("Connect software wallet"), on-card receive-address browser, BIP-137 message signing
+- Ethereum over Keycard: legacy (EIP-155) and EIP-1559 transactions, EIP-712 typed data and personal_sign via UR `eth-sign-request` / `eth-signature`; offline calldata decoding; ERC-8213 / EIP-712 digest verification screens; on-card address browser
+- Keycard management: init wizard (PIN/PUK/pairing), duress (alt) PIN with on-card decoy wallet, change PIN, unblock PIN with PUK, Lock card, multi-instance create/delete/switch/rename over GlobalPlatform SCP02
+- Putting a key on the card: on-card generate (TRNG), show-words + import with confirmation quiz, import via SeedQR / typed words / NGRAVE "Perfect Key" hex; optional SeedKeeper backup at creation time
+- SeedKeeper applet kept as an encrypted secret vault (view / save / delete / clone secrets, applet install onto blank JavaCards)
+- Optional stealth boot (Snake game with configurable unlock sequence)
+- Pairing persistence on microSD (AES-256-GCM); per-instance PIN cache with strict wipe triggers
+- 10 UI languages
+- Removed from upstream: on-device seed creation/storage, SLIP-39, BIP-85, Electrum seeds, WIF/BIP38, GPG tools, multisig descriptors, on-card Satochip signing
+
+## 2025-09-24 - SS0.8.6+Satochip+Earthdiver-B4 (smartcard fork)
 - Randomized dummy Satochip signing requests (0-6 by default, configurable up to 12) that themselves may execute extra signatures per the configured probability and dummy count, plus optional extra per-input signatures with random selection among them to reduce potential nonce leakage
 - Issue a random number of post-signing dummy requests (0-6 by default, configurable up to 12) applying the same extra-signing rules for additional nonce obfuscation
 - Enforce configurable per-signature timeout (0.5–5 s, default 1 s, adjustable in 0.5 s steps) and allow tuning of pre-signing dummies, in-transaction dummy count, and per-input dummy probability

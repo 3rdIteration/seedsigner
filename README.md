@@ -93,7 +93,7 @@ Optional mode (off by default) that boots the device into a playable Snake game 
 * **A smartcard interface** — any PC/SC-capable reader (USB CCID readers, the SEC1210 UART hat, PN532 over I2C…). See [docs/smartcard_support_installation.md](./docs/smartcard_support_installation.md) and [docs/io_config.md](./docs/io_config.md).
 * **Cards:** a retail Status Keycard, or any compatible JavaCard running the Keycard applet 3.x (cards initialised with `keycard-cli` / `keycard-shell` work as-is). For the vault/backup features: a Satochip SeedKeeper (or a blank JavaCard — the firmware can install the applet).
 
-Runs on [SeedSigner OS](https://github.com/SeedSigner/seedsigner-os) (Buildroot): small, reproducible images; the microSD can be removed after boot.
+Runs on [our SeedSigner OS fork](https://github.com/ethermachine/seedsigner-os) (Buildroot): small, reproducible images; the microSD can be removed after boot.
 
 ---
 
@@ -141,7 +141,7 @@ Beta software, under active development. It handles real money on real networks 
 
 * [SeedSigner](https://github.com/SeedSigner/seedsigner) — the platform, UI framework and the air-gapped QR signing model.
 * [3rdIteration/seedsigner](https://github.com/3rdIteration/seedsigner) — smartcard integration groundwork (readers, Satochip/SeedKeeper, SeedSigner-OS builds for card hardware).
-* [Status Keycard](https://github.com/status-im/status-keycard) and [keycard-shell](https://github.com/status-im/keycard-shell) — the applet and the protocol conventions this firmware follows.
+* [Status Keycard](https://github.com/status-im/status-keycard) and [keycard-shell](https://github.com/keycard-tech/keycard-shell) — the applet and the protocol conventions this firmware follows.
 * [Satochip / Toporin](https://github.com/Toporin) — the SeedKeeper applet and pysatochip.
 * [embit](https://github.com/diybitcoinhardware/embit) — the Bitcoin primitives.
 
