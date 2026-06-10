@@ -225,6 +225,7 @@ class ToolsKeycardThisInstanceMenuView(View):
     GENERATE_KEY = ButtonOption("Generate key")
     IMPORT_SEED = ButtonOption("Import seed")
     CHANGE_PIN = ButtonOption("Change PIN")
+    UNBLOCK_PIN = ButtonOption("Unblock PIN (PUK)")
     RENAME = ButtonOption("Rename instance")
     INIT = ButtonOption("Initialise instance")
     FACTORY_RESET = ButtonOption("Factory reset")
@@ -240,6 +241,7 @@ class ToolsKeycardThisInstanceMenuView(View):
             self.GENERATE_KEY,
             self.IMPORT_SEED,
             self.CHANGE_PIN,
+            self.UNBLOCK_PIN,
         ]
         # Naming is stored in a plaintext microSD file, so the entry only
         # appears when we can actually persist (Persistent Settings + microSD).
@@ -266,6 +268,8 @@ class ToolsKeycardThisInstanceMenuView(View):
             return Destination(ToolsKeycardImportSeedView)
         if chosen == self.CHANGE_PIN:
             return Destination(ToolsKeycardChangePinView)
+        if chosen == self.UNBLOCK_PIN:
+            return Destination(ToolsKeycardUnblockPinView)
         if chosen == self.RENAME:
             return Destination(ToolsKeycardThisInstanceRenameView)
         if chosen == self.INIT:
@@ -1041,6 +1045,133 @@ class ToolsKeycardChangePinView(View):
             )
             return Destination(ToolsKeycardMenuView, skip_current_view=True)
         finally:
+            wipe_bytearray(new_pin)
+            wipe_bytearray(confirm_pin)
+
+
+class ToolsKeycardUnblockPinView(View):
+    """Reset a blocked PIN on the active instance using the 12-digit PUK.
+
+    Opens a secure-channel session WITHOUT PIN verification (the PIN is
+    blocked, so VERIFY_PIN cannot succeed), confirms via GET STATUS that
+    the PIN really is blocked, then captures the PUK plus the new PIN
+    (entry + confirm) and sends UNBLOCK PIN. A wrong PUK burns one PUK
+    retry — the remaining count is surfaced after each failure; at zero
+    the instance is recoverable only by factory reset.
+    """
+
+    def run(self):
+        from seedsigner.helpers.keycard import (
+            KeycardCardChangedError, KeycardNotInitialisedError,
+        )
+        from seedsigner.helpers.keycard.commands import APDUError
+
+        puk_buf: Optional[bytearray] = None
+        new_pin: Optional[bytearray] = None
+        confirm_pin: Optional[bytearray] = None
+        try:
+            try:
+                client, _unused = _open_unlocked_session(
+                    self, require_key=False, skip_pin_verify=True,
+                )
+            except KeycardCardChangedError:
+                return Destination(ToolsKeycardPairView)
+            except KeycardNotInitialisedError as exc:
+                title, body = classify_card_error(exc)
+                return _error_destination(title, body)
+            except Exception as exc:
+                logger.exception("Keycard UNBLOCK PIN: session open failed")
+                title, body = classify_card_error(
+                    exc, default_title=_("Unblock failed"),
+                )
+                return _error_destination(title, body)
+
+            select_resp = client.select_response
+            instance_uid = (
+                bytes(select_resp.instance_uid) if select_resp else b""
+            )
+
+            # The applet rejects UNBLOCK while the PIN still has retries
+            # (SW=0x6985) — check up front for a clear message instead.
+            try:
+                status = client.get_status()
+            except Exception as exc:
+                logger.exception("Keycard UNBLOCK PIN: GET STATUS failed")
+                title, body = classify_card_error(
+                    exc, default_title=_("Unblock failed"),
+                )
+                return _error_destination(title, body)
+            if status.pin_retries > 0:
+                return _error_destination(
+                    _("PIN not blocked"),
+                    _("{} PIN tries left.\nUse Change PIN instead.").format(
+                        status.pin_retries,
+                    ),
+                )
+            if status.puk_retries == 0:
+                return _error_destination(
+                    _("PUK blocked"),
+                    _("No PUK tries left.\nFactory reset required."),
+                )
+
+            puk_buf = prompt_for_pin(
+                self, _("Enter PUK"), num_digits=PUK_LENGTH,
+            )
+            if puk_buf is None:
+                return Destination(BackStackView)
+            new_pin = prompt_for_pin(self, _("New PIN"))
+            if new_pin is None:
+                return Destination(BackStackView)
+            confirm_pin = prompt_for_pin(self, _("Confirm new PIN"))
+            if confirm_pin is None:
+                return Destination(BackStackView)
+            if bytes(new_pin) != bytes(confirm_pin):
+                return _error_destination(
+                    _("Mismatch"), _("New PINs do not\nmatch. Retry."),
+                )
+
+            try:
+                client.unblock_pin(bytes(puk_buf), bytes(new_pin))
+            except APDUError as exc:
+                if (exc.sw & 0xFFF0) == 0x63C0:
+                    tries = exc.sw & 0x000F
+                    if tries == 0:
+                        return _error_destination(
+                            _("PUK blocked"),
+                            _("No PUK tries left.\nFactory reset required."),
+                        )
+                    return _error_destination(
+                        _("Wrong PUK"), _("{} tries left.").format(tries),
+                    )
+                logger.exception("Keycard UNBLOCK PIN failed")
+                title, body = classify_card_error(
+                    exc, default_title=_("Unblock failed"),
+                )
+                return _error_destination(title, body)
+            except Exception as exc:
+                logger.exception("Keycard UNBLOCK PIN failed")
+                title, body = classify_card_error(
+                    exc, default_title=_("Unblock failed"),
+                )
+                return _error_destination(title, body)
+
+            # The session is PIN-verified on-card now, but keep the
+            # Change PIN convention: drop the cache so the next op
+            # re-prompts with the new value the user just chose.
+            if instance_uid:
+                self.controller.forget_pin_for(instance_uid)
+
+            self.run_screen(
+                LargeIconStatusScreen,
+                title=_("PIN unblocked"),
+                status_headline=None,
+                text=_("New PIN active.\nUse it on next op."),
+                show_back_button=False,
+                button_data=[ButtonOption("OK")],
+            )
+            return Destination(ToolsKeycardMenuView, skip_current_view=True)
+        finally:
+            wipe_bytearray(puk_buf)
             wipe_bytearray(new_pin)
             wipe_bytearray(confirm_pin)
 
@@ -3108,25 +3239,36 @@ class ToolsKeycardPairWalletView(View):
 WALLETS_PER_PAGE = 10
 
 
-def _wallets_cache_for_active_aid(controller) -> list:
-    """Return the per-AID address list, creating it on first access."""
+def _wallets_cache_for_active_aid(controller, chain: str = "eth") -> list:
+    """Return the per-AID, per-chain address list, creating it on first
+    access. The ETH list keeps the historical bare-AID key; other chains
+    get an ``<aid>:<chain>`` suffix.
+    """
     if controller.keycard_wallets_data is None:
         controller.keycard_wallets_data = {}
     aid_hex = bytes(controller.active_keycard_aid).hex()
-    return controller.keycard_wallets_data.setdefault(aid_hex, [])
+    key = aid_hex if chain == "eth" else f"{aid_hex}:{chain}"
+    return controller.keycard_wallets_data.setdefault(key, [])
+
+
+def _pop_wallets_cache_for_aid(controller, aid: bytes) -> None:
+    """Drop every chain's cached address list for one AID."""
+    if controller.keycard_wallets_data is None:
+        return
+    aid_hex = bytes(aid).hex()
+    for key in list(controller.keycard_wallets_data):
+        if key == aid_hex or key.startswith(aid_hex + ":"):
+            controller.keycard_wallets_data.pop(key, None)
 
 
 def _invalidate_wallets_cache_for_active_aid(controller) -> None:
-    """Drop the cached View-wallets list for the active AID.
+    """Drop the cached address lists (all chains) for the active AID.
 
     Call after any operation that changes the on-card master key
-    (GENERATE_KEY, LOAD_KEY) so the next View-wallets entry re-derives
+    (GENERATE_KEY, LOAD_KEY) so the next address-list entry re-derives
     against the new key instead of showing addresses from the old one.
     """
-    if controller.keycard_wallets_data is None:
-        return
-    aid_hex = bytes(controller.active_keycard_aid).hex()
-    controller.keycard_wallets_data.pop(aid_hex, None)
+    _pop_wallets_cache_for_aid(controller, controller.active_keycard_aid)
 
 
 class ToolsKeycardWalletsListView(View):
@@ -3249,6 +3391,145 @@ class ToolsKeycardWalletAddressView(View):
 
         return Destination(
             ToolsKeycardWalletsListView,
+            view_args=dict(
+                start_index=self.start_index,
+                selected_button_index=self.index - self.start_index,
+                initial_scroll=self.parent_initial_scroll,
+            ),
+            skip_current_view=True,
+        )
+
+
+class ToolsKeycardBtcAddressesListView(View):
+    """Paginated list of BIP-84 receive addresses (``m/84'/0'/0'/0/i``)
+    for the active Keycard instance.
+
+    Mirrors :class:`ToolsKeycardWalletsListView` (ETH): one PIN-verified
+    session per page-load, derivation happens on-card (the host only
+    ever sees public keys), results cached on the controller per-AID.
+    The cache dies with the PIN cache — the duress rule: derived
+    addresses are valid only for one authenticated PIN session.
+    """
+
+    def __init__(self, start_index: int = 0, selected_button_index: int = 0,
+                 initial_scroll: int = 0):
+        super().__init__()
+        self.start_index = start_index
+        self.selected_button_index = selected_button_index
+        self.initial_scroll = initial_scroll
+
+    def run(self):
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+        from seedsigner.gui.screens.tools_screens import (
+            ToolsAddressExplorerAddressListScreen,
+        )
+        from seedsigner.helpers.keycard import (
+            KeycardCardChangedError, KeycardPinPromptCancelled,
+        )
+        from seedsigner.helpers.bitcoin.address import pubkey_to_p2wpkh_address
+        from seedsigner.helpers.keycard_btc_signer import compress_pubkey
+
+        if not self.controller.has_any_keycard_auth():
+            if not try_silent_ephemeral_pair(self):
+                return Destination(ToolsKeycardPairView)
+
+        cache = _wallets_cache_for_active_aid(self.controller, chain="btc")
+        end_index = self.start_index + WALLETS_PER_PAGE
+
+        if len(cache) < end_index:
+            loading_screen = None
+            try:
+                client, _unused = _open_unlocked_session_cached_or_prompt(self)
+                loading_screen = LoadingScreenThread(text=_("Deriving addrs..."))
+                loading_screen.start()
+                for i in range(len(cache), end_index):
+                    client.derive_key([84 | _H, 0 | _H, 0 | _H, 0, i])
+                    raw = client.export_pubkey()
+                    pub = _extract_pubkey(raw)
+                    if pub is None:
+                        return _error_destination(
+                            _("Parse fail"),
+                            # TRANSLATOR_NOTE: {} are an index and a hex response dump
+                            _("Index {}\nresp={}").format(
+                                i, raw[:16].hex() if raw else '(empty)'),
+                        )
+                    addr = pubkey_to_p2wpkh_address(compress_pubkey(pub))
+                    cache.append(addr)
+            except KeycardPinPromptCancelled:
+                return Destination(BackStackView)
+            except KeycardCardChangedError:
+                return Destination(ToolsKeycardPairView)
+            except Exception as exc:
+                logger.exception("Keycard BTC View addresses failed")
+                title, body = classify_card_error(
+                    exc, default_title=_("Derive failed"),
+                )
+                return _error_destination(title, body)
+            finally:
+                if loading_screen is not None:
+                    loading_screen.stop()
+
+        addresses = cache[self.start_index:end_index]
+        active_aid_short = _instance_display_name(self.controller, self.controller.active_keycard_aid)
+
+        selected = self.run_screen(
+            ToolsAddressExplorerAddressListScreen,
+            title=_("Addresses ({})").format(active_aid_short),
+            start_index=self.start_index,
+            addresses=addresses,
+            selected_button=self.selected_button_index,
+            scroll_y_initial_offset=self.initial_scroll,
+        )
+
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        if selected == len(addresses):
+            # "Next N" button.
+            return Destination(
+                ToolsKeycardBtcAddressesListView,
+                view_args=dict(start_index=end_index),
+            )
+
+        # Preserve scroll position so returning lands on the same row.
+        try:
+            initial_scroll = self.screen.buttons[0].scroll_y
+        except Exception:
+            initial_scroll = 0
+
+        index = selected + self.start_index
+        return Destination(
+            ToolsKeycardBtcAddressView,
+            view_args=dict(
+                index=index,
+                address=addresses[selected],
+                start_index=self.start_index,
+                parent_initial_scroll=initial_scroll,
+            ),
+            skip_current_view=True,
+        )
+
+
+class ToolsKeycardBtcAddressView(View):
+    """Detail screen for a single BTC receive address: QR + back."""
+
+    def __init__(self, index: int, address: str, start_index: int,
+                 parent_initial_scroll: int = 0):
+        super().__init__()
+        self.index = index
+        self.address = address
+        self.start_index = start_index
+        self.parent_initial_scroll = parent_initial_scroll
+
+    def run(self):
+        from seedsigner.gui.screens.screen import QRDisplayScreen
+        from seedsigner.models.encode_qr import GenericStaticQrEncoder
+
+        qr_encoder = GenericStaticQrEncoder(data=self.address)
+        self.run_screen(QRDisplayScreen, qr_encoder=qr_encoder)
+
+        return Destination(
+            ToolsKeycardBtcAddressesListView,
             view_args=dict(
                 start_index=self.start_index,
                 selected_button_index=self.index - self.start_index,
@@ -3774,10 +4055,10 @@ class ToolsKeycardInstancesDeleteView(View):
         # remaining instance is resolved regardless.
         if self.controller.active_keycard_aid == target:
             self.controller.active_keycard_aid = KEYCARD_APPLET_AID + b"\x01"
-        # Invalidate the cached wallet list for the deleted AID (and
-        # the fallback default, in case both pointed at the same blob).
-        if self.controller.keycard_wallets_data is not None:
-            self.controller.keycard_wallets_data.pop(bytes(target).hex(), None)
+        # Invalidate the cached address lists (all chains) for the deleted
+        # AID (and the fallback default, in case both pointed at the same
+        # blob).
+        _pop_wallets_cache_for_aid(self.controller, target)
         # Instance set changed — re-probe the count on the next top menu
         # render (so "Switch instance" hides again once only one is left).
         self.controller.keycard_instance_count = None
@@ -4623,6 +4904,7 @@ class ToolsKeycardBitcoinMenuView(View):
     EXPORT_XPUB = ButtonOption("Connect software wallet")
     SIGN_PSBT = ButtonOption("Sign PSBT")
     SIGN_MESSAGE = ButtonOption("Sign message")
+    VIEW_ADDRESSES = ButtonOption("View addresses")
 
     def run(self):
         from seedsigner.helpers.card_probe import run_card_gate
@@ -4632,7 +4914,12 @@ class ToolsKeycardBitcoinMenuView(View):
         if gate is not None:
             return gate
 
-        button_data = [self.SIGN_PSBT, self.SIGN_MESSAGE, self.EXPORT_XPUB]
+        # "Connect software wallet" stays LAST (menu convention — see
+        # CLAUDE.md: daily-use ops first, export-to-coordinator last).
+        button_data = [
+            self.SIGN_PSBT, self.SIGN_MESSAGE, self.VIEW_ADDRESSES,
+            self.EXPORT_XPUB,
+        ]
         active = _instance_display_name(self.controller, self.controller.active_keycard_aid)
         selected = self.run_screen(
             ButtonListScreen,
@@ -4650,6 +4937,8 @@ class ToolsKeycardBitcoinMenuView(View):
             return Destination(ToolsKeycardBtcSignPsbtScanView)
         if chosen == self.SIGN_MESSAGE:
             return Destination(ToolsKeycardBtcSignMessageStartView)
+        if chosen == self.VIEW_ADDRESSES:
+            return Destination(ToolsKeycardBtcAddressesListView)
         return Destination(NotYetImplementedView)
 
 

@@ -218,6 +218,25 @@ class KeycardClient:
             commands.INS_CHANGE_PIN, 0x00, 0x00, bytes(new_pin),
         )
 
+    def unblock_pin(self, puk: bytes, new_pin: bytes) -> None:
+        """Reset a blocked PIN using the PUK (UNBLOCK PIN, INS 0x22).
+
+        Card-side preconditions: secure channel open and the PIN blocked
+        (0 retries left) — otherwise the applet returns SW=0x6985. Data
+        is ``PUK(12) || newPIN(6)``. A wrong PUK burns one PUK retry
+        (SW=0x63CX); at 0 PUK retries the instance is unrecoverable
+        except by factory reset. On success the new PIN is active and
+        already verified for this session.
+        """
+        if len(puk) != 12:
+            raise ValueError("PUK must be 12 ASCII digits")
+        if len(new_pin) != 6:
+            raise ValueError("PIN must be 6 ASCII digits")
+        self._transmit_protected(
+            commands.INS_UNBLOCK_PIN, 0x00, 0x00,
+            bytes(puk) + bytes(new_pin),
+        )
+
     def get_status(self) -> StatusResponse:
         resp = self._transmit_protected(commands.INS_GET_STATUS, 0x00, 0x00)
         return parse_status(resp)

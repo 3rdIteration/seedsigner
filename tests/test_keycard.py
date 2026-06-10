@@ -619,3 +619,26 @@ class TestDerSignatureBounds:
         from seedsigner.helpers.keycard.responses import _parse_der_signature
         with pytest.raises(ValueError, match="unsupported length form"):
             _parse_der_signature(b"\x30\x82\x00\x04\x02\x01\x01\x02")
+
+
+class TestUnblockPin:
+    def test_routes_through_transmit_protected(self):
+        captured = {}
+
+        def fake_transmit_protected(ins, p1, p2, data=b""):
+            captured["ins"] = ins
+            captured["data"] = bytes(data)
+            return b""
+
+        client = KeycardClient(MockConnection([]))
+        client._transmit_protected = fake_transmit_protected
+        client.unblock_pin(b"123456789012", b"654321")
+        assert captured["ins"] == commands.INS_UNBLOCK_PIN
+        assert captured["data"] == b"123456789012654321"
+
+    def test_validates_lengths(self):
+        client = KeycardClient(MockConnection([]))
+        with pytest.raises(ValueError, match="PUK"):
+            client.unblock_pin(b"12345678901", b"654321")
+        with pytest.raises(ValueError, match="PIN"):
+            client.unblock_pin(b"123456789012", b"65432")

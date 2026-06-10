@@ -320,10 +320,12 @@ class TestKeycardMenuRouting(unittest.TestCase):
             ToolsKeycardBtcExportXpubView,
             ToolsKeycardBtcSignPsbtScanView,
             ToolsKeycardBtcSignMessageStartView,
+            ToolsKeycardBtcAddressesListView,
         )
         expected = [
             ToolsKeycardBtcSignPsbtScanView,
             ToolsKeycardBtcSignMessageStartView,
+            ToolsKeycardBtcAddressesListView,
             ToolsKeycardBtcExportXpubView,
         ]
         for i, view_cls in enumerate(expected):
@@ -342,6 +344,7 @@ class TestKeycardMenuRouting(unittest.TestCase):
             ToolsKeycardGenerateKeyView,
             ToolsKeycardImportSeedView,
             ToolsKeycardChangePinView,
+            ToolsKeycardUnblockPinView,
             ToolsKeycardInitView,
             ToolsKeycardFactoryResetView,
             ToolsKeycardLockView,
@@ -350,6 +353,7 @@ class TestKeycardMenuRouting(unittest.TestCase):
             ToolsKeycardGenerateKeyView,
             ToolsKeycardImportSeedView,
             ToolsKeycardChangePinView,
+            ToolsKeycardUnblockPinView,
             ToolsKeycardInitView,
             ToolsKeycardFactoryResetView,
             ToolsKeycardLockView,
@@ -366,7 +370,7 @@ class TestKeycardMenuRouting(unittest.TestCase):
         from seedsigner.views.keycard_views import (
             ToolsKeycardThisInstanceMenuView, ToolsKeycardPairingMenuView,
         )
-        for avail, count in ((True, 7), (False, 6)):
+        for avail, count in ((True, 8), (False, 7)):
             with patch.object(keycard_views, "_instance_rename_available", return_value=avail):
                 routed = [self._route(ToolsKeycardThisInstanceMenuView, i).View_cls
                           for i in range(count)]
@@ -382,6 +386,7 @@ class TestKeycardMenuRouting(unittest.TestCase):
             ToolsKeycardGenerateKeyView,
             ToolsKeycardImportSeedView,
             ToolsKeycardChangePinView,
+            ToolsKeycardUnblockPinView,
             ToolsKeycardThisInstanceRenameView,
             ToolsKeycardInitView,
             ToolsKeycardFactoryResetView,
@@ -391,6 +396,7 @@ class TestKeycardMenuRouting(unittest.TestCase):
             ToolsKeycardGenerateKeyView,
             ToolsKeycardImportSeedView,
             ToolsKeycardChangePinView,
+            ToolsKeycardUnblockPinView,
             ToolsKeycardThisInstanceRenameView,
             ToolsKeycardInitView,
             ToolsKeycardFactoryResetView,

@@ -585,9 +585,10 @@ class TestSetupEntriesReachableAfterReorg(unittest.TestCase):
             ToolsKeycardInitView,
             ToolsKeycardThisInstanceMenuView,
         )
-        # This instance menu: Generate (0), Import (1), Change PIN (2),
-        # Pairing (3), Initialise instance (4), ...
-        view = _make_view(ToolsKeycardThisInstanceMenuView, run_screen_returns=4)
+        # This instance menu (rename available — MagicMock controller):
+        # Generate (0), Import (1), Change PIN (2), Unblock PIN (3),
+        # Rename (4), Initialise instance (5), ...
+        view = _make_view(ToolsKeycardThisInstanceMenuView, run_screen_returns=5)
         dest = view.run()
         self.assertIs(dest.View_cls, ToolsKeycardInitView)
 

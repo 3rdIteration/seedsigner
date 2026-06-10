@@ -194,7 +194,7 @@ The **Satochip-as-Bitcoin-wallet** flows (on-card PSBT signing, xpub-export-to-c
 |------|----------------|
 | `src/seedsigner/helpers/bitcoin/` | Chain-agnostic primitives: `address` (P2WPKH bech32), `xpub` (build_hdkey / serialize_xpub / wpkh_descriptor), `message_sign` (BIP-137), `psbt_helpers` (wrapper over `embit.psbt.PSBT`: parse + extract + sighash + add_partial_signature), `ur_codec` (UR `crypto-psbt` / `crypto-account` encoders) |
 | `src/seedsigner/helpers/keycard_btc_signer.py` | Bridge: `export_xpub(client, path)`, `sign_psbt(client, parsed)`, `sign_message(client, msg, path)`, `path_str_to_components`, `compress_pubkey`, `encode_der_signature` |
-| `src/seedsigner/views/keycard_views.py` (Bitcoin section) | `ToolsKeycardBitcoinMenuView` + `ToolsKeycardBtcExportXpubView` + `ToolsKeycardBtcSignPsbtScanView` / `ReviewView` / `FinalizeView` + `ToolsKeycardBtcSignMessageStartView` / `ScanView` / `FinalizeView` |
+| `src/seedsigner/views/keycard_views.py` (Bitcoin section) | `ToolsKeycardBitcoinMenuView` + `ToolsKeycardBtcExportXpubView` + `ToolsKeycardBtcSignPsbtScanView` / `ReviewView` / `FinalizeView` + `ToolsKeycardBtcSignMessageStartView` / `ScanView` / `FinalizeView` + `ToolsKeycardBtcAddressesListView` / `AddressView` (paginated `m/84'/0'/0'/0/i` receive addresses, BIP-84-vector-tested, cached per-AID under the `<aid>:btc` key — same wipe rules as the ETH View-wallets cache) |
 | `scripts/keycard_smoke_test.py --btc` | Hardware end-to-end: export xpub at `m/84'/0'/0'` + BIP-137 sign "test" at `m/84'/0'/0'/0/0` |
 
 MVP scope: BIP-84 P2WPKH single-sig, mainnet only. Multisig P2WSH / wrapped P2SH (BIP-49) / taproot P2TR are deliberately out of scope; the module boundaries mirror `keycard-shell`'s input-type discriminator so they can be added without a refactor. PSBTs are capped at 40 inputs / 40 outputs.
@@ -225,7 +225,7 @@ in the title of every instance-scoped branch.
 
 | Branch | Scope | Entries |
 |--------|-------|---------|
-| `Ethereum` / `Bitcoin` (titled `· Inst N`) | active instance | sign / export with the instance key; `Connect software wallet` (xpub/account export) is the **last** entry in each |
+| `Ethereum` / `Bitcoin` (titled `· Inst N`) | active instance | sign / export with the instance key (Bitcoin also gets `View addresses` — BIP-84 receive list, mirroring ETH `View wallets`); `Connect software wallet` (xpub/account export) is the **last** entry in each |
 | `Switch instance` | the *set* of instances | picks the active instance (`ToolsKeycardInstancesSwitchView`), then returns to the top menu. **Hidden when the card holds only one instance** — the menu reads `Controller.keycard_instance_count` (filled in once per card session by `keycard_views._count_keycard_instances`, which enumerates via **GET STATUS over the ISD** — the same authoritative path Switch/Create/Delete use, so it counts instances at *any* AID, not a guessed/capped range) and shows the entry whenever the count is *not* exactly 1. The count is `None` (→ entry shown) on no card / non-default ISD keys / GET STATUS unsupported, so we never hide the only way to switch on a guess |
 | `Lock card` | cached card auth (all instances) | Drop cached PINs so the next op re-prompts (`ToolsKeycardLockView`) |
 | `Settings` | mixed | container (`ToolsKeycardSettingsMenuView`) for the buckets below |
@@ -235,7 +235,7 @@ in the title of every instance-scoped branch.
 | Branch | Scope | Entries |
 |--------|-------|---------|
 | `Manage Instances` (titled `Manage Inst · Inst N`) | instances | `This instance ›`, Create instance, Delete instance. On first entry per boot a one-screen explainer (`Controller.keycard_instances_intro_shown`) describes what instances are, then the menu. (`ToolsKeycardInstancesMenuView`) |
-| `This instance · Inst N` | active instance | Generate key, Import seed, Change PIN, **`Rename instance`** (gated — see Instance naming below), `Initialise instance` (runs INIT on this instance), Factory reset, Lock card. (No `Pairing` entry — v3.2+ cards pair silently; the `ToolsKeycardPairingMenuView` / Pair / Remove-pairing views still exist for redirect flows but are not surfaced here.) |
+| `This instance · Inst N` | active instance | Generate key, Import seed, Change PIN, **`Unblock PIN (PUK)`** (`ToolsKeycardUnblockPinView` — recovery for a blocked PIN: secure-channel session with `skip_pin_verify`, GET STATUS gate, PUK(12) + new PIN entry, INS 0x22; wrong PUK shows remaining retries, 0 PUK retries → factory-reset-only), **`Rename instance`** (gated — see Instance naming below), `Initialise instance` (runs INIT on this instance), Factory reset, Lock card. (No `Pairing` entry — v3.2+ cards pair silently; the `ToolsKeycardPairingMenuView` / Pair / Remove-pairing views still exist for redirect flows but are not surfaced here.) |
 | `Manage Card` | whole card / package | Status, Storage, Uninstall applet |
 
 `This instance` is reached via `Settings ▸ Manage Instances ▸ This instance`.

@@ -191,16 +191,19 @@ def prompt_for_text(parent_view: "View", title: str, *, max_len: int = 80) -> Op
             return text
         parent_view.run_screen(
             WarningScreen,
-            title="Too long",
+            title=_("Too long"),
             status_headline=None,
-            text=f"Max {max_len} chars.",
+            text=_("Max {} chars.").format(max_len),
             show_back_button=True,
         )
 
 
-def prompt_for_pin(parent_view: "View", title: str) -> Optional[bytearray]:
-    """Capture a 6-digit ASCII PIN as a mutable ``bytearray``.
+def prompt_for_pin(
+    parent_view: "View", title: str, num_digits: int = PIN_LENGTH,
+) -> Optional[bytearray]:
+    """Capture a fixed-length ASCII digit code as a mutable ``bytearray``.
 
+    Defaults to the 6-digit PIN; pass ``num_digits=12`` for the PUK.
     The caller MUST ``wipe_bytearray()`` the returned buffer once the
     APDU exchange is done. Returns ``None`` if the user backs out.
     """
@@ -208,13 +211,13 @@ def prompt_for_pin(parent_view: "View", title: str) -> Optional[bytearray]:
     from seedsigner.gui.screens.screen import KeycardPINEntryScreen
 
     while True:
-        # Dedicated masked PIN pad: exactly PIN_LENGTH slots, digits only,
+        # Dedicated masked PIN pad: exactly num_digits slots, digits only,
         # auto-submits once the last slot is filled.
-        ret = KeycardPINEntryScreen(title=title, num_digits=PIN_LENGTH).display()
+        ret = KeycardPINEntryScreen(title=title, num_digits=num_digits).display()
         if ret == RET_CODE__BACK_BUTTON:
             return None
         pin_str = ret if isinstance(ret, str) else ""
-        if len(pin_str) == PIN_LENGTH and pin_str.isdigit() and pin_str.isascii():
+        if len(pin_str) == num_digits and pin_str.isdigit() and pin_str.isascii():
             buf = bytearray(pin_str.encode("ascii"))
             try:
                 wipe_string(pin_str)
@@ -223,9 +226,9 @@ def prompt_for_pin(parent_view: "View", title: str) -> Optional[bytearray]:
             return buf
         parent_view.run_screen(
             WarningScreen,
-            title="Invalid PIN",
+            title=_("Invalid entry"),
             status_headline=None,
-            text=f"PIN must be exactly {PIN_LENGTH} digits.",
+            text=_("Must be exactly {} digits.").format(num_digits),
             show_back_button=True,
         )
 
@@ -310,6 +313,7 @@ def open_unlocked_session(
     pin: Optional[bytearray] = None,
     *,
     require_key: bool = True,
+    skip_pin_verify: bool = False,
 ) -> Tuple["KeycardClient", "PairingInfo"]:
     """Connect, SELECT, (PAIR if ephemeral), OPEN_SECURE_CHANNEL, VERIFY_PIN.
 
@@ -403,6 +407,12 @@ def open_unlocked_session(
         raise KeycardCardChangedError(info.instance_uid)
 
     client.open_secure_channel(pairing)
+
+    # UNBLOCK PIN runs against a *blocked* PIN, so its flow needs the
+    # secure channel without VERIFY_PIN (which would just burn nothing —
+    # the applet rejects verification attempts while blocked).
+    if skip_pin_verify:
+        return client, pairing
 
     if pin is None:
         cached_pin = parent_view.controller.get_pin_for(info.instance_uid)
@@ -682,6 +692,10 @@ def classify_card_error(
                     _("Auth/condition not met\n(SW={}).").format(f"{sw:04X}"))
         if (sw & 0xFFF0) == 0x63C0:
             tries = sw & 0x000F
+            if tries == 0:
+                # Point at the recovery path instead of a dead-end error.
+                return (_("PIN blocked"),
+                        _("Unblock with PUK via\nThis instance menu."))
             # TRANSLATOR_NOTE: {} is the number of remaining PIN attempts
             return (_("Wrong PIN"), _("{} tries left.").format(tries))
         if (sw & 0xFF00) == 0x6D00:
