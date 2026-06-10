@@ -271,21 +271,33 @@ def load_ndef_from_seedkeeper(connector, secret_id: int) -> bytes:
     
     secret_list = secret_dict["secret_list"]
     
-    if len(secret_list) < 2:
-        raise ValueError("Invalid NDEF secret: list too short")
+    if len(secret_list) < 1:
+        raise ValueError("Invalid NDEF secret: empty list")
     
-    # Check if it's a 2-byte length (first byte would be 0, second byte is actual length)
-    # or a 1-byte length (first byte is the length)
-    length_byte = secret_list[0]
+    # Determine if 1-byte or 2-byte length format was used
+    # by checking if the 1-byte length is consistent with the total size
+    length_1byte = secret_list[0]
     
-    if length_byte == 0 and len(secret_list) > 2:
-        # 2-byte length format
-        length = (secret_list[0] << 8) | secret_list[1]
-        ndef_bytes = bytes(secret_list[2:2+length])
-    else:
+    # Check if 1-byte length format is consistent: total_size = 1 (length byte) + data_size
+    if len(secret_list) == 1 + length_1byte:
         # 1-byte length format
-        length = length_byte
-        ndef_bytes = bytes(secret_list[1:1+length])
+        ndef_bytes = bytes(secret_list[1:1+length_1byte])
+    else:
+        # Try 2-byte length format
+        if len(secret_list) < 2:
+            raise ValueError("Invalid NDEF secret: too short for 2-byte length")
+        
+        length_2byte = (secret_list[0] << 8) | secret_list[1]
+        
+        # Validate: total_size = 2 (length bytes) + data_size
+        if len(secret_list) == 2 + length_2byte:
+            ndef_bytes = bytes(secret_list[2:2+length_2byte])
+        else:
+            raise ValueError(
+                f"Invalid NDEF secret: size mismatch. Expected "
+                f"{2 + length_2byte} bytes for 2-byte format, got {len(secret_list)}"
+            )
     
     return ndef_bytes
+
 
