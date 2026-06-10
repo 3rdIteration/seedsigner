@@ -2,16 +2,25 @@ import logging
 from periphery import GPIO, SPI
 import time
 import array
+<<<<<<< HEAD
 import errno
+=======
+from dataclasses import dataclass
+
+from seedsigner.hardware.displays.display_driver import BaseDisplayDriver
+>>>>>>> upstream/0.8.7
 
 from seedsigner.models.settings import Settings
 from seedsigner.hardware.io_config import get_hardware_pin_mapping
 
 logger = logging.getLogger(__name__)
 
-class ST7789(object):
-    """class for ST7789  240*240 1.3inch OLED displays."""
+@dataclass
+class ST7789(BaseDisplayDriver):
+    """
+    The original SeedSigner display driver.
 
+<<<<<<< HEAD
     def __init__(self):
         self.width = 240
         self.height = 240
@@ -20,6 +29,18 @@ class ST7789(object):
 
         hardware_config = Settings.get_platform_default_hardware_config()
         pin_mapping = get_hardware_pin_mapping(hardware_config)["display"]
+=======
+    Note that self._width and self._height are provided by the parent DisplayDriver class
+    and are set during instantiation via the DisplayDriverFactory.
+
+    class for ST7789  240*240 1.3inch OLED displays.
+    """
+    def __post_init__(self):
+        #Initialize DC RST pin
+        self._dc = 22
+        self._rst = 13
+        self._bl = 18
+>>>>>>> upstream/0.8.7
 
         self._dc = GPIO(*pin_mapping["dc"], "out")
         self._rst = GPIO(*pin_mapping["rst"], "out")
@@ -165,7 +186,7 @@ class ST7789(object):
         self._spi.transfer([val])
 
     def init(self):
-        """Initialize dispaly"""    
+        """Initialize display"""    
         self.reset()
 
         self.command(0x36)

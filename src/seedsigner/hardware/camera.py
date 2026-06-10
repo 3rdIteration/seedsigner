@@ -7,13 +7,28 @@ OpenCV. All callers use the same `Camera` interface.
 
 import io
 
+<<<<<<< HEAD
 from PIL import Image, ImageOps
 
 from seedsigner.hardware.io_config import get_hardware_pin_mapping, runtime_profile_to_hardware_profile
+=======
+from gettext import gettext as _
+from PIL import Image
+
+>>>>>>> upstream/0.8.7
 from seedsigner.models.settings import Settings, SettingsConstants
 from seedsigner.models.singleton import Singleton
 
 
+<<<<<<< HEAD
+=======
+
+class CameraConnectionError(Exception):
+    pass
+
+
+
+>>>>>>> upstream/0.8.7
 class Camera(Singleton):
     """Singleton wrapper around PiCamera/OpenCV camera access."""
 
@@ -110,6 +125,7 @@ class Camera(Singleton):
         return cls._instance
 
     def start_video_stream_mode(self, resolution=(512, 384), framerate=12, format="bgr"):
+<<<<<<< HEAD
         """Begin streaming frames from the active backend."""
         from seedsigner.hardware.pivideostream import VideoStream
 
@@ -138,6 +154,19 @@ class Camera(Singleton):
             prefer_v4l2=prefer_v4l2,
         )
         self._video_stream.start()
+=======
+        from picamera import PiCameraError
+        from seedsigner.hardware.pivideostream import PiVideoStream
+        if self._video_stream is not None:
+            self.stop_video_stream_mode()
+
+        try:
+            self._video_stream = PiVideoStream(resolution=resolution,framerate=framerate, format=format)
+            self._video_stream.start()
+        except PiCameraError:
+            # This error most often occurs because the camera connection is loose
+            raise CameraConnectionError()
+>>>>>>> upstream/0.8.7
 
     def read_video_stream(self, as_image=False, preview=False, greyscale=True):
         """Read the most recent frame from stream mode."""
@@ -195,7 +224,11 @@ class Camera(Singleton):
             self._video_stream = None
 
     def start_single_frame_mode(self, resolution=(720, 480)):
+<<<<<<< HEAD
         """Prepare a backend for one-shot still capture."""
+=======
+        from picamera import PiCamera, PiCameraError
+>>>>>>> upstream/0.8.7
         if self._video_stream is not None:
             self.stop_video_stream_mode()
         if self._capture is not None:
@@ -207,8 +240,17 @@ class Camera(Singleton):
                 self._capture.stop()
             self._capture = None
 
+<<<<<<< HEAD
         if self._is_luckfox_profile(self._runtime_profile):
             from seedsigner.hardware.pivideostream import VideoStream
+=======
+        try:
+            self._picamera = PiCamera(resolution=resolution, framerate=24)
+            self._picamera.start_preview()
+        except PiCameraError:
+            # This error most often occurs because the camera connection is loose
+            raise CameraConnectionError()
+>>>>>>> upstream/0.8.7
 
             luckfox_config = dict(self._hardware_camera_config or {})
             luckfox_config["resolution"] = tuple(resolution)

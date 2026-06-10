@@ -116,7 +116,11 @@ class TestPSBTFlows(FlowTest):
             FlowStep(psbt_views.PSBTSigningErrorView, button_data_selection=psbt_views.PSBTSigningErrorView.SELECT_DIFF_SEED),
             FlowStep(psbt_views.PSBTSelectSeedView, button_data_selection=psbt_views.PSBTSelectSeedView.SCAN_SEED),
             FlowStep(scan_views.ScanSeedQRView, before_run=load_seed_into_decoder),
+<<<<<<< HEAD
             FlowStep(seed_views.SeedFinalizeView, button_data_selection=seed_views.SeedFinalizeView.TYPE_PASSPHRASE),
+=======
+            FlowStep(seed_views.SeedFinalizeView, button_data_selection=seed_views.SeedFinalizeView.PASSPHRASE),
+>>>>>>> upstream/0.8.7
             FlowStep(seed_views.SeedAddPassphraseView, screen_return_value=dict(passphrase="abc")),
             FlowStep(seed_views.SeedReviewPassphraseView, button_data_selection=seed_views.SeedReviewPassphraseView.DONE),
             FlowStep(seed_views.SeedOptionsView, is_redirect=True),
@@ -171,6 +175,7 @@ class TestPSBTFlows(FlowTest):
             FlowStep(psbt_views.PSBTSignedQRDisplayView),
             FlowStep(MainMenuView)
         ])
+<<<<<<< HEAD
 
 
     def test_scan_psbt_then_scan_wif_flow(self):
@@ -361,3 +366,5 @@ class TestPSBTMultisigDescriptorMismatch(BaseTest):
         assert follow_up_kwargs["button_data"][0] is follow_up_view.VERIFY_MULTISIG
         assert follow_up_kwargs["button_data"][1] is follow_up_view.SKIP_VERIFICATION
         assert follow_up_destination.View_cls.__name__ == "BackStackView"
+=======
+>>>>>>> upstream/0.8.7

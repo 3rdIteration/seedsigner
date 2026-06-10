@@ -45,7 +45,7 @@ def get_standard_derivation_path(network: str = SettingsConstants.MAINNET, walle
 
     elif wallet_type == SettingsConstants.MULTISIG:
         if script_type == SettingsConstants.LEGACY_P2PKH:
-            return f"m/45'" #BIP45
+            return f"m/45'" #BIP-45
         elif script_type == SettingsConstants.NESTED_SEGWIT:
             return f"m/48'/{network_path}/{account}'/1'"
         elif script_type == SettingsConstants.NATIVE_SEGWIT:
@@ -208,6 +208,18 @@ def get_multisig_address(descriptor: Descriptor, index: int = 0, is_change: bool
     raise Exception(f"{descriptor.script_pubkey().script_type()} address verification not yet implemented!")
 
 
+<<<<<<< HEAD
+=======
+
+def get_multisig_policy(descriptor: Descriptor) -> tuple:
+    """Extract (threshold, n) from a basic multisig descriptor."""
+    if not descriptor.is_basic_multisig:
+        raise ValueError(f"Expected a basic multisig descriptor, got: {descriptor.brief_policy}")
+    return (str(descriptor.miniscript.args[0]), str(len(descriptor.keys)))
+
+
+
+>>>>>>> upstream/0.8.7
 def get_embit_network_name(settings_name):
     """ Convert SeedSigner SettingsConstants for `network` to embit's NETWORK key """
     lookup = {

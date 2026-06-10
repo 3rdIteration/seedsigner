@@ -251,10 +251,18 @@ class Settings(Singleton):
         for entry in data.split()[split_index:]:
             abbreviated_name, value = entry.split("=")
 
+<<<<<<< HEAD
             # Parse multi-value settings; numeric-ize where needed.
             # Use try/except instead of .isdigit() because .isdigit() returns
             # True for non-ASCII Unicode digit characters (e.g. superscript ¹²³)
             # that int()/float() cannot convert, causing a ValueError.
+=======
+            # Empty values ("some_setting= other_setting=E") are invalid
+            if value == "":
+                raise InvalidSettingsQRData(f"{abbreviated_name} cannot be empty")
+
+            # Parse multi-value settings; integer-ize where needed
+>>>>>>> upstream/0.8.7
             if "," in value:
                 values_updated = []
                 for v in value.split(","):
@@ -281,6 +289,7 @@ class Settings(Singleton):
                 values = [value]
             else:
                 values = value
+
             for v in values:
                 if v not in [opt[0] for opt in settings_entry.selection_options]:
                     if settings_entry.attr_name == SettingsConstants.SETTING__PERSISTENT_SETTINGS and v == SettingsConstants.OPTION__ENABLED:
@@ -403,6 +412,7 @@ class Settings(Singleton):
                 # Clean the incoming data, if necessary
                 if entry.type == SettingsConstants.TYPE__MULTISELECT:
                     if type(new_settings[entry.attr_name]) == str:
+<<<<<<< HEAD
                         # Break comma-separated SettingsQR input into List
                         new_settings[entry.attr_name] = new_settings[entry.attr_name].split(",")
                     elif (
@@ -413,6 +423,15 @@ class Settings(Singleton):
                         # Handle legacy format where selection options were stored
                         # as [value, label] pairs.
                         new_settings[entry.attr_name] = [v[0] for v in new_settings[entry.attr_name]]
+=======
+                        # Break comma-separated multiselect options into List; avoid empty
+                        # values.
+                        new_settings[entry.attr_name] = [value for value in new_settings[entry.attr_name].split(",") if value.strip()]
+
+                    if not new_settings[entry.attr_name]:
+                        # Multiselect cannot be empty; load defaults to avoid issues
+                        new_settings[entry.attr_name] = entry.default_value
+>>>>>>> upstream/0.8.7
 
         for key, value in new_settings.items():
             # Defer writing to disk until all values have been applied to avoid

@@ -51,6 +51,7 @@ This driver supports:
 """
 
 import array
+<<<<<<< HEAD
 from periphery import GPIO, SPI
 import time
 import errno
@@ -58,6 +59,15 @@ from math import sin, cos
 
 from seedsigner.models.settings import Settings
 from seedsigner.hardware.io_config import get_hardware_pin_mapping
+=======
+import spidev
+import RPi.GPIO as GPIO
+
+from dataclasses import dataclass
+from math import sin, cos
+
+from seedsigner.hardware.displays.display_driver import BaseDisplayDriver
+>>>>>>> upstream/0.8.7
 
 #
 # This allows sphinx to build the docs
@@ -231,7 +241,9 @@ def color565(red, green=0, blue=0):
     return (red & 0xF8) << 8 | (green & 0xFC) << 3 | blue >> 3
 
 
-class ST7789:
+
+@dataclass
+class ST7789(BaseDisplayDriver):
     """
     ST7789 driver class
 
@@ -265,6 +277,7 @@ class ST7789:
 
     """
 
+<<<<<<< HEAD
     def __init__(
         self,
         width,
@@ -274,23 +287,45 @@ class ST7789:
         custom_init=None,
         custom_rotations=None,
     ):
+=======
+    def __post_init__(self):
+        reset=13
+        dc=22
+        cs=None
+        backlight=18
+        rotation=1
+        color_order=BGR
+        custom_init=None
+        custom_rotations=None
+
+        GPIO.setmode(GPIO.BOARD)
+        GPIO.setwarnings(False)
+        GPIO.setup(dc,GPIO.OUT)
+        GPIO.setup(reset,GPIO.OUT)
+        GPIO.setup(backlight,GPIO.OUT)
+
+        #Initialize SPI
+        spi = spidev.SpiDev(0, 0)
+        spi.max_speed_hz = 40000000
+
+>>>>>>> upstream/0.8.7
         """
         Initialize display.
         """
-        self.rotations = custom_rotations or self._find_rotations(width, height)
+        self.rotations = custom_rotations or self._find_rotations(self.width, self.height)
         if not self.rotations:
             supported_displays = ", ".join(
                 [f"{display[0]}x{display[1]}" for display in _SUPPORTED_DISPLAYS]
             )
             raise ValueError(
-                f"Unsupported {width}x{height} display. Supported displays: {supported_displays}"
+                f"Unsupported {self.width}x{self.height} display. Supported displays: {supported_displays}"
             )
 
         hardware_config = Settings.get_platform_default_hardware_config()
         pin_mapping = get_hardware_pin_mapping(hardware_config)["display"]
 
-        self.physical_width = self.width = width
-        self.physical_height = self.height = height
+        self.physical_width = self.width
+        self.physical_height = self.height
         self.xstart = 0
         self.ystart = 0
         self.CHUNK_SIZE = 4096
@@ -462,8 +497,8 @@ class ST7789:
         self._rotation = rotation
         (
             madctl,
-            self.width,
-            self.height,
+            self._width,   # have to use the settable internal vars
+            self._height,  # have to use the settable internal vars
             self.xstart,
             self.ystart,
             self.needs_swap,

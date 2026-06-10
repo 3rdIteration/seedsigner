@@ -171,6 +171,7 @@ def get_partial_final_word(coin_flips: str, wordlist_language_code: str = Settin
     binary_string = coin_flips + "0" * (11 - len(coin_flips))
     wordlist_index = int(binary_string, 2)
 
+<<<<<<< HEAD
     # Create an independent copy to avoid holding a direct reference
     # to the shared global wordlist string.
     return "".join(Seed.get_wordlist(wordlist_language_code)[wordlist_index])
@@ -205,3 +206,6 @@ def dice_entropy_is_sufficient(roll_data: str, threshold: float = 2.0) -> bool:
 def byte_entropy_is_sufficient(data: bytes, threshold: float = 3.5) -> bool:
     """Simple randomness check for byte data."""
     return _shannon_entropy(data) >= threshold
+=======
+    return Seed.get_wordlist(wordlist_language_code)[wordlist_index]
+>>>>>>> upstream/0.8.7

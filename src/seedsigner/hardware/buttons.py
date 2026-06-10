@@ -40,7 +40,17 @@ BTN_SPACING = 10
 
 
 class HardwareButtons(Singleton):
+<<<<<<< HEAD
     _instance_lock = threading.Lock()
+=======
+    if GPIO.RPI_INFO['P1_REVISION'] == 3: #This indicates that we have revision 3 GPIO
+        logger.info("Detected 40pin GPIO (Raspberry Pi 2 and above)")
+        KEY_UP_PIN = 31
+        KEY_DOWN_PIN = 35
+        KEY_LEFT_PIN = 29
+        KEY_RIGHT_PIN = 37
+        KEY_PRESS_PIN = 33
+>>>>>>> upstream/0.8.7
 
     KEY_UP_PIN = "KEY_UP"
     KEY_DOWN_PIN = "KEY_DOWN"
@@ -51,6 +61,7 @@ class HardwareButtons(Singleton):
     KEY2_PIN = "KEY2"
     KEY3_PIN = "KEY3"
 
+<<<<<<< HEAD
     BUTTON_NAMES = [
         KEY_UP_PIN,
         KEY_DOWN_PIN,
@@ -61,6 +72,15 @@ class HardwareButtons(Singleton):
         KEY2_PIN,
         KEY3_PIN,
     ]
+=======
+    else:
+        logger.info("Assuming 26 Pin GPIO (Raspberry Pi 1)")
+        KEY_UP_PIN = 5
+        KEY_DOWN_PIN = 11
+        KEY_LEFT_PIN = 3
+        KEY_RIGHT_PIN = 15
+        KEY_PRESS_PIN = 7
+>>>>>>> upstream/0.8.7
 
     @staticmethod
     def _resolve_global_line_to_chip(line: int) -> tuple[str, int] | None:
@@ -305,12 +325,23 @@ class HardwareButtons(Singleton):
 
         return cls._instance
 
+<<<<<<< HEAD
     @classmethod
     def get_instance_no_hardware(cls):
         if cls._instance is None:
             cls._instance = cls.__new__(cls)
 
     def wait_for(self, keys: List = []) -> int:
+=======
+
+    def wait_for(self, keys=[]) -> int:
+        """
+        Block execution until one of the target keys is pressed.
+
+        Optionally override the wait by calling `trigger_override()`.
+        """
+        # TODO: Refactor to keep control in the Controller and not here
+>>>>>>> upstream/0.8.7
         from seedsigner.controller import Controller
 
         controller = Controller.get_instance()
@@ -322,7 +353,12 @@ class HardwareButtons(Singleton):
                 return HardwareButtonsConstants.OVERRIDE
 
             cur_time = int(time.time() * 1000)
+<<<<<<< HEAD
             if cur_time - self.last_input_time > controller.screensaver_activation_ms and not controller.is_screensaver_running:
+=======
+            if cur_time - self.last_input_time > controller.screensaver_activation_ms and controller.is_screensaver_start_allowed:
+                # Start the screensaver. Will block execution until input detected.
+>>>>>>> upstream/0.8.7
                 controller.start_screensaver()
                 self.update_last_input_time()
                 time.sleep(self.next_repeat_threshold / 1000.0)

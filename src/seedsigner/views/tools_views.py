@@ -338,6 +338,7 @@ class ToolsMenuView(View):
     SLIP39_IMAGE = ButtonOption("SLIP39 seed", FontAwesomeIconConstants.CAMERA)
     SLIP39_DICE = ButtonOption("SLIP39 seed", FontAwesomeIconConstants.DICE)
     KEYBOARD = ButtonOption("Calc 12th/24th word", FontAwesomeIconConstants.KEYBOARD)
+<<<<<<< HEAD
     ADDRESS_EXPLORER = ButtonOption("Address Explorer")
     VERIFY_ADDRESS = ButtonOption("Verify address")
     TEXTQRCODE = ButtonOption("Text QR Code")
@@ -352,6 +353,10 @@ class ToolsMenuView(View):
     def __init__(self, include_password_generator: bool = True):
         super().__init__()
         self.include_password_generator = include_password_generator
+=======
+    ADDRESS_EXPLORER = ButtonOption("Address explorer")
+    VERIFY_ADDRESS = ButtonOption("Verify address")
+>>>>>>> upstream/0.8.7
 
     def run(self):
         button_data = [self.IMAGE, self.DICE]
@@ -582,8 +587,12 @@ class ToolsImageEntropyLivePreviewView(View):
     def run(self):
         from seedsigner.gui.screens.tools_screens import ToolsImageEntropyLivePreviewScreen
         self.controller.image_entropy_preview_frames = None
+<<<<<<< HEAD
         self.controller.image_entropy_final_image = None
         ret = ToolsImageEntropyLivePreviewScreen().display()
+=======
+        ret = self.run_screen(ToolsImageEntropyLivePreviewScreen)
+>>>>>>> upstream/0.8.7
 
         if ret == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
@@ -642,9 +651,10 @@ class ToolsImageEntropyFinalImageView(View):
             sampling_method=Image.Resampling.BICUBIC,
         )
         
-        ret = ToolsImageEntropyFinalImageScreen(
+        ret = self.run_screen(
+            ToolsImageEntropyFinalImageScreen,
             final_image=display_version
-        ).display()
+        )
 
         if ret == RET_CODE__BACK_BUTTON:
             # Go back to live preview and reshoot
@@ -679,16 +689,18 @@ class ToolsImageEntropyMnemonicLengthView(View):
             }
             button_data = [options[l] for l in allowed]
 
-        selected_menu_num = ButtonListScreen(
-            title=_("Mnemonic Length?"),
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title=_("Mnemonic Length"),
             button_data=button_data,
-        ).display()
+        )
 
         if selected_menu_num == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
 
         mnemonic_length = button_data[selected_menu_num].return_data
 
+<<<<<<< HEAD
         from seedsigner.gui.screens.screen import LoadingScreenThread
         loading_screen = LoadingScreenThread(text=_("Processing..."))
         loading_screen.start()
@@ -735,6 +747,66 @@ class ToolsImageEntropyMnemonicLengthView(View):
             seed = Seed(mnemonic, wordlist_language_code=self.settings.get_value(SettingsConstants.SETTING__WORDLIST_LANGUAGE))
             self.controller.storage.set_pending_seed(seed)
             return Destination(SeedWordsWarningView, view_args={"seed_num": None}, clear_history=True)
+=======
+        # The entropy calculation can take time, especially with a full image buffer. 
+        # Show a loading spinner to provide feedback during this delay.
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+        self.loading_screen = LoadingScreenThread(text=_("Calculating..."))
+        self.loading_screen.start()
+
+        try:
+            preview_images = self.controller.image_entropy_preview_frames
+            seed_entropy_image = self.controller.image_entropy_final_image
+
+            # Build in some hardware-level uniqueness via CPU unique Serial num
+            try:
+                stream = os.popen("cat /proc/cpuinfo | grep Serial")
+                output = stream.read()
+                serial_num = output.split(":")[-1].strip().encode('utf-8')
+                serial_hash = hashlib.sha256(serial_num)
+                hash_bytes = serial_hash.digest()
+            except Exception as e:
+                logger.info(repr(e), exc_info=True)
+                hash_bytes = b'0'
+
+            # Build in modest entropy via millis since power on
+            millis_hash = hashlib.sha256(hash_bytes + str(time.time()).encode('utf-8'))
+            hash_bytes = millis_hash.digest()
+
+            # Build in better entropy by chaining the preview frames
+            for frame in preview_images:
+                img_hash = hashlib.sha256(hash_bytes + frame.tobytes())
+                hash_bytes = img_hash.digest()
+
+            # Finally build in our headline entropy via the new full-res image
+            final_hash = hashlib.sha256(hash_bytes + seed_entropy_image.tobytes()).digest()
+
+            if mnemonic_length == 12:
+                # 12-word mnemonic only uses the first 128 bits / 16 bytes of entropy
+                final_hash = final_hash[:16]
+
+            # Generate the mnemonic
+            mnemonic = mnemonic_generation.generate_mnemonic_from_bytes(final_hash)
+
+            # Image should never get saved nor stick around in memory
+            seed_entropy_image = None
+            preview_images = None
+            final_hash = None
+            hash_bytes = None
+            self.controller.image_entropy_preview_frames = None
+            self.controller.image_entropy_final_image = None
+
+            # Add the mnemonic as an in-memory Seed
+            seed = Seed(mnemonic, wordlist_language_code=self.settings.get_value(SettingsConstants.SETTING__WORDLIST_LANGUAGE))
+            self.controller.storage.set_pending_seed(seed)
+
+        finally:
+            # Stop spinner even if an error occurs
+            self.loading_screen.stop()
+
+        # Cannot return BACK to this View
+        return Destination(SeedWordsWarningView, view_args={"seed_num": None}, clear_history=True)
+>>>>>>> upstream/0.8.7
 
 
 
@@ -759,6 +831,7 @@ class ToolsDiceEntropyMnemonicLengthView(View):
     )
 
     def run(self):
+<<<<<<< HEAD
         if getattr(self.controller, "create_slip39", False):
             button_data = [self.TWENTY, self.THIRTY_THREE]
         else:
@@ -772,11 +845,27 @@ class ToolsDiceEntropyMnemonicLengthView(View):
             }
             button_data = [options[l] for l in allowed]
         selected_menu_num = ButtonListScreen(
+=======
+        # Since we're dynamically building the ButtonOption button_labels here, it's too
+        # awkward to use the usual class-level attr approach.
+
+        # TRANSLATOR_NOTE: Inserts the number of dice rolls needed for a 12-word mnemonic
+        twelve = _("12 words ({} rolls)").format(mnemonic_generation.DICE__NUM_ROLLS__12WORD)
+        TWELVE = ButtonOption(twelve, return_data=mnemonic_generation.DICE__NUM_ROLLS__12WORD)
+
+        # TRANSLATOR_NOTE: Inserts the number of dice rolls needed for a 24-word mnemonic
+        twenty_four = _("24 words ({} rolls)").format(mnemonic_generation.DICE__NUM_ROLLS__24WORD)
+        TWENTY_FOUR = ButtonOption(twenty_four, return_data=mnemonic_generation.DICE__NUM_ROLLS__24WORD)
+
+        button_data = [TWELVE, TWENTY_FOUR]
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+>>>>>>> upstream/0.8.7
             title=_("Mnemonic Length"),
             is_bottom_list=True,
             is_button_text_centered=True,
             button_data=button_data,
-        ).display()
+        )
 
         if selected_menu_num == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
@@ -801,9 +890,10 @@ class ToolsDiceEntropyEntryView(View):
 
     def run(self):
         from seedsigner.gui.screens.tools_screens import ToolsDiceEntropyEntryScreen
-        ret = ToolsDiceEntropyEntryScreen(
+        ret = self.run_screen(
+            ToolsDiceEntropyEntryScreen,
             return_after_n_chars=self.total_rolls,
-        ).display()
+        )
 
         if ret == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
@@ -893,11 +983,12 @@ class ToolsCalcFinalWordFinalizePromptView(View):
         num_entropy_bits = total_bits - ((mnemonic_length - 1) * 11)
 
         button_data = [self.COIN_FLIPS, self.SELECT_WORD, self.ZEROS]
-        selected_menu_num = ToolsCalcFinalWordFinalizePromptScreen(
+        selected_menu_num = self.run_screen(
+            ToolsCalcFinalWordFinalizePromptScreen,
             mnemonic_length=mnemonic_length,
             num_entropy_bits=num_entropy_bits,
             button_data=button_data,
-        ).display()
+        )
 
         if selected_menu_num == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
@@ -927,9 +1018,10 @@ class ToolsCalcFinalWordCoinFlipsView(View):
         total_bits = mnemonic_generation.ENTROPY_BYTES_REQUIRED[mnemonic_length] * 8
         total_flips = total_bits - ((mnemonic_length - 1) * 11)
         
-        ret_val = ToolsCoinFlipEntryScreen(
+        ret_val = self.run_screen(
+            ToolsCoinFlipEntryScreen,
             return_after_n_chars=total_flips,
-        ).display()
+        )
 
         if ret_val == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
@@ -1032,7 +1124,8 @@ class ToolsCalcFinalWordDoneView(View):
 
         button_data = [self.LOAD, self.DISCARD]
 
-        selected_menu_num = ToolsCalcFinalWordDoneScreen(
+        selected_menu_num = self.run_screen(
+            ToolsCalcFinalWordDoneScreen,
             final_word=final_word,
             mnemonic_word_length=mnemonic_word_length,
             fingerprint=self.controller.storage.get_pending_mnemonic_fingerprint(
@@ -1040,7 +1133,7 @@ class ToolsCalcFinalWordDoneView(View):
                 wordlist_language_code=self.settings.get_value(SettingsConstants.SETTING__WORDLIST_LANGUAGE),
             ),
             button_data=button_data,
-        ).display()
+        )
 
         if selected_menu_num == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
@@ -1156,10 +1249,10 @@ class ToolsAddressExplorerSelectSourceView(View):
 
 class ToolsAddressExplorerAddressTypeView(View):
     # TRANSLATOR_NOTE: label for addresses where others send us incoming payments
-    RECEIVE = ButtonOption("Receive Addresses")
+    RECEIVE = ButtonOption("Receive addresses")
 
     # TRANSLATOR_NOTE: label for addresses that collect the change from our own outgoing payments
-    CHANGE = ButtonOption("Change Addresses")
+    CHANGE = ButtonOption("Change addresses")
 
 
     def __init__(self, seed_num: int = None, script_type: str = None, custom_derivation: str = None, account: int = 0):
@@ -1220,8 +1313,12 @@ class ToolsAddressExplorerAddressTypeView(View):
 
         wallet_descriptor_display_name = None
         if "wallet_descriptor" in data:
-            wallet_descriptor_display_name = data["wallet_descriptor"].brief_policy.replace(" (sorted)", "")
-            wallet_descriptor_display_name = " / ".join(wallet_descriptor_display_name.split(" of ")) # i18n w/o l10n since coming from non-l10n embit
+            from seedsigner.helpers.embit_utils import get_multisig_policy
+            threshold, n = get_multisig_policy(data["wallet_descriptor"])
+            # TRANSLATOR_NOTE: Multisig policy. For a "2 / 3 multisig" policy, "threshold" = 2; "n" = 3
+            wallet_descriptor_display_name = _("{threshold} / {n} multisig").format(
+                threshold=threshold, n=n
+            )
 
         script_type = data["script_type"] if "script_type" in data else None
 

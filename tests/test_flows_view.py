@@ -7,9 +7,11 @@ from unittest.mock import patch
 from base import FlowTest, FlowStep
 
 from seedsigner.gui.screens.screen import RET_CODE__POWER_BUTTON
+from seedsigner.hardware.camera import CameraConnectionError
 from seedsigner.models.settings import Settings
+from seedsigner.views.scan_views import ScanView
 from seedsigner.views.tools_views import ToolsCalcFinalWordNumWordsView, ToolsMenuView
-from seedsigner.views.view import MainMenuView, NotYetImplementedView, PowerOptionsView, PowerOffView, RestartView, UnhandledExceptionView, View
+from seedsigner.views.view import CameraConnectionErrorView, MainMenuView, NotYetImplementedView, PowerOptionsView, PowerOffView, RestartView, UnhandledExceptionView, View
 
 
 
@@ -31,7 +33,6 @@ class TestViewFlows(FlowTest):
         """
         Basic flow from MainMenuView to PowerOffView
         """
-        Settings.HOSTNAME = Settings.SEEDSIGNER_OS
         self.run_sequence([
             FlowStep(MainMenuView, screen_return_value=RET_CODE__POWER_BUTTON),
             FlowStep(PowerOptionsView, button_data_selection=PowerOptionsView.POWER_OFF),
@@ -69,6 +70,7 @@ class TestViewFlows(FlowTest):
         ])
 
 
+<<<<<<< HEAD
     def test_restart_thread_command_seedsigner_os(self):
         """
         Verify DoResetThread uses os.getpid() and sys.executable on seedsigner-os.
@@ -124,3 +126,21 @@ class TestViewFlows(FlowTest):
              patch('time.sleep'):
             thread.run()
             mock_subprocess_call.assert_not_called()
+=======
+    def test__camera_connection_error__flow(self):
+        """
+        Simulate a camera connection error and ensure that we get the
+        CameraConnectionErrorView.
+        """
+        # Force a camera exception during `ScanView.run()`
+        with patch('seedsigner.views.scan_views.ScanView.run') as mock_run:
+            mock_run.side_effect = CameraConnectionError()
+
+            self.run_sequence([
+                FlowStep(MainMenuView, button_data_selection=MainMenuView.SCAN),
+                FlowStep(ScanView),
+                FlowStep(UnhandledExceptionView, is_redirect=True),
+                FlowStep(CameraConnectionErrorView),
+                FlowStep(MainMenuView),
+            ])
+>>>>>>> upstream/0.8.7

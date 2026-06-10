@@ -1,6 +1,7 @@
 from PIL import Image, ImageDraw
 from threading import Lock
 
+<<<<<<< HEAD
 from seedsigner.hardware.displays.display_driver import (
     ALL_DISPLAY_TYPES,
     DISPLAY_TYPE__ILI9341,
@@ -10,6 +11,9 @@ from seedsigner.hardware.displays.display_driver import (
     DISPLAY_TYPE__DESKTOP,
     DisplayDriver,
 )
+=======
+from seedsigner.hardware.displays.display_driver import ALL_DISPLAY_TYPES, DISPLAY_TYPE__ILI9341, DISPLAY_TYPE__ILI9486, DISPLAY_TYPE__ST7789, DisplayDriverFactory
+>>>>>>> upstream/0.8.7
 from seedsigner.models.settings import Settings
 from seedsigner.models.settings_definition import SettingsConstants
 from seedsigner.models.singleton import ConfigurableSingleton
@@ -26,6 +30,11 @@ class Renderer(ConfigurableSingleton):
     lock = Lock()
     _needs_resize = False
     _display_size = (0, 0)
+
+
+    @property
+    def is_screenshot_generator(self) -> bool:
+        return False
 
 
     @classmethod
@@ -49,10 +58,20 @@ class Renderer(ConfigurableSingleton):
 
             width, height = display_config.split("_")[1].split("x")
 
+<<<<<<< HEAD
             # Release GPIO/SPI resources from the previous display before opening
             # a new display driver that may use the same lines.
             if self.disp:
                 self.disp.close()
+=======
+        width, height = display_config.split("_")[1].split("x")
+
+        if self.disp:
+            # Existing instances might need to close resources like pwm
+            self.disp.cleanup()
+
+        self.disp = DisplayDriverFactory.instantiate_display_driver(self.display_type, width=int(width), height=int(height))
+>>>>>>> upstream/0.8.7
 
             self.disp = DisplayDriver(self.display_type, width=int(width), height=int(height))
 

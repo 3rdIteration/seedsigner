@@ -42,6 +42,19 @@ LUCKFOX_DEVICE_FALLBACKS = ("/dev/video12", "/dev/video11", "/dev/video13", "/de
 MIN_LUCKFOX_CAPTURE_AREA = 320 * 240
 PICAMERA2_PREVIEW_RESOLUTION = (240, 240)
 
+<<<<<<< HEAD
+=======
+			# if the thread indicator variable is set, stop the thread
+			# and release camera resources
+			if self.should_stop:
+				logger.info("PiVideoStream: closing everything")
+				self.stream.close()
+				self.rawCapture.close()
+				self.camera.close()
+				self.should_stop = False
+				self.is_stopped = True
+				return
+>>>>>>> upstream/0.8.7
 
 class VideoStream:
     """Continuously capture frames in a background thread."""

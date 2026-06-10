@@ -1,4 +1,5 @@
 embit==0.8.0
+<<<<<<< HEAD
 Pillow==10.4.0
 pyzbar @ https://github.com/seedsigner/pyzbar/archive/c3c237821c6a20b17953efe59b90df0b514a1c03.zip
 qrcode==7.3.1
@@ -20,3 +21,9 @@ cffi==1.17.1
 pycparser==2.22
 smbus2==0.4.3 ; platform_system != "Windows"
 shamir-mnemonic==0.3.0
+=======
+Pillow==10.3.0
+pyzbar @ git+https://github.com/seedsigner/pyzbar.git@c3c237821c6a20b17953efe59b90df0b514a1c03
+qrcode==7.3.1
+urtypes==1.0.1
+>>>>>>> upstream/0.8.7

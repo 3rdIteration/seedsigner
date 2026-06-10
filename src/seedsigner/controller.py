@@ -15,13 +15,18 @@ from seedsigner.models.seed import Seed
 from seedsigner.models.seed_storage import SeedStorage
 from seedsigner.models.encryptedqr import EncryptedQRStorage
 from seedsigner.models.settings import Settings
+from seedsigner.models.settings import SettingsConstants
 from seedsigner.models.singleton import Singleton
 from seedsigner.models.threads import BaseThread
 from seedsigner.models.settings_definition import SettingsConstants
 from seedsigner.views.screensaver import ScreensaverScreen
+<<<<<<< HEAD
 from seedsigner.views.view import Destination
 from seedsigner.hardware.rng_monitor import HardwareRngHealthMonitor, HardwareRngMonitorThread
 from seedsigner.hardware.io_config import get_hardware_pin_mapping, get_hardware_profile_label
+=======
+from seedsigner.views.view import Destination, View
+>>>>>>> upstream/0.8.7
 
 
 logger = logging.getLogger(__name__)
@@ -95,7 +100,7 @@ class BackgroundImportThread(BaseThread):
         def time_import(module_name):
             last = time.time()
             import_module(module_name)
-            # print(time.time() - last, module_name)
+            # print(f"{time.time() - last:0.4f}: {module_name}")
 
         time_import('embit')
         time_import('seedsigner.helpers.embit_utils')
@@ -108,13 +113,13 @@ class BackgroundImportThread(BaseThread):
         from seedsigner.models.encryptedqr import EncryptedQRStorage
         Controller.get_instance()._storage2 = EncryptedQRStorage()
 
+        time_import('numpy')  # used by PiVideoStream; by far the slowest import (2.29s)
+        time_import('seedsigner.hardware.pivideostream') 
+
         # Get MainMenuView ready to respond quickly
         time_import('seedsigner.views.scan_views')
-
         time_import('seedsigner.views.seed_views')
-
         time_import('seedsigner.views.tools_views')
-
         time_import('seedsigner.views.settings_views')
 
 
@@ -151,8 +156,13 @@ class Controller(Singleton):
         Note: In many/most cases you'll need to do the Controller import within a method
         rather than at the top in order avoid circular imports.
     """
+<<<<<<< HEAD
     
     VERSION = "SeSi-0.8.6+ShSi-B10"
+=======
+
+    VERSION = "0.8.7"
+>>>>>>> upstream/0.8.7
 
     # Declare class member vars with type hints to enable richer IDE support throughout
     # the code.
@@ -246,6 +256,11 @@ class Controller(Singleton):
         # Instantiate the one and only Controller instance
         controller = cls.__new__(cls)
         cls._instance = controller
+
+        # Check for libraqm support and log the status if not supported
+        from PIL import features
+        if not features.check('raqm'):
+            logger.warning("libraqm support: NOT AVAILABLE - Complex text rendering may be limited")
 
         # models
         controller.settings = Settings.get_instance()
@@ -381,7 +396,7 @@ class Controller(Singleton):
             * initial_destination: The first View to run. If None, the MainMenuView is
             used. Only used by the test suite.
         """
-        from seedsigner.views import MainMenuView, BackStackView
+        from seedsigner.views import MainMenuView, BackStackView, RemoveMicroSDWarningView
         from seedsigner.views.screensaver import OpeningSplashView
         from seedsigner.models.settings_definition import SettingsConstants
         from seedsigner.views.desktop_warning import DesktopWarningView
@@ -431,11 +446,19 @@ class Controller(Singleton):
             else:
                 next_destination = Destination(MainMenuView)
             
+<<<<<<< HEAD
             # Skip the "remove SD card" tip on Luckfox, where removable media
             # handling and expected workflows differ from SeedSigner OS defaults.
             if Settings.RUNTIME_PROFILE not in {"luckfox_22", "luckfox_40", "luckfox_pi", "desktop"}:
                 # Set up our one-time toast notification tip to remove the SD card
                 self.activate_toast(RemoveSDCardToastManagerThread())
+=======
+            # Set up our one-time toast notification tip to remove the SD card
+            if self.settings.get_value(SettingsConstants.SETTING__MICROSD_TOAST_TIMER) == SettingsConstants.MICROSD_TOAST_TIMER_FIVE_SECONDS:
+                self.activate_toast(RemoveSDCardToastManagerThread())
+            elif self.settings.get_value(SettingsConstants.SETTING__MICROSD_TOAST_TIMER) == SettingsConstants.MICROSD_TOAST_TIMER_FOREVER:
+                next_destination = Destination(RemoveMicroSDWarningView)
+>>>>>>> upstream/0.8.7
 
             while True:
                 # Destination(None) is a special case; render the Home screen
@@ -684,3 +707,18 @@ class Controller(Singleton):
             exception_msg,
         ]
         return Destination(UnhandledExceptionView, view_args={"error": error}, clear_history=True)
+
+
+    @property
+    def is_screensaver_start_allowed(self) -> bool:
+        """
+            Determines whether the screensaver is allowed to start.
+
+            The screensaver can start only if:
+            - It is not currently running.
+            - The current active view allows screensaver activity.
+        """
+        from seedsigner.views import MainMenuView
+        # Confusingly, the top item in the `BackStack` is actually the *current* View
+        active_view = self.back_stack[-1].view if self.back_stack else MainMenuView()
+        return not self.is_screensaver_running and active_view.is_screensaver_allowed

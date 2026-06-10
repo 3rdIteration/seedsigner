@@ -1,22 +1,45 @@
 # Raspberry Pi OS Local Dev Build Instructions
 
+<<<<<<< HEAD
 Since v0.6.0, official releases use our custom [SeedSigner OS](https://github.com/SeedSigner/seedsigner-os/). However, project contributors looking to do rapid development cycles can use any recent standard Raspberry Pi OS image. This guide was tested with `raspios_arm64 2025-12-04`.
 
 The setup no longer requires manual Python compilation or a specific old OS image.
+=======
+Since v0.6.0, official releases use our custom [SeedSigner OS](https://github.com/SeedSigner/seedsigner-os/). However, project contributors looking to do rapid development cycles typically use the older Raspberry Pi OS that we had previously built on prior to v0.6.0. If you're here to set up your SeedSigner for local development, continue reading.
+
+Begin by acquiring the latest 32-bit, Buster-based Raspberry Pi Lite operating system. This guide was tested using the version dated 2023-05-03, which can be found here:
+>>>>>>> upstream/0.8.7
 
 The installation process requires an internet connection on the Pi to download the necessary libraries and code.  
 If your Pi does not have onboard Wi-Fi, you have two options:
 
+<<<<<<< HEAD
 1. Run these steps on a separate Raspberry Pi with onboard Wi-Fi, then move the SD card to the target Pi when complete.
 2. OR configure the Pi directly by relaying through your computer's internet connection over USB. See instructions [here](usb_relay.md).
+=======
+SeedSigner does not work with any of the more recent versions of Debian. This is a known limitation and there are open tickets to track the progress of this ([Debian 11 ticket](https://github.com/SeedSigner/seedsigner/issues/431), [Debian 12 ticket](https://github.com/SeedSigner/seedsigner/issues/430)). This guide does not work on the 64-bit versions of Buster, however pull requests to update it to be compatible are welcome.
+>>>>>>> upstream/0.8.7
 
 Use the Pi's onboard Wi-Fi only if you are setting up a local development environment, never for real funds or binary image creation.
 
+<<<<<<< HEAD
 For the following steps you'll need to either connect a keyboard & monitor to the Raspberry Pi or SSH into it.
 
 ## Flash the OS image
 
 Use [Raspberry Pi Imager](https://www.raspberrypi.com/software/) to write a recent Raspberry Pi OS (or Raspberry Pi OS Lite) image to a microSD card (4 GB or larger). The 64-bit (arm64) image is recommended.
+=======
+The manual SeedSigner installation and configuration process requires an internet connection on the Pi to download the necessary libraries and code.  
+If your Pi does not have onboard WiFi, you have two options:
+
+1. Run these steps on a separate Raspberry Pi 2/3/4 or Zero W which does have onboard WiFi to connect to the internet, and then move the SD card over to the non WiFi enabled Pi when complete.
+2. OR configure the non WiFi enabled Pi directly by relaying through your computer's internet connection over USB. See instructions [here](usb_relay.md).
+
+If your Pi does have onboard WiFi, then using the Raspberry Pi Imager software will allow you to easily configure your Pi's WiFi connection, as well as simultaneously write the image file. That will make your initial SSH into the Pi much easier.   
+Use the Pi's onboard WiFi only if you are setting up a local development environment, never for real funds or binary image creation. 
+  
+For the following steps you'll need to either connect a keyboard & monitor to the network-connected Raspberry Pi you are working with, or SSH into the Pi if you're familiar with that process.
+>>>>>>> upstream/0.8.7
 
 ## Configure the Pi
 
@@ -35,6 +58,7 @@ Set the following:
 
 When you exit the System Configuration tool, reboot when prompted and then continue.
 
+<<<<<<< HEAD
 ## Install system dependencies
 ```bash
 sudo apt update && sudo apt install -y \
@@ -43,11 +67,102 @@ sudo apt update && sudo apt install -y \
     libpcsclite-dev \
     python3-pip \
     --no-install-recommends
+=======
+Each command should be run individually, unless it's specified as a multi-line command.
+### Change the default password
+Change the system's default password from the default "raspberry". Run the command:
+```bash
+passwd
+```
+You will be prompted to enter the current password ("raspberry") and then to enter a new password twice. In our prepared release image, the password used is `AirG@pped!`.
+
+### Install python3.10
+```bash
+# install compiler dependencies; takes ~1 minute on a Pi Zero 1.3
+# * openssl, libssl-dev: ssl support when pip fetches packages
+# * libsqlite3-dev: required by `coverage`
+sudo apt update && sudo apt install -y build-essential zlib1g-dev \
+    libncurses5-dev libgdbm-dev libnss3-dev openssl libssl-dev \
+    libreadline-dev libffi-dev wget libsqlite3-dev libraqm-dev
+
+# Grab the python3.10 source
+wget https://www.python.org/ftp/python/3.10.10/Python-3.10.10.tgz
+tar -xzvf Python-3.10.10.tgz
+cd Python-3.10.10
+
+# Takes ~6 minutes on a Pi Zero 1.3 to check what is available
+./configure --enable-optimizations
+
+# compiling takes ~80 minutes(!!) on a Pi Zero 1.3
+sudo make altinstall
+
+# cleanup
+cd ..
+sudo rm -rf Python-3.10.10*
+
+# Make python3.10 the default version
+sudo update-alternatives --install /usr/bin/python python /usr/local/bin/python3.10 1
+sudo update-alternatives --install /usr/bin/python3 python3 /usr/local/bin/python3.10 1
+>>>>>>> upstream/0.8.7
 ```
 
 ## Clone SeedSigner
 ```bash
+<<<<<<< HEAD
 git clone --recursive https://github.com/3rdIteration/seedsigner
+=======
+sudo apt remove --purge python3-apt -y
+sudo apt autoremove -y
+sudo apt install python3-apt -y
+```
+
+### Install dependencies
+Copy this entire box and run it as one command (~15 minutes on a Pi Zero 1.3):
+```bash
+sudo apt update && sudo apt install -y wiringpi python3-pip \
+   python-pil libjpeg-dev zlib1g-dev libopenjp2-7 \
+   git python3-opencv python3-picamera libatlas-base-dev qrencode
+```
+
+### Install `zbar`
+`zbar` is "an open source software suite for reading bar codes" (more info here: [https://github.com/mchehab/zbar](https://github.com/mchehab/zbar)).
+
+SeedSigner requires `zbar` at 0.23.x or higher.
+
+Download the binary:
+```bash
+curl -L http://raspbian.raspberrypi.org/raspbian/pool/main/z/zbar/libzbar0_0.23.90-1+deb11u1_armhf.deb --output libzbar0_0.23.90-1_armhf.deb
+```
+
+And then install it:
+```bash
+sudo apt install ./libzbar0_0.23.90-1_armhf.deb
+```
+
+Cleanup:
+```bash
+rm libzbar0_0.23.90-1_armhf.deb
+```
+
+### Install the [C library for Broadcom BCM 2835](http://www.airspayce.com/mikem/bcm2835/)
+This library "provides functions for reading digital inputs and setting digital outputs, using SPI and I2C, and for accessing the system timers."
+
+Run each of the following individual steps:
+```bash
+wget http://www.airspayce.com/mikem/bcm2835/bcm2835-1.60.tar.gz
+tar zxvf bcm2835-1.60.tar.gz
+cd bcm2835-1.60/
+sudo ./configure
+sudo make && sudo make check && sudo make install
+cd ..
+rm bcm2835-1.60.tar.gz
+sudo rm -rf bcm2835-1.60
+```
+
+### Download the SeedSigner code:
+```bash
+git clone https://github.com/SeedSigner/seedsigner
+>>>>>>> upstream/0.8.7
 cd seedsigner
 ```
 
@@ -65,9 +180,26 @@ pip install -r requirements.txt
 pip install -r requirements-raspi.txt
 ```
 
+<<<<<<< HEAD
 ## Run SeedSigner
 ```bash
 python src/main.py
+=======
+#### `pyzbar`
+Note: The `requirements.txt` installs a fork of the python `pyzbar` repo.
+
+The fork is required because the main `pyzbar` repo has been abandoned. This [github issue](https://github.com/NaturalHistoryMuseum/pyzbar/issues/124#issuecomment-971967091) discusses the changes needed in order to support reading binary data from `zbar`, which is required for our `CompactSeedQR` format which writes byte data instead of strings. The changes specifically reference the following PRs which have already been merged into Keith's fork:
+* [PR 76](https://github.com/NaturalHistoryMuseum/pyzbar/pull/76/files): enables scanning to continue even when a null byte (`x\00`) is found.
+* [PR 82](https://github.com/NaturalHistoryMuseum/pyzbar/pull/82): enable `zbar`'s new binary mode. Note that this PR has a trivial bug that was fixed in our fork.
+
+
+### Optional: increase spidev buffer size
+This allows `ST7789.py` to update the LCD without performing multiple write operations because the default buffer size is 4096 bytes. The default can be changed via the `/boot/cmdline.txt` file. You will need to add `spidev.bufsiz=131072` to the end of this single lined file command.
+
+Example `cmdline.txt` contents:
+```
+console=serial0,115200 console=tty1 root=PARTUUID=2fa4ba7e-02 rootfstype=ext4 elevator=deadline fsck.repair=yes rootwait modules-load=dwc2,g_ether spidev.bufsiz=131072
+>>>>>>> upstream/0.8.7
 ```
 
 
@@ -78,7 +210,12 @@ To have SeedSigner start automatically when the Raspberry Pi boots, create a `sy
 sudo nano /etc/systemd/system/seedsigner.service
 ```
 
+<<<<<<< HEAD
 Add the following contents. If you are not using the username `pi`, replace `pi` in the three places below with your username:
+=======
+Add the following contents to the text file that was created:  
+If you are not using the username pi, then replace `pi` in the service section below with your username. There are 3 lines to change.   
+>>>>>>> upstream/0.8.7
 ```ini
 [Unit]
 Description=Seedsigner
@@ -88,18 +225,32 @@ User=pi
 WorkingDirectory=/home/pi/seedsigner
 ExecStart=/usr/bin/python3 src/main.py
 StandardOutput=null
+<<<<<<< HEAD
 StandardError=null
+=======
+ErrorOutput=null
+>>>>>>> upstream/0.8.7
 Restart=no
 
 [Install]
 WantedBy=multi-user.target
 ```
 
+<<<<<<< HEAD
 _Note: `Restart=no` ensures that if the code crashes, systemd will not keep restarting it._
 
 Use `CTRL-X` and `y` to exit and save changes.
 
 Enable the service to start at boot:
+=======
+_Note: The line `Restart=no` ensures that when your dev code crashes it won't keep trying to restart itself._
+
+_Note: Debugging output is completely wiped via routing the stdout and stderr to `/dev/null`. When working in local dev, you'll `kill` the `systemd` SeedSigner service and just directly run the code on demand so you can see all the debugging output live._
+
+Use `CTRL-X` and `y` to exit and save changes.
+
+Configure the service to start running (this will restart the seedsigner code automatically at startup):
+>>>>>>> upstream/0.8.7
 ```bash
 sudo systemctl enable seedsigner.service
 ```
@@ -166,9 +317,9 @@ First find your current `nameserver`:
 sudo cat /etc/resolv.conf
 ```
 
-This is the address of your local machine that is connected to your SeedSigner via usb (or it'll be the wifi router's address if you're using a Raspi with wifi and are keeping it enabled for `ssh` access).
+This is the address of your local machine that is connected to your SeedSigner via USB (or it'll be the WiFi router's address if you're using a Raspberry Pi with WiFi and are keeping it enabled for `ssh` access).
 
-Set a static ip: `sudo nano /etc/dhcpcd.conf` and add to the end:
+Set a static IP: `sudo nano /etc/dhcpcd.conf` and add to the end:
 ```
 interface usb0
 static ip_address=192.168.1.200/24
@@ -176,16 +327,16 @@ static routers=192.168.1.254
 static domain_name_servers=192.168.1.254
 ```
 
-* `interface` will be `usb0` for usb connections; `wlan0` for wifi.
-* `static ip_address` is the ip address you want the SeedSigner to use. It should match the `nameserver` ip you found above for all but the last part of the ip (note: the `/24` should always be included as-is).
-* `static routers` should be your `nameserver` ip.
-* `static domain_name_servers` should also be the `nameserver` ip.
+* `interface` will be `usb0` for USB connections; `wlan0` for WiFi.
+* `static ip_address` is the IP address you want the SeedSigner to use. It should match the `nameserver` IP you found above for all but the last part of the IP (note: the `/24` should always be included as-is).
+* `static routers` should be your `nameserver` IP.
+* `static domain_name_servers` should also be the `nameserver` IP.
 
 `CTRL-X` and `y` to save changes.
 
-After your next reboot, access this SeedSigner using its new static ip:
+After your next reboot, access this SeedSigner using its new static IP:
 ```bash
-# Use the static ip you set above:
+# Use the static IP you set above:
 ssh pi@192.168.1.200
 
 # But the hostname will still work, too:
@@ -203,7 +354,7 @@ host seedsigner.local
  User pi
  LogLevel QUIET
 
-# Set this to the static ip you set above:
+# Set this to the static IP you set above:
 host 192.168.1.200
  StrictHostKeyChecking no
  UserKnownHostsFile /dev/null
@@ -213,7 +364,7 @@ host 192.168.1.200
 
 The first entry prevents warnings for the default `pi@seedsigner.local` connections.
 
-The second entry does the same for a specific static ip; you'll want this if you configure all your SeedSigners to use the same static ip.
+The second entry does the same for a specific static IP; you'll want this if you configure all your SeedSigners to use the same static IP.
 
 `CTRL-X` and `y` to save changes.
 
@@ -225,7 +376,7 @@ run `ssh-copy-id` with the same values that you connect via `ssh`:
 ```bash
 ssh-copy-id pi@seedsigner.local
 
-# or if you're connecting over static ip, something like:
+# or if you're connecting over static IP, something like:
 ssh-copy-id pi@192.168.1.200
 ```
 
@@ -234,8 +385,8 @@ You'll be prompted to enter the password to complete it.
 _Note: If you don't have any ssh keys on your local machine, you'll need to create a set with `ssh-keygen -t ed25519 -C "your_email@example.com"`. Then try running `ssh-copy-id` again._
 
 
-## Disable wifi/Bluetooth when using other Raspi boards
-If you plan to use your installation on a Raspberry Pi that is not a Zero version 1.3, but rather on a Raspberry Pi that has WiFi and Bluetooth capabilities, it is a good idea to disable the following WiFi & Bluetooth, as well as other relevant services (assuming you are not creating this installation for testing/development purposes). Enter the followiing commands to disable WiFi, Bluetooth, & other relevant services:
+## Disable WiFi/Bluetooth when using other Raspberry Pi boards
+If you plan to use your installation on a Raspberry Pi that is not a Zero version 1.3, but rather on a Raspberry Pi that has WiFi and Bluetooth capabilities, it is a good idea to disable the following WiFi & Bluetooth, as well as other relevant services (assuming you are not creating this installation for testing/development purposes). Enter the following commands to disable WiFi, Bluetooth, & other relevant services:
 ```bash
 sudo systemctl disable bluetooth.service
 sudo systemctl disable wpa_supplicant.service

@@ -30,15 +30,22 @@ import time
 import array
 import errno
 
+from dataclasses import dataclass
+
 from PIL import Image
 from PIL import ImageDraw
 
 from periphery import GPIO, SPI
 
+<<<<<<< HEAD
 from seedsigner.models.settings import Settings
 from seedsigner.hardware.io_config import get_hardware_pin_mapping
 
 logger = logging.getLogger(__name__)
+=======
+from seedsigner.hardware.displays.display_driver import BaseDisplayDriver
+
+>>>>>>> upstream/0.8.7
 
 # Constants for interacting with display registers.
 ILI9341_TFTWIDTH    = 240
@@ -133,13 +140,29 @@ def image_to_data(image):
     return arr.tobytes()
 
 
-class ILI9341(object):
+@dataclass
+class ILI9341(BaseDisplayDriver):
     """Representation of an ILI9341 TFT LCD."""
 
+<<<<<<< HEAD
     def __init__(self, width=ILI9341_TFTWIDTH, height=ILI9341_TFTHEIGHT, rotation=90):
         """Create an instance of the display using SPI communication."""
         self.width = width
         self.height = height
+=======
+    def __post_init__(self):
+        dc=22
+        rst=13
+        led=12
+        rotation=90
+        spi = SpiDev(0, 0)
+        # spi.mode = 0b10  # [CPOL|CPHA] -> polarity 1, phase 0
+        spi.max_speed_hz = 64_000_000
+
+        self._dc = dc
+        self._rst = rst
+        self._spi = spi
+>>>>>>> upstream/0.8.7
         self.rotation = rotation
         self.inverted = False
         # Keep SPI transfers within conservative per-message kernel limits.
@@ -168,12 +191,16 @@ class ILI9341(object):
         self._spi = SPI(spi_bus, spi_mode, spi_hz)
 
         # Create an image buffer.
+<<<<<<< HEAD
         self.buffer = Image.new('RGB', (width, height))
 
     def _chunked_transfer(self, data):
         """Transfer data in chunks to prevent buffer overflows"""
         if isinstance(data, list):
             data = bytes(data)
+=======
+        self.buffer = Image.new('RGB', (self.width, self.height))
+>>>>>>> upstream/0.8.7
 
         i = 0
         chunk_size = self.CHUNK_SIZE
@@ -329,15 +356,15 @@ class ILI9341(object):
         self.reset()
         self._init()
 
-    def invert(self, state: bool = True):
+    def invert(self, enabled: bool = True):
         """Sets display inversion to the specified state. If not provided, state
         is True, which inverts the display. If state is False, the display turns
         back into normal mode."""
-        if state:
+        if enabled:
             self.command(ILI9341_INVON)
         else:
             self.command(ILI9341_INVOFF)
-        self.inverted = state
+        self.inverted = enabled
         return self
 
     def set_window(self, x0=0, y0=0, x1=None, y1=None):

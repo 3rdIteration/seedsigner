@@ -4,7 +4,6 @@ import pytest
 from base import BaseTest
 
 from seedsigner.controller import Controller
-from seedsigner.models.settings_definition import SettingsConstants
 
 
 class TestController(BaseTest):
@@ -80,6 +79,7 @@ class TestController(BaseTest):
         # ...get a new copy of the instance and confirm change
         controller = Controller.get_instance()
         assert controller.unverified_address == "123abc"
+<<<<<<< HEAD
 
 
     def test_missing_settings_get_defaults(self):
@@ -114,3 +114,5 @@ class TestController(BaseTest):
         # Hidden Settings defaults
         assert controller.settings.get_value(SettingsConstants.SETTING__QR_BRIGHTNESS) == 62
 
+=======
+>>>>>>> upstream/0.8.7
