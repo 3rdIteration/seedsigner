@@ -97,6 +97,24 @@ Runs on [SeedSigner OS](https://github.com/SeedSigner/seedsigner-os) (Buildroot)
 
 ---
 
+## Building the OS image
+
+Images are built by [ethermachine/seedsigner-os](https://github.com/ethermachine/seedsigner-os) — a fork of SeedSigner OS with the smartcard board targets and local-source build tooling. It builds **this repo's working tree** (not a GitHub clone), so what you flash is exactly what you have checked out.
+
+```bash
+# the build wrapper expects the two repos side by side
+git clone https://github.com/ethermachine/seedsigner.git
+git clone https://github.com/ethermachine/seedsigner-os.git
+cd seedsigner-os
+./build-local.sh
+```
+
+Requirements: Docker (with Compose v2), `bash`, `rsync`, `git`. The first build takes ~30 min (cross toolchain); after that, code-only rebuilds finish in well under a minute thanks to named-volume caching. Output: `images/seedsigner_os.local-<git-sha>[-dirty].<target>.img` (512 MB), named after the exact source commit. If exactly one SD card is detected, the image is `dd`-flashed and ejected automatically (`NO_FLASH=1` to skip).
+
+Knobs: `TARGET=pi02w-smartcard` (or `pi2-smartcard`, `pi4-smartcard`) selects the board; `FULL=1` wipes the build output but keeps compiler caches; `NUKE=1` rebuilds from absolute zero. The wrapper's header comments document everything else.
+
+---
+
 ## Developing
 
 ```bash
