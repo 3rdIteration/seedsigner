@@ -391,10 +391,7 @@ class ToolsSeedkeeperCloneSecretsView(View):
                 LargeIconStatusScreen,
                 title=_("Insert Source Card"),
                 status_headline=None,
-                text=(
-                    "Insert the source Seedkeeper card to copy secrets from, "
-                    "then press Continue."
-                ),
+                text=_("Insert the source Seedkeeper card to copy secrets from, then press Continue."),
                 show_back_button=True,
                 button_data=[ButtonOption("Continue")],
             )
@@ -493,10 +490,7 @@ class ToolsSeedkeeperCloneSecretsView(View):
                 LargeIconStatusScreen,
                 title=_("Insert Destination Card"),
                 status_headline=None,
-                text=(
-                    "Insert the destination Seedkeeper card to copy secrets to, "
-                    "then press Continue."
-                ),
+                text=_("Insert the destination Seedkeeper card to copy secrets to, then press Continue."),
                 show_back_button=True,
                 button_data=[ButtonOption("Continue")],
             )

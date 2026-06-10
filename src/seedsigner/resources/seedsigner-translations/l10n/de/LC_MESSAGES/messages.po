@@ -842,15 +842,6 @@ msgid "Not initialised"
 msgstr "Nicht initialisiert"
 
 #: src/seedsigner/helpers/keycard/ui_helpers.py
-#: src/seedsigner/views/keycard_views.py
-msgid ""
-"Run Setup ›\n"
-"Initialise card first."
-msgstr ""
-"Setup ausführen ›\n"
-"Karte erst initialisieren."
-
-#: src/seedsigner/helpers/keycard/ui_helpers.py
 msgid "No key on card"
 msgstr "Kein Schlüssel auf Karte"
 
@@ -1121,10 +1112,6 @@ msgstr "1 Minute"
 msgid "2 minutes"
 msgstr "2 Minuten"
 
-#: src/seedsigner/models/settings_definition.py
-msgid "Aezeed Passphrase"
-msgstr "Aezeed Passphrase"
-
 #. Terminology used by Electrum seeds; equivalent to bip39 passphrase
 #: src/seedsigner/models/settings_definition.py
 msgid "Custom Extension"
@@ -1251,14 +1238,6 @@ msgid "Ambiguous QR"
 msgstr "Mehrdeutiger QR"
 
 #: src/seedsigner/models/settings_definition.py
-msgid "WIF keys"
-msgstr "WIF-Schlüssel"
-
-#: src/seedsigner/models/settings_definition.py
-msgid "BIP38 keys"
-msgstr "BIP38-Schlüssel"
-
-#: src/seedsigner/models/settings_definition.py
 msgid "BitBox02 backups"
 msgstr "BitBox02 backups"
 
@@ -1380,10 +1359,6 @@ msgid "Instances"
 msgstr "Instanzen"
 
 #: src/seedsigner/views/keycard_views.py
-msgid "Card"
-msgstr "Karte"
-
-#: src/seedsigner/views/keycard_views.py
 msgid "Lock card"
 msgstr "Karte sperren"
 
@@ -1406,10 +1381,6 @@ msgstr "Seed importieren"
 #: src/seedsigner/views/keycard_views.py
 msgid "Change PIN"
 msgstr "PIN ändern"
-
-#: src/seedsigner/views/keycard_views.py
-msgid "Pairing"
-msgstr "Kopplung"
 
 #: src/seedsigner/views/keycard_views.py src/seedsigner/views/view.py
 msgid "Factory reset"
@@ -1879,14 +1850,6 @@ msgid "Scan SeedQR"
 msgstr "SeedQR scannen"
 
 #: src/seedsigner/views/keycard_views.py
-msgid "Type 12 words"
-msgstr "12 Wörter eingeben"
-
-#: src/seedsigner/views/keycard_views.py
-msgid "Type 24 words"
-msgstr "24 Wörter eingeben"
-
-#: src/seedsigner/views/keycard_views.py
 msgid "Import hex (NGRAVE)"
 msgstr "Hex importieren (NGRAVE)"
 
@@ -2224,14 +2187,6 @@ msgid "Inst {}"
 msgstr "Inst {}"
 
 #: src/seedsigner/views/keycard_views.py
-msgid "List instances"
-msgstr "Instanzen auflisten"
-
-#: src/seedsigner/views/keycard_views.py
-msgid "Switch active"
-msgstr "Aktive wechseln"
-
-#: src/seedsigner/views/keycard_views.py
 msgid "Create instance"
 msgstr "Instanz erstellen"
 
@@ -2240,24 +2195,8 @@ msgid "Delete instance"
 msgstr "Instanz löschen"
 
 #: src/seedsigner/views/keycard_views.py
-msgid "Active: {}"
-msgstr "Aktiv: {}"
-
-#: src/seedsigner/views/keycard_views.py
 msgid "GP failed"
 msgstr "GP fehlgeschlagen"
-
-#: src/seedsigner/views/keycard_views.py
-msgid ""
-"No Keycard instances\n"
-"found."
-msgstr ""
-"Keine Keycard-Instanzen\n"
-"gefunden."
-
-#: src/seedsigner/views/keycard_views.py
-msgid "Instances ({}/{})"
-msgstr "Instanzen ({}/{})"
 
 #: src/seedsigner/views/keycard_views.py
 msgid "No instances"
@@ -2338,14 +2277,6 @@ msgstr "Löschen?"
 #: src/seedsigner/views/keycard_views.py
 msgid "Confirm delete?"
 msgstr "Löschen bestätigen?"
-
-#: src/seedsigner/views/keycard_views.py
-msgid ""
-"Delete instance\n"
-"{}?"
-msgstr ""
-"Instanz {}\n"
-"löschen?"
 
 #: src/seedsigner/views/keycard_views.py
 msgid "Delete failed"
@@ -2668,11 +2599,6 @@ msgstr "Unbekannter QR"
 #: src/seedsigner/views/scan_views.py
 msgid "Scanned QR code was not in a supported format."
 msgstr "Gescannter QR-Code hatte kein unterstütztes Format."
-
-#. This is on the opening splash screen, displayed above the Seedsigner logo
-#: src/seedsigner/views/screensaver.py
-msgid "An unofficial fork of:"
-msgstr "Ein inoffizieller Fork von:"
 
 #: src/seedsigner/views/settings_views.py src/seedsigner/views/tools_views.py
 msgid "Advanced"
@@ -3469,10 +3395,6 @@ msgid "Scan"
 msgstr "Scan"
 
 #: src/seedsigner/views/view.py
-msgid "Cards"
-msgstr "Karten"
-
-#: src/seedsigner/views/view.py
 msgid "Factory reset card"
 msgstr "Karte werksresetten"
 
@@ -3680,7 +3602,6 @@ msgstr "\"{}\" ist derzeit in den Einstellungen deaktiviert."
 msgid "Option Disabled"
 msgstr "Option deaktiviert"
 
-
 #: src/seedsigner/views/keycard_views.py
 msgid "Storage"
 msgstr "Speicher"
@@ -3753,20 +3674,11 @@ msgstr "Instanz umbenennen"
 msgid "Instance name"
 msgstr "Instanzname"
 
-msgid "Pairing password"
-msgstr "Kopplungspasswort"
-
 msgid "Not available"
 msgstr "Nicht verfügbar"
 
 msgid "Enable Persistent Settings\nand insert a microSD."
 msgstr "Persistente Einstellungen aktivieren\nund microSD einlegen."
-
-msgid "No saved pairing"
-msgstr "Keine Kopplung"
-
-msgid "Pair this instance\nfirst, then rename."
-msgstr "Erst diese Instanz koppeln,\ndann umbenennen."
 
 msgid "Renamed"
 msgstr "Umbenannt"
@@ -3818,3 +3730,57 @@ msgstr "PIN setzen (6 Ziffern)"
 
 msgid "Confirm PIN"
 msgstr "PIN bestätigen"
+
+msgid "Unblock PIN (PUK)"
+msgstr "PIN entsperren (PUK)"
+
+msgid "Unblock failed"
+msgstr "Entsperren fehlgeschlagen"
+
+msgid "PIN not blocked"
+msgstr "PIN nicht gesperrt"
+
+msgid "{} PIN tries left.\nUse Change PIN instead."
+msgstr "Noch {} PIN-Versuche.\nNutze stattdessen „PIN ändern“."
+
+msgid "PUK blocked"
+msgstr "PUK gesperrt"
+
+msgid "No PUK tries left.\nFactory reset required."
+msgstr "Keine PUK-Versuche übrig.\nWerksreset erforderlich."
+
+msgid "Enter PUK"
+msgstr "PUK eingeben"
+
+msgid "Wrong PUK"
+msgstr "Falsche PUK"
+
+msgid "PIN unblocked"
+msgstr "PIN entsperrt"
+
+msgid "PIN blocked"
+msgstr "PIN gesperrt"
+
+msgid "Unblock with PUK via\nThis instance menu."
+msgstr "Mit PUK entsperren:\nMenü „Diese Instanz“."
+
+msgid "Invalid entry"
+msgstr "Ungültige Eingabe"
+
+msgid "Must be exactly {} digits."
+msgstr "Muss genau {} Ziffern haben."
+
+msgid "Max {} chars."
+msgstr "Max. {} Zeichen."
+
+msgid "View addresses"
+msgstr "Adressen ansehen"
+
+msgid "Addresses ({})"
+msgstr "Adressen ({})"
+
+msgid "Insert the source Seedkeeper card to copy secrets from, then press Continue."
+msgstr "Quell-Seedkeeper-Karte einlegen, um Geheimnisse zu kopieren, dann Weiter drücken."
+
+msgid "Insert the destination Seedkeeper card to copy secrets to, then press Continue."
+msgstr "Ziel-Seedkeeper-Karte einlegen, auf die kopiert wird, dann Weiter drücken."

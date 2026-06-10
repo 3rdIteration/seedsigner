@@ -838,15 +838,6 @@ msgid "Not initialised"
 msgstr "未初期化"
 
 #: src/seedsigner/helpers/keycard/ui_helpers.py
-#: src/seedsigner/views/keycard_views.py
-msgid ""
-"Run Setup ›\n"
-"Initialise card first."
-msgstr ""
-"セットアップ ›\n"
-"まずカードを初期化。"
-
-#: src/seedsigner/helpers/keycard/ui_helpers.py
 msgid "No key on card"
 msgstr "カードに鍵なし"
 
@@ -1113,10 +1104,6 @@ msgstr "1分"
 msgid "2 minutes"
 msgstr "2分"
 
-#: src/seedsigner/models/settings_definition.py
-msgid "Aezeed Passphrase"
-msgstr "Aezeed Passphrase"
-
 #. Terminology used by Electrum seeds; equivalent to bip39 passphrase
 #: src/seedsigner/models/settings_definition.py
 msgid "Custom Extension"
@@ -1241,14 +1228,6 @@ msgid "Ambiguous QR"
 msgstr "曖昧なQR"
 
 #: src/seedsigner/models/settings_definition.py
-msgid "WIF keys"
-msgstr "WIF キー"
-
-#: src/seedsigner/models/settings_definition.py
-msgid "BIP38 keys"
-msgstr "BIP38 キー"
-
-#: src/seedsigner/models/settings_definition.py
 msgid "BitBox02 backups"
 msgstr "BitBox02 backups"
 
@@ -1370,10 +1349,6 @@ msgid "Instances"
 msgstr "インスタンス"
 
 #: src/seedsigner/views/keycard_views.py
-msgid "Card"
-msgstr "カード"
-
-#: src/seedsigner/views/keycard_views.py
 msgid "Lock card"
 msgstr "カードをロック"
 
@@ -1396,10 +1371,6 @@ msgstr "シードをインポート"
 #: src/seedsigner/views/keycard_views.py
 msgid "Change PIN"
 msgstr "PINを変更"
-
-#: src/seedsigner/views/keycard_views.py
-msgid "Pairing"
-msgstr "ペアリング"
 
 #: src/seedsigner/views/keycard_views.py src/seedsigner/views/view.py
 msgid "Factory reset"
@@ -1865,14 +1836,6 @@ msgid "Scan SeedQR"
 msgstr "シードQRを読み取る"
 
 #: src/seedsigner/views/keycard_views.py
-msgid "Type 12 words"
-msgstr "12語を入力"
-
-#: src/seedsigner/views/keycard_views.py
-msgid "Type 24 words"
-msgstr "24語を入力"
-
-#: src/seedsigner/views/keycard_views.py
 msgid "Import hex (NGRAVE)"
 msgstr "hexをインポート (NGRAVE)"
 
@@ -2210,14 +2173,6 @@ msgid "Inst {}"
 msgstr "Inst {}"
 
 #: src/seedsigner/views/keycard_views.py
-msgid "List instances"
-msgstr "インスタンス一覧"
-
-#: src/seedsigner/views/keycard_views.py
-msgid "Switch active"
-msgstr "有効を切替"
-
-#: src/seedsigner/views/keycard_views.py
 msgid "Create instance"
 msgstr "インスタンスを作成"
 
@@ -2226,24 +2181,8 @@ msgid "Delete instance"
 msgstr "インスタンスを削除"
 
 #: src/seedsigner/views/keycard_views.py
-msgid "Active: {}"
-msgstr "有効: {}"
-
-#: src/seedsigner/views/keycard_views.py
 msgid "GP failed"
 msgstr "GP失敗"
-
-#: src/seedsigner/views/keycard_views.py
-msgid ""
-"No Keycard instances\n"
-"found."
-msgstr ""
-"Keycardインスタンスが\n"
-"見つかりません。"
-
-#: src/seedsigner/views/keycard_views.py
-msgid "Instances ({}/{})"
-msgstr "インスタンス ({}/{})"
 
 #: src/seedsigner/views/keycard_views.py
 msgid "No instances"
@@ -2324,14 +2263,6 @@ msgstr "削除しますか？"
 #: src/seedsigner/views/keycard_views.py
 msgid "Confirm delete?"
 msgstr "削除を確認？"
-
-#: src/seedsigner/views/keycard_views.py
-msgid ""
-"Delete instance\n"
-"{}?"
-msgstr ""
-"インスタンス\n"
-"{}を削除？"
 
 #: src/seedsigner/views/keycard_views.py
 msgid "Delete failed"
@@ -2654,11 +2585,6 @@ msgstr "認識できないQR"
 #: src/seedsigner/views/scan_views.py
 msgid "Scanned QR code was not in a supported format."
 msgstr "スキャンしたQRコードは対応形式ではありませんでした。"
-
-#. This is on the opening splash screen, displayed above the Seedsigner logo
-#: src/seedsigner/views/screensaver.py
-msgid "An unofficial fork of:"
-msgstr "非公式フォーク元:"
 
 #: src/seedsigner/views/settings_views.py src/seedsigner/views/tools_views.py
 msgid "Advanced"
@@ -3451,10 +3377,6 @@ msgid "Scan"
 msgstr "読み取る"
 
 #: src/seedsigner/views/view.py
-msgid "Cards"
-msgstr "カード"
-
-#: src/seedsigner/views/view.py
 msgid "Factory reset card"
 msgstr "カードを工場出荷時リセット"
 
@@ -3662,7 +3584,6 @@ msgstr "現在の設定により「{}」が無効となっている。"
 msgid "Option Disabled"
 msgstr "その機能が無効となっている"
 
-
 #: src/seedsigner/views/keycard_views.py
 msgid "Storage"
 msgstr "ストレージ"
@@ -3735,20 +3656,11 @@ msgstr "インスタンス名を変更"
 msgid "Instance name"
 msgstr "インスタンス名"
 
-msgid "Pairing password"
-msgstr "ペアリングパスワード"
-
 msgid "Not available"
 msgstr "利用できません"
 
 msgid "Enable Persistent Settings\nand insert a microSD."
 msgstr "永続設定を有効にし\nmicroSDを挿入してください。"
-
-msgid "No saved pairing"
-msgstr "ペアリングなし"
-
-msgid "Pair this instance\nfirst, then rename."
-msgstr "先にこのインスタンスを\nペアリングしてから名前を変更。"
 
 msgid "Renamed"
 msgstr "名前を変更しました"
@@ -3800,3 +3712,57 @@ msgstr "PINを設定（6桁）"
 
 msgid "Confirm PIN"
 msgstr "PINを確認"
+
+msgid "Unblock PIN (PUK)"
+msgstr "PINブロック解除（PUK）"
+
+msgid "Unblock failed"
+msgstr "ブロック解除失敗"
+
+msgid "PIN not blocked"
+msgstr "PINは未ブロック"
+
+msgid "{} PIN tries left.\nUse Change PIN instead."
+msgstr "PIN残り{}回。\n「PINを変更」を使ってください。"
+
+msgid "PUK blocked"
+msgstr "PUKがブロックされました"
+
+msgid "No PUK tries left.\nFactory reset required."
+msgstr "PUK試行が残っていません。\n工場リセットが必要です。"
+
+msgid "Enter PUK"
+msgstr "PUKを入力"
+
+msgid "Wrong PUK"
+msgstr "PUKが違います"
+
+msgid "PIN unblocked"
+msgstr "PINブロック解除済み"
+
+msgid "PIN blocked"
+msgstr "PINがブロックされました"
+
+msgid "Unblock with PUK via\nThis instance menu."
+msgstr "「このインスタンス」メニューの\nPUKでブロック解除。"
+
+msgid "Invalid entry"
+msgstr "無効な入力"
+
+msgid "Must be exactly {} digits."
+msgstr "ちょうど{}桁で入力してください。"
+
+msgid "Max {} chars."
+msgstr "最大{}文字。"
+
+msgid "View addresses"
+msgstr "アドレスを表示"
+
+msgid "Addresses ({})"
+msgstr "アドレス ({})"
+
+msgid "Insert the source Seedkeeper card to copy secrets from, then press Continue."
+msgstr "コピー元のSeedkeeperカードを挿入し、続行を押してください。"
+
+msgid "Insert the destination Seedkeeper card to copy secrets to, then press Continue."
+msgstr "コピー先のSeedkeeperカードを挿入し、続行を押してください。"

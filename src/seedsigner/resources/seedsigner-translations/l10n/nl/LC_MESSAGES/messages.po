@@ -851,15 +851,6 @@ msgid "Not initialised"
 msgstr "Niet geïnitialiseerd"
 
 #: src/seedsigner/helpers/keycard/ui_helpers.py
-#: src/seedsigner/views/keycard_views.py
-msgid ""
-"Run Setup ›\n"
-"Initialise card first."
-msgstr ""
-"Voer Setup uit ›\n"
-"Initialiseer eerst de kaart."
-
-#: src/seedsigner/helpers/keycard/ui_helpers.py
 msgid "No key on card"
 msgstr "Geen sleutel op kaart"
 
@@ -1130,10 +1121,6 @@ msgstr "1 minuut"
 msgid "2 minutes"
 msgstr "2 minuten"
 
-#: src/seedsigner/models/settings_definition.py
-msgid "Aezeed Passphrase"
-msgstr "Aezeed Passphrase"
-
 #. Terminology used by Electrum seeds; equivalent to bip39 passphrase
 #: src/seedsigner/models/settings_definition.py
 msgid "Custom Extension"
@@ -1261,14 +1248,6 @@ msgid "Ambiguous QR"
 msgstr "Dubbelzinnige QR"
 
 #: src/seedsigner/models/settings_definition.py
-msgid "WIF keys"
-msgstr "WIF-sleutels"
-
-#: src/seedsigner/models/settings_definition.py
-msgid "BIP38 keys"
-msgstr "BIP38-sleutels"
-
-#: src/seedsigner/models/settings_definition.py
 msgid "BitBox02 backups"
 msgstr "BitBox02 backups"
 
@@ -1390,10 +1369,6 @@ msgid "Instances"
 msgstr "Instanties"
 
 #: src/seedsigner/views/keycard_views.py
-msgid "Card"
-msgstr "Kaart"
-
-#: src/seedsigner/views/keycard_views.py
 msgid "Lock card"
 msgstr "Kaart vergrendelen"
 
@@ -1416,10 +1391,6 @@ msgstr "Seed importeren"
 #: src/seedsigner/views/keycard_views.py
 msgid "Change PIN"
 msgstr "PIN wijzigen"
-
-#: src/seedsigner/views/keycard_views.py
-msgid "Pairing"
-msgstr "Koppeling"
 
 #: src/seedsigner/views/keycard_views.py src/seedsigner/views/view.py
 msgid "Factory reset"
@@ -1889,14 +1860,6 @@ msgid "Scan SeedQR"
 msgstr "Scan SeedQR"
 
 #: src/seedsigner/views/keycard_views.py
-msgid "Type 12 words"
-msgstr "12 woorden typen"
-
-#: src/seedsigner/views/keycard_views.py
-msgid "Type 24 words"
-msgstr "24 woorden typen"
-
-#: src/seedsigner/views/keycard_views.py
 msgid "Import hex (NGRAVE)"
 msgstr "Hex importeren (NGRAVE)"
 
@@ -2234,14 +2197,6 @@ msgid "Inst {}"
 msgstr "Inst {}"
 
 #: src/seedsigner/views/keycard_views.py
-msgid "List instances"
-msgstr "Instanties weergeven"
-
-#: src/seedsigner/views/keycard_views.py
-msgid "Switch active"
-msgstr "Actieve wisselen"
-
-#: src/seedsigner/views/keycard_views.py
 msgid "Create instance"
 msgstr "Instantie aanmaken"
 
@@ -2250,24 +2205,8 @@ msgid "Delete instance"
 msgstr "Instantie verwijderen"
 
 #: src/seedsigner/views/keycard_views.py
-msgid "Active: {}"
-msgstr "Actief: {}"
-
-#: src/seedsigner/views/keycard_views.py
 msgid "GP failed"
 msgstr "GP mislukt"
-
-#: src/seedsigner/views/keycard_views.py
-msgid ""
-"No Keycard instances\n"
-"found."
-msgstr ""
-"Geen Keycard-instanties\n"
-"gevonden."
-
-#: src/seedsigner/views/keycard_views.py
-msgid "Instances ({}/{})"
-msgstr "Instanties ({}/{})"
 
 #: src/seedsigner/views/keycard_views.py
 msgid "No instances"
@@ -2348,14 +2287,6 @@ msgstr "Verwijderen?"
 #: src/seedsigner/views/keycard_views.py
 msgid "Confirm delete?"
 msgstr "Verwijderen bevestigen?"
-
-#: src/seedsigner/views/keycard_views.py
-msgid ""
-"Delete instance\n"
-"{}?"
-msgstr ""
-"Instantie verwijderen\n"
-"{}?"
 
 #: src/seedsigner/views/keycard_views.py
 msgid "Delete failed"
@@ -2678,11 +2609,6 @@ msgstr "Niet-herkende QR"
 #: src/seedsigner/views/scan_views.py
 msgid "Scanned QR code was not in a supported format."
 msgstr "Gescande QR-code had geen ondersteund formaat."
-
-#. This is on the opening splash screen, displayed above the Seedsigner logo
-#: src/seedsigner/views/screensaver.py
-msgid "An unofficial fork of:"
-msgstr "Een onofficiële fork van:"
 
 #: src/seedsigner/views/settings_views.py src/seedsigner/views/tools_views.py
 msgid "Advanced"
@@ -3481,10 +3407,6 @@ msgid "Scan"
 msgstr "Scan"
 
 #: src/seedsigner/views/view.py
-msgid "Cards"
-msgstr "Kaarten"
-
-#: src/seedsigner/views/view.py
 msgid "Factory reset card"
 msgstr "Kaart fabrieksreset"
 
@@ -3692,7 +3614,6 @@ msgstr "\"{}\" is momenteel uitgeschakeld in Instellingen."
 msgid "Option Disabled"
 msgstr "Optie Uitgeschakeld"
 
-
 #: src/seedsigner/views/keycard_views.py
 msgid "Storage"
 msgstr "Opslag"
@@ -3765,20 +3686,11 @@ msgstr "Instantie hernoemen"
 msgid "Instance name"
 msgstr "Instantienaam"
 
-msgid "Pairing password"
-msgstr "Koppelingswachtwoord"
-
 msgid "Not available"
 msgstr "Niet beschikbaar"
 
 msgid "Enable Persistent Settings\nand insert a microSD."
 msgstr "Schakel Permanente instellingen in\nen plaats een microSD."
-
-msgid "No saved pairing"
-msgstr "Geen koppeling"
-
-msgid "Pair this instance\nfirst, then rename."
-msgstr "Koppel eerst deze\ninstantie, hernoem dan."
 
 msgid "Renamed"
 msgstr "Hernoemd"
@@ -3830,3 +3742,57 @@ msgstr "PIN instellen (6 cijfers)"
 
 msgid "Confirm PIN"
 msgstr "PIN bevestigen"
+
+msgid "Unblock PIN (PUK)"
+msgstr "PIN deblokkeren (PUK)"
+
+msgid "Unblock failed"
+msgstr "Deblokkeren mislukt"
+
+msgid "PIN not blocked"
+msgstr "PIN niet geblokkeerd"
+
+msgid "{} PIN tries left.\nUse Change PIN instead."
+msgstr "Nog {} PIN-pogingen.\nGebruik 'PIN wijzigen'."
+
+msgid "PUK blocked"
+msgstr "PUK geblokkeerd"
+
+msgid "No PUK tries left.\nFactory reset required."
+msgstr "Geen PUK-pogingen over.\nFabrieksreset vereist."
+
+msgid "Enter PUK"
+msgstr "PUK invoeren"
+
+msgid "Wrong PUK"
+msgstr "Verkeerde PUK"
+
+msgid "PIN unblocked"
+msgstr "PIN gedeblokkeerd"
+
+msgid "PIN blocked"
+msgstr "PIN geblokkeerd"
+
+msgid "Unblock with PUK via\nThis instance menu."
+msgstr "Deblokkeer met PUK via\nmenu 'Deze instantie'."
+
+msgid "Invalid entry"
+msgstr "Ongeldige invoer"
+
+msgid "Must be exactly {} digits."
+msgstr "Moet precies {} cijfers zijn."
+
+msgid "Max {} chars."
+msgstr "Max. {} tekens."
+
+msgid "View addresses"
+msgstr "Adressen bekijken"
+
+msgid "Addresses ({})"
+msgstr "Adressen ({})"
+
+msgid "Insert the source Seedkeeper card to copy secrets from, then press Continue."
+msgstr "Plaats de bron-Seedkeeper-kaart om geheimen te kopiëren en druk op Doorgaan."
+
+msgid "Insert the destination Seedkeeper card to copy secrets to, then press Continue."
+msgstr "Plaats de doel-Seedkeeper-kaart om geheimen naar te kopiëren en druk op Doorgaan."

@@ -857,15 +857,6 @@ msgid "Not initialised"
 msgstr "Non inizializzata"
 
 #: src/seedsigner/helpers/keycard/ui_helpers.py
-#: src/seedsigner/views/keycard_views.py
-msgid ""
-"Run Setup ›\n"
-"Initialise card first."
-msgstr ""
-"Esegui Setup ›\n"
-"Inizializza prima la scheda."
-
-#: src/seedsigner/helpers/keycard/ui_helpers.py
 msgid "No key on card"
 msgstr "Nessuna chiave su scheda"
 
@@ -1136,10 +1127,6 @@ msgstr "1 minuto"
 msgid "2 minutes"
 msgstr "2 minuti"
 
-#: src/seedsigner/models/settings_definition.py
-msgid "Aezeed Passphrase"
-msgstr "Aezeed Passphrase"
-
 #. Terminology used by Electrum seeds; equivalent to bip39 passphrase
 #: src/seedsigner/models/settings_definition.py
 msgid "Custom Extension"
@@ -1267,14 +1254,6 @@ msgid "Ambiguous QR"
 msgstr "QR ambiguo"
 
 #: src/seedsigner/models/settings_definition.py
-msgid "WIF keys"
-msgstr "Chiavi WIF"
-
-#: src/seedsigner/models/settings_definition.py
-msgid "BIP38 keys"
-msgstr "Chiavi BIP38"
-
-#: src/seedsigner/models/settings_definition.py
 msgid "BitBox02 backups"
 msgstr "BitBox02 backups"
 
@@ -1396,10 +1375,6 @@ msgid "Instances"
 msgstr "Istanze"
 
 #: src/seedsigner/views/keycard_views.py
-msgid "Card"
-msgstr "Scheda"
-
-#: src/seedsigner/views/keycard_views.py
 msgid "Lock card"
 msgstr "Blocca scheda"
 
@@ -1422,10 +1397,6 @@ msgstr "Importa seed"
 #: src/seedsigner/views/keycard_views.py
 msgid "Change PIN"
 msgstr "Cambia PIN"
-
-#: src/seedsigner/views/keycard_views.py
-msgid "Pairing"
-msgstr "Accoppiamento"
 
 #: src/seedsigner/views/keycard_views.py src/seedsigner/views/view.py
 msgid "Factory reset"
@@ -1899,14 +1870,6 @@ msgid "Scan SeedQR"
 msgstr "Scansiona un SeedQR"
 
 #: src/seedsigner/views/keycard_views.py
-msgid "Type 12 words"
-msgstr "Digita 12 parole"
-
-#: src/seedsigner/views/keycard_views.py
-msgid "Type 24 words"
-msgstr "Digita 24 parole"
-
-#: src/seedsigner/views/keycard_views.py
 msgid "Import hex (NGRAVE)"
 msgstr "Importa hex (NGRAVE)"
 
@@ -2244,14 +2207,6 @@ msgid "Inst {}"
 msgstr "Inst {}"
 
 #: src/seedsigner/views/keycard_views.py
-msgid "List instances"
-msgstr "Elenca istanze"
-
-#: src/seedsigner/views/keycard_views.py
-msgid "Switch active"
-msgstr "Cambia attiva"
-
-#: src/seedsigner/views/keycard_views.py
 msgid "Create instance"
 msgstr "Crea istanza"
 
@@ -2260,24 +2215,8 @@ msgid "Delete instance"
 msgstr "Elimina istanza"
 
 #: src/seedsigner/views/keycard_views.py
-msgid "Active: {}"
-msgstr "Attiva: {}"
-
-#: src/seedsigner/views/keycard_views.py
 msgid "GP failed"
 msgstr "GP fallito"
-
-#: src/seedsigner/views/keycard_views.py
-msgid ""
-"No Keycard instances\n"
-"found."
-msgstr ""
-"Nessuna istanza Keycard\n"
-"trovata."
-
-#: src/seedsigner/views/keycard_views.py
-msgid "Instances ({}/{})"
-msgstr "Istanze ({}/{})"
 
 #: src/seedsigner/views/keycard_views.py
 msgid "No instances"
@@ -2358,14 +2297,6 @@ msgstr "Eliminare?"
 #: src/seedsigner/views/keycard_views.py
 msgid "Confirm delete?"
 msgstr "Confermare l'eliminazione?"
-
-#: src/seedsigner/views/keycard_views.py
-msgid ""
-"Delete instance\n"
-"{}?"
-msgstr ""
-"Eliminare l'istanza\n"
-"{}?"
 
 #: src/seedsigner/views/keycard_views.py
 msgid "Delete failed"
@@ -2688,11 +2619,6 @@ msgstr "QR non riconosciuto"
 #: src/seedsigner/views/scan_views.py
 msgid "Scanned QR code was not in a supported format."
 msgstr "Il codice QR scansionato non è in un formato supportato."
-
-#. This is on the opening splash screen, displayed above the Seedsigner logo
-#: src/seedsigner/views/screensaver.py
-msgid "An unofficial fork of:"
-msgstr "Un fork non ufficiale di:"
 
 #: src/seedsigner/views/settings_views.py src/seedsigner/views/tools_views.py
 msgid "Advanced"
@@ -3495,10 +3421,6 @@ msgid "Scan"
 msgstr "Scansiona"
 
 #: src/seedsigner/views/view.py
-msgid "Cards"
-msgstr "Schede"
-
-#: src/seedsigner/views/view.py
 msgid "Factory reset card"
 msgstr "Reset di fabbrica scheda"
 
@@ -3706,7 +3628,6 @@ msgstr "\"{}\" è attualmente disabilitato nelle Impostazioni."
 msgid "Option Disabled"
 msgstr "Opzione disabilitata"
 
-
 #: src/seedsigner/views/keycard_views.py
 msgid "Storage"
 msgstr "Memoria"
@@ -3779,20 +3700,11 @@ msgstr "Rinomina istanza"
 msgid "Instance name"
 msgstr "Nome istanza"
 
-msgid "Pairing password"
-msgstr "Password di accoppiamento"
-
 msgid "Not available"
 msgstr "Non disponibile"
 
 msgid "Enable Persistent Settings\nand insert a microSD."
 msgstr "Attiva Impostazioni persistenti\ne inserisci una microSD."
-
-msgid "No saved pairing"
-msgstr "Nessun accoppiamento"
-
-msgid "Pair this instance\nfirst, then rename."
-msgstr "Accoppia prima questa\nistanza, poi rinomina."
 
 msgid "Renamed"
 msgstr "Rinominato"
@@ -3844,3 +3756,57 @@ msgstr "Imposta PIN (6 cifre)"
 
 msgid "Confirm PIN"
 msgstr "Conferma PIN"
+
+msgid "Unblock PIN (PUK)"
+msgstr "Sblocca PIN (PUK)"
+
+msgid "Unblock failed"
+msgstr "Sblocco non riuscito"
+
+msgid "PIN not blocked"
+msgstr "PIN non bloccato"
+
+msgid "{} PIN tries left.\nUse Change PIN instead."
+msgstr "{} tentativi PIN rimasti.\nUsa «Cambia PIN»."
+
+msgid "PUK blocked"
+msgstr "PUK bloccato"
+
+msgid "No PUK tries left.\nFactory reset required."
+msgstr "Nessun tentativo PUK.\nServe reset di fabbrica."
+
+msgid "Enter PUK"
+msgstr "Inserisci il PUK"
+
+msgid "Wrong PUK"
+msgstr "PUK errato"
+
+msgid "PIN unblocked"
+msgstr "PIN sbloccato"
+
+msgid "PIN blocked"
+msgstr "PIN bloccato"
+
+msgid "Unblock with PUK via\nThis instance menu."
+msgstr "Sblocca con il PUK dal\nmenu «Questa istanza»."
+
+msgid "Invalid entry"
+msgstr "Inserimento non valido"
+
+msgid "Must be exactly {} digits."
+msgstr "Deve avere esattamente {} cifre."
+
+msgid "Max {} chars."
+msgstr "Max {} caratteri."
+
+msgid "View addresses"
+msgstr "Vedi indirizzi"
+
+msgid "Addresses ({})"
+msgstr "Indirizzi ({})"
+
+msgid "Insert the source Seedkeeper card to copy secrets from, then press Continue."
+msgstr "Inserisci la carta Seedkeeper di origine da cui copiare i segreti, poi premi Continua."
+
+msgid "Insert the destination Seedkeeper card to copy secrets to, then press Continue."
+msgstr "Inserisci la carta Seedkeeper di destinazione su cui copiare i segreti, poi premi Continua."

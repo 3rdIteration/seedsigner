@@ -844,15 +844,6 @@ msgid "Not initialised"
 msgstr "Não inicializado"
 
 #: src/seedsigner/helpers/keycard/ui_helpers.py
-#: src/seedsigner/views/keycard_views.py
-msgid ""
-"Run Setup ›\n"
-"Initialise card first."
-msgstr ""
-"Execute Configurar ›\n"
-"Inicialize o cartão primeiro."
-
-#: src/seedsigner/helpers/keycard/ui_helpers.py
 msgid "No key on card"
 msgstr "Sem chave no cartão"
 
@@ -1123,10 +1114,6 @@ msgstr "1 minuto"
 msgid "2 minutes"
 msgstr "2 minutos"
 
-#: src/seedsigner/models/settings_definition.py
-msgid "Aezeed Passphrase"
-msgstr "Aezeed Passphrase"
-
 #. Terminology used by Electrum seeds; equivalent to bip39 passphrase
 #: src/seedsigner/models/settings_definition.py
 msgid "Custom Extension"
@@ -1253,14 +1240,6 @@ msgid "Ambiguous QR"
 msgstr "QR ambíguo"
 
 #: src/seedsigner/models/settings_definition.py
-msgid "WIF keys"
-msgstr "Chaves WIF"
-
-#: src/seedsigner/models/settings_definition.py
-msgid "BIP38 keys"
-msgstr "Chaves BIP38"
-
-#: src/seedsigner/models/settings_definition.py
 msgid "BitBox02 backups"
 msgstr "BitBox02 backups"
 
@@ -1382,10 +1361,6 @@ msgid "Instances"
 msgstr "Instâncias"
 
 #: src/seedsigner/views/keycard_views.py
-msgid "Card"
-msgstr "Cartão"
-
-#: src/seedsigner/views/keycard_views.py
 msgid "Lock card"
 msgstr "Bloquear cartão"
 
@@ -1408,10 +1383,6 @@ msgstr "Importar seed"
 #: src/seedsigner/views/keycard_views.py
 msgid "Change PIN"
 msgstr "Alterar PIN"
-
-#: src/seedsigner/views/keycard_views.py
-msgid "Pairing"
-msgstr "Emparelhamento"
 
 #: src/seedsigner/views/keycard_views.py src/seedsigner/views/view.py
 msgid "Factory reset"
@@ -1881,14 +1852,6 @@ msgid "Scan SeedQR"
 msgstr "Ler SeedQR"
 
 #: src/seedsigner/views/keycard_views.py
-msgid "Type 12 words"
-msgstr "Escrever 12 palavras"
-
-#: src/seedsigner/views/keycard_views.py
-msgid "Type 24 words"
-msgstr "Escrever 24 palavras"
-
-#: src/seedsigner/views/keycard_views.py
 msgid "Import hex (NGRAVE)"
 msgstr "Importar hex (NGRAVE)"
 
@@ -2226,14 +2189,6 @@ msgid "Inst {}"
 msgstr "Inst {}"
 
 #: src/seedsigner/views/keycard_views.py
-msgid "List instances"
-msgstr "Listar instâncias"
-
-#: src/seedsigner/views/keycard_views.py
-msgid "Switch active"
-msgstr "Mudar ativa"
-
-#: src/seedsigner/views/keycard_views.py
 msgid "Create instance"
 msgstr "Criar instância"
 
@@ -2242,24 +2197,8 @@ msgid "Delete instance"
 msgstr "Eliminar instância"
 
 #: src/seedsigner/views/keycard_views.py
-msgid "Active: {}"
-msgstr "Ativa: {}"
-
-#: src/seedsigner/views/keycard_views.py
 msgid "GP failed"
 msgstr "Falha no GP"
-
-#: src/seedsigner/views/keycard_views.py
-msgid ""
-"No Keycard instances\n"
-"found."
-msgstr ""
-"Nenhuma instância Keycard\n"
-"encontrada."
-
-#: src/seedsigner/views/keycard_views.py
-msgid "Instances ({}/{})"
-msgstr "Instâncias ({}/{})"
 
 #: src/seedsigner/views/keycard_views.py
 msgid "No instances"
@@ -2340,14 +2279,6 @@ msgstr "Eliminar?"
 #: src/seedsigner/views/keycard_views.py
 msgid "Confirm delete?"
 msgstr "Confirmar eliminação?"
-
-#: src/seedsigner/views/keycard_views.py
-msgid ""
-"Delete instance\n"
-"{}?"
-msgstr ""
-"Eliminar instância\n"
-"{}?"
 
 #: src/seedsigner/views/keycard_views.py
 msgid "Delete failed"
@@ -2670,11 +2601,6 @@ msgstr "QR não reconhecido"
 #: src/seedsigner/views/scan_views.py
 msgid "Scanned QR code was not in a supported format."
 msgstr "O código QR lido não estava num formato suportado."
-
-#. This is on the opening splash screen, displayed above the Seedsigner logo
-#: src/seedsigner/views/screensaver.py
-msgid "An unofficial fork of:"
-msgstr "Um fork não oficial de:"
 
 #: src/seedsigner/views/settings_views.py src/seedsigner/views/tools_views.py
 msgid "Advanced"
@@ -3474,10 +3400,6 @@ msgid "Scan"
 msgstr "Ler"
 
 #: src/seedsigner/views/view.py
-msgid "Cards"
-msgstr "Cartões"
-
-#: src/seedsigner/views/view.py
 msgid "Factory reset card"
 msgstr "Repor cartão de fábrica"
 
@@ -3709,7 +3631,6 @@ msgstr "{} / {} KB usados\n{} KB livres"
 msgid "Storage info not available\non this card."
 msgstr "Informação de armazenamento\nindisponível neste cartão."
 
-
 #: src/seedsigner/views/keycard_views.py
 msgid "Check failed"
 msgstr "Verificação falhou"
@@ -3758,20 +3679,11 @@ msgstr "Renomear instância"
 msgid "Instance name"
 msgstr "Nome da instância"
 
-msgid "Pairing password"
-msgstr "Palavra-passe de emparelhamento"
-
 msgid "Not available"
 msgstr "Indisponível"
 
 msgid "Enable Persistent Settings\nand insert a microSD."
 msgstr "Ative Definições Persistentes\ne insira um microSD."
-
-msgid "No saved pairing"
-msgstr "Sem emparelhamento"
-
-msgid "Pair this instance\nfirst, then rename."
-msgstr "Empareie esta instância\nprimeiro, depois renomeie."
 
 msgid "Renamed"
 msgstr "Renomeado"
@@ -3823,3 +3735,57 @@ msgstr "Definir PIN (6 dígitos)"
 
 msgid "Confirm PIN"
 msgstr "Confirmar PIN"
+
+msgid "Unblock PIN (PUK)"
+msgstr "Desbloquear PIN (PUK)"
+
+msgid "Unblock failed"
+msgstr "Desbloqueio falhou"
+
+msgid "PIN not blocked"
+msgstr "PIN não bloqueado"
+
+msgid "{} PIN tries left.\nUse Change PIN instead."
+msgstr "Restam {} tentativas de PIN.\nUsa «Alterar PIN»."
+
+msgid "PUK blocked"
+msgstr "PUK bloqueado"
+
+msgid "No PUK tries left.\nFactory reset required."
+msgstr "Sem tentativas de PUK.\nExige reset de fábrica."
+
+msgid "Enter PUK"
+msgstr "Introduzir PUK"
+
+msgid "Wrong PUK"
+msgstr "PUK errado"
+
+msgid "PIN unblocked"
+msgstr "PIN desbloqueado"
+
+msgid "PIN blocked"
+msgstr "PIN bloqueado"
+
+msgid "Unblock with PUK via\nThis instance menu."
+msgstr "Desbloqueia com o PUK no\nmenu «Esta instância»."
+
+msgid "Invalid entry"
+msgstr "Entrada inválida"
+
+msgid "Must be exactly {} digits."
+msgstr "Tem de ter exatamente {} dígitos."
+
+msgid "Max {} chars."
+msgstr "Máx. {} caracteres."
+
+msgid "View addresses"
+msgstr "Ver endereços"
+
+msgid "Addresses ({})"
+msgstr "Endereços ({})"
+
+msgid "Insert the source Seedkeeper card to copy secrets from, then press Continue."
+msgstr "Insere o cartão Seedkeeper de origem para copiar os segredos e prime Continuar."
+
+msgid "Insert the destination Seedkeeper card to copy secrets to, then press Continue."
+msgstr "Insere o cartão Seedkeeper de destino para onde copiar os segredos e prime Continuar."

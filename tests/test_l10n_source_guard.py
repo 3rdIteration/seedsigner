@@ -1,8 +1,9 @@
-"""AST lint: user-facing strings in keycard_views.py must be wrapped in
+"""AST lint: user-facing strings in the view layer must be wrapped in
 ``_()`` so they are translated at render time.
 
 This would have caught the duress-PIN screen shipping raw English text
-while the rest of the file (290+ ``_()`` calls) was translated.
+while the rest of keycard_views.py (290+ ``_()`` calls) was translated —
+and on its first run it surfaced four more untranslated PIN prompts.
 
 ButtonOption labels are deliberately NOT checked: they are plain literals
 by convention (extracted into the catalogs and translated at render).
@@ -13,10 +14,15 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
+import pytest
 
-KEYCARD_VIEWS = (
-    Path(__file__).resolve().parent.parent
-    / "src" / "seedsigner" / "views" / "keycard_views.py"
+
+SRC = Path(__file__).resolve().parent.parent / "src" / "seedsigner"
+
+# Every module that renders screens with user-facing text.
+LINTED_FILES = sorted(
+    list((SRC / "views").glob("*.py"))
+    + [SRC / "helpers" / "keycard" / "ui_helpers.py"],
 )
 
 # Kwargs whose values are rendered verbatim on screen.
@@ -31,8 +37,8 @@ def _is_user_facing(value: str) -> bool:
     return any(c.isalpha() for c in value) and value not in ALLOWLIST
 
 
-def _offenders() -> list[tuple[int, str, str]]:
-    tree = ast.parse(KEYCARD_VIEWS.read_text(encoding="utf-8"))
+def _offenders(path: Path) -> list[tuple[int, str, str]]:
+    tree = ast.parse(path.read_text(encoding="utf-8"))
     found = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
@@ -59,10 +65,11 @@ def _offenders() -> list[tuple[int, str, str]]:
     return found
 
 
-def test_keycard_views_ui_strings_are_wrapped_in_gettext():
-    offenders = _offenders()
+@pytest.mark.parametrize("path", LINTED_FILES, ids=lambda p: p.name)
+def test_ui_strings_are_wrapped_in_gettext(path):
+    offenders = _offenders(path)
     assert not offenders, (
-        "Raw user-facing string literals found in keycard_views.py — wrap "
+        f"Raw user-facing string literals found in {path.name} — wrap "
         "them in _() and add the msgids to all 9 l10n catalogs:\n"
         + "\n".join(f"  line {ln}: {kind}={text!r}" for ln, kind, text in offenders)
     )

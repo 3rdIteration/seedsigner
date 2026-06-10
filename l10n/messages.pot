@@ -818,13 +818,6 @@ msgid "Not initialised"
 msgstr ""
 
 #: src/seedsigner/helpers/keycard/ui_helpers.py
-#: src/seedsigner/views/keycard_views.py
-msgid ""
-"Run Setup ›\n"
-"Initialise card first."
-msgstr ""
-
-#: src/seedsigner/helpers/keycard/ui_helpers.py
 msgid "No key on card"
 msgstr ""
 
@@ -1077,10 +1070,6 @@ msgstr ""
 msgid "2 minutes"
 msgstr ""
 
-#: src/seedsigner/models/settings_definition.py
-msgid "Aezeed Passphrase"
-msgstr ""
-
 #. Terminology used by Electrum seeds; equivalent to bip39 passphrase
 #: src/seedsigner/models/settings_definition.py
 msgid "Custom Extension"
@@ -1205,14 +1194,6 @@ msgid "Ambiguous QR"
 msgstr ""
 
 #: src/seedsigner/models/settings_definition.py
-msgid "WIF keys"
-msgstr ""
-
-#: src/seedsigner/models/settings_definition.py
-msgid "BIP38 keys"
-msgstr ""
-
-#: src/seedsigner/models/settings_definition.py
 msgid "BitBox02 backups"
 msgstr ""
 
@@ -1330,10 +1311,6 @@ msgid "Instances"
 msgstr ""
 
 #: src/seedsigner/views/keycard_views.py
-msgid "Card"
-msgstr ""
-
-#: src/seedsigner/views/keycard_views.py
 msgid "Lock card"
 msgstr ""
 
@@ -1355,10 +1332,6 @@ msgstr ""
 
 #: src/seedsigner/views/keycard_views.py
 msgid "Change PIN"
-msgstr ""
-
-#: src/seedsigner/views/keycard_views.py
-msgid "Pairing"
 msgstr ""
 
 #: src/seedsigner/views/keycard_views.py src/seedsigner/views/view.py
@@ -1785,14 +1758,6 @@ msgid "Scan SeedQR"
 msgstr ""
 
 #: src/seedsigner/views/keycard_views.py
-msgid "Type 12 words"
-msgstr ""
-
-#: src/seedsigner/views/keycard_views.py
-msgid "Type 24 words"
-msgstr ""
-
-#: src/seedsigner/views/keycard_views.py
 msgid "Import hex (NGRAVE)"
 msgstr ""
 
@@ -2105,14 +2070,6 @@ msgid "Inst {}"
 msgstr ""
 
 #: src/seedsigner/views/keycard_views.py
-msgid "List instances"
-msgstr ""
-
-#: src/seedsigner/views/keycard_views.py
-msgid "Switch active"
-msgstr ""
-
-#: src/seedsigner/views/keycard_views.py
 msgid "Create instance"
 msgstr ""
 
@@ -2121,21 +2078,7 @@ msgid "Delete instance"
 msgstr ""
 
 #: src/seedsigner/views/keycard_views.py
-msgid "Active: {}"
-msgstr ""
-
-#: src/seedsigner/views/keycard_views.py
 msgid "GP failed"
-msgstr ""
-
-#: src/seedsigner/views/keycard_views.py
-msgid ""
-"No Keycard instances\n"
-"found."
-msgstr ""
-
-#: src/seedsigner/views/keycard_views.py
-msgid "Instances ({}/{})"
 msgstr ""
 
 #: src/seedsigner/views/keycard_views.py
@@ -2210,12 +2153,6 @@ msgstr ""
 
 #: src/seedsigner/views/keycard_views.py
 msgid "Confirm delete?"
-msgstr ""
-
-#: src/seedsigner/views/keycard_views.py
-msgid ""
-"Delete instance\n"
-"{}?"
 msgstr ""
 
 #: src/seedsigner/views/keycard_views.py
@@ -2519,11 +2456,6 @@ msgstr ""
 
 #: src/seedsigner/views/scan_views.py
 msgid "Scanned QR code was not in a supported format."
-msgstr ""
-
-#. This is on the opening splash screen, displayed above the Seedsigner logo
-#: src/seedsigner/views/screensaver.py
-msgid "An unofficial fork of:"
 msgstr ""
 
 #: src/seedsigner/views/settings_views.py src/seedsigner/views/tools_views.py
@@ -3247,10 +3179,6 @@ msgid "Scan"
 msgstr ""
 
 #: src/seedsigner/views/view.py
-msgid "Cards"
-msgstr ""
-
-#: src/seedsigner/views/view.py
 msgid "Factory reset card"
 msgstr ""
 
@@ -3471,7 +3399,6 @@ msgstr ""
 msgid "Storage info not available\non this card."
 msgstr ""
 
-
 #: src/seedsigner/views/keycard_views.py
 msgid "Check failed"
 msgstr ""
@@ -3516,19 +3443,10 @@ msgstr ""
 msgid "Instance name"
 msgstr ""
 
-msgid "Pairing password"
-msgstr ""
-
 msgid "Not available"
 msgstr ""
 
 msgid "Enable Persistent Settings\nand insert a microSD."
-msgstr ""
-
-msgid "No saved pairing"
-msgstr ""
-
-msgid "Pair this instance\nfirst, then rename."
 msgstr ""
 
 msgid "Renamed"
@@ -3580,4 +3498,58 @@ msgid "Set PIN (6 digits)"
 msgstr ""
 
 msgid "Confirm PIN"
+msgstr ""
+
+msgid "Unblock PIN (PUK)"
+msgstr ""
+
+msgid "Unblock failed"
+msgstr ""
+
+msgid "PIN not blocked"
+msgstr ""
+
+msgid "{} PIN tries left.\nUse Change PIN instead."
+msgstr ""
+
+msgid "PUK blocked"
+msgstr ""
+
+msgid "No PUK tries left.\nFactory reset required."
+msgstr ""
+
+msgid "Enter PUK"
+msgstr ""
+
+msgid "Wrong PUK"
+msgstr ""
+
+msgid "PIN unblocked"
+msgstr ""
+
+msgid "PIN blocked"
+msgstr ""
+
+msgid "Unblock with PUK via\nThis instance menu."
+msgstr ""
+
+msgid "Invalid entry"
+msgstr ""
+
+msgid "Must be exactly {} digits."
+msgstr ""
+
+msgid "Max {} chars."
+msgstr ""
+
+msgid "View addresses"
+msgstr ""
+
+msgid "Addresses ({})"
+msgstr ""
+
+msgid "Insert the source Seedkeeper card to copy secrets from, then press Continue."
+msgstr ""
+
+msgid "Insert the destination Seedkeeper card to copy secrets to, then press Continue."
 msgstr ""

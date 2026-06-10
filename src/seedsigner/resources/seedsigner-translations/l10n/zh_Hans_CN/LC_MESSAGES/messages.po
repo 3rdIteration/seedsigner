@@ -838,15 +838,6 @@ msgid "Not initialised"
 msgstr "未初始化"
 
 #: src/seedsigner/helpers/keycard/ui_helpers.py
-#: src/seedsigner/views/keycard_views.py
-msgid ""
-"Run Setup ›\n"
-"Initialise card first."
-msgstr ""
-"请先运行“设置 ›”\n"
-"初始化卡片。"
-
-#: src/seedsigner/helpers/keycard/ui_helpers.py
 msgid "No key on card"
 msgstr "卡上无密钥"
 
@@ -1113,10 +1104,6 @@ msgstr "1 分钟"
 msgid "2 minutes"
 msgstr "2 分钟"
 
-#: src/seedsigner/models/settings_definition.py
-msgid "Aezeed Passphrase"
-msgstr "Aezeed Passphrase"
-
 #. Terminology used by Electrum seeds; equivalent to bip39 passphrase
 #: src/seedsigner/models/settings_definition.py
 msgid "Custom Extension"
@@ -1241,14 +1228,6 @@ msgid "Ambiguous QR"
 msgstr "模糊 QR"
 
 #: src/seedsigner/models/settings_definition.py
-msgid "WIF keys"
-msgstr "WIF 密钥"
-
-#: src/seedsigner/models/settings_definition.py
-msgid "BIP38 keys"
-msgstr "BIP38 密钥"
-
-#: src/seedsigner/models/settings_definition.py
 msgid "BitBox02 backups"
 msgstr "BitBox02 backups"
 
@@ -1370,10 +1349,6 @@ msgid "Instances"
 msgstr "实例"
 
 #: src/seedsigner/views/keycard_views.py
-msgid "Card"
-msgstr "卡片"
-
-#: src/seedsigner/views/keycard_views.py
 msgid "Lock card"
 msgstr "锁定卡片"
 
@@ -1396,10 +1371,6 @@ msgstr "导入种子"
 #: src/seedsigner/views/keycard_views.py
 msgid "Change PIN"
 msgstr "修改 PIN"
-
-#: src/seedsigner/views/keycard_views.py
-msgid "Pairing"
-msgstr "配对"
 
 #: src/seedsigner/views/keycard_views.py src/seedsigner/views/view.py
 msgid "Factory reset"
@@ -1865,14 +1836,6 @@ msgid "Scan SeedQR"
 msgstr "扫描 SeedQR"
 
 #: src/seedsigner/views/keycard_views.py
-msgid "Type 12 words"
-msgstr "输入 12 个词"
-
-#: src/seedsigner/views/keycard_views.py
-msgid "Type 24 words"
-msgstr "输入 24 个词"
-
-#: src/seedsigner/views/keycard_views.py
 msgid "Import hex (NGRAVE)"
 msgstr "导入十六进制（NGRAVE）"
 
@@ -2210,14 +2173,6 @@ msgid "Inst {}"
 msgstr "Inst {}"
 
 #: src/seedsigner/views/keycard_views.py
-msgid "List instances"
-msgstr "列出实例"
-
-#: src/seedsigner/views/keycard_views.py
-msgid "Switch active"
-msgstr "切换活动"
-
-#: src/seedsigner/views/keycard_views.py
 msgid "Create instance"
 msgstr "创建实例"
 
@@ -2226,24 +2181,8 @@ msgid "Delete instance"
 msgstr "删除实例"
 
 #: src/seedsigner/views/keycard_views.py
-msgid "Active: {}"
-msgstr "活动：{}"
-
-#: src/seedsigner/views/keycard_views.py
 msgid "GP failed"
 msgstr "GP 失败"
-
-#: src/seedsigner/views/keycard_views.py
-msgid ""
-"No Keycard instances\n"
-"found."
-msgstr ""
-"未找到 Keycard\n"
-"实例。"
-
-#: src/seedsigner/views/keycard_views.py
-msgid "Instances ({}/{})"
-msgstr "实例（{}/{}）"
 
 #: src/seedsigner/views/keycard_views.py
 msgid "No instances"
@@ -2324,14 +2263,6 @@ msgstr "删除？"
 #: src/seedsigner/views/keycard_views.py
 msgid "Confirm delete?"
 msgstr "确认删除？"
-
-#: src/seedsigner/views/keycard_views.py
-msgid ""
-"Delete instance\n"
-"{}?"
-msgstr ""
-"删除实例\n"
-"{}？"
 
 #: src/seedsigner/views/keycard_views.py
 msgid "Delete failed"
@@ -2654,11 +2585,6 @@ msgstr "无法识别的 QR"
 #: src/seedsigner/views/scan_views.py
 msgid "Scanned QR code was not in a supported format."
 msgstr "扫描的 QR 码格式不受支持。"
-
-#. This is on the opening splash screen, displayed above the Seedsigner logo
-#: src/seedsigner/views/screensaver.py
-msgid "An unofficial fork of:"
-msgstr "非官方分支，源自："
 
 #: src/seedsigner/views/settings_views.py src/seedsigner/views/tools_views.py
 msgid "Advanced"
@@ -3450,10 +3376,6 @@ msgid "Scan"
 msgstr "扫描"
 
 #: src/seedsigner/views/view.py
-msgid "Cards"
-msgstr "卡片"
-
-#: src/seedsigner/views/view.py
 msgid "Factory reset card"
 msgstr "恢复出厂设置卡片"
 
@@ -3661,7 +3583,6 @@ msgstr "设置中的 ”{}\" 目前处于被禁用的状态。"
 msgid "Option Disabled"
 msgstr "选项已被禁用"
 
-
 #: src/seedsigner/views/keycard_views.py
 msgid "Storage"
 msgstr "存储"
@@ -3734,20 +3655,11 @@ msgstr "重命名实例"
 msgid "Instance name"
 msgstr "实例名称"
 
-msgid "Pairing password"
-msgstr "配对密码"
-
 msgid "Not available"
 msgstr "不可用"
 
 msgid "Enable Persistent Settings\nand insert a microSD."
 msgstr "启用持久化设置\n并插入microSD卡。"
-
-msgid "No saved pairing"
-msgstr "无配对记录"
-
-msgid "Pair this instance\nfirst, then rename."
-msgstr "请先配对此实例，\n然后再重命名。"
 
 msgid "Renamed"
 msgstr "已重命名"
@@ -3799,3 +3711,57 @@ msgstr "设置 PIN（6 位数字）"
 
 msgid "Confirm PIN"
 msgstr "确认 PIN"
+
+msgid "Unblock PIN (PUK)"
+msgstr "解锁 PIN（PUK）"
+
+msgid "Unblock failed"
+msgstr "解锁失败"
+
+msgid "PIN not blocked"
+msgstr "PIN 未锁定"
+
+msgid "{} PIN tries left.\nUse Change PIN instead."
+msgstr "PIN 还剩 {} 次。\n请改用“修改 PIN”。"
+
+msgid "PUK blocked"
+msgstr "PUK 已锁定"
+
+msgid "No PUK tries left.\nFactory reset required."
+msgstr "PUK 次数已用完。\n需要恢复出厂设置。"
+
+msgid "Enter PUK"
+msgstr "输入 PUK"
+
+msgid "Wrong PUK"
+msgstr "PUK 错误"
+
+msgid "PIN unblocked"
+msgstr "PIN 已解锁"
+
+msgid "PIN blocked"
+msgstr "PIN 已锁定"
+
+msgid "Unblock with PUK via\nThis instance menu."
+msgstr "请在“此实例”菜单中\n用 PUK 解锁。"
+
+msgid "Invalid entry"
+msgstr "输入无效"
+
+msgid "Must be exactly {} digits."
+msgstr "必须正好 {} 位数字。"
+
+msgid "Max {} chars."
+msgstr "最多 {} 个字符。"
+
+msgid "View addresses"
+msgstr "查看地址"
+
+msgid "Addresses ({})"
+msgstr "地址（{}）"
+
+msgid "Insert the source Seedkeeper card to copy secrets from, then press Continue."
+msgstr "插入源 Seedkeeper 卡以复制机密，然后按继续。"
+
+msgid "Insert the destination Seedkeeper card to copy secrets to, then press Continue."
+msgstr "插入目标 Seedkeeper 卡以复制机密，然后按继续。"

@@ -850,15 +850,6 @@ msgid "Not initialised"
 msgstr "No inicialitzada"
 
 #: src/seedsigner/helpers/keycard/ui_helpers.py
-#: src/seedsigner/views/keycard_views.py
-msgid ""
-"Run Setup ›\n"
-"Initialise card first."
-msgstr ""
-"Fes Configuració ›\n"
-"Inicialitza la targeta."
-
-#: src/seedsigner/helpers/keycard/ui_helpers.py
 msgid "No key on card"
 msgstr "Cap clau a la targeta"
 
@@ -1129,10 +1120,6 @@ msgstr "1 minut"
 msgid "2 minutes"
 msgstr "2 minuts"
 
-#: src/seedsigner/models/settings_definition.py
-msgid "Aezeed Passphrase"
-msgstr "Aezeed Passphrase"
-
 #. Terminology used by Electrum seeds; equivalent to bip39 passphrase
 #: src/seedsigner/models/settings_definition.py
 msgid "Custom Extension"
@@ -1260,14 +1247,6 @@ msgid "Ambiguous QR"
 msgstr "QR ambigu"
 
 #: src/seedsigner/models/settings_definition.py
-msgid "WIF keys"
-msgstr "Claus WIF"
-
-#: src/seedsigner/models/settings_definition.py
-msgid "BIP38 keys"
-msgstr "Claus BIP38"
-
-#: src/seedsigner/models/settings_definition.py
 msgid "BitBox02 backups"
 msgstr "BitBox02 backups"
 
@@ -1389,10 +1368,6 @@ msgid "Instances"
 msgstr "Instàncies"
 
 #: src/seedsigner/views/keycard_views.py
-msgid "Card"
-msgstr "Targeta"
-
-#: src/seedsigner/views/keycard_views.py
 msgid "Lock card"
 msgstr "Bloqueja la targeta"
 
@@ -1415,10 +1390,6 @@ msgstr "Importa llavor"
 #: src/seedsigner/views/keycard_views.py
 msgid "Change PIN"
 msgstr "Canvia el PIN"
-
-#: src/seedsigner/views/keycard_views.py
-msgid "Pairing"
-msgstr "Aparellament"
 
 #: src/seedsigner/views/keycard_views.py src/seedsigner/views/view.py
 msgid "Factory reset"
@@ -1888,14 +1859,6 @@ msgid "Scan SeedQR"
 msgstr "Escanejar QR"
 
 #: src/seedsigner/views/keycard_views.py
-msgid "Type 12 words"
-msgstr "Escriu 12 paraules"
-
-#: src/seedsigner/views/keycard_views.py
-msgid "Type 24 words"
-msgstr "Escriu 24 paraules"
-
-#: src/seedsigner/views/keycard_views.py
 msgid "Import hex (NGRAVE)"
 msgstr "Importa hex (NGRAVE)"
 
@@ -2233,14 +2196,6 @@ msgid "Inst {}"
 msgstr "Inst {}"
 
 #: src/seedsigner/views/keycard_views.py
-msgid "List instances"
-msgstr "Llista d'instàncies"
-
-#: src/seedsigner/views/keycard_views.py
-msgid "Switch active"
-msgstr "Canvia l'activa"
-
-#: src/seedsigner/views/keycard_views.py
 msgid "Create instance"
 msgstr "Crea instància"
 
@@ -2249,24 +2204,8 @@ msgid "Delete instance"
 msgstr "Elimina instància"
 
 #: src/seedsigner/views/keycard_views.py
-msgid "Active: {}"
-msgstr "Activa: {}"
-
-#: src/seedsigner/views/keycard_views.py
 msgid "GP failed"
 msgstr "Ha fallat el GP"
-
-#: src/seedsigner/views/keycard_views.py
-msgid ""
-"No Keycard instances\n"
-"found."
-msgstr ""
-"No s'han trobat instàncies\n"
-"de Keycard."
-
-#: src/seedsigner/views/keycard_views.py
-msgid "Instances ({}/{})"
-msgstr "Instàncies ({}/{})"
 
 #: src/seedsigner/views/keycard_views.py
 msgid "No instances"
@@ -2347,14 +2286,6 @@ msgstr "Eliminar?"
 #: src/seedsigner/views/keycard_views.py
 msgid "Confirm delete?"
 msgstr "Confirmes l'eliminació?"
-
-#: src/seedsigner/views/keycard_views.py
-msgid ""
-"Delete instance\n"
-"{}?"
-msgstr ""
-"Eliminar la instància\n"
-"{}?"
 
 #: src/seedsigner/views/keycard_views.py
 msgid "Delete failed"
@@ -2677,11 +2608,6 @@ msgstr "QR no reconegut"
 #: src/seedsigner/views/scan_views.py
 msgid "Scanned QR code was not in a supported format."
 msgstr "El QR escanejat no tenia un format compatible."
-
-#. This is on the opening splash screen, displayed above the Seedsigner logo
-#: src/seedsigner/views/screensaver.py
-msgid "An unofficial fork of:"
-msgstr "Una bifurcació no oficial de:"
 
 #: src/seedsigner/views/settings_views.py src/seedsigner/views/tools_views.py
 msgid "Advanced"
@@ -3484,10 +3410,6 @@ msgid "Scan"
 msgstr "Escanejar"
 
 #: src/seedsigner/views/view.py
-msgid "Cards"
-msgstr "Targetes"
-
-#: src/seedsigner/views/view.py
 msgid "Factory reset card"
 msgstr "Restabliment de fàbrica de la targeta"
 
@@ -3695,7 +3617,6 @@ msgstr "\"{}\" està actualment deshabilitat a Preferències."
 msgid "Option Disabled"
 msgstr "Opció deshabilitada"
 
-
 #: src/seedsigner/views/keycard_views.py
 msgid "Storage"
 msgstr "Emmagatzematge"
@@ -3768,20 +3689,11 @@ msgstr "Reanomena la instància"
 msgid "Instance name"
 msgstr "Nom de la instància"
 
-msgid "Pairing password"
-msgstr "Contrasenya d'aparellament"
-
 msgid "Not available"
 msgstr "No disponible"
 
 msgid "Enable Persistent Settings\nand insert a microSD."
 msgstr "Activa Configuració persistent\ni insereix una microSD."
-
-msgid "No saved pairing"
-msgstr "Sense aparellament"
-
-msgid "Pair this instance\nfirst, then rename."
-msgstr "Empareu primer aquesta\ninstància i després reanomeneu."
 
 msgid "Renamed"
 msgstr "Reanomenat"
@@ -3833,3 +3745,57 @@ msgstr "Defineix PIN (6 dígits)"
 
 msgid "Confirm PIN"
 msgstr "Confirma el PIN"
+
+msgid "Unblock PIN (PUK)"
+msgstr "Desbloqueja el PIN (PUK)"
+
+msgid "Unblock failed"
+msgstr "Desbloqueig fallit"
+
+msgid "PIN not blocked"
+msgstr "PIN no bloquejat"
+
+msgid "{} PIN tries left.\nUse Change PIN instead."
+msgstr "Queden {} intents de PIN.\nUsa «Canvia el PIN»."
+
+msgid "PUK blocked"
+msgstr "PUK bloquejat"
+
+msgid "No PUK tries left.\nFactory reset required."
+msgstr "Sense intents de PUK.\nCal restabliment de fàbrica."
+
+msgid "Enter PUK"
+msgstr "Introdueix el PUK"
+
+msgid "Wrong PUK"
+msgstr "PUK incorrecte"
+
+msgid "PIN unblocked"
+msgstr "PIN desbloquejat"
+
+msgid "PIN blocked"
+msgstr "PIN bloquejat"
+
+msgid "Unblock with PUK via\nThis instance menu."
+msgstr "Desbloqueja amb el PUK al\nmenú «Aquesta instància»."
+
+msgid "Invalid entry"
+msgstr "Entrada no vàlida"
+
+msgid "Must be exactly {} digits."
+msgstr "Ha de tenir exactament {} dígits."
+
+msgid "Max {} chars."
+msgstr "Màx. {} caràcters."
+
+msgid "View addresses"
+msgstr "Veure adreces"
+
+msgid "Addresses ({})"
+msgstr "Adreces ({})"
+
+msgid "Insert the source Seedkeeper card to copy secrets from, then press Continue."
+msgstr "Insereix la targeta Seedkeeper d'origen per copiar-ne els secrets i prem Continua."
+
+msgid "Insert the destination Seedkeeper card to copy secrets to, then press Continue."
+msgstr "Insereix la targeta Seedkeeper de destinació on copiar els secrets i prem Continua."
