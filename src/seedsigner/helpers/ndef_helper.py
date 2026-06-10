@@ -4,7 +4,7 @@ Provides utilities for working with Text, URI, and Android App Launch NDEF recor
 """
 
 import ndef
-from typing import List, Tuple, Optional, Dict, Any
+from typing import List, Dict, Any
 
 
 class NdefRecordType:
@@ -40,83 +40,50 @@ def decode_ndef_bytes(ndef_bytes: bytes) -> List[Dict[str, Any]]:
                 "raw_type": record.type,
             }
             
-            # Handle Text records
-            if record.type == b'T':
+            # Handle TextRecord
+            if isinstance(record, ndef.TextRecord):
                 try:
-                    text_data = record.data.decode('utf-8')
-                    # First byte contains language code length
-                    if len(record.data) > 0:
-                        lang_len = record.data[0] & 0x3F
-                        language = record.data[1:1+lang_len].decode('ascii', errors='ignore')
-                        text = record.data[1+lang_len:].decode('utf-8')
-                        record_info.update({
-                            "record_type": NdefRecordType.TEXT,
-                            "text": text,
-                            "language": language,
-                        })
-                    else:
-                        record_info.update({
-                            "record_type": NdefRecordType.TEXT,
-                            "text": "",
-                            "language": "en",
-                        })
+                    record_info.update({
+                        "record_type": NdefRecordType.TEXT,
+                        "text": record.text or "",
+                        "language": record.language or "en",
+                    })
                 except Exception as e:
                     record_info.update({
                         "record_type": NdefRecordType.TEXT,
                         "error": f"Failed to decode text: {str(e)[:50]}",
                     })
             
-            # Handle URI records
-            elif record.type == b'U':
+            # Handle UriRecord
+            elif isinstance(record, ndef.UriRecord):
                 try:
-                    # First byte is URI scheme
-                    if len(record.data) > 0:
-                        scheme_byte = record.data[0]
-                        # URI scheme codes (0x00 = http://, 0x01 = https://, etc.)
-                        schemes = {
-                            0x00: "",
-                            0x01: "http://",
-                            0x02: "https://",
-                            0x03: "http://www.",
-                            0x04: "https://www.",
-                            0x05: "tel:",
-                            0x06: "mailto:",
-                            0x07: "ftp://",
-                        }
-                        scheme = schemes.get(scheme_byte, "")
-                        uri = scheme + record.data[1:].decode('utf-8')
-                        record_info.update({
-                            "record_type": NdefRecordType.URI,
-                            "uri": uri,
-                        })
-                    else:
-                        record_info.update({
-                            "record_type": NdefRecordType.URI,
-                            "uri": "",
-                        })
+                    record_info.update({
+                        "record_type": NdefRecordType.URI,
+                        "uri": record.uri or "",
+                    })
                 except Exception as e:
                     record_info.update({
                         "record_type": NdefRecordType.URI,
                         "error": f"Failed to decode URI: {str(e)[:50]}",
                     })
             
-            # Handle Android App Launch records (U record with special format or custom record)
-            elif record.type == b'a' and record.name == b'android.com:pkg':
-                try:
-                    package_name = record.data.decode('utf-8')
-                    record_info.update({
-                        "record_type": NdefRecordType.ANDROID_APP,
-                        "package_name": package_name,
-                    })
-                except Exception as e:
-                    record_info.update({
-                        "record_type": NdefRecordType.ANDROID_APP,
-                        "error": f"Failed to decode Android app: {str(e)[:50]}",
-                    })
-            
             else:
-                # Generic record type
-                record_info["data_hex"] = record.data.hex().upper()
+                # Generic record type - try to get attributes
+                try:
+                    # Check if it's an external type Android app record
+                    if hasattr(record, 'type') and record.type == 'android.com:pkg':
+                        try:
+                            package_name = record.data.decode('utf-8')
+                            record_info.update({
+                                "record_type": NdefRecordType.ANDROID_APP,
+                                "package_name": package_name,
+                            })
+                        except Exception:
+                            record_info["data_hex"] = record.data.hex().upper()
+                    else:
+                        record_info["data_hex"] = record.data.hex().upper()
+                except Exception:
+                    record_info["data_hex"] = record.data.hex().upper()
             
             decoded_records.append(record_info)
         
@@ -140,7 +107,7 @@ def create_text_record(text: str, language: str = "en") -> bytes:
     # Create Text record using ndeflib
     record = ndef.TextRecord(text=text, language=language)
     # Encode as message (single record)
-    return ndef.message_encoder([record])
+    return b''.join(ndef.message_encoder([record]))
 
 
 def create_uri_record(uri: str) -> bytes:
@@ -153,15 +120,18 @@ def create_uri_record(uri: str) -> bytes:
     Returns:
         NDEF-encoded bytes for this record
     """
-    # Create URI record using ndeflib
-    record = ndef.UriRecord(uri=uri)
+    # Create URI record using ndeflib (uses 'iri' parameter)
+    record = ndef.UriRecord(iri=uri)
     # Encode as message (single record)
-    return ndef.message_encoder([record])
+    return b''.join(ndef.message_encoder([record]))
 
 
 def create_android_app_record(package_name: str) -> bytes:
     """
-    Create an NDEF record to launch an Android application.
+    Create an NDEF record to launch an Android application using Android App Launch Record format.
+    
+    This creates a custom external NDEF record (TNF=5) with type "android.com:pkg"
+    which Android devices can use to launch the specified package.
     
     Args:
         package_name: Android package name (e.g., "org.satochip.seedkeeper")
@@ -169,14 +139,20 @@ def create_android_app_record(package_name: str) -> bytes:
     Returns:
         NDEF-encoded bytes for this record
     """
-    # Create a custom Android App Launch record
-    # Type: 'a' (external), Name: 'android.com:pkg'
-    record = ndef.Record(
-        type='android.com:pkg',
-        data=package_name.encode('utf-8')
+    # Manual construction of Android App Launch record (external type, TNF=5)
+    # Format: Header | Type Length | Payload Length | Type | Payload
+    # Header byte for external type with MB=1, ME=1, SR=1: 0xD5
+    header = 0xD5
+    app_type = b"android.com:pkg"
+    payload = package_name.encode('utf-8')
+    
+    record_bytes = (
+        bytes([header, len(app_type), len(payload)]) +
+        app_type +
+        payload
     )
-    # Encode as message (single record)
-    return ndef.message_encoder([record])
+    
+    return record_bytes
 
 
 def decode_ndef_for_display(ndef_bytes: bytes) -> str:
@@ -193,6 +169,7 @@ def decode_ndef_for_display(ndef_bytes: bytes) -> str:
         return "(empty)"
     
     try:
+        # Try to decode as standard NDEF
         records = decode_ndef_bytes(ndef_bytes)
         if not records:
             return "(empty)"
@@ -226,3 +203,4 @@ def decode_ndef_for_display(ndef_bytes: bytes) -> str:
     except Exception:
         # Fallback to hex display if decoding fails
         return ndef_bytes.hex().upper()
+
