@@ -1,15 +1,11 @@
-<<<<<<< HEAD
-from dataclasses import dataclass, field
-=======
 import logging
 from dataclasses import dataclass
->>>>>>> upstream/0.8.7
 from gettext import gettext as _
 from typing import Type
 
 from seedsigner.helpers.l10n import mark_for_translation as _mft
 from seedsigner.gui.components import SeedSignerIconConstants
-from seedsigner.gui.screens import RET_CODE__POWER_BUTTON, RET_CODE__BACK_BUTTON, RET_CODE__DISPLAY_TOGGLE
+from seedsigner.gui.screens import RET_CODE__POWER_BUTTON, RET_CODE__BACK_BUTTON
 from seedsigner.gui.screens.screen import BaseScreen, ButtonOption, LargeButtonScreen, WarningScreen, ErrorScreen
 from seedsigner.models.settings import Settings, SettingsConstants
 from seedsigner.models.settings_definition import SettingsDefinition
@@ -139,46 +135,13 @@ class Destination:
     clear_history: bool = False         # Optionally clears the back_stack to prevent "back"
 
 
-    _SENSITIVE_ARG_NAMES = {
-        "password",
-        "passphrase",
-        "mnemonic",
-        "seed",
-        "seed_bytes",
-        "secret",
-        "secret_list",
-        "private_key",
-        "pin",
-    }
-
-    @classmethod
-    def _redact_for_repr(cls, value, key: str | None = None):
-        if isinstance(value, dict):
-            redacted = {}
-            for k, v in value.items():
-                key_name = str(k).lower()
-                redacted[k] = cls._redact_for_repr(v, key=key_name)
-            return redacted
-
-        if isinstance(value, list):
-            return [cls._redact_for_repr(item, key=key) for item in value]
-
-        if isinstance(value, tuple):
-            return tuple(cls._redact_for_repr(item, key=key) for item in value)
-
-        if key and key in cls._SENSITIVE_ARG_NAMES:
-            return "***redacted***"
-
-        return value
-
     def __repr__(self):
         if self.View_cls is None:
             out = "None"
         else:
             out = self.View_cls.__name__
         if self.view_args:
-            safe_view_args = self._redact_for_repr(self.view_args)
-            out += f"({safe_view_args})"
+            out += f"({self.view_args})"
         else:
             out += "()"
         if self.clear_history:
@@ -233,18 +196,6 @@ class MainMenuView(View):
 
     def run(self):
         from seedsigner.gui.screens.screen import MainMenuScreen
-        from seedsigner.controller import Controller
-        from seedsigner.gui.toast import InfoToast
-
-        controller = Controller.get_instance()
-        controller.storage.discard_pending_slip39_shares()
-        controller.tools_common_card_filter = None
-        controller.psbt_from_microsd = False
-        controller.psbt_microsd_save_path = None
-        controller.psbt_microsd_seed_warning_shown = False
-        if controller.auto_wiped:
-            controller.auto_wiped = False
-            controller.activate_toast(InfoToast(label_text=_("Data wiped after inactivity")))
         button_data = [self.SCAN, self.SEEDS, self.TOOLS, self.SETTINGS]
         selected_menu_num = self.run_screen(
             MainMenuScreen,
@@ -254,11 +205,6 @@ class MainMenuView(View):
 
         if selected_menu_num == RET_CODE__POWER_BUTTON:
             return Destination(PowerOptionsView)
-
-        if selected_menu_num == RET_CODE__DISPLAY_TOGGLE:
-            # Display driver was switched via very-long-press; re-render the
-            # home screen with the new display dimensions.
-            return Destination(MainMenuView)
 
         if button_data[selected_menu_num] == self.SCAN:
             from seedsigner.views.scan_views import ScanView
@@ -306,37 +252,17 @@ class RestartView(View):
 
     def run(self):
         from seedsigner.gui.screens.screen import ResetScreen
-<<<<<<< HEAD
-        # Ensure any pending background settings save completes before restart.
-        Settings.get_instance().flush_save()
-        thread = RestartView.DoResetThread()
-        thread.start()
-        try:
-            self.run_screen(ResetScreen)
-        except Exception:
-            # Stop the reset thread if the screen exits abnormally (e.g.
-            # ScreenshotComplete during screenshot generation).  Broad catch
-            # is intentional: whatever caused the exit, we must prevent the
-            # background thread from killing the process.
-            thread.stop()
-            raise
-=======
 
         if not self.renderer.is_screenshot_generator:
             # We don't want the screenshot generator to actually try to do the restart
             RestartView.DoResetThread().start()
 
         self.run_screen(ResetScreen)
->>>>>>> upstream/0.8.7
 
 
     class DoResetThread(BaseThread):
         def run(self):
             import os
-<<<<<<< HEAD
-            import shlex
-=======
->>>>>>> upstream/0.8.7
             import sys
             import time
 
@@ -345,46 +271,18 @@ class RestartView(View):
             # exiting.
             time.sleep(0.25)
 
-<<<<<<< HEAD
-            if not self.keep_running:
-                return
-
-            # Kill the current process by its PID (reliable across all
-            # Python binary names).  The shell subprocess survives the
-            # parent being killed and can then start the new process.
-            pid = os.getpid()
-            if Settings.HOSTNAME == Settings.SEEDSIGNER_OS:
-                python = shlex.quote(sys.executable)
-                call(f"kill {pid}; exec {python} /opt/src/main.py", shell=True)
-            else:
-                call(f"kill {pid}", shell=True)
-=======
             # Flush any buffered data.
             sys.stdout.flush() 
             sys.stderr.flush()
 
             # Replace the current process with a new one.
             os.execv(sys.executable, [sys.executable] + sys.argv)
->>>>>>> upstream/0.8.7
 
 
 
 class PowerOffView(View):
     def run(self):
         from seedsigner.gui.screens.screen import PowerOffNotRequiredScreen
-        from seedsigner.hardware.buttons import USING_GPIO
-        import os
-        import sys
-
-        # Ensure any pending background settings save completes before power-off.
-        Settings.get_instance().flush_save()
-
-        if not USING_GPIO:
-            if "PYTEST_CURRENT_TEST" not in os.environ:
-                # In desktop mode, exiting the program is the safest way to "power off"
-                sys.exit(0)
-            return Destination(BackStackView)
-
         self.run_screen(PowerOffNotRequiredScreen)
         return Destination(BackStackView)
 

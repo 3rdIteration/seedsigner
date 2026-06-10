@@ -1,96 +1,3 @@
-# SeedSigner + Satochip
-The question of how to store your private keys in a way that is both secure and resistant to loss or damage is a challenge.
-
-There are a number of different approaches that different hardware and software wallets use and one that has been gaining popularity, particularly with stateless wallets, is SeedQR… The thing is that while SeedQR is much quicker and easier than a standard seed phrase, storing and loading private keys via SeedQR all the time has it’s own issues relating to security, robustness and privacy… 
-
-That said, I think that saving secrets to a PIN protected Javacard addresses all of these issues in a really affordable and accessible way… I have been doing to integrate the Seedkeeper from Satochip with Seedsigner… Basically as a proof of concept… This is now at a point where it can be considered Beta software, in that it is mostly feature complete. (Though will still likely have other bugs and tweaks to come) [You can read more about the rationale, software and hardware being used here](./docs/smartcard_support_installation.md)
-
-All releases are now running SeedSigner-OS and are built via BuildRoot just like official builds, meaning that the MicroSD card can be removed for normal operation. (Though the MicroSD needs to be left in while building and flashing Java applets or flashing SeedSigner images to MicroSD) This also means that installation images are much smaller and are also reproducible. 
-
-[I have a video on my YouTube channel which covers the functionality below and also talks about the physical build side.](https://youtu.be/Rhs9z5uL7qg)
-
-Support and discussion relating to this fork can happen via this [Telegram Group](https://t.me/+mp3CIjCQuk0yMjUx)
-
-## Difference from Stock SeedSigner
-* Multiple Smartcard interface options… 
-   - Smartcard Hat (SEC1210 Connected via UART)
-   - Standard USB CCID/PCSC readers
-   - PN532 NFC Reader Connected via I2C
-   - USB Phoenix Type "Sim Reader" supported via OpenCT 
-* Saving and Loading Seeds & Passphrases in a number of ways
-   - Seedkeeper: Supports loading of Seed, Seed+Passphrase in one go, or loading passphrase independently. (Potentially from a different SeedKeeper)
-   - Encrypted QR: Supports Krux compatible encrypted seeds
-   - Passphrase QR: Supports loading a passphrase from a plain text QR code
-   - Plaintext QR: Support Exporting Seed as Plaintext QR Code
-   - Split passphrase/encryption key QR support (Multi-Factor entry)
-* Saving and Loading Multisig Descriptors to Satochip Seedkeeper Cards 
-   - Also changed default behavior to keep Descriptor loaded until manually cleared. (Including descriptor appearing in the Address Explorer when loaded)
-   - Descriptors are split up into a template and xpubs before being saved to SeedKeeper.
-   - Includes ability to load single-sig descriptor and use Address Browser
-* Saving and loading generic secrets to a Seedkeeper card
-   - These secrets can be either viewed as text or displayed as a generic text QR code.
-* General Satochip/Seedkeeper card operations
-  - Initialise Card
-  - Change Card PIN
-  - Change Card Label
-  - Set NFC Policy
-  - Factory Reset Card
-  - Smartcard info screen with card UID
-  - Genuineness check
-* Satochip Card features
-  - Load any Seed from the SeedSigner on to the Satochip Card
-  - Enable 2FA on the Satochip Card
-  - Export xpubs (single- and multisig) 
-  - PSBT verification and transaction signing directly on-card
-  - Message signing
-  - Address explorer integration for Satochip cards
-* SLIP39 seed support
-  - Create, import and extend SLIP39 seed shares (Can load from text, QR or Seedkeeper)
-  - Save SLIP39 shares to Seedkeeper
-  - Initialise Satochip card from reconstructed SLIP39 seed.
-  - Settings to toggle SLIP39 functionality
-* BIP85 Support
-   - Supports not only generating BIP85 seeds, but loading them and using them
-* WIF/BIP38 key signing support (disabled by default)
-* Wallet xpub export verification (Checks receive address for safety)
-* TextQR Tool
-   - Supports both generating and loading standard plaintext QR codes for arbitrary text.
-* Configurable seed word lengths (12, 15, 18, 21 and 24 word mnemonics)
-* Enhanced entropy and security features
-  - Live display of camera entropy quality
-  - Shannon Entropy checks for Dice and Camera seed generation
-  - Hardware RNG mixed with camera entropy
-  - Entropy quality indicators with optional 30-minute wipe timer
-* Extra Developer Tools
-  - All dev builds throw a warning on startup...
-  - Desktop simulation mode with system camera support (Useful for development)
-  - Dev builds allow running seedsigner source from a folder on microSD
-  - Dev builds have ability to enable networking and include extra tools like SSH, git and rsync (To make dev easier)
-* Compressed image files (The uncompressed files are large due to having extra free space to make the GPG verification feature useful)
-* * MicroSD Card Tools
-   - Flashing MicroSD Cards with official SeedSigner Images (Bundled)
-   - Verification of freshly flashed MicroSD cards against known images
-   - Secure Wipe (Both with zeros and random data)
-* GPG Tools
-   - GPG Signature verification & Sha256 Manifest check (Includes pubkey bundle the from Sparrow to verify Seedsigner, Sparrow, Electrum, plus many more)
-    - Load BIP85-derived GPG keys (NIST P-256 [default], Brainpool P-256, RSA 2048, RSA 3072, RSA 4096, or secp256k1) with prompts for key type, name, email, and expiration (defaulting to the end of 2029 for RSA 2048 keys and the end of 2035 for all other key types); when multiple seeds are loaded you can choose which seed to derive from, and metadata such as name, email, expiration, and deprecation/end-of-use dates can be modified later ([docs](./docs/gpg_tools.md))
-    - Manage User IDs: add, edit, revoke, delete, or set the primary UID
-    - Advanced submenu exposes Subkey Operations, User ID Operations, and a BIP85 Metadata menu to save/load BIP85 details or rebuild keys. BIP85-derived keys use deterministic BIP85 subkeys with successive indexes and only the latest subkey may be deleted. When adding subkeys to a BIP85 key SeedSigner automatically selects the corresponding seed and verifies the existing key before derivation, warning if the seed is unavailable. BIP85 derivation details are tracked in memory and can be saved or loaded as JSON via file, animated QR, or Seedkeeper from the BIP85 Metadata menu
-* Tested and working with the following hardware
-   - Raspberry Pi Zero 1.3
-   - Raspberry Pi Zero W
-   - Raspberry Pi Zero 2W (Raspberry Pi 3 has the same hardware, so should work too)
-   - Raspberry Pi 2
-   - Raspberry Pi 4
- 
-## Future Features & Improvements
-* Add ability to lock/unlock/manage Javacards
-* Tidy up code and reduce re-use
-
-[Software Images along with verification instructions can be found on the releases page.](https://github.com/3rdIteration/seedsigner/releases) 
-
-# -----------------Original Readme Continues Below-----------------
-
 # Build an offline, airgapped Bitcoin signing device for less than $50!
 
 ![Image of SeedSigners in Mini Pill Enclosures](docs/img/Mini_Pill_Main_Photo.jpg)
@@ -98,13 +5,14 @@ Support and discussion relating to this fork can happen via this [Telegram Group
 ---------------
 
 * [Project Summary](#project-summary)
-* [Shopping List](./docs/shopping_list.md)
+* [Shopping List](#shopping-list)
 * [Software Installation](#software-installation)
   * [Verifying your download](#verifying-your-download)
 * [Enclosure Designs](#enclosure-designs)
 * [SeedQR Printable Templates](#seedqr-printable-templates)
 * [Build from Source](#build-from-source)
 * [Developer Local Build Instructions](#developer-local-build-instructions)
+
 
 ---------------
 
@@ -156,7 +64,6 @@ If you have specific questions about the project, our [Telegram Group](https://t
   * Scan a software wallet's receive or change address to verify that it's correct.
   * Address Explorer for single sig and multisig wallets.
   * Message signing to prove address ownership.
-  * Sync the system clock using a [GoPro Labs timecode QR](https://gopro.github.io/labs/control/) for camera alignment.
   * BIP85 child seed generation.
 
 * Compatible with:
@@ -175,8 +82,6 @@ If you have specific questions about the project, our [Telegram Group](https://t
 
 ---------------
 
-<<<<<<< HEAD
-=======
 # Shopping List
 
 To build a SeedSigner, you will need:
@@ -195,7 +100,6 @@ Notes:
 
 ---------------
 
->>>>>>> upstream/0.8.7
 # Software Installation
 
 ## A Special Note On Minimizing Trust
@@ -230,19 +134,6 @@ Note: If you have physically removed the WiFi component from your board, you wil
 Users familiar with older versions of the SeedSigner software might be surprised with how fast their software downloads now are, because since version 0.6.0 the software image files are now 100x smaller! Each image file is now under 42 Megabytes so your downloads and verifications will be very quick now (and might even seem *too* quick)!  
 
 Once the files have all finished downloading, follow the steps below to verify the download before continuing on to write the software onto a MicroSD card. Next, insert the MicroSD into your assembled hardware and connect the USB power. Allow about 45 seconds for our logo to appear, and then you can begin using your SeedSigner! 
-
-### Optional: Custom boot and screensaver logo
-
-You can override the default logo by placing a file named **`seedsigner_logo.png`** in the **root of the MicroSD card**.
-
-Requirements:
-- **File format:** PNG
-- **Dimensions:** **240 × 240** pixels
-- **Filename:** `seedsigner_logo.png` (exact name)
-
-Behavior:
-- If the file is present and valid, it is used for both the boot splash and screensaver.
-- If it is missing, unreadable, invalid, or the MicroSD is not available (for example removed after boot), SeedSigner automatically falls back to the bundled default logo.
 
 [Our previous software versions are available here](https://github.com/SeedSigner/seedsigner/releases). Choose a specific version and then expand the *Assets* sub-heading to display the .img file binary and also the 2 associated signature files. **Note:** The prior version files will have lower numbers than the scripts and examples provided in this document, but the naming format will be the same, so you can edit them as required for signature verification etc.   
 
@@ -467,5 +358,3 @@ See the [SeedSigner OS repo](https://github.com/SeedSigner/seedsigner-os/) for i
 
 # Developer Local Build Instructions
 Raspberry Pi OS is commonly used for development. See the [Raspberry Pi OS Build Instructions](docs/raspberry_pi_os_build_instructions.md)
-
-To experiment on a regular PC, a pygame‑based simulator is available. See the [Desktop Simulation guide](docs/desktop_simulation.md) for installation and usage instructions.

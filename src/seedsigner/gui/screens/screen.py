@@ -377,24 +377,7 @@ class ButtonListScreen(BaseTopNavScreen):
 
         self.buttons: List[Button] = []
         for i, button_option in enumerate(self.button_data):
-<<<<<<< HEAD
-            icon_name = None
-            icon_color = None
-            right_icon_name = None
-            button_label_color = None
-
-            if type(button_option) == ButtonOption:
-                button_label = button_option.button_label
-                icon_name = button_option.icon_name
-                icon_color = button_option.icon_color
-                right_icon_name = button_option.right_icon_name
-                button_label_color = button_option.button_label_color
-                active_button_label = button_option.active_button_label
-            
-            else:
-=======
             if not isinstance(button_option, ButtonOption):
->>>>>>> upstream/0.8.7
                 raise Exception("Refactor to ButtonOption approach needed!")
 
             if isinstance(button_option, ButtonOptionWithoutTranslation):

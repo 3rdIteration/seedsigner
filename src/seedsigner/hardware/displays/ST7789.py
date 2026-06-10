@@ -2,13 +2,9 @@ import logging
 from periphery import GPIO, SPI
 import time
 import array
-<<<<<<< HEAD
-import errno
-=======
 from dataclasses import dataclass
 
 from seedsigner.hardware.displays.display_driver import BaseDisplayDriver
->>>>>>> upstream/0.8.7
 
 from seedsigner.models.settings import Settings
 from seedsigner.hardware.io_config import get_hardware_pin_mapping
@@ -20,16 +16,6 @@ class ST7789(BaseDisplayDriver):
     """
     The original SeedSigner display driver.
 
-<<<<<<< HEAD
-    def __init__(self):
-        self.width = 240
-        self.height = 240
-        # Keep SPI transfers within conservative per-message kernel limits.
-        self.CHUNK_SIZE = 4096
-
-        hardware_config = Settings.get_platform_default_hardware_config()
-        pin_mapping = get_hardware_pin_mapping(hardware_config)["display"]
-=======
     Note that self._width and self._height are provided by the parent DisplayDriver class
     and are set during instantiation via the DisplayDriverFactory.
 
@@ -40,7 +26,6 @@ class ST7789(BaseDisplayDriver):
         self._dc = 22
         self._rst = 13
         self._bl = 18
->>>>>>> upstream/0.8.7
 
         self._dc = GPIO(*pin_mapping["dc"], "out")
         self._rst = GPIO(*pin_mapping["rst"], "out")

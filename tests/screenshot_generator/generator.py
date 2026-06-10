@@ -5,13 +5,9 @@ import pytest
 import random
 import sys
 import time
-<<<<<<< HEAD
-import shamir_mnemonic
-=======
 from contextlib import contextmanager
 from dataclasses import dataclass
 from PIL import ImageFont
->>>>>>> upstream/0.8.7
 from unittest.mock import Mock, patch, MagicMock
 
 from embit import compact
@@ -25,12 +21,7 @@ sys.modules['seedsigner.hardware.displays.ili9341'] = MagicMock()
 sys.modules['seedsigner.views.screensaver.ScreensaverScreen'] = MagicMock()
 sys.modules['RPi'] = MagicMock()
 sys.modules['RPi.GPIO'] = MagicMock()
-<<<<<<< HEAD
-sys.modules['seedsigner.hardware.buttons'] = MagicMock()
-sys.modules['seedsigner.hardware.camera'] = MagicMock()
-=======
 sys.modules['seedsigner.hardware.camera.Camera'] = MagicMock()
->>>>>>> upstream/0.8.7
 sys.modules['seedsigner.hardware.microsd'] = MagicMock()
 
 from seedsigner.controller import Controller
@@ -389,16 +380,6 @@ def generate_screenshots(locale):
                 ScreenshotConfig(seed_views.SeedReviewPassphraseView),
                 
                 ScreenshotConfig(seed_views.SeedOptionsView, dict(seed_num=0)),
-<<<<<<< HEAD
-                ScreenshotConfig(seed_views.SeedBackupView, dict(seed_num=0)),
-                ScreenshotConfig(seed_views.SeedExportXpubSigTypeView, dict(seed_num=0)),
-                ScreenshotConfig(seed_views.SeedExportXpubScriptTypeView, dict(seed_num=0, sig_type="msig")),
-                ScreenshotConfig(seed_views.SeedExportXpubCustomDerivationView, dict(seed_num=0, sig_type="ss", script_type="")),
-                ScreenshotConfig(seed_views.SeedExportXpubCoordinatorView, dict(seed_num=0, sig_type="ss", script_type="nat")),
-                ScreenshotConfig(seed_views.SeedExportXpubWarningView, dict(seed_num=0, sig_type="msig", script_type="nes", coordinator="spd", custom_derivation="", coordinator_label="")),
-                ScreenshotConfig(seed_views.SeedExportXpubDetailsView, dict(seed_num=0, sig_type="ss", script_type="nat", coordinator="bw", custom_derivation="", coordinator_label="")),
-                #ScreenshotConfig(SeedExportXpubQRDisplayView),
-=======
                 ScreenshotConfig(seed_views.SeedBackupView,  dict(seed_num=0)),
                 ScreenshotConfig(seed_views.SeedExportXpubSigTypeView,          dict(seed_num=0)),
                 ScreenshotConfig(seed_views.SeedExportXpubScriptTypeView,       dict(seed_num=0, sig_type="msig")),
@@ -408,7 +389,6 @@ def generate_screenshots(locale):
                 ScreenshotConfig(seed_views.SeedExportXpubDetailsView,          dict(seed_num=0, sig_type="ss",   script_type="nat", xpub_qr_format="urca", custom_derivation="")),
                 ScreenshotConfig(SeedExportXpubQR_ScreenBrightnessView,         dict(seed_num=0, xpub_qr_format="urca", derivation_path="m/84'/0'/0'")),
 
->>>>>>> upstream/0.8.7
                 ScreenshotConfig(seed_views.SeedWordsWarningView, dict(seed_num=0)),
                 ScreenshotConfig(seed_views.SeedWordsView, dict(seed_num=0)),
                 ScreenshotConfig(seed_views.SeedWordsView, dict(seed_num=0, page_index=2), screenshot_name="SeedWordsView_2"),

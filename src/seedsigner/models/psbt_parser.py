@@ -404,24 +404,10 @@ class PSBTParser():
             Extracts the fingerprint from each psbt input utxo. Returns True if any match
             the current seed or root xpub.
         """
-<<<<<<< HEAD
-        if seed is not None:
-            seed_fingerprint = seed.get_fingerprint(network)
-        elif root is not None:
-            seed_fingerprint = hexlify(root.child(0).fingerprint).decode()
-        else:
-            return False
-
-        for input in psbt.inputs:
-            for pub, derivation_path in input.bip32_derivations.items():
-                if seed_fingerprint == hexlify(derivation_path.fingerprint).decode():
-                    return True
-=======
         seed_fingerprint = seed.get_fingerprint(network)
         
         def check_fingerprint_match(public_key: PublicKey, derivation_path_obj: DerivationPath):
             """Check fingerprint match with missing fingerprint fallback"""
->>>>>>> upstream/0.8.7
 
             # If exact fingerprint match
             if hexlify(derivation_path_obj.fingerprint).decode() == seed_fingerprint:

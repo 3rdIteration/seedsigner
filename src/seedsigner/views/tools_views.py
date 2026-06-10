@@ -338,7 +338,6 @@ class ToolsMenuView(View):
     SLIP39_IMAGE = ButtonOption("SLIP39 seed", FontAwesomeIconConstants.CAMERA)
     SLIP39_DICE = ButtonOption("SLIP39 seed", FontAwesomeIconConstants.DICE)
     KEYBOARD = ButtonOption("Calc 12th/24th word", FontAwesomeIconConstants.KEYBOARD)
-<<<<<<< HEAD
     ADDRESS_EXPLORER = ButtonOption("Address Explorer")
     VERIFY_ADDRESS = ButtonOption("Verify address")
     TEXTQRCODE = ButtonOption("Text QR Code")
@@ -353,10 +352,6 @@ class ToolsMenuView(View):
     def __init__(self, include_password_generator: bool = True):
         super().__init__()
         self.include_password_generator = include_password_generator
-=======
-    ADDRESS_EXPLORER = ButtonOption("Address explorer")
-    VERIFY_ADDRESS = ButtonOption("Verify address")
->>>>>>> upstream/0.8.7
 
     def run(self):
         button_data = [self.IMAGE, self.DICE]
@@ -587,12 +582,8 @@ class ToolsImageEntropyLivePreviewView(View):
     def run(self):
         from seedsigner.gui.screens.tools_screens import ToolsImageEntropyLivePreviewScreen
         self.controller.image_entropy_preview_frames = None
-<<<<<<< HEAD
         self.controller.image_entropy_final_image = None
         ret = ToolsImageEntropyLivePreviewScreen().display()
-=======
-        ret = self.run_screen(ToolsImageEntropyLivePreviewScreen)
->>>>>>> upstream/0.8.7
 
         if ret == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
@@ -700,7 +691,6 @@ class ToolsImageEntropyMnemonicLengthView(View):
 
         mnemonic_length = button_data[selected_menu_num].return_data
 
-<<<<<<< HEAD
         from seedsigner.gui.screens.screen import LoadingScreenThread
         loading_screen = LoadingScreenThread(text=_("Processing..."))
         loading_screen.start()
@@ -747,66 +737,6 @@ class ToolsImageEntropyMnemonicLengthView(View):
             seed = Seed(mnemonic, wordlist_language_code=self.settings.get_value(SettingsConstants.SETTING__WORDLIST_LANGUAGE))
             self.controller.storage.set_pending_seed(seed)
             return Destination(SeedWordsWarningView, view_args={"seed_num": None}, clear_history=True)
-=======
-        # The entropy calculation can take time, especially with a full image buffer. 
-        # Show a loading spinner to provide feedback during this delay.
-        from seedsigner.gui.screens.screen import LoadingScreenThread
-        self.loading_screen = LoadingScreenThread(text=_("Calculating..."))
-        self.loading_screen.start()
-
-        try:
-            preview_images = self.controller.image_entropy_preview_frames
-            seed_entropy_image = self.controller.image_entropy_final_image
-
-            # Build in some hardware-level uniqueness via CPU unique Serial num
-            try:
-                stream = os.popen("cat /proc/cpuinfo | grep Serial")
-                output = stream.read()
-                serial_num = output.split(":")[-1].strip().encode('utf-8')
-                serial_hash = hashlib.sha256(serial_num)
-                hash_bytes = serial_hash.digest()
-            except Exception as e:
-                logger.info(repr(e), exc_info=True)
-                hash_bytes = b'0'
-
-            # Build in modest entropy via millis since power on
-            millis_hash = hashlib.sha256(hash_bytes + str(time.time()).encode('utf-8'))
-            hash_bytes = millis_hash.digest()
-
-            # Build in better entropy by chaining the preview frames
-            for frame in preview_images:
-                img_hash = hashlib.sha256(hash_bytes + frame.tobytes())
-                hash_bytes = img_hash.digest()
-
-            # Finally build in our headline entropy via the new full-res image
-            final_hash = hashlib.sha256(hash_bytes + seed_entropy_image.tobytes()).digest()
-
-            if mnemonic_length == 12:
-                # 12-word mnemonic only uses the first 128 bits / 16 bytes of entropy
-                final_hash = final_hash[:16]
-
-            # Generate the mnemonic
-            mnemonic = mnemonic_generation.generate_mnemonic_from_bytes(final_hash)
-
-            # Image should never get saved nor stick around in memory
-            seed_entropy_image = None
-            preview_images = None
-            final_hash = None
-            hash_bytes = None
-            self.controller.image_entropy_preview_frames = None
-            self.controller.image_entropy_final_image = None
-
-            # Add the mnemonic as an in-memory Seed
-            seed = Seed(mnemonic, wordlist_language_code=self.settings.get_value(SettingsConstants.SETTING__WORDLIST_LANGUAGE))
-            self.controller.storage.set_pending_seed(seed)
-
-        finally:
-            # Stop spinner even if an error occurs
-            self.loading_screen.stop()
-
-        # Cannot return BACK to this View
-        return Destination(SeedWordsWarningView, view_args={"seed_num": None}, clear_history=True)
->>>>>>> upstream/0.8.7
 
 
 
@@ -831,7 +761,6 @@ class ToolsDiceEntropyMnemonicLengthView(View):
     )
 
     def run(self):
-<<<<<<< HEAD
         if getattr(self.controller, "create_slip39", False):
             button_data = [self.TWENTY, self.THIRTY_THREE]
         else:
@@ -845,22 +774,6 @@ class ToolsDiceEntropyMnemonicLengthView(View):
             }
             button_data = [options[l] for l in allowed]
         selected_menu_num = ButtonListScreen(
-=======
-        # Since we're dynamically building the ButtonOption button_labels here, it's too
-        # awkward to use the usual class-level attr approach.
-
-        # TRANSLATOR_NOTE: Inserts the number of dice rolls needed for a 12-word mnemonic
-        twelve = _("12 words ({} rolls)").format(mnemonic_generation.DICE__NUM_ROLLS__12WORD)
-        TWELVE = ButtonOption(twelve, return_data=mnemonic_generation.DICE__NUM_ROLLS__12WORD)
-
-        # TRANSLATOR_NOTE: Inserts the number of dice rolls needed for a 24-word mnemonic
-        twenty_four = _("24 words ({} rolls)").format(mnemonic_generation.DICE__NUM_ROLLS__24WORD)
-        TWENTY_FOUR = ButtonOption(twenty_four, return_data=mnemonic_generation.DICE__NUM_ROLLS__24WORD)
-
-        button_data = [TWELVE, TWENTY_FOUR]
-        selected_menu_num = self.run_screen(
-            ButtonListScreen,
->>>>>>> upstream/0.8.7
             title=_("Mnemonic Length"),
             is_bottom_list=True,
             is_button_text_centered=True,

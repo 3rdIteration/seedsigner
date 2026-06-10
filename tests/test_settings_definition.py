@@ -31,24 +31,7 @@ class TestSettingsDefinition(BaseTest):
         # We're going to mock the `root` results to include the absent language code's .mo file
         mocked_results = [(os.path.join(root, "en", "LC_MESSAGES"), [], ["messages.po", "messages.mo"])]
         mocked_results.append((os.path.join(root, absent_language_code, "LC_MESSAGES"), [], ["messages.po", "messages.mo"]))
-<<<<<<< HEAD
-        os.walk = Mock(return_value=mocked_results)
-
-        # Recheck w/our mocked dir listing:
-        detected_languages = [lang_tuple[0] for lang_tuple in SettingsConstants.get_detected_languages()]
-        assert absent_language_code in detected_languages
-
-    def test_default_seed_word_lengths(self):
-        defaults = SettingsDefinition.get_defaults()
-        assert defaults[SettingsConstants.SETTING__SEED_WORD_LENGTHS] == [12, 24]
-
-
-    def test_tapsigner_backup_default_disabled(self):
-        defaults = SettingsDefinition.get_defaults()
-        assert defaults[SettingsConstants.SETTING__TAPSIGNER_BACKUP] == SettingsConstants.OPTION__DISABLED
-=======
         with patch("os.walk", return_value=mocked_results):
             # Recheck w/our mocked dir listing:
             detected_languages = [lang_tuple[0] for lang_tuple in SettingsConstants.get_detected_languages()]
             assert absent_language_code in detected_languages
->>>>>>> upstream/0.8.7

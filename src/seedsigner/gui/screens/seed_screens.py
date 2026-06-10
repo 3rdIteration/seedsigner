@@ -612,11 +612,7 @@ class SeedExportXpubDetailsScreen(WarningEdgesMixin, ButtonListScreen):
 
     def __post_init__(self):
         # Programmatically set up other args
-<<<<<<< HEAD
         self.button_data = [ButtonOption(self.button_label)]
-=======
-        self.button_data = [ButtonOption("Export xpub")]
->>>>>>> upstream/0.8.7
         self.title = _("Xpub Details")
 
         # Initialize the base class

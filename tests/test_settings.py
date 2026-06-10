@@ -4,12 +4,7 @@ import pytest
 from base import BaseTest
 
 from seedsigner.models.settings import InvalidSettingsQRData, Settings
-<<<<<<< HEAD
-from seedsigner.models.settings_definition import SettingsConstants
-from unittest.mock import patch
-=======
 from seedsigner.models.settings_definition import SettingsConstants, SettingsDefinition
->>>>>>> upstream/0.8.7
 
 
 

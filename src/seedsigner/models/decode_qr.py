@@ -2,12 +2,7 @@ import base64
 import json
 import logging
 import re
-<<<<<<< HEAD
-from dataclasses import dataclass
-from datetime import datetime
-=======
 import zlib
->>>>>>> upstream/0.8.7
 
 from binascii import a2b_base64, b2a_base64
 from enum import IntEnum
@@ -650,24 +645,12 @@ class DecodeQR:
             except:
                 _4LETTER_WORDLIST = []
 
-<<<<<<< HEAD
-            from importlib import import_module
-            slip39_wordlist = import_module("shamir_mnemonic.wordlist").WORDLIST
-
-            if all(x in wordlist for x in s.strip().lower().split()):
-                # checks if all words in list are in bip39 word list
-                return QRType.SEED__MNEMONIC
-
-            elif all(x in _4LETTER_WORDLIST for x in s.strip().lower().split()):
-                # checks if all 4 letter words are in list are in 4 letter bip39 word list
-=======
             if all(x in wordlist for x in s.strip().split(" ")):
                 # checks if all words in list are in BIP-39 word list
                 return QRType.SEED__MNEMONIC
 
             elif all(x in _4LETTER_WORDLIST for x in s.strip().split(" ")):
                 # checks if all 4 letter words are in list are in 4 letter BIP-39 word list
->>>>>>> upstream/0.8.7
                 return QRType.SEED__FOUR_LETTER_MNEMONIC
 
             elif all(x in slip39_wordlist for x in s.strip().lower().split()):

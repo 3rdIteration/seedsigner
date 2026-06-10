@@ -87,13 +87,7 @@ class GUIConstants:
     FIXED_WIDTH_FONT_NAME = "Inconsolata-Regular"
     FIXED_WIDTH_EMPHASIS_FONT_NAME = "Inconsolata-SemiBold"
 
-<<<<<<< HEAD
-    FIXED_WIDTH_FONT_NAME_JP = "PlemolJPConsole-Regular-S"
-    FIXED_WIDTH_EMPHASIS_FONT_NAME_JP = "PlemolJPConsole-SemiBold-S"
-
-=======
     # TODO: this should have a get_label_font_size() method like the others for l10n
->>>>>>> upstream/0.8.7
     LABEL_FONT_SIZE = BODY_FONT_MIN_SIZE
     LABEL_FONT_COLOR = "#777777"
 
@@ -190,12 +184,6 @@ class FontAwesomeIconConstants:
     KEYBOARD = "\uf11c"
     MAP = "\uf279"
     X = "\u0058"
-    BATTERY_FULL = "\uf240"
-    BATTERY_THREE_QUARTERS = "\uf241"
-    BATTERY_HALF = "\uf242"
-    BATTERY_QUARTER = "\uf243"
-    BATTERY_EMPTY = "\uf244"
-    BATTERY_CHARGING = "\uf0e7"
 
 
 
@@ -1789,88 +1777,6 @@ class TopNav(BaseComponent):
             self.right_button.render()
 
 
-@dataclass
-class BatteryIndicator(BaseComponent):
-    """Simple battery indicator component."""
-    percent: float = 0
-    charging: bool = False
-    screen_x: int = 0
-    screen_y: int = 0
-    icon_size: int = GUIConstants.ICON_FONT_SIZE
-    font_size: int = 14
-
-    def __post_init__(self):
-        super().__post_init__()
-        self.font = Fonts.get_font(GUIConstants.ICON_FONT_NAME__FONT_AWESOME, self.icon_size)
-        self.charging_font = Fonts.get_font(GUIConstants.ICON_FONT_NAME__FONT_AWESOME, max(10, self.icon_size - 6))
-        self.text_font = Fonts.get_font(GUIConstants.get_body_font_name(), self.font_size)
-        # Pre-calc height from icon/text
-        (left, top, right, bottom) = self.font.getbbox(FontAwesomeIconConstants.BATTERY_FULL, anchor="ls")
-        self.height = -top
-        self.width = right - left + GUIConstants.COMPONENT_PADDING + self.text_font.getlength("100%")
-
-    def _icon_from_percent(self) -> str:
-        if self.percent is None:
-            return FontAwesomeIconConstants.BATTERY_EMPTY
-        if self.percent >= 75:
-            return FontAwesomeIconConstants.BATTERY_FULL
-        elif self.percent >= 50:
-            return FontAwesomeIconConstants.BATTERY_HALF
-        elif self.percent >= 25:
-            return FontAwesomeIconConstants.BATTERY_QUARTER
-        else:
-            return FontAwesomeIconConstants.BATTERY_EMPTY
-
-    def render(self):
-        # Clear background
-        self.image_draw.rectangle(
-            (
-                self.screen_x,
-                self.screen_y,
-                self.screen_x + self.width,
-                self.screen_y + self.height,
-            ),
-            fill=GUIConstants.BACKGROUND_COLOR,
-        )
-
-        icon = self._icon_from_percent()
-        icon_color = GUIConstants.BODY_FONT_COLOR
-        if self.percent is not None and self.percent < 20:
-            icon_color = GUIConstants.ERROR_COLOR
-        self.image_draw.text(
-            (self.screen_x, self.screen_y + self.height),
-            text=icon,
-            font=self.font,
-            fill=icon_color,
-            anchor="ls",
-        )
-
-        if self.charging:
-            charging_icon = FontAwesomeIconConstants.BATTERY_CHARGING
-            text_x = self.screen_x + self.font.getlength(icon) + GUIConstants.COMPONENT_PADDING
-            self.image_draw.text(
-                (text_x, self.screen_y + self.height),
-                text=charging_icon,
-                font=self.charging_font,
-                fill=GUIConstants.BODY_FONT_COLOR,
-                anchor="ls",
-            )
-        else:
-            if self.percent is not None:
-                pct_text = f"{int(self.percent)}%"
-            else:
-                pct_text = "--%"
-
-            text_x = self.screen_x + self.font.getlength(icon) + GUIConstants.COMPONENT_PADDING
-            self.image_draw.text(
-                (text_x, self.screen_y + self.height),
-                text=pct_text,
-                font=self.text_font,
-                fill=GUIConstants.BODY_FONT_COLOR,
-                anchor="ls",
-            )
-
-
 
 def linear_interp(a, b, t):
     return (
@@ -1979,20 +1885,16 @@ def reflow_text_for_width(text: str,
                 # Candidate line is possibly shorter than necessary.
                 return _binary_len_search(min_index=index, max_index=max_index, word_spacer=word_spacer)
 
-<<<<<<< HEAD
-=======
         if len(text.split()) == 1 and not treat_chars_as_words:
             # No whitespace chars to split on! Warn but proceed anyway.
             logger.warning("Text cannot fit in target rect with this font+size")
 
->>>>>>> upstream/0.8.7
         # Now we're ready to go line-by-line into our line break binary search!
         for line in text.split("\n"):
-            stripped_line = line.strip()
-            if treat_chars_as_words or (" " not in stripped_line):
+            if treat_chars_as_words:
                 # Each char in `line` will be considered a word; lets us make line breaks
                 # at any char.
-                words = list(line)
+                words = line
 
                 # When re-joining words, no additional spacer is used
                 word_spacer = ""
@@ -2006,19 +1908,6 @@ def reflow_text_for_width(text: str,
 
                 # When re-joining words, separate with a space char
                 word_spacer = " "
-
-                # If any individual word is wider than the target width, fall back to
-                # character-level wrapping for the entire line so that the oversized word
-                # can still be broken up.
-                for word in words:
-                    (left, top, right, _) = font.getbbox(word, anchor="ls")
-                    word_width = right - left
-                    if not ImageFont.core.HAVE_RAQM:
-                        word_width = int(word_width * 1.05)
-                    if word_width >= width:
-                        words = list(line)
-                        word_spacer = ""
-                        break
 
             if not words:
                 # It's a blank line
@@ -2120,22 +2009,3 @@ def resize_image_to_fill(img: Image, target_size_x: int, target_size_y: int, sam
         resample=sampling_method,
         box=box,
     )
-
-
-def resize_image_to_fit(img: Image, target_size_x: int, target_size_y: int, sampling_method=Image.Resampling.NEAREST) -> Image:
-    """
-        Resizes the image to fit inside the target size without cropping.
-    """
-    if img.width == target_size_x and img.height == target_size_y:
-        return img
-
-    scale = min(target_size_x / img.width, target_size_y / img.height)
-    resized_width = max(1, int(img.width * scale))
-    resized_height = max(1, int(img.height * scale))
-    resized = img.resize((resized_width, resized_height), resample=sampling_method)
-
-    canvas = Image.new("RGB", (target_size_x, target_size_y))
-    offset_x = int((target_size_x - resized_width) / 2)
-    offset_y = int((target_size_y - resized_height) / 2)
-    canvas.paste(resized, (offset_x, offset_y))
-    return canvas

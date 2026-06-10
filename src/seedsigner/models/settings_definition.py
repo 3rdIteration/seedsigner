@@ -476,25 +476,7 @@ class SettingsConstants:
     SETTING__DIRE_WARNINGS = "dire_warnings"
     SETTING__QR_BRIGHTNESS_TIPS = "qr_brightness_tips"
     SETTING__PARTNER_LOGOS = "partner_logos"
-<<<<<<< HEAD
-    SETTING__PLAINTEXTQR = "plaintextqr"
-    SETTING__ENCRYPTED_QR = "encrypted_qr"
-    SETTING__AMBIGUOUS_QR = "ambiguous_qr_preference"
-    SETTING__ENCRYPTION_MODE = "version"
-    SETTING__ENCRYPTION_ITER = "pbkdf2_iterations"
-    SETTING__WIF_KEYS = "wif_keys"
-    SETTING__BIP38_KEYS = "bip38_keys"
-    SETTING__GPG_KEY_TYPES = "gpg_key_types"
-
-    SETTING__SATOCHIP_SIGN_TIMEOUT = "satochip_sign_timeout"
-    SETTING__SATOCHIP_MSG_SIGN_TIMEOUT = "satochip_msg_sign_timeout"
-    SETTING__SATOCHIP_MAX_PRE_DUMMIES = "satochip_max_pre_dummies"
-    SETTING__SATOCHIP_MAX_POST_DUMMIES = "satochip_max_post_dummies"
-    SETTING__SATOCHIP_MAX_IN_TX_DUMMIES = "satochip_max_in_tx_dummies"
-    SETTING__SATOCHIP_DUMMY_PROBABILITY = "satochip_dummy_probability"
-=======
     SETTING__MICROSD_TOAST_TIMER = "microsd_toast_timer"
->>>>>>> upstream/0.8.7
 
     SETTING__DEBUG = "debug"
 
@@ -568,12 +550,7 @@ class SettingsConstants:
 
     # Label strings
     LABEL__BIP39_PASSPHRASE = _mft("BIP-39 Passphrase")
-<<<<<<< HEAD
-    LABEL__AEZEED_PASSPHRASE = _mft("Aezeed Passphrase")
-    # TRANSLATOR_NOTE: Terminology used by Electrum seeds; equivalent to bip39 passphrase
-=======
     # TRANSLATOR_NOTE: Terminology used by Electrum seeds; equivalent to BIP-39 passphrase
->>>>>>> upstream/0.8.7
     custom_extension = _mft("Custom Extension")
     LABEL__CUSTOM_EXTENSION = custom_extension
 
@@ -890,15 +867,6 @@ class SettingsDefinition:
                       default_value=[SettingsConstants.NATIVE_SEGWIT, SettingsConstants.NESTED_SEGWIT, SettingsConstants.TAPROOT]),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
-<<<<<<< HEAD
-                      attr_name=SettingsConstants.SETTING__SEED_WORD_LENGTHS,
-                      abbreviated_name="seedlen",
-                      display_name=_mft("Seed word lengths"),
-                      type=SettingsConstants.TYPE__MULTISELECT,
-                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
-                      selection_options=SettingsConstants.ALL_SEED_WORD_LENGTHS,
-                      default_value=[12, 24]),
-=======
                       attr_name=SettingsConstants.SETTING__XPUB_QR_FORMAT,
                       display_name=_mft("Xpub QR format"),
                       visibility=SettingsConstants.VISIBILITY__ADVANCED,
@@ -908,7 +876,6 @@ class SettingsDefinition:
                             SettingsConstants.XPUB_QR_FORMAT__UR_CRYPTO_ACCOUNT,
                             SettingsConstants.XPUB_QR_FORMAT__STATIC,
                       ]),
->>>>>>> upstream/0.8.7
 
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
                       attr_name=SettingsConstants.SETTING__XPUB_DETAILS,

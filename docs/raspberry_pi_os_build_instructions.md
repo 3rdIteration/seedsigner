@@ -1,34 +1,15 @@
 # Raspberry Pi OS Local Dev Build Instructions
 
-<<<<<<< HEAD
-Since v0.6.0, official releases use our custom [SeedSigner OS](https://github.com/SeedSigner/seedsigner-os/). However, project contributors looking to do rapid development cycles can use any recent standard Raspberry Pi OS image. This guide was tested with `raspios_arm64 2025-12-04`.
-
-The setup no longer requires manual Python compilation or a specific old OS image.
-=======
 Since v0.6.0, official releases use our custom [SeedSigner OS](https://github.com/SeedSigner/seedsigner-os/). However, project contributors looking to do rapid development cycles typically use the older Raspberry Pi OS that we had previously built on prior to v0.6.0. If you're here to set up your SeedSigner for local development, continue reading.
 
 Begin by acquiring the latest 32-bit, Buster-based Raspberry Pi Lite operating system. This guide was tested using the version dated 2023-05-03, which can be found here:
->>>>>>> upstream/0.8.7
 
-The installation process requires an internet connection on the Pi to download the necessary libraries and code.  
-If your Pi does not have onboard Wi-Fi, you have two options:
+https://downloads.raspberrypi.org/raspios_oldstable_lite_armhf/images/raspios_oldstable_lite_armhf-2023-05-03/
 
-<<<<<<< HEAD
-1. Run these steps on a separate Raspberry Pi with onboard Wi-Fi, then move the SD card to the target Pi when complete.
-2. OR configure the Pi directly by relaying through your computer's internet connection over USB. See instructions [here](usb_relay.md).
-=======
 SeedSigner does not work with any of the more recent versions of Debian. This is a known limitation and there are open tickets to track the progress of this ([Debian 11 ticket](https://github.com/SeedSigner/seedsigner/issues/431), [Debian 12 ticket](https://github.com/SeedSigner/seedsigner/issues/430)). This guide does not work on the 64-bit versions of Buster, however pull requests to update it to be compatible are welcome.
->>>>>>> upstream/0.8.7
 
-Use the Pi's onboard Wi-Fi only if you are setting up a local development environment, never for real funds or binary image creation.
+Best practice is to verify the downloaded file containing the Raspberry Pi Lite OS matches the published SHA256 hash of the file; for additional reference that hash is: 3d210e61b057de4de90eadb46e28837585a9b24247c221998f5bead04f88624c. After verifying the file's data integrity, you can decompress the .tar.xz file to obtain the operating system image that it contains. You can then use Balena's Etcher tool (https://www.balena.io/etcher/) to write the Raspberry Pi Lite software image to a memory card (4 GB or larger). It's important to note that an image authoring tool must be used (the operating system image cannot be simply copied into a file storage partition on the memory card).
 
-<<<<<<< HEAD
-For the following steps you'll need to either connect a keyboard & monitor to the Raspberry Pi or SSH into it.
-
-## Flash the OS image
-
-Use [Raspberry Pi Imager](https://www.raspberrypi.com/software/) to write a recent Raspberry Pi OS (or Raspberry Pi OS Lite) image to a microSD card (4 GB or larger). The 64-bit (arm64) image is recommended.
-=======
 The manual SeedSigner installation and configuration process requires an internet connection on the Pi to download the necessary libraries and code.  
 If your Pi does not have onboard WiFi, you have two options:
 
@@ -39,35 +20,46 @@ If your Pi does have onboard WiFi, then using the Raspberry Pi Imager software w
 Use the Pi's onboard WiFi only if you are setting up a local development environment, never for real funds or binary image creation. 
   
 For the following steps you'll need to either connect a keyboard & monitor to the network-connected Raspberry Pi you are working with, or SSH into the Pi if you're familiar with that process.
->>>>>>> upstream/0.8.7
 
-## Configure the Pi
+### Configure the Pi
+First things first, verify that you are using the correct version of the Raspberry Pi Lite operating system by typing the command:
+```bash
+cat /etc/os-release
+```
 
-Launch the Raspberry Pi's System Configuration tool:
+The output of this command should match the following text:
+```bash
+PRETTY_NAME="Raspbian GNU/Linux 10 (buster)"
+NAME="Raspbian GNU/Linux"
+VERSION_ID="10"
+VERSION="10 (buster)"
+VERSION_CODENAME=buster
+ID=raspbian
+ID_LIKE=debian
+HOME_URL="http://www.raspbian.org/"
+SUPPORT_URL="http://www.raspbian.org/RaspbianForums"
+BUG_REPORT_URL="http://www.raspbian.org/RaspbianBugs"
+```
+
+Now launch the Raspberry Pi's System Configuration tool using the command:
 ```bash
 sudo raspi-config
 ```
 
 Set the following:
 * `Interface Options`:
+    * `Camera`: enable
     * `SPI`: enable
-    * `I2C`: enable (optional, only needed for I2C-based displays)
-* `Interface Options` → `Serial Port`:
-    * Disable the login shell over the serial port
-    * Keep the serial port hardware enabled
+* `Localisation Options`:
+    * `Locale`: arrow up and down through the list and select or deselect languages with the spacebar.
+        * Deselect the default language option that is selected
+        * Select `en_US.UTF-8 UTF-8` for US English
+        * Use the `TAB` button to select `Ok` and press `ENTER`
+        * On the next screen select `en_US.UTF-8` for the default locale
+* You will also need to configure the WiFi settings if you are using the #1 option above to connect to the internet
 
-When you exit the System Configuration tool, reboot when prompted and then continue.
+When you exit the System Configuration tool, you will be prompted to reboot the system; allow the system to reboot and continue with these instructions.
 
-<<<<<<< HEAD
-## Install system dependencies
-```bash
-sudo apt update && sudo apt install -y \
-    git \
-    libzbar0 \
-    libpcsclite-dev \
-    python3-pip \
-    --no-install-recommends
-=======
 Each command should be run individually, unless it's specified as a multi-line command.
 ### Change the default password
 Change the system's default password from the default "raspberry". Run the command:
@@ -103,14 +95,10 @@ sudo rm -rf Python-3.10.10*
 # Make python3.10 the default version
 sudo update-alternatives --install /usr/bin/python python /usr/local/bin/python3.10 1
 sudo update-alternatives --install /usr/bin/python3 python3 /usr/local/bin/python3.10 1
->>>>>>> upstream/0.8.7
 ```
 
-## Clone SeedSigner
+Manually re-install `python3-apt` to avoid error messages in later steps (though, ironically, you will see the "ModuleNotFoundError: No module named 'apt_pkg'" error message during the `apt remove` step):
 ```bash
-<<<<<<< HEAD
-git clone --recursive https://github.com/3rdIteration/seedsigner
-=======
 sudo apt remove --purge python3-apt -y
 sudo apt autoremove -y
 sudo apt install python3-apt -y
@@ -162,29 +150,33 @@ sudo rm -rf bcm2835-1.60
 ### Download the SeedSigner code:
 ```bash
 git clone https://github.com/SeedSigner/seedsigner
->>>>>>> upstream/0.8.7
 cd seedsigner
 ```
 
-## Install Python dependencies
+### Adding swap space
+Compiling the dependencies requires more RAM than is available on a Raspberry
+Pi 3B, let alone a Zero. Temporarily adding 1GB of additional swap space will
+work around this limitation. The `/swapfile` can be deleted after you reboot.
+
+If building on a Raspberry Pi board with more than 1GB of RAM, this step can
+be safely skipped.
+
 ```bash
-pip3 install -r requirements.txt
-pip3 install -r requirements-raspi.txt
+sudo dd if=/dev/zero of=/swapfile bs=4096 count=$((1024*256))
+sudo chmod 0600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
 ```
 
-If you encounter permission errors, use `pip3 install --break-system-packages` or install inside a virtual environment:
+### Install Python `pip` dependencies:
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-pip install -r requirements-raspi.txt
+# Takes 1hr 15min on a Pi Zero 1.3
+python3 -m pip install -r requirements.txt
+
+# Only takes ~100 seconds
+python3 -m pip install -r requirements-raspi.txt
 ```
 
-<<<<<<< HEAD
-## Run SeedSigner
-```bash
-python src/main.py
-=======
 #### `pyzbar`
 Note: The `requirements.txt` installs a fork of the python `pyzbar` repo.
 
@@ -199,50 +191,32 @@ This allows `ST7789.py` to update the LCD without performing multiple write oper
 Example `cmdline.txt` contents:
 ```
 console=serial0,115200 console=tty1 root=PARTUUID=2fa4ba7e-02 rootfstype=ext4 elevator=deadline fsck.repair=yes rootwait modules-load=dwc2,g_ether spidev.bufsiz=131072
->>>>>>> upstream/0.8.7
 ```
 
+### Configure `systemd` to run SeedSigner at boot:
 
-## Configure auto-start at boot
-
-To have SeedSigner start automatically when the Raspberry Pi boots, create a `systemd` service:
 ```bash
 sudo nano /etc/systemd/system/seedsigner.service
 ```
 
-<<<<<<< HEAD
-Add the following contents. If you are not using the username `pi`, replace `pi` in the three places below with your username:
-=======
 Add the following contents to the text file that was created:  
 If you are not using the username pi, then replace `pi` in the service section below with your username. There are 3 lines to change.   
->>>>>>> upstream/0.8.7
 ```ini
 [Unit]
 Description=Seedsigner
 
 [Service]
 User=pi
-WorkingDirectory=/home/pi/seedsigner
-ExecStart=/usr/bin/python3 src/main.py
+WorkingDirectory=/home/pi/seedsigner/src/
+ExecStart=/usr/bin/python3 main.py
 StandardOutput=null
-<<<<<<< HEAD
-StandardError=null
-=======
 ErrorOutput=null
->>>>>>> upstream/0.8.7
 Restart=no
 
 [Install]
 WantedBy=multi-user.target
 ```
 
-<<<<<<< HEAD
-_Note: `Restart=no` ensures that if the code crashes, systemd will not keep restarting it._
-
-Use `CTRL-X` and `y` to exit and save changes.
-
-Enable the service to start at boot:
-=======
 _Note: The line `Restart=no` ensures that when your dev code crashes it won't keep trying to restart itself._
 
 _Note: Debugging output is completely wiped via routing the stdout and stderr to `/dev/null`. When working in local dev, you'll `kill` the `systemd` SeedSigner service and just directly run the code on demand so you can see all the debugging output live._
@@ -250,7 +224,6 @@ _Note: Debugging output is completely wiped via routing the stdout and stderr to
 Use `CTRL-X` and `y` to exit and save changes.
 
 Configure the service to start running (this will restart the seedsigner code automatically at startup):
->>>>>>> upstream/0.8.7
 ```bash
 sudo systemctl enable seedsigner.service
 ```
@@ -260,18 +233,38 @@ Now reboot the Raspberry Pi:
 sudo reboot
 ```
 
-After the Raspberry Pi reboots, the SeedSigner splash screen should appear on the LCD display (it may take up to 60 seconds).
+After the Raspberry Pi reboots, you should see the SeedSigner splash screen and the SeedSigner menu subsequently appear on the LCD screen (note that it can take up to 60 seconds for the menu to appear).
 
-#### Optional: kill the auto-start process on SSH login
-When testing new code on the device, you may want to automatically kill the running SeedSigner instance each time you SSH in. Add the following to `~/.profile`:
-```bash
-nano ~/.profile
-```
 
-Add at the end:
+#### Optional: kill `systemd` SeedSigner process on login
+If you're going to be testing new code on the device, you'll find yourself often needing to kill the SeedSigner instance that `systemd` automatically runs at startup.
+
+You can configure your `~/.profile` to find and kill the SeedSigner process when you ssh in.
+
+`nano ~/.profile` and add at the end:
 ```bash
 # Find the SeedSigner process and kill it
-kill $(ps aux | grep '[m]ain.py' | awk '{print $2}') 2>/dev/null || true
+kill $(ps aux | grep '[m]ain.py' | awk '{print $2}')
+```
+
+
+### Further OS modifications
+Disable and remove the system's virtual memory / swap file with the commands:
+
+```bash
+sudo apt remove dphys-swapfile -y
+sudo apt autoremove -y
+sudo rm /var/swap
+```
+
+## Manually start the SeedSigner code
+```bash
+cd ~/seedsigner/src
+
+# You'll find the main.py file in that directory. Run it:
+python main.py
+
+# To kill the process, use CTRL-C
 ```
 
 

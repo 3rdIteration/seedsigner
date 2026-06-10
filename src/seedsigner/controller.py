@@ -20,13 +20,9 @@ from seedsigner.models.singleton import Singleton
 from seedsigner.models.threads import BaseThread
 from seedsigner.models.settings_definition import SettingsConstants
 from seedsigner.views.screensaver import ScreensaverScreen
-<<<<<<< HEAD
 from seedsigner.views.view import Destination
 from seedsigner.hardware.rng_monitor import HardwareRngHealthMonitor, HardwareRngMonitorThread
 from seedsigner.hardware.io_config import get_hardware_pin_mapping, get_hardware_profile_label
-=======
-from seedsigner.views.view import Destination, View
->>>>>>> upstream/0.8.7
 
 
 logger = logging.getLogger(__name__)
@@ -156,13 +152,8 @@ class Controller(Singleton):
         Note: In many/most cases you'll need to do the Controller import within a method
         rather than at the top in order avoid circular imports.
     """
-<<<<<<< HEAD
     
     VERSION = "SeSi-0.8.6+ShSi-B10"
-=======
-
-    VERSION = "0.8.7"
->>>>>>> upstream/0.8.7
 
     # Declare class member vars with type hints to enable richer IDE support throughout
     # the code.
@@ -446,19 +437,11 @@ class Controller(Singleton):
             else:
                 next_destination = Destination(MainMenuView)
             
-<<<<<<< HEAD
             # Skip the "remove SD card" tip on Luckfox, where removable media
             # handling and expected workflows differ from SeedSigner OS defaults.
             if Settings.RUNTIME_PROFILE not in {"luckfox_22", "luckfox_40", "luckfox_pi", "desktop"}:
                 # Set up our one-time toast notification tip to remove the SD card
                 self.activate_toast(RemoveSDCardToastManagerThread())
-=======
-            # Set up our one-time toast notification tip to remove the SD card
-            if self.settings.get_value(SettingsConstants.SETTING__MICROSD_TOAST_TIMER) == SettingsConstants.MICROSD_TOAST_TIMER_FIVE_SECONDS:
-                self.activate_toast(RemoveSDCardToastManagerThread())
-            elif self.settings.get_value(SettingsConstants.SETTING__MICROSD_TOAST_TIMER) == SettingsConstants.MICROSD_TOAST_TIMER_FOREVER:
-                next_destination = Destination(RemoveMicroSDWarningView)
->>>>>>> upstream/0.8.7
 
             while True:
                 # Destination(None) is a special case; render the Home screen

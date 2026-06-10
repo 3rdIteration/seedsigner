@@ -164,6 +164,7 @@ def normalize_descriptor_str(descriptor_str: str) -> str:
 
 
 
+def get_xpub(seed_bytes, derivation_path: str, embit_network: str = "main") -> HDKey:
     root = bip32.HDKey.from_seed(seed_bytes, version=NETWORKS[embit_network]["xprv"])
     xprv = root.derive(derivation_path)
     xpub = xprv.to_public()
@@ -208,9 +209,6 @@ def get_multisig_address(descriptor: Descriptor, index: int = 0, is_change: bool
     raise Exception(f"{descriptor.script_pubkey().script_type()} address verification not yet implemented!")
 
 
-<<<<<<< HEAD
-=======
-
 def get_multisig_policy(descriptor: Descriptor) -> tuple:
     """Extract (threshold, n) from a basic multisig descriptor."""
     if not descriptor.is_basic_multisig:
@@ -219,7 +217,6 @@ def get_multisig_policy(descriptor: Descriptor) -> tuple:
 
 
 
->>>>>>> upstream/0.8.7
 def get_embit_network_name(settings_name):
     """ Convert SeedSigner SettingsConstants for `network` to embit's NETWORK key """
     lookup = {

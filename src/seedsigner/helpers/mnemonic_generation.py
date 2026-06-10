@@ -171,41 +171,4 @@ def get_partial_final_word(coin_flips: str, wordlist_language_code: str = Settin
     binary_string = coin_flips + "0" * (11 - len(coin_flips))
     wordlist_index = int(binary_string, 2)
 
-<<<<<<< HEAD
-    # Create an independent copy to avoid holding a direct reference
-    # to the shared global wordlist string.
-    return "".join(Seed.get_wordlist(wordlist_language_code)[wordlist_index])
-
-
-
-# Note: This currently isn't being used since we're now chaining hashed bytes for the
-#   image-based entropy and aren't just ingesting a single image.
-def generate_mnemonic_from_image(image, wordlist_language_code: str = SettingsConstants.WORDLIST_LANGUAGE__ENGLISH) -> list[str]:
-    import hashlib
-    hash = hashlib.sha256(image.tobytes())
-
-    # Create independent copies so wipe_list() won't corrupt global wordlist.
-    return ["".join(w) for w in bip39.mnemonic_from_bytes(hash.digest(), wordlist=Seed.get_wordlist(wordlist_language_code)).split()]
-
-
-def _shannon_entropy(data: bytes | str) -> float:
-    """Return the Shannon entropy of the provided data."""
-    if isinstance(data, str):
-        data = data.encode()
-    counts = Counter(data)
-    length = len(data)
-    shannon_entropy = -sum((count / length) * math.log2(count / length) for count in counts.values())
-    return shannon_entropy
-
-
-def dice_entropy_is_sufficient(roll_data: str, threshold: float = 2.0) -> bool:
-    """Simple randomness check for dice roll input."""
-    return _shannon_entropy(roll_data) >= threshold
-
-
-def byte_entropy_is_sufficient(data: bytes, threshold: float = 3.5) -> bool:
-    """Simple randomness check for byte data."""
-    return _shannon_entropy(data) >= threshold
-=======
     return Seed.get_wordlist(wordlist_language_code)[wordlist_index]
->>>>>>> upstream/0.8.7

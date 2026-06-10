@@ -1,17 +1,4 @@
-<<<<<<< HEAD
-from seedsigner.models.encode_qr import (
-    CompactSeedQrEncoder,
-    SeedQrEncoder,
-    SpecterXPubQrEncoder,
-    StaticXpubQrEncoder,
-    UrPsbtQrEncoder,
-    UrXpubQrEncoder,
-    UrBytesQrEncoder,
-    UrTextQrEncoder,
-)
-=======
 from seedsigner.models.encode_qr import CompactSeedQrEncoder, SeedQrEncoder, SpecterLegacyXPubQrEncoder, StaticXpubQrEncoder, UrPsbtQrEncoder, UrXpubQrEncoder
->>>>>>> upstream/0.8.7
 from embit import psbt
 from binascii import a2b_base64
 from seedsigner.helpers.ur2.ur_decoder import URDecoder

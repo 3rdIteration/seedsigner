@@ -51,15 +51,6 @@ This driver supports:
 """
 
 import array
-<<<<<<< HEAD
-from periphery import GPIO, SPI
-import time
-import errno
-from math import sin, cos
-
-from seedsigner.models.settings import Settings
-from seedsigner.hardware.io_config import get_hardware_pin_mapping
-=======
 import spidev
 import RPi.GPIO as GPIO
 
@@ -67,7 +58,6 @@ from dataclasses import dataclass
 from math import sin, cos
 
 from seedsigner.hardware.displays.display_driver import BaseDisplayDriver
->>>>>>> upstream/0.8.7
 
 #
 # This allows sphinx to build the docs
@@ -277,17 +267,6 @@ class ST7789(BaseDisplayDriver):
 
     """
 
-<<<<<<< HEAD
-    def __init__(
-        self,
-        width,
-        height,
-        rotation=1,
-        color_order=BGR,
-        custom_init=None,
-        custom_rotations=None,
-    ):
-=======
     def __post_init__(self):
         reset=13
         dc=22
@@ -308,7 +287,6 @@ class ST7789(BaseDisplayDriver):
         spi = spidev.SpiDev(0, 0)
         spi.max_speed_hz = 40000000
 
->>>>>>> upstream/0.8.7
         """
         Initialize display.
         """

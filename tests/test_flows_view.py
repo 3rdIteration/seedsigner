@@ -70,63 +70,6 @@ class TestViewFlows(FlowTest):
         ])
 
 
-<<<<<<< HEAD
-    def test_restart_thread_command_seedsigner_os(self):
-        """
-        Verify DoResetThread uses os.getpid() and sys.executable on seedsigner-os.
-        """
-        original_hostname = Settings.HOSTNAME
-        try:
-            Settings.HOSTNAME = Settings.SEEDSIGNER_OS
-            thread = RestartView.DoResetThread()
-            thread.keep_running = True
-            with patch('subprocess.call') as mock_subprocess_call, \
-                 patch('time.sleep'):
-                thread.run()
-                mock_subprocess_call.assert_called_once()
-                cmd = mock_subprocess_call.call_args[0][0]
-                pid = os.getpid()
-                python = shlex.quote(sys.executable)
-                assert cmd == f"kill {pid}; exec {python} /opt/src/main.py"
-                assert mock_subprocess_call.call_args[1] == {"shell": True}
-        finally:
-            Settings.HOSTNAME = original_hostname
-
-
-    def test_restart_thread_command_desktop(self):
-        """
-        Verify DoResetThread uses os.getpid() on non-seedsigner-os (desktop).
-        """
-        original_hostname = Settings.HOSTNAME
-        try:
-            Settings.HOSTNAME = "desktop-host"
-            thread = RestartView.DoResetThread()
-            thread.keep_running = True
-            with patch('subprocess.call') as mock_subprocess_call, \
-                 patch('time.sleep'):
-                thread.run()
-                mock_subprocess_call.assert_called_once()
-                cmd = mock_subprocess_call.call_args[0][0]
-                pid = os.getpid()
-                assert cmd == f"kill {pid}"
-                assert mock_subprocess_call.call_args[1] == {"shell": True}
-        finally:
-            Settings.HOSTNAME = original_hostname
-
-
-    def test_restart_thread_skips_kill_when_stopped(self):
-        """
-        Verify DoResetThread does not execute kill when keep_running is False.
-        This simulates the screenshot generator scenario where ScreenshotComplete
-        is raised during screen render, causing RestartView to stop the thread.
-        """
-        thread = RestartView.DoResetThread()
-        thread.keep_running = False
-        with patch('subprocess.call') as mock_subprocess_call, \
-             patch('time.sleep'):
-            thread.run()
-            mock_subprocess_call.assert_not_called()
-=======
     def test__camera_connection_error__flow(self):
         """
         Simulate a camera connection error and ensure that we get the
@@ -143,4 +86,3 @@ class TestViewFlows(FlowTest):
                 FlowStep(CameraConnectionErrorView),
                 FlowStep(MainMenuView),
             ])
->>>>>>> upstream/0.8.7
