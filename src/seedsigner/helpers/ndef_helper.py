@@ -204,3 +204,88 @@ def decode_ndef_for_display(ndef_bytes: bytes) -> str:
         # Fallback to hex display if decoding fails
         return ndef_bytes.hex().upper()
 
+
+def save_ndef_to_seedkeeper(connector, ndef_bytes: bytes, label: str = "NDEF Record") -> tuple:
+    """
+    Save NDEF bytes to SeedKeeper as a secret with NDEF_ prefix.
+    
+    Args:
+        connector: CardConnector instance for SeedKeeper
+        ndef_bytes: Raw NDEF data bytes to save
+        label: Optional label for the secret (will be prefixed with "NDEF_")
+        
+    Returns:
+        Tuple of (secret_id, fingerprint) returned by seedkeeper_import_secret
+        
+    Raises:
+        Exception: If the save operation fails
+    """
+    if not ndef_bytes or len(ndef_bytes) == 0:
+        raise ValueError("NDEF bytes cannot be empty")
+    
+    # Create label with NDEF_ prefix
+    secret_label = f"NDEF_{label}"
+    
+    # Convert NDEF bytes to secret_list format (with length prefix)
+    # For data < 256 bytes, use single byte length
+    if len(ndef_bytes) <= 255:
+        secret_list = [len(ndef_bytes)] + list(ndef_bytes)
+    else:
+        # For data >= 256 bytes, use 2-byte big-endian length
+        secret_list = list(len(ndef_bytes).to_bytes(2, "big")) + list(ndef_bytes)
+    
+    # Create header using generic "Password" type (suitable for binary data)
+    header = connector.make_header("Password", "Plaintext export allowed", secret_label)
+    
+    # Create secret dictionary
+    secret_dic = {
+        "header": header,
+        "secret_list": secret_list
+    }
+    
+    # Import secret to SeedKeeper
+    (sid, fingerprint) = connector.seedkeeper_import_secret(secret_dic)
+    
+    return (sid, fingerprint)
+
+
+def load_ndef_from_seedkeeper(connector, secret_id: int) -> bytes:
+    """
+    Load NDEF bytes from SeedKeeper secret.
+    
+    Args:
+        connector: CardConnector instance for SeedKeeper
+        secret_id: The ID of the secret to load
+        
+    Returns:
+        Raw NDEF data bytes
+        
+    Raises:
+        Exception: If the load operation fails
+    """
+    # Export secret from SeedKeeper
+    secret_dict = connector.seedkeeper_export_secret(secret_id, None)
+    
+    if not secret_dict or "secret_list" not in secret_dict:
+        raise ValueError("Invalid secret format or secret not found")
+    
+    secret_list = secret_dict["secret_list"]
+    
+    if len(secret_list) < 2:
+        raise ValueError("Invalid NDEF secret: list too short")
+    
+    # Check if it's a 2-byte length (first byte would be 0, second byte is actual length)
+    # or a 1-byte length (first byte is the length)
+    length_byte = secret_list[0]
+    
+    if length_byte == 0 and len(secret_list) > 2:
+        # 2-byte length format
+        length = (secret_list[0] << 8) | secret_list[1]
+        ndef_bytes = bytes(secret_list[2:2+length])
+    else:
+        # 1-byte length format
+        length = length_byte
+        ndef_bytes = bytes(secret_list[1:1+length])
+    
+    return ndef_bytes
+
