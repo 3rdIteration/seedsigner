@@ -20,3 +20,4 @@ cffi==1.17.1
 pycparser==2.22
 smbus2==0.4.3 ; platform_system != "Windows"
 shamir-mnemonic==0.3.0
+ndeflib==0.3.3

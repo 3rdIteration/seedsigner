@@ -39,6 +39,7 @@ from seedsigner.gui.screens.tools_screens import (ToolsCalcFinalWordDoneScreen, 
 from seedsigner.helpers import embit_utils, mnemonic_generation
 from seedsigner.helpers import bip85_drng, diceware, password_generation
 from seedsigner.helpers.iso7816 import format_sw_error
+from seedsigner.helpers import ndef_helper
 from seedsigner.models.decode_qr import DecodeQR
 from seedsigner.models.encode_qr import GenericStaticQrEncoder
 from seedsigner.gui.screens.screen import ButtonOption
@@ -1515,12 +1516,18 @@ class ToolsCommonNdefView(View):
     VIEW_NDEF = ButtonOption("View NDEF")
     SET_SEEDKEEPER_NDEF = ButtonOption("Use Seedkeeper App Link")
     CLEAR_NDEF = ButtonOption("Clear NDEF")
-    SET_CUSTOM_NDEF = ButtonOption("Set Custom NDEF (HEX)")
+    SET_CUSTOM_NDEF = ButtonOption("Set Custom NDEF")
 
     _SEEDKEEPER_APP_NDEF_HEX = (
         "0029d40f17616e64726f69642e636f6d3a706b676f72672e7361746f636869702e736565646b6565706572"
     )
     _EMPTY_NDEF_HEX = "0003D00000"
+
+    # NDEF Record type options
+    RECORD_TYPE_TEXT = ButtonOption("Text Record")
+    RECORD_TYPE_URI = ButtonOption("URI Record")
+    RECORD_TYPE_ANDROID_APP = ButtonOption("Android App Launch")
+    RECORD_TYPE_HEX = ButtonOption("Custom (HEX)")
 
     def run(self):
         allowed = ["seedkeeper", "satodime"]
@@ -1566,22 +1573,164 @@ class ToolsCommonNdefView(View):
                 return self._set_ndef(connector, self._EMPTY_NDEF_HEX, "NDEF cleared")
 
             if selected == self.SET_CUSTOM_NDEF:
-                ret = seed_screens.SeedAddPassphraseScreen(title="NDEF HEX").display()
-                if isinstance(ret, dict) and "is_back_button" in ret:
-                    continue
+                return self._set_custom_ndef_flow(connector)
 
-                ndef_hex = ret.get("passphrase", "").strip()
-                if not ndef_hex:
-                    self.run_screen(
-                        WarningScreen,
-                        title="Invalid NDEF",
-                        status_headline=None,
-                        text="Hex value required",
-                        show_back_button=True,
-                    )
-                    continue
+    def _set_custom_ndef_flow(self, connector):
+        """Handle the flow for setting custom NDEF records."""
+        while True:
+            button_data = [
+                self.RECORD_TYPE_TEXT,
+                self.RECORD_TYPE_URI,
+                self.RECORD_TYPE_ANDROID_APP,
+                self.RECORD_TYPE_HEX,
+            ]
 
-                return self._set_ndef(connector, ndef_hex, "NDEF updated")
+            selected_menu_num = self.run_screen(
+                ButtonListScreen,
+                title="NDEF Record Type",
+                is_button_text_centered=False,
+                button_data=button_data,
+                show_back_button=True,
+            )
+
+            if selected_menu_num == RET_CODE__BACK_BUTTON:
+                return Destination(self.__class__)
+
+            selected = button_data[selected_menu_num]
+
+            if selected == self.RECORD_TYPE_TEXT:
+                return self._create_text_record(connector)
+
+            elif selected == self.RECORD_TYPE_URI:
+                return self._create_uri_record(connector)
+
+            elif selected == self.RECORD_TYPE_ANDROID_APP:
+                return self._create_android_app_record(connector)
+
+            elif selected == self.RECORD_TYPE_HEX:
+                return self._set_ndef_hex(connector)
+
+    def _create_text_record(self, connector):
+        """Create and set a Text NDEF record."""
+        # Get text content
+        ret = seed_screens.SeedAddPassphraseScreen(title="Enter Text").display()
+        if isinstance(ret, dict) and "is_back_button" in ret:
+            return Destination(self.__class__)
+
+        text = ret.get("passphrase", "").strip()
+        if not text:
+            self.run_screen(
+                WarningScreen,
+                title="Invalid Text",
+                status_headline=None,
+                text="Text cannot be empty",
+                show_back_button=True,
+            )
+            return Destination(self.__class__)
+
+        # Get language (optional, default to "en")
+        ret = seed_screens.SeedAddPassphraseScreen(title="Language Code (e.g., en)").display()
+        if isinstance(ret, dict) and "is_back_button" in ret:
+            language = "en"
+        else:
+            language = ret.get("passphrase", "en").strip() or "en"
+
+        try:
+            ndef_bytes = ndef_helper.create_text_record(text, language)
+            ndef_hex = ndef_bytes.hex().upper()
+            return self._set_ndef(connector, ndef_hex, "Text record set")
+        except Exception as e:
+            self.run_screen(
+                WarningScreen,
+                title="Failed to Create Record",
+                status_headline=None,
+                text=str(e)[:100],
+                show_back_button=True,
+            )
+            return Destination(self.__class__)
+
+    def _create_uri_record(self, connector):
+        """Create and set a URI NDEF record."""
+        # Get URI
+        ret = seed_screens.SeedAddPassphraseScreen(title="Enter URI").display()
+        if isinstance(ret, dict) and "is_back_button" in ret:
+            return Destination(self.__class__)
+
+        uri = ret.get("passphrase", "").strip()
+        if not uri:
+            self.run_screen(
+                WarningScreen,
+                title="Invalid URI",
+                status_headline=None,
+                text="URI cannot be empty",
+                show_back_button=True,
+            )
+            return Destination(self.__class__)
+
+        try:
+            ndef_bytes = ndef_helper.create_uri_record(uri)
+            ndef_hex = ndef_bytes.hex().upper()
+            return self._set_ndef(connector, ndef_hex, "URI record set")
+        except Exception as e:
+            self.run_screen(
+                WarningScreen,
+                title="Failed to Create Record",
+                status_headline=None,
+                text=str(e)[:100],
+                show_back_button=True,
+            )
+            return Destination(self.__class__)
+
+    def _create_android_app_record(self, connector):
+        """Create and set an Android App Launch NDEF record."""
+        # Get package name
+        ret = seed_screens.SeedAddPassphraseScreen(title="Android Package Name").display()
+        if isinstance(ret, dict) and "is_back_button" in ret:
+            return Destination(self.__class__)
+
+        package_name = ret.get("passphrase", "").strip()
+        if not package_name:
+            self.run_screen(
+                WarningScreen,
+                title="Invalid Package",
+                status_headline=None,
+                text="Package name cannot be empty",
+                show_back_button=True,
+            )
+            return Destination(self.__class__)
+
+        try:
+            ndef_bytes = ndef_helper.create_android_app_record(package_name)
+            ndef_hex = ndef_bytes.hex().upper()
+            return self._set_ndef(connector, ndef_hex, "Android app record set")
+        except Exception as e:
+            self.run_screen(
+                WarningScreen,
+                title="Failed to Create Record",
+                status_headline=None,
+                text=str(e)[:100],
+                show_back_button=True,
+            )
+            return Destination(self.__class__)
+
+    def _set_ndef_hex(self, connector):
+        """Set NDEF from raw hex input."""
+        ret = seed_screens.SeedAddPassphraseScreen(title="NDEF HEX").display()
+        if isinstance(ret, dict) and "is_back_button" in ret:
+            return Destination(self.__class__)
+
+        ndef_hex = ret.get("passphrase", "").strip()
+        if not ndef_hex:
+            self.run_screen(
+                WarningScreen,
+                title="Invalid NDEF",
+                status_headline=None,
+                text="Hex value required",
+                show_back_button=True,
+            )
+            return Destination(self.__class__)
+
+        return self._set_ndef(connector, ndef_hex, "NDEF updated")
 
     def _view_ndef(self, connector):
         try:
@@ -1608,12 +1757,23 @@ class ToolsCommonNdefView(View):
             if not ndef_hex:
                 ndef_hex = "(empty)"
 
-            # Build display text
-            display_text = ndef_hex
+            # Try to decode NDEF for display
+            display_text = ""
+            if ndef_bytes and len(ndef_bytes) > 0:
+                try:
+                    decoded_display = ndef_helper.decode_ndef_for_display(ndef_bytes)
+                    # Show decoded format first
+                    display_text = "Decoded NDEF:\n" + decoded_display + "\n\nRaw HEX:\n" + ndef_hex
+                except Exception:
+                    # Fallback to hex if decoding fails
+                    display_text = ndef_hex
+            else:
+                display_text = ndef_hex
+
+            # Add policy data for Satodime if available
             if policy_data and card_type == "Satodime":
-                # For Satodime, append policy information
                 policy_str = str(policy_data) if policy_data else "(no policy data)"
-                display_text = f"NDEF:\n{ndef_hex}\n\nPolicy:\n{policy_str}"
+                display_text = display_text + "\n\nPolicy:\n" + policy_str
 
             self.run_screen(
                 LargeIconStatusScreen,
@@ -1670,6 +1830,7 @@ class ToolsCommonNdefView(View):
                 show_back_button=True,
             )
             return Destination(BackStackView)
+
 
 
 class ToolsSmartcardInfoView(View):
