@@ -1531,6 +1531,25 @@ class ToolsCommonNdefView(View):
     RECORD_TYPE_ANDROID_APP = ButtonOption("Android App Launch")
     RECORD_TYPE_HEX = ButtonOption("Custom (HEX)")
 
+    @staticmethod
+    def _extract_ndef_payload(ndef_bytes: bytes) -> bytes:
+        """Accept either raw payload or 2-byte length-prefixed NDEF and return payload bytes."""
+        if not ndef_bytes:
+            return b""
+
+        if len(ndef_bytes) >= 2:
+            declared_len = (ndef_bytes[0] << 8) | ndef_bytes[1]
+            if declared_len == len(ndef_bytes) - 2:
+                return ndef_bytes[2:]
+
+        return ndef_bytes
+
+    @staticmethod
+    def _to_card_ndef_bytes(ndef_bytes: bytes) -> bytes:
+        """Card APDU expects NDEF bytes with a 2-byte big-endian length prefix."""
+        payload = ToolsCommonNdefView._extract_ndef_payload(ndef_bytes)
+        return len(payload).to_bytes(2, "big") + payload
+
     def run(self):
         allowed = ["seedkeeper", "satodime"]
         card_filter = self.controller.tools_common_card_filter or allowed
@@ -1763,34 +1782,38 @@ class ToolsCommonNdefView(View):
             if sw1 != 0x90 or sw2 != 0x00:
                 raise RuntimeError(format_sw_error(sw1, sw2))
 
-            ndef_hex = ndef_bytes.hex().upper()
-            if not ndef_hex:
-                ndef_hex = "(empty)"
+            ndef_payload = self._extract_ndef_payload(ndef_bytes)
+            ndef_hex = ndef_payload.hex().upper() if ndef_payload else "(empty)"
 
-            # Try to decode NDEF for display
-            display_text = ""
-            if ndef_bytes and len(ndef_bytes) > 0:
-                try:
-                    decoded_display = ndef_helper.decode_ndef_for_display(ndef_bytes)
-                    # Show decoded format first
-                    display_text = "Decoded NDEF:\n" + decoded_display + "\n\nRaw HEX:\n" + ndef_hex
-                except Exception:
-                    # Fallback to hex if decoding fails
-                    display_text = ndef_hex
-            else:
-                display_text = ndef_hex
+            # First screen: raw hex with explicit decode action.
+            selected = self.run_screen(
+                ToolsTextQRReviewTextScreen,
+                title="NDEF HEX",
+                textToEncode=ndef_hex,
+                max_lines=6,
+                visible_space=False,
+                button_data=[ButtonOption("Decode NDEF")],
+                show_back_button=True,
+            )
 
-            # Add policy data for Satodime if available
+            if selected == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+
+            try:
+                decoded_display = ndef_helper.decode_ndef_for_display(ndef_payload)
+            except Exception:
+                decoded_display = "Unable to decode NDEF payload"
+
             if policy_data and card_type == "Satodime":
-                policy_str = str(policy_data) if policy_data else "(no policy data)"
-                display_text = display_text + "\n\nPolicy:\n" + policy_str
+                decoded_display = decoded_display + "\n\nPolicy:\n" + str(policy_data)
 
+            # Second screen: decoded record details only.
             self.run_screen(
                 LargeIconStatusScreen,
-                title="NDEF",
+                title="Decoded NDEF",
                 status_headline=None,
-                text=display_text,
-                status_icon_name="",
+                text=decoded_display,
+                status_icon_size=0,
                 show_back_button=True,
             )
             return Destination(BackStackView)
@@ -1819,7 +1842,8 @@ class ToolsCommonNdefView(View):
             return Destination(BackStackView)
 
         try:
-            _, sw1, sw2 = connector.card_set_ndef(ndef_bytes)
+            card_ndef_bytes = self._to_card_ndef_bytes(ndef_bytes)
+            _, sw1, sw2 = connector.card_set_ndef(card_ndef_bytes)
             if sw1 != 0x90 or sw2 != 0x00:
                 raise RuntimeError(format_sw_error(sw1, sw2))
 
