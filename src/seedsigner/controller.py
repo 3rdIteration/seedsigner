@@ -390,11 +390,10 @@ class Controller(Singleton):
         from seedsigner.gui.toast import RemoveSDCardToastManagerThread
 
         if not skip_startup_interstitials:
-            OpeningSplashView().run()
-
             # Flow tests start from an expected first interactive screen (usually MainMenu).
-            # Skip startup warning interstitials under pytest to keep deterministic routing.
+            # Skip startup interstitials under pytest to keep deterministic routing.
             if "PYTEST_CURRENT_TEST" not in os.environ:
+                OpeningSplashView().run()
                 if is_seedsigner_os_dev_build():
                     DeveloperOSWarningView().run()
                 if self.settings.get_value(SettingsConstants.SETTING__DISPLAY_CONFIGURATION).startswith("desktop"):

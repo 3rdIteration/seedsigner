@@ -307,3 +307,10 @@ def sign_message(root: HDKey, derivation: str, msg: bytes, compressed: bool = Tr
     flag = bytes([27 + flag + c])
     ser = flag + secp256k1.ecdsa_signature_serialize_compact(sig._sig)
     return b2a_base64(ser).strip().decode()
+
+
+def get_xpub(seed_bytes, derivation_path: str, embit_network: str = "main") -> HDKey:
+    root = bip32.HDKey.from_seed(seed_bytes, version=NETWORKS[embit_network]["xprv"])
+    xprv = root.derive(derivation_path)
+    xpub = xprv.to_public()
+    return xpub
