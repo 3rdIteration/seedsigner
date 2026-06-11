@@ -3464,7 +3464,7 @@ class ToolsKeycardChangePinView(View):
         if not connector:
             return Destination(BackStackView)
 
-        new_pin_str = seedkeeper_utils.prompt_for_pin(self, "New PIN")
+        new_pin_str = _prompt_keycard_new_pin(self, "New PIN")
         if new_pin_str is None:
             return Destination(BackStackView)
 
@@ -3480,13 +3480,21 @@ class ToolsKeycardChangePinView(View):
                 show_back_button=False,
             )
         else:
-            self.run_screen(
-                WarningScreen,
-                title="Failed",
-                status_headline=None,
-                text="PIN update failed",
-                show_back_button=True,
-            )
+            if sw1 == 0x63 and (sw2 & 0xF0) == 0xC0:
+                seedkeeper_utils.show_incorrect_pin_warning(
+                    self,
+                    connector=connector,
+                    sw1=sw1,
+                    sw2=sw2,
+                )
+            else:
+                self.run_screen(
+                    WarningScreen,
+                    title="Failed",
+                    status_headline=None,
+                    text="PIN update failed",
+                    show_back_button=True,
+                )
         return Destination(MainMenuView)
 
 
@@ -3560,7 +3568,7 @@ class ToolsKeycardUnblockPinView(View):
             )
             return Destination(BackStackView)
 
-        new_pin_str = seedkeeper_utils.prompt_for_pin(self, "New PIN")
+        new_pin_str = _prompt_keycard_new_pin(self, "New PIN")
         if new_pin_str is None:
             return Destination(BackStackView)
 
@@ -3579,13 +3587,21 @@ class ToolsKeycardUnblockPinView(View):
                 show_back_button=False,
             )
         else:
-            self.run_screen(
-                WarningScreen,
-                title="Failed",
-                status_headline=None,
-                text="PIN unblock failed",
-                show_back_button=True,
-            )
+            if sw1 == 0x63 and (sw2 & 0xF0) == 0xC0:
+                seedkeeper_utils.show_incorrect_pin_warning(
+                    self,
+                    connector=connector,
+                    sw1=sw1,
+                    sw2=sw2,
+                )
+            else:
+                self.run_screen(
+                    WarningScreen,
+                    title="Failed",
+                    status_headline=None,
+                    text="PIN unblock failed",
+                    show_back_button=True,
+                )
         return Destination(MainMenuView)
 
 
@@ -3614,13 +3630,21 @@ class ToolsKeycardSetNameView(View):
                 show_back_button=False,
             )
         else:
-            self.run_screen(
-                WarningScreen,
-                title="Failed",
-                status_headline=None,
-                text="Name update failed",
-                show_back_button=True,
-            )
+            if sw1 == 0x63 and (sw2 & 0xF0) == 0xC0:
+                seedkeeper_utils.show_incorrect_pin_warning(
+                    self,
+                    connector=connector,
+                    sw1=sw1,
+                    sw2=sw2,
+                )
+            else:
+                self.run_screen(
+                    WarningScreen,
+                    title="Failed",
+                    status_headline=None,
+                    text="Name update failed",
+                    show_back_button=True,
+                )
         return Destination(MainMenuView)
 
 
@@ -3991,11 +4015,12 @@ class ToolsSatochipImportSeedView(View):
         # appropriate action (like resetting the card) before proceeding.
         _resp, _sw1, _sw2, status = Satochip_Connector.card_get_status()
         if status.get("is_seeded"):
+            card_name = "Keycard" if getattr(Satochip_Connector, "is_keycard_backend", False) else "Satochip"
             self.run_screen(
                 WarningScreen,
                 title=_("Already Seeded"),
                 status_headline=None,
-                text=_("Satochip card already contains a seed."),
+                text=_(f"{card_name} card already contains a seed."),
                 show_back_button=False,
             )
             return Destination(MainMenuView)
@@ -5173,6 +5198,37 @@ def _prompt_specter_new_pin(parent_view, title: str) -> str | None:
         )
         if selected == 0:
             return pin
+
+
+def _prompt_keycard_new_pin(parent_view, title: str) -> str | None:
+    while True:
+        ret = seed_screens.SeedAddPassphraseScreen(title=title).display()
+        if isinstance(ret, dict) and "is_back_button" in ret:
+            return None
+
+        pin = ret.get("passphrase", "")
+        if all(ch in "0123456789" for ch in pin):
+            if len(pin) == 6:
+                return pin
+
+            parent_view.run_screen(
+                WarningScreen,
+                title="Invalid PIN Length",
+                status_headline=None,
+                text="Keycard PIN must be exactly 6 digits.",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            continue
+
+        parent_view.run_screen(
+            WarningScreen,
+            title="Non-Numeric PIN",
+            status_headline=None,
+            text="Keycard PIN must contain digits 0-9 only.",
+            show_back_button=False,
+            button_data=[ButtonOption("I Understand")],
+        )
 
 
 def _unlock_specter_card_if_needed(parent_view, secure_applet, secure_channel) -> bool:

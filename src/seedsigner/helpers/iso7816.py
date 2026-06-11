@@ -46,6 +46,10 @@ def format_sw_error(sw1: int, sw2: int) -> str:
         unknown codes, a generic "unknown" message is returned.
     """
     status_word = (sw1 << 8) | sw2
+    if sw1 == 0x63 and (sw2 & 0xF0) == 0xC0:
+        tries_left = sw2 & 0x0F
+        attempt_word = "attempt" if tries_left == 1 else "attempts"
+        return f"PIN is incorrect: {tries_left} {attempt_word} remaining ({status_word:#06x})"
     description = ISO7816_STATUS_WORDS.get(status_word)
     if description:
         return f"{description} ({status_word:#06x})"

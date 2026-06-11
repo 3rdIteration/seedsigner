@@ -5,6 +5,7 @@ import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
+import re
 
 from embit import bip32, ec
 
@@ -184,7 +185,7 @@ class KeycardSatochipConnector:
     is_keycard_backend = True
     requires_message_digest = True
     needs_secure_channel = False
-    card_type = "Satochip"
+    card_type = "Keycard"
 
     def __init__(self, inner) -> None:
         self._card = inner["card"]
@@ -244,12 +245,88 @@ class KeycardSatochipConnector:
         self._secure_open = True
 
     def _ensure_pin_verified(self) -> None:
+        sw1, sw2 = self._verify_pin_sw()
+        if (sw1, sw2) != (0x90, 0x00):
+            raise ValueError(f"APDU failed with SW={sw1:02X}{sw2:02X}")
+
+    @staticmethod
+    def _extract_status_word(exc: Exception) -> int | None:
+        for attr in ("status_word", "sw"):
+            value = getattr(exc, attr, None)
+            if isinstance(value, int):
+                return value & 0xFFFF
+
+        sw1 = getattr(exc, "sw1", None)
+        sw2 = getattr(exc, "sw2", None)
+        if isinstance(sw1, int) and isinstance(sw2, int):
+            return ((sw1 & 0xFF) << 8) | (sw2 & 0xFF)
+
+        text = str(exc)
+        match = re.search(r"SW\s*=\s*([0-9A-Fa-f]{4})", text)
+        if match:
+            return int(match.group(1), 16)
+
+        match = re.search(r"0x([0-9A-Fa-f]{4})", text)
+        if match:
+            return int(match.group(1), 16)
+
+        return None
+
+    def _pin_tries_from_status(self) -> int | None:
+        status = getattr(self._card, "status", None)
+        if not isinstance(status, dict):
+            return None
+
+        direct_keys = (
+            "PIN0_remaining_tries",
+            "pin_remaining_tries",
+            "pin_retry_counter",
+            "pin_retry_count",
+            "pin_tries_left",
+            "pin_attempts_left",
+        )
+        for key in direct_keys:
+            value = status.get(key)
+            if isinstance(value, int):
+                return value
+
+        pin_status = status.get("pin")
+        if isinstance(pin_status, dict):
+            for key in ("remaining_tries", "tries_left", "attempts_left"):
+                value = pin_status.get(key)
+                if isinstance(value, int):
+                    return value
+
+        return None
+
+    def _pin_failure_sw(self, fallback_sw: tuple[int, int] = (0x63, 0xC0)) -> tuple[int, int]:
+        tries = self._pin_tries_from_status()
+        if isinstance(tries, int) and 0 <= tries <= 15:
+            return (0x63, 0xC0 | tries)
+        return fallback_sw
+
+    def _verify_pin_sw(self) -> tuple[int, int]:
         if self.pin is None:
             raise ValueError("PIN has not been set")
+
         pin_text = _pin_to_text(self.pin)
-        ok = self._card.verify_pin(pin_text)
-        if not ok:
-            raise ValueError("Invalid PIN")
+        try:
+            ok = self._card.verify_pin(pin_text)
+        except Exception as exc:
+            status_word = self._extract_status_word(exc)
+            if status_word is None:
+                raise
+            if 0x63C0 <= status_word <= 0x63CF:
+                return ((status_word >> 8) & 0xFF, status_word & 0xFF)
+            # Some firmware reports PIN failure as 6A80; translate it to 63Cx
+            # so UI can render a proper incorrect-PIN message.
+            if status_word == 0x6A80:
+                return self._pin_failure_sw()
+            return ((status_word >> 8) & 0xFF, status_word & 0xFF)
+
+        if ok:
+            return (0x90, 0x00)
+        return self._pin_failure_sw()
 
     def _refresh_uid(self) -> None:
         try:
@@ -282,14 +359,9 @@ class KeycardSatochipConnector:
         self.pin = pin
 
     def card_verify_PIN(self):
-        if self.pin is None:
-            raise ValueError("PIN has not been set")
         self._ensure_secure_channel()
-        pin_text = _pin_to_text(self.pin)
-        ok = self._card.verify_pin(pin_text)
-        if ok:
-            return ([], 0x90, 0x00)
-        return ([], 0x63, 0xC0)
+        sw1, sw2 = self._verify_pin_sw()
+        return ([], sw1, sw2)
 
     def card_get_status(self):
         self._ensure_secure_channel()
@@ -301,6 +373,9 @@ class KeycardSatochipConnector:
         out["key_initialized"] = bool(out.get("initialized", out.get("key_initialized", True)))
         out["is_seeded"] = bool(out.get("key_initialized", False))
         out.setdefault("setup_done", bool(out.get("key_initialized", True)))
+        pin_tries = self._pin_tries_from_status()
+        if pin_tries is not None:
+            out.setdefault("PIN0_remaining_tries", pin_tries)
         return ([], 0x90, 0x00, out)
 
     def card_change_PIN(self, pin_nbr, old_pin, new_pin):
@@ -308,9 +383,10 @@ class KeycardSatochipConnector:
         self._ensure_secure_channel()
         old_text = _value_to_text(old_pin)
         new_text = _value_to_text(new_pin)
-        ok = self._card.verify_pin(old_text)
-        if not ok:
-            return ([], 0x63, 0xC0)
+        self.pin = list(old_text.encode("utf-8"))
+        sw1, sw2 = self._verify_pin_sw()
+        if (sw1, sw2) != (0x90, 0x00):
+            return ([], sw1, sw2)
         self._card.change_pin(new_text)
         self.pin = list(new_text.encode("utf-8"))
         return ([], 0x90, 0x00)
@@ -340,7 +416,9 @@ class KeycardSatochipConnector:
 
     def card_set_label(self, label):
         self._ensure_secure_channel()
-        self._ensure_pin_verified()
+        sw1, sw2 = self._verify_pin_sw()
+        if (sw1, sw2) != (0x90, 0x00):
+            return ([], sw1, sw2)
         label_text = _value_to_text(label)
         self._card.store_data(label_text.encode("utf-8"), slot=self._constants.StorageSlot.PUBLIC)
         self._label = label_text
@@ -348,7 +426,9 @@ class KeycardSatochipConnector:
 
     def card_reset_factory(self):
         self._ensure_secure_channel()
-        self._ensure_pin_verified()
+        sw1, sw2 = self._verify_pin_sw()
+        if (sw1, sw2) != (0x90, 0x00):
+            return ([], sw1, sw2)
         self._card.factory_reset()
         self._secure_open = False
         self.pin = None
@@ -356,14 +436,18 @@ class KeycardSatochipConnector:
 
     def card_bip32_import_seed(self, seed_bytes):
         self._ensure_secure_channel()
-        self._ensure_pin_verified()
+        sw1, sw2 = self._verify_pin_sw()
+        if (sw1, sw2) != (0x90, 0x00):
+            return ([], sw1, sw2)
         seed = bytes(seed_bytes)
         self._card.load_key(self._constants.LoadKeyType.BIP39_SEED, bip39_seed=seed)
         return ([], 0x90, 0x00)
 
     def card_remove_key(self):
         self._ensure_secure_channel()
-        self._ensure_pin_verified()
+        sw1, sw2 = self._verify_pin_sw()
+        if (sw1, sw2) != (0x90, 0x00):
+            return ([], sw1, sw2)
         self._card.remove_key()
         return ([], 0x90, 0x00)
 
@@ -378,6 +462,9 @@ class KeycardSatochipConnector:
 
     def card_bip32_get_extendedkey(self, path):
         self._ensure_secure_channel()
+        sw1, sw2 = self._verify_pin_sw()
+        if (sw1, sw2) != (0x90, 0x00):
+            raise ValueError(f"APDU failed with SW={sw1:02X}{sw2:02X}")
         from keycard.parsing import tlv as kc_tlv
 
         path_str = path.decode("ascii") if isinstance(path, bytes) else str(path)

@@ -27,6 +27,50 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def _decode_attempts_from_sw(sw1: int, sw2: int) -> int | None:
+    if sw1 == 0x63 and (sw2 & 0xF0) == 0xC0:
+        return sw2 & 0x0F
+    return None
+
+
+def get_pin_attempts_left(connector=None, sw1: int | None = None, sw2: int | None = None) -> int | None:
+    attempts = None
+    if sw1 is not None and sw2 is not None:
+        attempts = _decode_attempts_from_sw(sw1, sw2)
+        if attempts is not None:
+            return attempts
+
+    if connector is None:
+        return None
+
+    try:
+        _r, _a, _b, status = connector.card_get_status()
+    except Exception:
+        return None
+
+    pin_tries = status.get("PIN0_remaining_tries")
+    if isinstance(pin_tries, int):
+        return pin_tries
+    return None
+
+
+def show_incorrect_pin_warning(parent_view, connector=None, sw1: int | None = None, sw2: int | None = None) -> None:
+    attempts_left = get_pin_attempts_left(connector=connector, sw1=sw1, sw2=sw2)
+    if attempts_left is not None:
+        attempt_word = "attempt" if attempts_left == 1 else "attempts"
+        text = f"PIN is incorrect.\n{attempts_left} {attempt_word} remaining."
+    else:
+        text = "PIN is incorrect."
+
+    parent_view.run_screen(
+        WarningScreen,
+        title="Incorrect PIN",
+        status_headline=None,
+        text=text,
+        show_back_button=True,
+    )
+
+
 def _requested_satochip_flow(init_card_filter) -> bool:
     if init_card_filter is None:
         return False
@@ -147,8 +191,14 @@ def format_seedkeeper_space_error(required_bytes: int, free_bytes: int) -> str:
     )
 
 
-def prompt_for_pin(parent_view, title: str):
-    """Prompt for a PIN and enforce length requirements."""
+def prompt_for_pin(
+    parent_view,
+    title: str,
+    *,
+    numeric_only: bool = False,
+    exact_length: int | None = None,
+):
+    """Prompt for a PIN and enforce configurable PIN requirements."""
 
     while True:
         ret = seed_screens.SeedAddPassphraseScreen(title=title).display()
@@ -156,6 +206,28 @@ def prompt_for_pin(parent_view, title: str):
             return None
 
         pin_str = ret.get("passphrase", "")
+        if numeric_only and not all(ch in "0123456789" for ch in pin_str):
+            parent_view.run_screen(
+                WarningScreen,
+                title="Invalid PIN",
+                status_headline=None,
+                text="PIN must contain digits only.",
+                show_back_button=True,
+            )
+            continue
+
+        if exact_length is not None:
+            if len(pin_str) == exact_length:
+                return pin_str
+            parent_view.run_screen(
+                WarningScreen,
+                title="Invalid PIN",
+                status_headline=None,
+                text=f"PIN must be exactly {exact_length} digits.",
+                show_back_button=True,
+            )
+            continue
+
         if JCconstants.PIN_MIN_SIZE <= len(pin_str) <= JCconstants.PIN_MAX_SIZE:
             return pin_str
 
@@ -249,11 +321,18 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True, backend
         )
         return None
 
+    is_keycard_backend = getattr(Satochip_Connector, "is_keycard_backend", False)
+
     if require_pin:
         # Prompt for pin if one hasn't been set, otherwise a cached pin will be used
         if parentObject.controller.Satochip_PIN is None:
             print("No Cached pin, prompting for pin")
-            pin_str = prompt_for_pin(parentObject, "Card PIN")
+            pin_str = prompt_for_pin(
+                parentObject,
+                "Card PIN",
+                numeric_only=is_keycard_backend,
+                exact_length=6 if is_keycard_backend else None,
+            )
             if pin_str is None:
                 return None
             card_pin = list(pin_str.encode("utf-8"))
@@ -361,6 +440,14 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True, backend
                 if sw1 == 0x90 and sw2 == 0x00:
                     print("Pin Correct")
                     pass  # Pin is correct
+                elif sw1 == 0x63 and (sw2 & 0xF0) == 0xC0:
+                    show_incorrect_pin_warning(
+                        parentObject,
+                        connector=Satochip_Connector,
+                        sw1=sw1,
+                        sw2=sw2,
+                    )
+                    return None
                 else:
                     parentObject.run_screen(
                         WarningScreen,

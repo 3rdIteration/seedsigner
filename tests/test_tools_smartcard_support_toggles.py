@@ -5,9 +5,9 @@ from seedsigner.views import tools_views
 
 
 class TestSmartcardSupportToggles(BaseTest):
-    def test_default_smartcard_backend_toggles_enabled(self):
+    def test_default_smartcard_backend_toggles(self):
         assert self.settings.get_value(SettingsConstants.SETTING__SATOCHIP_SUPPORT) == SettingsConstants.OPTION__ENABLED
-        assert self.settings.get_value(SettingsConstants.SETTING__KEYCARD_SUPPORT) == SettingsConstants.OPTION__ENABLED
+        assert self.settings.get_value(SettingsConstants.SETTING__KEYCARD_SUPPORT) == SettingsConstants.OPTION__DISABLED
 
     def test_default_specter_diy_toggle_disabled(self):
         assert self.settings.get_value(SettingsConstants.SETTING__SPECTER_DIY_SUPPORT) == SettingsConstants.OPTION__DISABLED

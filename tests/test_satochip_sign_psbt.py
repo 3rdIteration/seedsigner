@@ -42,6 +42,7 @@ class DummyConnector:
         return (bytes([idx]) * 70, 0x90, 0x00)
 
 
+
 def test_sign_psbt_processes_inputs_in_random_order(monkeypatch):
     psbt = PSBT()
     psbt.inputs = [InputScope(), InputScope(), InputScope()]
@@ -68,3 +69,7 @@ def test_sign_psbt_processes_inputs_in_random_order(monkeypatch):
     for i, inp in enumerate(psbt.inputs):
         pub = next(iter(inp.bip32_derivations.keys()))
         assert inp.partial_sigs[pub] == bytes([i]) * 70 + b"\x01"
+
+
+
+

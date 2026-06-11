@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 class PSBTSelectSeedView(View):
     SCAN_SEED = ButtonOption("Scan a seed", SeedSignerIconConstants.QRCODE)
     SATOCHIP = ButtonOption("Use Satochip card", SeedSignerIconConstants.FINGERPRINT)
+    KEYCARD = ButtonOption("Use Keycard", SeedSignerIconConstants.FINGERPRINT)
     TYPE_12WORD = ButtonOption("Enter 12-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=12)
     TYPE_15WORD = ButtonOption("Enter 15-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=15)
     TYPE_18WORD = ButtonOption("Enter 18-word seed", FontAwesomeIconConstants.KEYBOARD, return_data=18)
@@ -88,6 +89,11 @@ class PSBTSelectSeedView(View):
             == SettingsConstants.OPTION__ENABLED
         ):
             button_data.append(self.SATOCHIP)
+        if (
+            self.settings.get_value(SettingsConstants.SETTING__KEYCARD_SUPPORT)
+            == SettingsConstants.OPTION__ENABLED
+        ):
+            button_data.append(self.KEYCARD)
         button_data.append(self.SCAN_SEED)
         if self.settings.get_value(SettingsConstants.SETTING__WIF_KEYS) == SettingsConstants.OPTION__ENABLED:
             button_data.append(self.SCAN_WIF)
@@ -152,11 +158,24 @@ class PSBTSelectSeedView(View):
             from seedsigner.views.scan_views import ScanBIP38QRView
             return Destination(ScanBIP38QRView)
 
-        elif button_data[selected_menu_num] == self.SATOCHIP:
+        elif button_data[selected_menu_num] in [self.SATOCHIP, self.KEYCARD]:
             from seedsigner.helpers import seedkeeper_utils
             from embit.bip32 import HDKey
 
-            connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satochip"])
+            card_choice = button_data[selected_menu_num]
+            if card_choice == self.KEYCARD:
+                backend_preference = "keycard"
+                card_label = "Keycard"
+                self.controller.smartcard_backend_preference = "keycard"
+            else:
+                backend_preference = None
+                card_label = "Satochip"
+                self.controller.smartcard_backend_preference = None
+
+            init_kwargs = {"init_card_filter": ["satochip"]}
+            if backend_preference is not None:
+                init_kwargs["backend_preference"] = backend_preference
+            connector = seedkeeper_utils.init_satochip(self, **init_kwargs)
             if not connector:
                 return Destination(PSBTSelectSeedView, clear_history=True)
 
@@ -183,7 +202,7 @@ class PSBTSelectSeedView(View):
                     parser = PSBTParser(psbt)
                     parser.parse()
                 except Exception as e:
-                    logger.exception("Failed to parse PSBT with Satochip data")
+                    logger.exception("Failed to parse PSBT with %s data", card_label)
                     self.run_screen(
                         WarningScreen,
                         title="Failed",
@@ -232,7 +251,7 @@ class PSBTSelectSeedView(View):
                     account_xpub = connector.card_bip32_get_xpub(account_path_str, xtype, is_mainnet)
                     master_xpub = connector.card_bip32_get_xpub("", xtype, is_mainnet)
                 except Exception as e:
-                    logger.exception("Failed to export xpub from Satochip card")
+                    logger.exception("Failed to export xpub from %s card", card_label)
                     loading.stop()
                     loading_stopped = True
                     self.run_screen(
@@ -256,7 +275,7 @@ class PSBTSelectSeedView(View):
                         network=network,
                     )
                 except Exception as e:
-                    logger.exception("Failed to parse PSBT with Satochip data")
+                    logger.exception("Failed to parse PSBT with %s data", card_label)
                     loading.stop()
                     loading_stopped = True
                     self.run_screen(
@@ -276,7 +295,8 @@ class PSBTSelectSeedView(View):
                 psbt_fingerprints = set(PSBTParser.get_input_fingerprints(self.controller.psbt))
                 if not card_fingerprints.intersection(psbt_fingerprints):
                     logger.warning(
-                        "Satochip fingerprint mismatch: card %s vs psbt %s",
+                        "%s fingerprint mismatch: card %s vs psbt %s",
+                        card_label,
                         sorted(card_fingerprints),
                         sorted(psbt_fingerprints),
                     )
@@ -929,30 +949,68 @@ class PSBTFinalizeView(View):
             return Destination(BackStackView)
 
         sig_cnt = PSBTParser.sig_count(psbt)
+        logger.info(
+            "PSBTFinalize: approve selected; signer_mode=%s initial_sig_count=%d inputs=%d",
+            "card" if self.controller.psbt_sign_with_satochip else "seed",
+            sig_cnt,
+            len(getattr(psbt, "inputs", []) or []),
+        )
 
         connector = None
         if self.controller.psbt_sign_with_satochip:
             from seedsigner.helpers import seedkeeper_utils
             connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satochip"])
             if not connector:
+                logger.info("PSBTFinalize: card connector init failed; returning to finalize screen")
                 return Destination(PSBTFinalizeView)
+            logger.info(
+                "PSBTFinalize: card connector ready backend=%s card_type=%s uid=%s",
+                "keycard" if getattr(connector, "is_keycard_backend", False) else "pysatochip",
+                getattr(connector, "card_type", "unknown"),
+                getattr(connector, "UID_SHA1", "unknown"),
+            )
 
         from seedsigner.gui.screens.screen import LoadingScreenThread
         loading = LoadingScreenThread(text=_("Signing PSBT..."))
         loading.start()
         try:
             if self.controller.psbt_sign_with_satochip:
-                from seedsigner.helpers.satochip_signer import sign_psbt_with_satochip
-                sign_psbt_with_satochip(psbt, connector)
+                if getattr(connector, "is_keycard_backend", False):
+                    from seedsigner.helpers.keycard_signer import sign_psbt_with_keycard
+                    added = sign_psbt_with_keycard(psbt, connector)
+                else:
+                    from seedsigner.helpers.satochip_signer import sign_psbt_with_satochip
+                    added = sign_psbt_with_satochip(psbt, connector)
+                logger.info("PSBTFinalize: card signer reported added_signatures=%d", added)
             else:
                 psbt.sign_with(psbt_parser.root)
             if isinstance(self.controller.psbt_seed, WIFKey):
                 tx = finalize_psbt(psbt)
                 self.controller.signed_tx_hex = tx.serialize().hex() if tx else None
+                logger.info(
+                    "PSBTFinalize: WIF finalize result tx_present=%s hex_len=%s",
+                    tx is not None,
+                    len(self.controller.signed_tx_hex) if self.controller.signed_tx_hex else 0,
+                )
             else:
                 self.controller.signed_tx_hex = None
 
             trimmed_psbt = PSBTParser.trim(psbt)
+            trimmed_sig_cnt = PSBTParser.sig_count(trimmed_psbt)
+            logger.info(
+                "PSBTFinalize: post-sign trimmed_sig_count=%d delta=%d",
+                trimmed_sig_cnt,
+                trimmed_sig_cnt - sig_cnt,
+            )
+
+            try:
+                tx_preview = finalize_psbt(trimmed_psbt)
+                logger.info(
+                    "PSBTFinalize: finalize_psbt(trimmed) tx_present=%s",
+                    tx_preview is not None,
+                )
+            except Exception as e:
+                logger.info("PSBTFinalize: finalize_psbt(trimmed) raised=%s", e)
         except Exception:
             if self.controller.psbt_sign_with_satochip:
                 logger.exception("Failed to sign PSBT with Satochip")
@@ -962,10 +1020,15 @@ class PSBTFinalizeView(View):
             loading.stop()
 
         if sig_cnt == PSBTParser.sig_count(trimmed_psbt):
+            logger.info(
+                "PSBTFinalize: no new signatures detected; routing=%s",
+                "PSBTFinalizeView" if self.controller.psbt_sign_with_satochip else "PSBTSigningErrorView",
+            )
             if self.controller.psbt_sign_with_satochip:
                 return Destination(PSBTFinalizeView)
             return Destination(PSBTSigningErrorView)
 
+        logger.info("PSBTFinalize: signatures added; routing=PSBTSignedQRDisplayView")
         self.controller.psbt = trimmed_psbt
         self.controller.psbt_sign_with_satochip = False
         return Destination(PSBTSignedQRDisplayView)

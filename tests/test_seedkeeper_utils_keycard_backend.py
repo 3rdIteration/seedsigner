@@ -144,3 +144,30 @@ def test_keycard_connector_env_var_overrides_default_pairing_password(monkeypatc
     created["pairing_password"] = connector._pairing_password
 
     assert created["pairing_password"] == "custom-secret"
+
+
+def test_show_incorrect_pin_warning_uses_attempts_from_status_word():
+    class FakeParent:
+        def __init__(self):
+            self.calls = []
+
+        def run_screen(self, _screen, **kwargs):
+            self.calls.append(kwargs)
+            return 0
+
+    parent = FakeParent()
+
+    seedkeeper_utils.show_incorrect_pin_warning(parent, sw1=0x63, sw2=0xC3)
+
+    assert len(parent.calls) == 1
+    assert parent.calls[0]["title"] == "Incorrect PIN"
+    assert "3 attempts remaining" in parent.calls[0]["text"]
+
+
+def test_get_pin_attempts_left_reads_connector_status_when_sw_missing():
+    class FakeConnector:
+        def card_get_status(self):
+            return ([], 0x90, 0x00, {"PIN0_remaining_tries": 2})
+
+    attempts = seedkeeper_utils.get_pin_attempts_left(connector=FakeConnector())
+    assert attempts == 2

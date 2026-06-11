@@ -772,3 +772,39 @@ def test_javacard_save_mnemonic_empty_card_create_pin_cancel_aborts(monkeypatch)
 
     assert destination.View_cls == tools_views.BackStackView
     assert store_called["value"] is False
+
+
+def test_prompt_keycard_new_pin_requires_numeric_and_6_digits():
+    class FakeParentView:
+        def __init__(self):
+            self.calls = []
+
+        def run_screen(self, _screen, **kwargs):
+            self.calls.append(kwargs)
+            return 0
+
+    responses = iter([
+        {"passphrase": "12ab56"},
+        {"passphrase": "12345"},
+        {"passphrase": "123456"},
+    ])
+
+    class FakePrompt:
+        def __init__(self, title):
+            self.title = title
+
+        def display(self):
+            return next(responses)
+
+    parent = FakeParentView()
+    original = tools_views.seed_screens.SeedAddPassphraseScreen
+    tools_views.seed_screens.SeedAddPassphraseScreen = FakePrompt
+    try:
+        pin = tools_views._prompt_keycard_new_pin(parent, "New PIN")
+    finally:
+        tools_views.seed_screens.SeedAddPassphraseScreen = original
+
+    assert pin == "123456"
+    assert len(parent.calls) == 2
+    assert parent.calls[0]["title"] == "Non-Numeric PIN"
+    assert parent.calls[1]["title"] == "Invalid PIN Length"
