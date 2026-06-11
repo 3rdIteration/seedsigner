@@ -118,8 +118,29 @@ class ScanView(View):
         return finalize_xprv_seed(controller=self.controller, candidate=xprv)
 
 
+    def _scanner_unavailable_destination(self) -> Destination:
+        if DecodeQR.is_qr_scanner_available():
+            return None
+
+        return Destination(
+            ErrorView,
+            view_args=dict(
+                title="Error",
+                status_headline=_("QR Scanner Unavailable"),
+                text=_("QR scanning backend missing. Install zbar (or OpenCV on desktop) and restart."),
+                button_text=_("Back"),
+                next_destination=Destination(BackStackView, skip_current_view=True),
+            ),
+            skip_current_view=True,
+        )
+
+
     def run(self):
         from seedsigner.gui.screens.scan_screens import ScanScreen
+
+        unavailable = self._scanner_unavailable_destination()
+        if unavailable is not None:
+            return unavailable
 
         # Start the live preview and background QR reading
         self.run_screen(
@@ -386,6 +407,10 @@ class ScanSlip39ShareQRView(ScanView):
     def run(self):
         from seedsigner.gui.screens.scan_screens import ScanScreen
         from seedsigner.models.qr_type import QRType
+
+        unavailable = self._scanner_unavailable_destination()
+        if unavailable is not None:
+            return unavailable
 
         self.run_screen(
             ScanScreen,

@@ -1,8 +1,10 @@
 import base64
 import hashlib
+import hmac
 import json
 import logging
 import os
+import sys
 import time
 import platform
 import binascii
@@ -43,7 +45,7 @@ from seedsigner.helpers import ndef_helper
 from seedsigner.models.decode_qr import DecodeQR
 from seedsigner.models.encode_qr import GenericStaticQrEncoder
 from seedsigner.gui.screens.screen import ButtonOption
-from seedsigner.models.seed import Seed
+from seedsigner.models.seed import Seed, InvalidSeedException
 from seedsigner.models.seed import XprvSeed
 from seedsigner.models.settings_definition import SettingsConstants
 from seedsigner.views.seed_views import (
@@ -1093,11 +1095,13 @@ class ToolsAddressExplorerSelectSourceView(View):
             21: self.TYPE_21WORD,
             24: self.TYPE_24WORD,
         }
-        button_data = (
-            button_data
-            + [self.SCAN_SEED, self.SCAN_DESCRIPTOR, self.SATOCHIP]
-            + [options[l] for l in seed_lengths]
-        )
+        button_data = button_data + [self.SCAN_SEED, self.SCAN_DESCRIPTOR]
+        if (
+            self.settings.get_value(SettingsConstants.SETTING__SATOCHIP_SUPPORT)
+            == SettingsConstants.OPTION__ENABLED
+        ):
+            button_data.append(self.SATOCHIP)
+        button_data += [options[l] for l in seed_lengths]
         if self.settings.get_value(SettingsConstants.SETTING__ELECTRUM_SEEDS) == SettingsConstants.OPTION__ENABLED:
             button_data.append(self.TYPE_ELECTRUM)
 
@@ -1115,7 +1119,7 @@ class ToolsAddressExplorerSelectSourceView(View):
         # Most of the options require us to go through a side flow(s) before we can
         # continue to the address explorer. Set the Controller-level flow so that it
         # knows to re-route us once the side flow is complete.        
-        self.controller.resume_main_flow = Controller.FLOW__ADDRESS_EXPLORER
+        self.controller.resume_main_flow = self.controller.FLOW__ADDRESS_EXPLORER
 
         if len(seeds) > 0 and selected_menu_num < len(seeds):
             # User selected one of the n seeds
@@ -1394,11 +1398,32 @@ class ToolsTextQRView(View):
 class ToolsSmartcardMenuView(View):
     COMMON = ButtonOption("Common Functions")
     SATOCHIP = ButtonOption("Satochip Functions")
+    KEYCARD = ButtonOption("KeyCard Functions")
     SEEDKEEPER = ButtonOption("SeedKeeper Functions")
+    SPECTER_DIY = ButtonOption("Specter-DIY Functions")
     Satochip_DIY = ButtonOption("DIY Tools")
 
     def run(self):
-        button_data = [self.COMMON, self.SEEDKEEPER, self.SATOCHIP, self.Satochip_DIY]
+        button_data = [self.COMMON, self.SEEDKEEPER]
+        satochip_enabled = (
+            self.settings.get_value(SettingsConstants.SETTING__SATOCHIP_SUPPORT)
+            == SettingsConstants.OPTION__ENABLED
+        )
+        keycard_enabled = (
+            self.settings.get_value(SettingsConstants.SETTING__KEYCARD_SUPPORT)
+            == SettingsConstants.OPTION__ENABLED
+        )
+        specter_diy_enabled = (
+            self.settings.get_value(SettingsConstants.SETTING__SPECTER_DIY_SUPPORT)
+            == SettingsConstants.OPTION__ENABLED
+        )
+        if satochip_enabled:
+            button_data.append(self.SATOCHIP)
+        if keycard_enabled:
+            button_data.append(self.KEYCARD)
+        if specter_diy_enabled:
+            button_data.append(self.SPECTER_DIY)
+        button_data.append(self.Satochip_DIY)
 
         selected_menu_num = self.run_screen(
             ButtonListScreen,
@@ -1411,15 +1436,26 @@ class ToolsSmartcardMenuView(View):
             return Destination(BackStackView)
 
         elif button_data[selected_menu_num] == self.COMMON:
+            self.controller.smartcard_backend_preference = None
             return Destination(ToolsCommonView)
         
         elif button_data[selected_menu_num] == self.SATOCHIP:
+            self.controller.smartcard_backend_preference = None
             return Destination(ToolsSatochipView)
+
+        elif button_data[selected_menu_num] == self.KEYCARD:
+            self.controller.smartcard_backend_preference = "keycard"
+            return Destination(ToolsKeycardView)
         
         elif button_data[selected_menu_num] == self.SEEDKEEPER:
+            self.controller.smartcard_backend_preference = None
             return Destination(ToolsSeedkeeperView)
 
+        elif button_data[selected_menu_num] == self.SPECTER_DIY:
+            return Destination(ToolsSpecterDIYView)
+
         elif button_data[selected_menu_num] == self.Satochip_DIY:
+            self.controller.smartcard_backend_preference = None
             return Destination(ToolsSatochipDIYView)
 
 class ToolsCommonView(View):
@@ -3930,6 +3966,351 @@ class ToolsSatochipView(View):
             return Destination(ToolsSatochipAdvancedView)
 
 
+class ToolsKeycardView(View):
+    IMPORT_SEED = ButtonOption("Initialise with Seed")
+    EXPORT_XPUB = ButtonOption("Export Xpub")
+    LOAD_DESCRIPTOR = ButtonOption("Load as Descriptor")
+    LOAD_PSBT = ButtonOption("Load PSBT")
+    CHANGE_PIN = ButtonOption("Change PIN")
+    CHANGE_PUK = ButtonOption("Set PUK")
+    UNBLOCK_PIN = ButtonOption("Unblock PIN with PUK")
+    SET_NAME = ButtonOption("Set Name")
+    REMOVE_SEED = ButtonOption("Remove Seed")
+    FACTORY_RESET = ButtonOption("Factory Reset Card")
+
+    def run(self):
+        self.controller.smartcard_backend_preference = "keycard"
+        button_data = [
+            self.IMPORT_SEED,
+            self.EXPORT_XPUB,
+            self.LOAD_DESCRIPTOR,
+            self.LOAD_PSBT,
+            self.CHANGE_PIN,
+            self.CHANGE_PUK,
+            self.UNBLOCK_PIN,
+            self.SET_NAME,
+            self.REMOVE_SEED,
+            self.FACTORY_RESET,
+        ]
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title="KeyCard",
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        elif button_data[selected_menu_num] == self.IMPORT_SEED:
+            return Destination(ToolsSatochipImportSeedView)
+
+        elif button_data[selected_menu_num] == self.EXPORT_XPUB:
+            return Destination(SatochipExportXpubSigTypeView)
+
+        elif button_data[selected_menu_num] == self.LOAD_DESCRIPTOR:
+            return Destination(SatochipLoadDescriptorScriptTypeView)
+
+        elif button_data[selected_menu_num] == self.LOAD_PSBT:
+            return Destination(ToolsSatochipLoadPsbtView)
+
+        elif button_data[selected_menu_num] == self.CHANGE_PIN:
+            return Destination(ToolsKeycardChangePinView)
+
+        elif button_data[selected_menu_num] == self.CHANGE_PUK:
+            return Destination(ToolsKeycardChangePukView)
+
+        elif button_data[selected_menu_num] == self.UNBLOCK_PIN:
+            return Destination(ToolsKeycardUnblockPinView)
+
+        elif button_data[selected_menu_num] == self.SET_NAME:
+            return Destination(ToolsKeycardSetNameView)
+
+        elif button_data[selected_menu_num] == self.REMOVE_SEED:
+            return Destination(ToolsKeycardRemoveSeedView)
+
+        elif button_data[selected_menu_num] == self.FACTORY_RESET:
+            return Destination(ToolsKeycardFactoryResetView)
+
+
+class ToolsKeycardChangePinView(View):
+    def run(self):
+        connector = seedkeeper_utils.init_satochip(
+            self,
+            init_card_filter=["satochip"],
+            backend_preference="keycard",
+        )
+        if not connector:
+            return Destination(BackStackView)
+
+        new_pin_str = _prompt_keycard_new_pin(self, "New PIN")
+        if new_pin_str is None:
+            return Destination(BackStackView)
+
+        new_pin = list(new_pin_str.encode("utf-8"))
+        _response, sw1, sw2 = connector.card_change_PIN(0, connector.pin, new_pin)
+        if sw1 == 0x90 and sw2 == 0x00:
+            self.controller.Satochip_PIN = new_pin
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Success",
+                status_headline=None,
+                text="PIN Updated",
+                show_back_button=False,
+            )
+        else:
+            if sw1 == 0x63 and (sw2 & 0xF0) == 0xC0:
+                seedkeeper_utils.show_incorrect_pin_warning(
+                    self,
+                    connector=connector,
+                    sw1=sw1,
+                    sw2=sw2,
+                )
+            else:
+                self.run_screen(
+                    WarningScreen,
+                    title="Failed",
+                    status_headline=None,
+                    text="PIN update failed",
+                    show_back_button=True,
+                )
+        return Destination(MainMenuView)
+
+
+class ToolsKeycardChangePukView(View):
+    def run(self):
+        connector = seedkeeper_utils.init_satochip(
+            self,
+            init_card_filter=["satochip"],
+            backend_preference="keycard",
+        )
+        if not connector:
+            return Destination(BackStackView)
+
+        ret = seed_screens.SeedAddPassphraseScreen(title="New PUK").display()
+        if "is_back_button" in ret:
+            return Destination(BackStackView)
+
+        new_puk_str = ret.get("passphrase", "")
+        if len(new_puk_str) < 4:
+            self.run_screen(
+                WarningScreen,
+                title="Invalid PUK",
+                status_headline=None,
+                text="PUK must be at least 4 chars",
+                show_back_button=True,
+            )
+            return Destination(BackStackView)
+
+        _response, sw1, sw2 = connector.card_change_PUK(0, [], list(new_puk_str.encode("utf-8")))
+        if sw1 == 0x90 and sw2 == 0x00:
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Success",
+                status_headline=None,
+                text="PUK Updated",
+                show_back_button=False,
+            )
+        else:
+            self.run_screen(
+                WarningScreen,
+                title="Failed",
+                status_headline=None,
+                text="PUK update failed",
+                show_back_button=True,
+            )
+        return Destination(MainMenuView)
+
+
+class ToolsKeycardUnblockPinView(View):
+    def run(self):
+        connector = seedkeeper_utils.init_satochip(
+            self,
+            init_card_filter=["satochip"],
+            require_pin=False,
+            backend_preference="keycard",
+        )
+        if not connector:
+            return Destination(BackStackView)
+
+        puk_ret = seed_screens.SeedAddPassphraseScreen(title="PUK").display()
+        if "is_back_button" in puk_ret:
+            return Destination(BackStackView)
+        puk_str = puk_ret.get("passphrase", "")
+        if len(puk_str) < 4:
+            self.run_screen(
+                WarningScreen,
+                title="Invalid PUK",
+                status_headline=None,
+                text="PUK must be at least 4 chars",
+                show_back_button=True,
+            )
+            return Destination(BackStackView)
+
+        new_pin_str = _prompt_keycard_new_pin(self, "New PIN")
+        if new_pin_str is None:
+            return Destination(BackStackView)
+
+        _response, sw1, sw2 = connector.card_unblock_PIN(
+            0,
+            list(puk_str.encode("utf-8")),
+            list(new_pin_str.encode("utf-8")),
+        )
+        if sw1 == 0x90 and sw2 == 0x00:
+            self.controller.Satochip_PIN = list(new_pin_str.encode("utf-8"))
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Success",
+                status_headline=None,
+                text="PIN Unblocked",
+                show_back_button=False,
+            )
+        else:
+            if sw1 == 0x63 and (sw2 & 0xF0) == 0xC0:
+                seedkeeper_utils.show_incorrect_pin_warning(
+                    self,
+                    connector=connector,
+                    sw1=sw1,
+                    sw2=sw2,
+                )
+            else:
+                self.run_screen(
+                    WarningScreen,
+                    title="Failed",
+                    status_headline=None,
+                    text="PIN unblock failed",
+                    show_back_button=True,
+                )
+        return Destination(MainMenuView)
+
+
+class ToolsKeycardSetNameView(View):
+    def run(self):
+        connector = seedkeeper_utils.init_satochip(
+            self,
+            init_card_filter=["satochip"],
+            backend_preference="keycard",
+        )
+        if not connector:
+            return Destination(BackStackView)
+
+        ret = seed_screens.SeedAddPassphraseScreen(title="New Name").display()
+        if "is_back_button" in ret:
+            return Destination(BackStackView)
+        label = ret.get("passphrase", "")
+
+        _response, sw1, sw2 = connector.card_set_label(label)
+        if sw1 == 0x90 and sw2 == 0x00:
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Success",
+                status_headline=None,
+                text="Name Updated",
+                show_back_button=False,
+            )
+        else:
+            if sw1 == 0x63 and (sw2 & 0xF0) == 0xC0:
+                seedkeeper_utils.show_incorrect_pin_warning(
+                    self,
+                    connector=connector,
+                    sw1=sw1,
+                    sw2=sw2,
+                )
+            else:
+                self.run_screen(
+                    WarningScreen,
+                    title="Failed",
+                    status_headline=None,
+                    text="Name update failed",
+                    show_back_button=True,
+                )
+        return Destination(MainMenuView)
+
+
+class ToolsKeycardRemoveSeedView(View):
+    def run(self):
+        connector = seedkeeper_utils.init_satochip(
+            self,
+            init_card_filter=["satochip"],
+            backend_preference="keycard",
+        )
+        if not connector:
+            return Destination(BackStackView)
+
+        ret = self.run_screen(
+            DireWarningScreen,
+            title="Warning",
+            status_headline=None,
+            text="Remove key from card?",
+            show_back_button=True,
+            button_data=[ButtonOption("Remove")],
+        )
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        _response, sw1, sw2 = connector.card_remove_key()
+        if sw1 == 0x90 and sw2 == 0x00:
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Success",
+                status_headline=None,
+                text="Seed Removed",
+                show_back_button=False,
+            )
+        else:
+            self.run_screen(
+                WarningScreen,
+                title="Failed",
+                status_headline=None,
+                text="Remove seed failed",
+                show_back_button=True,
+            )
+        return Destination(MainMenuView)
+
+
+class ToolsKeycardFactoryResetView(View):
+    def run(self):
+        connector = seedkeeper_utils.init_satochip(
+            self,
+            init_card_filter=["satochip"],
+            backend_preference="keycard",
+        )
+        if not connector:
+            return Destination(BackStackView)
+
+        ret = self.run_screen(
+            DireWarningScreen,
+            title="Warning",
+            status_headline=None,
+            text="Factory reset without backup loses funds.",
+            show_back_button=True,
+            button_data=[ButtonOption("Reset")],
+        )
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        _response, sw1, sw2 = connector.card_reset_factory()
+        if sw1 == 0x90 and sw2 == 0x00:
+            self.controller.Satochip_PIN = None
+            self.controller.Satochip_Connector = None
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Success",
+                status_headline=None,
+                text="Card Factory Reset",
+                show_back_button=False,
+            )
+        else:
+            self.run_screen(
+                WarningScreen,
+                title="Failed",
+                status_headline=None,
+                text="Factory reset failed",
+                show_back_button=True,
+            )
+        return Destination(MainMenuView)
+
+
 class ToolsSatochipLoadPsbtView(View):
     def run(self):
         from seedsigner.views.psbt_views import PSBTSelectSeedView
@@ -4202,7 +4583,13 @@ class ToolsSatochipImportSeedView(View):
 
     def run(self):
         from seedsigner.gui.screens.screen import LoadingScreenThread
-        Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satochip"])
+        backend_preference = getattr(self.controller, "smartcard_backend_preference", None)
+        Satochip_Connector = seedkeeper_utils.init_satochip(
+            self,
+            init_card_filter=["satochip"],
+            allow_unseeded=True,
+            backend_preference=backend_preference,
+        )
 
         if not Satochip_Connector:
             return Destination(BackStackView)
@@ -4213,11 +4600,12 @@ class ToolsSatochipImportSeedView(View):
         # appropriate action (like resetting the card) before proceeding.
         _resp, _sw1, _sw2, status = Satochip_Connector.card_get_status()
         if status.get("is_seeded"):
+            card_name = "Keycard" if getattr(Satochip_Connector, "is_keycard_backend", False) else "Satochip"
             self.run_screen(
                 WarningScreen,
                 title=_("Already Seeded"),
                 status_headline=None,
-                text=_("Satochip card already contains a seed."),
+                text=_(f"{card_name} card already contains a seed."),
                 show_back_button=False,
             )
             return Destination(MainMenuView)
@@ -4259,7 +4647,7 @@ class ToolsSatochipImportSeedView(View):
         # Most of the options require us to go through a side flow(s) before we can
         # continue to the address explorer. Set the Controller-level flow so that it
         # knows to re-route us once the side flow is complete.        
-        # self.controller.resume_main_flow = Controller.FLOW__SATOCHIP_IMPORT_SEED
+        self.controller.resume_main_flow = self.controller.FLOW__SATOCHIP_IMPORT_SEED
 
         if len(seeds) > 0 and selected_menu_num < len(seeds):
             # User selected one of the n seeds
@@ -4277,7 +4665,24 @@ class ToolsSatochipImportSeedView(View):
                 self.loading_screen = LoadingScreenThread(text="Importing Secret\n\n\n\n\n\n")
                 self.loading_screen.start()
 
-                Satochip_Connector.card_bip32_import_seed(seeds[selected_menu_num].seed_bytes)
+                _resp, sw1, sw2 = Satochip_Connector.card_bip32_import_seed(seeds[selected_menu_num].seed_bytes)
+                if (sw1, sw2) != (0x90, 0x00):
+                    if (
+                        getattr(Satochip_Connector, "is_keycard_backend", False)
+                        and (sw1, sw2) == (0x69, 0x85)
+                    ):
+                        raise ValueError(
+                            "Keycard blocked seed import (SW=6985).\n"
+                            "Try Factory Reset Card, then retry import."
+                        )
+                    raise ValueError(f"Import failed with SW={sw1:02X}{sw2:02X}")
+
+                _status_resp, status_sw1, status_sw2, post_status = Satochip_Connector.card_get_status()
+                if (status_sw1, status_sw2) != (0x90, 0x00):
+                    raise ValueError(f"Status check failed with SW={status_sw1:02X}{status_sw2:02X}")
+
+                if not (post_status.get("is_seeded") or post_status.get("key_initialized")):
+                    raise ValueError("Card did not report a seeded key after import")
 
                 self.loading_screen.stop()
 
@@ -4292,11 +4697,14 @@ class ToolsSatochipImportSeedView(View):
             except Exception as e:
                 self.loading_screen.stop()
                 logger.exception("Satochip Import Failed: %s", e)
+                error_text = str(e) or "Seed Import Failed"
+                if len(error_text) > 120:
+                    error_text = error_text[:120]
                 self.run_screen(
                     WarningScreen,
                     title="Failed",
                     status_headline=None,
-                    text=f"Seed Import Failed",
+                    text=error_text,
                     show_back_button=False,
                 )
 
@@ -4920,11 +5328,10 @@ class SatochipLoadDescriptorDetailsView(View):
             return Destination(BackStackView)
 
         self.controller.multisig_wallet_descriptor = descriptor
-        from seedsigner.controller import Controller
-        if self.controller.resume_main_flow == Controller.FLOW__ADDRESS_EXPLORER:
+        if self.controller.resume_main_flow == self.controller.FLOW__ADDRESS_EXPLORER:
             from seedsigner.views.seed_views import MultisigWalletDescriptorView
             return Destination(MultisigWalletDescriptorView, skip_current_view=True)
-        elif self.controller.resume_main_flow == Controller.FLOW__VERIFY_SINGLESIG_ADDR:
+        elif self.controller.resume_main_flow == self.controller.FLOW__VERIFY_SINGLESIG_ADDR:
             from seedsigner.views.seed_views import SeedAddressVerificationView
             self.controller.resume_main_flow = None
             return Destination(SeedAddressVerificationView, skip_current_view=True)
@@ -4938,6 +5345,222 @@ class SatochipLoadDescriptorDetailsView(View):
         )
 
         return Destination(MainMenuView)
+
+
+class ToolsSpecterDIYView(View):
+    CHANGE_PIN = ButtonOption("Change Card PIN")
+    LOAD_MNEMONIC = ButtonOption("Load Mnemonic")
+    SAVE_MNEMONIC = ButtonOption("Save Mnemonic")
+    WIPE_MNEMONIC = ButtonOption("Wipe Seed")
+
+    def run(self):
+        button_data = [self.CHANGE_PIN, self.LOAD_MNEMONIC, self.SAVE_MNEMONIC, self.WIPE_MNEMONIC]
+
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title="Specter-DIY",
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        choice = button_data[selected_menu_num]
+        if choice == self.CHANGE_PIN:
+            return Destination(ToolsSpecterDIYChangePinView)
+        if choice == self.LOAD_MNEMONIC:
+            return Destination(ToolsJavacardLoadMnemonicView)
+        if choice == self.SAVE_MNEMONIC:
+            return Destination(ToolsJavacardSaveMnemonicView)
+        return Destination(ToolsJavacardWipeMnemonicView)
+
+
+class ToolsJavacardWipeMnemonicView(View):
+    def run(self):
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+
+        conn = None
+        secure_channel = None
+        try:
+            Card, MemoryCardApplet, SecureApplet = _get_specter_card_api()
+            conn = Card(SPECTER_JAVACARD_DEFAULT_AID)
+            conn.connect()
+            secure_applet = SecureApplet(conn)
+            memory_applet = MemoryCardApplet(conn)
+            secure_channel = _open_specter_secure_channel(secure_applet)
+            if not _unlock_specter_card_if_needed(self, secure_applet, secure_channel):
+                return Destination(BackStackView)
+
+            existing_data = memory_applet.get_data(secure_channel)
+            if not existing_data:
+                self.run_screen(
+                    WarningScreen,
+                    title="No Seed Found",
+                    status_headline=None,
+                    text="No seed data found on Specter Javacard.",
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
+
+            confirm = self.run_screen(
+                WarningScreen,
+                title="Wipe Seed?",
+                status_headline=None,
+                text="Delete stored seed data from card?",
+                show_back_button=False,
+                button_data=[ButtonOption("Wipe Seed"), ButtonOption("Cancel")],
+            )
+            if confirm != 0:
+                return Destination(BackStackView)
+
+            loading = LoadingScreenThread(text="Wiping Seed\n\n\n\n\n\n")
+            loading.start()
+            memory_applet.store_data(secure_channel, b"")
+            loading.stop()
+
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Seed Wiped",
+                status_headline=None,
+                text="Seed data deleted from Specter Javacard",
+                show_back_button=False,
+            )
+            return Destination(BackStackView)
+        except Exception as exc:
+            self.run_screen(
+                WarningScreen,
+                title="Wipe Failed",
+                status_headline=None,
+                text=str(exc),
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+        finally:
+            if secure_channel is not None:
+                try:
+                    secure_channel.close()
+                except Exception:
+                    pass
+            if conn is not None:
+                try:
+                    conn.disconnect()
+                except Exception:
+                    pass
+
+
+class ToolsSpecterDIYChangePinView(View):
+    def run(self):
+        conn = None
+        secure_channel = None
+        try:
+            Card, MemoryCardApplet, SecureApplet = _get_specter_card_api()
+            conn = Card(SPECTER_JAVACARD_DEFAULT_AID)
+            conn.connect()
+            secure_applet = SecureApplet(conn)
+            secure_channel = _open_specter_secure_channel(secure_applet)
+
+            status = secure_applet.pin_status(secure_channel)
+            pin_status = status.get("status")
+
+            if pin_status == "bricked":
+                _show_specter_card_bricked_warning(self)
+                return Destination(BackStackView)
+
+            if pin_status in ("disabled", "no_pin"):
+                # PIN is not set; prompt user to set a new PIN
+                new_pin = _prompt_specter_new_pin(self, "Set New PIN")
+                if new_pin is None:
+                    return Destination(BackStackView)
+                if not new_pin:
+                    self.run_screen(
+                        WarningScreen,
+                        title="Invalid PIN",
+                        status_headline=None,
+                        text="PIN cannot be empty.",
+                        show_back_button=False,
+                        button_data=[ButtonOption("I Understand")],
+                    )
+                    return Destination(BackStackView)
+                secure_applet.set_pin(secure_channel, new_pin.encode("utf-8"))
+                self.run_screen(
+                    LargeIconStatusScreen,
+                    title="PIN Set",
+                    status_headline=None,
+                    text="Card PIN has been set.",
+                    show_back_button=False,
+                )
+                return Destination(BackStackView)
+
+            # PIN is set; prompt for the current PIN once, then the new PIN.
+            ret = seed_screens.SeedAddPassphraseScreen(title="Current PIN").display()
+            if isinstance(ret, dict) and "is_back_button" in ret:
+                return Destination(BackStackView)
+            old_pin = ret.get("passphrase", "")
+            if not old_pin:
+                self.run_screen(
+                    WarningScreen,
+                    title="Invalid PIN",
+                    status_headline=None,
+                    text="PIN cannot be empty.",
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
+
+            new_pin = _prompt_specter_new_pin(self, "New PIN")
+            if new_pin is None:
+                return Destination(BackStackView)
+            if not new_pin:
+                self.run_screen(
+                    WarningScreen,
+                    title="Invalid PIN",
+                    status_headline=None,
+                    text="PIN cannot be empty.",
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
+
+            try:
+                secure_applet.change_pin(secure_channel, old_pin.encode("utf-8"), new_pin.encode("utf-8"))
+            except Exception as exc:
+                if _is_specter_pin_error(exc):
+                    _show_specter_incorrect_pin_warning(self, secure_applet, secure_channel)
+                    return Destination(BackStackView)
+                raise
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="PIN Changed",
+                status_headline=None,
+                text="Card PIN has been changed.",
+                show_back_button=False,
+            )
+            return Destination(BackStackView)
+        except Exception as exc:
+            self.run_screen(
+                WarningScreen,
+                title="Error",
+                status_headline=None,
+                text=str(exc),
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+        finally:
+            if secure_channel is not None:
+                try:
+                    secure_channel.close()
+                except Exception:
+                    pass
+            if conn is not None:
+                try:
+                    conn.disconnect()
+                except Exception:
+                    pass
+
 
 class ToolsSatochipDIYView(View):
     MANAGE_KEYS = ButtonOption("Card Keys")
@@ -5000,6 +5623,250 @@ class ToolsSatochipDIYView(View):
 
 JAVACARD_KEYS_MICROSD_FILENAME = "javacard-keys.txt"
 JAVACARD_KEYS_SEEDKEEPER_PREFIX = "jc_keys_"
+SPECTER_JAVACARD_DEFAULT_AID = "B00B5111CB01"
+
+
+def _candidate_specter_card_paths() -> list[Path]:
+    candidates: list[Path] = []
+    env_path = (
+        os.environ.get("SEEDSIGNER_SPECTER_CARD_PY_PATH")
+        or os.environ.get("SEEDSIGNER_SPECTER_JAVACARD_PATH")
+    )
+    if env_path:
+        candidates.append(Path(env_path).expanduser())
+
+    repo_root = Path(__file__).resolve().parents[3]
+    candidates.append(repo_root.parent / "specter-javacard" / "py")
+    candidates.append(repo_root / "specter-javacard" / "py")
+    return candidates
+
+
+def _get_specter_card_api():
+    try:
+        from specter_card import Card, MemoryCardApplet, SecureApplet
+        return Card, MemoryCardApplet, SecureApplet
+    except Exception:
+        pass
+
+    for candidate in _candidate_specter_card_paths():
+        try:
+            if not candidate.exists() or not candidate.is_dir():
+                continue
+            candidate_str = str(candidate)
+            if candidate_str not in sys.path:
+                sys.path.insert(0, candidate_str)
+            from specter_card import Card, MemoryCardApplet, SecureApplet
+            return Card, MemoryCardApplet, SecureApplet
+        except Exception:
+            continue
+
+    raise ImportError(
+        "Unable to load specter_card module. Install specter-javacard py module or set SEEDSIGNER_SPECTER_CARD_PY_PATH."
+    )
+
+
+def _normalize_bip39_mnemonic_text(text: str) -> str:
+    mnemonic = " ".join((text or "").strip().lower().split())
+    if not mnemonic:
+        raise ValueError("No mnemonic data found on card")
+    words = mnemonic.split(" ")
+    if len(words) not in (12, 15, 18, 21, 24):
+        raise ValueError("Stored data is not a 12/15/18/21/24-word mnemonic")
+    return mnemonic
+
+
+def _show_specter_card_bricked_warning(parent_view) -> None:
+    parent_view.run_screen(
+        WarningScreen,
+        title="Card Locked",
+        status_headline=None,
+        text=(
+            "PIN attempts exhausted. Reinstall Specter-DIY applet.\n"
+            "No factory reset available."
+        ),
+        show_back_button=False,
+        button_data=[ButtonOption("I Understand")],
+    )
+
+
+def _open_specter_secure_channel(secure_applet):
+    last_error = None
+    for mode in ("ee", "es", "ss"):
+        try:
+            return secure_applet.open_secure_channel(mode=mode)
+        except TypeError:
+            return secure_applet.open_secure_channel()
+        except Exception as exc:
+            last_error = exc
+    if last_error is not None:
+        raise last_error
+    return secure_applet.open_secure_channel()
+
+
+def _specter_compact_size(value: int) -> bytes:
+    if value < 0xFD:
+        return bytes([value])
+    if value <= 0xFFFF:
+        return b"\xfd" + value.to_bytes(2, "little")
+    if value <= 0xFFFFFFFF:
+        return b"\xfe" + value.to_bytes(4, "little")
+    return b"\xff" + value.to_bytes(8, "little")
+
+
+def _specter_tagged_hash(tag: str, data: bytes) -> bytes:
+    hashtag = hashlib.sha256(tag.encode("utf-8")).digest()
+    return hashlib.sha256(hashtag + hashtag + data).digest()
+
+
+def _specter_aead_encrypt(key: bytes, adata: bytes, plaintext: bytes) -> bytes:
+    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+
+    aes_key = _specter_tagged_hash("aes", key)
+    hmac_key = _specter_tagged_hash("hmac", key)
+
+    body = _specter_compact_size(len(adata)) + adata
+    if plaintext:
+        iv = os.urandom(16)
+        padded = plaintext + b"\x80"
+        if len(padded) % 16 != 0:
+            padded += b"\x00" * (16 - (len(padded) % 16))
+        enc = Cipher(algorithms.AES(aes_key), modes.CBC(iv)).encryptor()
+        body += iv + enc.update(padded) + enc.finalize()
+
+    mac = hmac.new(hmac_key, body, digestmod="sha256").digest()
+    return body + mac
+
+
+def _serialize_specter_plaintext_blob(entropy: bytes) -> bytes:
+    if len(entropy) not in (16, 20, 24, 28, 32):
+        raise ValueError("Invalid BIP39 entropy length")
+
+    adata = b"sdiy\x00" + (b"\x00" * 4)
+    key = b"\xcc" * 32
+    tlv = b"\x02" + bytes([len(entropy)]) + entropy
+    return _specter_aead_encrypt(key=key, adata=adata, plaintext=tlv)
+
+
+def _is_specter_pin_error(exc: Exception) -> bool:
+    err = str(exc).lower()
+    return "0502" in err or "0503" in err
+
+
+def _show_specter_incorrect_pin_warning(parent_view, secure_applet, secure_channel) -> None:
+    attempts_left = None
+    try:
+        status = secure_applet.pin_status(secure_channel)
+        if status.get("status") == "bricked":
+            _show_specter_card_bricked_warning(parent_view)
+            return
+        attempts_left = status.get("attempts_left")
+    except Exception:
+        pass
+
+    if isinstance(attempts_left, int):
+        attempt_word = "attempt" if attempts_left == 1 else "attempts"
+        text = f"PIN is incorrect.\n{attempts_left} {attempt_word} remaining."
+    else:
+        text = "PIN is incorrect."
+
+    parent_view.run_screen(
+        WarningScreen,
+        title="Incorrect PIN",
+        status_headline=None,
+        text=text,
+        show_back_button=False,
+        button_data=[ButtonOption("I Understand")],
+    )
+
+
+def _prompt_specter_new_pin(parent_view, title: str) -> str | None:
+    while True:
+        ret = seed_screens.SeedAddPassphraseScreen(title=title).display()
+        if isinstance(ret, dict) and "is_back_button" in ret:
+            return None
+
+        pin = ret.get("passphrase", "")
+        if all(ch in "0123456789" for ch in pin):
+            return pin
+
+        selected = parent_view.run_screen(
+            WarningScreen,
+            title="Non-Numeric PIN",
+            status_headline=None,
+            text=(
+                "Specter-DIY hardware supports PIN digits 0-9.\n"
+                "Use this PIN anyway?"
+            ),
+            show_back_button=False,
+            button_data=[ButtonOption("Continue"), ButtonOption("Enter Different PIN")],
+        )
+        if selected == 0:
+            return pin
+
+
+def _prompt_keycard_new_pin(parent_view, title: str) -> str | None:
+    while True:
+        ret = seed_screens.SeedAddPassphraseScreen(title=title).display()
+        if isinstance(ret, dict) and "is_back_button" in ret:
+            return None
+
+        pin = ret.get("passphrase", "")
+        if all(ch in "0123456789" for ch in pin):
+            if len(pin) == 6:
+                return pin
+
+            parent_view.run_screen(
+                WarningScreen,
+                title="Invalid PIN Length",
+                status_headline=None,
+                text="Keycard PIN must be exactly 6 digits.",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            continue
+
+        parent_view.run_screen(
+            WarningScreen,
+            title="Non-Numeric PIN",
+            status_headline=None,
+            text="Keycard PIN must contain digits 0-9 only.",
+            show_back_button=False,
+            button_data=[ButtonOption("I Understand")],
+        )
+
+
+def _unlock_specter_card_if_needed(parent_view, secure_applet, secure_channel) -> bool:
+    status = secure_applet.pin_status(secure_channel)
+    if status.get("status") == "bricked":
+        _show_specter_card_bricked_warning(parent_view)
+        return False
+    if status.get("status") in ("disabled", "unlocked", "no_pin"):
+        return True
+    if status.get("status") != "locked":
+        return True
+
+    ret = seed_screens.SeedAddPassphraseScreen(title="Card PIN").display()
+    if isinstance(ret, dict) and "is_back_button" in ret:
+        return False
+    pin = ret.get("passphrase", "")
+    if not pin:
+        parent_view.run_screen(
+            WarningScreen,
+            title="Invalid PIN",
+            status_headline=None,
+            text="PIN cannot be empty.",
+            show_back_button=False,
+            button_data=[ButtonOption("I Understand")],
+        )
+        return False
+    try:
+        secure_applet.unlock(secure_channel, pin.encode("utf-8"))
+        return True
+    except Exception as exc:
+        if _is_specter_pin_error(exc):
+            _show_specter_incorrect_pin_warning(parent_view, secure_applet, secure_channel)
+            return False
+        raise
 
 
 def _normalize_javacard_key(value: str) -> str:
@@ -5110,6 +5977,8 @@ def _decode_seedkeeper_text(secret_dict: dict) -> str:
 class ToolsJavacardKeysView(View):
     LOAD_KEYS = ButtonOption("Load Keys")
     SAVE_KEYS = ButtonOption("Save Keys")
+    LOAD_MNEMONIC = ButtonOption("Load Mnemonic")
+    SAVE_MNEMONIC = ButtonOption("Save Mnemonic")
     UNLOCK_CARD = ButtonOption("Unlock Card")
     LOCK_CARD = ButtonOption("Lock Card")
     CLEAR_KEYS = ButtonOption("Clear Loaded Keys")
@@ -5118,6 +5987,8 @@ class ToolsJavacardKeysView(View):
         button_data = [
             self.LOAD_KEYS,
             self.SAVE_KEYS,
+            self.LOAD_MNEMONIC,
+            self.SAVE_MNEMONIC,
             self.UNLOCK_CARD,
             self.LOCK_CARD,
             self.CLEAR_KEYS,
@@ -5137,11 +6008,220 @@ class ToolsJavacardKeysView(View):
             return Destination(ToolsJavacardLoadKeysView)
         if choice == self.SAVE_KEYS:
             return Destination(ToolsJavacardSaveKeysView)
+        if choice == self.LOAD_MNEMONIC:
+            return Destination(ToolsJavacardLoadMnemonicView)
+        if choice == self.SAVE_MNEMONIC:
+            return Destination(ToolsJavacardSaveMnemonicView)
         if choice == self.UNLOCK_CARD:
             return Destination(ToolsJavacardUnlockCardView)
         if choice == self.LOCK_CARD:
             return Destination(ToolsJavacardLockCardView)
         return Destination(ToolsJavacardClearKeysView)
+
+
+class ToolsJavacardLoadMnemonicView(View):
+    def run(self):
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+
+        conn = None
+        secure_channel = None
+        try:
+            Card, MemoryCardApplet, SecureApplet = _get_specter_card_api()
+            conn = Card(SPECTER_JAVACARD_DEFAULT_AID)
+            conn.connect()
+            secure_applet = SecureApplet(conn)
+            memory_applet = MemoryCardApplet(conn)
+            secure_channel = _open_specter_secure_channel(secure_applet)
+            if not _unlock_specter_card_if_needed(self, secure_applet, secure_channel):
+                return Destination(BackStackView)
+
+            loading = LoadingScreenThread(text="Loading Mnemonic\n\n\n\n\n\n")
+            loading.start()
+            raw = memory_applet.get_data(secure_channel)
+            loading.stop()
+            if not raw:
+                self.run_screen(
+                    WarningScreen,
+                    title="No Mnemonic Found",
+                    status_headline=None,
+                    text="No data found on Specter Javacard.",
+                    show_back_button=False,
+                    button_data=[ButtonOption("I Understand")],
+                )
+                return Destination(BackStackView)
+
+            decoded = memory_applet.decode_diy_data(secure_channel)
+            mnemonic_text = decoded.get("mnemonic")
+            if not mnemonic_text:
+                entropy = decoded.get("entropy")
+                if entropy:
+                    from embit import bip39
+                    mnemonic_text = bip39.mnemonic_from_bytes(entropy)
+            if not mnemonic_text:
+                raise ValueError("Stored data could not be decoded as Specter-DIY mnemonic")
+
+            mnemonic_text = _normalize_bip39_mnemonic_text(mnemonic_text)
+            mnemonic_words = mnemonic_text.split(" ")
+            self.controller.storage.init_pending_mnemonic(num_words=len(mnemonic_words))
+            for i, word in enumerate(mnemonic_words):
+                self.controller.storage.update_pending_mnemonic(word, i)
+            self.controller.storage.convert_pending_mnemonic_to_pending_seed(
+                wordlist_language_code=self.settings.get_value(SettingsConstants.SETTING__WORDLIST_LANGUAGE),
+            )
+            return Destination(SeedFinalizeView)
+        except InvalidSeedException:
+            self.run_screen(
+                WarningScreen,
+                title="Invalid Mnemonic",
+                status_headline=None,
+                text="Stored data is not a valid BIP39 mnemonic.",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+        except Exception as exc:
+            self.run_screen(
+                WarningScreen,
+                title="Load Failed",
+                status_headline=None,
+                text=str(exc),
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+        finally:
+            if secure_channel is not None:
+                try:
+                    secure_channel.close()
+                except Exception:
+                    pass
+            if conn is not None:
+                try:
+                    conn.disconnect()
+                except Exception:
+                    pass
+
+
+class ToolsJavacardSaveMnemonicView(View):
+    def run(self):
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+
+        bip39_seeds: list[tuple[int, Seed]] = []
+        for i, seed in enumerate(self.controller.storage.seeds):
+            if type(seed) is Seed:
+                bip39_seeds.append((i, seed))
+
+        if not bip39_seeds:
+            self.run_screen(
+                WarningScreen,
+                title="No BIP39 Seed",
+                status_headline=None,
+                text="Load a BIP39 seed before saving.",
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+
+        selected_seed = bip39_seeds[0][1]
+        if len(bip39_seeds) > 1:
+            options = []
+            for _, seed in bip39_seeds:
+                fingerprint = seed.get_fingerprint(self.settings.get_value(SettingsConstants.SETTING__NETWORK))
+                options.append(ButtonOption(fingerprint, SeedSignerIconConstants.FINGERPRINT))
+            selected = self.run_screen(
+                ButtonListScreen,
+                title="Select Seed",
+                is_button_text_centered=False,
+                button_data=options,
+                show_back_button=True,
+            )
+            if selected == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+            selected_seed = bip39_seeds[selected][1]
+
+        mnemonic_text = " ".join(selected_seed.mnemonic_list).strip()
+        conn = None
+        secure_channel = None
+        try:
+            from embit import bip39
+
+            Card, MemoryCardApplet, SecureApplet = _get_specter_card_api()
+            conn = Card(SPECTER_JAVACARD_DEFAULT_AID)
+            conn.connect()
+            secure_applet = SecureApplet(conn)
+            memory_applet = MemoryCardApplet(conn)
+            secure_channel = _open_specter_secure_channel(secure_applet)
+            if not _unlock_specter_card_if_needed(self, secure_applet, secure_channel):
+                return Destination(BackStackView)
+
+            status = secure_applet.pin_status(secure_channel)
+            existing_data = memory_applet.get_data(secure_channel)
+
+            if status.get("status") in ("disabled", "no_pin") and not existing_data:
+                new_pin = _prompt_specter_new_pin(self, "Create PIN")
+                if new_pin is None:
+                    return Destination(BackStackView)
+                if not new_pin:
+                    self.run_screen(
+                        WarningScreen,
+                        title="Invalid PIN",
+                        status_headline=None,
+                        text="PIN cannot be empty.",
+                        show_back_button=False,
+                        button_data=[ButtonOption("I Understand")],
+                    )
+                    return Destination(BackStackView)
+                secure_applet.set_pin(secure_channel, new_pin.encode("utf-8"))
+
+            if existing_data:
+                overwrite = self.run_screen(
+                    WarningScreen,
+                    title="Overwrite Data?",
+                    status_headline=None,
+                    text="Card already has data. Overwrite it?",
+                    show_back_button=False,
+                    button_data=[ButtonOption("Overwrite"), ButtonOption("Abort Save")],
+                )
+                if overwrite != 0:
+                    return Destination(BackStackView)
+
+            entropy = bip39.mnemonic_to_bytes(mnemonic_text)
+            payload = _serialize_specter_plaintext_blob(entropy)
+
+            loading = LoadingScreenThread(text="Saving Mnemonic\n\n\n\n\n\n")
+            loading.start()
+            memory_applet.store_data(secure_channel, payload)
+            loading.stop()
+
+            self.run_screen(
+                LargeIconStatusScreen,
+                title="Saved",
+                status_headline=None,
+                text="Mnemonic saved to Specter Javacard",
+                show_back_button=False,
+            )
+            return Destination(BackStackView)
+        except Exception as exc:
+            self.run_screen(
+                WarningScreen,
+                title="Save Failed",
+                status_headline=None,
+                text=str(exc),
+                show_back_button=False,
+                button_data=[ButtonOption("I Understand")],
+            )
+            return Destination(BackStackView)
+        finally:
+            if secure_channel is not None:
+                try:
+                    secure_channel.close()
+                except Exception:
+                    pass
+            if conn is not None:
+                try:
+                    conn.disconnect()
+                except Exception:
+                    pass
 
 
 class ToolsJavacardLoadKeysView(View):
@@ -6541,7 +7621,7 @@ class ToolsGPGMenuView(View):
             )
             return Destination(BackStackView)
 
-        if self.controller.resume_main_flow == Controller.FLOW__GPG_MESSAGE:
+        if self.controller.resume_main_flow == self.controller.FLOW__GPG_MESSAGE:
             self.controller.resume_main_flow = None
             return Destination(ToolsGPGDecryptMessageView, skip_current_view=True)
 
@@ -9541,9 +10621,8 @@ class ToolsGPGDecryptMessageView(View):
                     button_data=[load, cont],
                 )
                 if selected == 0:
-                    from seedsigner.controller import Controller
                     self.controller.gpg_pending_message = ciphertext
-                    self.controller.resume_main_flow = Controller.FLOW__GPG_MESSAGE
+                    self.controller.resume_main_flow = self.controller.FLOW__GPG_MESSAGE
                     return Destination(ToolsGPGImportPrivkeyMenuView)
                 return Destination(BackStackView)
 
@@ -9573,9 +10652,8 @@ class ToolsGPGDecryptMessageView(View):
                     button_data=[load, cont],
                 )
                 if selected == 0:
-                    from seedsigner.controller import Controller
                     self.controller.gpg_pending_message = ciphertext
-                    self.controller.resume_main_flow = Controller.FLOW__GPG_MESSAGE
+                    self.controller.resume_main_flow = self.controller.FLOW__GPG_MESSAGE
                     return Destination(ToolsGPGImportPubkeyMenuView)
             if verified:
                 self.run_screen(

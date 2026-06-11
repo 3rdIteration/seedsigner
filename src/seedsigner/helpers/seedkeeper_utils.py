@@ -1,4 +1,3 @@
-from pysatochip.CardConnector import CardConnector
 from pysatochip.JCconstants import (
     JCconstants,
     SEEDKEEPER_DIC_TYPE,
@@ -16,6 +15,7 @@ from seedsigner.gui.screens import (
 )
 from seedsigner.gui.screens.screen import LoadingScreenThread
 from seedsigner.helpers.iso7816 import format_sw_error
+from seedsigner.helpers.keycard_connector import KeycardSatochipConnector
 
 
 import os
@@ -25,6 +25,110 @@ import platform
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+def _decode_attempts_from_sw(sw1: int, sw2: int) -> int | None:
+    if sw1 == 0x63 and (sw2 & 0xF0) == 0xC0:
+        return sw2 & 0x0F
+    return None
+
+
+def get_pin_attempts_left(connector=None, sw1: int | None = None, sw2: int | None = None) -> int | None:
+    attempts = None
+    if sw1 is not None and sw2 is not None:
+        attempts = _decode_attempts_from_sw(sw1, sw2)
+        if attempts is not None:
+            return attempts
+
+    if connector is None:
+        return None
+
+    try:
+        _r, _a, _b, status = connector.card_get_status()
+    except Exception:
+        return None
+
+    pin_tries = status.get("PIN0_remaining_tries")
+    if isinstance(pin_tries, int):
+        return pin_tries
+    return None
+
+
+def show_incorrect_pin_warning(parent_view, connector=None, sw1: int | None = None, sw2: int | None = None) -> None:
+    attempts_left = get_pin_attempts_left(connector=connector, sw1=sw1, sw2=sw2)
+    if attempts_left is not None:
+        attempt_word = "attempt" if attempts_left == 1 else "attempts"
+        text = f"PIN is incorrect.\n{attempts_left} {attempt_word} remaining."
+    else:
+        text = "PIN is incorrect."
+
+    parent_view.run_screen(
+        WarningScreen,
+        title="Incorrect PIN",
+        status_headline=None,
+        text=text,
+        show_back_button=True,
+    )
+
+
+def _requested_satochip_flow(init_card_filter) -> bool:
+    if init_card_filter is None:
+        return False
+    values = init_card_filter
+    if not isinstance(values, (list, tuple, set)):
+        values = [values]
+    return any(str(v).lower() == "satochip" for v in values)
+
+
+def _init_legacy_connector(init_card_filter):
+    from pysatochip.CardConnector import CardConnector
+
+    connector = CardConnector(card_filter=init_card_filter)
+    # The CardConnector uses a background thread to establish the card
+    # connection.  Without a delay the thread may not have run yet, so
+    # card_get_status() would return before actually trying to talk to the
+    # card and the probe below would not detect wrong-card-type errors.
+    # 0.6 s matches the 0.5 s sleep in the outer retry loop that the
+    # pysatochip authors themselves found necessary for reader initialisation.
+    time.sleep(0.6)
+    # Probe: throws (e.g. "Card Initialization must be satisfied") when the
+    # inserted card is not a Satochip.  The caller catches this and falls
+    # back to the keycard-compat backend.
+    connector.card_get_status()
+    return connector
+
+
+def _init_card_connector(init_card_filter, backend_preference: str | None = None):
+    """Create the most appropriate connector for the requested card flow.
+
+    Selection is controlled by ``SEEDSIGNER_SMARTCARD_BACKEND``:
+    - ``auto`` (default): try pysatochip first, then keycard for satochip flows
+    - ``pysatochip``: force legacy backend
+    - ``keycard``: force keycard compat backend (satochip flow only)
+    """
+
+    backend_pref = (backend_preference or os.environ.get("SEEDSIGNER_SMARTCARD_BACKEND", "auto")).strip().lower()
+    keycard_allowed = _requested_satochip_flow(init_card_filter)
+
+    if backend_pref == "keycard":
+        if not keycard_allowed:
+            raise Exception("Keycard backend only supports satochip card flows")
+        return KeycardSatochipConnector.create(card_filter=init_card_filter)
+
+    if backend_pref == "pysatochip":
+        return _init_legacy_connector(init_card_filter)
+
+    # auto backend
+    try:
+        return _init_legacy_connector(init_card_filter)
+    except Exception as legacy_error:
+        if not keycard_allowed:
+            raise legacy_error
+        try:
+            logger.info("pysatochip init failed; trying keycard compat backend")
+            return KeycardSatochipConnector.create(card_filter=init_card_filter)
+        except Exception:
+            raise legacy_error
 
 
 def calculate_seedkeeper_secret_size(secret_dic: dict) -> int:
@@ -99,8 +203,14 @@ def format_seedkeeper_space_error(required_bytes: int, free_bytes: int) -> str:
     )
 
 
-def prompt_for_pin(parent_view, title: str):
-    """Prompt for a PIN and enforce length requirements."""
+def prompt_for_pin(
+    parent_view,
+    title: str,
+    *,
+    numeric_only: bool = False,
+    exact_length: int | None = None,
+):
+    """Prompt for a PIN and enforce configurable PIN requirements."""
 
     while True:
         ret = seed_screens.SeedAddPassphraseScreen(title=title).display()
@@ -108,6 +218,28 @@ def prompt_for_pin(parent_view, title: str):
             return None
 
         pin_str = ret.get("passphrase", "")
+        if numeric_only and not all(ch in "0123456789" for ch in pin_str):
+            parent_view.run_screen(
+                WarningScreen,
+                title="Invalid PIN",
+                status_headline=None,
+                text="PIN must contain digits only.",
+                show_back_button=True,
+            )
+            continue
+
+        if exact_length is not None:
+            if len(pin_str) == exact_length:
+                return pin_str
+            parent_view.run_screen(
+                WarningScreen,
+                title="Invalid PIN",
+                status_headline=None,
+                text=f"PIN must be exactly {exact_length} digits.",
+                show_back_button=True,
+            )
+            continue
+
         if JCconstants.PIN_MIN_SIZE <= len(pin_str) <= JCconstants.PIN_MAX_SIZE:
             return pin_str
 
@@ -145,7 +277,7 @@ def disconnect_smartcard_connections(controller):
         pass
 
 
-def init_satochip(parentObject, init_card_filter=None, require_pin=True):
+def init_satochip(parentObject, init_card_filter=None, require_pin=True, backend_preference: str | None = None, allow_unseeded: bool = False):
     from seedsigner.models.settings import (
         Settings,
         SettingsConstants,
@@ -155,6 +287,9 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True):
     # Check for existing card connector
     print("Checking existing card connector...")
     Satochip_Connector = getattr(parentObject.controller, "Satochip_Connector", None)
+    controller_backend_pref = backend_preference
+    if controller_backend_pref is None:
+        controller_backend_pref = getattr(parentObject.controller, "smartcard_backend_preference", None)
 
     # If a specific applet/card filter is requested, do not reuse an existing
     # connector that may still be attached to a previous flow/card type.
@@ -184,7 +319,15 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True):
         if Satochip_Connector is None:
             print("No Working CardConnector, Connecting")
             print("Card Filter:", init_card_filter)
-            Satochip_Connector = CardConnector(card_filter=init_card_filter)
+            print("Backend Preference:", controller_backend_pref or "auto")
+            Satochip_Connector = _init_card_connector(
+                init_card_filter,
+                backend_preference=controller_backend_pref,
+            )
+            print(
+                "Card Backend:",
+                "keycard" if getattr(Satochip_Connector, "is_keycard_backend", False) else "pysatochip",
+            )
     except Exception as e:
         parentObject.run_screen(
             WarningScreen,
@@ -195,11 +338,18 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True):
         )
         return None
 
+    is_keycard_backend = getattr(Satochip_Connector, "is_keycard_backend", False)
+
     if require_pin:
         # Prompt for pin if one hasn't been set, otherwise a cached pin will be used
         if parentObject.controller.Satochip_PIN is None:
             print("No Cached pin, prompting for pin")
-            pin_str = prompt_for_pin(parentObject, "Card PIN")
+            pin_str = prompt_for_pin(
+                parentObject,
+                "Card PIN",
+                numeric_only=is_keycard_backend,
+                exact_length=6 if is_keycard_backend else None,
+            )
             if pin_str is None:
                 return None
             card_pin = list(pin_str.encode("utf-8"))
@@ -307,6 +457,14 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True):
                 if sw1 == 0x90 and sw2 == 0x00:
                     print("Pin Correct")
                     pass  # Pin is correct
+                elif sw1 == 0x63 and (sw2 & 0xF0) == 0xC0:
+                    show_incorrect_pin_warning(
+                        parentObject,
+                        connector=Satochip_Connector,
+                        sw1=sw1,
+                        sw2=sw2,
+                    )
+                    return None
                 else:
                     parentObject.run_screen(
                         WarningScreen,
@@ -340,6 +498,20 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True):
                 return None
 
     else:
+        if getattr(Satochip_Connector, "is_keycard_backend", False):
+            # In keycard flows that allow unseeded cards (e.g. "Initialise with
+            # Seed"), continue into the generic setup path below so a factory-
+            # fresh card can be initialized in-app before importing a seed.
+            if not allow_unseeded:
+                parentObject.run_screen(
+                    WarningScreen,
+                    title="Card Uninitialised",
+                    status_headline=None,
+                    text="Initialize Keycard first\nusing keycard-cli.",
+                    show_back_button=True,
+                )
+                return None
+
         print("Card Needs Initial Setup")
         parentObject.run_screen(
             WarningScreen,
@@ -349,7 +521,12 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True):
             show_back_button=True,
         )
 
-        pin_str = prompt_for_pin(parentObject, "New Card PIN")
+        pin_str = prompt_for_pin(
+            parentObject,
+            "New Card PIN",
+            numeric_only=is_keycard_backend,
+            exact_length=6 if is_keycard_backend else None,
+        )
 
         if pin_str is None:
             return None
@@ -407,9 +584,9 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True):
             print("Setup Succeeded")
             parentObject.run_screen(
                 LargeIconStatusScreen,
-                title="Success",
+                title="Card Setup",
                 status_headline=None,
-                text=f"Card Setup Complete",
+                text="PIN set. Import seed next.",
                 show_back_button=False,
             )
             # Save the PIN for the newly set up card...

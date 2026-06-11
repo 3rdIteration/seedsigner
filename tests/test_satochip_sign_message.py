@@ -43,6 +43,16 @@ class DummyConnector:
         return None, 0x90, 0x00, compsig
 
 
+class DummyDigestConnector(DummyConnector):
+    requires_message_digest = True
+
+    def card_sign_message(self, keynbr, pubkey, message, hmac=None):
+        assert isinstance(message, bytes)
+        assert len(message) == 32
+        compsig = b"\x02" * 65
+        return None, 0x90, 0x00, compsig
+
+
 def test_sign_message_with_satochip_returns_base64_signature():
     connector = DummyConnector()
     sig = sign_message_with_satochip("m/84'/0'/0'/0/0", "hello", connector)
@@ -53,6 +63,12 @@ def test_sign_message_with_satochip_accepts_hardened_notation_without_m_prefix()
     connector = DummyConnector()
     sig = sign_message_with_satochip("84h/0h/0h/0/0", "hello", connector)
     assert sig == b2a_base64(b"\x01" * 65).strip().decode()
+
+
+def test_sign_message_with_digest_backend_hashes_message_first():
+    connector = DummyDigestConnector()
+    sig = sign_message_with_satochip("m/84'/0'/0'/0/0", "hello", connector)
+    assert sig == b2a_base64(b"\x02" * 65).strip().decode()
 
 
 def test_sign_message_with_satochip_raises_when_authentikey_missing():

@@ -200,6 +200,7 @@ class Controller(Singleton):
     FLOW__VERIFY_SINGLESIG_ADDR = "singlesig_addr"
     FLOW__ADDRESS_EXPLORER = "address_explorer"
     FLOW__SIGN_MESSAGE = "sign_message"
+    FLOW__SATOCHIP_IMPORT_SEED = "satochip_import_seed"
     FLOW__GPG_MESSAGE = "gpg_message"
     resume_main_flow: str = None
 

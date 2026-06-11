@@ -433,6 +433,9 @@ class SettingsConstants:
     SETTING__CACHE_SCARD_PIN = "cache_scard_pin"
     SETTING__SCARD_PIN_ATTEMPTS = "scard_pin_attempts"
     SETTING__SMARTCARD_SUPPORT = "smartcard_support"
+    SETTING__SATOCHIP_SUPPORT = "satochip_support"
+    SETTING__KEYCARD_SUPPORT = "keycard_support"
+    SETTING__SPECTER_DIY_SUPPORT = "specter_diy_support"
     SETTING__WIPE_TIMER = "wipe_timer"
 
     SETTING__DISPLAY_CONFIGURATION = "display_config"
@@ -1054,6 +1057,27 @@ class SettingsDefinition:
                       display_name=_mft("Smartcard support"),
                       visibility=SettingsConstants.VISIBILITY__ADVANCED,
                       default_value=SettingsConstants.OPTION__ENABLED),
+
+        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
+                  attr_name=SettingsConstants.SETTING__SATOCHIP_SUPPORT,
+                  abbreviated_name="satochip",
+                  display_name=_mft("Satochip support"),
+                  visibility=SettingsConstants.VISIBILITY__ADVANCED,
+                  default_value=SettingsConstants.OPTION__ENABLED),
+
+        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
+                  attr_name=SettingsConstants.SETTING__KEYCARD_SUPPORT,
+                  abbreviated_name="keycard",
+                  display_name=_mft("KeyCard support"),
+                  visibility=SettingsConstants.VISIBILITY__ADVANCED,
+                  default_value=SettingsConstants.OPTION__DISABLED),
+
+        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
+                  attr_name=SettingsConstants.SETTING__SPECTER_DIY_SUPPORT,
+                  abbreviated_name="specter_diy",
+                  display_name=_mft("Specter-DIY support"),
+                  visibility=SettingsConstants.VISIBILITY__ADVANCED,
+                  default_value=SettingsConstants.OPTION__DISABLED),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
                       attr_name=SettingsConstants.SETTING__PRIVACY_WARNINGS,

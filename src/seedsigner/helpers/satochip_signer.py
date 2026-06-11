@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from binascii import b2a_base64
+import hashlib
 import logging
 import os
 import random
@@ -157,6 +158,26 @@ def format_path_string(path: str) -> str:
     return "m/" + path
 
 
+def _compact_size(value: int) -> bytes:
+    if value < 0xFD:
+        return bytes([value])
+    if value <= 0xFFFF:
+        return b"\xfd" + value.to_bytes(2, "little")
+    if value <= 0xFFFFFFFF:
+        return b"\xfe" + value.to_bytes(4, "little")
+    return b"\xff" + value.to_bytes(8, "little")
+
+
+def _bitcoin_message_digest(message: str) -> bytes:
+    payload = message.encode("utf-8")
+    serialized = (
+        b"\x18Bitcoin Signed Message:\n"
+        + _compact_size(len(payload))
+        + payload
+    )
+    return hashlib.sha256(hashlib.sha256(serialized).digest()).digest()
+
+
 def sign_psbt_with_satochip(psbt: PSBT, connector) -> int:
     """Sign the given PSBT using a connected Satochip card.
 
@@ -217,19 +238,53 @@ def sign_psbt_with_satochip(psbt: PSBT, connector) -> int:
     for i in indices:
         inp = psbt.inputs[i]
         if len(inp.bip32_derivations) == 0:
+            logger.debug("PSBT signer input %d: skipped (no bip32 derivations)", i)
             continue
+
+        matched_pubkey = False
         for pubkey, deriv in inp.bip32_derivations.items():
             path = _format_path(deriv.derivation)
+            logger.info(
+                "PSBT signer input %d: attempting derive path=%s fp=%s",
+                i,
+                path,
+                getattr(deriv, "fingerprint", b"").hex() if getattr(deriv, "fingerprint", None) is not None else "unknown",
+            )
             try:
                 key, _chaincode = _get_extended_key(connector, path)
                 card_pub = PublicKey.parse(
                     key.get_public_key_bytes(compressed=True)
                 )
-            except Exception:
-                continue
-            if card_pub != pubkey:
+            except Exception as e:
+                logger.info(
+                    "PSBT signer input %d: derive failed path=%s error=%s",
+                    i,
+                    path,
+                    e,
+                )
                 continue
 
+            if card_pub != pubkey:
+                try:
+                    expected_hex = pubkey.sec().hex()
+                except Exception:
+                    expected_hex = str(pubkey)
+                try:
+                    card_hex = card_pub.sec().hex()
+                except Exception:
+                    card_hex = str(card_pub)
+                logger.info(
+                    "PSBT signer input %d: pubkey mismatch path=%s fp=%s expected=%s card=%s",
+                    i,
+                    path,
+                    getattr(deriv, "fingerprint", b"").hex() if getattr(deriv, "fingerprint", None) is not None else "unknown",
+                    expected_hex,
+                    card_hex,
+                )
+                continue
+
+            matched_pubkey = True
+            logger.info("PSBT signer input %d: matched card pubkey path=%s", i, path)
             tx_hash = psbt.sighash(i)
 
             extra_sigs = (
@@ -243,6 +298,7 @@ def sign_psbt_with_satochip(psbt: PSBT, connector) -> int:
                 )
             else:
                 logger.info("Input %d not selected for dummy signing", i)
+
             results: list[tuple | None] = []
             for _ in range(1 + extra_sigs):
                 try:
@@ -260,12 +316,14 @@ def sign_psbt_with_satochip(psbt: PSBT, connector) -> int:
                     results.append(None)
                 except Exception:
                     results.append(None)
+
             chosen = random.choice(results) if results else None
             if chosen is None:
                 for res in results:
                     if res is not None:
                         chosen = res
                         break
+
             sig, sw1, sw2 = chosen if chosen is not None else (None, None, None)
             if sw1 != 0x90 or sw2 != 0x00:
                 if sw1 is None or sw2 is None:
@@ -275,17 +333,22 @@ def sign_psbt_with_satochip(psbt: PSBT, connector) -> int:
                         "Satochip signing failed: %s", format_sw_error(sw1, sw2)
                     )
                 continue
+
             sig_der = bytes(sig)
-            # ensure low-S signature; gracefully handle normalization errors
             try:
                 sig_obj = secp256k1.ecdsa_signature_parse_der(sig_der)
                 sig_norm = secp256k1.ecdsa_signature_normalize(sig_obj)
                 sig_der = secp256k1.ecdsa_signature_serialize_der(sig_norm)
             except Exception as e:
                 logger.warning("Failed to normalize Satochip signature: %s", e)
+
             inp.partial_sigs[pubkey] = sig_der + b"\x01"
             signed += 1
+            logger.info("PSBT signer input %d: signature appended (signed_count=%d)", i, signed)
             break
+
+        if not matched_pubkey:
+            logger.info("PSBT signer input %d: no matching card pubkey found", i)
 
     # Issue 0-N dummy signing requests after signing completes, again applying
     # the per-input dummy settings to potentially sign each dummy hash multiple
@@ -327,9 +390,14 @@ def sign_message_with_satochip(derivation_path: str, message: str, connector) ->
     timeout = settings.get_value(SettingsConstants.SETTING__SATOCHIP_MSG_SIGN_TIMEOUT)
     path = format_path_string(derivation_path)
     key, _chaincode = _get_extended_key(connector, path)
+
+    message_payload = message
+    if getattr(connector, "requires_message_digest", False):
+        message_payload = _bitcoin_message_digest(message)
+
     try:
         _resp, sw1, sw2, compsig = _call_with_timeout(
-            connector.card_sign_message, timeout, 0xFF, key, message
+            connector.card_sign_message, timeout, 0xFF, key, message_payload
         )
     except TimeoutError:
         raise Exception("Satochip signing timed out")

@@ -80,6 +80,38 @@ _Choose option 1 to install Rust_
     cd pysatochip
     python setup.py install
 
+### Optional: Keycard Backend (pysatochip compatibility layer)
+
+SeedSigner can now use the `keycard-cli` Python compatibility adapter for
+Satochip-style flows (xpub export and signing).
+
+1. Install the module:
+
+    cd ~/keycard-cli/python
+    pip3 install -e .
+
+2. Select backend behavior with environment variables:
+
+    export SEEDSIGNER_SMARTCARD_BACKEND=auto
+
+Available values:
+
+- `auto` (default): use pysatochip first, then fall back to keycard compat for `satochip` flows.
+- `pysatochip`: force legacy pysatochip backend.
+- `keycard`: force keycard compat backend for `satochip` flows.
+
+If `keycard_cli` is not installed in the active environment, you can also point
+SeedSigner to a checkout directly:
+
+    export SEEDSIGNER_KEYCARD_CLI_PATH=/home/pi/keycard-cli/python
+
+For cards configured with a custom Keycard pairing password, set:
+
+    export SEEDSIGNER_KEYCARD_PAIRING_PASSWORD='your-pairing-password'
+
+When using the keycard backend, uninitialised cards must be initialised with
+`keycard-cli` tooling first.
+
 ### LibNFC + IFDNFC (Optional: Needed for PN352 connected via GPIO Pins)
 
 **Install LibNFC**
@@ -230,3 +262,14 @@ The key file can include either a single key or an ENC/MAC/DEK key set. When sav
 file is stored at the card root as `javacard-keys.txt`. You can also save/load the same plaintext
 format on a Seedkeeper card; the entries are labeled with the `jc_keys` prefix so the same parser
 can be used for both locations.
+
+### Javacard DIY BIP39 Mnemonics (Specter JavaCard)
+The same **Card Keys** menu now includes **Load Mnemonic** and **Save Mnemonic** options for
+Specter JavaCard `MemoryCard` applets. This uses the Specter Python module (`specter_card`) to
+open a secure channel and read/write mnemonic text.
+
+If the module is not installed globally, set:
+
+    export SEEDSIGNER_SPECTER_CARD_PY_PATH=/path/to/specter-javacard/py
+
+The loader expects a standard 12/15/18/21/24-word BIP39 mnemonic payload.
