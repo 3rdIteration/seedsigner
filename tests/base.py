@@ -8,7 +8,6 @@ from typing import Callable
 sys.modules['seedsigner.gui.renderer'] = MagicMock()
 sys.modules['seedsigner.gui.screens.screensaver'] = MagicMock()
 sys.modules['seedsigner.gui.toast'] = MagicMock()
-sys.modules['seedsigner.views.screensaver'] = MagicMock()
 sys.modules['seedsigner.hardware.buttons'] = MagicMock()
 sys.modules['seedsigner.hardware.camera'] = MagicMock()
 sys.modules['seedsigner.hardware.st7789_mpy'] = MagicMock()
