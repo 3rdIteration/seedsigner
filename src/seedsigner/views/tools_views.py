@@ -1117,7 +1117,7 @@ class ToolsAddressExplorerSelectSourceView(View):
         # Most of the options require us to go through a side flow(s) before we can
         # continue to the address explorer. Set the Controller-level flow so that it
         # knows to re-route us once the side flow is complete.        
-        self.controller.resume_main_flow = Controller.FLOW__ADDRESS_EXPLORER
+        self.controller.resume_main_flow = self.controller.FLOW__ADDRESS_EXPLORER
 
         if len(seeds) > 0 and selected_menu_num < len(seeds):
             # User selected one of the n seeds
@@ -4068,7 +4068,7 @@ class ToolsSatochipImportSeedView(View):
         # Most of the options require us to go through a side flow(s) before we can
         # continue to the address explorer. Set the Controller-level flow so that it
         # knows to re-route us once the side flow is complete.        
-        self.controller.resume_main_flow = Controller.FLOW__SATOCHIP_IMPORT_SEED
+        self.controller.resume_main_flow = self.controller.FLOW__SATOCHIP_IMPORT_SEED
 
         if len(seeds) > 0 and selected_menu_num < len(seeds):
             # User selected one of the n seeds
@@ -4086,7 +4086,24 @@ class ToolsSatochipImportSeedView(View):
                 self.loading_screen = LoadingScreenThread(text="Importing Secret\n\n\n\n\n\n")
                 self.loading_screen.start()
 
-                Satochip_Connector.card_bip32_import_seed(seeds[selected_menu_num].seed_bytes)
+                _resp, sw1, sw2 = Satochip_Connector.card_bip32_import_seed(seeds[selected_menu_num].seed_bytes)
+                if (sw1, sw2) != (0x90, 0x00):
+                    if (
+                        getattr(Satochip_Connector, "is_keycard_backend", False)
+                        and (sw1, sw2) == (0x69, 0x85)
+                    ):
+                        raise ValueError(
+                            "Keycard blocked seed import (SW=6985).\n"
+                            "Try Factory Reset Card, then retry import."
+                        )
+                    raise ValueError(f"Import failed with SW={sw1:02X}{sw2:02X}")
+
+                _status_resp, status_sw1, status_sw2, post_status = Satochip_Connector.card_get_status()
+                if (status_sw1, status_sw2) != (0x90, 0x00):
+                    raise ValueError(f"Status check failed with SW={status_sw1:02X}{status_sw2:02X}")
+
+                if not (post_status.get("is_seeded") or post_status.get("key_initialized")):
+                    raise ValueError("Card did not report a seeded key after import")
 
                 self.loading_screen.stop()
 
@@ -4101,11 +4118,14 @@ class ToolsSatochipImportSeedView(View):
             except Exception as e:
                 self.loading_screen.stop()
                 logger.exception("Satochip Import Failed: %s", e)
+                error_text = str(e) or "Seed Import Failed"
+                if len(error_text) > 120:
+                    error_text = error_text[:120]
                 self.run_screen(
                     WarningScreen,
                     title="Failed",
                     status_headline=None,
-                    text=f"Seed Import Failed",
+                    text=error_text,
                     show_back_button=False,
                 )
 
@@ -4729,11 +4749,10 @@ class SatochipLoadDescriptorDetailsView(View):
             return Destination(BackStackView)
 
         self.controller.multisig_wallet_descriptor = descriptor
-        from seedsigner.controller import Controller
-        if self.controller.resume_main_flow == Controller.FLOW__ADDRESS_EXPLORER:
+        if self.controller.resume_main_flow == self.controller.FLOW__ADDRESS_EXPLORER:
             from seedsigner.views.seed_views import MultisigWalletDescriptorView
             return Destination(MultisigWalletDescriptorView, skip_current_view=True)
-        elif self.controller.resume_main_flow == Controller.FLOW__VERIFY_SINGLESIG_ADDR:
+        elif self.controller.resume_main_flow == self.controller.FLOW__VERIFY_SINGLESIG_ADDR:
             from seedsigner.views.seed_views import SeedAddressVerificationView
             self.controller.resume_main_flow = None
             return Destination(SeedAddressVerificationView, skip_current_view=True)
@@ -7023,7 +7042,7 @@ class ToolsGPGMenuView(View):
             )
             return Destination(BackStackView)
 
-        if self.controller.resume_main_flow == Controller.FLOW__GPG_MESSAGE:
+        if self.controller.resume_main_flow == self.controller.FLOW__GPG_MESSAGE:
             self.controller.resume_main_flow = None
             return Destination(ToolsGPGDecryptMessageView, skip_current_view=True)
 
@@ -10023,9 +10042,8 @@ class ToolsGPGDecryptMessageView(View):
                     button_data=[load, cont],
                 )
                 if selected == 0:
-                    from seedsigner.controller import Controller
                     self.controller.gpg_pending_message = ciphertext
-                    self.controller.resume_main_flow = Controller.FLOW__GPG_MESSAGE
+                    self.controller.resume_main_flow = self.controller.FLOW__GPG_MESSAGE
                     return Destination(ToolsGPGImportPrivkeyMenuView)
                 return Destination(BackStackView)
 
@@ -10055,9 +10073,8 @@ class ToolsGPGDecryptMessageView(View):
                     button_data=[load, cont],
                 )
                 if selected == 0:
-                    from seedsigner.controller import Controller
                     self.controller.gpg_pending_message = ciphertext
-                    self.controller.resume_main_flow = Controller.FLOW__GPG_MESSAGE
+                    self.controller.resume_main_flow = self.controller.FLOW__GPG_MESSAGE
                     return Destination(ToolsGPGImportPubkeyMenuView)
             if verified:
                 self.run_screen(

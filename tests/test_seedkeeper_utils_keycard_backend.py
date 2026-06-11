@@ -227,3 +227,378 @@ def test_get_pin_attempts_left_reads_connector_status_when_sw_missing():
 
     attempts = seedkeeper_utils.get_pin_attempts_left(connector=FakeConnector())
     assert attempts == 2
+
+
+def test_keycard_status_prefers_key_initialized_over_initialized(monkeypatch):
+    from seedsigner.helpers.keycard_connector import KeycardSatochipConnector
+
+    class MockTransport:
+        def connect(self):
+            return None
+
+        def disconnect(self):
+            return None
+
+    class MockInner:
+        is_initialized = True
+
+        def __init__(self):
+            self.transport = MockTransport()
+            self.status = {
+                "initialized": False,
+                "key_initialized": True,
+            }
+            self.get_key_path = []
+
+        def select(self):
+            return type("Info", (), {"instance_uid": b""})
+
+        def pair(self, _pairing_password):
+            return (0, b"k" * 32)
+
+        def open_secure_channel(self, _pairing_index, _pairing_key):
+            return None
+
+    class MockConstants:
+        class PairingMode:
+            EPHEMERAL = 1
+
+    monkeypatch.setattr(
+        "seedsigner.helpers.keycard_connector.get_keycard_class",
+        lambda: (MockInner, MockConstants),
+    )
+
+    connector = KeycardSatochipConnector.create(card_filter=["satochip"])
+    _resp, sw1, sw2, status = connector.card_get_status()
+
+    assert (sw1, sw2) == (0x90, 0x00)
+    assert status["key_initialized"] is True
+    assert status["is_seeded"] is True
+
+
+def test_keycard_status_uses_select_key_uid_as_seeded_signal(monkeypatch):
+    from seedsigner.helpers.keycard_connector import KeycardSatochipConnector
+
+    class MockTransport:
+        def connect(self):
+            return None
+
+        def disconnect(self):
+            return None
+
+    class MockInner:
+        is_initialized = True
+
+        def __init__(self):
+            self.transport = MockTransport()
+            self.status = {
+                "initialized": False,
+                "key_initialized": False,
+            }
+            self.get_key_path = []
+
+        def select(self):
+            return type(
+                "Info",
+                (),
+                {
+                    "instance_uid": b"",
+                    "key_uid": b"\x01" * 32,
+                },
+            )
+
+        def pair(self, _pairing_password):
+            return (0, b"k" * 32)
+
+        def open_secure_channel(self, _pairing_index, _pairing_key):
+            return None
+
+    class MockConstants:
+        class PairingMode:
+            EPHEMERAL = 1
+
+    monkeypatch.setattr(
+        "seedsigner.helpers.keycard_connector.get_keycard_class",
+        lambda: (MockInner, MockConstants),
+    )
+
+    connector = KeycardSatochipConnector.create(card_filter=["satochip"])
+    _resp, sw1, sw2, status = connector.card_get_status()
+
+    assert (sw1, sw2) == (0x90, 0x00)
+    assert status["key_initialized"] is True
+    assert status["is_seeded"] is True
+
+
+def test_keycard_import_seed_falls_back_to_extended_ecc_on_6985(monkeypatch):
+    from seedsigner.helpers.keycard_connector import KeycardSatochipConnector
+
+    class MockTransport:
+        def connect(self):
+            return None
+
+        def disconnect(self):
+            return None
+
+    class MockInner:
+        is_initialized = True
+
+        def __init__(self):
+            self.transport = MockTransport()
+            self.status = {"PIN0_remaining_tries": 3}
+            self.get_key_path = []
+            self.load_calls = []
+
+        def select(self):
+            return type("Info", (), {"instance_uid": b""})
+
+        def pair(self, _pairing_password):
+            return (0, b"k" * 32)
+
+        def open_secure_channel(self, _pairing_index, _pairing_key):
+            return None
+
+        def verify_pin(self, _pin_text):
+            return True
+
+        def remove_key(self):
+            return None
+
+        def load_key(self, key_type, **kwargs):
+            self.load_calls.append((key_type, kwargs))
+
+            class SwError(Exception):
+                def __init__(self, sw):
+                    super().__init__(f"SW={sw:04X}")
+                    self.sw = sw
+
+            # Simulate firmware rejecting BIP39 seed import but accepting
+            # EXTENDED_ECC import of root key + chain code.
+            if key_type == MockConstants.LoadKeyType.BIP39_SEED:
+                raise SwError(0x6985)
+            return b""
+
+    class MockConstants:
+        class PairingMode:
+            EPHEMERAL = 1
+
+        class LoadKeyType:
+            BIP39_SEED = 3
+            EXTENDED_ECC = 2
+
+    monkeypatch.setattr(
+        "seedsigner.helpers.keycard_connector.get_keycard_class",
+        lambda: (MockInner, MockConstants),
+    )
+
+    connector = KeycardSatochipConnector.create(card_filter=["satochip"])
+    connector.pin = list(b"123456")
+    _resp, sw1, sw2 = connector.card_bip32_import_seed(b"\x01" * 64)
+
+    assert (sw1, sw2) == (0x90, 0x00)
+    assert connector._card.load_calls[0][0] == MockConstants.LoadKeyType.BIP39_SEED
+    assert connector._card.load_calls[1][0] == MockConstants.LoadKeyType.BIP39_SEED
+    assert connector._card.load_calls[2][0] == MockConstants.LoadKeyType.EXTENDED_ECC
+    assert len(connector._card.load_calls[2][1]["public_key"]) == 65
+    assert len(connector._card.load_calls[2][1]["private_key"]) == 32
+    assert len(connector._card.load_calls[2][1]["chain_code"]) == 32
+
+
+def test_keycard_import_seed_remove_key_then_bip39_retry_succeeds(monkeypatch):
+    from seedsigner.helpers.keycard_connector import KeycardSatochipConnector
+
+    class MockTransport:
+        def connect(self):
+            return None
+
+        def disconnect(self):
+            return None
+
+    class MockInner:
+        is_initialized = True
+
+        def __init__(self):
+            self.transport = MockTransport()
+            self.status = {"PIN0_remaining_tries": 3}
+            self.get_key_path = []
+            self.load_calls = []
+            self.bip39_attempts = 0
+            self.remove_calls = 0
+
+        def select(self):
+            return type("Info", (), {"instance_uid": b""})
+
+        def pair(self, _pairing_password):
+            return (0, b"k" * 32)
+
+        def open_secure_channel(self, _pairing_index, _pairing_key):
+            return None
+
+        def verify_pin(self, _pin_text):
+            return True
+
+        def remove_key(self):
+            self.remove_calls += 1
+            return None
+
+        def load_key(self, key_type, **kwargs):
+            self.load_calls.append((key_type, kwargs))
+
+            class SwError(Exception):
+                def __init__(self, sw):
+                    super().__init__(f"SW={sw:04X}")
+                    self.sw = sw
+
+            if key_type == MockConstants.LoadKeyType.BIP39_SEED:
+                self.bip39_attempts += 1
+                if self.bip39_attempts == 1:
+                    raise SwError(0x6985)
+            return b""
+
+    class MockConstants:
+        class PairingMode:
+            EPHEMERAL = 1
+
+        class LoadKeyType:
+            BIP39_SEED = 3
+            EXTENDED_ECC = 2
+
+    monkeypatch.setattr(
+        "seedsigner.helpers.keycard_connector.get_keycard_class",
+        lambda: (MockInner, MockConstants),
+    )
+
+    connector = KeycardSatochipConnector.create(card_filter=["satochip"])
+    connector.pin = list(b"123456")
+    _resp, sw1, sw2 = connector.card_bip32_import_seed(b"\x01" * 64)
+
+    assert (sw1, sw2) == (0x90, 0x00)
+    assert connector._card.remove_calls == 1
+    assert connector._card.bip39_attempts == 2
+
+
+def test_keycard_import_seed_does_not_reverify_pin_when_already_verified(monkeypatch):
+    from seedsigner.helpers.keycard_connector import KeycardSatochipConnector
+
+    class MockTransport:
+        def connect(self):
+            return None
+
+        def disconnect(self):
+            return None
+
+    class MockInner:
+        is_initialized = True
+
+        def __init__(self):
+            self.transport = MockTransport()
+            self.status = {"PIN0_remaining_tries": 3}
+            self.get_key_path = []
+            self.is_pin_verified = False
+            self.verify_calls = 0
+
+        def select(self):
+            return type("Info", (), {"instance_uid": b""})
+
+        def pair(self, _pairing_password):
+            return (0, b"k" * 32)
+
+        def open_secure_channel(self, _pairing_index, _pairing_key):
+            return None
+
+        def verify_pin(self, _pin_text):
+            self.verify_calls += 1
+            self.is_pin_verified = True
+            return True
+
+        def load_key(self, _key_type, **_kwargs):
+            return b""
+
+    class MockConstants:
+        class PairingMode:
+            EPHEMERAL = 1
+
+        class LoadKeyType:
+            BIP39_SEED = 3
+            EXTENDED_ECC = 2
+
+    monkeypatch.setattr(
+        "seedsigner.helpers.keycard_connector.get_keycard_class",
+        lambda: (MockInner, MockConstants),
+    )
+
+    connector = KeycardSatochipConnector.create(card_filter=["satochip"])
+    connector.pin = list(b"123456")
+
+    # First verify during connection/login flow.
+    _resp, sw1, sw2 = connector.card_verify_PIN()
+    assert (sw1, sw2) == (0x90, 0x00)
+
+    # Import should not send a second VERIFY PIN APDU when session is already verified.
+    _resp, sw1, sw2 = connector.card_bip32_import_seed(b"\x02" * 64)
+    assert (sw1, sw2) == (0x90, 0x00)
+    assert connector._card.verify_calls == 1
+
+
+def test_keycard_import_seed_returns_sw_when_extended_fallback_fails(monkeypatch):
+    from seedsigner.helpers.keycard_connector import KeycardSatochipConnector
+
+    class MockTransport:
+        def connect(self):
+            return None
+
+        def disconnect(self):
+            return None
+
+    class MockInner:
+        is_initialized = True
+
+        def __init__(self):
+            self.transport = MockTransport()
+            self.status = {"PIN0_remaining_tries": 3}
+            self.get_key_path = []
+
+        def select(self):
+            return type("Info", (), {"instance_uid": b""})
+
+        def pair(self, _pairing_password):
+            return (0, b"k" * 32)
+
+        def open_secure_channel(self, _pairing_index, _pairing_key):
+            return None
+
+        def verify_pin(self, _pin_text):
+            return True
+
+        def remove_key(self):
+            return None
+
+        def load_key(self, key_type, **_kwargs):
+            class SwError(Exception):
+                def __init__(self, sw):
+                    super().__init__(f"SW={sw:04X}")
+                    self.sw = sw
+
+            # Force both BIP39 attempts and EXTENDED_ECC fallback to fail.
+            if key_type == MockConstants.LoadKeyType.BIP39_SEED:
+                raise SwError(0x6985)
+            raise SwError(0x6985)
+
+    class MockConstants:
+        class PairingMode:
+            EPHEMERAL = 1
+
+        class LoadKeyType:
+            BIP39_SEED = 3
+            EXTENDED_ECC = 2
+
+    monkeypatch.setattr(
+        "seedsigner.helpers.keycard_connector.get_keycard_class",
+        lambda: (MockInner, MockConstants),
+    )
+
+    connector = KeycardSatochipConnector.create(card_filter=["satochip"])
+    connector.pin = list(b"123456")
+    _resp, sw1, sw2 = connector.card_bip32_import_seed(b"\x01" * 64)
+
+    assert (sw1, sw2) == (0x69, 0x85)

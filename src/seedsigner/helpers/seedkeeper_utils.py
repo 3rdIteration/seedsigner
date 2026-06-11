@@ -584,9 +584,9 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True, backend
             print("Setup Succeeded")
             parentObject.run_screen(
                 LargeIconStatusScreen,
-                title="Success",
+                title="Card Setup",
                 status_headline=None,
-                text=f"Card Setup Complete",
+                text="PIN set. Import seed next.",
                 show_back_button=False,
             )
             # Save the PIN for the newly set up card...

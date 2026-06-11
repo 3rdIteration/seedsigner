@@ -206,6 +206,7 @@ class KeycardSatochipConnector:
         self._secure_open = False
         self._last_path = None
         self._label = None
+        self._last_select_has_key_uid = False
         self.pin = None
         self.parser = SimpleNamespace(authentikey=None)
         self.UID_SHA1 = _uid_sha1_from_instance_uid(None)
@@ -322,6 +323,14 @@ class KeycardSatochipConnector:
         if self.pin is None:
             raise ValueError("PIN has not been set")
 
+        # Keycard tracks a session-level verified PIN state; avoid sending a
+        # duplicate VERIFY PIN APDU if we already have a verified session.
+        try:
+            if bool(getattr(self._card, "is_pin_verified", False)):
+                return (0x90, 0x00)
+        except Exception:
+            pass
+
         pin_text = _pin_to_text(self.pin)
         try:
             ok = self._card.verify_pin(pin_text)
@@ -345,11 +354,26 @@ class KeycardSatochipConnector:
         try:
             info = self._card.select()
             instance_uid = getattr(info, "instance_uid", None)
+            self._last_select_has_key_uid = bool(getattr(info, "key_uid", None))
             if isinstance(instance_uid, bytes):
                 instance_uid = instance_uid.hex()
             self.UID_SHA1 = _uid_sha1_from_instance_uid(instance_uid)
         except Exception:
             pass
+
+    @staticmethod
+    def _sw_to_tuple(status_word: int) -> tuple[int, int]:
+        return ((status_word >> 8) & 0xFF, status_word & 0xFF)
+
+    def _load_key_with_sw(self, key_type, **kwargs) -> tuple[int, int]:
+        try:
+            self._card.load_key(key_type, **kwargs)
+            return (0x90, 0x00)
+        except Exception as exc:
+            status_word = self._extract_status_word(exc)
+            if status_word is not None:
+                return self._sw_to_tuple(status_word)
+            raise
 
     def card_get_label(self):
         return self._label or "Keycard"
@@ -420,8 +444,14 @@ class KeycardSatochipConnector:
         out["device_initialized"] = True
         if isinstance(path_indices, list):
             out["path"] = _path_from_indices(path_indices)
-        out["key_initialized"] = bool(out.get("initialized", out.get("key_initialized", False)))
-        out["is_seeded"] = bool(out.get("key_initialized", False))
+        key_initialized = bool(
+            out.get(
+                "key_initialized",
+                out.get("initialized", self._last_select_has_key_uid),
+            )
+        ) or bool(self._last_select_has_key_uid)
+        out["key_initialized"] = key_initialized
+        out["is_seeded"] = bool(out.get("is_seeded", key_initialized))
         out.setdefault("setup_done", True)
         pin_tries = self._pin_tries_from_status()
         if pin_tries is not None:
@@ -550,9 +580,52 @@ class KeycardSatochipConnector:
         sw1, sw2 = self._verify_pin_sw()
         if (sw1, sw2) != (0x90, 0x00):
             return ([], sw1, sw2)
+
         seed = bytes(seed_bytes)
-        self._card.load_key(self._constants.LoadKeyType.BIP39_SEED, bip39_seed=seed)
-        return ([], 0x90, 0x00)
+
+        sw1, sw2 = self._load_key_with_sw(
+            self._constants.LoadKeyType.BIP39_SEED,
+            bip39_seed=seed,
+        )
+        if (sw1, sw2) == (0x90, 0x00):
+            return ([], 0x90, 0x00)
+
+        if (sw1, sw2) != (0x69, 0x85):
+            return ([], sw1, sw2)
+
+        # Some firmware reports a stale key state and requires a clear before
+        # accepting a new import, even when status looks unseeded.
+        try:
+            self._card.remove_key()
+        except Exception as remove_exc:
+            remove_sw = self._extract_status_word(remove_exc)
+            # Ignore "conditions not satisfied" while clearing state;
+            # still attempt import fallbacks below.
+            if remove_sw not in (None, 0x6985):
+                sw1, sw2 = self._sw_to_tuple(remove_sw)
+                return ([], sw1, sw2)
+
+        sw1, sw2 = self._load_key_with_sw(
+            self._constants.LoadKeyType.BIP39_SEED,
+            bip39_seed=seed,
+        )
+        if (sw1, sw2) == (0x90, 0x00):
+            return ([], 0x90, 0x00)
+
+        if (sw1, sw2) != (0x69, 0x85):
+            return ([], sw1, sw2)
+
+        # Additional compatibility fallback: import root key material explicitly
+        # as EXTENDED_ECC at m.
+        root = bip32.HDKey.from_seed(seed)
+        uncompressed_pub = b"\x04" + root.key.get_public_key()._point
+        sw1, sw2 = self._load_key_with_sw(
+            self._constants.LoadKeyType.EXTENDED_ECC,
+            public_key=uncompressed_pub,
+            private_key=root.key.secret,
+            chain_code=root.chain_code,
+        )
+        return ([], sw1, sw2)
 
     def card_remove_key(self):
         self._ensure_secure_channel()
