@@ -6006,13 +6006,25 @@ class ToolsJavacardUnlockCardView(View):
         if confirm == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
 
-        command = f"{_format_gp_key_args(keys, '--key')} --unlock"
-        seedkeeper_utils.run_globalplatform(
-            self,
-            command,
-            "Unlocking Card",
-            "Card Unlocked",
-        )
+        self.loading_screen = LoadingScreenThread(text="Unlocking Card")
+        self.loading_screen.start()
+        try:
+            import pygp
+            pygp.terminal()
+            pygp.card()
+            pygp.auth(enc_key=keys.get('enc'), mac_key=keys.get('mac'), dek_key=keys.get('kek'), securitylevel=pygp.SECURITY_LEVEL_C_DEC_C_MAC)
+            pygp.set_key("01/1/DES/404142434445464748494A4B4C4D4E4F")
+            pygp.set_key("01/2/DES/404142434445464748494A4B4C4D4E4F")
+            pygp.set_key("01/3/DES/404142434445464748494A4B4C4D4E4F")
+            pygp.put_scp_key("01", replace=True)
+            self.loading_screen.stop()
+            self.run_screen(LargeIconStatusScreen, title="Success", status_headline=None, text="Card Unlocked", show_back_button=False)
+        except Exception as e:
+            self.loading_screen.stop()
+            self.run_screen(WarningScreen, title="Failed", status_headline=None, text=str(e)[:100], show_back_button=False)
+        finally:
+            seedkeeper_utils.restart_pn532(self.settings.get_value(SettingsConstants.SETTING__SMARTCARD_INTERFACES))
+
         return Destination(BackStackView)
 
 
@@ -6041,13 +6053,25 @@ class ToolsJavacardLockCardView(View):
         if confirm == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
 
-        command = f"--key default {_format_gp_key_args(keys, '--lock')}"
-        seedkeeper_utils.run_globalplatform(
-            self,
-            command,
-            "Locking Card",
-            "Card Locked",
-        )
+        self.loading_screen = LoadingScreenThread(text="Locking Card")
+        self.loading_screen.start()
+        try:
+            import pygp
+            pygp.terminal()
+            pygp.card()
+            pygp.auth(enc_key='404142434445464748494A4B4C4D4E4F', mac_key='404142434445464748494A4B4C4D4E4F', dek_key='404142434445464748494A4B4C4D4E4F', securitylevel=pygp.SECURITY_LEVEL_C_DEC_C_MAC)
+            pygp.set_key(f"01/1/DES/{keys.get('enc')}")
+            pygp.set_key(f"01/2/DES/{keys.get('mac')}")
+            pygp.set_key(f"01/3/DES/{keys.get('kek')}")
+            pygp.put_scp_key("01", replace=True)
+            self.loading_screen.stop()
+            self.run_screen(LargeIconStatusScreen, title="Success", status_headline=None, text="Card Locked", show_back_button=False)
+        except Exception as e:
+            self.loading_screen.stop()
+            self.run_screen(WarningScreen, title="Failed", status_headline=None, text=str(e)[:100], show_back_button=False)
+        finally:
+            seedkeeper_utils.restart_pn532(self.settings.get_value(SettingsConstants.SETTING__SMARTCARD_INTERFACES))
+
         return Destination(BackStackView)
 
 
@@ -6184,17 +6208,7 @@ class ToolsDIYInstallAppletView(View):
         applet_file = cap_files[selected_file_num]
         logger.info("Selected:", applet_file)
 
-        if "smartpgp" in applet_file.lower():
-            serial_hex = secrets.token_bytes(4).hex().upper()
-            aid = f"D276000124010304C0FE{serial_hex}0000"
-            logger.info("SmartPGP AID: %s", aid)
-            installed_applets = seedkeeper_utils.run_globalplatform(
-                self,
-                f"--install {cap_dir}/{applet_file} --create {aid}",
-                "Installing Applet",
-                f"Applet Installed\nSerial: {serial_hex}",
-            )
-        elif "seedkeeper" in applet_file.lower():
+        if "seedkeeper" in applet_file.lower():
             storage_options = [
                 ButtonOption("4 KB", return_data="0FFF"),
                 ButtonOption("8 KB (default)", return_data="1FFF"),
@@ -6217,26 +6231,51 @@ class ToolsDIYInstallAppletView(View):
             selected_option = storage_options[selected_storage_num]
             storage_param = selected_option.return_data or "1FFF"
 
-            installed_applets = seedkeeper_utils.run_globalplatform(
-                self,
-                f"--install {cap_dir}/{applet_file} --params {storage_param}",
-                "Installing Applet",
-                "Applet Installed",
-            )
-        else:
-            installed_applets = seedkeeper_utils.run_globalplatform(
-                self,
-                f"--install {cap_dir}/{applet_file}",
-                "Installing Applet",
-                "Applet Installed",
-            )
+        self.loading_screen = LoadingScreenThread(text="Installing Applet")
+        self.loading_screen.start()
+        try:
+            import pygp
+            pygp.terminal()
+            pygp.card()
+            pygp.auth(securitylevel=pygp.SECURITY_LEVEL_C_MAC)
+            
+            cap_path = f"{cap_dir}/{applet_file}"
+            
+            if "smartpgp" in applet_file.lower():
+                serial_hex = secrets.token_bytes(4).hex().upper()
+                aid = f"D276000124010304C0FE{serial_hex}0000"
+                logger.info("SmartPGP AID: %s", aid)
+                installed = pygp.install_capfile(cap_path, instance_aids=[aid])
+                success_text = f"Applet Installed\\nSerial: {serial_hex}"
+            elif "seedkeeper" in applet_file.lower():
+                installed = pygp.install_capfile(cap_path, application_specific_parameters=storage_param)
+                success_text = "Applet Installed"
+            else:
+                installed = pygp.install_capfile(cap_path)
+                success_text = "Applet Installed"
+                
+            self.loading_screen.stop()
+            self.run_screen(LargeIconStatusScreen, title="Success", status_headline=None, text=success_text, show_back_button=False)
+            
+        except Exception as e:
+            self.loading_screen.stop()
+            self.run_screen(WarningScreen, title="Failed", status_headline=None, text=seedkeeper_utils.pygp_format_error(e)[:100], show_back_button=False)
+            # Try to uninstall if it failed partially
+            if "0x6444" in str(e) or "0x6F00" in str(e) or "SCARD_E_NOT_TRANSACTED" in str(e):
+                self.loading_screen = LoadingScreenThread(text="Uninstalling Applet")
+                self.loading_screen.start()
+                try:
+                    pkg_aid = pygp.get_cap_info(cap_path).get_aid()
+                    pygp.delete_package(pkg_aid)
+                    self.loading_screen.stop()
+                    self.run_screen(WarningScreen, title="Failed", status_headline=None, text="Mis-Installed Applet Uninstalled", show_back_button=False)
+                except Exception:
+                    self.loading_screen.stop()
 
-        # This process often kills IFD-NFC, so restart it if required
-        scinterface = self.settings.get_value(SettingsConstants.SETTING__SMARTCARD_INTERFACES)
-        if "pn532" in scinterface:
-            os.system("ifdnfc-activate no")
-            time.sleep(1)
-            os.system("ifdnfc-activate yes")
+        finally:
+            seedkeeper_utils.restart_pn532(self.settings.get_value(SettingsConstants.SETTING__SMARTCARD_INTERFACES))
+
+        return Destination(MainMenuView)
 
         return Destination(MainMenuView)
 
@@ -6257,35 +6296,43 @@ class ToolsDIYUninstallAppletView(View):
         if ret == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
 
-        installed_applets = seedkeeper_utils.run_globalplatform(self,"-l -v", "Checking Installed Applets", None)
+        self.loading_screen = LoadingScreenThread(text="Checking Installed Applets")
+        self.loading_screen.start()
+        
+        try:
+            import pygp
+            pygp.terminal()
+            pygp.card()
+            pygp.auth(securitylevel=pygp.SECURITY_LEVEL_C_MAC)
+            package_aids = pygp.__get_loaded_package_aids__()
+        except Exception as e:
+            package_aids = None
+            logger.error(str(e))
+        finally:
+            self.loading_screen.stop()
 
-        if installed_applets:
-            installed_applets = installed_applets.split('\n')
-
+        if package_aids is not None:
             installed_applets_aids = []
             installed_applets_list = []
 
-            for line in installed_applets:
-                if "PKG: " in line:
-                    package_info = line.split()
-                    logger.info(package_info)
-                    # Ignore system packages
-                    if package_info[1] in ['A0000001515350', 'A00000016443446F634C697465', 'A0000000620204', 'A0000000620202','D00000000002','4B4D313031']:
-                        continue
-                    
-                    # Give some known applets a more human readable package name
-                    if package_info[1] == 'A00000052721010141504558': package_info[3]="(|Apex TOTP|)"
-                    if package_info[1] == 'D27600012401': package_info[3]="(|SmartPGP|)"
-                    if package_info[1] == 'B00B5111CB': package_info[3]="(|SpecterDIY|)"
-                    if package_info[1] == 'A0000008040001': package_info[3]="(|Keycard Package|)"
-                    if package_info[1] == 'A0000008040002': package_info[3]="(|Keycard Math|)"
-                    if package_info[1] == 'A000000804000101': package_info[3]="(|Keycard Applet|)"
-                    if package_info[1] == 'A000000804000102': package_info[3]="(|Keycard NDEF|)"
-                    if package_info[1] == 'A000000804000103': package_info[3]="(|Keycard Cash|)"
-                    if package_info[1] == 'A000000804000104': package_info[3]="(|Keycard Ident|)"
+            for aid in package_aids:
+                # Ignore system packages
+                if aid in ['A0000001515350', 'A00000016443446F634C697465', 'A0000000620204', 'A0000000620202','D00000000002','4B4D313031']:
+                    continue
+                
+                name = aid
+                if aid == 'A00000052721010141504558': name="Apex TOTP"
+                if aid == 'D27600012401': name="SmartPGP"
+                if aid == 'B00B5111CB': name="SpecterDIY"
+                if aid == 'A0000008040001': name="Keycard Package"
+                if aid == 'A0000008040002': name="Keycard Math"
+                if aid == 'A000000804000101': name="Keycard Applet"
+                if aid == 'A000000804000102': name="Keycard NDEF"
+                if aid == 'A000000804000103': name="Keycard Cash"
+                if aid == 'A000000804000104': name="Keycard Ident"
 
-                    installed_applets_list.append(ButtonOption(package_info[3][2:-2]))
-                    installed_applets_aids.append(package_info[1])
+                installed_applets_list.append(ButtonOption(name))
+                installed_applets_aids.append(aid)
 
             if len(installed_applets_list) > 0:
                 selected_applet_num = self.run_screen(
@@ -6300,7 +6347,30 @@ class ToolsDIYUninstallAppletView(View):
 
                 applet_aid = installed_applets_aids[selected_applet_num]
 
-                seedkeeper_utils.run_globalplatform(self,"--delete " + applet_aid + " -force", "Uninstalling Applet", "Applet Uninstalled")
+                self.loading_screen = LoadingScreenThread(text="Uninstalling Applet")
+                self.loading_screen.start()
+                try:
+                    pygp.terminal()
+                    pygp.card()
+                    pygp.auth(securitylevel=pygp.SECURITY_LEVEL_C_MAC)
+                    pygp.delete_package(applet_aid)
+                    self.loading_screen.stop()
+                    self.run_screen(
+                        LargeIconStatusScreen,
+                        title="Success",
+                        status_headline=None,
+                        text="Applet Uninstalled",
+                        show_back_button=False,
+                    )
+                except Exception as e:
+                    self.loading_screen.stop()
+                    self.run_screen(
+                        WarningScreen,
+                        title="Failed",
+                        status_headline=None,
+                        text=seedkeeper_utils.pygp_format_error(e)[:100],
+                        show_back_button=False,
+                    )
 
             else:
                 self.run_screen(
@@ -6312,12 +6382,9 @@ class ToolsDIYUninstallAppletView(View):
                     button_data=[ButtonOption("Continue")]
                 )
 
-                # This process often kills IFD-NFC, so restart it if required
-        scinterface = self.settings.get_value(SettingsConstants.SETTING__SMARTCARD_INTERFACES)
-        if "pn532" in scinterface:
-            os.system("ifdnfc-activate no")
-            time.sleep(1)
-            os.system("ifdnfc-activate yes")
+        seedkeeper_utils.restart_pn532(self.settings.get_value(SettingsConstants.SETTING__SMARTCARD_INTERFACES))
+
+        return Destination(MainMenuView)
 
         return Destination(MainMenuView)
 
