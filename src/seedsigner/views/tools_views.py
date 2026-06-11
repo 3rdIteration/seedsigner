@@ -6277,6 +6277,12 @@ class ToolsDIYUninstallAppletView(View):
                     if package_info[1] == 'A00000052721010141504558': package_info[3]="(|Apex TOTP|)"
                     if package_info[1] == 'D27600012401': package_info[3]="(|SmartPGP|)"
                     if package_info[1] == 'B00B5111CB': package_info[3]="(|SpecterDIY|)"
+                    if package_info[1] == 'A0000008040001': package_info[3]="(|Keycard Package|)"
+                    if package_info[1] == 'A0000008040002': package_info[3]="(|Keycard Math|)"
+                    if package_info[1] == 'A000000804000101': package_info[3]="(|Keycard Applet|)"
+                    if package_info[1] == 'A000000804000102': package_info[3]="(|Keycard NDEF|)"
+                    if package_info[1] == 'A000000804000103': package_info[3]="(|Keycard Cash|)"
+                    if package_info[1] == 'A000000804000104': package_info[3]="(|Keycard Ident|)"
 
                     installed_applets_list.append(ButtonOption(package_info[3][2:-2]))
                     installed_applets_aids.append(package_info[1])
