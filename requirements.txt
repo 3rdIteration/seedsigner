@@ -1,5 +1,22 @@
 embit==0.8.0
-Pillow==10.3.0
-pyzbar @ git+https://github.com/seedsigner/pyzbar.git@c3c237821c6a20b17953efe59b90df0b514a1c03
+Pillow==10.4.0
+pyzbar @ https://github.com/seedsigner/pyzbar/archive/c3c237821c6a20b17953efe59b90df0b514a1c03.zip
 qrcode==7.3.1
-urtypes==1.0.1
+colorama==0.4.6 ; platform_system == "Windows"
+urtypes @ https://github.com/selfcustody/urtypes/archive/7fb280eab3b3563dfc57d2733b0bf5cbc0a96a6a.zip
+pycryptodomex==3.23.0
+pgpy @ https://github.com/3rdIteration/PGPy/archive/1c8d881f84c455472114e5acf1ccdbc8809dd72f.zip  # v0.6.0 fork: cryptography primary backend, pycryptodomex/ecdsa/embit fallbacks
+pyasn1==0.6.2
+pysatochip==0.17.0
+pyscard==2.3.1
+ecdsa==0.19.1
+pyaes==1.6.1
+cryptography==45.0.5
+pyopenssl==25.1.0
+typing_extensions==4.14.1
+certifi==2025.7.14
+six==1.17.0
+cffi==1.17.1
+pycparser==2.22
+smbus2==0.4.3 ; platform_system != "Windows"
+shamir-mnemonic==0.3.0
