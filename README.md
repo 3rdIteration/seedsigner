@@ -44,6 +44,7 @@ Support and discussion relating to this fork can happen via this [Telegram Group
   - PSBT verification and transaction signing directly on-card
   - Message signing
   - Address explorer integration for Satochip cards
+  - Backend selection note: entering via the KeyCard menu now forces the keycard backend (no auto-detection in that flow). Auto fallback logic is only used in generic/satochip flows where backend is not explicitly set.
 * SLIP39 seed support
   - Create, import and extend SLIP39 seed shares (Can load from text, QR or Seedkeeper)
   - Save SLIP39 shares to Seedkeeper

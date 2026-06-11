@@ -1187,7 +1187,13 @@ class SeedFinalizeView(View):
         )
 
         if button_data[selected_menu_num] == self.FINALIZE:
+            from seedsigner.controller import Controller
             seed_num = self.controller.storage.finalize_pending_seed()
+            if self.controller.resume_main_flow == Controller.FLOW__SATOCHIP_IMPORT_SEED:
+                from seedsigner.views.tools_views import ToolsSatochipImportSeedView
+
+                self.controller.resume_main_flow = None
+                return Destination(ToolsSatochipImportSeedView, clear_history=True)
             return Destination(SeedOptionsView, view_args={"seed_num": seed_num}, clear_history=True)
 
         elif button_data[selected_menu_num] == self.TYPE_PASSPHRASE:

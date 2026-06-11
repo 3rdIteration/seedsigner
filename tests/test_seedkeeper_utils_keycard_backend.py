@@ -146,6 +146,62 @@ def test_keycard_connector_env_var_overrides_default_pairing_password(monkeypatc
     assert created["pairing_password"] == "custom-secret"
 
 
+def test_keycard_card_setup_normalizes_puk_for_init(monkeypatch):
+    from seedsigner.helpers.keycard_connector import KeycardSatochipConnector
+
+    captured = {}
+
+    class MockTransport:
+        def connect(self):
+            return None
+
+        def disconnect(self):
+            return None
+
+    class MockInner:
+        def __init__(self):
+            self.transport = MockTransport()
+
+        def select(self):
+            return type("Info", (), {"instance_uid": b""})
+
+        def init(self, pin, puk, pairing_secret):
+            captured["pin"] = pin
+            captured["puk"] = puk
+            captured["pairing_secret"] = pairing_secret
+
+    class MockConstants:
+        class PairingMode:
+            EPHEMERAL = 1
+
+    monkeypatch.setattr(
+        "seedsigner.helpers.keycard_connector.get_keycard_class",
+        lambda: (MockInner, MockConstants),
+    )
+
+    connector = KeycardSatochipConnector.create(card_filter=["satochip"])
+    response, sw1, sw2 = connector.card_setup(
+        5,
+        1,
+        list(b"123456"),
+        list(range(16)),
+        1,
+        1,
+        list(range(16)),
+        list(range(16)),
+        32,
+        0,
+        1,
+        1,
+        1,
+    )
+
+    assert (response, sw1, sw2) == ([], 0x90, 0x00)
+    assert captured["pin"] == "123456"
+    assert len(captured["puk"]) == 12
+    assert captured["puk"].isdigit()
+
+
 def test_show_incorrect_pin_warning_uses_attempts_from_status_word():
     class FakeParent:
         def __init__(self):

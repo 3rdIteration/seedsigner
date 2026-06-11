@@ -97,6 +97,16 @@ def _value_to_text(value) -> str:
     raise ValueError("Unsupported value format")
 
 
+def _digits_from_bytes(data: bytes, length: int) -> str:
+    if length <= 0:
+        raise ValueError("length must be positive")
+    # Deterministically map arbitrary bytes to ASCII digits.
+    out = []
+    for i in range(length):
+        out.append(str(data[i % len(data)] % 10))
+    return "".join(out)
+
+
 def _uid_sha1_from_instance_uid(instance_uid_hex: str | None) -> str:
     if instance_uid_hex:
         try:
@@ -273,7 +283,10 @@ class KeycardSatochipConnector:
         return None
 
     def _pin_tries_from_status(self) -> int | None:
-        status = getattr(self._card, "status", None)
+        try:
+            status = getattr(self._card, "status", None)
+        except Exception:
+            return None
         if not isinstance(status, dict):
             return None
 
@@ -364,19 +377,117 @@ class KeycardSatochipConnector:
         return ([], sw1, sw2)
 
     def card_get_status(self):
+        self._refresh_uid()
+
+        # A factory-fresh Keycard is present, but it cannot be paired until
+        # device init (PIN/PUK/pairing secret) has completed.
+        try:
+            if bool(self._card.is_initialized) is False:
+                out = {
+                    "setup_done": False,
+                    "device_initialized": False,
+                    "key_initialized": False,
+                    "is_seeded": False,
+                }
+                return ([], 0x90, 0x00, out)
+        except Exception:
+            # If the backend cannot report init state yet, fall through to the
+            # regular secure-channel path below.
+            pass
+
         self._ensure_secure_channel()
-        status = self._card.status
-        path_indices = self._card.get_key_path
-        out = dict(status) if isinstance(status, dict) else {}
+        out = {}
+
+        # Some card states return SW=6985 for GET STATUS even though the card
+        # is present and initialized for further setup/import actions.
+        try:
+            status = self._card.status
+            if isinstance(status, dict):
+                out.update(status)
+        except Exception as exc:
+            sw = self._extract_status_word(exc)
+            if sw != 0x6985:
+                raise
+
+        try:
+            path_indices = self._card.get_key_path
+        except Exception as exc:
+            sw = self._extract_status_word(exc)
+            if sw != 0x6985:
+                raise
+            path_indices = None
+
+        out["device_initialized"] = True
         if isinstance(path_indices, list):
             out["path"] = _path_from_indices(path_indices)
-        out["key_initialized"] = bool(out.get("initialized", out.get("key_initialized", True)))
+        out["key_initialized"] = bool(out.get("initialized", out.get("key_initialized", False)))
         out["is_seeded"] = bool(out.get("key_initialized", False))
-        out.setdefault("setup_done", bool(out.get("key_initialized", True)))
+        out.setdefault("setup_done", True)
         pin_tries = self._pin_tries_from_status()
         if pin_tries is not None:
             out.setdefault("PIN0_remaining_tries", pin_tries)
         return ([], 0x90, 0x00, out)
+
+    def card_setup(
+        self,
+        pin_tries_0,
+        ublk_tries_0,
+        pin_0,
+        ublk_0,
+        pin_tries_1,
+        ublk_tries_1,
+        pin_1,
+        ublk_1,
+        secmemsize,
+        memsize,
+        create_object_ACL,
+        create_key_ACL,
+        create_pin_ACL,
+        option_flags=0,
+        hmacsha160_key=None,
+        amount_limit=0,
+    ):
+        _ = pin_tries_0
+        _ = ublk_tries_0
+        _ = pin_tries_1
+        _ = ublk_tries_1
+        _ = pin_1
+        _ = ublk_1
+        _ = secmemsize
+        _ = memsize
+        _ = create_object_ACL
+        _ = create_key_ACL
+        _ = create_pin_ACL
+        _ = option_flags
+        _ = hmacsha160_key
+        _ = amount_limit
+
+        pin_text = _value_to_text(pin_0)
+        if not (len(pin_text) == 6 and pin_text.isdigit()):
+            raise ValueError("Keycard PIN must be exactly 6 digits")
+
+        if isinstance(ublk_0, list):
+            source = bytes(ublk_0) or b"\x00"
+            puk_text = _digits_from_bytes(source, 12)
+        else:
+            puk_text = _value_to_text(ublk_0)
+            if not puk_text.isdigit():
+                source = puk_text.encode("utf-8") or b"\x00"
+                puk_text = _digits_from_bytes(source, 12)
+            elif len(puk_text) != 12:
+                source = puk_text.encode("utf-8")
+                puk_text = _digits_from_bytes(source, 12)
+
+        try:
+            self._card.init(pin_text, puk_text, self._pairing_password)
+            self.pin = list(pin_text.encode("utf-8"))
+            self._secure_open = False
+            return ([], 0x90, 0x00)
+        except Exception as exc:
+            status_word = self._extract_status_word(exc)
+            if status_word is not None:
+                return ([], (status_word >> 8) & 0xFF, status_word & 0xFF)
+            raise
 
     def card_change_PIN(self, pin_nbr, old_pin, new_pin):
         _ = pin_nbr

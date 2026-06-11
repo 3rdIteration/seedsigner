@@ -4004,7 +4004,13 @@ class ToolsSatochipImportSeedView(View):
 
     def run(self):
         from seedsigner.gui.screens.screen import LoadingScreenThread
-        Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["satochip"])
+        backend_preference = getattr(self.controller, "smartcard_backend_preference", None)
+        Satochip_Connector = seedkeeper_utils.init_satochip(
+            self,
+            init_card_filter=["satochip"],
+            allow_unseeded=True,
+            backend_preference=backend_preference,
+        )
 
         if not Satochip_Connector:
             return Destination(BackStackView)
@@ -4062,7 +4068,7 @@ class ToolsSatochipImportSeedView(View):
         # Most of the options require us to go through a side flow(s) before we can
         # continue to the address explorer. Set the Controller-level flow so that it
         # knows to re-route us once the side flow is complete.        
-        # self.controller.resume_main_flow = Controller.FLOW__SATOCHIP_IMPORT_SEED
+        self.controller.resume_main_flow = Controller.FLOW__SATOCHIP_IMPORT_SEED
 
         if len(seeds) > 0 and selected_menu_num < len(seeds):
             # User selected one of the n seeds
