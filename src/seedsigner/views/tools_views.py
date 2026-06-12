@@ -5624,10 +5624,6 @@ class ToolsSatochipDIYView(View):
 JAVACARD_KEYS_MICROSD_FILENAME = "javacard-keys.txt"
 JAVACARD_KEYS_SEEDKEEPER_PREFIX = "jc_keys_"
 SPECTER_JAVACARD_DEFAULT_AID = "B00B5111CB01"
-<<<<<<< HEAD
-JAVACARD_DEFAULT_DEV_KEY = "404142434445464748494A4B4C4D4E4F"
-=======
->>>>>>> origin/dev
 
 
 def _candidate_specter_card_paths() -> list[Path]:
