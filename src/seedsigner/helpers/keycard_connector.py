@@ -182,7 +182,7 @@ def _path_from_indices(indices: list[int]) -> str:
     for i in indices:
         base = i & 0x7FFFFFFF
         hardened = bool(i & 0x80000000)
-        parts.append(f"{base}{"'" if hardened else ""}")
+        parts.append(f"{base}'" if hardened else str(base))
     return "m/" + "/".join(parts)
 
 

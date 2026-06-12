@@ -6638,7 +6638,7 @@ class ToolsJavacardUnlockCardView(View):
                 try:
                     int(key_value, 16)
                 except ValueError:
-                    raise ValueError(f"Key {key_name} contains invalid hex characters: {key_value}")
+                    raise ValueError(f"Key {key_name} contains invalid hex characters")
             
             # Unlock: authenticate with the LOADED keys and set back to DEFAULT
             pygp.auth(enc_key=enc_key, mac_key=mac_key, dek_key=dek_key, keysetversion="00", securitylevel=pygp.SECURITY_LEVEL_C_DEC_C_MAC)
@@ -6711,7 +6711,7 @@ class ToolsJavacardLockCardView(View):
                 try:
                     int(key_value, 16)
                 except ValueError:
-                    raise ValueError(f"Key {key_name} contains invalid hex characters: {key_value}")
+                    raise ValueError(f"Key {key_name} contains invalid hex characters")
             
             # Lock: authenticate with DEFAULT keys and set to the LOADED keys
             DEFAULT_GP_KEY = "404142434445464748494A4B4C4D4E4F"

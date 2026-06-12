@@ -110,7 +110,7 @@ jobs:
           }}
     steps:
       - name: checkout seedsigner-os
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs['os-repo'] || '3rdIteration/seedsigner-os' }}
           # use the os-ref input parameter in case of workflow_dispatch or default to main in case of cron triggers
@@ -175,7 +175,7 @@ jobs:
           df -h
 
       - name: restore build cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         # Caching reduces the build time to ~50% (currently: ~30 mins instead of ~1 hour,
         # while consuming ~850 MB storage space).
         with:
@@ -229,7 +229,7 @@ jobs:
           done
 
       - name: upload images
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: seedsigner_os_images-${{ matrix.target }}
           path: "seedsigner-os/images/*.img.zip"
@@ -238,7 +238,7 @@ jobs:
           retention-days: 90
 
       - name: upload rootfs debug archives
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: seedsigner_os_rootfs-${{ matrix.target }}
           path: "seedsigner-os/images/*.tar.gz"
@@ -252,7 +252,7 @@ jobs:
     needs: build
     steps:
       - name: download images
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: images
 
@@ -292,7 +292,7 @@ jobs:
           fi
 
       - name: upload checksums
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: seedsigner_os_images_sha256
           path: "images/*.sha256"
@@ -309,7 +309,7 @@ jobs:
       contents: write
     steps:
       - name: download build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: artifacts
 
