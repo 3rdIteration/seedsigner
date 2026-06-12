@@ -1224,3 +1224,86 @@ class TestSatochipImportSeedView(BaseTest):
         assert "xprv" in warning_text
         assert "slip39" in warning_text
         assert destination.View_cls == tools_views.BackStackView
+
+    def test_import_seed_non_9000_shows_failed_warning(self, monkeypatch):
+        from seedsigner.views import tools_views
+        from seedsigner.helpers import seedkeeper_utils
+
+        class MockSeed:
+            seed_bytes = b"\x01" * 64
+
+            def get_fingerprint(self, _network):
+                return "deadbeef"
+
+        class MockConnector:
+            def card_get_status(self):
+                return (None, 0x90, 0x00, {"is_seeded": False})
+
+            def card_bip32_import_seed(self, _seed_bytes):
+                return (None, 0x6A, 0x80)
+
+        monkeypatch.setattr(
+            seedkeeper_utils, "init_satochip", lambda *a, **k: MockConnector()
+        )
+
+        self.controller.storage.seeds = [MockSeed()]
+
+        view = tools_views.ToolsSatochipImportSeedView()
+        responses = iter([0, 0])
+        captured = {}
+
+        def fake_run_screen(screen_cls, **kwargs):
+            if screen_cls is tools_views.WarningScreen:
+                captured["warning_text"] = kwargs.get("text")
+            return next(responses)
+
+        monkeypatch.setattr(view, "run_screen", fake_run_screen)
+        destination = view.run()
+
+        warning_text = captured["warning_text"].lower()
+        assert "import failed with sw=6a80" in warning_text
+        assert destination.View_cls == tools_views.MainMenuView
+
+    def test_import_seed_unseeded_post_status_shows_failed_warning(self, monkeypatch):
+        from seedsigner.views import tools_views
+        from seedsigner.helpers import seedkeeper_utils
+
+        class MockSeed:
+            seed_bytes = b"\x01" * 64
+
+            def get_fingerprint(self, _network):
+                return "deadbeef"
+
+        class MockConnector:
+            def __init__(self):
+                self.status_calls = 0
+
+            def card_get_status(self):
+                self.status_calls += 1
+                # Pre-check and post-check both report unseeded.
+                return (None, 0x90, 0x00, {"is_seeded": False, "key_initialized": False})
+
+            def card_bip32_import_seed(self, _seed_bytes):
+                return (None, 0x90, 0x00)
+
+        monkeypatch.setattr(
+            seedkeeper_utils, "init_satochip", lambda *a, **k: MockConnector()
+        )
+
+        self.controller.storage.seeds = [MockSeed()]
+
+        view = tools_views.ToolsSatochipImportSeedView()
+        responses = iter([0, 0])
+        captured = {}
+
+        def fake_run_screen(screen_cls, **kwargs):
+            if screen_cls is tools_views.WarningScreen:
+                captured["warning_text"] = kwargs.get("text")
+            return next(responses)
+
+        monkeypatch.setattr(view, "run_screen", fake_run_screen)
+        destination = view.run()
+
+        warning_text = captured["warning_text"].lower()
+        assert "seeded key" in warning_text
+        assert destination.View_cls == tools_views.MainMenuView

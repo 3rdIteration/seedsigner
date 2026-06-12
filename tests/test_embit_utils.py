@@ -690,3 +690,65 @@ def test_is_standard_derivation():
 
     # Non-standard: account beyond 9 still returns False
     assert embit_utils.is_standard_derivation("m/84'/0'/10'", SC.NATIVE_SEGWIT, SC.MAINNET) is False
+
+
+def test_normalize_descriptor_str():
+    """
+    Tests seedsigner.helpers.embit_utils.normalize_descriptor_str()
+
+    The function must ensure descriptor keys carry branch/index wildcards so that
+    the Address Explorer can derive distinct receive and change addresses for every
+    index.  Three situations are covered:
+
+    1. Keys already fully normalised (/{0,1}/*) — returned unchanged.
+    2. Keys have a receive-only path (/0/*) — upgraded to /{0,1}/*.
+    3. Keys have an origin fingerprint+path but no trailing child path at all —
+       /{0,1}/* is appended.
+    """
+    func = embit_utils.normalize_descriptor_str
+
+    # ------------------------------------------------------------------
+    # Case 1: already normalised — must be returned as-is
+    # ------------------------------------------------------------------
+    already_normalised = (
+        "wsh(sortedmulti(2,"
+        "[aabbccdd/48h/0h/0h/2h]xpub6Boh8gyFCmnoA7/{0,1}/*,"
+        "[11223344/48h/0h/0h/2h]xpub6Erg9q5gH9Abcd/{0,1}/*"
+        "))"
+    )
+    assert func(already_normalised) == already_normalised
+
+    # ------------------------------------------------------------------
+    # Case 2: keys have /0/* (receive-only) — must become /{0,1}/*
+    # ------------------------------------------------------------------
+    receive_only = (
+        "wsh(sortedmulti(2,"
+        "[aabbccdd/48h/0h/0h/2h]xpub6Boh8gyFCmnoA7/0/*,"
+        "[11223344/48h/0h/0h/2h]xpub6Erg9q5gH9Abcd/0/*"
+        "))"
+    )
+    result_receive_only = func(receive_only)
+    assert "/{0,1}/*" in result_receive_only
+    assert "/0/*" not in result_receive_only
+
+    # ------------------------------------------------------------------
+    # Case 3: keys have origin but NO trailing path at all
+    #         (the SeedKeeper bug case reported in issue #356)
+    # ------------------------------------------------------------------
+    no_path = (
+        "wsh(sortedmulti(2,"
+        "[aabbccdd/48h/0h/0h/2h]xpub6Boh8gyFCmnoA7,"
+        "[11223344/48h/0h/0h/2h]xpub6Erg9q5gH9Abcd"
+        "))"
+    )
+    result_no_path = func(no_path)
+    assert "/{0,1}/*" in result_no_path
+    # Original xpub strings must still be present
+    assert "xpub6Boh8gyFCmnoA7" in result_no_path
+    assert "xpub6Erg9q5gH9Abcd" in result_no_path
+
+    # ------------------------------------------------------------------
+    # Idempotency: normalising twice must produce the same result
+    # ------------------------------------------------------------------
+    assert func(result_receive_only) == result_receive_only
+    assert func(result_no_path) == result_no_path

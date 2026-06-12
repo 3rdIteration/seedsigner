@@ -44,6 +44,7 @@ Support and discussion relating to this fork can happen via this [Telegram Group
   - PSBT verification and transaction signing directly on-card
   - Message signing
   - Address explorer integration for Satochip cards
+  - Backend selection note: entering via the KeyCard menu now forces the keycard backend (no auto-detection in that flow). Auto fallback logic is only used in generic/satochip flows where backend is not explicitly set.
 * SLIP39 seed support
   - Create, import and extend SLIP39 seed shares (Can load from text, QR or Seedkeeper)
   - Save SLIP39 shares to Seedkeeper
@@ -98,7 +99,7 @@ Support and discussion relating to this fork can happen via this [Telegram Group
 ---------------
 
 * [Project Summary](#project-summary)
-* [Shopping List](#shopping-list)
+* [Shopping List](./docs/shopping_list.md)
 * [Software Installation](#software-installation)
   * [Verifying your download](#verifying-your-download)
 * [Enclosure Designs](#enclosure-designs)
@@ -175,24 +176,6 @@ If you have specific questions about the project, our [Telegram Group](https://t
 
 ---------------
 
-# Shopping List
-
-To build a SeedSigner, you will need:
-
-* Raspberry Pi Zero
-  * Preferably version 1.3 which has no WiFi/Bluetooth capability, but any Raspberry Pi 2/3/4 or Zero "W"/"2W" model will work.
-* Waveshare 1.3" 240x240 LCD (MUST be the 240x240 version!) https://www.waveshare.com/wiki/1.3inch_LCD_HAT.
-* Pi Zero-compatible camera (tested to work with the Aokin / AuviPal 5MP 1080p with OV5647 Sensor).
-
-Notes:
-* You may need to solder the 40 GPIO pins (20 pins per row) to the Raspberry Pi Zero board. If you don't want to solder, most stores offer the board "with headers" already soldered on.
-* The Pi Zero "W" or "2W" is often easier to find but has wifi/Bluetooth hardware. You can still use these boards and can optionally [disable the wifi/Bluetooth hardware](https://github.com/DesobedienteTecnologico/rpi_disable_wifi_and_bt_by_hardware).
-* Other cameras with the above sensor module should work, but may not fit in the Orange Pill enclosure.
-* Choose the Waveshare screen carefully; they make a number of different boards that look very similar but ARE NOT COMPATIBLE! Make sure you purchase the model that has a resolution of 240x240 pixels.
-* Raspberry Pi 1 is also compatible, but will require a [hardware modification to the Waveshare LCD Hat](./docs/legacy_hardware.md).
-
----------------
-
 # Software Installation
 
 ## A Special Note On Minimizing Trust
@@ -226,6 +209,19 @@ Note: If you have physically removed the WiFi component from your board, you wil
 Users familiar with older versions of the SeedSigner software might be surprised with how fast their software downloads now are, because since version 0.6.0 the software image files are now 100x smaller! Each image file is now under 42 Megabytes so your downloads and verifications will be very quick now (and might even seem *too* quick)!  
 
 Once the files have all finished downloading, follow the steps below to verify the download before continuing on to write the software onto a MicroSD card. Next, insert the MicroSD into your assembled hardware and connect the USB power. Allow about 45 seconds for our logo to appear, and then you can begin using your SeedSigner! 
+
+### Optional: Custom boot and screensaver logo
+
+You can override the default logo by placing a file named **`seedsigner_logo.png`** in the **root of the MicroSD card**.
+
+Requirements:
+- **File format:** PNG
+- **Dimensions:** **240 × 240** pixels
+- **Filename:** `seedsigner_logo.png` (exact name)
+
+Behavior:
+- If the file is present and valid, it is used for both the boot splash and screensaver.
+- If it is missing, unreadable, invalid, or the MicroSD is not available (for example removed after boot), SeedSigner automatically falls back to the bundled default logo.
 
 [Our previous software versions are available here](https://github.com/SeedSigner/seedsigner/releases). Choose a specific version and then expand the *Assets* sub-heading to display the .img file binary and also the 2 associated signature files. **Note:** The prior version files will have lower numbers than the scripts and examples provided in this document, but the naming format will be the same, so you can edit them as required for signature verification etc.   
 

@@ -860,6 +860,10 @@ class QRDisplayScreen(BaseScreen):
 
             # Loop whether the QR is a single frame or animated; each loop might adjust
             # brightness setting.
+            # QR codes must always be square; use the smaller canvas dimension so the
+            # code isn't stretched on non-square displays (e.g. ILI9341 canvas 320×240).
+            qr_size = min(self.renderer.canvas_width, self.renderer.canvas_height)
+
             while self.keep_running:
                 # convert the self.qr_brightness integer (31-255) into hex triplets
                 hex_color = (hex(self.qr_brightness.cur_count).split('x')[1]) * 3
@@ -867,7 +871,7 @@ class QRDisplayScreen(BaseScreen):
                 # Display the brightness tips toast
                 duration = 10 ** 9 * 1.2  # 1.2 seconds
                 if is_brightness_tip_enabled and time.time_ns() - self.tips_start_time.cur_count < duration:
-                    image = self.qr_encoder.part_to_image(self.qr_encoder.cur_part(), self.renderer.canvas_width, self.renderer.canvas_height, border=2, background_color=hex_color)
+                    image = self.qr_encoder.part_to_image(self.qr_encoder.cur_part(), qr_size, qr_size, border=2, background_color=hex_color)
                     self.render_brightness_tip(image)
                     pending_encoder_restart = True
                 else:
@@ -877,7 +881,7 @@ class QRDisplayScreen(BaseScreen):
                         # brightness tip is stowed.
                         self.qr_encoder.restart()
                         pending_encoder_restart = False
-                    image = self.qr_encoder.next_part_image(self.renderer.canvas_width, self.renderer.canvas_height, border=2, background_color=hex_color)
+                    image = self.qr_encoder.next_part_image(qr_size, qr_size, border=2, background_color=hex_color)
 
                 with self.renderer.lock:
                     self.renderer.show_image(image)
@@ -1100,6 +1104,7 @@ class ErrorScreen(WarningScreen):
     title: str = _mft("Error")
     status_icon_name: str = SeedSignerIconConstants.ERROR
     status_color: str = GUIConstants.ERROR_COLOR
+    status_headline: str = None
 
 
 

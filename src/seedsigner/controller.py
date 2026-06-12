@@ -152,7 +152,7 @@ class Controller(Singleton):
         rather than at the top in order avoid circular imports.
     """
     
-    VERSION = "SeSi-0.8.6+ShSi-B10"
+    VERSION = "SeSi-0.8.6+ShSi-B11"
 
     # Declare class member vars with type hints to enable richer IDE support throughout
     # the code.
@@ -200,6 +200,7 @@ class Controller(Singleton):
     FLOW__VERIFY_SINGLESIG_ADDR = "singlesig_addr"
     FLOW__ADDRESS_EXPLORER = "address_explorer"
     FLOW__SIGN_MESSAGE = "sign_message"
+    FLOW__SATOCHIP_IMPORT_SEED = "satochip_import_seed"
     FLOW__GPG_MESSAGE = "gpg_message"
     resume_main_flow: str = None
 
@@ -390,11 +391,10 @@ class Controller(Singleton):
         from seedsigner.gui.toast import RemoveSDCardToastManagerThread
 
         if not skip_startup_interstitials:
-            OpeningSplashView().run()
-
             # Flow tests start from an expected first interactive screen (usually MainMenu).
-            # Skip startup warning interstitials under pytest to keep deterministic routing.
+            # Skip startup interstitials under pytest to keep deterministic routing.
             if "PYTEST_CURRENT_TEST" not in os.environ:
+                OpeningSplashView().run()
                 if is_seedsigner_os_dev_build():
                     DeveloperOSWarningView().run()
                 if self.settings.get_value(SettingsConstants.SETTING__DISPLAY_CONFIGURATION).startswith("desktop"):

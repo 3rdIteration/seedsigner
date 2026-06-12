@@ -1,4 +1,5 @@
 import embit
+import re
 
 from binascii import b2a_base64
 from hashlib import sha256
@@ -132,7 +133,37 @@ def get_expanded_search_derivation_paths(network: str = SettingsConstants.MAINNE
 
 
 
-def get_xpub(seed_bytes, derivation_path: str, embit_network: str = "main") -> HDKey:
+def normalize_descriptor_str(descriptor_str: str) -> str:
+    """
+    Ensure descriptor keys include branch/index wildcards so the Address Explorer
+    can derive distinct receive and change addresses for each index.
+
+    Two cases are handled:
+
+    1. Keys already have a receive-only path (``/0/*``): replace with ``/{0,1}/*``
+       so change addresses can also be derived.
+    2. Keys have an origin but no trailing path at all: append ``/{0,1}/*`` so
+       per-index derivation works correctly.
+
+    The function is safe to call on descriptors that are already normalised —
+    those are returned unchanged.
+    """
+    orig = descriptor_str
+    try:
+        # Case 1: trailing /0/* — replace with /{0,1}/*
+        if re.search(r'\[[0-9a-fA-F]+/[0-9/h\']+\].*?/0/\*', descriptor_str):
+            p = re.compile(r'(\[[0-9a-fA-F]+/[0-9/h\']+\].*?)(/0/\*)')
+            descriptor_str = p.sub(r'\1/{0,1}/*', descriptor_str)
+        # Case 2: keys have an origin but no trailing path — append /{0,1}/*
+        elif re.search(r'\[[0-9a-fA-F]+/[0-9/h\']+\][a-zA-Z0-9]*(?=[,)])', descriptor_str):
+            p = re.compile(r'(\[[0-9a-fA-F]+/[0-9/h\']+\][a-zA-Z0-9]*)([,)])')
+            descriptor_str = p.sub(r'\1/{0,1}/*\2', descriptor_str)
+    except Exception:
+        descriptor_str = orig
+    return descriptor_str
+
+
+
     root = bip32.HDKey.from_seed(seed_bytes, version=NETWORKS[embit_network]["xprv"])
     xprv = root.derive(derivation_path)
     xpub = xprv.to_public()
@@ -276,3 +307,10 @@ def sign_message(root: HDKey, derivation: str, msg: bytes, compressed: bool = Tr
     flag = bytes([27 + flag + c])
     ser = flag + secp256k1.ecdsa_signature_serialize_compact(sig._sig)
     return b2a_base64(ser).strip().decode()
+
+
+def get_xpub(seed_bytes, derivation_path: str, embit_network: str = "main") -> HDKey:
+    root = bip32.HDKey.from_seed(seed_bytes, version=NETWORKS[embit_network]["xprv"])
+    xprv = root.derive(derivation_path)
+    xpub = xprv.to_public()
+    return xpub

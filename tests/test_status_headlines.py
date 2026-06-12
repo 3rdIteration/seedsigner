@@ -1,0 +1,105 @@
+import base  # noqa: F401 -- ensure hardware mocks
+from unittest.mock import Mock
+
+from base import BaseTest
+from seedsigner.gui.screens.screen import DireWarningScreen, ErrorScreen, WarningScreen
+from seedsigner.hardware.battery_hat import BatteryHat
+from seedsigner.views import seed_views, tools_views
+
+
+class TestStatusHeadlines(BaseTest):
+    def test_error_screen_default_headline_is_none(self):
+        assert ErrorScreen.__dataclass_fields__["status_headline"].default is None
+        assert WarningScreen.__dataclass_fields__["status_headline"].default == "Privacy Leak!"
+        assert DireWarningScreen.__dataclass_fields__["status_headline"].default == "Classified Info!"
+
+    def test_seedkeeper_no_secrets_warning_omits_privacy_headline(self, monkeypatch):
+        class MockConnector:
+            def seedkeeper_list_secret_headers(self):
+                return []
+
+        monkeypatch.setattr(
+            seed_views.seedkeeper_utils,
+            "init_satochip",
+            lambda *args, **kwargs: MockConnector(),
+        )
+
+        view = seed_views.SeedKeeperSelectView()
+        view.run_screen = Mock(return_value=0)
+
+        view.run()
+
+        assert view.run_screen.call_args.args[0] is WarningScreen
+        assert view.run_screen.call_args.kwargs["status_headline"] is None
+
+    def test_seedkeeper_error_warning_omits_privacy_headline(self, monkeypatch):
+        class MockConnector:
+            def seedkeeper_list_secret_headers(self):
+                raise RuntimeError("Interrupted")
+
+        monkeypatch.setattr(
+            seed_views.seedkeeper_utils,
+            "init_satochip",
+            lambda *args, **kwargs: MockConnector(),
+        )
+
+        view = seed_views.SeedKeeperSelectView()
+        view.run_screen = Mock(return_value=0)
+
+        view.run()
+
+        assert view.run_screen.call_args.args[0] is WarningScreen
+        assert view.run_screen.call_args.kwargs["status_headline"] is None
+
+    def test_slip39_seedkeeper_no_secrets_warning_omits_privacy_headline(self, monkeypatch):
+        class MockConnector:
+            def seedkeeper_list_secret_headers(self):
+                return []
+
+        monkeypatch.setattr(
+            seed_views.seedkeeper_utils,
+            "init_satochip",
+            lambda *args, **kwargs: MockConnector(),
+        )
+
+        view = seed_views.SeedSlip39LoadFromSeedkeeperView()
+        view.run_screen = Mock(return_value=0)
+
+        view.run()
+
+        assert view.run_screen.call_args.args[0] is WarningScreen
+        assert view.run_screen.call_args.kwargs["status_headline"] is None
+
+    def test_slip39_seedkeeper_error_warning_omits_privacy_headline(self, monkeypatch):
+        class MockConnector:
+            def seedkeeper_list_secret_headers(self):
+                raise RuntimeError("Interrupted")
+
+        monkeypatch.setattr(
+            seed_views.seedkeeper_utils,
+            "init_satochip",
+            lambda *args, **kwargs: MockConnector(),
+        )
+
+        view = seed_views.SeedSlip39LoadFromSeedkeeperView()
+        view.run_screen = Mock(return_value=0)
+
+        view.run()
+
+        assert view.run_screen.call_args.args[0] is WarningScreen
+        assert view.run_screen.call_args.kwargs["status_headline"] is None
+
+    def test_battery_calibration_missing_sd_warning_omits_privacy_headline(self, monkeypatch):
+        battery_hat = Mock()
+        battery_hat.is_enabled.return_value = True
+        battery_hat.process_discharge_log.return_value = None
+        monkeypatch.setattr(BatteryHat, "get_instance", classmethod(lambda cls: battery_hat))
+        self.mock_microsd.is_inserted = False
+
+        view = tools_views.ToolsBatteryCalibrationView()
+        view.run_screen = Mock(return_value=0)
+
+        view.run()
+
+        assert view.run_screen.call_args.args[0] is WarningScreen
+        assert view.run_screen.call_args.kwargs["status_headline"] is None
