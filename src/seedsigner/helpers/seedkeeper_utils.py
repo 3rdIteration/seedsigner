@@ -603,145 +603,37 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True, backend
     return parentObject.controller.Satochip_Connector
 
 
-def run_globalplatform(
-    parentObject, command, loadingText="Loading", successtext="Success"
-):
-    import shlex
+def restart_pn532(scinterface):
+    """Restart the PN532 NFC reader (Linux/Raspberry Pi only)"""
     from subprocess import run
-    from seedsigner.models.settings import (
-        Settings,
-        SettingsConstants,
-        SettingsDefinition,
-    )
+    import time
+    import sys
+    if "pn532" in scinterface and sys.platform.startswith('linux'):
+        try:
+            run(["ifdnfc-activate", "no"], check=False, timeout=5)
+            time.sleep(1)
+            run(["ifdnfc-activate", "yes"], check=False, timeout=5)
+        except Exception:
+            pass  # Silently ignore errors on platforms where this tool isn't available
 
-    parentObject.loading_screen = LoadingScreenThread(text=loadingText)
-    parentObject.loading_screen.start()
-
-    hostname = platform.uname()[1]
-    if hostname == "seedsigner-os":
-        base_cmd = ["/mnt/diy/jdk/bin/java", "-jar", "/mnt/diy/Satochip-DIY/gp.jar"]
-    elif os.path.exists("/home/pi/Satochip-DIY/gp.jar"):
-        base_cmd = ["java", "-jar", "/home/pi/Satochip-DIY/gp.jar"]
-    else:
-        # Assume gp.jar is available in the current working directory
-        base_cmd = ["java", "-jar", "gp.jar"]
-
-    data = run(base_cmd + shlex.split(command), capture_output=True, text=True)
-
-    # This process often kills IFD-NFC, so restart it if required
-    scinterface = parentObject.settings.get_value(
-        SettingsConstants.SETTING__SMARTCARD_INTERFACES
-    )
-    if "pn532" in scinterface:
-        run(["ifdnfc-activate", "no"], check=False)
-        time.sleep(1)
-        run(["ifdnfc-activate", "yes"], check=False)
-
-    parentObject.loading_screen.stop()
-
-    print("StdOut:", data.stdout)
-    print("StdErr:", data.stderr)
-
-    # data.stderr = data.stderr.replace("Warning: no keys given, defaulting to 404142434445464748494A4B4C4D4E4F", "")
-
-    data.stderr = data.stderr.split("\n")
-
-    errors_cleaned = []
-    for errorLine in data.stderr:
-        if "[INFO]" in errorLine:
-            continue
-        elif "404142434445464748494A4B4C4D4E4F" in errorLine:
-            continue
-        elif len(errorLine) < 1:
-            continue
-
-        errors_cleaned.append(errorLine)
-
-    print("StdErr (Cleaned):", errors_cleaned)
-
-    errors_cleaned = " ".join(errors_cleaned)
-
-    if len(errors_cleaned) > 1:
-        uninstall_required = False
-
-        # If it fails, report the error back (And make it more human readable for common errors)
-        failureText = errors_cleaned
-        if "is not present on card" in errors_cleaned:
-            failureText = "Applet is not on the card, nothing to uninstall."
-
-        elif "Multiple readers, must choose one" in errors_cleaned:
-            failureText = "Multiple readers connected, please run with a single reader connected/activated."
-
-        elif "Card cryptogram invalid" in errors_cleaned:
-            failureText = (
-                "Incorrect keys. Repeated wrong attempts can brick the card. "
-                "Verify the keys before retrying."
-            )
-
-        elif "SCARD_E_NO_SMARTCARD" in errors_cleaned:
-            failureText = "Unable to detect Card and/or Reader."
-
-        elif "Applet loading not allowed" in errors_cleaned:
-            failureText = "Applet is already installed."
-
-        elif "0x6444" in errors_cleaned or "0x6F00" in errors_cleaned:
-            failureText = "Incompatible Javacard."
-            uninstall_required = True
-
-        elif "Not enough memory space" in errors_cleaned:
-            failureText = "Not enough space on Javacard for Applet..."
-
-        elif "SCARD_E_NO_SMARTCARD" in errors_cleaned:
-            failureText = "Unable to detect Card and/or Reader..."
-
-        elif "SCARD_E_NOT_TRANSACTED" in errors_cleaned:
-            failureText = "Applet installation failed, perhaps try with a different Smartcard Interface..."
-            uninstall_required = True
-
-        elif (
-            "Failed to open secure channel" in errors_cleaned
-            or "SCARD_W_RESET_CARD" in errors_cleaned
-        ):
-            failureText = "Unable to complete secure connection... (App or reader may need restart)"
-
-        logger.error(failureText)
-        parentObject.run_screen(
-            WarningScreen,
-            title="Failed",
-            status_headline=None,
-            text=failureText[:100],
-            show_back_button=False,
-        )
-
-        if uninstall_required:
-            command = command.replace("--install", "--uninstall")
-            data = run_globalplatform(
-                parentObject,
-                command,
-                loadingText="Uninstalling",
-                successtext="Mis-Installed Applet Uninstalled",
-            )
-            if data is None:
-                msg = "Mis-Installed Applet Uninstalled, try uninstalling it again..."
-                logger.error(msg)
-                parentObject.run_screen(
-                    WarningScreen,
-                    title="Failed",
-                    status_headline=None,
-                    text=msg,
-                    show_back_button=False,
-                )
-        return None
-
-    else:
-        if successtext:
-            print(successtext)
-            parentObject.run_screen(
-                LargeIconStatusScreen,
-                title="Success",
-                status_headline=None,
-                text=successtext,
-                show_back_button=False,
-            )
-
-        return data.stdout
+def pygp_format_error(e):
+    err_str = str(e)
+    if "is not present on card" in err_str:
+        return "Applet is not on the card, nothing to uninstall."
+    elif "Multiple readers, must choose one" in err_str:
+        return "Multiple readers connected, please run with a single reader connected/activated."
+    elif "Card cryptogram invalid" in err_str or "verification of the card cryptogram failed" in err_str.lower() or "Referenced data not found" in err_str:
+        return "Wrong key. Repeated wrong tries can brick the card."
+    elif "SCARD_E_NO_SMARTCARD" in err_str:
+        return "Unable to detect Card and/or Reader."
+    elif "Applet loading not allowed" in err_str:
+        return "Applet is already installed."
+    elif "0x6444" in err_str or "0x6F00" in err_str:
+        return "Incompatible Javacard."
+    elif "Not enough memory space" in err_str:
+        return "Not enough space on Javacard for Applet..."
+    elif "SCARD_E_NOT_TRANSACTED" in err_str:
+        return "Applet installation failed, perhaps try with a different Smartcard Interface..."
+    elif "Failed to open secure channel" in err_str or "SCARD_W_RESET_CARD" in err_str:
+        return "Unable to complete secure connection... (App or reader may need restart)"
+    return err_str

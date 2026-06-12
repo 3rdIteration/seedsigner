@@ -7,7 +7,8 @@ urtypes @ https://github.com/selfcustody/urtypes/archive/7fb280eab3b3563dfc57d27
 pycryptodomex==3.23.0
 pgpy @ https://github.com/3rdIteration/PGPy/archive/1c8d881f84c455472114e5acf1ccdbc8809dd72f.zip  # v0.6.0 fork: cryptography primary backend, pycryptodomex/ecdsa/embit fallbacks
 pyasn1==0.6.2
-pysatochip @ https://github.com/3rdIteration/pysatochip/archive/refs/tags/0.6a.zip
+pygp @ https://github.com/3rdIteration/pygp/archive/17081cc3cea8f01ec2cd87402ac9ea6e3546ec94.zip
+pysatochip==0.17.0
 pyscard==2.3.1
 ecdsa==0.19.1
 pyaes==1.6.1
@@ -20,4 +21,3 @@ cffi==1.17.1
 pycparser==2.22
 smbus2==0.4.3 ; platform_system != "Windows"
 shamir-mnemonic==0.3.0
-ndeflib==0.3.3

@@ -505,7 +505,7 @@ class DecodeQR:
 
 
     @staticmethod
-    def extract_qr_data(image, is_binary:bool = False) -> str | None:
+    def extract_qr_data(image, is_binary:bool = False) -> bytes | None:
         if image is None:
             return None
 

@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from seedsigner.views import tools_views
 from seedsigner.hardware import microsd
 from seedsigner.helpers import seedkeeper_utils
+import sys
 
 def test_seedkeeper_install_defaults_to_8k(monkeypatch, tmp_path):
     view = object.__new__(tools_views.ToolsDIYInstallAppletView)
@@ -17,12 +18,17 @@ def test_seedkeeper_install_defaults_to_8k(monkeypatch, tmp_path):
     captured = {}
     storage_screen_kwargs = {}
 
-    def fake_run_globalplatform(self_obj, command, loadingText, successtext):
-        captured["cmd"] = command
-        return "ok"
-
-    monkeypatch.setattr(seedkeeper_utils, "run_globalplatform", fake_run_globalplatform)
-    monkeypatch.setattr(tools_views, "logger", SimpleNamespace(info=lambda *a, **k: None))
+    class FakePyGP:
+        SECURITY_LEVEL_C_MAC = 1
+        def terminal(self): pass
+        def card(self): pass
+        def auth(self, **kwargs): pass
+        def install_capfile(self, *args, **kwargs):
+            captured["cmd"] = kwargs.get("application_specific_parameters")
+            return []
+    
+    monkeypatch.setitem(sys.modules, "pygp", FakePyGP())
+    monkeypatch.setattr(tools_views, "logger", SimpleNamespace(info=lambda *a, **k: print(*a), error=lambda *a, **k: print(*a)))
 
     responses = iter([0, 1])
 
@@ -43,7 +49,7 @@ def test_seedkeeper_install_defaults_to_8k(monkeypatch, tmp_path):
 
     view.run()
 
-    assert "--params 1FFF" in captured["cmd"]
+    assert captured["cmd"] == "1FFF"
     assert storage_screen_kwargs.get("selected_button") == 1
 
     storage_labels = [option.button_label for option in storage_screen_kwargs.get("button_data", [])]
@@ -63,12 +69,17 @@ def test_seedkeeper_install_respects_selected_storage(monkeypatch, tmp_path):
 
     captured = {}
 
-    def fake_run_globalplatform(self_obj, command, loadingText, successtext):
-        captured["cmd"] = command
-        return "ok"
-
-    monkeypatch.setattr(seedkeeper_utils, "run_globalplatform", fake_run_globalplatform)
-    monkeypatch.setattr(tools_views, "logger", SimpleNamespace(info=lambda *a, **k: None))
+    class FakePyGP:
+        SECURITY_LEVEL_C_MAC = 1
+        def terminal(self): pass
+        def card(self): pass
+        def auth(self, **kwargs): pass
+        def install_capfile(self, *args, **kwargs):
+            captured["cmd"] = kwargs.get("application_specific_parameters")
+            return []
+    
+    monkeypatch.setitem(sys.modules, "pygp", FakePyGP())
+    monkeypatch.setattr(tools_views, "logger", SimpleNamespace(info=lambda *a, **k: print(*a), error=lambda *a, **k: print(*a)))
 
     responses = iter([0, 3])
 
@@ -82,7 +93,7 @@ def test_seedkeeper_install_respects_selected_storage(monkeypatch, tmp_path):
 
     view.run()
 
-    assert "--params 7FFF" in captured["cmd"]
+    assert captured["cmd"] == "7FFF"
 
 
 def test_seedkeeper_install_supports_largest_storage(monkeypatch, tmp_path):
@@ -97,12 +108,17 @@ def test_seedkeeper_install_supports_largest_storage(monkeypatch, tmp_path):
 
     captured = {}
 
-    def fake_run_globalplatform(self_obj, command, loadingText, successtext):
-        captured["cmd"] = command
-        return "ok"
-
-    monkeypatch.setattr(seedkeeper_utils, "run_globalplatform", fake_run_globalplatform)
-    monkeypatch.setattr(tools_views, "logger", SimpleNamespace(info=lambda *a, **k: None))
+    class FakePyGP:
+        SECURITY_LEVEL_C_MAC = 1
+        def terminal(self): pass
+        def card(self): pass
+        def auth(self, **kwargs): pass
+        def install_capfile(self, *args, **kwargs):
+            captured["cmd"] = kwargs.get("application_specific_parameters")
+            return []
+    
+    monkeypatch.setitem(sys.modules, "pygp", FakePyGP())
+    monkeypatch.setattr(tools_views, "logger", SimpleNamespace(info=lambda *a, **k: print(*a), error=lambda *a, **k: print(*a)))
 
     responses = iter([0, 4])
 
@@ -116,5 +132,5 @@ def test_seedkeeper_install_supports_largest_storage(monkeypatch, tmp_path):
 
     view.run()
 
-    assert "--params FFFF" in captured["cmd"]
+    assert captured["cmd"] == "FFFF"
 

@@ -17,8 +17,8 @@ from seedsigner.helpers.keycard_connector import KeycardSatochipConnector
 PIN = sys.argv[1] if len(sys.argv) > 1 else "123456"
 
 print("=== Keycard smoke test ===")
-print(f"Default pairing password : {KeycardSatochipConnector.DEFAULT_PAIRING_PASSWORD!r}")
-print(f"PIN                      : {PIN}")
+print(f"Default pairing password : <redacted>")
+print(f"PIN                      : <redacted>")
 print()
 
 # ── 1. Connect ────────────────────────────────────────────────────────────────
@@ -32,6 +32,7 @@ _, sw1, sw2, status = conn.card_get_status()
 print(f"    SW={sw1:02X}{sw2:02X}  status={status}")
 if not status.get("setup_done") and not status.get("key_initialized"):
     print("    Card has no key loaded – stopping here.")
+    conn.card_disconnect()
     sys.exit(0)
 
 # ── 3. Verify PIN ─────────────────────────────────────────────────────────────
