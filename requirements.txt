@@ -9,6 +9,7 @@ pgpy @ https://github.com/3rdIteration/PGPy/archive/1c8d881f84c455472114e5acf1cc
 pyasn1==0.6.2
 pygp @ https://github.com/3rdIteration/pygp/archive/15682ec8fd042b5d0ae3422e9434e9734db6e55b.zip
 pysatochip==0.17.0
+ndeflib==0.3.3
 pyscard==2.3.1
 ecdsa==0.19.1
 pyaes==1.6.1
