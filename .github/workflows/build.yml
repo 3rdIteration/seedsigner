@@ -336,8 +336,9 @@ jobs:
           shopt -s nullglob
           zip_files=(*.img.zip)
           if ((${#zip_files[@]})); then
-            unzip -o "${zip_files[@]}"
-            rm -f "${zip_files[@]}"
+            for zip in "${zip_files[@]}"; do
+              unzip -o "$zip"
+            done
           fi
 
           existing_assets=$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')
@@ -360,7 +361,7 @@ jobs:
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ github.event.inputs['source-ref'] }}
-          file: release-assets/*.img
+          file: release-assets/*.img*
           file_glob: true
           overwrite: false
 
