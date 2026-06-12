@@ -5020,6 +5020,7 @@ class ToolsSatochipDIYView(View):
 JAVACARD_KEYS_MICROSD_FILENAME = "javacard-keys.txt"
 JAVACARD_KEYS_SEEDKEEPER_PREFIX = "jc_keys_"
 SPECTER_JAVACARD_DEFAULT_AID = "B00B5111CB01"
+JAVACARD_DEFAULT_DEV_KEY = "404142434445464748494A4B4C4D4E4F"
 
 
 def _candidate_specter_card_paths() -> list[Path]:
@@ -5373,8 +5374,6 @@ def _decode_seedkeeper_text(secret_dict: dict) -> str:
 class ToolsJavacardKeysView(View):
     LOAD_KEYS = ButtonOption("Load Keys")
     SAVE_KEYS = ButtonOption("Save Keys")
-    LOAD_MNEMONIC = ButtonOption("Load Mnemonic")
-    SAVE_MNEMONIC = ButtonOption("Save Mnemonic")
     UNLOCK_CARD = ButtonOption("Unlock Card")
     LOCK_CARD = ButtonOption("Lock Card")
     CLEAR_KEYS = ButtonOption("Clear Loaded Keys")
@@ -5383,8 +5382,6 @@ class ToolsJavacardKeysView(View):
         button_data = [
             self.LOAD_KEYS,
             self.SAVE_KEYS,
-            self.LOAD_MNEMONIC,
-            self.SAVE_MNEMONIC,
             self.UNLOCK_CARD,
             self.LOCK_CARD,
             self.CLEAR_KEYS,
@@ -5404,10 +5401,6 @@ class ToolsJavacardKeysView(View):
             return Destination(ToolsJavacardLoadKeysView)
         if choice == self.SAVE_KEYS:
             return Destination(ToolsJavacardSaveKeysView)
-        if choice == self.LOAD_MNEMONIC:
-            return Destination(ToolsJavacardLoadMnemonicView)
-        if choice == self.SAVE_MNEMONIC:
-            return Destination(ToolsJavacardSaveMnemonicView)
         if choice == self.UNLOCK_CARD:
             return Destination(ToolsJavacardUnlockCardView)
         if choice == self.LOCK_CARD:
@@ -5983,6 +5976,7 @@ class ToolsJavacardSaveKeysView(View):
 
 class ToolsJavacardUnlockCardView(View):
     def run(self):
+        from seedsigner.gui.screens.screen import LoadingScreenThread
         keys = self.controller.javacard_keys
         if not keys:
             self.run_screen(
@@ -6012,16 +6006,41 @@ class ToolsJavacardUnlockCardView(View):
             import pygp
             pygp.terminal()
             pygp.card()
-            pygp.auth(enc_key=keys.get('enc'), mac_key=keys.get('mac'), dek_key=keys.get('kek'), securitylevel=pygp.SECURITY_LEVEL_C_DEC_C_MAC)
-            pygp.set_key("01/1/DES/404142434445464748494A4B4C4D4E4F")
-            pygp.set_key("01/2/DES/404142434445464748494A4B4C4D4E4F")
-            pygp.set_key("01/3/DES/404142434445464748494A4B4C4D4E4F")
+            
+            # Get the actual keys based on key type (single vs set)
+            if keys.get("type") == "single":
+                enc_key = keys.get('key')
+                mac_key = keys.get('key')
+                dek_key = keys.get('key')
+            else:  # type == "set"
+                enc_key = keys.get('enc')
+                mac_key = keys.get('mac')
+                dek_key = keys.get('dek')
+            
+            # Validate keys
+            for key_name, key_value in [('enc', enc_key), ('mac', mac_key), ('dek', dek_key)]:
+                if not key_value:
+                    raise BaseException(f"Missing key: {key_name}")
+                if not isinstance(key_value, str):
+                    raise BaseException(f"Key {key_name} is not a string: {type(key_value)}")
+                # Validate hex format
+                try:
+                    int(key_value, 16)
+                except ValueError:
+                    raise BaseException(f"Key {key_name} contains invalid hex characters: {key_value}")
+            
+            # Unlock: authenticate with the LOADED keys and set back to DEFAULT
+            pygp.auth(enc_key=enc_key, mac_key=mac_key, dek_key=dek_key, keysetversion="00", securitylevel=pygp.SECURITY_LEVEL_C_DEC_C_MAC)
+            DEFAULT_GP_KEY = "404142434445464748494A4B4C4D4E4F"
+            pygp.set_key(f"01/1/DES/{DEFAULT_GP_KEY}")
+            pygp.set_key(f"01/2/DES/{DEFAULT_GP_KEY}")
+            pygp.set_key(f"01/3/DES/{DEFAULT_GP_KEY}")
             pygp.put_scp_key("01", replace=True)
             self.loading_screen.stop()
             self.run_screen(LargeIconStatusScreen, title="Success", status_headline=None, text="Card Unlocked", show_back_button=False)
-        except Exception as e:
+        except BaseException as e:
             self.loading_screen.stop()
-            self.run_screen(WarningScreen, title="Failed", status_headline=None, text=str(e)[:100], show_back_button=False)
+            self.run_screen(WarningScreen, title="Failed", status_headline=None, text=seedkeeper_utils.pygp_format_error(e)[:100], show_back_button=False)
         finally:
             seedkeeper_utils.restart_pn532(self.settings.get_value(SettingsConstants.SETTING__SMARTCARD_INTERFACES))
 
@@ -6030,6 +6049,7 @@ class ToolsJavacardUnlockCardView(View):
 
 class ToolsJavacardLockCardView(View):
     def run(self):
+        from seedsigner.gui.screens.screen import LoadingScreenThread
         keys = self.controller.javacard_keys
         if not keys:
             self.run_screen(
@@ -6059,16 +6079,41 @@ class ToolsJavacardLockCardView(View):
             import pygp
             pygp.terminal()
             pygp.card()
-            pygp.auth(enc_key='404142434445464748494A4B4C4D4E4F', mac_key='404142434445464748494A4B4C4D4E4F', dek_key='404142434445464748494A4B4C4D4E4F', securitylevel=pygp.SECURITY_LEVEL_C_DEC_C_MAC)
-            pygp.set_key(f"01/1/DES/{keys.get('enc')}")
-            pygp.set_key(f"01/2/DES/{keys.get('mac')}")
-            pygp.set_key(f"01/3/DES/{keys.get('kek')}")
+            
+            # Get the actual keys based on key type (single vs set)
+            if keys.get("type") == "single":
+                enc_key = keys.get('key')
+                mac_key = keys.get('key')
+                dek_key = keys.get('key')
+            else:  # type == "set"
+                enc_key = keys.get('enc')
+                mac_key = keys.get('mac')
+                dek_key = keys.get('dek')
+            
+            # Validate keys
+            for key_name, key_value in [('enc', enc_key), ('mac', mac_key), ('dek', dek_key)]:
+                if not key_value:
+                    raise BaseException(f"Missing key: {key_name}")
+                if not isinstance(key_value, str):
+                    raise BaseException(f"Key {key_name} is not a string: {type(key_value)}")
+                # Validate hex format
+                try:
+                    int(key_value, 16)
+                except ValueError:
+                    raise BaseException(f"Key {key_name} contains invalid hex characters: {key_value}")
+            
+            # Lock: authenticate with DEFAULT keys and set to the LOADED keys
+            DEFAULT_GP_KEY = "404142434445464748494A4B4C4D4E4F"
+            pygp.auth(enc_key=DEFAULT_GP_KEY, mac_key=DEFAULT_GP_KEY, dek_key=DEFAULT_GP_KEY, keysetversion="00", securitylevel=pygp.SECURITY_LEVEL_C_DEC_C_MAC)
+            pygp.set_key(f"01/1/DES/{enc_key.upper()}")
+            pygp.set_key(f"01/2/DES/{mac_key.upper()}")
+            pygp.set_key(f"01/3/DES/{dek_key.upper()}")
             pygp.put_scp_key("01", replace=True)
             self.loading_screen.stop()
             self.run_screen(LargeIconStatusScreen, title="Success", status_headline=None, text="Card Locked", show_back_button=False)
-        except Exception as e:
+        except BaseException as e:
             self.loading_screen.stop()
-            self.run_screen(WarningScreen, title="Failed", status_headline=None, text=str(e)[:100], show_back_button=False)
+            self.run_screen(WarningScreen, title="Failed", status_headline=None, text=seedkeeper_utils.pygp_format_error(e)[:100], show_back_button=False)
         finally:
             seedkeeper_utils.restart_pn532(self.settings.get_value(SettingsConstants.SETTING__SMARTCARD_INTERFACES))
 
@@ -6237,29 +6282,71 @@ class ToolsDIYInstallAppletView(View):
             import pygp
             pygp.terminal()
             pygp.card()
-            pygp.auth(securitylevel=pygp.SECURITY_LEVEL_C_MAC)
+            
+            # Always establish secure channel, using provided keys or default test key
+            DEFAULT_GP_KEY = "404142434445464748494A4B4C4D4E4F"
+            try:
+                if self.controller.javacard_keys:
+                    keys = self.controller.javacard_keys
+                    if keys.get("type") == "single":
+                        pygp.auth(enc_key=keys.get('key'), mac_key=keys.get('key'), dek_key=keys.get('key'), keysetversion="00", securitylevel=pygp.SECURITY_LEVEL_C_MAC)
+                    else:  # type == "set"
+                        pygp.auth(enc_key=keys.get('enc'), mac_key=keys.get('mac'), dek_key=keys.get('dek'), keysetversion="00", securitylevel=pygp.SECURITY_LEVEL_C_MAC)
+                    logger.info("Card authentication successful with custom keys")
+                else:
+                    # No custom keys provided, try default test key
+                    pygp.auth(enc_key=DEFAULT_GP_KEY, mac_key=DEFAULT_GP_KEY, dek_key=DEFAULT_GP_KEY, keysetversion="00", securitylevel=pygp.SECURITY_LEVEL_C_MAC)
+                    logger.info("Card authentication successful with default key")
+            except Exception as e:
+                logger.warning(f"Card authentication failed: {str(e)}, attempting install anyway")
             
             cap_path = f"{cap_dir}/{applet_file}"
             
-            if "smartpgp" in applet_file.lower():
-                serial_hex = secrets.token_bytes(4).hex().upper()
-                aid = f"D276000124010304C0FE{serial_hex}0000"
-                logger.info("SmartPGP AID: %s", aid)
-                installed = pygp.install_capfile(cap_path, instance_aids=[aid])
-                success_text = f"Applet Installed\\nSerial: {serial_hex}"
-            elif "seedkeeper" in applet_file.lower():
-                installed = pygp.install_capfile(cap_path, application_specific_parameters=storage_param)
-                success_text = "Applet Installed"
-            else:
-                installed = pygp.install_capfile(cap_path)
-                success_text = "Applet Installed"
+            ndef_conflict_detected = False
+            
+            try:
+                if "smartpgp" in applet_file.lower():
+                    serial_hex = secrets.token_bytes(4).hex().upper()
+                    aid = f"D276000124010304C0FE{serial_hex}0000"
+                    logger.info("SmartPGP AID: %s", aid)
+                    result = pygp.install_capfile(cap_path, instance_aids=[aid])
+                    success_text = f"Applet Installed\nSerial: {serial_hex}"
+                elif "seedkeeper" in applet_file.lower():
+                    result = pygp.install_capfile(cap_path, application_specific_parameters=storage_param)
+                    success_text = "Applet Installed"
+                else:
+                    result = pygp.install_capfile(cap_path)
+                    success_text = "Applet Installed"
+                
+                # Handle both old return format (list) and new format (dict)
+                if isinstance(result, dict):
+                    ndef_conflict_detected = result.get('ndef_skipped', False)
+                else:
+                    # Fallback for older PyGP versions that return list
+                    ndef_conflict_detected = False
+            except Exception as e:
+                # Re-raise to be caught by outer exception handler
+                raise
                 
             self.loading_screen.stop()
+            
+            # Inform user if PyGP reported NDEF conflict handling
+            if ndef_conflict_detected:
+                self.run_screen(
+                    WarningScreen,
+                    title="Info",
+                    status_headline=None,
+                    text="NDEF applet was automatically skipped to avoid conflicts.",
+                    show_back_button=False,
+                )
+            
             self.run_screen(LargeIconStatusScreen, title="Success", status_headline=None, text=success_text, show_back_button=False)
             
-        except Exception as e:
+        except BaseException as e:
             self.loading_screen.stop()
-            self.run_screen(WarningScreen, title="Failed", status_headline=None, text=seedkeeper_utils.pygp_format_error(e)[:100], show_back_button=False)
+            error_msg = seedkeeper_utils.pygp_format_error(e)[:100]
+            logger.error(f"Install failed: {str(e)}")
+            self.run_screen(WarningScreen, title="Failed", status_headline=None, text=error_msg, show_back_button=False)
             # Try to uninstall if it failed partially
             if "0x6444" in str(e) or "0x6F00" in str(e) or "SCARD_E_NOT_TRANSACTED" in str(e):
                 self.loading_screen = LoadingScreenThread(text="Uninstalling Applet")
@@ -6299,21 +6386,87 @@ class ToolsDIYUninstallAppletView(View):
         self.loading_screen = LoadingScreenThread(text="Checking Installed Applets")
         self.loading_screen.start()
         
+        package_aids = None
+        error_message = None
+        
         try:
             import pygp
             pygp.terminal()
             pygp.card()
-            pygp.auth(securitylevel=pygp.SECURITY_LEVEL_C_MAC)
-            package_aids = pygp.__get_loaded_package_aids__()
-        except Exception as e:
-            package_aids = None
-            logger.error(str(e))
+            
+            # Always try to establish secure channel first, like the CLI does
+            # This is required for get_status() to return the full package list
+            # Use provided keys or fall back to default test key
+            DEFAULT_GP_KEY = "404142434445464748494A4B4C4D4E4F"
+            try:
+                if self.controller.javacard_keys:
+                    keys = self.controller.javacard_keys
+                    if keys.get("type") == "single":
+                        pygp.auth(enc_key=keys.get('key'), mac_key=keys.get('key'), dek_key=keys.get('key'), keysetversion="00", securitylevel=pygp.SECURITY_LEVEL_C_MAC)
+                    else:  # type == "set"
+                        pygp.auth(enc_key=keys.get('enc'), mac_key=keys.get('mac'), dek_key=keys.get('dek'), keysetversion="00", securitylevel=pygp.SECURITY_LEVEL_C_MAC)
+                    logger.info("Card authentication successful with custom keys")
+                else:
+                    # No custom keys provided, try default test key
+                    pygp.auth(enc_key=DEFAULT_GP_KEY, mac_key=DEFAULT_GP_KEY, dek_key=DEFAULT_GP_KEY, keysetversion="00", securitylevel=pygp.SECURITY_LEVEL_C_MAC)
+                    logger.info("Card authentication successful with default key")
+            except Exception as e:
+                # Authentication failed - log warning but continue
+                # Some operations might still work without secure channel
+                logger.warning(f"Card authentication failed: {str(e)}, attempting to list packages anyway")
+            
+            try:
+                # Get the list of loaded package AIDs from pygp (public API)
+                # Note: This requires secure channel to be established (via auth above)
+                package_aids = pygp.get_loaded_package_aids()
+                logger.info(f"Loaded package AIDs: {package_aids}")
+            except Exception as e:
+                logger.warning(f"Could not list packages: {str(e)}")
+        except BaseException as e:
+            error_message = str(e)
+            logger.error(f"Smartcard error: {error_message}")
         finally:
             self.loading_screen.stop()
+
+        if error_message:
+            self.run_screen(WarningScreen, title="Smartcard Error", status_headline=None, text=error_message[:100], show_back_button=False)
+            return Destination(BackStackView)
 
         if package_aids is not None:
             installed_applets_aids = []
             installed_applets_list = []
+
+            # Get module-to-package mapping
+            try:
+                module_map = pygp.get_package_module_map()
+            except Exception as e:
+                module_map = {}
+                logger.warning(f"Could not get module map: {str(e)}")
+            
+            # Also get installed applications to verify NDEF is actually instantiated
+            try:
+                installed_apps = pygp.get_installed_application_aids()
+            except Exception as e:
+                installed_apps = []
+                logger.warning(f"Could not get installed apps: {str(e)}")
+            
+            # The NDEF application AID (the actual instantiated app)
+            NDEF_APP_AID = 'D2760000850101'
+            ndef_is_active = NDEF_APP_AID in [aid.upper() for aid in installed_apps]
+            
+            # Known NDEF module AIDs - mark packages containing these with "+NDEF"
+            ndef_module_aids = (
+                'A000000804000102',      # Keycard NDEF
+                '536565644B656570657201', # SeedKeeper NDEF
+            )
+            
+            # If NDEF is active, identify all packages containing NDEF modules
+            packages_with_ndef = set()
+            if ndef_is_active:
+                for ndef_module_aid in ndef_module_aids:
+                    provider_pkg = module_map.get(ndef_module_aid.upper())
+                    if provider_pkg:
+                        packages_with_ndef.add(provider_pkg.upper())
 
             for aid in package_aids:
                 # Ignore system packages
@@ -6324,12 +6477,29 @@ class ToolsDIYUninstallAppletView(View):
                 if aid == 'A00000052721010141504558': name="Apex TOTP"
                 if aid == 'D27600012401': name="SmartPGP"
                 if aid == 'B00B5111CB': name="SpecterDIY"
-                if aid == 'A0000008040001': name="Keycard Package"
+                if aid == 'A0000008040001': 
+                    name="Keycard"
+                    # Show "+NDEF" if this package contains NDEF modules and NDEF is active
+                    if aid.upper() in packages_with_ndef:
+                        name = "Keycard+NDEF"
                 if aid == 'A0000008040002': name="Keycard Math"
                 if aid == 'A000000804000101': name="Keycard Applet"
                 if aid == 'A000000804000102': name="Keycard NDEF"
                 if aid == 'A000000804000103': name="Keycard Cash"
                 if aid == 'A000000804000104': name="Keycard Ident"
+                if aid == '536565644B6565706572': 
+                    name="SeedKeeper"
+                    # Show "+NDEF" if this package contains NDEF modules and NDEF is active
+                    if aid.upper() in packages_with_ndef:
+                        name = "SeedKeeper+NDEF"
+                if aid == '536565644B656570657200': 
+                    name="SeedKeeper"
+                    # Show "+NDEF" if this package contains NDEF modules and NDEF is active
+                    if aid.upper() in packages_with_ndef:
+                        name = "SeedKeeper+NDEF"
+                if aid == '536565644B656570657201': name="SeedKeeper NDEF"
+                if aid == '5361746F43686970': name="Satochip"
+                if aid == '5361746F44696D65': name="SatoDime"
 
                 installed_applets_list.append(ButtonOption(name))
                 installed_applets_aids.append(aid)
@@ -6352,7 +6522,24 @@ class ToolsDIYUninstallAppletView(View):
                 try:
                     pygp.terminal()
                     pygp.card()
-                    pygp.auth(securitylevel=pygp.SECURITY_LEVEL_C_MAC)
+                    
+                    # Always establish secure channel for delete operations
+                    DEFAULT_GP_KEY = "404142434445464748494A4B4C4D4E4F"
+                    try:
+                        if self.controller.javacard_keys:
+                            keys = self.controller.javacard_keys
+                            if keys.get("type") == "single":
+                                pygp.auth(enc_key=keys.get('key'), mac_key=keys.get('key'), dek_key=keys.get('key'), keysetversion="00", securitylevel=pygp.SECURITY_LEVEL_C_MAC)
+                            else:  # type == "set"
+                                pygp.auth(enc_key=keys.get('enc'), mac_key=keys.get('mac'), dek_key=keys.get('dek'), keysetversion="00", securitylevel=pygp.SECURITY_LEVEL_C_MAC)
+                            logger.info("Card authentication successful with custom keys")
+                        else:
+                            # No custom keys provided, try default test key
+                            pygp.auth(enc_key=DEFAULT_GP_KEY, mac_key=DEFAULT_GP_KEY, dek_key=DEFAULT_GP_KEY, keysetversion="00", securitylevel=pygp.SECURITY_LEVEL_C_MAC)
+                            logger.info("Card authentication successful with default key")
+                    except Exception as e:
+                        logger.warning(f"Card authentication failed: {str(e)}, attempting delete anyway")
+                    
                     pygp.delete_package(applet_aid)
                     self.loading_screen.stop()
                     self.run_screen(
@@ -6362,7 +6549,7 @@ class ToolsDIYUninstallAppletView(View):
                         text="Applet Uninstalled",
                         show_back_button=False,
                     )
-                except Exception as e:
+                except BaseException as e:
                     self.loading_screen.stop()
                     self.run_screen(
                         WarningScreen,
@@ -6384,9 +6571,7 @@ class ToolsDIYUninstallAppletView(View):
 
         seedkeeper_utils.restart_pn532(self.settings.get_value(SettingsConstants.SETTING__SMARTCARD_INTERFACES))
 
-        return Destination(MainMenuView)
-
-        return Destination(MainMenuView)
+        return Destination(ToolsSatochipDIYView)
 
 """****************************************************************************
     MicroSD Views

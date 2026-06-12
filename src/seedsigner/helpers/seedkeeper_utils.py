@@ -578,12 +578,17 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True, backend
 
 
 def restart_pn532(scinterface):
+    """Restart the PN532 NFC reader (Linux/Raspberry Pi only)"""
     from subprocess import run
     import time
-    if "pn532" in scinterface:
-        run(["ifdnfc-activate", "no"], check=False)
-        time.sleep(1)
-        run(["ifdnfc-activate", "yes"], check=False)
+    import sys
+    if "pn532" in scinterface and sys.platform.startswith('linux'):
+        try:
+            run(["ifdnfc-activate", "no"], check=False, timeout=5)
+            time.sleep(1)
+            run(["ifdnfc-activate", "yes"], check=False, timeout=5)
+        except Exception:
+            pass  # Silently ignore errors on platforms where this tool isn't available
 
 def pygp_format_error(e):
     err_str = str(e)
@@ -591,8 +596,8 @@ def pygp_format_error(e):
         return "Applet is not on the card, nothing to uninstall."
     elif "Multiple readers, must choose one" in err_str:
         return "Multiple readers connected, please run with a single reader connected/activated."
-    elif "Card cryptogram invalid" in err_str:
-        return "Incorrect keys. Repeated wrong attempts can brick the card. Verify the keys before retrying."
+    elif "Card cryptogram invalid" in err_str or "verification of the card cryptogram failed" in err_str.lower() or "Referenced data not found" in err_str:
+        return "Wrong key. Repeated wrong tries can brick the card."
     elif "SCARD_E_NO_SMARTCARD" in err_str:
         return "Unable to detect Card and/or Reader."
     elif "Applet loading not allowed" in err_str:
