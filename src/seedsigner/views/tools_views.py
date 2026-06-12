@@ -6631,14 +6631,14 @@ class ToolsJavacardUnlockCardView(View):
             # Validate keys
             for key_name, key_value in [('enc', enc_key), ('mac', mac_key), ('dek', dek_key)]:
                 if not key_value:
-                    raise BaseException(f"Missing key: {key_name}")
+                    raise ValueError(f"Missing key: {key_name}")
                 if not isinstance(key_value, str):
-                    raise BaseException(f"Key {key_name} is not a string: {type(key_value)}")
+                    raise TypeError(f"Key {key_name} is not a string: {type(key_value)}")
                 # Validate hex format
                 try:
                     int(key_value, 16)
                 except ValueError:
-                    raise BaseException(f"Key {key_name} contains invalid hex characters: {key_value}")
+                    raise ValueError(f"Key {key_name} contains invalid hex characters: {key_value}")
             
             # Unlock: authenticate with the LOADED keys and set back to DEFAULT
             pygp.auth(enc_key=enc_key, mac_key=mac_key, dek_key=dek_key, keysetversion="00", securitylevel=pygp.SECURITY_LEVEL_C_DEC_C_MAC)
@@ -6649,7 +6649,7 @@ class ToolsJavacardUnlockCardView(View):
             pygp.put_scp_key("01", replace=True)
             self.loading_screen.stop()
             self.run_screen(LargeIconStatusScreen, title="Success", status_headline=None, text="Card Unlocked", show_back_button=False)
-        except BaseException as e:
+        except Exception as e:
             self.loading_screen.stop()
             self.run_screen(WarningScreen, title="Failed", status_headline=None, text=seedkeeper_utils.pygp_format_error(e)[:100], show_back_button=False)
         finally:
@@ -6704,14 +6704,14 @@ class ToolsJavacardLockCardView(View):
             # Validate keys
             for key_name, key_value in [('enc', enc_key), ('mac', mac_key), ('dek', dek_key)]:
                 if not key_value:
-                    raise BaseException(f"Missing key: {key_name}")
+                    raise ValueError(f"Missing key: {key_name}")
                 if not isinstance(key_value, str):
-                    raise BaseException(f"Key {key_name} is not a string: {type(key_value)}")
+                    raise TypeError(f"Key {key_name} is not a string: {type(key_value)}")
                 # Validate hex format
                 try:
                     int(key_value, 16)
                 except ValueError:
-                    raise BaseException(f"Key {key_name} contains invalid hex characters: {key_value}")
+                    raise ValueError(f"Key {key_name} contains invalid hex characters: {key_value}")
             
             # Lock: authenticate with DEFAULT keys and set to the LOADED keys
             DEFAULT_GP_KEY = "404142434445464748494A4B4C4D4E4F"
@@ -6722,7 +6722,7 @@ class ToolsJavacardLockCardView(View):
             pygp.put_scp_key("01", replace=True)
             self.loading_screen.stop()
             self.run_screen(LargeIconStatusScreen, title="Success", status_headline=None, text="Card Locked", show_back_button=False)
-        except BaseException as e:
+        except Exception as e:
             self.loading_screen.stop()
             self.run_screen(WarningScreen, title="Failed", status_headline=None, text=seedkeeper_utils.pygp_format_error(e)[:100], show_back_button=False)
         finally:
@@ -6953,7 +6953,7 @@ class ToolsDIYInstallAppletView(View):
             
             self.run_screen(LargeIconStatusScreen, title="Success", status_headline=None, text=success_text, show_back_button=False)
             
-        except BaseException as e:
+        except Exception as e:
             self.loading_screen.stop()
             error_msg = seedkeeper_utils.pygp_format_error(e)[:100]
             logger.error(f"Install failed: {str(e)}")
@@ -7033,7 +7033,7 @@ class ToolsDIYUninstallAppletView(View):
                 logger.info(f"Loaded package AIDs: {package_aids}")
             except Exception as e:
                 logger.warning(f"Could not list packages: {str(e)}")
-        except BaseException as e:
+        except Exception as e:
             error_message = str(e)
             logger.error(f"Smartcard error: {error_message}")
         finally:
@@ -7160,7 +7160,7 @@ class ToolsDIYUninstallAppletView(View):
                         text="Applet Uninstalled",
                         show_back_button=False,
                     )
-                except BaseException as e:
+                except Exception as e:
                     self.loading_screen.stop()
                     self.run_screen(
                         WarningScreen,

@@ -27,7 +27,7 @@ def test_seedkeeper_install_defaults_to_8k(monkeypatch, tmp_path):
             captured["cmd"] = kwargs.get("application_specific_parameters")
             return []
     
-    sys.modules["pygp"] = FakePyGP()
+    monkeypatch.setitem(sys.modules, "pygp", FakePyGP())
     monkeypatch.setattr(tools_views, "logger", SimpleNamespace(info=lambda *a, **k: print(*a), error=lambda *a, **k: print(*a)))
 
     responses = iter([0, 1])
@@ -38,7 +38,6 @@ def test_seedkeeper_install_defaults_to_8k(monkeypatch, tmp_path):
         except StopIteration:
             response = 0
 
-        print("RUN SCREEN:", args, kwargs)
         if "button_data" in kwargs and any(
             option.button_label.endswith("(default)") for option in kwargs["button_data"]
         ):
@@ -79,7 +78,7 @@ def test_seedkeeper_install_respects_selected_storage(monkeypatch, tmp_path):
             captured["cmd"] = kwargs.get("application_specific_parameters")
             return []
     
-    sys.modules["pygp"] = FakePyGP()
+    monkeypatch.setitem(sys.modules, "pygp", FakePyGP())
     monkeypatch.setattr(tools_views, "logger", SimpleNamespace(info=lambda *a, **k: print(*a), error=lambda *a, **k: print(*a)))
 
     responses = iter([0, 3])
@@ -118,7 +117,7 @@ def test_seedkeeper_install_supports_largest_storage(monkeypatch, tmp_path):
             captured["cmd"] = kwargs.get("application_specific_parameters")
             return []
     
-    sys.modules["pygp"] = FakePyGP()
+    monkeypatch.setitem(sys.modules, "pygp", FakePyGP())
     monkeypatch.setattr(tools_views, "logger", SimpleNamespace(info=lambda *a, **k: print(*a), error=lambda *a, **k: print(*a)))
 
     responses = iter([0, 4])
