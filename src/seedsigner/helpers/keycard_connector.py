@@ -108,13 +108,21 @@ def _digits_from_bytes(data: bytes, length: int) -> str:
 
 
 def _uid_sha1_from_instance_uid(instance_uid_hex: str | None) -> str:
+    """Generate a SHA1 fingerprint from the card instance UID.
+    
+    Note: SHA1 is used here for non-cryptographic identification purposes only
+    (fingerprinting/display). The instance_uid is public information broadcast
+    by the card, not sensitive cryptographic material. SHA1 collisions do not
+    pose a security risk in this context as this is not used for authentication
+    or integrity verification.
+    """
     if instance_uid_hex:
         try:
             uid_bytes = bytes.fromhex(instance_uid_hex)
-            return hashlib.sha1(uid_bytes).hexdigest()
+            return hashlib.sha1(uid_bytes).hexdigest()  # nosec B324
         except Exception:
             pass
-    return hashlib.sha1(b"keycard").hexdigest()
+    return hashlib.sha1(b"keycard").hexdigest()  # nosec B324
 
 
 def _normalize_uncompressed_pubkey(pubkey: bytes) -> bytes:
