@@ -28,7 +28,7 @@ def test_seedkeeper_install_defaults_to_8k(monkeypatch, tmp_path):
             return []
     
     monkeypatch.setitem(sys.modules, "pygp", FakePyGP())
-    monkeypatch.setattr(tools_views, "logger", SimpleNamespace(info=lambda *a, **k: print(*a), error=lambda *a, **k: print(*a)))
+    monkeypatch.setattr(tools_views, "logger", SimpleNamespace(info=lambda *a, **k: print(*a), warning=lambda *a, **k: print(*a), error=lambda *a, **k: print(*a)))
 
     responses = iter([0, 1])
 
@@ -79,7 +79,7 @@ def test_seedkeeper_install_respects_selected_storage(monkeypatch, tmp_path):
             return []
     
     monkeypatch.setitem(sys.modules, "pygp", FakePyGP())
-    monkeypatch.setattr(tools_views, "logger", SimpleNamespace(info=lambda *a, **k: print(*a), error=lambda *a, **k: print(*a)))
+    monkeypatch.setattr(tools_views, "logger", SimpleNamespace(info=lambda *a, **k: print(*a), warning=lambda *a, **k: print(*a), error=lambda *a, **k: print(*a)))
 
     responses = iter([0, 3])
 
@@ -118,7 +118,7 @@ def test_seedkeeper_install_supports_largest_storage(monkeypatch, tmp_path):
             return []
     
     monkeypatch.setitem(sys.modules, "pygp", FakePyGP())
-    monkeypatch.setattr(tools_views, "logger", SimpleNamespace(info=lambda *a, **k: print(*a), error=lambda *a, **k: print(*a)))
+    monkeypatch.setattr(tools_views, "logger", SimpleNamespace(info=lambda *a, **k: print(*a), warning=lambda *a, **k: print(*a), error=lambda *a, **k: print(*a)))
 
     responses = iter([0, 4])
 

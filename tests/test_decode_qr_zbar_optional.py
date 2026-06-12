@@ -2,8 +2,30 @@ import importlib
 import sys
 from unittest.mock import MagicMock
 
+import pytest
+
 
 MODULE = "seedsigner.models.decode_qr"
+
+
+@pytest.fixture(autouse=True)
+def restore_module_state():
+    """These tests re-import decode_qr with pyzbar hidden; restore the original
+    modules afterwards so other tests keep referencing the same module objects.
+    The parent package attribute must be restored too: re-importing rebinds
+    seedsigner.models.decode_qr on the package, which is what
+    `import seedsigner.models.decode_qr` (and monkeypatch string targets) resolve."""
+    saved = {name: sys.modules.get(name) for name in (MODULE, "pyzbar", "pyzbar.pyzbar")}
+    parent = sys.modules.get("seedsigner.models")
+    saved_attr = getattr(parent, "decode_qr", None) if parent else None
+    yield
+    for name, module in saved.items():
+        if module is not None:
+            sys.modules[name] = module
+        else:
+            sys.modules.pop(name, None)
+    if parent is not None and saved_attr is not None:
+        parent.decode_qr = saved_attr
 
 
 def test_decode_qr_import_survives_missing_pyzbar(monkeypatch):
