@@ -484,8 +484,8 @@ class KeycardSatochipConnector:
         option_flags=0,
         hmacsha160_key=None,
         amount_limit=0,
+        duress_pin=None,
     ):
-        _ = pin_tries_0
         _ = ublk_tries_0
         _ = pin_tries_1
         _ = ublk_tries_1
@@ -517,7 +517,36 @@ class KeycardSatochipConnector:
                 puk_text = _digits_from_bytes(source, 12)
 
         try:
-            self._card.init(pin_text, puk_text, self._pairing_password)
+            if duress_pin is not None:
+                duress_text = _value_to_text(duress_pin)
+                if not (len(duress_text) == 6 and duress_text.isdigit()):
+                    raise ValueError("Keycard duress PIN must be exactly 6 digits")
+                if duress_text == pin_text:
+                    raise ValueError("Duress PIN must differ from the main PIN")
+
+                # The duress PIN rides on the extended INIT payload (applet
+                # v3.1+), which also carries the PIN retry limit.
+                try:
+                    pin_limit = int(pin_tries_0)
+                except (TypeError, ValueError):
+                    pin_limit = None
+                if pin_limit is not None and not (2 <= pin_limit <= 10):
+                    pin_limit = None
+
+                try:
+                    self._card.init(
+                        pin_text,
+                        puk_text,
+                        self._pairing_password,
+                        duress_pin=duress_text,
+                        pin_limit=pin_limit,
+                    )
+                except TypeError:
+                    raise ValueError(
+                        "Installed keycard-py does not support the duress PIN; update keycard-py"
+                    )
+            else:
+                self._card.init(pin_text, puk_text, self._pairing_password)
             self.pin = list(pin_text.encode("utf-8"))
             self._secure_open = False
             return ([], 0x90, 0x00)

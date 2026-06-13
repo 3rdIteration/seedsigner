@@ -13,7 +13,7 @@ from seedsigner.gui.screens import (
     LargeIconStatusScreen,
     KeyboardScreen,
 )
-from seedsigner.gui.screens.screen import LoadingScreenThread
+from seedsigner.gui.screens.screen import ButtonOption, LoadingScreenThread
 from seedsigner.helpers.iso7816 import format_sw_error
 from seedsigner.helpers.keycard_connector import KeycardSatochipConnector
 
@@ -248,6 +248,47 @@ def prompt_for_pin(
             title="Invalid PIN",
             status_headline=None,
             text=f"PIN must be between {JCconstants.PIN_MIN_SIZE} and {JCconstants.PIN_MAX_SIZE} characters.",
+            show_back_button=True,
+        )
+
+
+def prompt_for_new_pin(
+    parent_view,
+    title: str,
+    *,
+    numeric_only: bool = False,
+    exact_length: int | None = None,
+    confirm_title: str | None = None,
+):
+    """Prompt for a new PIN and require the user to re-enter it to confirm."""
+
+    while True:
+        pin_str = prompt_for_pin(
+            parent_view,
+            title,
+            numeric_only=numeric_only,
+            exact_length=exact_length,
+        )
+        if pin_str is None:
+            return None
+
+        confirm_str = prompt_for_pin(
+            parent_view,
+            confirm_title or f"Confirm {title}",
+            numeric_only=numeric_only,
+            exact_length=exact_length,
+        )
+        if confirm_str is None:
+            return None
+
+        if pin_str == confirm_str:
+            return pin_str
+
+        parent_view.run_screen(
+            WarningScreen,
+            title="PIN Mismatch",
+            status_headline=None,
+            text="PINs did not match.\nPlease try again.",
             show_back_button=True,
         )
 
@@ -521,15 +562,50 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True, backend
             show_back_button=True,
         )
 
-        pin_str = prompt_for_pin(
+        pin_str = prompt_for_new_pin(
             parentObject,
             "New Card PIN",
             numeric_only=is_keycard_backend,
             exact_length=6 if is_keycard_backend else None,
+            confirm_title="Confirm Card PIN",
         )
 
         if pin_str is None:
             return None
+
+        duress_pin_str = None
+        if is_keycard_backend:
+            # Keycard applet v3.1+: an optional duress PIN unlocks a decoy
+            # wallet. It can only be set now — the applet does not allow
+            # adding or changing it after initialization.
+            selected = parentObject.run_screen(
+                WarningScreen,
+                title="Duress PIN?",
+                status_headline=None,
+                text="Optional decoy-wallet PIN.\nCannot be added later.",
+                show_back_button=False,
+                button_data=[ButtonOption("Set Duress PIN"), ButtonOption("Skip")],
+            )
+            if selected == 0:
+                while True:
+                    duress_pin_str = prompt_for_new_pin(
+                        parentObject,
+                        "Duress PIN",
+                        numeric_only=True,
+                        exact_length=6,
+                        confirm_title="Confirm Duress PIN",
+                    )
+                    if duress_pin_str is None:
+                        return None
+                    if duress_pin_str != pin_str:
+                        break
+                    parentObject.run_screen(
+                        WarningScreen,
+                        title="Invalid PIN",
+                        status_headline=None,
+                        text="Duress PIN must differ\nfrom the main PIN.",
+                        show_back_button=True,
+                    )
 
         """Run the initial card setup process"""
         pin_0 = list(pin_str.encode("utf8"))
@@ -551,6 +627,11 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True, backend
         create_key_ACL = 0x01  # RFU
         create_pin_ACL = 0x01  # RFU
 
+        setup_kwargs = {}
+        if duress_pin_str:
+            # Only the keycard backend understands the duress PIN.
+            setup_kwargs["duress_pin"] = duress_pin_str
+
         (response, sw1, sw2) = Satochip_Connector.card_setup(
             pin_tries_0,
             ublk_tries_0,
@@ -568,6 +649,7 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True, backend
             option_flags=0,
             hmacsha160_key=None,
             amount_limit=0,
+            **setup_kwargs,
         )
         if sw1 != 0x90 or sw2 != 0x00:
             print("ERROR: Setup Failed")

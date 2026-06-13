@@ -110,7 +110,14 @@ For cards configured with a custom Keycard pairing password, set:
     export SEEDSIGNER_KEYCARD_PAIRING_PASSWORD='your-pairing-password'
 
 When using the keycard backend, uninitialised cards must be initialised with
-`keycard-cli` tooling first.
+`keycard-cli` tooling first, except in flows that explicitly support in-app
+initialisation (e.g. "Initialise with Seed"). During in-app initialisation
+SeedSigner asks for the new card PIN (entered twice to confirm) and then
+offers to set an optional **duress PIN** (Keycard applet v3.1+). Entering the
+duress PIN instead of the main PIN unlocks a decoy wallet with different
+keys. Note the applet only accepts a duress PIN during initialisation — it
+cannot be added or changed later. If skipped, the applet defaults the duress
+PIN to the first half of the (randomly generated, unrecorded) PUK.
 
 ### LibNFC + IFDNFC (Optional: Needed for PN352 connected via GPIO Pins)
 

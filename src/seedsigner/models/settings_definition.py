@@ -356,6 +356,17 @@ class SettingsConstants:
     ]
     DEFAULT_SATOCHIP_DUMMY_PROB = 50
 
+    # Keycard signing behavior
+    # Keycard operations (derive_key + sign) are slower than native Satochip
+    # signing, so the timeout is adjustable in 0.5s steps around a 1.5s default.
+    KEYCARD_TIMEOUT_MIN = 0.5
+    KEYCARD_TIMEOUT_MAX = 2.5
+    ALL_KEYCARD_TIMEOUTS = [
+        (i / 2, f"{i / 2:g}s")
+        for i in range(int(KEYCARD_TIMEOUT_MIN * 2), int(KEYCARD_TIMEOUT_MAX * 2) + 1)
+    ]
+    DEFAULT_KEYCARD_TIMEOUT = 1.5
+
     @classmethod
     def map_network_to_embit(cls, network) -> str:
         # Note these are `embit` constants; do not wrap for translation
@@ -481,6 +492,7 @@ class SettingsConstants:
     SETTING__SATOCHIP_MAX_POST_DUMMIES = "satochip_max_post_dummies"
     SETTING__SATOCHIP_MAX_IN_TX_DUMMIES = "satochip_max_in_tx_dummies"
     SETTING__SATOCHIP_DUMMY_PROBABILITY = "satochip_dummy_probability"
+    SETTING__KEYCARD_SIGN_TIMEOUT = "keycard_sign_timeout"
 
     SETTING__DEBUG = "debug"
 
@@ -1159,6 +1171,15 @@ class SettingsDefinition:
                       visibility=SettingsConstants.VISIBILITY__ADVANCED,
                       selection_options=SettingsConstants.ALL_SATOCHIP_DUMMY_PROB,
                       default_value=SettingsConstants.DEFAULT_SATOCHIP_DUMMY_PROB),
+
+        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
+                      attr_name=SettingsConstants.SETTING__KEYCARD_SIGN_TIMEOUT,
+                      abbreviated_name="keycardtime",
+                      display_name="Keycard sign timeout",
+                      type=SettingsConstants.TYPE__SELECT_1,
+                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
+                      selection_options=SettingsConstants.ALL_KEYCARD_TIMEOUTS,
+                      default_value=SettingsConstants.DEFAULT_KEYCARD_TIMEOUT),
 
 
         # Hardware config

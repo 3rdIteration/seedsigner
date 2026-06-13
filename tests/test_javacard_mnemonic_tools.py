@@ -182,7 +182,7 @@ def test_specter_change_pin_prompts_current_then_new_only(monkeypatch):
             prompts.append(self.title)
             if self.title == "Current PIN":
                 return {"passphrase": "1234"}
-            if self.title == "New PIN":
+            if self.title in ("New PIN", "Confirm New PIN"):
                 return {"passphrase": "9999"}
             return {"passphrase": ""}
 
@@ -231,7 +231,7 @@ def test_specter_change_pin_prompts_current_then_new_only(monkeypatch):
     destination = view.run()
 
     assert destination.View_cls == tools_views.BackStackView
-    assert prompts == ["Current PIN", "New PIN"]
+    assert prompts == ["Current PIN", "New PIN", "Confirm New PIN"]
     assert changed == {"old": b"1234", "new": b"9999"}
 
 
@@ -265,6 +265,8 @@ def test_unlock_specter_card_shows_bricked_reinstall_warning():
 def test_prompt_specter_new_pin_warns_and_can_continue(monkeypatch):
     prompts = iter([
         {"passphrase": "12ab"},
+        # confirmation re-entry (also triggers the non-numeric warning)
+        {"passphrase": "12ab"},
     ])
 
     class FakePrompt:
@@ -288,14 +290,17 @@ def test_prompt_specter_new_pin_warns_and_can_continue(monkeypatch):
     pin = tools_views._prompt_specter_new_pin(parent, "New PIN")
 
     assert pin == "12ab"
-    assert len(parent.calls) == 1
+    assert len(parent.calls) == 2
     assert parent.calls[0]["title"] == "Non-Numeric PIN"
     assert "digits 0-9" in parent.calls[0]["text"]
+    assert parent.calls[1]["title"] == "Non-Numeric PIN"
 
 
 def test_prompt_specter_new_pin_warns_and_can_reenter(monkeypatch):
     prompts = iter([
         {"passphrase": "12ab"},
+        {"passphrase": "1234"},
+        # confirmation re-entry
         {"passphrase": "1234"},
     ])
 
@@ -774,37 +779,104 @@ def test_javacard_save_mnemonic_empty_card_create_pin_cancel_aborts(monkeypatch)
     assert store_called["value"] is False
 
 
-def test_prompt_keycard_new_pin_requires_numeric_and_6_digits():
-    class FakeParentView:
-        def __init__(self):
-            self.calls = []
+class _FakePinParentView:
+    def __init__(self):
+        self.calls = []
 
-        def run_screen(self, _screen, **kwargs):
-            self.calls.append(kwargs)
-            return 0
+    def run_screen(self, _screen, **kwargs):
+        self.calls.append(kwargs)
+        return 0
 
-    responses = iter([
-        {"passphrase": "12ab56"},
-        {"passphrase": "12345"},
-        {"passphrase": "123456"},
-    ])
+
+def _run_prompt_with_responses(prompt_fn, parent, title, responses):
+    response_iter = iter(responses)
 
     class FakePrompt:
         def __init__(self, title):
             self.title = title
 
         def display(self):
-            return next(responses)
+            return next(response_iter)
 
-    parent = FakeParentView()
     original = tools_views.seed_screens.SeedAddPassphraseScreen
     tools_views.seed_screens.SeedAddPassphraseScreen = FakePrompt
     try:
-        pin = tools_views._prompt_keycard_new_pin(parent, "New PIN")
+        return prompt_fn(parent, title)
     finally:
         tools_views.seed_screens.SeedAddPassphraseScreen = original
+
+
+def test_prompt_keycard_new_pin_requires_numeric_and_6_digits():
+    parent = _FakePinParentView()
+    pin = _run_prompt_with_responses(
+        tools_views._prompt_keycard_new_pin,
+        parent,
+        "New PIN",
+        [
+            {"passphrase": "12ab56"},
+            {"passphrase": "12345"},
+            {"passphrase": "123456"},
+            # confirmation re-entry
+            {"passphrase": "123456"},
+        ],
+    )
 
     assert pin == "123456"
     assert len(parent.calls) == 2
     assert parent.calls[0]["title"] == "Non-Numeric PIN"
     assert parent.calls[1]["title"] == "Invalid PIN Length"
+
+
+def test_prompt_keycard_new_pin_requires_matching_confirmation():
+    parent = _FakePinParentView()
+    pin = _run_prompt_with_responses(
+        tools_views._prompt_keycard_new_pin,
+        parent,
+        "New PIN",
+        [
+            {"passphrase": "123456"},
+            {"passphrase": "654321"},  # mismatched confirmation
+            {"passphrase": "123456"},
+            {"passphrase": "123456"},
+        ],
+    )
+
+    assert pin == "123456"
+    assert [c["title"] for c in parent.calls] == ["PIN Mismatch"]
+
+
+def test_prompt_keycard_new_puk_requires_numeric_and_12_digits():
+    parent = _FakePinParentView()
+    puk = _run_prompt_with_responses(
+        tools_views._prompt_keycard_new_puk,
+        parent,
+        "New PUK",
+        [
+            {"passphrase": "1234"},
+            {"passphrase": "12345678901a"},
+            {"passphrase": "123456789012"},
+            # confirmation re-entry
+            {"passphrase": "123456789012"},
+        ],
+    )
+
+    assert puk == "123456789012"
+    assert len(parent.calls) == 2
+    assert parent.calls[0]["title"] == "Invalid PUK Length"
+    assert parent.calls[1]["title"] == "Non-Numeric PUK"
+
+
+def test_prompt_keycard_new_puk_back_button_aborts():
+    parent = _FakePinParentView()
+    puk = _run_prompt_with_responses(
+        tools_views._prompt_keycard_new_puk,
+        parent,
+        "New PUK",
+        [
+            {"passphrase": "123456789012"},
+            {"is_back_button": True},
+        ],
+    )
+
+    assert puk is None
+    assert parent.calls == []

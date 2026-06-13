@@ -13,6 +13,8 @@ class DummySettings:
     def get_value(self, setting):
         if setting == SettingsConstants.SETTING__SATOCHIP_SIGN_TIMEOUT:
             return 1
+        if setting == SettingsConstants.SETTING__KEYCARD_SIGN_TIMEOUT:
+            return 2
         return 0
 
 

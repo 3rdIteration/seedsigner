@@ -5,10 +5,13 @@ import random
 from concurrent.futures import TimeoutError
 
 from embit.psbt import PSBT
-from embit.util import secp256k1
 
 from seedsigner.helpers.iso7816 import format_sw_error
-from seedsigner.helpers.satochip_signer import _call_with_timeout, _format_path
+from seedsigner.helpers.satochip_signer import (
+    _call_with_timeout,
+    _format_path,
+    normalize_signature_der,
+)
 from seedsigner.models.settings import Settings, SettingsConstants
 
 import logging
@@ -25,7 +28,10 @@ def sign_psbt_with_keycard(psbt: PSBT, connector) -> int:
     """
 
     settings = Settings.get_instance()
-    timeout = settings.get_value(SettingsConstants.SETTING__SATOCHIP_SIGN_TIMEOUT)
+    # Keycard operations (derive_key + sign via sign_with_path) are significantly
+    # slower than native Satochip signing (~1.0s per card_sign_transaction_hash),
+    # so they use a dedicated, higher default timeout (see SETTING__KEYCARD_SIGN_TIMEOUT).
+    timeout = settings.get_value(SettingsConstants.SETTING__KEYCARD_SIGN_TIMEOUT)
     pre_dummy_max = settings.get_value(SettingsConstants.SETTING__SATOCHIP_MAX_PRE_DUMMIES)
     post_dummy_max = settings.get_value(SettingsConstants.SETTING__SATOCHIP_MAX_POST_DUMMIES)
     in_tx_dummy_max = settings.get_value(SettingsConstants.SETTING__SATOCHIP_MAX_IN_TX_DUMMIES)
@@ -140,9 +146,7 @@ def sign_psbt_with_keycard(psbt: PSBT, connector) -> int:
 
             sig_der = bytes(sig)
             try:
-                sig_obj = secp256k1.ecdsa_signature_parse_der(sig_der)
-                sig_norm = secp256k1.ecdsa_signature_normalize(sig_obj)
-                sig_der = secp256k1.ecdsa_signature_serialize_der(sig_norm)
+                sig_der = normalize_signature_der(sig_der)
             except Exception as e:
                 logger.warning("Failed to normalize Keycard signature: %s", e)
 

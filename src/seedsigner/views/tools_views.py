@@ -67,6 +67,7 @@ from seedsigner.views.seed_views import (
 
 from .view import View, Destination, BackStackView, MainMenuView
 from .satochip_bias import ToolsSatochipBiasCheckView
+from .keycard_bias import ToolsKeycardBiasCheckView
 
 from seedsigner.hardware.microsd import MicroSD
 from seedsigner.hardware.rng_monitor import HardwareRngHealthMonitor
@@ -75,6 +76,7 @@ from seedsigner.helpers.satochip_signer import (
     _call_with_timeout,
     _get_extended_key,
     format_path_string,
+    normalize_signature_der,
 )
 from seedsigner.gui.screens import seed_screens
 logger = logging.getLogger(__name__)
@@ -2266,7 +2268,7 @@ class ToolsSatochipChangePinView(View):
         if not Satochip_Connector:
             return Destination(BackStackView)
 
-        new_pin_str = seedkeeper_utils.prompt_for_pin(self, "New PIN")
+        new_pin_str = seedkeeper_utils.prompt_for_new_pin(self, "New PIN")
 
         if new_pin_str is None:
             return Destination(BackStackView)
@@ -3977,6 +3979,7 @@ class ToolsKeycardView(View):
     SET_NAME = ButtonOption("Set Name")
     REMOVE_SEED = ButtonOption("Remove Seed")
     FACTORY_RESET = ButtonOption("Factory Reset Card")
+    ADVANCED = ButtonOption("Advanced")
 
     def run(self):
         self.controller.smartcard_backend_preference = "keycard"
@@ -3991,6 +3994,7 @@ class ToolsKeycardView(View):
             self.SET_NAME,
             self.REMOVE_SEED,
             self.FACTORY_RESET,
+            self.ADVANCED,
         ]
         selected_menu_num = self.run_screen(
             ButtonListScreen,
@@ -4031,6 +4035,275 @@ class ToolsKeycardView(View):
 
         elif button_data[selected_menu_num] == self.FACTORY_RESET:
             return Destination(ToolsKeycardFactoryResetView)
+
+        elif button_data[selected_menu_num] == self.ADVANCED:
+            return Destination(ToolsKeycardAdvancedView)
+
+
+class ToolsKeycardAdvancedView(View):
+    BENCHMARK = ButtonOption("Benchmark Signing")
+    BENCHMARK_MESSAGE = ButtonOption("Benchmark Message Signing")
+    BIAS_TEST = ButtonOption("Check signing bias")
+
+    def run(self):
+        button_data = [self.BENCHMARK, self.BENCHMARK_MESSAGE, self.BIAS_TEST]
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title="KeyCard Advanced",
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        elif button_data[selected_menu_num] == self.BENCHMARK:
+            return Destination(ToolsKeycardBenchmarkSignView)
+
+        elif button_data[selected_menu_num] == self.BENCHMARK_MESSAGE:
+            return Destination(ToolsKeycardBenchmarkMessageSignView)
+
+        elif button_data[selected_menu_num] == self.BIAS_TEST:
+            return Destination(ToolsKeycardBiasCheckView)
+
+
+def _keycard_benchmark_pubkey(connector, coin_type: str, account: int, is_mainnet: bool):
+    """Derive the expected signing pubkey locally from the account xpub.
+
+    The account-level path ends in a hardened index, which is the only kind of
+    path the Keycard applet allows extended-public export for.
+    """
+    account_path = format_path_string(f"m/84'/{coin_type}'/{account}'")
+    account_xpub = connector.card_bip32_get_xpub(account_path, "p2wpkh", is_mainnet)
+    return HDKey.from_base58(account_xpub)
+
+
+def _verify_der_signature(pubkey, sig_der: bytes, digest: bytes) -> bool:
+    from embit import ec
+
+    try:
+        # The Keycard applet does not guarantee low-S, but libsecp verify
+        # rejects high-S, so normalize first.
+        sig_obj = secp256k1.ecdsa_signature_parse_der(normalize_signature_der(sig_der))
+        return pubkey.verify(ec.Signature(sig_obj), bytes(digest))
+    except Exception as exc:
+        logger.warning("Benchmark signature verification error: %s", exc)
+        return False
+
+
+class ToolsKeycardBenchmarkSignView(View):
+    """Benchmark Keycard signing performance."""
+
+    NUM_SAMPLES = 20
+
+    ACCOUNT = 0
+
+    def run(self):
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+
+        connector = seedkeeper_utils.init_satochip(
+            self, init_card_filter=["satochip"], backend_preference="keycard"
+        )
+        if not connector:
+            return Destination(BackStackView)
+
+        timeout = 5.0
+        network = self.settings.get_value(SettingsConstants.SETTING__NETWORK)
+        coin_type = "0" if network == SettingsConstants.MAINNET else "1"
+        derivation_path = f"m/84'/{coin_type}'/{self.ACCOUNT}'/0/0"
+        path = format_path_string(derivation_path)
+
+        # Without checking signatures against a locally derived pubkey, the
+        # benchmark only proves the card returned something.
+        expected_pubkey = None
+        try:
+            account_key = _keycard_benchmark_pubkey(
+                connector, coin_type, self.ACCOUNT, network == SettingsConstants.MAINNET
+            )
+            expected_pubkey = account_key.derive([0, 0]).key
+        except Exception as exc:
+            logger.warning("Benchmark signing could not derive verification pubkey: %s", exc)
+
+        # The Keycard applet rejects EXPORT KEY (extended public) for paths
+        # ending in a non-hardened index with SW=6982, so don't derive an
+        # extended key here. card_sign_transaction_hash only needs the current
+        # derivation path, same as sign_psbt_with_keycard.
+        setattr(connector, "_last_path", path)
+
+        durations: list[float] = []
+        error: str | None = None
+        loading = LoadingScreenThread(text="Benchmarking\n\n\n\n\n\n")
+        loading.start()
+        try:
+            for i in range(self.NUM_SAMPLES):
+                tx_hash = os.urandom(32)
+                start = time.monotonic()
+                try:
+                    response, sw1, sw2 = _call_with_timeout(
+                        connector.card_sign_transaction_hash,
+                        timeout,
+                        0xFF,
+                        list(tx_hash),
+                        None,
+                    )
+                except Exception as exc:
+                    logger.warning("Benchmark signing failed at sample %d: %s", i, exc)
+                    error = str(exc)
+                    break
+                durations.append(time.monotonic() - start)
+                if sw1 != 0x90 or sw2 != 0x00:
+                    error = format_sw_error(sw1, sw2)
+                    break
+                if expected_pubkey is not None and not _verify_der_signature(
+                    expected_pubkey, response, tx_hash
+                ):
+                    error = f"Invalid signature at sample {i}"
+                    break
+        finally:
+            loading.stop()
+
+        if durations and not error:
+            avg = sum(durations) / len(durations)
+            min_time = min(durations)
+            max_time = max(durations)
+            logger.info(
+                "Keycard benchmark signing results: min=%.3fs avg=%.3fs max=%.3fs over %d signatures",
+                min_time,
+                avg,
+                max_time,
+                len(durations),
+            )
+            verify_note = "sigs verified" if expected_pubkey is not None else "sigs NOT verified"
+            text = (
+                "Min: {min_time:.3f}s\n"
+                "Avg: {avg:.3f}s\n"
+                "Max: {max_time:.3f}s\n"
+                "({verify_note})"
+            ).format(
+                min_time=min_time,
+                avg=avg,
+                max_time=max_time,
+                verify_note=verify_note,
+            )
+        else:
+            text = error or "Benchmark signing failed"
+
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Benchmark",
+            status_headline=None,
+            text=text,
+            show_back_button=False,
+        )
+        return Destination(MainMenuView)
+
+
+class ToolsKeycardBenchmarkMessageSignView(View):
+    """Benchmark Keycard message signing performance."""
+
+    NUM_SAMPLES = 20
+    ADDRESS_STEP = 5
+    ACCOUNT = 0
+
+    def run(self):
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+
+        connector = seedkeeper_utils.init_satochip(
+            self, init_card_filter=["satochip"], backend_preference="keycard"
+        )
+        if not connector:
+            return Destination(BackStackView)
+
+        timeout = 5.0
+        network = self.settings.get_value(SettingsConstants.SETTING__NETWORK)
+        coin_type = "0" if network == SettingsConstants.MAINNET else "1"
+
+        # Without checking signatures against a locally derived pubkey, the
+        # benchmark only proves the card returned something.
+        account_key = None
+        try:
+            account_key = _keycard_benchmark_pubkey(
+                connector, coin_type, self.ACCOUNT, network == SettingsConstants.MAINNET
+            )
+        except Exception as exc:
+            logger.warning("Benchmark message signing could not derive verification pubkey: %s", exc)
+
+        durations: list[float] = []
+        error: str | None = None
+        loading = LoadingScreenThread(text="Benchmarking\n\n\n\n\n\n")
+        loading.start()
+        try:
+            for i in range(self.NUM_SAMPLES):
+                address_index = i * self.ADDRESS_STEP
+                derivation_path = f"m/84'/{coin_type}'/{self.ACCOUNT}'/0/{address_index}"
+                path = format_path_string(derivation_path)
+                # The Keycard applet rejects EXPORT KEY (extended public) for
+                # paths ending in a non-hardened index with SW=6982, so don't
+                # derive an extended key here. card_sign_message only needs the
+                # current derivation path and a 32-byte digest
+                # (requires_message_digest).
+                setattr(connector, "_last_path", path)
+                digest = os.urandom(32)
+                start = time.monotonic()
+                try:
+                    response, sw1, sw2, _compsig = _call_with_timeout(
+                        connector.card_sign_message,
+                        timeout,
+                        0xFF,
+                        None,
+                        list(digest),
+                    )
+                except Exception as exc:
+                    logger.warning("Benchmark message signing failed at index %d: %s", address_index, exc)
+                    error = str(exc)
+                    break
+                durations.append(time.monotonic() - start)
+                if sw1 != 0x90 or sw2 != 0x00:
+                    error = format_sw_error(sw1, sw2)
+                    break
+                if account_key is not None and not _verify_der_signature(
+                    account_key.derive([0, address_index]).key, response, digest
+                ):
+                    error = f"Invalid signature at index {address_index}"
+                    break
+        finally:
+            loading.stop()
+
+        if durations and not error:
+            avg = sum(durations) / len(durations)
+            min_time = min(durations)
+            max_time = max(durations)
+            logger.info(
+                "Keycard benchmark message signing results: min=%.3fs avg=%.3fs max=%.3fs over %d signatures",
+                min_time,
+                avg,
+                max_time,
+                len(durations),
+            )
+            verify_note = "sigs verified" if account_key is not None else "sigs NOT verified"
+            text = (
+                "Min: {min_time:.3f}s\n"
+                "Avg: {avg:.3f}s\n"
+                "Max: {max_time:.3f}s\n"
+                "(addr 0-{last_idx}, {verify_note})"
+            ).format(
+                min_time=min_time,
+                avg=avg,
+                max_time=max_time,
+                last_idx=(len(durations) - 1) * self.ADDRESS_STEP,
+                verify_note=verify_note,
+            )
+        else:
+            text = error or "Benchmark signing failed"
+
+        self.run_screen(
+            LargeIconStatusScreen,
+            title="Benchmark",
+            status_headline=None,
+            text=text,
+            show_back_button=False,
+        )
+        return Destination(MainMenuView)
 
 
 class ToolsKeycardChangePinView(View):
@@ -4087,19 +4360,10 @@ class ToolsKeycardChangePukView(View):
         if not connector:
             return Destination(BackStackView)
 
-        ret = seed_screens.SeedAddPassphraseScreen(title="New PUK").display()
-        if "is_back_button" in ret:
-            return Destination(BackStackView)
-
-        new_puk_str = ret.get("passphrase", "")
-        if len(new_puk_str) < 4:
-            self.run_screen(
-                WarningScreen,
-                title="Invalid PUK",
-                status_headline=None,
-                text="PUK must be at least 4 chars",
-                show_back_button=True,
-            )
+        # The Keycard applet rejects anything other than exactly 12 digits
+        # with 0x6A80, so validate locally for a clear error message.
+        new_puk_str = _prompt_keycard_new_puk(self, "New PUK")
+        if new_puk_str is None:
             return Destination(BackStackView)
 
         _response, sw1, sw2 = connector.card_change_PUK(0, [], list(new_puk_str.encode("utf-8")))
@@ -5779,7 +6043,7 @@ def _show_specter_incorrect_pin_warning(parent_view, secure_applet, secure_chann
     )
 
 
-def _prompt_specter_new_pin(parent_view, title: str) -> str | None:
+def _prompt_specter_pin_once(parent_view, title: str) -> str | None:
     while True:
         ret = seed_screens.SeedAddPassphraseScreen(title=title).display()
         if isinstance(ret, dict) and "is_back_button" in ret:
@@ -5804,22 +6068,46 @@ def _prompt_specter_new_pin(parent_view, title: str) -> str | None:
             return pin
 
 
-def _prompt_keycard_new_pin(parent_view, title: str) -> str | None:
+def _prompt_specter_new_pin(parent_view, title: str) -> str | None:
+    """Prompt for a new Specter-DIY PIN and require re-entry to confirm."""
+    while True:
+        pin = _prompt_specter_pin_once(parent_view, title)
+        if pin is None:
+            return None
+
+        confirm = _prompt_specter_pin_once(parent_view, f"Confirm {title}")
+        if confirm is None:
+            return None
+
+        if pin == confirm:
+            return pin
+
+        parent_view.run_screen(
+            WarningScreen,
+            title="PIN Mismatch",
+            status_headline=None,
+            text="PINs did not match.\nPlease try again.",
+            show_back_button=False,
+            button_data=[ButtonOption("I Understand")],
+        )
+
+
+def _prompt_keycard_digits_once(parent_view, title: str, *, length: int, label: str) -> str | None:
     while True:
         ret = seed_screens.SeedAddPassphraseScreen(title=title).display()
         if isinstance(ret, dict) and "is_back_button" in ret:
             return None
 
-        pin = ret.get("passphrase", "")
-        if all(ch in "0123456789" for ch in pin):
-            if len(pin) == 6:
-                return pin
+        value = ret.get("passphrase", "")
+        if all(ch in "0123456789" for ch in value):
+            if len(value) == length:
+                return value
 
             parent_view.run_screen(
                 WarningScreen,
-                title="Invalid PIN Length",
+                title=f"Invalid {label} Length",
                 status_headline=None,
-                text="Keycard PIN must be exactly 6 digits.",
+                text=f"Keycard {label} must be exactly {length} digits.",
                 show_back_button=False,
                 button_data=[ButtonOption("I Understand")],
             )
@@ -5827,12 +6115,46 @@ def _prompt_keycard_new_pin(parent_view, title: str) -> str | None:
 
         parent_view.run_screen(
             WarningScreen,
-            title="Non-Numeric PIN",
+            title=f"Non-Numeric {label}",
             status_headline=None,
-            text="Keycard PIN must contain digits 0-9 only.",
+            text=f"Keycard {label} must contain digits 0-9 only.",
             show_back_button=False,
             button_data=[ButtonOption("I Understand")],
         )
+
+
+def _prompt_keycard_new_digits(parent_view, title: str, *, length: int, label: str) -> str | None:
+    """Prompt for a new Keycard PIN/PUK and require re-entry to confirm."""
+    while True:
+        value = _prompt_keycard_digits_once(parent_view, title, length=length, label=label)
+        if value is None:
+            return None
+
+        confirm = _prompt_keycard_digits_once(
+            parent_view, f"Confirm {title}", length=length, label=label
+        )
+        if confirm is None:
+            return None
+
+        if value == confirm:
+            return value
+
+        parent_view.run_screen(
+            WarningScreen,
+            title=f"{label} Mismatch",
+            status_headline=None,
+            text=f"{label}s did not match.\nPlease try again.",
+            show_back_button=False,
+            button_data=[ButtonOption("I Understand")],
+        )
+
+
+def _prompt_keycard_new_pin(parent_view, title: str) -> str | None:
+    return _prompt_keycard_new_digits(parent_view, title, length=6, label="PIN")
+
+
+def _prompt_keycard_new_puk(parent_view, title: str) -> str | None:
+    return _prompt_keycard_new_digits(parent_view, title, length=12, label="PUK")
 
 
 def _unlock_specter_card_if_needed(parent_view, secure_applet, secure_channel) -> bool:

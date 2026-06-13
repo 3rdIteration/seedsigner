@@ -1,6 +1,6 @@
 # Desktop simulation dependencies
 pyscard==2.3.1
-keycard
+keycard @ https://github.com/3rdIteration/keycard-py/archive/refs/tags/0.3.2.zip  # fork with duress PIN fixes
 pygame==2.5.2
 numpy==2.2.6
 opencv-python==4.12.0.88

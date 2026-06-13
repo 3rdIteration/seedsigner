@@ -116,6 +116,60 @@ def verify_satochip_message_address(connector, addr_format: dict, expected_addre
         raise Exception(_ADDRESS_MISMATCH_ERROR)
 
 
+# secp256k1 group order, for low-S normalization.
+_SECP256K1_ORDER = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
+
+
+def _normalize_low_s_der_pure(der: bytes) -> bytes:
+    """Pure-Python low-S normalization of a DER ECDSA signature.
+
+    Cross-platform fallback used when embit's native secp256k1 binding cannot
+    normalize -- e.g. its ctypes wrapper omits argtypes for
+    ``ecdsa_signature_normalize``, which overflows the context pointer on
+    64-bit platforms.
+    """
+
+    der = bytes(der)
+    if len(der) < 8 or der[0] != 0x30 or der[2] != 0x02:
+        raise ValueError("malformed DER signature")
+    rlen = der[3]
+    r = int.from_bytes(der[4:4 + rlen], "big")
+    idx = 4 + rlen
+    if der[idx] != 0x02:
+        raise ValueError("malformed DER signature")
+    slen = der[idx + 1]
+    s = int.from_bytes(der[idx + 2:idx + 2 + slen], "big")
+
+    if s > _SECP256K1_ORDER // 2:
+        s = _SECP256K1_ORDER - s
+
+    def _der_int(value: int) -> bytes:
+        b = value.to_bytes((value.bit_length() + 7) // 8 or 1, "big")
+        if b[0] & 0x80:
+            b = b"\x00" + b
+        return b"\x02" + bytes([len(b)]) + b
+
+    body = _der_int(r) + _der_int(s)
+    return b"\x30" + bytes([len(body)]) + body
+
+
+def normalize_signature_der(der: bytes) -> bytes:
+    """Return ``der`` as a low-S DER ECDSA signature.
+
+    Prefers embit's native secp256k1 binding; transparently falls back to a
+    pure-Python implementation when the native normalize is unavailable or
+    broken on the current platform.
+    """
+
+    der = bytes(der)
+    try:
+        sig_obj = secp256k1.ecdsa_signature_parse_der(der)
+        sig_norm = secp256k1.ecdsa_signature_normalize(sig_obj)
+        return secp256k1.ecdsa_signature_serialize_der(sig_norm)
+    except Exception:
+        return _normalize_low_s_der_pure(der)
+
+
 def _call_with_timeout(func, timeout: float, *args):
     """Execute ``func`` with the provided timeout and log duration."""
     start = time.monotonic()
