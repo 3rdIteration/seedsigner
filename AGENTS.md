@@ -190,10 +190,10 @@ Some tests are skipped or fail on certain platforms due to missing hardware or d
 
 | Test file | Platform(s) affected | Reason |
 |-----------|---------------------|--------|
-| `test_bip85_pgp_cli.py` (RSA vectors) | All (intermittent) | RSA key generation via pgpy backend; may fail due to timing/entropy in CI |
 | `test_flows_seed.py` (satochip tests) | All (without hardware) | Requires pysatochip + physical Satochip device |
+| `test_flows_tools.py` (satochip test) | All (without hardware) | Requires pysatochip + physical Satochip device |
 
-When reviewing test results, focus on **new** failures compared to the baseline. The current baseline on a typical development machine with GPG installed is **709 passing, 138 skipped, 10 failing** (satochip + pgpy RSA vectors only). On machines without GPG, `test_gpg_message.py` and `test_gpg_time_update.py` will additionally fail — this is expected.
+When reviewing test results, focus on **new** failures compared to the baseline. The current baseline on a typical development machine with GPG installed is **716 passing, 134 skipped, 7 failing** (satochip tests only — requires physical hardware). On machines without GPG, `test_gpg_message.py` and `test_gpg_time_update.py` will additionally fail — this is expected.
 
 **Note:** The `_msys2_path()` helper in `test_gpg_message.py` auto-detects whether the installed GPG binary is from Git-for-Windows (needs MSYS2-style `/c/...` paths) or native Windows Gpg4win (needs native `C:\...` paths). If GPG tests fail on Windows with a "no writable keyring found" error, check that `_msys2_path()` correctly identifies the installed GPG variant.
 

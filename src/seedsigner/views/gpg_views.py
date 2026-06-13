@@ -11,6 +11,9 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
+# Minimum RSA key size enforced by SeedSigner (applied in bip85_rsa_from_root)
+MIN_RSA_KEY_BITS = 2048
+
 from embit.bip32 import HDKey
 from gettext import gettext as _
 
