@@ -36,7 +36,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from seedsigner.models.seed import Seed
-from seedsigner.views.tools_views import (
+from seedsigner.views.gpg_views import (
     BIP85_GPG_CREATED_TS,
     bip85_rsa_from_root,
     bip85_ed25519_from_root,

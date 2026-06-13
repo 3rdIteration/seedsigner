@@ -7,9 +7,10 @@ from embit import bip32, bip85
 from seedsigner.models.seed import Seed, XprvSeed
 from seedsigner.controller import Controller
 from seedsigner.gui.screens import RET_CODE__BACK_BUTTON, WarningScreen
-from seedsigner.views import tools_views
 from seedsigner.views.tools_views import (
     MIN_RSA_KEY_BITS,
+)
+from seedsigner.views.gpg_views import (
     bip85_brainpoolp256r1_from_root,
     bip85_brainpoolp384r1_from_root,
     bip85_brainpoolp512r1_from_root,
@@ -21,6 +22,7 @@ from seedsigner.views.tools_views import (
     bip85_secp256k1_from_root,
     bip85_add_subkeys,
     _bip85_subkey_specs,
+    _bip85_key_type_choices,
     parse_secret_key_list,
     parse_subkey_list,
     parse_uid_list,
@@ -1108,8 +1110,6 @@ def test_load_bip85_key_warning_always_shown(monkeypatch):
 
 def test_bip85_key_type_choices_include_all():
     """``_bip85_key_type_choices(include_all=True)`` returns every type."""
-    from seedsigner.views.tools_views import _bip85_key_type_choices
-
     choices = _bip85_key_type_choices(include_all=True)
     codes = [code for _, code in choices]
     assert "p384" in codes
@@ -1122,7 +1122,6 @@ def test_bip85_key_type_choices_include_all():
 
 def test_bip85_key_type_choices_respects_setting(monkeypatch):
     """``_bip85_key_type_choices()`` filters by ``SETTING__GPG_KEY_TYPES``."""
-    from seedsigner.views.tools_views import _bip85_key_type_choices
     from seedsigner.models.settings import Settings
 
     settings = Settings.get_instance()
@@ -1137,8 +1136,6 @@ def test_bip85_key_type_choices_respects_setting(monkeypatch):
 
 def test_bip85_key_type_choices_default_matches_generate_new():
     """Default GPG key types match the original Generate New menu types."""
-    from seedsigner.views.tools_views import _bip85_key_type_choices
-
     choices = _bip85_key_type_choices()
     codes = [code for _, code in choices]
     assert codes == [

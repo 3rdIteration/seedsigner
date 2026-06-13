@@ -62,8 +62,7 @@ from embit import bip32, bip85
 import base  # noqa: F401  – ensure hardware mocks
 
 from seedsigner.helpers.bip85_drng import BIP85DRNG
-from seedsigner.views import tools_views
-from seedsigner.views.tools_views import (
+from seedsigner.views.gpg_views import (
     BIP85_GPG_CREATED_TS,
     BIP85_GPG_APP,
     BIP85_GPG_KEY_TYPE_RSA,
