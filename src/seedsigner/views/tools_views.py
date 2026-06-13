@@ -1400,3 +1400,13 @@ class ToolsTextQRView(View):
 from .smartcard_views import *  # noqa: F401, F403
 from .gpg_views import *  # noqa: F401, F403
 from .password_generator_views import *  # noqa: F401, F403
+
+# Explicit imports for private functions that are accessed by tests
+from .gpg_views import _check_future_key_creation, _text_qr_done_destination  # noqa: F401
+from .smartcard_views import (  # noqa: F401
+    _normalize_bip39_mnemonic_text,
+    _prompt_specter_new_pin,
+    _prompt_keycard_new_pin,
+    _prompt_keycard_new_puk,
+    _unlock_specter_card_if_needed,
+)
