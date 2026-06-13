@@ -7,6 +7,7 @@ from embit import bip32, bip85
 from seedsigner.models.seed import Seed, XprvSeed
 from seedsigner.controller import Controller
 from seedsigner.gui.screens import RET_CODE__BACK_BUTTON, WarningScreen
+import seedsigner.views.tools_views as tools_views
 from seedsigner.views.tools_views import (
     MIN_RSA_KEY_BITS,
 )
