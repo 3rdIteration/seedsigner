@@ -23,9 +23,35 @@ from seedsigner.gui.screens import (
     LargeIconStatusScreen,
     WarningScreen,
     ErrorScreen,
+    seed_screens,
 )
 from seedsigner.gui.screens.screen import ButtonOption
+from seedsigner.gui.screens.tools_screens import (
+    ToolsDiceEntropyEntryScreen,
+    ToolsTextQRReviewTextScreen,
+    ToolsTextQRTextEntryScreen,
+)
 from seedsigner.helpers.iso7816 import format_sw_error
+from seedsigner.helpers import password_generation, diceware, mnemonic_generation
+
+# Re-exported from tools_views.py (shared helpers used by password generation views)
+from .tools_views import (
+    BIP85_APP_DICE,
+    ToolsImageEntropyLivePreviewView,
+    _cache_password_entropy,
+    _clear_password_entropy_cache,
+    _diceware_word_count,
+    _get_password_entropy_cache,
+    _is_diceware_password_type,
+    _strength_to_length,
+)
+
+# Re-exported from gpg_views.py (TextQR display views shared across modules)
+from .gpg_views import (
+    ToolsTextQRFullScreenModeView,
+    ToolsTextQRTranscribeModePromptView,
+    _text_qr_done_destination,
+)
 from seedsigner.models.seed import Seed
 from seedsigner.models.settings_definition import SettingsConstants
 from .view import View, Destination, BackStackView, MainMenuView

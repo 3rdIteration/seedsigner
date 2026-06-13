@@ -3,6 +3,7 @@
 ****************************************************************************"""
 import base64
 import hashlib
+import hmac
 import json
 import logging
 import os
@@ -27,10 +28,12 @@ from seedsigner.gui.screens import (
     LargeIconStatusScreen,
     WarningScreen,
     ErrorScreen,
+    seed_screens,
 )
 from seedsigner.gui.screens.screen import ButtonOption
 from seedsigner.hardware.microsd import MicroSD
-from seedsigner.models.seed import Seed
+from seedsigner.helpers import seedkeeper_utils
+from seedsigner.models.seed import Seed, InvalidSeedException
 from seedsigner.models.settings_definition import SettingsConstants
 
 try:
@@ -41,6 +44,7 @@ except ImportError:
     pass
 
 from .view import View, Destination, BackStackView, MainMenuView
+from .seed_views import SeedFinalizeView
 
 logger = logging.getLogger(__name__)
 
@@ -5832,7 +5836,7 @@ class ToolsDIYInstallAppletView(View):
             return Destination(BackStackView)
 
         applet_file = cap_files[selected_file_num]
-        logger.info("Selected:", applet_file)
+        logger.info("Selected: %s", applet_file)
 
         if "seedkeeper" in applet_file.lower():
             storage_options = [

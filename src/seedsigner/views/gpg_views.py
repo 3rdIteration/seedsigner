@@ -30,6 +30,8 @@ from seedsigner.views.seed_views import (
     AccountNumberView,
 )
 from .view import View, Destination, BackStackView, MainMenuView
+# Imported from tools_views for use by _text_qr_done_destination (defined near end of file)
+from .tools_views import ToolsMenuView, ToolsTextQRView
 
 logger = logging.getLogger(__name__)
 

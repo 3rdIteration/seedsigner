@@ -1400,3 +1400,37 @@ class ToolsTextQRView(View):
 from .smartcard_views import *  # noqa: F401, F403
 from .gpg_views import *  # noqa: F401, F403
 from .password_generator_views import *  # noqa: F401, F403
+
+# Star imports skip underscore-prefixed names; explicitly re-export them here.
+from .password_generator_views import (  # noqa: F401
+    _cache_password_entropy,
+    _clear_password_entropy_cache,
+    _diceware_word_count,
+    _get_password_entropy_cache,
+    _is_diceware_password_type,
+    _save_password_to_seedkeeper,
+    _text_qr_done_destination,
+)
+
+from .smartcard_views import (  # noqa: F401
+    _get_specter_card_api,
+    _normalize_bip39_mnemonic_text,
+    _prompt_keycard_new_pin,
+    _prompt_keycard_new_puk,
+    _prompt_specter_new_pin,
+    _unlock_specter_card_if_needed,
+)
+
+from .gpg_views import (  # noqa: F401
+    _bip85_key_type_choices as _bip85_key_type_choices_gpg,
+    _bip85_subkey_specs as _bip85_subkey_specs_gpg,
+    _normalize_date_input as _normalize_date_input_gpg,
+    _select_import_algo as _select_import_algo_gpg,
+    _text_qr_done_destination as _text_qr_done_destination_gpg,
+)
+
+# Re-export for backward compatibility with tests and tools/bip85_pgp.py
+_bip85_subkey_specs = _bip85_subkey_specs_gpg  # noqa: F401 W0603
+_bip85_key_type_choices = _bip85_key_type_choices_gpg  # noqa: F401 W0603
+_select_import_algo = _select_import_algo_gpg  # noqa: F401 W0603
+_normalize_date_input = _normalize_date_input_gpg  # noqa: F401 W0603
