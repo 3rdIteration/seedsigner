@@ -1400,20 +1400,3 @@ class ToolsTextQRView(View):
 from .smartcard_views import *  # noqa: F401, F403
 from .gpg_views import *  # noqa: F401, F403
 from .password_generator_views import *  # noqa: F401, F403
-
-# Explicit re-exports of imported modules and constants for backward compatibility with tests
-__all__ = [
-    # Helper modules
-    'bip85_drng',
-    'diceware',
-    'password_generation',
-    'mnemonic_generation',
-    'embit_utils',
-    'ndef_helper',
-    # Screen modules
-    'seed_screens',
-    # Constants
-    'RET_CODE__BACK_BUTTON',
-    'SettingsConstants',
-    'MIN_RSA_KEY_BITS',
-]
