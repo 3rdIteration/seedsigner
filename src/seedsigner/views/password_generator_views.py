@@ -23,6 +23,7 @@ from seedsigner.gui.screens import (
     LargeIconStatusScreen,
     WarningScreen,
     ErrorScreen,
+    ToolsTextQRReviewTextScreen,
 )
 from seedsigner.gui.screens.screen import ButtonOption
 from seedsigner.helpers.iso7816 import format_sw_error
