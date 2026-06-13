@@ -1415,4 +1415,5 @@ __all__ = [
     # Constants
     'RET_CODE__BACK_BUTTON',
     'SettingsConstants',
+    'MIN_RSA_KEY_BITS',
 ]
