@@ -12,13 +12,24 @@ from seedsigner.models.settings import SettingsConstants
 
 
 def _msys2_path(path: str) -> str:
-    """Convert a Windows path to MSYS2 format for GNUPGHOME.
+    """Convert a Windows path to MSYS2 format for GNUPGHOME if needed.
 
     On Windows CI the GPG binary ships with Git-for-Windows and runs under
     MSYS2.  It expects POSIX-style paths (``/c/Users/...``) but Python's
     ``tempfile`` returns native Windows paths (``C:\\Users\\...``).
+
+    Native Windows GPG (e.g. Gpg4win at C:\\Program Files\\GnuPG\\bin\\gpg.EXE)
+    expects native Windows paths, so we only convert when the binary is from
+    Git for Windows / MSYS2.
     """
     if sys.platform == "win32":
+        import shutil
+
+        gpg_path = shutil.which("gpg") or ""
+        # Only convert to MSYS2 style if GPG is from Git for Windows
+        if not ("Git" in gpg_path or "msys" in gpg_path.lower()):
+            return path  # Native Windows GPG — keep native paths
+
         path = path.replace("\\", "/")
         # Convert drive letter, e.g. "C:/Users/..." → "/c/Users/..."
         if len(path) >= 2 and path[1] == ":":

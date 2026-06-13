@@ -1424,6 +1424,7 @@ from .smartcard_views import (  # noqa: F401
 from .gpg_views import (  # noqa: F401
     _bip85_key_type_choices as _bip85_key_type_choices_gpg,
     _bip85_subkey_specs as _bip85_subkey_specs_gpg,
+    _check_future_key_creation as _check_future_key_creation_gpg,
     _normalize_date_input as _normalize_date_input_gpg,
     _select_import_algo as _select_import_algo_gpg,
     _text_qr_done_destination as _text_qr_done_destination_gpg,
@@ -1432,5 +1433,6 @@ from .gpg_views import (  # noqa: F401
 # Re-export for backward compatibility with tests and tools/bip85_pgp.py
 _bip85_subkey_specs = _bip85_subkey_specs_gpg  # noqa: F401 W0603
 _bip85_key_type_choices = _bip85_key_type_choices_gpg  # noqa: F401 W0603
+_check_future_key_creation = _check_future_key_creation_gpg  # noqa: F401 W0603
 _select_import_algo = _select_import_algo_gpg  # noqa: F401 W0603
 _normalize_date_input = _normalize_date_input_gpg  # noqa: F401 W0603
