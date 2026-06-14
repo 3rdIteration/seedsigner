@@ -4488,28 +4488,6 @@ class ToolsSatochipDIYView(View):
     UNINSTALL_APPLET = ButtonOption("Uninstall Applet")
 
     def run(self):
-        # Check if GlobalPlatoform is available as a way of checking if the DIY tools we need are available
-        from pathlib import Path
-        from seedsigner.models.settings import Settings
-
-        if Settings.HOSTNAME == Settings.SEEDSIGNER_OS:
-            global_platform_path = "/mnt/diy/Satochip-DIY/gp.jar"
-        elif os.path.exists("/home/pi"):
-            global_platform_path = "/home/pi/Satochip-DIY/gp.jar"
-        else:
-            global_platform_path = str(Path.home() / "Satochip-DIY/gp.jar")
-
-        if os.path.exists(global_platform_path):
-            pass
-        else:
-            self.run_screen(
-                WarningScreen,
-                title="Failed",
-                status_headline=None,
-                text="MicroSD with SeedSigner+Satochip Required...",
-                show_back_button=False,
-            )
-
         button_data = [
             self.BUILD_APPLETS,
             self.INSTALL_APPLET,
@@ -4526,8 +4504,28 @@ class ToolsSatochipDIYView(View):
 
         if selected_menu_num == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
-          
+
         elif button_data[selected_menu_num] == self.BUILD_APPLETS:
+            # Check if GlobalPlatform is available as a way of checking if the DIY tools we need are available
+            from pathlib import Path
+            from seedsigner.models.settings import Settings
+
+            if Settings.HOSTNAME == Settings.SEEDSIGNER_OS:
+                global_platform_path = "/mnt/diy/Satochip-DIY/gp.jar"
+            elif os.path.exists("/home/pi"):
+                global_platform_path = "/home/pi/Satochip-DIY/gp.jar"
+            else:
+                global_platform_path = str(Path.home() / "Satochip-DIY/gp.jar")
+
+            if not os.path.exists(global_platform_path):
+                self.run_screen(
+                    WarningScreen,
+                    title="Failed",
+                    status_headline=None,
+                    text="DIY tools filesystem not found.\n\nRequired to build applets.",
+                    show_back_button=False,
+                )
+                return Destination(self.__class__)
             return Destination(ToolsDIYBuildAppletsView)
 
         elif button_data[selected_menu_num] == self.INSTALL_APPLET:
@@ -5814,32 +5812,81 @@ class ToolsDIYBuildAppletsView(View):
         return Destination(MainMenuView)
 
 class ToolsDIYInstallAppletView(View):
+    """Install a .cap applet from either the internal repo folder or the MicroSD card.
+
+    Searches both locations and merges the results. Files present in both
+    locations are prefixed with ``(Internal)`` or ``(MicroSD)`` to disambiguate.
+    If the MicroSD javacard-cap directory is absent the view falls back to the
+    internal folder only.
+    """
+
     def run(self):
         from subprocess import run
         import os
         import secrets
+        from pathlib import Path
         from seedsigner.gui.screens.screen import LoadingScreenThread
         from seedsigner.hardware.microsd import MicroSD
 
-        cap_dir = MicroSD.get_microsd_dir() / "javacard-cap"
-        cap_files = os.listdir(cap_dir)
+        repo_root = Path(__file__).resolve().parents[3]
+        internal_cap_dir = repo_root / "javacard-cap"
+        microsd_cap_dir = MicroSD.get_microsd_dir() / "javacard-cap"
 
-        cap_file_buttons = []
-        for file in cap_files:
-            cap_file_buttons.append(ButtonOption(file))
+        # Collect .cap files from each source
+        internal_files = set()
+        if internal_cap_dir.is_dir():
+            for f in internal_cap_dir.iterdir():
+                if f.is_file() and f.suffix.lower() == ".cap":
+                    internal_files.add(f.name)
+
+        microsd_files = set()
+        if microsd_cap_dir.is_dir():
+            try:
+                for f in os.listdir(microsd_cap_dir):
+                    if f.lower().endswith(".cap"):
+                        microsd_files.add(f)
+            except OSError:
+                pass  # MicroSD absent or unreadable – silently skip
+
+        # Build combined button list with prefixes for duplicates
+        cap_entries = []  # list of (display_name, source_dir, filename)
+        both = internal_files & microsd_files
+
+        # Internal-only files first (alphabetical)
+        for name in sorted(internal_files - microsd_files):
+            cap_entries.append((name, str(internal_cap_dir), name))
+        # Files in both sources – prefixed
+        for name in sorted(both):
+            cap_entries.append((f"(Internal) {name}", str(internal_cap_dir), name))
+            cap_entries.append((f"(MicroSD) {name}", str(microsd_cap_dir), name))
+        # MicroSD-only files last (alphabetical)
+        for name in sorted(microsd_files - internal_files):
+            cap_entries.append((name, str(microsd_cap_dir), name))
+
+        if not cap_entries:
+            self.run_screen(
+                WarningScreen,
+                title="No Applets Found",
+                status_headline=None,
+                text="No .cap files found.\n\nPlace .cap files in javacard-cap/ on the MicroSD card.",
+                show_back_button=False,
+            )
+            return Destination(BackStackView)
+
+        cap_file_buttons = [ButtonOption(entry[0]) for entry in cap_entries]
 
         selected_file_num = self.run_screen(
             ButtonListScreen,
             title="Select Applet",
             is_button_text_centered=False,
-            button_data=cap_file_buttons
+            button_data=cap_file_buttons,
         )
 
         if selected_file_num == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
 
-        applet_file = cap_files[selected_file_num]
-        logger.info("Selected: %s", applet_file)
+        _display_name, cap_dir, applet_file = cap_entries[selected_file_num]
+        logger.info("Selected: %s (from %s)", applet_file, cap_dir)
 
         if "seedkeeper" in applet_file.lower():
             storage_options = [
@@ -5952,7 +5999,6 @@ class ToolsDIYInstallAppletView(View):
 
         return Destination(MainMenuView)
 
-        return Destination(MainMenuView)
 
 class ToolsDIYUninstallAppletView(View):
     def run(self):
