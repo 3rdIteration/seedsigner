@@ -4506,18 +4506,18 @@ class ToolsSatochipDIYView(View):
             return Destination(BackStackView)
 
         elif button_data[selected_menu_num] == self.BUILD_APPLETS:
-            # Check if GlobalPlatform is available as a way of checking if the DIY tools we need are available
+            # Check if ANT is available as a way of checking if the DIY tools we need are available
             from pathlib import Path
             from seedsigner.models.settings import Settings
 
             if Settings.HOSTNAME == Settings.SEEDSIGNER_OS:
-                global_platform_path = "/mnt/diy/Satochip-DIY/gp.jar"
+                ant_path = "/mnt/diy/ant/bin/ant"
             elif os.path.exists("/home/pi"):
-                global_platform_path = "/home/pi/Satochip-DIY/gp.jar"
+                ant_path = "/home/pi/Satochip-DIY/ant/bin/ant"
             else:
-                global_platform_path = str(Path.home() / "Satochip-DIY/gp.jar")
+                ant_path = str(Path.home() / "Satochip-DIY/ant/bin/ant")
 
-            if not os.path.exists(global_platform_path):
+            if not os.path.exists(ant_path):
                 self.run_screen(
                     WarningScreen,
                     title="Failed",
