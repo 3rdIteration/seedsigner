@@ -1211,25 +1211,26 @@ def test_bip85_save_and_load(tmp_path):
 
 def test_load_bip85_data_from_microsd(monkeypatch, tmp_path):
     from pathlib import Path
+    from seedsigner.views import gpg_views
 
     captured = {}
 
     def fake_bip85_load_data(path):
         captured["path"] = Path(path)
 
-    monkeypatch.setattr(tools_views, "bip85_load_data", fake_bip85_load_data)
+    monkeypatch.setattr(gpg_views, "bip85_load_data", fake_bip85_load_data)
     monkeypatch.setattr(
-        tools_views.MicroSD, "get_microsd_dir", lambda: tmp_path
+        gpg_views.MicroSD, "get_microsd_dir", lambda: tmp_path
     )
 
     def fake_run_screen(self, *args, **kwargs):
         return 0  # Select "From MicroSD"
 
     monkeypatch.setattr(
-        tools_views.ToolsGPGLoadBip85DataView, "run_screen", fake_run_screen
+        gpg_views.ToolsGPGLoadBip85DataView, "run_screen", fake_run_screen
     )
 
-    view = tools_views.ToolsGPGLoadBip85DataView()
+    view = gpg_views.ToolsGPGLoadBip85DataView()
     view.run()
 
     expected = tmp_path / "microsd-images"
@@ -1277,7 +1278,7 @@ def test_bip85_save_to_qr(monkeypatch):
 
 def test_bip85_save_to_microsd_logs_path(monkeypatch, tmp_path):
     from seedsigner.gui.screens.screen import ButtonListScreen, WarningScreen
-    from seedsigner.hardware import microsd
+    from seedsigner.views import gpg_views
 
     BIP85_DATA.clear()
     BIP85_DATA["F"] = {
@@ -1308,12 +1309,12 @@ def test_bip85_save_to_microsd_logs_path(monkeypatch, tmp_path):
     def fake_log(msg, *args):
         logs.append(msg % args)
 
-    monkeypatch.setattr(tools_views.ToolsGPGSaveBip85DataView, "run_screen", fake_run_screen)
-    monkeypatch.setattr(tools_views, "bip85_save_data", fake_save)
-    monkeypatch.setattr(tools_views.logger, "info", fake_log)
-    monkeypatch.setattr(microsd.MicroSD, "get_microsd_dir", lambda: tmp_path)
+    monkeypatch.setattr(gpg_views.ToolsGPGSaveBip85DataView, "run_screen", fake_run_screen)
+    monkeypatch.setattr(gpg_views, "bip85_save_data", fake_save)
+    monkeypatch.setattr(gpg_views.logger, "info", fake_log)
+    monkeypatch.setattr(gpg_views.microsd.MicroSD, "get_microsd_dir", lambda: tmp_path)
 
-    view = tools_views.ToolsGPGSaveBip85DataView()
+    view = gpg_views.ToolsGPGSaveBip85DataView()
     view.controller.storage.seeds = []
     view.run()
 
@@ -1772,6 +1773,8 @@ def test_subkey_details_view(monkeypatch):
 
 
 def test_rebuild_bip85_key(monkeypatch):
+    from seedsigner.views import gpg_views
+
     controller = Controller.get_instance()
     seed = Seed(mnemonic=MNEMONIC)
     original = controller.storage.seeds
@@ -1810,7 +1813,7 @@ def test_rebuild_bip85_key(monkeypatch):
         return RET_CODE__BACK_BUTTON
 
     monkeypatch.setattr(
-        tools_views.ToolsGPGRebuildBip85KeyView, "run_screen", fake_run_screen
+        gpg_views.ToolsGPGRebuildBip85KeyView, "run_screen", fake_run_screen
     )
 
     def fake_run(cmd, input=None, capture_output=False):
@@ -1819,7 +1822,7 @@ def test_rebuild_bip85_key(monkeypatch):
             returncode = 0
         return Result()
 
-    monkeypatch.setattr(tools_views.subprocess, "run", fake_run)
+    monkeypatch.setattr(gpg_views.subprocess, "run", fake_run)
 
     added = []
     import pgpy
@@ -1838,22 +1841,22 @@ def test_rebuild_bip85_key(monkeypatch):
     monkeypatch.setattr(pgpy.PGPKey, "add_uid", fake_add_uid)
 
     calls = []
-    real = tools_views.bip85_p256_from_root
+    real = gpg_views.bip85_p256_from_root
 
     def fake_p256(root, key_index, sub_index=None, alg=None):
         calls.append(("p256", key_index, sub_index, alg))
         return real(root, key_index, sub_index, alg)
 
-    monkeypatch.setattr(tools_views, "bip85_p256_from_root", fake_p256)
+    monkeypatch.setattr(gpg_views, "bip85_p256_from_root", fake_p256)
 
     rsa_calls = []
-    real_rsa = tools_views.bip85_rsa_from_root
+    real_rsa = gpg_views.bip85_rsa_from_root
 
     def fake_rsa(root, bits, key_index, sub_index=None):
         rsa_calls.append((bits, key_index, sub_index))
         return real_rsa(root, bits, key_index, sub_index)
 
-    monkeypatch.setattr(tools_views, "bip85_rsa_from_root", fake_rsa)
+    monkeypatch.setattr(gpg_views, "bip85_rsa_from_root", fake_rsa)
 
     verify_called = {}
 
@@ -1861,9 +1864,9 @@ def test_rebuild_bip85_key(monkeypatch):
         verify_called["subkeys"] = subkeys
         return True
 
-    monkeypatch.setattr(tools_views, "bip85_verify_existing", fake_verify)
+    monkeypatch.setattr(gpg_views, "bip85_verify_existing", fake_verify)
 
-    view = tools_views.ToolsGPGRebuildBip85KeyView()
+    view = gpg_views.ToolsGPGRebuildBip85KeyView()
     try:
         view.run()
     finally:
@@ -2078,7 +2081,7 @@ def test_gpg_export_selected_subkeys_filters(monkeypatch):
 
 
 def test_add_subkeys_auto_bip85_index(monkeypatch):
-    import seedsigner.views.tools_views as tools_views
+    from seedsigner.views import gpg_views
 
     # Mock gpg list outputs: first call lists one BIP85 key, second shows three subkeys
     def fake_run(cmd, *args, **kwargs):
@@ -2093,7 +2096,7 @@ def test_add_subkeys_auto_bip85_index(monkeypatch):
                 return R(
                     "sec:-:0:0:KEYID:0:0:::::::\n"
                     f"fpr:::::::::FPR:\n"
-                    f"uid:u::::{tools_views.BIP85_GPG_CREATED_TS}::H::User::::::::\n"
+                    f"uid:u::::{gpg_views.BIP85_GPG_CREATED_TS}::H::User::::::::\n"
                 )
             else:
                 return R(
@@ -2105,7 +2108,7 @@ def test_add_subkeys_auto_bip85_index(monkeypatch):
 
     monkeypatch.setattr(subprocess, "run", fake_run)
 
-    tools_views.BIP85_DATA["FPR"] = {
+    gpg_views.BIP85_DATA["FPR"] = {
         "primary_fpr": "FPR",
         "seed_fpr": "seedfpr",
         "index": 0,
@@ -2129,14 +2132,14 @@ def test_add_subkeys_auto_bip85_index(monkeypatch):
         captured["seed"] = seed
         return []
 
-    monkeypatch.setattr(tools_views, "bip85_add_subkeys", fake_bip85_add_subkeys)
+    monkeypatch.setattr(gpg_views, "bip85_add_subkeys", fake_bip85_add_subkeys)
 
     def fake_verify(seed, fingerprint, key_index, created_ts, primary_algo, primary_bits, primary_curve, subkeys):
         captured["verified_seed"] = seed
         captured["verified_key_index"] = key_index
         return True
 
-    monkeypatch.setattr(tools_views, "bip85_verify_existing", fake_verify)
+    monkeypatch.setattr(gpg_views, "bip85_verify_existing", fake_verify)
 
     class DummyLoading:
         def __init__(self, text=""):
@@ -2153,6 +2156,7 @@ def test_add_subkeys_auto_bip85_index(monkeypatch):
     )
 
     class SeedObj:
+        seed_bytes = b"\x00" * 64
         def get_fingerprint(self, network=None):
             return "seedfpr"
 
@@ -2167,9 +2171,9 @@ def test_add_subkeys_auto_bip85_index(monkeypatch):
             return 0
         return 0
 
-    monkeypatch.setattr(tools_views.ToolsGPGAddSubkeysView, "run_screen", fake_run_screen)
+    monkeypatch.setattr(gpg_views.ToolsGPGAddSubkeysView, "run_screen", fake_run_screen)
 
-    view = object.__new__(tools_views.ToolsGPGAddSubkeysView)
+    view = object.__new__(gpg_views.ToolsGPGAddSubkeysView)
     ControllerClass = type(
         "C",
         (),
@@ -2180,7 +2184,7 @@ def test_add_subkeys_auto_bip85_index(monkeypatch):
     )
     view.controller = ControllerClass()
     view.settings = type("Set", (), {"get_value": lambda self, x: None})()
-    tools_views.ToolsGPGAddSubkeysView.run(view)
+    gpg_views.ToolsGPGAddSubkeysView.run(view)
     assert captured["key_index"] == 1
     assert captured["start_index"] == 3
     assert captured["seed"] is seed_obj
@@ -2189,7 +2193,7 @@ def test_add_subkeys_auto_bip85_index(monkeypatch):
 
 
 def test_add_subkeys_registry_index_correction(monkeypatch):
-    import seedsigner.views.tools_views as tools_views
+    from seedsigner.views import gpg_views
 
     class R:
         def __init__(self, stdout=""):
@@ -2201,7 +2205,7 @@ def test_add_subkeys_registry_index_correction(monkeypatch):
                 return R(
                     "sec:-:0:0:KEYID:0:0:::::::\n"
                     f"fpr:::::::::FPR:\n"
-                    f"uid:u::::{tools_views.BIP85_GPG_CREATED_TS}::H::User::::::::\n"
+                    f"uid:u::::{gpg_views.BIP85_GPG_CREATED_TS}::H::User::::::::\n"
                 )
             return R(
                 "sec:-:0:0:KEYID:0:::::::\n" + "ssb:-:0:0:::0:::::::\n" * 3
@@ -2212,7 +2216,7 @@ def test_add_subkeys_registry_index_correction(monkeypatch):
 
     monkeypatch.setattr(subprocess, "run", fake_run)
 
-    tools_views.BIP85_DATA["FPR"] = {
+    gpg_views.BIP85_DATA["FPR"] = {
         "primary_fpr": "FPR",
         "seed_fpr": "seedfpr",
         "index": 1,
@@ -2230,13 +2234,13 @@ def test_add_subkeys_registry_index_correction(monkeypatch):
         calls.append(("add", key_index, start_index))
         return []
 
-    monkeypatch.setattr(tools_views, "bip85_add_subkeys", fake_bip85_add_subkeys)
+    monkeypatch.setattr(gpg_views, "bip85_add_subkeys", fake_bip85_add_subkeys)
 
     def fake_verify(seed, fingerprint, key_index, created_ts, primary_algo, primary_bits, primary_curve, subkeys):
         calls.append(("verify", key_index))
         return key_index == 0
 
-    monkeypatch.setattr(tools_views, "bip85_verify_existing", fake_verify)
+    monkeypatch.setattr(gpg_views, "bip85_verify_existing", fake_verify)
 
     class DummyLoading:
         def __init__(self, text=""):
@@ -2253,6 +2257,7 @@ def test_add_subkeys_registry_index_correction(monkeypatch):
     )
 
     class SeedObj:
+        seed_bytes = b"\x00" * 64
         def get_fingerprint(self, network=None):
             return "seedfpr"
 
@@ -2266,9 +2271,9 @@ def test_add_subkeys_registry_index_correction(monkeypatch):
             return 0
         return 0
 
-    monkeypatch.setattr(tools_views.ToolsGPGAddSubkeysView, "run_screen", fake_run_screen)
+    monkeypatch.setattr(gpg_views.ToolsGPGAddSubkeysView, "run_screen", fake_run_screen)
 
-    view = object.__new__(tools_views.ToolsGPGAddSubkeysView)
+    view = object.__new__(gpg_views.ToolsGPGAddSubkeysView)
     ControllerClass = type(
         "C",
         (),
@@ -2279,12 +2284,12 @@ def test_add_subkeys_registry_index_correction(monkeypatch):
     )
     view.controller = ControllerClass()
     view.settings = type("Set", (), {"get_value": lambda self, x: None})()
-    tools_views.ToolsGPGAddSubkeysView.run(view)
+    gpg_views.ToolsGPGAddSubkeysView.run(view)
 
     assert calls[0] == ("verify", 1)
     assert calls[1] == ("verify", 0)
     assert calls[2] == ("add", 1, 3)
-    assert tools_views.BIP85_DATA["FPR"]["index"] == 0
+    assert gpg_views.BIP85_DATA["FPR"]["index"] == 0
 
 
 def test_add_subkeys_missing_seed(monkeypatch):
@@ -2787,6 +2792,7 @@ def test_import_key_to_card_view_fallback_bad_admin_pin(monkeypatch):
     from types import MethodType, SimpleNamespace
 
     from seedsigner.helpers import smartpgp_import
+    from seedsigner.views import gpg_views
 
     sec_parts = [
         "sec",
@@ -2859,7 +2865,7 @@ def test_import_key_to_card_view_fallback_bad_admin_pin(monkeypatch):
         disconnect_calls.append(controller)
 
     monkeypatch.setattr(
-        tools_views.seedkeeper_utils,
+        gpg_views.seedkeeper_utils,
         "disconnect_smartcard_connections",
         fake_disconnect,
     )
@@ -2873,7 +2879,7 @@ def test_import_key_to_card_view_fallback_bad_admin_pin(monkeypatch):
         raising_import,
     )
 
-    view = object.__new__(tools_views.ToolsGPGImportKeyToCardView)
+    view = object.__new__(gpg_views.ToolsGPGImportKeyToCardView)
     view.fingerprint = "PRIMARYFPR"
     view.selected_subkeys = {"s": "SUBFPR"}
     view.controller = SimpleNamespace(GPG_Admin_PIN="badpin", Satochip_Connector=None)
@@ -2887,10 +2893,10 @@ def test_import_key_to_card_view_fallback_bad_admin_pin(monkeypatch):
 
     view.run_screen = MethodType(fake_run_screen, view)
 
-    result = tools_views.ToolsGPGImportKeyToCardView.run(view)
+    result = gpg_views.ToolsGPGImportKeyToCardView.run(view)
 
-    assert isinstance(result, tools_views.Destination)
-    assert result.View_cls is tools_views.BackStackView
+    assert isinstance(result, gpg_views.Destination)
+    assert result.View_cls is gpg_views.BackStackView
     assert captured.get("text") == "Incorrect admin PIN"
     assert view.controller.GPG_Admin_PIN is None
     assert len(disconnect_calls) >= 2
