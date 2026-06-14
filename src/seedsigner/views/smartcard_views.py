@@ -5811,6 +5811,12 @@ class ToolsDIYBuildAppletsView(View):
 
         return Destination(MainMenuView)
 
+def _get_internal_cap_dir() -> Path:
+    """Return the internal javacard-cap directory. Extracted as a module-level
+    function so tests can monkeypatch it to isolate from the real filesystem."""
+    return Path(__file__).resolve().parents[3] / "javacard-cap"
+
+
 class ToolsDIYInstallAppletView(View):
     """Install a .cap applet from either the internal repo folder or the MicroSD card.
 
@@ -5828,8 +5834,7 @@ class ToolsDIYInstallAppletView(View):
         from seedsigner.gui.screens.screen import LoadingScreenThread
         from seedsigner.hardware.microsd import MicroSD
 
-        repo_root = Path(__file__).resolve().parents[3]
-        internal_cap_dir = repo_root / "javacard-cap"
+        internal_cap_dir = _get_internal_cap_dir()
         microsd_cap_dir = MicroSD.get_microsd_dir() / "javacard-cap"
 
         # Collect .cap files from each source

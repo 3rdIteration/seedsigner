@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from seedsigner.views import tools_views
+from seedsigner.views import tools_views, smartcard_views
 from seedsigner.hardware import microsd
 from seedsigner.helpers import seedkeeper_utils
 import sys
@@ -13,6 +13,8 @@ def test_seedkeeper_install_defaults_to_8k(monkeypatch, tmp_path):
     cap_dir.mkdir()
     (cap_dir / "SeedKeeper-v0.2.cap").touch()
 
+    # Isolate from real internal javacard-cap directory
+    monkeypatch.setattr(smartcard_views, "_get_internal_cap_dir", lambda: tmp_path / "nonexistent")
     monkeypatch.setattr(microsd.MicroSD, "get_microsd_dir", lambda: tmp_path)
 
     captured = {}
@@ -65,6 +67,8 @@ def test_seedkeeper_install_respects_selected_storage(monkeypatch, tmp_path):
     cap_dir.mkdir()
     (cap_dir / "SeedKeeper-v0.2.cap").touch()
 
+    # Isolate from real internal javacard-cap directory
+    monkeypatch.setattr(smartcard_views, "_get_internal_cap_dir", lambda: tmp_path / "nonexistent")
     monkeypatch.setattr(microsd.MicroSD, "get_microsd_dir", lambda: tmp_path)
 
     captured = {}
@@ -77,9 +81,9 @@ def test_seedkeeper_install_respects_selected_storage(monkeypatch, tmp_path):
         def install_capfile(self, *args, **kwargs):
             captured["cmd"] = kwargs.get("application_specific_parameters")
             return []
-    
+
     monkeypatch.setitem(sys.modules, "pygp", FakePyGP())
-    monkeypatch.setattr(tools_views, "logger", SimpleNamespace(info=lambda *a, **k: print(*a), warning=lambda *a, **k: print(*a), error=lambda *a, **k: print(*a)))
+    monkeypatch.setattr(smartcard_views, "logger", SimpleNamespace(info=lambda *a, **k: print(*a), warning=lambda *a, **k: print(*a), error=lambda *a, **k: print(*a)))
 
     responses = iter([0, 3])
 
@@ -104,6 +108,8 @@ def test_seedkeeper_install_supports_largest_storage(monkeypatch, tmp_path):
     cap_dir.mkdir()
     (cap_dir / "SeedKeeper-v0.2.cap").touch()
 
+    # Isolate from real internal javacard-cap directory
+    monkeypatch.setattr(smartcard_views, "_get_internal_cap_dir", lambda: tmp_path / "nonexistent")
     monkeypatch.setattr(microsd.MicroSD, "get_microsd_dir", lambda: tmp_path)
 
     captured = {}
@@ -116,9 +122,9 @@ def test_seedkeeper_install_supports_largest_storage(monkeypatch, tmp_path):
         def install_capfile(self, *args, **kwargs):
             captured["cmd"] = kwargs.get("application_specific_parameters")
             return []
-    
+
     monkeypatch.setitem(sys.modules, "pygp", FakePyGP())
-    monkeypatch.setattr(tools_views, "logger", SimpleNamespace(info=lambda *a, **k: print(*a), warning=lambda *a, **k: print(*a), error=lambda *a, **k: print(*a)))
+    monkeypatch.setattr(smartcard_views, "logger", SimpleNamespace(info=lambda *a, **k: print(*a), warning=lambda *a, **k: print(*a), error=lambda *a, **k: print(*a)))
 
     responses = iter([0, 4])
 
