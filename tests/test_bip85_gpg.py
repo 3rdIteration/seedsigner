@@ -1211,6 +1211,7 @@ def test_bip85_save_and_load(tmp_path):
 
 def test_load_bip85_data_from_microsd(monkeypatch, tmp_path):
     from pathlib import Path
+    from seedsigner.hardware import microsd
     from seedsigner.views import gpg_views
 
     captured = {}
@@ -1220,7 +1221,7 @@ def test_load_bip85_data_from_microsd(monkeypatch, tmp_path):
 
     monkeypatch.setattr(gpg_views, "bip85_load_data", fake_bip85_load_data)
     monkeypatch.setattr(
-        gpg_views.MicroSD, "get_microsd_dir", lambda: tmp_path
+        microsd.MicroSD, "get_microsd_dir", staticmethod(lambda: tmp_path)
     )
 
     def fake_run_screen(self, *args, **kwargs):
@@ -1278,6 +1279,7 @@ def test_bip85_save_to_qr(monkeypatch):
 
 def test_bip85_save_to_microsd_logs_path(monkeypatch, tmp_path):
     from seedsigner.gui.screens.screen import ButtonListScreen, WarningScreen
+    from seedsigner.hardware import microsd
     from seedsigner.views import gpg_views
 
     BIP85_DATA.clear()
@@ -1312,7 +1314,7 @@ def test_bip85_save_to_microsd_logs_path(monkeypatch, tmp_path):
     monkeypatch.setattr(gpg_views.ToolsGPGSaveBip85DataView, "run_screen", fake_run_screen)
     monkeypatch.setattr(gpg_views, "bip85_save_data", fake_save)
     monkeypatch.setattr(gpg_views.logger, "info", fake_log)
-    monkeypatch.setattr(gpg_views.microsd.MicroSD, "get_microsd_dir", lambda: tmp_path)
+    monkeypatch.setattr(microsd.MicroSD, "get_microsd_dir", staticmethod(lambda: tmp_path))
 
     view = gpg_views.ToolsGPGSaveBip85DataView()
     view.controller.storage.seeds = []
@@ -2293,6 +2295,8 @@ def test_add_subkeys_registry_index_correction(monkeypatch):
 
 
 def test_add_subkeys_missing_seed(monkeypatch):
+    from seedsigner.views import gpg_views
+
     class R:
         def __init__(self, stdout=""):
             self.stdout = stdout
@@ -2303,7 +2307,7 @@ def test_add_subkeys_missing_seed(monkeypatch):
                 return R(
                     "sec:-:0:0:KEYID:0:0:::::::\n"
                     + f"fpr:::::::::FPR:\n"
-                    + f"uid:u::::{tools_views.BIP85_GPG_CREATED_TS}::H::User::::::::\n"
+                    + f"uid:u::::{gpg_views.BIP85_GPG_CREATED_TS}::H::User::::::::\n"
                 )
             return R(
                     "sec:-:0:0:KEYID:0:::::::\n" + "ssb:-:0:0:::0:::::::\n" * 3
@@ -2314,7 +2318,7 @@ def test_add_subkeys_missing_seed(monkeypatch):
 
     monkeypatch.setattr(subprocess, "run", fake_run)
 
-    tools_views.BIP85_DATA["FPR"] = {
+    gpg_views.BIP85_DATA["FPR"] = {
         "primary_fpr": "FPR",
         "seed_fpr": "seedfpr",
         "index": 0,
@@ -2336,7 +2340,7 @@ def test_add_subkeys_missing_seed(monkeypatch):
         called["add"] = True
         return []
 
-    monkeypatch.setattr(tools_views, "bip85_add_subkeys", fake_bip85_add_subkeys)
+    monkeypatch.setattr(gpg_views, "bip85_add_subkeys", fake_bip85_add_subkeys)
 
     class SeedObj:
         def get_fingerprint(self, network=None):
@@ -2791,7 +2795,7 @@ def test_import_key_to_card_view_fallback_bad_admin_pin(monkeypatch):
     import subprocess
     from types import MethodType, SimpleNamespace
 
-    from seedsigner.helpers import smartpgp_import
+    from seedsigner.helpers import seedkeeper_utils, smartpgp_import
     from seedsigner.views import gpg_views
 
     sec_parts = [
@@ -2865,7 +2869,7 @@ def test_import_key_to_card_view_fallback_bad_admin_pin(monkeypatch):
         disconnect_calls.append(controller)
 
     monkeypatch.setattr(
-        gpg_views.seedkeeper_utils,
+        seedkeeper_utils,
         "disconnect_smartcard_connections",
         fake_disconnect,
     )
