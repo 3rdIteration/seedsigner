@@ -1155,6 +1155,95 @@ class TestCountKeycardInstances(unittest.TestCase):
             self.assertIsNone(_count_keycard_instances(MagicMock()))
 
 
+class TestProbeKeycardInstanceCount(unittest.TestCase):
+    """``_probe_keycard_instance_count`` is the FAST, unauthenticated probe the
+    top menu uses on entry to decide whether to show "Switch instance".
+
+    It must NOT open the GP/ISD secure channel (that was the menu-entry stall
+    and fails slowly on non-default ISD keys), and it must only ever return a
+    count when it is confidently ``>= 2`` — for 0/1/uncertain it returns
+    ``None`` so the caller keeps the entry visible (never hide the only way to
+    switch on a guess).
+    """
+
+    def _probe(self, hits, raises=False):
+        from unittest.mock import patch
+        from seedsigner.views.keycard_views import _probe_keycard_instance_count
+        import seedsigner.helpers.keycard.global_platform as gp
+        import seedsigner.helpers.keycard.reader as reader
+        conn = MagicMock()
+        wait = MagicMock(side_effect=RuntimeError("no card")) if raises \
+            else MagicMock(return_value=conn)
+        with patch.object(reader, "release_other_smartcard_holders", MagicMock()), \
+                patch.object(reader, "wait_for_card", wait), \
+                patch.object(gp, "probe_keycard_instance_aids",
+                             MagicMock(return_value=hits)):
+            result = _probe_keycard_instance_count(MagicMock())
+        return result, conn
+
+    def test_two_distinct_slots_returns_count(self):
+        from seedsigner.views.keycard_views import KEYCARD_APPLET_AID as A
+        # One physical instance partial-matches several candidate forms, so
+        # two real instances (slots 1 & 2) appear as a spread of hits.
+        hits = [
+            A,                       # bare prefix (no slot) — must be ignored
+            A + bytes([0x01]),       # 9-byte slot 1
+            A + bytes([0x01, 0x01]), # 10-byte slot 1
+            A + bytes([0x02]),       # 9-byte slot 2
+            A + bytes([0x01, 0x02]), # 10-byte slot 2
+        ]
+        result, conn = self._probe(hits)
+        self.assertEqual(result, 2)
+        conn.disconnect.assert_called_once()
+
+    def test_single_slot_returns_none(self):
+        from seedsigner.views.keycard_views import KEYCARD_APPLET_AID as A
+        hits = [A, A + bytes([0x01]), A + bytes([0x01, 0x01])]
+        result, _ = self._probe(hits)
+        self.assertIsNone(result)
+
+    def test_bare_prefix_only_returns_none(self):
+        from seedsigner.views.keycard_views import KEYCARD_APPLET_AID as A
+        result, _ = self._probe([A])
+        self.assertIsNone(result)
+
+    def test_empty_returns_none(self):
+        result, _ = self._probe([])
+        self.assertIsNone(result)
+
+    def test_error_returns_none(self):
+        result, _ = self._probe([], raises=True)
+        self.assertIsNone(result)
+
+    def test_menu_entry_uses_probe_and_never_opens_isd(self):
+        """The top menu on entry (cache unknown) must take the cleartext probe
+        and NEVER the GP/ISD handshake — the performance contract."""
+        from unittest.mock import patch
+        from seedsigner.views.keycard_views import (
+            ToolsKeycardMenuView, ToolsKeycardSettingsMenuView,
+        )
+        from seedsigner.views import keycard_views
+        import seedsigner.helpers.card_probe as card_probe_mod
+
+        view = ToolsKeycardMenuView.__new__(ToolsKeycardMenuView)
+        view.run_screen = MagicMock(return_value=0)  # pick "Ethereum"
+        view.controller = MagicMock()
+        view.controller.keycard_instance_count = None  # force a probe
+
+        isd_guard = MagicMock(side_effect=AssertionError(
+            "menu entry must not open the ISD channel"))
+        with patch.object(card_probe_mod, "run_card_gate", return_value=None), \
+                patch.object(keycard_views, "_open_isd_channel", isd_guard), \
+                patch.object(keycard_views, "_probe_keycard_instance_count",
+                             MagicMock(return_value=None)) as probe:
+            dest = view.run()
+        probe.assert_called_once()
+        isd_guard.assert_not_called()
+        # Probe → None keeps "Switch instance" visible: index 0 is Ethereum.
+        from seedsigner.views.keycard_views import ToolsKeycardEthereumMenuView
+        self.assertIs(dest.View_cls, ToolsKeycardEthereumMenuView)
+
+
 class TestPinLockLifecycle(unittest.TestCase):
     """PIN cache must be droppable on demand (Lock card) and on instance
     switch, so the user can re-enter a different (e.g. duress) PIN without

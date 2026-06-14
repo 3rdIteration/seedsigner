@@ -577,3 +577,58 @@ def run_globalplatform(
             )
 
         return data.stdout
+
+
+def decode_seedkeeper_seed_secret(secret_dict, subtype=0):
+    """Decode an *exported* Seedkeeper secret into ``(mnemonic, passphrase)``.
+
+    Handles the two seed layouts the firmware can re-import into a Keycard:
+
+    * Legacy **BIP39 mnemonic** (v1): a 1-byte prefix then
+      ``[size|mnemonic|size|passphrase]``, hex-encoded in ``secret``.
+    * **Masterseed v2** (``subtype == 0x01``): the masterseed followed by a
+      compressed BIP39 record (wordlist id + entropy + passphrase) appended
+      after it. The mnemonic is reconstructed from the stored *entropy*.
+
+    Returns ``None`` for any other secret type (Password, Descriptor, Data,
+    a raw Masterseed with no BIP39 info, …) — those are not importable as a
+    BIP39 seed.
+
+    Security note: the inputs (``secret_dict['secret']`` hex string, the
+    decoded entropy bytes) are immutable Python objects we cannot wipe; the
+    caller must copy the returned mnemonic into per-word buffers, derive,
+    and wipe its own buffers. Treat this as best-effort, like the rest of
+    the seed-handling paths.
+    """
+    from binascii import unhexlify
+    from pysatochip.JCconstants import BIP39_WORDLIST_DIC
+
+    stype = SEEDKEEPER_DIC_TYPE.get(secret_dict.get("type"), "")
+
+    if "mnemonic" in stype:  # BIP39 mnemonic v1
+        raw = unhexlify(secret_dict["secret"])[1:].decode().rstrip("\x00")
+        size = secret_dict["secret_list"][0]
+        return raw[:size], raw[size + 1:]
+
+    if stype == "Masterseed" and subtype == 0x01:
+        from mnemonic import Mnemonic
+        raw = bytes.fromhex(secret_dict["secret"])
+        off = 0
+        ms_size = raw[off]; off += 1
+        off += ms_size  # skip the masterseed bytes themselves
+        wl_byte = raw[off]; off += 1
+        wordlist = BIP39_WORDLIST_DIC.get(wl_byte)
+        if wordlist is None:
+            return None
+        ent_size = raw[off]; off += 1
+        entropy = raw[off:off + ent_size]; off += ent_size
+        mnemonic = Mnemonic(wordlist).to_mnemonic(entropy)
+        pp_size = raw[off]; off += 1
+        pp_bytes = raw[off:off + pp_size]
+        try:
+            passphrase = pp_bytes.decode("utf-8")
+        except Exception:
+            passphrase = ""
+        return mnemonic, passphrase
+
+    return None

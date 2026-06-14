@@ -142,14 +142,17 @@ class ToolsKeycardMenuView(View):
             return gate
 
         # "Switch instance" is only meaningful when the card holds more
-        # than one instance. Resolve the count from the session cache,
-        # enumerating the card's instances once (authoritative GET STATUS,
-        # no PIN) when unknown. ``None`` means "couldn't determine" — keep
-        # the entry visible; only hide it when we're confident there's
-        # exactly one.
+        # than one instance. Read the count from the session cache; when
+        # unknown, take a FAST, unauthenticated probe (cleartext applet
+        # SELECTs) for the visibility decision only — never the heavy GP/ISD
+        # GET STATUS handshake, which was the menu-entry stall and fails
+        # slowly on non-default ISD keys. The authoritative count is filled
+        # in lazily by the Switch / Manage Instances flows. ``None`` means
+        # "couldn't determine" — keep the entry visible; only hide it when a
+        # prior authoritative pass cached exactly one.
         count = self.controller.keycard_instance_count
         if count is None:
-            count = _count_keycard_instances(self.controller)
+            count = _probe_keycard_instance_count(self.controller)
             if count is not None:
                 self.controller.keycard_instance_count = count
 
@@ -1885,6 +1888,7 @@ class ToolsKeycardImportSeedView(View):
     SCAN = ButtonOption("Scan SeedQR")
     TYPE_WORDS = ButtonOption("Type words")
     HEX = ButtonOption("Import hex (NGRAVE)")
+    FROM_SEEDKEEPER = ButtonOption("From SeedKeeper")
     CONFIRM = ButtonOption("Push to card")
     SKIP_PASSPHRASE = ButtonOption("No passphrase")
     SET_PASSPHRASE = ButtonOption("Set passphrase")
@@ -1912,7 +1916,7 @@ class ToolsKeycardImportSeedView(View):
             return Destination(BackStackView)
 
         # 2. Pick the input method.
-        button_data = [self.SCAN, self.TYPE_WORDS, self.HEX]
+        button_data = [self.SCAN, self.TYPE_WORDS, self.HEX, self.FROM_SEEDKEEPER]
         choice_ret = self.run_screen(
             ButtonListScreen,
             title=_("Source"),
@@ -1923,6 +1927,12 @@ class ToolsKeycardImportSeedView(View):
         if choice_ret == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
         choice = button_data[choice_ret]
+
+        # "From SeedKeeper" needs a physical card swap (Keycard out,
+        # Seedkeeper in, read, swap back), so it can't run inside this
+        # single-view push pipeline — hand off to the dedicated chain.
+        if choice == self.FROM_SEEDKEEPER:
+            return Destination(ToolsKeycardImportSeedkeeperInsertView)
 
         num_words = None
         if choice == self.TYPE_WORDS:
@@ -2250,6 +2260,371 @@ def _backup_error_retry(view, title: str, body: str) -> Destination:
         _wipe_pending_setup_state(view.controller)
         return Destination(ToolsKeycardMenuView, clear_history=True)
     return Destination(ToolsKeycardSeedkeeperDestChooserView)
+
+
+# ---------------------------------------------------------------------------
+# Import chain: SeedKeeper -> Keycard
+#
+# The reverse of the create-time Seedkeeper backup: read a seed that lives on
+# a Seedkeeper applet and LOAD_KEY it into the active Keycard instance. Reached
+# from "This instance > Import seed > From SeedKeeper". Because the two applets
+# are usually on *different* physical cards (the iOS Seedkeeper app crashes
+# when both share a card — see CLAUDE.md), the flow swaps cards:
+#
+#   Insert (Seedkeeper) -> Select+decode+stash -> Reinsert (Keycard) -> Push
+#
+# Threat model: between the Select step and LOAD_KEY the decoded mnemonic +
+# passphrase live in ``controller.pending_keycard_mnemonic`` /
+# ``pending_keycard_passphrase`` (same store + MainMenu wipe backstop the
+# backup chain uses), surviving the physical swap. Wiped on success and on
+# every user-driven exit; a *transient* failure (PIN cancel / no card / save
+# error) keeps it so the user can retry without re-reading the Seedkeeper.
+# Seizure mid-import is a likely seed compromise (wipe is best-effort).
+# ---------------------------------------------------------------------------
+
+
+def _import_seedkeeper_error_retry(view, title: str, body: str) -> Destination:
+    """Transient push failure → Retry / Cancel, WITHOUT losing the seed.
+
+    Mirrors :func:`_backup_error_retry` but for the SeedKeeper→Keycard import:
+    Retry returns to the Keycard re-insert step (so a wrong/absent card can be
+    fixed); only an explicit Cancel (back) wipes and exits to the Keycard menu.
+    """
+    ret = view.run_screen(
+        WarningScreen,
+        title=title,
+        status_headline=None,
+        text=body[:120],
+        show_back_button=True,  # back == Cancel
+        button_data=[ButtonOption("Retry")],
+    )
+    if ret == RET_CODE__BACK_BUTTON:
+        _wipe_pending_setup_state(view.controller)
+        return Destination(ToolsKeycardMenuView, clear_history=True)
+    return Destination(ToolsKeycardImportSeedkeeperReinsertView)
+
+
+class ToolsKeycardImportSeedkeeperInsertView(View):
+    """Step 1: prompt to swap the Seedkeeper card in, then probe for it.
+
+    No seed is in memory yet, so backing out here simply returns — nothing
+    to wipe.
+    """
+
+    CONTINUE = ButtonOption("Continue")
+    RETRY = ButtonOption("Retry")
+
+    def run(self):
+        from seedsigner.helpers.card_probe import probe_installed_applets
+        from seedsigner.helpers.keycard.reader import (
+            release_other_smartcard_holders,
+        )
+
+        ret = self.run_screen(
+            WarningScreen,
+            title=_("Insert Seedkeeper"),
+            status_headline=None,
+            text=_("Remove Keycard, insert\nyour Seedkeeper card."),
+            show_back_button=True,
+            button_data=[self.CONTINUE],
+        )
+        if ret == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        try:
+            release_other_smartcard_holders(self.controller)
+        except Exception:
+            pass
+        try:
+            state = probe_installed_applets(self.controller)
+        except Exception:
+            state = None
+
+        if not (state and getattr(state, "seedkeeper_installed", False)):
+            retry = self.run_screen(
+                WarningScreen,
+                title=_("No Seedkeeper"),
+                status_headline=None,
+                text=_("No Seedkeeper card\ndetected."),
+                show_back_button=True,
+                button_data=[self.RETRY],
+            )
+            if retry == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+            return Destination(ToolsKeycardImportSeedkeeperInsertView)
+        return Destination(ToolsKeycardImportSeedkeeperSelectView)
+
+
+class ToolsKeycardImportSeedkeeperSelectView(View):
+    """Step 2: pick a seed secret on the Seedkeeper, decode + validate it,
+    and stash it for the swap back to the Keycard.
+
+    Lists only plaintext-exportable BIP39 / Masterseed-v2 secrets, exports the
+    chosen one, decodes it via
+    :func:`seedkeeper_utils.decode_seedkeeper_seed_secret`, validates the
+    checksum *while the Seedkeeper is still in the reader*, then stores the
+    per-word mnemonic copies + passphrase on the controller. Any non-success
+    exit leaves nothing committed (or wipes what was).
+    """
+
+    def run(self):
+        from seedsigner.gui.screens.screen import LoadingScreenThread
+        from seedsigner.helpers import seedkeeper_utils
+        from pysatochip.JCconstants import (
+            SEEDKEEPER_DIC_TYPE, SEEDKEEPER_DIC_EXPORT_RIGHTS,
+        )
+
+        connector = seedkeeper_utils.init_satochip(
+            self, init_card_filter=["seedkeeper"],
+        )
+        if not connector:
+            # PIN cancelled / unreachable — init_satochip surfaced why.
+            return Destination(BackStackView)
+
+        loading = LoadingScreenThread(text=_("Listing Secrets\n\n\n\n\n\n"))
+        loading.start()
+        try:
+            headers = connector.seedkeeper_list_secret_headers()
+        except Exception as exc:
+            loading.stop()
+            logger.exception("Seedkeeper list failed")
+            return _error_destination(_("Seedkeeper error"), str(exc)[:100])
+        loading.stop()
+
+        # Keep only plaintext-exportable seed secrets we can re-import.
+        choices = []  # (sid, subtype, label)
+        for h in headers:
+            stype = SEEDKEEPER_DIC_TYPE.get(h.get("type"), "")
+            export_ok = (
+                SEEDKEEPER_DIC_EXPORT_RIGHTS.get(h.get("export_rights"))
+                == "Plaintext export allowed"
+            )
+            is_seed = ("mnemonic" in stype) or (
+                stype == "Masterseed" and h.get("subtype") == 0x01
+            )
+            if export_ok and is_seed:
+                label = h.get("label") or _("Unnamed seed")
+                choices.append((h["id"], h.get("subtype", 0), label))
+
+        if not choices:
+            return _error_destination(
+                _("No seeds"),
+                _("No exportable seed on\nthis Seedkeeper."),
+            )
+
+        button_data = [ButtonOption(c[2]) for c in choices]
+        sel = self.run_screen(
+            ButtonListScreen,
+            title=_("Pick seed"),
+            is_button_text_centered=False,
+            button_data=button_data,
+            show_back_button=True,
+        )
+        if sel == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        sid, subtype, _label = choices[sel]
+        loading = LoadingScreenThread(text=_("Loading Secret\n\n\n\n\n\n"))
+        loading.start()
+        try:
+            secret_dict = connector.seedkeeper_export_secret(sid, None)
+        except Exception as exc:
+            loading.stop()
+            logger.exception("Seedkeeper export failed")
+            return _error_destination(_("Export failed"), str(exc)[:100])
+        loading.stop()
+
+        try:
+            decoded = seedkeeper_utils.decode_seedkeeper_seed_secret(
+                secret_dict, subtype,
+            )
+        except Exception:
+            logger.exception("Seedkeeper seed decode failed")
+            decoded = None
+        if not decoded:
+            return _error_destination(
+                _("Unsupported"),
+                _("Not a BIP39 seed we\ncan import."),
+            )
+        mnemonic_str, passphrase_str = decoded
+
+        # Validate (length + checksum) before committing to the card swap, so
+        # a corrupt record fails while the Seedkeeper is still in the reader.
+        from embit import bip39
+        words = ["".join(w) for w in mnemonic_str.split()]
+        try:
+            wipe_string(mnemonic_str)
+        except Exception:
+            pass
+        if len(words) not in (12, 15, 18, 21, 24):
+            for w in words:
+                try:
+                    wipe_string(w)
+                except Exception:
+                    pass
+            return _error_destination(_("Invalid seed"), _("Bad mnemonic length."))
+        try:
+            bip39.mnemonic_to_seed(" ".join(words), password="")
+        except Exception:
+            for w in words:
+                try:
+                    wipe_string(w)
+                except Exception:
+                    pass
+            return _error_destination(_("Invalid seed"), _("Checksum failed."))
+
+        # Stash for the swap back to the Keycard. ``words`` are independent
+        # allocations (never WORDLIST refs); the passphrase goes into a
+        # wipeable bytearray.
+        self.controller.pending_keycard_mnemonic = words
+        self.controller.pending_keycard_passphrase = bytearray(
+            passphrase_str.encode("utf-8"),
+        )
+        try:
+            wipe_string(passphrase_str)
+        except Exception:
+            pass
+        return Destination(ToolsKeycardImportSeedkeeperReinsertView)
+
+
+class ToolsKeycardImportSeedkeeperReinsertView(View):
+    """Step 3: swap the Keycard back in before pushing the seed.
+
+    The seed is already stashed, so a user-driven cancel here wipes it; a
+    transient "no Keycard" keeps it for a retry.
+    """
+
+    CONTINUE = ButtonOption("Continue")
+    RETRY = ButtonOption("Retry")
+
+    def run(self):
+        from seedsigner.helpers.card_probe import probe_installed_applets
+        from seedsigner.helpers.keycard.reader import (
+            release_other_smartcard_holders,
+        )
+
+        ret = self.run_screen(
+            WarningScreen,
+            title=_("Insert Keycard"),
+            status_headline=None,
+            text=_("Remove Seedkeeper,\ninsert the Keycard."),
+            show_back_button=True,
+            button_data=[self.CONTINUE],
+        )
+        if ret == RET_CODE__BACK_BUTTON:
+            _wipe_pending_setup_state(self.controller)
+            return Destination(ToolsKeycardMenuView, clear_history=True)
+
+        try:
+            release_other_smartcard_holders(self.controller)
+        except Exception:
+            pass
+        try:
+            state = probe_installed_applets(self.controller)
+        except Exception:
+            state = None
+
+        if not (state and getattr(state, "keycard_installed", False)):
+            retry = self.run_screen(
+                WarningScreen,
+                title=_("No Keycard"),
+                status_headline=None,
+                text=_("No Keycard detected."),
+                show_back_button=True,
+                button_data=[self.RETRY],
+            )
+            if retry == RET_CODE__BACK_BUTTON:
+                _wipe_pending_setup_state(self.controller)
+                return Destination(ToolsKeycardMenuView, clear_history=True)
+            return Destination(ToolsKeycardImportSeedkeeperReinsertView)
+        return Destination(ToolsKeycardImportSeedkeeperPushView)
+
+
+class ToolsKeycardImportSeedkeeperPushView(View):
+    """Step 4: derive the seed, confirm the fingerprint, LOAD_KEY, wipe.
+
+    Reads the mnemonic the Select step stashed and derives with the passphrase
+    that was stored alongside it on the Seedkeeper, so the restored Keycard
+    reproduces exactly the backed-up wallet.
+    """
+
+    CONFIRM = ButtonOption("Push to card")
+
+    def run(self):
+        from seedsigner.helpers.keycard import (
+            KeycardCardChangedError, KeycardPinPromptCancelled,
+        )
+        from embit import bip39, bip32
+
+        mnemonic = self.controller.pending_keycard_mnemonic
+        passphrase_buf = self.controller.pending_keycard_passphrase
+        if not mnemonic or passphrase_buf is None:
+            return Destination(BackStackView)
+
+        seed64 = bytearray(64)
+        try:
+            try:
+                passphrase = passphrase_buf.decode("utf-8")
+            except Exception:
+                passphrase = ""
+            mnemonic_str = " ".join(mnemonic)
+            try:
+                derived = bip39.mnemonic_to_seed(mnemonic_str, password=passphrase)
+                seed64[:] = derived
+                root = bip32.HDKey.from_seed(bytes(seed64))
+                fingerprint = root.my_fingerprint.hex()
+            except Exception as exc:
+                logger.exception("seed derivation failed")
+                _wipe_pending_setup_state(self.controller)
+                return _error_destination(_("Derive failed"), str(exc))
+
+            confirm_ret = self.run_screen(
+                WarningScreen,
+                title=_("Push?"),
+                status_headline=None,
+                text=_("Master fp:\n{}\nVerify before push.").format(fingerprint),
+                show_back_button=True,
+                button_data=[self.CONFIRM],
+            )
+            if confirm_ret == RET_CODE__BACK_BUTTON:
+                _wipe_pending_setup_state(self.controller)
+                return Destination(ToolsKeycardMenuView, clear_history=True)
+
+            try:
+                client, _unused = _open_unlocked_session_cached_or_prompt(
+                    self, require_key=False,
+                )
+                client.load_bip39_seed(bytes(seed64))
+            except KeycardPinPromptCancelled:
+                # Transient: keep the seed, let the user retry the push.
+                return _import_seedkeeper_error_retry(
+                    self, _("PIN needed"), _("Enter the Keycard PIN\nto push."),
+                )
+            except KeycardCardChangedError:
+                return Destination(ToolsKeycardPairView)
+            except Exception as exc:
+                logger.exception("LOAD_KEY failed")
+                # No-card / reader hiccup → keep the seed and offer a retry
+                # so the user never has to re-read the Seedkeeper.
+                title, body = classify_card_error(exc, default_title=_("Push failed"))
+                return _import_seedkeeper_error_retry(self, title, body)
+
+            # On-card master key changed — cached View-wallets addresses for
+            # this AID were derived from the old key.
+            _invalidate_wallets_cache_for_active_aid(self.controller)
+            _wipe_pending_setup_state(self.controller)
+
+            self.run_screen(
+                LargeIconStatusScreen,
+                title=_("Wallet imported"),
+                status_headline=None,
+                text=_("Master fp:\n{}").format(fingerprint),
+                show_back_button=False,
+                button_data=[ButtonOption("OK")],
+            )
+            return Destination(ToolsKeycardMenuView, clear_history=True)
+        finally:
+            _wipe_bytearray(seed64)
 
 
 class ToolsKeycardSetupChooseSeedView(View):
@@ -3791,6 +4166,57 @@ def _count_keycard_instances(controller):
                 pass
 
 
+def _probe_keycard_instance_count(controller):
+    """Fast, unauthenticated upper-confidence probe of the instance count,
+    used ONLY for the top-menu "Switch instance" visibility decision.
+
+    Unlike :func:`_count_keycard_instances` (authoritative GET STATUS over the
+    GP/ISD SCP02 channel), this sends a handful of *cleartext* applet SELECTs
+    via :func:`probe_keycard_instance_aids` — no ISD handshake. That handshake
+    was the menu-entry stall, and on a card whose ISD keys are not the
+    GlobalPlatform defaults it fails *slowly*; cleartext applet SELECTs don't
+    touch the ISD, so they stay fast regardless.
+
+    Instance AIDs are ``KEYCARD_APPLET_AID + slot`` in a 9- or 10-byte form,
+    and SELECT-by-DF-name partial-matches the bare prefix and both forms, so a
+    single instance yields several hits. We therefore count **distinct slot
+    bytes** (each AID's trailing byte), not raw hits.
+
+    Returns the count only when it is **>= 2** — the one case where the probe
+    alone can safely justify *showing* "Switch instance". For 0/1 hits or any
+    error it returns ``None`` so the caller keeps the entry visible: the probe
+    only knows the standard slot range, so it must never be trusted to conclude
+    "exactly one" and hide the only way to switch (see the note in
+    :func:`_count_keycard_instances`). Hiding happens solely on an
+    authoritative ``1`` cached by the Switch / Manage Instances flows.
+    """
+    from seedsigner.helpers.keycard.global_platform import (
+        probe_keycard_instance_aids,
+    )
+    from seedsigner.helpers.keycard.reader import (
+        release_other_smartcard_holders, wait_for_card,
+    )
+
+    connection = None
+    try:
+        release_other_smartcard_holders(controller)
+        connection = wait_for_card(timeout_s=5.0)
+        hits = probe_keycard_instance_aids(connection)
+        # Drop the bare-prefix hit (no slot byte; only ever a partial match)
+        # and collapse the remaining hits to distinct slot bytes.
+        slots = {h[-1] for h in hits if len(h) > len(KEYCARD_APPLET_AID)}
+        return len(slots) if len(slots) >= 2 else None
+    except Exception:
+        logger.debug("keycard instance probe-count failed", exc_info=True)
+        return None
+    finally:
+        if connection is not None:
+            try:
+                connection.disconnect()
+            except Exception:
+                pass
+
+
 def _instances_or_probe_fallback(controller, instances, connection):
     """If GET STATUS came back empty, probe likely AIDs via cleartext SELECT.
 
@@ -4978,12 +5404,16 @@ class ToolsKeycardBtcExportXpubView(View):
             # No card → subtle toast + back one step (no scanned data here).
             return _no_card_toast_or_error(self, exc, default_title=_("Export failed"))
 
-        # Brief headline + path before showing the QR.
+        # Explain what this export is and what to do with it before
+        # showing the QR (the descriptor QR itself carries the fingerprint
+        # and BIP-84 account path, so they don't need to crowd this screen).
         self.run_screen(
             LargeIconStatusScreen,
-            title=_("BIP-84 xpub"),
+            title=_("Connect wallet"),
             status_headline=None,
-            text=_("fp {}\n{}").format(xpub_export.master_fingerprint.hex(), DEFAULT_BTC_ACCOUNT_PATH),
+            # TRANSLATOR_NOTE: BIP-84 is a Bitcoin standard; Sparrow / Specter
+            # are watch-only wallet apps that import this account.
+            text=_("Watch-only account (BIP-84).\nScan into Sparrow / Specter."),
             show_back_button=False,
             button_data=[ButtonOption("Show QR")],
         )
