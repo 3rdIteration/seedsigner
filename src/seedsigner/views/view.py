@@ -439,10 +439,10 @@ _SEEDKEEPER_STORAGE_OPTIONS = [
 ]
 _SEEDKEEPER_STORAGE_DEFAULT_INDEX = 1  # 8 KB
 
-# The Keycard-3.2.cap ships three applets (signing, NDEF, Cash). We
-# only create the signing instance: the others are unused by the wallets
-# and tools we target, and skipping them keeps the EEPROM footprint
-# small. (The mere presence of the Keycard *package* on a card already
+# The Keycard-3.2.cap ships four applets (signing, NDEF, Cash, Ident).
+# We only create the signing instance: the others are unused by the
+# wallets and tools we target, and skipping them keeps the EEPROM
+# footprint small. (The mere presence of the Keycard *package* on a card already
 # crashes the SeedKeeper iOS app's reveal flow even without the NDEF
 # instance — `CardsInstallAppletView` warns about that incompat below.)
 # The signing instance AID (A0000008040001010101) must stay exact —

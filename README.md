@@ -55,8 +55,9 @@ Creation is the **only** moment a seed can exist outside the secure element, so 
 | **Generate (on-card)** | The card's TRNG — indices travel once over the secure channel, the host derives the seed, loads it back, wipes everything | No |
 | **Show + import** | Host CSPRNG — you copy the words to paper, pass a confirmation quiz, then the card is loaded | Yes (paper backup) |
 | **Import existing** | Yours — SeedQR / Compact SeedQR / plain mnemonic QR / 4-letter QR, typed words (12/15/18/21/24), or NGRAVE "Perfect Key" hex | n/a |
+| **Restore from SeedKeeper** | A seed you backed up earlier — read off a SeedKeeper applet, decoded on-device and loaded into the Keycard (the stored passphrase is preserved, so the wallet matches exactly) | No (read from card) |
 
-Optional BIP-39 passphrase on import. At creation time you can mirror the seed to a **SeedKeeper backup** (on the same card, a second card, or both) — after that window closes, the seed is sealed: there is deliberately no way to ever read it back.
+Optional BIP-39 passphrase on import. At creation time you can mirror the seed to a **SeedKeeper backup** (on the same card, a second card, or both) — after that window closes, the seed is sealed: there is deliberately no way to read it back *off the Keycard*. The **Restore from SeedKeeper** path is the reverse bridge — it later loads a SeedKeeper-stored backup into a fresh Keycard instance (it reads the SeedKeeper, never the Keycard). Since the two applets usually sit on separate cards, that flow walks you through the card swap.
 
 ### SeedKeeper vault
 
@@ -91,7 +92,16 @@ Optional mode (off by default) that boots the device into a playable Snake game 
 * Waveshare 1.3" 240×240 LCD hat (320×240 displays are also supported).
 * Pi-compatible camera (OV5647-class).
 * **A smartcard interface** — any PC/SC-capable reader (USB CCID readers, the SEC1210 UART hat, PN532 over I2C…). See [docs/smartcard_support_installation.md](./docs/smartcard_support_installation.md) and [docs/io_config.md](./docs/io_config.md).
-* **Cards:** a retail Status Keycard, or any compatible JavaCard running the Keycard applet 3.x (cards initialised with `keycard-cli` / `keycard-shell` work as-is). For the vault/backup features: a Satochip SeedKeeper (or a blank JavaCard — the firmware can install the applet).
+* **Cards:** a retail Status Keycard, or any compatible JavaCard. The device can **load the Keycard applet onto a blank card itself** — it ships the official `keycard_v3.2.cap` and runs the GlobalPlatform install for you — as well as the Satochip **SeedKeeper** applet for the vault/backup features. Cards already initialised with `keycard-cli` / `keycard-shell` work as-is.
+
+### Card compatibility — signing vs. management
+
+Two different channels are at play, with two different requirements:
+
+* **Signing / everyday use** (sign tx & messages, export xpub / addresses, view wallets) runs over the **applet's own secure channel** and works on **any card you can pair with** — including retail cards and cards with rotated GlobalPlatform keys.
+* **Applet / instance management** (create · delete · switch instances, install / uninstall applets, the *whole-card* factory reset) runs over **GlobalPlatform SCP02** and currently needs the card's **default ISD keys** (`404142…4F`). Retail Status Keycards and DIY cards normally still have them. A card whose ISD keys were rotated/locked will refuse these ops, and the device shows **"GP keys not default"**. Cards with custom ISD keys aren't supported yet.
+
+So a card initialised elsewhere signs fine here even if you can't *manage* it from the device. (A blocked PIN is still recoverable on any card via **Unblock PIN (PUK)**, which uses the applet channel — no ISD keys needed.)
 
 Runs on [our SeedSigner OS fork](https://github.com/ethermachine/seedsigner-os) (Buildroot): small, reproducible images; the microSD can be removed after boot.
 
