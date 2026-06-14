@@ -7607,6 +7607,8 @@ class ToolsGPGImportKeyToCardView(View):
                 self.loading_screen = None
 
     def _clear_cached_admin_pin(self):
+        from seedsigner.helpers import seedkeeper_utils
+
         controller = getattr(self, "controller", None)
         if not controller:
             return
