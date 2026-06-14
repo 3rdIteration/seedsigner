@@ -8,7 +8,15 @@ from seedsigner.helpers.qr import QR
 
 
 def run_encode_decode_test(entropy: bytes, mnemonic_length, qr_type):
-    """ Helper method to re-run multiple variations of the same encode/decode test """
+    """ Helper method to re-run multiple variations of the same encode/decode test.
+
+        When decoding COMPACTSEEDQR, set AMBIGUOUS_QR_COMPACT preference so that
+        data which also parses as encrypted QR (due to kef.unwrap accepting random
+        byte patterns) resolves to CompactSeedQR instead of prompting for ambiguity.
+    """
+    from seedsigner.models.settings import Settings
+    from seedsigner.models.settings_definition import SettingsConstants
+
     mnemonic = bip39.mnemonic_from_bytes(entropy).split()
     assert len(mnemonic) == mnemonic_length
 
@@ -18,6 +26,13 @@ def run_encode_decode_test(entropy: bytes, mnemonic_length, qr_type):
         e = CompactSeedQrEncoder(mnemonic=mnemonic)
 
     data = e.next_part()
+
+    if qr_type == QRType.SEED__COMPACTSEEDQR:
+        Settings.get_instance().set_value(
+            SettingsConstants.SETTING__AMBIGUOUS_QR,
+            SettingsConstants.AMBIGUOUS_QR_COMPACT,
+            save=False,
+        )
 
     decoder = DecodeQR()
     status = decoder.add_data(data)

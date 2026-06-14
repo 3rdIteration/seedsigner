@@ -1059,7 +1059,7 @@ class TestSatochipExportXpubDetailsView(BaseTest):
             "seedsigner.helpers.seedkeeper_utils.init_satochip",
             return_value=mock_connector,
         ):
-            with patch("seedsigner.views.tools_views.HDKey") as MockHDKey:
+            with patch("seedsigner.views.smartcard_views.HDKey") as MockHDKey:
                 hdkey = Mock()
                 hdkey.my_fingerprint = b"\x00\x00\x00\x00"
                 MockHDKey.from_string.return_value = hdkey

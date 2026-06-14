@@ -195,6 +195,9 @@ def test_dice_entry_routes_diceware_to_separator_and_caches(monkeypatch):
             return "1234123412341234"
 
     monkeypatch.setattr(tools_views, "ToolsDiceEntropyEntryScreen", FakeDiceEntryScreen)
+    # Also patch in the module that directly imports it (split from tools_views)
+    import seedsigner.views.password_generator_views as pgv
+    monkeypatch.setattr(pgv, "ToolsDiceEntropyEntryScreen", FakeDiceEntryScreen)
     monkeypatch.setattr(tools_views.mnemonic_generation, "dice_entropy_is_sufficient", lambda _ret: True)
 
     dest = tools_views.ToolsPasswordDiceEntryView.run(view)

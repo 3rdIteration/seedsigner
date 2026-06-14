@@ -166,6 +166,60 @@ For changes touching entropy, seed generation/import, key derivation, signing, o
 - Document threat assumptions and failure modes in code comments or PR notes.
 - Call out any remaining risk tradeoffs explicitly.
 
+## Testing guidance
+
+### Running the test suite
+
+After making changes, always run the full pytest suite to verify nothing is broken:
+
+```bash
+pytest tests/ -v --tb=short
+```
+
+Tests run directly against `src/` (configured via `[tool.pytest.ini_options].pythonpath = ["src"]` in `pyproject.toml`). **No `pip install .` required.**
+
+For a quick smoke test of just the affected area, target specific files:
+
+```bash
+pytest tests/test_<relevant_file>.py -v --tb=short
+```
+
+### Expected platform-dependent failures
+
+Some tests are skipped or fail on certain platforms due to missing hardware or dependencies. These are **expected** and not regressions:
+
+| Test file | Platform(s) affected | Reason |
+|-----------|---------------------|--------|
+| `test_flows_seed.py` (satochip tests) | All (without hardware) | Requires pysatochip + physical Satochip device |
+| `test_flows_tools.py` (satochip test) | All (without hardware) | Requires pysatochip + physical Satochip device |
+
+When reviewing test results, focus on **new** failures compared to the baseline. The current baseline on a typical development machine with GPG installed is **716 passing, 134 skipped, 7 failing** (satochip tests only — requires physical hardware). On machines without GPG, `test_gpg_message.py` and `test_gpg_time_update.py` will additionally fail — this is expected.
+
+**Note:** The `_msys2_path()` helper in `test_gpg_message.py` auto-detects whether the installed GPG binary is from Git-for-Windows (needs MSYS2-style `/c/...` paths) or native Windows Gpg4win (needs native `C:\...` paths). If GPG tests fail on Windows with a "no writable keyring found" error, check that `_msys2_path()` correctly identifies the installed GPG variant.
+
+### Star import caveat for underscore-prefixed names
+
+The codebase uses `from .module import *` extensively in `tools_views.py` to re-export symbols from split modules (`gpg_views`, `smartcard_views`, `password_generator_views`). **Python's star imports silently skip all names starting with `_`** unless `__all__` is defined.
+
+When moving or renaming an underscore-prefixed function:
+- If it's imported by tests or other modules via `tools_views._func_name`, add an explicit re-export in `tools_views.py`:
+  ```python
+  from .source_module import _func_name as _func_name_alias
+  # Re-export for backward compatibility
+  _func_name = _func_name_alias  # noqa: F401 W0603
+  ```
+- If tests monkeypatch a function in `tools_views` but the actual code runs in another module, patch **both** modules:
+  ```python
+  monkeypatch.setattr(tools_views, "_func", fake_func)
+  monkeypatch.setattr(source_module, "_func", fake_func)
+  ```
+
+### Adding new tests
+
+- Place new test files in `tests/` with prefix `test_`.
+- Use the same patterns as existing tests: `object.__new__(ViewClass)` to create view instances without triggering `__init__`, then monkeypatch dependencies.
+- For views that reference symbols from split modules, ensure those symbols are accessible through `tools_views` (see star import caveat above).
+
 ## Unicode and locale-safe string handling
 
 SeedSigner must produce identical results regardless of the host locale or input method. Follow these rules when processing user-supplied or externally-sourced strings:

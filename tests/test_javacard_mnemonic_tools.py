@@ -1,6 +1,6 @@
 import pytest
 
-from seedsigner.views import tools_views
+from seedsigner.views import tools_views, smartcard_views
 
 
 def test_normalize_bip39_mnemonic_text_normalizes_whitespace():
@@ -143,7 +143,9 @@ def test_javacard_load_mnemonic_decodes_sdiy_blob(monkeypatch):
         "_get_specter_card_api",
         lambda: (FakeCard, FakeMemoryCardApplet, FakeSecureApplet),
     )
+    monkeypatch.setattr(smartcard_views, "_get_specter_card_api", lambda: (FakeCard, FakeMemoryCardApplet, FakeSecureApplet))
     monkeypatch.setattr(tools_views, "_unlock_specter_card_if_needed", lambda *a, **k: True)
+    monkeypatch.setattr(smartcard_views, "_unlock_specter_card_if_needed", lambda *a, **k: True)
 
     view = object.__new__(tools_views.ToolsJavacardLoadMnemonicView)
     view.controller = FakeController()
@@ -220,6 +222,11 @@ def test_specter_change_pin_prompts_current_then_new_only(monkeypatch):
 
     monkeypatch.setattr(
         tools_views,
+        "_get_specter_card_api",
+        lambda: (FakeCard, FakeMemoryCardApplet, FakeSecureApplet),
+    )
+    monkeypatch.setattr(
+        smartcard_views,
         "_get_specter_card_api",
         lambda: (FakeCard, FakeMemoryCardApplet, FakeSecureApplet),
     )
@@ -451,12 +458,19 @@ def test_javacard_save_mnemonic_prompts_before_overwrite_and_can_abort(monkeypat
 
     monkeypatch.setattr(screen_module, "LoadingScreenThread", FakeLoadingScreenThread)
     monkeypatch.setattr(tools_views, "Seed", FakeSeed)
+    monkeypatch.setattr(smartcard_views, "Seed", FakeSeed)
     monkeypatch.setattr(
         tools_views,
         "_get_specter_card_api",
         lambda: (FakeCard, FakeMemoryCardApplet, FakeSecureApplet),
     )
+    monkeypatch.setattr(
+        smartcard_views,
+        "_get_specter_card_api",
+        lambda: (FakeCard, FakeMemoryCardApplet, FakeSecureApplet),
+    )
     monkeypatch.setattr(tools_views, "_unlock_specter_card_if_needed", lambda *a, **k: True)
+    monkeypatch.setattr(smartcard_views, "_unlock_specter_card_if_needed", lambda *a, **k: True)
 
     prompts = []
 
@@ -552,12 +566,19 @@ def test_javacard_save_mnemonic_overwrite_can_continue(monkeypatch):
 
     monkeypatch.setattr(screen_module, "LoadingScreenThread", FakeLoadingScreenThread)
     monkeypatch.setattr(tools_views, "Seed", FakeSeed)
+    monkeypatch.setattr(smartcard_views, "Seed", FakeSeed)
     monkeypatch.setattr(
         tools_views,
         "_get_specter_card_api",
         lambda: (FakeCard, FakeMemoryCardApplet, FakeSecureApplet),
     )
+    monkeypatch.setattr(
+        smartcard_views,
+        "_get_specter_card_api",
+        lambda: (FakeCard, FakeMemoryCardApplet, FakeSecureApplet),
+    )
     monkeypatch.setattr(tools_views, "_unlock_specter_card_if_needed", lambda *a, **k: True)
+    monkeypatch.setattr(smartcard_views, "_unlock_specter_card_if_needed", lambda *a, **k: True)
 
     def fake_run_screen(*args, **kwargs):
         if kwargs.get("title") == "Overwrite Data?":
@@ -660,8 +681,11 @@ def test_javacard_save_mnemonic_empty_card_prompts_create_pin(monkeypatch):
 
     monkeypatch.setattr(screen_module, "LoadingScreenThread", FakeLoadingScreenThread)
     monkeypatch.setattr(tools_views, "Seed", FakeSeed)
+    monkeypatch.setattr(smartcard_views, "Seed", FakeSeed)
     monkeypatch.setattr(tools_views, "_get_specter_card_api", fake_get_api)
+    monkeypatch.setattr(smartcard_views, "_get_specter_card_api", fake_get_api)
     monkeypatch.setattr(tools_views, "_unlock_specter_card_if_needed", lambda *a, **k: True)
+    monkeypatch.setattr(smartcard_views, "_unlock_specter_card_if_needed", lambda *a, **k: True)
 
     prompt_titles = []
 
@@ -671,6 +695,7 @@ def test_javacard_save_mnemonic_empty_card_prompts_create_pin(monkeypatch):
         return "1234"
 
     monkeypatch.setattr(tools_views, "_prompt_specter_new_pin", fake_prompt)
+    monkeypatch.setattr(smartcard_views, "_prompt_specter_new_pin", fake_prompt)
 
     view = object.__new__(tools_views.ToolsJavacardSaveMnemonicView)
     view.controller = FakeController()
@@ -761,9 +786,17 @@ def test_javacard_save_mnemonic_empty_card_create_pin_cancel_aborts(monkeypatch)
         "_get_specter_card_api",
         lambda: (FakeCard, FakeMemoryCardApplet, FakeSecureApplet),
     )
+    monkeypatch.setattr(
+        smartcard_views,
+        "_get_specter_card_api",
+        lambda: (FakeCard, FakeMemoryCardApplet, FakeSecureApplet),
+    )
     monkeypatch.setattr(tools_views, "Seed", FakeSeed)
+    monkeypatch.setattr(smartcard_views, "Seed", FakeSeed)
     monkeypatch.setattr(tools_views, "_unlock_specter_card_if_needed", lambda *a, **k: True)
+    monkeypatch.setattr(smartcard_views, "_unlock_specter_card_if_needed", lambda *a, **k: True)
     monkeypatch.setattr(tools_views, "_prompt_specter_new_pin", lambda *a, **k: None)
+    monkeypatch.setattr(smartcard_views, "_prompt_specter_new_pin", lambda *a, **k: None)
 
     import seedsigner.gui.screens.screen as screen_module
     monkeypatch.setattr(screen_module, "LoadingScreenThread", FakeLoadingScreenThread)
