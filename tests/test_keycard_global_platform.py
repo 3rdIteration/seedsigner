@@ -231,7 +231,7 @@ class TestScp02HandshakeRoundTrip(unittest.TestCase):
 
     def test_card_cryptogram_mismatch_raises(self):
         from seedsigner.helpers.keycard.global_platform import (
-            GpProtocolError, GpSecureChannel,
+            GpAuthError, GpProtocolError, GpSecureChannel,
         )
 
         class _BadCard(_MockCard):
@@ -246,8 +246,15 @@ class TestScp02HandshakeRoundTrip(unittest.TestCase):
 
         gp = GpSecureChannel(_BadCard())
         gp.select_isd()
+        # A cryptogram mismatch means the card's ISD keys aren't the defaults
+        # we authenticate with -> the dedicated GpAuthError (a GpProtocolError
+        # subclass) so the view layer can show a "GP keys not default" message.
         with self.assertRaises(GpProtocolError):
             gp.open(host_challenge=b"\x01\x02\x03\x04\x05\x06\x07\x08")
+        gp2 = GpSecureChannel(_BadCard())
+        gp2.select_isd()
+        with self.assertRaises(GpAuthError):
+            gp2.open(host_challenge=b"\x01\x02\x03\x04\x05\x06\x07\x08")
 
     def test_subsequent_command_carries_cmac(self):
         """After open(), transmit_protected sends an APDU with an 8-byte

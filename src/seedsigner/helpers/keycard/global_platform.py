@@ -94,6 +94,19 @@ class GpProtocolError(Exception):
     """Raised when an APDU response is not what SCP02 expects."""
 
 
+class GpAuthError(GpProtocolError):
+    """SCP02 mutual authentication failed — almost always because the card's
+    GlobalPlatform ISD keys are **not** the well-known defaults this module
+    authenticates with.
+
+    Raised when the card cryptogram does not match the one we derive from the
+    default keys: the card proved it holds a *different* ISD secret, so every
+    authenticated GP command (INSTALL / DELETE / GET STATUS) would be refused.
+    Note this is purely a *management*-channel failure: signing / export run
+    over the applet's own secure channel and are unaffected.
+    """
+
+
 # ---------------------------------------------------------------------------
 # Crypto primitives
 # ---------------------------------------------------------------------------
@@ -328,10 +341,14 @@ class GpSecureChannel:
         s_dek = derive_session_key(self._k_dek, KDF_CONST_S_DEK, sequence)
 
         # Verify the card cryptogram before sending anything authenticated.
+        # A mismatch here means the card's ISD keys are not the defaults we
+        # used to derive the session keys — surface that as GpAuthError so the
+        # view layer can tell the user "this card needs default GP keys"
+        # instead of a generic protocol error.
         expected_card = cryptogram(s_enc,
                                    [host_challenge, sequence, card_challenge])
         if expected_card != card_cryptogram_received:
-            raise GpProtocolError("card cryptogram mismatch")
+            raise GpAuthError("card cryptogram mismatch (non-default ISD keys?)")
 
         host_cryptogram = cryptogram(s_enc,
                                      [sequence, card_challenge, host_challenge])

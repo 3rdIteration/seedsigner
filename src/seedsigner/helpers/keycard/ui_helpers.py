@@ -650,12 +650,19 @@ def classify_card_error(
         KeycardNotInitialisedError,
     )
     from seedsigner.helpers.keycard.commands import APDUError
+    from seedsigner.helpers.keycard.global_platform import GpAuthError
     from seedsigner.helpers.keycard.pairing_storage import PairingStorageError
     from seedsigner.helpers.keycard.reader import NoCardError, NoReaderError
     from seedsigner.helpers.keycard.secure_channel import SecureChannelError
 
     if isinstance(exc, NoReaderError):
         return (_("No reader"), _("Connect a card reader\nand retry."))
+    if isinstance(exc, GpAuthError):
+        # Card's GlobalPlatform ISD keys are not the defaults — applet/
+        # instance management (install/delete/enumerate) can't authenticate.
+        # Signing/export are unaffected (they use the applet channel).
+        return (_("GP keys not default"),
+                _("Applet management needs the\ncard's default GP keys."))
     if isinstance(exc, NoCardError):
         return (_("No card"), _("Insert a card and retry."))
     if isinstance(exc, KeycardCardChangedError):

@@ -635,6 +635,19 @@ class TestClassifyCardError(unittest.TestCase):
         title, _ = classify_card_error(APDUError(0x6985, "Conditions of use"))
         self.assertEqual(title, "Card refused")
 
+    def test_gp_auth_error_points_at_default_keys(self):
+        """A GpAuthError (non-default ISD keys) gets a dedicated, actionable
+        message rather than a raw protocol error — applet management needs the
+        card's default GP keys (signing is unaffected)."""
+        from seedsigner.helpers.keycard.global_platform import GpAuthError
+        from seedsigner.helpers.keycard.ui_helpers import classify_card_error
+        title, body = classify_card_error(
+            GpAuthError("card cryptogram mismatch"),
+            default_title="Install failed",
+        )
+        self.assertEqual(title, "GP keys not default")
+        self.assertIn("default GP keys", body)
+
     def test_apdu_wrong_pin_with_tries_left(self):
         from seedsigner.helpers.keycard.commands import APDUError
         from seedsigner.helpers.keycard.ui_helpers import classify_card_error
