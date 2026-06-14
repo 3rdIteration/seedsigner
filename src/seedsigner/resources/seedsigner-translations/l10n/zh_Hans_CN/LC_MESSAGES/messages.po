@@ -3765,3 +3765,75 @@ msgstr "插入源 Seedkeeper 卡以复制机密，然后按继续。"
 
 msgid "Insert the destination Seedkeeper card to copy secrets to, then press Continue."
 msgstr "插入目标 Seedkeeper 卡以复制机密，然后按继续。"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Connect wallet"
+msgstr "连接钱包"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Watch-only account (BIP-84).\nScan into Sparrow / Specter."
+msgstr "仅观察账户（BIP-84）。\n扫描到 Sparrow / Specter。"
+
+#: src/seedsigner/helpers/keycard/ui_helpers.py
+msgid "GP keys not default"
+msgstr "GP 密钥非默认"
+
+#: src/seedsigner/helpers/keycard/ui_helpers.py
+msgid "Applet management needs the\ncard's default GP keys."
+msgstr "管理小程序需要卡片的\n默认 GP 密钥。"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "From SeedKeeper"
+msgstr "从 SeedKeeper"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Seedkeeper error"
+msgstr "Seedkeeper 错误"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "No seeds"
+msgstr "无种子"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "No exportable seed on\nthis Seedkeeper."
+msgstr "此 Seedkeeper 上\n没有可导出的种子。"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Pick seed"
+msgstr "选择种子"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Not a BIP39 seed we\ncan import."
+msgstr "不是可导入的\nBIP39 种子。"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Bad mnemonic length."
+msgstr "助记词长度无效。"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Checksum failed."
+msgstr "校验和失败。"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Insert Keycard"
+msgstr "插入 Keycard"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Remove Seedkeeper,\ninsert the Keycard."
+msgstr "取出 Seedkeeper，\n插入 Keycard。"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "No Keycard detected."
+msgstr "未检测到 Keycard。"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "PIN needed"
+msgstr "需要 PIN"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Enter the Keycard PIN\nto push."
+msgstr "输入 Keycard PIN\n以推送。"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Unnamed seed"
+msgstr "未命名种子"

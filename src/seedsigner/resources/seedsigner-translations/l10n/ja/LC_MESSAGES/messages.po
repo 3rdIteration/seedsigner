@@ -3766,3 +3766,75 @@ msgstr "コピー元のSeedkeeperカードを挿入し、続行を押してく�
 
 msgid "Insert the destination Seedkeeper card to copy secrets to, then press Continue."
 msgstr "コピー先のSeedkeeperカードを挿入し、続行を押してください。"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Connect wallet"
+msgstr "ウォレットを接続"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Watch-only account (BIP-84).\nScan into Sparrow / Specter."
+msgstr "監視専用アカウント（BIP-84）。\nSparrow / Specter で読み取る。"
+
+#: src/seedsigner/helpers/keycard/ui_helpers.py
+msgid "GP keys not default"
+msgstr "GP鍵が初期値でない"
+
+#: src/seedsigner/helpers/keycard/ui_helpers.py
+msgid "Applet management needs the\ncard's default GP keys."
+msgstr "アプレット管理にはカードの\n初期GP鍵が必要です。"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "From SeedKeeper"
+msgstr "SeedKeeperから"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Seedkeeper error"
+msgstr "Seedkeeperエラー"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "No seeds"
+msgstr "シードなし"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "No exportable seed on\nthis Seedkeeper."
+msgstr "このSeedkeeperに\nエクスポート可能なシードがありません。"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Pick seed"
+msgstr "シードを選択"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Not a BIP39 seed we\ncan import."
+msgstr "インポート可能な\nBIP39シードではありません。"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Bad mnemonic length."
+msgstr "ニーモニックの\n長さが不正です。"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Checksum failed."
+msgstr "チェックサムが\n一致しません。"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Insert Keycard"
+msgstr "Keycardを挿入"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Remove Seedkeeper,\ninsert the Keycard."
+msgstr "Seedkeeperを取り外し、\nKeycardを挿入してください。"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "No Keycard detected."
+msgstr "Keycardが\n検出されません。"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "PIN needed"
+msgstr "PINが必要"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Enter the Keycard PIN\nto push."
+msgstr "送信するにはKeycardの\nPINを入力してください。"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Unnamed seed"
+msgstr "名前なしシード"

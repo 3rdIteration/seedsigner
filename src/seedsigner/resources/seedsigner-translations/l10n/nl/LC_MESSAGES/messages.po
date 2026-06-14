@@ -3796,3 +3796,75 @@ msgstr "Plaats de bron-Seedkeeper-kaart om geheimen te kopiëren en druk op Door
 
 msgid "Insert the destination Seedkeeper card to copy secrets to, then press Continue."
 msgstr "Plaats de doel-Seedkeeper-kaart om geheimen naar te kopiëren en druk op Doorgaan."
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Connect wallet"
+msgstr "Wallet verbinden"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Watch-only account (BIP-84).\nScan into Sparrow / Specter."
+msgstr "Alleen-lezen account (BIP-84).\nScan in Sparrow / Specter."
+
+#: src/seedsigner/helpers/keycard/ui_helpers.py
+msgid "GP keys not default"
+msgstr "GP-sleutels niet standaard"
+
+#: src/seedsigner/helpers/keycard/ui_helpers.py
+msgid "Applet management needs the\ncard's default GP keys."
+msgstr "Appletbeheer vereist de\nstandaard GP-sleutels."
+
+#: src/seedsigner/views/keycard_views.py
+msgid "From SeedKeeper"
+msgstr "Vanaf SeedKeeper"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Seedkeeper error"
+msgstr "Seedkeeper-fout"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "No seeds"
+msgstr "Geen seeds"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "No exportable seed on\nthis Seedkeeper."
+msgstr "Geen exporteerbare seed\nop deze Seedkeeper."
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Pick seed"
+msgstr "Kies seed"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Not a BIP39 seed we\ncan import."
+msgstr "Geen importeerbare\nBIP39-seed."
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Bad mnemonic length."
+msgstr "Ongeldige\nmnemonic-lengte."
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Checksum failed."
+msgstr "Controlesom mislukt."
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Insert Keycard"
+msgstr "Keycard plaatsen"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Remove Seedkeeper,\ninsert the Keycard."
+msgstr "Verwijder Seedkeeper,\nplaats de Keycard."
+
+#: src/seedsigner/views/keycard_views.py
+msgid "No Keycard detected."
+msgstr "Geen Keycard gedetecteerd."
+
+#: src/seedsigner/views/keycard_views.py
+msgid "PIN needed"
+msgstr "PIN vereist"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Enter the Keycard PIN\nto push."
+msgstr "Voer de Keycard-PIN in\nom te versturen."
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Unnamed seed"
+msgstr "Naamloze seed"

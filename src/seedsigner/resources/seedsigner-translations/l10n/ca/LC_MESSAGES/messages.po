@@ -3799,3 +3799,75 @@ msgstr "Insereix la targeta Seedkeeper d'origen per copiar-ne els secrets i prem
 
 msgid "Insert the destination Seedkeeper card to copy secrets to, then press Continue."
 msgstr "Insereix la targeta Seedkeeper de destinació on copiar els secrets i prem Continua."
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Connect wallet"
+msgstr "Connecta la cartera"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Watch-only account (BIP-84).\nScan into Sparrow / Specter."
+msgstr "Compte de només lectura (BIP-84).\nEscaneja a Sparrow / Specter."
+
+#: src/seedsigner/helpers/keycard/ui_helpers.py
+msgid "GP keys not default"
+msgstr "Claus GP no per defecte"
+
+#: src/seedsigner/helpers/keycard/ui_helpers.py
+msgid "Applet management needs the\ncard's default GP keys."
+msgstr "Gestionar applets exigeix\nles claus GP per defecte."
+
+#: src/seedsigner/views/keycard_views.py
+msgid "From SeedKeeper"
+msgstr "Des de SeedKeeper"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Seedkeeper error"
+msgstr "Error de Seedkeeper"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "No seeds"
+msgstr "Cap llavor"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "No exportable seed on\nthis Seedkeeper."
+msgstr "Cap llavor exportable\nen aquest Seedkeeper."
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Pick seed"
+msgstr "Tria llavor"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Not a BIP39 seed we\ncan import."
+msgstr "No és una llavor BIP39\nque puguem importar."
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Bad mnemonic length."
+msgstr "Longitud de mnemònic\nincorrecta."
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Checksum failed."
+msgstr "Suma de verificació\nfallida."
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Insert Keycard"
+msgstr "Insereix la Keycard"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Remove Seedkeeper,\ninsert the Keycard."
+msgstr "Treu el Seedkeeper,\ninsereix la Keycard."
+
+#: src/seedsigner/views/keycard_views.py
+msgid "No Keycard detected."
+msgstr "Cap Keycard detectada."
+
+#: src/seedsigner/views/keycard_views.py
+msgid "PIN needed"
+msgstr "Cal el PIN"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Enter the Keycard PIN\nto push."
+msgstr "Introdueix el PIN de la\nKeycard per enviar."
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Unnamed seed"
+msgstr "Llavor sense nom"
