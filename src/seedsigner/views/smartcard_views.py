@@ -2,6 +2,8 @@
     Smartcard Views
 ****************************************************************************"""
 import base64
+import binascii
+from binascii import hexlify, unhexlify
 import hashlib
 import hmac
 import json
@@ -14,6 +16,7 @@ import time
 from pathlib import Path
 
 from embit.bip32 import HDKey
+from embit.descriptor import Descriptor
 from gettext import gettext as _
 
 from seedsigner.gui.components import (
@@ -32,8 +35,8 @@ from seedsigner.gui.screens import (
 )
 from seedsigner.gui.screens.screen import ButtonOption
 from seedsigner.hardware.microsd import MicroSD
-from seedsigner.helpers import seedkeeper_utils
-from seedsigner.models.seed import Seed, InvalidSeedException
+from seedsigner.helpers import embit_utils, seedkeeper_utils
+from seedsigner.models.seed import InvalidSeedException, Seed, XprvSeed
 from seedsigner.models.settings_definition import SettingsConstants
 
 try:
@@ -44,7 +47,7 @@ except ImportError:
     pass
 
 from .view import View, Destination, BackStackView, MainMenuView
-from .seed_views import SeedFinalizeView
+from .seed_views import SeedExportXpubVerifyAddressView, SeedFinalizeView
 
 logger = logging.getLogger(__name__)
 
