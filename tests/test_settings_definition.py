@@ -1,5 +1,5 @@
 import os
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from base import BaseTest
 from seedsigner.models.settings_definition import SettingsConstants, SettingsDefinition

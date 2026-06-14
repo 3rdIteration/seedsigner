@@ -30,6 +30,8 @@ import time
 import array
 import errno
 
+from dataclasses import dataclass
+
 from PIL import Image
 from PIL import ImageDraw
 
@@ -133,7 +135,8 @@ def image_to_data(image):
     return arr.tobytes()
 
 
-class ILI9341(object):
+@dataclass
+class ILI9341(BaseDisplayDriver):
     """Representation of an ILI9341 TFT LCD."""
 
     def __init__(self, width=ILI9341_TFTWIDTH, height=ILI9341_TFTHEIGHT, rotation=90):
@@ -329,15 +332,15 @@ class ILI9341(object):
         self.reset()
         self._init()
 
-    def invert(self, state: bool = True):
+    def invert(self, enabled: bool = True):
         """Sets display inversion to the specified state. If not provided, state
         is True, which inverts the display. If state is False, the display turns
         back into normal mode."""
-        if state:
+        if enabled:
             self.command(ILI9341_INVON)
         else:
             self.command(ILI9341_INVOFF)
-        self.inverted = state
+        self.inverted = enabled
         return self
 
     def set_window(self, x0=0, y0=0, x1=None, y1=None):

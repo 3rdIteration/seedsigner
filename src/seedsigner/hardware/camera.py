@@ -14,6 +14,11 @@ from seedsigner.models.settings import Settings, SettingsConstants
 from seedsigner.models.singleton import Singleton
 
 
+class CameraConnectionError(Exception):
+    """Raised when the camera cannot be accessed (hardware connection error)."""
+    pass
+
+
 class Camera(Singleton):
     """Singleton wrapper around PiCamera/OpenCV camera access."""
 

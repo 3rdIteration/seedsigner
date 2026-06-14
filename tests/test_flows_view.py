@@ -7,9 +7,11 @@ from unittest.mock import patch
 from base import FlowTest, FlowStep
 
 from seedsigner.gui.screens.screen import RET_CODE__POWER_BUTTON
+from seedsigner.hardware.camera import CameraConnectionError
 from seedsigner.models.settings import Settings
+from seedsigner.views.scan_views import ScanView
 from seedsigner.views.tools_views import ToolsCalcFinalWordNumWordsView, ToolsMenuView
-from seedsigner.views.view import MainMenuView, NotYetImplementedView, PowerOptionsView, PowerOffView, RestartView, UnhandledExceptionView, View
+from seedsigner.views.view import CameraConnectionErrorView, MainMenuView, NotYetImplementedView, PowerOptionsView, PowerOffView, RestartView, UnhandledExceptionView, View
 
 
 
@@ -31,7 +33,6 @@ class TestViewFlows(FlowTest):
         """
         Basic flow from MainMenuView to PowerOffView
         """
-        Settings.HOSTNAME = Settings.SEEDSIGNER_OS
         self.run_sequence([
             FlowStep(MainMenuView, screen_return_value=RET_CODE__POWER_BUTTON),
             FlowStep(PowerOptionsView, button_data_selection=PowerOptionsView.POWER_OFF),

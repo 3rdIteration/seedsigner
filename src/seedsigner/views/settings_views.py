@@ -380,6 +380,16 @@ class SettingsEntryUpdateSelectionView(View):
 
         if destination:
             return destination
+        
+        # If this selection view was opened from a blocking flow (e.g. RemoveMicroSDWarningView),
+        # prevent navigation away until the setting actually changes. If it hasn't changed,
+        # return to the blocking view so it can re-evaluate the state.
+        if self.blocking_view:
+            current_value = self.settings.get_value(self.settings_entry.attr_name)
+            if current_value == initial_value:
+                return Destination(self.blocking_view, clear_history=True)
+            elif self.unblocking_view:
+                return Destination(self.unblocking_view, clear_history=True)
 
         # All selects stay in place; re-initialize where in the list we left off
         self.selected_button = ret_value

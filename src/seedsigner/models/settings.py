@@ -281,6 +281,7 @@ class Settings(Singleton):
                 values = [value]
             else:
                 values = value
+
             for v in values:
                 if v not in [opt[0] for opt in settings_entry.selection_options]:
                     if settings_entry.attr_name == SettingsConstants.SETTING__PERSISTENT_SETTINGS and v == SettingsConstants.OPTION__ENABLED:

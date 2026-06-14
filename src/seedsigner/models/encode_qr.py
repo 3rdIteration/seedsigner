@@ -1,13 +1,10 @@
 import math
-
-from embit import bip32
-from embit.networks import NETWORKS
 from binascii import hexlify
 from dataclasses import dataclass
 from typing import List
+
 from embit import bip32
 from embit.networks import NETWORKS
-from embit.psbt import PSBT
 from seedsigner.helpers.ur2.ur_encoder import UREncoder
 from seedsigner.helpers.ur2.ur import UR
 from seedsigner.helpers.ur2.cbor_lite import CBOREncoder
@@ -236,7 +233,11 @@ class BaseSimpleAnimatedQREncoder(BaseQrEncoder):
 
 
 @dataclass
-class SpecterXPubQrEncoder(BaseSimpleAnimatedQREncoder, BaseXpubQrEncoder):
+class SpecterLegacyXPubQrEncoder(BaseSimpleAnimatedQREncoder, BaseXpubQrEncoder):
+    """
+    Legacy "pXofY" format. Included here for compatibility with much older versions of
+    Specter Desktop. Can probably eventually be removed.
+    """
     @property
     def qr_max_fragment_size(self):
         density_mapping = {
@@ -342,6 +343,9 @@ class UrXpubQrEncoder(BaseFountainQrEncoder, BaseXpubQrEncoder):
             return Keypath(arr, self.root.my_fingerprint, len(arr))
             
         origin = derivation_to_keypath(self.derivation)
+
+        # Implemts "use_info" member on HDKey class (urtypes/crypto packages-libs folder) construct, 
+        # so if working on TESTNET, Xpub can be exported accordingly. Default case, MAINNET: None value.
         self.use_info = None if self.network == SettingsConstants.MAINNET else CoinInfo(type=None, network=1)
         
         self.ur_hdkey = HDKey({ 'key': self.xpub.key.serialize(),
@@ -427,3 +431,7 @@ class GenericStringEncoder(BaseStaticQrEncoder):
 
     def next_part(self):
         return self.generic_string
+
+
+# Backward-compat alias for test suite / external code that still references the old name
+SpecterXPubQrEncoder = SpecterLegacyXPubQrEncoder  # noqa: F401 W0603

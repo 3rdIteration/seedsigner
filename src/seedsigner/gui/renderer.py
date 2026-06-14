@@ -28,6 +28,11 @@ class Renderer(ConfigurableSingleton):
     _display_size = (0, 0)
 
 
+    @property
+    def is_screenshot_generator(self) -> bool:
+        return False
+
+
     @classmethod
     def configure_instance(cls):
         # Instantiate the one and only Renderer instance

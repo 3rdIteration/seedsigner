@@ -14,6 +14,7 @@ ALL_DISPLAY_TYPES = [
     DISPLAY_TYPE__DESKTOP,
 ]
 
+    
 
 class DisplayDriver:
     """Wrapper that abstracts away specific display implementations."""
@@ -21,9 +22,8 @@ class DisplayDriver:
     def __init__(self, display_type: str = DISPLAY_TYPE__ST7789, width: int = None, height: int = None):
         if display_type not in ALL_DISPLAY_TYPES:
             raise ValueError(f"Invalid display type: {display_type}")
-        self.display_type = display_type
 
-        if self.display_type == DISPLAY_TYPE__ST7789:
+        if display_type == DISPLAY_TYPE__ST7789:
             if width not in [240, 320] or height != 240:
                 raise ValueError("ST7789 display only supports 240x240 or 320x240 resolutions")
 
@@ -31,11 +31,11 @@ class DisplayDriver:
                 # TODO: For now the original ST7789 driver has to be used for 240x240.
                 # The mpy version below renders incorrectly (almost like each row of pixels
                 # is one pixel short, so the entire screen exhibits a diagonal skew).
-                from seedsigner.hardware.displays.ST7789 import ST7789
-                self.display = ST7789()
+                from seedsigner.hardware.displays.ST7789 import ST7789 as original_ST7789
+                return original_ST7789(_width=width, _height=height)
 
             elif width == 320:
-                from seedsigner.hardware.displays.st7789_mpy import ST7789
+                from seedsigner.hardware.displays.st7789_mpy import ST7789 as mpy_ST7789
                 # Have to swap width and height; screen is natively 240x320
                 self.display = ST7789(width=height, height=width)
         
@@ -47,10 +47,11 @@ class DisplayDriver:
 
         elif self.display_type == DISPLAY_TYPE__ILI9341:
             from seedsigner.hardware.displays.ili9341 import ILI9341
-            self.display = ILI9341()
-            self.display.begin()
+            display = ILI9341(_width=width, _height=height)
+            display.begin()
+            return display
         
-        elif self.display_type == DISPLAY_TYPE__ILI9486:
+        elif display_type == DISPLAY_TYPE__ILI9486:
             # TODO: improve performance of ili9486 driver
             raise Exception("ILI9486 display not implemented yet")
 

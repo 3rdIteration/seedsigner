@@ -166,9 +166,9 @@ First find your current `nameserver`:
 sudo cat /etc/resolv.conf
 ```
 
-This is the address of your local machine that is connected to your SeedSigner via usb (or it'll be the wifi router's address if you're using a Raspi with wifi and are keeping it enabled for `ssh` access).
+This is the address of your local machine that is connected to your SeedSigner via USB (or it'll be the WiFi router's address if you're using a Raspberry Pi with WiFi and are keeping it enabled for `ssh` access).
 
-Set a static ip: `sudo nano /etc/dhcpcd.conf` and add to the end:
+Set a static IP: `sudo nano /etc/dhcpcd.conf` and add to the end:
 ```
 interface usb0
 static ip_address=192.168.1.200/24
@@ -176,16 +176,16 @@ static routers=192.168.1.254
 static domain_name_servers=192.168.1.254
 ```
 
-* `interface` will be `usb0` for usb connections; `wlan0` for wifi.
-* `static ip_address` is the ip address you want the SeedSigner to use. It should match the `nameserver` ip you found above for all but the last part of the ip (note: the `/24` should always be included as-is).
-* `static routers` should be your `nameserver` ip.
-* `static domain_name_servers` should also be the `nameserver` ip.
+* `interface` will be `usb0` for USB connections; `wlan0` for WiFi.
+* `static ip_address` is the IP address you want the SeedSigner to use. It should match the `nameserver` IP you found above for all but the last part of the IP (note: the `/24` should always be included as-is).
+* `static routers` should be your `nameserver` IP.
+* `static domain_name_servers` should also be the `nameserver` IP.
 
 `CTRL-X` and `y` to save changes.
 
-After your next reboot, access this SeedSigner using its new static ip:
+After your next reboot, access this SeedSigner using its new static IP:
 ```bash
-# Use the static ip you set above:
+# Use the static IP you set above:
 ssh pi@192.168.1.200
 
 # But the hostname will still work, too:
@@ -203,7 +203,7 @@ host seedsigner.local
  User pi
  LogLevel QUIET
 
-# Set this to the static ip you set above:
+# Set this to the static IP you set above:
 host 192.168.1.200
  StrictHostKeyChecking no
  UserKnownHostsFile /dev/null
@@ -213,7 +213,7 @@ host 192.168.1.200
 
 The first entry prevents warnings for the default `pi@seedsigner.local` connections.
 
-The second entry does the same for a specific static ip; you'll want this if you configure all your SeedSigners to use the same static ip.
+The second entry does the same for a specific static IP; you'll want this if you configure all your SeedSigners to use the same static IP.
 
 `CTRL-X` and `y` to save changes.
 
@@ -225,7 +225,7 @@ run `ssh-copy-id` with the same values that you connect via `ssh`:
 ```bash
 ssh-copy-id pi@seedsigner.local
 
-# or if you're connecting over static ip, something like:
+# or if you're connecting over static IP, something like:
 ssh-copy-id pi@192.168.1.200
 ```
 
@@ -234,8 +234,8 @@ You'll be prompted to enter the password to complete it.
 _Note: If you don't have any ssh keys on your local machine, you'll need to create a set with `ssh-keygen -t ed25519 -C "your_email@example.com"`. Then try running `ssh-copy-id` again._
 
 
-## Disable wifi/Bluetooth when using other Raspi boards
-If you plan to use your installation on a Raspberry Pi that is not a Zero version 1.3, but rather on a Raspberry Pi that has WiFi and Bluetooth capabilities, it is a good idea to disable the following WiFi & Bluetooth, as well as other relevant services (assuming you are not creating this installation for testing/development purposes). Enter the followiing commands to disable WiFi, Bluetooth, & other relevant services:
+## Disable WiFi/Bluetooth when using other Raspberry Pi boards
+If you plan to use your installation on a Raspberry Pi that is not a Zero version 1.3, but rather on a Raspberry Pi that has WiFi and Bluetooth capabilities, it is a good idea to disable the following WiFi & Bluetooth, as well as other relevant services (assuming you are not creating this installation for testing/development purposes). Enter the following commands to disable WiFi, Bluetooth, & other relevant services:
 ```bash
 sudo systemctl disable bluetooth.service
 sudo systemctl disable wpa_supplicant.service

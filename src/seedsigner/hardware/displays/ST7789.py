@@ -9,8 +9,10 @@ from seedsigner.hardware.io_config import get_hardware_pin_mapping
 
 logger = logging.getLogger(__name__)
 
-class ST7789(object):
-    """class for ST7789  240*240 1.3inch OLED displays."""
+@dataclass
+class ST7789(BaseDisplayDriver):
+    """
+    The original SeedSigner display driver.
 
     def __init__(self):
         self.width = 240
@@ -165,7 +167,7 @@ class ST7789(object):
         self._spi.transfer([val])
 
     def init(self):
-        """Initialize dispaly"""    
+        """Initialize display"""    
         self.reset()
 
         self.command(0x36)
