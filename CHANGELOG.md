@@ -4,6 +4,15 @@ All notable changes to this project are documented in this file.
 
 Entries marked "(SeedSigner official)" originate from the upstream project, "(smartcard fork)" indicates releases inherited from 3rdIteration/seedsigner, and "(Keycard edition)" indicates releases of this fork.
 
+## 2026-06-15 - alpha 0.1.2 (Keycard edition)
+
+- SeedKeeper → Keycard import: new "From SeedKeeper" source restores a seed stored on a SeedKeeper applet into a Keycard instance (the stored passphrase is preserved; guided card swap since the two applets usually sit on separate cards)
+- Faster Keycard menu: dropped the heavy GlobalPlatform/ISD enumeration from the `Tools > Keycard` entry path — fixes a multi-second stall on already-used cards. "Switch instance" visibility now uses a light, unauthenticated AID probe; card detection and removal are unchanged
+- Clearer error when a card's GlobalPlatform ISD keys are not the defaults ("GP keys not default"), so applet/instance management fails legibly instead of hanging
+- Bitcoin "Connect software wallet" first screen reworded to explain the watch-only BIP-84 account export
+- Docs: clarified that the device installs the Keycard applet onto a blank card (loads the official `keycard_v3.2.cap` and creates the signing instance); new README card-compatibility section (signing works on any pairable card, management needs the default GP ISD keys); corrected the applet-count note (the official cap ships four applets: signing, NDEF, Cash, Ident)
+- All new UI strings translated across the 10 locales
+
 ## 2026-06-10 - Keycard-Edition-B1 (Keycard edition)
 
 First release of the Keycard-only fork ("SeedSigner — Keycard Edition"). Keys never live on the device — they live on a PIN-protected smartcard.
