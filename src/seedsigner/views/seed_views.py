@@ -2352,7 +2352,7 @@ class SeedExportXpubCustomDerivationView(View):
             return Destination(ToolsAddressExplorerAddressTypeView, view_args=dict(seed_num=self.seed_num, script_type=self.script_type, custom_derivation=custom_derivation))
 
         return Destination(
-            SeedExportXpubQRFormatView,
+            SeedExportXpubCoordinatorView,
             view_args={
                 "seed_num": self.seed_num,
                 "sig_type": self.sig_type,
