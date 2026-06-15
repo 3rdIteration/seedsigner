@@ -6,6 +6,7 @@ import random
 import sys
 import time
 import shamir_mnemonic
+from dataclasses import dataclass
 from unittest.mock import Mock, patch, MagicMock
 
 from embit import compact
