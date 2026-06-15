@@ -610,7 +610,7 @@ class TestSeedFlows(FlowTest):
             FlowStep(seed_views.SeedTranscribeSeedQRFormatView, screen_return_value=0),
             FlowStep(seed_views.SeedTranscribeSeedQRWarningView),
             FlowStep(seed_views.SeedTranscribeSeedQRWholeQRView, is_redirect=True),
-            FlowStep(seed_views.SeedTranscribeSeedQRZoomedInView, is_redirect=True),  # Live interactive screens are a bit weird; not sure why `is_redirect` is necessary here
+            FlowStep(seed_views.SeedTranscribeSeedQRZoomedInView),
             FlowStep(seed_views.SeedTranscribeSeedQRConfirmQRPromptView, button_data_selection=seed_views.SeedTranscribeSeedQRConfirmQRPromptView.SCAN),
 
             # Intentionally "scan" the wrong SeedQR
@@ -637,7 +637,9 @@ class TestSeedFlows(FlowTest):
             FlowStep(seed_views.SeedOptionsView),
         ])
 
-    def test_transcribe_seedqr_screensaver_startable_status(self):
+    @patch("seedsigner.gui.screens.seed_screens.SeedTranscribeSeedQRZoomedInScreen", autospec=True)
+    @patch("seedsigner.gui.screens.seed_screens.SeedTranscribeSeedQRWholeQRScreen", autospec=True)
+    def test_transcribe_seedqr_screensaver_startable_status(self, mock_whole_screen: Callable, mock_zoomed_in_screen: Callable):
         """
             The controller should return False for screensaver startable status when SeedTranscribeSeedQRZoomedInView
             is active.
@@ -650,8 +652,8 @@ class TestSeedFlows(FlowTest):
         self.run_sequence(
             initial_destination_view_args={'num_modules': 21, 'seed_num': 0, 'seedqr_format': 'seed__seedqr'},
             sequence=[
-                FlowStep(seed_views.SeedTranscribeSeedQRWholeQRView),
-                FlowStep(seed_views.SeedTranscribeSeedQRZoomedInView, is_redirect=True),  # Live interactive screens are a bit weird; not sure why `is_redirect` is necessary here
+                FlowStep(seed_views.SeedTranscribeSeedQRWholeQRView, is_redirect=True),
+                FlowStep(seed_views.SeedTranscribeSeedQRZoomedInView),
         ])
 
         assert self.controller.is_screensaver_start_allowed == False

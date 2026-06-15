@@ -298,7 +298,13 @@ class Settings(Singleton):
                 if isinstance(value, list):
                     raise InvalidSettingsQRData(f"Setting {settings_entry.attr_name} does not accept multiple values")
                 if value not in valid_values:
-                    raise InvalidSettingsQRData(f"Unrecognized option '{value}' for setting {settings_entry.attr_name}")
+                    # Special case: trying to enable Persistent Settings when DISABLED is the
+                    # only option allowed (because the SD card is not inserted). Silently set
+                    # to DISABLED instead of raising an error.
+                    if settings_entry.attr_name == SettingsConstants.SETTING__PERSISTENT_SETTINGS and value == SettingsConstants.OPTION__ENABLED:
+                        value = SettingsConstants.OPTION__DISABLED
+                    else:
+                        raise InvalidSettingsQRData(f"Unrecognized option '{value}' for setting {settings_entry.attr_name}")
             else:
                 # For multiselect, validate each option
                 if isinstance(value, list):
