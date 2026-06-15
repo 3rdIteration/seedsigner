@@ -913,6 +913,16 @@ class SettingsDefinition:
                       default_value=SettingsConstants.OPTION__ENABLED),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
+                      attr_name=SettingsConstants.SETTING__XPUB_QR_FORMAT,
+                      abbreviated_name="xpub_qr",
+                      display_name=_mft("xpub QR format"),
+                      type=SettingsConstants.TYPE__MULTISELECT,
+                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
+                      selection_options=SettingsConstants.ALL_XPUB_QR_FORMATS,
+                      default_value=[SettingsConstants.XPUB_QR_FORMAT__UR_CRYPTO_ACCOUNT,
+                                     SettingsConstants.XPUB_QR_FORMAT__STATIC]),
+
+        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
                       attr_name=SettingsConstants.SETTING__ACCOUNT_PROMPT,
                       display_name=_mft("BIP32 account prompt"),
                       visibility=SettingsConstants.VISIBILITY__ADVANCED,

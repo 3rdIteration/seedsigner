@@ -251,6 +251,10 @@ class Settings(Singleton):
         for entry in data.split()[split_index:]:
             abbreviated_name, value = entry.split("=")
 
+            # Check for empty values
+            if not value:
+                raise InvalidSettingsQRData(f"Empty value for setting: {abbreviated_name}")
+
             # Parse multi-value settings; numeric-ize where needed.
             # Use try/except instead of .isdigit() because .isdigit() returns
             # True for non-ASCII Unicode digit characters (e.g. superscript ¹²³)
@@ -276,25 +280,38 @@ class Settings(Singleton):
                 logger.info(f"Ignoring unrecognized attribute: {abbreviated_name}")
                 continue
 
-            # Validate value(s) against SettingsDefinition's valid options
-            if type(value) is not list:
-                values = [value]
-            else:
-                values = value
+            # Skip validation for settings without predefined options (free-text fields)
+            if settings_entry.selection_options is None:
+                updated_settings[settings_entry.attr_name] = value
+                continue
 
-            for v in values:
-                if v not in [opt[0] for opt in settings_entry.selection_options]:
-                    if settings_entry.attr_name == SettingsConstants.SETTING__PERSISTENT_SETTINGS and v == SettingsConstants.OPTION__ENABLED:
-                        # Special case: trying to enable Persistent Settings when 
-                        # DISABLED is the only option allowed (because the SD card is not
-                        # inserted. Explicitly set to DISABLED.
-                        value = SettingsConstants.OPTION__DISABLED
-                        break
-                    raise InvalidSettingsQRData(f"""{abbreviated_name} = '{v}' is not valid""")
+            # Build a list of valid option values (handling both tuple and plain formats)
+            valid_values = []
+            for opt in settings_entry.selection_options:
+                if isinstance(opt, tuple):
+                    valid_values.append(opt[0])
+                else:
+                    valid_values.append(opt)
+
+            # Validate that the value is a recognized option for this setting
+            if settings_entry.type != SettingsConstants.TYPE__MULTISELECT:
+                if isinstance(value, list):
+                    raise InvalidSettingsQRData(f"Setting {settings_entry.attr_name} does not accept multiple values")
+                if value not in valid_values:
+                    raise InvalidSettingsQRData(f"Unrecognized option '{value}' for setting {settings_entry.attr_name}")
+            else:
+                # For multiselect, validate each option
+                if isinstance(value, list):
+                    for v in value:
+                        if v not in valid_values:
+                            raise InvalidSettingsQRData(f"Unrecognized option '{v}' for setting {settings_entry.attr_name}")
+                else:
+                    raise InvalidSettingsQRData(f"Setting {settings_entry.attr_name} requires multiple values")
 
             updated_settings[settings_entry.attr_name] = value
 
-        return (config_name, updated_settings)
+        return config_name, updated_settings
+
 
 
     def __str__(self):
@@ -403,17 +420,30 @@ class Settings(Singleton):
             else:
                 # Clean the incoming data, if necessary
                 if entry.type == SettingsConstants.TYPE__MULTISELECT:
-                    if type(new_settings[entry.attr_name]) == str:
+                    incoming = new_settings[entry.attr_name]
+                    
+                    # Handle None or non-list/non-string values as "restore defaults"
+                    if incoming is None:
+                        new_settings[entry.attr_name] = entry.default_value
+                    elif type(incoming) == str:
                         # Break comma-separated SettingsQR input into List
-                        new_settings[entry.attr_name] = new_settings[entry.attr_name].split(",")
+                        new_settings[entry.attr_name] = incoming.split(",")
                     elif (
-                        type(new_settings[entry.attr_name]) == list
-                        and len(new_settings[entry.attr_name]) > 0
-                        and type(new_settings[entry.attr_name][0]) in [list, tuple]
+                        type(incoming) == list
+                        and len(incoming) > 0
+                        and type(incoming[0]) in [list, tuple]
                     ):
                         # Handle legacy format where selection options were stored
                         # as [value, label] pairs.
-                        new_settings[entry.attr_name] = [v[0] for v in new_settings[entry.attr_name]]
+                        new_settings[entry.attr_name] = [v[0] for v in incoming]
+                    
+                    # Treat empty/invalid multiselect values as "restore defaults"
+                    current_val = new_settings[entry.attr_name]
+                    if isinstance(current_val, list):
+                        # Filter out empty strings and whitespace-only entries
+                        cleaned = [v for v in current_val if isinstance(v, str) is False or v.strip()]
+                        if len(cleaned) == 0:
+                            new_settings[entry.attr_name] = entry.default_value
 
         for key, value in new_settings.items():
             # Defer writing to disk until all values have been applied to avoid

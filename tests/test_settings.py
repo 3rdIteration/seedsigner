@@ -57,6 +57,9 @@ class TestSettings(BaseTest):
         assert settings.get_value(SettingsConstants.SETTING__QR_DENSITY) != SettingsConstants.DENSITY__HIGH
         settings.set_value(SettingsConstants.SETTING__QR_DENSITY, SettingsConstants.DENSITY__HIGH)
 
+        # Flush the deferred save to disk immediately
+        settings.flush_save()
+
         # Hold on to the settings.json content
         settings_json = None
         with open(Settings.SETTINGS_FILENAME) as settings_file:
@@ -83,6 +86,9 @@ class TestSettings(BaseTest):
 
         # Enable persistent settings to write settings.json to disk
         settings.set_value(SettingsConstants.SETTING__PERSISTENT_SETTINGS, SettingsConstants.OPTION__ENABLED)
+
+        # Flush the deferred save to disk immediately
+        settings.flush_save()
 
         # Hold on to the settings.json content
         settings_dict = None

@@ -68,6 +68,10 @@ from seedsigner.views.seed_views import (
 from .view import View, Destination, BackStackView, MainMenuView
 from .satochip_bias import ToolsSatochipBiasCheckView
 from .keycard_bias import ToolsKeycardBiasCheckView
+from .smartcard_views import (
+    SatochipLoadDescriptorScriptTypeView,
+    SatochipLoadDescriptorDetailsView,
+)
 
 from seedsigner.hardware.microsd import MicroSD
 from seedsigner.hardware.rng_monitor import HardwareRngHealthMonitor
@@ -1234,11 +1238,15 @@ class ToolsAddressExplorerAddressTypeView(View):
         wallet_descriptor_display_name = None
         if "wallet_descriptor" in data:
             from seedsigner.helpers.embit_utils import get_multisig_policy
-            threshold, n = get_multisig_policy(data["wallet_descriptor"])
-            # TRANSLATOR_NOTE: Multisig policy. For a "2 / 3 multisig" policy, "threshold" = 2; "n" = 3
-            wallet_descriptor_display_name = _("{threshold} / {n} multisig").format(
-                threshold=threshold, n=n
-            )
+            descriptor = data["wallet_descriptor"]
+            if descriptor.is_basic_multisig:
+                threshold, n = get_multisig_policy(descriptor)
+                # TRANSLATOR_NOTE: Multisig policy. For a "2 / 3 multisig" policy, "threshold" = 2; "n" = 3
+                wallet_descriptor_display_name = _("{threshold} / {n} multisig").format(
+                    threshold=threshold, n=n
+                )
+            else:
+                wallet_descriptor_display_name = _("Single sig")
 
         script_type = data["script_type"] if "script_type" in data else None
 

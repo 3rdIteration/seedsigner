@@ -9,10 +9,14 @@ from seedsigner.hardware.io_config import get_hardware_pin_mapping
 
 logger = logging.getLogger(__name__)
 
-@dataclass
+
+class BaseDisplayDriver:
+    """Base class for display drivers."""
+    pass
+
+
 class ST7789(BaseDisplayDriver):
-    """
-    The original SeedSigner display driver.
+    """The original SeedSigner display driver."""
 
     def __init__(self):
         self.width = 240
@@ -148,14 +152,13 @@ class ST7789(BaseDisplayDriver):
 
         Deferring init() until the first draw call means that CS can be tied to
         GND at any point between the SPI bus being opened and the first frame
-        being rendered — the LCD will still receive the full configuration
+        being rendered -- the LCD will still receive the full configuration
         sequence.
         """
         if not self._display_initialized:
             self.init()
             self._display_initialized = True
 
-    """    Write register address and data     """
     def command(self, cmd):
         """Write register address"""
         self._dc.write(False)
@@ -307,8 +310,7 @@ class ST7789(BaseDisplayDriver):
         self.command(0x2C)    
     
     def show_image(self,Image,Xstart,Ystart):
-        """Set buffer to value of Python Imaging Library image."""
-        """Write display buffer to physical display"""
+        """Set buffer to value of Python Imaging Library image and write to display."""
         self._ensure_initialized()
         imwidth, imheight = Image.size
         if imwidth != self.width or imheight != self.height:

@@ -1,4 +1,5 @@
 import logging
+import subprocess
 from dataclasses import dataclass, field
 from gettext import gettext as _
 from typing import Type
@@ -338,9 +339,9 @@ class RestartView(View):
             pid = os.getpid()
             if Settings.HOSTNAME == Settings.SEEDSIGNER_OS:
                 python = shlex.quote(sys.executable)
-                call(f"kill {pid}; exec {python} /opt/src/main.py", shell=True)
+                subprocess.call(f"kill {pid}; exec {python} /opt/src/main.py", shell=True)
             else:
-                call(f"kill {pid}", shell=True)
+                subprocess.call(f"kill {pid}", shell=True)
 
 
 
