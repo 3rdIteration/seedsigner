@@ -1385,7 +1385,9 @@ class ToolsSatochipFactoryResetView(View):
             if ret == RET_CODE__BACK_BUTTON:
                 return resetStatus
 
-            puk = seed_screens.SeedAddPassphraseScreen(title="Enter PUK").display()
+            puk = seed_screens.SeedAddPassphraseScreen(
+                title="Enter PUK", initial_keyboard="123"
+            ).display()
 
             if "is_back_button" in puk:
                 return resetStatus
@@ -3053,7 +3055,9 @@ class ToolsKeycardUnblockPinView(View):
         if not connector:
             return Destination(BackStackView)
 
-        puk_ret = seed_screens.SeedAddPassphraseScreen(title="PUK").display()
+        puk_ret = seed_screens.SeedAddPassphraseScreen(
+            title="PUK", initial_keyboard="123"
+        ).display()
         if "is_back_button" in puk_ret:
             return Destination(BackStackView)
         puk_str = puk_ret.get("passphrase", "")
@@ -4415,7 +4419,9 @@ class ToolsSpecterDIYChangePinView(View):
                 return Destination(BackStackView)
 
             # PIN is set; prompt for the current PIN once, then the new PIN.
-            ret = seed_screens.SeedAddPassphraseScreen(title="Current PIN").display()
+            ret = seed_screens.SeedAddPassphraseScreen(
+                title="Current PIN", initial_keyboard="123"
+            ).display()
             if isinstance(ret, dict) and "is_back_button" in ret:
                 return Destination(BackStackView)
             old_pin = ret.get("passphrase", "")
@@ -4699,7 +4705,9 @@ def _show_specter_incorrect_pin_warning(parent_view, secure_applet, secure_chann
 
 def _prompt_specter_pin_once(parent_view, title: str) -> str | None:
     while True:
-        ret = seed_screens.SeedAddPassphraseScreen(title=title).display()
+        ret = seed_screens.SeedAddPassphraseScreen(
+            title=title, initial_keyboard="123"
+        ).display()
         if isinstance(ret, dict) and "is_back_button" in ret:
             return None
 
@@ -4748,7 +4756,9 @@ def _prompt_specter_new_pin(parent_view, title: str) -> str | None:
 
 def _prompt_keycard_digits_once(parent_view, title: str, *, length: int, label: str) -> str | None:
     while True:
-        ret = seed_screens.SeedAddPassphraseScreen(title=title).display()
+        ret = seed_screens.SeedAddPassphraseScreen(
+            title=title, initial_keyboard="123"
+        ).display()
         if isinstance(ret, dict) and "is_back_button" in ret:
             return None
 
@@ -4821,7 +4831,9 @@ def _unlock_specter_card_if_needed(parent_view, secure_applet, secure_channel) -
     if status.get("status") != "locked":
         return True
 
-    ret = seed_screens.SeedAddPassphraseScreen(title="Card PIN").display()
+    ret = seed_screens.SeedAddPassphraseScreen(
+        title="Card PIN", initial_keyboard="123"
+    ).display()
     if isinstance(ret, dict) and "is_back_button" in ret:
         return False
     pin = ret.get("passphrase", "")
