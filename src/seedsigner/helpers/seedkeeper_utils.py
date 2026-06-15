@@ -212,8 +212,13 @@ def prompt_for_pin(
 ):
     """Prompt for a PIN and enforce configurable PIN requirements."""
 
+    _KEYBOARD_DIGITS = "123"  # Matches SeedAddPassphraseScreen.KEYBOARD__DIGITS_BUTTON_TEXT
+    initial_kb = _KEYBOARD_DIGITS if numeric_only else None
     while True:
-        ret = seed_screens.SeedAddPassphraseScreen(title=title).display()
+        ret = seed_screens.SeedAddPassphraseScreen(
+            title=title,
+            initial_keyboard=initial_kb,
+        ).display()
         if isinstance(ret, dict) and "is_back_button" in ret:
             return None
 
@@ -477,7 +482,12 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True, backend
                 print("Found Card:", Satochip_Connector.UID_SHA1)
                 print("Expecting Card:", parentObject.controller.Satochip_Last_UID_SHA1)
                 print("Card has changed, prompting for new PIN")
-                pin_str = prompt_for_pin(parentObject, "Card PIN")
+                pin_str = prompt_for_pin(
+                    parentObject,
+                    "Card PIN",
+                    numeric_only=is_keycard_backend,
+                    exact_length=6 if is_keycard_backend else None,
+                )
                 if pin_str is None:
                     return None
                 card_pin = list(pin_str.encode("utf-8"))

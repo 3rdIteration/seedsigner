@@ -1397,7 +1397,10 @@ class ToolsSatochipFactoryResetView(View):
             if ret == RET_CODE__BACK_BUTTON:
                 return resetStatus
 
-            puk = seed_screens.SeedAddPassphraseScreen(title="Enter PUK").display()
+            puk = seed_screens.SeedAddPassphraseScreen(
+                title="Enter PUK",
+                initial_keyboard=seed_screens.SeedAddPassphraseScreen.KEYBOARD__DIGITS_BUTTON_TEXT,
+            ).display()
 
             if "is_back_button" in puk:
                 return resetStatus
