@@ -220,6 +220,14 @@ When moving or renaming an underscore-prefixed function:
 - Use the same patterns as existing tests: `object.__new__(ViewClass)` to create view instances without triggering `__init__`, then monkeypatch dependencies.
 - For views that reference symbols from split modules, ensure those symbols are accessible through `tools_views` (see star import caveat above).
 
+## Python version compatibility
+
+The codebase must run on **both Python 3.10 and Python 3.12**. When adding new code or imports:
+
+- **Always explicitly import standard library features** that have decorators or functions not available by default. For example, `@dataclass` requires `from dataclasses import dataclass` — it is never implicitly available.
+- Avoid syntax or stdlib APIs introduced after Python 3.10 (e.g. `match`/`case`, `typing.Self`, `itertools.batched`, `zoneinfo` without backport). If you must use a newer feature, add a fallback for 3.10.
+- When reviewing code that fails with `NameError` on CI but passes locally, check whether the local Python version is newer than 3.10 and whether the missing name comes from an implicit import or newer stdlib module.
+
 ## Unicode and locale-safe string handling
 
 SeedSigner must produce identical results regardless of the host locale or input method. Follow these rules when processing user-supplied or externally-sourced strings:
