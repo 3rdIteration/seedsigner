@@ -77,6 +77,123 @@ def get_keycard_class():
     return None
 
 
+def _patch_keycard_sign():
+    """Monkey-patch keycard-py's sign() to tolerate non-canonical DER.
+
+    The ``ecdsa`` library's ``sigdecode_der`` strictly rejects non-minimal
+    integer encodings (extra leading zero padding bytes) on some platforms,
+    causing Keycard signing to fail with::
+
+        UnexpectedDER: Invalid encoding of integer, unnecessary zero padding bytes
+
+    This patch replaces the strict ``sigdecode_der`` call in keycard-py's
+    ``commands.sign`` module with a tolerant parser that strips leading zeros.
+    """
+    try:
+        from keycard.commands import sign as _sign_module
+    except Exception:
+        return  # Already patched or unavailable
+
+    # Skip if already patched
+    if hasattr(_sign_module, "_parse_der_sig"):
+        return
+
+    def _parse_der_int(data):
+        """Parse a DER INTEGER, tolerating non-minimal leading zero padding."""
+        if len(data) < 2 or data[0] != 0x02:
+            raise ValueError("Expected DER INTEGER tag")
+        length = data[1]
+        if len(data) < 2 + length:
+            raise ValueError("DER INTEGER truncated")
+        value_bytes = data[2 : 2 + length]
+        value = int.from_bytes(value_bytes, "big", signed=False)
+        return value, 2 + length
+
+    def _parse_der_sig(der):
+        """Parse a DER ECDSA signature into (r, s), tolerating non-minimal encoding."""
+        if len(der) < 4 or der[0] != 0x30:
+            raise ValueError("Expected DER SEQUENCE tag")
+        body = der[2:]
+        r, consumed = _parse_der_int(body)
+        s, _consumed2 = _parse_der_int(body[consumed:])
+        return r, s
+
+    # Inject helpers into the module namespace so sign() can use them.
+    _sign_module._parse_der_sig = _parse_der_sig  # noqa: SLF001
+
+    # Replace the original sign function with a patched version that uses
+    # our tolerant DER parser instead of ecdsa's strict sigdecode_der.
+    import types as _types
+
+    def _patched_sign(card, digest, p1=None, p2=None, derivation_path=None):
+        from keycard import constants as _constants
+        from keycard.constants import (
+            DerivationOption,
+            DerivationSource,
+            SigningAlgorithm,
+        )
+        from keycard.exceptions import InvalidStateError
+        from keycard.parsing import tlv as _tlv
+        from keycard.parsing.keypath import KeyPath
+        from keycard.parsing.signature_result import SignatureResult
+
+        if p2 != SigningAlgorithm.ECDSA_SECP256K1:
+            raise NotImplementedError("Signature algorithm not supported")
+        if len(digest) != 32:
+            raise ValueError("Digest must be exactly 32 bytes")
+        if p1 != DerivationOption.PINLESS and not card.is_pin_verified:
+            raise InvalidStateError(
+                "PIN must be verified to sign with this derivation option"
+            )
+
+        data = digest
+        source = DerivationSource.MASTER
+        if p1 in (DerivationOption.DERIVE, DerivationOption.DERIVE_AND_MAKE_CURRENT):
+            if not derivation_path:
+                raise ValueError("Derivation path cannot be empty")
+            key_path = KeyPath(derivation_path)
+            data += key_path.data
+            source = key_path.source
+
+        response = card.send_secure_apdu(
+            ins=_constants.INS_SIGN, p1=p1 | source, p2=p2, data=data
+        )
+
+        if response.startswith(b"\xa0"):
+            outer = _tlv.parse_tlv(response)
+            inner = _tlv.parse_tlv(outer[0xA0][0])
+            der_bytes = (
+                b"\x30"
+                + len(inner[0x30][0]).to_bytes(1, "big")
+                + inner[0x30][0]
+            )
+            r, s = _parse_der_sig(der_bytes)
+            pub = inner.get(0x80, [None])[0]
+            return SignatureResult(
+                algo=p2, digest=digest, r=r, s=s, public_key=pub
+            )
+        elif response.startswith(b"\x80"):
+            outer = _tlv.parse_tlv(response)
+            raw = outer[0x80][0]
+            if len(raw) != 65:
+                raise ValueError("Expected 65-byte raw signature (r||s||recId)")
+            return SignatureResult(
+                algo=p2,
+                digest=digest,
+                r=int.from_bytes(raw[:32], "big"),
+                s=int.from_bytes(raw[32:64], "big"),
+                recovery_id=int(raw[64]),
+            )
+
+        raise ValueError("Unexpected SIGN response format")
+
+    _sign_module.sign = _patched_sign  # noqa: SLF001
+
+
+# Apply the monkey-patch at import time so all downstream callers benefit.
+_patch_keycard_sign()
+
+
 def _pin_to_text(pin) -> str:
     if isinstance(pin, str):
         return pin
@@ -775,7 +892,12 @@ class KeycardSatochipConnector:
         else:
             sig = self._card.sign(digest)
 
-        der = sig.signature_der
+        der = bytes(sig.signature_der)
+        try:
+            from seedsigner.helpers.satochip_signer import normalize_signature_der
+            der = normalize_signature_der(der)
+        except Exception:
+            pass
         return (list(der), 0x90, 0x00)
 
     def card_sign_message(self, keynbr, pubkey, message, hmac=b"", altcoin=None):
@@ -790,7 +912,12 @@ class KeycardSatochipConnector:
         else:
             sig = self._card.sign(digest)
 
-        der = sig.signature_der
+        der = bytes(sig.signature_der)
+        try:
+            from seedsigner.helpers.satochip_signer import normalize_signature_der
+            der = normalize_signature_der(der)
+        except Exception:
+            pass
         compact = getattr(sig, "signature", None)
         if not compact or len(compact) != 65:
             compact = b"\x1f" + b"\x00" * 64
