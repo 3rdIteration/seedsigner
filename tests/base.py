@@ -11,7 +11,11 @@ sys.modules['seedsigner.gui.screens.screensaver'] = MagicMock()
 sys.modules['seedsigner.gui.toast'] = MagicMock()
 sys.modules['seedsigner.hardware.buttons'] = MagicMock()
 sys.modules['seedsigner.hardware.camera.Camera'] = MagicMock()
-sys.modules['seedsigner.hardware.pivideostream'] = MagicMock()
+# Only mock pivideostream if the real module is unavailable (it's needed for luckfox camera tests)
+try:
+    __import__("seedsigner.hardware.pivideostream")
+except ImportError:
+    sys.modules['seedsigner.hardware.pivideostream'] = MagicMock()
 sys.modules['seedsigner.hardware.st7789_mpy'] = MagicMock()
 sys.modules['seedsigner.hardware.ili9341'] = MagicMock()
 sys.modules['RPi'] = MagicMock()
