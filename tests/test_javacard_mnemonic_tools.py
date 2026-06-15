@@ -177,7 +177,9 @@ def test_specter_change_pin_prompts_current_then_new_only(monkeypatch):
     changed = {}
 
     class FakePrompt:
-        def __init__(self, title):
+        KEYBOARD__DIGITS_BUTTON_TEXT = "123"
+
+        def __init__(self, title, **kwargs):
             self.title = title
 
         def display(self):
@@ -277,7 +279,9 @@ def test_prompt_specter_new_pin_warns_and_can_continue(monkeypatch):
     ])
 
     class FakePrompt:
-        def __init__(self, title):
+        KEYBOARD__DIGITS_BUTTON_TEXT = "123"
+
+        def __init__(self, title, **kwargs):
             self.title = title
 
         def display(self):
@@ -312,7 +316,9 @@ def test_prompt_specter_new_pin_warns_and_can_reenter(monkeypatch):
     ])
 
     class FakePrompt:
-        def __init__(self, title):
+        KEYBOARD__DIGITS_BUTTON_TEXT = "123"
+
+        def __init__(self, title, **kwargs):
             self.title = title
 
         def display(self):
@@ -359,7 +365,9 @@ def test_unlock_specter_card_wrong_pin_shows_attempts_remaining():
             raise Exception("Secure channel error: 0502")
 
     class FakePrompt:
-        def __init__(self, title):
+        KEYBOARD__DIGITS_BUTTON_TEXT = "123"
+
+        def __init__(self, title, **kwargs):
             self.title = title
 
         def display(self):
@@ -825,7 +833,9 @@ def _run_prompt_with_responses(prompt_fn, parent, title, responses):
     response_iter = iter(responses)
 
     class FakePrompt:
-        def __init__(self, title):
+        KEYBOARD__DIGITS_BUTTON_TEXT = "123"
+
+        def __init__(self, title, **kwargs):
             self.title = title
 
         def display(self):
