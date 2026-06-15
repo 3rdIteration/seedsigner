@@ -17,6 +17,7 @@ from pathlib import Path
 
 from embit.bip32 import HDKey
 from embit.descriptor import Descriptor
+from embit.psbt import PSBT
 from gettext import gettext as _
 
 from seedsigner.gui.components import (
