@@ -3824,8 +3824,8 @@ class SatochipExportXpubCoordinatorView(View):
 
     def run(self):
         button_data = []
-        for coord, display_name in SettingsConstants.ALL_COORDINATORS:
-            if coord in self.settings.get_value(SettingsConstants.SETTING__COORDINATORS):
+        for coord, display_name in SettingsConstants.ALL_XPUB_QR_FORMATS:
+            if coord in self.settings.get_value(SettingsConstants.SETTING__XPUB_QR_FORMAT):
                 button_data.append(ButtonOption(display_name, return_data=coord))
 
         selected_menu_num = self.run_screen(
@@ -4075,7 +4075,7 @@ class SatochipExportXpubQRDisplayView(View):
         from seedsigner.gui.screens.screen import QRDisplayScreen
         xpubstring = f"[{self.fingerprint}{self.derivation_path[1:]}]{self.xpub}"
 
-        if self.coordinator == SettingsConstants.COORDINATOR__SPECTER_DESKTOP:
+        if self.coordinator == SettingsConstants.XPUB_QR_FORMAT__UR_CRYPTO_ACCOUNT:
             encoder = self._SpecterEncoder(xpubstring, self.settings.get_value(SettingsConstants.SETTING__QR_DENSITY))
         else:
             encoder = GenericStaticQrEncoder(data=xpubstring)

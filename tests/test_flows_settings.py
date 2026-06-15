@@ -63,12 +63,8 @@ class TestSettingsFlows(FlowTest):
             FlowStep(settings_views.SettingsEntryUpdateSelectionView, screen_return_value=1),  # deselect second option
             FlowStep(settings_views.SettingsEntryUpdateSelectionView, screen_return_value=RET_CODE__BACK_BUTTON),  # BACK to exit
 
-            # Both options were deselected, should route to the warning screen
-            FlowStep(settings_views.SettingsSelectionRequiredWarningView),
-            FlowStep(settings_views.SettingsEntryUpdateSelectionView, screen_return_value=0),  # select first option
-
-            # Now we can exit
-            FlowStep(settings_views.SettingsEntryUpdateSelectionView, screen_return_value=RET_CODE__BACK_BUTTON),  # BACK to exit
+            # Now we can exit (multiselect prevents all options from being deselected)
+            FlowStep(settings_views.SettingsMenuView),
             FlowStep(settings_views.SettingsMenuView),
         ])
 

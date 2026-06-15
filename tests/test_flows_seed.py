@@ -281,7 +281,7 @@ class TestSeedFlows(FlowTest):
                     FlowStep(seed_views.SeedOptionsView, button_data_selection=seed_views.SeedOptionsView.EXPORT_XPUB),
                     FlowStep(seed_views.SeedExportXpubSigTypeView, button_data_selection=sig_selection),
                     FlowStep(seed_views.SeedExportXpubScriptTypeView, button_data_selection=ButtonOption(script_tuple[1], return_data=script_tuple[0])),
-                    FlowStep(seed_views.SeedExportXpubQRFormatView, button_data_selection=ButtonOption(xpub_qr_tuple[1], return_data=xpub_qr_tuple[0])),
+                    FlowStep(seed_views.SeedExportXpubCoordinatorView, button_data_selection=ButtonOption(xpub_qr_tuple[1], return_data=xpub_qr_tuple[0])),
                     FlowStep(seed_views.SeedExportXpubWarningView, screen_return_value=0),
                     FlowStep(seed_views.SeedExportXpubDetailsView, screen_return_value=0),
                     FlowStep(seed_views.SeedExportXpubQRDisplayView, screen_return_value=0),
@@ -334,7 +334,7 @@ class TestSeedFlows(FlowTest):
 
         self.settings.set_value(SettingsConstants.SETTING__SIG_TYPES, [SettingsConstants.SINGLE_SIG, SettingsConstants.MULTISIG])
         self.settings.set_value(SettingsConstants.SETTING__SCRIPT_TYPES, [SettingsConstants.NATIVE_SEGWIT])
-        self.settings.set_value(SettingsConstants.SETTING__COORDINATORS, [SettingsConstants.COORDINATOR__SPECTER_DESKTOP])
+        self.settings.set_value(SettingsConstants.SETTING__XPUB_QR_FORMAT, [SettingsConstants.XPUB_QR_FORMAT__UR_CRYPTO_ACCOUNT])
 
         def load_legacy_address(view: scan_views.ScanXpubAddressView):
             view.decoder.add_data("1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa")
@@ -363,7 +363,7 @@ class TestSeedFlows(FlowTest):
 
         self.settings.set_value(SettingsConstants.SETTING__SIG_TYPES, [SettingsConstants.SINGLE_SIG])
         self.settings.set_value(SettingsConstants.SETTING__SCRIPT_TYPES, [SettingsConstants.NATIVE_SEGWIT])
-        self.settings.set_value(SettingsConstants.SETTING__COORDINATORS, [SettingsConstants.COORDINATOR__SPECTER_DESKTOP])
+        self.settings.set_value(SettingsConstants.SETTING__XPUB_QR_FORMAT, [SettingsConstants.XPUB_QR_FORMAT__UR_CRYPTO_ACCOUNT])
 
         monkeypatch.setattr(seed_views.SeedAddressVerificationView, "MAX_ITERATIONS_EXPORT_XPUB", 5)
 
@@ -442,7 +442,7 @@ class TestSeedFlows(FlowTest):
                     FlowStep(seed_views.SeedOptionsView, button_data_selection=seed_views.SeedOptionsView.EXPORT_XPUB),
                     FlowStep(seed_views.SeedExportXpubSigTypeView, is_redirect=True),
                     FlowStep(seed_views.SeedExportXpubScriptTypeView, screen_return_value=0),
-                    FlowStep(seed_views.SeedExportXpubQRFormatView, button_data_selection=disabled_xpub_qr_format),
+                    FlowStep(seed_views.SeedExportXpubCoordinatorView, button_data_selection=disabled_xpub_qr_format),
                 ]
             )
 
@@ -483,7 +483,7 @@ class TestSeedFlows(FlowTest):
                 FlowStep(seed_views.SeedExportXpubSigTypeView, button_data_selection=sig_type),
                 FlowStep(seed_views.SeedExportXpubScriptTypeView, button_data_selection=script_type),
                 FlowStep(seed_views.SeedExportXpubCustomDerivationView, screen_return_value="m/0'/0'"),
-                FlowStep(seed_views.SeedExportXpubQRFormatView, button_data_selection=xpub_qr_format),
+                FlowStep(seed_views.SeedExportXpubCoordinatorView, button_data_selection=xpub_qr_format),
                 FlowStep(seed_views.SeedExportXpubWarningView, screen_return_value=0),
                 FlowStep(seed_views.SeedExportXpubDetailsView, screen_return_value=0),
                 FlowStep(seed_views.SeedExportXpubQRDisplayView, screen_return_value=0),
@@ -516,7 +516,7 @@ class TestSeedFlows(FlowTest):
                 FlowStep(seed_views.SeedOptionsView, button_data_selection=seed_views.SeedOptionsView.EXPORT_XPUB),
                 FlowStep(seed_views.SeedExportXpubSigTypeView, is_redirect=True),
                 FlowStep(seed_views.SeedExportXpubScriptTypeView, is_redirect=True),
-                FlowStep(seed_views.SeedExportXpubQRFormatView, is_redirect=True),
+                FlowStep(seed_views.SeedExportXpubCoordinatorView, is_redirect=True),
                 FlowStep(seed_views.SeedExportXpubWarningView, screen_return_value=0),
                 FlowStep(seed_views.SeedExportXpubDetailsView, screen_return_value=0),
                 FlowStep(seed_views.SeedExportXpubQRDisplayView, screen_return_value=0),
@@ -547,7 +547,7 @@ class TestSeedFlows(FlowTest):
 
                 # Skips past the script type options via redirect
                 FlowStep(seed_views.SeedExportXpubScriptTypeView, is_redirect=True),
-                FlowStep(seed_views.SeedExportXpubQRFormatView, button_data_selection=ButtonOption(self.settings.get_multiselect_value_display_names(SettingsConstants.SETTING__XPUB_QR_FORMAT)[0], return_data=SettingsConstants.ALL_XPUB_QR_FORMATS[0][0])),
+                FlowStep(seed_views.SeedExportXpubCoordinatorView, button_data_selection=ButtonOption(self.settings.get_multiselect_value_display_names(SettingsConstants.SETTING__XPUB_QR_FORMAT)[0], return_data=SettingsConstants.ALL_XPUB_QR_FORMATS[0][0])),
                 FlowStep(seed_views.SeedExportXpubWarningView, screen_return_value=0),
                 FlowStep(seed_views.SeedExportXpubDetailsView, screen_return_value=0),
                 FlowStep(seed_views.SeedExportXpubQRDisplayView, screen_return_value=0),
@@ -1111,7 +1111,7 @@ class TestSatochipExportXpubQRDisplayView(BaseTest):
             xpub="xpub",
             derivation_path="m/48'/0'/0'/2'",
             script_type=SettingsConstants.NATIVE_SEGWIT,
-            coordinator=SettingsConstants.COORDINATOR__SPECTER_DESKTOP,
+            coordinator=SettingsConstants.XPUB_QR_FORMAT__UR_CRYPTO_ACCOUNT,
             coordinator_label="Specter",
             fingerprint="f" * 8,
             sig_type=SettingsConstants.MULTISIG,
@@ -1129,7 +1129,7 @@ class TestSatochipExportXpubQRDisplayView(BaseTest):
             xpub="xpub",
             derivation_path="m/84'/0'/0'",
             script_type=SettingsConstants.NATIVE_SEGWIT,
-            coordinator=SettingsConstants.COORDINATOR__SPECTER_DESKTOP,
+            coordinator=SettingsConstants.XPUB_QR_FORMAT__UR_CRYPTO_ACCOUNT,
             coordinator_label="Specter",
             fingerprint="f" * 8,
             sig_type=SettingsConstants.SINGLE_SIG,
@@ -1165,7 +1165,7 @@ class TestSatochipExportXpubDetailsView(BaseTest):
                 view = tools_views.SatochipExportXpubDetailsView(
                     sig_type=SettingsConstants.MULTISIG,
                     script_type=SettingsConstants.NATIVE_SEGWIT,
-                    coordinator=SettingsConstants.COORDINATOR__SPECTER_DESKTOP,
+                    coordinator=SettingsConstants.XPUB_QR_FORMAT__UR_CRYPTO_ACCOUNT,
                     custom_derivation="",
                     coordinator_label="Specter",
                 )

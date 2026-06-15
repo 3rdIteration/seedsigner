@@ -121,6 +121,10 @@ class SettingsMenuView(View):
             else:
                 return Destination(SettingsMenuView, view_args={"visibility": SettingsConstants.VISIBILITY__ADVANCED})
         
+        if selected_menu_num is None or selected_menu_num >= len(button_data):
+            # No valid selection; stay on this screen
+            return Destination(SettingsMenuView, view_args=dict(visibility=self.visibility, initial_scroll=initial_scroll), skip_current_view=True)
+        
         if button_data[selected_menu_num] == self.ADVANCED:
             return advanced_destination
 
@@ -288,6 +292,8 @@ class SettingsEntryUpdateSelectionView(View):
         self.selected_button = selected_button
         self.parent_initial_scroll = parent_initial_scroll
         self.parent_destination = parent_destination
+        self.blocking_view = None
+        self.unblocking_view = None
 
 
     def run(self):

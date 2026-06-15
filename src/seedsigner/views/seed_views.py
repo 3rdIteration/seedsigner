@@ -2403,8 +2403,8 @@ class SeedExportXpubCoordinatorView(View):
         }
         if len(self.settings.get_value(SettingsConstants.SETTING__XPUB_QR_FORMAT)) == 1:
             # Nothing to select; skip this screen
-            args["coordinator"] = self.settings.get_value(SettingsConstants.SETTING__COORDINATORS)[0]
-            entry = SettingsDefinition.get_settings_entry(SettingsConstants.SETTING__COORDINATORS)
+            args["coordinator"] = self.settings.get_value(SettingsConstants.SETTING__XPUB_QR_FORMAT)[0]
+            entry = SettingsDefinition.get_settings_entry(SettingsConstants.SETTING__XPUB_QR_FORMAT)
             args["coordinator_label"] = entry.get_selection_option_display_name_by_value(args["coordinator"])
             return Destination(SeedExportXpubWarningView, view_args=args, skip_current_view=True)
 
@@ -2439,7 +2439,7 @@ class SeedExportXpubWarningView(View):
         self.seed_num = seed_num
         self.sig_type = sig_type
         self.script_type = script_type
-        self.xpub_qr_format = xpub_qr_format
+        self.xpub_qr_format = coordinator
         self.custom_derivation = custom_derivation
         self.coordinator_label = coordinator_label
         self.account = account
@@ -2452,7 +2452,7 @@ class SeedExportXpubWarningView(View):
                 "seed_num": self.seed_num,
                 "sig_type": self.sig_type,
                 "script_type": self.script_type,
-                "xpub_qr_format": self.xpub_qr_format,
+                "coordinator": self.xpub_qr_format,
                 "custom_derivation": self.custom_derivation,
                 "coordinator_label": self.coordinator_label,
                 "account": self.account,
@@ -2488,7 +2488,7 @@ class SeedExportXpubDetailsView(View):
         super().__init__()
         self.sig_type = sig_type
         self.script_type = script_type
-        self.xpub_qr_format = xpub_qr_format
+        self.xpub_qr_format = coordinator
         self.custom_derivation = custom_derivation
         self.coordinator_label = coordinator_label
         self.account = account
@@ -2551,7 +2551,7 @@ class SeedExportXpubDetailsView(View):
             return Destination(
                 SeedExportXpubQRDisplayView,
                 dict(seed_num=self.seed_num,
-                     xpub_qr_format=self.xpub_qr_format,
+                     coordinator=self.xpub_qr_format,
                      derivation_path=derivation_path,
                      sig_type=self.sig_type,
                      script_type=self.script_type,
@@ -2569,6 +2569,7 @@ class SeedExportXpubQRDisplayView(View):
         super().__init__()
         self.seed = self.controller.get_seed(seed_num)
         self.seed_num = seed_num
+        self.coordinator = coordinator
         self.script_type = script_type
         self.sig_type = sig_type
         self.derivation_path = derivation_path
@@ -2582,11 +2583,11 @@ class SeedExportXpubQRDisplayView(View):
             sig_type=sig_type
         )
 
-        if xpub_qr_format == SettingsConstants.XPUB_QR_FORMAT__STATIC:
+        if self.coordinator == SettingsConstants.XPUB_QR_FORMAT__STATIC:
             self.qr_encoder = StaticXpubQrEncoder(**encoder_args)
 
-        elif xpub_qr_format == SettingsConstants.XPUB_QR_FORMAT__SPECTER_LEGACY:
-            self.qr_encoder = SpecterLegacyXPubQrEncoder(**encoder_args)
+        elif self.coordinator == SettingsConstants.XPUB_QR_FORMAT__SPECTER_LEGACY:
+            self.qr_encoder = SpecterXPubQrEncoder(**encoder_args)
 
         else:
             # Default: UR crypto-address
