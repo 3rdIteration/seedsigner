@@ -286,14 +286,14 @@ class SettingsEntryUpdateSelectionView(View):
         Handles changes to all selection-type settings (Multiselect, SELECT_1,
         Enabled/Disabled, etc).
     """
-    def __init__(self, attr_name: str, parent_initial_scroll: int = 0, selected_button: int = None, parent_destination: Destination = None):
+    def __init__(self, attr_name: str, parent_initial_scroll: int = 0, selected_button: int = None, parent_destination: Destination = None, blocking_view: type = None, unblocking_view: type = None):
         super().__init__()
         self.settings_entry = SettingsDefinition.get_settings_entry(attr_name)
         self.selected_button = selected_button
         self.parent_initial_scroll = parent_initial_scroll
         self.parent_destination = parent_destination
-        self.blocking_view = None
-        self.unblocking_view = None
+        self.blocking_view = blocking_view
+        self.unblocking_view = unblocking_view
 
 
     def run(self):
@@ -348,6 +348,9 @@ class SettingsEntryUpdateSelectionView(View):
         parent_destination = self.parent_destination or settings_menu_view_destination
 
         if ret_value == RET_CODE__BACK_BUTTON:
+            # If this was opened from a blocking flow, BACK should return to the blocker.
+            if self.blocking_view:
+                return Destination(self.blocking_view, clear_history=True)
             return parent_destination
 
         value = self.settings_entry.get_selection_option_value(ret_value)
@@ -400,7 +403,7 @@ class SettingsEntryUpdateSelectionView(View):
         # All selects stay in place; re-initialize where in the list we left off
         self.selected_button = ret_value
 
-        return Destination(SettingsEntryUpdateSelectionView, view_args=dict(attr_name=self.settings_entry.attr_name, parent_initial_scroll=self.parent_initial_scroll, selected_button=self.selected_button, parent_destination=self.parent_destination), skip_current_view=True)
+        return Destination(SettingsEntryUpdateSelectionView, view_args=dict(attr_name=self.settings_entry.attr_name, parent_initial_scroll=self.parent_initial_scroll, selected_button=self.selected_button, parent_destination=self.parent_destination, blocking_view=self.blocking_view, unblocking_view=self.unblocking_view), skip_current_view=True)
 
 
 

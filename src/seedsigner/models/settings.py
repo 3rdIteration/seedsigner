@@ -305,6 +305,15 @@ class Settings(Singleton):
                     for v in value:
                         if v not in valid_values:
                             raise InvalidSettingsQRData(f"Unrecognized option '{v}' for setting {settings_entry.attr_name}")
+                elif isinstance(value, str):
+                    # SettingsQR format uses comma-separated strings (e.g. "ss" or "urca,sta");
+                    # split and validate each component. The string will be converted to a list
+                    # later in update() via the TYPE__MULTISELECT handling logic.
+                    if not value.strip():
+                        raise InvalidSettingsQRData(f"Empty value for multiselect setting {settings_entry.attr_name}")
+                    for v in value.split(","):
+                        if v not in valid_values:
+                            raise InvalidSettingsQRData(f"Unrecognized option '{v}' for setting {settings_entry.attr_name}")
                 else:
                     raise InvalidSettingsQRData(f"Setting {settings_entry.attr_name} requires multiple values")
 
