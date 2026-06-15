@@ -213,9 +213,7 @@ def prompt_for_pin(
     """Prompt for a PIN and enforce configurable PIN requirements."""
 
     while True:
-        ret = seed_screens.SeedAddPassphraseScreen(
-            title=title, initial_keyboard="123"
-        ).display()
+        ret = seed_screens.SeedAddPassphraseScreen(title=title).display()
         if isinstance(ret, dict) and "is_back_button" in ret:
             return None
 
