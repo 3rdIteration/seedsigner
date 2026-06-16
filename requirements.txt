@@ -5,7 +5,7 @@ qrcode==7.3.1
 colorama==0.4.6 ; platform_system == "Windows"
 urtypes @ https://github.com/selfcustody/urtypes/archive/7fb280eab3b3563dfc57d2733b0bf5cbc0a96a6a.zip
 pycryptodomex==3.23.0
-pgpy @ https://github.com/3rdIteration/PGPy/archive/1c8d881f84c455472114e5acf1ccdbc8809dd72f.zip  # v0.6.0 fork: cryptography primary backend, pycryptodomex/ecdsa/embit fallbacks
+pgpy @ https://github.com/3rdIteration/PGPy/archive/7cdad000a76ced53c873211241d5ba20019a8488.zip  # v0.6.0 fork: cryptography primary backend, pycryptodomex/ecdsa/embit fallbacks
 pyasn1==0.6.2
 pygp @ https://github.com/3rdIteration/pygp/archive/15682ec8fd042b5d0ae3422e9434e9734db6e55b.zip
 pysatochip==0.17.0
