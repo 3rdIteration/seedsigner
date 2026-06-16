@@ -358,14 +358,14 @@ class SettingsConstants:
 
     # Keycard signing behavior
     # Keycard operations (derive_key + sign) are slower than native Satochip
-    # signing, so the timeout is adjustable in 0.5s steps around a 1.5s default.
-    KEYCARD_TIMEOUT_MIN = 0.5
-    KEYCARD_TIMEOUT_MAX = 2.5
+    # signing, so the timeout is adjustable in 0.75s steps around a 2.25s default.
+    KEYCARD_TIMEOUT_MIN = 0.75
+    KEYCARD_TIMEOUT_MAX = 3.75
     ALL_KEYCARD_TIMEOUTS = [
-        (i / 2, f"{i / 2:g}s")
-        for i in range(int(KEYCARD_TIMEOUT_MIN * 2), int(KEYCARD_TIMEOUT_MAX * 2) + 1)
+        (i / 4, f"{i / 4:g}s")
+        for i in range(int(KEYCARD_TIMEOUT_MIN * 4), int(KEYCARD_TIMEOUT_MAX * 4) + 1, 3)
     ]
-    DEFAULT_KEYCARD_TIMEOUT = 1.5
+    DEFAULT_KEYCARD_TIMEOUT = 2.25
 
     @classmethod
     def map_network_to_embit(cls, network) -> str:

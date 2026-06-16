@@ -33,6 +33,7 @@ from seedsigner.gui.screens import (
     ErrorScreen,
     seed_screens,
 )
+from seedsigner.gui.screens.tools_screens import ToolsCommonFilterScreen
 from seedsigner.gui.screens.screen import ButtonOption
 from seedsigner.hardware.microsd import MicroSD
 from seedsigner.helpers import embit_utils, seedkeeper_utils
@@ -48,6 +49,12 @@ from seedsigner.models.settings_definition import SettingsConstants
 try:
     from pysatochip import satochip
     from pysatochip.exception import UnexpectedSW12Error
+    from pysatochip.JCconstants import (
+        SEEDKEEPER_DIC_TYPE,
+        SEEDKEEPER_DIC_ORIGIN,
+        SEEDKEEPER_DIC_EXPORT_RIGHTS,
+        BIP39_WORDLIST_DIC,
+    )
     from pysatochip.satochip_protocol_helper import format_sw_error
 except ImportError:
     pass
@@ -59,6 +66,7 @@ from .seed_views import (
     SeedElectrumMnemonicStartView,
     SeedExportXpubVerifyAddressView,
     SeedFinalizeView,
+    SeedKeeperSelectView,
     SeedSlip39MnemonicStartView,
 )
 
@@ -5009,8 +5017,6 @@ def _decode_seedkeeper_text(secret_dict: dict) -> str:
 class ToolsJavacardKeysView(View):
     LOAD_KEYS = ButtonOption("Load Keys")
     SAVE_KEYS = ButtonOption("Save Keys")
-    LOAD_MNEMONIC = ButtonOption("Load Mnemonic")
-    SAVE_MNEMONIC = ButtonOption("Save Mnemonic")
     UNLOCK_CARD = ButtonOption("Unlock Card")
     LOCK_CARD = ButtonOption("Lock Card")
     CLEAR_KEYS = ButtonOption("Clear Loaded Keys")
@@ -5019,8 +5025,6 @@ class ToolsJavacardKeysView(View):
         button_data = [
             self.LOAD_KEYS,
             self.SAVE_KEYS,
-            self.LOAD_MNEMONIC,
-            self.SAVE_MNEMONIC,
             self.UNLOCK_CARD,
             self.LOCK_CARD,
             self.CLEAR_KEYS,
@@ -5040,10 +5044,6 @@ class ToolsJavacardKeysView(View):
             return Destination(ToolsJavacardLoadKeysView)
         if choice == self.SAVE_KEYS:
             return Destination(ToolsJavacardSaveKeysView)
-        if choice == self.LOAD_MNEMONIC:
-            return Destination(ToolsJavacardLoadMnemonicView)
-        if choice == self.SAVE_MNEMONIC:
-            return Destination(ToolsJavacardSaveMnemonicView)
         if choice == self.UNLOCK_CARD:
             return Destination(ToolsJavacardUnlockCardView)
         if choice == self.LOCK_CARD:

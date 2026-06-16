@@ -52,8 +52,9 @@ def test_sign_psbt_with_keycard_path_fallback_single_derivation(monkeypatch):
     monkeypatch.setattr(Settings, "get_instance", classmethod(lambda cls: DummySettings()))
     random.seed(0)
 
-    signed = sign_psbt_with_keycard(psbt, connector)
+    result = sign_psbt_with_keycard(psbt, connector)
 
-    assert signed == 1
+    assert result.signed_count == 1
+    assert not result.timed_out
     assert getattr(connector, "_last_path", None) == "m/84'/0'/0'/0/0"
     assert psbt.inputs[0].partial_sigs[pub].endswith(b"\x01")

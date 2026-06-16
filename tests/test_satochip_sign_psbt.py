@@ -58,8 +58,9 @@ def test_sign_psbt_processes_inputs_in_random_order(monkeypatch):
     connector = DummyConnector(pubkeys)
     monkeypatch.setattr(Settings, "get_instance", classmethod(lambda cls: DummySettings()))
     random.seed(0)
-    signed = sign_psbt_with_satochip(psbt, connector)
-    assert signed == 3
+    result = sign_psbt_with_satochip(psbt, connector)
+    assert result.signed_count == 3
+    assert not result.timed_out
     assert connector.sign_order != [0, 1, 2]
     assert sorted(connector.sign_order) == [0, 1, 2]
 

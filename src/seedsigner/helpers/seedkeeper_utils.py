@@ -379,7 +379,7 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True, backend
             WarningScreen,
             title="Failure",
             status_headline=None,
-            text=str(e),
+            text="No smartcard detected\n\nInsert a card and try again.",
             show_back_button=True,
         )
         return None

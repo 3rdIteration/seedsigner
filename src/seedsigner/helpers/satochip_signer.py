@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from binascii import b2a_base64
+import dataclasses
 import hashlib
 import logging
 import os
@@ -23,6 +24,13 @@ except ImportError:  # pragma: no cover - support older embit releases
     HARDENED_INDEX = 0x80000000
 
 logger = logging.getLogger(__name__)
+
+
+@dataclasses.dataclass
+class SignResult:
+    """Result from a card signing operation."""
+    signed_count: int = 0
+    timed_out: bool = False
 
 
 _MISSING_AUTHENTIKEY_ERROR = (
@@ -232,7 +240,7 @@ def _bitcoin_message_digest(message: str) -> bytes:
     return hashlib.sha256(hashlib.sha256(serialized).digest()).digest()
 
 
-def sign_psbt_with_satochip(psbt: PSBT, connector) -> int:
+def sign_psbt_with_satochip(psbt: PSBT, connector, timeout: float | None = None) -> SignResult:
     """Sign the given PSBT using a connected Satochip card.
 
     To obfuscate potential chosen-nonce attacks, a random number of dummy
@@ -245,10 +253,13 @@ def sign_psbt_with_satochip(psbt: PSBT, connector) -> int:
     randomly selected from among all signatures produced for that input.
     Each signing attempt is limited to a configurable timeout.
 
-    Returns the number of signatures added to ``psbt``.
+    If ``timeout`` is passed it overrides the configured setting value.
+
+    Returns a SignResult with signed_count and timed_out flag.
     """
     settings = Settings.get_instance()
-    timeout = settings.get_value(SettingsConstants.SETTING__SATOCHIP_SIGN_TIMEOUT)
+    if timeout is None:
+        timeout = settings.get_value(SettingsConstants.SETTING__SATOCHIP_SIGN_TIMEOUT)
     pre_dummy_max = settings.get_value(
         SettingsConstants.SETTING__SATOCHIP_MAX_PRE_DUMMIES
     )
@@ -262,6 +273,7 @@ def sign_psbt_with_satochip(psbt: PSBT, connector) -> int:
         settings.get_value(SettingsConstants.SETTING__SATOCHIP_DUMMY_PROBABILITY) / 100
     )
     signed = 0
+    timed_out = False
 
     # Issue 0-N dummy signing requests and discard the results. Each dummy
     # request may itself trigger extra signatures according to the configured
@@ -367,6 +379,7 @@ def sign_psbt_with_satochip(psbt: PSBT, connector) -> int:
                     )
                 except TimeoutError:
                     logger.warning("Satochip signing timed out")
+                    timed_out = True
                     results.append(None)
                 except Exception:
                     results.append(None)
@@ -423,7 +436,7 @@ def sign_psbt_with_satochip(psbt: PSBT, connector) -> int:
                 )
             except Exception:
                 pass
-    return signed
+    return SignResult(signed_count=signed, timed_out=timed_out)
 
 
 def sign_message_with_satochip(derivation_path: str, message: str, connector) -> str:

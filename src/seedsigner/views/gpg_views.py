@@ -36,6 +36,11 @@ from .view import View, Destination, BackStackView, MainMenuView
 # Imported from tools_views for use by _text_qr_done_destination (defined near end of file)
 from .tools_views import ToolsMenuView, ToolsTextQRView
 
+try:
+    from pysatochip.JCconstants import SEEDKEEPER_DIC_TYPE, SEEDKEEPER_DIC_EXPORT_RIGHTS
+except ImportError:
+    pass
+
 logger = logging.getLogger(__name__)
 
 

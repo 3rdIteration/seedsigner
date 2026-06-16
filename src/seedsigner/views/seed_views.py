@@ -420,8 +420,6 @@ class SeedKeeperSelectView(View):
             Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["seedkeeper"])
 
             if not Satochip_Connector:
-                if isinstance(self.seed, AezeedSeed):
-                    return Destination(SeedAezeedPassphraseModeView)
                 return Destination(BackStackView)
 
             self.loading_screen = LoadingScreenThread(text="Listing Seeds\n\n\n\n\n\n")
@@ -557,7 +555,8 @@ class SeedKeeperSelectView(View):
 
         except Exception as e:
             print("General Exception Loading Seed:", str(e))
-            self.loading_screen.stop()
+            if hasattr(self, 'loading_screen'):
+                self.loading_screen.stop()
             time.sleep(0.1)
             self.run_screen(
                 WarningScreen,

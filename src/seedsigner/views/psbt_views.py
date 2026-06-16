@@ -974,14 +974,22 @@ class PSBTFinalizeView(View):
         loading = LoadingScreenThread(text=_("Signing PSBT..."))
         loading.start()
         try:
+            sign_result = None
             if self.controller.psbt_sign_with_satochip:
-                if getattr(connector, "is_keycard_backend", False):
+                is_keycard = getattr(connector, "is_keycard_backend", False)
+                # Track retry state on the controller so we can increase timeout across retries
+                retry_timeout = getattr(self.controller, "_psbt_sign_retry_timeout", None)
+                if is_keycard:
                     from seedsigner.helpers.keycard_signer import sign_psbt_with_keycard
-                    added = sign_psbt_with_keycard(psbt, connector)
+                    sign_result = sign_psbt_with_keycard(psbt, connector, timeout=retry_timeout)
                 else:
                     from seedsigner.helpers.satochip_signer import sign_psbt_with_satochip
-                    added = sign_psbt_with_satochip(psbt, connector)
-                logger.info("PSBTFinalize: card signer reported added_signatures=%d", added)
+                    sign_result = sign_psbt_with_satochip(psbt, connector, timeout=retry_timeout)
+                added = sign_result.signed_count
+                logger.info(
+                    "PSBTFinalize: card signer reported signed=%d timed_out=%s",
+                    added, sign_result.timed_out,
+                )
             else:
                 psbt.sign_with(psbt_parser.root)
             if isinstance(self.controller.psbt_seed, WIFKey):
@@ -1024,7 +1032,41 @@ class PSBTFinalizeView(View):
                 "PSBTFinalize: no new signatures detected; routing=%s",
                 "PSBTFinalizeView" if self.controller.psbt_sign_with_satochip else "PSBTSigningErrorView",
             )
+            # Clean up retry state regardless of path taken
+            if hasattr(self.controller, "_psbt_sign_retry_timeout"):
+                delattr(self.controller, "_psbt_sign_retry_timeout")
+
             if self.controller.psbt_sign_with_satochip:
+                # If a timeout occurred during signing, offer to retry with higher timeout
+                if sign_result and sign_result.timed_out:
+                    is_keycard = getattr(connector, "is_keycard_backend", False)
+                    current_timeout = (
+                        self.settings.get_value(SettingsConstants.SETTING__KEYCARD_SIGN_TIMEOUT)
+                        if is_keycard
+                        else self.settings.get_value(SettingsConstants.SETTING__SATOCHIP_SIGN_TIMEOUT)
+                    )
+                    card_label = "Keycard" if is_keycard else "Satochip"
+
+                    selected = self.run_screen(
+                        WarningScreen,
+                        title=_("Signing Timeout"),
+                        status_headline=None,
+                        text=(
+                            f"{card_label} signing timed out at {current_timeout}s.\n\n"
+                            "Retry with a higher timeout?"
+                        ),
+                        button_data=[ButtonOption("Retry (higher timeout)"), ButtonOption("Cancel")],
+                    )
+
+                    if selected == 0:
+                        # Increase timeout by one step and retry
+                        new_timeout = current_timeout + 0.75
+                        self.controller._psbt_sign_retry_timeout = new_timeout
+                        logger.info(
+                            "PSBTFinalize: user chose to retry with timeout=%.2fs", new_timeout
+                        )
+                        return Destination(PSBTFinalizeView)
+
                 return Destination(PSBTFinalizeView)
             return Destination(PSBTSigningErrorView)
 
