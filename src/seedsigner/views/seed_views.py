@@ -336,6 +336,9 @@ class LoadSeedView(View):
             return Destination(SeedMnemonicEntryView)
 
         elif button_data[selected_menu_num] == self.IMPORT_SEEDKEEPER:
+            # SeedKeeper is pysatochip-only (not supported by keycard backend);
+            # force pysatochip to avoid stale "keycard" preference from Keycard flows.
+            self.controller.smartcard_backend_preference = "pysatochip"
             return Destination(SeedKeeperSelectView)
 
         elif button_data[selected_menu_num] == self.IMPORT_SPECTER_DIY:

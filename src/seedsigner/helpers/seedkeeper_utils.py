@@ -112,8 +112,16 @@ def _init_card_connector(init_card_filter, backend_preference: str | None = None
 
     if backend_pref == "keycard":
         if not keycard_allowed:
-            raise Exception("Keycard backend only supports satochip card flows")
-        return KeycardSatochipConnector.create(card_filter=init_card_filter)
+            # Stale preference from a previous Keycard flow; fall back to auto
+            # instead of crashing (e.g. user does Keycard benchmark then loads
+            # from SeedKeeper, where the card filter is ["seedkeeper"]).
+            logger.info(
+                "Backend pref 'keycard' incompatible with card filter %s; falling back to auto",
+                init_card_filter,
+            )
+            backend_pref = "auto"
+        else:
+            return KeycardSatochipConnector.create(card_filter=init_card_filter)
 
     if backend_pref == "pysatochip":
         return _init_legacy_connector(init_card_filter)

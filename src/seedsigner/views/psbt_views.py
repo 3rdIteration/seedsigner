@@ -168,9 +168,9 @@ class PSBTSelectSeedView(View):
                 card_label = "Keycard"
                 self.controller.smartcard_backend_preference = "keycard"
             else:
-                backend_preference = None
+                backend_preference = "pysatochip"
                 card_label = "Satochip"
-                self.controller.smartcard_backend_preference = None
+                self.controller.smartcard_backend_preference = "pysatochip"
 
             init_kwargs = {"init_card_filter": ["satochip"]}
             if backend_preference is not None:

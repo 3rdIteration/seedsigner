@@ -114,26 +114,30 @@ class ToolsSmartcardMenuView(View):
             return Destination(BackStackView)
 
         elif button_data[selected_menu_num] == self.COMMON:
-            self.controller.smartcard_backend_preference = None
+            # COMMON tools work on Satochip/SeedKeeper cards (pysatochip only)
+            self.controller.smartcard_backend_preference = "pysatochip"
             return Destination(ToolsCommonView)
-        
+
         elif button_data[selected_menu_num] == self.SATOCHIP:
-            self.controller.smartcard_backend_preference = None
+            # Satochip menu forces pysatochip backend
+            self.controller.smartcard_backend_preference = "pysatochip"
             return Destination(ToolsSatochipView)
 
         elif button_data[selected_menu_num] == self.KEYCARD:
             self.controller.smartcard_backend_preference = "keycard"
             return Destination(ToolsKeycardView)
-        
+
         elif button_data[selected_menu_num] == self.SEEDKEEPER:
-            self.controller.smartcard_backend_preference = None
+            # SeedKeeper is pysatochip-only (not supported by keycard backend)
+            self.controller.smartcard_backend_preference = "pysatochip"
             return Destination(ToolsSeedkeeperView)
 
         elif button_data[selected_menu_num] == self.SPECTER_DIY:
             return Destination(ToolsSpecterDIYView)
 
         elif button_data[selected_menu_num] == self.Satochip_DIY:
-            self.controller.smartcard_backend_preference = None
+            # Satochip-DIY is pysatochip-only
+            self.controller.smartcard_backend_preference = "pysatochip"
             return Destination(ToolsSatochipDIYView)
 
 class ToolsCommonView(View):
