@@ -1167,8 +1167,8 @@ msgid "Cache Smartcard Pin"
 msgstr "Cachear PIN de tarjeta inteligente"
 
 #: src/seedsigner/models/settings_definition.py
-msgid "Off (default): re-enter PIN after returning Home. On: keep PIN in RAM until reboot for fewer prompts."
-msgstr "Desactivado (predet.): vuelve a pedir el PIN al volver al inicio. Activado: lo mantiene en RAM hasta reiniciar."
+msgid "On (default): keep PIN in RAM for fewer prompts. Off: re-enter PIN after returning Home."
+msgstr "Activado (predet.): mantiene el PIN en RAM para menos solicitudes. Desactivado: vuelve a pedir el PIN al volver al inicio."
 
 #: src/seedsigner/models/settings_definition.py
 msgid "Auto PIN on insert"

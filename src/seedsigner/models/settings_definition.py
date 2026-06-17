@@ -706,10 +706,10 @@ class SettingsDefinition:
                     attr_name=SettingsConstants.SETTING__CACHE_SCARD_PIN,
                     abbreviated_name="cachepin",
                     display_name=_mft("Cache Smartcard Pin"),
-                    help_text=_mft("Off (default): re-enter PIN after returning Home. On: keep PIN in RAM until reboot for fewer prompts."),
+                    help_text=_mft("On (default): keep PIN in RAM for fewer prompts. Off: re-enter PIN after returning Home."),
                     type=SettingsConstants.TYPE__SELECT_1,
                     selection_options=SettingsConstants.OPTIONS__ENABLED_DISABLED,
-                    default_value=SettingsConstants.OPTION__DISABLED),
+                    default_value=SettingsConstants.OPTION__ENABLED),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__SYSTEM,
                     attr_name=SettingsConstants.SETTING__AUTO_PIN_ON_INSERT,

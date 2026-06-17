@@ -383,7 +383,32 @@ def open_unlocked_session(
     # one (CHANGE_PIN, UNPAIR) pass ``require_key=False`` to skip this.
     if require_key and not info.key_uid:
         raise KeycardNoMasterKeyError(info.instance_uid)
-    parent_view.controller.last_keycard_uid = bytes(info.instance_uid)
+
+    # Reader-independent card/instance-swap detection. The PC/SC 'removed'
+    # event (helpers/card_monitor.py) is unreliable on some readers (notably
+    # NFC/PN532 via ifdnfc), so a swapped card can otherwise leave the previous
+    # card's cached PIN sitting in RAM. This is the single authenticated
+    # choke-point and we have just SELECTed the card that is *actually* in the
+    # reader, so detect the change here: if the inserted instance differs from
+    # the one we last opened a session with, scrub the previous card's secrets
+    # before touching the new card.
+    cur_uid = bytes(info.instance_uid)
+    prev_uid = getattr(
+        parent_view.controller, "last_authenticated_keycard_uid", None,
+    )
+    if prev_uid is not None and prev_uid != cur_uid:
+        parent_view.controller.wipe_card_session_secrets()
+        # wipe_card_session_secrets cleared the AID->UID map that
+        # select_with_autodetect just populated; restore it for the active AID
+        # so instance-name/title rendering stays correct for this card.
+        parent_view.controller.remember_aid_for_uid(
+            getattr(parent_view.controller, "active_keycard_aid", None), cur_uid,
+        )
+    # Record the card we are now operating on as the swap-detection reference.
+    # Set after the wipe (which clears it) and before any pairing/PIN lookup, so
+    # a retry of this same card (e.g. after a PIN prompt) won't false-wipe.
+    parent_view.controller.last_authenticated_keycard_uid = cur_uid
+    parent_view.controller.last_keycard_uid = cur_uid
 
     pairing = None
     ephemeral_secret = parent_view.controller.get_ephemeral_secret_for(

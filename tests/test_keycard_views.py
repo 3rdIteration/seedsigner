@@ -139,6 +139,82 @@ class TestNoCardToast(unittest.TestCase):
         self.assertTrue(view.controller.activate_toast.called)
         self.assertIs(dest.View_cls, BackStackView)
 
+    def test_eth_finalize_card_changed_resumes_without_rescan(self):
+        """A swapped card mid-sign keeps the scanned request and routes to
+        pairing with a resume back into the finalize step (no re-scan)."""
+        from unittest.mock import patch
+
+        from seedsigner.helpers.keycard import KeycardCardChangedError
+        from seedsigner.views import keycard_views
+        from seedsigner.views.keycard_views import (
+            ToolsKeycardPairView, ToolsKeycardSignEthFinalizeView,
+        )
+
+        view = ToolsKeycardSignEthFinalizeView.__new__(ToolsKeycardSignEthFinalizeView)
+        view.controller = MagicMock()
+        sentinel_request = object()
+        view.controller.eth_sign_request = sentinel_request
+        view.controller.has_any_keycard_auth.return_value = True
+
+        with patch.object(
+            keycard_views, "_open_unlocked_session_cached_or_prompt",
+            side_effect=KeycardCardChangedError(b"\xBB" * 16),
+        ):
+            dest = view.run()
+
+        # Scanned request preserved (NOT nulled) so the resume needs no re-scan.
+        self.assertIs(view.controller.eth_sign_request, sentinel_request)
+        # Routed to pairing, set up to resume the finalize after a good pair.
+        self.assertIs(dest.View_cls, ToolsKeycardPairView)
+        self.assertTrue(dest.skip_current_view)
+        resume = dest.view_args["next_destination"]
+        self.assertIs(resume.View_cls, ToolsKeycardSignEthFinalizeView)
+        self.assertTrue(resume.skip_current_view)
+
+    def test_btc_psbt_finalize_card_changed_resumes_without_rescan(self):
+        from unittest.mock import patch
+
+        from seedsigner.helpers.keycard import KeycardCardChangedError
+        from seedsigner.views import keycard_views
+        from seedsigner.views.keycard_views import (
+            ToolsKeycardBtcSignPsbtFinalizeView, ToolsKeycardPairView,
+        )
+
+        view = ToolsKeycardBtcSignPsbtFinalizeView.__new__(
+            ToolsKeycardBtcSignPsbtFinalizeView,
+        )
+        view.controller = MagicMock()
+        sentinel_psbt = object()
+        view.controller.btc_parsed_psbt = sentinel_psbt
+
+        with patch.object(
+            keycard_views, "_open_unlocked_session_cached_or_prompt",
+            side_effect=KeycardCardChangedError(b"\xCC" * 16),
+        ):
+            dest = view.run()
+
+        # Parsed PSBT preserved (NOT nulled) so the resume needs no re-scan.
+        self.assertIs(view.controller.btc_parsed_psbt, sentinel_psbt)
+        self.assertIs(dest.View_cls, ToolsKeycardPairView)
+        resume = dest.view_args["next_destination"]
+        self.assertIs(resume.View_cls, ToolsKeycardBtcSignPsbtFinalizeView)
+
+    def test_pair_then_resume_builds_resumable_destination(self):
+        from seedsigner.views.keycard_views import (
+            _pair_then_resume, ToolsKeycardPairView,
+            ToolsKeycardSignEthFinalizeView,
+        )
+        from seedsigner.views.view import Destination
+
+        resume = Destination(ToolsKeycardSignEthFinalizeView)
+        dest = _pair_then_resume(resume)
+        self.assertIs(dest.View_cls, ToolsKeycardPairView)
+        self.assertTrue(dest.skip_current_view)
+        self.assertIs(dest.view_args["next_destination"], resume)
+        # The resume hop also skips itself so the back stack stays clean
+        # (no Pair/Finalize duplicates left behind after the detour).
+        self.assertTrue(resume.skip_current_view)
+
 
 class TestKeycardMenuRouting(unittest.TestCase):
     """Smoke tests for the scope-organised Keycard menu hierarchy:

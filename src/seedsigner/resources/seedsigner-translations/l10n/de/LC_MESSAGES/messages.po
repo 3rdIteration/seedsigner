@@ -1154,8 +1154,8 @@ msgid "Cache Smartcard Pin"
 msgstr "Smartcard-PIN zwischenspeichern"
 
 #: src/seedsigner/models/settings_definition.py
-msgid "Off (default): re-enter PIN after returning Home. On: keep PIN in RAM until reboot for fewer prompts."
-msgstr "Aus (Standard): PIN nach Rückkehr zum Start erneut nötig. Ein: PIN bleibt bis zum Neustart im RAM."
+msgid "On (default): keep PIN in RAM for fewer prompts. Off: re-enter PIN after returning Home."
+msgstr "Ein (Standard): PIN bleibt im RAM für weniger Abfragen. Aus: PIN nach Rückkehr zum Start erneut nötig."
 
 #: src/seedsigner/models/settings_definition.py
 msgid "Auto PIN on insert"

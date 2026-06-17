@@ -60,6 +60,18 @@ class _Controller:
         self.keycard_pins = {}
         self.keycard_aid_to_uid = {}
         self.last_keycard_uid = None
+        # Swap-detection reference set by open_unlocked_session (the real
+        # Controller initialises it in get_instance).
+        self.last_authenticated_keycard_uid = None
+
+    def wipe_card_session_secrets(self):
+        # Faithful to the real contract for the swap-detector: drop PINs and
+        # card-specific maps, but KEEP pairings / ephemeral secrets (they are
+        # per-UID and survive a card swap, so each card still finds its own).
+        self.keycard_pins.clear()
+        self.keycard_aid_to_uid.clear()
+        self.last_keycard_uid = None
+        self.last_authenticated_keycard_uid = None
 
     def remember_aid_for_uid(self, aid, uid):
         if aid is None or uid is None:
@@ -208,6 +220,63 @@ class TestAutoSwitch(unittest.TestCase):
         self.assertEqual(len(calls), 2)
         self.assertIs(calls[0].args[0], pairing_a)
         self.assertIs(calls[1].args[0], pairing_b)
+
+    def test_swap_wipes_previous_card_secrets(self):
+        """A different inserted UID than the last authenticated one triggers a
+        reader-independent wipe of the previous card's session secrets — the
+        backstop for an unreliable PC/SC 'removed' event (esp. NFC/PN532)."""
+        from seedsigner.helpers.keycard.ui_helpers import open_unlocked_session
+
+        ctrl = _Controller()
+        ctrl.set_pairing_for(UID_A, MagicMock(name="pairing_a"))
+        ctrl.set_pairing_for(UID_B, MagicMock(name="pairing_b"))
+        ctrl.last_authenticated_keycard_uid = UID_A  # last session was card A
+        ctrl.wipe_card_session_secrets = MagicMock(
+            wraps=ctrl.wipe_card_session_secrets,
+        )
+
+        view = MagicMock()
+        view.controller = ctrl
+        client = MagicMock()
+        client.select.return_value = _make_select_response(UID_B)
+
+        for p in _patches(client):
+            p.start()
+        try:
+            open_unlocked_session(view, bytearray(b"123456"))
+        finally:
+            patch.stopall()
+
+        ctrl.wipe_card_session_secrets.assert_called_once()
+        # Marker now points at the card actually in the reader.
+        self.assertEqual(ctrl.last_authenticated_keycard_uid, UID_B)
+
+    def test_same_card_reuse_does_not_wipe(self):
+        """Repeated ops on the same card must NOT wipe — that is what lets the
+        cached PIN be reused (the whole point of caching)."""
+        from seedsigner.helpers.keycard.ui_helpers import open_unlocked_session
+
+        ctrl = _Controller()
+        ctrl.set_pairing_for(UID_A, MagicMock(name="pairing_a"))
+        ctrl.last_authenticated_keycard_uid = UID_A
+        ctrl.wipe_card_session_secrets = MagicMock(
+            wraps=ctrl.wipe_card_session_secrets,
+        )
+
+        view = MagicMock()
+        view.controller = ctrl
+        client = MagicMock()
+        client.select.return_value = _make_select_response(UID_A)
+
+        for p in _patches(client):
+            p.start()
+        try:
+            open_unlocked_session(view, bytearray(b"123456"))
+        finally:
+            patch.stopall()
+
+        ctrl.wipe_card_session_secrets.assert_not_called()
+        self.assertEqual(ctrl.last_authenticated_keycard_uid, UID_A)
 
 
 class TestKeycardCardChangedError(unittest.TestCase):

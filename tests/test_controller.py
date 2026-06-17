@@ -198,14 +198,24 @@ class TestController(BaseTest):
         assert cached_pin == [0, 0, 0, 0, 0, 0]
 
 
-    def test_cache_scard_pin_default_is_disabled(self):
-        """Security default: PIN caching is OFF out of the box, so
-        returning Home wipes the verified PIN and the next op re-prompts.
-        Power users can opt back into stickier caching (Enabled)."""
+    def test_cache_scard_pin_default_is_enabled(self):
+        """Default: PIN caching is ON out of the box, so the verified PIN is
+        reused across Home navigation and is dropped only on a card/instance
+        swap, Lock card, bad PIN, or the inactivity wipe timer. Security-
+        conscious users can still opt into wipe-on-Home (Disabled)."""
         controller = Controller.get_instance()
         assert controller.settings.get_value(
             SettingsConstants.SETTING__CACHE_SCARD_PIN
-        ) == SettingsConstants.OPTION__DISABLED
+        ) == SettingsConstants.OPTION__ENABLED
+
+    def test_forget_all_pins_clears_last_authenticated_uid(self):
+        """The swap-detection marker is PIN-session-scoped: dropping all PINs
+        (Lock card, card removal, return-Home, instance switch, wipe timer)
+        must also clear it so the next op doesn't redundantly re-wipe."""
+        controller = Controller.get_instance()
+        controller.last_authenticated_keycard_uid = b"\x11" * 16
+        controller.forget_all_pins()
+        assert controller.last_authenticated_keycard_uid is None
 
     def test_wipe_card_session_secrets_clears_pins(self):
         """The canonical 'drop all cached card auth' entry point (used by

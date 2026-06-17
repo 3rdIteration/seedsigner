@@ -1308,6 +1308,14 @@ class ToolsKeycardPairView(View):
          cache it on the controller's keycard_pairings dict.
     """
 
+    def __init__(self, next_destination=None):
+        super().__init__()
+        # When set, a *successful* pair routes here instead of the Keycard menu.
+        # Used by sign/export flows to resume after pairing a swapped card (see
+        # _pair_then_resume) so the user never re-scans. Cancel / failure paths
+        # ignore it and fall back to the menu / BackStackView as before.
+        self.next_destination = next_destination
+
     def run(self):
         try:
             from seedsigner.helpers.keycard import pairing_storage
@@ -1379,7 +1387,9 @@ class ToolsKeycardPairView(View):
                 show_back_button=False,
                 button_data=[ButtonOption("OK")],
             )
-            return Destination(ToolsKeycardMenuView, skip_current_view=True)
+            return self.next_destination or Destination(
+                ToolsKeycardMenuView, skip_current_view=True,
+            )
 
         # If the card has no free slots and we have no cached pairing
         # to reuse, PAIR will fail with SW=0x6A84. Stop early with a
@@ -1481,7 +1491,9 @@ class ToolsKeycardPairView(View):
             show_back_button=False,
             button_data=[ButtonOption("OK")],
         )
-        return Destination(ToolsKeycardMenuView, skip_current_view=True)
+        return self.next_destination or Destination(
+            ToolsKeycardMenuView, skip_current_view=True,
+        )
 
     # ---- ephemeral (v3.2+) path -------------------------------------
 
@@ -1506,7 +1518,7 @@ class ToolsKeycardPairView(View):
         # No status screen: silent return so the user is dropped back where
         # they came from instead of bouncing through an "OK" confirmation.
         if self.controller.get_ephemeral_secret_for(instance_uid) is not None:
-            return Destination(BackStackView)
+            return self.next_destination or Destination(BackStackView)
 
         secret_used: Optional[bytes] = None
         try:
@@ -1613,7 +1625,25 @@ class ToolsKeycardPairView(View):
         # No "Paired" status screen: v3.2 ephemeral pairing is a transparent
         # session-bootstrap step, not a user-facing action. Silently return
         # so the user lands back in whichever flow triggered the pairing.
-        return Destination(BackStackView)
+        return self.next_destination or Destination(BackStackView)
+
+
+def _pair_then_resume(resume_destination) -> "Destination":
+    """Route to ``ToolsKeycardPairView`` and resume ``resume_destination`` once
+    the inserted card is paired — retry-without-rescan for a *swapped* card.
+
+    Mirrors the no-card ``stay=`` pattern (``_no_card_toast_or_error``) but for a
+    card swap: the scanned request / PSBT / message is NOT dropped, so the user
+    pairs the new card and the original step re-runs without re-scanning. Both
+    hops carry ``skip_current_view`` so the back stack ends up exactly as if the
+    pairing detour never happened (no Pair/Finalize duplicates left behind).
+    """
+    resume_destination.skip_current_view = True
+    return Destination(
+        ToolsKeycardPairView,
+        view_args={"next_destination": resume_destination},
+        skip_current_view=True,
+    )
 
 
 class ToolsKeycardRemovePairingView(View):
@@ -4639,8 +4669,13 @@ class ToolsKeycardSignEthVerifyCardView(View):
         except KeycardPinPromptCancelled:
             return Destination(BackStackView)
         except KeycardCardChangedError:
-            self.controller.eth_sign_request = None
-            return Destination(ToolsKeycardPairView)
+            # Different card than this session paired to. Keep the scanned
+            # request (retry-without-rescan), pair the new card, then resume
+            # this verify step; the identity gate below still rejects a wrong
+            # wallet once paired.
+            return _pair_then_resume(
+                Destination(ToolsKeycardSignEthVerifyCardView),
+            )
         except Exception as exc:
             logger.exception("Keycard identity check failed")
             from seedsigner.helpers.keycard.reader import (
@@ -5085,9 +5120,12 @@ class ToolsKeycardSignEthFinalizeView(View):
         except KeycardPinPromptCancelled:
             return Destination(BackStackView)
         except KeycardCardChangedError:
-            self.controller.eth_sign_request = None
-            self.controller.eth_signature = None
-            return Destination(ToolsKeycardPairView)
+            # Keep the scanned request (retry-without-rescan); pair the new card
+            # and resume this finalize. The card-identity gate above still
+            # rejects a genuinely wrong wallet after pairing.
+            return _pair_then_resume(
+                Destination(ToolsKeycardSignEthFinalizeView),
+            )
         except Exception as exc:
             logger.exception("Keycard signing failed")
             from seedsigner.helpers.keycard.reader import (
@@ -5398,7 +5436,8 @@ class ToolsKeycardBtcExportXpubView(View):
         except KeycardPinPromptCancelled:
             return Destination(BackStackView)
         except KeycardCardChangedError:
-            return Destination(ToolsKeycardPairView)
+            # No scanned state here; pair the new card and resume the export.
+            return _pair_then_resume(Destination(ToolsKeycardBtcExportXpubView))
         except Exception as exc:
             logger.exception("Keycard export_xpub failed")
             # No card → subtle toast + back one step (no scanned data here).
@@ -5494,8 +5533,12 @@ class ToolsKeycardBtcSignPsbtReviewView(View):
         except KeycardPinPromptCancelled:
             return Destination(BackStackView)
         except KeycardCardChangedError:
-            self.controller.psbt = None
-            return Destination(ToolsKeycardPairView)
+            # Keep the scanned PSBT (retry-without-rescan); pair the new card and
+            # resume this review. The wrong-wallet check below still fires once
+            # paired.
+            return _pair_then_resume(
+                Destination(ToolsKeycardBtcSignPsbtReviewView),
+            )
         except Exception as exc:
             logger.exception("Keycard fingerprint probe failed")
             from seedsigner.helpers.keycard.reader import (
@@ -5587,9 +5630,11 @@ class ToolsKeycardBtcSignPsbtFinalizeView(View):
         except KeycardPinPromptCancelled:
             return Destination(BackStackView)
         except KeycardCardChangedError:
-            self.controller.psbt = None
-            self.controller.btc_parsed_psbt = None
-            return Destination(ToolsKeycardPairView)
+            # Keep the parsed PSBT (retry-without-rescan); pair the new card and
+            # resume this finalize.
+            return _pair_then_resume(
+                Destination(ToolsKeycardBtcSignPsbtFinalizeView),
+            )
         except Exception as exc:
             logger.exception("Keycard sign_psbt failed")
             from seedsigner.helpers.keycard.reader import (
@@ -5736,7 +5781,17 @@ class ToolsKeycardBtcSignMessageFinalizeView(View):
         except KeycardPinPromptCancelled:
             return Destination(BackStackView)
         except KeycardCardChangedError:
-            return Destination(ToolsKeycardPairView)
+            # Keep the scanned message (retry-without-rescan); pair the new card
+            # and resume this finalize with the same message/path.
+            return _pair_then_resume(
+                Destination(
+                    ToolsKeycardBtcSignMessageFinalizeView,
+                    view_args=dict(
+                        message=self.message,
+                        derivation_path=self.derivation_path,
+                    ),
+                ),
+            )
         except Exception as exc:
             logger.exception("Keycard sign_message failed")
             from seedsigner.helpers.keycard.reader import (

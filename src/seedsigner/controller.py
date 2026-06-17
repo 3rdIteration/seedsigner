@@ -341,6 +341,14 @@ class Controller(Singleton):
         # first VERIFY_PIN don't re-prompt. Wiped on swap (CardMonitor),
         # bad PIN (SW=0x63CX), unpair, and ``handle_wipe_timeout``.
         controller.keycard_pins = {}
+        # ``last_authenticated_keycard_uid`` is the instance_uid of the card we
+        # last opened an unlocked (PIN-verified) session with. It is the
+        # reader-independent signal for a card/instance swap: open_unlocked_session
+        # compares the freshly-SELECTed uid against it and scrubs the previous
+        # card's secrets when they differ. Deliberately distinct from
+        # ``last_keycard_uid`` (which enumeration / name resolution mutate, so it
+        # would false-positive). Cleared together with the PIN cache.
+        controller.last_authenticated_keycard_uid = None
         controller.last_keycard_uid = None
         controller.eth_sign_request = None
         controller.eth_signature = None
@@ -578,6 +586,10 @@ class Controller(Singleton):
         # CLAUDE.md.
         if self.keycard_wallets_data is not None:
             self.keycard_wallets_data.clear()
+        # The "last authenticated card" marker is PIN-session-scoped: once all
+        # PINs are gone it is meaningless, and clearing it keeps the swap-detector
+        # in open_unlocked_session from a redundant wipe on the next operation.
+        self.last_authenticated_keycard_uid = None
 
     # ---- Satochip / SeedKeeper session ----
 
