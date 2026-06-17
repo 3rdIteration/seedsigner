@@ -4411,6 +4411,15 @@ class ToolsKeycardInstancesCreateView(View):
         # (so "Switch instance" reappears now that there are >1).
         self.controller.keycard_instance_count = None
 
+        # Auto-switch the active instance to the one we just created. The new
+        # instance is uninitialised, so this makes the announced "Run Init
+        # next" actually target it: select_with_autodetect first-tries the
+        # active AID, so without this the Init wizard would re-SELECT the
+        # previous (already-initialised) instance and bail with "Already
+        # initialised". Symmetric with the delete path, which falls the active
+        # AID back to the default when the active instance is removed.
+        self.controller.active_keycard_aid = new_aid
+
         self.run_screen(
             LargeIconStatusScreen,
             title=_("Created"),

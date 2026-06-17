@@ -969,6 +969,48 @@ class TestKeycardMenuRouting(unittest.TestCase):
         self.assertIs(dest.View_cls, keycard_views.KeycardErrorView)
         self.assertEqual(dest.view_args["title"], "Maximum reached")
 
+    def test_create_auto_switches_active_instance(self):
+        """A successful create must auto-activate the freshly-installed
+        instance (set ``active_keycard_aid`` to the new AID) so the announced
+        "Run Init next" targets it directly, instead of leaving the previous
+        (already-initialised) instance active."""
+        from unittest.mock import patch
+
+        from seedsigner.helpers.keycard.global_platform import AppletInstance
+        from seedsigner.views import keycard_views
+        from seedsigner.views.keycard_views import (
+            KEYCARD_APPLET_AID, ToolsKeycardInstancesCreateView,
+            ToolsKeycardInstancesMenuView, _next_free_instance_aid,
+        )
+
+        # One existing instance at the boot-default AID (the active one).
+        default_aid = bytes.fromhex("A0000008040001010101")
+        existing = [AppletInstance(aid=default_aid, life_cycle=7, privileges=0)]
+        expected_new = _next_free_instance_aid([default_aid])
+        # Sanity: the new slot must differ from the active default.
+        self.assertNotEqual(expected_new, default_aid)
+
+        view = ToolsKeycardInstancesCreateView.__new__(ToolsKeycardInstancesCreateView)
+        view.controller = MagicMock()
+        view.controller.active_keycard_aid = default_aid
+        # Confirm screens return a non-back sentinel so the flow proceeds.
+        view.run_screen = MagicMock(return_value=object())
+
+        with patch.object(
+            keycard_views, "_open_isd_channel",
+            return_value=(MagicMock(), existing, MagicMock()),
+        ), patch(
+            "seedsigner.helpers.keycard.global_platform.install_for_install_with_fallback"
+        ) as install_mock:
+            dest = view.run()
+
+        install_mock.assert_called_once()
+        # The active instance is now the one we just created.
+        self.assertEqual(view.controller.active_keycard_aid, expected_new)
+        # Count is invalidated so "Switch instance" re-probes (now >1).
+        self.assertIsNone(view.controller.keycard_instance_count)
+        self.assertIs(dest.View_cls, ToolsKeycardInstancesMenuView)
+
     def test_pin_management_view_removed(self):
         """``ToolsKeycardPinManagementMenuView`` was a one-entry indirection
         ("Change PIN" was the only item); since Change PIN now hangs
