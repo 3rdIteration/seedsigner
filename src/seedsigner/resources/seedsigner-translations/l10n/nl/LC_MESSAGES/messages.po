@@ -3872,3 +3872,15 @@ msgstr "Naamloze seed"
 #: src/seedsigner/views/stealth_views.py
 msgid "Boots into a games console. Your combo reveals the wallet."
 msgstr "Start op als spelconsole. Je combinatie onthult de wallet."
+
+msgid "Pairing"
+msgstr "Koppeling"
+
+msgid "Manage Inst"
+msgstr "Inst. beheer"
+
+msgid "Wallets"
+msgstr "Wallets"
+
+msgid "Addresses"
+msgstr "Adressen"

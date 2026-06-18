@@ -144,12 +144,13 @@ class ToolsKeycardMenuView(View):
         # "Switch instance" is only meaningful when the card holds more
         # than one instance. Read the count from the session cache; when
         # unknown, take a FAST, unauthenticated probe (cleartext applet
-        # SELECTs) for the visibility decision only — never the heavy GP/ISD
-        # GET STATUS handshake, which was the menu-entry stall and fails
-        # slowly on non-default ISD keys. The authoritative count is filled
-        # in lazily by the Switch / Manage Instances flows. ``None`` means
-        # "couldn't determine" — keep the entry visible; only hide it when a
-        # prior authoritative pass cached exactly one.
+        # SELECTs) — never the heavy GP/ISD GET STATUS handshake, which was
+        # the menu-entry stall and fails slowly on non-default ISD keys. The
+        # probe SELECTs every valid slot, so it returns the *exact* count
+        # (including one). ``None`` means "couldn't determine" (no card /
+        # error) — keep the entry visible; hide it only on a definite one.
+        # The Switch / Manage Instances flows still refresh the count
+        # authoritatively. The same count drives the title's ``Inst N`` suffix.
         count = self.controller.keycard_instance_count
         if count is None:
             count = _probe_keycard_instance_count(self.controller)
@@ -162,10 +163,10 @@ class ToolsKeycardMenuView(View):
         button_data += [self.LOCK, self.SETTINGS]
         # Surface the active instance in the title so the user always
         # knows which instance signing / export will use this session.
-        active = _instance_display_name(self.controller, self.controller.active_keycard_aid)
+        suffix = _instance_title_suffix(self.controller)
         selected = self.run_screen(
             ButtonListScreen,
-            title=_("Keycard · {}").format(active),
+            title=_("Keycard · {}").format(suffix) if suffix else _("Keycard"),
             is_button_text_centered=False,
             button_data=button_data,
         )
@@ -235,7 +236,7 @@ class ToolsKeycardThisInstanceMenuView(View):
     LOCK = ButtonOption("Lock card")
 
     def run(self):
-        active = _instance_display_name(self.controller, self.controller.active_keycard_aid)
+        suffix = _instance_title_suffix(self.controller)
         # Daily-use key ops up top; the rarer lifecycle ops (Initialise /
         # Factory reset) group at the bottom. "Initialise instance" runs
         # INIT against this instance's applet — it lives here, not under
@@ -258,7 +259,7 @@ class ToolsKeycardThisInstanceMenuView(View):
         ]
         selected = self.run_screen(
             ButtonListScreen,
-            title=_("This instance · {}").format(active),
+            title=_("This instance · {}").format(suffix) if suffix else _("This instance"),
             is_button_text_centered=False,
             button_data=button_data,
         )
@@ -412,11 +413,11 @@ class ToolsKeycardPairingMenuView(View):
     REMOVE_PAIRING = ButtonOption("Remove pairing")
 
     def run(self):
-        active = _instance_display_name(self.controller, self.controller.active_keycard_aid)
+        suffix = _instance_title_suffix(self.controller)
         button_data = [self.PAIR, self.REMOVE_PAIRING]
         selected = self.run_screen(
             ButtonListScreen,
-            title=_("Pairing · {}").format(active),
+            title=_("Pairing · {}").format(suffix) if suffix else _("Pairing"),
             is_button_text_centered=False,
             button_data=button_data,
         )
@@ -3736,11 +3737,11 @@ class ToolsKeycardWalletsListView(View):
                     loading_screen.stop()
 
         addresses = cache[self.start_index:end_index]
-        active_aid_short = _instance_display_name(self.controller, self.controller.active_keycard_aid)
+        suffix = _instance_title_suffix(self.controller)
 
         selected = self.run_screen(
             ToolsAddressExplorerAddressListScreen,
-            title=_("Wallets ({})").format(active_aid_short),
+            title=_("Wallets ({})").format(suffix) if suffix else _("Wallets"),
             start_index=self.start_index,
             addresses=addresses,
             selected_button=self.selected_button_index,
@@ -3875,11 +3876,11 @@ class ToolsKeycardBtcAddressesListView(View):
                     loading_screen.stop()
 
         addresses = cache[self.start_index:end_index]
-        active_aid_short = _instance_display_name(self.controller, self.controller.active_keycard_aid)
+        suffix = _instance_title_suffix(self.controller)
 
         selected = self.run_screen(
             ToolsAddressExplorerAddressListScreen,
-            title=_("Addresses ({})").format(active_aid_short),
+            title=_("Addresses ({})").format(suffix) if suffix else _("Addresses"),
             start_index=self.start_index,
             addresses=addresses,
             selected_button=self.selected_button_index,
@@ -4005,6 +4006,25 @@ def _instance_display_name(controller, aid: bytes) -> str:
     return name if isinstance(name, str) and name else _format_instance_label(aid)
 
 
+def _instance_title_suffix(controller):
+    """Active-instance label to append to a menu title, or ``None`` to omit it.
+
+    A user-assigned name always shows (deliberate, disambiguating). The auto
+    ``Inst N`` fallback shows only when the card holds more than one instance —
+    with a single instance there's nothing to disambiguate, so it's noise and
+    we drop it. An unknown count (``None``) keeps the label, the same
+    conservative rule as the "Switch instance" visibility (never drop identity
+    on a guess).
+    """
+    aid = controller.active_keycard_aid
+    name = controller.get_instance_name_for_aid(aid) if controller is not None else None
+    if isinstance(name, str) and name:
+        return name
+    if controller is not None and controller.keycard_instance_count == 1:
+        return None
+    return _format_instance_label(aid)
+
+
 def _next_free_instance_aid(existing: list) -> bytes:
     """Suggest the next free instance AID, in the 9-byte canonical form.
 
@@ -4077,11 +4097,11 @@ class ToolsKeycardInstancesMenuView(View):
             if ret == RET_CODE__BACK_BUTTON:
                 return Destination(BackStackView)
 
-        active = _instance_display_name(self.controller, self.controller.active_keycard_aid)
+        suffix = _instance_title_suffix(self.controller)
         button_data = [self.THIS_INSTANCE, self.CREATE, self.DELETE]
         ret = self.run_screen(
             ButtonListScreen,
-            title=_("Manage Inst · {}").format(active),
+            title=_("Manage Inst · {}").format(suffix) if suffix else _("Manage Inst"),
             is_button_text_centered=False,
             button_data=button_data,
             show_back_button=True,
@@ -4197,28 +4217,35 @@ def _count_keycard_instances(controller):
 
 
 def _probe_keycard_instance_count(controller):
-    """Fast, unauthenticated upper-confidence probe of the instance count,
-    used ONLY for the top-menu "Switch instance" visibility decision.
+    """Fast, unauthenticated probe of the exact instance count, used for both
+    the top-menu "Switch instance" visibility decision AND the title's
+    ``Inst N`` suffix (which is dropped when the card holds exactly one).
 
     Unlike :func:`_count_keycard_instances` (authoritative GET STATUS over the
-    GP/ISD SCP02 channel), this sends a handful of *cleartext* applet SELECTs
-    via :func:`probe_keycard_instance_aids` — no ISD handshake. That handshake
-    was the menu-entry stall, and on a card whose ISD keys are not the
-    GlobalPlatform defaults it fails *slowly*; cleartext applet SELECTs don't
-    touch the ISD, so they stay fast regardless.
+    GP/ISD SCP02 channel — currently unused), this sends a handful of
+    *cleartext* applet SELECTs via :func:`probe_keycard_instance_aids` — no ISD
+    handshake. That handshake was the menu-entry stall, and on a card whose ISD
+    keys are not the GlobalPlatform defaults it fails *slowly*; cleartext applet
+    SELECTs don't touch the ISD, so they stay fast regardless.
 
     Instance AIDs are ``KEYCARD_APPLET_AID + slot`` in a 9- or 10-byte form,
     and SELECT-by-DF-name partial-matches the bare prefix and both forms, so a
     single instance yields several hits. We therefore count **distinct slot
     bytes** (each AID's trailing byte), not raw hits.
 
-    Returns the count only when it is **>= 2** — the one case where the probe
-    alone can safely justify *showing* "Switch instance". For 0/1 hits or any
-    error it returns ``None`` so the caller keeps the entry visible: the probe
-    only knows the standard slot range, so it must never be trusted to conclude
-    "exactly one" and hide the only way to switch (see the note in
-    :func:`_count_keycard_instances`). Hiding happens solely on an
-    authoritative ``1`` cached by the Switch / Manage Instances flows.
+    The probe SELECTs *every* valid slot — 1..``MAX_KEYCARD_INSTANCES``, both
+    AID forms (see :func:`keycard_instance_aid_candidates`) — and this firmware
+    only ever mints instances within that range (``_next_free_instance_aid``),
+    as do keycard-cli/keycard-shell. So a result of exactly one distinct slot
+    reliably means one instance, and we return the exact count whenever at
+    least one slot is seen. For 0 hits / no card / any error it returns
+    ``None`` so the caller keeps the entry (and the label) visible — never
+    decide identity on a blank read.
+
+    Residual risk (honest tradeoff): a card carrying a second instance at a
+    **non-standard AID outside slots 1..MAX** would be under-counted and could
+    wrongly hide "Switch instance". No supported tool creates such an instance;
+    even then the user retains Create / Delete under Manage Instances.
     """
     from seedsigner.helpers.keycard.global_platform import (
         probe_keycard_instance_aids,
@@ -4235,7 +4262,7 @@ def _probe_keycard_instance_count(controller):
         # Drop the bare-prefix hit (no slot byte; only ever a partial match)
         # and collapse the remaining hits to distinct slot bytes.
         slots = {h[-1] for h in hits if len(h) > len(KEYCARD_APPLET_AID)}
-        return len(slots) if len(slots) >= 2 else None
+        return len(slots) or None
     except Exception:
         logger.debug("keycard instance probe-count failed", exc_info=True)
         return None
@@ -5356,10 +5383,10 @@ class ToolsKeycardEthereumMenuView(View):
             return gate
 
         button_data = [self.SIGN_REQUEST, self.VIEW_WALLETS, self.EXPORT_XPUB]
-        active = _instance_display_name(self.controller, self.controller.active_keycard_aid)
+        suffix = _instance_title_suffix(self.controller)
         selected = self.run_screen(
             ButtonListScreen,
-            title=_("Ethereum · {}").format(active),
+            title=_("Ethereum · {}").format(suffix) if suffix else _("Ethereum"),
             is_button_text_centered=False,
             button_data=button_data,
         )
@@ -5396,10 +5423,10 @@ class ToolsKeycardBitcoinMenuView(View):
             self.SIGN_PSBT, self.SIGN_MESSAGE, self.VIEW_ADDRESSES,
             self.EXPORT_XPUB,
         ]
-        active = _instance_display_name(self.controller, self.controller.active_keycard_aid)
+        suffix = _instance_title_suffix(self.controller)
         selected = self.run_screen(
             ButtonListScreen,
-            title=_("Bitcoin · {}").format(active),
+            title=_("Bitcoin · {}").format(suffix) if suffix else _("Bitcoin"),
             is_button_text_centered=False,
             button_data=button_data,
         )

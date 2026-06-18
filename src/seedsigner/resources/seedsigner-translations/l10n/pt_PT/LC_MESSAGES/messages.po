@@ -3865,3 +3865,15 @@ msgstr "Semente sem nome"
 #: src/seedsigner/views/stealth_views.py
 msgid "Boots into a games console. Your combo reveals the wallet."
 msgstr "Arranca numa consola de jogos. A tua combinação revela a carteira."
+
+msgid "Pairing"
+msgstr "Emparelhamento"
+
+msgid "Manage Inst"
+msgstr "Gerir inst"
+
+msgid "Wallets"
+msgstr "Carteiras"
+
+msgid "Addresses"
+msgstr "Endereços"

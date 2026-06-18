@@ -1064,6 +1064,31 @@ class TestKeycardMenuRouting(unittest.TestCase):
         # No controller at all.
         self.assertEqual(keycard_views._instance_display_name(None, aid), "Inst 1")
 
+    def test_instance_title_suffix(self):
+        """``_instance_title_suffix`` drops the auto ``Inst N`` label when the
+        card holds exactly one instance, but always keeps a custom name and
+        keeps the label when the count is unknown or >1."""
+        from seedsigner.views import keycard_views
+        from seedsigner.views.keycard_views import KEYCARD_APPLET_AID
+        aid = KEYCARD_APPLET_AID + b"\x01\x01"
+
+        def controller(count, name):
+            c = MagicMock()
+            c.active_keycard_aid = aid
+            c.keycard_instance_count = count
+            c.get_instance_name_for_aid.return_value = name
+            return c
+
+        # Custom name always shows, regardless of count.
+        self.assertEqual(keycard_views._instance_title_suffix(controller(1, "Cold")), "Cold")
+        self.assertEqual(keycard_views._instance_title_suffix(controller(3, "Cold")), "Cold")
+        # Single instance, no name → omit the suffix entirely.
+        self.assertIsNone(keycard_views._instance_title_suffix(controller(1, None)))
+        # >1 instance, no name → show the auto label.
+        self.assertEqual(keycard_views._instance_title_suffix(controller(2, None)), "Inst 1")
+        # Unknown count, no name → keep the label (never drop identity on a guess).
+        self.assertEqual(keycard_views._instance_title_suffix(controller(None, None)), "Inst 1")
+
     def test_format_instance_label(self):
         """``_format_instance_label`` renders Keycard instance AIDs as the
         human-readable ``Inst N`` (N = the trailing instance byte), and
@@ -1168,7 +1193,8 @@ class TestKeycardMenuRouting(unittest.TestCase):
         self.assertIn(keycard_views._format_instance_label(active_aid), marked[0])
 
     def test_main_menu_title_shows_active_instance(self):
-        """The main Keycard menu title must surface the active instance label."""
+        """The main Keycard menu title surfaces the active instance label when
+        the card holds more than one instance."""
         from unittest.mock import patch
 
         from seedsigner.views import keycard_views
@@ -1180,6 +1206,8 @@ class TestKeycardMenuRouting(unittest.TestCase):
         view = ToolsKeycardMenuView.__new__(ToolsKeycardMenuView)
         view.controller = MagicMock()
         view.controller.active_keycard_aid = active_aid
+        view.controller.keycard_instance_count = 2  # >1 → label shown
+        view.controller.get_instance_name_for_aid.return_value = None  # no name
         captured = {}
 
         def fake_run_screen(screen_cls, **kwargs):
@@ -1199,6 +1227,110 @@ class TestKeycardMenuRouting(unittest.TestCase):
             keycard_views._format_instance_label(active_aid), captured["title"]
         )
         self.assertEqual(captured["title"], "Keycard · Inst 1")
+
+    def test_main_menu_title_drops_label_for_single_instance(self):
+        """With exactly one instance and no custom name, the title is the bare
+        base — no noisy "· Inst N" suffix — and "Switch instance" is hidden."""
+        from unittest.mock import patch
+
+        from seedsigner.views.keycard_views import (
+            KEYCARD_APPLET_AID, ToolsKeycardMenuView,
+        )
+
+        active_aid = KEYCARD_APPLET_AID + b"\x01\x01"
+        view = ToolsKeycardMenuView.__new__(ToolsKeycardMenuView)
+        view.controller = MagicMock()
+        view.controller.active_keycard_aid = active_aid
+        view.controller.keycard_instance_count = 1  # single instance
+        view.controller.get_instance_name_for_aid.return_value = None  # no name
+        captured = {}
+
+        def fake_run_screen(screen_cls, **kwargs):
+            captured.update(kwargs)
+            return RET_CODE__BACK_BUTTON
+
+        view.run_screen = fake_run_screen
+
+        from seedsigner.gui.screens import RET_CODE__BACK_BUTTON
+
+        with patch(
+            "seedsigner.helpers.card_probe.run_card_gate", return_value=None,
+        ):
+            view.run()
+
+        self.assertEqual(captured["title"], "Keycard")
+        labels = [b.button_label for b in captured["button_data"]]
+        self.assertNotIn("Switch instance", labels)
+
+    def test_main_menu_title_keeps_custom_name_for_single_instance(self):
+        """A user-assigned name always shows, even with a single instance —
+        only the auto "Inst N" fallback is dropped."""
+        from unittest.mock import patch
+
+        from seedsigner.views.keycard_views import (
+            KEYCARD_APPLET_AID, ToolsKeycardMenuView,
+        )
+
+        active_aid = KEYCARD_APPLET_AID + b"\x01\x01"
+        view = ToolsKeycardMenuView.__new__(ToolsKeycardMenuView)
+        view.controller = MagicMock()
+        view.controller.active_keycard_aid = active_aid
+        view.controller.keycard_instance_count = 1
+        view.controller.get_instance_name_for_aid.return_value = "Cold"
+        captured = {}
+
+        def fake_run_screen(screen_cls, **kwargs):
+            captured.update(kwargs)
+            return RET_CODE__BACK_BUTTON
+
+        view.run_screen = fake_run_screen
+
+        from seedsigner.gui.screens import RET_CODE__BACK_BUTTON
+
+        with patch(
+            "seedsigner.helpers.card_probe.run_card_gate", return_value=None,
+        ):
+            view.run()
+
+        self.assertEqual(captured["title"], "Keycard · Cold")
+
+    def test_main_menu_probe_one_hides_switch_and_caches_count(self):
+        """When the cached count is unknown, the menu takes the fast probe; a
+        probe result of 1 caches the count and hides "Switch instance"."""
+        from unittest.mock import patch
+
+        from seedsigner.views import keycard_views
+        from seedsigner.views.keycard_views import (
+            KEYCARD_APPLET_AID, ToolsKeycardMenuView,
+        )
+
+        active_aid = KEYCARD_APPLET_AID + b"\x01\x01"
+        view = ToolsKeycardMenuView.__new__(ToolsKeycardMenuView)
+        view.controller = MagicMock()
+        view.controller.active_keycard_aid = active_aid
+        view.controller.keycard_instance_count = None  # force a probe
+        view.controller.get_instance_name_for_aid.return_value = None
+        captured = {}
+
+        def fake_run_screen(screen_cls, **kwargs):
+            captured.update(kwargs)
+            return RET_CODE__BACK_BUTTON
+
+        view.run_screen = fake_run_screen
+
+        from seedsigner.gui.screens import RET_CODE__BACK_BUTTON
+
+        with patch(
+            "seedsigner.helpers.card_probe.run_card_gate", return_value=None,
+        ), patch.object(
+            keycard_views, "_probe_keycard_instance_count", return_value=1,
+        ):
+            view.run()
+
+        self.assertEqual(view.controller.keycard_instance_count, 1)
+        self.assertEqual(captured["title"], "Keycard")
+        labels = [b.button_label for b in captured["button_data"]]
+        self.assertNotIn("Switch instance", labels)
 
 
 class TestCountKeycardInstances(unittest.TestCase):
@@ -1275,13 +1407,14 @@ class TestCountKeycardInstances(unittest.TestCase):
 
 class TestProbeKeycardInstanceCount(unittest.TestCase):
     """``_probe_keycard_instance_count`` is the FAST, unauthenticated probe the
-    top menu uses on entry to decide whether to show "Switch instance".
+    top menu uses on entry to decide whether to show "Switch instance" and
+    whether the title carries the ``Inst N`` suffix.
 
     It must NOT open the GP/ISD secure channel (that was the menu-entry stall
-    and fails slowly on non-default ISD keys), and it must only ever return a
-    count when it is confidently ``>= 2`` — for 0/1/uncertain it returns
-    ``None`` so the caller keeps the entry visible (never hide the only way to
-    switch on a guess).
+    and fails slowly on non-default ISD keys). It SELECTs every valid slot, so
+    it returns the *exact* count whenever at least one slot is seen (including
+    one); for 0 hits / no card / error it returns ``None`` so the caller keeps
+    the entry and the label visible (never decide identity on a blank read).
     """
 
     def _probe(self, hits, raises=False):
@@ -1314,11 +1447,15 @@ class TestProbeKeycardInstanceCount(unittest.TestCase):
         self.assertEqual(result, 2)
         conn.disconnect.assert_called_once()
 
-    def test_single_slot_returns_none(self):
+    def test_single_slot_returns_one(self):
+        """A single instance partial-matches the bare prefix plus both AID
+        forms of its slot; the bare prefix is dropped and the one distinct slot
+        byte yields an exact count of 1 (so the caller hides "Switch instance"
+        and drops the ``Inst N`` suffix)."""
         from seedsigner.views.keycard_views import KEYCARD_APPLET_AID as A
         hits = [A, A + bytes([0x01]), A + bytes([0x01, 0x01])]
         result, _ = self._probe(hits)
-        self.assertIsNone(result)
+        self.assertEqual(result, 1)
 
     def test_bare_prefix_only_returns_none(self):
         from seedsigner.views.keycard_views import KEYCARD_APPLET_AID as A

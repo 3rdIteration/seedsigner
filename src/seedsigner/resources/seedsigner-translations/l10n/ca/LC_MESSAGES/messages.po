@@ -3875,3 +3875,15 @@ msgstr "Llavor sense nom"
 #: src/seedsigner/views/stealth_views.py
 msgid "Boots into a games console. Your combo reveals the wallet."
 msgstr "Arrenca com una consola de jocs. La teva combinació revela la cartera."
+
+msgid "Pairing"
+msgstr "Aparellament"
+
+msgid "Manage Inst"
+msgstr "Gest. inst"
+
+msgid "Wallets"
+msgstr "Carteres"
+
+msgid "Addresses"
+msgstr "Adreces"

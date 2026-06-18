@@ -3860,3 +3860,15 @@ msgstr "Unbenannter Seed"
 #: src/seedsigner/views/stealth_views.py
 msgid "Boots into a games console. Your combo reveals the wallet."
 msgstr "Startet als Spielekonsole. Deine Tastenfolge zeigt die Wallet."
+
+msgid "Pairing"
+msgstr "Kopplung"
+
+msgid "Manage Inst"
+msgstr "Inst. verw."
+
+msgid "Wallets"
+msgstr "Wallets"
+
+msgid "Addresses"
+msgstr "Adressen"

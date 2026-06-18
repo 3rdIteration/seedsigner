@@ -3842,3 +3842,15 @@ msgstr "名前なしシード"
 #: src/seedsigner/views/stealth_views.py
 msgid "Boots into a games console. Your combo reveals the wallet."
 msgstr "ゲーム機として起動します。コンボでウォレットが表示されます。"
+
+msgid "Pairing"
+msgstr "ペアリング"
+
+msgid "Manage Inst"
+msgstr "インスタンス"
+
+msgid "Wallets"
+msgstr "ウォレット"
+
+msgid "Addresses"
+msgstr "アドレス"

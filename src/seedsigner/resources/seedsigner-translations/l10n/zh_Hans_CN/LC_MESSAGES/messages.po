@@ -3841,3 +3841,15 @@ msgstr "未命名种子"
 #: src/seedsigner/views/stealth_views.py
 msgid "Boots into a games console. Your combo reveals the wallet."
 msgstr "以游戏机方式启动。输入组合键即可显示钱包。"
+
+msgid "Pairing"
+msgstr "配对"
+
+msgid "Manage Inst"
+msgstr "管理实例"
+
+msgid "Wallets"
+msgstr "钱包"
+
+msgid "Addresses"
+msgstr "地址"
