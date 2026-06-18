@@ -564,17 +564,35 @@ This fork supports an optional "stealth boot" mode controlled by two settings (d
 
 | Setting | Default | Purpose |
 |---------|---------|---------|
-| `SETTING__STEALTH_BOOT` | `False` | When `True`, the device boots into a Snake game instead of `MainMenuView` |
-| `SETTING__STEALTH_UNLOCK_SEQUENCE` | `"KEY_UP,KEY_UP,KEY_UP,KEY_UP,KEY_UP"` | CSV of `HardwareButtonsConstants` names; the sequence the user must press to exit the game and start the firmware |
+| `SETTING__STEALTH_BOOT` | `False` | When `True`, the device boots into a **games console** (instead of `MainMenuView`) |
+| `SETTING__STEALTH_UNLOCK_SEQUENCE` | `""` (empty) | CSV of `HardwareButtonsConstants` names; the sequence the user must press to exit the console and start the firmware. Empty by default — the user must record a custom combo (via `Tools > Stealth boot > Edit`) before the firmware lets them enable stealth mode |
+
+### Games console architecture
+
+Stealth boot no longer launches a single hard-coded game. `Controller.start()` runs **`StealthConsole().run()`** (`src/seedsigner/stealth/console.py`), which shows a **game-select menu** and dispatches to one of several mini-games; on game-over it returns to the menu. The pieces:
+
+| Module | Responsibility |
+|--------|----------------|
+| `stealth/console.py` (`StealthConsole`) | Owns everything shared: the **input thread**, the **`UnlockBuffer`** (fed every key pressed *anywhere* — menu or any game — so the secret combo always exits straight into the firmware), the **panic exit**, the game registry (`GAMES`), the game-select menu, and the `_play` loop. Raises/catches `StealthGameExit` to leave. |
+| `stealth/base.py` (`BaseStealthGame`) | The per-game contract: `name`, `reset(w,h)`, `tick_ms` (`None` = turn-based), `step()`, `handle_key(key, btn) -> bool`, `alive`, `score`, `draw_frame()`. The console drives these; `render` / `render_game_over` are shared. |
+| `stealth/snake.py` (`SnakeGame`) | Snake. **Walls wrap** (modulo) — leaving one edge re-enters the opposite edge; the only death is self-collision. |
+| `stealth/game_2048.py` (`Game2048`) | 2048, **turn-based** (`tick_ms is None`); D-pad slides/merges, new tile after any changing move, game-over when no move remains. |
+| `stealth/tetris.py` (`TetrisGame`) | Tetris on a 10x18 well; gravity via `tick_ms`, line clears, game-over on spawn collision. |
+| `stealth/dino.py` (`DinoGame`) | One-button endless runner; UP/KEY_PRESS jumps, distance = score, speeds up. |
+
+**Controls inside a game:** each game uses the D-pad / KEY_PRESS for play; a single **KEY1** press returns to the console menu (the handheld "menu" button — it is still fed to the unlock buffer first). Real-time games (`tick_ms` set) advance on a timer; turn-based games (`tick_ms is None`) only redraw after an input that changed something.
 
 ### Rules
 
-- **The stealth module (`src/seedsigner/stealth/`) MUST NOT import from `seedsigner.models.seed*`, `seedsigner.helpers.keycard*`, or any module that touches secrets.** This is enforced by code review (no static checker yet) and reduces the blast radius if the game has a bug.
-- **No persistence from the game.** The Snake game does not write anywhere — no high score, no resume state. The settings file holds only the toggle and the unlock sequence.
+- **The stealth module (`src/seedsigner/stealth/`) MUST NOT import from `seedsigner.models.seed*`, `seedsigner.helpers.keycard*`, or any module that touches secrets.** Enforced by `tests/test_stealth_import_guard.py` (scans every `*.py` in the package) and the package docstring. `console.py` may read/write only the two stealth settings via `Settings` (lazy import).
+- **No persistence from the games.** No high score, no resume state. The settings file holds only the toggle and the unlock sequence. (The panic exit is the one write — it flips `STEALTH_BOOT` back to `Disabled`.)
 - **No visual hint** that the unlock sequence is being matched. Showing partial progress would defeat the "looks like a game" property for a casual observer.
-- **Resolution-aware.** The game reads `Renderer.canvas_width` / `canvas_height` and adapts the grid; do not hard-code 240x240 or 320x240 — both are valid hardware configurations.
-- **Panic exit** (documented here, not in UI): holding `KEY1 + KEY2 + KEY3` for 10 s during the game disables `STEALTH_BOOT` and triggers a reboot. Use this if a user enables stealth mode and then loses their unlock sequence.
+- **Resolution-aware.** Games read `Renderer.canvas_width` / `canvas_height` and centre their grid via `BaseStealthGame._layout`; do not hard-code 240x240 or 320x240 — both are valid hardware configurations.
+- **Panic exit** (documented here, not in UI): holding `KEY1 + KEY2 + KEY3` for 10 s — in the menu *or* any game — disables `STEALTH_BOOT` and exits into the firmware. Use this if a user enables stealth mode and then loses their unlock sequence. (Best-effort: it reads the live GPIO state, so it never fires on a platform that doesn't expose individual pin reads.)
+- **Adding a game:** subclass `BaseStealthGame`, add it to `StealthConsole.GAMES`, and ship a unit test plus coverage that the new module passes the import guard. The view layer (`Tools > Stealth boot`) needs no change — the menu is built from `GAMES`.
 
 ### Where the boot hook lives
 
-`Controller.start()` checks `SETTING__STEALTH_BOOT` *before* the OpeningSplashView. When the game returns (sequence matched), the rest of the boot continues normally — splash, dev/desktop warnings, MainMenu. The session is then indistinguishable from a non-stealth boot.
+`Controller.start()` checks `SETTING__STEALTH_BOOT` *before* the OpeningSplashView and runs `StealthConsole().run()`. When it returns (unlock sequence matched, or panic), the rest of the boot continues normally — splash, dev/desktop warnings, MainMenu. The session is then indistinguishable from a non-stealth boot.
+
+The `Tools > Stealth boot` management screen (`ToolsStealthBootView`) carries a short inline description — *"Boots into a games console. Your combo reveals the wallet."* — rendered via `DescriptionButtonListScreen` (a `ButtonListScreen` subclass with a description `TextArea`, mirroring `SettingsEntryUpdateSelectionScreen`).

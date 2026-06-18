@@ -602,6 +602,30 @@ class ButtonListScreen(BaseTopNavScreen):
 
 
 @dataclass
+class DescriptionButtonListScreen(ButtonListScreen):
+    """A ButtonListScreen with a short description below the title.
+
+    The buttons are pushed to the bottom of the screen (``is_bottom_list``)
+    and a centred, label-coloured ``description`` paragraph is drawn just
+    under the top nav. Mirrors the pattern used by
+    ``SettingsEntryUpdateSelectionScreen``.
+    """
+    description: str = None
+
+    def __post_init__(self):
+        self.is_bottom_list = True
+        super().__post_init__()
+        if self.description:
+            self.components.append(TextArea(
+                text=_(self.description),
+                font_color=GUIConstants.LABEL_FONT_COLOR,
+                is_text_centered=True,
+                auto_line_break=True,
+                screen_y=self.top_nav.height + GUIConstants.COMPONENT_PADDING,
+            ))
+
+
+@dataclass
 class LargeButtonScreen(BaseTopNavScreen):
     button_data: list = None
 

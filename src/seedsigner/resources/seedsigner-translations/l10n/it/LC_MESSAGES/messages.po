@@ -3882,3 +3882,7 @@ msgstr "Inserisci il PIN della\nKeycard per inviare."
 #: src/seedsigner/views/keycard_views.py
 msgid "Unnamed seed"
 msgstr "Seed senza nome"
+
+#: src/seedsigner/views/stealth_views.py
+msgid "Boots into a games console. Your combo reveals the wallet."
+msgstr "Si avvia come console di gioco. La tua combinazione rivela il wallet."

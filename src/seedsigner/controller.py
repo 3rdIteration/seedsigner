@@ -936,10 +936,10 @@ class Controller(Singleton):
         from seedsigner.gui.toast import RemoveSDCardToastManagerThread
 
         if not skip_startup_interstitials:
-            # Stealth boot: when enabled, run the Snake game first. The game's
+            # Stealth boot: when enabled, run the games console first. Its
             # run() blocks until the user inputs the configured unlock combo
             # (or triggers the panic-exit). Bitcoin/Keycard flows continue
-            # exactly as before once the game returns. See AGENTS.md >
+            # exactly as before once it returns. See AGENTS.md >
             # "Stealth boot mode" for the full design.
             try:
                 stealth_setting = self.settings.get_value(
@@ -949,8 +949,8 @@ class Controller(Singleton):
                 stealth_setting = SettingsConstants.OPTION__DISABLED
             if stealth_setting == SettingsConstants.OPTION__ENABLED:
                 try:
-                    from seedsigner.stealth.snake import SnakeGame
-                    SnakeGame().run()
+                    from seedsigner.stealth.console import StealthConsole
+                    StealthConsole().run()
                 except Exception:
                     logger.exception("stealth boot game failed; falling through")
 

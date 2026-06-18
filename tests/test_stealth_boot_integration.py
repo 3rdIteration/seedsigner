@@ -2,8 +2,8 @@
 
 Verifies that:
 * When ``SETTING__STEALTH_BOOT`` is Disabled, the boot does not call into
-  ``SnakeGame``.
-* When it is Enabled, ``SnakeGame.run()`` is called exactly once before
+  ``StealthConsole``.
+* When it is Enabled, ``StealthConsole.run()`` is called exactly once before
   the splash screen.
 """
 
@@ -49,20 +49,20 @@ class TestStealthBootHook(unittest.TestCase):
         settings = MagicMock()
         settings.get_value.return_value = stealth_value
 
-        snake_called = []
-        snake_cls = MagicMock()
-        snake_cls.return_value.run = MagicMock(side_effect=lambda: snake_called.append(True))
+        console_called = []
+        console_cls = MagicMock()
+        console_cls.return_value.run = MagicMock(side_effect=lambda: console_called.append(True))
 
         with patch.object(Settings, "get_instance", return_value=settings), \
-             patch("seedsigner.stealth.snake.SnakeGame", snake_cls):
+             patch("seedsigner.stealth.console.StealthConsole", console_cls):
             stealth_setting = settings.get_value(
                 SettingsConstants.SETTING__STEALTH_BOOT
             )
             if stealth_setting == SettingsConstants.OPTION__ENABLED:
-                from seedsigner.stealth.snake import SnakeGame
-                SnakeGame().run()
+                from seedsigner.stealth.console import StealthConsole
+                StealthConsole().run()
 
-        return snake_called
+        return console_called
 
     def test_disabled_does_not_invoke_game(self):
         from seedsigner.models.settings_definition import SettingsConstants
@@ -89,8 +89,8 @@ class TestStealthBootHookSourceMatchesSnippet(unittest.TestCase):
 
         self.assertIn("SETTING__STEALTH_BOOT", src,
                       "controller.start() must read SETTING__STEALTH_BOOT")
-        self.assertIn("SnakeGame", src,
-                      "controller.start() must launch SnakeGame")
+        self.assertIn("StealthConsole", src,
+                      "controller.start() must launch StealthConsole")
         # Hook must come before the splash screen runs.
         idx_stealth = src.find("SETTING__STEALTH_BOOT")
         idx_splash = src.find("OpeningSplashView().run()")

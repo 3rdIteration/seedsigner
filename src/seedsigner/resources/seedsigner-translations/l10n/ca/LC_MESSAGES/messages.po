@@ -3871,3 +3871,7 @@ msgstr "Introdueix el PIN de la\nKeycard per enviar."
 #: src/seedsigner/views/keycard_views.py
 msgid "Unnamed seed"
 msgstr "Llavor sense nom"
+
+#: src/seedsigner/views/stealth_views.py
+msgid "Boots into a games console. Your combo reveals the wallet."
+msgstr "Arrenca com una consola de jocs. La teva combinació revela la cartera."

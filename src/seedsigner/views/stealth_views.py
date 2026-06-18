@@ -17,7 +17,7 @@ from gettext import gettext as _
 
 from seedsigner.gui.screens import (
     RET_CODE__BACK_BUTTON,
-    ButtonListScreen,
+    DescriptionButtonListScreen,
     LargeIconStatusScreen,
     WarningScreen,
 )
@@ -95,8 +95,9 @@ class ToolsStealthBootView(View):
         title = _("Stealth: {}").format(_("ON") if enabled else _("OFF"))
         button_data = [self.TOGGLE, self.EDIT, self.VIEW, self.DONE]
         ret = self.run_screen(
-            ButtonListScreen,
+            DescriptionButtonListScreen,
             title=title,
+            description=_("Boots into a games console. Your combo reveals the wallet."),
             is_button_text_centered=False,
             button_data=button_data,
         )
