@@ -4780,7 +4780,9 @@ class ToolsKeycardSignEthDetailsView(View):
             try:
                 msg = bytes(request.sign_data).decode("utf-8")
             except Exception:
-                msg = bytes(request.sign_data).hex()
+                # Non-UTF8 personal_sign payload (a hash / binary challenge) —
+                # show it as obvious hex (0x…), not as if it were readable text.
+                msg = "0x" + bytes(request.sign_data).hex()
             preview = msg if len(msg) <= 80 else msg[:78] + "…"
             text = _("message:\n{}").format(preview)
             has_data_only = bool(request.sign_data)
@@ -4848,6 +4850,7 @@ class ToolsKeycardSignEthDecodedView(View):
                 return []
             return calldata_decoder.pages_for_calldata(
                 data, chain_id=request.chain_id, to_address=tx.get("to") or None,
+                value=tx.get("value") or 0,
             )
         if request.data_type == DATA_TYPE_TYPED_DATA:
             try:

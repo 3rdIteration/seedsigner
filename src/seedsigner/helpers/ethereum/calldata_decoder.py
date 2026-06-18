@@ -150,6 +150,18 @@ def _decode_known_sig(selector: bytes, sig: str, params_data: bytes) -> DecodedC
 
 # --- value formatting -------------------------------------------------------
 
+def _format_eth(wei: int) -> str:
+    """Exact 18-decimal native-coin formatting (no float), trailing zeros trimmed."""
+    try:
+        wei = int(wei)
+    except (TypeError, ValueError):
+        return "? ETH"
+    s = str(wei).rjust(19, "0")
+    int_part, frac_part = s[:-18], s[-18:].rstrip("0")
+    value = int_part + ("." + frac_part if frac_part else "")
+    return f"{value} ETH"
+
+
 def _short(s: str, n: int = _BODY_VALUE_LEN) -> str:
     return s if len(s) <= n else s[:n - 1] + "…"
 
@@ -215,15 +227,25 @@ def _rows_for_call(decoded: DecodedCall, chain_id, to_address) -> List[Tuple[str
 
 
 def render_pages(decoded: DecodedCall, chain_id: int = None,
-                 to_address: bytes = None) -> List[Tuple[str, str]]:
-    """[(title, body)] pages for a DecodedCall."""
+                 to_address: bytes = None, value: int = None) -> List[Tuple[str, str]]:
+    """[(title, body)] pages for a DecodedCall.
+
+    ``value`` (native-coin wei being sent by the call) is surfaced on the
+    blind-signing page when non-zero so the user still sees the single most
+    safety-relevant fact — that funds are leaving — even when the function
+    itself can't be named.
+    """
     if decoded.ambiguous:
         # Selector collision in the unverified DB — refuse to guess a name.
         sel = "0x" + bytes(decoded.selector).hex()
         return [("Ambiguous", f"{len(decoded.candidates)} possible funcs\n{sel}")]
     if not decoded.known:
         sel = "0x" + bytes(decoded.selector).hex() if decoded.selector else "(none)"
-        return [("Blind signing", f"Unknown function\n{sel}")]
+        # Surface what IS known: the value being sent (high-signal) or, failing
+        # that, a pointer to the byte-exact verification screens. The selector
+        # is shown either way so the user can look it up off-device.
+        second = _format_eth(value) + " sent" if value else "verify digest + data"
+        return [("Blind signing", f"unknown fn {sel}\n{second}")]
 
     title = decoded.name or "call"
     if not decoded.verified:
@@ -241,12 +263,12 @@ def render_pages(decoded: DecodedCall, chain_id: int = None,
 
 
 def pages_for_calldata(data: bytes, chain_id: int = None,
-                       to_address: bytes = None) -> List[Tuple[str, str]]:
+                       to_address: bytes = None, value: int = None) -> List[Tuple[str, str]]:
     """Convenience: decode + render.  [] when there is no calldata."""
     decoded = decode_calldata(data, chain_id, to_address)
     if decoded is None:
         return []
-    return render_pages(decoded, chain_id, to_address)
+    return render_pages(decoded, chain_id, to_address, value)
 
 
 # --- EIP-712 typed-data message rendering -----------------------------------
@@ -272,8 +294,19 @@ def _flatten_json(prefix: str, obj: Any, rows: List[Tuple[str, str]]) -> None:
     if isinstance(obj, dict):
         for k, v in obj.items():
             _flatten_json(f"{prefix}.{k}" if prefix else str(k), v, rows)
+            if len(rows) >= _MAX_ROWS:
+                return
     elif isinstance(obj, list):
-        rows.append((prefix, f"[{len(obj)}]"))
+        # Recurse INTO arrays (Permit2 batches, Seaport offers/considerations,
+        # CowSwap trades…) so the user sees the contents, not just "[N]".
+        # Bounded by _MAX_ROWS; the caller appends a "more (see raw data)" row.
+        if not obj:
+            rows.append((prefix, "[]"))
+            return
+        for i, v in enumerate(obj):
+            _flatten_json(f"{prefix}[{i}]", v, rows)
+            if len(rows) >= _MAX_ROWS:
+                return
     else:
         rows.append((prefix, _json_scalar(obj)))
 

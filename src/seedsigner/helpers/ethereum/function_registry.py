@@ -208,6 +208,24 @@ CURATED = [
      ["encodedPath", "sellAmount", "minBuyAmount", "recipient"], KIND_SWAP),              # 0x6af479b2
     # --- ERC-4626 vault --------------------------------------------------
     ("mint(uint256,address)", ["shares", "receiver"], KIND_GENERIC),                      # 0x94bf804d
+    # --- ERC-4337 smart-account (SimpleAccount + EntryPoint) -------------
+    # The dominant smart-wallet entrypoints. The inner call(s) are opaque
+    # programs — the digest + raw-data screens stay the source of truth.
+    ("execute(address,uint256,bytes)", ["to", "value", "data"], KIND_GENERIC),            # 0xb61d27f6
+    ("executeBatch(address[],bytes[])", ["to", "data"], KIND_GENERIC),                    # 0x18dfb3c7
+    ("executeBatch(address[],uint256[],bytes[])",
+     ["to", "value", "data"], KIND_GENERIC),                                              # 0x47e1da2a
+    ("handleOps((address,uint256,bytes,bytes,uint256,uint256,uint256,uint256,uint256,bytes,bytes)[],address)",
+     ["ops", "beneficiary"], KIND_GENERIC),                                               # 0x1fad948c
+    # --- LayerZero OFT v1 (cross-chain token transfer) -------------------
+    ("sendFrom(address,uint16,bytes32,uint256,address,address,bytes)",
+     ["from", "dstChainId", "toAddress", "amount", "refundAddress",
+      "zroPaymentAddress", "adapterParams"], KIND_TRANSFER),                              # 0x29adf087
+    # --- Multicall3 (0xcA11bde05977b3631167028862bE2a173976CA11) ---------
+    ("aggregate((address,bytes)[])", ["calls"], KIND_GENERIC),                            # 0x252dba42
+    ("tryAggregate(bool,(address,bytes)[])", ["requireSuccess", "calls"], KIND_GENERIC),  # 0xbce38bd7
+    ("aggregate3((address,bool,bytes)[])", ["calls"], KIND_GENERIC),                      # 0x82ad56cb
+    ("aggregate3Value((address,bool,uint256,bytes)[])", ["calls"], KIND_GENERIC),         # 0x174dea71
 ]
 
 

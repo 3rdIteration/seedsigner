@@ -323,6 +323,17 @@ class TestRendering:
         assert pages and pages[0][0] == "Blind signing"
         assert "deadbeef" in pages[0][1]
 
+    def test_blind_page_surfaces_value(self):
+        # Unknown selector that ALSO sends ETH → surface the value, the single
+        # most safety-relevant fact when the function itself can't be named.
+        pages = pages_for_calldata(bytes.fromhex("deadbeef") + w(0), value=10 ** 17)
+        assert pages[0][0] == "Blind signing"
+        assert "deadbeef" in pages[0][1] and "0.1 ETH" in pages[0][1]
+
+    def test_blind_page_no_value_points_to_verification(self):
+        pages = pages_for_calldata(bytes.fromhex("deadbeef") + w(0), value=0)
+        assert "verify digest + data" in pages[0][1]
+
     def test_empty_calldata_no_pages(self):
         assert pages_for_calldata(b"") == []
 
@@ -447,3 +458,23 @@ class TestRendering:
         assert "Mail" in all_text
         assert "Ether Mail" in all_text
         assert "Hello, Bob!" in all_text
+
+    def test_typed_data_recurses_into_arrays(self):
+        # An array of structs (Permit2 batch, Seaport offers/considerations,
+        # CowSwap trades…) must show its CONTENTS, not collapse to "[N]".
+        typed = {
+            "primaryType": "PermitBatch",
+            "domain": {"name": "Permit2"},
+            "message": {
+                "details": [
+                    {"token": "0x" + A, "amount": "1000"},
+                    {"token": "0x" + B, "amount": "2000"},
+                ],
+                "spender": "0x" + C,
+            },
+        }
+        pages = render_typed_data_pages(typed)
+        all_text = "\n".join(t + b for t, b in pages)
+        assert "details[0].amount" in all_text
+        assert "1000" in all_text and "2000" in all_text
+        assert "[2]" not in all_text   # array was expanded, not collapsed

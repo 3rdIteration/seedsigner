@@ -372,6 +372,18 @@ class TestCuratedProtocolSelectors:
         "6af479b2": "sellTokenForTokenToUniswapV3",
         # ERC-4626
         "94bf804d": "mint",
+        # --- ERC-4337 smart-account (SimpleAccount + EntryPoint) ---
+        "b61d27f6": "execute",
+        "18dfb3c7": "executeBatch",
+        "47e1da2a": "executeBatch",
+        "1fad948c": "handleOps",
+        # LayerZero OFT v1
+        "29adf087": "sendFrom",
+        # Multicall3
+        "252dba42": "aggregate",
+        "bce38bd7": "tryAggregate",
+        "82ad56cb": "aggregate3",
+        "174dea71": "aggregate3Value",
     }
 
     def test_selectors_and_names(self):
