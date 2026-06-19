@@ -53,6 +53,14 @@ class TestPathParsing:
 
 
 class TestApduBuilders:
+    def test_applet_aid_is_9byte_canonical(self):
+        # The default SELECT / boot-default instance AID is the 9-byte
+        # canonical form (prefix A000000804000101 + slot 0x01), matching real
+        # Status cards and the blank-card install. A revert to the 10-byte
+        # legacy form (…010101) must be caught here.
+        assert commands.APPLET_AID == bytes.fromhex("A00000080400010101")
+        assert len(commands.APPLET_AID) == 9
+
     def test_select(self):
         apdu = commands.select_applet()
         assert apdu[:4] == [0x00, 0xA4, 0x04, 0x00]

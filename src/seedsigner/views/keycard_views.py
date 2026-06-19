@@ -4542,8 +4542,8 @@ class ToolsKeycardInstancesDeleteView(View):
                 logger.exception("could not remove deleted pairing blob")
 
         # If the deleted AID was the active one, fall back to the 9-byte
-        # canonical default slot. The default SELECT (10-byte APPLET_AID)
-        # still first-tries then probes both forms, so a 9- or 10-byte
+        # canonical default slot (== APPLET_AID). select_with_autodetect
+        # first-tries it then probes both forms, so a 9- or 10-byte
         # remaining instance is resolved regardless.
         if self.controller.active_keycard_aid == target:
             self.controller.active_keycard_aid = KEYCARD_APPLET_AID + b"\x01"

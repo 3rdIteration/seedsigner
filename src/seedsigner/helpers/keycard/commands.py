@@ -9,8 +9,14 @@ from __future__ import annotations
 import hmac
 from typing import Iterable, List, Optional
 
-# Application AID published by Status Keycard.
-APPLET_AID = bytes.fromhex("A0000008040001010101")
+# Status Keycard signing-instance AID, 9-byte canonical form
+# (KEYCARD_APPLET_AID prefix ``A000000804000101`` + slot ``01``). This is the
+# form keycard-cli / keycard-shell and real Status cards use, and the form
+# SeedSigner now mints for *every* instance (blank-card install + Create
+# instance). It is the boot-default ``active_keycard_aid`` and the first-try
+# SELECT target; ``select_with_autodetect`` still probes the 10-byte legacy
+# form (``…010101``, minted by older builds) so previously-created cards work.
+APPLET_AID = bytes.fromhex("A00000080400010101")
 
 # Class bytes
 CLA_ISO7816 = 0x00

@@ -148,7 +148,7 @@ class TestKeycardInstallPreDelete(unittest.TestCase):
 
         # The single create step is the signing instance.
         create_cmd = calls[2][0][1]
-        self.assertIn("--create A0000008040001010101", create_cmd)
+        self.assertIn("--create A00000080400010101", create_cmd)
         self.assertIn("--applet A000000804000101", create_cmd)
 
     def test_step_failure_reports_which_step(self):

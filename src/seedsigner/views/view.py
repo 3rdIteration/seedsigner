@@ -418,11 +418,12 @@ _DEFAULT_CAP_BY_KIND = {
     # `{params}` is filled at install time from the storage chooser
     # (Change 3 below); 1FFF = 8 KB is the default.
     "seedkeeper": ("SeedKeeper-0.2-official.cap", "--install {cap} --params {params} -force"),
-    # Keycard is a multi-instance package: --load then 3 × --create.
-    # The recipe matches the proven keycard-cli install path; the
-    # signing instance AID (A0000008040001010101) must stay exact —
-    # `select_with_autodetect` and the rest of the Keycard views select
-    # against it.
+    # Keycard is a multi-instance package: --load then 1 × --create.
+    # The recipe matches the proven keycard-cli install path; the signing
+    # instance is created at the 9-byte canonical AID A00000080400010101
+    # (== `commands.APPLET_AID`, the boot-default / first-try SELECT target)
+    # so `select_with_autodetect` and the rest of the Keycard views resolve
+    # it without a probe round-trip.
     "keycard": ("Keycard-3.2.cap", None),
 }
 
@@ -445,11 +446,15 @@ _SEEDKEEPER_STORAGE_DEFAULT_INDEX = 1  # 8 KB
 # footprint small. (The mere presence of the Keycard *package* on a card already
 # crashes the SeedKeeper iOS app's reveal flow even without the NDEF
 # instance — `CardsInstallAppletView` warns about that incompat below.)
-# The signing instance AID (A0000008040001010101) must stay exact —
-# `select_with_autodetect` and the rest of the Keycard views select
-# against it.
+# The signing instance is created at the 9-byte canonical AID
+# A00000080400010101 (KEYCARD_APPLET_AID prefix + slot 0x01) — the form real
+# Status cards / keycard-cli use, and == `commands.APPLET_AID`. Subsequent
+# instances (Create instance → `_next_free_instance_aid`) mint the same
+# 9-byte form at the next free slot. Older builds minted the 10-byte legacy
+# form (…010101) here; `select_with_autodetect` still probes it so those
+# cards keep working.
 _KEYCARD_CREATE_COMMANDS = [
-    "--package A0000008040001 --applet A000000804000101 --create A0000008040001010101",
+    "--package A0000008040001 --applet A000000804000101 --create A00000080400010101",
 ]
 
 

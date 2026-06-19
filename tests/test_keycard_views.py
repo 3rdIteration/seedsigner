@@ -2853,9 +2853,10 @@ class TestInstanceNameResolution(unittest.TestCase):
 
 class TestInstanceAidAllocation(unittest.TestCase):
     """Regression cover for the instance-AID collision bug: a new instance
-    must never reuse an occupied slot, must mint the 9-byte canonical form,
-    and must never equal the 10-byte ``APPLET_AID`` default (which would steal
-    the boot-default slot from a real card)."""
+    must never reuse an occupied slot and must mint the 9-byte canonical form.
+    Now that both the boot default and every minted instance use the 9-byte
+    form, slot 1 (the first instance) legitimately equals ``APPLET_AID`` — the
+    old "must differ from the 10-byte default" invariant no longer applies."""
 
     def _prefix(self):
         from seedsigner.views.keycard_views import KEYCARD_APPLET_AID
@@ -2872,7 +2873,7 @@ class TestInstanceAidAllocation(unittest.TestCase):
         self.assertEqual(result, p + bytes([0x04]))
         self.assertEqual(len(result), len(p) + 1)       # 9-byte canonical
         self.assertNotIn(result, existing)
-        self.assertNotEqual(result, APPLET_AID)         # not the 10-byte default
+        self.assertNotEqual(result, APPLET_AID)         # slot 4, not the slot-1 default
 
     def test_next_free_aid_never_emits_existing(self):
         """A 9-byte and a 10-byte AID at the SAME slot 1 → next is slot 2,
@@ -2891,7 +2892,8 @@ class TestInstanceAidAllocation(unittest.TestCase):
         result = _next_free_instance_aid([])
         self.assertEqual(result, p + bytes([0x01]))
         self.assertEqual(len(result), len(p) + 1)
-        self.assertNotEqual(result, APPLET_AID)
+        # Slot 1 == the 9-byte boot default now (both forms unified).
+        self.assertEqual(result, APPLET_AID)
 
     def test_next_free_aid_mixed_lengths_fill_smallest(self):
         """Slot 1 (9-byte) and slot 3 (10-byte) used → returns slot 2."""

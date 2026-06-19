@@ -115,7 +115,33 @@ def main() -> int:
         _ok(f"reader: {connection.getReader()!s}")
 
         _step("SELECT")
-        info = client.select()
+        # Default select targets the 9-byte canonical APPLET_AID. On a legacy
+        # 10-byte card (or a non-default instance slot) it 6A82s, so probe both
+        # AID forms (9-byte first) — mirrors select_with_autodetect without a
+        # Controller.
+        from seedsigner.helpers.keycard.commands import APDUError, APPLET_AID
+        from seedsigner.helpers.keycard.global_platform import (
+            keycard_instance_aid_candidates,
+        )
+        try:
+            info = client.select()
+        except APDUError as exc:
+            if exc.sw != 0x6A82:
+                raise
+            info = None
+            for cand in keycard_instance_aid_candidates():
+                if cand == APPLET_AID:
+                    continue
+                try:
+                    info = client.select(aid=cand)
+                except APDUError as exc2:
+                    if exc2.sw == 0x6A82:
+                        continue
+                    raise
+                _ok(f"autodetected instance AID {cand.hex()}")
+                break
+            if info is None:
+                raise
         version = f"{(info.app_version >> 8) & 0xFF}.{info.app_version & 0xFF}"
         _ok(f"applet v{version}, {info.free_pairing_slots} free slot(s)")
         _ok(f"instance UID: {info.instance_uid.hex()}")

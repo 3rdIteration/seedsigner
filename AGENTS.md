@@ -418,7 +418,7 @@ Cards initialised by `keycard-cli` / `keycard-shell` ship with very specific pro
 
 | Parameter | Value | Source |
 |-----------|-------|--------|
-| Applet AID (`commands.APPLET_AID`) | `A0000008040001010101` (10-byte) | The **SELECT first-try / default-active** target, hard-coded in `commands.py`. Kept as-is for back-compat. Note this is the **10-byte legacy** form; *created* instances now use the **9-byte canonical** `A000000804000101 + slot` (see "AID conventions" below), and `select_with_autodetect` probes both — so on a 9-byte card the 10-byte first-try `0x6A82`s and the probe finds the real instance. Do not change `APPLET_AID` to 9-byte without hardware-verifying every SELECT path (smoke test calls bare `client.select()` with no autodetect). |
+| Applet AID (`commands.APPLET_AID`) | `A00000080400010101` (9-byte canonical, slot 1) | The **SELECT first-try / default-active** target, hard-coded in `commands.py`. Now the **9-byte canonical** form `A000000804000101 + 0x01` — the same form *created* instances use (blank-card install **and** `_next_free_instance_aid`; see "AID conventions" below) and what real Status cards / keycard-cli use, so the first SELECT on a fresh card hits the instance with no probe. `select_with_autodetect` still probes the **10-byte legacy** form (`…010101`, minted by older builds) so previously-created cards resolve via one extra `0x6A82` + probe. The smoke test's bare `client.select()` now probes both forms on `0x6A82` too. **Migrated from the 10-byte legacy default — hardware-verify every SELECT path (smoke test + blank-card install + legacy card) before merging further changes here.** |
 | Pairing-password KDF | PBKDF2-HMAC-**SHA256**, 50000 iter | `crypto.derive_pairing_secret()` — matches keycard-cli/shell defaults |
 | Pairing-password salt | `b"Keycard Pairing Password Salt"` | Same constant as keycard-cli |
 | Password Unicode normalisation | NFKD before UTF-8 encode | Already done at every entry point (PairView, smoke test) |
@@ -492,7 +492,7 @@ Multiple Keycard applet instances can live on the same physical card, each with 
 
 **Pre-conditions:**
 
-- The Status Keycard **package** (`A0000008040001`) is loaded on the card. Retail Status Keycards and any card the user previously initialised satisfy this. The **instance** flows here (create / delete / switch) only `INSTALL [for install]` a new instance from an already-loaded package — they do **not** load the `.cap`. A **blank** card is handled separately by `CardsInstallAppletView` (`views/view.py`, reached via `run_card_gate` when the applet is missing): it does `gp.jar --delete A0000008040001 -force` → `--load Keycard-3.2.cap -force` → `--create A0000008040001010101`. The `.cap` is **shipped in the seedsigner-os image** under `<microsd>/javacard-cap/` (the build downloads + SHA256-verifies the official `keycard_v3.2.cap`), so the device *can* provision a blank JavaCard — given the default ISD keys below (the `--load`/`--create` go over SCP02 with them).
+- The Status Keycard **package** (`A0000008040001`) is loaded on the card. Retail Status Keycards and any card the user previously initialised satisfy this. The **instance** flows here (create / delete / switch) only `INSTALL [for install]` a new instance from an already-loaded package — they do **not** load the `.cap`. A **blank** card is handled separately by `CardsInstallAppletView` (`views/view.py`, reached via `run_card_gate` when the applet is missing): it does `gp.jar --delete A0000008040001 -force` → `--load Keycard-3.2.cap -force` → `--create A00000080400010101` (9-byte canonical slot-1, == `commands.APPLET_AID`). The `.cap` is **shipped in the seedsigner-os image** under `<microsd>/javacard-cap/` (the build downloads + SHA256-verifies the official `keycard_v3.2.cap`), so the device *can* provision a blank JavaCard — given the default ISD keys below (the `--load`/`--create` go over SCP02 with them).
 - The card's **ISD keys** are still the GlobalPlatform defaults (`404142434445464748494A4B4C4D4E4F` for ENC, MAC, DEK). Cards with rotated keys are not supported yet; the user would need to introduce them via a future "custom ISD keys" flow.
 
 **Protocol (`helpers/keycard/global_platform.py`):**
@@ -517,15 +517,20 @@ The commands we send (`INSTALL [for install]`, `DELETE`, `GET STATUS`) carry no 
   last byte of both:**
   - **9-byte canonical** `prefix + slot` (e.g. `A00000080400010101`) — what
     keycard-cli / keycard-shell and real Status cards use. **This is the form
-    SeedSigner now mints** (`_next_free_instance_aid`).
-  - **10-byte legacy** `prefix + 0x01 + slot` (e.g. `A0000008040001010101`,
-    which equals `commands.APPLET_AID`) — minted by older SeedSigner builds.
+    SeedSigner now mints for EVERY instance**: the blank-card install
+    (`view.py` `_KEYCARD_CREATE_COMMANDS` → `--create A00000080400010101`,
+    slot 1, == `commands.APPLET_AID`) **and** subsequent instances
+    (`_next_free_instance_aid`, next free slot).
+  - **10-byte legacy** `prefix + 0x01 + slot` (e.g. `A0000008040001010101`) —
+    minted by older SeedSigner builds; **no longer created**, only *accepted*
+    (probe/label) for back-compat with cards already in the field.
 - `_next_free_instance_aid` computes occupied slots from the **last byte** of
   **every** prefix-matching AID regardless of length, mints the **9-byte**
   next-free slot, and never returns an AID that already exists. (The old code
   only recognised the 10-byte form, so on a real 9-byte card it judged slot 1
-  free and minted `…0101` = `APPLET_AID`, which collided with the existing
-  instance **and stole the boot-default slot** — that was the bug.)
+  free and re-minted slot 1, colliding with the existing instance **and
+  stealing the boot-default slot** — that was the bug, fixed before this
+  9-byte unification.)
 - Both forms are SELECT-probed everywhere via one shared builder,
   `global_platform.keycard_instance_aid_candidates` (consumed by
   `select_with_autodetect`, `probe_keycard_instance_aids`, and `card_probe`),
