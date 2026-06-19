@@ -4,6 +4,15 @@ All notable changes to this project are documented in this file.
 
 Entries marked "(SeedSigner official)" originate from the upstream project, "(smartcard fork)" indicates releases inherited from 3rdIteration/seedsigner, and "(Keycard edition)" indicates releases of this fork.
 
+## 2026-06-19 - 0.1.2 (Keycard edition)
+
+- Keycard instance AIDs unified on the **9-byte canonical form** real Status cards / keycard-cli use: the first instance created on a blank card is no longer the 10-byte legacy form, so every instance is consistent. Cards already in the field keep working — `select_with_autodetect` still probes the legacy form
+- Creating a Keycard instance now **auto-activates** it, so the next step (Init / Generate / Import) targets the instance you just created without a manual switch
+- Single-instance cards: the "Switch instance" entry and the "Inst N" title suffix are **hidden** when there is nothing to switch between, cutting menu noise (a user-assigned name still shows)
+- Reader-independent **card-swap detection**: swapping cards mid-flow is caught synchronously at SELECT (not only via the unreliable PC/SC removal event), dropping the previous card's cached PIN; sign/export flows retry after a swap **without re-scanning** the QR
+- Stealth boot is now a **games console**: choose Snake, 2048, Tetris, or a one-button Dino-style runner; the unlock combo (entered in any game or the menu) reveals the wallet. Snake wraps around the walls
+- ETH **calldata decoding** improvements: decodes with the transaction value in context, accepts hex `personal_sign` payloads, and adds a function-selector registry + 4byte lookup so more contract calls render human-readably before signing
+
 ## 2026-06-15 - 0.1.1 (Keycard edition)
 
 - SeedKeeper → Keycard import: new "From SeedKeeper" source restores a seed stored on a SeedKeeper applet into a Keycard instance (the stored passphrase is preserved; guided card swap since the two applets usually sit on separate cards)

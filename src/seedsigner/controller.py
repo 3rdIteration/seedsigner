@@ -143,7 +143,7 @@ class Controller(Singleton):
         rather than at the top in order avoid circular imports.
     """
     
-    VERSION = "Keycard-Edition-0.1.1"
+    VERSION = "Keycard-Edition-0.1.2"
     # Branding shown on the opening splash (see views/screensaver.py). Kept as
     # plain brand strings (not translated), consistent with VERSION.
     PRODUCT_NAME = "KeyCard Signer"
