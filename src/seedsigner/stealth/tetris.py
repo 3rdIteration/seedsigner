@@ -18,7 +18,7 @@ from typing import List, Optional, Tuple
 
 from PIL import ImageDraw
 
-from .base import BaseStealthGame
+from .base import BaseStealthGame, stealth_font
 
 
 COLS = 10
@@ -57,6 +57,7 @@ Color = Tuple[int, int, int]
 
 class TetrisGame(BaseStealthGame):
     name = "Tetris"
+    menu_accent = (80, 200, 220)
 
     def __init__(self):
         super().__init__()
@@ -184,7 +185,8 @@ class TetrisGame(BaseStealthGame):
                 self._draw_cell(draw, self._pr + r, self._pc + c,
                                 self._color, dim)
         if not dim:
-            draw.text((4, 2), f"Lines {self._lines}", fill=(160, 200, 220))
+            draw.text((4, 2), f"Lines {self._lines}", fill=(160, 200, 220),
+                      font=stealth_font(14, semibold=True))
 
     def _draw_border(self, draw: ImageDraw.ImageDraw) -> None:
         x0 = self._origin_x

@@ -41,6 +41,34 @@ from PIL import Image, ImageDraw
 # Shared dark background used by every game and by the console menu.
 BACKGROUND = (8, 12, 18)
 
+# Neutral accent for a game that doesn't define its own ``menu_accent``.
+DEFAULT_MENU_ACCENT = (150, 170, 190)
+
+
+# Cache of loaded fonts, keyed by ``(size, semibold)``. ``None`` means the
+# firmware font could not be loaded and PIL's default bitmap font is used.
+_FONT_CACHE: dict = {}
+
+
+def stealth_font(size: int, *, semibold: bool = True):
+    """Return a firmware TrueType font for the games console (cached).
+
+    Loaded lazily via :class:`seedsigner.gui.components.Fonts` so the stealth
+    package keeps no top-level GUI import (avoids import-order issues and keeps
+    the import guard trivially satisfied). Returns ``None`` if the font can't
+    be loaded — ``draw.text(..., font=None)`` then falls back to PIL's default
+    bitmap font, so callers can pass the result straight through.
+    """
+    key = (size, semibold)
+    if key not in _FONT_CACHE:
+        try:
+            from seedsigner.gui.components import Fonts
+            name = "OpenSans-SemiBold" if semibold else "OpenSans-Regular"
+            _FONT_CACHE[key] = Fonts.get_font(name, size)
+        except Exception:
+            _FONT_CACHE[key] = None
+    return _FONT_CACHE[key]
+
 
 def new_canvas(renderer) -> Image.Image:
     """A fresh full-screen canvas in the shared background colour."""
@@ -53,17 +81,17 @@ def new_canvas(renderer) -> Image.Image:
 
 def draw_centered_text(draw: ImageDraw.ImageDraw, renderer, text: str,
                        *, y_offset: int = 0,
-                       fill=(240, 240, 240)) -> None:
+                       fill=(240, 240, 240), font=None) -> None:
     """Draw ``text`` centred on the canvas, offset vertically by ``y_offset``."""
     try:
-        bbox = draw.textbbox((0, 0), text)
+        bbox = draw.textbbox((0, 0), text, font=font)
         tw = bbox[2] - bbox[0]
         th = bbox[3] - bbox[1]
     except Exception:
         tw, th = 6 * len(text), 10
     x = (renderer.canvas_width - tw) // 2
     y = (renderer.canvas_height - th) // 2 + y_offset
-    draw.text((x, y), text, fill=fill)
+    draw.text((x, y), text, fill=fill, font=font)
 
 
 class BaseStealthGame:
@@ -76,6 +104,9 @@ class BaseStealthGame:
     """
 
     name: str = "Game"
+    # Colour used for this game's swatch in the console menu. Subclasses may
+    # override; the menu falls back to ``DEFAULT_MENU_ACCENT`` if unset.
+    menu_accent = DEFAULT_MENU_ACCENT
 
     def __init__(self) -> None:
         self.alive: bool = True
@@ -134,7 +165,14 @@ class BaseStealthGame:
             canvas = new_canvas(renderer)
             draw = ImageDraw.Draw(canvas)
             self.draw_frame(draw, renderer, dim=True)
+            # A translucent scrim so the big text reads over the dimmed board.
+            w, h = renderer.canvas_width, renderer.canvas_height
+            band = Image.new("RGBA", (w, 64), (8, 12, 18, 200))
+            canvas.paste(band, (0, h // 2 - 32), band)
+            draw_centered_text(draw, renderer, "GAME OVER", y_offset=-12,
+                               fill=(255, 95, 90),
+                               font=stealth_font(26, semibold=True))
             draw_centered_text(draw, renderer, f"Score {self.score}",
-                               y_offset=-12)
-            draw_centered_text(draw, renderer, "GAME OVER", y_offset=8)
+                               y_offset=18, fill=(200, 220, 235),
+                               font=stealth_font(16, semibold=False))
             renderer.show_image(canvas)

@@ -113,6 +113,101 @@ class TestPlay(unittest.TestCase):
         self.assertTrue(game.alive)
 
 
+class _RecordingGame:
+    """Minimal game stub: records every key it is asked to handle.
+
+    Turn-based (``tick_ms is None``) so ``_play`` never auto-steps; lets us
+    assert exactly which keys reached the game after de-flooding.
+    """
+
+    name = "Rec"
+    menu_accent = (1, 2, 3)
+
+    def __init__(self):
+        self.alive = True
+        self.score = 0
+        self.keys = []
+
+    def reset(self, w, h):
+        self.alive = True
+
+    @property
+    def tick_ms(self):
+        return None
+
+    def step(self):
+        pass
+
+    def handle_key(self, key, btn):
+        self.keys.append(key)
+        return True
+
+    def render(self, renderer):
+        pass
+
+    def render_game_over(self, renderer):
+        pass
+
+
+class TestInputThrottle(unittest.TestCase):
+    def test_held_flood_collapses_to_one_action(self):
+        """A held button (30 identical repeats in one batch) acts once."""
+        from seedsigner.stealth.console import StealthConsole
+        console = StealthConsole(unlock_sequence_csv="KEY1,KEY2,KEY3")
+        game = _RecordingGame()
+        for _ in range(30):
+            console._input_q.put("KEY_DOWN")
+        console._input_q.put("KEY1")  # return to menu, ends _play
+        with _patch_buttons(_no_panic_buttons()):
+            console._play(_FakeRenderer(), game, _Btn)
+        self.assertEqual(game.keys, ["KEY_DOWN"])
+
+    def test_distinct_keys_in_batch_all_apply(self):
+        """De-flooding gates only repeats — distinct keys all get through."""
+        from seedsigner.stealth.console import StealthConsole
+        console = StealthConsole(unlock_sequence_csv="KEY1,KEY2,KEY3")
+        game = _RecordingGame()
+        for key in ("KEY_LEFT", "KEY_DOWN", "KEY1"):
+            console._input_q.put(key)
+        with _patch_buttons(_no_panic_buttons()):
+            console._play(_FakeRenderer(), game, _Btn)
+        self.assertEqual(game.keys, ["KEY_LEFT", "KEY_DOWN"])
+
+    def test_unlock_buffer_sees_every_raw_key_despite_throttle(self):
+        """Repeated-key unlock combos still fire — _consume runs on each key."""
+        from seedsigner.stealth.console import StealthConsole, StealthGameExit
+        console = StealthConsole(unlock_sequence_csv="KEY_DOWN,KEY_DOWN,KEY_DOWN")
+        game = _RecordingGame()
+        for _ in range(3):
+            console._input_q.put("KEY_DOWN")
+        with _patch_buttons(_no_panic_buttons()):
+            with self.assertRaises(StealthGameExit):
+                console._play(_FakeRenderer(), game, _Btn)
+
+    def test_flush_queue_drops_pending(self):
+        from seedsigner.stealth.console import StealthConsole
+        console = StealthConsole(unlock_sequence_csv="KEY1,KEY2,KEY3")
+        for _ in range(5):
+            console._input_q.put("KEY_DOWN")
+        console._flush_queue()
+        self.assertTrue(console._input_q.empty())
+
+
+class TestMenuRender(unittest.TestCase):
+    def test_render_menu_each_index_does_not_raise(self):
+        from seedsigner.stealth.console import StealthConsole
+        console = StealthConsole(unlock_sequence_csv="KEY1,KEY2,KEY3")
+        renderer = _FakeRenderer()
+        for i in range(len(console._games)):
+            console._render_menu(renderer, i)  # styled path must not raise
+
+    def test_render_menu_fallback_does_not_raise(self):
+        from seedsigner.stealth.console import StealthConsole
+        console = StealthConsole(unlock_sequence_csv="KEY1,KEY2,KEY3")
+        canvas = console._draw_menu_fallback(_FakeRenderer(), 0)
+        self.assertIsNotNone(canvas)
+
+
 class TestConstruction(unittest.TestCase):
     def test_invalid_sequence_raises(self):
         from seedsigner.stealth.console import StealthConsole

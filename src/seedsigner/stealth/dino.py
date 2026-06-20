@@ -19,7 +19,7 @@ from typing import List
 
 from PIL import ImageDraw
 
-from .base import BaseStealthGame
+from .base import BaseStealthGame, stealth_font
 
 
 COLS = 24
@@ -40,6 +40,7 @@ _MIN_TICK_MS = 55         # speed cap
 
 class DinoGame(BaseStealthGame):
     name = "Dino"
+    menu_accent = (230, 230, 230)
 
     def __init__(self):
         super().__init__()
@@ -129,7 +130,8 @@ class DinoGame(BaseStealthGame):
         self._draw_block(draw, DINO_COL, dino_row, dino_color)
 
         if not dim:
-            draw.text((4, 2), f"Score {self.score}", fill=(160, 200, 220))
+            draw.text((4, 2), f"Score {self.score}", fill=(160, 200, 220),
+                      font=stealth_font(14, semibold=True))
 
     def _draw_block(self, draw: ImageDraw.ImageDraw, c: int, r: int,
                     color) -> None:

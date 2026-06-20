@@ -19,7 +19,7 @@ from typing import List, Optional, Tuple
 
 from PIL import ImageDraw
 
-from .base import BaseStealthGame
+from .base import BaseStealthGame, stealth_font
 
 
 _SIZE = 4
@@ -42,6 +42,7 @@ _TILE_COLORS = {
 
 class Game2048(BaseStealthGame):
     name = "2048"
+    menu_accent = (220, 200, 80)
 
     def __init__(self):
         super().__init__()
@@ -152,7 +153,8 @@ class Game2048(BaseStealthGame):
             for c in range(_SIZE):
                 self._draw_tile(draw, r, c, self._board[r][c], dim=dim)
         if not dim:
-            draw.text((4, 2), f"Score {self.score}", fill=(160, 200, 220))
+            draw.text((4, 2), f"Score {self.score}", fill=(160, 200, 220),
+                      font=stealth_font(14, semibold=True))
 
     def _draw_tile(self, draw: ImageDraw.ImageDraw, r: int, c: int,
                    value: int, *, dim: bool) -> None:
@@ -167,12 +169,17 @@ class Game2048(BaseStealthGame):
                        fill=color)
         if value:
             text = str(value)
+            # Size the digits to the tile so 1- to 4-digit values all fit.
+            size = max(10, int(min(cell * 0.55, (cell - 8) / (0.62 * len(text)))))
+            font = stealth_font(size, semibold=True)
             try:
-                bbox = draw.textbbox((0, 0), text)
+                bbox = draw.textbbox((0, 0), text, font=font)
                 tw = bbox[2] - bbox[0]
                 th = bbox[3] - bbox[1]
+                tx = x0 + (cell - tw) // 2 - bbox[0]
+                ty = y0 + (cell - th) // 2 - bbox[1]
             except Exception:
                 tw, th = 6 * len(text), 10
-            tx = x0 + (cell - tw) // 2
-            ty = y0 + (cell - th) // 2
-            draw.text((tx, ty), text, fill=(240, 240, 240))
+                tx = x0 + (cell - tw) // 2
+                ty = y0 + (cell - th) // 2
+            draw.text((tx, ty), text, fill=(245, 245, 245), font=font)

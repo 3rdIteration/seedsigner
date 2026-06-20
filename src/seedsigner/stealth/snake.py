@@ -21,7 +21,7 @@ from typing import List, Optional, Tuple
 
 from PIL import ImageDraw
 
-from .base import BaseStealthGame
+from .base import BaseStealthGame, stealth_font
 
 
 # Game tuning constants.
@@ -47,6 +47,7 @@ class _GameState:
 
 class SnakeGame(BaseStealthGame):
     name = "Snake"
+    menu_accent = (100, 200, 120)
 
     def __init__(self, *, grid_cols: int = 16, grid_rows: int = 12):
         super().__init__()
@@ -144,7 +145,8 @@ class SnakeGame(BaseStealthGame):
         self._draw_food(draw, state)
         self._draw_snake(draw, state, dim=dim)
         if not dim:
-            draw.text((4, 2), f"Score {state.score}", fill=(160, 200, 220))
+            draw.text((4, 2), f"Score {state.score}", fill=(160, 200, 220),
+                      font=stealth_font(14, semibold=True))
 
     def _draw_playfield(self, draw: ImageDraw.ImageDraw) -> None:
         x0 = self._origin_x
