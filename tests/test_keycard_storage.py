@@ -153,21 +153,31 @@ class TestSizeHelpers(unittest.TestCase):
         self.assertEqual(store_bytes_from_param("FFFF"), 64 * 1024)
 
     def test_required_nv_keycard(self):
+        # Required = the recalibrated real footprint (cap size scaled down to
+        # exclude the .cap's non-loaded Debug/Descriptor/Export components).
         from seedsigner.views import view as view_mod
         with patch.object(view_mod, "cap_size_for_kind", return_value=30000):
-            self.assertEqual(view_mod.required_nv_for_install("keycard"), 30000)
+            self.assertEqual(
+                view_mod.required_nv_for_install("keycard"),
+                int(30000 * view_mod.CAP_NV_FOOTPRINT_RATIO),
+            )
 
     def test_required_nv_seedkeeper_adds_store(self):
         from seedsigner.views import view as view_mod
         with patch.object(view_mod, "cap_size_for_kind", return_value=10000):
             req = view_mod.required_nv_for_install("seedkeeper", "0FFF")
-            self.assertEqual(req, 10000 + 4 * 1024)
+            self.assertEqual(
+                req, int(10000 * view_mod.CAP_NV_FOOTPRINT_RATIO) + 4 * 1024)
 
     def test_required_nv_seedkeeper_default_store(self):
         from seedsigner.views import view as view_mod
         with patch.object(view_mod, "cap_size_for_kind", return_value=10000):
             req = view_mod.required_nv_for_install("seedkeeper")
-            self.assertEqual(req, 10000 + view_mod.SEEDKEEPER_DEFAULT_STORE_BYTES)
+            self.assertEqual(
+                req,
+                int(10000 * view_mod.CAP_NV_FOOTPRINT_RATIO)
+                + view_mod.SEEDKEEPER_DEFAULT_STORE_BYTES,
+            )
 
     def test_required_nv_none_when_cap_unknown(self):
         from seedsigner.views import view as view_mod
@@ -188,11 +198,12 @@ class TestSizeHelpers(unittest.TestCase):
                               side_effect=lambda k: sizes[k]):
                 return view_mod.estimated_used_nv(probe)
 
+        r = view_mod.CAP_NV_FOOTPRINT_RATIO
         self.assertEqual(both(False, False), 0)
-        self.assertEqual(both(True, False), 30000)
+        self.assertEqual(both(True, False), int(30000 * r))
         self.assertEqual(
             both(True, True),
-            30000 + 10000 + view_mod.SEEDKEEPER_DEFAULT_STORE_BYTES,
+            int(30000 * r) + int(10000 * r) + view_mod.SEEDKEEPER_DEFAULT_STORE_BYTES,
         )
 
 
@@ -265,6 +276,62 @@ class TestWarnIfLowSpace(unittest.TestCase):
             self.assertIsNone(view_mod._warn_if_low_space(view, "keycard"))
         view.run_screen.assert_not_called()
         q.assert_not_called()  # short-circuits before touching the card
+
+    def test_cap_oversize_no_longer_false_positives(self):
+        # Regression: the .cap file over-estimates the real on-card footprint,
+        # so a card that fits the *real* applet (but not the raw cap size) must
+        # NOT warn. With a free amount below the raw cap but comfortably above
+        # the recalibrated footprint, the old code warned and the new code
+        # doesn't.
+        from seedsigner.views import view as view_mod
+        from seedsigner.helpers.keycard import ui_helpers
+
+        cap = 30000
+        real = int(cap * view_mod.CAP_NV_FOOTPRINT_RATIO)
+        free = real + view_mod.LOW_SPACE_MARGIN_BYTES + 1000
+        self.assertLess(free, cap)  # the raw-cap check would have warned here
+
+        view = MagicMock()
+        view.run_screen = MagicMock()
+        with patch.object(view_mod, "cap_size_for_kind", return_value=cap), \
+             patch.object(ui_helpers, "query_card_memory",
+                          return_value=self._mem(free)):
+            self.assertIsNone(view_mod._warn_if_low_space(view, "keycard"))
+        view.run_screen.assert_not_called()
+
+    def test_clear_shortfall_still_warns(self):
+        # A card that can't even fit the recalibrated footprint still warns.
+        from seedsigner.views import view as view_mod
+        from seedsigner.helpers.keycard import ui_helpers
+        from seedsigner.gui.screens.screen import DireWarningScreen
+
+        cap = 30000
+        real = int(cap * view_mod.CAP_NV_FOOTPRINT_RATIO)
+        free = real - view_mod.LOW_SPACE_MARGIN_BYTES - 1000
+
+        view = MagicMock()
+        view.run_screen = MagicMock(return_value=0)  # "Install anyway"
+        with patch.object(view_mod, "cap_size_for_kind", return_value=cap), \
+             patch.object(ui_helpers, "query_card_memory",
+                          return_value=self._mem(free)):
+            self.assertIsNone(view_mod._warn_if_low_space(view, "keycard"))
+        self.assertIs(view.run_screen.call_args.args[0], DireWarningScreen)
+
+    def test_prefetched_mem_skips_second_query(self):
+        # When a CardMemory is passed in (already read to show free space on
+        # the chooser), the check must not re-query the card.
+        from seedsigner.views import view as view_mod
+        from seedsigner.helpers.keycard import ui_helpers
+
+        view = MagicMock()
+        view.run_screen = MagicMock()
+        with patch.object(view_mod, "cap_size_for_kind", return_value=30000), \
+             patch.object(ui_helpers, "query_card_memory") as q:
+            self.assertIsNone(
+                view_mod._warn_if_low_space(
+                    view, "keycard", mem=self._mem(100000)))
+        q.assert_not_called()
+        view.run_screen.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

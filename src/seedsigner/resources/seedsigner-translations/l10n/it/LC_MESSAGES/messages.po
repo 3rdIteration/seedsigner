@@ -3898,3 +3898,11 @@ msgstr "Wallet"
 
 msgid "Addresses"
 msgstr "Indirizzi"
+
+#: src/seedsigner/views/view.py
+msgid "Free: {} KB"
+msgstr "Libero: {} KB"
+
+#: src/seedsigner/views/view.py
+msgid "iOS Seedkeeper may crash"
+msgstr "iOS Seedkeeper può bloccarsi"

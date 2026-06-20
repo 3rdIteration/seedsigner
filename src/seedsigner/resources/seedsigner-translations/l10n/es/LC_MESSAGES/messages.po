@@ -3892,3 +3892,11 @@ msgstr "Carteras"
 
 msgid "Addresses"
 msgstr "Direcciones"
+
+#: src/seedsigner/views/view.py
+msgid "Free: {} KB"
+msgstr "Libre: {} KB"
+
+#: src/seedsigner/views/view.py
+msgid "iOS Seedkeeper may crash"
+msgstr "iOS Seedkeeper puede fallar"

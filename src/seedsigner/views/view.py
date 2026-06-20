@@ -472,6 +472,17 @@ _KEYCARD_CREATE_COMMANDS = [
 # cap-file size diverges from the real footprint.
 # ---------------------------------------------------------------------------
 APP_NV_OVERHEAD_BYTES = 0
+# The .cap on disk over-estimates the real on-card EEPROM footprint by
+# ~1.3-1.5x because it bundles Debug/Descriptor/Export components that are
+# stripped at load time and never written to card NV. Scale the file size by
+# this ratio to approximate what actually lands on the card. Without it, the
+# pre-install free-space check false-positives on a card that already holds the
+# Keycard package (the install really fits — see `_warn_if_low_space`).
+# Calibrate via free-before/free-after of a real install (see the plan's
+# verification): ratio = (free_before - free_after - store) / cap_file_size.
+CAP_NV_FOOTPRINT_RATIO = 0.70
+# Tolerance so we don't warn on a borderline fit (free ≈ required).
+LOW_SPACE_MARGIN_BYTES = 2048
 # SeedKeeper's footprint also includes the data-object store allocated at
 # install time. The chosen size isn't queryable afterwards, so the occupation
 # bar assumes the default; the pre-install check uses the exact chosen value.
@@ -505,18 +516,34 @@ def cap_size_for_kind(kind: str):
         return None
 
 
-def required_nv_for_install(kind: str, storage_param: str = None,
-                            overhead: int = APP_NV_OVERHEAD_BYTES):
-    """Estimated free NV memory (bytes) needed to install ``kind``.
+def real_nv_footprint(kind: str, ratio: float = CAP_NV_FOOTPRINT_RATIO):
+    """Estimated *real* on-card NV footprint (bytes) of ``kind``'s code, or
+    ``None`` when the cap size can't be read.
 
-    ``cap_size + overhead`` (+ the exact chosen data store for SeedKeeper).
-    Returns ``None`` if the cap size can't be determined, so the pre-install
-    check skips rather than blocking a valid install.
+    The ``.cap`` file over-estimates the loaded EEPROM footprint (see
+    ``CAP_NV_FOOTPRINT_RATIO``), so scale it down to approximate what the card
+    actually stores. Excludes SeedKeeper's data store, which the caller adds at
+    the exact chosen size.
     """
     cap_size = cap_size_for_kind(kind)
     if cap_size is None:
         return None
-    required = cap_size + overhead
+    return int(cap_size * ratio)
+
+
+def required_nv_for_install(kind: str, storage_param: str = None,
+                            overhead: int = APP_NV_OVERHEAD_BYTES):
+    """Estimated free NV memory (bytes) needed to install ``kind``.
+
+    Real code footprint (``real_nv_footprint``) ``+ overhead`` (+ the exact
+    chosen data store for SeedKeeper). Returns ``None`` if the cap size can't be
+    determined, so the pre-install check skips rather than blocking a valid
+    install.
+    """
+    footprint = real_nv_footprint(kind)
+    if footprint is None:
+        return None
+    required = footprint + overhead
     if kind == "seedkeeper":
         required += (store_bytes_from_param(storage_param)
                      if storage_param else SEEDKEEPER_DEFAULT_STORE_BYTES)
@@ -534,19 +561,36 @@ def estimated_used_nv(probe,
     """
     used = 0
     if getattr(probe, "keycard_installed", False):
-        used += cap_size_for_kind("keycard") or 0
+        used += real_nv_footprint("keycard") or 0
     if getattr(probe, "seedkeeper_installed", False):
-        used += (cap_size_for_kind("seedkeeper") or 0) + seedkeeper_default_store
+        used += (real_nv_footprint("seedkeeper") or 0) + seedkeeper_default_store
     return used
 
 
-def _warn_if_low_space(view, kind: str, storage_param: str = None):
+def _toast_ios_coexistence(view):
+    """Non-blocking heads-up: a Keycard package sharing the card with SeedKeeper
+    crashes the Seedkeeper iOS app's secret-reveal flow. We can't fix the iOS
+    app from here, so we flash a subtle toast instead of gating the install.
+    Best-effort — never raises into the install flow.
+    """
+    from seedsigner.gui.toast import InfoToast
+    try:
+        view.controller.activate_toast(
+            InfoToast(label_text=_("iOS Seedkeeper may crash"))
+        )
+    except Exception:
+        pass
+
+
+def _warn_if_low_space(view, kind: str, storage_param: str = None, mem=None):
     """Soft pre-install free-space check. Never hard-blocks.
 
     Returns ``"back"`` if the user cancels at the warning, otherwise ``None``
     (including when free memory or the required size can't be read — we don't
     block an install we can't prove will fail). Mirrors the existing
-    cross-applet ``DireWarningScreen`` override pattern.
+    cross-applet ``DireWarningScreen`` override pattern. ``mem`` may be a
+    pre-fetched ``CardMemory`` (e.g. already read to show free space on the
+    chooser) to avoid a second card round-trip; otherwise it's queried here.
     """
     from seedsigner.gui.screens.screen import DireWarningScreen
     from seedsigner.helpers.keycard.ui_helpers import query_card_memory
@@ -554,8 +598,12 @@ def _warn_if_low_space(view, kind: str, storage_param: str = None):
     required = required_nv_for_install(kind, storage_param)
     if required is None:
         return None
-    mem = query_card_memory(view)
-    if mem is None or mem.free_nv >= required:
+    if mem is None:
+        mem = query_card_memory(view)
+    # Only warn on a clear shortfall — a small margin avoids false positives at
+    # the borderline (free ≈ required), since the .cap-derived estimate is
+    # approximate and the install fails gracefully if it really doesn't fit.
+    if mem is None or mem.free_nv + LOW_SPACE_MARGIN_BYTES >= required:
         return None
     ret = view.run_screen(
         DireWarningScreen,
@@ -588,12 +636,11 @@ def install_seedkeeper_applet(view):
     ``card_setup`` (PIN prompt) on first use, so the backup save step
     sets the PIN inline.
     """
-    from seedsigner.gui.screens.screen import (
-        ButtonListScreen, DireWarningScreen,
-    )
+    from seedsigner.gui.screens.screen import DescriptionButtonListScreen
     from seedsigner.hardware.microsd import MicroSD
     from seedsigner.helpers import seedkeeper_utils
     from seedsigner.helpers.card_probe import probe_installed_applets
+    from seedsigner.helpers.keycard.ui_helpers import query_card_memory
 
     cap_name, single_cmd_template = _DEFAULT_CAP_BY_KIND["seedkeeper"]
     cap_path = MicroSD.get_microsd_dir() / "javacard-cap" / cap_name
@@ -609,24 +656,26 @@ def install_seedkeeper_applet(view):
     except Exception:
         installed = None
     if installed is not None and installed.present and installed.keycard_installed:
-        ret = view.run_screen(
-            DireWarningScreen,
-            title=_("Compatibility"),
-            status_headline=None,
-            text=_("iOS Seedkeeper app crashes when\nKeycard shares a card."),
-            show_back_button=True,
-            button_data=[ButtonOption("Install anyway")],
-        )
-        if ret == RET_CODE__BACK_BUTTON:
-            return "back"
+        # Non-blocking heads-up (see _toast_ios_coexistence): a Keycard package
+        # on the same card crashes the Seedkeeper iOS reveal flow.
+        _toast_ios_coexistence(view)
+
+    # Read free memory once: surface it on the chooser and reuse it for the
+    # low-space check (avoids a second card round-trip).
+    mem = query_card_memory(view)
+    description = None
+    if mem is not None:
+        # TRANSLATOR_NOTE: {} is the card's free memory in KiB
+        description = _("Free: {} KB").format(f"{mem.free_nv / 1024:.1f}")
 
     options = [
         ButtonOption(label, return_data=value)
         for (label, value) in _SEEDKEEPER_STORAGE_OPTIONS
     ]
     selected = view.run_screen(
-        ButtonListScreen,
+        DescriptionButtonListScreen,
         title=_("Select Storage"),
+        description=description,
         is_button_text_centered=False,
         button_data=options,
         selected_button=_SEEDKEEPER_STORAGE_DEFAULT_INDEX,
@@ -635,7 +684,7 @@ def install_seedkeeper_applet(view):
         return "back"
     storage_param = options[selected].return_data or "1FFF"
 
-    if _warn_if_low_space(view, "seedkeeper", storage_param) == "back":
+    if _warn_if_low_space(view, "seedkeeper", storage_param, mem=mem) == "back":
         return "back"
 
     command = single_cmd_template.format(cap=str(cap_path), params=storage_param)
@@ -698,30 +747,20 @@ class CardsInstallAppletView(View):
                 _("Applet bundle missing:\n{}\nRebuild seedsigner-os.").format(cap_name),
             )
 
-        # Cross-applet compatibility check. The presence of the Keycard
+        # Cross-applet compatibility heads-up. The presence of the Keycard
         # package on a card crashes the Seedkeeper iOS app's secret-reveal
         # flow (label loads, then the app exits when Reveal is tapped).
         # Verified hands-on: deleting just the Keycard package restores
         # iOS reveal without touching SeedKeeper data. We can't fix the
-        # iOS app from here, so we warn before letting the user create
-        # that situation. Skipped if the probe couldn't read the card.
-        from seedsigner.gui.screens.screen import DireWarningScreen
+        # iOS app from here, so we flash a non-blocking toast (rather than
+        # gate the install). Skipped if the probe couldn't read the card.
         from seedsigner.helpers.card_probe import probe_installed_applets
         try:
             installed = probe_installed_applets(self.controller)
         except Exception:
             installed = None
         if installed is not None and installed.present and installed.seedkeeper_installed:
-            ret = self.run_screen(
-                DireWarningScreen,
-                title=_("Compatibility"),
-                status_headline=None,
-                text=_("iOS Seedkeeper app crashes when\nKeycard shares a card."),
-                show_back_button=True,
-                button_data=[ButtonOption("Install anyway")],
-            )
-            if ret == RET_CODE__BACK_BUTTON:
-                return Destination(BackStackView)
+            _toast_ios_coexistence(self)
 
         if _warn_if_low_space(self, "keycard") == "back":
             return Destination(BackStackView)

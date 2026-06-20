@@ -3854,3 +3854,11 @@ msgstr "ウォレット"
 
 msgid "Addresses"
 msgstr "アドレス"
+
+#: src/seedsigner/views/view.py
+msgid "Free: {} KB"
+msgstr "空き: {} KB"
+
+#: src/seedsigner/views/view.py
+msgid "iOS Seedkeeper may crash"
+msgstr "iOS Seedkeeperが落ちる場合あり"

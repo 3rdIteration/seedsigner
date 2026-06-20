@@ -186,12 +186,13 @@ class TestKeycardInstallPreDelete(unittest.TestCase):
 
 
 class TestCrossAppletCompatibilityWarning(unittest.TestCase):
-    """``CardsInstallAppletView`` must warn before installing one applet
-    on a card that already has the other. Mere coexistence of SeedKeeper
-    and the Keycard package crashes the Seedkeeper iOS app's reveal flow
-    (verified hands-on by deleting only the Keycard package and seeing
-    iOS reveal recover). The warning is a DireWarningScreen with a single
-    ``Install anyway`` button + back-to-cancel."""
+    """``CardsInstallAppletView`` flashes a non-blocking heads-up before
+    installing one applet on a card that already has the other. Mere
+    coexistence of SeedKeeper and the Keycard package crashes the Seedkeeper
+    iOS app's reveal flow (verified hands-on by deleting only the Keycard
+    package and seeing iOS reveal recover). The heads-up is a subtle
+    ``InfoToast`` dispatched via ``controller.activate_toast`` — it informs
+    without gating the install (no extra screen, no back-to-cancel)."""
 
     def _stub(self, run_results, probe_state):
         from pathlib import Path
@@ -215,10 +216,9 @@ class TestCrossAppletCompatibilityWarning(unittest.TestCase):
             calls,
         )
 
-    def test_keycard_install_warns_when_seedkeeper_present(self):
+    def test_keycard_install_toasts_when_seedkeeper_present(self):
         from seedsigner.gui.screens.screen import DireWarningScreen
         v = _make_install_view("keycard")
-        # First run_screen call → DireWarning, accept ("Install anyway" = index 0).
         screen_calls = []
 
         def fake_run_screen(screen_cls, **kwargs):
@@ -226,40 +226,24 @@ class TestCrossAppletCompatibilityWarning(unittest.TestCase):
             return 0
         v.run_screen = fake_run_screen
         m, r, d, p, calls = self._stub([True, True, True], _present_state(seedkeeper=True))
-        with m, r, d, p:
+        # InfoToast construction needs the Renderer/Controller singletons
+        # (absent headless), so stub it; we only assert it is dispatched.
+        fake_toast = MagicMock(name="InfoToast")
+        with m, r, d, p, patch("seedsigner.gui.toast.InfoToast", fake_toast):
             v.run()
-        # First screen MUST be the DireWarning.
-        self.assertEqual(screen_calls[0][0], DireWarningScreen)
-        self.assertEqual(screen_calls[0][1].get("title"), "Compatibility")
-        self.assertIn("iOS", screen_calls[0][1].get("text", ""))
+        # Non-blocking: a subtle toast is dispatched, no DireWarning gate.
+        fake_toast.assert_called_once_with(label_text="iOS Seedkeeper may crash")
+        v.controller.activate_toast.assert_called_once_with(fake_toast.return_value)
+        for s, _kw in screen_calls:
+            self.assertNotEqual(s, DireWarningScreen)
         # Install still proceeds: 1 pre-delete + 1 --load + 1 --create = 3.
         self.assertEqual(len(calls), 3)
 
-    def test_keycard_install_aborts_when_back_pressed_on_warning(self):
+    def test_seedkeeper_install_toasts_when_keycard_present(self):
         from seedsigner.gui.screens.screen import (
-            DireWarningScreen, RET_CODE__BACK_BUTTON,
+            DescriptionButtonListScreen, DireWarningScreen,
         )
-        v = _make_install_view("keycard")
-        screen_calls = []
-
-        def fake_run_screen(screen_cls, **kwargs):
-            screen_calls.append((screen_cls, kwargs))
-            return RET_CODE__BACK_BUTTON
-        v.run_screen = fake_run_screen
-        m, r, d, p, calls = self._stub([True, True, True], _present_state(seedkeeper=True))
-        with m, r, d, p:
-            v.run()
-        # DireWarning shown once and then the back button aborted everything.
-        self.assertEqual(len(screen_calls), 1)
-        self.assertEqual(screen_calls[0][0], DireWarningScreen)
-        # No gp.jar calls — install never started.
-        self.assertEqual(calls, [])
-
-    def test_seedkeeper_install_warns_when_keycard_present(self):
-        from seedsigner.gui.screens.screen import DireWarningScreen
         v = _make_install_view("seedkeeper")
-        # SeedKeeper install also runs a storage chooser screen. First run_screen
-        # is the DireWarning (accept), second is the storage chooser (pick 0).
         screen_calls = []
 
         def fake_run_screen(screen_cls, **kwargs):
@@ -267,17 +251,22 @@ class TestCrossAppletCompatibilityWarning(unittest.TestCase):
             return 0
         v.run_screen = fake_run_screen
         m, r, d, p, calls = self._stub([True], _present_state(keycard=True))
-        with m, r, d, p:
+        fake_toast = MagicMock(name="InfoToast")
+        with m, r, d, p, patch("seedsigner.gui.toast.InfoToast", fake_toast):
             v.run()
-        self.assertEqual(screen_calls[0][0], DireWarningScreen)
-        self.assertEqual(screen_calls[0][1].get("title"), "Compatibility")
+        # Toast dispatched (non-blocking); the first screen is the storage
+        # chooser, not a blocking DireWarning.
+        v.controller.activate_toast.assert_called_once_with(fake_toast.return_value)
+        for s, _kw in screen_calls:
+            self.assertNotEqual(s, DireWarningScreen)
+        self.assertEqual(screen_calls[0][0], DescriptionButtonListScreen)
         # SeedKeeper install = single gp.jar call.
         self.assertEqual(len(calls), 1)
         self.assertIn("--install", calls[0][0][1])
 
-    def test_no_warning_when_only_target_kind_present(self):
+    def test_no_toast_when_only_target_kind_present(self):
         # Installing Keycard on a card that already has Keycard (reinstall):
-        # no SeedKeeper present → no warning, jump straight into the recipe.
+        # no SeedKeeper present → no heads-up, jump straight into the recipe.
         from seedsigner.gui.screens.screen import DireWarningScreen
         v = _make_install_view("keycard")
         screen_calls = []
@@ -289,11 +278,12 @@ class TestCrossAppletCompatibilityWarning(unittest.TestCase):
         m, r, d, p, calls = self._stub([True, True, True], _present_state(keycard=True))
         with m, r, d, p:
             v.run()
-        for s, _ in screen_calls:
+        v.controller.activate_toast.assert_not_called()
+        for s, _kw in screen_calls:
             self.assertNotEqual(s, DireWarningScreen)
 
-    def test_no_warning_when_probe_fails(self):
-        # If probe raises (no reader / driver issue) we skip the warning
+    def test_no_toast_when_probe_fails(self):
+        # If probe raises (no reader / driver issue) we skip the heads-up
         # rather than blocking the install path.
         from seedsigner.gui.screens.screen import DireWarningScreen
         v = _make_install_view("keycard")
@@ -318,7 +308,8 @@ class TestCrossAppletCompatibilityWarning(unittest.TestCase):
             side_effect=RuntimeError("no reader"),
         ):
             v.run()
-        for s, _ in screen_calls:
+        v.controller.activate_toast.assert_not_called()
+        for s, _kw in screen_calls:
             self.assertNotEqual(s, DireWarningScreen)
 
 

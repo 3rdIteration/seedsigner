@@ -141,6 +141,9 @@ class TestPortugueseKeycard(BaseTest):
         assert _("Storage") == "Armazenamento"
         assert _("Low space") == "Pouco espaço"
         assert "{}" in _("{}% used")
+        assert _("iOS Seedkeeper may crash") == "iOS Seedkeeper pode falhar"
+        assert "{}" in _("Free: {} KB")
+        assert _("Free: {} KB").format("12.3") == "Livre: 12.3 KB"
 
         # f-string templates keep their placeholders intact post-translation.
         assert "{}" in _("Keycard · {}")

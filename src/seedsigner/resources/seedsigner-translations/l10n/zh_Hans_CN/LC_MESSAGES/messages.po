@@ -3853,3 +3853,11 @@ msgstr "钱包"
 
 msgid "Addresses"
 msgstr "地址"
+
+#: src/seedsigner/views/view.py
+msgid "Free: {} KB"
+msgstr "可用: {} KB"
+
+#: src/seedsigner/views/view.py
+msgid "iOS Seedkeeper may crash"
+msgstr "iOS Seedkeeper 可能崩溃"
