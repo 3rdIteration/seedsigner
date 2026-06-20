@@ -439,17 +439,20 @@ class EthSignatureQrEncoder(BaseFountainQrEncoder):
 
 @dataclass
 class EthHDKeyQrEncoder(BaseFountainQrEncoder):
-    """``crypto-hdkey`` UR for the ETH HD account at ``m/44'/60'/0'``.
+    """``crypto-hdkey`` UR for the ETH HD account at ``m/44'/60'/N'``.
 
     Rabby and MetaMask Mobile (Keystone SDK) consume this UR to import
     the SeedSigner Keycard as a "QR-based hardware wallet". With chain
     code present and ``children`` set to ``0/*``, the wallet derives
     receive addresses ``0/i`` itself, matching standard BIP-44 ETH.
+    ``account`` (default 0) sets the account index N — non-zero values
+    target a Ledger Live account (each LL account is its own xpub).
     """
     pubkey: bytes = None             # 65-byte uncompressed (0x04 ‖ X ‖ Y)
     chain_code: bytes = None         # 32 bytes
     parent_fingerprint: bytes = None # HASH160(parent_pubkey)[:4]
     source_fingerprint: bytes = None # HASH160(master_pubkey)[:4]
+    account: int = 0                 # BIP-44 account index N in m/44'/60'/N'
 
     def __post_init__(self):
         super().__post_init__()
@@ -474,7 +477,7 @@ class EthHDKeyQrEncoder(BaseFountainQrEncoder):
             [
                 PathComponent(44, True),
                 PathComponent(60, True),
-                PathComponent(0, True),
+                PathComponent(self.account, True),
             ],
             self.source_fingerprint,
             3,

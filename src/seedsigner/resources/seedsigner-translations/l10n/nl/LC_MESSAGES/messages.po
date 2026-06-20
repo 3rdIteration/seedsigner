@@ -3892,3 +3892,43 @@ msgstr "Vrij: {} KB"
 #: src/seedsigner/views/view.py
 msgid "iOS Seedkeeper may crash"
 msgstr "iOS Seedkeeper kan crashen"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Key length"
+msgstr "Sleutellengte"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "24 words (64 hex)"
+msgstr "24 woorden (64 hex)"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "12 words (32 hex)"
+msgstr "12 woorden (32 hex)"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Wallet type"
+msgstr "Wallet-type"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Match how your other wallet numbers accounts."
+msgstr "Passend bij hoe je andere wallet accounts nummert."
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Default (this device)"
+msgstr "Standaard (dit apparaat)"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Ledger Live"
+msgstr "Ledger Live"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Account {}"
+msgstr "Account {}"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Wallets · LL"
+msgstr "Wallets · LL"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Wallets · LL ({})"
+msgstr "Wallets · LL ({})"

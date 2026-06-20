@@ -373,22 +373,26 @@ class TestKeycardMenuRouting(unittest.TestCase):
                           f"expected {view_cls.__name__}")
 
     def test_ethereum_menu_routes(self):
+        # View wallets + Connect software wallet both go through the
+        # derivation-scheme chooser first (Default vs Ledger Live); the
+        # chooser's ``mode`` distinguishes the two flows.
         from seedsigner.views.keycard_views import (
+            ToolsKeycardEthDerivationSchemeView,
             ToolsKeycardEthereumMenuView,
-            ToolsKeycardPairWalletView,
             ToolsKeycardSignEthStartView,
-            ToolsKeycardWalletsListView,
         )
         expected = [
-            ToolsKeycardSignEthStartView,
-            ToolsKeycardWalletsListView,
-            ToolsKeycardPairWalletView,
+            (ToolsKeycardSignEthStartView, None),
+            (ToolsKeycardEthDerivationSchemeView, "view"),
+            (ToolsKeycardEthDerivationSchemeView, "export"),
         ]
-        for i, view_cls in enumerate(expected):
+        for i, (view_cls, mode) in enumerate(expected):
             dest = self._route(ToolsKeycardEthereumMenuView, i)
             self.assertIs(dest.View_cls, view_cls,
                           f"ETH menu index {i} routes to {dest.View_cls.__name__}, "
                           f"expected {view_cls.__name__}")
+            if mode is not None:
+                self.assertEqual((dest.view_args or {}).get("mode"), mode)
 
     def test_bitcoin_menu_routes(self):
         from seedsigner.views.keycard_views import (
@@ -1667,10 +1671,12 @@ class TestCardSwapDetection(unittest.TestCase):
     # ---- View-wallets warm-cache guard (ETH + BTC) ------------------
 
     def _make_view(self, view_cls):
+        from seedsigner.views.keycard_views import ETH_SCHEME_STANDARD
         view = view_cls.__new__(view_cls)
         view.start_index = 0
         view.selected_button_index = 0
         view.initial_scroll = 0
+        view.scheme = ETH_SCHEME_STANDARD  # ETH list reads it; BTC ignores it
         view.controller = MagicMock()
         view.controller.has_any_keycard_auth.return_value = True
         view.controller.active_keycard_aid = self.AID
@@ -1698,7 +1704,7 @@ class TestCardSwapDetection(unittest.TestCase):
 
         # Swap detected -> re-run (cache is stale) instead of serving it.
         self.assertIs(dest.View_cls, ToolsKeycardWalletsListView)
-        self.assertEqual(dest.view_args, {"start_index": 0})
+        self.assertEqual(dest.view_args, {"start_index": 0, "scheme": "standard"})
         # The stale addresses were never rendered.
         self.assertFalse(view.run_screen.called)
 

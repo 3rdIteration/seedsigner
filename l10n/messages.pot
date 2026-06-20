@@ -3553,3 +3553,31 @@ msgstr ""
 
 msgid "Insert the destination Seedkeeper card to copy secrets to, then press Continue."
 msgstr ""
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Wallet type"
+msgstr ""
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Match how your other wallet numbers accounts."
+msgstr ""
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Default (this device)"
+msgstr ""
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Ledger Live"
+msgstr ""
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Account {}"
+msgstr ""
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Wallets · LL"
+msgstr ""
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Wallets · LL ({})"
+msgstr ""

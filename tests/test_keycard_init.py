@@ -121,7 +121,8 @@ class TestPathFormatter:
             sys.modules.setdefault(mod, MagicMock())
 
     def test_eth_default(self):
-        from seedsigner.views.keycard_views import _format_path, DEFAULT_ETH_PATH
+        from seedsigner.helpers.ethereum import DEFAULT_ETH_PATH
+        from seedsigner.views.keycard_views import _format_path
         assert _format_path(DEFAULT_ETH_PATH) == "m/44'/60'/0'/0/0"
 
     def test_no_components(self):

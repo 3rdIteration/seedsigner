@@ -164,6 +164,34 @@ class TestEthHDKeyQrEncoder(unittest.TestCase):
         hd = HDKey.from_cbor(decoder.result_message().cbor)
         self.assertEqual(hd.key[0:1], b"\x03")  # odd Y → 0x03 prefix
 
+    def test_ledger_live_account_index_in_origin(self):
+        # A non-zero account targets a Ledger Live account: the origin
+        # path becomes 44'/60'/N' while children stay 0/* (the software
+        # wallet derives 0/i within that account).
+        from seedsigner.models.encode_qr import EthHDKeyQrEncoder
+        from seedsigner.helpers.ur2.ur_decoder import URDecoder
+        from urtypes.crypto import HDKey
+
+        encoder = EthHDKeyQrEncoder(
+            pubkey=_PUBKEY_UNCOMP,
+            chain_code=_CHAIN_CODE,
+            parent_fingerprint=_PARENT_FP,
+            source_fingerprint=_SOURCE_FP,
+            account=3,
+        )
+        decoder = URDecoder()
+        for _ in range(20):
+            decoder.receive_part(encoder.next_part())
+            if decoder.is_complete():
+                break
+        hd = HDKey.from_cbor(decoder.result_message().cbor)
+        self.assertEqual(hd.origin.path(), "44'/60'/3'")
+        self.assertEqual(hd.children.path(), "0/*")
+
+    def test_default_account_is_zero(self):
+        # Regression: omitting account keeps the historical 44'/60'/0'.
+        self.assertEqual(self._build_encoder().account, 0)
+
     def test_validation_rejects_bad_pubkey(self):
         from seedsigner.models.encode_qr import EthHDKeyQrEncoder
         with self.assertRaises(ValueError):

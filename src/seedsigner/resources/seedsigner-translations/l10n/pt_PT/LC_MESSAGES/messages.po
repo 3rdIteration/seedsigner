@@ -3885,3 +3885,43 @@ msgstr "Livre: {} KB"
 #: src/seedsigner/views/view.py
 msgid "iOS Seedkeeper may crash"
 msgstr "iOS Seedkeeper pode falhar"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Key length"
+msgstr "Comprimento da chave"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "24 words (64 hex)"
+msgstr "24 palavras (64 hex)"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "12 words (32 hex)"
+msgstr "12 palavras (32 hex)"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Wallet type"
+msgstr "Tipo de carteira"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Match how your other wallet numbers accounts."
+msgstr "Corresponde à forma como a outra carteira numera as contas."
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Default (this device)"
+msgstr "Predefinição (este dispositivo)"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Ledger Live"
+msgstr "Ledger Live"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Account {}"
+msgstr "Conta {}"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Wallets · LL"
+msgstr "Carteiras · LL"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Wallets · LL ({})"
+msgstr "Carteiras · LL ({})"

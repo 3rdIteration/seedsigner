@@ -711,3 +711,56 @@ class MaskedPINEntryDisplay(TextEntryDisplay):
 
         self.canvas.paste(image, (self.rect[0], self.rect[1]))
 
+
+
+@dataclass
+class GroupedHexEntryDisplay(TextEntryDisplay):
+    """Fixed-length hex entry display, split into blocks for readability.
+
+    Sized to a chosen dimension (``num_slots`` = 32 hex for a 12-word key, 64
+    for 24 words), it shows every slot up front: entered characters fill the
+    cells left-to-right and the remaining slots render as ``placeholder`` chars,
+    with a wider gap inserted after every ``group_size`` characters (default 8 —
+    so an NGRAVE "Perfect Key" reads ``aabbccdd eeff0011 ...`` exactly like the
+    backup). This is a thin wrapper over the base :class:`TextEntryDisplay`
+    bar-cursor renderer: it only composes the grouped, slot-padded string and
+    the matching cursor index, then delegates — so the existing horizontal
+    auto-scroll keeps the active cell visible (64 cells never fit 240px).
+    """
+    num_slots: int = 64
+    group_size: int = 8
+    placeholder: str = "_"
+    cursor_mode: str = TextEntryDisplayConstants.CURSOR_MODE__BAR
+    # Start empty so the slot count tracks the characters actually entered (the
+    # base default of a single space would pre-fill the first slot).
+    cur_text: str = ""
+
+    def _compose(self, entered: str):
+        """Build the grouped, slot-padded display string and cursor index.
+
+        Returns ``(display, cursor)`` where ``display`` is the entered chars
+        followed by placeholders up to ``num_slots``, split into ``group_size``
+        blocks joined by single spaces, and ``cursor`` is the index in
+        ``display`` just before the next unfilled slot.
+        """
+        entered = entered[:self.num_slots]
+        filled = len(entered)
+
+        padded = entered + self.placeholder * (self.num_slots - filled)
+        groups = [
+            padded[i:i + self.group_size]
+            for i in range(0, self.num_slots, self.group_size)
+        ]
+        display = " ".join(groups)
+
+        # Offset the cursor by the spaces that precede it (one per completed
+        # group). Clamp to the end so a full buffer parks the bar at the edge.
+        cursor = min(filled + filled // self.group_size, len(display))
+        return display, cursor
+
+    def render(self, cur_text=None, cursor_position=None):
+        if cur_text is None:
+            cur_text = self.cur_text
+        display, display_cursor = self._compose(cur_text)
+        super().render(cur_text=display, cursor_position=display_cursor)
+

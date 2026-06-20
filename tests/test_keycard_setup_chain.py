@@ -300,13 +300,13 @@ class TestSeedkeeperSwapInsert(unittest.TestCase):
         ):
             return view.run()
 
-    def test_seedkeeper_found_routes_to_format(self):
+    def test_seedkeeper_found_routes_to_save(self):
         from seedsigner.views.keycard_views import (
-            ToolsKeycardSeedkeeperFormatChooserView,
+            ToolsKeycardSeedkeeperSaveRunView,
         )
         view = self._view(run_screen=MagicMock(return_value=0))  # Continue
         dest = self._run(view, seedkeeper_installed=True)
-        self.assertIs(dest.View_cls, ToolsKeycardSeedkeeperFormatChooserView)
+        self.assertIs(dest.View_cls, ToolsKeycardSeedkeeperSaveRunView)
         self.assertEqual(view.controller.pending_keycard_mnemonic, ["a"])
 
     def test_continue_back_wipes_and_returns_to_menu(self):
@@ -327,45 +327,6 @@ class TestSeedkeeperSwapInsert(unittest.TestCase):
         dest = self._run(view, seedkeeper_installed=False)
         self.assertIs(dest.View_cls, ToolsKeycardMenuView)
         self.assertIsNone(view.controller.pending_keycard_mnemonic)
-
-
-class TestFormatChooser(unittest.TestCase):
-    def test_picks_bip39(self):
-        from seedsigner.views.keycard_views import (
-            ToolsKeycardSeedkeeperFormatChooserView,
-            ToolsKeycardSeedkeeperSaveRunView,
-        )
-        view = _make_view(
-            ToolsKeycardSeedkeeperFormatChooserView, run_screen_returns=0,
-        )
-        view.remaining = []
-        dest = view.run()
-        self.assertIs(dest.View_cls, ToolsKeycardSeedkeeperSaveRunView)
-        self.assertEqual(dest.view_args["secret_type"], "bip39")
-        self.assertEqual(dest.view_args["remaining"], [])
-
-    def test_picks_password(self):
-        from seedsigner.views.keycard_views import (
-            ToolsKeycardSeedkeeperFormatChooserView,
-            ToolsKeycardSeedkeeperSaveRunView,
-        )
-        view = _make_view(
-            ToolsKeycardSeedkeeperFormatChooserView, run_screen_returns=1,
-        )
-        view.remaining = []
-        dest = view.run()
-        self.assertEqual(dest.view_args["secret_type"], "password")
-
-    def test_remaining_threaded_through(self):
-        from seedsigner.views.keycard_views import (
-            ToolsKeycardSeedkeeperFormatChooserView,
-        )
-        view = _make_view(
-            ToolsKeycardSeedkeeperFormatChooserView, run_screen_returns=0,
-        )
-        view.remaining = ["other"]
-        dest = view.run()
-        self.assertEqual(dest.view_args["remaining"], ["other"])
 
 
 class TestSeedkeeperThisCard(unittest.TestCase):
@@ -396,21 +357,21 @@ class TestSeedkeeperThisCard(unittest.TestCase):
             "seedsigner.helpers.keycard.reader.release_other_smartcard_holders",
         )
 
-    def test_present_routes_to_format(self):
+    def test_present_routes_to_save(self):
         from seedsigner.views.keycard_views import (
-            ToolsKeycardSeedkeeperFormatChooserView,
+            ToolsKeycardSeedkeeperSaveRunView,
         )
         view = self._view(run_screen=MagicMock(), remaining=["other"])
         p1, p2 = self._probe(True)
         with p1, p2:
             dest = view.run()
-        self.assertIs(dest.View_cls, ToolsKeycardSeedkeeperFormatChooserView)
+        self.assertIs(dest.View_cls, ToolsKeycardSeedkeeperSaveRunView)
         self.assertEqual(dest.view_args["remaining"], ["other"])
         self.assertEqual(view.controller.pending_keycard_mnemonic, ["a"])
 
-    def test_absent_install_ok_routes_to_format(self):
+    def test_absent_install_ok_routes_to_save(self):
         from seedsigner.views.keycard_views import (
-            ToolsKeycardSeedkeeperFormatChooserView,
+            ToolsKeycardSeedkeeperSaveRunView,
         )
         # No applet → "No Seedkeeper applet" screen; user picks Install (0).
         view = self._view(run_screen=MagicMock(return_value=0))
@@ -419,7 +380,7 @@ class TestSeedkeeperThisCard(unittest.TestCase):
             "seedsigner.views.view.install_seedkeeper_applet", return_value=None,
         ):
             dest = view.run()
-        self.assertIs(dest.View_cls, ToolsKeycardSeedkeeperFormatChooserView)
+        self.assertIs(dest.View_cls, ToolsKeycardSeedkeeperSaveRunView)
         self.assertEqual(view.controller.pending_keycard_mnemonic, ["a"])
 
     def test_absent_cancel_wipes_and_returns_to_menu(self):
@@ -443,7 +404,6 @@ class TestSeedkeeperSaveRun(unittest.TestCase):
         view = ToolsKeycardSeedkeeperSaveRunView.__new__(
             ToolsKeycardSeedkeeperSaveRunView,
         )
-        view.secret_type = "bip39"
         view.remaining = remaining or []
         view.run_screen = run_screen or MagicMock(return_value=0)
         view.controller = MagicMock()

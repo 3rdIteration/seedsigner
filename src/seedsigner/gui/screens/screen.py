@@ -12,7 +12,7 @@ from seedsigner.helpers.l10n import mark_for_translation as _mft
 from seedsigner.gui.components import (GUIConstants,
     BaseComponent, Button, FontAwesomeIconConstants, Icon, IconButton,
     LargeIconButton, SeedSignerIconConstants, TopNav, TextArea, load_image)
-from seedsigner.gui.keyboard import Keyboard, TextEntryDisplay, MaskedPINEntryDisplay
+from seedsigner.gui.keyboard import Keyboard, TextEntryDisplay, MaskedPINEntryDisplay, GroupedHexEntryDisplay
 from seedsigner.hardware.buttons import HardwareButtonsConstants, HardwareButtons, OverrideInterrupt
 from seedsigner.models.encode_qr import BaseQrEncoder
 from seedsigner.models.settings import SettingsConstants
@@ -1287,6 +1287,10 @@ class KeyboardScreen(BaseTopNavScreen):
         * keys_charset: Specify the chars displayed on the keys of the keyboard.
         * keys_to_values: Optional mapping from key_charset to input value (e.g. dice icon to digit).
         * return_after_n_chars: exits and returns the user's input after n characters.
+        * max_input_length: hard cap on the number of characters accepted (further
+          keypresses are ignored, the user can still backspace). Unlike
+          ``return_after_n_chars`` this does NOT auto-return — pair it with
+          ``show_save_button`` for a fixed-length field the user submits manually.
         * show_save_button: Render a KEY3 soft button for save & exit
         * initial_value: initialize the TextEntryDisplay with an existing string
     """
@@ -1298,6 +1302,7 @@ class KeyboardScreen(BaseTopNavScreen):
     keys_charset: str = None
     keys_to_values: dict = None
     return_after_n_chars: int = None
+    max_input_length: int = None
     show_save_button: bool = False
     initial_value: str = ""
 
@@ -1442,8 +1447,10 @@ class KeyboardScreen(BaseTopNavScreen):
                             self.user_input = self.user_input[:-1]
                             self.cursor_position -= 1
 
-                elif input == HardwareButtonsConstants.KEY_PRESS and ret_val not in Keyboard.ADDITIONAL_KEYS:
-                    # User has locked in the current letter
+                elif input == HardwareButtonsConstants.KEY_PRESS and ret_val not in Keyboard.ADDITIONAL_KEYS \
+                        and (self.max_input_length is None or len(self.user_input) < self.max_input_length):
+                    # User has locked in the current letter (and we're not at the
+                    # fixed-length cap, if one is set)
                     if self.keys_to_values:
                         # Map the Key display char to its output value (e.g. dice icon to digit)
                         ret_val = self.keys_to_values[ret_val]
@@ -1527,17 +1534,37 @@ class KeycardHexEntryScreen(KeyboardScreen):
     """Hex-only keyboard for entering raw entropy / an NGRAVE "Perfect Key".
 
     A 16-key ``0-9 a-f`` keyboard (plus the inherited backspace) with a Save
-    button. Unlike the PIN pad the length is variable — 32 hex chars = 12
-    words, 64 = 24 words — so the user submits with the Save (KEY3) button
-    rather than auto-returning at a fixed length. Returns the entered hex
-    string (lower-case, stripped) or ``RET_CODE__BACK_BUTTON``.
+    button. The user submits with the Save (KEY3) button rather than
+    auto-returning at a fixed length. Returns the entered hex string
+    (lower-case, stripped) or ``RET_CODE__BACK_BUTTON``.
+
+    When ``num_chars`` is given (32 for a 12-word key, 64 for 24 words) the
+    field becomes a fixed-length grid: input is capped at ``num_chars`` and the
+    plain text display is swapped for a :class:`GroupedHexEntryDisplay` that
+    shows all the slots in blocks of 8, so a Perfect Key is easy to type and
+    cross-check against the backup. With ``num_chars`` ``None`` it stays the
+    original open-ended hex field.
     """
+    num_chars: int = None
+
     def __post_init__(self):
         self.rows = 4
         self.cols = 5  # 4x5 = 20 cells fit 16 hex keys + the 2-slot backspace
         self.keys_charset = "0123456789abcdef"
         self.show_save_button = True
+        if self.num_chars:
+            self.max_input_length = self.num_chars
         super().__post_init__()
+        if self.num_chars:
+            # Swap the plain text field for the grouped, fixed-slot display.
+            # Reuse the rect KeyboardScreen already computed so the keyboard
+            # layout is untouched (mirrors KeycardPINEntryScreen).
+            self.text_entry_display = GroupedHexEntryDisplay(
+                num_slots=self.num_chars,
+                canvas=self.renderer.canvas,
+                rect=self.text_entry_display.rect,
+                is_centered=False,
+            )
 
 
 @dataclass

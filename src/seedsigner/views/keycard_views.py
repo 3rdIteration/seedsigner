@@ -42,7 +42,6 @@ from seedsigner.gui.screens import (
 )
 from seedsigner.gui.screens.screen import ButtonOption
 from seedsigner.gui.screens.scan_screens import ScanScreen
-from seedsigner.helpers.ethereum import DEFAULT_ETH_PATH
 from seedsigner.helpers.ethereum.address import (
     pubkey_to_address, to_checksum_address,
 )
@@ -2187,10 +2186,29 @@ class ToolsKeycardImportSeedView(View):
         if method == RET_CODE__BACK_BUTTON:
             return None
 
+        expected_len = None
         if method_data[method] == SCAN_HEX:
             raw = self._scan_hex_text()
         else:
-            ret = KeycardHexEntryScreen(title=_("Enter hex")).display()
+            # Pick the key length so the keyboard can show the right number of
+            # fixed slots, grouped in blocks of 8 for easier input. 24 words
+            # (the NGRAVE Perfect Key) is the default, so it's offered first.
+            LEN_24 = ButtonOption("24 words (64 hex)")
+            LEN_12 = ButtonOption("12 words (32 hex)")
+            len_data = [LEN_24, LEN_12]
+            len_ret = self.run_screen(
+                ButtonListScreen,
+                title=_("Key length"),
+                is_button_text_centered=False,
+                button_data=len_data,
+                show_back_button=True,
+            )
+            if len_ret == RET_CODE__BACK_BUTTON:
+                return None
+            expected_len = 64 if len_data[len_ret] == LEN_24 else 32
+            ret = KeycardHexEntryScreen(
+                title=_("Enter hex"), num_chars=expected_len
+            ).display()
             raw = ret if isinstance(ret, str) else None
         if not raw:
             return None
@@ -2199,7 +2217,11 @@ class ToolsKeycardImportSeedView(View):
         cleaned = "".join(raw.split()).lower()
         if cleaned.startswith("0x"):
             cleaned = cleaned[2:]
-        if len(cleaned) not in (32, 64) or any(
+        is_valid_len = (
+            len(cleaned) == expected_len if expected_len is not None
+            else len(cleaned) in (32, 64)
+        )
+        if not is_valid_len or any(
             c not in "0123456789abcdef" for c in cleaned
         ):
             self.run_screen(
@@ -3243,7 +3265,7 @@ class ToolsKeycardSeedkeeperThisCardView(View):
                 )
 
         return Destination(
-            ToolsKeycardSeedkeeperFormatChooserView,
+            ToolsKeycardSeedkeeperSaveRunView,
             view_args={"remaining": self.remaining},
         )
 
@@ -3303,52 +3325,21 @@ class ToolsKeycardSeedkeeperSwapInsertView(View):
                 return Destination(ToolsKeycardMenuView, clear_history=True)
             return Destination(ToolsKeycardSeedkeeperSwapInsertView)
 
-        return Destination(ToolsKeycardSeedkeeperFormatChooserView)
-
-
-class ToolsKeycardSeedkeeperFormatChooserView(View):
-    """Pick how to encode the mnemonic on the Seedkeeper applet."""
-
-    MNEMONIC = ButtonOption("BIP39 mnemonic")
-    PASSWORD = ButtonOption("UTF-8 password")
-
-    def __init__(self, remaining=None):
-        super().__init__()
-        self.remaining = remaining or []
-
-    def run(self):
-        button_data = [self.MNEMONIC, self.PASSWORD]
-        selected = self.run_screen(
-            ButtonListScreen,
-            title=_("Backup format"),
-            is_button_text_centered=False,
-            button_data=button_data,
-        )
-        if selected == RET_CODE__BACK_BUTTON:
-            return Destination(BackStackView)
-        chosen = button_data[selected]
-        secret_type = "bip39" if chosen == self.MNEMONIC else "password"
-        return Destination(
-            ToolsKeycardSeedkeeperSaveRunView,
-            view_args={"secret_type": secret_type, "remaining": self.remaining},
-            skip_current_view=True,
-        )
+        return Destination(ToolsKeycardSeedkeeperSaveRunView)
 
 
 class ToolsKeycardSeedkeeperSaveRunView(View):
     """Write the pending mnemonic to the Seedkeeper applet.
 
-    Uses pysatochip's typed "BIP39 mnemonic" header for the mnemonic
-    format (matches the iOS-compatible layout used by
-    ``ToolsSeedkeeperImportXprvView``), or the standard Password layout
-    for the UTF-8 format. The mnemonic / passphrase are wiped after the
-    save (success or failure) so a stuck user never leaves them on the
-    controller.
+    Always uses pysatochip's typed "BIP39 mnemonic" header (the
+    iOS-compatible layout used by ``ToolsSeedkeeperImportXprvView``), which
+    is the only format the ``From SeedKeeper`` import can re-hydrate. The
+    mnemonic / passphrase are wiped after the save (success or failure) so a
+    stuck user never leaves them on the controller.
     """
 
-    def __init__(self, secret_type: str = "bip39", remaining=None):
+    def __init__(self, remaining=None):
         super().__init__()
-        self.secret_type = secret_type
         # Further destinations still to write after this one (e.g.
         # ``["other"]`` for the Both flow). Tracked purely as a view-arg.
         self.remaining = remaining or []
@@ -3400,34 +3391,17 @@ class ToolsKeycardSeedkeeperSaveRunView(View):
             return Destination(ToolsKeycardSeedkeeperDestChooserView)
 
         export_rights = "Plaintext export allowed"
-        if self.secret_type == "bip39":
-            # iOS-compatible "BIP39 mnemonic" layout, subtype=0.
-            # Body: [size|mnemonic|size|passphrase].
-            mnem_bytes = list(mnemonic_str.encode("utf-8"))
-            pp_bytes = list(passphrase_str.encode("utf-8"))
-            secret_list = (
-                [len(mnem_bytes)] + mnem_bytes
-                + [len(pp_bytes)] + pp_bytes
-            )
-            header = Satochip_Connector.make_header(
-                "BIP39 mnemonic", export_rights, label, subtype=0,
-            )
-        else:
-            # Password layout: [pw|login=0|url=0]. iOS app crashes
-            # without the trailing length=0 fields, per the SLIP-39
-            # save path in seed_views.py.
-            words_blob = mnemonic_str
-            if passphrase_str:
-                # Carry the passphrase as a separate line so an
-                # operator restoring the secret in another tool can
-                # see it. The Keycard cannot be rehydrated from a
-                # mnemonic alone if a passphrase was used.
-                words_blob = f"{mnemonic_str}\npassphrase:{passphrase_str}"
-            pw_bytes = list(words_blob.encode("utf-8"))
-            secret_list = [len(pw_bytes)] + pw_bytes + [0x00] + [0x00]
-            header = Satochip_Connector.make_header(
-                "Password", export_rights, label,
-            )
+        # iOS-compatible "BIP39 mnemonic" layout, subtype=0.
+        # Body: [size|mnemonic|size|passphrase].
+        mnem_bytes = list(mnemonic_str.encode("utf-8"))
+        pp_bytes = list(passphrase_str.encode("utf-8"))
+        secret_list = (
+            [len(mnem_bytes)] + mnem_bytes
+            + [len(pp_bytes)] + pp_bytes
+        )
+        header = Satochip_Connector.make_header(
+            "BIP39 mnemonic", export_rights, label, subtype=0,
+        )
 
         secret_dic = {"header": header, "secret_list": secret_list}
 
@@ -3520,6 +3494,28 @@ _PATH_44H_60H = [44 | _H, 60 | _H]
 _PATH_44H_60H_0H = [44 | _H, 60 | _H, 0 | _H]
 
 
+# ETH wallet-enumeration schemes. Different wallet apps number multiple
+# wallets from one seed differently; account 0 is identical across both,
+# which is why an imported Ledger Live seed matches our first wallet but
+# not the rest. See ToolsKeycardEthDerivationSchemeView.
+ETH_SCHEME_STANDARD = "standard"        # BIP-44 / MetaMask: m/44'/60'/0'/0/i
+ETH_SCHEME_LEDGER_LIVE = "ledger_live"  # Ledger Live:       m/44'/60'/i'/0/0
+
+
+def _eth_wallet_components(scheme: str, index: int) -> list:
+    """derive_key components for the ``index``-th wallet under ``scheme``."""
+    if scheme == ETH_SCHEME_LEDGER_LIVE:
+        return [44 | _H, 60 | _H, index | _H, 0, 0]   # m/44'/60'/index'/0/0
+    return [44 | _H, 60 | _H, 0 | _H, 0, index]       # m/44'/60'/0'/0/index
+
+
+def _eth_wallet_path_str(scheme: str, index: int) -> str:
+    """Human-readable path for the ``index``-th wallet under ``scheme``."""
+    if scheme == ETH_SCHEME_LEDGER_LIVE:
+        return f"m/44'/60'/{index}'/0/0"
+    return f"m/44'/60'/0'/0/{index}"
+
+
 class ToolsKeycardPairWalletView(View):
     """Export the BIP-44 ETH HD account as a ``crypto-hdkey`` UR.
 
@@ -3528,18 +3524,26 @@ class ToolsKeycardPairWalletView(View):
     QRs from those wallets target paths under ``m/44'/60'/0'`` and the
     Keycard signs them in :class:`ToolsKeycardSignEthFinalizeView`.
 
-    Flow inside one PIN-verified session:
+    Flow inside one PIN-verified session (``N`` = ``account``):
 
     1. ``m`` → master pubkey → master fingerprint.
     2. ``m/44'/60'`` → parent pubkey → parent fingerprint.
-    3. ``m/44'/60'/0'`` → account pubkey + chain code.
-    4. ``m/44'/60'/0'/0/0`` → first-receive pubkey for the address screen.
+    3. ``m/44'/60'/N'`` → account pubkey + chain code.
+    4. ``m/44'/60'/N'/0/0`` → first-receive pubkey for the address screen.
 
     The ``crypto-hdkey`` QR is the primary screen; the checksum address
     screen is shown after the user dismisses the QR, so they can
     physically read off ``m/0/0`` and compare to what their wallet
     displays after import.
+
+    ``account`` selects the BIP-44 account index ``m/44'/60'/N'``: ``0``
+    is our default (= MetaMask account 0); a non-zero value targets a
+    Ledger Live account (each LL account is its own xpub).
     """
+
+    def __init__(self, account: int = 0):
+        super().__init__()
+        self.account = account
 
     def run(self):
         from seedsigner.gui.screens.screen import QRDisplayScreen
@@ -3558,11 +3562,12 @@ class ToolsKeycardPairWalletView(View):
         failed_step: Optional[str] = None
         failed_head: bytes = b""
 
+        acct_path = [44 | _H, 60 | _H, self.account | _H]   # m/44'/60'/N'
         steps = [
             ("master", [], False),
-            ("m/44'/60'", _PATH_44H_60H, False),
-            ("m/44'/60'/0'", _PATH_44H_60H_0H, True),
-            ("m/44'/60'/0'/0/0", list(DEFAULT_ETH_PATH), False),
+            ("parent", _PATH_44H_60H, False),
+            ("account", acct_path, True),
+            ("first_addr", acct_path + [0, 0], False),
         ]
         results: dict = {}
 
@@ -3602,9 +3607,9 @@ class ToolsKeycardPairWalletView(View):
             )
 
         master_pub = results["master"]
-        parent_pub = results["m/44'/60'"]
-        account_pub, chain_code = results["m/44'/60'/0'"]
-        first_addr_pub = results["m/44'/60'/0'/0/0"]
+        parent_pub = results["parent"]
+        account_pub, chain_code = results["account"]
+        first_addr_pub = results["first_addr"]
 
         try:
             master_fp = _hash160(_compress_pubkey(master_pub))[:4]
@@ -3618,11 +3623,13 @@ class ToolsKeycardPairWalletView(View):
             chain_code=chain_code,
             parent_fingerprint=parent_fp,
             source_fingerprint=master_fp,
+            account=self.account,
         )
         self.run_screen(QRDisplayScreen, qr_encoder=encoder)
 
         # Secondary screen: textual address for visual verification.
-        text = f"m/44'/60'/0'/0/0\n{address[:21]}\n{address[21:]}"
+        first_path = f"m/44'/60'/{self.account}'/0/0"
+        text = f"{first_path}\n{address[:21]}\n{address[21:]}"
         self.run_screen(
             LargeIconStatusScreen,
             title=_("ETH address"),
@@ -3646,15 +3653,21 @@ class ToolsKeycardPairWalletView(View):
 WALLETS_PER_PAGE = 10
 
 
-def _wallets_cache_for_active_aid(controller, chain: str = "eth") -> list:
+def _wallets_cache_for_active_aid(controller, chain: str = "eth",
+                                  scheme: str = ETH_SCHEME_STANDARD) -> list:
     """Return the per-AID, per-chain address list, creating it on first
-    access. The ETH list keeps the historical bare-AID key; other chains
-    get an ``<aid>:<chain>`` suffix.
+    access. The ETH standard list keeps the historical bare-AID key; the
+    Ledger Live list and other chains get an ``<aid>:<suffix>`` key so the
+    two enumerations never collide. All keys stay ``<aid>``-prefixed so
+    ``_pop_wallets_cache_for_aid`` still drops them on swap / key change.
     """
     if controller.keycard_wallets_data is None:
         controller.keycard_wallets_data = {}
     aid_hex = bytes(controller.active_keycard_aid).hex()
-    key = aid_hex if chain == "eth" else f"{aid_hex}:{chain}"
+    if chain == "eth":
+        key = aid_hex if scheme == ETH_SCHEME_STANDARD else f"{aid_hex}:eth:ll"
+    else:
+        key = f"{aid_hex}:{chain}"
     return controller.keycard_wallets_data.setdefault(key, [])
 
 
@@ -3682,11 +3695,12 @@ class ToolsKeycardWalletsListView(View):
     """Paginated list of EIP-55 addresses for the active Keycard instance."""
 
     def __init__(self, start_index: int = 0, selected_button_index: int = 0,
-                 initial_scroll: int = 0):
+                 initial_scroll: int = 0, scheme: str = ETH_SCHEME_STANDARD):
         super().__init__()
         self.start_index = start_index
         self.selected_button_index = selected_button_index
         self.initial_scroll = initial_scroll
+        self.scheme = scheme
 
     def run(self):
         from seedsigner.gui.screens.screen import LoadingScreenThread
@@ -3701,7 +3715,7 @@ class ToolsKeycardWalletsListView(View):
             if not try_silent_ephemeral_pair(self):
                 return Destination(ToolsKeycardPairView)
 
-        cache = _wallets_cache_for_active_aid(self.controller)
+        cache = _wallets_cache_for_active_aid(self.controller, scheme=self.scheme)
         end_index = self.start_index + WALLETS_PER_PAGE
 
         if len(cache) < end_index:
@@ -3711,7 +3725,7 @@ class ToolsKeycardWalletsListView(View):
                 loading_screen = LoadingScreenThread(text=_("Deriving addrs..."))
                 loading_screen.start()
                 for i in range(len(cache), end_index):
-                    client.derive_key([44 | _H, 60 | _H, 0 | _H, 0, i])
+                    client.derive_key(_eth_wallet_components(self.scheme, i))
                     raw = client.export_pubkey()
                     pub = _extract_pubkey(raw)
                     if pub is None:
@@ -3754,7 +3768,8 @@ class ToolsKeycardWalletsListView(View):
                     # a duplicate the user has to back through.
                     return Destination(
                         ToolsKeycardWalletsListView,
-                        view_args=dict(start_index=self.start_index),
+                        view_args=dict(start_index=self.start_index,
+                                       scheme=self.scheme),
                         skip_current_view=True,
                     )
             except (NoCardError, NoReaderError) as exc:
@@ -3771,9 +3786,17 @@ class ToolsKeycardWalletsListView(View):
         addresses = cache[self.start_index:end_index]
         suffix = _instance_title_suffix(self.controller)
 
+        if self.scheme == ETH_SCHEME_LEDGER_LIVE:
+            # TRANSLATOR_NOTE: "LL" tags the Ledger Live derivation scheme;
+            # {} is the instance label
+            title = (_("Wallets · LL ({})").format(suffix) if suffix
+                     else _("Wallets · LL"))
+        else:
+            title = _("Wallets ({})").format(suffix) if suffix else _("Wallets")
+
         selected = self.run_screen(
             ToolsAddressExplorerAddressListScreen,
-            title=_("Wallets ({})").format(suffix) if suffix else _("Wallets"),
+            title=title,
             start_index=self.start_index,
             addresses=addresses,
             selected_button=self.selected_button_index,
@@ -3787,7 +3810,7 @@ class ToolsKeycardWalletsListView(View):
             # "Next N" button.
             return Destination(
                 ToolsKeycardWalletsListView,
-                view_args=dict(start_index=end_index),
+                view_args=dict(start_index=end_index, scheme=self.scheme),
             )
 
         # Preserve scroll position so returning lands on the same row.
@@ -3804,6 +3827,7 @@ class ToolsKeycardWalletsListView(View):
                 address=addresses[selected],
                 start_index=self.start_index,
                 parent_initial_scroll=initial_scroll,
+                scheme=self.scheme,
             ),
             skip_current_view=True,
         )
@@ -3813,12 +3837,14 @@ class ToolsKeycardWalletAddressView(View):
     """Detail screen for a single Keycard wallet address: QR + back."""
 
     def __init__(self, index: int, address: str, start_index: int,
-                 parent_initial_scroll: int = 0):
+                 parent_initial_scroll: int = 0,
+                 scheme: str = ETH_SCHEME_STANDARD):
         super().__init__()
         self.index = index
         self.address = address
         self.start_index = start_index
         self.parent_initial_scroll = parent_initial_scroll
+        self.scheme = scheme
 
     def run(self):
         from seedsigner.gui.screens.screen import QRDisplayScreen
@@ -3833,8 +3859,80 @@ class ToolsKeycardWalletAddressView(View):
                 start_index=self.start_index,
                 selected_button_index=self.index - self.start_index,
                 initial_scroll=self.parent_initial_scroll,
+                scheme=self.scheme,
             ),
             skip_current_view=True,
+        )
+
+
+class ToolsKeycardEthDerivationSchemeView(View):
+    """Pick how multiple ETH wallets are numbered, before listing/exporting.
+
+    Account 0 is identical across schemes; later wallets diverge, so an
+    imported Ledger Live seed only matches our first wallet under the
+    default scheme. Shared by ``View wallets`` (``mode="view"``) and
+    ``Connect software wallet`` (``mode="export"``).
+    """
+
+    STANDARD = ButtonOption("Default (this device)")
+    LEDGER_LIVE = ButtonOption("Ledger Live")
+
+    def __init__(self, mode: str = "view"):
+        super().__init__()
+        self.mode = mode
+
+    def run(self):
+        from seedsigner.gui.screens.screen import DescriptionButtonListScreen
+
+        button_data = [self.STANDARD, self.LEDGER_LIVE]
+        selected = self.run_screen(
+            DescriptionButtonListScreen,
+            title=_("Wallet type"),
+            # TRANSLATOR_NOTE: above a Default / Ledger Live derivation chooser
+            description=_("Match how your other wallet numbers accounts."),
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        ledger = button_data[selected] == self.LEDGER_LIVE
+        if self.mode == "export":
+            if ledger:
+                return Destination(ToolsKeycardEthLedgerAccountView)
+            return Destination(ToolsKeycardPairWalletView, view_args=dict(account=0))
+
+        scheme = ETH_SCHEME_LEDGER_LIVE if ledger else ETH_SCHEME_STANDARD
+        return Destination(ToolsKeycardWalletsListView, view_args=dict(scheme=scheme))
+
+
+class ToolsKeycardEthLedgerAccountView(View):
+    """Pick which Ledger Live account (``m/44'/60'/N'``) to export.
+
+    Each Ledger Live account is a separate xpub, so the user exports one
+    QR per account they want to connect.
+    """
+
+    NUM_ACCOUNTS = 10
+
+    def run(self):
+        button_data = [
+            # TRANSLATOR_NOTE: {} is a Ledger Live account index (0-based)
+            ButtonOption(_("Account {}").format(n))
+            for n in range(self.NUM_ACCOUNTS)
+        ]
+        selected = self.run_screen(
+            ButtonListScreen,
+            title=_("Ledger Live"),
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+
+        # Account index == row index (accounts are listed 0..N in order).
+        return Destination(
+            ToolsKeycardPairWalletView, view_args=dict(account=selected),
         )
 
 
@@ -5458,11 +5556,13 @@ class ToolsKeycardEthereumMenuView(View):
 
         chosen = button_data[selected]
         if chosen == self.EXPORT_XPUB:
-            return Destination(ToolsKeycardPairWalletView)
+            return Destination(ToolsKeycardEthDerivationSchemeView,
+                               view_args=dict(mode="export"))
         if chosen == self.SIGN_REQUEST:
             return Destination(ToolsKeycardSignEthStartView)
         if chosen == self.VIEW_WALLETS:
-            return Destination(ToolsKeycardWalletsListView)
+            return Destination(ToolsKeycardEthDerivationSchemeView,
+                               view_args=dict(mode="view"))
         return Destination(NotYetImplementedView)
 
 

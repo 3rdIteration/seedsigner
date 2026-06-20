@@ -40,9 +40,34 @@ def _import_view():
     return ToolsKeycardImportSeedView.__new__(ToolsKeycardImportSeedView)
 
 
-def _type_hex(view, hex_str):
-    """Drive ``_capture_via_hex`` via the 'Type hex' keyboard path."""
-    view.run_screen = MagicMock(return_value=1)  # method chooser -> Type hex
+def _normalise(hex_str):
+    cleaned = "".join(hex_str.split()).lower()
+    return cleaned[2:] if cleaned.startswith("0x") else cleaned
+
+
+def _type_hex(view, hex_str, length_index=None):
+    """Drive ``_capture_via_hex`` via the 'Type hex' keyboard path.
+
+    ``_capture_via_hex`` now asks twice before the keyboard: a source chooser
+    (-> Type hex) and a key-length chooser (24 vs 12 words). Unless
+    ``length_index`` is given we pick the length to match ``hex_str`` (a 32-char
+    value -> 12 words, anything else -> the default 24 words) so validation
+    passes for valid inputs; an invalid input still hits the warning screen,
+    which this driver tolerates.
+    """
+    if length_index is None:
+        length_index = 1 if len(_normalise(hex_str)) == 32 else 0
+    calls = {"n": 0}
+
+    def _run_screen(*args, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return 1            # source chooser -> Type hex
+        if calls["n"] == 2:
+            return length_index  # key-length chooser (0 -> 24 words, 1 -> 12)
+        return 0                 # any later screen (e.g. the invalid-hex warning)
+
+    view.run_screen = MagicMock(side_effect=_run_screen)
     fake_screen = MagicMock()
     fake_screen.return_value.display.return_value = hex_str
     with patch(HEX_SCREEN, fake_screen):
@@ -100,6 +125,97 @@ class TestHexCapture(unittest.TestCase):
         for w in words:
             idx = bip39.WORDLIST.index(w)
             self.assertIsNot(w, bip39.WORDLIST[idx])
+
+    def test_length_mismatch_is_rejected(self):
+        # Choose 24 words (expects 64 hex) but type only 32 chars -> rejected,
+        # so the chosen dimension can't be silently downgraded to a 12-word key.
+        self.assertIsNone(_type_hex(_import_view(), "ab" * 16, length_index=0))
+
+    def test_screen_is_sized_to_the_chosen_dimension(self):
+        for length_index, expected in ((0, 64), (1, 32)):
+            view = _import_view()
+            calls = {"n": 0}
+
+            def _run_screen(*a, **k):
+                calls["n"] += 1
+                return 1 if calls["n"] == 1 else length_index
+
+            view.run_screen = MagicMock(side_effect=_run_screen)
+            fake_screen = MagicMock()
+            fake_screen.return_value.display.return_value = "0" * expected
+            with patch(HEX_SCREEN, fake_screen):
+                view._capture_via_hex()
+            self.assertEqual(
+                fake_screen.call_args.kwargs.get("num_chars"), expected,
+                f"length_index {length_index} should size the keyboard to {expected} slots",
+            )
+
+    def test_back_out_of_length_chooser_returns_none(self):
+        from seedsigner.gui.screens import RET_CODE__BACK_BUTTON
+        view = _import_view()
+        calls = {"n": 0}
+
+        def _run_screen(*a, **k):
+            calls["n"] += 1
+            return 1 if calls["n"] == 1 else RET_CODE__BACK_BUTTON
+
+        view.run_screen = MagicMock(side_effect=_run_screen)
+        self.assertIsNone(view._capture_via_hex())
+
+
+class TestGroupedHexEntryDisplay(unittest.TestCase):
+    """The fixed-slot, blocks-of-8 hex display backing the Type-hex keyboard."""
+
+    def _disp(self, num_slots=64):
+        from PIL import Image
+        from seedsigner.gui.keyboard import GroupedHexEntryDisplay
+        canvas = Image.new("RGB", (240, 240))
+        return GroupedHexEntryDisplay(
+            num_slots=num_slots, canvas=canvas, rect=(8, 48, 232, 78),
+            is_centered=False,
+        )
+
+    def test_empty_is_all_placeholders_in_blocks_of_8(self):
+        display, cursor = self._disp(64)._compose("")
+        self.assertEqual(cursor, 0)
+        self.assertEqual(display.count(" "), 64 // 8 - 1)   # 7 group separators
+        self.assertEqual(display.replace(" ", ""), "_" * 64)
+
+    def test_partial_fills_left_to_right_with_grouping(self):
+        display, cursor = self._disp(64)._compose("aabbccddeeff0011")  # 16 chars
+        self.assertTrue(display.startswith("aabbccdd eeff0011 "))
+        self.assertEqual(display.replace(" ", "").count("_"), 64 - 16)
+        self.assertEqual(cursor, 16 + 2)  # two separators precede the 17th slot
+
+    def test_full_buffer_has_no_placeholders_and_parks_cursor(self):
+        display, cursor = self._disp(32)._compose("ab" * 16)  # 32 chars
+        self.assertNotIn("_", display)
+        self.assertEqual(cursor, len(display))
+        self.assertEqual(display.count(" "), 32 // 8 - 1)   # 3 group separators
+
+    def test_overlong_input_is_truncated_to_num_slots(self):
+        display, _ = self._disp(32)._compose("ab" * 40)  # 80 chars
+        self.assertEqual(display.replace(" ", ""), "ab" * 16)  # capped at 32
+
+    def test_render_runs_without_error(self):
+        for slots in (32, 64):
+            disp = self._disp(slots)
+            for text in ("", "aabb", "f" * slots):
+                disp.render(text)  # must not raise
+
+
+class TestFixedLengthFieldTopology(unittest.TestCase):
+    def test_keyboard_screen_has_max_input_length(self):
+        import dataclasses
+        from seedsigner.gui.screens.screen import KeyboardScreen
+        names = {f.name for f in dataclasses.fields(KeyboardScreen)}
+        self.assertIn("max_input_length", names)
+
+    def test_hex_entry_screen_has_num_chars(self):
+        import dataclasses
+        from seedsigner.gui.screens.screen import KeycardHexEntryScreen
+        names = {f.name for f in dataclasses.fields(KeycardHexEntryScreen)}
+        self.assertIn("num_chars", names)
 
 
 class TestImportMenuOffersHex(unittest.TestCase):
