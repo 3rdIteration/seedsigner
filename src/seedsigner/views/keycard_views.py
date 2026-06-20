@@ -62,6 +62,7 @@ from seedsigner.helpers.keycard.ui_helpers import (
     prompt_for_text,
     select_with_autodetect,
     try_silent_ephemeral_pair,
+    verify_active_card_unchanged,
     wipe_bytearray,
 )
 from seedsigner.helpers.l10n import mark_for_translation as _mft
@@ -3735,6 +3736,37 @@ class ToolsKeycardWalletsListView(View):
             finally:
                 if loading_screen is not None:
                     loading_screen.stop()
+        else:
+            # Cache is warm — we'd serve straight from it WITHOUT opening an
+            # authenticated session, so the swap detection inside
+            # open_unlocked_session never runs. Do a cheap SELECT-only identity
+            # check so a swapped card (PC/SC removal events are unreliable on
+            # NFC/PN532) can't show the previous card's cached addresses.
+            from seedsigner.helpers.keycard.reader import (
+                NoCardError, NoReaderError,
+            )
+            try:
+                if verify_active_card_unchanged(self):
+                    # Swap wiped keycard_wallets_data (the dict); our local
+                    # ``cache`` list is now stale. Re-run so the fetch misses
+                    # and derives fresh for the new card. skip_current_view so
+                    # the auto re-run replaces this attempt rather than stacking
+                    # a duplicate the user has to back through.
+                    return Destination(
+                        ToolsKeycardWalletsListView,
+                        view_args=dict(start_index=self.start_index),
+                        skip_current_view=True,
+                    )
+            except (NoCardError, NoReaderError) as exc:
+                return _no_card_toast_or_error(
+                    self, exc, default_title=_("Card check failed"),
+                )
+            except Exception:
+                # Couldn't confirm identity (e.g. applet not found on a swapped
+                # card). Be conservative: drop cached state and re-pair.
+                logger.exception("Keycard View wallets identity check failed")
+                self.controller.wipe_card_session_secrets()
+                return Destination(ToolsKeycardPairView)
 
         addresses = cache[self.start_index:end_index]
         suffix = _instance_title_suffix(self.controller)
@@ -3874,6 +3906,37 @@ class ToolsKeycardBtcAddressesListView(View):
             finally:
                 if loading_screen is not None:
                     loading_screen.stop()
+        else:
+            # Cache is warm — we'd serve straight from it WITHOUT opening an
+            # authenticated session, so the swap detection inside
+            # open_unlocked_session never runs. Do a cheap SELECT-only identity
+            # check so a swapped card (PC/SC removal events are unreliable on
+            # NFC/PN532) can't show the previous card's cached addresses.
+            from seedsigner.helpers.keycard.reader import (
+                NoCardError, NoReaderError,
+            )
+            try:
+                if verify_active_card_unchanged(self):
+                    # Swap wiped keycard_wallets_data (the dict); our local
+                    # ``cache`` list is now stale. Re-run so the fetch misses
+                    # and derives fresh for the new card. skip_current_view so
+                    # the auto re-run replaces this attempt rather than stacking
+                    # a duplicate the user has to back through.
+                    return Destination(
+                        ToolsKeycardBtcAddressesListView,
+                        view_args=dict(start_index=self.start_index),
+                        skip_current_view=True,
+                    )
+            except (NoCardError, NoReaderError) as exc:
+                return _no_card_toast_or_error(
+                    self, exc, default_title=_("Card check failed"),
+                )
+            except Exception:
+                # Couldn't confirm identity (e.g. applet not found on a swapped
+                # card). Be conservative: drop cached state and re-pair.
+                logger.exception("Keycard BTC View addresses identity check failed")
+                self.controller.wipe_card_session_secrets()
+                return Destination(ToolsKeycardPairView)
 
         addresses = cache[self.start_index:end_index]
         suffix = _instance_title_suffix(self.controller)

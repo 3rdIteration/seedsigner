@@ -231,11 +231,23 @@ def run_card_gate(view, kind: CardKind, *, title: str, setup_view):
     # on card-change like the rest of the per-card session state.
     if kind == "keycard" and probe.instance_uid:
         try:
+            # Reader-independent card-swap check, reusing the SELECT the probe
+            # just did (no extra card I/O): if the inserted instance differs
+            # from the one we last authenticated, scrub the previous card's
+            # session secrets (PINs, derived-address cache, instance names,
+            # instance count) BEFORE the menu renders. Covers readers whose
+            # PC/SC 'removed' event is unreliable (NFC/PN532). Runs before
+            # remember_aid_for_uid because the wipe clears the AID→UID map.
+            from seedsigner.helpers.keycard.ui_helpers import detect_card_swap
+            detect_card_swap(view.controller, probe.instance_uid)
             view.controller.remember_aid_for_uid(
                 view.controller.active_keycard_aid, probe.instance_uid,
             )
         except Exception:
-            logger.debug("could not record probed keycard UID", exc_info=True)
+            logger.debug(
+                "could not record / swap-check probed keycard UID",
+                exc_info=True,
+            )
 
     if not probe.present:
         # Card was pulled (or never present) between CardsMenuView and

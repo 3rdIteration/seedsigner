@@ -1616,6 +1616,187 @@ class TestPinLockLifecycle(unittest.TestCase):
         self.assertFalse(view.controller.forget_all_pins.called)
 
 
+class TestCardSwapDetection(unittest.TestCase):
+    """Reader-independent card-swap detection.
+
+    The PC/SC ``removed`` event is unreliable on contactless readers, so a
+    swapped card must be caught *synchronously* — both when re-entering the
+    Keycard menus and before the View-wallets / View-addresses flows serve
+    cached (card-derived) addresses straight from the cache.
+    """
+
+    AID = bytes.fromhex("A00000080400010101")
+
+    # ---- detect_card_swap (the extracted primitive) -----------------
+
+    def test_detect_card_swap_wipes_on_change(self):
+        from seedsigner.helpers.keycard.ui_helpers import detect_card_swap
+
+        controller = MagicMock()
+        controller.last_authenticated_keycard_uid = b"AAAA"
+        controller.active_keycard_aid = self.AID
+
+        swapped = detect_card_swap(controller, b"BBBB")
+
+        self.assertTrue(swapped)
+        controller.wipe_card_session_secrets.assert_called_once()
+        # AID->UID map restored for the active AID against the NEW card.
+        controller.remember_aid_for_uid.assert_called_once_with(self.AID, b"BBBB")
+        # MUST NOT claim an authenticated session — only open_unlocked_session
+        # sets this after a successful VERIFY_PIN.
+        self.assertEqual(controller.last_authenticated_keycard_uid, b"AAAA")
+
+    def test_detect_card_swap_noop_on_same_card(self):
+        from seedsigner.helpers.keycard.ui_helpers import detect_card_swap
+
+        controller = MagicMock()
+        controller.last_authenticated_keycard_uid = b"AAAA"
+
+        self.assertFalse(detect_card_swap(controller, b"AAAA"))
+        self.assertFalse(controller.wipe_card_session_secrets.called)
+
+    def test_detect_card_swap_noop_when_no_prior_card(self):
+        from seedsigner.helpers.keycard.ui_helpers import detect_card_swap
+
+        controller = MagicMock()
+        controller.last_authenticated_keycard_uid = None
+
+        self.assertFalse(detect_card_swap(controller, b"BBBB"))
+        self.assertFalse(controller.wipe_card_session_secrets.called)
+
+    # ---- View-wallets warm-cache guard (ETH + BTC) ------------------
+
+    def _make_view(self, view_cls):
+        view = view_cls.__new__(view_cls)
+        view.start_index = 0
+        view.selected_button_index = 0
+        view.initial_scroll = 0
+        view.controller = MagicMock()
+        view.controller.has_any_keycard_auth.return_value = True
+        view.controller.active_keycard_aid = self.AID
+        return view
+
+    def _warm_cache(self, view, chain="eth"):
+        aid_hex = bytes(self.AID).hex()
+        key = aid_hex if chain == "eth" else f"{aid_hex}:{chain}"
+        addrs = [f"0xCARD_A_{i:02d}" for i in range(10)]
+        view.controller.keycard_wallets_data = {key: list(addrs)}
+        return addrs
+
+    def test_eth_wallets_warm_cache_swap_reruns(self):
+        from unittest.mock import patch
+        from seedsigner.views import keycard_views
+        from seedsigner.views.keycard_views import ToolsKeycardWalletsListView
+
+        view = self._make_view(ToolsKeycardWalletsListView)
+        self._warm_cache(view)
+        view.run_screen = MagicMock()
+
+        with patch.object(keycard_views, "verify_active_card_unchanged",
+                          return_value=True):
+            dest = view.run()
+
+        # Swap detected -> re-run (cache is stale) instead of serving it.
+        self.assertIs(dest.View_cls, ToolsKeycardWalletsListView)
+        self.assertEqual(dest.view_args, {"start_index": 0})
+        # The stale addresses were never rendered.
+        self.assertFalse(view.run_screen.called)
+
+    def test_eth_wallets_warm_cache_same_card_serves(self):
+        from unittest.mock import patch
+        from seedsigner.gui.screens import RET_CODE__BACK_BUTTON
+        from seedsigner.views import keycard_views
+        from seedsigner.views.keycard_views import ToolsKeycardWalletsListView
+
+        view = self._make_view(ToolsKeycardWalletsListView)
+        addrs = self._warm_cache(view)
+        view.run_screen = MagicMock(return_value=RET_CODE__BACK_BUTTON)
+
+        with patch.object(keycard_views, "verify_active_card_unchanged",
+                          return_value=False), \
+                patch.object(keycard_views, "_instance_title_suffix",
+                             return_value=None):
+            view.run()
+
+        # Same card -> serve the cached addresses, no re-derive.
+        self.assertEqual(view.run_screen.call_args.kwargs["addresses"], addrs)
+
+    def test_eth_wallets_warm_cache_no_card_toasts(self):
+        from unittest.mock import patch
+        from seedsigner.helpers.keycard.reader import NoCardError
+        from seedsigner.views import keycard_views
+        from seedsigner.views.keycard_views import ToolsKeycardWalletsListView
+        from seedsigner.views.view import BackStackView
+
+        view = self._make_view(ToolsKeycardWalletsListView)
+        self._warm_cache(view)
+        view.run_screen = MagicMock()
+
+        with patch.object(keycard_views, "verify_active_card_unchanged",
+                          side_effect=NoCardError("no card")):
+            dest = view.run()
+
+        # No-card -> drop cached secrets + subtle toast, stay one step back.
+        view.controller.wipe_card_session_secrets.assert_called_once()
+        self.assertIs(dest.View_cls, BackStackView)
+
+    def test_btc_addresses_warm_cache_swap_reruns(self):
+        from unittest.mock import patch
+        from seedsigner.views import keycard_views
+        from seedsigner.views.keycard_views import ToolsKeycardBtcAddressesListView
+
+        view = self._make_view(ToolsKeycardBtcAddressesListView)
+        self._warm_cache(view, chain="btc")
+        view.run_screen = MagicMock()
+
+        with patch.object(keycard_views, "verify_active_card_unchanged",
+                          return_value=True):
+            dest = view.run()
+
+        self.assertIs(dest.View_cls, ToolsKeycardBtcAddressesListView)
+        self.assertEqual(dest.view_args, {"start_index": 0})
+        self.assertFalse(view.run_screen.called)
+
+    # ---- run_card_gate menu-entry guard -----------------------------
+
+    def _gate(self, *, kind, prev_uid, probe_uid):
+        from unittest.mock import patch
+        from seedsigner.helpers import card_probe
+        from seedsigner.helpers.card_probe import ProbeResult
+
+        view = MagicMock()
+        view.controller.last_authenticated_keycard_uid = prev_uid
+        view.controller.active_keycard_aid = self.AID
+        probe = ProbeResult(
+            present=True, kind_match=True, initialised=True,
+            instance_uid=probe_uid, app_version=3,
+        )
+        with patch.object(card_probe, "probe_card", return_value=probe):
+            dest = card_probe.run_card_gate(
+                view, kind, title="Keycard", setup_view=MagicMock(),
+            )
+        return view, dest
+
+    def test_run_card_gate_keycard_wipes_on_swap(self):
+        view, dest = self._gate(kind="keycard", prev_uid=b"AAAA",
+                                probe_uid=b"BBBB")
+        self.assertIsNone(dest)  # OK path: proceed to the menu
+        view.controller.wipe_card_session_secrets.assert_called_once()
+
+    def test_run_card_gate_keycard_no_wipe_on_same_card(self):
+        view, dest = self._gate(kind="keycard", prev_uid=b"BBBB",
+                                probe_uid=b"BBBB")
+        self.assertIsNone(dest)
+        self.assertFalse(view.controller.wipe_card_session_secrets.called)
+
+    def test_run_card_gate_seedkeeper_never_swap_checks(self):
+        # Different UID, but a SeedKeeper gate must never run the
+        # Keycard-specific swap detection.
+        view, dest = self._gate(kind="seedkeeper", prev_uid=b"AAAA",
+                                probe_uid=b"BBBB")
+        self.assertFalse(view.controller.wipe_card_session_secrets.called)
+
+
 class TestFactoryResetCleanupScope(unittest.TestCase):
     """Factory reset blanks only the *active* instance on-card, so the
     device-side pairing cleanup must be scoped to that instance's UID —

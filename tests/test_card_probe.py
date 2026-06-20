@@ -302,6 +302,10 @@ class TestRunCardGate(unittest.TestCase):
     def _make_view(self, run_screen_return=None):
         view = MagicMock()
         view.controller = MagicMock()
+        # Real controllers init this to None (controller.py); the gate's
+        # reader-independent swap check (detect_card_swap) reads it, so leaving
+        # it a truthy MagicMock would spuriously trip the swap path.
+        view.controller.last_authenticated_keycard_uid = None
         view.run_screen = MagicMock(return_value=run_screen_return)
         view.__class__ = MagicMock()
         return view

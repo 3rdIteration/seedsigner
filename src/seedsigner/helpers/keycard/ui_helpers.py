@@ -393,17 +393,7 @@ def open_unlocked_session(
     # the one we last opened a session with, scrub the previous card's secrets
     # before touching the new card.
     cur_uid = bytes(info.instance_uid)
-    prev_uid = getattr(
-        parent_view.controller, "last_authenticated_keycard_uid", None,
-    )
-    if prev_uid is not None and prev_uid != cur_uid:
-        parent_view.controller.wipe_card_session_secrets()
-        # wipe_card_session_secrets cleared the AID->UID map that
-        # select_with_autodetect just populated; restore it for the active AID
-        # so instance-name/title rendering stays correct for this card.
-        parent_view.controller.remember_aid_for_uid(
-            getattr(parent_view.controller, "active_keycard_aid", None), cur_uid,
-        )
+    detect_card_swap(parent_view.controller, cur_uid)
     # Record the card we are now operating on as the swap-detection reference.
     # Set after the wipe (which clears it) and before any pairing/PIN lookup, so
     # a retry of this same card (e.g. after a PIN prompt) won't false-wipe.
@@ -558,6 +548,56 @@ def identify_inserted_card(parent_view: "View") -> Tuple["KeycardClient", bytes]
     uid = bytes(info.instance_uid)
     parent_view.controller.last_keycard_uid = uid
     return client, uid
+
+
+def detect_card_swap(controller, instance_uid) -> bool:
+    """Compare a freshly-SELECTed ``instance_uid`` against the last-authenticated
+    card marker; scrub the previous card's session secrets on a mismatch.
+
+    Returns ``True`` if a swap was detected (and
+    :meth:`Controller.wipe_card_session_secrets` ran — dropping cached PINs, the
+    derived-address cache, instance names, the AID→UID map and the instance
+    count), ``False`` otherwise.
+
+    Reader-independent backstop for the unreliable PC/SC ``removed`` event: any
+    code path that has just SELECTed the card actually in the reader can call
+    this to catch a swap synchronously. Deliberately does **not** update
+    ``last_authenticated_keycard_uid`` — that marker means "we hold an
+    authenticated session with this card", which an unauthenticated identity
+    probe must not claim. :func:`open_unlocked_session` sets it itself after a
+    successful VERIFY_PIN.
+    """
+    cur_uid = bytes(instance_uid)
+    prev_uid = getattr(controller, "last_authenticated_keycard_uid", None)
+    if prev_uid is not None and prev_uid != cur_uid:
+        controller.wipe_card_session_secrets()
+        # wipe_card_session_secrets cleared the AID->UID map; restore it for the
+        # active AID so instance-name/title rendering stays correct for this
+        # card without waiting for the next SELECT.
+        controller.remember_aid_for_uid(
+            getattr(controller, "active_keycard_aid", None), cur_uid,
+        )
+        return True
+    return False
+
+
+def verify_active_card_unchanged(parent_view: "View") -> bool:
+    """Cheap SELECT-only identity check: confirm the card in the reader is still
+    the one our cached session data belongs to; wipe session secrets on a swap.
+
+    Returns ``True`` if the inserted card differs from the last-authenticated
+    one (session secrets — including the View-wallets address cache — were
+    wiped), ``False`` if it is the same card. Raises ``NoCardError`` /
+    ``NoReaderError`` when no card is present (the caller routes via
+    :func:`_no_card_toast_or_error`).
+
+    Reader-independent backstop for the unreliable PC/SC ``removed`` event. Used
+    by views that serve cached card-derived data *without* opening an
+    authenticated session (which would otherwise run the swap detection inside
+    :func:`open_unlocked_session`).
+    """
+    _client, uid = identify_inserted_card(parent_view)
+    return detect_card_swap(parent_view.controller, uid)
 
 
 def try_silent_ephemeral_pair(parent_view: "View") -> bool:
