@@ -4,6 +4,17 @@ All notable changes to this project are documented in this file.
 
 Entries marked "(SeedSigner official)" originate from the upstream project, "(smartcard fork)" indicates releases inherited from 3rdIteration/seedsigner, and "(Keycard edition)" indicates releases of this fork.
 
+## 2026-06-21 - 0.1.3 (Keycard edition)
+
+- **Security / RAM hygiene**: the seed import / generate / SeedKeeper-backup flows now also wipe the *joined* plaintext mnemonic string and the *decoded* passphrase string (each held the whole secret in one immutable allocation) on every exit path, not just the per-word lists. `decode_seedkeeper_seed_secret` now bounds-checks every length-prefixed field and rejects non-canonical BIP-39 entropy lengths (returns `None` instead of raising on a malformed/hostile card). Secure-channel response MACs and the encrypted-QR auth tag use constant-time comparison
+- **Destructive key ops moved out of the daily path**: `This instance` now holds only safe management (Change PIN, Unblock PIN, Rename, Lock); Generate key / Import seed / Initialise instance / Factory reset live under a new **Set up / reset ›** submenu. Generate key / Import seed now warn **"Replace key?"** before overwriting an existing key (advisory SELECT-only probe; falls back to the generic warning on any failure)
+- **Memory-aware instance limit**: the hardcoded 4-instance cap becomes a free-space estimate (firmware ceiling raised to 16). The create flow shows **"≈N more fit"**, self-calibrates from the free-NV delta around INSTALL, and only soft-warns ("Create anyway") when the card looks too full; the Storage view shows **"≈N more instances fit"**
+- **ETH account layout chooser**: pick **Standard (BIP-44)** `m/44'/60'/0'/0/i` vs **Ledger Live** `m/44'/60'/i'/0/0` for *View wallets* and *Connect software wallet*, with per-scheme address caching. The Ledger Live export picker is now paginated and shows each account's address so you can verify before exporting
+- **Import hex (NGRAVE)**: the Type-hex path gains a **24-word (64 hex) / 12-word (32 hex)** length chooser that caps input and shows all slots grouped in blocks of 8 for cross-checking. SeedKeeper backup at creation simplified to the single iOS-compatible "BIP39 mnemonic" format
+- **Stealth games console**: held buttons no longer "run on" (the input loop drains and throttles per-key actions, fixing Tetris soft-drop overshoot) — the unlock combo still sees every raw key. The game-select menu is redesigned with real typography, per-game accent colours, and a HUD refresh
+- **Keycard install UX**: the iOS-coexistence warning is now a subtle non-blocking toast instead of a blocking screen, and the pre-install low-space check no longer false-positives on a card that already holds the Keycard package (footprint is estimated from the real on-card size, not the raw `.cap`). The SeedKeeper storage chooser shows the card's free space ("Free: X KB")
+- **Card-swap detection extended** to the warm address-cache views (ETH *View wallets* / BTC *View addresses*) and to **every Keycard menu entry**, reusing the SELECT the probe already did: swapping cards no longer shows the previous card's cached addresses; the view re-derives for the new card
+
 ## 2026-06-19 - 0.1.2 (Keycard edition)
 
 - Keycard instance AIDs unified on the **9-byte canonical form** real Status cards / keycard-cli use: the first instance created on a blank card is no longer the 10-byte legacy form, so every instance is consistent. Cards already in the field keep working — `select_with_autodetect` still probes the legacy form
