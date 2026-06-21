@@ -163,9 +163,10 @@ class TestThisInstanceMenuRouting(unittest.TestCase):
 
         inst = menu.__new__(menu)
         inst.controller = MagicMock()
-        # Select index 3: GENERATE / IMPORT / CHANGE_PIN / UNBLOCK_PIN
-        # (rename hidden via _instance_rename_available -> False).
-        inst.run_screen = MagicMock(return_value=3)
+        # Select index 1: CHANGE_PIN / UNBLOCK_PIN / LOCK / SETUP_RESET
+        # (rename hidden via _instance_rename_available -> False; the
+        # destructive ops moved under the Set up / reset submenu).
+        inst.run_screen = MagicMock(return_value=1)
         with patch.object(
             keycard_views, "_instance_rename_available", return_value=False,
         ), patch.object(

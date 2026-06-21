@@ -3917,3 +3917,31 @@ msgstr "新 AID：\n{}\n约还可建 {} 个"
 #: src/seedsigner/views/keycard_views.py
 msgid "≈{} more instances fit"
 msgstr "约还可容纳 {} 个实例"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Set up / reset"
+msgstr "设置 / 重置"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Set up / reset · {}"
+msgstr "设置 / 重置 · {}"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Replace key?"
+msgstr "替换密钥？"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"Instance already holds a key.\n"
+"This permanently replaces it."
+msgstr ""
+"实例已有密钥。\n"
+"这将永久替换它。"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"Instance already holds a key.\n"
+"Importing replaces it for good."
+msgstr ""
+"实例已有密钥。\n"
+"导入将永久替换它。"

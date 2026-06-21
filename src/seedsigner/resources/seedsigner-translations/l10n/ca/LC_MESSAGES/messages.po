@@ -3951,3 +3951,31 @@ msgstr "Nou AID:\n{}\n≈{} més caben"
 #: src/seedsigner/views/keycard_views.py
 msgid "≈{} more instances fit"
 msgstr "≈{} instàncies més caben"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Set up / reset"
+msgstr "Configura / restableix"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Set up / reset · {}"
+msgstr "Configura / restableix · {}"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Replace key?"
+msgstr "Substituir la clau?"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"Instance already holds a key.\n"
+"This permanently replaces it."
+msgstr ""
+"La instància ja té una clau.\n"
+"Això la substitueix permanentment."
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"Instance already holds a key.\n"
+"Importing replaces it for good."
+msgstr ""
+"La instància ja té una clau.\n"
+"Importar la substitueix per sempre."

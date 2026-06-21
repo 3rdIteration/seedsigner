@@ -528,13 +528,13 @@ def query_card_memory(parent_view: "View") -> Optional["CardMemory"]:
             logger.debug("query_card_memory cleanup failed", exc_info=True)
 
 
-def identify_inserted_card(parent_view: "View") -> Tuple["KeycardClient", bytes]:
-    """SELECT only — identify which card/instance is in the reader.
+def select_inserted_card(parent_view: "View"):
+    """SELECT only — identify the card/instance in the reader.
 
-    Returns ``(client, instance_uid)`` and updates
-    ``controller.last_keycard_uid``. Used by entry-point views that
-    need to redirect to the Pair flow when the inserted card has no
-    cached pairing.
+    Returns ``(client, SelectResult)`` and updates
+    ``controller.last_keycard_uid``. The full SELECT result is exposed so
+    callers can inspect unauthenticated fields (e.g. ``key_uid``, which is
+    empty until a master key is loaded) without a second round-trip.
     """
     from seedsigner.helpers.keycard.client import KeycardClient
     from seedsigner.helpers.keycard.reader import (
@@ -545,9 +545,20 @@ def identify_inserted_card(parent_view: "View") -> Tuple["KeycardClient", bytes]
     connection = wait_for_card(timeout_s=5.0)
     client = KeycardClient(connection)
     info = select_with_autodetect(client, parent_view.controller)
-    uid = bytes(info.instance_uid)
-    parent_view.controller.last_keycard_uid = uid
-    return client, uid
+    parent_view.controller.last_keycard_uid = bytes(info.instance_uid)
+    return client, info
+
+
+def identify_inserted_card(parent_view: "View") -> Tuple["KeycardClient", bytes]:
+    """SELECT only — identify which card/instance is in the reader.
+
+    Returns ``(client, instance_uid)`` and updates
+    ``controller.last_keycard_uid``. Used by entry-point views that
+    need to redirect to the Pair flow when the inserted card has no
+    cached pairing.
+    """
+    client, info = select_inserted_card(parent_view)
+    return client, bytes(info.instance_uid)
 
 
 def detect_card_swap(controller, instance_uid) -> bool:

@@ -3941,3 +3941,31 @@ msgstr "Novo AID:\n{}\nCabem mais ≈{}"
 #: src/seedsigner/views/keycard_views.py
 msgid "≈{} more instances fit"
 msgstr "Cabem mais ≈{} instâncias"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Set up / reset"
+msgstr "Configurar / repor"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Set up / reset · {}"
+msgstr "Configurar / repor · {}"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Replace key?"
+msgstr "Substituir chave?"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"Instance already holds a key.\n"
+"This permanently replaces it."
+msgstr ""
+"A instância já tem uma chave.\n"
+"Isto substitui-a permanentemente."
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"Instance already holds a key.\n"
+"Importing replaces it for good."
+msgstr ""
+"A instância já tem uma chave.\n"
+"Importar substitui-a para sempre."

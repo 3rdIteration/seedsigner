@@ -219,31 +219,27 @@ class ToolsKeycardSettingsMenuView(View):
 
 
 class ToolsKeycardThisInstanceMenuView(View):
-    """Operations that act on the **active** instance's key/identity:
-    load a key (generate / import), change PIN, rename, factory reset.
+    """Safe per-instance management of the **active** instance: change PIN,
+    unblock PIN, rename, lock.
+
+    The destructive lifecycle ops that create or destroy the on-card key
+    (generate / import / initialise / factory reset) are deliberately kept
+    one level down, under ``Set up / reset`` (``ToolsKeycardSetupResetMenuView``),
+    so the common path can't fat-finger a key-overwrite.
 
     The title carries the active instance label so the scope of every
     child action is explicit.
     """
 
-    GENERATE_KEY = ButtonOption("Generate key")
-    IMPORT_SEED = ButtonOption("Import seed")
     CHANGE_PIN = ButtonOption("Change PIN")
     UNBLOCK_PIN = ButtonOption("Unblock PIN (PUK)")
     RENAME = ButtonOption("Rename instance")
-    INIT = ButtonOption("Initialise instance")
-    FACTORY_RESET = ButtonOption("Factory reset")
     LOCK = ButtonOption("Lock card")
+    SETUP_RESET = ButtonOption("Set up / reset")
 
     def run(self):
         suffix = _instance_title_suffix(self.controller)
-        # Daily-use key ops up top; the rarer lifecycle ops (Initialise /
-        # Factory reset) group at the bottom. "Initialise instance" runs
-        # INIT against this instance's applet — it lives here, not under
-        # Card, because INIT provisions one instance, not the whole card.
         button_data = [
-            self.GENERATE_KEY,
-            self.IMPORT_SEED,
             self.CHANGE_PIN,
             self.UNBLOCK_PIN,
         ]
@@ -252,10 +248,10 @@ class ToolsKeycardThisInstanceMenuView(View):
         # Otherwise the instance stays labelled by its applet index ("Inst N").
         if _instance_rename_available(self.controller):
             button_data.append(self.RENAME)
+        # Lock, then the destructive submenu last (rarest + most dangerous).
         button_data += [
-            self.INIT,
-            self.FACTORY_RESET,
             self.LOCK,
+            self.SETUP_RESET,
         ]
         selected = self.run_screen(
             ButtonListScreen,
@@ -266,22 +262,64 @@ class ToolsKeycardThisInstanceMenuView(View):
         if selected == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
         chosen = button_data[selected]
-        if chosen == self.GENERATE_KEY:
-            return Destination(ToolsKeycardGenerateKeyView)
-        if chosen == self.IMPORT_SEED:
-            return Destination(ToolsKeycardImportSeedView)
         if chosen == self.CHANGE_PIN:
             return Destination(ToolsKeycardChangePinView)
         if chosen == self.UNBLOCK_PIN:
             return Destination(ToolsKeycardUnblockPinView)
         if chosen == self.RENAME:
             return Destination(ToolsKeycardThisInstanceRenameView)
+        if chosen == self.LOCK:
+            return Destination(ToolsKeycardLockView)
+        if chosen == self.SETUP_RESET:
+            return Destination(ToolsKeycardSetupResetMenuView)
+        return Destination(NotYetImplementedView)
+
+
+class ToolsKeycardSetupResetMenuView(View):
+    """Destructive lifecycle ops for the **active** instance, grouped out of
+    the daily-use ``This instance`` menu:
+
+    * **Generate key** / **Import seed** — load a (new) master key, *replacing*
+      any existing one (LOAD_KEY). Both warn explicitly when a key is present.
+    * **Initialise instance** — provisions a fresh instance (INIT); refuses an
+      already-initialised one ("Use Factory reset").
+    * **Factory reset** — wipes the instance's key + PIN.
+
+    Kept one level below ``This instance`` so the routine PIN / rename / lock
+    path can't accidentally trigger a key-overwrite. The title carries the
+    active instance label so the scope is explicit.
+    """
+
+    GENERATE_KEY = ButtonOption("Generate key")
+    IMPORT_SEED = ButtonOption("Import seed")
+    INIT = ButtonOption("Initialise instance")
+    FACTORY_RESET = ButtonOption("Factory reset")
+
+    def run(self):
+        suffix = _instance_title_suffix(self.controller)
+        button_data = [
+            self.GENERATE_KEY,
+            self.IMPORT_SEED,
+            self.INIT,
+            self.FACTORY_RESET,
+        ]
+        selected = self.run_screen(
+            ButtonListScreen,
+            title=_("Set up / reset · {}").format(suffix) if suffix else _("Set up / reset"),
+            is_button_text_centered=False,
+            button_data=button_data,
+        )
+        if selected == RET_CODE__BACK_BUTTON:
+            return Destination(BackStackView)
+        chosen = button_data[selected]
+        if chosen == self.GENERATE_KEY:
+            return Destination(ToolsKeycardGenerateKeyView)
+        if chosen == self.IMPORT_SEED:
+            return Destination(ToolsKeycardImportSeedView)
         if chosen == self.INIT:
             return Destination(ToolsKeycardInitView)
         if chosen == self.FACTORY_RESET:
             return Destination(ToolsKeycardFactoryResetView)
-        if chosen == self.LOCK:
-            return Destination(ToolsKeycardLockView)
         return Destination(NotYetImplementedView)
 
 
@@ -1880,6 +1918,29 @@ class ToolsKeycardRemovePairingView(View):
 # ---------------------------------------------------------------------------
 
 
+def _instance_key_present(parent_view):
+    """SELECT-only probe: does the active instance already hold a master key?
+
+    ``SelectResult.key_uid`` is part of the unauthenticated SELECT response
+    (empty until GENERATE_KEY / LOAD_KEY runs), so this needs no PIN. Returns
+    ``True`` / ``False``, or ``None`` when it can't be determined (no card /
+    read error).
+
+    Purely advisory: it only chooses which warning text to show. Any failure
+    (including no card) is swallowed → ``None`` → the generic warning, and the
+    real operation surfaces any card error a few screens downstream, where the
+    full generate / load flow already handles it. This keeps the destructive
+    entry views from gaining a new no-card failure branch of their own.
+    """
+    from seedsigner.helpers.keycard.ui_helpers import select_inserted_card
+    try:
+        _client, info = select_inserted_card(parent_view)
+    except Exception:
+        logger.debug("key-presence probe SELECT failed", exc_info=True)
+        return None
+    return bool(info.key_uid)
+
+
 class ToolsKeycardGenerateKeyView(View):
     """Entry-point for the on-card key generation flow.
 
@@ -1893,11 +1954,21 @@ class ToolsKeycardGenerateKeyView(View):
     CONFIRM = ButtonOption("Continue")
 
     def run(self):
+        # Warn explicitly when this would overwrite an already-loaded key.
+        # A fresh / just-initialised instance has no key_uid yet (generic
+        # warning); a probe failure also falls back to the generic warning and
+        # lets the downstream flow surface any card error.
+        if _instance_key_present(self):
+            title = _("Replace key?")
+            text = _("Instance already holds a key.\nThis permanently replaces it.")
+        else:
+            title = _("Generate seed?")
+            text = _("Card generates a new\nseed and loads it on-card.")
         ret = self.run_screen(
             DireWarningScreen,
-            title=_("Generate seed?"),
+            title=title,
             status_headline=None,
-            text=_("Card generates a new\nseed and loads it on-card."),
+            text=text,
             show_back_button=True,
             button_data=[self.CONFIRM],
         )
@@ -1953,12 +2024,21 @@ class ToolsKeycardImportSeedView(View):
             KeycardCardChangedError, KeycardPinPromptCancelled,
         )
 
-        # 1. Strong warning + confirm to enter the flow.
+        # 1. Strong warning + confirm to enter the flow. When the instance
+        #    already holds a key, make the warning explicit about overwriting
+        #    it; a fresh / just-initialised instance (or a probe failure) shows
+        #    the standard transmission warning.
+        if _instance_key_present(self):
+            warn_title = _("Replace key?")
+            warn_text = _("Instance already holds a key.\nImporting replaces it for good.")
+        else:
+            warn_title = _("Import to card?")
+            warn_text = _("Seed leaves device once,\nencrypted to card.")
         warn_ret = self.run_screen(
             DireWarningScreen,
-            title=_("Import to card?"),
+            title=warn_title,
             status_headline=None,
-            text=_("Seed leaves device once,\nencrypted to card."),
+            text=warn_text,
             show_back_button=True,
             button_data=[ButtonOption("Continue")],
         )

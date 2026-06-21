@@ -231,14 +231,15 @@ class TestKeycardMenuRouting(unittest.TestCase):
               ├─ Manage Instances › → ToolsKeycardInstancesMenuView
               │   │  (once/session explainer first)
               │   ├─ This instance ›  → ToolsKeycardThisInstanceMenuView
-              │   │   ├─ Generate key  → ToolsKeycardGenerateKeyView
-              │   │   ├─ Import seed   → ToolsKeycardImportSeedView
               │   │   ├─ Change PIN    → ToolsKeycardChangePinView
-              │   │   ├─ Pairing ›     → ToolsKeycardPairingMenuView
-              │   │   │   ├─ Pair card      → ToolsKeycardPairView
-              │   │   │   └─ Remove pairing → ToolsKeycardRemovePairingView
-              │   │   ├─ Initialise instance → ToolsKeycardInitView
-              │   │   └─ Factory reset → ToolsKeycardFactoryResetView
+              │   │   ├─ Unblock PIN   → ToolsKeycardUnblockPinView
+              │   │   ├─ Rename instance → ToolsKeycardThisInstanceRenameView (gated)
+              │   │   ├─ Lock card     → ToolsKeycardLockView
+              │   │   └─ Set up / reset › → ToolsKeycardSetupResetMenuView
+              │   │       ├─ Generate key  → ToolsKeycardGenerateKeyView
+              │   │       ├─ Import seed   → ToolsKeycardImportSeedView
+              │   │       ├─ Initialise instance → ToolsKeycardInitView
+              │   │       └─ Factory reset → ToolsKeycardFactoryResetView
               │   ├─ Create instance  → ToolsKeycardInstancesCreateView
               │   └─ Delete instance  → ToolsKeycardInstancesDeleteView
               └─ Card ›           → ToolsKeycardCardMenuView
@@ -416,76 +417,142 @@ class TestKeycardMenuRouting(unittest.TestCase):
 
     def test_this_instance_menu_routes(self):
         """With naming unavailable (Persistent Settings off / no microSD), the
-        Rename entry is hidden. The Pairing entry was removed entirely."""
+        Rename entry is hidden. The destructive key ops live one level down,
+        under "Set up / reset"."""
         from unittest.mock import patch
         from seedsigner.views import keycard_views
         from seedsigner.views.keycard_views import (
             ToolsKeycardThisInstanceMenuView,
-            ToolsKeycardGenerateKeyView,
-            ToolsKeycardImportSeedView,
             ToolsKeycardChangePinView,
             ToolsKeycardUnblockPinView,
-            ToolsKeycardInitView,
-            ToolsKeycardFactoryResetView,
             ToolsKeycardLockView,
+            ToolsKeycardSetupResetMenuView,
         )
         expected = [
-            ToolsKeycardGenerateKeyView,
-            ToolsKeycardImportSeedView,
             ToolsKeycardChangePinView,
             ToolsKeycardUnblockPinView,
-            ToolsKeycardInitView,
-            ToolsKeycardFactoryResetView,
             ToolsKeycardLockView,
+            ToolsKeycardSetupResetMenuView,
         ]
         with patch.object(keycard_views, "_instance_rename_available", return_value=False):
             for i, view_cls in enumerate(expected):
                 dest = self._route(ToolsKeycardThisInstanceMenuView, i)
                 self.assertIs(dest.View_cls, view_cls)
 
-    def test_this_instance_menu_no_pairing_entry(self):
-        """The Pairing submenu is no longer reachable from This instance."""
+    def test_this_instance_menu_no_destructive_or_pairing_entry(self):
+        """This instance must surface neither the Pairing submenu nor the
+        destructive key ops directly — those moved under Set up / reset."""
         from unittest.mock import patch
         from seedsigner.views import keycard_views
         from seedsigner.views.keycard_views import (
             ToolsKeycardThisInstanceMenuView, ToolsKeycardPairingMenuView,
+            ToolsKeycardGenerateKeyView, ToolsKeycardImportSeedView,
+            ToolsKeycardInitView, ToolsKeycardFactoryResetView,
         )
-        for avail, count in ((True, 8), (False, 7)):
+        forbidden = {
+            ToolsKeycardPairingMenuView,
+            ToolsKeycardGenerateKeyView, ToolsKeycardImportSeedView,
+            ToolsKeycardInitView, ToolsKeycardFactoryResetView,
+        }
+        for avail, count in ((True, 5), (False, 4)):
             with patch.object(keycard_views, "_instance_rename_available", return_value=avail):
                 routed = [self._route(ToolsKeycardThisInstanceMenuView, i).View_cls
                           for i in range(count)]
-            self.assertNotIn(ToolsKeycardPairingMenuView, routed)
+            self.assertTrue(forbidden.isdisjoint(routed), routed)
 
     def test_this_instance_menu_shows_rename_when_available(self):
-        """When naming is available the Rename entry appears after Change PIN
+        """When naming is available the Rename entry appears after Unblock PIN
         and routes to the new view; the rest still route correctly."""
         from unittest.mock import patch
         from seedsigner.views import keycard_views
         from seedsigner.views.keycard_views import (
             ToolsKeycardThisInstanceMenuView,
-            ToolsKeycardGenerateKeyView,
-            ToolsKeycardImportSeedView,
             ToolsKeycardChangePinView,
             ToolsKeycardUnblockPinView,
             ToolsKeycardThisInstanceRenameView,
-            ToolsKeycardInitView,
-            ToolsKeycardFactoryResetView,
             ToolsKeycardLockView,
+            ToolsKeycardSetupResetMenuView,
         )
         expected = [
-            ToolsKeycardGenerateKeyView,
-            ToolsKeycardImportSeedView,
             ToolsKeycardChangePinView,
             ToolsKeycardUnblockPinView,
             ToolsKeycardThisInstanceRenameView,
-            ToolsKeycardInitView,
-            ToolsKeycardFactoryResetView,
             ToolsKeycardLockView,
+            ToolsKeycardSetupResetMenuView,
         ]
         with patch.object(keycard_views, "_instance_rename_available", return_value=True):
             for i, view_cls in enumerate(expected):
                 dest = self._route(ToolsKeycardThisInstanceMenuView, i)
                 self.assertIs(dest.View_cls, view_cls)
+
+    def test_setup_reset_menu_routes(self):
+        """The Set up / reset submenu holds the four destructive key ops."""
+        from seedsigner.views.keycard_views import (
+            ToolsKeycardSetupResetMenuView,
+            ToolsKeycardGenerateKeyView,
+            ToolsKeycardImportSeedView,
+            ToolsKeycardInitView,
+            ToolsKeycardFactoryResetView,
+        )
+        expected = [
+            ToolsKeycardGenerateKeyView,
+            ToolsKeycardImportSeedView,
+            ToolsKeycardInitView,
+            ToolsKeycardFactoryResetView,
+        ]
+        for i, view_cls in enumerate(expected):
+            dest = self._route(ToolsKeycardSetupResetMenuView, i)
+            self.assertIs(dest.View_cls, view_cls,
+                          f"set-up/reset index {i} routes to {dest.View_cls.__name__}, "
+                          f"expected {view_cls.__name__}")
+
+    def _capture_first_warning(self, view_cls, key_present):
+        """Run an entry view's ``run`` with ``_instance_key_present`` forced to
+        ``key_present`` and return the kwargs of its first (warning) screen."""
+        from unittest.mock import patch
+        from seedsigner.views import keycard_views
+        from seedsigner.gui.screens import RET_CODE__BACK_BUTTON
+        captured = {}
+
+        def fake_run_screen(screen_cls, **kwargs):
+            captured.update(kwargs)
+            return RET_CODE__BACK_BUTTON
+
+        view = view_cls.__new__(view_cls)
+        view.run_screen = fake_run_screen
+        view.controller = MagicMock()
+        with patch.object(keycard_views, "_instance_key_present", return_value=key_present):
+            view.run()
+        return captured
+
+    def test_generate_key_overwrite_guard(self):
+        """Generate key warns about replacing an existing key only when one is
+        present; a fresh instance gets the generic generation warning."""
+        from seedsigner.views.keycard_views import ToolsKeycardGenerateKeyView
+        present = self._capture_first_warning(ToolsKeycardGenerateKeyView, True)
+        self.assertEqual(present["title"], "Replace key?")
+        absent = self._capture_first_warning(ToolsKeycardGenerateKeyView, False)
+        self.assertEqual(absent["title"], "Generate seed?")
+
+    def test_import_seed_overwrite_guard(self):
+        """Import seed warns about replacing an existing key only when one is
+        present; a fresh instance gets the generic transmission warning."""
+        from seedsigner.views.keycard_views import ToolsKeycardImportSeedView
+        present = self._capture_first_warning(ToolsKeycardImportSeedView, True)
+        self.assertEqual(present["title"], "Replace key?")
+        absent = self._capture_first_warning(ToolsKeycardImportSeedView, False)
+        self.assertEqual(absent["title"], "Import to card?")
+
+    def test_overwrite_guard_probe_failure_falls_back_to_generic(self):
+        """A probe that can't read the card (returns None) must not block the
+        flow — both entry views show their generic warning, not "Replace key?"."""
+        from seedsigner.views.keycard_views import (
+            ToolsKeycardGenerateKeyView, ToolsKeycardImportSeedView,
+        )
+        gen = self._capture_first_warning(ToolsKeycardGenerateKeyView, None)
+        self.assertEqual(gen["title"], "Generate seed?")
+        imp = self._capture_first_warning(ToolsKeycardImportSeedView, None)
+        self.assertEqual(imp["title"], "Import to card?")
 
     def test_rename_view_happy_path(self):
         """Rename resolves the UID, prompts a name (no password), writes it via

@@ -3918,3 +3918,31 @@ msgstr "新AID:\n{}\nあと約{}個"
 #: src/seedsigner/views/keycard_views.py
 msgid "≈{} more instances fit"
 msgstr "あと約{}インスタンス"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Set up / reset"
+msgstr "設定 / リセット"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Set up / reset · {}"
+msgstr "設定 / リセット · {}"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Replace key?"
+msgstr "鍵を置き換える？"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"Instance already holds a key.\n"
+"This permanently replaces it."
+msgstr ""
+"インスタンスには既に鍵があります。\n"
+"完全に置き換えられます。"
+
+#: src/seedsigner/views/keycard_views.py
+msgid ""
+"Instance already holds a key.\n"
+"Importing replaces it for good."
+msgstr ""
+"インスタンスには既に鍵があります。\n"
+"インポートすると完全に置き換わります。"

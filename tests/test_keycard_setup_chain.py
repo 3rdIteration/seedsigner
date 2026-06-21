@@ -517,40 +517,48 @@ class TestInitTailRoutesToChooser(unittest.TestCase):
 
 
 class TestSetupEntriesReachableAfterReorg(unittest.TestCase):
-    """The scope-bucket reorg dropped the standalone ``Setup`` menu:
-    ``Generate key`` / ``Import seed`` and (now) ``Initialise instance``
-    all live under ``This instance``. This pins that every Setup step is
-    still reachable so users can re-run each individually."""
+    """The destructive lifecycle ops (``Generate key`` / ``Import seed`` /
+    ``Initialise instance`` / ``Factory reset``) now live under a dedicated
+    ``Set up / reset`` submenu, one level below ``This instance``. This pins
+    that ``This instance`` exposes that submenu and every Setup step is still
+    reachable through it so users can re-run each individually."""
 
-    def test_generate_and_import_reachable_from_this_instance(self):
+    def test_this_instance_exposes_setup_reset_submenu(self):
+        from unittest.mock import patch
+        from seedsigner.views import keycard_views
+        from seedsigner.views.keycard_views import (
+            ToolsKeycardSetupResetMenuView,
+            ToolsKeycardThisInstanceMenuView,
+        )
+        # Rename hidden → Change PIN (0), Unblock PIN (1), Lock (2),
+        # Set up / reset (3 — last).
+        with patch.object(keycard_views, "_instance_rename_available", return_value=False):
+            view = _make_view(ToolsKeycardThisInstanceMenuView, run_screen_returns=3)
+            dest = view.run()
+        self.assertIs(dest.View_cls, ToolsKeycardSetupResetMenuView)
+
+    def test_setup_steps_reachable_from_submenu(self):
         from seedsigner.views.keycard_views import (
             ToolsKeycardGenerateKeyView,
             ToolsKeycardImportSeedView,
-            ToolsKeycardThisInstanceMenuView,
+            ToolsKeycardInitView,
+            ToolsKeycardFactoryResetView,
+            ToolsKeycardSetupResetMenuView,
         )
-        # This instance menu: Generate key (0), Import seed (1), ...
+        # Set up / reset submenu: Generate (0), Import (1), Init (2),
+        # Factory reset (3).
         expected = {
             0: ToolsKeycardGenerateKeyView,
             1: ToolsKeycardImportSeedView,
+            2: ToolsKeycardInitView,
+            3: ToolsKeycardFactoryResetView,
         }
         for i, view_cls in expected.items():
             view = _make_view(
-                ToolsKeycardThisInstanceMenuView, run_screen_returns=i,
+                ToolsKeycardSetupResetMenuView, run_screen_returns=i,
             )
             dest = view.run()
             self.assertIs(dest.View_cls, view_cls)
-
-    def test_init_reachable_from_this_instance(self):
-        from seedsigner.views.keycard_views import (
-            ToolsKeycardInitView,
-            ToolsKeycardThisInstanceMenuView,
-        )
-        # This instance menu (rename available — MagicMock controller):
-        # Generate (0), Import (1), Change PIN (2), Unblock PIN (3),
-        # Rename (4), Initialise instance (5), ...
-        view = _make_view(ToolsKeycardThisInstanceMenuView, run_screen_returns=5)
-        dest = view.run()
-        self.assertIs(dest.View_cls, ToolsKeycardInitView)
 
 
 if __name__ == "__main__":

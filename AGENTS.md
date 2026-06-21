@@ -236,17 +236,32 @@ in the title of every instance-scoped branch.
 | Branch | Scope | Entries |
 |--------|-------|---------|
 | `Manage Instances` (titled `Manage Inst · Inst N`) | instances | `This instance ›`, Create instance, Delete instance. On first entry per boot a one-screen explainer (`Controller.keycard_instances_intro_shown`) describes what instances are, then the menu. (`ToolsKeycardInstancesMenuView`) |
-| `This instance · Inst N` | active instance | Generate key, Import seed, Change PIN, **`Unblock PIN (PUK)`** (`ToolsKeycardUnblockPinView` — recovery for a blocked PIN: secure-channel session with `skip_pin_verify`, GET STATUS gate, PUK(12) + new PIN entry, INS 0x22; wrong PUK shows remaining retries, 0 PUK retries → factory-reset-only), **`Rename instance`** (gated — see Instance naming below), `Initialise instance` (runs INIT on this instance), Factory reset, Lock card. (No `Pairing` entry — v3.2+ cards pair silently; the `ToolsKeycardPairingMenuView` / Pair / Remove-pairing views still exist for redirect flows but are not surfaced here.) |
+| `This instance · Inst N` | active instance | **Safe per-instance management only** — Change PIN, **`Unblock PIN (PUK)`** (`ToolsKeycardUnblockPinView` — recovery for a blocked PIN: secure-channel session with `skip_pin_verify`, GET STATUS gate, PUK(12) + new PIN entry, INS 0x22; wrong PUK shows remaining retries, 0 PUK retries → factory-reset-only), **`Rename instance`** (gated — see Instance naming below), `Lock card`, and **`Set up / reset ›`** (the dedicated destructive submenu, last). The destructive key ops (Generate key, Import seed, Initialise instance, Factory reset) are **no longer** at this level — see `Set up / reset` below. (No `Pairing` entry — v3.2+ cards pair silently; the `ToolsKeycardPairingMenuView` / Pair / Remove-pairing views still exist for redirect flows but are not surfaced here.) |
+| `Set up / reset · Inst N` | active instance | **All destructive key ops, grouped out of the daily path** (`ToolsKeycardSetupResetMenuView`): `Generate key`, `Import seed`, `Initialise instance` (runs INIT on this instance), `Factory reset`. Kept one level below `This instance` so the routine PIN / rename / lock path can't fat-finger a key-overwrite. |
 | `Manage Card` | whole card / package | Status, Storage, Uninstall applet |
 
-`This instance` is reached via `Settings ▸ Manage Instances ▸ This instance`.
+`This instance` is reached via `Settings ▸ Manage Instances ▸ This instance`,
+and `Set up / reset` via `This instance ▸ Set up / reset`.
 `Generate key` / `Import seed` are reachable both there and from the post-Init
 chooser (`ToolsKeycardSetupChooseSeedView`). `Initialise instance` is the INIT
 wizard (`ToolsKeycardInitView`) — it provisions **one instance**, so it lives
-under `This instance`, not `Card`. The view classes are
-`ToolsKeycardThisInstanceMenuView`, `ToolsKeycardPairingMenuView`,
+under `Set up / reset`, not `Card`. The view classes are
+`ToolsKeycardThisInstanceMenuView`, `ToolsKeycardSetupResetMenuView`,
+`ToolsKeycardPairingMenuView`,
 `ToolsKeycardCardMenuView` (the old `Setup` / `Manage` / `Advanced` menus
-were collapsed into these). Routing cover: `tests/test_keycard_views.py`.
+were collapsed into these). Routing cover: `tests/test_keycard_views.py`,
+`tests/test_keycard_setup_chain.py::TestSetupEntriesReachableAfterReorg`.
+
+**Overwrite guard.** `Generate key` and `Import seed` warn explicitly before
+replacing an existing key: a SELECT-only probe (`_instance_key_present`, reading
+the unauthenticated `SelectResult.key_uid`) decides the warning text — `Replace
+key?` ("Instance already holds a key …") when a key is loaded, or the generic
+generate/transmission warning on a fresh / just-initialised instance. The probe
+is **advisory only**: any failure (including no card) falls back to the generic
+warning and lets the downstream flow surface the real card error, so the entry
+views gain no new no-card branch. Cover:
+`tests/test_keycard_views.py::TestKeycardMenuRouting` (`test_generate_key_overwrite_guard`,
+`test_import_seed_overwrite_guard`, `test_overwrite_guard_probe_failure_falls_back_to_generic`).
 
 `Lock card` (`ToolsKeycardLockView`) is reachable both from the **top-level**
 Keycard menu (quick shortcut) and from `Settings ▸ Manage Instances ▸ This instance`. It calls
@@ -556,7 +571,7 @@ The `pairing_storage` label trailer is back to its prior state (always empty; re
 **Active instance for the session:**
 
 - `Controller.active_keycard_aid` (defaults to the published Status AID) is the AID we SELECT for every Keycard operation. The Instances flow lets the user switch it.
-- The active instance is surfaced as the readable **`Inst N`** label in the **main Keycard menu title** (`Keycard · Inst N`), in every instance-scoped submenu title (`Ethereum · Inst N`, `Bitcoin · Inst N`, `This instance · Inst N`, `Pairing · Inst N`, `Manage Inst · Inst N`), in the address-list tags (`Wallets ({})` / `Addresses ({})`), and marked with a leading `» ` in the `Switch instance` view, so the user always knows which instance signing/export will use.
+- The active instance is surfaced as the readable **`Inst N`** label in the **main Keycard menu title** (`Keycard · Inst N`), in every instance-scoped submenu title (`Ethereum · Inst N`, `Bitcoin · Inst N`, `This instance · Inst N`, `Set up / reset · Inst N`, `Pairing · Inst N`, `Manage Inst · Inst N`), in the address-list tags (`Wallets ({})` / `Addresses ({})`), and marked with a leading `» ` in the `Switch instance` view, so the user always knows which instance signing/export will use.
 - **Single-instance title suppression.** When the card holds **exactly one** instance (`Controller.keycard_instance_count == 1`), the `· Inst N` / `(Inst N)` suffix is **omitted** from every instance-scoped title — there is nothing to disambiguate, so the auto label is noise. This is centralised in `_instance_title_suffix(controller)`, which returns: a **user-assigned custom name** (always shown, even with one instance → e.g. `Keycard · Cold`); else `None` when the count is exactly 1 (caller renders the bare title — `Keycard`, `Ethereum`, …); else the `Inst N` label (count >1 **or** unknown `None` — never drop identity on a guess). The destructive `Wipe {}?` confirmation is deliberately **excluded** (it keeps a concrete identifier, mirroring the Delete row's full-AID rule). Cover: `tests/test_keycard_views.py` (`test_instance_title_suffix`, `test_main_menu_title_drops_label_for_single_instance`, `…keeps_custom_name…`, `…probe_one_hides_switch…`).
 - After DELETE, if the deleted AID was the active one we fall back to the default. After INSTALL, the new AID **becomes active automatically** (`ToolsKeycardInstancesCreateView` sets `active_keycard_aid = new_aid`), so the next step (Init / Generate / Import) targets the instance the user just created without a manual switch.
 
