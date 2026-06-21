@@ -3555,15 +3555,15 @@ msgid "Insert the destination Seedkeeper card to copy secrets to, then press Con
 msgstr ""
 
 #: src/seedsigner/views/keycard_views.py
-msgid "Wallet type"
+msgid "Account layout"
 msgstr ""
 
 #: src/seedsigner/views/keycard_views.py
-msgid "Match how your other wallet numbers accounts."
+msgid "Wallets number accounts differently. Match your app."
 msgstr ""
 
 #: src/seedsigner/views/keycard_views.py
-msgid "Default (this device)"
+msgid "Standard (BIP-44)"
 msgstr ""
 
 #: src/seedsigner/views/keycard_views.py

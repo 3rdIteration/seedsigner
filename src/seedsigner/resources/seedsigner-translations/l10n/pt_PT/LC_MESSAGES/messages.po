@@ -3899,16 +3899,16 @@ msgid "12 words (32 hex)"
 msgstr "12 palavras (32 hex)"
 
 #: src/seedsigner/views/keycard_views.py
-msgid "Wallet type"
-msgstr "Tipo de carteira"
+msgid "Account layout"
+msgstr "Disposição de contas"
 
 #: src/seedsigner/views/keycard_views.py
-msgid "Match how your other wallet numbers accounts."
-msgstr "Corresponde à forma como a outra carteira numera as contas."
+msgid "Wallets number accounts differently. Match your app."
+msgstr "As carteiras numeram as contas de forma diferente. Escolhe a da tua app."
 
 #: src/seedsigner/views/keycard_views.py
-msgid "Default (this device)"
-msgstr "Predefinição (este dispositivo)"
+msgid "Standard (BIP-44)"
+msgstr "Padrão (BIP-44)"
 
 #: src/seedsigner/views/keycard_views.py
 msgid "Ledger Live"

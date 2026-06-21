@@ -104,44 +104,53 @@ class TestCacheNamespacing(unittest.TestCase):
             self.assertTrue(key == AID.hex() or key.startswith(AID.hex() + ":"))
 
 
+def _run_wallets_list(scheme, mode="view", start_index=0, selected=None):
+    """Drive ``ToolsKeycardWalletsListView.run`` with the card mocked out.
+
+    ``selected`` is what the list screen returns (a row index, the "Next N"
+    sentinel ``len(addresses)``, or ``None`` → back button). Returns
+    ``(derive_key_calls, destination)``.
+    """
+    from seedsigner.gui.screens import RET_CODE__BACK_BUTTON
+    from seedsigner.views import keycard_views
+    from seedsigner.views.keycard_views import ToolsKeycardWalletsListView
+
+    view = ToolsKeycardWalletsListView.__new__(ToolsKeycardWalletsListView)
+    view.start_index = start_index
+    view.selected_button_index = 0
+    view.initial_scroll = 0
+    view.scheme = scheme
+    view.mode = mode
+    view.controller = MagicMock()
+    view.controller.has_any_keycard_auth.return_value = True
+    view.controller.active_keycard_aid = AID
+    view.controller.keycard_wallets_data = None
+    ret = RET_CODE__BACK_BUTTON if selected is None else selected
+    view.run_screen = MagicMock(return_value=ret)
+
+    client = MagicMock()
+    client.export_pubkey.return_value = b"\x04" + bytes(64)
+
+    with patch.object(keycard_views, "_open_unlocked_session_cached_or_prompt",
+                      return_value=(client, None)), \
+            patch.object(keycard_views, "_extract_pubkey",
+                         return_value=b"pub"), \
+            patch.object(keycard_views, "pubkey_to_address",
+                         return_value=b"addr"), \
+            patch.object(keycard_views, "to_checksum_address",
+                         return_value="0xADDR"), \
+            patch.object(keycard_views, "_instance_title_suffix",
+                         return_value=None), \
+            patch("seedsigner.gui.screens.screen.LoadingScreenThread",
+                  MagicMock()):
+        dest = view.run()
+    return client.derive_key.call_args_list, dest
+
+
 class TestWalletsListDerivesPerScheme(unittest.TestCase):
-    def _run_list(self, scheme):
-        from seedsigner.gui.screens import RET_CODE__BACK_BUTTON
-        from seedsigner.views import keycard_views
-        from seedsigner.views.keycard_views import ToolsKeycardWalletsListView
-
-        view = ToolsKeycardWalletsListView.__new__(ToolsKeycardWalletsListView)
-        view.start_index = 0
-        view.selected_button_index = 0
-        view.initial_scroll = 0
-        view.scheme = scheme
-        view.controller = MagicMock()
-        view.controller.has_any_keycard_auth.return_value = True
-        view.controller.active_keycard_aid = AID
-        view.controller.keycard_wallets_data = None
-        view.run_screen = MagicMock(return_value=RET_CODE__BACK_BUTTON)
-
-        client = MagicMock()
-        client.export_pubkey.return_value = b"\x04" + bytes(64)
-
-        with patch.object(keycard_views, "_open_unlocked_session_cached_or_prompt",
-                          return_value=(client, None)), \
-                patch.object(keycard_views, "_extract_pubkey",
-                             return_value=b"pub"), \
-                patch.object(keycard_views, "pubkey_to_address",
-                             return_value=b"addr"), \
-                patch.object(keycard_views, "to_checksum_address",
-                             return_value="0xADDR"), \
-                patch.object(keycard_views, "_instance_title_suffix",
-                             return_value=None), \
-                patch("seedsigner.gui.screens.screen.LoadingScreenThread",
-                      MagicMock()):
-            view.run()
-        return client.derive_key.call_args_list
-
     def test_standard_derives_address_index(self):
         from seedsigner.views.keycard_views import ETH_SCHEME_STANDARD
-        calls = self._run_list(ETH_SCHEME_STANDARD)
+        calls, _ = _run_wallets_list(ETH_SCHEME_STANDARD)
         self.assertEqual(
             calls,
             [call([44 | _H, 60 | _H, 0 | _H, 0, i]) for i in range(10)],
@@ -149,7 +158,7 @@ class TestWalletsListDerivesPerScheme(unittest.TestCase):
 
     def test_ledger_live_derives_account_index(self):
         from seedsigner.views.keycard_views import ETH_SCHEME_LEDGER_LIVE
-        calls = self._run_list(ETH_SCHEME_LEDGER_LIVE)
+        calls, _ = _run_wallets_list(ETH_SCHEME_LEDGER_LIVE)
         self.assertEqual(
             calls,
             [call([44 | _H, 60 | _H, i | _H, 0, 0]) for i in range(10)],
@@ -191,21 +200,41 @@ class TestSchemeChooserRouting(unittest.TestCase):
         self.assertEqual(dest.view_args, {"account": 0})
 
     def test_export_ledger_live_routes_to_account_picker(self):
-        from seedsigner.views.keycard_views import ToolsKeycardEthLedgerAccountView
-        dest = self._choose("export", 1)
-        self.assertIs(dest.View_cls, ToolsKeycardEthLedgerAccountView)
-
-    def test_account_picker_routes_to_pair_with_account(self):
         from seedsigner.views.keycard_views import (
-            ToolsKeycardEthLedgerAccountView, ToolsKeycardPairWalletView,
+            ETH_SCHEME_LEDGER_LIVE, ToolsKeycardWalletsListView,
         )
-        view = ToolsKeycardEthLedgerAccountView.__new__(
-            ToolsKeycardEthLedgerAccountView)
-        view.controller = MagicMock()
-        view.run_screen = MagicMock(return_value=2)  # "Account 2"
-        dest = view.run()
+        dest = self._choose("export", 1)
+        # The Ledger Live export account picker reuses the wallets list in
+        # export mode (so each account shows its address, with pagination).
+        self.assertIs(dest.View_cls, ToolsKeycardWalletsListView)
+        self.assertEqual(
+            dest.view_args,
+            {"scheme": ETH_SCHEME_LEDGER_LIVE, "mode": "export"},
+        )
+
+
+class TestLedgerExportPicker(unittest.TestCase):
+    def test_selecting_account_routes_to_pair_with_that_account(self):
+        from seedsigner.views.keycard_views import (
+            ETH_SCHEME_LEDGER_LIVE, ToolsKeycardPairWalletView,
+        )
+        # Row 2 == Ledger Live account 2.
+        _calls, dest = _run_wallets_list(
+            ETH_SCHEME_LEDGER_LIVE, mode="export", selected=2)
         self.assertIs(dest.View_cls, ToolsKeycardPairWalletView)
         self.assertEqual(dest.view_args, {"account": 2})
+
+    def test_next_button_pages_to_next_accounts_in_export_mode(self):
+        from seedsigner.views.keycard_views import (
+            ETH_SCHEME_LEDGER_LIVE, ToolsKeycardWalletsListView,
+        )
+        # "Next N" sentinel == len(addresses) == 10 (one page).
+        _calls, dest = _run_wallets_list(
+            ETH_SCHEME_LEDGER_LIVE, mode="export", selected=10)
+        self.assertIs(dest.View_cls, ToolsKeycardWalletsListView)
+        self.assertEqual(dest.view_args["start_index"], 10)
+        self.assertEqual(dest.view_args["mode"], "export")
+        self.assertEqual(dest.view_args["scheme"], ETH_SCHEME_LEDGER_LIVE)
 
 
 class TestPairWalletAccountDerivation(unittest.TestCase):

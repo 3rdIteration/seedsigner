@@ -3876,16 +3876,16 @@ msgid "12 words (32 hex)"
 msgstr "12ワード (32 hex)"
 
 #: src/seedsigner/views/keycard_views.py
-msgid "Wallet type"
-msgstr "ウォレットの種類"
+msgid "Account layout"
+msgstr "アカウント構成"
 
 #: src/seedsigner/views/keycard_views.py
-msgid "Match how your other wallet numbers accounts."
-msgstr "他のウォレットのアカウント番号付けに合わせます。"
+msgid "Wallets number accounts differently. Match your app."
+msgstr "ウォレットごとにアカウントの番号付けが異なります。アプリに合わせて選んでください。"
 
 #: src/seedsigner/views/keycard_views.py
-msgid "Default (this device)"
-msgstr "デフォルト（この端末）"
+msgid "Standard (BIP-44)"
+msgstr "標準 (BIP-44)"
 
 #: src/seedsigner/views/keycard_views.py
 msgid "Ledger Live"

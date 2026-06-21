@@ -1677,6 +1677,7 @@ class TestCardSwapDetection(unittest.TestCase):
         view.selected_button_index = 0
         view.initial_scroll = 0
         view.scheme = ETH_SCHEME_STANDARD  # ETH list reads it; BTC ignores it
+        view.mode = "view"  # ETH wallets list reads it; BTC view ignores it
         view.controller = MagicMock()
         view.controller.has_any_keycard_auth.return_value = True
         view.controller.active_keycard_aid = self.AID
@@ -1704,7 +1705,10 @@ class TestCardSwapDetection(unittest.TestCase):
 
         # Swap detected -> re-run (cache is stale) instead of serving it.
         self.assertIs(dest.View_cls, ToolsKeycardWalletsListView)
-        self.assertEqual(dest.view_args, {"start_index": 0, "scheme": "standard"})
+        self.assertEqual(
+            dest.view_args,
+            {"start_index": 0, "scheme": "standard", "mode": "view"},
+        )
         # The stale addresses were never rendered.
         self.assertFalse(view.run_screen.called)
 

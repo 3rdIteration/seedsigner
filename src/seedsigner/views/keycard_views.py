@@ -3692,15 +3692,28 @@ def _invalidate_wallets_cache_for_active_aid(controller) -> None:
 
 
 class ToolsKeycardWalletsListView(View):
-    """Paginated list of EIP-55 addresses for the active Keycard instance."""
+    """Paginated list of EIP-55 addresses for the active Keycard instance.
+
+    Two modes share the same derivation / caching / swap-detection:
+
+    * ``mode="view"`` (default) — "View wallets": tapping a row opens that
+      address as a QR (:class:`ToolsKeycardWalletAddressView`).
+    * ``mode="export"`` — the Ledger Live account picker for "Connect software
+      wallet": entered only with ``scheme=ETH_SCHEME_LEDGER_LIVE`` so each row
+      is account ``N``'s first address (``m/44'/60'/N'/0/0``); tapping exports
+      that account (:class:`ToolsKeycardPairWalletView`). This lets the user
+      verify the account address before exporting, and pages past 10 accounts.
+    """
 
     def __init__(self, start_index: int = 0, selected_button_index: int = 0,
-                 initial_scroll: int = 0, scheme: str = ETH_SCHEME_STANDARD):
+                 initial_scroll: int = 0, scheme: str = ETH_SCHEME_STANDARD,
+                 mode: str = "view"):
         super().__init__()
         self.start_index = start_index
         self.selected_button_index = selected_button_index
         self.initial_scroll = initial_scroll
         self.scheme = scheme
+        self.mode = mode
 
     def run(self):
         from seedsigner.gui.screens.screen import LoadingScreenThread
@@ -3769,7 +3782,7 @@ class ToolsKeycardWalletsListView(View):
                     return Destination(
                         ToolsKeycardWalletsListView,
                         view_args=dict(start_index=self.start_index,
-                                       scheme=self.scheme),
+                                       scheme=self.scheme, mode=self.mode),
                         skip_current_view=True,
                     )
             except (NoCardError, NoReaderError) as exc:
@@ -3786,7 +3799,10 @@ class ToolsKeycardWalletsListView(View):
         addresses = cache[self.start_index:end_index]
         suffix = _instance_title_suffix(self.controller)
 
-        if self.scheme == ETH_SCHEME_LEDGER_LIVE:
+        if self.mode == "export":
+            # Ledger Live account picker (always the LL scheme).
+            title = _("Ledger Live")
+        elif self.scheme == ETH_SCHEME_LEDGER_LIVE:
             # TRANSLATOR_NOTE: "LL" tags the Ledger Live derivation scheme;
             # {} is the instance label
             title = (_("Wallets · LL ({})").format(suffix) if suffix
@@ -3810,7 +3826,18 @@ class ToolsKeycardWalletsListView(View):
             # "Next N" button.
             return Destination(
                 ToolsKeycardWalletsListView,
-                view_args=dict(start_index=end_index, scheme=self.scheme),
+                view_args=dict(start_index=end_index, scheme=self.scheme,
+                               mode=self.mode),
+            )
+
+        index = selected + self.start_index
+
+        if self.mode == "export":
+            # The row index is the Ledger Live account number. Selecting it
+            # exports that account's xpub (terminal — no return to this list,
+            # so scroll preservation isn't needed).
+            return Destination(
+                ToolsKeycardPairWalletView, view_args=dict(account=index),
             )
 
         # Preserve scroll position so returning lands on the same row.
@@ -3819,7 +3846,6 @@ class ToolsKeycardWalletsListView(View):
         except Exception:
             initial_scroll = 0
 
-        index = selected + self.start_index
         return Destination(
             ToolsKeycardWalletAddressView,
             view_args=dict(
@@ -3874,7 +3900,7 @@ class ToolsKeycardEthDerivationSchemeView(View):
     ``Connect software wallet`` (``mode="export"``).
     """
 
-    STANDARD = ButtonOption("Default (this device)")
+    STANDARD = ButtonOption("Standard (BIP-44)")
     LEDGER_LIVE = ButtonOption("Ledger Live")
 
     def __init__(self, mode: str = "view"):
@@ -3887,9 +3913,9 @@ class ToolsKeycardEthDerivationSchemeView(View):
         button_data = [self.STANDARD, self.LEDGER_LIVE]
         selected = self.run_screen(
             DescriptionButtonListScreen,
-            title=_("Wallet type"),
-            # TRANSLATOR_NOTE: above a Default / Ledger Live derivation chooser
-            description=_("Match how your other wallet numbers accounts."),
+            title=_("Account layout"),
+            # TRANSLATOR_NOTE: above a Standard / Ledger Live derivation chooser
+            description=_("Wallets number accounts differently. Match your app."),
             is_button_text_centered=False,
             button_data=button_data,
         )
@@ -3899,41 +3925,17 @@ class ToolsKeycardEthDerivationSchemeView(View):
         ledger = button_data[selected] == self.LEDGER_LIVE
         if self.mode == "export":
             if ledger:
-                return Destination(ToolsKeycardEthLedgerAccountView)
+                # Reuse the paginated wallets list as the Ledger Live account
+                # picker: each row derives m/44'/60'/N'/0/0 so the user sees the
+                # account address before exporting it.
+                return Destination(
+                    ToolsKeycardWalletsListView,
+                    view_args=dict(scheme=ETH_SCHEME_LEDGER_LIVE, mode="export"),
+                )
             return Destination(ToolsKeycardPairWalletView, view_args=dict(account=0))
 
         scheme = ETH_SCHEME_LEDGER_LIVE if ledger else ETH_SCHEME_STANDARD
         return Destination(ToolsKeycardWalletsListView, view_args=dict(scheme=scheme))
-
-
-class ToolsKeycardEthLedgerAccountView(View):
-    """Pick which Ledger Live account (``m/44'/60'/N'``) to export.
-
-    Each Ledger Live account is a separate xpub, so the user exports one
-    QR per account they want to connect.
-    """
-
-    NUM_ACCOUNTS = 10
-
-    def run(self):
-        button_data = [
-            # TRANSLATOR_NOTE: {} is a Ledger Live account index (0-based)
-            ButtonOption(_("Account {}").format(n))
-            for n in range(self.NUM_ACCOUNTS)
-        ]
-        selected = self.run_screen(
-            ButtonListScreen,
-            title=_("Ledger Live"),
-            is_button_text_centered=False,
-            button_data=button_data,
-        )
-        if selected == RET_CODE__BACK_BUTTON:
-            return Destination(BackStackView)
-
-        # Account index == row index (accounts are listed 0..N in order).
-        return Destination(
-            ToolsKeycardPairWalletView, view_args=dict(account=selected),
-        )
 
 
 class ToolsKeycardBtcAddressesListView(View):
