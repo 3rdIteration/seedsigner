@@ -3901,3 +3901,19 @@ msgstr "钱包 · LL"
 #: src/seedsigner/views/keycard_views.py
 msgid "Wallets · LL ({})"
 msgstr "钱包 · LL（{}）"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Create anyway"
+msgstr "仍然创建"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Card may be too full\nfor another instance."
+msgstr "卡片空间可能不足\n以创建另一个实例。"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "New AID:\n{}\n≈{} more fit"
+msgstr "新 AID：\n{}\n约还可建 {} 个"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "≈{} more instances fit"
+msgstr "约还可容纳 {} 个实例"

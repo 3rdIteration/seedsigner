@@ -607,11 +607,20 @@ def list_instances(channel: GpSecureChannel) -> List[AppletInstance]:
     return _parse_status_legacy(legacy)
 
 
-MAX_KEYCARD_INSTANCES = 4
+# Hard ceiling on Keycard applet instances per card. This is a *firmware*
+# limit, not a JavaCard one — the card holds as many as its free EEPROM allows.
+# It bounds two things: the slot byte (an instance AID's trailing byte, so the
+# range must stay <= 0xFF) and the number of cleartext SELECTs the *management*
+# flows (Create/Delete/Switch) walk. The fast menu-entry probe deliberately
+# does NOT pay the full range (see `probe_keycard_instance_aids`'s
+# ``stop_after_slots`` / ``canonical_only``). Whether another instance actually
+# fits is decided by the free-space estimate at create time
+# (``views.view.estimate_remaining_instances``), not by this number alone.
+MAX_KEYCARD_INSTANCES = 16
 
 
 def keycard_instance_aid_candidates(prefix: bytes = bytes.fromhex("A000000804000101"),
-                                    slots=None) -> List[bytes]:
+                                    slots=None, canonical_only: bool = False) -> List[bytes]:
     """Ordered, de-duped *suffixed* instance-AID candidates to probe by SELECT.
 
     Status cards initialised by keycard-cli/keycard-shell use the **9-byte
@@ -620,6 +629,10 @@ def keycard_instance_aid_candidates(prefix: bytes = bytes.fromhex("A000000804000
     We emit both so either is found regardless of which tool created it, the
     9-byte (real-card) form first. The bare ``prefix`` is **not** included —
     callers that want it (the GET-STATUS-empty fallback) prepend it themselves.
+
+    ``canonical_only`` emits just the 9-byte form (skips the legacy 10-byte one),
+    halving the candidate count for the fast menu probe — which only needs the
+    "exactly one vs. more" boundary and accepts under-counting a legacy card.
 
     Centralising this is deliberate: the suffix-probe loop used to be copied in
     three places with two different conventions, which is the drift that let a
@@ -630,7 +643,9 @@ def keycard_instance_aid_candidates(prefix: bytes = bytes.fromhex("A000000804000
     out: List[bytes] = []
     seen = set()
     for x in slots:
-        for cand in (prefix + bytes([x]), prefix + bytes([0x01, x])):
+        forms = ((prefix + bytes([x]),) if canonical_only
+                 else (prefix + bytes([x]), prefix + bytes([0x01, x])))
+        for cand in forms:
             if cand not in seen:
                 seen.add(cand)
                 out.append(cand)
@@ -639,7 +654,9 @@ def keycard_instance_aid_candidates(prefix: bytes = bytes.fromhex("A000000804000
 
 def probe_keycard_instance_aids(connection,
                                 package_prefix: bytes = bytes.fromhex("A000000804000101"),
-                                instance_byte_range: range = range(0x01, 0x01 + MAX_KEYCARD_INSTANCES)
+                                instance_byte_range: range = range(0x01, 0x01 + MAX_KEYCARD_INSTANCES),
+                                canonical_only: bool = False,
+                                stop_after_slots: Optional[int] = None,
                                 ) -> List[bytes]:
     """Brute-probe likely Keycard applet AIDs via cleartext SELECT.
 
@@ -652,6 +669,13 @@ def probe_keycard_instance_aids(connection,
       ``package_prefix || 0x01 || X`` forms for each ``X`` in
       ``instance_byte_range`` (see :func:`keycard_instance_aid_candidates`).
 
+    ``canonical_only`` probes only the 9-byte form (halves the SELECT count).
+    ``stop_after_slots`` early-exits once that many **distinct slot bytes** have
+    responded — the fast menu count passes ``stop_after_slots=2`` (it only needs
+    "more than one?") so a multi-instance card doesn't pay for the full range.
+    Both knobs let the menu raise ``MAX_KEYCARD_INSTANCES`` without re-introducing
+    the menu-entry probe stall.
+
     Returns the AIDs that responded with SW=9000. Note: this side-effect
     SELECTs the *last responding* applet on the card, so callers should
     treat the connection as no longer holding a GP secure channel after
@@ -659,8 +683,9 @@ def probe_keycard_instance_aids(connection,
     """
     found: List[bytes] = []
     candidates: List[bytes] = [package_prefix] + keycard_instance_aid_candidates(
-        package_prefix, instance_byte_range,
+        package_prefix, instance_byte_range, canonical_only=canonical_only,
     )
+    slots_seen = set()
     for aid in candidates:
         apdu = [0x00, 0xA4, 0x04, 0x00, len(aid)] + list(aid) + [0x00]
         try:
@@ -671,6 +696,12 @@ def probe_keycard_instance_aids(connection,
         sw = ((sw1 & 0xFF) << 8) | (sw2 & 0xFF)
         if sw == SW_OK:
             found.append(aid)
+            # Count distinct slot bytes (the bare prefix has none) for the
+            # optional early-exit.
+            if len(aid) > len(package_prefix):
+                slots_seen.add(aid[-1])
+                if stop_after_slots is not None and len(slots_seen) >= stop_after_slots:
+                    break
     logger.info("probe_keycard_instance_aids: %d hits", len(found))
     return found
 

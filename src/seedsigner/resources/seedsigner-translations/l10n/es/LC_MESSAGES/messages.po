@@ -3940,3 +3940,19 @@ msgstr "Carteras · LL"
 #: src/seedsigner/views/keycard_views.py
 msgid "Wallets · LL ({})"
 msgstr "Carteras · LL ({})"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Create anyway"
+msgstr "Crear igualmente"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Card may be too full\nfor another instance."
+msgstr "La tarjeta puede estar llena\npara otra instancia."
+
+#: src/seedsigner/views/keycard_views.py
+msgid "New AID:\n{}\n≈{} more fit"
+msgstr "Nuevo AID:\n{}\n≈{} más caben"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "≈{} more instances fit"
+msgstr "≈{} instancias más caben"

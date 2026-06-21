@@ -567,6 +567,55 @@ def estimated_used_nv(probe,
     return used
 
 
+# Conservative default NV cost of one *fully provisioned* Keycard instance —
+# the on-card object allocation a new instance adds: INSTALL shell (PIN/PUK/alt
+# OwnerPIN objects, pairing-slot array, instance UID, secure-channel + derived-
+# key buffers) plus the INIT/key allocation (master key + chain code + duress
+# alt chain code). This is NOT the ~30 KB applet *package* — that's loaded once
+# and shared by every instance; an instance reuses it via INSTALL [for install].
+# Picked on the high side so "≈N fit" never over-promises before a real
+# measurement refines it. Hardware-calibratable like ``CAP_NV_FOOTPRINT_RATIO``:
+# read free NV before/after a real create+init and set this to the delta.
+KEYCARD_INSTANCE_NV_ESTIMATE_BYTES = 3072  # 3 KB
+
+
+def keycard_instance_nv_estimate(controller) -> int:
+    """Best estimate (bytes) of one more Keycard instance's NV cost.
+
+    Uses the card-specific measured value when the create flow has captured one
+    this session (``Controller.keycard_measured_instance_nv``), else the
+    conservative ``KEYCARD_INSTANCE_NV_ESTIMATE_BYTES`` default. The measured
+    delta is the dominant INSTALL-shell allocation; the small extra key growth
+    at INIT is absorbed by ``LOW_SPACE_MARGIN_BYTES`` in
+    :func:`estimate_remaining_instances`.
+    """
+    measured = getattr(controller, "keycard_measured_instance_nv", None)
+    if isinstance(measured, int) and measured > 0:
+        return measured
+    return KEYCARD_INSTANCE_NV_ESTIMATE_BYTES
+
+
+def estimate_remaining_instances(free_nv, current_count: int, per_instance: int,
+                                 ceiling: int) -> int:
+    """How many *more* Keycard instances are likely to fit.
+
+    The minimum of the slot/firmware headroom (``ceiling - current_count``) and
+    the memory headroom (``(free_nv - margin) // per_instance``). Returns 0 when
+    either is exhausted. ``free_nv`` ``None`` (card didn't expose the memory tag)
+    falls back to the slot headroom alone — we never claim more than the
+    estimate can support, but we also don't block on an unreadable card.
+
+    Advisory only: JavaCard EEPROM fragmentation / per-object overhead can make
+    an install fail even when this says one fits, which is why the create flow
+    keeps a "Create anyway" override.
+    """
+    by_slot = max(0, ceiling - current_count)
+    if free_nv is None or not per_instance or per_instance <= 0:
+        return by_slot
+    by_mem = max(0, (free_nv - LOW_SPACE_MARGIN_BYTES) // per_instance)
+    return min(by_slot, by_mem)
+
+
 def _toast_ios_coexistence(view):
     """Non-blocking heads-up: a Keycard package sharing the card with SeedKeeper
     crashes the Seedkeeper iOS app's secret-reveal flow. We can't fix the iOS

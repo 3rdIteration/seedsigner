@@ -187,6 +187,12 @@ class Controller(Singleton):
     keycard_instance_count: int = None
     keycard_instances_intro_shown: bool = False
 
+    # Card-specific, self-calibrated NV cost (bytes) of one Keycard instance,
+    # measured as the free-NV delta around an INSTALL in the create flow. ``None``
+    # = not measured yet → fall back to the conservative constant. Drives the
+    # "≈N more fit" estimate. Cleared on card swap (different card may differ).
+    keycard_measured_instance_nv: int = None
+
     sign_message_data: dict = None
     gpg_keys_imported: bool = False
     gpg_pending_message: str = None
@@ -631,6 +637,9 @@ class Controller(Singleton):
         # instance count is no longer trustworthy. Force a re-probe on the
         # next top Keycard menu render.
         self.keycard_instance_count = None
+        # Per-instance NV calibration is card-specific (a different card may
+        # have a different per-instance footprint), so drop it on swap.
+        self.keycard_measured_instance_nv = None
 
     def _is_card_view(self, view_cls) -> bool:
         """True iff ``view_cls`` belongs to the card-views subtree.

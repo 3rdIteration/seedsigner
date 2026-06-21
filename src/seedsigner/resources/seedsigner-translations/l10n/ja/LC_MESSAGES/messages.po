@@ -3902,3 +3902,19 @@ msgstr "ウォレット · LL"
 #: src/seedsigner/views/keycard_views.py
 msgid "Wallets · LL ({})"
 msgstr "ウォレット · LL ({})"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Create anyway"
+msgstr "それでも作成"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "Card may be too full\nfor another instance."
+msgstr "別のインスタンス用の空き容量が\n不足している可能性があります。"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "New AID:\n{}\n≈{} more fit"
+msgstr "新AID:\n{}\nあと約{}個"
+
+#: src/seedsigner/views/keycard_views.py
+msgid "≈{} more instances fit"
+msgstr "あと約{}インスタンス"

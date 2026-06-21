@@ -594,8 +594,12 @@ class ToolsKeycardStorageView(View):
     def run(self):
         from seedsigner.gui.screens.screen import KeycardStorageScreen
         from seedsigner.helpers.card_probe import probe_installed_applets
+        from seedsigner.helpers.keycard.global_platform import MAX_KEYCARD_INSTANCES
         from seedsigner.helpers.keycard.ui_helpers import query_card_memory
-        from seedsigner.views.view import estimated_used_nv
+        from seedsigner.views.view import (
+            estimate_remaining_instances, estimated_used_nv,
+            keycard_instance_nv_estimate,
+        )
 
         mem = query_card_memory(self)
         if mem is None:
@@ -616,12 +620,27 @@ class ToolsKeycardStorageView(View):
         used = estimated_used_nv(probe) if probe is not None else 0
         total = mem.free_nv + used
 
+        # Estimate how many more Keycard instances fit — only when a Keycard
+        # applet is present (instances are installed from its package).
+        remaining = None
+        if probe is None or getattr(probe, "keycard_installed", False):
+            count = _probe_keycard_instance_count_exact(self.controller)
+            if count is None:
+                # Fall back to the menu's cached boundary, or assume the one we
+                # likely have. Memory is almost always the binding term anyway.
+                count = self.controller.keycard_instance_count or 1
+            per_instance = keycard_instance_nv_estimate(self.controller)
+            remaining = estimate_remaining_instances(
+                mem.free_nv, count, per_instance, MAX_KEYCARD_INSTANCES,
+            )
+
         self.run_screen(
             KeycardStorageScreen,
             title=_("Storage"),
             used_bytes=used,
             total_bytes=total,
             free_bytes=mem.free_nv,
+            remaining_instances=remaining,
         )
         return Destination(BackStackView)
 
@@ -4307,13 +4326,47 @@ def _open_isd_channel(controller):
     return channel, instances, connection
 
 
+def _safe_channel_free_nv(channel):
+    """Best-effort free NV memory (bytes) over an already-open GP channel.
+
+    Reads GET DATA 0xFF21, which is publicly readable — but some cards reject
+    un-MAC'd commands once the secure channel is open (post EXTERNAL
+    AUTHENTICATE). Returns ``None`` on any failure so the create flow simply
+    skips the space estimate rather than erroring.
+    """
+    try:
+        free_nv = channel.get_extended_card_resources().free_nv
+        return free_nv if isinstance(free_nv, int) else None
+    except Exception:
+        logger.debug("free-NV read over GP channel failed", exc_info=True)
+        return None
+
+
+def _record_instance_nv_measurement(controller, free_before, free_after):
+    """Self-calibrate: stash the free-NV delta around an INSTALL as this card's
+    per-instance footprint (``Controller.keycard_measured_instance_nv``).
+
+    Sanity-bounded — a Keycard instance shell is ~1-2 KB, so a negative, zero, or
+    absurdly large delta (fragmentation hiccup, a card reporting in different
+    units, an un-MAC'd read that silently returned stale data) is ignored and
+    the conservative constant stays in effect.
+    """
+    if free_before is None or free_after is None:
+        return
+    delta = free_before - free_after
+    if 256 <= delta <= 16384:
+        controller.keycard_measured_instance_nv = delta
+        logger.info("measured keycard instance NV footprint: %d bytes", delta)
+
+
 def _resolve_instance_uids(controller, connection, aids):
     """SELECT each AID to learn its ``instance_uid`` and cache the AID→UID map.
 
     Enumeration (``GET STATUS``) returns only AIDs, so without this the only
     instance we can name is one that happened to be SELECTed this session.
-    SELECT is unauthenticated (no PIN) and there are at most
-    ``MAX_KEYCARD_INSTANCES`` (4) candidates, so resolving every UID is cheap.
+    SELECT is unauthenticated (no PIN) and the enumeration only lists AIDs that
+    actually exist (not the full ``MAX_KEYCARD_INSTANCES`` slot range), so
+    resolving every UID is cheap.
     Best-effort: a per-AID failure just leaves that row on the ``Inst N``
     label. Must run **after** any GP/``GET STATUS`` work on ``connection`` —
     SELECTing an applet deselects the ISD and breaks the GP channel.
@@ -4380,9 +4433,9 @@ def _count_keycard_instances(controller):
 
 
 def _probe_keycard_instance_count(controller):
-    """Fast, unauthenticated probe of the exact instance count, used for both
-    the top-menu "Switch instance" visibility decision AND the title's
-    ``Inst N`` suffix (which is dropped when the card holds exactly one).
+    """Fast, unauthenticated probe of the instance count, used for both the
+    top-menu "Switch instance" visibility decision AND the title's ``Inst N``
+    suffix (which is dropped when the card holds exactly one).
 
     Unlike :func:`_count_keycard_instances` (authoritative GET STATUS over the
     GP/ISD SCP02 channel — currently unused), this sends a handful of
@@ -4391,24 +4444,70 @@ def _probe_keycard_instance_count(controller):
     keys are not the GlobalPlatform defaults it fails *slowly*; cleartext applet
     SELECTs don't touch the ISD, so they stay fast regardless.
 
-    Instance AIDs are ``KEYCARD_APPLET_AID + slot`` in a 9- or 10-byte form,
-    and SELECT-by-DF-name partial-matches the bare prefix and both forms, so a
-    single instance yields several hits. We therefore count **distinct slot
-    bytes** (each AID's trailing byte), not raw hits.
+    **Capped, not exact.** Both consumers only care about the ``== 1`` boundary
+    (show/hide Switch; drop the suffix), so this is a cheap *bounded* probe, not
+    an exact census — important now that ``MAX_KEYCARD_INSTANCES`` is 16 and the
+    naive full both-form walk would be ~32 SELECTs:
 
-    The probe SELECTs *every* valid slot — 1..``MAX_KEYCARD_INSTANCES``, both
-    AID forms (see :func:`keycard_instance_aid_candidates`) — and this firmware
-    only ever mints instances within that range (``_next_free_instance_aid``),
-    as do keycard-cli/keycard-shell. So a result of exactly one distinct slot
-    reliably means one instance, and we return the exact count whenever at
-    least one slot is seen. For 0 hits / no card / any error it returns
-    ``None`` so the caller keeps the entry (and the label) visible — never
-    decide identity on a blank read.
+    * ``canonical_only=True`` — probe only the 9-byte form (16 SELECTs worst
+      case, the common single-instance card), not both forms.
+    * ``stop_after_slots=2`` — early-exit once a second distinct slot responds,
+      so a multi-instance card returns fast. The result is therefore ``1`` or
+      ``2`` (meaning "≥2"), never an exact count > 2.
 
-    Residual risk (honest tradeoff): a card carrying a second instance at a
-    **non-standard AID outside slots 1..MAX** would be under-counted and could
-    wrongly hide "Switch instance". No supported tool creates such an instance;
-    even then the user retains Create / Delete under Manage Instances.
+    **Safety invariant:** this may *under*-count (→ ``None``), but must never
+    report exactly ``1`` when more instances exist — ``count == 1`` is what
+    *hides* the only path to other instances. Under-counting a legacy 10-byte
+    card to ``None`` is safe: the menu then *shows* Switch. The exact, both-form
+    census stays in the management flows (Switch / Create / Delete), where the
+    user is actively managing and latency is acceptable.
+
+    For 0 hits / no card / any error it returns ``None`` so the caller keeps the
+    entry (and the label) visible — never decide identity on a blank read.
+
+    Residual risk (honest tradeoff): a card carrying an instance at a
+    **non-standard AID outside slots 1..MAX** would be under-counted; no
+    supported tool creates such an instance, and the user retains Create /
+    Delete / Switch under Manage Instances regardless.
+    """
+    from seedsigner.helpers.keycard.global_platform import (
+        probe_keycard_instance_aids,
+    )
+    from seedsigner.helpers.keycard.reader import (
+        release_other_smartcard_holders, wait_for_card,
+    )
+
+    connection = None
+    try:
+        release_other_smartcard_holders(controller)
+        connection = wait_for_card(timeout_s=5.0)
+        # Cheap bounded probe: canonical (9-byte) form only, stop at the 2nd
+        # distinct slot. Keeps menu entry fast despite the raised ceiling.
+        hits = probe_keycard_instance_aids(
+            connection, canonical_only=True, stop_after_slots=2,
+        )
+        # Drop the bare-prefix hit (no slot byte; only ever a partial match)
+        # and collapse the remaining hits to distinct slot bytes.
+        slots = {h[-1] for h in hits if len(h) > len(KEYCARD_APPLET_AID)}
+        return len(slots) or None
+    except Exception:
+        logger.debug("keycard instance probe-count failed", exc_info=True)
+        return None
+    finally:
+        if connection is not None:
+            try:
+                connection.disconnect()
+            except Exception:
+                pass
+
+
+def _probe_keycard_instance_count_exact(controller):
+    """Uncapped sibling of :func:`_probe_keycard_instance_count` for screens that
+    need the *real* count rather than just the ``==1`` boundary — the Storage
+    "≈N fit" estimate uses it to know how many instances already exist. Walks the
+    full slot range, both AID forms (no early-exit), and returns the distinct-
+    slot count, or ``None`` on no card / error. Used only on deliberately-
+    navigated diagnostics screens, where the extra SELECTs are acceptable.
     """
     from seedsigner.helpers.keycard.global_platform import (
         probe_keycard_instance_aids,
@@ -4422,12 +4521,10 @@ def _probe_keycard_instance_count(controller):
         release_other_smartcard_holders(controller)
         connection = wait_for_card(timeout_s=5.0)
         hits = probe_keycard_instance_aids(connection)
-        # Drop the bare-prefix hit (no slot byte; only ever a partial match)
-        # and collapse the remaining hits to distinct slot bytes.
         slots = {h[-1] for h in hits if len(h) > len(KEYCARD_APPLET_AID)}
         return len(slots) or None
     except Exception:
-        logger.debug("keycard instance probe-count failed", exc_info=True)
+        logger.debug("keycard exact instance probe-count failed", exc_info=True)
         return None
     finally:
         if connection is not None:
@@ -4553,6 +4650,10 @@ class ToolsKeycardInstancesCreateView(View):
             title, body = classify_card_error(exc, default_title=_("GP open failed"))
             return _error_destination(title, body)
 
+        from seedsigner.views.view import (
+            estimate_remaining_instances, keycard_instance_nv_estimate,
+        )
+
         existing_aids = [i.aid for i in instances]
         keycard_count = sum(
             1 for aid in existing_aids if aid.startswith(KEYCARD_APPLET_AID)
@@ -4567,11 +4668,51 @@ class ToolsKeycardInstancesCreateView(View):
         except Exception as exc:
             return _error_destination(_("No slot"), str(exc))
 
+        # Memory-aware estimate (best-effort): how many more instances likely
+        # fit, given the card's free NV and the per-instance footprint. Read
+        # now so the same ``free_nv`` doubles as the pre-INSTALL baseline for
+        # self-calibration below (no card op changes free memory in between).
+        free_before = _safe_channel_free_nv(channel)
+        per_instance = keycard_instance_nv_estimate(self.controller)
+        remaining = estimate_remaining_instances(
+            free_before, keycard_count, per_instance, MAX_KEYCARD_INSTANCES,
+        )
+
+        # Soft warning when the estimate says there's no room — but only when we
+        # could actually read free memory (never block on an unprovable
+        # shortfall). The slot ceiling is already handled above, so a zero here
+        # is purely memory-driven. The user can still "Create anyway".
+        if free_before is not None and remaining <= 0:
+            ret = self.run_screen(
+                DireWarningScreen,
+                title=_("Low space"),
+                status_headline=None,
+                # TRANSLATOR_NOTE: shown when the card looks too full to hold
+                # another Keycard instance.
+                text=_("Card may be too full\nfor another instance."),
+                show_back_button=True,
+                button_data=[ButtonOption("Create anyway")],
+            )
+            if ret == RET_CODE__BACK_BUTTON:
+                return Destination(BackStackView)
+
+        # Create-confirm: surface the estimate when we have it, else the original
+        # package precondition note. Both stay within 3 short lines.
+        if free_before is not None:
+            # TRANSLATOR_NOTE: {} are the new instance AID and the estimated
+            # number of additional instances that still fit.
+            confirm_text = _("New AID:\n{}\n≈{} more fit").format(
+                _format_aid_short(new_aid), remaining,
+            )
+        else:
+            confirm_text = _("New AID:\n{}\nCard must have package.").format(
+                _format_aid_short(new_aid),
+            )
         ret = self.run_screen(
             DireWarningScreen,
             title=_("Create instance?"),
             status_headline=None,
-            text=_("New AID:\n{}\nCard must have package.").format(_format_aid_short(new_aid)),
+            text=confirm_text,
             show_back_button=True,
             button_data=[self.CONFIRM],
         )
@@ -4596,6 +4737,13 @@ class ToolsKeycardInstancesCreateView(View):
             logger.exception("INSTALL [for install] failed")
             title, body = classify_card_error(exc, default_title=_("Install failed"))
             return _error_destination(title, body)
+
+        # Self-calibrate the per-instance footprint from the free-NV delta this
+        # INSTALL caused (best-effort; ignored if either read was unavailable or
+        # the delta is implausible). Refines future "≈N fit" estimates.
+        _record_instance_nv_measurement(
+            self.controller, free_before, _safe_channel_free_nv(channel),
+        )
 
         # Instance set changed — force the top menu to re-probe the count
         # (so "Switch instance" reappears now that there are >1).

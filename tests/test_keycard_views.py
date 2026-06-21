@@ -932,10 +932,10 @@ class TestKeycardMenuRouting(unittest.TestCase):
         self.assertNotEqual(captured["duress"], b"111111")
         self.assertEqual(captured["pin"], b"111111")
 
-    def test_instance_cap_blocks_create_at_four(self):
+    def test_instance_cap_blocks_create_at_ceiling(self):
         """``ToolsKeycardInstancesCreateView`` must short-circuit to an
-        error destination when 4 Keycard instances already exist, and
-        must never call ``install_for_install_with_fallback``.
+        error destination when ``MAX_KEYCARD_INSTANCES`` Keycard instances
+        already exist, and must never call ``install_for_install_with_fallback``.
         """
         from unittest.mock import patch
 
@@ -947,15 +947,13 @@ class TestKeycardMenuRouting(unittest.TestCase):
             KEYCARD_APPLET_AID, ToolsKeycardInstancesCreateView,
         )
 
-        self.assertEqual(MAX_KEYCARD_INSTANCES, 4)
-
-        # Four installed Keycard instances at AIDs ...010101..010104.
+        # A full card: one Keycard instance per slot, 1..MAX (9-byte canonical).
         full_instances = [
             AppletInstance(
-                aid=KEYCARD_APPLET_AID + bytes([0x01, suffix]),
+                aid=KEYCARD_APPLET_AID + bytes([suffix]),
                 life_cycle=0, privileges=0,
             )
-            for suffix in range(0x01, 0x05)
+            for suffix in range(0x01, 0x01 + MAX_KEYCARD_INSTANCES)
         ]
 
         view = ToolsKeycardInstancesCreateView.__new__(ToolsKeycardInstancesCreateView)
@@ -1356,10 +1354,10 @@ class TestCountKeycardInstances(unittest.TestCase):
         from seedsigner.views.keycard_views import (
             KEYCARD_APPLET_AID, _count_keycard_instances,
         )
-        # Five instances, including suffixes BEYOND MAX_KEYCARD_INSTANCES
-        # (the cleartext probe would have missed these), plus one
-        # non-Keycard applet that must be filtered out.
-        aids = [KEYCARD_APPLET_AID + bytes([0x01, n]) for n in range(1, 6)]
+        # Five instances, including a slot BEYOND MAX_KEYCARD_INSTANCES (0x20 >
+        # 16 — the capped cleartext probe would miss it), plus one non-Keycard
+        # applet that must be filtered out.
+        aids = [KEYCARD_APPLET_AID + bytes([0x01, n]) for n in (1, 2, 3, 4, 0x20)]
         non_keycard = bytes.fromhex("5365656448656570657200")  # "SeedHeeper"-ish
         instances = self._instances(*aids, non_keycard)
         conn = MagicMock()
@@ -1415,10 +1413,11 @@ class TestProbeKeycardInstanceCount(unittest.TestCase):
     whether the title carries the ``Inst N`` suffix.
 
     It must NOT open the GP/ISD secure channel (that was the menu-entry stall
-    and fails slowly on non-default ISD keys). It SELECTs every valid slot, so
-    it returns the *exact* count whenever at least one slot is seen (including
-    one); for 0 hits / no card / error it returns ``None`` so the caller keeps
-    the entry and the label visible (never decide identity on a blank read).
+    and fails slowly on non-default ISD keys). It is a *bounded* probe — the
+    result is ``1`` or ``2`` (meaning "≥2"), never an exact count > 2, since
+    both consumers only care about the ``==1`` boundary. For 0 hits / no card /
+    error it returns ``None`` so the caller keeps the entry and the label
+    visible (never decide identity on a blank read).
     """
 
     def _probe(self, hits, raises=False):
@@ -1474,6 +1473,179 @@ class TestProbeKeycardInstanceCount(unittest.TestCase):
         result, _ = self._probe([], raises=True)
         self.assertIsNone(result)
 
+    def test_forwards_cheap_probe_knobs(self):
+        """The fast menu probe must ask for the *cheap* variant — 9-byte form
+        only, early-exit at the 2nd slot — so the raised ceiling (16) does not
+        re-introduce a ~32-SELECT menu-entry stall."""
+        from unittest.mock import patch
+        from seedsigner.views.keycard_views import _probe_keycard_instance_count
+        import seedsigner.helpers.keycard.global_platform as gp
+        import seedsigner.helpers.keycard.reader as reader
+        probe = MagicMock(return_value=[])
+        with patch.object(reader, "release_other_smartcard_holders", MagicMock()), \
+                patch.object(reader, "wait_for_card", MagicMock(return_value=MagicMock())), \
+                patch.object(gp, "probe_keycard_instance_aids", probe):
+            _probe_keycard_instance_count(MagicMock())
+        self.assertEqual(probe.call_args.kwargs.get("canonical_only"), True)
+        self.assertEqual(probe.call_args.kwargs.get("stop_after_slots"), 2)
+
+
+class TestProbeInstanceAidsKnobs(unittest.TestCase):
+    """``probe_keycard_instance_aids`` early-exit + canonical-only behaviour
+    that keeps the fast menu probe cheap despite the raised ceiling."""
+
+    class _Conn:
+        """Fake PC/SC connection: SW=9000 for the given AIDs, 0x6A82 else."""
+        def __init__(self, present):
+            self.present = {bytes(a) for a in present}
+            self.selected = []
+
+        def transmit(self, apdu):
+            aid = bytes(apdu[5:5 + apdu[4]])
+            self.selected.append(aid)
+            if aid in self.present:
+                return [], 0x90, 0x00
+            return [], 0x6A, 0x82
+
+    def test_canonical_only_skips_legacy_form(self):
+        from seedsigner.helpers.keycard.global_platform import (
+            probe_keycard_instance_aids,
+        )
+        from seedsigner.views.keycard_views import KEYCARD_APPLET_AID as A
+        conn = self._Conn([A + bytes([0x01])])
+        probe_keycard_instance_aids(conn, canonical_only=True)
+        # No 10-byte legacy candidate (prefix + 0x01 + slot) may be SELECTed.
+        legacy = [a for a in conn.selected if len(a) == len(A) + 2]
+        self.assertEqual(legacy, [])
+
+    def test_stop_after_slots_early_exits(self):
+        from seedsigner.helpers.keycard.global_platform import (
+            probe_keycard_instance_aids,
+        )
+        from seedsigner.views.keycard_views import KEYCARD_APPLET_AID as A
+        # Instances in slots 1..4; with stop_after_slots=2 the probe must stop
+        # after the 2nd distinct slot responds and not SELECT slots 3/4.
+        present = [A + bytes([s]) for s in range(1, 5)]
+        conn = self._Conn(present)
+        hits = probe_keycard_instance_aids(
+            conn, canonical_only=True, stop_after_slots=2,
+        )
+        slots = {h[-1] for h in hits if len(h) > len(A)}
+        self.assertEqual(len(slots), 2)
+        self.assertNotIn(A + bytes([0x03]), conn.selected)
+
+    def test_uncapped_full_count(self):
+        from seedsigner.helpers.keycard.global_platform import (
+            probe_keycard_instance_aids,
+        )
+        from seedsigner.views.keycard_views import KEYCARD_APPLET_AID as A
+        # The management/diagnostics path (no cap) sees every slot.
+        present = [A + bytes([s]) for s in (1, 3, 5)]
+        conn = self._Conn(present)
+        hits = probe_keycard_instance_aids(conn)
+        slots = {h[-1] for h in hits if len(h) > len(A)}
+        self.assertEqual(slots, {1, 3, 5})
+
+
+class TestCreateInstanceMemoryGate(unittest.TestCase):
+    """``ToolsKeycardInstancesCreateView`` memory-awareness: a soft low-space
+    warning, the "Create anyway" override, and self-calibration of the
+    per-instance footprint from the free-NV delta around INSTALL."""
+
+    def _view(self, existing_count=1):
+        from seedsigner.helpers.keycard.global_platform import AppletInstance
+        from seedsigner.views.keycard_views import (
+            KEYCARD_APPLET_AID, ToolsKeycardInstancesCreateView,
+        )
+        existing = [
+            AppletInstance(aid=KEYCARD_APPLET_AID + bytes([s]),
+                           life_cycle=7, privileges=0)
+            for s in range(1, 1 + existing_count)
+        ]
+        view = ToolsKeycardInstancesCreateView.__new__(ToolsKeycardInstancesCreateView)
+        view.controller = MagicMock()
+        view.controller.keycard_measured_instance_nv = None
+        return view, existing
+
+    def test_low_space_warns_and_back_cancels(self):
+        """When the estimate says there's no room, the first screen is the
+        'Low space' warning; backing out aborts without installing."""
+        from unittest.mock import patch
+        from seedsigner.views import keycard_views
+        from seedsigner.views.view import BackStackView
+        from seedsigner.gui.screens import RET_CODE__BACK_BUTTON
+
+        view, existing = self._view(existing_count=1)
+        view.run_screen = MagicMock(return_value=RET_CODE__BACK_BUTTON)
+        with patch.object(keycard_views, "_open_isd_channel",
+                          return_value=(MagicMock(), existing, MagicMock())), \
+             patch.object(keycard_views, "_safe_channel_free_nv",
+                          return_value=3000), \
+             patch("seedsigner.helpers.keycard.global_platform."
+                   "install_for_install_with_fallback") as install_mock:
+            dest = view.run()
+
+        self.assertEqual(view.run_screen.call_args_list[0].kwargs["title"], "Low space")
+        install_mock.assert_not_called()
+        self.assertIs(dest.View_cls, BackStackView)
+
+    def test_sufficient_space_skips_low_space_warning(self):
+        from unittest.mock import patch
+        from seedsigner.views import keycard_views
+
+        view, existing = self._view(existing_count=1)
+        # Non-back sentinel so confirm proceeds through install.
+        view.run_screen = MagicMock(return_value=object())
+        with patch.object(keycard_views, "_open_isd_channel",
+                          return_value=(MagicMock(), existing, MagicMock())), \
+             patch.object(keycard_views, "_safe_channel_free_nv",
+                          return_value=100000), \
+             patch("seedsigner.helpers.keycard.global_platform."
+                   "install_for_install_with_fallback") as install_mock:
+            view.run()
+
+        titles = [c.kwargs.get("title") for c in view.run_screen.call_args_list]
+        self.assertNotIn("Low space", titles)
+        self.assertIn("Create instance?", titles)
+        install_mock.assert_called_once()
+
+    def test_install_delta_calibrates_per_instance_nv(self):
+        from unittest.mock import patch
+        from seedsigner.views import keycard_views
+
+        view, existing = self._view(existing_count=1)
+        view.run_screen = MagicMock(return_value=object())
+        # free_nv read twice: pre-INSTALL baseline, then post-INSTALL.
+        with patch.object(keycard_views, "_open_isd_channel",
+                          return_value=(MagicMock(), existing, MagicMock())), \
+             patch.object(keycard_views, "_safe_channel_free_nv",
+                          side_effect=[100000, 98000]), \
+             patch("seedsigner.helpers.keycard.global_platform."
+                   "install_for_install_with_fallback"):
+            view.run()
+
+        # delta 2000 is in [256, 16384] -> stored as the card's per-instance cost.
+        self.assertEqual(view.controller.keycard_measured_instance_nv, 2000)
+
+    def test_implausible_delta_ignored(self):
+        from unittest.mock import patch
+        from seedsigner.views import keycard_views
+
+        view, existing = self._view(existing_count=1)
+        view.run_screen = MagicMock(return_value=object())
+        # A negative/garbage delta (free went UP) must not poison calibration.
+        with patch.object(keycard_views, "_open_isd_channel",
+                          return_value=(MagicMock(), existing, MagicMock())), \
+             patch.object(keycard_views, "_safe_channel_free_nv",
+                          side_effect=[98000, 100000]), \
+             patch("seedsigner.helpers.keycard.global_platform."
+                   "install_for_install_with_fallback"):
+            view.run()
+
+        self.assertIsNone(view.controller.keycard_measured_instance_nv)
+
+
+class TestProbeKeycardInstanceCountMenuEntry(unittest.TestCase):
     def test_menu_entry_uses_probe_and_never_opens_isd(self):
         """The top menu on entry (cache unknown) must take the cleartext probe
         and NEVER the GP/ISD handshake — the performance contract."""
@@ -2952,6 +3124,7 @@ class TestInstanceNameResolution(unittest.TestCase):
         c.keycard_pins = {}
         c.keycard_wallets_data = {}
         c.keycard_instance_count = 3
+        c.keycard_measured_instance_nv = 2000
         c.forget_satochip_session = lambda: None
         c.keycard_aid_to_uid = {c.active_keycard_aid: b"\x44" * 16}
         c.keycard_instance_names = {b"\x44" * 16: "Hot"}
@@ -2962,6 +3135,9 @@ class TestInstanceNameResolution(unittest.TestCase):
         self.assertEqual(c.keycard_aid_to_uid, {})
         self.assertIsNone(c.last_keycard_uid)
         self.assertEqual(c.keycard_instance_names, {})
+        # Per-instance NV calibration is card-specific -> dropped on swap.
+        self.assertIsNone(c.keycard_measured_instance_nv)
+        self.assertIsNone(c.keycard_instance_count)
 
     def test_resolve_instance_uids_selects_each_aid(self):
         """``_resolve_instance_uids`` SELECTs every AID and records its UID;
@@ -3094,13 +3270,14 @@ class TestInstanceAidAllocation(unittest.TestCase):
         self.assertEqual(_next_free_instance_aid(existing), p + bytes([0x02]))
 
     def test_next_free_aid_full_raises(self):
+        from seedsigner.helpers.keycard.global_platform import MAX_KEYCARD_INSTANCES
         from seedsigner.views.keycard_views import _next_free_instance_aid
         p = self._prefix()
+        # Every slot 1..MAX occupied (alternating 9-/10-byte forms) -> no free
+        # slot, so allocation must raise.
         existing = [
-            p + bytes([0x01]),            # slot 1 (9-byte)
-            p + bytes([0x01, 0x02]),      # slot 2 (10-byte)
-            p + bytes([0x03]),            # slot 3 (9-byte)
-            p + bytes([0x01, 0x04]),      # slot 4 (10-byte)
+            (p + bytes([slot]) if slot % 2 else p + bytes([0x01, slot]))
+            for slot in range(0x01, 0x01 + MAX_KEYCARD_INSTANCES)
         ]
         with self.assertRaises(RuntimeError):
             _next_free_instance_aid(existing)

@@ -1066,10 +1066,13 @@ class StorageBar(BaseComponent):
 class KeycardStorageScreen(ButtonListScreen):
     """Card-memory overview: a percentage headline, an occupation bar, and a
     used / total / free breakdown. ``total_bytes`` is ``free + used`` (the
-    card never reports its true capacity); see ``views.view`` accounting."""
+    card never reports its true capacity); see ``views.view`` accounting.
+    ``remaining_instances`` (when not ``None``) appends an estimated "≈N more
+    instances fit" line."""
     used_bytes: int = 0
     total_bytes: int = 0
     free_bytes: int = 0
+    remaining_instances: int = None
 
     def __post_init__(self):
         self.button_data = [ButtonOption("OK")]
@@ -1109,11 +1112,23 @@ class KeycardStorageScreen(ButtonListScreen):
         detail = _("{} / {} KB used\n{} KB free").format(
             _kib(self.used_bytes), _kib(self.total_bytes), _kib(self.free_bytes),
         )
-        self.components.append(TextArea(
+        detail_area = TextArea(
             text=detail,
             width=self.canvas_width,
             screen_y=next_y,
-        ))
+        )
+        self.components.append(detail_area)
+        next_y += detail_area.height + GUIConstants.LIST_ITEM_PADDING
+
+        if self.remaining_instances is not None:
+            # TRANSLATOR_NOTE: {} is the estimated number of additional Keycard
+            # instances that still fit on the card.
+            self.components.append(TextArea(
+                text=_("≈{} more instances fit").format(self.remaining_instances),
+                font_size=GUIConstants.get_body_font_size() - 2,
+                width=self.canvas_width,
+                screen_y=next_y,
+            ))
 
 
 

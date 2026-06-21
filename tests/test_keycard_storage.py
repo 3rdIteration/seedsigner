@@ -208,6 +208,66 @@ class TestSizeHelpers(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# Per-instance NV estimate (memory-aware instance limit)
+# ---------------------------------------------------------------------------
+class TestInstanceNvEstimate(unittest.TestCase):
+    def test_falls_back_to_constant(self):
+        from seedsigner.views import view as view_mod
+        # None / unset measurement -> conservative constant.
+        c = types.SimpleNamespace(keycard_measured_instance_nv=None)
+        self.assertEqual(
+            view_mod.keycard_instance_nv_estimate(c),
+            view_mod.KEYCARD_INSTANCE_NV_ESTIMATE_BYTES,
+        )
+
+    def test_uses_measured_when_present(self):
+        from seedsigner.views import view as view_mod
+        c = types.SimpleNamespace(keycard_measured_instance_nv=1500)
+        self.assertEqual(view_mod.keycard_instance_nv_estimate(c), 1500)
+
+    def test_non_int_measurement_ignored(self):
+        from seedsigner.views import view as view_mod
+        from unittest.mock import MagicMock
+        # A MagicMock attr (or any non-int) must not poison the arithmetic.
+        c = MagicMock()
+        self.assertEqual(
+            view_mod.keycard_instance_nv_estimate(c),
+            view_mod.KEYCARD_INSTANCE_NV_ESTIMATE_BYTES,
+        )
+
+
+class TestEstimateRemainingInstances(unittest.TestCase):
+    def test_memory_is_binding(self):
+        from seedsigner.views.view import (
+            estimate_remaining_instances, LOW_SPACE_MARGIN_BYTES,
+        )
+        # free 20 KB, 3 KB each: (20480-2048)//3072 = 5; slot headroom 14.
+        self.assertEqual(
+            estimate_remaining_instances(20480, 2, 3072, 16),
+            (20480 - LOW_SPACE_MARGIN_BYTES) // 3072,
+        )
+
+    def test_slot_ceiling_is_binding(self):
+        from seedsigner.views.view import estimate_remaining_instances
+        # Plenty of memory, but only 1 slot left below the ceiling.
+        self.assertEqual(estimate_remaining_instances(10**9, 15, 3072, 16), 1)
+
+    def test_zero_when_memory_exhausted(self):
+        from seedsigner.views.view import estimate_remaining_instances
+        # free below the margin -> no room.
+        self.assertEqual(estimate_remaining_instances(1000, 2, 3072, 16), 0)
+
+    def test_zero_when_slots_exhausted(self):
+        from seedsigner.views.view import estimate_remaining_instances
+        self.assertEqual(estimate_remaining_instances(10**9, 16, 3072, 16), 0)
+
+    def test_none_free_nv_uses_slot_headroom(self):
+        from seedsigner.views.view import estimate_remaining_instances
+        # Card didn't expose the memory tag: fall back to slot headroom alone.
+        self.assertEqual(estimate_remaining_instances(None, 4, 3072, 16), 12)
+
+
+# ---------------------------------------------------------------------------
 # _warn_if_low_space
 # ---------------------------------------------------------------------------
 class TestWarnIfLowSpace(unittest.TestCase):
@@ -363,12 +423,15 @@ class TestStorageView(unittest.TestCase):
 
     def test_renders_bar_with_computed_totals(self):
         from seedsigner.views import view as view_mod
+        from seedsigner.views import keycard_views
         from seedsigner.helpers.keycard import ui_helpers
         from seedsigner.helpers import card_probe as card_probe_mod
         from seedsigner.helpers.keycard.global_platform import CardMemory
         from seedsigner.gui.screens.screen import KeycardStorageScreen
 
         view = self._make_view()
+        # No measured per-instance footprint -> the estimate uses the constant.
+        view.controller.keycard_measured_instance_nv = None
         mem = CardMemory(free_nv=50000, free_volatile=0, num_apps=2)
         probe = types.SimpleNamespace(
             keycard_installed=True, seedkeeper_installed=False,
@@ -376,6 +439,8 @@ class TestStorageView(unittest.TestCase):
         with patch.object(ui_helpers, "query_card_memory", return_value=mem), \
              patch.object(card_probe_mod, "probe_installed_applets",
                           return_value=probe), \
+             patch.object(keycard_views, "_probe_keycard_instance_count_exact",
+                          return_value=2), \
              patch.object(view_mod, "estimated_used_nv", return_value=20000):
             view.run()
 
@@ -384,6 +449,9 @@ class TestStorageView(unittest.TestCase):
         self.assertEqual(kwargs["free_bytes"], 50000)
         self.assertEqual(kwargs["used_bytes"], 20000)
         self.assertEqual(kwargs["total_bytes"], 70000)
+        # 2 instances exist; ceiling 16 -> slot headroom 14. Memory headroom
+        # (50000-2048)//3072 = 15. min(14, 15) = 14.
+        self.assertEqual(kwargs["remaining_instances"], 14)
 
 
 if __name__ == "__main__":
