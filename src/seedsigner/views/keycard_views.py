@@ -2085,6 +2085,10 @@ class ToolsKeycardImportSeedView(View):
         words: list = []
         passphrase_buf = bytearray()
         seed64 = bytearray(64)
+        # Declared up-front so the finally can wipe them even if an
+        # exception fires before they are assigned inside the try.
+        mnemonic = None
+        passphrase = None
 
         try:
             # 3. Capture the mnemonic.
@@ -2204,6 +2208,16 @@ class ToolsKeycardImportSeedView(View):
             for i in range(len(words)):
                 try:
                     wipe_string(words[i])
+                except Exception:
+                    pass
+            # The joined mnemonic and decoded passphrase are immutable
+            # strings that each hold the whole secret in one allocation;
+            # wipe them too. They are fresh single-owner ASCII strings, so
+            # the _is_shared guard won't block and the wordlist (words were
+            # "".join-copied) is untouched.
+            for s in (mnemonic, passphrase):
+                try:
+                    wipe_string(s)
                 except Exception:
                     pass
             _wipe_bytearray(passphrase_buf)
@@ -2715,6 +2729,10 @@ class ToolsKeycardImportSeedkeeperPushView(View):
             return Destination(BackStackView)
 
         seed64 = bytearray(64)
+        # Declared up-front so the finally can wipe these immutable
+        # plaintext-seed strings on every exit path.
+        passphrase = None
+        mnemonic_str = None
         try:
             try:
                 passphrase = passphrase_buf.decode("utf-8")
@@ -2777,6 +2795,11 @@ class ToolsKeycardImportSeedkeeperPushView(View):
             )
             return Destination(ToolsKeycardMenuView, clear_history=True)
         finally:
+            for s in (mnemonic_str, passphrase):
+                try:
+                    wipe_string(s)
+                except Exception:
+                    pass
             _wipe_bytearray(seed64)
 
 
@@ -3166,6 +3189,10 @@ class ToolsKeycardGenerateSeedLoadView(View):
             return Destination(BackStackView)
 
         seed64 = bytearray(64)
+        # Declared up-front so the finally can wipe these immutable
+        # plaintext-seed strings on every exit path.
+        mnemonic_str = None
+        passphrase_str = None
         try:
             from embit import bip39, bip32
             mnemonic_str = " ".join(mnemonic)
@@ -3220,6 +3247,11 @@ class ToolsKeycardGenerateSeedLoadView(View):
                 ToolsKeycardSeedkeeperOfferView, skip_current_view=True,
             )
         finally:
+            for s in (mnemonic_str, passphrase_str):
+                try:
+                    wipe_string(s)
+                except Exception:
+                    pass
             wipe_bytearray(seed64)
 
 
@@ -3463,106 +3495,138 @@ class ToolsKeycardSeedkeeperSaveRunView(View):
         if not mnemonic or passphrase_buf is None:
             return Destination(BackStackView)
 
-        mnemonic_str = " ".join(mnemonic)
+        # Locals that hold plaintext-seed copies; declared up-front so the
+        # finally can scrub them on every exit path. mnem_bytes/pp_bytes/
+        # secret_list must be lists of ints for pysatochip's
+        # seedkeeper_import_secret — CPython interns small ints so the values
+        # can't be wiped, but clearing the lists drops the ordering that
+        # reconstructs the secret.
+        mnemonic_str = None
+        passphrase_str = None
+        mnem_bytes = None
+        pp_bytes = None
+        secret_list = None
         try:
-            passphrase_str = passphrase_buf.decode("utf-8")
-        except Exception:
-            passphrase_str = ""
+            mnemonic_str = " ".join(mnemonic)
+            try:
+                passphrase_str = passphrase_buf.decode("utf-8")
+            except Exception:
+                passphrase_str = ""
 
-        label_ret = seed_screens.SeedAddPassphraseScreen(
-            title=_("Secret label"),
-        ).display()
-        if isinstance(label_ret, dict) and "is_back_button" in label_ret:
-            return Destination(BackStackView)
-        if not isinstance(label_ret, dict):
-            # Transient: keep the seed, let the user retry the backup.
-            return _backup_error_retry(self, "Bad label", "Could not read label")
-        label = label_ret.get("passphrase", "").strip() or "Keycard backup"
+            label_ret = seed_screens.SeedAddPassphraseScreen(
+                title=_("Secret label"),
+            ).display()
+            if isinstance(label_ret, dict) and "is_back_button" in label_ret:
+                return Destination(BackStackView)
+            if not isinstance(label_ret, dict):
+                # Transient: keep the seed, let the user retry the backup.
+                return _backup_error_retry(self, "Bad label", "Could not read label")
+            label = label_ret.get("passphrase", "").strip() or "Keycard backup"
 
-        Satochip_Connector = seedkeeper_utils.init_satochip(
-            self, init_card_filter=["seedkeeper"],
-        )
-        if not Satochip_Connector:
-            # PIN cancelled or card not reachable — init_satochip already
-            # surfaced the reason. Keep the seed and return to the
-            # destination chooser so the user can retry or pick another
-            # target (a back-out there wipes).
-            return Destination(ToolsKeycardSeedkeeperDestChooserView)
-
-        export_rights = "Plaintext export allowed"
-        # iOS-compatible "BIP39 mnemonic" layout, subtype=0.
-        # Body: [size|mnemonic|size|passphrase].
-        mnem_bytes = list(mnemonic_str.encode("utf-8"))
-        pp_bytes = list(passphrase_str.encode("utf-8"))
-        secret_list = (
-            [len(mnem_bytes)] + mnem_bytes
-            + [len(pp_bytes)] + pp_bytes
-        )
-        header = Satochip_Connector.make_header(
-            "BIP39 mnemonic", export_rights, label, subtype=0,
-        )
-
-        secret_dic = {"header": header, "secret_list": secret_list}
-
-        loading = None
-        try:
-            fits, required, free = seedkeeper_utils.ensure_seedkeeper_capacity(
-                Satochip_Connector, secret_dic,
+            Satochip_Connector = seedkeeper_utils.init_satochip(
+                self, init_card_filter=["seedkeeper"],
             )
-        except Exception as exc:
-            return _backup_error_retry(self, "Seedkeeper error", str(exc))
+            if not Satochip_Connector:
+                # PIN cancelled or card not reachable — init_satochip already
+                # surfaced the reason. Keep the seed and return to the
+                # destination chooser so the user can retry or pick another
+                # target (a back-out there wipes).
+                return Destination(ToolsKeycardSeedkeeperDestChooserView)
 
-        if not fits:
-            return _backup_error_retry(
-                self, "Not enough space",
-                seedkeeper_utils.format_seedkeeper_space_error(required, free),
+            export_rights = "Plaintext export allowed"
+            # iOS-compatible "BIP39 mnemonic" layout, subtype=0.
+            # Body: [size|mnemonic|size|passphrase].
+            mnem_bytes = list(mnemonic_str.encode("utf-8"))
+            pp_bytes = list(passphrase_str.encode("utf-8"))
+            secret_list = (
+                [len(mnem_bytes)] + mnem_bytes
+                + [len(pp_bytes)] + pp_bytes
+            )
+            header = Satochip_Connector.make_header(
+                "BIP39 mnemonic", export_rights, label, subtype=0,
             )
 
-        try:
-            loading = LoadingScreenThread(text=_("Saving secret\n\n\n\n\n\n"))
-            loading.start()
-            Satochip_Connector.seedkeeper_import_secret(secret_dic)
-            loading.stop()
-        except UnexpectedSW12Error as exc:
-            if loading is not None:
-                loading.stop()
-            from seedsigner.helpers.iso7816 import format_sw_error
-            if exc.sw1 == 0x6A and exc.sw2 == 0x84:
-                err = "Not enough space on Seedkeeper"
-            else:
-                err = format_sw_error(exc.sw1, exc.sw2)
-            return _backup_error_retry(self, "Save failed", err)
-        except Exception as exc:
-            if loading is not None:
-                loading.stop()
-            logger.exception("Seedkeeper import failed")
-            return _backup_error_retry(self, "Save failed", str(exc))
+            secret_dic = {"header": header, "secret_list": secret_list}
 
-        # Saved successfully. If a further destination remains (the Both
-        # flow), DON'T wipe yet — swap to a separate card and save again.
-        if "other" in self.remaining:
+            loading = None
+            try:
+                fits, required, free = seedkeeper_utils.ensure_seedkeeper_capacity(
+                    Satochip_Connector, secret_dic,
+                )
+            except Exception as exc:
+                return _backup_error_retry(self, "Seedkeeper error", str(exc))
+
+            if not fits:
+                return _backup_error_retry(
+                    self, "Not enough space",
+                    seedkeeper_utils.format_seedkeeper_space_error(required, free),
+                )
+
+            try:
+                loading = LoadingScreenThread(text=_("Saving secret\n\n\n\n\n\n"))
+                loading.start()
+                Satochip_Connector.seedkeeper_import_secret(secret_dic)
+                loading.stop()
+            except UnexpectedSW12Error as exc:
+                if loading is not None:
+                    loading.stop()
+                from seedsigner.helpers.iso7816 import format_sw_error
+                if exc.sw1 == 0x6A and exc.sw2 == 0x84:
+                    err = "Not enough space on Seedkeeper"
+                else:
+                    err = format_sw_error(exc.sw1, exc.sw2)
+                return _backup_error_retry(self, "Save failed", err)
+            except Exception as exc:
+                if loading is not None:
+                    loading.stop()
+                logger.exception("Seedkeeper import failed")
+                return _backup_error_retry(self, "Save failed", str(exc))
+
+            # Saved successfully. If a further destination remains (the Both
+            # flow), DON'T wipe yet — swap to a separate card and save again.
+            if "other" in self.remaining:
+                self.run_screen(
+                    LargeIconStatusScreen,
+                    title=_("Saved (1 of 2)"),
+                    status_headline=None,
+                    text=_("Now back up to a\nseparate card."),
+                    show_back_button=False,
+                    button_data=[ButtonOption("Continue")],
+                )
+                return Destination(ToolsKeycardSeedkeeperSwapInsertView)
+
+            _wipe_pending_setup_state(self.controller)
             self.run_screen(
                 LargeIconStatusScreen,
-                title=_("Saved (1 of 2)"),
+                title=_("Backup saved"),
                 status_headline=None,
-                text=_("Now back up to a\nseparate card."),
+                text=_("Mnemonic stored on Seedkeeper."),
                 show_back_button=False,
-                button_data=[ButtonOption("Continue")],
+                button_data=[ButtonOption("OK")],
             )
-            return Destination(ToolsKeycardSeedkeeperSwapInsertView)
-
-        _wipe_pending_setup_state(self.controller)
-        self.run_screen(
-            LargeIconStatusScreen,
-            title=_("Backup saved"),
-            status_headline=None,
-            text=_("Mnemonic stored on Seedkeeper."),
-            show_back_button=False,
-            button_data=[ButtonOption("OK")],
-        )
-        return Destination(
-            ToolsKeycardMenuView, clear_history=True,
-        )
+            return Destination(
+                ToolsKeycardMenuView, clear_history=True,
+            )
+        finally:
+            # Scrub the local plaintext-seed copies. NOTE: this does NOT
+            # touch the controller's pending_* copies — the Both flow must
+            # keep them for the second save; those stay under the existing
+            # error-vs-user-exit wipe rule (_wipe_pending_setup_state / the
+            # MainMenuView backstop).
+            for s in (mnemonic_str, passphrase_str):
+                try:
+                    wipe_string(s)
+                except Exception:
+                    pass
+            for lst in (mnem_bytes, pp_bytes, secret_list):
+                if lst is None:
+                    continue
+                try:
+                    for i in range(len(lst)):
+                        lst[i] = 0
+                    lst.clear()
+                except Exception:
+                    pass
 
 
 # ---------------------------------------------------------------------------

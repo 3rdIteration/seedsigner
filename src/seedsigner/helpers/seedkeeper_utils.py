@@ -606,29 +606,68 @@ def decode_seedkeeper_seed_secret(secret_dict, subtype=0):
     stype = SEEDKEEPER_DIC_TYPE.get(secret_dict.get("type"), "")
 
     if "mnemonic" in stype:  # BIP39 mnemonic v1
-        raw = unhexlify(secret_dict["secret"])[1:].decode().rstrip("\x00")
-        size = secret_dict["secret_list"][0]
-        return raw[:size], raw[size + 1:]
+        # Every field here comes off an untrusted card; validate before
+        # slicing so a truncated/hostile secret yields a clean None rather
+        # than an exception mid-import.
+        try:
+            raw = unhexlify(secret_dict["secret"])[1:].decode().rstrip("\x00")
+            secret_list = secret_dict.get("secret_list") or []
+            if not secret_list:
+                return None
+            size = secret_list[0]
+            if not isinstance(size, int) or size < 0 or size > len(raw):
+                return None
+            return raw[:size], raw[size + 1:]
+        except (KeyError, ValueError, UnicodeDecodeError, IndexError):
+            return None
 
     if stype == "Masterseed" and subtype == 0x01:
         from mnemonic import Mnemonic
-        raw = bytes.fromhex(secret_dict["secret"])
+        # All length-prefixed fields below come straight off an untrusted
+        # card. Bounds-check every read before slicing so a truncated or
+        # malformed secret yields a clean None (unsupported/corrupt) instead
+        # of an IndexError part-way through the import.
+        try:
+            raw = bytes.fromhex(secret_dict["secret"])
+        except (KeyError, ValueError):
+            return None
         off = 0
+        if off >= len(raw):
+            return None
         ms_size = raw[off]; off += 1
         off += ms_size  # skip the masterseed bytes themselves
+        if off >= len(raw):
+            return None
         wl_byte = raw[off]; off += 1
         wordlist = BIP39_WORDLIST_DIC.get(wl_byte)
         if wordlist is None:
             return None
+        if off >= len(raw):
+            return None
         ent_size = raw[off]; off += 1
+        # BIP-39 entropy must be one of the canonical lengths; reject
+        # anything else before to_mnemonic (which would otherwise raise).
+        if ent_size not in (16, 20, 24, 28, 32):
+            return None
+        if off + ent_size > len(raw):
+            return None
         entropy = raw[off:off + ent_size]; off += ent_size
-        mnemonic = Mnemonic(wordlist).to_mnemonic(entropy)
-        pp_size = raw[off]; off += 1
-        pp_bytes = raw[off:off + pp_size]
         try:
-            passphrase = pp_bytes.decode("utf-8")
-        except Exception:
-            passphrase = ""
+            mnemonic = Mnemonic(wordlist).to_mnemonic(entropy)
+        except (ValueError, IndexError):
+            return None
+        # The passphrase is optional: a missing trailing length byte simply
+        # means "no passphrase", not a corrupt secret.
+        passphrase = ""
+        if off < len(raw):
+            pp_size = raw[off]; off += 1
+            if off + pp_size > len(raw):
+                return None
+            pp_bytes = raw[off:off + pp_size]
+            try:
+                passphrase = pp_bytes.decode("utf-8")
+            except Exception:
+                passphrase = ""
         return mnemonic, passphrase
 
     return None

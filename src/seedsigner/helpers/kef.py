@@ -22,6 +22,7 @@
 
 from Cryptodome.Cipher import AES
 import hashlib
+import hmac
 import unicodedata
 
 
@@ -333,7 +334,8 @@ class Cipher:
             else:
                 # for encrypted auth < 0: hash only the decrypted
                 cksum = hashlib.sha256(decrypted).digest()[:-v_auth]
-            if cksum == auth:
+            # Constant-time compare of the authentication tag.
+            if hmac.compare_digest(cksum, auth):
                 return decrypted
 
             if v_auth < 0:

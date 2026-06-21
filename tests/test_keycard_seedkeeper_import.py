@@ -110,6 +110,107 @@ class TestDecodeSeedkeeperSeedSecret(unittest.TestCase):
         secret_dict = {"type": 16, "secret": "00", "secret_list": []}
         self.assertIsNone(self._decode(secret_dict, subtype=0x00))
 
+    # --- malformed / hostile card payloads must yield None, never raise -----
+
+    def test_masterseed_v2_truncated_returns_none(self):
+        # A 1-byte secret can't carry a full masterseed-v2 record.
+        secret_dict = {"type": 16, "secret": "00", "secret_list": []}
+        self.assertIsNone(self._decode(secret_dict, subtype=0x01))
+
+    def test_masterseed_v2_invalid_entropy_length_returns_none(self):
+        # ent_size = 7 is not a legal BIP-39 entropy length → rejected before
+        # ever reaching the mnemonic library (so no mock needed, no raise).
+        masterseed = b"\xAA" * 4
+        raw = (
+            bytes([len(masterseed)]) + masterseed
+            + bytes([0])                 # english
+            + bytes([7]) + b"\x00" * 7   # bogus 7-byte entropy
+            + bytes([0])                 # empty passphrase
+        )
+        secret_dict = {"type": 16, "secret": raw.hex(), "secret_list": []}
+        self.assertIsNone(self._decode(secret_dict, subtype=0x01))
+
+    def test_masterseed_v2_entropy_overruns_buffer_returns_none(self):
+        # ent_size claims 32 bytes but the buffer holds only 4.
+        masterseed = b"\xAA" * 4
+        raw = (
+            bytes([len(masterseed)]) + masterseed
+            + bytes([0])
+            + bytes([32]) + b"\x11" * 4   # truncated entropy
+        )
+        secret_dict = {"type": 16, "secret": raw.hex(), "secret_list": []}
+        self.assertIsNone(self._decode(secret_dict, subtype=0x01))
+
+    def test_masterseed_v2_passphrase_overruns_buffer_returns_none(self):
+        import mnemonic as mnemonic_mod
+        entropy = b"\x11" * 16
+        masterseed = b"\xAA" * 4
+        raw = (
+            bytes([len(masterseed)]) + masterseed
+            + bytes([0])
+            + bytes([len(entropy)]) + entropy
+            + bytes([40]) + b"short"      # pp_size lies (40 > 5 remaining)
+        )
+        secret_dict = {"type": 16, "secret": raw.hex(), "secret_list": []}
+        fake = MagicMock()
+        fake.to_mnemonic.return_value = self.MNEMONIC12
+        with patch.object(mnemonic_mod, "Mnemonic", MagicMock(return_value=fake)):
+            self.assertIsNone(self._decode(secret_dict, subtype=0x01))
+
+    def test_masterseed_v2_missing_passphrase_byte_ok(self):
+        # No trailing passphrase length byte at all means "no passphrase",
+        # which is a valid seed, not a corrupt secret.
+        import mnemonic as mnemonic_mod
+        entropy = b"\x11" * 16
+        masterseed = b"\xAA" * 4
+        raw = (
+            bytes([len(masterseed)]) + masterseed
+            + bytes([0])
+            + bytes([len(entropy)]) + entropy
+            # deliberately no passphrase length byte
+        )
+        secret_dict = {"type": 16, "secret": raw.hex(), "secret_list": []}
+        fake = MagicMock()
+        fake.to_mnemonic.return_value = self.MNEMONIC12
+        with patch.object(mnemonic_mod, "Mnemonic", MagicMock(return_value=fake)):
+            mnemonic, pp = self._decode(secret_dict, subtype=0x01)
+        self.assertEqual(mnemonic, self.MNEMONIC12)
+        self.assertEqual(pp, "")
+
+    def test_masterseed_v2_to_mnemonic_raises_returns_none(self):
+        import mnemonic as mnemonic_mod
+        entropy = b"\x11" * 16
+        masterseed = b"\xAA" * 4
+        raw = (
+            bytes([len(masterseed)]) + masterseed
+            + bytes([0])
+            + bytes([len(entropy)]) + entropy
+            + bytes([0])
+        )
+        secret_dict = {"type": 16, "secret": raw.hex(), "secret_list": []}
+        fake = MagicMock()
+        fake.to_mnemonic.side_effect = ValueError("bad entropy")
+        with patch.object(mnemonic_mod, "Mnemonic", MagicMock(return_value=fake)):
+            self.assertIsNone(self._decode(secret_dict, subtype=0x01))
+
+    def test_masterseed_v2_bad_hex_returns_none(self):
+        secret_dict = {"type": 16, "secret": "zzzz", "secret_list": []}
+        self.assertIsNone(self._decode(secret_dict, subtype=0x01))
+
+    def test_masterseed_v2_missing_secret_key_returns_none(self):
+        secret_dict = {"type": 16, "secret_list": []}
+        self.assertIsNone(self._decode(secret_dict, subtype=0x01))
+
+    def test_bip39_v1_empty_secret_list_returns_none(self):
+        secret = b"\x01" + self.MNEMONIC12.encode("utf-8")
+        secret_dict = {"type": 48, "secret": secret.hex(), "secret_list": []}
+        self.assertIsNone(self._decode(secret_dict))
+
+    def test_bip39_v1_oversized_size_returns_none(self):
+        secret = b"\x01" + b"abc"
+        secret_dict = {"type": 48, "secret": secret.hex(), "secret_list": [999]}
+        self.assertIsNone(self._decode(secret_dict))
+
 
 class TestImportChooserRouting(unittest.TestCase):
     """The "From SeedKeeper" source routes into the dedicated swap chain."""

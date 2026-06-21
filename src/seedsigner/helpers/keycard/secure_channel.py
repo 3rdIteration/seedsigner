@@ -51,6 +51,7 @@ command/response the AES-CBC encryption IV is replaced by the MAC.
 
 from __future__ import annotations
 
+import hmac
 from dataclasses import dataclass
 from typing import Optional
 
@@ -155,7 +156,9 @@ class SecureChannel:
         # MUTUALLY_AUTHENTICATE reply, blocking every secure channel.
         mac_input = bytes([len(response) & 0xFF]) + b"\x00" * 15 + ciphertext
         expected = crypto.aes_cbc_block(self._mac_key, b"\x00" * 16, mac_input)
-        if expected != mac:
+        # Constant-time compare so the MAC check can't leak the expected
+        # value byte-by-byte to a malicious reader via timing.
+        if not hmac.compare_digest(expected, mac):
             raise SecureChannelError("response MAC mismatch")
 
         plaintext = crypto.aes_cbc_decrypt(self._enc_key, self._iv, ciphertext)
