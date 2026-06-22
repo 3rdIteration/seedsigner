@@ -62,6 +62,9 @@ class SeedMnemonicEntryScreen(BaseTopNavScreen):
             ),
             auto_wrap=[Keyboard.WRAP_LEFT, Keyboard.WRAP_RIGHT]
         )
+        # Letters that can't continue a valid word get greyed out; skip over them
+        # while navigating so the cursor jumps straight to the next available key.
+        self.keyboard.skip_inactive_keys = True
 
         self.text_entry_display = TextEntryDisplay(
             canvas=self.canvas,
@@ -378,8 +381,12 @@ class SeedMnemonicEntryScreen(BaseTopNavScreen):
                     self.calc_possible_alphabet()
                     self.keyboard.update_active_keys(active_keys=self.possible_alphabet)
 
-                    if len(self.possible_alphabet) == 1:
-                        # If there's only one possible letter left, select it
+                    # If the just-locked letter is now greyed out, jump the cursor
+                    # straight to the first still-available letter so the user
+                    # never has to scroll off a deactivated key. (Generalises the
+                    # old "only one letter left" special case.) Guard against the
+                    # completed-word state where no next letter is possible.
+                    if self.possible_alphabet and not self.keyboard.get_selected_key().is_active:
                         self.keyboard.set_selected_key(self.possible_alphabet[0])
 
                     self.keyboard.render_keys()

@@ -200,6 +200,12 @@ class Keyboard:
         self.font = Fonts.get_font(font_name, font_size)
 
         self.auto_wrap = auto_wrap
+        # When True, D-pad navigation skips over deactivated ("greyed") keys and
+        # lands on the next available key instead of letting the cursor sit on a
+        # key the user can't select. Opt-in: only screens that deactivate keys
+        # (e.g. the BIP-39 word-entry dictionary) turn this on, so PIN / PUK /
+        # passphrase / hex keyboards (which never deactivate keys) are unaffected.
+        self.skip_inactive_keys = False
         self.background_color = GUIConstants.BUTTON_BACKGROUND_COLOR
         self.deactivated_background_color = GUIConstants.BACKGROUND_COLOR
         self.additional_key_deactivated_background_color = GUIConstants.BACKGROUND_COLOR
@@ -404,6 +410,30 @@ class Keyboard:
 
             Does NOT call self.renderer.show_image to avoid multiple calls on the same screen.
         """
+        ret = self._update_from_input_core(input, enter_from)
+
+        # When enabled, keep moving in the same direction past deactivated
+        # ("greyed") keys so the cursor lands on the next available key. Only
+        # for raw D-pad presses: ENTER_* re-entries don't advance and would loop.
+        if self.skip_inactive_keys and input in (
+            HardwareButtonsConstants.KEY_LEFT, HardwareButtonsConstants.KEY_RIGHT,
+            HardwareButtonsConstants.KEY_UP, HardwareButtonsConstants.KEY_DOWN,
+        ):
+            # Backstop: at most one full sweep of every key (additional keys like
+            # DEL are never deactivated, so an active landing spot always exists
+            # horizontally, and vertical movement exits at the un-wrapped edges).
+            bound = sum(len(row) for row in self.keys)
+            while bound > 0 and ret not in Keyboard.EXIT_DIRECTIONS:
+                cur = self.get_selected_key()
+                if cur is None or cur.is_active or cur.is_additional_key:
+                    break
+                ret = self._update_from_input_core(input)
+                bound -= 1
+
+        return ret
+
+    def _update_from_input_core(self, input, enter_from=None):
+        """Single navigation step. See ``update_from_input`` for semantics."""
         key = self.get_key_at(self.selected_key["x"], self.selected_key["y"])
 
         # Before we update, undo our previously self.selected_key key

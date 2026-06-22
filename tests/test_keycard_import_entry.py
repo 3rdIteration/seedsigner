@@ -84,5 +84,49 @@ class TestTypeWordsChooser(unittest.TestCase):
         view._capture_via_keyboard.assert_not_called()
 
 
+class TestCaptureViaKeyboardBackNav(unittest.TestCase):
+    """The back arrow steps to the previous word (pre-filled) instead of
+    discarding all progress; it only exits the flow on word #1."""
+
+    def _capture(self, num_words, screen_returns):
+        view = _import_view()
+        view.run_screen = MagicMock(side_effect=screen_returns)
+        result = view._capture_via_keyboard(num_words)
+        return view, result
+
+    def test_back_steps_to_previous_word_and_prefills(self):
+        from seedsigner.gui.screens import RET_CODE__BACK_BUTTON
+        # w1, w2, BACK (from word #3) -> re-edit word #2 -> w2b -> w3
+        view, result = self._capture(
+            3, ["w1", "w2", RET_CODE__BACK_BUTTON, "w2b", "w3"],
+        )
+        self.assertEqual(result, ["w1", "w2b", "w3"])
+        self.assertEqual(view.run_screen.call_count, 5)
+        # The re-edit (4th screen call) pre-fills the previously-typed word.
+        reedit_kwargs = view.run_screen.call_args_list[3].kwargs
+        self.assertEqual(reedit_kwargs["initial_letters"], list("w2"))
+
+    def test_back_on_first_word_exits_flow(self):
+        from seedsigner.gui.screens import RET_CODE__BACK_BUTTON
+        view, result = self._capture(3, [RET_CODE__BACK_BUTTON])
+        self.assertIsNone(result)
+        self.assertEqual(view.run_screen.call_count, 1)
+
+    def test_back_to_first_word_then_edit_keeps_going(self):
+        from seedsigner.gui.screens import RET_CODE__BACK_BUTTON
+        # w1, BACK (from word #2) -> re-edit word #1 -> w1b -> w2
+        view, result = self._capture(
+            2, ["w1", RET_CODE__BACK_BUTTON, "w1b", "w2"],
+        )
+        self.assertEqual(result, ["w1b", "w2"])
+        reedit_kwargs = view.run_screen.call_args_list[2].kwargs
+        self.assertEqual(reedit_kwargs["initial_letters"], list("w1"))
+
+    def test_forward_only_still_returns_full_list(self):
+        view, result = self._capture(3, ["w1", "w2", "w3"])
+        self.assertEqual(result, ["w1", "w2", "w3"])
+        self.assertEqual(view.run_screen.call_count, 3)
+
+
 if __name__ == "__main__":
     unittest.main()

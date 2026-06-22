@@ -1028,7 +1028,7 @@ class TestKeycardMenuRouting(unittest.TestCase):
 
         with patch.object(
             keycard_views, "_open_isd_channel",
-            return_value=(MagicMock(), full_instances, MagicMock()),
+            return_value=(MagicMock(), full_instances, MagicMock(), None),
         ), patch(
             "seedsigner.helpers.keycard.global_platform.install_for_install_with_fallback"
         ) as install_mock:
@@ -1067,7 +1067,7 @@ class TestKeycardMenuRouting(unittest.TestCase):
 
         with patch.object(
             keycard_views, "_open_isd_channel",
-            return_value=(MagicMock(), existing, MagicMock()),
+            return_value=(MagicMock(), existing, MagicMock(), None),
         ), patch(
             "seedsigner.helpers.keycard.global_platform.install_for_install_with_fallback"
         ) as install_mock:
@@ -1249,7 +1249,7 @@ class TestKeycardMenuRouting(unittest.TestCase):
 
         with patch.object(
             keycard_views, "_open_isd_channel",
-            return_value=(MagicMock(), instances, MagicMock()),
+            return_value=(MagicMock(), instances, MagicMock(), None),
         ), patch.object(
             keycard_views, "_instances_or_probe_fallback",
             side_effect=lambda controller, inst, conn: inst,
@@ -1430,7 +1430,7 @@ class TestCountKeycardInstances(unittest.TestCase):
         conn = MagicMock()
         with patch.object(
             keycard_views, "_open_isd_channel",
-            return_value=(MagicMock(), instances, conn),
+            return_value=(MagicMock(), instances, conn, None),
         ):
             self.assertEqual(_count_keycard_instances(MagicMock()), 5)
         conn.disconnect.assert_called_once()
@@ -1444,7 +1444,7 @@ class TestCountKeycardInstances(unittest.TestCase):
         instances = self._instances(KEYCARD_APPLET_AID + b"\x01\x01")
         with patch.object(
             keycard_views, "_open_isd_channel",
-            return_value=(MagicMock(), instances, MagicMock()),
+            return_value=(MagicMock(), instances, MagicMock(), None),
         ):
             self.assertEqual(_count_keycard_instances(MagicMock()), 1)
 
@@ -1457,7 +1457,7 @@ class TestCountKeycardInstances(unittest.TestCase):
         from seedsigner.views.keycard_views import _count_keycard_instances
         with patch.object(
             keycard_views, "_open_isd_channel",
-            return_value=(MagicMock(), [], MagicMock()),
+            return_value=(MagicMock(), [], MagicMock(), None),
         ):
             self.assertIsNone(_count_keycard_instances(MagicMock()))
 
@@ -1616,8 +1616,10 @@ class TestProbeInstanceAidsKnobs(unittest.TestCase):
 
 class TestCreateInstanceMemoryGate(unittest.TestCase):
     """``ToolsKeycardInstancesCreateView`` memory-awareness: a soft low-space
-    warning, the "Create anyway" override, and self-calibration of the
-    per-instance footprint from the free-NV delta around INSTALL."""
+    warning and the "Create anyway" override. Free-NV is read in the clear,
+    BEFORE the secure channel opens (``_open_isd_channel(read_free_nv=True)``)
+    — reading it over the open channel un-MAC'd was the 0.1.3 regression that
+    broke INSTALL with 0x6982."""
 
     def _view(self, existing_count=1):
         from seedsigner.helpers.keycard.global_platform import AppletInstance
@@ -1644,10 +1646,9 @@ class TestCreateInstanceMemoryGate(unittest.TestCase):
 
         view, existing = self._view(existing_count=1)
         view.run_screen = MagicMock(return_value=RET_CODE__BACK_BUTTON)
+        # 4th tuple element is the free-NV read in the clear before open().
         with patch.object(keycard_views, "_open_isd_channel",
-                          return_value=(MagicMock(), existing, MagicMock())), \
-             patch.object(keycard_views, "_safe_channel_free_nv",
-                          return_value=3000), \
+                          return_value=(MagicMock(), existing, MagicMock(), 3000)), \
              patch("seedsigner.helpers.keycard.global_platform."
                    "install_for_install_with_fallback") as install_mock:
             dest = view.run()
@@ -1664,9 +1665,7 @@ class TestCreateInstanceMemoryGate(unittest.TestCase):
         # Non-back sentinel so confirm proceeds through install.
         view.run_screen = MagicMock(return_value=object())
         with patch.object(keycard_views, "_open_isd_channel",
-                          return_value=(MagicMock(), existing, MagicMock())), \
-             patch.object(keycard_views, "_safe_channel_free_nv",
-                          return_value=100000), \
+                          return_value=(MagicMock(), existing, MagicMock(), 100000)), \
              patch("seedsigner.helpers.keycard.global_platform."
                    "install_for_install_with_fallback") as install_mock:
             view.run()
@@ -1676,40 +1675,64 @@ class TestCreateInstanceMemoryGate(unittest.TestCase):
         self.assertIn("Create instance?", titles)
         install_mock.assert_called_once()
 
-    def test_install_delta_calibrates_per_instance_nv(self):
-        from unittest.mock import patch
+    def test_free_nv_read_before_open_no_unmacd_cmd_after_open(self):
+        """Regression (0.1.3 -> 0x6982): ``_open_isd_channel`` must read free-NV
+        in the clear BEFORE ``open()``. An un-MAC'd GET DATA once the SCP02
+        channel is open desyncs/tears down the channel and the next INSTALL
+        fails with 0x6982 "Security status not satisfied"."""
+        from unittest.mock import patch, MagicMock
         from seedsigner.views import keycard_views
 
-        view, existing = self._view(existing_count=1)
-        view.run_screen = MagicMock(return_value=object())
-        # free_nv read twice: pre-INSTALL baseline, then post-INSTALL.
-        with patch.object(keycard_views, "_open_isd_channel",
-                          return_value=(MagicMock(), existing, MagicMock())), \
-             patch.object(keycard_views, "_safe_channel_free_nv",
-                          side_effect=[100000, 98000]), \
-             patch("seedsigner.helpers.keycard.global_platform."
-                   "install_for_install_with_fallback"):
-            view.run()
+        order = []
 
-        # delta 2000 is in [256, 16384] -> stored as the card's per-instance cost.
-        self.assertEqual(view.controller.keycard_measured_instance_nv, 2000)
+        class FakeChannel:
+            def select_isd(self):
+                order.append("select_isd")
 
-    def test_implausible_delta_ignored(self):
-        from unittest.mock import patch
+            def get_extended_card_resources(self):
+                order.append("get_free_nv")
+                return MagicMock(free_nv=4096)
+
+            def open(self):
+                order.append("open")
+
+        with patch("seedsigner.helpers.keycard.global_platform.GpSecureChannel",
+                   return_value=FakeChannel()), \
+             patch("seedsigner.helpers.keycard.global_platform.list_instances",
+                   return_value=[]), \
+             patch("seedsigner.helpers.keycard.reader."
+                   "release_other_smartcard_holders"), \
+             patch("seedsigner.helpers.keycard.reader.wait_for_card",
+                   return_value=MagicMock()):
+            _ch, _inst, _conn, free_nv = keycard_views._open_isd_channel(
+                MagicMock(), read_free_nv=True,
+            )
+
+        self.assertEqual(free_nv, 4096)
+        # The clear free-NV read must precede open() — never after it.
+        self.assertLess(order.index("get_free_nv"), order.index("open"))
+
+    def test_free_nv_not_read_when_not_requested(self):
+        """Delete/switch/count paths pass read_free_nv=False and must NOT issue
+        the GET DATA at all (no extra card I/O)."""
+        from unittest.mock import patch, MagicMock
         from seedsigner.views import keycard_views
 
-        view, existing = self._view(existing_count=1)
-        view.run_screen = MagicMock(return_value=object())
-        # A negative/garbage delta (free went UP) must not poison calibration.
-        with patch.object(keycard_views, "_open_isd_channel",
-                          return_value=(MagicMock(), existing, MagicMock())), \
-             patch.object(keycard_views, "_safe_channel_free_nv",
-                          side_effect=[98000, 100000]), \
-             patch("seedsigner.helpers.keycard.global_platform."
-                   "install_for_install_with_fallback"):
-            view.run()
+        channel = MagicMock()
+        with patch("seedsigner.helpers.keycard.global_platform.GpSecureChannel",
+                   return_value=channel), \
+             patch("seedsigner.helpers.keycard.global_platform.list_instances",
+                   return_value=[]), \
+             patch("seedsigner.helpers.keycard.reader."
+                   "release_other_smartcard_holders"), \
+             patch("seedsigner.helpers.keycard.reader.wait_for_card",
+                   return_value=MagicMock()):
+            _ch, _inst, _conn, free_nv = keycard_views._open_isd_channel(
+                MagicMock(),
+            )
 
-        self.assertIsNone(view.controller.keycard_measured_instance_nv)
+        self.assertIsNone(free_nv)
+        channel.get_extended_card_resources.assert_not_called()
 
 
 class TestProbeKeycardInstanceCountMenuEntry(unittest.TestCase):
@@ -1816,7 +1839,7 @@ class TestPinLockLifecycle(unittest.TestCase):
 
         with patch.object(
             keycard_views, "_open_isd_channel",
-            return_value=(MagicMock(), instances, MagicMock()),
+            return_value=(MagicMock(), instances, MagicMock(), None),
         ), patch.object(
             keycard_views, "_instances_or_probe_fallback",
             side_effect=lambda controller, inst, conn: inst,
@@ -1849,7 +1872,7 @@ class TestPinLockLifecycle(unittest.TestCase):
 
         with patch.object(
             keycard_views, "_open_isd_channel",
-            return_value=(MagicMock(), instances, MagicMock()),
+            return_value=(MagicMock(), instances, MagicMock(), None),
         ), patch.object(
             keycard_views, "_instances_or_probe_fallback",
             side_effect=lambda controller, inst, conn: inst,
@@ -3272,7 +3295,7 @@ class TestInstanceNameResolution(unittest.TestCase):
 
         with patch.object(
             keycard_views, "_open_isd_channel",
-            return_value=(MagicMock(), instances, MagicMock()),
+            return_value=(MagicMock(), instances, MagicMock(), None),
         ), patch.object(
             keycard_views, "_resolve_instance_uids", side_effect=fake_resolve,
         ), patch(
@@ -3403,7 +3426,7 @@ class TestInstanceAidAllocation(unittest.TestCase):
         view.run_screen = fake_run_screen
         with patch.object(
             keycard_views, "_open_isd_channel",
-            return_value=(MagicMock(), instances, MagicMock()),
+            return_value=(MagicMock(), instances, MagicMock(), None),
         ):
             view.run()
 

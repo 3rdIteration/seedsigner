@@ -2252,24 +2252,41 @@ class ToolsKeycardImportSeedView(View):
         return list(phrase)
 
     def _capture_via_keyboard(self, num_words: int) -> Optional[list]:
-        """Capture ``num_words`` words via the on-screen keyboard."""
+        """Capture ``num_words`` words via the on-screen keyboard.
+
+        The back arrow steps to the *previous* word (re-opened pre-filled for
+        editing) instead of discarding all progress; it only backs out of the
+        whole flow when pressed on word #1. Words already confirmed are kept and
+        re-shown when navigating back and forth.
+        """
         from seedsigner.gui.screens import seed_screens
         from embit import bip39
 
         wordlist = bip39.WORDLIST
         words: list = []
-        for i in range(num_words):
+        i = 0
+        while i < num_words:
+            # Pre-fill with the previously-entered word when re-editing (a fresh
+            # list each time: SeedMnemonicEntryScreen mutates initial_letters).
+            initial = list(words[i]) if i < len(words) else ["a"]
             ret = self.run_screen(
                 seed_screens.SeedMnemonicEntryScreen,
                 title=_("Word #{}").format(i + 1),
-                initial_letters=["a"],
+                initial_letters=initial,
                 wordlist=wordlist,
             )
             if ret == RET_CODE__BACK_BUTTON:
-                return None
+                if i == 0:
+                    return None          # word #1: back out of the whole flow
+                i -= 1                   # step back to edit the previous word
+                continue
             if not isinstance(ret, str) or not ret:
                 return None
-            words.append(ret)
+            if i < len(words):
+                words[i] = ret           # overwrite on re-edit
+            else:
+                words.append(ret)
+            i += 1
         return words
 
     def _capture_via_hex(self) -> Optional[list]:
@@ -4444,15 +4461,24 @@ class ToolsKeycardInstancesMenuView(View):
         return Destination(BackStackView)
 
 
-def _open_isd_channel(controller):
+def _open_isd_channel(controller, read_free_nv=False):
     """Helper: open the GP secure channel against the inserted card.
 
-    Returns ``(channel, instances, connection)``. ``instances`` is the
-    list reported by the ISD's GET STATUS; if the ISD reports zero,
-    callers can fall back to :func:`probe_keycard_instance_aids` using
-    ``connection`` (which terminates the GP channel as a side-effect).
-    Caller surfaces errors via ``_error_destination`` — we deliberately
-    let exceptions bubble.
+    Returns ``(channel, instances, connection, free_nv)``. ``instances`` is the
+    list reported by the ISD's GET STATUS; if the ISD reports zero, callers can
+    fall back to :func:`probe_keycard_instance_aids` using ``connection`` (which
+    terminates the GP channel as a side-effect). ``free_nv`` is the card's free
+    NV memory in bytes (or ``None``) and is only read when ``read_free_nv`` is
+    set. Caller surfaces errors via ``_error_destination`` — we deliberately let
+    exceptions bubble.
+
+    Free-NV is read **in the clear, BEFORE** :meth:`open`: GET DATA ``0xFF21`` is
+    publicly readable, but issuing ANY un-MAC'd command once the SCP02 channel is
+    open desyncs/tears down the channel and the *next* authenticated command
+    (e.g. INSTALL) fails with ``0x6982 Security status not satisfied``. (That was
+    the 0.1.3 "create instance" regression — the read was happening after
+    ``open()``.) Never move this read, or any other un-MAC'd command, below the
+    ``open()`` call.
     """
     from seedsigner.helpers.keycard.global_platform import (
         GpSecureChannel, list_instances,
@@ -4465,42 +4491,17 @@ def _open_isd_channel(controller):
     connection = wait_for_card(timeout_s=5.0)
     channel = GpSecureChannel(connection)
     channel.select_isd()
+    free_nv = None
+    if read_free_nv:
+        try:
+            value = channel.get_extended_card_resources().free_nv
+            free_nv = value if isinstance(value, int) else None
+        except Exception:
+            logger.debug("free-NV read (pre-open, in the clear) failed", exc_info=True)
+            free_nv = None
     channel.open()
     instances = list_instances(channel)
-    return channel, instances, connection
-
-
-def _safe_channel_free_nv(channel):
-    """Best-effort free NV memory (bytes) over an already-open GP channel.
-
-    Reads GET DATA 0xFF21, which is publicly readable — but some cards reject
-    un-MAC'd commands once the secure channel is open (post EXTERNAL
-    AUTHENTICATE). Returns ``None`` on any failure so the create flow simply
-    skips the space estimate rather than erroring.
-    """
-    try:
-        free_nv = channel.get_extended_card_resources().free_nv
-        return free_nv if isinstance(free_nv, int) else None
-    except Exception:
-        logger.debug("free-NV read over GP channel failed", exc_info=True)
-        return None
-
-
-def _record_instance_nv_measurement(controller, free_before, free_after):
-    """Self-calibrate: stash the free-NV delta around an INSTALL as this card's
-    per-instance footprint (``Controller.keycard_measured_instance_nv``).
-
-    Sanity-bounded — a Keycard instance shell is ~1-2 KB, so a negative, zero, or
-    absurdly large delta (fragmentation hiccup, a card reporting in different
-    units, an un-MAC'd read that silently returned stale data) is ignored and
-    the conservative constant stays in effect.
-    """
-    if free_before is None or free_after is None:
-        return
-    delta = free_before - free_after
-    if 256 <= delta <= 16384:
-        controller.keycard_measured_instance_nv = delta
-        logger.info("measured keycard instance NV footprint: %d bytes", delta)
+    return channel, instances, connection, free_nv
 
 
 def _resolve_instance_uids(controller, connection, aids):
@@ -4551,7 +4552,7 @@ def _count_keycard_instances(controller):
     """
     connection = None
     try:
-        _channel, instances, connection = _open_isd_channel(controller)
+        _channel, instances, connection, _free_nv = _open_isd_channel(controller)
         keycard_instances = [
             i for i in instances if i.aid.startswith(KEYCARD_APPLET_AID)
         ]
@@ -4697,7 +4698,7 @@ def _instances_or_probe_fallback(controller, instances, connection):
 class ToolsKeycardInstancesSwitchView(View):
     def run(self):
         try:
-            channel, instances, isd_connection = _open_isd_channel(self.controller)
+            channel, instances, isd_connection, _free_nv = _open_isd_channel(self.controller)
         except Exception as exc:
             logger.exception("GP list_instances failed")
             title, body = classify_card_error(exc, default_title=_("GP failed"))
@@ -4788,7 +4789,12 @@ class ToolsKeycardInstancesCreateView(View):
         )
 
         try:
-            channel, instances, isd_connection = _open_isd_channel(self.controller)
+            # Read free-NV in the clear, BEFORE the secure channel is opened —
+            # see _open_isd_channel: an un-MAC'd GET DATA after open() would
+            # break the channel and the INSTALL below would fail 0x6982.
+            channel, instances, isd_connection, free_before = _open_isd_channel(
+                self.controller, read_free_nv=True,
+            )
         except Exception as exc:
             logger.exception("GP open failed")
             title, body = classify_card_error(exc, default_title=_("GP open failed"))
@@ -4813,10 +4819,8 @@ class ToolsKeycardInstancesCreateView(View):
             return _error_destination(_("No slot"), str(exc))
 
         # Memory-aware estimate (best-effort): how many more instances likely
-        # fit, given the card's free NV and the per-instance footprint. Read
-        # now so the same ``free_nv`` doubles as the pre-INSTALL baseline for
-        # self-calibration below (no card op changes free memory in between).
-        free_before = _safe_channel_free_nv(channel)
+        # fit, given the card's free NV (read above, pre-open) and the
+        # per-instance footprint.
         per_instance = keycard_instance_nv_estimate(self.controller)
         remaining = estimate_remaining_instances(
             free_before, keycard_count, per_instance, MAX_KEYCARD_INSTANCES,
@@ -4852,9 +4856,15 @@ class ToolsKeycardInstancesCreateView(View):
             confirm_text = _("New AID:\n{}\nCard must have package.").format(
                 _format_aid_short(new_aid),
             )
+        # Informative (not error) confirmation: creating an instance is not
+        # destructive, so use a neutral PLUS icon rather than the red dire
+        # warning. (Delete and the "Low space" warning keep their warning icons.)
+        from seedsigner.gui.components import GUIConstants, SeedSignerIconConstants
         ret = self.run_screen(
-            DireWarningScreen,
+            LargeIconStatusScreen,
             title=_("Create instance?"),
+            status_icon_name=SeedSignerIconConstants.PLUS,
+            status_color=GUIConstants.INFO_COLOR,
             status_headline=None,
             text=confirm_text,
             show_back_button=True,
@@ -4882,12 +4892,9 @@ class ToolsKeycardInstancesCreateView(View):
             title, body = classify_card_error(exc, default_title=_("Install failed"))
             return _error_destination(title, body)
 
-        # Self-calibrate the per-instance footprint from the free-NV delta this
-        # INSTALL caused (best-effort; ignored if either read was unavailable or
-        # the delta is implausible). Refines future "≈N fit" estimates.
-        _record_instance_nv_measurement(
-            self.controller, free_before, _safe_channel_free_nv(channel),
-        )
+        # (No post-INSTALL free-NV read for self-calibration: that read would
+        # have to go over the now-open secure channel un-MAC'd, which breaks it.
+        # The per-instance estimate uses the conservative constant fallback.)
 
         # Instance set changed — force the top menu to re-probe the count
         # (so "Switch instance" reappears now that there are >1).
@@ -4920,7 +4927,7 @@ class ToolsKeycardInstancesDeleteView(View):
         from seedsigner.helpers.keycard.global_platform import delete_aid
 
         try:
-            channel, instances, isd_connection = _open_isd_channel(self.controller)
+            channel, instances, isd_connection, _free_nv = _open_isd_channel(self.controller)
         except Exception as exc:
             logger.exception("GP open failed")
             title, body = classify_card_error(exc, default_title=_("GP failed"))
