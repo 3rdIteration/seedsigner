@@ -3581,3 +3581,18 @@ msgstr ""
 #: src/seedsigner/views/keycard_views.py
 msgid "Wallets · LL ({})"
 msgstr ""
+
+msgid "Card full"
+msgstr ""
+
+msgid "Not enough space on\nthis card."
+msgstr ""
+
+msgid "Card appears full.\nCreate may fail."
+msgstr ""
+
+msgid "New AID:\n{}\nCard appears full"
+msgstr ""
+
+msgid "{} KB RAM free"
+msgstr ""

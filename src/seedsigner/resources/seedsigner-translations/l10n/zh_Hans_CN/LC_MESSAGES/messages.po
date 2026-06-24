@@ -3957,3 +3957,18 @@ msgstr "实例尚未设置PIN。\n请先初始化。"
 
 msgid "Initialise the instance\nfirst, then re-import."
 msgstr "请先初始化实例，\n然后重新导入。"
+
+msgid "Card full"
+msgstr "卡片已满"
+
+msgid "Not enough space on\nthis card."
+msgstr "此卡空间不足。"
+
+msgid "Card appears full.\nCreate may fail."
+msgstr "卡片似乎已满。\n创建可能失败。"
+
+msgid "New AID:\n{}\nCard appears full"
+msgstr "新 AID：\n{}\n卡片似乎已满"
+
+msgid "{} KB RAM free"
+msgstr "剩余 {} KB RAM"

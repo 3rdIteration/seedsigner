@@ -3996,3 +3996,18 @@ msgstr "La instancia aún no tiene PIN.\nInicialízala primero."
 
 msgid "Initialise the instance\nfirst, then re-import."
 msgstr "Inicializa la instancia\nprimero y reimporta."
+
+msgid "Card full"
+msgstr "Tarjeta llena"
+
+msgid "Not enough space on\nthis card."
+msgstr "No hay suficiente espacio\nen esta tarjeta."
+
+msgid "Card appears full.\nCreate may fail."
+msgstr "La tarjeta parece llena.\nCrear puede fallar."
+
+msgid "New AID:\n{}\nCard appears full"
+msgstr "Nuevo AID:\n{}\nLa tarjeta parece llena"
+
+msgid "{} KB RAM free"
+msgstr "{} KB RAM libres"

@@ -236,6 +236,30 @@ class TestInstanceNvEstimate(unittest.TestCase):
         )
 
 
+class TestInstanceVolatileEstimate(unittest.TestCase):
+    def test_falls_back_to_constant(self):
+        from seedsigner.views import view as view_mod
+        c = types.SimpleNamespace(keycard_measured_instance_volatile=None)
+        self.assertEqual(
+            view_mod.keycard_instance_volatile_estimate(c),
+            view_mod.KEYCARD_INSTANCE_VOLATILE_ESTIMATE_BYTES,
+        )
+
+    def test_uses_measured_when_present(self):
+        from seedsigner.views import view as view_mod
+        c = types.SimpleNamespace(keycard_measured_instance_volatile=300)
+        self.assertEqual(view_mod.keycard_instance_volatile_estimate(c), 300)
+
+    def test_non_int_measurement_ignored(self):
+        from seedsigner.views import view as view_mod
+        from unittest.mock import MagicMock
+        c = MagicMock()
+        self.assertEqual(
+            view_mod.keycard_instance_volatile_estimate(c),
+            view_mod.KEYCARD_INSTANCE_VOLATILE_ESTIMATE_BYTES,
+        )
+
+
 class TestEstimateRemainingInstances(unittest.TestCase):
     def test_memory_is_binding(self):
         from seedsigner.views.view import (
@@ -265,6 +289,66 @@ class TestEstimateRemainingInstances(unittest.TestCase):
         from seedsigner.views.view import estimate_remaining_instances
         # Card didn't expose the memory tag: fall back to slot headroom alone.
         self.assertEqual(estimate_remaining_instances(None, 4, 3072, 16), 12)
+
+    def test_ram_is_binding(self):
+        from seedsigner.views.view import (
+            estimate_remaining_instances, LOW_SPACE_VOLATILE_MARGIN_BYTES,
+        )
+        # Plenty of EEPROM + slots, but RAM is the scarce resource: free RAM
+        # 1024, 512 each -> (1024-256)//512 = 1. RAM gate wins over NV (huge) and
+        # slot headroom (14).
+        self.assertEqual(
+            estimate_remaining_instances(
+                10**9, 2, 3072, 16,
+                free_volatile=1024, per_instance_volatile=512,
+            ),
+            (1024 - LOW_SPACE_VOLATILE_MARGIN_BYTES) // 512,
+        )
+
+    def test_free_volatile_zero_falls_back_to_nv(self):
+        from seedsigner.views.view import estimate_remaining_instances
+        # free_volatile == 0 means tag 0x83 absent/unsupported, NOT "no RAM":
+        # the RAM gate must be skipped and the result equal the NV+slot estimate.
+        with_zero = estimate_remaining_instances(
+            20480, 2, 3072, 16, free_volatile=0, per_instance_volatile=512,
+        )
+        without = estimate_remaining_instances(20480, 2, 3072, 16)
+        self.assertEqual(with_zero, without)
+        self.assertGreater(with_zero, 0)
+
+    def test_free_volatile_none_falls_back_to_nv(self):
+        from seedsigner.views.view import estimate_remaining_instances
+        with_none = estimate_remaining_instances(
+            20480, 2, 3072, 16, free_volatile=None, per_instance_volatile=512,
+        )
+        without = estimate_remaining_instances(20480, 2, 3072, 16)
+        self.assertEqual(with_none, without)
+
+    def test_ram_gate_ignored_when_per_instance_volatile_none(self):
+        from seedsigner.views.view import estimate_remaining_instances
+        # Card reports RAM but we have no per-instance RAM estimate -> skip gate.
+        with_no_per = estimate_remaining_instances(
+            20480, 2, 3072, 16, free_volatile=1024, per_instance_volatile=None,
+        )
+        without = estimate_remaining_instances(20480, 2, 3072, 16)
+        self.assertEqual(with_no_per, without)
+
+    def test_real_full_card_returns_zero(self):
+        """Regression with the field card's measured GET DATA 0xFF21 values:
+        NV=46596 (plenty), but free RAM=303 (exhausted) after 4 instances. The
+        RAM gate must drive the estimate to 0 even though EEPROM/slots are free."""
+        from seedsigner.views.view import (
+            estimate_remaining_instances,
+            KEYCARD_INSTANCE_VOLATILE_ESTIMATE_BYTES,
+        )
+        self.assertEqual(
+            estimate_remaining_instances(
+                46596, 4, 3072, 16,
+                free_volatile=303,
+                per_instance_volatile=KEYCARD_INSTANCE_VOLATILE_ESTIMATE_BYTES,
+            ),
+            0,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -402,6 +486,11 @@ class TestStorageView(unittest.TestCase):
         from seedsigner.views.keycard_views import ToolsKeycardStorageView
         view = ToolsKeycardStorageView.__new__(ToolsKeycardStorageView)
         view.controller = MagicMock()
+        # Real Controller defaults these; on a MagicMock the attributes would
+        # otherwise be truthy/non-int Mocks and skew the estimate.
+        view.controller.keycard_install_full = False
+        view.controller.keycard_measured_instance_nv = None
+        view.controller.keycard_measured_instance_volatile = None
         view.run_screen = MagicMock(return_value=0)
         return view
 
@@ -447,6 +536,7 @@ class TestStorageView(unittest.TestCase):
         kwargs = view.run_screen.call_args.kwargs
         self.assertIs(view.run_screen.call_args.args[0], KeycardStorageScreen)
         self.assertEqual(kwargs["free_bytes"], 50000)
+        self.assertEqual(kwargs["free_volatile_bytes"], 0)
         self.assertEqual(kwargs["used_bytes"], 20000)
         self.assertEqual(kwargs["total_bytes"], 70000)
         # 2 instances exist; ceiling 16 -> slot headroom 14. Memory headroom

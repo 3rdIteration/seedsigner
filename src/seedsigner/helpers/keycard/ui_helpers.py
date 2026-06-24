@@ -696,6 +696,40 @@ def try_silent_ephemeral_pair(parent_view: "View") -> bool:
     return paired
 
 
+# Status words that, in the INSTALL [for install] context, mean "the card has no
+# room for another applet instance". 0x6A84 is the unambiguous "Not enough memory
+# space". 0x6F00 ("no precise diagnosis") is pragmatically included because that
+# is what a real full card returned when refusing a 5th instance with ~45 KB
+# EEPROM still free (the limiting resource was not EEPROM) — and this helper is
+# only consulted on the create-flow INSTALL failure path, so the context is known.
+_INSTALL_MEMORY_SW = (0x6A84, 0x6F00)
+
+
+def is_install_memory_failure(exc: BaseException) -> bool:
+    """True if ``exc`` is an INSTALL failure caused by the card being full.
+
+    INSTALL failures arrive in two shapes:
+
+    * ``APDUError`` — carries a numeric ``.sw``;
+    * ``GpProtocolError`` (raised by the GP secure channel) — carries the SW only
+      inside its message string, lowercased by ``format_sw_error`` (e.g.
+      ``"Not enough memory space (0x6a84)"`` / ``"... (0x6f00)"``).
+
+    Match both. Used by the create flow to set ``Controller.keycard_install_full``
+    so the "≈N more fit" estimate is clamped to 0 once the card itself proves it's
+    full — ground truth that beats any free-space estimate.
+    """
+    from seedsigner.helpers.keycard.commands import APDUError
+    from seedsigner.helpers.keycard.global_platform import GpProtocolError
+
+    if isinstance(exc, APDUError):
+        return exc.sw in _INSTALL_MEMORY_SW
+    if isinstance(exc, GpProtocolError):
+        msg = str(exc).lower()
+        return any(f"({sw:#06x})" in msg for sw in _INSTALL_MEMORY_SW)
+    return False
+
+
 def classify_card_error(
     exc: BaseException,
     *,
@@ -726,7 +760,9 @@ def classify_card_error(
         KeycardNotInitialisedError,
     )
     from seedsigner.helpers.keycard.commands import APDUError
-    from seedsigner.helpers.keycard.global_platform import GpAuthError
+    from seedsigner.helpers.keycard.global_platform import (
+        GpAuthError, GpProtocolError,
+    )
     from seedsigner.helpers.keycard.pairing_storage import PairingStorageError
     from seedsigner.helpers.keycard.reader import NoCardError, NoReaderError
     from seedsigner.helpers.keycard.secure_channel import SecureChannelError
@@ -739,6 +775,15 @@ def classify_card_error(
         # Signing/export are unaffected (they use the applet channel).
         return (_("GP keys not default"),
                 _("Applet management needs the\ncard's default GP keys."))
+    # "Not enough memory space" (0x6A84) — unambiguous across every flow, so map
+    # it here. (The fuzzier 0x6F00→full inference is deliberately NOT done in this
+    # generic classifier — it stays scoped to the create flow via
+    # ``is_install_memory_failure``.) Catches both the APDUError and the
+    # GpProtocolError (install) shapes.
+    if (isinstance(exc, APDUError) and exc.sw == 0x6A84) or (
+        isinstance(exc, GpProtocolError) and "(0x6a84)" in str(exc).lower()
+    ):
+        return (_("Card full"), _("Not enough space on\nthis card."))
     if isinstance(exc, NoCardError):
         return (_("No card"), _("Insert a card and retry."))
     if isinstance(exc, KeycardCardChangedError):

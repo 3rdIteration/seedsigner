@@ -232,6 +232,22 @@ class TestController(BaseTest):
         assert controller.keycard_pins == {}
         assert cached == bytearray(b"\x00" * 6)
 
+    def test_wipe_card_session_secrets_resets_instance_calibration(self):
+        """Per-instance NV/RAM calibration and the "card is full" marker are
+        card-specific and must reset on swap so a different card's estimate
+        isn't computed from the previous card's footprint / full state."""
+        controller = Controller.get_instance()
+        controller.keycard_pins = {}
+        controller.keycard_measured_instance_nv = 4096
+        controller.keycard_measured_instance_volatile = 512
+        controller.keycard_install_full = True
+
+        controller.wipe_card_session_secrets()
+
+        assert controller.keycard_measured_instance_nv is None
+        assert controller.keycard_measured_instance_volatile is None
+        assert controller.keycard_install_full is False
+
     def test_forget_all_pins_clears_wallet_address_cache(self):
         """Regression (duress PIN): derived View-wallets addresses must be
         dropped together with the PINs. Otherwise locking / removing the card

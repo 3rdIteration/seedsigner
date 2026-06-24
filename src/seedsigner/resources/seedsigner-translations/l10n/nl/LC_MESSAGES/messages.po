@@ -3988,3 +3988,18 @@ msgstr "Instantie heeft nog geen PIN.\nInitialiseer deze eerst."
 
 msgid "Initialise the instance\nfirst, then re-import."
 msgstr "Initialiseer eerst de\ninstantie, importeer opnieuw."
+
+msgid "Card full"
+msgstr "Kaart vol"
+
+msgid "Not enough space on\nthis card."
+msgstr "Onvoldoende ruimte\nop deze kaart."
+
+msgid "Card appears full.\nCreate may fail."
+msgstr "Kaart lijkt vol.\nAanmaken kan mislukken."
+
+msgid "New AID:\n{}\nCard appears full"
+msgstr "Nieuwe AID:\n{}\nKaart lijkt vol"
+
+msgid "{} KB RAM free"
+msgstr "{} KB RAM vrij"

@@ -3991,3 +3991,18 @@ msgstr "La instància encara no té PIN.\nInicialitza-la primer."
 
 msgid "Initialise the instance\nfirst, then re-import."
 msgstr "Inicialitza la instància\nprimer i torna a importar."
+
+msgid "Card full"
+msgstr "Targeta plena"
+
+msgid "Not enough space on\nthis card."
+msgstr "No hi ha prou espai\nen aquesta targeta."
+
+msgid "Card appears full.\nCreate may fail."
+msgstr "La targeta sembla plena.\nLa creació pot fallar."
+
+msgid "New AID:\n{}\nCard appears full"
+msgstr "Nou AID:\n{}\nLa targeta sembla plena"
+
+msgid "{} KB RAM free"
+msgstr "{} KB RAM lliures"

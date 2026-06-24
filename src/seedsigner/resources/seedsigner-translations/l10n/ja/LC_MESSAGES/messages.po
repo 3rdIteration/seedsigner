@@ -3958,3 +3958,18 @@ msgstr "インスタンスにPINがありません。\n先に初期化してく�
 
 msgid "Initialise the instance\nfirst, then re-import."
 msgstr "先にインスタンスを初期化\nしてから再インポート。"
+
+msgid "Card full"
+msgstr "カードが満杯"
+
+msgid "Not enough space on\nthis card."
+msgstr "このカードに\n空き容量がありません。"
+
+msgid "Card appears full.\nCreate may fail."
+msgstr "カードが満杯のようです。\n作成に失敗する場合あり。"
+
+msgid "New AID:\n{}\nCard appears full"
+msgstr "新AID:\n{}\nカードが満杯のようです"
+
+msgid "{} KB RAM free"
+msgstr "{} KB RAM 空き"

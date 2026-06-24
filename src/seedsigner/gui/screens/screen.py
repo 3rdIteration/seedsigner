@@ -1067,11 +1067,17 @@ class KeycardStorageScreen(ButtonListScreen):
     """Card-memory overview: a percentage headline, an occupation bar, and a
     used / total / free breakdown. ``total_bytes`` is ``free + used`` (the
     card never reports its true capacity); see ``views.view`` accounting.
+    ``free_volatile_bytes`` (when not ``None``) appends a free-RAM line to the
+    detail — transient RAM is often the resource that actually caps how many
+    instances fit, so surfacing it makes the limiting resource visible.
     ``remaining_instances`` (when not ``None``) appends an estimated "≈N more
-    instances fit" line."""
+    instances fit" line. Vertical budget is tight: the detail is folded into one
+    TextArea (no extra inter-component gap) so headline + bar + 3-line detail +
+    estimate stay within the ~200 px content zone above the bottom button."""
     used_bytes: int = 0
     total_bytes: int = 0
     free_bytes: int = 0
+    free_volatile_bytes: int = None
     remaining_instances: int = None
 
     def __post_init__(self):
@@ -1112,6 +1118,9 @@ class KeycardStorageScreen(ButtonListScreen):
         detail = _("{} / {} KB used\n{} KB free").format(
             _kib(self.used_bytes), _kib(self.total_bytes), _kib(self.free_bytes),
         )
+        if self.free_volatile_bytes is not None:
+            # TRANSLATOR_NOTE: {} is the card's free transient RAM in KiB
+            detail += "\n" + _("{} KB RAM free").format(_kib(self.free_volatile_bytes))
         detail_area = TextArea(
             text=detail,
             width=self.canvas_width,

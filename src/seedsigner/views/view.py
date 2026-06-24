@@ -483,6 +483,9 @@ APP_NV_OVERHEAD_BYTES = 0
 CAP_NV_FOOTPRINT_RATIO = 0.70
 # Tolerance so we don't warn on a borderline fit (free ≈ required).
 LOW_SPACE_MARGIN_BYTES = 2048
+# Same idea for the transient-RAM (free_volatile) gate — RAM is far scarcer than
+# EEPROM, so the margin is correspondingly small.
+LOW_SPACE_VOLATILE_MARGIN_BYTES = 256
 # SeedKeeper's footprint also includes the data-object store allocated at
 # install time. The chosen size isn't queryable afterwards, so the occupation
 # bar assumes the default; the pre-install check uses the exact chosen value.
@@ -578,6 +581,20 @@ def estimated_used_nv(probe,
 # read free NV before/after a real create+init and set this to the delta.
 KEYCARD_INSTANCE_NV_ESTIMATE_BYTES = 3072  # 3 KB
 
+# Default transient-RAM (volatile) cost of one provisioned Keycard instance: the
+# RAM buffers the applet allocates per-instance (secure-channel session state,
+# derived-key scratch, APDU work buffers). JavaCard RAM is far scarcer than
+# EEPROM (typically only 1-4 KB total for applications) and is the CONFIRMED real
+# cap: an on-device GET DATA 0xFF21 read of the field card that refused a 5th
+# instance showed free NV=46596 B (~45.5 KB, plenty) but free volatile=**303 B**
+# — essentially exhausted (7 applets on the card). Since the 5th install still
+# failed at 303 B free, one instance's transient cost is **> 303 B**; 512 is a
+# clean, slightly-conservative value above that lower bound (a fresh card with
+# ~2 KB free RAM then estimates ~3 more — consistent with the card capping at 4).
+# Still HARDWARE-CALIBRATABLE per card via the post-install delta
+# (``keycard_measured_instance_volatile``); this is the durable default.
+KEYCARD_INSTANCE_VOLATILE_ESTIMATE_BYTES = 512  # 0.5 KB (> measured 303 B floor)
+
 
 def keycard_instance_nv_estimate(controller) -> int:
     """Best estimate (bytes) of one more Keycard instance's NV cost.
@@ -595,25 +612,52 @@ def keycard_instance_nv_estimate(controller) -> int:
     return KEYCARD_INSTANCE_NV_ESTIMATE_BYTES
 
 
+def keycard_instance_volatile_estimate(controller) -> int:
+    """Best estimate (bytes) of one more Keycard instance's transient-RAM cost.
+
+    Mirrors :func:`keycard_instance_nv_estimate`: uses the card-specific measured
+    value (``Controller.keycard_measured_instance_volatile``) when the create
+    flow captured one this session, else the conservative
+    ``KEYCARD_INSTANCE_VOLATILE_ESTIMATE_BYTES`` default.
+    """
+    measured = getattr(controller, "keycard_measured_instance_volatile", None)
+    if isinstance(measured, int) and measured > 0:
+        return measured
+    return KEYCARD_INSTANCE_VOLATILE_ESTIMATE_BYTES
+
+
 def estimate_remaining_instances(free_nv, current_count: int, per_instance: int,
-                                 ceiling: int) -> int:
+                                 ceiling: int, free_volatile=None,
+                                 per_instance_volatile=None) -> int:
     """How many *more* Keycard instances are likely to fit.
 
-    The minimum of the slot/firmware headroom (``ceiling - current_count``) and
-    the memory headroom (``(free_nv - margin) // per_instance``). Returns 0 when
-    either is exhausted. ``free_nv`` ``None`` (card didn't expose the memory tag)
-    falls back to the slot headroom alone — we never claim more than the
-    estimate can support, but we also don't block on an unreadable card.
+    The minimum of three headrooms: the slot/firmware bound
+    (``ceiling - current_count``), the EEPROM bound
+    (``(free_nv - margin) // per_instance``), and — only when the card actually
+    reports a non-zero ``free_volatile`` — the transient-RAM bound
+    (``(free_volatile - margin) // per_instance_volatile``). Returns 0 when any
+    binding term is exhausted.
 
-    Advisory only: JavaCard EEPROM fragmentation / per-object overhead can make
-    an install fail even when this says one fits, which is why the create flow
-    keeps a "Create anyway" override.
+    ``free_nv`` ``None`` (card didn't expose the EEPROM tag) drops the EEPROM
+    term. **``free_volatile`` 0 or ``None`` drops the RAM term** — a 0 means tag
+    0x83 is absent/unsupported, NOT "no RAM", so it must never force the estimate
+    to 0 on a card that simply omits the tag; the result then falls back to the
+    EEPROM+slot estimate (the previous behaviour). The RAM term only ever
+    *tightens* the estimate when the card affirmatively reports free RAM.
+
+    Advisory only: JavaCard EEPROM fragmentation / per-object overhead / a RAM or
+    object-count cap can make an install fail even when this says one fits, which
+    is why the create flow keeps a "Create anyway" override and the create-flow
+    failure path clamps to 0 on a memory-class SW.
     """
     by_slot = max(0, ceiling - current_count)
-    if free_nv is None or not per_instance or per_instance <= 0:
-        return by_slot
-    by_mem = max(0, (free_nv - LOW_SPACE_MARGIN_BYTES) // per_instance)
-    return min(by_slot, by_mem)
+    gates = [by_slot]
+    if free_nv is not None and per_instance and per_instance > 0:
+        gates.append(max(0, (free_nv - LOW_SPACE_MARGIN_BYTES) // per_instance))
+    if free_volatile and per_instance_volatile and per_instance_volatile > 0:
+        gates.append(max(0, (free_volatile - LOW_SPACE_VOLATILE_MARGIN_BYTES)
+                         // per_instance_volatile))
+    return min(gates)
 
 
 def _toast_ios_coexistence(view):

@@ -4002,3 +4002,18 @@ msgstr "L'istanza non ha ancora PIN.\nInizializzala prima."
 
 msgid "Initialise the instance\nfirst, then re-import."
 msgstr "Inizializza prima\nl'istanza, poi reimporta."
+
+msgid "Card full"
+msgstr "Scheda piena"
+
+msgid "Not enough space on\nthis card."
+msgstr "Spazio insufficiente\nsu questa scheda."
+
+msgid "Card appears full.\nCreate may fail."
+msgstr "La scheda sembra piena.\nLa creazione può fallire."
+
+msgid "New AID:\n{}\nCard appears full"
+msgstr "Nuovo AID:\n{}\nLa scheda sembra piena"
+
+msgid "{} KB RAM free"
+msgstr "{} KB RAM liberi"

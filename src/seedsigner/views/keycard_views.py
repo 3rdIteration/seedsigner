@@ -55,6 +55,7 @@ from seedsigner.helpers.keycard.ui_helpers import (
     extract_extended_pubkey,
     extract_pubkey,
     format_path,
+    is_install_memory_failure,
     open_unlocked_session,
     open_unlocked_session_cached_or_prompt,
     prompt_for_pin,
@@ -636,7 +637,7 @@ class ToolsKeycardStorageView(View):
         from seedsigner.helpers.keycard.ui_helpers import query_card_memory
         from seedsigner.views.view import (
             estimate_remaining_instances, estimated_used_nv,
-            keycard_instance_nv_estimate,
+            keycard_instance_nv_estimate, keycard_instance_volatile_estimate,
         )
 
         mem = query_card_memory(self)
@@ -662,15 +663,23 @@ class ToolsKeycardStorageView(View):
         # applet is present (instances are installed from its package).
         remaining = None
         if probe is None or getattr(probe, "keycard_installed", False):
-            count = _probe_keycard_instance_count_exact(self.controller)
-            if count is None:
-                # Fall back to the menu's cached boundary, or assume the one we
-                # likely have. Memory is almost always the binding term anyway.
-                count = self.controller.keycard_instance_count or 1
-            per_instance = keycard_instance_nv_estimate(self.controller)
-            remaining = estimate_remaining_instances(
-                mem.free_nv, count, per_instance, MAX_KEYCARD_INSTANCES,
-            )
+            if getattr(self.controller, "keycard_install_full", False):
+                # The card already refused an instance this session — trust that
+                # over the free-space estimate.
+                remaining = 0
+            else:
+                count = _probe_keycard_instance_count_exact(self.controller)
+                if count is None:
+                    # Fall back to the menu's cached boundary, or assume the one
+                    # we likely have. Memory is almost always the binding term.
+                    count = self.controller.keycard_instance_count or 1
+                per_instance = keycard_instance_nv_estimate(self.controller)
+                per_instance_vol = keycard_instance_volatile_estimate(self.controller)
+                remaining = estimate_remaining_instances(
+                    mem.free_nv, count, per_instance, MAX_KEYCARD_INSTANCES,
+                    free_volatile=mem.free_volatile,
+                    per_instance_volatile=per_instance_vol,
+                )
 
         self.run_screen(
             KeycardStorageScreen,
@@ -678,6 +687,7 @@ class ToolsKeycardStorageView(View):
             used_bytes=used,
             total_bytes=total,
             free_bytes=mem.free_nv,
+            free_volatile_bytes=mem.free_volatile,
             remaining_instances=remaining,
         )
         return Destination(BackStackView)
@@ -4537,17 +4547,17 @@ class ToolsKeycardInstancesMenuView(View):
 def _open_isd_channel(controller, read_free_nv=False):
     """Helper: open the GP secure channel against the inserted card.
 
-    Returns ``(channel, instances, connection, free_nv)``. ``instances`` is the
-    list reported by the ISD's GET STATUS; if the ISD reports zero, callers can
-    fall back to :func:`probe_keycard_instance_aids` using ``connection`` (which
-    terminates the GP channel as a side-effect). ``free_nv`` is the card's free
-    NV memory in bytes (or ``None``) and is only read when ``read_free_nv`` is
-    set. Caller surfaces errors via ``_error_destination`` — we deliberately let
-    exceptions bubble.
+    Returns ``(channel, instances, connection, free_nv, free_volatile)``.
+    ``instances`` is the list reported by the ISD's GET STATUS; if the ISD reports
+    zero, callers can fall back to :func:`probe_keycard_instance_aids` using
+    ``connection`` (which terminates the GP channel as a side-effect). ``free_nv``
+    / ``free_volatile`` are the card's free persistent / transient memory in bytes
+    (or ``None``) and are only read when ``read_free_nv`` is set. Caller surfaces
+    errors via ``_error_destination`` — we deliberately let exceptions bubble.
 
-    Free-NV is read **in the clear, BEFORE** :meth:`open`: GET DATA ``0xFF21`` is
-    publicly readable, but issuing ANY un-MAC'd command once the SCP02 channel is
-    open desyncs/tears down the channel and the *next* authenticated command
+    Free memory is read **in the clear, BEFORE** :meth:`open`: GET DATA ``0xFF21``
+    is publicly readable, but issuing ANY un-MAC'd command once the SCP02 channel
+    is open desyncs/tears down the channel and the *next* authenticated command
     (e.g. INSTALL) fails with ``0x6982 Security status not satisfied``. (That was
     the 0.1.3 "create instance" regression — the read was happening after
     ``open()``.) Never move this read, or any other un-MAC'd command, below the
@@ -4565,16 +4575,20 @@ def _open_isd_channel(controller, read_free_nv=False):
     channel = GpSecureChannel(connection)
     channel.select_isd()
     free_nv = None
+    free_volatile = None
     if read_free_nv:
         try:
-            value = channel.get_extended_card_resources().free_nv
-            free_nv = value if isinstance(value, int) else None
+            mem = channel.get_extended_card_resources()
+            free_nv = mem.free_nv if isinstance(mem.free_nv, int) else None
+            free_volatile = (mem.free_volatile
+                             if isinstance(mem.free_volatile, int) else None)
         except Exception:
-            logger.debug("free-NV read (pre-open, in the clear) failed", exc_info=True)
+            logger.debug("free-memory read (pre-open, in the clear) failed", exc_info=True)
             free_nv = None
+            free_volatile = None
     channel.open()
     instances = list_instances(channel)
-    return channel, instances, connection, free_nv
+    return channel, instances, connection, free_nv, free_volatile
 
 
 def _resolve_instance_uids(controller, connection, aids):
@@ -4625,7 +4639,7 @@ def _count_keycard_instances(controller):
     """
     connection = None
     try:
-        _channel, instances, connection, _free_nv = _open_isd_channel(controller)
+        _channel, instances, connection, _free_nv, _free_vol = _open_isd_channel(controller)
         keycard_instances = [
             i for i in instances if i.aid.startswith(KEYCARD_APPLET_AID)
         ]
@@ -4771,7 +4785,7 @@ def _instances_or_probe_fallback(controller, instances, connection):
 class ToolsKeycardInstancesSwitchView(View):
     def run(self):
         try:
-            channel, instances, isd_connection, _free_nv = _open_isd_channel(self.controller)
+            channel, instances, isd_connection, _free_nv, _free_vol = _open_isd_channel(self.controller)
         except Exception as exc:
             logger.exception("GP list_instances failed")
             title, body = classify_card_error(exc, default_title=_("GP failed"))
@@ -4865,8 +4879,8 @@ class ToolsKeycardInstancesCreateView(View):
             # Read free-NV in the clear, BEFORE the secure channel is opened —
             # see _open_isd_channel: an un-MAC'd GET DATA after open() would
             # break the channel and the INSTALL below would fail 0x6982.
-            channel, instances, isd_connection, free_before = _open_isd_channel(
-                self.controller, read_free_nv=True,
+            channel, instances, isd_connection, free_before, free_vol_before = (
+                _open_isd_channel(self.controller, read_free_nv=True)
             )
         except Exception as exc:
             logger.exception("GP open failed")
@@ -4875,6 +4889,7 @@ class ToolsKeycardInstancesCreateView(View):
 
         from seedsigner.views.view import (
             estimate_remaining_instances, keycard_instance_nv_estimate,
+            keycard_instance_volatile_estimate,
         )
 
         existing_aids = [i.aid for i in instances]
@@ -4892,25 +4907,37 @@ class ToolsKeycardInstancesCreateView(View):
             return _error_destination(_("No slot"), str(exc))
 
         # Memory-aware estimate (best-effort): how many more instances likely
-        # fit, given the card's free NV (read above, pre-open) and the
-        # per-instance footprint.
+        # fit, given the card's free NV + free RAM (read above, pre-open) and the
+        # per-instance footprints. If this card already refused an instance this
+        # session with a memory-class SW, trust that ground truth over any
+        # free-space estimate and clamp to 0.
+        card_full = getattr(self.controller, "keycard_install_full", False)
         per_instance = keycard_instance_nv_estimate(self.controller)
-        remaining = estimate_remaining_instances(
-            free_before, keycard_count, per_instance, MAX_KEYCARD_INSTANCES,
-        )
+        per_instance_vol = keycard_instance_volatile_estimate(self.controller)
+        if card_full:
+            remaining = 0
+        else:
+            remaining = estimate_remaining_instances(
+                free_before, keycard_count, per_instance, MAX_KEYCARD_INSTANCES,
+                free_volatile=free_vol_before,
+                per_instance_volatile=per_instance_vol,
+            )
 
-        # Soft warning when the estimate says there's no room — but only when we
-        # could actually read free memory (never block on an unprovable
-        # shortfall). The slot ceiling is already handled above, so a zero here
-        # is purely memory-driven. The user can still "Create anyway".
-        if free_before is not None and remaining <= 0:
+        # Soft warning when there's no room — either the estimate said so (only
+        # when we could actually read free memory) or the card already proved
+        # it's full. Never a hard block: the slot ceiling is handled above, so a
+        # zero here is memory-driven and the user can still "Create anyway".
+        if remaining <= 0 and (free_before is not None or card_full):
+            # TRANSLATOR_NOTE: shown when the card is too full to hold another
+            # Keycard instance ("appears full" once the card has actually
+            # refused one; "may be too full" when it's only an estimate).
+            warn_text = (_("Card appears full.\nCreate may fail.") if card_full
+                         else _("Card may be too full\nfor another instance."))
             ret = self.run_screen(
                 DireWarningScreen,
                 title=_("Low space"),
                 status_headline=None,
-                # TRANSLATOR_NOTE: shown when the card looks too full to hold
-                # another Keycard instance.
-                text=_("Card may be too full\nfor another instance."),
+                text=warn_text,
                 show_back_button=True,
                 button_data=[ButtonOption("Create anyway")],
             )
@@ -4918,13 +4945,19 @@ class ToolsKeycardInstancesCreateView(View):
                 return Destination(BackStackView)
 
         # Create-confirm: surface the estimate when we have it, else the original
-        # package precondition note. Both stay within 3 short lines.
-        if free_before is not None:
-            # TRANSLATOR_NOTE: {} are the new instance AID and the estimated
-            # number of additional instances that still fit.
-            confirm_text = _("New AID:\n{}\n≈{} more fit").format(
-                _format_aid_short(new_aid), remaining,
-            )
+        # package precondition note. Both stay within 3 short lines. Never print
+        # "≈0 more fit" — say "Card appears full" instead.
+        if free_before is not None or card_full:
+            if remaining <= 0:
+                confirm_text = _("New AID:\n{}\nCard appears full").format(
+                    _format_aid_short(new_aid),
+                )
+            else:
+                # TRANSLATOR_NOTE: {} are the new instance AID and the estimated
+                # number of additional instances that still fit.
+                confirm_text = _("New AID:\n{}\n≈{} more fit").format(
+                    _format_aid_short(new_aid), remaining,
+                )
         else:
             confirm_text = _("New AID:\n{}\nCard must have package.").format(
                 _format_aid_short(new_aid),
@@ -4955,6 +4988,11 @@ class ToolsKeycardInstancesCreateView(View):
             )
         except GpProtocolError as exc:
             logger.exception("INSTALL [for install] failed")
+            # The card itself proving it's full (memory-class SW) is ground
+            # truth — record it so the next estimate clamps to 0 instead of
+            # over-promising again.
+            if is_install_memory_failure(exc):
+                self.controller.keycard_install_full = True
             # GpProtocolError messages are like "Security status not
             # satisfied (0x6982)" — surface that directly so the user
             # has the SW to share if reporting. Keep within 2 lines.
@@ -4962,12 +5000,32 @@ class ToolsKeycardInstancesCreateView(View):
             return _error_destination(_("Install failed"), detail)
         except Exception as exc:
             logger.exception("INSTALL [for install] failed")
+            if is_install_memory_failure(exc):
+                self.controller.keycard_install_full = True
             title, body = classify_card_error(exc, default_title=_("Install failed"))
             return _error_destination(title, body)
 
-        # (No post-INSTALL free-NV read for self-calibration: that read would
-        # have to go over the now-open secure channel un-MAC'd, which breaks it.
-        # The per-instance estimate uses the conservative constant fallback.)
+        # Self-calibration: re-read free NV + RAM on a FRESH clear channel and
+        # store the per-instance deltas for this card, so subsequent "≈N fit"
+        # estimates use the card's real footprint instead of the constant.
+        # MUST be a fresh channel — an un-MAC'd GET DATA on the now-open SCP02
+        # channel would break it (same constraint as the pre-open read). The card
+        # is never removed during create, so this is just a PC/SC reconnect.
+        # Best-effort: a calibration failure never aborts a successful create.
+        try:
+            isd_connection.disconnect()
+        except Exception:
+            logger.debug("post-install channel disconnect failed", exc_info=True)
+        try:
+            from seedsigner.helpers.keycard.ui_helpers import query_card_memory
+            mem_after = query_card_memory(self)  # fresh clear channel; never None-raises
+            if mem_after is not None:
+                self._record_instance_nv_measurement(
+                    free_before, mem_after.free_nv,
+                    free_vol_before, mem_after.free_volatile,
+                )
+        except Exception:
+            logger.debug("post-install self-calibration read failed", exc_info=True)
 
         # Instance set changed — force the top menu to re-probe the count
         # (so "Switch instance" reappears now that there are >1).
@@ -4992,6 +5050,29 @@ class ToolsKeycardInstancesCreateView(View):
         )
         return Destination(ToolsKeycardInstancesMenuView, skip_current_view=True)
 
+    def _record_instance_nv_measurement(self, nv_before, nv_after,
+                                        vol_before, vol_after):
+        """Store the per-instance NV/RAM cost measured around this INSTALL.
+
+        ``free`` decreases as an instance is added, so the cost is
+        ``before - after``. Each delta is sanity-bounded; an out-of-range value
+        (negative, absurd, or RAM that was reclaimed post-install) is ignored,
+        leaving the conservative constant in place. Card-specific — cleared on
+        swap by ``wipe_card_session_secrets``.
+        """
+        if isinstance(nv_before, int) and isinstance(nv_after, int):
+            delta = nv_before - nv_after
+            if 256 <= delta <= 16384:                  # plausible NV per-instance
+                self.controller.keycard_measured_instance_nv = delta
+        if isinstance(vol_before, int) and isinstance(vol_after, int):
+            vdelta = vol_before - vol_after
+            # Transient RAM is often reclaimed once the INSTALL's APDU buffers
+            # free, so vdelta is frequently 0/negative — the lower bound rejects
+            # that and we fall back to the constant (the durable RAM signal is
+            # the install-failure clamp, not this measurement).
+            if 32 <= vdelta <= 4096:                   # plausible RAM per-instance
+                self.controller.keycard_measured_instance_volatile = vdelta
+
 
 class ToolsKeycardInstancesDeleteView(View):
     """Delete an applet instance and drop its local pairing."""
@@ -5000,7 +5081,7 @@ class ToolsKeycardInstancesDeleteView(View):
         from seedsigner.helpers.keycard.global_platform import delete_aid
 
         try:
-            channel, instances, isd_connection, _free_nv = _open_isd_channel(self.controller)
+            channel, instances, isd_connection, _free_nv, _free_vol = _open_isd_channel(self.controller)
         except Exception as exc:
             logger.exception("GP open failed")
             title, body = classify_card_error(exc, default_title=_("GP failed"))

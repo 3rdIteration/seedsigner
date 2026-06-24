@@ -1142,7 +1142,7 @@ class TestKeycardMenuRouting(unittest.TestCase):
 
         with patch.object(
             keycard_views, "_open_isd_channel",
-            return_value=(MagicMock(), full_instances, MagicMock(), None),
+            return_value=(MagicMock(), full_instances, MagicMock(), None, None),
         ), patch(
             "seedsigner.helpers.keycard.global_platform.install_for_install_with_fallback"
         ) as install_mock:
@@ -1181,7 +1181,7 @@ class TestKeycardMenuRouting(unittest.TestCase):
 
         with patch.object(
             keycard_views, "_open_isd_channel",
-            return_value=(MagicMock(), existing, MagicMock(), None),
+            return_value=(MagicMock(), existing, MagicMock(), None, None),
         ), patch(
             "seedsigner.helpers.keycard.global_platform.install_for_install_with_fallback"
         ) as install_mock:
@@ -1363,7 +1363,7 @@ class TestKeycardMenuRouting(unittest.TestCase):
 
         with patch.object(
             keycard_views, "_open_isd_channel",
-            return_value=(MagicMock(), instances, MagicMock(), None),
+            return_value=(MagicMock(), instances, MagicMock(), None, None),
         ), patch.object(
             keycard_views, "_instances_or_probe_fallback",
             side_effect=lambda controller, inst, conn: inst,
@@ -1544,7 +1544,7 @@ class TestCountKeycardInstances(unittest.TestCase):
         conn = MagicMock()
         with patch.object(
             keycard_views, "_open_isd_channel",
-            return_value=(MagicMock(), instances, conn, None),
+            return_value=(MagicMock(), instances, conn, None, None),
         ):
             self.assertEqual(_count_keycard_instances(MagicMock()), 5)
         conn.disconnect.assert_called_once()
@@ -1558,7 +1558,7 @@ class TestCountKeycardInstances(unittest.TestCase):
         instances = self._instances(KEYCARD_APPLET_AID + b"\x01\x01")
         with patch.object(
             keycard_views, "_open_isd_channel",
-            return_value=(MagicMock(), instances, MagicMock(), None),
+            return_value=(MagicMock(), instances, MagicMock(), None, None),
         ):
             self.assertEqual(_count_keycard_instances(MagicMock()), 1)
 
@@ -1571,7 +1571,7 @@ class TestCountKeycardInstances(unittest.TestCase):
         from seedsigner.views.keycard_views import _count_keycard_instances
         with patch.object(
             keycard_views, "_open_isd_channel",
-            return_value=(MagicMock(), [], MagicMock(), None),
+            return_value=(MagicMock(), [], MagicMock(), None, None),
         ):
             self.assertIsNone(_count_keycard_instances(MagicMock()))
 
@@ -1748,6 +1748,10 @@ class TestCreateInstanceMemoryGate(unittest.TestCase):
         view = ToolsKeycardInstancesCreateView.__new__(ToolsKeycardInstancesCreateView)
         view.controller = MagicMock()
         view.controller.keycard_measured_instance_nv = None
+        view.controller.keycard_measured_instance_volatile = None
+        # Real Controller defaults this to False; on a MagicMock the attribute
+        # would otherwise be a truthy Mock and wrongly clamp the estimate to 0.
+        view.controller.keycard_install_full = False
         return view, existing
 
     def test_low_space_warns_and_back_cancels(self):
@@ -1760,9 +1764,10 @@ class TestCreateInstanceMemoryGate(unittest.TestCase):
 
         view, existing = self._view(existing_count=1)
         view.run_screen = MagicMock(return_value=RET_CODE__BACK_BUTTON)
-        # 4th tuple element is the free-NV read in the clear before open().
+        # 4th/5th tuple elements are the free-NV / free-RAM read in the clear
+        # before open() (RAM=None → RAM gate skipped, NV drives the estimate).
         with patch.object(keycard_views, "_open_isd_channel",
-                          return_value=(MagicMock(), existing, MagicMock(), 3000)), \
+                          return_value=(MagicMock(), existing, MagicMock(), 3000, None)), \
              patch("seedsigner.helpers.keycard.global_platform."
                    "install_for_install_with_fallback") as install_mock:
             dest = view.run()
@@ -1779,7 +1784,7 @@ class TestCreateInstanceMemoryGate(unittest.TestCase):
         # Non-back sentinel so confirm proceeds through install.
         view.run_screen = MagicMock(return_value=object())
         with patch.object(keycard_views, "_open_isd_channel",
-                          return_value=(MagicMock(), existing, MagicMock(), 100000)), \
+                          return_value=(MagicMock(), existing, MagicMock(), 100000, None)), \
              patch("seedsigner.helpers.keycard.global_platform."
                    "install_for_install_with_fallback") as install_mock:
             view.run()
@@ -1805,7 +1810,7 @@ class TestCreateInstanceMemoryGate(unittest.TestCase):
 
             def get_extended_card_resources(self):
                 order.append("get_free_nv")
-                return MagicMock(free_nv=4096)
+                return MagicMock(free_nv=4096, free_volatile=2048)
 
             def open(self):
                 order.append("open")
@@ -1818,11 +1823,12 @@ class TestCreateInstanceMemoryGate(unittest.TestCase):
                    "release_other_smartcard_holders"), \
              patch("seedsigner.helpers.keycard.reader.wait_for_card",
                    return_value=MagicMock()):
-            _ch, _inst, _conn, free_nv = keycard_views._open_isd_channel(
+            _ch, _inst, _conn, free_nv, free_volatile = keycard_views._open_isd_channel(
                 MagicMock(), read_free_nv=True,
             )
 
         self.assertEqual(free_nv, 4096)
+        self.assertEqual(free_volatile, 2048)
         # The clear free-NV read must precede open() — never after it.
         self.assertLess(order.index("get_free_nv"), order.index("open"))
 
@@ -1841,12 +1847,165 @@ class TestCreateInstanceMemoryGate(unittest.TestCase):
                    "release_other_smartcard_holders"), \
              patch("seedsigner.helpers.keycard.reader.wait_for_card",
                    return_value=MagicMock()):
-            _ch, _inst, _conn, free_nv = keycard_views._open_isd_channel(
+            _ch, _inst, _conn, free_nv, free_volatile = keycard_views._open_isd_channel(
                 MagicMock(),
             )
 
         self.assertIsNone(free_nv)
+        self.assertIsNone(free_volatile)
         channel.get_extended_card_resources.assert_not_called()
+
+    def test_install_memory_failure_sets_full_clamp(self):
+        """A memory-class INSTALL failure (0x6A84) is ground truth — record it
+        so the next estimate clamps to 0 instead of over-promising."""
+        from unittest.mock import patch
+        from seedsigner.views import keycard_views
+        from seedsigner.helpers.keycard.global_platform import GpProtocolError
+
+        view, existing = self._view(existing_count=1)
+        view.run_screen = MagicMock(return_value=object())  # proceed to install
+        with patch.object(
+            keycard_views, "_open_isd_channel",
+            return_value=(MagicMock(), existing, MagicMock(), 100000, None),
+        ), patch(
+            "seedsigner.helpers.keycard.global_platform."
+            "install_for_install_with_fallback",
+            side_effect=GpProtocolError("Not enough memory space (0x6a84)"),
+        ):
+            dest = view.run()
+
+        self.assertTrue(view.controller.keycard_install_full)
+        self.assertIs(dest.View_cls, keycard_views.KeycardErrorView)
+
+    def test_install_6f00_sets_full_clamp(self):
+        """The exact SW the field card returned (0x6F00, "no precise
+        diagnosis") must also set the clamp in the install context."""
+        from unittest.mock import patch
+        from seedsigner.views import keycard_views
+        from seedsigner.helpers.keycard.global_platform import GpProtocolError
+
+        view, existing = self._view(existing_count=1)
+        view.run_screen = MagicMock(return_value=object())
+        with patch.object(
+            keycard_views, "_open_isd_channel",
+            return_value=(MagicMock(), existing, MagicMock(), 100000, None),
+        ), patch(
+            "seedsigner.helpers.keycard.global_platform."
+            "install_for_install_with_fallback",
+            side_effect=GpProtocolError(
+                "Unknown error, no precise diagnosis (0x6f00)"),
+        ):
+            view.run()
+
+        self.assertTrue(view.controller.keycard_install_full)
+
+    def test_clamp_forces_zero_estimate_on_next_confirm(self):
+        """Once the card is known full, the create-confirm says "Card appears
+        full" rather than "≈N more fit", even with EEPROM still free."""
+        from unittest.mock import patch
+        from seedsigner.views import keycard_views
+
+        view, existing = self._view(existing_count=1)
+        view.controller.keycard_install_full = True  # card already refused one
+        view.run_screen = MagicMock(return_value=object())
+        with patch.object(
+            keycard_views, "_open_isd_channel",
+            return_value=(MagicMock(), existing, MagicMock(), 100000, 5000),
+        ), patch(
+            "seedsigner.helpers.keycard.global_platform."
+            "install_for_install_with_fallback",
+        ):
+            view.run()
+
+        texts = [c.kwargs.get("text", "") for c in view.run_screen.call_args_list
+                 if c.kwargs.get("title") == "Create instance?"]
+        self.assertTrue(texts, "create-confirm screen was not shown")
+        self.assertIn("Card appears full", texts[0])
+        self.assertNotIn("more fit", texts[0])
+
+    def test_post_install_measures_nv_and_volatile_delta(self):
+        """Phase-2 self-calibration: a successful INSTALL records the per-instance
+        NV + RAM deltas (free before minus free after) within sanity bounds."""
+        from unittest.mock import patch
+        from seedsigner.views import keycard_views
+        from seedsigner.helpers.keycard import ui_helpers
+        from seedsigner.helpers.keycard.global_platform import CardMemory
+
+        view, existing = self._view(existing_count=1)
+        view.run_screen = MagicMock(return_value=object())
+        after = CardMemory(free_nv=47000, free_volatile=1500, num_apps=2)
+        with patch.object(
+            keycard_views, "_open_isd_channel",
+            return_value=(MagicMock(), existing, MagicMock(), 50000, 2000),
+        ), patch(
+            "seedsigner.helpers.keycard.global_platform."
+            "install_for_install_with_fallback",
+        ), patch.object(ui_helpers, "query_card_memory", return_value=after):
+            view.run()
+
+        self.assertEqual(view.controller.keycard_measured_instance_nv, 3000)
+        self.assertEqual(view.controller.keycard_measured_instance_volatile, 500)
+
+    def test_post_install_reclaimed_ram_leaves_volatile_unmeasured(self):
+        """If free RAM is *higher* after install (transient buffers reclaimed),
+        the negative delta is rejected and the volatile estimate stays unset."""
+        from unittest.mock import patch
+        from seedsigner.views import keycard_views
+        from seedsigner.helpers.keycard import ui_helpers
+        from seedsigner.helpers.keycard.global_platform import CardMemory
+
+        view, existing = self._view(existing_count=1)
+        view.run_screen = MagicMock(return_value=object())
+        after = CardMemory(free_nv=47000, free_volatile=2500, num_apps=2)
+        with patch.object(
+            keycard_views, "_open_isd_channel",
+            return_value=(MagicMock(), existing, MagicMock(), 50000, 2000),
+        ), patch(
+            "seedsigner.helpers.keycard.global_platform."
+            "install_for_install_with_fallback",
+        ), patch.object(ui_helpers, "query_card_memory", return_value=after):
+            view.run()
+
+        self.assertEqual(view.controller.keycard_measured_instance_nv, 3000)
+        self.assertIsNone(view.controller.keycard_measured_instance_volatile)
+
+
+class TestIsInstallMemoryFailure(unittest.TestCase):
+    """``is_install_memory_failure`` recognises the full-card SWs in both the
+    GpProtocolError (message-only SW) and APDUError (numeric SW) shapes, and
+    ``classify_card_error`` maps the unambiguous 0x6A84 to "Card full"."""
+
+    def test_gp_protocol_6a84_and_6f00(self):
+        from seedsigner.helpers.keycard.ui_helpers import is_install_memory_failure
+        from seedsigner.helpers.keycard.global_platform import GpProtocolError
+        self.assertTrue(is_install_memory_failure(
+            GpProtocolError("Not enough memory space (0x6a84)")))
+        self.assertTrue(is_install_memory_failure(
+            GpProtocolError("Unknown error, no precise diagnosis (0x6f00)")))
+
+    def test_apdu_error_6a84(self):
+        from seedsigner.helpers.keycard.ui_helpers import is_install_memory_failure
+        from seedsigner.helpers.keycard.commands import APDUError
+        self.assertTrue(is_install_memory_failure(APDUError(0x6A84, "x")))
+
+    def test_rejects_non_memory(self):
+        from seedsigner.helpers.keycard.ui_helpers import is_install_memory_failure
+        from seedsigner.helpers.keycard.global_platform import GpProtocolError
+        from seedsigner.helpers.keycard.commands import APDUError
+        self.assertFalse(is_install_memory_failure(
+            GpProtocolError("Security status not satisfied (0x6982)")))
+        self.assertFalse(is_install_memory_failure(APDUError(0x6982, "x")))
+        self.assertFalse(is_install_memory_failure(ValueError("nope")))
+
+    def test_classify_card_full_6a84(self):
+        from seedsigner.helpers.keycard.ui_helpers import classify_card_error
+        from seedsigner.helpers.keycard.commands import APDUError
+        from seedsigner.helpers.keycard.global_platform import GpProtocolError
+        title, _body = classify_card_error(APDUError(0x6A84, "x"))
+        self.assertEqual(title, "Card full")
+        title, _body = classify_card_error(
+            GpProtocolError("Not enough memory space (0x6a84)"))
+        self.assertEqual(title, "Card full")
 
 
 class TestProbeKeycardInstanceCountMenuEntry(unittest.TestCase):
@@ -1953,7 +2112,7 @@ class TestPinLockLifecycle(unittest.TestCase):
 
         with patch.object(
             keycard_views, "_open_isd_channel",
-            return_value=(MagicMock(), instances, MagicMock(), None),
+            return_value=(MagicMock(), instances, MagicMock(), None, None),
         ), patch.object(
             keycard_views, "_instances_or_probe_fallback",
             side_effect=lambda controller, inst, conn: inst,
@@ -1986,7 +2145,7 @@ class TestPinLockLifecycle(unittest.TestCase):
 
         with patch.object(
             keycard_views, "_open_isd_channel",
-            return_value=(MagicMock(), instances, MagicMock(), None),
+            return_value=(MagicMock(), instances, MagicMock(), None, None),
         ), patch.object(
             keycard_views, "_instances_or_probe_fallback",
             side_effect=lambda controller, inst, conn: inst,
@@ -3409,7 +3568,7 @@ class TestInstanceNameResolution(unittest.TestCase):
 
         with patch.object(
             keycard_views, "_open_isd_channel",
-            return_value=(MagicMock(), instances, MagicMock(), None),
+            return_value=(MagicMock(), instances, MagicMock(), None, None),
         ), patch.object(
             keycard_views, "_resolve_instance_uids", side_effect=fake_resolve,
         ), patch(
@@ -3540,7 +3699,7 @@ class TestInstanceAidAllocation(unittest.TestCase):
         view.run_screen = fake_run_screen
         with patch.object(
             keycard_views, "_open_isd_channel",
-            return_value=(MagicMock(), instances, MagicMock(), None),
+            return_value=(MagicMock(), instances, MagicMock(), None, None),
         ):
             view.run()
 

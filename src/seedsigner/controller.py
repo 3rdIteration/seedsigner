@@ -192,6 +192,14 @@ class Controller(Singleton):
     # = not measured yet → fall back to the conservative constant. Drives the
     # "≈N more fit" estimate. Cleared on card swap (different card may differ).
     keycard_measured_instance_nv: int = None
+    # Sibling of the above for transient-RAM (free_volatile) cost, measured as
+    # the free-volatile delta around an INSTALL. ``None`` = not measured.
+    keycard_measured_instance_volatile: int = None
+    # Set True when an INSTALL [for install] failed with a memory-class SW this
+    # session — the card itself proved it's full, so trust that over any
+    # estimate: the "≈N more fit" estimate is then forced to 0. Card-specific →
+    # cleared on card swap.
+    keycard_install_full: bool = False
 
     sign_message_data: dict = None
     gpg_keys_imported: bool = False
@@ -637,9 +645,12 @@ class Controller(Singleton):
         # instance count is no longer trustworthy. Force a re-probe on the
         # next top Keycard menu render.
         self.keycard_instance_count = None
-        # Per-instance NV calibration is card-specific (a different card may
-        # have a different per-instance footprint), so drop it on swap.
+        # Per-instance NV/RAM calibration and the "card is full" marker are all
+        # card-specific (a different card may have a different footprint and may
+        # not be full), so drop them on swap.
         self.keycard_measured_instance_nv = None
+        self.keycard_measured_instance_volatile = None
+        self.keycard_install_full = False
 
     def _is_card_view(self, view_cls) -> bool:
         """True iff ``view_cls`` belongs to the card-views subtree.
