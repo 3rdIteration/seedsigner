@@ -1941,6 +1941,50 @@ def _instance_key_present(parent_view):
     return bool(info.key_uid)
 
 
+def _instance_initialised(parent_view):
+    """SELECT-only probe: is the active instance initialised (PIN/PUK set)?
+
+    ``SelectResult.app_version`` is ``0`` on a pre-init applet (the sentinel
+    SELECT returns before INIT), non-zero once initialised. Returns ``True`` /
+    ``False``, or ``None`` when it can't be determined (no card / read error).
+
+    Advisory: callers redirect to the Init wizard only on a *definite* ``False``;
+    ``None`` falls through to the normal flow so a transient probe failure never
+    blocks an already-initialised card, and the real card error (if any) still
+    surfaces downstream.
+    """
+    from seedsigner.helpers.keycard.ui_helpers import select_inserted_card
+    try:
+        _client, info = select_inserted_card(parent_view)
+    except Exception:
+        logger.debug("init-state probe SELECT failed", exc_info=True)
+        return None
+    return info.app_version != 0
+
+
+def _redirect_if_uninitialised(view):
+    """If the active instance is definitely uninitialised, route to the Init
+    wizard (via a one-screen explainer); else return ``None`` to continue.
+
+    Shared by the Generate-key and Import-seed entry points so a freshly-created
+    (auto-activated, uninitialised) instance can't fall into a LOAD_KEY flow that
+    only fails at the very end — which, for the SeedKeeper swap chain, looped.
+    """
+    if _instance_initialised(view) is not False:
+        return None
+    ret = view.run_screen(
+        LargeIconStatusScreen,
+        title=_("Set up first"),
+        status_headline=None,
+        text=_("Instance has no PIN yet.\nInitialise it first."),
+        show_back_button=True,
+        button_data=[ButtonOption("Continue")],
+    )
+    if ret == RET_CODE__BACK_BUTTON:
+        return Destination(BackStackView)
+    return Destination(ToolsKeycardInitView)
+
+
 class ToolsKeycardGenerateKeyView(View):
     """Entry-point for the on-card key generation flow.
 
@@ -1954,6 +1998,12 @@ class ToolsKeycardGenerateKeyView(View):
     CONFIRM = ButtonOption("Continue")
 
     def run(self):
+        # An uninitialised (just-created) instance has no PIN yet, so GENERATE
+        # would only fail at the on-card step — redirect to the Init wizard.
+        redirect = _redirect_if_uninitialised(self)
+        if redirect is not None:
+            return redirect
+
         # Warn explicitly when this would overwrite an already-loaded key.
         # A fresh / just-initialised instance has no key_uid yet (generic
         # warning); a probe failure also falls back to the generic warning and
@@ -2007,7 +2057,7 @@ class ToolsKeycardImportSeedView(View):
     """
 
     SCAN = ButtonOption("Scan SeedQR")
-    TYPE_WORDS = ButtonOption("Type words")
+    TYPE_WORDS = ButtonOption("BIP39 seed phrase")
     HEX = ButtonOption("Import hex (NGRAVE)")
     FROM_SEEDKEEPER = ButtonOption("From SeedKeeper")
     CONFIRM = ButtonOption("Push to card")
@@ -2023,6 +2073,15 @@ class ToolsKeycardImportSeedView(View):
         from seedsigner.helpers.keycard import (
             KeycardCardChangedError, KeycardPinPromptCancelled,
         )
+
+        # 0. An uninitialised (just-created) instance has no PIN yet, so every
+        #    import path would only fail at the final LOAD_KEY — and for the
+        #    SeedKeeper swap chain that failure looped. Detect it up front and
+        #    route to the Init wizard before the user picks a source / swaps
+        #    cards. Init then chains to the Generate/Import chooser on success.
+        redirect = _redirect_if_uninitialised(self)
+        if redirect is not None:
+            return redirect
 
         # 1. Strong warning + confirm to enter the flow. When the instance
         #    already holds a key, make the warning explicit about overwriting
@@ -2045,8 +2104,10 @@ class ToolsKeycardImportSeedView(View):
         if warn_ret == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
 
-        # 2. Pick the input method.
-        button_data = [self.SCAN, self.TYPE_WORDS, self.HEX, self.FROM_SEEDKEEPER]
+        # 2. Pick the input method. Manual word entry first; SeedQR scan last
+        #    (the least-used path for this user). Routing below matches on the
+        #    ButtonOption identity, not the index, so order is free to change.
+        button_data = [self.TYPE_WORDS, self.HEX, self.FROM_SEEDKEEPER, self.SCAN]
         choice_ret = self.run_screen(
             ButtonListScreen,
             title=_("Source"),
@@ -2736,7 +2797,8 @@ class ToolsKeycardImportSeedkeeperPushView(View):
 
     def run(self):
         from seedsigner.helpers.keycard import (
-            KeycardCardChangedError, KeycardPinPromptCancelled,
+            KeycardCardChangedError, KeycardNotInitialisedError,
+            KeycardPinPromptCancelled,
         )
         from embit import bip39, bip32
 
@@ -2790,6 +2852,17 @@ class ToolsKeycardImportSeedkeeperPushView(View):
                 )
             except KeycardCardChangedError:
                 return Destination(ToolsKeycardPairView)
+            except KeycardNotInitialisedError:
+                # Not a transient hiccup: this instance has no PIN, so retrying
+                # the swap can never succeed. Break out of the retry loop with a
+                # clear message instead of bouncing back to the re-insert step.
+                # (The entry guard normally catches this before the swap; this is
+                # the backstop when the probe couldn't read the card up front.)
+                _wipe_pending_setup_state(self.controller)
+                return _error_destination(
+                    _("Not initialised"),
+                    _("Initialise the instance\nfirst, then re-import."),
+                )
             except Exception as exc:
                 logger.exception("LOAD_KEY failed")
                 # No-card / reader hiccup → keep the seed and offer a retry

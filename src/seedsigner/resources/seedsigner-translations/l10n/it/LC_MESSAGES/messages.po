@@ -3990,3 +3990,15 @@ msgid ""
 msgstr ""
 "L'istanza ha già una chiave.\n"
 "L'importazione la sostituisce per sempre."
+
+msgid "BIP39 seed phrase"
+msgstr "Frase seme BIP39"
+
+msgid "Set up first"
+msgstr "Configura prima"
+
+msgid "Instance has no PIN yet.\nInitialise it first."
+msgstr "L'istanza non ha ancora PIN.\nInizializzala prima."
+
+msgid "Initialise the instance\nfirst, then re-import."
+msgstr "Inizializza prima\nl'istanza, poi reimporta."

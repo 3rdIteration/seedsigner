@@ -222,9 +222,9 @@ class TestImportChooserRouting(unittest.TestCase):
         )
         view = ToolsKeycardImportSeedView.__new__(ToolsKeycardImportSeedView)
         view.controller = MagicMock()
-        # 1st screen = DireWarning (Continue=0), 2nd = Source chooser; index 3
-        # is "From SeedKeeper" (SCAN, TYPE_WORDS, HEX, FROM_SEEDKEEPER).
-        view.run_screen = MagicMock(side_effect=[0, 3])
+        # 1st screen = DireWarning (Continue=0), 2nd = Source chooser; index 2
+        # is "From SeedKeeper" (TYPE_WORDS, HEX, FROM_SEEDKEEPER, SCAN).
+        view.run_screen = MagicMock(side_effect=[0, 2])
         dest = view.run()
         self.assertIs(dest.View_cls, ToolsKeycardImportSeedkeeperInsertView)
 

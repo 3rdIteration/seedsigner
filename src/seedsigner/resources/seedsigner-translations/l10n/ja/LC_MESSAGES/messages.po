@@ -3946,3 +3946,15 @@ msgid ""
 msgstr ""
 "インスタンスには既に鍵があります。\n"
 "インポートすると完全に置き換わります。"
+
+msgid "BIP39 seed phrase"
+msgstr "BIP39シードフレーズ"
+
+msgid "Set up first"
+msgstr "先に設定"
+
+msgid "Instance has no PIN yet.\nInitialise it first."
+msgstr "インスタンスにPINがありません。\n先に初期化してください。"
+
+msgid "Initialise the instance\nfirst, then re-import."
+msgstr "先にインスタンスを初期化\nしてから再インポート。"

@@ -3979,3 +3979,15 @@ msgid ""
 msgstr ""
 "La instància ja té una clau.\n"
 "Importar la substitueix per sempre."
+
+msgid "BIP39 seed phrase"
+msgstr "Frase llavor BIP39"
+
+msgid "Set up first"
+msgstr "Configura primer"
+
+msgid "Instance has no PIN yet.\nInitialise it first."
+msgstr "La instància encara no té PIN.\nInicialitza-la primer."
+
+msgid "Initialise the instance\nfirst, then re-import."
+msgstr "Inicialitza la instància\nprimer i torna a importar."

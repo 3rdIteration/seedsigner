@@ -521,7 +521,11 @@ class TestKeycardMenuRouting(unittest.TestCase):
         view = view_cls.__new__(view_cls)
         view.run_screen = fake_run_screen
         view.controller = MagicMock()
-        with patch.object(keycard_views, "_instance_key_present", return_value=key_present):
+        # Treat the instance as initialised so the new uninitialised-instance
+        # redirect doesn't fire — this helper only exercises the overwrite
+        # warning that follows it.
+        with patch.object(keycard_views, "_instance_key_present", return_value=key_present), \
+             patch.object(keycard_views, "_instance_initialised", return_value=True):
             view.run()
         return captured
 
@@ -553,6 +557,116 @@ class TestKeycardMenuRouting(unittest.TestCase):
         self.assertEqual(gen["title"], "Generate seed?")
         imp = self._capture_first_warning(ToolsKeycardImportSeedView, None)
         self.assertEqual(imp["title"], "Import to card?")
+
+    def _run_with_init_state(self, view_cls, initialised, screen_ret):
+        """Run an entry view's ``run`` with ``_instance_initialised`` forced to
+        ``initialised`` (and any key-presence probe neutralised). Every screen
+        returns ``screen_ret``. Returns ``(destination, [first_screen_kwargs])``.
+        """
+        from unittest.mock import patch
+        from seedsigner.views import keycard_views
+        captured = []
+
+        def fake_run_screen(screen_cls, **kwargs):
+            captured.append(kwargs)
+            return screen_ret
+
+        view = view_cls.__new__(view_cls)
+        view.run_screen = fake_run_screen
+        view.controller = MagicMock()
+        with patch.object(keycard_views, "_instance_initialised", return_value=initialised), \
+             patch.object(keycard_views, "_instance_key_present", return_value=False):
+            dest = view.run()
+        return dest, captured
+
+    def test_import_seed_redirects_uninitialised_to_init(self):
+        """Import seed on an uninitialised instance shows the 'Set up first'
+        explainer and routes to the Init wizard (not into the source menu)."""
+        from seedsigner.views.keycard_views import (
+            ToolsKeycardImportSeedView, ToolsKeycardInitView,
+        )
+        dest, captured = self._run_with_init_state(
+            ToolsKeycardImportSeedView, initialised=False, screen_ret=0,
+        )
+        self.assertEqual(captured[0]["title"], "Set up first")
+        self.assertIs(dest.View_cls, ToolsKeycardInitView)
+
+    def test_generate_key_redirects_uninitialised_to_init(self):
+        """Generate key on an uninitialised instance also routes to Init."""
+        from seedsigner.views.keycard_views import (
+            ToolsKeycardGenerateKeyView, ToolsKeycardInitView,
+        )
+        dest, captured = self._run_with_init_state(
+            ToolsKeycardGenerateKeyView, initialised=False, screen_ret=0,
+        )
+        self.assertEqual(captured[0]["title"], "Set up first")
+        self.assertIs(dest.View_cls, ToolsKeycardInitView)
+
+    def test_import_seed_redirect_back_button_returns_backstack(self):
+        """Backing out of the 'Set up first' explainer returns to the prior
+        screen rather than the Init wizard."""
+        from seedsigner.gui.screens import RET_CODE__BACK_BUTTON
+        from seedsigner.views.view import BackStackView
+        from seedsigner.views.keycard_views import ToolsKeycardImportSeedView
+        dest, captured = self._run_with_init_state(
+            ToolsKeycardImportSeedView, initialised=False,
+            screen_ret=RET_CODE__BACK_BUTTON,
+        )
+        self.assertEqual(captured[0]["title"], "Set up first")
+        self.assertIs(dest.View_cls, BackStackView)
+
+    def test_import_seed_no_redirect_when_probe_fails(self):
+        """A probe that can't read init state (None) must NOT redirect to Init —
+        the flow falls through to the normal source menu."""
+        from seedsigner.views.keycard_views import (
+            ToolsKeycardImportSeedView, ToolsKeycardInitView,
+        )
+        # screen_ret=RET_CODE__BACK_BUTTON backs out of the first real screen
+        # (the import warning), so we never reach Init.
+        from seedsigner.gui.screens import RET_CODE__BACK_BUTTON
+        dest, captured = self._run_with_init_state(
+            ToolsKeycardImportSeedView, initialised=None,
+            screen_ret=RET_CODE__BACK_BUTTON,
+        )
+        self.assertNotEqual(captured[0]["title"], "Set up first")
+        self.assertIsNot(dest.View_cls, ToolsKeycardInitView)
+
+    def test_seedkeeper_push_not_initialised_breaks_loop(self):
+        """Regression: an uninitialised card at the SeedKeeper push step must
+        NOT loop back to the re-insert view. It surfaces a clear error and wipes
+        the pending seed."""
+        from unittest.mock import patch
+        from seedsigner.views import keycard_views
+        from seedsigner.views.keycard_views import (
+            ToolsKeycardImportSeedkeeperPushView,
+            ToolsKeycardImportSeedkeeperReinsertView,
+            KeycardErrorView,
+        )
+        from seedsigner.helpers.keycard import KeycardNotInitialisedError
+
+        view = ToolsKeycardImportSeedkeeperPushView.__new__(
+            ToolsKeycardImportSeedkeeperPushView
+        )
+        view.run_screen = MagicMock(return_value=0)  # confirm the "Push?" screen
+        view.controller = MagicMock()
+        # Canonical valid 12-word mnemonic (derivation runs before the session).
+        view.controller.pending_keycard_mnemonic = (
+            ["abandon"] * 11 + ["about"]
+        )
+        view.controller.pending_keycard_passphrase = bytearray()
+
+        with patch.object(
+            keycard_views, "_open_unlocked_session_cached_or_prompt",
+            side_effect=KeycardNotInitialisedError("not init"),
+        ):
+            dest = view.run()
+
+        self.assertIsNot(dest.View_cls, ToolsKeycardImportSeedkeeperReinsertView)
+        self.assertIs(dest.View_cls, KeycardErrorView)
+        self.assertEqual(dest.view_args["title"], "Not initialised")
+        # Pending seed wiped on this terminal error.
+        self.assertIsNone(view.controller.pending_keycard_mnemonic)
+        self.assertIsNone(view.controller.pending_keycard_passphrase)
 
     def test_rename_view_happy_path(self):
         """Rename resolves the UID, prompts a name (no password), writes it via

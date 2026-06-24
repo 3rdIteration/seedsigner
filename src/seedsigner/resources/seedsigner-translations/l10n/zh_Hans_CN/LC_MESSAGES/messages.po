@@ -3945,3 +3945,15 @@ msgid ""
 msgstr ""
 "实例已有密钥。\n"
 "导入将永久替换它。"
+
+msgid "BIP39 seed phrase"
+msgstr "BIP39 助记词"
+
+msgid "Set up first"
+msgstr "请先设置"
+
+msgid "Instance has no PIN yet.\nInitialise it first."
+msgstr "实例尚未设置PIN。\n请先初始化。"
+
+msgid "Initialise the instance\nfirst, then re-import."
+msgstr "请先初始化实例，\n然后重新导入。"

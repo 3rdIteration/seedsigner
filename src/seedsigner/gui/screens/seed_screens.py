@@ -62,9 +62,10 @@ class SeedMnemonicEntryScreen(BaseTopNavScreen):
             ),
             auto_wrap=[Keyboard.WRAP_LEFT, Keyboard.WRAP_RIGHT]
         )
-        # Letters that can't continue a valid word get greyed out; skip over them
-        # while navigating so the cursor jumps straight to the next available key.
-        self.keyboard.skip_inactive_keys = True
+        # Letters that can't continue a valid word are greyed out as a visual
+        # hint, but the cursor still lands on them while navigating (no auto-skip):
+        # jumping the cursor across greyed keys made it hard to reach letters.
+        self.keyboard.skip_inactive_keys = False
 
         self.text_entry_display = TextEntryDisplay(
             canvas=self.canvas,

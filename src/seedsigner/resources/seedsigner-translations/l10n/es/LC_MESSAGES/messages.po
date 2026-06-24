@@ -3984,3 +3984,15 @@ msgid ""
 msgstr ""
 "La instancia ya tiene una clave.\n"
 "Importar la reemplaza para siempre."
+
+msgid "BIP39 seed phrase"
+msgstr "Frase semilla BIP39"
+
+msgid "Set up first"
+msgstr "Configura primero"
+
+msgid "Instance has no PIN yet.\nInitialise it first."
+msgstr "La instancia aún no tiene PIN.\nInicialízala primero."
+
+msgid "Initialise the instance\nfirst, then re-import."
+msgstr "Inicializa la instancia\nprimero y reimporta."

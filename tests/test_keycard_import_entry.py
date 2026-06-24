@@ -70,15 +70,16 @@ class TestTypeWordsChooser(unittest.TestCase):
         return view
 
     def test_each_length_routes_to_keyboard_capture(self):
-        # Screens: DireWarning (Continue) -> Source (Type words) -> length.
+        # Screens: DireWarning (Continue) -> Source (Type words, now index 0)
+        # -> length.
         for idx, expected in enumerate((12, 15, 18, 21, 24)):
-            view = self._run_with_choices([0, 1, idx])
+            view = self._run_with_choices([0, 0, idx])
             view._capture_via_keyboard.assert_called_once_with(expected)
 
     def test_back_out_of_length_chooser_skips_keyboard(self):
         from seedsigner.gui.screens import RET_CODE__BACK_BUTTON
         view = _import_view()
-        view.run_screen = MagicMock(side_effect=[0, 1, RET_CODE__BACK_BUTTON])
+        view.run_screen = MagicMock(side_effect=[0, 0, RET_CODE__BACK_BUTTON])
         view._capture_via_keyboard = MagicMock()
         view.run()
         view._capture_via_keyboard.assert_not_called()

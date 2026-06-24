@@ -3976,3 +3976,15 @@ msgid ""
 msgstr ""
 "Instantie heeft al een sleutel.\n"
 "Importeren vervangt deze definitief."
+
+msgid "BIP39 seed phrase"
+msgstr "BIP39 seed-zin"
+
+msgid "Set up first"
+msgstr "Eerst instellen"
+
+msgid "Instance has no PIN yet.\nInitialise it first."
+msgstr "Instantie heeft nog geen PIN.\nInitialiseer deze eerst."
+
+msgid "Initialise the instance\nfirst, then re-import."
+msgstr "Initialiseer eerst de\ninstantie, importeer opnieuw."
