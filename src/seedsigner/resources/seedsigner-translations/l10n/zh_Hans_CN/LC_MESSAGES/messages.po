@@ -3972,3 +3972,54 @@ msgstr "新 AID：\n{}\n卡片似乎已满"
 
 msgid "{} KB RAM free"
 msgstr "剩余 {} KB RAM"
+
+msgid "All Secrets"
+msgstr "所有密文"
+
+msgid "Single Secret"
+msgstr "单个密文"
+
+msgid "Add New (keep existing)"
+msgstr "添加新增（保留现有）"
+
+msgid "Replace destination"
+msgstr "替换目标卡"
+
+msgid "Copy Secrets"
+msgstr "复制密文"
+
+msgid "Copy Mode"
+msgstr "复制模式"
+
+msgid "Copy Complete"
+msgstr "复制完成"
+
+msgid "Copy Failed"
+msgstr "复制失败"
+
+msgid "Copy to Another Card?"
+msgstr "复制到另一张卡片？"
+
+msgid "Replace Destination"
+msgstr "替换目标卡"
+
+msgid "Erase destination?"
+msgstr "清除目标卡？"
+
+msgid "Unable to write to destination card."
+msgstr "无法写入目标卡。"
+
+msgid "Replace needs a v2 destination card (v1 cannot delete secrets)."
+msgstr "替换需要 v2 目标卡（v1 无法删除密文）。"
+
+msgid "Deletes ALL {} secret(s) on the destination, then copies. Use a card different from the source."
+msgstr "删除目标卡上的全部 {} 个密文，然后复制。请使用与源卡不同的卡片。"
+
+msgid "Reading Destination\n\n\n\n\n\n"
+msgstr "正在读取目标卡\n\n\n\n\n\n"
+
+msgid "Erasing Destination\n\n\n\n\n\n"
+msgstr "正在清除目标卡\n\n\n\n\n\n"
+
+msgid "Deleted: {}\nImported: {}\nSkipped Unsupported: {}"
+msgstr "已删除：{}\n已导入：{}\n已跳过不支持：{}"

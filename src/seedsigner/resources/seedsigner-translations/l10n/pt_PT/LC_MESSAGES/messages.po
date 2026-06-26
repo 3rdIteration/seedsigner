@@ -3996,3 +3996,54 @@ msgstr "Novo AID:\n{}\nO cartão parece cheio"
 
 msgid "{} KB RAM free"
 msgstr "{} KB RAM livres"
+
+msgid "All Secrets"
+msgstr "Todos os segredos"
+
+msgid "Single Secret"
+msgstr "Um único segredo"
+
+msgid "Add New (keep existing)"
+msgstr "Adicionar novos (manter existentes)"
+
+msgid "Replace destination"
+msgstr "Substituir destino"
+
+msgid "Copy Secrets"
+msgstr "Copiar segredos"
+
+msgid "Copy Mode"
+msgstr "Modo de cópia"
+
+msgid "Copy Complete"
+msgstr "Cópia concluída"
+
+msgid "Copy Failed"
+msgstr "Falha na cópia"
+
+msgid "Copy to Another Card?"
+msgstr "Copiar para outro cartão?"
+
+msgid "Replace Destination"
+msgstr "Substituir destino"
+
+msgid "Erase destination?"
+msgstr "Apagar destino?"
+
+msgid "Unable to write to destination card."
+msgstr "Não foi possível escrever no cartão de destino."
+
+msgid "Replace needs a v2 destination card (v1 cannot delete secrets)."
+msgstr "Substituir requer um cartão de destino v2 (v1 não consegue apagar segredos)."
+
+msgid "Deletes ALL {} secret(s) on the destination, then copies. Use a card different from the source."
+msgstr "Apaga TODOS os {} segredo(s) no destino e depois copia. Usa um cartão diferente do de origem."
+
+msgid "Reading Destination\n\n\n\n\n\n"
+msgstr "A ler o destino\n\n\n\n\n\n"
+
+msgid "Erasing Destination\n\n\n\n\n\n"
+msgstr "A apagar o destino\n\n\n\n\n\n"
+
+msgid "Deleted: {}\nImported: {}\nSkipped Unsupported: {}"
+msgstr "Apagados: {}\nImportados: {}\nNão suportados ignorados: {}"

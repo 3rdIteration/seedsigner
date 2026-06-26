@@ -4006,3 +4006,54 @@ msgstr "Nou AID:\n{}\nLa targeta sembla plena"
 
 msgid "{} KB RAM free"
 msgstr "{} KB RAM lliures"
+
+msgid "All Secrets"
+msgstr "Tots els secrets"
+
+msgid "Single Secret"
+msgstr "Un sol secret"
+
+msgid "Add New (keep existing)"
+msgstr "Afegeix nous (mantén existents)"
+
+msgid "Replace destination"
+msgstr "Substitueix el destí"
+
+msgid "Copy Secrets"
+msgstr "Copia els secrets"
+
+msgid "Copy Mode"
+msgstr "Mode de còpia"
+
+msgid "Copy Complete"
+msgstr "Còpia completa"
+
+msgid "Copy Failed"
+msgstr "Ha fallat la còpia"
+
+msgid "Copy to Another Card?"
+msgstr "Copiar a una altra targeta?"
+
+msgid "Replace Destination"
+msgstr "Substitueix el destí"
+
+msgid "Erase destination?"
+msgstr "Esborrar el destí?"
+
+msgid "Unable to write to destination card."
+msgstr "No s'ha pogut escriure a la targeta de destí."
+
+msgid "Replace needs a v2 destination card (v1 cannot delete secrets)."
+msgstr "Substituir requereix una targeta de destí v2 (v1 no pot esborrar secrets)."
+
+msgid "Deletes ALL {} secret(s) on the destination, then copies. Use a card different from the source."
+msgstr "Esborra TOTS els {} secret(s) del destí i després copia. Fes servir una targeta diferent de l'origen."
+
+msgid "Reading Destination\n\n\n\n\n\n"
+msgstr "Llegint el destí\n\n\n\n\n\n"
+
+msgid "Erasing Destination\n\n\n\n\n\n"
+msgstr "Esborrant el destí\n\n\n\n\n\n"
+
+msgid "Deleted: {}\nImported: {}\nSkipped Unsupported: {}"
+msgstr "Esborrats: {}\nImportats: {}\nOmesos no compatibles: {}"

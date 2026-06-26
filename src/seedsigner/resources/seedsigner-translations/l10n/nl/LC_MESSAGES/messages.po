@@ -4003,3 +4003,54 @@ msgstr "Nieuwe AID:\n{}\nKaart lijkt vol"
 
 msgid "{} KB RAM free"
 msgstr "{} KB RAM vrij"
+
+msgid "All Secrets"
+msgstr "Alle geheimen"
+
+msgid "Single Secret"
+msgstr "Eén geheim"
+
+msgid "Add New (keep existing)"
+msgstr "Nieuwe toevoegen (bestaande behouden)"
+
+msgid "Replace destination"
+msgstr "Bestemming vervangen"
+
+msgid "Copy Secrets"
+msgstr "Geheimen kopiëren"
+
+msgid "Copy Mode"
+msgstr "Kopieermodus"
+
+msgid "Copy Complete"
+msgstr "Kopiëren voltooid"
+
+msgid "Copy Failed"
+msgstr "Kopiëren mislukt"
+
+msgid "Copy to Another Card?"
+msgstr "Naar andere kaart kopiëren?"
+
+msgid "Replace Destination"
+msgstr "Bestemming vervangen"
+
+msgid "Erase destination?"
+msgstr "Bestemming wissen?"
+
+msgid "Unable to write to destination card."
+msgstr "Kan niet naar bestemmingskaart schrijven."
+
+msgid "Replace needs a v2 destination card (v1 cannot delete secrets)."
+msgstr "Vervangen vereist een v2-bestemmingskaart (v1 kan geen geheimen verwijderen)."
+
+msgid "Deletes ALL {} secret(s) on the destination, then copies. Use a card different from the source."
+msgstr "Verwijdert ALLE {} geheim(en) op de bestemming en kopieert dan. Gebruik een andere kaart dan de bron."
+
+msgid "Reading Destination\n\n\n\n\n\n"
+msgstr "Bestemming lezen\n\n\n\n\n\n"
+
+msgid "Erasing Destination\n\n\n\n\n\n"
+msgstr "Bestemming wissen\n\n\n\n\n\n"
+
+msgid "Deleted: {}\nImported: {}\nSkipped Unsupported: {}"
+msgstr "Verwijderd: {}\nGeïmporteerd: {}\nNiet-ondersteund overgeslagen: {}"

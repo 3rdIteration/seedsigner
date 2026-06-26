@@ -3596,3 +3596,54 @@ msgstr ""
 
 msgid "{} KB RAM free"
 msgstr ""
+
+msgid "All Secrets"
+msgstr ""
+
+msgid "Single Secret"
+msgstr ""
+
+msgid "Add New (keep existing)"
+msgstr ""
+
+msgid "Replace destination"
+msgstr ""
+
+msgid "Copy Secrets"
+msgstr ""
+
+msgid "Copy Mode"
+msgstr ""
+
+msgid "Copy Complete"
+msgstr ""
+
+msgid "Copy Failed"
+msgstr ""
+
+msgid "Copy to Another Card?"
+msgstr ""
+
+msgid "Replace Destination"
+msgstr ""
+
+msgid "Erase destination?"
+msgstr ""
+
+msgid "Unable to write to destination card."
+msgstr ""
+
+msgid "Replace needs a v2 destination card (v1 cannot delete secrets)."
+msgstr ""
+
+msgid "Deletes ALL {} secret(s) on the destination, then copies. Use a card different from the source."
+msgstr ""
+
+msgid "Reading Destination\n\n\n\n\n\n"
+msgstr ""
+
+msgid "Erasing Destination\n\n\n\n\n\n"
+msgstr ""
+
+msgid "Deleted: {}\nImported: {}\nSkipped Unsupported: {}"
+msgstr ""

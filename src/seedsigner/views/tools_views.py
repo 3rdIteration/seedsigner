@@ -46,6 +46,7 @@ from .view import View, Destination, BackStackView, MainMenuView
 from seedsigner.hardware.microsd import MicroSD
 from seedsigner.hardware.rng_monitor import HardwareRngHealthMonitor
 from seedsigner.helpers import seedkeeper_utils
+from seedsigner.helpers.secure_delete import wipe_string, wipe_bytes
 from seedsigner.gui.screens import seed_screens
 logger = logging.getLogger(__name__)
 
@@ -381,6 +382,80 @@ class ToolsSeedkeeperFreeSpaceView(View):
 
 
 class ToolsSeedkeeperCloneSecretsView(View):
+    ALL_SECRETS = ButtonOption("All Secrets")
+    SINGLE_SECRET = ButtonOption("Single Secret")
+    ADD_NEW = ButtonOption("Add New (keep existing)")
+    REPLACE_DEST = ButtonOption("Replace destination")
+
+    def _wipe_collected_secrets(self, collected):
+        """Best-effort scrub of plaintext secret payloads held in RAM.
+
+        Each entry's ``secret`` dict may carry the plaintext as a hex string
+        (``secret`` / ``secret_encrypted``) and/or an int list (``secret_list``).
+        Hex strings are wiped in place; the int list can't be zeroed (CPython
+        small-int interning) so it is overwrite-then-cleared best-effort.
+        """
+        if not collected:
+            return
+        for entry in collected:
+            secret = entry.get("secret") if isinstance(entry, dict) else None
+            if not isinstance(secret, dict):
+                continue
+            for key in ("secret", "secret_encrypted"):
+                value = secret.get(key)
+                if isinstance(value, str):
+                    wipe_string(value)
+            secret_list = secret.get("secret_list")
+            if isinstance(secret_list, (bytes, bytearray)):
+                wipe_bytes(secret_list)
+            elif isinstance(secret_list, list):
+                for i in range(len(secret_list)):
+                    secret_list[i] = 0
+                secret_list.clear()
+
+    def _select_one_secret(self, exportable_secrets):
+        """Let the user pick a single secret from the collected source list.
+
+        Reuses the label scheme from ``ToolsSeedkeeperViewSecretsView``.
+        Returns the chosen ``{header, secret}`` entry, or None on BACK.
+        """
+        button_data = []
+        for entry in exportable_secrets:
+            header = entry["header"]
+            stype = SEEDKEEPER_DIC_TYPE.get(header["type"], hex(header["type"]))
+            subtype = header.get("subtype")
+            raw_label = header.get("label", "")
+            if stype == "Password":
+                label = "Pass:" + raw_label
+            elif stype == "BIP39 mnemonic":
+                label = "Seed:" + raw_label
+            elif stype == "Masterseed" and subtype == 0x01:
+                label = "Seed:" + raw_label
+            elif stype == "2FA secret":
+                label = "2FA:" + raw_label
+            elif stype == "Descriptor":
+                label = "Descriptor:" + raw_label
+            elif stype == "Data":
+                label = "Data:" + raw_label
+            else:
+                label = raw_label
+            if len(label) == 0:
+                label = _("Unnamed Secret")
+            button_data.append(ButtonOption(label))
+
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
+            title=_("Select Secret"),
+            is_button_text_centered=False,
+            button_data=button_data,
+            show_back_button=True,
+        )
+
+        if selected_menu_num == RET_CODE__BACK_BUTTON:
+            return None
+
+        return exportable_secrets[selected_menu_num]
+
     def _collect_exportable_secrets(self):
         from seedsigner.gui.screens.screen import LoadingScreenThread
 
@@ -480,7 +555,7 @@ class ToolsSeedkeeperCloneSecretsView(View):
             if connector:
                 seedkeeper_utils.disconnect_smartcard_connections(self.controller)
 
-    def _clone_to_destination(self, secrets_to_clone):
+    def _clone_to_destination(self, secrets_to_clone, replace=False):
         from seedsigner.gui.screens.screen import LoadingScreenThread
 
         connector = None
@@ -510,15 +585,57 @@ class ToolsSeedkeeperCloneSecretsView(View):
                     "Re-insert a Seedkeeper card to retry."
                 )
 
-            loading_screen = LoadingScreenThread(text=_("Writing Destination Card\n\n\n\n\n\n"))
+            loading_screen = LoadingScreenThread(text=_("Reading Destination\n\n\n\n\n\n"))
             loading_screen.start()
 
             dest_headers = connector.seedkeeper_list_secret_headers()
-            existing_fingerprints = {
-                header.get("fingerprint")
-                for header in dest_headers
-                if header.get("fingerprint") is not None
-            }
+
+            loading_screen.stop()
+            loading_screen = None
+
+            deleted = 0
+
+            if replace:
+                # Seedkeeper v1 applets cannot delete secrets, so a faithful
+                # replace is impossible there -- bail before touching the card.
+                try:
+                    status = connector.card_get_status()[3]
+                except Exception:
+                    status = {}
+                if status.get("protocol_minor_version") == 1:
+                    return False, _(
+                        "Replace needs a v2 destination card (v1 cannot delete secrets)."
+                    )
+
+                existing_count = len(dest_headers)
+                confirm = self.run_screen(
+                    DireWarningScreen,
+                    title=_("Replace Destination"),
+                    status_headline=_("Erase destination?"),
+                    # TRANSLATOR_NOTE: {} is the number of secrets to be deleted
+                    text=_("Deletes ALL {} secret(s) on the destination, then copies. Use a card different from the source.").format(existing_count),
+                )
+                if confirm == RET_CODE__BACK_BUTTON:
+                    # Abort without deleting anything.
+                    return None, None
+
+                loading_screen = LoadingScreenThread(text=_("Erasing Destination\n\n\n\n\n\n"))
+                loading_screen.start()
+                for header in dest_headers:
+                    connector.seedkeeper_reset_secret(header["id"])
+                    deleted += 1
+                loading_screen.stop()
+                loading_screen = None
+                existing_fingerprints = set()
+            else:
+                existing_fingerprints = {
+                    header.get("fingerprint")
+                    for header in dest_headers
+                    if header.get("fingerprint") is not None
+                }
+
+            loading_screen = LoadingScreenThread(text=_("Writing Destination Card\n\n\n\n\n\n"))
+            loading_screen.start()
 
             imported = 0
             skipped_existing = 0
@@ -589,13 +706,20 @@ class ToolsSeedkeeperCloneSecretsView(View):
 
             loading_screen.stop()
 
+            if replace:
+                summary_text = _("Deleted: {}\nImported: {}\nSkipped Unsupported: {}").format(
+                    deleted, imported, skipped_unsupported
+                )
+            else:
+                summary_text = _("Imported: {}\nSkipped Existing: {}\nSkipped Unsupported: {}").format(
+                    imported, skipped_existing, skipped_unsupported
+                )
+
             self.run_screen(
                 LargeIconStatusScreen,
-                title=_("Clone Complete"),
+                title=_("Copy Complete"),
                 status_headline=None,
-                text=_("Imported: {}\nSkipped Existing: {}\nSkipped Unsupported: {}").format(
-                    imported, skipped_existing, skipped_unsupported
-                ),
+                text=summary_text,
                 show_back_button=False,
                 button_data=[ButtonOption("Continue")],
             )
@@ -614,42 +738,93 @@ class ToolsSeedkeeperCloneSecretsView(View):
                 seedkeeper_utils.disconnect_smartcard_connections(self.controller)
 
     def run(self):
-        secrets_to_clone = self._collect_exportable_secrets()
+        # Step 1: choose scope (all vs single) and, for "all", the copy mode.
+        # The selection loop lets BACK step up one level (mode -> scope) instead
+        # of dumping the user straight back to the SeedKeeper menu.
+        selected = None
+        replace = False
+        collected = None
+        try:
+            while selected is None:
+                scope_buttons = [self.ALL_SECRETS, self.SINGLE_SECRET]
+                scope = self.run_screen(
+                    ButtonListScreen,
+                    title=_("Copy Secrets"),
+                    is_button_text_centered=False,
+                    button_data=scope_buttons,
+                    show_back_button=True,
+                )
+                if scope == RET_CODE__BACK_BUTTON:
+                    return Destination(BackStackView)
 
-        if not secrets_to_clone:
-            return Destination(BackStackView)
+                if scope_buttons[scope] == self.ALL_SECRETS:
+                    mode_buttons = [self.ADD_NEW, self.REPLACE_DEST]
+                    mode = self.run_screen(
+                        ButtonListScreen,
+                        title=_("Copy Mode"),
+                        is_button_text_centered=False,
+                        button_data=mode_buttons,
+                        show_back_button=True,
+                    )
+                    if mode == RET_CODE__BACK_BUTTON:
+                        continue
 
-        while True:
-            result, error_message = self._clone_to_destination(secrets_to_clone)
+                    collected = self._collect_exportable_secrets()
+                    if not collected:
+                        return Destination(BackStackView)
+                    selected = collected
+                    replace = (mode_buttons[mode] == self.REPLACE_DEST)
+                else:
+                    collected = self._collect_exportable_secrets()
+                    if not collected:
+                        return Destination(BackStackView)
+                    one = self._select_one_secret(collected)
+                    if one is None:
+                        # BACK from the selection list: scrub what we read off
+                        # the source, then return to the scope chooser.
+                        self._wipe_collected_secrets(collected)
+                        collected = None
+                        continue
+                    selected = [one]
+                    replace = False
 
-            if result is False:
-                retry_choice = self.run_screen(
-                    WarningScreen,
-                    title=_("Clone Failed"),
-                    status_headline=None,
-                    text=error_message or "Unable to write to destination card.",
-                    show_back_button=False,
-                    button_data=[ButtonOption("Try Again"), ButtonOption("Exit to Home")],
+            # Step 2: write to destination, with retry / copy-another loop.
+            while True:
+                result, error_message = self._clone_to_destination(selected, replace=replace)
+
+                if result is False:
+                    retry_choice = self.run_screen(
+                        WarningScreen,
+                        title=_("Copy Failed"),
+                        status_headline=None,
+                        text=error_message or _("Unable to write to destination card."),
+                        show_back_button=False,
+                        button_data=[ButtonOption("Try Again"), ButtonOption("Exit to Home")],
+                    )
+
+                    if retry_choice == 0:
+                        continue
+
+                    return Destination(MainMenuView)
+
+                if result is not True:
+                    return Destination(BackStackView)
+
+                choice = self.run_screen(
+                    ButtonListScreen,
+                    title=_("Copy to Another Card?"),
+                    is_button_text_centered=False,
+                    button_data=[ButtonOption("Yes"), ButtonOption("No")],
+                    show_back_button=True,
                 )
 
-                if retry_choice == 0:
-                    continue
+                if choice != 0:
+                    return Destination(BackStackView)
 
-                return Destination(MainMenuView)
-
-            if result is not True:
-                return Destination(BackStackView)
-
-            choice = self.run_screen(
-                ButtonListScreen,
-                title=_("Clone Another Card?"),
-                is_button_text_centered=False,
-                button_data=[ButtonOption("Yes"), ButtonOption("No")],
-                show_back_button=True,
-            )
-
-            if choice != 0:
-                return Destination(BackStackView)
+        finally:
+            # Best-effort scrub of the plaintext secret payloads held in RAM
+            # across the card swap, on every exit (success, cancel, error).
+            self._wipe_collected_secrets(collected)
 
 class ToolsSeedkeeperViewSecretsView(View):
 

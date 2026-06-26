@@ -3973,3 +3973,54 @@ msgstr "新AID:\n{}\nカードが満杯のようです"
 
 msgid "{} KB RAM free"
 msgstr "{} KB RAM 空き"
+
+msgid "All Secrets"
+msgstr "すべてのシークレット"
+
+msgid "Single Secret"
+msgstr "1つのシークレット"
+
+msgid "Add New (keep existing)"
+msgstr "新規を追加（既存を保持）"
+
+msgid "Replace destination"
+msgstr "宛先を置き換え"
+
+msgid "Copy Secrets"
+msgstr "シークレットをコピー"
+
+msgid "Copy Mode"
+msgstr "コピーモード"
+
+msgid "Copy Complete"
+msgstr "コピー完了"
+
+msgid "Copy Failed"
+msgstr "コピーに失敗しました"
+
+msgid "Copy to Another Card?"
+msgstr "別のカードにコピーしますか？"
+
+msgid "Replace Destination"
+msgstr "宛先を置き換え"
+
+msgid "Erase destination?"
+msgstr "宛先を消去しますか？"
+
+msgid "Unable to write to destination card."
+msgstr "宛先カードに書き込めません。"
+
+msgid "Replace needs a v2 destination card (v1 cannot delete secrets)."
+msgstr "置き換えにはv2の宛先カードが必要です（v1はシークレットを削除できません）。"
+
+msgid "Deletes ALL {} secret(s) on the destination, then copies. Use a card different from the source."
+msgstr "宛先のすべての{}個のシークレットを削除してからコピーします。元とは別のカードを使用してください。"
+
+msgid "Reading Destination\n\n\n\n\n\n"
+msgstr "宛先を読み取り中\n\n\n\n\n\n"
+
+msgid "Erasing Destination\n\n\n\n\n\n"
+msgstr "宛先を消去中\n\n\n\n\n\n"
+
+msgid "Deleted: {}\nImported: {}\nSkipped Unsupported: {}"
+msgstr "削除済: {}\nインポート済: {}\n非対応をスキップ: {}"

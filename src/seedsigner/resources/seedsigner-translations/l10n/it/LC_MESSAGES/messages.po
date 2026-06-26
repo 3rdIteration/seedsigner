@@ -4017,3 +4017,54 @@ msgstr "Nuovo AID:\n{}\nLa scheda sembra piena"
 
 msgid "{} KB RAM free"
 msgstr "{} KB RAM liberi"
+
+msgid "All Secrets"
+msgstr "Tutti i segreti"
+
+msgid "Single Secret"
+msgstr "Singolo segreto"
+
+msgid "Add New (keep existing)"
+msgstr "Aggiungi nuovi (mantieni esistenti)"
+
+msgid "Replace destination"
+msgstr "Sostituisci destinazione"
+
+msgid "Copy Secrets"
+msgstr "Copia segreti"
+
+msgid "Copy Mode"
+msgstr "Modalità copia"
+
+msgid "Copy Complete"
+msgstr "Copia completata"
+
+msgid "Copy Failed"
+msgstr "Copia non riuscita"
+
+msgid "Copy to Another Card?"
+msgstr "Copiare su un'altra scheda?"
+
+msgid "Replace Destination"
+msgstr "Sostituisci destinazione"
+
+msgid "Erase destination?"
+msgstr "Cancellare la destinazione?"
+
+msgid "Unable to write to destination card."
+msgstr "Impossibile scrivere sulla scheda di destinazione."
+
+msgid "Replace needs a v2 destination card (v1 cannot delete secrets)."
+msgstr "La sostituzione richiede una scheda di destinazione v2 (v1 non può eliminare segreti)."
+
+msgid "Deletes ALL {} secret(s) on the destination, then copies. Use a card different from the source."
+msgstr "Elimina TUTTI i {} segreto/i sulla destinazione, poi copia. Usa una scheda diversa dall'origine."
+
+msgid "Reading Destination\n\n\n\n\n\n"
+msgstr "Lettura destinazione\n\n\n\n\n\n"
+
+msgid "Erasing Destination\n\n\n\n\n\n"
+msgstr "Cancellazione destinazione\n\n\n\n\n\n"
+
+msgid "Deleted: {}\nImported: {}\nSkipped Unsupported: {}"
+msgstr "Eliminati: {}\nImportati: {}\nSaltati non supportati: {}"
