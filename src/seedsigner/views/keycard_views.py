@@ -2233,19 +2233,42 @@ class ToolsKeycardImportSeedView(View):
                 return Destination(BackStackView)
 
             # 8. Push (PIN handled by the wrapper — cached or prompted).
-            try:
-                client, _unused = _open_unlocked_session_cached_or_prompt(
-                    self, require_key=False,
-                )
-                client.load_bip39_seed(bytes(seed64))
-            except KeycardPinPromptCancelled:
-                return Destination(BackStackView)
-            except KeycardCardChangedError:
-                return Destination(ToolsKeycardPairView)
-            except Exception as exc:
-                logger.exception("LOAD_KEY failed")
-                title, body = classify_card_error(exc, default_title=_("Push failed"))
-                return _error_destination(title, body)
+            #
+            # Retry WITHOUT re-typing on a transient card error (e.g. a secure
+            # channel break or a PIN/VERIFY hiccup). The mnemonic already
+            # validated and is derived into ``seed64``, which stays in this
+            # method's local scope across loop iterations — so a Retry just
+            # re-opens a fresh session + re-sends LOAD_KEY, never bouncing the
+            # user back to word entry. Cancel (back) exits; the ``finally``
+            # below wipes every buffer on whichever path we leave by.
+            while True:
+                try:
+                    client, _unused = _open_unlocked_session_cached_or_prompt(
+                        self, require_key=False,
+                    )
+                    client.load_bip39_seed(bytes(seed64))
+                    break
+                except KeycardPinPromptCancelled:
+                    return Destination(BackStackView)
+                except KeycardCardChangedError:
+                    return Destination(ToolsKeycardPairView)
+                except Exception as exc:
+                    logger.exception("LOAD_KEY failed")
+                    title, body = classify_card_error(
+                        exc, default_title=_("Push failed"),
+                    )
+                    retry_ret = self.run_screen(
+                        WarningScreen,
+                        title=title,
+                        status_headline=None,
+                        text=body[:120],
+                        show_back_button=True,  # back == Cancel
+                        button_data=[ButtonOption("Retry")],
+                    )
+                    if retry_ret == RET_CODE__BACK_BUTTON:
+                        return Destination(BackStackView)
+                    # Retry: words/seed64 are still in memory — no re-type.
+                    continue
 
             # The on-card master key just changed — any cached View-wallets
             # addresses for this AID were derived from the old key.
@@ -3314,24 +3337,45 @@ class ToolsKeycardGenerateSeedLoadView(View):
                 _wipe_pending_setup_state(self.controller)
                 return _error_destination(_("Derive failed"), str(exc))
 
-            try:
-                client, _unused = _open_unlocked_session_cached_or_prompt(
-                    self, require_key=False,
-                )
-                client.load_bip39_seed(bytes(seed64))
-            except KeycardPinPromptCancelled:
-                _wipe_pending_setup_state(self.controller)
-                return Destination(BackStackView)
-            except KeycardCardChangedError:
-                _wipe_pending_setup_state(self.controller)
-                return Destination(ToolsKeycardPairView)
-            except Exception as exc:
-                logger.exception("LOAD_KEY failed")
-                _wipe_pending_setup_state(self.controller)
-                title, body = classify_card_error(
-                    exc, default_title=_("Push failed"),
-                )
-                return _error_destination(title, body)
+            # Retry WITHOUT re-deriving on a transient card error (secure-channel
+            # break, PC/SC hiccup, VERIFY stumble). ``seed64`` is already derived
+            # above and the mnemonic still lives on the controller, so a Retry
+            # just re-opens a fresh session + re-sends LOAD_KEY. The pending
+            # mnemonic/passphrase are wiped only on success (by the offer chain),
+            # an explicit Cancel, or a genuine card swap — never between retries,
+            # so an on-card-generated seed with no paper backup survives a flaky
+            # link instead of being lost forever.
+            while True:
+                try:
+                    client, _unused = _open_unlocked_session_cached_or_prompt(
+                        self, require_key=False,
+                    )
+                    client.load_bip39_seed(bytes(seed64))
+                    break
+                except KeycardPinPromptCancelled:
+                    _wipe_pending_setup_state(self.controller)
+                    return Destination(BackStackView)
+                except KeycardCardChangedError:
+                    _wipe_pending_setup_state(self.controller)
+                    return Destination(ToolsKeycardPairView)
+                except Exception as exc:
+                    logger.exception("LOAD_KEY failed")
+                    title, body = classify_card_error(
+                        exc, default_title=_("Push failed"),
+                    )
+                    retry_ret = self.run_screen(
+                        WarningScreen,
+                        title=title,
+                        status_headline=None,
+                        text=body[:120],
+                        show_back_button=True,  # back == Cancel == discard
+                        button_data=[ButtonOption("Retry")],
+                    )
+                    if retry_ret == RET_CODE__BACK_BUTTON:
+                        _wipe_pending_setup_state(self.controller)
+                        return Destination(BackStackView)
+                    # Retry: seed64 still derived, mnemonic still on controller.
+                    continue
 
             _invalidate_wallets_cache_for_active_aid(self.controller)
 
