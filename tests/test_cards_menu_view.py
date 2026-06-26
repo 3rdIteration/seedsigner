@@ -344,6 +344,62 @@ class TestCardRemovedRedirect(unittest.TestCase):
         c._on_card_removed_redirect()
         self.assertFalse(c._pending_card_removed_redirect)
 
+    def test_listener_noop_on_seedkeeper_swap_view(self):
+        """The 3 deliberate card-swap prompts must NOT trigger the
+        redirect-to-Home: the user is mid-swap with the card pulled, so
+        snapping to Home (and wiping the pending seed there) would make the
+        2nd backup/import impossible."""
+        from seedsigner.views import keycard_views
+        for name in (
+            "ToolsKeycardSeedkeeperSwapInsertView",
+            "ToolsKeycardImportSeedkeeperInsertView",
+            "ToolsKeycardImportSeedkeeperReinsertView",
+        ):
+            view_cls = getattr(keycard_views, name)
+            c = self._stub_controller(view_cls)
+            c._on_card_removed_redirect()
+            self.assertFalse(
+                c._pending_card_removed_redirect,
+                f"{name} should be exempt from the card-removed redirect",
+            )
+
+    def test_listener_still_redirects_on_non_swap_keycard_view(self):
+        """A keycard view that operates on a *present* card (not a swap
+        prompt) still redirects on removal — the exemption is scoped to the
+        swap-prompt screens only."""
+        from seedsigner.views.keycard_views import (
+            ToolsKeycardSeedkeeperSaveRunView,
+        )
+        c = self._stub_controller(ToolsKeycardSeedkeeperSaveRunView)
+        c._on_card_removed_redirect()
+        self.assertTrue(c._pending_card_removed_redirect)
+
+    def test_card_removed_toast_suppressed_on_swap_view(self):
+        """``dispatch_card_removed_event`` suppresses the 'Card removed'
+        toast on a swap-prompt view, but still shows it on other card
+        views."""
+        from seedsigner.views.keycard_views import (
+            ToolsKeycardSeedkeeperSwapInsertView,
+            ToolsKeycardMenuView,
+        )
+        fake_toast_cls = MagicMock(name="CardRemovedToast")
+        with patch("seedsigner.gui.toast.CardRemovedToast", fake_toast_cls):
+            # Exempt swap view → no toast.
+            c = self._stub_controller(ToolsKeycardSeedkeeperSwapInsertView)
+            c._card_removed_listeners = []
+            c.activate_toast = MagicMock()
+            c.dispatch_card_removed_event()
+            c.activate_toast.assert_not_called()
+            fake_toast_cls.assert_not_called()
+
+            # Non-exempt card view → toast shows.
+            c2 = self._stub_controller(ToolsKeycardMenuView)
+            c2._card_removed_listeners = []
+            c2.activate_toast = MagicMock()
+            c2.dispatch_card_removed_event()
+            c2.activate_toast.assert_called_once()
+            fake_toast_cls.assert_called_once()
+
 
 class TestOverrideInterruptPropagation(unittest.TestCase):
     """``trigger_override()`` previously *returned* ``OVERRIDE`` (1000)

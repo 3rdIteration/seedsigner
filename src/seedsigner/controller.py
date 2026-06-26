@@ -248,6 +248,18 @@ class Controller(Singleton):
     _CARD_VIEW_CLASSNAME_PREFIXES = (
         "ToolsSeedkeeper",
     )
+    # Deliberate card-swap prompts: the user is explicitly told to pull the
+    # card mid-flow (Seedkeeper backup "Both"/"Another card", and the
+    # import-from-Seedkeeper chain). On these screens a card-removed
+    # redirect-to-Home (and its "Card removed" toast) would abort the swap and
+    # make the 2nd backup/import impossible. The secret wipe still fires — it's
+    # separate and never touches the pending seed, which survives the swap by
+    # design (see the error-vs-user-exit wipe rule).
+    _CARD_VIEW_REDIRECT_EXEMPT_CLASSNAMES = frozenset({
+        "ToolsKeycardSeedkeeperSwapInsertView",
+        "ToolsKeycardImportSeedkeeperInsertView",
+        "ToolsKeycardImportSeedkeeperReinsertView",
+    })
     _pending_card_removed_redirect: bool = False
 
 
@@ -669,6 +681,19 @@ class Controller(Singleton):
             return True
         return False
 
+    def _top_is_card_swap_view(self) -> bool:
+        """True iff the top-of-stack view is one of the deliberate card-swap
+        prompts (see ``_CARD_VIEW_REDIRECT_EXEMPT_CLASSNAMES``).
+
+        Used to suppress both the card-removed redirect-to-Home and its toast
+        on screens that *instruct* the user to pull the card mid-flow.
+        """
+        if not self.back_stack:
+            return False
+        view_cls = getattr(self.back_stack[-1], "View_cls", None)
+        name = getattr(view_cls, "__name__", None)
+        return name in self._CARD_VIEW_REDIRECT_EXEMPT_CLASSNAMES
+
     def _on_card_removed_redirect(self, *_args, **_kwargs) -> None:
         """Card-removed listener that forces a return to MainMenu.
 
@@ -681,6 +706,11 @@ class Controller(Singleton):
             return
         top = self.back_stack[-1]
         if not self._is_card_view(getattr(top, "View_cls", None)):
+            return
+        # Deliberate card-swap prompts must NOT snap to Home — the user is
+        # mid-swap. Returning early skips both the flag and trigger_override,
+        # so the blocked WarningScreen keeps waiting for "Continue".
+        if self._top_is_card_swap_view():
             return
         self._pending_card_removed_redirect = True
         try:
@@ -698,11 +728,15 @@ class Controller(Singleton):
         normal insertion. The wipe is handled separately by
         :meth:`wipe_card_session_secrets` and is **not** debounced.
         """
-        try:
-            from seedsigner.gui.toast import CardRemovedToast
-            self.activate_toast(CardRemovedToast())
-        except Exception:
-            logger.exception("CardRemovedToast dispatch failed")
+        # On a deliberate card-swap prompt the removal is expected and
+        # instructed by the screen itself — suppress the redundant toast.
+        # (The redirect listener self-suppresses in _on_card_removed_redirect.)
+        if not self._top_is_card_swap_view():
+            try:
+                from seedsigner.gui.toast import CardRemovedToast
+                self.activate_toast(CardRemovedToast())
+            except Exception:
+                logger.exception("CardRemovedToast dispatch failed")
         self._notify_card_listeners(self._card_removed_listeners)
 
     def on_card_removed(self, reader_name=None) -> None:
