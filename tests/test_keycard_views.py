@@ -1154,16 +1154,16 @@ class TestKeycardMenuRouting(unittest.TestCase):
 
     def test_create_auto_switches_active_instance(self):
         """A successful create must auto-activate the freshly-installed
-        instance (set ``active_keycard_aid`` to the new AID) so the announced
-        "Run Init next" targets it directly, instead of leaving the previous
-        (already-initialised) instance active."""
+        instance (set ``active_keycard_aid`` to the new AID) AND chain straight
+        into the Init wizard so the announced "Run Init next" actually happens —
+        instead of stranding the user in the deep Instances submenu."""
         from unittest.mock import patch
 
         from seedsigner.helpers.keycard.global_platform import AppletInstance
         from seedsigner.views import keycard_views
         from seedsigner.views.keycard_views import (
-            KEYCARD_APPLET_AID, ToolsKeycardInstancesCreateView,
-            ToolsKeycardInstancesMenuView, _next_free_instance_aid,
+            KEYCARD_APPLET_AID, ToolsKeycardInitView,
+            ToolsKeycardInstancesCreateView, _next_free_instance_aid,
         )
 
         # One existing instance at the boot-default AID (the active one).
@@ -1192,7 +1192,9 @@ class TestKeycardMenuRouting(unittest.TestCase):
         self.assertEqual(view.controller.active_keycard_aid, expected_new)
         # Count is invalidated so "Switch instance" re-probes (now >1).
         self.assertIsNone(view.controller.keycard_instance_count)
-        self.assertIs(dest.View_cls, ToolsKeycardInstancesMenuView)
+        # And we chain straight into the Init wizard for the new instance.
+        self.assertIs(dest.View_cls, ToolsKeycardInitView)
+        self.assertTrue(dest.skip_current_view)
 
     def test_pin_management_view_removed(self):
         """``ToolsKeycardPinManagementMenuView`` was a one-entry indirection
@@ -1747,11 +1749,11 @@ class TestCreateInstanceMemoryGate(unittest.TestCase):
         ]
         view = ToolsKeycardInstancesCreateView.__new__(ToolsKeycardInstancesCreateView)
         view.controller = MagicMock()
-        view.controller.keycard_measured_instance_nv = None
-        view.controller.keycard_measured_instance_volatile = None
-        # Real Controller defaults this to False; on a MagicMock the attribute
-        # would otherwise be a truthy Mock and wrongly clamp the estimate to 0.
+        # Real Controller defaults these; on a MagicMock the attributes would
+        # otherwise be truthy/non-int Mocks — install_full would wrongly clamp the
+        # estimate to 0, and a Mock cap would break the min() in apply_capacity_cap.
         view.controller.keycard_install_full = False
+        view.controller.keycard_capacity_estimate = None
         return view, existing
 
     def test_low_space_warns_and_back_cancels(self):
@@ -1923,51 +1925,55 @@ class TestCreateInstanceMemoryGate(unittest.TestCase):
         self.assertIn("Card appears full", texts[0])
         self.assertNotIn("more fit", texts[0])
 
-    def test_post_install_measures_nv_and_volatile_delta(self):
-        """Phase-2 self-calibration: a successful INSTALL records the per-instance
-        NV + RAM deltas (free before minus free after) within sanity bounds."""
+    def test_successful_create_anchors_capacity_cap(self):
+        """A successful create stores the predicted total (count + remaining) on
+        the controller, so the next create can only ratchet it *down*. Mirrors
+        the field card: 1 instance + ~2 KB free RAM -> "≈3 more fit" -> total 4."""
         from unittest.mock import patch
         from seedsigner.views import keycard_views
-        from seedsigner.helpers.keycard import ui_helpers
-        from seedsigner.helpers.keycard.global_platform import CardMemory
 
         view, existing = self._view(existing_count=1)
-        view.run_screen = MagicMock(return_value=object())
-        after = CardMemory(free_nv=47000, free_volatile=1500, num_apps=2)
+        view.run_screen = MagicMock(return_value=object())  # proceed through install
         with patch.object(
             keycard_views, "_open_isd_channel",
-            return_value=(MagicMock(), existing, MagicMock(), 50000, 2000),
+            return_value=(MagicMock(), existing, MagicMock(), 100000, 2000),
         ), patch(
             "seedsigner.helpers.keycard.global_platform."
             "install_for_install_with_fallback",
-        ), patch.object(ui_helpers, "query_card_memory", return_value=after):
+        ):
             view.run()
 
-        self.assertEqual(view.controller.keycard_measured_instance_nv, 3000)
-        self.assertEqual(view.controller.keycard_measured_instance_volatile, 500)
+        # RAM gate: (2000-256)//512 = 3; count 1 -> predicted total 4.
+        self.assertEqual(view.controller.keycard_capacity_estimate, 4)
 
-    def test_post_install_reclaimed_ram_leaves_volatile_unmeasured(self):
-        """If free RAM is *higher* after install (transient buffers reclaimed),
-        the negative delta is rejected and the volatile estimate stays unset."""
+    def test_create_confirm_clamps_estimate_to_cap_never_jumps_up(self):
+        """The 3->6 bug: a noisy raw estimate must be clamped to the ratcheted
+        cap, so the confirm can only show a *smaller* "≈N more fit" as instances
+        are added — never a larger one."""
         from unittest.mock import patch
         from seedsigner.views import keycard_views
-        from seedsigner.helpers.keycard import ui_helpers
-        from seedsigner.helpers.keycard.global_platform import CardMemory
+        from seedsigner.gui.screens import RET_CODE__BACK_BUTTON
 
-        view, existing = self._view(existing_count=1)
-        view.run_screen = MagicMock(return_value=object())
-        after = CardMemory(free_nv=47000, free_volatile=2500, num_apps=2)
+        view, existing = self._view(existing_count=2)
+        # A prior create anchored the predicted total at 4 instances.
+        view.controller.keycard_capacity_estimate = 4
+        # Free memory that would otherwise yield a much larger raw estimate.
+        view.run_screen = MagicMock(return_value=RET_CODE__BACK_BUTTON)
         with patch.object(
             keycard_views, "_open_isd_channel",
-            return_value=(MagicMock(), existing, MagicMock(), 50000, 2000),
+            return_value=(MagicMock(), existing, MagicMock(), 100000, 5000),
         ), patch(
             "seedsigner.helpers.keycard.global_platform."
             "install_for_install_with_fallback",
-        ), patch.object(ui_helpers, "query_card_memory", return_value=after):
+        ) as install_mock:
             view.run()
 
-        self.assertEqual(view.controller.keycard_measured_instance_nv, 3000)
-        self.assertIsNone(view.controller.keycard_measured_instance_volatile)
+        texts = [c.kwargs.get("text", "") for c in view.run_screen.call_args_list
+                 if c.kwargs.get("title") == "Create instance?"]
+        self.assertTrue(texts, "create-confirm screen was not shown")
+        # count=2, cap=4 -> only 2 more fit, regardless of the larger raw value.
+        self.assertIn("≈2 more fit", texts[0])
+        install_mock.assert_not_called()  # backed out at the confirm
 
 
 class TestIsInstallMemoryFailure(unittest.TestCase):
@@ -3487,7 +3493,7 @@ class TestInstanceNameResolution(unittest.TestCase):
         c.keycard_pins = {}
         c.keycard_wallets_data = {}
         c.keycard_instance_count = 3
-        c.keycard_measured_instance_nv = 2000
+        c.keycard_capacity_estimate = 4
         c.forget_satochip_session = lambda: None
         c.keycard_aid_to_uid = {c.active_keycard_aid: b"\x44" * 16}
         c.keycard_instance_names = {b"\x44" * 16: "Hot"}
@@ -3498,8 +3504,8 @@ class TestInstanceNameResolution(unittest.TestCase):
         self.assertEqual(c.keycard_aid_to_uid, {})
         self.assertIsNone(c.last_keycard_uid)
         self.assertEqual(c.keycard_instance_names, {})
-        # Per-instance NV calibration is card-specific -> dropped on swap.
-        self.assertIsNone(c.keycard_measured_instance_nv)
+        # The capacity estimate is card-specific -> dropped on swap.
+        self.assertIsNone(c.keycard_capacity_estimate)
         self.assertIsNone(c.keycard_instance_count)
 
     def test_resolve_instance_uids_selects_each_aid(self):
@@ -3708,6 +3714,46 @@ class TestInstanceAidAllocation(unittest.TestCase):
         self.assertNotEqual(labels[0], labels[1])        # disambiguated
         self.assertIn(nine.hex(), labels[0])
         self.assertIn(ten.hex(), labels[1])
+
+    def test_delete_resets_capacity_clamp_and_cap(self):
+        """Deleting an instance frees a slot, so the create-flow capacity cap and
+        the "card is full" marker must reset — otherwise a prior refusal would
+        keep "≈N more fit" pinned at 0 until the card is swapped."""
+        from unittest.mock import patch
+        from seedsigner.views import keycard_views
+        from seedsigner.views.keycard_views import (
+            ToolsKeycardInstancesDeleteView, KEYCARD_APPLET_AID,
+        )
+        from seedsigner.helpers.keycard.global_platform import AppletInstance
+
+        instances = [AppletInstance(aid=KEYCARD_APPLET_AID + bytes([0x01]),
+                                    life_cycle=7, privileges=0)]
+        view = ToolsKeycardInstancesDeleteView.__new__(ToolsKeycardInstancesDeleteView)
+        view.controller = MagicMock()
+        view.controller.get_instance_name_for_aid.return_value = None
+        view.controller.get_uid_for_aid.return_value = None   # no pairing to drop
+        view.controller.keycard_wallets_data = None           # no address cache
+        view.controller.keycard_install_full = True           # card had refused one
+        view.controller.keycard_capacity_estimate = 0
+
+        calls = []
+
+        def fake_run_screen(screen_cls, **kwargs):
+            calls.append(kwargs.get("title"))
+            # 1st screen = row picker (index 0); rest = non-back sentinels.
+            return 0 if len(calls) == 1 else object()
+
+        view.run_screen = fake_run_screen
+        with patch.object(
+            keycard_views, "_open_isd_channel",
+            return_value=(MagicMock(), instances, MagicMock(), None, None),
+        ), patch(
+            "seedsigner.helpers.keycard.global_platform.delete_aid",
+        ):
+            view.run()
+
+        self.assertFalse(view.controller.keycard_install_full)
+        self.assertIsNone(view.controller.keycard_capacity_estimate)
 
 
 if __name__ == "__main__":

@@ -187,18 +187,16 @@ class Controller(Singleton):
     keycard_instance_count: int = None
     keycard_instances_intro_shown: bool = False
 
-    # Card-specific, self-calibrated NV cost (bytes) of one Keycard instance,
-    # measured as the free-NV delta around an INSTALL in the create flow. ``None``
-    # = not measured yet → fall back to the conservative constant. Drives the
-    # "≈N more fit" estimate. Cleared on card swap (different card may differ).
-    keycard_measured_instance_nv: int = None
-    # Sibling of the above for transient-RAM (free_volatile) cost, measured as
-    # the free-volatile delta around an INSTALL. ``None`` = not measured.
-    keycard_measured_instance_volatile: int = None
+    # Card-specific monotonic "predicted total capacity" (number of Keycard
+    # instances the card is believed to hold). The create flow / Storage view
+    # ratchet this DOWN only, so the "≈N more fit" estimate never jumps upward as
+    # instances are added (free-RAM readings fluctuate between installs). ``None``
+    # = not estimated yet. Cleared on card swap and when a Delete frees a slot.
+    keycard_capacity_estimate: int = None
     # Set True when an INSTALL [for install] failed with a memory-class SW this
     # session — the card itself proved it's full, so trust that over any
     # estimate: the "≈N more fit" estimate is then forced to 0. Card-specific →
-    # cleared on card swap.
+    # cleared on card swap (and on Delete, which frees a slot).
     keycard_install_full: bool = False
 
     sign_message_data: dict = None
@@ -657,11 +655,10 @@ class Controller(Singleton):
         # instance count is no longer trustworthy. Force a re-probe on the
         # next top Keycard menu render.
         self.keycard_instance_count = None
-        # Per-instance NV/RAM calibration and the "card is full" marker are all
-        # card-specific (a different card may have a different footprint and may
-        # not be full), so drop them on swap.
-        self.keycard_measured_instance_nv = None
-        self.keycard_measured_instance_volatile = None
+        # The capacity estimate and the "card is full" marker are card-specific
+        # (a different card may have a different footprint and may not be full),
+        # so drop them on swap.
+        self.keycard_capacity_estimate = None
         self.keycard_install_full = False
 
     def _is_card_view(self, view_cls) -> bool:
@@ -837,6 +834,17 @@ class Controller(Singleton):
         if connector is not None:
             try:
                 connector.card_disconnect()
+            except Exception:
+                pass
+            # pysatochip's card_disconnect() leaves the connector's
+            # RemovalObserver registered on pyscard's singleton CardMonitor;
+            # remove it too, else it auto-reconnects to the next inserted card
+            # and starves a freshly-built connector after a card swap (the
+            # "Unable to find seedkeeper" failure on the 2nd card of a "Both"
+            # backup). Best-effort: deleteObserver raises ValueError if it was
+            # already removed.
+            try:
+                connector.cardmonitor.deleteObserver(connector.cardobserver)
             except Exception:
                 pass
         self.Satochip_Connector = None

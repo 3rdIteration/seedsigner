@@ -636,7 +636,7 @@ class ToolsKeycardStorageView(View):
         from seedsigner.helpers.keycard.global_platform import MAX_KEYCARD_INSTANCES
         from seedsigner.helpers.keycard.ui_helpers import query_card_memory
         from seedsigner.views.view import (
-            estimate_remaining_instances, estimated_used_nv,
+            apply_capacity_cap, estimate_remaining_instances, estimated_used_nv,
             keycard_instance_nv_estimate, keycard_instance_volatile_estimate,
         )
 
@@ -675,10 +675,17 @@ class ToolsKeycardStorageView(View):
                     count = self.controller.keycard_instance_count or 1
                 per_instance = keycard_instance_nv_estimate(self.controller)
                 per_instance_vol = keycard_instance_volatile_estimate(self.controller)
-                remaining = estimate_remaining_instances(
-                    mem.free_nv, count, per_instance, MAX_KEYCARD_INSTANCES,
-                    free_volatile=mem.free_volatile,
-                    per_instance_volatile=per_instance_vol,
+                # Read-only clamp (update=False): Storage's count may be a
+                # fallback, so it respects the create flow's ratcheted cap but
+                # never writes it.
+                remaining = apply_capacity_cap(
+                    self.controller, count,
+                    estimate_remaining_instances(
+                        mem.free_nv, count, per_instance, MAX_KEYCARD_INSTANCES,
+                        free_volatile=mem.free_volatile,
+                        per_instance_volatile=per_instance_vol,
+                    ),
+                    update=False,
                 )
 
         self.run_screen(
@@ -4999,8 +5006,8 @@ class ToolsKeycardInstancesCreateView(View):
             return _error_destination(title, body)
 
         from seedsigner.views.view import (
-            estimate_remaining_instances, keycard_instance_nv_estimate,
-            keycard_instance_volatile_estimate,
+            apply_capacity_cap, estimate_remaining_instances,
+            keycard_instance_nv_estimate, keycard_instance_volatile_estimate,
         )
 
         existing_aids = [i.aid for i in instances]
@@ -5028,10 +5035,17 @@ class ToolsKeycardInstancesCreateView(View):
         if card_full:
             remaining = 0
         else:
-            remaining = estimate_remaining_instances(
-                free_before, keycard_count, per_instance, MAX_KEYCARD_INSTANCES,
-                free_volatile=free_vol_before,
-                per_instance_volatile=per_instance_vol,
+            # Ratchet the predicted total capacity down only, so the estimate
+            # never jumps upward as instances are added (update=True: this flow
+            # holds the authoritative GET-STATUS count).
+            remaining = apply_capacity_cap(
+                self.controller, keycard_count,
+                estimate_remaining_instances(
+                    free_before, keycard_count, per_instance, MAX_KEYCARD_INSTANCES,
+                    free_volatile=free_vol_before,
+                    per_instance_volatile=per_instance_vol,
+                ),
+                update=True,
             )
 
         # Soft warning when there's no room — either the estimate said so (only
@@ -5116,27 +5130,14 @@ class ToolsKeycardInstancesCreateView(View):
             title, body = classify_card_error(exc, default_title=_("Install failed"))
             return _error_destination(title, body)
 
-        # Self-calibration: re-read free NV + RAM on a FRESH clear channel and
-        # store the per-instance deltas for this card, so subsequent "≈N fit"
-        # estimates use the card's real footprint instead of the constant.
-        # MUST be a fresh channel — an un-MAC'd GET DATA on the now-open SCP02
-        # channel would break it (same constraint as the pre-open read). The card
-        # is never removed during create, so this is just a PC/SC reconnect.
-        # Best-effort: a calibration failure never aborts a successful create.
+        # Release the SCP02 channel so the step we chain into next (the Init
+        # wizard) can grab the reader. The card is never removed during create,
+        # so this is just a PC/SC reconnect. Best-effort: a disconnect failure
+        # never aborts a successful create.
         try:
             isd_connection.disconnect()
         except Exception:
             logger.debug("post-install channel disconnect failed", exc_info=True)
-        try:
-            from seedsigner.helpers.keycard.ui_helpers import query_card_memory
-            mem_after = query_card_memory(self)  # fresh clear channel; never None-raises
-            if mem_after is not None:
-                self._record_instance_nv_measurement(
-                    free_before, mem_after.free_nv,
-                    free_vol_before, mem_after.free_volatile,
-                )
-        except Exception:
-            logger.debug("post-install self-calibration read failed", exc_info=True)
 
         # Instance set changed — force the top menu to re-probe the count
         # (so "Switch instance" reappears now that there are >1).
@@ -5159,30 +5160,13 @@ class ToolsKeycardInstancesCreateView(View):
             show_back_button=False,
             button_data=[ButtonOption("OK")],
         )
-        return Destination(ToolsKeycardInstancesMenuView, skip_current_view=True)
-
-    def _record_instance_nv_measurement(self, nv_before, nv_after,
-                                        vol_before, vol_after):
-        """Store the per-instance NV/RAM cost measured around this INSTALL.
-
-        ``free`` decreases as an instance is added, so the cost is
-        ``before - after``. Each delta is sanity-bounded; an out-of-range value
-        (negative, absurd, or RAM that was reclaimed post-install) is ignored,
-        leaving the conservative constant in place. Card-specific — cleared on
-        swap by ``wipe_card_session_secrets``.
-        """
-        if isinstance(nv_before, int) and isinstance(nv_after, int):
-            delta = nv_before - nv_after
-            if 256 <= delta <= 16384:                  # plausible NV per-instance
-                self.controller.keycard_measured_instance_nv = delta
-        if isinstance(vol_before, int) and isinstance(vol_after, int):
-            vdelta = vol_before - vol_after
-            # Transient RAM is often reclaimed once the INSTALL's APDU buffers
-            # free, so vdelta is frequently 0/negative — the lower bound rejects
-            # that and we fall back to the constant (the durable RAM signal is
-            # the install-failure clamp, not this measurement).
-            if 32 <= vdelta <= 4096:                   # plausible RAM per-instance
-                self.controller.keycard_measured_instance_volatile = vdelta
+        # Chain straight into the Init wizard for the instance we just created.
+        # active_keycard_aid was set above precisely so select_with_autodetect
+        # first-tries the new (uninitialised) instance, so Init targets it and
+        # walks the user through PIN/PUK → seed setup instead of stranding them
+        # in this deep submenu. skip_current_view drops the create view, so
+        # backing out of Init's first PIN prompt lands on the Instances menu.
+        return Destination(ToolsKeycardInitView, skip_current_view=True)
 
 
 class ToolsKeycardInstancesDeleteView(View):
@@ -5281,6 +5265,11 @@ class ToolsKeycardInstancesDeleteView(View):
         # Instance set changed — re-probe the count on the next top menu
         # render (so "Switch instance" hides again once only one is left).
         self.controller.keycard_instance_count = None
+        # Deleting an instance frees a slot + its memory, so let the "≈N more
+        # fit" estimate recover: clear the monotonic cap and the "card is full"
+        # marker (otherwise a prior refusal would keep the estimate pinned at 0).
+        self.controller.keycard_capacity_estimate = None
+        self.controller.keycard_install_full = False
 
         self.run_screen(
             LargeIconStatusScreen,

@@ -591,38 +591,36 @@ KEYCARD_INSTANCE_NV_ESTIMATE_BYTES = 3072  # 3 KB
 # failed at 303 B free, one instance's transient cost is **> 303 B**; 512 is a
 # clean, slightly-conservative value above that lower bound (a fresh card with
 # ~2 KB free RAM then estimates ~3 more — consistent with the card capping at 4).
-# Still HARDWARE-CALIBRATABLE per card via the post-install delta
-# (``keycard_measured_instance_volatile``); this is the durable default.
+# A fixed conservative default — per-card self-calibration was removed (RAM can't
+# be measured reliably post-install); the monotonic capacity cap
+# (``apply_capacity_cap``) + the install-failure clamp correct any over-estimate.
 KEYCARD_INSTANCE_VOLATILE_ESTIMATE_BYTES = 512  # 0.5 KB (> measured 303 B floor)
 
 
-def keycard_instance_nv_estimate(controller) -> int:
-    """Best estimate (bytes) of one more Keycard instance's NV cost.
+def keycard_instance_nv_estimate(controller=None) -> int:
+    """Conservative estimate (bytes) of one more Keycard instance's NV cost.
 
-    Uses the card-specific measured value when the create flow has captured one
-    this session (``Controller.keycard_measured_instance_nv``), else the
-    conservative ``KEYCARD_INSTANCE_NV_ESTIMATE_BYTES`` default. The measured
-    delta is the dominant INSTALL-shell allocation; the small extra key growth
-    at INIT is absorbed by ``LOW_SPACE_MARGIN_BYTES`` in
-    :func:`estimate_remaining_instances`.
+    Returns the fixed ``KEYCARD_INSTANCE_NV_ESTIMATE_BYTES`` — the dominant
+    INSTALL-shell allocation; the small extra key growth at INIT is absorbed by
+    ``LOW_SPACE_MARGIN_BYTES`` in :func:`estimate_remaining_instances`.
+
+    Per-card self-calibration was removed: the binding resource is transient RAM,
+    which can't be measured post-install (it's reclaimed once the INSTALL buffers
+    free), and a noisy measurement made the estimate jump *upward* between
+    installs. Correctness is now covered by the monotonic capacity cap
+    (:func:`apply_capacity_cap`) plus the install-failure clamp. The
+    ``controller`` arg is accepted (and ignored) for call-site uniformity.
     """
-    measured = getattr(controller, "keycard_measured_instance_nv", None)
-    if isinstance(measured, int) and measured > 0:
-        return measured
     return KEYCARD_INSTANCE_NV_ESTIMATE_BYTES
 
 
-def keycard_instance_volatile_estimate(controller) -> int:
-    """Best estimate (bytes) of one more Keycard instance's transient-RAM cost.
+def keycard_instance_volatile_estimate(controller=None) -> int:
+    """Conservative estimate (bytes) of one more Keycard instance's RAM cost.
 
-    Mirrors :func:`keycard_instance_nv_estimate`: uses the card-specific measured
-    value (``Controller.keycard_measured_instance_volatile``) when the create
-    flow captured one this session, else the conservative
-    ``KEYCARD_INSTANCE_VOLATILE_ESTIMATE_BYTES`` default.
+    Returns the fixed ``KEYCARD_INSTANCE_VOLATILE_ESTIMATE_BYTES``; see
+    :func:`keycard_instance_nv_estimate` for why this is a constant rather than a
+    self-calibrated measurement.
     """
-    measured = getattr(controller, "keycard_measured_instance_volatile", None)
-    if isinstance(measured, int) and measured > 0:
-        return measured
     return KEYCARD_INSTANCE_VOLATILE_ESTIMATE_BYTES
 
 
@@ -658,6 +656,35 @@ def estimate_remaining_instances(free_nv, current_count: int, per_instance: int,
         gates.append(max(0, (free_volatile - LOW_SPACE_VOLATILE_MARGIN_BYTES)
                          // per_instance_volatile))
     return min(gates)
+
+
+def apply_capacity_cap(controller, current_count: int, raw_remaining: int,
+                       *, update: bool = True) -> int:
+    """Clamp a raw "≈N more fit" estimate so it can only ever ratchet *down*.
+
+    The free-memory estimate (:func:`estimate_remaining_instances`) is noisy —
+    transient-RAM readings fluctuate between installs, so the raw count can jump
+    *upward* as instances are added, which is nonsensical. We anchor on the
+    **predicted total capacity** (``current_count + remaining``) and keep only
+    its running minimum on ``controller.keycard_capacity_estimate``: the first
+    estimate fixes the predicted maximum, and reality (a refused install, freed
+    space) can only lower it.
+
+    ``update=True`` (the create flow, which knows the authoritative GET-STATUS
+    count) stores the ratcheted total; ``update=False`` (the Storage view, whose
+    count may be a fallback) only reads it, so a stale count can't corrupt the
+    cap. Returns the capped ``remaining`` for ``current_count``.
+
+    The cap is reset to ``None`` on card swap (``wipe_card_session_secrets``) and
+    when a Delete frees a slot, so a fresh/changed card re-estimates cleanly.
+    """
+    predicted_total = current_count + max(0, raw_remaining)
+    cap = getattr(controller, "keycard_capacity_estimate", None)
+    if cap is not None:
+        predicted_total = min(cap, predicted_total)
+    if update:
+        controller.keycard_capacity_estimate = predicted_total
+    return max(0, predicted_total - current_count)
 
 
 def _toast_ios_coexistence(view):

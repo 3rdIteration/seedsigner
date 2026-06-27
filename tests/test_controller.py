@@ -194,8 +194,30 @@ class TestController(BaseTest):
         assert controller.Satochip_Last_UID_SHA1 is None
         assert controller.Satochip_Connector is None
         connector.card_disconnect.assert_called_once()
+        # The connector's observer must be removed from pyscard's singleton
+        # CardMonitor, else it re-grabs the next inserted card after a swap
+        # (the "Unable to find seedkeeper" 2nd-card backup bug).
+        connector.cardmonitor.deleteObserver.assert_called_once_with(
+            connector.cardobserver
+        )
         # PIN list was wiped in place before being dropped.
         assert cached_pin == [0, 0, 0, 0, 0, 0]
+
+    def test_forget_satochip_session_tolerates_observer_already_removed(self):
+        """A double teardown — Fix B removes the observer while the card is
+        still inserted, then the card-removal event fires this path — must
+        not raise. pyscard's ``deleteObserver`` raises ``ValueError`` when the
+        observer is already gone; we swallow it and still null the connector."""
+        from unittest.mock import MagicMock
+
+        controller = Controller.get_instance()
+        connector = MagicMock()
+        connector.cardmonitor.deleteObserver.side_effect = ValueError
+        controller.Satochip_Connector = connector
+
+        controller.forget_satochip_session()  # must not raise
+
+        assert controller.Satochip_Connector is None
 
 
     def test_cache_scard_pin_default_is_enabled(self):
@@ -233,19 +255,17 @@ class TestController(BaseTest):
         assert cached == bytearray(b"\x00" * 6)
 
     def test_wipe_card_session_secrets_resets_instance_calibration(self):
-        """Per-instance NV/RAM calibration and the "card is full" marker are
+        """The monotonic capacity estimate and the "card is full" marker are
         card-specific and must reset on swap so a different card's estimate
-        isn't computed from the previous card's footprint / full state."""
+        isn't pinned by the previous card's ratcheted cap / full state."""
         controller = Controller.get_instance()
         controller.keycard_pins = {}
-        controller.keycard_measured_instance_nv = 4096
-        controller.keycard_measured_instance_volatile = 512
+        controller.keycard_capacity_estimate = 4
         controller.keycard_install_full = True
 
         controller.wipe_card_session_secrets()
 
-        assert controller.keycard_measured_instance_nv is None
-        assert controller.keycard_measured_instance_volatile is None
+        assert controller.keycard_capacity_estimate is None
         assert controller.keycard_install_full is False
 
     def test_forget_all_pins_clears_wallet_address_cache(self):

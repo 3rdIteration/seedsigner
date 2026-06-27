@@ -211,51 +211,29 @@ class TestSizeHelpers(unittest.TestCase):
 # Per-instance NV estimate (memory-aware instance limit)
 # ---------------------------------------------------------------------------
 class TestInstanceNvEstimate(unittest.TestCase):
-    def test_falls_back_to_constant(self):
+    def test_returns_conservative_constant(self):
         from seedsigner.views import view as view_mod
-        # None / unset measurement -> conservative constant.
-        c = types.SimpleNamespace(keycard_measured_instance_nv=None)
+        # Per-card self-calibration was removed — the helper always returns the
+        # conservative constant; the controller arg is accepted but ignored.
         self.assertEqual(
-            view_mod.keycard_instance_nv_estimate(c),
+            view_mod.keycard_instance_nv_estimate(),
             view_mod.KEYCARD_INSTANCE_NV_ESTIMATE_BYTES,
         )
-
-    def test_uses_measured_when_present(self):
-        from seedsigner.views import view as view_mod
-        c = types.SimpleNamespace(keycard_measured_instance_nv=1500)
-        self.assertEqual(view_mod.keycard_instance_nv_estimate(c), 1500)
-
-    def test_non_int_measurement_ignored(self):
-        from seedsigner.views import view as view_mod
-        from unittest.mock import MagicMock
-        # A MagicMock attr (or any non-int) must not poison the arithmetic.
-        c = MagicMock()
         self.assertEqual(
-            view_mod.keycard_instance_nv_estimate(c),
+            view_mod.keycard_instance_nv_estimate(types.SimpleNamespace()),
             view_mod.KEYCARD_INSTANCE_NV_ESTIMATE_BYTES,
         )
 
 
 class TestInstanceVolatileEstimate(unittest.TestCase):
-    def test_falls_back_to_constant(self):
+    def test_returns_conservative_constant(self):
         from seedsigner.views import view as view_mod
-        c = types.SimpleNamespace(keycard_measured_instance_volatile=None)
         self.assertEqual(
-            view_mod.keycard_instance_volatile_estimate(c),
+            view_mod.keycard_instance_volatile_estimate(),
             view_mod.KEYCARD_INSTANCE_VOLATILE_ESTIMATE_BYTES,
         )
-
-    def test_uses_measured_when_present(self):
-        from seedsigner.views import view as view_mod
-        c = types.SimpleNamespace(keycard_measured_instance_volatile=300)
-        self.assertEqual(view_mod.keycard_instance_volatile_estimate(c), 300)
-
-    def test_non_int_measurement_ignored(self):
-        from seedsigner.views import view as view_mod
-        from unittest.mock import MagicMock
-        c = MagicMock()
         self.assertEqual(
-            view_mod.keycard_instance_volatile_estimate(c),
+            view_mod.keycard_instance_volatile_estimate(types.SimpleNamespace()),
             view_mod.KEYCARD_INSTANCE_VOLATILE_ESTIMATE_BYTES,
         )
 
@@ -349,6 +327,48 @@ class TestEstimateRemainingInstances(unittest.TestCase):
             ),
             0,
         )
+
+
+# ---------------------------------------------------------------------------
+# apply_capacity_cap (monotonic "≈N more fit")
+# ---------------------------------------------------------------------------
+class TestApplyCapacityCap(unittest.TestCase):
+    def test_first_estimate_anchors_predicted_total(self):
+        from seedsigner.views.view import apply_capacity_cap
+        c = types.SimpleNamespace(keycard_capacity_estimate=None)
+        # count=1, raw=3 -> predicted total 4 (stored); returns 3.
+        self.assertEqual(apply_capacity_cap(c, 1, 3), 3)
+        self.assertEqual(c.keycard_capacity_estimate, 4)
+
+    def test_ratchets_down_never_up(self):
+        from seedsigner.views.view import apply_capacity_cap
+        c = types.SimpleNamespace(keycard_capacity_estimate=None)
+        self.assertEqual(apply_capacity_cap(c, 1, 3), 3)   # total -> 4
+        # The bug: raw jumps to 6 after one create. Capped to total 4, so the
+        # shown remaining is 4 - 2 = 2, never 6.
+        self.assertEqual(apply_capacity_cap(c, 2, 6), 2)
+        self.assertEqual(c.keycard_capacity_estimate, 4)
+        self.assertEqual(apply_capacity_cap(c, 3, 2), 1)   # 4 - 3
+        self.assertEqual(apply_capacity_cap(c, 4, 9), 0)   # 4 - 4 -> full
+
+    def test_read_only_respects_but_never_writes_cap(self):
+        from seedsigner.views.view import apply_capacity_cap
+        c = types.SimpleNamespace(keycard_capacity_estimate=4)
+        # Storage view path: update=False clamps to the cap but doesn't mutate it.
+        self.assertEqual(apply_capacity_cap(c, 2, 6, update=False), 2)
+        self.assertEqual(c.keycard_capacity_estimate, 4)
+
+    def test_never_negative(self):
+        from seedsigner.views.view import apply_capacity_cap
+        c = types.SimpleNamespace(keycard_capacity_estimate=4)
+        self.assertEqual(apply_capacity_cap(c, 5, 5, update=False), 0)
+
+    def test_no_cap_passes_raw_through(self):
+        from seedsigner.views.view import apply_capacity_cap
+        c = types.SimpleNamespace(keycard_capacity_estimate=None)
+        # With update=False and no cap, the raw estimate is returned unchanged.
+        self.assertEqual(apply_capacity_cap(c, 2, 5, update=False), 5)
+        self.assertIsNone(c.keycard_capacity_estimate)
 
 
 # ---------------------------------------------------------------------------
@@ -489,8 +509,7 @@ class TestStorageView(unittest.TestCase):
         # Real Controller defaults these; on a MagicMock the attributes would
         # otherwise be truthy/non-int Mocks and skew the estimate.
         view.controller.keycard_install_full = False
-        view.controller.keycard_measured_instance_nv = None
-        view.controller.keycard_measured_instance_volatile = None
+        view.controller.keycard_capacity_estimate = None
         view.run_screen = MagicMock(return_value=0)
         return view
 
@@ -519,8 +538,8 @@ class TestStorageView(unittest.TestCase):
         from seedsigner.gui.screens.screen import KeycardStorageScreen
 
         view = self._make_view()
-        # No measured per-instance footprint -> the estimate uses the constant.
-        view.controller.keycard_measured_instance_nv = None
+        # No prior cap -> the estimate uses the conservative constant directly.
+        view.controller.keycard_capacity_estimate = None
         mem = CardMemory(free_nv=50000, free_volatile=0, num_apps=2)
         probe = types.SimpleNamespace(
             keycard_installed=True, seedkeeper_installed=False,
