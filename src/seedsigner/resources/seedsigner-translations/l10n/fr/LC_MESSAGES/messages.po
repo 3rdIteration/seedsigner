@@ -4062,3 +4062,12 @@ msgstr "Effacement de la destination\n\n\n\n\n\n"
 
 msgid "Deleted: {}\nImported: {}\nSkipped Unsupported: {}"
 msgstr "Supprimés : {}\nImportés : {}\nIgnorés non pris en charge : {}"
+
+msgid "Already on Card"
+msgstr "Déjà sur la carte"
+
+msgid "Already on the destination as '{}'. Copy anyway?"
+msgstr "Déjà sur la destination en tant que '{}'. Copier quand même ?"
+
+msgid "Copy Anyway"
+msgstr "Copier quand même"

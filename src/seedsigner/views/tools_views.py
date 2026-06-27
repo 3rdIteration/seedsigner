@@ -555,7 +555,7 @@ class ToolsSeedkeeperCloneSecretsView(View):
             if connector:
                 seedkeeper_utils.disconnect_smartcard_connections(self.controller)
 
-    def _clone_to_destination(self, secrets_to_clone, replace=False):
+    def _clone_to_destination(self, secrets_to_clone, replace=False, confirm_duplicates=False):
         from seedsigner.gui.screens.screen import LoadingScreenThread
 
         connector = None
@@ -594,6 +594,9 @@ class ToolsSeedkeeperCloneSecretsView(View):
             loading_screen = None
 
             deleted = 0
+            # Placeholder fingerprint the card never assigns to real content;
+            # treated as "no fingerprint" so it can't trigger a false match.
+            ZERO_FP = "00000000"
 
             if replace:
                 # Seedkeeper v1 applets cannot delete secrets, so a faithful
@@ -626,13 +629,42 @@ class ToolsSeedkeeperCloneSecretsView(View):
                     deleted += 1
                 loading_screen.stop()
                 loading_screen = None
-                existing_fingerprints = set()
+                existing_by_fp = {}
             else:
-                existing_fingerprints = {
-                    header.get("fingerprint")
-                    for header in dest_headers
-                    if header.get("fingerprint") is not None
-                }
+                # Map content-fingerprint -> existing destination label. A
+                # placeholder/zero fingerprint is treated as "no fingerprint"
+                # so it can never cause a false "already exists" match.
+                existing_by_fp = {}
+                for h in dest_headers:
+                    fp = h.get("fingerprint")
+                    if fp and fp != ZERO_FP:
+                        existing_by_fp.setdefault(fp, h.get("label", ""))
+
+            logger.info(
+                "Seedkeeper copy: %d secret(s) to write, %d on destination, dest fingerprints=%s",
+                len(secrets_to_clone), len(dest_headers), sorted(existing_by_fp.keys()),
+            )
+
+            # Single-secret copy: instead of silently skipping a content
+            # duplicate, name the existing entry and let the user force the
+            # copy. (The named label is also a diagnostic: if it is the source
+            # secret's own label, source/destination got crossed.)
+            force_import_fps = set()
+            if confirm_duplicates and not replace:
+                for entry in secrets_to_clone:
+                    fp = entry.get("header", {}).get("fingerprint")
+                    if fp and fp != ZERO_FP and fp in existing_by_fp:
+                        ans = self.run_screen(
+                            WarningScreen,
+                            title=_("Already on Card"),
+                            status_headline=None,
+                            # TRANSLATOR_NOTE: {} is the label of the existing secret
+                            text=_("Already on the destination as '{}'. Copy anyway?").format(existing_by_fp[fp]),
+                            show_back_button=True,
+                            button_data=[ButtonOption("Copy Anyway"), ButtonOption("Skip")],
+                        )
+                        if ans == 0:
+                            force_import_fps.add(fp)
 
             loading_screen = LoadingScreenThread(text=_("Writing Destination Card\n\n\n\n\n\n"))
             loading_screen.start()
@@ -646,7 +678,12 @@ class ToolsSeedkeeperCloneSecretsView(View):
                 secret = entry.get("secret", {})
 
                 fingerprint = header.get("fingerprint")
-                if fingerprint is not None and fingerprint in existing_fingerprints:
+                is_duplicate = (
+                    bool(fingerprint)
+                    and fingerprint != ZERO_FP
+                    and fingerprint in existing_by_fp
+                )
+                if is_duplicate and fingerprint not in force_import_fps:
                     skipped_existing += 1
                     continue
 
@@ -701,8 +738,10 @@ class ToolsSeedkeeperCloneSecretsView(View):
                 connector.seedkeeper_import_secret(secret_dic)
                 imported += 1
 
-                if fingerprint is not None:
-                    existing_fingerprints.add(fingerprint)
+                # Track the freshly-written fingerprint so a later identical
+                # source secret in the same run is recognised as a duplicate.
+                if fingerprint and fingerprint != ZERO_FP:
+                    existing_by_fp.setdefault(fingerprint, label)
 
             loading_screen.stop()
 
@@ -743,6 +782,7 @@ class ToolsSeedkeeperCloneSecretsView(View):
         # of dumping the user straight back to the SeedKeeper menu.
         selected = None
         replace = False
+        confirm_duplicates = False
         collected = None
         try:
             while selected is None:
@@ -787,10 +827,15 @@ class ToolsSeedkeeperCloneSecretsView(View):
                         continue
                     selected = [one]
                     replace = False
+                    # Deliberate single pick: don't silently skip a content
+                    # duplicate — confirm explicitly (and name the match).
+                    confirm_duplicates = True
 
             # Step 2: write to destination, with retry / copy-another loop.
             while True:
-                result, error_message = self._clone_to_destination(selected, replace=replace)
+                result, error_message = self._clone_to_destination(
+                    selected, replace=replace, confirm_duplicates=confirm_duplicates
+                )
 
                 if result is False:
                     retry_choice = self.run_screen(

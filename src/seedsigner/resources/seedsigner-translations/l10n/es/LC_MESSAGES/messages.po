@@ -4062,3 +4062,12 @@ msgstr "Borrando destino\n\n\n\n\n\n"
 
 msgid "Deleted: {}\nImported: {}\nSkipped Unsupported: {}"
 msgstr "Borrados: {}\nImportados: {}\nOmitidos no soportados: {}"
+
+msgid "Already on Card"
+msgstr "Ya en la tarjeta"
+
+msgid "Already on the destination as '{}'. Copy anyway?"
+msgstr "Ya en el destino como '{}'. ¿Copiar igualmente?"
+
+msgid "Copy Anyway"
+msgstr "Copiar igualmente"

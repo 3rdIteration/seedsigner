@@ -4047,3 +4047,12 @@ msgstr "A apagar o destino\n\n\n\n\n\n"
 
 msgid "Deleted: {}\nImported: {}\nSkipped Unsupported: {}"
 msgstr "Apagados: {}\nImportados: {}\nNão suportados ignorados: {}"
+
+msgid "Already on Card"
+msgstr "Já no cartão"
+
+msgid "Already on the destination as '{}'. Copy anyway?"
+msgstr "Já no destino como '{}'. Copiar mesmo assim?"
+
+msgid "Copy Anyway"
+msgstr "Copiar mesmo assim"

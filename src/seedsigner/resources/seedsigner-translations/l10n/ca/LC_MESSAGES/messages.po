@@ -4057,3 +4057,12 @@ msgstr "Esborrant el destí\n\n\n\n\n\n"
 
 msgid "Deleted: {}\nImported: {}\nSkipped Unsupported: {}"
 msgstr "Esborrats: {}\nImportats: {}\nOmesos no compatibles: {}"
+
+msgid "Already on Card"
+msgstr "Ja existeix"
+
+msgid "Already on the destination as '{}'. Copy anyway?"
+msgstr "Ja al destí com a '{}'. Copiar igualment?"
+
+msgid "Copy Anyway"
+msgstr "Copia igualment"

@@ -4042,3 +4042,12 @@ msgstr "Ziel wird gelöscht\n\n\n\n\n\n"
 
 msgid "Deleted: {}\nImported: {}\nSkipped Unsupported: {}"
 msgstr "Gelöscht: {}\nImportiert: {}\nNicht unterstützt übersprungen: {}"
+
+msgid "Already on Card"
+msgstr "Schon auf Karte"
+
+msgid "Already on the destination as '{}'. Copy anyway?"
+msgstr "Bereits auf dem Ziel als '{}'. Trotzdem kopieren?"
+
+msgid "Copy Anyway"
+msgstr "Trotzdem kopieren"

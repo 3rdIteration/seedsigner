@@ -4023,3 +4023,12 @@ msgstr "正在清除目标卡\n\n\n\n\n\n"
 
 msgid "Deleted: {}\nImported: {}\nSkipped Unsupported: {}"
 msgstr "已删除：{}\n已导入：{}\n已跳过不支持：{}"
+
+msgid "Already on Card"
+msgstr "卡上已存在"
+
+msgid "Already on the destination as '{}'. Copy anyway?"
+msgstr "目标卡上已存在为 '{}'。仍要复制？"
+
+msgid "Copy Anyway"
+msgstr "仍要复制"

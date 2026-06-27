@@ -4068,3 +4068,12 @@ msgstr "Cancellazione destinazione\n\n\n\n\n\n"
 
 msgid "Deleted: {}\nImported: {}\nSkipped Unsupported: {}"
 msgstr "Eliminati: {}\nImportati: {}\nSaltati non supportati: {}"
+
+msgid "Already on Card"
+msgstr "Già sulla scheda"
+
+msgid "Already on the destination as '{}'. Copy anyway?"
+msgstr "Già sulla destinazione come '{}'. Copiare comunque?"
+
+msgid "Copy Anyway"
+msgstr "Copia comunque"

@@ -61,7 +61,9 @@ class TestCloneRouting(unittest.TestCase):
 
         dest = view.run()
 
-        view._clone_to_destination.assert_called_once_with(src, replace=False)
+        view._clone_to_destination.assert_called_once_with(
+            src, replace=False, confirm_duplicates=False
+        )
         self.assertIs(dest.View_cls, BackStackView)
 
     def test_all_replace_routes(self):
@@ -72,7 +74,9 @@ class TestCloneRouting(unittest.TestCase):
 
         view.run()
 
-        view._clone_to_destination.assert_called_once_with(src, replace=True)
+        view._clone_to_destination.assert_called_once_with(
+            src, replace=True, confirm_duplicates=False
+        )
 
     def test_single_routes_one_secret(self):
         src = [_src_secret("f1"), _src_secret("f2")]
@@ -83,7 +87,10 @@ class TestCloneRouting(unittest.TestCase):
 
         view.run()
 
-        view._clone_to_destination.assert_called_once_with([src[1]], replace=False)
+        # Single copy passes confirm_duplicates=True (explicit pick).
+        view._clone_to_destination.assert_called_once_with(
+            [src[1]], replace=False, confirm_duplicates=True
+        )
 
     def test_scope_back_exits(self):
         view = _make_view(run_screen_side_effect=[RET_CODE__BACK_BUTTON])
@@ -216,6 +223,67 @@ class TestCloneToDestination(unittest.TestCase):
         self.assertIn("v2", err)
         connector.seedkeeper_reset_secret.assert_not_called()
         connector.seedkeeper_import_secret.assert_not_called()
+
+    def test_single_duplicate_copy_anyway_imports(self):
+        # Destination already holds the same content (same fingerprint) under a
+        # different label. Single copy must NOT silently skip: it confirms and,
+        # on "Copy Anyway", imports anyway.
+        connector = self._connector(
+            dest_headers=[{"id": 1, "fingerprint": "f1", "label": "other"}]
+        )
+        # insert Continue, confirm "Copy Anyway" (0), completion
+        view = _make_view(run_screen_side_effect=[0, 0, 0])
+        src = [_src_secret("f1", label="mine")]
+
+        with patch.object(
+            tools_views.seedkeeper_utils, "init_satochip",
+            MagicMock(return_value=connector),
+        ):
+            ok, err = view._clone_to_destination(
+                src, replace=False, confirm_duplicates=True
+            )
+
+        self.assertTrue(ok)
+        connector.seedkeeper_import_secret.assert_called_once()
+
+    def test_single_duplicate_skip_does_not_import(self):
+        connector = self._connector(
+            dest_headers=[{"id": 1, "fingerprint": "f1", "label": "other"}]
+        )
+        # insert Continue, confirm "Skip" (1), completion
+        view = _make_view(run_screen_side_effect=[0, 1, 0])
+        src = [_src_secret("f1", label="mine")]
+
+        with patch.object(
+            tools_views.seedkeeper_utils, "init_satochip",
+            MagicMock(return_value=connector),
+        ):
+            ok, err = view._clone_to_destination(
+                src, replace=False, confirm_duplicates=True
+            )
+
+        self.assertTrue(ok)
+        connector.seedkeeper_import_secret.assert_not_called()
+
+    def test_zero_fingerprint_is_not_a_duplicate(self):
+        # A placeholder/zero fingerprint must never match (it isn't a real
+        # content hash), so the secret is imported, not skipped.
+        connector = self._connector(
+            dest_headers=[{"id": 1, "fingerprint": "00000000", "label": "x"}]
+        )
+        view = _make_view(run_screen_side_effect=[0, 0])  # insert, completion
+        src = [_src_secret("00000000", label="mine")]
+
+        with patch.object(
+            tools_views.seedkeeper_utils, "init_satochip",
+            MagicMock(return_value=connector),
+        ):
+            ok, err = view._clone_to_destination(
+                src, replace=False, confirm_duplicates=True
+            )
+
+        self.assertTrue(ok)
+        connector.seedkeeper_import_secret.assert_called_once()
 
     def test_replace_cancel_does_not_delete(self):
         connector = self._connector(dest_headers=[{"id": 1, "fingerprint": "fa"}])

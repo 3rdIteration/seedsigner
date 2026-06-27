@@ -4054,3 +4054,12 @@ msgstr "Bestemming wissen\n\n\n\n\n\n"
 
 msgid "Deleted: {}\nImported: {}\nSkipped Unsupported: {}"
 msgstr "Verwijderd: {}\nGeïmporteerd: {}\nNiet-ondersteund overgeslagen: {}"
+
+msgid "Already on Card"
+msgstr "Al op kaart"
+
+msgid "Already on the destination as '{}'. Copy anyway?"
+msgstr "Al op de bestemming als '{}'. Toch kopiëren?"
+
+msgid "Copy Anyway"
+msgstr "Toch kopiëren"

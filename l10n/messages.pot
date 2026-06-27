@@ -3647,3 +3647,12 @@ msgstr ""
 
 msgid "Deleted: {}\nImported: {}\nSkipped Unsupported: {}"
 msgstr ""
+
+msgid "Already on Card"
+msgstr ""
+
+msgid "Already on the destination as '{}'. Copy anyway?"
+msgstr ""
+
+msgid "Copy Anyway"
+msgstr ""

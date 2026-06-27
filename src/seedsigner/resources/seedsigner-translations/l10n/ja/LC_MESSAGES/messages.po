@@ -4024,3 +4024,12 @@ msgstr "宛先を消去中\n\n\n\n\n\n"
 
 msgid "Deleted: {}\nImported: {}\nSkipped Unsupported: {}"
 msgstr "削除済: {}\nインポート済: {}\n非対応をスキップ: {}"
+
+msgid "Already on Card"
+msgstr "すでにカードにあります"
+
+msgid "Already on the destination as '{}'. Copy anyway?"
+msgstr "宛先に '{}' として既に存在します。それでもコピーしますか？"
+
+msgid "Copy Anyway"
+msgstr "それでもコピー"
