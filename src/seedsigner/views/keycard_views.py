@@ -1995,6 +1995,34 @@ def _redirect_if_uninitialised(view):
     return Destination(ToolsKeycardInitView)
 
 
+def _ensure_card_paired(view):
+    """Pair the inserted card for this boot BEFORE the user types/sees a seed.
+
+    The first Keycard session-op after a boot has no cached pairing, so the
+    LOAD_KEY push's ``open_unlocked_session`` raises ``KeycardCardChangedError``
+    and the push bounces to ``ToolsKeycardPairView`` with no resume: it silently
+    pairs (v3.2 default / keycard-shell PSK — no screen) but then re-runs this
+    view from the top, discarding the just-typed seed and forcing a full re-type
+    while the card stays empty. Pairing here, before any seed is collected, makes
+    the later push find the cached secret and succeed on the first attempt.
+
+    Returns a pair-then-resume ``Destination`` when the card is not yet paired,
+    or ``None`` to continue — already paired, or the probe couldn't read the card
+    (advisory only, so the push still surfaces any real card error downstream).
+    """
+    from seedsigner.helpers.keycard.ui_helpers import identify_inserted_card
+    try:
+        _client, uid = identify_inserted_card(view)
+    except Exception:
+        logger.debug("pairing pre-check SELECT failed", exc_info=True)
+        return None
+    ctrl = view.controller
+    if (ctrl.get_ephemeral_secret_for(uid) is not None
+            or ctrl.get_pairing_for(uid) is not None):
+        return None  # already paired this boot → no detour
+    return _pair_then_resume(Destination(type(view)))
+
+
 class ToolsKeycardGenerateKeyView(View):
     """Entry-point for the on-card key generation flow.
 
@@ -2013,6 +2041,12 @@ class ToolsKeycardGenerateKeyView(View):
         redirect = _redirect_if_uninitialised(self)
         if redirect is not None:
             return redirect
+
+        # Pair up front so the on-card GENERATE_MNEMONIC / LOAD_KEY steps don't
+        # hit KeycardCardChangedError mid-flow and discard the generated seed.
+        pair_redirect = _ensure_card_paired(self)
+        if pair_redirect is not None:
+            return pair_redirect
 
         # Warn explicitly when this would overwrite an already-loaded key.
         # A fresh / just-initialised instance has no key_uid yet (generic
@@ -2092,6 +2126,14 @@ class ToolsKeycardImportSeedView(View):
         redirect = _redirect_if_uninitialised(self)
         if redirect is not None:
             return redirect
+
+        # 0b. Pair the card up front. Without this, the final LOAD_KEY push is the
+        #     first session-op of the boot, raises KeycardCardChangedError, and
+        #     bounces to pairing — silently re-running this view and discarding the
+        #     seed the user just typed (the recurring "import doesn't save" bug).
+        pair_redirect = _ensure_card_paired(self)
+        if pair_redirect is not None:
+            return pair_redirect
 
         # 1. Strong warning + confirm to enter the flow. When the instance
         #    already holds a key, make the warning explicit about overwriting
@@ -2884,7 +2926,12 @@ class ToolsKeycardImportSeedkeeperPushView(View):
                     self, _("PIN needed"), _("Enter the Keycard PIN\nto push."),
                 )
             except KeycardCardChangedError:
-                return Destination(ToolsKeycardPairView)
+                # Pair then resume this push: the mnemonic is on the controller,
+                # so the resumed view re-reads it (no need to re-read the
+                # Seedkeeper). Keeps the swap-chain seed for the retry.
+                return _pair_then_resume(
+                    Destination(ToolsKeycardImportSeedkeeperPushView),
+                )
             except KeycardNotInitialisedError:
                 # Not a transient hiccup: this instance has no PIN, so retrying
                 # the swap can never succeed. Break out of the retry loop with a
@@ -3356,8 +3403,13 @@ class ToolsKeycardGenerateSeedLoadView(View):
                     _wipe_pending_setup_state(self.controller)
                     return Destination(BackStackView)
                 except KeycardCardChangedError:
-                    _wipe_pending_setup_state(self.controller)
-                    return Destination(ToolsKeycardPairView)
+                    # Pair the unpaired/swapped card and resume the load — the
+                    # mnemonic lives on the controller (pending_keycard_*), so the
+                    # resumed view re-reads it. Do NOT wipe it here, or the resume
+                    # would find nothing and abandon an on-card-generated seed.
+                    return _pair_then_resume(
+                        Destination(ToolsKeycardGenerateSeedLoadView),
+                    )
                 except Exception as exc:
                     logger.exception("LOAD_KEY failed")
                     title, body = classify_card_error(

@@ -101,6 +101,7 @@ class TestImportSeedPushRetry(unittest.TestCase):
         )
 
         with patch.object(kv, "_redirect_if_uninitialised", return_value=None), \
+             patch.object(kv, "_ensure_card_paired", return_value=None), \
              patch.object(kv, "_instance_key_present", return_value=False), \
              patch.object(kv, "_open_unlocked_session_cached_or_prompt", session), \
              patch.object(kv, "_invalidate_wallets_cache_for_active_aid", MagicMock()):
@@ -127,6 +128,7 @@ class TestImportSeedPushRetry(unittest.TestCase):
         session = MagicMock(side_effect=RuntimeError("secure channel broke"))
 
         with patch.object(kv, "_redirect_if_uninitialised", return_value=None), \
+             patch.object(kv, "_ensure_card_paired", return_value=None), \
              patch.object(kv, "_instance_key_present", return_value=False), \
              patch.object(kv, "_open_unlocked_session_cached_or_prompt", session), \
              patch.object(kv, "_invalidate_wallets_cache_for_active_aid", MagicMock()):
