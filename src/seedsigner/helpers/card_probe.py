@@ -192,6 +192,15 @@ def _probe_seedkeeper(controller, timeout_s: float) -> ProbeResult:
                 connector.card_disconnect()
             except Exception:
                 pass
+            # pysatochip's card_disconnect() leaves the connector's
+            # RemovalObserver on pyscard's singleton CardMonitor; remove it
+            # too, else it lingers and re-grabs the next inserted card,
+            # starving a freshly-built connector across a swap. Best-effort
+            # (deleteObserver raises ValueError if already removed).
+            try:
+                connector.cardmonitor.deleteObserver(connector.cardobserver)
+            except Exception:
+                pass
 
 
 # ---------------------------------------------------------------------------

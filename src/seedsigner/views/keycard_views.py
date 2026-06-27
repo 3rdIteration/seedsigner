@@ -3729,6 +3729,21 @@ class ToolsKeycardSeedkeeperSaveRunView(View):
             # Saved successfully. If a further destination remains (the Both
             # flow), DON'T wipe yet — swap to a separate card and save again.
             if "other" in self.remaining:
+                # Tear down THIS save's pysatochip connector now, while card 1
+                # is still in the reader, so its CardMonitor observer is
+                # removed before the user pulls the card. Otherwise that stale
+                # observer reconnects to card 2 in the background and starves
+                # the second save's fresh connector ("Unable to find
+                # seedkeeper", with no PIN prompt). release_other_smartcard_holders
+                # disconnects + deletes the observer + nulls the connector, but
+                # leaves Satochip_PIN/UID so save 2 re-prompts for card 2's PIN.
+                try:
+                    from seedsigner.helpers.keycard.reader import (
+                        release_other_smartcard_holders,
+                    )
+                    release_other_smartcard_holders(self.controller)
+                except Exception:
+                    pass
                 self.run_screen(
                     LargeIconStatusScreen,
                     title=_("Saved (1 of 2)"),

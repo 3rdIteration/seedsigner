@@ -464,11 +464,18 @@ class TestSeedkeeperSaveRun(unittest.TestCase):
         ), patch(
             "seedsigner.gui.screens.screen.LoadingScreenThread",
             return_value=MagicMock(),
-        ):
+        ), patch(
+            "seedsigner.helpers.keycard.reader.release_other_smartcard_holders",
+        ) as mock_release:
             dest = view.run()
         # First leg saved; seed kept for the second card.
         self.assertIs(dest.View_cls, ToolsKeycardSeedkeeperSwapInsertView)
         self.assertEqual(view.controller.pending_keycard_mnemonic, ["a", "b"])
+        # The first save's pysatochip connector is torn down (its CardMonitor
+        # observer removed) while card 1 is still inserted, BEFORE prompting the
+        # swap — otherwise the stale observer reconnects to card 2 in the
+        # background and starves the 2nd save ("Unable to find seedkeeper").
+        mock_release.assert_called_once_with(view.controller)
 
     def test_single_success_wipes_and_returns_to_menu(self):
         from seedsigner.views.keycard_views import ToolsKeycardMenuView

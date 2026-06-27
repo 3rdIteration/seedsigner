@@ -60,6 +60,15 @@ def release_other_smartcard_holders(controller=None) -> None:
                     conn.card_disconnect()
                 except Exception:
                     pass
+                # pysatochip's card_disconnect() leaves the connector's
+                # RemovalObserver on pyscard's singleton CardMonitor; remove
+                # it too, else it auto-reconnects to the next inserted card and
+                # starves a freshly-built connector across a swap. Best-effort
+                # (deleteObserver raises ValueError if already removed).
+                try:
+                    conn.cardmonitor.deleteObserver(conn.cardobserver)
+                except Exception:
+                    pass
                 try:
                     controller.Satochip_Connector = None
                 except Exception:

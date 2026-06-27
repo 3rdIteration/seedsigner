@@ -122,15 +122,39 @@ def prompt_for_pin(parent_view, title: str):
         )
 
 
+def teardown_satochip_connector(conn):
+    """Fully release a pysatochip ``CardConnector``.
+
+    Drops the card connection AND unregisters the connector's
+    ``RemovalObserver`` from pyscard's process-wide singleton
+    ``CardMonitor``. pysatochip's ``card_disconnect()`` only closes the
+    card connection; it never calls ``cardmonitor.deleteObserver``, so a
+    discarded connector leaves a live observer that auto-reconnects to the
+    next inserted card and starves a freshly-built connector across a
+    physical card swap (the "Unable to find seedkeeper" failure on the
+    2nd card of a "Both" backup).
+
+    Best-effort: ``deleteObserver`` raises ``ValueError`` if the observer
+    was already removed (``smartcard/Observer.py``), so both steps are
+    individually guarded.
+    """
+    if conn is None:
+        return
+    try:
+        conn.card_disconnect()
+    except Exception:
+        pass
+    try:
+        conn.cardmonitor.deleteObserver(conn.cardobserver)
+    except Exception:
+        pass
+
+
 def disconnect_smartcard_connections(controller):
     """Ensure no other smartcard connectors are holding the reader."""
     try:
         conn = getattr(controller, "Satochip_Connector", None)
-        if conn:
-            try:
-                conn.card_disconnect()
-            except Exception:
-                pass
+        teardown_satochip_connector(conn)
     finally:
         try:
             controller.Satochip_Connector = None
@@ -162,10 +186,7 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True):
     # connector that may still be attached to a previous flow/card type.
     # Rebuild the connector with the requested filter to avoid stale state.
     if Satochip_Connector is not None and init_card_filter:
-        try:
-            Satochip_Connector.card_disconnect()
-        except Exception:
-            pass
+        teardown_satochip_connector(Satochip_Connector)
         parentObject.controller.Satochip_Connector = None
         Satochip_Connector = None
 
@@ -179,6 +200,7 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True):
                 getattr(parentObject.controller, "Satochip_Last_UID_SHA1", None),
             )
         except Exception:
+            teardown_satochip_connector(Satochip_Connector)
             parentObject.controller.Satochip_Connector = None
             Satochip_Connector = None
 

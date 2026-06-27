@@ -157,6 +157,22 @@ class TestProbeSeedKeeper(unittest.TestCase):
         self.assertTrue(res.kind_match)
         self.assertFalse(res.initialised)
 
+    def test_seedkeeper_probe_removes_observer(self):
+        """The transient probe connector's RemovalObserver must be removed
+        from pyscard's singleton CardMonitor in the finally, else it lingers
+        and re-grabs the next inserted card across a swap (the "Unable to find
+        seedkeeper" 2nd-card backup bug)."""
+        from seedsigner.helpers.card_probe import probe_card
+        connector = _patched_card_connector(setup_done=True)
+        with _patch_reader_present(), \
+             patch("pysatochip.CardConnector.CardConnector",
+                   return_value=connector):
+            probe_card("seedkeeper", controller=MagicMock())
+        connector.card_disconnect.assert_called_once_with()
+        connector.cardmonitor.deleteObserver.assert_called_once_with(
+            connector.cardobserver
+        )
+
     def test_connector_raises_card_absent(self):
         from seedsigner.helpers.card_probe import probe_card
         with _patch_reader_absent(), \

@@ -275,5 +275,49 @@ class TestImportWordlistIntegrityAndWipe(unittest.TestCase):
         self.assertIs(dest.View_cls, ToolsKeycardMenuView)
 
 
+class TestTeardownSatochipConnector(unittest.TestCase):
+    """``seedkeeper_utils.teardown_satochip_connector`` must drop the card
+    connection AND unregister the connector's RemovalObserver from pyscard's
+    singleton CardMonitor — pysatochip's ``card_disconnect`` only does the
+    former, leaving a live observer that re-grabs the next inserted card and
+    starves a fresh connector across a swap (the "Unable to find seedkeeper"
+    failure on the 2nd card of a "Both" backup)."""
+
+    def test_disconnects_and_removes_observer(self):
+        from seedsigner.helpers import seedkeeper_utils as su
+
+        conn = MagicMock()
+        su.teardown_satochip_connector(conn)
+        conn.card_disconnect.assert_called_once_with()
+        conn.cardmonitor.deleteObserver.assert_called_once_with(conn.cardobserver)
+
+    def test_none_is_a_noop(self):
+        from seedsigner.helpers import seedkeeper_utils as su
+
+        su.teardown_satochip_connector(None)  # must not raise
+
+    def test_swallows_value_error_from_delete_observer(self):
+        """``deleteObserver`` raises ``ValueError`` if the observer was already
+        removed (double teardown). The helper must swallow it."""
+        from seedsigner.helpers import seedkeeper_utils as su
+
+        conn = MagicMock()
+        conn.cardmonitor.deleteObserver.side_effect = ValueError
+        su.teardown_satochip_connector(conn)  # must not raise
+        conn.card_disconnect.assert_called_once_with()
+
+    def test_disconnect_smartcard_connections_routes_through_teardown(self):
+        from seedsigner.helpers import seedkeeper_utils as su
+
+        controller = MagicMock()
+        conn = MagicMock()
+        controller.Satochip_Connector = conn
+        with patch("subprocess.run"):
+            su.disconnect_smartcard_connections(controller)
+        conn.card_disconnect.assert_called_once_with()
+        conn.cardmonitor.deleteObserver.assert_called_once_with(conn.cardobserver)
+        self.assertIsNone(controller.Satochip_Connector)
+
+
 if __name__ == "__main__":
     unittest.main()

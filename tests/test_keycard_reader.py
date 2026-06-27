@@ -275,6 +275,11 @@ class TestReleaseOtherSmartcardHolders(unittest.TestCase):
             reader.release_other_smartcard_holders(controller)
 
         connector.card_disconnect.assert_called_once_with()
+        # The connector's observer must be removed from pyscard's singleton
+        # CardMonitor, else it lingers and re-grabs the next inserted card.
+        connector.cardmonitor.deleteObserver.assert_called_once_with(
+            connector.cardobserver
+        )
         self.assertIsNone(controller.Satochip_Connector)
         kill_calls = [
             c for c in mock_run.call_args_list
