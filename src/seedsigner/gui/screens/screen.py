@@ -143,17 +143,34 @@ class BaseScreen(BaseComponent):
 
 
 
+# Loading-spinner branding presets — keyword args for LoadingScreenThread:
+# (logo_name, arc_color, arc_trailing_color). The default neutral KeyCard preset
+# is used by every shared loader (camera start for generic scans, card reads,
+# microSD, secrets, USB...); the BTC / ETH presets are passed explicitly by the
+# coin-specific scan + derive flows so the spinner reflects the active chain.
+LOADING_SPINNER_KEYCARD = dict(logo_name="keycard_60x60.png", arc_color="#CED0D8", arc_trailing_color="#686B7A")
+LOADING_SPINNER_BTC = dict(logo_name="btc_logo_60x60.png", arc_color="#FF9416", arc_trailing_color="#99580D")
+LOADING_SPINNER_ETH = dict(logo_name="eth_logo_60x60.png", arc_color="#8C6DFD", arc_trailing_color="#4B3A99")
+
+
 class LoadingScreenThread(BaseThread):
-    def __init__(self, text: str = None):
+    # logo_name / arc colors default to the neutral KeyCard preset above (keep in
+    # sync with LOADING_SPINNER_KEYCARD). Coin flows pass **LOADING_SPINNER_BTC /
+    # **LOADING_SPINNER_ETH to override.
+    def __init__(self, text: str = None, logo_name: str = "keycard_60x60.png",
+                 arc_color: str = "#CED0D8", arc_trailing_color: str = "#686B7A"):
         super().__init__()
-        self.text =text
+        self.text = text
+        self.logo_name = logo_name
+        self.arc_color = arc_color
+        self.arc_trailing_color = arc_trailing_color
 
 
     def run(self):
         from seedsigner.gui.renderer import Renderer
         renderer: Renderer = Renderer.get_instance()
 
-        center_image = load_image("eth_logo_60x60.png")
+        center_image = load_image(self.logo_name)
         orbit_gap = 2*GUIConstants.COMPONENT_PADDING
         bounding_box = (
             int((renderer.canvas_width - center_image.width)/2 - orbit_gap),
@@ -163,8 +180,8 @@ class LoadingScreenThread(BaseThread):
         )
         position = 0
         arc_sweep = 45
-        arc_color = "#8C6DFD"
-        arc_trailing_color = "#4B3A99"
+        arc_color = self.arc_color
+        arc_trailing_color = self.arc_trailing_color
 
         # Need to flush the screen
         with renderer.lock:

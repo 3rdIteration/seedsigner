@@ -96,6 +96,10 @@ class ScanView(View):
     instructions_text = _mft("Scan a QR code")
     invalid_qr_type_message = _mft("QRCode not recognized or not yet supported.")
 
+    # Loading-spinner branding for the camera-start screen. None = neutral
+    # KeyCard; coin subclasses set LOADING_SPINNER_BTC / LOADING_SPINNER_ETH.
+    loading_spinner = None
+
     def __init__(self):
         from seedsigner.models.decode_qr import DecodeQR
 
@@ -118,6 +122,7 @@ class ScanView(View):
             ScanScreen,
             instructions_text=self.instructions_text,
             decoder=self.decoder,
+            loading_spinner=self.loading_spinner,
         )
 
         self.controller.reset_screensaver_timeout()

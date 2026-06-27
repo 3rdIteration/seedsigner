@@ -43,7 +43,7 @@ from seedsigner.models.settings_definition import SettingsConstants, SettingsDef
 from seedsigner.views import (MainMenuView, PowerOptionsView, RestartView, NotYetImplementedView, UnhandledExceptionView, 
     psbt_views, seed_views, settings_views, tools_views, scan_views)
 from seedsigner.views.screensaver import OpeningSplashView
-from seedsigner.views.view import NetworkMismatchErrorView, OptionDisabledView, PowerOffView
+from seedsigner.views.view import OptionDisabledView, PowerOffView
 
 from .utils import ScreenshotComplete, ScreenshotConfig, ScreenshotRenderer
 
@@ -421,14 +421,12 @@ def generate_screenshots(locale):
             ],
             "Settings Views": settings_views_list + [
                 ScreenshotConfig(settings_views.IOTestView),
-                ScreenshotConfig(settings_views.DonateView),
                 ScreenshotConfig(settings_views.SettingsIngestSettingsQRView, dict(data=settingsqr_data_persistent), screenshot_name="SettingsIngestSettingsQRView_persistent"),
                 ScreenshotConfig(settings_views.SettingsIngestSettingsQRView, dict(data=settingsqr_data_not_persistent), screenshot_name="SettingsIngestSettingsQRView_not_persistent"),
             ],
             "Misc Error Views": [
                 ScreenshotConfig(NotYetImplementedView),
                 ScreenshotConfig(UnhandledExceptionView, dict(error=["IndexError", "line 1, in some_buggy_code.py", "list index out of range"])),
-                ScreenshotConfig(NetworkMismatchErrorView, dict(derivation_path="m/84'/1'/0'")),
                 ScreenshotConfig(OptionDisabledView, dict(settings_attr=SettingsConstants.SETTING__MESSAGE_SIGNING)),
                 ScreenshotConfig(scan_views.ScanInvalidQRTypeView)
             ]

@@ -25,11 +25,9 @@ class SettingsMenuView(View):
     SCARD_TEST = ButtonOption("Test Smartcard")
     LIST_READERS = ButtonOption("List card readers")
     NFC_TEST = ButtonOption("Test NFC Scan")
-    DONATE = ButtonOption("Donate")
     RESTART_PCSC = ButtonOption("Restart PCSC")
     BATTERY_INFO = ButtonOption("Battery info")
     SYSTEM_INFO = ButtonOption("System info")
-    LOAD_BACKUP_FILES = ButtonOption("Load Backup Files", right_icon_name=SeedSignerIconConstants.CHEVRON_RIGHT)
 
     def __init__(self, visibility: str = SettingsConstants.VISIBILITY__GENERAL, selected_attr: str = None, initial_scroll: int = 0):
         super().__init__()
@@ -71,15 +69,12 @@ class SettingsMenuView(View):
                 view_args={"visibility": SettingsConstants.VISIBILITY__HARDWARE},
             )
 
-            if self.settings.get_value(SettingsConstants.SETTING__SMARTCARD_SUPPORT) == SettingsConstants.OPTION__ENABLED:
-                button_data.append(self.RESTART_PCSC)
-            button_data.append(self.DONATE)
+            button_data.append(self.RESTART_PCSC)
 
         elif self.visibility == SettingsConstants.VISIBILITY__ADVANCED:
             title = _("Advanced")
 
-            # Backup loaders and hardware options nest below "Advanced"
-            button_data.append(self.LOAD_BACKUP_FILES)
+            # Hardware options nest below "Advanced"
             button_data.append(self.HARDWARE)
             hardware_destination = Destination(
                 SettingsMenuView,
@@ -91,10 +86,9 @@ class SettingsMenuView(View):
             button_data.append(self.SYSTEM_INFO)
             button_data.append(self.BATTERY_INFO)
             button_data.append(self.IO_TEST)
-            if self.settings.get_value(SettingsConstants.SETTING__SMARTCARD_SUPPORT) == SettingsConstants.OPTION__ENABLED:
-                button_data.append(self.LIST_READERS)
-                button_data.append(self.SCARD_TEST)
-                button_data.append(self.NFC_TEST)
+            button_data.append(self.LIST_READERS)
+            button_data.append(self.SCARD_TEST)
+            button_data.append(self.NFC_TEST)
 
         elif self.visibility == SettingsConstants.VISIBILITY__DEVELOPER:
             title = _("Dev Options")
@@ -127,9 +121,6 @@ class SettingsMenuView(View):
         elif button_data[selected_menu_num] == self.HARDWARE:
             return hardware_destination
 
-        elif button_data[selected_menu_num] == self.LOAD_BACKUP_FILES:
-            return Destination(LoadBackupFilesSettingsView)
-
         elif button_data[selected_menu_num] == self.IO_TEST:
             return Destination(IOTestView)
         
@@ -144,9 +135,6 @@ class SettingsMenuView(View):
 
         elif button_data[selected_menu_num] == self.RESTART_PCSC:
             return Destination(RestartPCSCView)
-
-        elif button_data[selected_menu_num] == self.DONATE:
-            return Destination(DonateView)
 
         elif button_data[selected_menu_num] == self.BATTERY_INFO:
             return Destination(BatteryInfoView)
@@ -163,36 +151,6 @@ class SettingsMenuView(View):
         else:
             return Destination(SettingsEntryUpdateSelectionView, view_args=dict(attr_name=settings_entries[selected_menu_num].attr_name, parent_initial_scroll=initial_scroll))
 
-
-
-class LoadBackupFilesSettingsView(View):
-    def run(self):
-        settings_entries = [
-            SettingsDefinition.get_settings_entry(SettingsConstants.SETTING__BITBOX_BACKUP),
-            SettingsDefinition.get_settings_entry(SettingsConstants.SETTING__PASSPORT_BACKUP),
-            SettingsDefinition.get_settings_entry(SettingsConstants.SETTING__TAPSIGNER_BACKUP),
-        ]
-        button_data = [ButtonOption(entry.display_name) for entry in settings_entries]
-
-        selected_menu_num = self.run_screen(
-            ButtonListScreen,
-            title=_("Load Backup Files"),
-            is_button_text_centered=False,
-            button_data=button_data,
-        )
-
-        if selected_menu_num == RET_CODE__BACK_BUTTON:
-            return Destination(SettingsMenuView, view_args={"visibility": SettingsConstants.VISIBILITY__ADVANCED})
-
-        selected_entry = settings_entries[selected_menu_num]
-        return Destination(
-            SettingsEntryUpdateSelectionView,
-            view_args={
-                "attr_name": selected_entry.attr_name,
-                "parent_initial_scroll": 0,
-                "parent_destination": Destination(LoadBackupFilesSettingsView),
-            },
-        )
 
 
 class SettingPBKDF2IterationsView(View):
@@ -741,13 +699,6 @@ class RestartPCSCView(View):
         self.loading_screen.stop()
 
         return Destination(SettingsMenuView)
-
-class DonateView(View):
-    def run(self):
-        self.run_screen(settings_screens.DonateScreen)
-
-        return Destination(SettingsMenuView)
-
 
 class BatteryInfoView(View):
     def run(self):

@@ -1250,31 +1250,6 @@ class ErrorView(View):
 
 
 @dataclass
-class NetworkMismatchErrorView(ErrorView):
-    derivation_path: str = None
-
-    def __post_init__(self):
-        from seedsigner.views.settings_views import SettingsEntryUpdateSelectionView
-
-        # TRANSLATOR_NOTE: The network setting (mainnet/testnet/regtest) doesn't match the provided derivation path
-        self.title = _("Network Mismatch")
-        self.status_icon_name = SeedSignerIconConstants.WARNING
-        self.show_back_button = False
-
-        # TRANSLATOR_NOTE: Button option to alter a setting
-        self.button_text = _("Change Setting")
-        self.next_destination = Destination(SettingsEntryUpdateSelectionView, view_args=dict(attr_name=SettingsConstants.SETTING__NETWORK), clear_history=True)
-        super().__post_init__()
-
-        # TRANSLATOR_NOTE: Inserts mainnet/testnet/regtest and derivation path
-        self.text = _("Current network setting ({}) doesn't match {}.").format(
-            self.settings.get_value_display_name(SettingsConstants.SETTING__NETWORK),
-            self.derivation_path,
-        )
-
-
-
-@dataclass
 class UnhandledExceptionView(View):
     error: list[str]
 

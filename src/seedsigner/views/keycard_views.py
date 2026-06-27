@@ -40,7 +40,7 @@ from seedsigner.gui.screens import (
     LargeIconStatusScreen,
     WarningScreen,
 )
-from seedsigner.gui.screens.screen import ButtonOption
+from seedsigner.gui.screens.screen import ButtonOption, LOADING_SPINNER_BTC, LOADING_SPINNER_ETH
 from seedsigner.gui.screens.scan_screens import ScanScreen
 from seedsigner.helpers.ethereum.address import (
     pubkey_to_address, to_checksum_address,
@@ -4116,7 +4116,7 @@ class ToolsKeycardWalletsListView(View):
             loading_screen = None
             try:
                 client, _unused = _open_unlocked_session_cached_or_prompt(self)
-                loading_screen = LoadingScreenThread(text=_("Deriving addrs..."))
+                loading_screen = LoadingScreenThread(text=_("Deriving addrs..."), **LOADING_SPINNER_ETH)
                 loading_screen.start()
                 for i in range(len(cache), end_index):
                     client.derive_key(_eth_wallet_components(self.scheme, i))
@@ -4359,7 +4359,7 @@ class ToolsKeycardBtcAddressesListView(View):
             loading_screen = None
             try:
                 client, _unused = _open_unlocked_session_cached_or_prompt(self)
-                loading_screen = LoadingScreenThread(text=_("Deriving addrs..."))
+                loading_screen = LoadingScreenThread(text=_("Deriving addrs..."), **LOADING_SPINNER_BTC)
                 loading_screen.start()
                 for i in range(len(cache), end_index):
                     client.derive_key([84 | _H, 0 | _H, 0 | _H, 0, i])
@@ -5366,6 +5366,8 @@ class ToolsKeycardSignEthStartView(View):
 
 
 class ScanEthSignRequestView(ScanView):
+    loading_spinner = LOADING_SPINNER_ETH
+
     @property
     def is_valid_qr_type(self):
         return self.decoder.is_eth_sign_request
@@ -5375,6 +5377,7 @@ class ScanEthSignRequestView(ScanView):
             ScanScreen,
             instructions_text=_("Scan ETH sign request"),
             decoder=self.decoder,
+            loading_spinner=self.loading_spinner,
         )
         time.sleep(0.1)
 
@@ -6229,6 +6232,7 @@ class ToolsKeycardBtcSignPsbtScanView(ScanView):
     """
     instructions_text = _("Scan PSBT")
     invalid_qr_type_message = _mft("Expected a PSBT QR")
+    loading_spinner = LOADING_SPINNER_BTC
 
     @property
     def is_valid_qr_type(self):
@@ -6242,6 +6246,7 @@ class ToolsKeycardBtcSignPsbtScanView(ScanView):
             ScanScreen,
             instructions_text=self.instructions_text,
             decoder=self.decoder,
+            loading_spinner=self.loading_spinner,
         )
         self.controller.reset_screensaver_timeout()
         _time.sleep(0.1)
@@ -6436,6 +6441,7 @@ class ToolsKeycardBtcSignMessageStartView(View):
 class ToolsKeycardBtcSignMessageScanView(ScanView):
     instructions_text = _("Scan message QR")
     invalid_qr_type_message = _mft("Expected a text / signmessage QR")
+    loading_spinner = LOADING_SPINNER_BTC
 
     @property
     def is_valid_qr_type(self):
@@ -6455,6 +6461,7 @@ class ToolsKeycardBtcSignMessageScanView(ScanView):
             ScanScreen,
             instructions_text=self.instructions_text,
             decoder=self.decoder,
+            loading_spinner=self.loading_spinner,
         )
         self.controller.reset_screensaver_timeout()
         _time.sleep(0.1)

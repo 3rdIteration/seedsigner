@@ -13,7 +13,7 @@ from seedsigner.hardware.camera import Camera
 from seedsigner.models.decode_qr import DecodeQR, DecodeQRStatus
 from seedsigner.models.threads import BaseThread, ThreadsafeCounter
 
-from .screen import BaseScreen, BaseTopNavScreen, ButtonListScreen, LoadingScreenThread
+from .screen import BaseScreen, BaseTopNavScreen, ButtonListScreen, LoadingScreenThread, LOADING_SPINNER_KEYCARD
 from ..components import GUIConstants, Fonts, SeedSignerIconConstants, Button, IconButton, TextArea
 
 from seedsigner.gui.components import GUIConstants, Fonts, resize_image_to_fit
@@ -57,6 +57,9 @@ class ScanScreen(BaseScreen):
     resolution: tuple[int,int] = (480, 480)
     framerate: int = 6  # TODO: alternate optimization for Pi Zero 2W?
     render_rect: tuple[int,int,int,int] = None
+    # Branding preset for the "Starting camera..." spinner — None = neutral
+    # KeyCard; coin scan views pass LOADING_SPINNER_BTC / LOADING_SPINNER_ETH.
+    loading_spinner: dict = None
 
     FRAME__ADDED_PART = 1
     FRAME__REPEATED_PART = 2
@@ -71,7 +74,7 @@ class ScanScreen(BaseScreen):
         self.instructions_text = "< " + _("back") + "  |  " + _(self.instructions_text)
 
         self.camera = Camera.get_instance()
-        loading_screen = LoadingScreenThread(text=_("Starting camera..."))
+        loading_screen = LoadingScreenThread(text=_("Starting camera..."), **(self.loading_spinner or LOADING_SPINNER_KEYCARD))
         loading_screen.start()
         try:
             self.camera.start_video_stream_mode(

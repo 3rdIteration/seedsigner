@@ -12,7 +12,14 @@ builds. Run:
 
     python scripts/gen_keycard_image.py
 
-Output: ``src/seedsigner/resources/img/keycard_240.png`` (RGB, black bg, 240x240).
+Outputs:
+  * ``src/seedsigner/resources/img/keycard_240.png`` (RGB, black bg, 240x240)
+    — the opening splash / screensaver artwork.
+  * ``src/seedsigner/resources/img/keycard_60x60.png`` (RGB, black bg, 60x60)
+    — the neutral loading-spinner logo (the card art cropped + fit to 60x60),
+    rendered at the centre of ``LoadingScreenThread``'s rotating arcs for every
+    shared loader (camera start, card reads, microSD, secrets...). Coin-specific
+    flows swap in ``btc_logo_60x60.png`` / ``eth_logo_60x60.png`` instead.
 """
 
 import os
@@ -24,6 +31,11 @@ OUT = os.path.join(
     os.path.dirname(__file__),
     "..", "src", "seedsigner", "resources", "img", "keycard_240.png",
 )
+OUT_60 = os.path.join(
+    os.path.dirname(__file__),
+    "..", "src", "seedsigner", "resources", "img", "keycard_60x60.png",
+)
+SPINNER_LOGO_SIZE = 60
 
 # Card body, painted in the upper band (y: 40..150) leaving the lower ~90px
 # of the canvas free for the three splash text lines.
@@ -119,6 +131,18 @@ def build():
     chk = Image.open(OUT)
     print("mode", chk.mode, "size", chk.size, "corner", chk.convert("RGBA").getpixel((0, 0)))
     print("card band y:", CARD_Y0, "..", CARD_Y1)
+
+    # --- 60x60 spinner variant: crop the card (with a little padding) and fit
+    # it, centred, onto a 60x60 black canvas so the spinner arcs orbit the card.
+    pad = 6
+    card = img.crop((CARD_X0 - pad, CARD_Y0 - pad, CARD_X1 + pad, CARD_Y1 + pad))
+    cw, ch = card.size
+    scale = min(SPINNER_LOGO_SIZE / cw, SPINNER_LOGO_SIZE / ch)
+    fitted = card.resize((max(1, round(cw * scale)), max(1, round(ch * scale))), Image.LANCZOS)
+    small = Image.new("RGB", (SPINNER_LOGO_SIZE, SPINNER_LOGO_SIZE), BG)
+    small.paste(fitted, ((SPINNER_LOGO_SIZE - fitted.width) // 2, (SPINNER_LOGO_SIZE - fitted.height) // 2))
+    small.save(OUT_60)
+    print("wrote", os.path.normpath(OUT_60), "size", small.size)
 
 
 if __name__ == "__main__":

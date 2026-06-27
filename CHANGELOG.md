@@ -4,6 +4,16 @@ All notable changes to this project are documented in this file.
 
 Entries marked "(SeedSigner official)" originate from the upstream project, "(smartcard fork)" indicates releases inherited from 3rdIteration/seedsigner, and "(Keycard edition)" indicates releases of this fork.
 
+## 2026-06-27 - 0.1.4 (Keycard edition)
+
+- **Slimmer, dual-chain settings**: removed the **Donate** screen and a batch of unused / legacy toggles left over from the on-device-seed era — Xpub export, Show xpub details, BIP32 account prompt, Seed word lengths, PlaintextQR / EncryptedQR, Show privacy / dire warnings — together with the now-empty **Load Backup Files** submenu (BitBox02 / Passport / TAPSIGNER) and the vestigial **Smartcard support** toggle (the smartcard tools are always available now). The **Bitcoin network** setting is also gone: this fork is mainnet-only, so amounts always render as mainnet
+- **Context-aware loading spinner**: the loading animation now reflects the active chain — a neutral **KeyCard** logo for shared operations (camera start, card reads, microSD…), the **Bitcoin** logo with orange arcs for Bitcoin scans / address derivation, and the **Ethereum** logo with purple arcs for Ethereum. Previously every operation showed the Ethereum logo
+- **Seed import / generate saves on the first try**: the card is now paired **before** the first `LOAD_KEY` push, fixing the long-standing "import didn't save until the second attempt" bug on the first card operation of a boot. A transient push error keeps the seed in RAM and offers **Retry** instead of discarding it
+- **Stable instance-capacity estimate**: replaced the noisy post-install self-calibration with a **monotonic** capacity cap plus an install-failure clamp, so "≈N more fit" only ever ratchets **down** (no more 3 → 6 → 2 jumps); once a card actually refuses an instance it reads "Card appears full". **Create instance** now chains straight into the Init wizard, so you land on the new instance's PIN/PUK setup instead of the deep submenu
+- **SeedKeeper copy modes**: copying secrets now offers **append vs replace**, supports single-secret copy, and **confirms content duplicates** instead of silently skipping them
+- **Card-swap robustness**: the pysatochip card-monitor observer is released on swap, and the "card removed → Home" redirect/toast is suppressed on the screens that deliberately ask you to swap cards, so a guided swap is no longer dead-ended
+- **Import flow polish**: reordered the seed-import sources, clearer labels, an unblocked hex / word keyboard, and a fix for the uninitialised-instance retry loop
+
 ## 2026-06-22 - 0.1.3 (Keycard edition)
 
 - **Fix — "Create instance" failed with 0x6982**: the free-NV memory check is now read **in the clear, before** the SCP02 secure channel opens. The previous build issued an un-MAC'd `GET DATA` over the *open* channel, desyncing it so the next `INSTALL` was rejected with "Security status not satisfied". The post-INSTALL self-calibration (which also needed a read over the open channel) was dropped in favour of the conservative per-instance estimate

@@ -374,31 +374,22 @@ class SettingsConstants:
     SETTING__CACHE_SCARD_PIN = "cache_scard_pin"
     SETTING__AUTO_PIN_ON_INSERT = "auto_pin_on_insert"
     SETTING__SCARD_PIN_ATTEMPTS = "scard_pin_attempts"
-    SETTING__SMARTCARD_SUPPORT = "smartcard_support"
     SETTING__WIPE_TIMER = "wipe_timer"
     SETTING__SCREENSAVER_TIMEOUT = "screensaver_timeout"
 
     SETTING__DISPLAY_CONFIGURATION = "display_config"
     SETTING__DISPLAY_COLOR_INVERTED = "color_inverted"
 
+    # SETTING__NETWORK has no user-facing SettingsEntry (Bitcoin is mainnet-only
+    # in this fork); the key + MAINNET/TESTNET/REGTEST values are retained for
+    # helper code (embit_utils/decode_qr/encode_qr) and SettingsQR back-compat.
     SETTING__NETWORK = "network"
     SETTING__QR_DENSITY = "qr_density"
-    SETTING__XPUB_EXPORT = "xpub_export"
-    SETTING__ACCOUNT_PROMPT = "account_prompt"
-    SETTING__SEED_WORD_LENGTHS = "seed_word_lengths"
-    SETTING__XPUB_DETAILS = "xpub_details"
     SETTING__CAMERA_ROTATION = "camera_rotation"
     SETTING__CAMERA_DEVICE = "camera_device"
     SETTING__QR_DENSITY_BOOST = "qr_density_boost"
-    SETTING__BITBOX_BACKUP = "bitbox_backup"
-    SETTING__PASSPORT_BACKUP = "passport_backup"
-    SETTING__TAPSIGNER_BACKUP = "tapsigner_backup"
-    SETTING__PRIVACY_WARNINGS = "privacy_warnings"
-    SETTING__DIRE_WARNINGS = "dire_warnings"
     SETTING__QR_BRIGHTNESS_TIPS = "qr_brightness_tips"
     SETTING__PARTNER_LOGOS = "partner_logos"
-    SETTING__PLAINTEXTQR = "plaintextqr"
-    SETTING__ENCRYPTED_QR = "encrypted_qr"
     SETTING__AMBIGUOUS_QR = "ambiguous_qr_preference"
     SETTING__ENCRYPTION_MODE = "version"
     SETTING__ENCRYPTION_ITER = "pbkdf2_iterations"
@@ -747,47 +738,12 @@ class SettingsDefinition:
 
         # Advanced options
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
-                      attr_name=SettingsConstants.SETTING__NETWORK,
-                      display_name=_mft("Bitcoin network"),
-                      type=SettingsConstants.TYPE__SELECT_1,
-                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
-                      selection_options=SettingsConstants.ALL_NETWORKS,
-                      default_value=SettingsConstants.MAINNET),
-
-        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
                       attr_name=SettingsConstants.SETTING__QR_DENSITY,
                       display_name=_mft("QR code density"),
                       type=SettingsConstants.TYPE__SELECT_1,
                       visibility=SettingsConstants.VISIBILITY__ADVANCED,
                       selection_options=SettingsConstants.ALL_DENSITIES,
                       default_value=SettingsConstants.DENSITY__MEDIUM),
-
-        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
-                      attr_name=SettingsConstants.SETTING__XPUB_EXPORT,
-                      display_name=_mft("Xpub export"),
-                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
-                      default_value=SettingsConstants.OPTION__ENABLED),
-
-        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
-                      attr_name=SettingsConstants.SETTING__SEED_WORD_LENGTHS,
-                      abbreviated_name="seedlen",
-                      display_name=_mft("Seed word lengths"),
-                      type=SettingsConstants.TYPE__MULTISELECT,
-                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
-                      selection_options=SettingsConstants.ALL_SEED_WORD_LENGTHS,
-                      default_value=[12, 24]),
-
-        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
-                      attr_name=SettingsConstants.SETTING__XPUB_DETAILS,
-                      display_name=_mft("Show xpub details"),
-                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
-                      default_value=SettingsConstants.OPTION__ENABLED),
-
-        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
-                      attr_name=SettingsConstants.SETTING__ACCOUNT_PROMPT,
-                      display_name=_mft("BIP32 account prompt"),
-                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
-                      default_value=SettingsConstants.OPTION__DISABLED),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
                       attr_name=SettingsConstants.SETTING__CAMERA_ROTATION,
@@ -803,18 +759,6 @@ class SettingsDefinition:
                       abbreviated_name="qrboost",
                       display_name=_mft("Dense QR scan"),
                       help_text=_mft("Higher capture res + sharpening for dense QR"),
-                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
-                      default_value=SettingsConstants.OPTION__ENABLED),
-
-        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
-                      attr_name=SettingsConstants.SETTING__PLAINTEXTQR,
-                      display_name=_mft("PlaintextQR"),
-                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
-                      default_value=SettingsConstants.OPTION__ENABLED),
-
-        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
-                      attr_name=SettingsConstants.SETTING__ENCRYPTED_QR,
-                      display_name=_mft("EncryptedQR"),
                       visibility=SettingsConstants.VISIBILITY__ADVANCED,
                       default_value=SettingsConstants.OPTION__ENABLED),
 
@@ -840,48 +784,6 @@ class SettingsDefinition:
                       visibility=SettingsConstants.VISIBILITY__ADVANCED,
                       selection_options=SettingsConstants.ALL_AMBIGUOUS_QR_OPTIONS,
                       default_value=SettingsConstants.AMBIGUOUS_QR_PROMPT),
-
-        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
-                      attr_name=SettingsConstants.SETTING__BITBOX_BACKUP,
-                      abbreviated_name="bitbox",
-                      display_name=_mft("BitBox02 backups"),
-                      visibility=SettingsConstants.VISIBILITY__HIDDEN,
-                      default_value=SettingsConstants.OPTION__DISABLED),
-
-        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
-                      attr_name=SettingsConstants.SETTING__PASSPORT_BACKUP,
-                      abbreviated_name="passport",
-                      display_name=_mft("Passport backups"),
-                      visibility=SettingsConstants.VISIBILITY__HIDDEN,
-                      default_value=SettingsConstants.OPTION__DISABLED),
-
-        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
-                      attr_name=SettingsConstants.SETTING__TAPSIGNER_BACKUP,
-                      abbreviated_name="tapsigner",
-                      display_name=_mft("TAPSIGNER backups"),
-                      visibility=SettingsConstants.VISIBILITY__HIDDEN,
-                      default_value=SettingsConstants.OPTION__DISABLED),
-
-        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
-                      attr_name=SettingsConstants.SETTING__SMARTCARD_SUPPORT,
-                      abbreviated_name="smartcard",
-                      display_name=_mft("Smartcard support"),
-                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
-                      default_value=SettingsConstants.OPTION__ENABLED),
-
-        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
-                      attr_name=SettingsConstants.SETTING__PRIVACY_WARNINGS,
-                      abbreviated_name="priv_warn",
-                      display_name=_mft("Show privacy warnings"),
-                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
-                      default_value=SettingsConstants.OPTION__ENABLED),
-
-        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
-                      attr_name=SettingsConstants.SETTING__DIRE_WARNINGS,
-                      abbreviated_name="dire_warn",
-                      display_name=_mft("Show dire warnings"),
-                      visibility=SettingsConstants.VISIBILITY__ADVANCED,
-                      default_value=SettingsConstants.OPTION__ENABLED),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
                       attr_name=SettingsConstants.SETTING__QR_BRIGHTNESS_TIPS,

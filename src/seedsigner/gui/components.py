@@ -36,8 +36,6 @@ class GUIConstants:
     SUCCESS_COLOR = "#30D158"
     INFO_COLOR = "#409CFF"
     BITCOIN_ORANGE = "#FF9416"
-    TESTNET_COLOR = "#00F100"
-    REGTEST_COLOR = "#00CAF1"
     GREEN_INDICATOR_COLOR = "#00FF00"
 
     ICON_FONT_NAME__FONT_AWESOME = "Font_Awesome_6_Free-Solid-900"
@@ -1117,24 +1115,12 @@ class BtcAmount(BaseComponent):
         self.paste_image: Image.Image = None
         self.paste_coords = None
         denomination = Settings.get_instance().get_value(SettingsConstants.SETTING__BTC_DENOMINATION)
-        network = Settings.get_instance().get_value(SettingsConstants.SETTING__NETWORK)
 
-        # TRANSLATOR_NOTE: Testnet bitcoin
-        btc_unit = _("tBtc")
+        # Bitcoin is mainnet-only in this fork (the network setting was removed).
+        btc_unit = _("btc")
+        sats_unit = _("sats")
+        btc_color = GUIConstants.ACCENT_COLOR
 
-        # TRANSLATOR_NOTE: Testnet sats
-        sats_unit = _("tSats")
-        if network == SettingsConstants.MAINNET:
-            btc_unit = _("btc")
-            sats_unit = _("sats")
-            btc_color = GUIConstants.ACCENT_COLOR
-
-        elif network == SettingsConstants.TESTNET:
-            btc_color = GUIConstants.TESTNET_COLOR
-        
-        elif network == SettingsConstants.REGTEST:
-            btc_color = GUIConstants.REGTEST_COLOR
-        
         digit_font = Fonts.get_font(font_name=GUIConstants.get_body_font_name(), size=self.font_size)
         smaller_digit_font = Fonts.get_font(font_name=GUIConstants.get_body_font_name(), size=self.font_size - 2)
         unit_font_size = GUIConstants.get_button_font_size() + 2

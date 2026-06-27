@@ -36,12 +36,3 @@ class TestSettingsDefinition(BaseTest):
         # Recheck w/our mocked dir listing:
         detected_languages = [lang_tuple[0] for lang_tuple in SettingsConstants.get_detected_languages()]
         assert absent_language_code in detected_languages
-
-    def test_default_seed_word_lengths(self):
-        defaults = SettingsDefinition.get_defaults()
-        assert defaults[SettingsConstants.SETTING__SEED_WORD_LENGTHS] == [12, 24]
-
-
-    def test_tapsigner_backup_default_disabled(self):
-        defaults = SettingsDefinition.get_defaults()
-        assert defaults[SettingsConstants.SETTING__TAPSIGNER_BACKUP] == SettingsConstants.OPTION__DISABLED

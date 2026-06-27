@@ -33,7 +33,7 @@ class TestSettings(BaseTest):
         # Pick a simple toggle, flip it away from its default, and confirm
         # reset restores the default. The non-default is computed from the
         # default so this works regardless of which way the default points.
-        setting = SettingsConstants.SETTING__XPUB_EXPORT
+        setting = SettingsConstants.SETTING__QR_BRIGHTNESS_TIPS
         default = SettingsDefinition.get_settings_entry(setting).default_value
         non_default = (
             SettingsConstants.OPTION__ENABLED
@@ -56,20 +56,29 @@ class TestSettings(BaseTest):
         return the resulting config_name and formatted settings_update_dict.
         """
         settings_name = "Test SettingsQR"
+        # Deliberately includes removed/legacy abbreviated names (xpub_export,
+        # xpub_details, priv_warn, dire_warn) and the now-entry-less `network`
+        # setting: an old SettingsQR must still parse, dropping the dead keys.
         settingsqr_data = f"""settings::v1 name={ settings_name.replace(" ", "_") } persistent=D denom=thr network=M qr_density=M xpub_export=E xpub_details=E camera=180 priv_warn=E dire_warn=E partners=E"""
 
-        # First explicitly set settings that differ from the settingsqr_data
-        self.settings.set_value(SettingsConstants.SETTING__XPUB_EXPORT, SettingsConstants.OPTION__DISABLED)
-        self.settings.set_value(SettingsConstants.SETTING__DIRE_WARNINGS, SettingsConstants.OPTION__DISABLED)
+        # Flip a surviving setting away from the value the QR will set.
+        self.settings.set_value(SettingsConstants.SETTING__PARTNER_LOGOS, SettingsConstants.OPTION__DISABLED)
 
         # Now parse the settingsqr_data
         config_name, settings_update_dict = Settings.parse_settingsqr(settingsqr_data)
         assert config_name == settings_name
-        self.settings.update(new_settings=settings_update_dict)
 
-        # Now verify that the settings were updated correctly
-        assert self.settings.get_value(SettingsConstants.SETTING__XPUB_EXPORT) == SettingsConstants.OPTION__ENABLED
-        assert self.settings.get_value(SettingsConstants.SETTING__DIRE_WARNINGS) == SettingsConstants.OPTION__ENABLED
+        # Removed / legacy keys are dropped during parsing (not recognized)...
+        assert "xpub_export" not in settings_update_dict
+        assert "xpub_details" not in settings_update_dict
+        assert "privacy_warnings" not in settings_update_dict
+        assert "dire_warnings" not in settings_update_dict
+        assert SettingsConstants.SETTING__NETWORK not in settings_update_dict
+
+        # ...and applying the parsed config doesn't raise and updates surviving settings.
+        self.settings.update(new_settings=settings_update_dict)
+        assert self.settings.get_value(SettingsConstants.SETTING__PARTNER_LOGOS) == SettingsConstants.OPTION__ENABLED
+        assert self.settings.get_value(SettingsConstants.SETTING__QR_DENSITY) == SettingsConstants.DENSITY__MEDIUM
     
 
     def test_settingsqr_version(self):
@@ -98,11 +107,11 @@ class TestSettings(BaseTest):
 
     def test_settingsqr_ignores_unrecognized_setting(self):
         """ SettingsQR parser should ignore unrecognized settings """
-        settingsqr_data = "settings::v1 name=Foo favorite_food=bacon xpub_export=D"
+        settingsqr_data = "settings::v1 name=Foo favorite_food=bacon partners=D"
         config_name, settings_update_dict = Settings.parse_settingsqr(settingsqr_data)
 
         assert "favorite_food" not in settings_update_dict
-        assert "xpub_export" in settings_update_dict
+        assert SettingsConstants.SETTING__PARTNER_LOGOS in settings_update_dict
 
         # Accepts update with no Exceptions
         self.settings.update(new_settings=settings_update_dict)
@@ -110,15 +119,15 @@ class TestSettings(BaseTest):
 
     def test_settingsqr_fails_unrecognized_option(self):
         """ SettingsQR parser should fail if a settings has an unrecognized option """
-        settingsqr_data = "settings::v1 name=Foo xpub_export=Yep"
+        settingsqr_data = "settings::v1 name=Foo partners=Yep"
         with pytest.raises(InvalidSettingsQRData) as e:
             Settings.parse_settingsqr(settingsqr_data)
-        assert "xpub_export" in str(e.value)
+        assert "partners" in str(e.value)
 
 
     def test_settingsqr_parses_line_break_separators(self):
         """ SettingsQR parser should read line breaks as acceptable separators """
-        settingsqr_data = "settings::v1\nname=Foo\nxpub_export=E\nxpub_details=E\ndire_warn=D\n"
+        settingsqr_data = "settings::v1\nname=Foo\npartners=E\nqr_density=M\ncamera=0\n"
         config_name, settings_update_dict = Settings.parse_settingsqr(settingsqr_data)
 
         assert len(settings_update_dict.keys()) == 3
@@ -170,6 +179,28 @@ class TestSettings(BaseTest):
             settings = Settings.get_instance()
             mock_save.assert_not_called()
             assert settings.get_value(SettingsConstants.SETTING__PERSISTENT_SETTINGS) == SettingsConstants.OPTION__ENABLED
+
+    def test_update_ignores_removed_setting_keys(self):
+        """A persisted config from older firmware may still carry settings that
+        this build removed (xpub_export, dire_warnings, tapsigner_backup,
+        network...). update() must apply the surviving keys and silently ignore
+        the rest rather than raising."""
+        legacy = {
+            "xpub_export": SettingsConstants.OPTION__ENABLED,
+            "dire_warnings": SettingsConstants.OPTION__DISABLED,
+            "tapsigner_backup": SettingsConstants.OPTION__ENABLED,
+            "network": SettingsConstants.MAINNET,
+            SettingsConstants.SETTING__PARTNER_LOGOS: SettingsConstants.OPTION__DISABLED,
+        }
+        self.settings.update(new_settings=legacy)
+
+        # The surviving setting was applied...
+        assert self.settings.get_value(SettingsConstants.SETTING__PARTNER_LOGOS) == SettingsConstants.OPTION__DISABLED
+        # ...and the removed keys never entered the settings data.
+        assert "xpub_export" not in self.settings._data
+        assert "dire_warnings" not in self.settings._data
+        assert "tapsigner_backup" not in self.settings._data
+        assert "network" not in self.settings._data
 
     def test_persisted_camera_rotation_not_overwritten(self):
         """Camera rotation loaded from persisted settings must not be
