@@ -4232,9 +4232,7 @@ class SeedAddressVerificationView(View):
             self.addr_verification_thread = self.BruteForceAddressVerificationThread(
                 address=self.address,
                 seed=self.seed,
-                descriptor=self.controller.multisig_wallet_descriptor
-                if self.controller.multisig_wallet_descriptor and self.controller.multisig_wallet_descriptor.is_basic_multisig
-                else None,
+                descriptor=self.controller.multisig_wallet_descriptor,
                 script_type=self.script_type,
                 embit_network=embit_network,
                 derivation_path=self.derivation_path,
