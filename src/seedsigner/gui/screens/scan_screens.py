@@ -281,7 +281,8 @@ class ScanScreen(BaseScreen):
                 status = self.decoder.add_image(frame)
 
                 num_frames += 1
-                decoder_fps = f"{num_frames / (time.time() - start_time):0.2f}"
+                elapsed = time.time() - start_time
+                decoder_fps = f"{num_frames / elapsed:0.2f}" if elapsed > 0 else "0.00"
                 self.threads[0].decoder_fps = decoder_fps
 
                 if status in (DecodeQRStatus.COMPLETE, DecodeQRStatus.INVALID):
