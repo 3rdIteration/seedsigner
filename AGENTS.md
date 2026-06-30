@@ -220,6 +220,19 @@ When moving or renaming an underscore-prefixed function:
 - Use the same patterns as existing tests: `object.__new__(ViewClass)` to create view instances without triggering `__init__`, then monkeypatch dependencies.
 - For views that reference symbols from split modules, ensure those symbols are accessible through `tools_views` (see star import caveat above).
 
+### Navigation test maintenance
+
+`tests/test_flows_menu_navigation.py` (**56 tests**) walks every UI menu path to catch lazy-import errors and platform-crashes. **Whenever a menu tree (a View's button_data list) is changed, a new View is added, or a View's imports are modified, update this test file** to cover the new/changed path.
+
+Key rules:
+- **Every settings-gated or conditionally-shown menu item must have a test** that verifies it is reachable (setting enabled) and/or hidden (setting disabled).
+- **Every `run()` method that references an external module or class must be exercised** by at least one navigation test that reaches that `run()`. Missing-import bugs (`NameError`) are only caught when the View is actually entered.
+- Tests verify **both** forward navigation (correct destination) and backward navigation (BACK returns to the right parent via `BackStackView` or direct `Destination`).
+- Deep sub-menus (e.g. Password Generator → Diceware-BIP39 → 64 bits → Dice) should be tested when they contain views with external dependencies or platform-specific code.
+- Use `before_run` callbacks (like `_patch_microsd_child`, `_patch_scan_view_decoder`) to patch hardware deps so child Views can be entered without crashing in CI.
+
+When adding a new View that uses lazy imports, always add the corresponding `FlowStep` to an existing or new test method — even a simple "navigate to the View and stop" test is sufficient to catch `NameError` regressions.
+
 ## Unicode and locale-safe string handling
 
 SeedSigner must produce identical results regardless of the host locale or input method. Follow these rules when processing user-supplied or externally-sourced strings:

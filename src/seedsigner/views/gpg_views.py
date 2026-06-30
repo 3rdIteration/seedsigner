@@ -8,6 +8,7 @@ import logging
 import os
 import re
 import subprocess
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -8354,6 +8355,9 @@ class ToolsTranscribeTextQRConfirmScanView(View):
 
 
     def run(self):
+        from seedsigner.gui.screens.scan_screens import ScanScreen
+        from seedsigner.models.decode_qr import DecodeQR
+
         decoder = DecodeQR(is_text=True)
         ScanScreen(
             instructions_text=_("Scan text QR code"),
@@ -8401,6 +8405,8 @@ class ToolsTranscribeTextQRConfirmScanView(View):
 
 class ToolsTextQRScanQRCodeView(View):
     def run(self):
+        from seedsigner.gui.screens.scan_screens import ScanScreen
+        from seedsigner.models.decode_qr import DecodeQR
 
         decoder = DecodeQR(is_text=True)
         ScanScreen(decoder=decoder, instructions_text=_("Scan text QR code")).display()

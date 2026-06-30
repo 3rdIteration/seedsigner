@@ -1397,6 +1397,7 @@ class ToolsTextQRView(View):
 
 
 # Re-exports for backward compatibility
+from .microsd_views import *  # noqa: F401, F403
 from .smartcard_views import *  # noqa: F401, F403
 from .gpg_views import *  # noqa: F401, F403
 from .password_generator_views import *  # noqa: F401, F403
