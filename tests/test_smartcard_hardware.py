@@ -752,7 +752,7 @@ class TestSeedKeeper:
         assert records[0]["record_type"] == "text"
         assert "hello hardware" in records[0].get("text", "")
         assert records[1]["record_type"] == "uri"
-        assert "seedsigner.com" in records[1].get("uri", "")
+        assert records[1].get("uri", "") == "https://seedsigner.com"
 
         connector.seedkeeper_reset_secret(sid)
 
