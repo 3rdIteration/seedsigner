@@ -11,8 +11,13 @@ sys.modules.setdefault('pysatochip.JCconstants', MagicMock())
 sys.modules.setdefault('pysatochip.util', MagicMock())
 sys.modules.setdefault('pysatochip.CardConnector', MagicMock())
 sys.modules.setdefault('smbus2', MagicMock())
-sys.modules.setdefault('smartcard', MagicMock())
-sys.modules.setdefault('smartcard.System', MagicMock())
+# Only mock smartcard if pyscard isn't installed — otherwise hardware tests
+# (test_smartcard_hardware.py) can use the real module via pygp.
+try:
+    import smartcard  # noqa: F401
+except ImportError:
+    sys.modules.setdefault('smartcard', MagicMock())
+    sys.modules.setdefault('smartcard.System', MagicMock())
 
 # Provide a dummy BatteryHat implementation used by the controller
 class DummyBatteryHat(MagicMock):

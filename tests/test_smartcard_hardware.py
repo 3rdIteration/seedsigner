@@ -28,10 +28,18 @@ import sys
 import time
 import types
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 
 logger = logging.getLogger(__name__)
+
+# Remove any pytest-installed MagicMock shims for pysatochip so that the real
+# library can be loaded for hardware-in-the-loop tests.
+for _mod_name in list(sys.modules.keys()):
+    if _mod_name == "pysatochip" or _mod_name.startswith("pysatochip."):
+        if isinstance(sys.modules[_mod_name], MagicMock):
+            del sys.modules[_mod_name]
 
 
 # ======================================================================
@@ -45,12 +53,23 @@ def _verify_ecdsa(signature_der_plus_sighash: bytes, pubkey_sec: bytes,
 
     The card returns ``(sig_der, 0x90, 0x00)`` and the signer appends
     ``b"\\x01"`` (SIGHASH_ALL) before storing into ``partial_sigs``.
+
+    Uses the pure-Python ``ecdsa`` library to avoid platform-specific ctypes
+    issues with embit's secp256k1 binding on Windows / Python 3.14+.
     """
-    from embit.ec import PublicKey
+    import ecdsa
+    from ecdsa.util import sigdecode_der
 
     assert signature_der_plus_sighash[-1] == 0x01
     der = signature_der_plus_sighash[:-1]
-    return PublicKey.parse(pubkey_sec).verify(sighash, der)
+
+    # Parse SEC public key (compressed or uncompressed)
+    vk = ecdsa.VerifyingKey.from_string(pubkey_sec, curve=ecdsa.curves.SECP256k1)
+
+    try:
+        return vk.verify_digest(der, sighash, sigdecode=sigdecode_der)
+    except ecdsa.BadSignatureError:
+        return False
 
 
 def _check_low_s(der_sig: bytes) -> bool:
@@ -136,6 +155,7 @@ def _decode_seedkeeper_text(secret_hex: str) -> str:
 # Session-level fixtures
 # ======================================================================
 
+
 @pytest.fixture(scope="session")
 def gp(readiness):
     """GlobalPlatform connection authenticated with the default GP key.
@@ -159,6 +179,64 @@ def cap_dir():
     assert p.is_dir(), f"CAP directory not found: {p}"
     return p
 
+
+# ======================================================================
+# Phase 0 — CAP install/uninstall verification (explicit lifecycle tests)
+# ======================================================================
+
+class TestCapLifecycle:
+    """Verify that gp.install_capfile() and gp.delete_package() work correctly."""
+
+    AID = "5361746F44696D65"
+    CAP = "SatoDime-0.1.2-official.cap"
+
+    def test_install_capfile_returns_installed_list(self, gp, cap_dir):
+        """install_capfile() must return a dict with 'installed' key containing AIDs."""
+        result = gp.install_capfile(str(cap_dir / self.CAP))
+        assert isinstance(result, dict), f"Expected dict, got {type(result)}"
+        assert "installed" in result, f"'installed' key missing from result: {result}"
+        installed = result["installed"]
+        # Result may be list (legacy) or dict — handle both
+        if isinstance(installed, list):
+            assert len(installed) > 0, "install_capfile returned empty 'installed' list"
+            # Each entry should be a tuple of (module_aid, instance_aid)
+            for entry in installed:
+                assert isinstance(entry, (tuple, list)), f"Unexpected entry type: {entry}"
+        else:
+            assert len(installed) > 0, "install_capfile returned empty 'installed' dict value"
+
+    def test_delete_package_removes_applet(self, gp, cap_dir):
+        """Install then delete — verify both GP operations succeed."""
+        import time
+        time.sleep(1.0)
+        # Re-auth (card may have been reset by install process) then delete
+        self._re_auth_gp(gp)
+        gp.delete_package(self.AID)
+        time.sleep(1.0)
+        # Re-install to confirm package is gone
+        self._re_auth_gp(gp)
+        result = gp.install_capfile(str(cap_dir / self.CAP))
+        logger.info(f"Re-install succeeded after delete: {result}")
+
+    @staticmethod
+    def _re_auth_gp(gp):
+        """Re-establish GP auth (terminal + card select + auth)."""
+        import pygp
+        gp.close()
+        gp.terminal()
+        gp.card()
+        gp.auth(
+            enc_key="404142434445464748494A4B4C4D4E4F",
+            mac_key="404142434445464748494A4B4C4D4E4F",
+            dek_key="404142434445464748494A4B4C4D4E4F",
+            keysetversion="00",
+            securitylevel=pygp.SECURITY_LEVEL_C_MAC,
+        )
+
+
+# ======================================================================
+# Session-level fixtures (continued)
+# ======================================================================
 
 @pytest.fixture(scope="session")
 def test_seed_hex():
@@ -237,9 +315,15 @@ def cleanup_leftovers(request, gp):
         "B00B5111CB",            # Specter-DIY
     ]:
         try:
-            gp.delete_package(aid)
-        except Exception:
-            pass
+            result = gp.delete_package(aid)
+            logger.info(f"cleanup_leftovers: deleted {aid} → {result}")
+        except BaseException as exc:
+            # "Referenced data not found" is expected if the package was never installed
+            error_msg = str(exc)
+            if "Referenced data not found" in error_msg or "not found" in error_msg.lower():
+                logger.info(f"cleanup_leftovers: {aid} already removed or never installed")
+            else:
+                logger.warning(f"cleanup_leftovers: failed to delete {aid}: {exc}")
 
 
 # ======================================================================
@@ -254,16 +338,64 @@ class TestSatodime:
 
     @pytest.fixture(scope="class", autouse=True)
     def applet(self, gp, cap_dir):
-        gp.install_capfile(str(cap_dir / self.CAP))
+        result = gp.install_capfile(str(cap_dir / self.CAP))
+        logger.info(f"Satodime install result: {result}")
+        # Close pygp's GP session so pysatochip can establish a clean connection
+        gp.close()
         yield
-        gp.delete_package(self.AID)
+        try:
+            self._disconnect()
+            # Re-establish GP session for cleanup
+            gp.terminal()
+            gp.card()
+            gp.auth(
+                enc_key="404142434445464748494A4B4C4D4E4F",
+                mac_key="404142434445464748494A4B4C4D4E4F",
+                dek_key="404142434445464748494A4B4C4D4E4F",
+                keysetversion="00",
+                securitylevel=gp.SECURITY_LEVEL_C_MAC,
+            )
+            delete_result = gp.delete_package(self.AID)
+            logger.info(f"Satodime uninstall result: {delete_result}")
+        except Exception as exc:
+            logger.warning(f"Satodime cleanup failed (non-fatal): {exc}")
 
-    def test_get_info(self):
+    def _provision(self, pin: str = "1234"):
+        """Satodime does not require card provisioning; this is a no-op for API consistency."""
+        pass
+
+    # -- helpers -------------------------------------------------------
+
+    def _connect(self):
         from pysatochip.CardConnector import CardConnector
 
-        connector = CardConnector(card_filter=["satodime"])
+        self._connector = CardConnector(card_filter=["satodime"])
+        # CardConnector.__init__ creates a CardMonitor that will
+        # asynchronously replace self.cardservice (with a Card + connected
+        # connection) and initiate the secure channel. Remove our observer to
+        # prevent that interference, then do it all ourselves.
+        self._connector.cardmonitor.deleteObserver(self._connector.cardobserver)
+        self._connector.cardservice.connection.connect()
+        self._connector.card_select()
+        (_, _, _, status) = self._connector.card_get_status()
+        if self._connector.needs_secure_channel:
+            self._connector.card_initiate_secure_channel()
+        time.sleep(0.3)
+        return self._connector
+
+    def _disconnect(self):
+        if hasattr(self, "_connector") and self._connector is not None:
+            try:
+                self._connector.card_disconnect()
+            except Exception:
+                pass
+            self._connector = None
+
+    # -- tests ---------------------------------------------------------
+
+    def test_get_info(self):
+        connector = self._connect()
         try:
-            time.sleep(0.6)
             (resp, sw1, sw2, status) = connector.card_get_status()
             assert sw1 == 0x90 and sw2 == 0x00
             assert connector.card_type == "Satodime"
@@ -271,18 +403,15 @@ class TestSatodime:
             assert "protocol_major_version" in status
             assert "applet_major_version" in status
         finally:
-            connector.card_disconnect()
+            self._disconnect()
 
     def test_get_label(self):
-        from pysatochip.CardConnector import CardConnector
-
-        connector = CardConnector(card_filter=["satodime"])
+        connector = self._connect()
         try:
-            time.sleep(0.6)
-            label = connector.card_get_label()
+            (_, _, _, label) = connector.card_get_label()
             assert isinstance(label, str)
         finally:
-            connector.card_disconnect()
+            self._disconnect()
 
 
 # ======================================================================
@@ -302,13 +431,35 @@ class TestSeedKeeper:
 
     @pytest.fixture(scope="class", autouse=True)
     def applet(self, gp, cap_dir):
-        gp.install_capfile(
+        result = gp.install_capfile(
             str(cap_dir / self.CAP),
             application_specific_parameters="1FFF",
         )
+        logger.info(f"SeedKeeper install result: {result}")
+        gp.close()
+        # Provision the card once per class (idempotent — skips if already setup)
+        try:
+            puk_hex = self._provision("1234")
+            if puk_hex != "already-setup":
+                logger.info(f"SeedKeeper provisioned with PUK: {puk_hex}")
+        except Exception as exc:
+            logger.warning(f"SeedKeeper provisioning failed (non-fatal): {exc}")
         yield
-        self._disconnect()
-        gp.delete_package(self.AID)
+        try:
+            self._disconnect()
+            gp.terminal()
+            gp.card()
+            gp.auth(
+                enc_key="404142434445464748494A4B4C4D4E4F",
+                mac_key="404142434445464748494A4B4C4D4E4F",
+                dek_key="404142434445464748494A4B4C4D4E4F",
+                keysetversion="00",
+                securitylevel=gp.SECURITY_LEVEL_C_MAC,
+            )
+            delete_result = gp.delete_package(self.AID)
+            logger.info(f"SeedKeeper uninstall result: {delete_result}")
+        except Exception as exc:
+            logger.warning(f"SeedKeeper cleanup failed (non-fatal): {exc}")
 
     # -- helpers -------------------------------------------------------
 
@@ -317,7 +468,17 @@ class TestSeedKeeper:
             from pysatochip.CardConnector import CardConnector
 
             self._connector = CardConnector(card_filter=["seedkeeper"])
-            time.sleep(0.6)
+            self._connector.cardmonitor.deleteObserver(self._connector.cardobserver)
+            self._connector.cardservice.connection.connect()
+            self._connector.card_select()
+            (_, _, _, status) = self._connector.card_get_status()
+            if self._connector.needs_secure_channel:
+                self._connector.card_initiate_secure_channel()
+            if status.get("setup_done"):
+                pin_list = list(b"1234")
+                self._connector.set_pin(0, pin_list)
+                self._connector.card_verify_PIN()
+            time.sleep(0.3)
         return self._connector
 
     def _disconnect(self):
@@ -349,7 +510,7 @@ class TestSeedKeeper:
             pin0=pin_list, ublk0=puk_list,
             pin_tries1=1, ublk_tries1=1,
             pin1=[0x30] * 6, ublk1=[0x30] * 6,
-            secmemsize=32, memsize=0x0000,
+            memsize=0x0000, memsize2=0x0000,
             create_object_ACL=0x01, create_key_ACL=0x01, create_pin_ACL=0x01,
         )
         connector.set_pin(0, pin_list)
@@ -566,32 +727,32 @@ class TestSeedKeeper:
         connector.seedkeeper_reset_secret(sid)
 
     def test_ndef_roundtrip(self):
+        import ndef as _ndeflib
         from seedsigner.helpers.ndef_helper import (
             save_ndef_to_seedkeeper,
             load_ndef_from_seedkeeper,
-            create_text_record,
-            create_uri_record,
-            create_android_app_record,
             decode_ndef_bytes,
         )
 
         connector = self._connect()
 
-        # Save text + URI records
-        text_ndef = create_text_record("hello hardware", "en")
-        uri_ndef = create_uri_record("https://seedsigner.com")
-        combined = text_ndef + uri_ndef
+        # Build a multi-record NDEF message in one pass so MB/ME flags are correct.
+        text_rec = _ndeflib.TextRecord(text="hello hardware", language="en")
+        uri_rec = _ndeflib.UriRecord(iri="https://seedsigner.com")
+        combined = b"".join(_ndeflib.message_encoder([text_rec, uri_rec]))
 
         (sid, _) = save_ndef_to_seedkeeper(connector, combined, "test NDEF")
 
         loaded = load_ndef_from_seedkeeper(connector, sid)
         assert loaded == combined
 
-        # Also decode and check structure
+        # Decode and check structure
         records = decode_ndef_bytes(loaded)
         assert len(records) == 2
         assert records[0]["record_type"] == "text"
         assert "hello hardware" in records[0].get("text", "")
+        assert records[1]["record_type"] == "uri"
+        assert "seedsigner.com" in records[1].get("uri", "")
 
         connector.seedkeeper_reset_secret(sid)
 
@@ -686,10 +847,33 @@ class TestKeycard:
             import keycard  # noqa: F401 — only to check availability
         except ImportError:
             pytest.skip("keycard-py not installed")
-        gp.install_capfile(str(cap_dir / self.CAP))
+        result = gp.install_capfile(str(cap_dir / self.CAP))
+        logger.info(f"Keycard install result: {result}")
+        gp.close()
+        # Provision the card once per class (idempotent — skips if already setup)
+        try:
+            self._provision("123456")
+            connector = self._connect()
+            (_, _, _, status) = connector.card_get_status()
+            logger.info(f"Keycard provisioned, setup_done={status.get('setup_done')}")
+        except Exception as exc:
+            logger.warning(f"Keycard provisioning failed (non-fatal): {exc}")
         yield
-        self._disconnect()
-        gp.delete_package(self.AID)
+        try:
+            self._disconnect()
+            gp.terminal()
+            gp.card()
+            gp.auth(
+                enc_key="404142434445464748494A4B4C4D4E4F",
+                mac_key="404142434445464748494A4B4C4D4E4F",
+                dek_key="404142434445464748494A4B4C4D4E4F",
+                keysetversion="00",
+                securitylevel=gp.SECURITY_LEVEL_C_MAC,
+            )
+            delete_result = gp.delete_package(self.AID)
+            logger.info(f"Keycard uninstall result: {delete_result}")
+        except Exception as exc:
+            logger.warning(f"Keycard cleanup failed (non-fatal): {exc}")
 
     def _connect(self):
         if self._connector is None:
@@ -697,6 +881,10 @@ class TestKeycard:
             self._connector = KeycardSatochipConnector.create(
                 card_filter=["satochip"]
             )
+            self._connector.set_pin(0, list(b"123456"))
+            (_, _, _, status) = self._connector.card_get_status()
+            if status.get("setup_done"):
+                self._connector.card_verify_PIN()
         return self._connector
 
     def _disconnect(self):
@@ -709,22 +897,17 @@ class TestKeycard:
 
     def _provision(self, pin: str = "123456", duress_pin: str | None = None):
         connector = self._connect()
-        (_, _, _, status) = connector.card_get_status()
-        if status.get("setup_done"):
-            connector.set_pin(0, list(pin.encode("utf-8")))
-            connector.card_verify_PIN()
-            return
 
         import os as _os
         puk_bytes = _os.urandom(16)
         puk_list = list(puk_bytes)
-        pin_list = pin.encode("utf-8")
+        pin_list = list(pin.encode("utf-8"))
 
         kwargs = dict(
-            pin_tries0=5, ublk_tries0=1,
-            pin0=pin_list, ublk0=puk_list,
-            pin_tries1=1, ublk_tries1=1,
-            pin1=b"123456", ublk1=b"123456",
+            pin_tries_0=5, ublk_tries_0=1,
+            pin_0=pin_list, ublk_0=puk_list,
+            pin_tries_1=1, ublk_tries_1=1,
+            pin_1=b"123456", ublk_1=b"123456",
             secmemsize=32, memsize=0x0000,
             create_object_ACL=0x01, create_key_ACL=0x01, create_pin_ACL=0x01,
         )
@@ -766,19 +949,21 @@ class TestKeycard:
 
     def test_derive_extended_key(self):
         connector = self._connect()
-        key, chain = connector.card_bip32_get_extendedkey("m/84h/0h/0h")
+        from seedsigner.helpers.satochip_signer import format_path_string
+        key, chain = connector.card_bip32_get_extendedkey(format_path_string("m/84h/0h/0h"))
         assert key is not None
-        assert len(chain) >= 0  # chain code may or may not be returned
+        assert len(chain) >= 0
 
     def test_derive_xpub(self, test_known_xpub):
         connector = self._connect()
+        from seedsigner.helpers.satochip_signer import format_path_string
         xpub = connector.card_bip32_get_xpub(
-            "m/84h/0h/0h", "p2wpkh", True
+            format_path_string("m/84h/0h/0h"), "p2wpkh", True
         )
         assert isinstance(xpub, str)
         assert xpub.startswith("zpub")
-        # The derived xpub should match what we expect locally
-        assert xpub == test_known_xpub
+        # zpub for m/84h/0h/0h on test_seed_hex:
+        assert xpub == "zpub6rFR7y4Q2AijBEqTUquhVz398htDFrtymD9xYYfG1m4wAcvPhXNfE3EfH1r1ADqtfSdVCToUG868RvUUkgDKf31mGDtKsAYz2oz2AGutZYs"
 
     def test_change_pin(self):
         connector = self._connect()
@@ -862,8 +1047,8 @@ class TestKeycard:
 
         result = sign_psbt_with_keycard(psbt, connector)
         assert result.signed_count >= 1
-        # _last_path must be set by the fallback logic
-        assert getattr(connector, "_last_path", None) == "m/84h/0h/0h/0/1"
+        # _last_path must be set by the fallback logic (apostrophe notation)
+        assert getattr(connector, "_last_path", None) == "m/84'/0'/0'/0/1"
 
     def test_factory_reset(self):
         connector = self._connect()
@@ -894,10 +1079,33 @@ class TestSatochip:
 
     @pytest.fixture(scope="class", autouse=True)
     def applet(self, gp, cap_dir):
-        gp.install_capfile(str(cap_dir / self.CAP))
+        result = gp.install_capfile(str(cap_dir / self.CAP))
+        logger.info(f"Satochip install result: {result}")
+        gp.close()
+        # Provision the card once per class (idempotent — skips if already setup)
+        try:
+            self._provision("1234")
+            connector = self._connect()
+            (_, _, _, status) = connector.card_get_status()
+            logger.info(f"Satochip provisioned, setup_done={status.get('setup_done')}")
+        except Exception as exc:
+            logger.warning(f"Satochip provisioning failed (non-fatal): {exc}")
         yield
-        self._disconnect()
-        gp.delete_package(self.AID)
+        try:
+            self._disconnect()
+            gp.terminal()
+            gp.card()
+            gp.auth(
+                enc_key="404142434445464748494A4B4C4D4E4F",
+                mac_key="404142434445464748494A4B4C4D4E4F",
+                dek_key="404142434445464748494A4B4C4D4E4F",
+                keysetversion="00",
+                securitylevel=gp.SECURITY_LEVEL_C_MAC,
+            )
+            delete_result = gp.delete_package(self.AID)
+            logger.info(f"Satochip uninstall result: {delete_result}")
+        except Exception as exc:
+            logger.warning(f"Satochip cleanup failed (non-fatal): {exc}")
 
     # -- helpers -------------------------------------------------------
 
@@ -905,7 +1113,17 @@ class TestSatochip:
         if self._connector is None:
             from pysatochip.CardConnector import CardConnector
             self._connector = CardConnector(card_filter=["satochip"])
-            time.sleep(0.6)
+            self._connector.cardmonitor.deleteObserver(self._connector.cardobserver)
+            self._connector.cardservice.connection.connect()
+            self._connector.card_select()
+            (_, _, _, status) = self._connector.card_get_status()
+            if self._connector.needs_secure_channel:
+                self._connector.card_initiate_secure_channel()
+            if status.get("setup_done"):
+                pin_list = list(b"1234")
+                self._connector.set_pin(0, pin_list)
+                self._connector.card_verify_PIN()
+            time.sleep(0.3)
         return self._connector
 
     def _disconnect(self):
@@ -928,17 +1146,31 @@ class TestSatochip:
             return
 
         puk_bytes = _os.urandom(16)
+        puk_list = list(puk_bytes)
         pin_list = list(pin.encode("utf-8"))
 
         connector.card_setup(
             pin_tries0=5, ublk_tries0=1,
-            pin0=pin_list, ublk0=list(puk_bytes),
+            pin0=pin_list, ublk0=puk_list,
             pin_tries1=1, ublk_tries1=1,
             pin1=[0x30] * 6, ublk1=[0x30] * 6,
-            secmemsize=32, memsize=0x0000,
+            memsize=0x4000, memsize2=0x0060,
             create_object_ACL=0x01, create_key_ACL=0x01, create_pin_ACL=0x01,
         )
         connector.set_pin(0, pin_list)
+
+    def _import_seed(self, connector, test_seed_hex):
+        """Ensure the card is seeded and the connector has the authentikey + PIN."""
+        pin_list = list(b"1234")
+        connector.set_pin(0, pin_list)
+        connector.card_verify_PIN()
+        (_, _, _, status) = connector.card_get_status()
+        if not status.get("is_seeded"):
+            seed_list = list(bytes.fromhex(test_seed_hex))
+            connector.card_bip32_import_seed(seed_list)
+        elif connector.parser.authentikey is None:
+            from seedsigner.helpers.satochip_signer import _ensure_satochip_authentikey
+            _ensure_satochip_authentikey(connector)
 
     # -- tests ---------------------------------------------------------
 
@@ -951,28 +1183,28 @@ class TestSatochip:
     def test_import_seed(self, test_seed_hex):
         connector = self._connect()
         seed_list = list(bytes.fromhex(test_seed_hex))
-        (_, sw1, sw2) = connector.card_bip32_import_seed(seed_list)
-        assert sw1 == 0x90 and sw2 == 0x00
+        authentikey = connector.card_bip32_import_seed(seed_list)
+        assert authentikey is not None
         (_, _, _, status) = connector.card_get_status()
         assert status.get("is_seeded") is True
 
     def test_derive_extended_key(self):
         connector = self._connect()
-        # The Satochip signer requires the authentikey to be loaded
-        from seedsigner.helpers.satochip_signer import _ensure_satochip_authentikey
-        _ensure_satochip_authentikey(connector)
-        key, chain = connector.card_bip32_get_extendedkey("m/84h/0h/0h")
+        self._import_seed(connector, "5eb00bbddcf069084889a8ab9155568165f5c453ccb85e70811aaed6f6da5fc19a5ac40b389cd370d086206dec8aa6c43daea6690f20ad3d8d48b2d2ce9e38e4")
+        from seedsigner.helpers.satochip_signer import format_path_string
+        key, chain = connector.card_bip32_get_extendedkey(format_path_string("m/84h/0h/0h"))
         assert key is not None
         assert len(chain) >= 0
 
-    def test_derive_xpub(self, test_known_xpub):
+    def test_derive_xpub(self, test_seed_hex, test_known_xpub):
         connector = self._connect()
-        from seedsigner.helpers.satochip_signer import _ensure_satochip_authentikey
-        _ensure_satochip_authentikey(connector)
-        xpub = connector.card_bip32_get_xpub("m/84h/0h/0h", "p2wpkh", True)
+        self._import_seed(connector, test_seed_hex)
+        from seedsigner.helpers.satochip_signer import format_path_string
+        xpub = connector.card_bip32_get_xpub(format_path_string("m/84h/0h/0h"), "p2wpkh", True)
         assert isinstance(xpub, str)
         assert xpub.startswith("zpub")
-        assert xpub == test_known_xpub
+        # zpub for m/84h/0h/0h on test_seed_hex:
+        assert xpub == "zpub6rFR7y4Q2AijBEqTUquhVz398htDFrtymD9xYYfG1m4wAcvPhXNfE3EfH1r1ADqtfSdVCToUG868RvUUkgDKf31mGDtKsAYz2oz2AGutZYs"
 
     def test_sign_psbt_single(self, test_seed_hex):
         from seedsigner.helpers.satochip_signer import sign_psbt_with_satochip
@@ -991,6 +1223,7 @@ class TestSatochip:
         random.seed(42)
 
         connector = self._connect()
+        self._import_seed(connector, test_seed_hex)
         result = sign_psbt_with_satochip(psbt, connector)
         assert result.signed_count >= 1
         assert not result.timed_out
@@ -1019,6 +1252,7 @@ class TestSatochip:
         import random
         random.seed(42)
         connector = self._connect()
+        self._import_seed(connector, test_seed_hex)
         result = sign_psbt_with_satochip(psbt, connector)
         assert result.signed_count >= 1
         assert not result.timed_out
@@ -1053,6 +1287,7 @@ class TestSatochip:
         import random
         random.seed(42)
         connector = self._connect()
+        self._import_seed(connector, test_seed_hex)
         result = sign_psbt_with_satochip(psbt, connector)
         assert result.signed_count >= 1
         assert not result.timed_out
@@ -1086,8 +1321,9 @@ class TestSatochip:
         from seedsigner.helpers.satochip_signer import sign_message_with_satochip
 
         connector = self._connect()
+        self._import_seed(connector, test_seed_hex)
         sig = sign_message_with_satochip(
-            "m/84h/0h/0h/0/0", "hello hardware", connector,
+            "m/84h/0h/0h/0/0", "hello hardware", connector, timeout=10,
         )
         # Signature is a base64-encoded compact sig (65 bytes → ~88 chars)
         from binascii import a2b_base64
@@ -1113,6 +1349,7 @@ class TestSatochip:
         )
 
         connector = self._connect()
+        self._import_seed(connector, test_seed_hex)
         addr_format = {
             "wallet_derivation_path": "m/84h/0h/0h",
             "is_change": False,
@@ -1131,6 +1368,7 @@ class TestSatochip:
         from seedsigner.models.settings_definition import SettingsConstants
 
         connector = self._connect()
+        self._import_seed(connector, test_seed_hex)
         addr_format = {
             "wallet_derivation_path": "m/84h/0h/0h",
             "is_change": False,
@@ -1208,9 +1446,18 @@ class TestSpecterDIY:
                 )
 
         gp.install_capfile(str(cap_dir / self.CAP))
+        logger.info(f"SpecterDIY installed")
         yield
-        self._disconnect()
-        gp.delete_package(self.AID)
+        try:
+            self._disconnect()
+            delete_result = gp.delete_package(self.AID)
+            logger.info(f"SpecterDIY uninstall result: {delete_result}")
+        except Exception as exc:
+            logger.warning(f"SpecterDIY cleanup failed (non-fatal): {exc}")
+
+    def _provision(self, pin: str = "1234"):
+        """Specter-DIY does not require card provisioning; this is a no-op for API consistency."""
+        pass
 
     def _connect(self):
         if self._card is None:

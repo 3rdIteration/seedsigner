@@ -403,9 +403,7 @@ def sign_psbt_with_satochip(psbt: PSBT, connector, timeout: float | None = None)
 
             sig_der = bytes(sig)
             try:
-                sig_obj = secp256k1.ecdsa_signature_parse_der(sig_der)
-                sig_norm = secp256k1.ecdsa_signature_normalize(sig_obj)
-                sig_der = secp256k1.ecdsa_signature_serialize_der(sig_norm)
+                sig_der = normalize_signature_der(sig_der)
             except Exception as e:
                 logger.warning("Failed to normalize Satochip signature: %s", e)
 
@@ -439,13 +437,14 @@ def sign_psbt_with_satochip(psbt: PSBT, connector, timeout: float | None = None)
     return SignResult(signed_count=signed, timed_out=timed_out)
 
 
-def sign_message_with_satochip(derivation_path: str, message: str, connector) -> str:
+def sign_message_with_satochip(derivation_path: str, message: str, connector, timeout: float | None = None) -> str:
     """Sign an arbitrary message using a connected Satochip card.
 
     Args:
         derivation_path: BIP32 derivation path for the signing key ("m/84'/0'/0'/0/0").
         message: Message to be signed.
         connector: Active Satochip ``CardConnector`` instance.
+        timeout: Optional timeout override. Falls back to config setting when ``None``.
 
     Returns:
         Base64 encoded compact signature string.
@@ -454,7 +453,8 @@ def sign_message_with_satochip(derivation_path: str, message: str, connector) ->
     """
 
     settings = Settings.get_instance()
-    timeout = settings.get_value(SettingsConstants.SETTING__SATOCHIP_MSG_SIGN_TIMEOUT)
+    if timeout is None:
+        timeout = settings.get_value(SettingsConstants.SETTING__SATOCHIP_MSG_SIGN_TIMEOUT)
     path = format_path_string(derivation_path)
     key, _chaincode = _get_extended_key(connector, path)
 
