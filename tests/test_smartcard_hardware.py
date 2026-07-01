@@ -357,7 +357,7 @@ class TestSatodime:
             )
             delete_result = gp.delete_package(self.AID)
             logger.info(f"Satodime uninstall result: {delete_result}")
-        except Exception as exc:
+        except BaseException as exc:
             logger.warning(f"Satodime cleanup failed (non-fatal): {exc}")
 
     def _provision(self, pin: str = "1234"):
@@ -458,7 +458,7 @@ class TestSeedKeeper:
             )
             delete_result = gp.delete_package(self.AID)
             logger.info(f"SeedKeeper uninstall result: {delete_result}")
-        except Exception as exc:
+        except BaseException as exc:
             logger.warning(f"SeedKeeper cleanup failed (non-fatal): {exc}")
 
     # -- helpers -------------------------------------------------------
@@ -872,7 +872,7 @@ class TestKeycard:
             )
             delete_result = gp.delete_package(self.AID)
             logger.info(f"Keycard uninstall result: {delete_result}")
-        except Exception as exc:
+        except BaseException as exc:
             logger.warning(f"Keycard cleanup failed (non-fatal): {exc}")
 
     def _connect(self):
@@ -1104,7 +1104,7 @@ class TestSatochip:
             )
             delete_result = gp.delete_package(self.AID)
             logger.info(f"Satochip uninstall result: {delete_result}")
-        except Exception as exc:
+        except BaseException as exc:
             logger.warning(f"Satochip cleanup failed (non-fatal): {exc}")
 
     # -- helpers -------------------------------------------------------
@@ -1452,7 +1452,7 @@ class TestSpecterDIY:
             self._disconnect()
             delete_result = gp.delete_package(self.AID)
             logger.info(f"SpecterDIY uninstall result: {delete_result}")
-        except Exception as exc:
+        except BaseException as exc:
             logger.warning(f"SpecterDIY cleanup failed (non-fatal): {exc}")
 
     def _provision(self, pin: str = "1234"):
