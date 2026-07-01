@@ -299,7 +299,7 @@ def readiness():
     try:
         pygp.terminal()
         pygp.card()
-    except Exception as exc:
+    except BaseException as exc:
         pytest.skip(f"No PC/SC smartcard reader detected: {exc}")
 
 
