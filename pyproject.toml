@@ -60,6 +60,12 @@ branch = true
 testpaths = ["tests"]
 pythonpath = ["src"]
 log_level = "DEBUG"
+addopts = "-p pytest_order"
+
+[project.optional-dependencies]
+dev = [
+    "pytest-order>=1.0",
+]
 
 [tool.setuptools]
 include-package-data = true
