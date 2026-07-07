@@ -2,7 +2,7 @@ FROM python:3.10-bullseye
 
 # install zbar dependencyy
 RUN apt-get -qq update
-RUN apt-get -y -qq install zbar-tools
+RUN apt-get -y -qq install zbar-tools libpcsclite-dev swig pcscd
 
 # temp copy requirements files to local repo to do pip3 install
 COPY ../requirements.txt /requirements.txt

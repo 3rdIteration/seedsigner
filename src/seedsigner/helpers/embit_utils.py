@@ -198,7 +198,7 @@ def get_multisig_address(descriptor: Descriptor, index: int = 0, is_change: bool
         branch_index = 0
 
     # Can derive p2wsh, p2sh-p2wsh, and legacy (non-segwit) p2sh
-    if descriptor.is_segwit or (descriptor.is_legacy and descriptor.is_basic_multisig):
+    if descriptor.is_segwit or descriptor.is_legacy:
         return descriptor.derive(index, branch_index=branch_index).script_pubkey().address(network=NETWORKS[embit_network])
 
     elif descriptor.is_taproot:
