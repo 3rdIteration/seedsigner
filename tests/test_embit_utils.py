@@ -752,3 +752,147 @@ def test_normalize_descriptor_str():
     # ------------------------------------------------------------------
     assert func(result_receive_only) == result_receive_only
     assert func(result_no_path) == result_no_path
+
+
+def test_get_multisig_address_singlesig():
+    """
+    Tests get_multisig_address() with singlesig descriptors for all
+    supported script types. This caught a regression where P2PKH
+    singlesig descriptors were incorrectly blocked by requiring
+    is_basic_multisig on legacy descriptors.
+    """
+    from embit.descriptor import Descriptor
+
+    vector_args_expected = {
+        # singlesig legacy (p2pkh) on mainnet — the regression target
+        ("pkh(xpub6BosfCnifzxcFwrSzQiqu2DBVTshkCXacvNsWGYJVVhhawA7d4R5WSWGFNbi8Aw6ZRc1brxMyWMzG3DSSSSoekkudhUd9yLb6qx39T9nMdj/{0,1}/*)", 0, False, "main"):
+            "1LqBGSKuX5yYUonjxT5qGfpUsXKYYWeabA",
+        ("pkh(xpub6BosfCnifzxcFwrSzQiqu2DBVTshkCXacvNsWGYJVVhhawA7d4R5WSWGFNbi8Aw6ZRc1brxMyWMzG3DSSSSoekkudhUd9yLb6qx39T9nMdj/{0,1}/*)", 0, True, "main"):
+            "1J3J6EvPrv8q6AC3VCjWV45Uf3nssNMRtH",
+        ("pkh(xpub6BosfCnifzxcFwrSzQiqu2DBVTshkCXacvNsWGYJVVhhawA7d4R5WSWGFNbi8Aw6ZRc1brxMyWMzG3DSSSSoekkudhUd9yLb6qx39T9nMdj/{0,1}/*)", 5, False, "main"):
+            "19a7HGg32ecPQo49rDeM2NSFJHPqrwSJto",
+
+        # singlesig legacy (p2pkh) on testnet
+        ("pkh(tpubDC5FSnBiZDMmhiuCmWAYsLwgLYrrT9rAqvTySfuCCrgsWz8wxMXUS9Tb9iVMvcRbvFcAHGkMD5Kx8koh4GquNGNTfohfk7pgjhaPCdXpoba/{0,1}/*)", 0, False, "test"):
+            "mkpZhYtJu2r87Js3pDiWJDmPte2NRZ8bJV",
+        ("pkh(tpubDC5FSnBiZDMmhiuCmWAYsLwgLYrrT9rAqvTySfuCCrgsWz8wxMXUS9Tb9iVMvcRbvFcAHGkMD5Kx8koh4GquNGNTfohfk7pgjhaPCdXpoba/{0,1}/*)", 0, True, "test"):
+            "mi8nhzZgGZQthq6DQHbru9crMDerUdTKva",
+
+        # singlesig native segwit on mainnet
+        ("wpkh(xpub6CatWdiZiodmUeTDp8LT5or8nmbKNcuyvz7WyksVFkKB4RHwCD3XyuvPEbvqAQY3rAPshWcMLoP2fMFMKHPJ4ZeZXYVUhLv1VMrjPC7PW6V/{0,1}/*)", 0, False, "main"):
+            "bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu",
+        ("wpkh(xpub6CatWdiZiodmUeTDp8LT5or8nmbKNcuyvz7WyksVFkKB4RHwCD3XyuvPEbvqAQY3rAPshWcMLoP2fMFMKHPJ4ZeZXYVUhLv1VMrjPC7PW6V/{0,1}/*)", 0, True, "main"):
+            "bc1q8c6fshw2dlwun7ekn9qwf37cu2rn755upcp6el",
+        ("wpkh(xpub6CatWdiZiodmUeTDp8LT5or8nmbKNcuyvz7WyksVFkKB4RHwCD3XyuvPEbvqAQY3rAPshWcMLoP2fMFMKHPJ4ZeZXYVUhLv1VMrjPC7PW6V/{0,1}/*)", 5, False, "main"):
+            "bc1qnpzzqjzet8gd5gl8l6gzhuc4s9xv0djt0rlu7a",
+
+        # singlesig nested segwit on mainnet
+        ("sh(wpkh(xpub6C6nQwHaWbSrzs5tZ1q7m5R9cPK9eYpNMFesiXsYrgc1P8bvLLAet9JfHjYXKjToD8cBRswJXXbbFpXgwsswVPAZzKMa1jUp2kVkGVUaJa7/{0,1}/*))", 0, False, "main"):
+            "37VucYSaXLCAsxYyAPfbSi9eh4iEcbShgf",
+
+        # singlesig taproot on mainnet (is_segwit=True, handled by first branch)
+        ("tr(xpub6BgBgsespWvERF3LHQu6CnqdvfEvtMcQjYrcRzx53QJjSxarj2afYWcLteoGVky7D3UKDP9QyrLprQ3VCECoY49yfdDEHGCtMMj92pReUsQ/{0,1}/*)", 0, False, "main"):
+            "bc1p5cyxnuxmeuwuvkwfem96lqzszd02n6xdcjrs20cac6yqjjwudpxqkedrcr",
+        ("tr(xpub6BgBgsespWvERF3LHQu6CnqdvfEvtMcQjYrcRzx53QJjSxarj2afYWcLteoGVky7D3UKDP9QyrLprQ3VCECoY49yfdDEHGCtMMj92pReUsQ/{0,1}/*)", 0, True, "main"):
+            "bc1p3qkhfews2uk44qtvauqyr2ttdsw7svhkl9nkm9s9c3x4ax5h60wqwruhk7",
+        ("tr(xpub6BgBgsespWvERF3LHQu6CnqdvfEvtMcQjYrcRzx53QJjSxarj2afYWcLteoGVky7D3UKDP9QyrLprQ3VCECoY49yfdDEHGCtMMj92pReUsQ/{0,1}/*)", 5, False, "main"):
+            "bc1pl4frjws098l3nslfjlnry6jxt46w694kuexvs5ar0cmkvxyahfkq0m445f",
+    }
+    func = embit_utils.get_multisig_address
+
+    print()
+    for args, expected in vector_args_expected.items():
+        descriptor = Descriptor.from_string(args[0])
+
+        print("\nasserting...")
+
+        # call with optional params (defaults: index=0, is_change=False, embit_network="main")
+        if args[1:4] == (0, False, "main"):
+            print(f'  {func.__name__}(Descriptor.from_string("{descriptor}")) == "{expected}"')
+            assert func(descriptor) == expected
+
+        # call with ordered params
+        print(f'  {func.__name__}(Descriptor.from_string("{descriptor}"), *{args[1:4]}) == "{expected}"')
+        assert func(descriptor, *args[1:4]) == expected
+
+        # call with named params
+        print(f'  {func.__name__}(descriptor=Descriptor.from_string("{descriptor}"), index={args[1]}, is_change={args[2]}, embit_network="{args[3]}") == "{expected}"')
+        assert func(descriptor=descriptor, index=args[1], is_change=args[2], embit_network=args[3]) == expected
+
+
+def test_get_multisig_address_descriptor_type_coverage():
+    """
+    Structural test that verifies every descriptor type (singlesig and
+    multisig, segwit and legacy) can be derived by get_multisig_address()
+    without falling through to the generic 'not yet implemented' exception.
+
+    This catches asymmetric guards like is_basic_multisig on legacy but
+    not on segwit — the exact class of bug that broke P2PKH singlesig.
+    """
+    from embit import bip39, bip32
+    from embit.descriptor import Descriptor
+    from embit.networks import NETWORKS
+
+    mnemonic = "abandon " * 11 + "about"
+    seed = bip39.mnemonic_to_seed(mnemonic)
+    root = bip32.HDKey.from_seed(seed, version=NETWORKS["main"]["xprv"])
+
+    descriptor_checks = []
+
+    # Singlesig types
+    for desc_type, purpose_path in [
+        ("pkh", "m/44'/0'/0'"),
+        ("wpkh", "m/84'/0'/0'"),
+        ("tr", "m/86'/0'/0'"),
+    ]:
+        derived = root.derive(purpose_path)
+        pub = derived.to_public()
+        xpub = pub.to_base58()
+        desc_str = f"{desc_type}({xpub}/{{0,1}}/*)"
+        descriptor_checks.append((desc_str, True))
+
+    # Nested segwit singlesig
+    derived = root.derive("m/49'/0'/0'")
+    pub = derived.to_public()
+    xpub = pub.to_base58()
+    desc_str = f"sh(wpkh({xpub}/{{0,1}}/*))"
+    descriptor_checks.append((desc_str, True))
+
+    # Multisig types (existing known-good vectors)
+    descriptor_checks.extend([
+        (
+            "wsh(sortedmulti(2,"
+            "[73c5da0a/48h/1h/0h/2h]tpubDFH9dgzveyD8zTbPUFuLrGmCydNvxehyNdUXKJAQN8x4aZ4j6UZqGfnqFrD4NqyaTVGKbvEW54tsvPTK2UoSbCC1PJY8iCNiwTL3RWZEheQ/{0,1}/*,"
+            "[0be174ee/48h/1h/0h/2h]tpubDEsePyLPkbxbrDiZSTTWdsviiNtiQjrvvzZnkLtG72QYLBygEsXePRsTdXi8DeMA7taCuuvoEBjUAfFrsNZeQJqfvG9fFoujYWbFPYUn7ux/{0,1}/*"
+            "))",
+            True,
+        ),
+        (
+            "sh(wsh(sortedmulti(2,"
+            "[73c5da0a/48h/1h/1h/0h/1h]tpubDFH9dgzveyD8yHQb8VrpG8FYAuwcLMHMje2CCcbBo1FpaGzYVtJeYYxcYgRqSTta5utUFts8nPPHs9C2bqoxrey5jia6Dwf9mpwrPq7YvcJ/{0,1}/*,"
+            "[0be174ee/48h/1h/0h/1h]tpubDEsePyLPkbxbnj6XuKvWwdERHaKkikZxaGJ9sJqmM7okbZXgkNSFiGU6GX6qEes6kD8f9Z9FosYB9UEnBSgBEyEwwJhj4uUcFE1WE8VtKoh/{0,1}/*"
+            ")))",
+            True,
+        ),
+        (
+            "sh(sortedmulti(2,"
+            "[8d55ff0d/45h]tpubDANogJ2yfnizHwX7fSi5kUVzybyuPXDhgHB2TR9TUvkSLZFW73cRq4STKFDpx7qjJJiisyq82tbu4CeiYtmKEmT1xoCq9P8BPvXV31HUh6d/{0,1}/*,"
+            "[0be174ee/45h]tpubDBkeVF2tDNT1Pz7L47iJeBB6RokU12LX6x4E6Ph8T89hmjQfB77q1AMyGwL8qpREVGq9sCJEbWwmnemwNTxnpxGn1di7BGy8jx9wEi5Vahu/{0,1}/*"
+            "))",
+            True,
+        ),
+    ])
+
+    func = embit_utils.get_multisig_address
+
+    print()
+    for desc_str, expect_success in descriptor_checks:
+        descriptor = Descriptor.from_string(desc_str)
+        if expect_success:
+            print(f"  {func.__name__}({desc_str[:60]}...) returns address")
+            result = func(descriptor, 0, False, "main")
+            assert isinstance(result, str) and len(result) > 0
+        else:
+            print(f"  {func.__name__}({desc_str[:60]}...) raises Exception")
+            with pytest.raises(Exception):
+                func(descriptor, 0, False, "main")
