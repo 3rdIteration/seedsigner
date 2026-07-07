@@ -4,7 +4,57 @@ from seedsigner.helpers import seedkeeper_utils
 
 
 class DummyConnector:
-    pass
+    is_keycard_backend = False
+
+
+class DummyKeycardConnector:
+    is_keycard_backend = True
+
+
+def test_init_card_connector_stale_keycard_pref_falls_back_for_seedkeeper(monkeypatch):
+    """Regression: Keycard benchmark sets backend_preference='keycard', then loading
+
+    from SeedKeeper should not crash with 'Keycard backend only supports satochip
+    card flows' — instead it falls back to auto and uses the legacy connector.
+    """
+    called = {}
+
+    def mock_legacy(init_card_filter):
+        called["legacy"] = init_card_filter
+        return DummyConnector()
+
+    monkeypatch.setattr(seedkeeper_utils, "_init_legacy_connector", mock_legacy)
+
+    # Simulate stale "keycard" preference from a previous Keycard flow
+    connector = seedkeeper_utils._init_card_connector(
+        ["seedkeeper"], backend_preference="keycard"
+    )
+
+    assert isinstance(connector, DummyConnector)
+    assert not getattr(connector, "is_keycard_backend", False)
+    # Legacy connector should be called with the seedkeeper filter
+    assert called["legacy"] == ["seedkeeper"]
+
+
+def test_init_card_connector_stale_keycard_pref_keeps_keycard_for_satochip(monkeypatch):
+    """When backend_preference='keycard' and card_filter is ['satochip'], keycard
+
+    backend should still be used (not fallen back to auto).
+    """
+    called = {}
+
+    def mock_create(card_filter=None):
+        called["keycard"] = card_filter
+        return DummyKeycardConnector()
+
+    monkeypatch.setattr(seedkeeper_utils.KeycardSatochipConnector, "create", mock_create)
+
+    connector = seedkeeper_utils._init_card_connector(
+        ["satochip"], backend_preference="keycard"
+    )
+
+    assert isinstance(connector, DummyKeycardConnector)
+    assert called["keycard"] == ["satochip"]
 
 
 def test_init_card_connector_prefers_keycard_when_forced(monkeypatch):

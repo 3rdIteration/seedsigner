@@ -10,6 +10,7 @@ from seedsigner.gui.screens import RET_CODE__BACK_BUTTON, WarningScreen
 from seedsigner.views import tools_views
 from seedsigner.views.tools_views import (
     MIN_RSA_KEY_BITS,
+    BIP85_GPG_ECC_APP,
     bip85_brainpoolp256r1_from_root,
     bip85_brainpoolp384r1_from_root,
     bip85_brainpoolp512r1_from_root,
@@ -144,64 +145,64 @@ CROSS_IMPL_XPRV = LIBWALLY_RSA_MASTER_XPRV
 CROSS_IMPL_ECC_VECTORS = [
     # (key_type, key_bits, expected_entropy_hex, expected_private_hex)
     (
-        tools_views.BIP85_GPG_KEY_TYPE_CURVE25519,
-        256,
-        "0e90b553528cd97a033c282f54cf72c1020adaec205d5c0e57e9f2556d06fea6"
-        "83618e4be8f91e7e059647f9d6373eb8b5f535e7ba4097cfb3e93c4957843614",
-        "0e90b553528cd97a033c282f54cf72c1020adaec205d5c0e57e9f2556d06fea6",
-    ),
-    (
-        tools_views.BIP85_GPG_KEY_TYPE_SECP256K1,
-        256,
-        "f3bb8b3d6b81fbd202c34b59ce7e97c83969e9b5733b936de16c51119c7a4823"
-        "9ddf66729ef5e4df97ea39471f05a89f070869b3f9d72d69f3ae8bd7ee4fb6b3",
-        "f3bb8b3d6b81fbd202c34b59ce7e97c83969e9b5733b936de16c51119c7a4823",
-    ),
-    (
-        tools_views.BIP85_GPG_KEY_TYPE_NIST,
-        256,
-        "f52586f58521916b9f28b0058be86effcde82e571eabada9e3f63c6f67752ff1"
-        "2a4d3bf2fffe0f147164945691605a58f28f6bded869c38b3db9f0e577d83728",
-        "f52586f58521916b9f28b0058be86effcde82e571eabada9e3f63c6f67752ff1",
-    ),
-    (
-        tools_views.BIP85_GPG_KEY_TYPE_NIST,
-        384,
-        "830005ea400f7a03c27aa06a9728fe311c9a48dc31bd417f07b96c69edc73d25"
-        "baa00d04b9dbbe6f42539b06d9ef1ba62ed73d4a3a992302aae09e17e0d9f42f",
-        "830005ea400f7a03c27aa06a9728fe311c9a48dc31bd417f07b96c69edc73d25"
-        "baa00d04b9dbbe6f42539b06d9ef1ba6",
-    ),
-    (
-        tools_views.BIP85_GPG_KEY_TYPE_NIST,
-        521,
-        "3524b3cbe60eb78a156dae44674702f69381afe5292d6d15d7801b7e530f2a06"
-        "16b7b876c0ba85d6e675587fdc0ce2242ad00252493ec9c3a024217d1e2aa954",
-        "a9b5a5af6b4c45ea509e838cb55a0043412b49781c54a68931395be4b27550b1"
-        "c60b3aa7814c9ba4093c7c0b3f72b5e21856317b97eb156533b42e36ae8f2bf157",
-    ),
-    (
         tools_views.BIP85_GPG_KEY_TYPE_BRAINPOOL,
         256,
-        "97ee4490d89bf257e9a038e2af12824fba47fec721970ca1fc1c094650d2716d"
-        "75491402530776ba31d215fac6c2de0cb6661f1d380b682e20246bf962cdf385",
-        "97ee4490d89bf257e9a038e2af12824fba47fec721970ca1fc1c094650d2716d",
+        "99f74d7072aac4946462a3ab99fd6b55f509ab321321f27813dee383a98aa541"
+        "bd4cc82136d56b4d67eefe32919243b077eed26874218f5df567ac07568756bf",
+        "99f74d7072aac4946462a3ab99fd6b55f509ab321321f27813dee383a98aa541",
     ),
     (
         tools_views.BIP85_GPG_KEY_TYPE_BRAINPOOL,
         384,
-        "3fa833db4195fbd7a9c4e3f6fdb65ffb8951c5c65ca0cce441a4410e11aa96fc"
-        "b094ed8c1fb5317448ae098ca9cae2c351b513e47d1b74e4c80c1facdf7b0a5a",
-        "3fa833db4195fbd7a9c4e3f6fdb65ffb8951c5c65ca0cce441a4410e11aa96fc"
-        "b094ed8c1fb5317448ae098ca9cae2c3",
+        "6ef5e7ea71ca14fe1a89f741fbaa4bedf8f59584c6fa9372e1b0c2e4516d7949"
+        "e61a2311e9bfc9dd5372221d7192f8a2957c1571f96be2f774cc5fee8adcd911",
+        "6ef5e7ea71ca14fe1a89f741fbaa4bedf8f59584c6fa9372e1b0c2e4516d7949"
+        "e61a2311e9bfc9dd5372221d7192f8a2",
     ),
     (
         tools_views.BIP85_GPG_KEY_TYPE_BRAINPOOL,
         512,
-        "985f0131503109fc7fb2ab15e6a86846888e4b9a9f4f11f0d7b30dba4570cf8c"
-        "c728a4c8ce9bbeb9b9819fbe924bb2d6d71a9c8332635cfb5db5008364f3a43a",
-        "985f0131503109fc7fb2ab15e6a86846888e4b9a9f4f11f0d7b30dba4570cf8c"
-        "c728a4c8ce9bbeb9b9819fbe924bb2d6d71a9c8332635cfb5db5008364f3a43a",
+        "af5ef50a4f3277f4f57e714cba3caae61ca19bc2a4bfeba4b6726ef319a67427"
+        "f317d91ed72948abc6f96a77008acad7ee6b3585e6b0beaef76a2ab9f52f75f1",
+        "048157517348b369b5a98a9e8672aede51710e0ef0f61995e00ed228a9736bb7"
+        "9dd97cdd8a8022928573095d80deba90d0b96204de52e3d141e294375886758a",
+    ),
+    (
+        tools_views.BIP85_GPG_KEY_TYPE_CURVE25519,
+        256,
+        "0321683e4d481bb6b5bac0585dbb06689827b9d6db3c530b5f6c31e20c52e444"
+        "7059dbf3076cbd982cb90e2054f098a5cad5496528a5a7542b09b5b3e5394dbb",
+        "0321683e4d481bb6b5bac0585dbb06689827b9d6db3c530b5f6c31e20c52e444",
+    ),
+    (
+        tools_views.BIP85_GPG_KEY_TYPE_SECP256K1,
+        256,
+        "9ba495532c0251a4a8bd0986c0bff07a413a9204881603ace0df8474f3af7e19"
+        "e622cf1b4da077d26ecfc972f2b84069b50a4c11680fecc4afb2af8b74c68913",
+        "9ba495532c0251a4a8bd0986c0bff07a413a9204881603ace0df8474f3af7e19",
+    ),
+    (
+        tools_views.BIP85_GPG_KEY_TYPE_NIST,
+        256,
+        "60e76b9f4a447d4aa4f025c488b598c773b6e0b668e2f7b71bdafb62a0fb7303"
+        "950b05c2834a8d62d155239e9f78ef26c36e23ab4f4ea894aaa685ef41b89d38",
+        "60e76b9f4a447d4aa4f025c488b598c773b6e0b668e2f7b71bdafb62a0fb7303",
+    ),
+    (
+        tools_views.BIP85_GPG_KEY_TYPE_NIST,
+        384,
+        "0ca78fc4de4da1969056cb3b2f84006b05b14af0728e80c6b64c0f377b0fe5bb"
+        "bc948fc22c4e4159cef87bafa9941933ce7c06b0fd57a144ae03fd704f403fa6",
+        "0ca78fc4de4da1969056cb3b2f84006b05b14af0728e80c6b64c0f377b0fe5bb"
+        "bc948fc22c4e4159cef87bafa9941933",
+    ),
+    (
+        tools_views.BIP85_GPG_KEY_TYPE_NIST,
+        521,
+        "ae8a24dfe0384325ab79ed862516c7cb364b1380743fe0ee68fad8e2d5661996"
+        "4166197f2a412121976b24a1d8ad8fcf6168fcb1addb882e7ca84e93b47dec43",
+        "001df6eb998fadfb515abc005427aad7828469740ce6a2b8e1ee8f3a2fc5076b"
+        "98305406191e5589c6a96c79c620cf87ec948a2db4c2119e2e045e4fb4537cc3c6f0",
     ),
 ]
 
@@ -225,7 +226,7 @@ def test_cross_impl_ecc_entropy_vectors():
     root = bip32.HDKey.from_string(CROSS_IMPL_XPRV)
     for key_type, key_bits, expected_entropy, _ in CROSS_IMPL_ECC_VECTORS:
         entropy = bip85.derive_entropy(
-            root, tools_views.BIP85_GPG_APP, [key_type, key_bits, 0]
+            root, tools_views.BIP85_GPG_ECC_APP, [key_type, key_bits, 0]
         )
         assert entropy.hex() == expected_entropy, (
             f"Entropy mismatch for key_type={key_type}, key_bits={key_bits}"
@@ -329,7 +330,7 @@ def test_bip85_secp256k1_deterministic():
     root = bip32.HDKey.from_seed(seed.seed_bytes)
     key = bip85_secp256k1_from_root(root, 0)
     assert int(key.s) == int(
-        "dd4eebe20675d3649e8f188a14a8832fb473cfcea029cf755fb4f7b715ea9d23", 16
+        "f529e2f3cad2cf9802b0a1a79ca1c4cdd28c949e0aa308be5b00a222e4a4660d", 16
     )
 
 
@@ -338,7 +339,7 @@ def test_bip85_p256_deterministic():
     root = bip32.HDKey.from_seed(seed.seed_bytes)
     key = bip85_p256_from_root(root, 0)
     assert int(key.s) == int(
-        "dc9b40d295b20fa87aa7414d5aa1db8b12bc850587fa0ed172f71ee620062114", 16
+        "e0838b1c92a21848c8c8ee04955731a43e2a7ad494686009a0036ab213900d53", 16
     )
 
 
@@ -347,7 +348,7 @@ def test_bip85_brainpoolp256r1_deterministic():
     root = bip32.HDKey.from_seed(seed.seed_bytes)
     key = bip85_brainpoolp256r1_from_root(root, 0)
     assert int(key.s) == int(
-        "904a67c2b20820d8bf98be62a24a2cddcd9674ecd0943bb5e10d7b50fd02806c", 16
+        "5923cca8bd2306497a639aa3f12015e05625280248773074a74d74ba56a14a5d", 16
     )
 
 
@@ -356,7 +357,7 @@ def test_bip85_ed25519_deterministic():
     root = bip32.HDKey.from_seed(seed.seed_bytes)
     key = bip85_ed25519_from_root(root, 0)
     assert int(key.s) == int(
-        "9c2c35e872ee9112ae0235c811c12b5187d8e4ce77c5b8595e1da0f787dc4caa", 16
+        "68119ed59fc9ce4e36df33fa7b72aaa35ea770157c354cc6563fdc07f4bfa56f", 16
     )
 
 
@@ -375,7 +376,8 @@ def test_bip85_p384_deterministic():
     root = bip32.HDKey.from_seed(seed.seed_bytes)
     key = bip85_p384_from_root(root, 0)
     assert int(key.s) == int(
-        "61296e8ee7b08b639c56babb292a0bdaf352ceacd37b33c5a51a3da82d8d8434f7f42353fb8ec82e79599824889cb582", 16
+        "e36559c29f42335d87e41e20fc5b1dd38ff25c1c95f82a485306a5d4857e17a9"
+        "488e9d2d434ba2caacb8d37010b17954", 16
     )
 
 
@@ -384,8 +386,8 @@ def test_bip85_p521_deterministic():
     root = bip32.HDKey.from_seed(seed.seed_bytes)
     key = bip85_p521_from_root(root, 0)
     assert int(key.s) == int(
-        "6700224442c326298a3fd6b3df9c4c05068a4c7df2bc3b2f3fee647d46355d34"
-        "7905692be4b690c1ca19357f40dfa3f1f1c788a1ff55fa8c992873fabdf75f25c7", 16
+        "91248ae2a5b591de85b6b5b085e86c4994ac83f4713a15167d9929d544e9fd67"
+        "3535b0f5d1ac83b7cfcc777093f998232f9963420f4b87451d0387475d90be1f0a", 16
     )
 
 
@@ -396,7 +398,8 @@ def test_bip85_brainpoolp384r1_deterministic():
     # This mnemonic's entropy exceeds the curve order, exercising the
     # out-of-range fallback: (d % (order - 1)) + 1.
     assert int(key.s) == int(
-        "5ff15e7affe063458500ebe3cb883388cc0c01a395d59b2b198bb34ea0b8c95f8399ff0197c45bd1d8e7a09babb60f14", 16
+        "57581fcdb322ce09f3b8078febca048573aa62a4ad6a2c4d10f24a9225dbea1b"
+        "eee20410bfced8c9caf1fdcb0a9199a5", 16
     )
 
 
@@ -405,7 +408,8 @@ def test_bip85_brainpoolp512r1_deterministic():
     root = bip32.HDKey.from_seed(seed.seed_bytes)
     key = bip85_brainpoolp512r1_from_root(root, 0)
     assert int(key.s) == int(
-        "2b26f4734a1408d42ed2dcdb04415346da82db6c9bc62d972091f6136e7ded1a9317676f6924c6d05b506026eb04bcb444cfd3368c8a046765c517c50a862c4d", 16
+        "53f9a8f68b6374e98fc002923c1b246876fa747f15445642c222fa92ce8ecae4"
+        "685eabb88b47376281cc9bfe0918f5e3041a9397d54ab45b2cb03fe0e9284043", 16
     )
 
 
@@ -491,12 +495,12 @@ def test_bip85_gpg_mixed_subkeys_deterministic():
             created=created,
         )
 
-    assert pgp_key.fingerprint == "BDC8DB33B793C02FC5E295B2CC44522B14B5A8B6"
+    assert pgp_key.fingerprint == "6C79741D392914BFE19CFEB4DF9ED6BE0F21ABC4"
     fingerprints = [str(sk.fingerprint).replace(" ", "") for sk in pgp_key.subkeys.values()]
     assert fingerprints == [
-        "55C54A4B6382B313B4539C3B781215E4F91451F9",
-        "55BDCFA487CCE02A07460F3ED2944F2EC019B5DF",
-        "AC3DE112686C83BB26A4587DF18933B6CEE6D463",
+        "6093F744D09D51C230F0F498675FDABF1B809BF5",
+        "85BC69CB49E4D0DA251250C4724713A741F680C4",
+        "AD7644301EC93FE89E884F22C7F0741C8576F571",
         "49902AF8AE102DC986233CB6626F4106A6AB1355",
         "94D620C2FC7DD25BAEC027FA106DAD2E7177CFB7",
         "E3C9FEA1785D2A00CCAC373BB8AC66BF71D074F0",

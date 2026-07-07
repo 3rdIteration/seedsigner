@@ -112,8 +112,16 @@ def _init_card_connector(init_card_filter, backend_preference: str | None = None
 
     if backend_pref == "keycard":
         if not keycard_allowed:
-            raise Exception("Keycard backend only supports satochip card flows")
-        return KeycardSatochipConnector.create(card_filter=init_card_filter)
+            # Stale preference from a previous Keycard flow; fall back to auto
+            # instead of crashing (e.g. user does Keycard benchmark then loads
+            # from SeedKeeper, where the card filter is ["seedkeeper"]).
+            logger.info(
+                "Backend pref 'keycard' incompatible with card filter %s; falling back to auto",
+                init_card_filter,
+            )
+            backend_pref = "auto"
+        else:
+            return KeycardSatochipConnector.create(card_filter=init_card_filter)
 
     if backend_pref == "pysatochip":
         return _init_legacy_connector(init_card_filter)
@@ -212,8 +220,13 @@ def prompt_for_pin(
 ):
     """Prompt for a PIN and enforce configurable PIN requirements."""
 
+    _KEYBOARD_DIGITS = "123"  # Matches SeedAddPassphraseScreen.KEYBOARD__DIGITS_BUTTON_TEXT
+    initial_kb = _KEYBOARD_DIGITS if numeric_only else None
     while True:
-        ret = seed_screens.SeedAddPassphraseScreen(title=title).display()
+        ret = seed_screens.SeedAddPassphraseScreen(
+            title=title,
+            initial_keyboard=initial_kb,
+        ).display()
         if isinstance(ret, dict) and "is_back_button" in ret:
             return None
 
@@ -374,7 +387,7 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True, backend
             WarningScreen,
             title="Failure",
             status_headline=None,
-            text=str(e),
+            text="No smartcard detected\n\nInsert a card and try again.",
             show_back_button=True,
         )
         return None
@@ -477,7 +490,12 @@ def init_satochip(parentObject, init_card_filter=None, require_pin=True, backend
                 print("Found Card:", Satochip_Connector.UID_SHA1)
                 print("Expecting Card:", parentObject.controller.Satochip_Last_UID_SHA1)
                 print("Card has changed, prompting for new PIN")
-                pin_str = prompt_for_pin(parentObject, "Card PIN")
+                pin_str = prompt_for_pin(
+                    parentObject,
+                    "Card PIN",
+                    numeric_only=is_keycard_backend,
+                    exact_length=6 if is_keycard_backend else None,
+                )
                 if pin_str is None:
                     return None
                 card_pin = list(pin_str.encode("utf-8"))

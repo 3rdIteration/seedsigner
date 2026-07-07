@@ -392,6 +392,7 @@ def test_bip85_key_gpg_export_roundtrip(key_type):
     "key_type",
     ["ed25519", "p256", "brainpoolp256r1", "rsa2048"],
 )
+@pytest.mark.skipif(sys.platform == "darwin", reason="GPG agent on macOS fails to export secret keys (Bad secret key - skipped)")
 def test_generate_new_gpg_export_roundtrip(key_type):
     """End-to-end: PGPKey.new with subkeys → GPG import → export → sign+encrypt.
 

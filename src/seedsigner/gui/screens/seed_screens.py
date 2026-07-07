@@ -910,9 +910,32 @@ class SeedAddPassphraseScreen(BaseTopNavScreen):
 
     def _run(self):
         cursor_position = len(self.passphrase)
-        cur_keyboard = self.keyboard_abc
-        cur_button1_text = self.KEYBOARD__UPPERCASE_BUTTON_TEXT
-        cur_button2_text = self.KEYBOARD__DIGITS_BUTTON_TEXT
+
+        # Initialize keyboard state to match initial_keyboard (same logic as _render)
+        if self.initial_keyboard == self.KEYBOARD__UPPERCASE_BUTTON_TEXT:
+            cur_keyboard = self.keyboard_ABC
+            cur_button1_text = self.KEYBOARD__LOWERCASE_BUTTON_TEXT
+            cur_button2_text = self.KEYBOARD__DIGITS_BUTTON_TEXT
+
+        elif self.initial_keyboard == self.KEYBOARD__DIGITS_BUTTON_TEXT:
+            cur_keyboard = self.keyboard_digits
+            cur_button1_text = self.KEYBOARD__UPPERCASE_BUTTON_TEXT
+            cur_button2_text = self.KEYBOARD__SYMBOLS_1_BUTTON_TEXT
+
+        elif self.initial_keyboard == self.KEYBOARD__SYMBOLS_1_BUTTON_TEXT:
+            cur_keyboard = self.keyboard_symbols_1
+            cur_button1_text = self.KEYBOARD__UPPERCASE_BUTTON_TEXT
+            cur_button2_text = self.KEYBOARD__SYMBOLS_2_BUTTON_TEXT
+
+        elif self.initial_keyboard == self.KEYBOARD__SYMBOLS_2_BUTTON_TEXT:
+            cur_keyboard = self.keyboard_symbols_2
+            cur_button1_text = self.KEYBOARD__UPPERCASE_BUTTON_TEXT
+            cur_button2_text = self.KEYBOARD__DIGITS_BUTTON_TEXT
+        
+        else:
+            cur_keyboard = self.keyboard_abc
+            cur_button1_text = self.KEYBOARD__UPPERCASE_BUTTON_TEXT
+            cur_button2_text = self.KEYBOARD__DIGITS_BUTTON_TEXT
 
         # Start the interactive update loop
         while True:

@@ -8,6 +8,7 @@ from embit.psbt import PSBT
 
 from seedsigner.helpers.iso7816 import format_sw_error
 from seedsigner.helpers.satochip_signer import (
+    SignResult,
     _call_with_timeout,
     _format_path,
     normalize_signature_der,
@@ -19,25 +20,31 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def sign_psbt_with_keycard(psbt: PSBT, connector) -> int:
+def sign_psbt_with_keycard(psbt: PSBT, connector, timeout: float | None = None) -> SignResult:
     """Sign PSBT inputs with a Keycard backend.
 
     Keycard shells may reject pubkey export for arbitrary child paths with
     SW=6982. For single-derivation inputs, this signer falls back to path-based
     signing by setting the connector's current derivation path directly.
+
+    If ``timeout`` is passed it overrides the configured setting value.
+
+    Returns a SignResult with signed_count and timed_out flag.
     """
 
     settings = Settings.get_instance()
     # Keycard operations (derive_key + sign via sign_with_path) are significantly
     # slower than native Satochip signing (~1.0s per card_sign_transaction_hash),
     # so they use a dedicated, higher default timeout (see SETTING__KEYCARD_SIGN_TIMEOUT).
-    timeout = settings.get_value(SettingsConstants.SETTING__KEYCARD_SIGN_TIMEOUT)
+    if timeout is None:
+        timeout = settings.get_value(SettingsConstants.SETTING__KEYCARD_SIGN_TIMEOUT)
     pre_dummy_max = settings.get_value(SettingsConstants.SETTING__SATOCHIP_MAX_PRE_DUMMIES)
     post_dummy_max = settings.get_value(SettingsConstants.SETTING__SATOCHIP_MAX_POST_DUMMIES)
     in_tx_dummy_max = settings.get_value(SettingsConstants.SETTING__SATOCHIP_MAX_IN_TX_DUMMIES)
     dummy_prob = settings.get_value(SettingsConstants.SETTING__SATOCHIP_DUMMY_PROBABILITY) / 100
 
     signed = 0
+    timed_out = False
 
     pre_dummy_count = random.randint(0, pre_dummy_max)
     logger.info("Pre-signing dummy signatures: %d", pre_dummy_count)
@@ -125,6 +132,7 @@ def sign_psbt_with_keycard(psbt: PSBT, connector) -> int:
                     )
                 except TimeoutError:
                     logger.warning("Keycard signing timed out")
+                    timed_out = True
                     results.append(None)
                 except Exception:
                     results.append(None)
@@ -175,4 +183,4 @@ def sign_psbt_with_keycard(psbt: PSBT, connector) -> int:
             except Exception:
                 pass
 
-    return signed
+    return SignResult(signed_count=signed, timed_out=timed_out)

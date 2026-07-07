@@ -3,6 +3,7 @@
 ****************************************************************************"""
 import hashlib
 import logging
+import math
 import os
 import secrets
 import struct

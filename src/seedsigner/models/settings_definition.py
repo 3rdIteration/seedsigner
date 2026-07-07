@@ -358,14 +358,14 @@ class SettingsConstants:
 
     # Keycard signing behavior
     # Keycard operations (derive_key + sign) are slower than native Satochip
-    # signing, so the timeout is adjustable in 0.5s steps around a 1.5s default.
-    KEYCARD_TIMEOUT_MIN = 0.5
-    KEYCARD_TIMEOUT_MAX = 2.5
+    # signing, so the timeout is adjustable in 0.75s steps around a 2.25s default.
+    KEYCARD_TIMEOUT_MIN = 0.75
+    KEYCARD_TIMEOUT_MAX = 3.75
     ALL_KEYCARD_TIMEOUTS = [
-        (i / 2, f"{i / 2:g}s")
-        for i in range(int(KEYCARD_TIMEOUT_MIN * 2), int(KEYCARD_TIMEOUT_MAX * 2) + 1)
+        (i / 4, f"{i / 4:g}s")
+        for i in range(int(KEYCARD_TIMEOUT_MIN * 4), int(KEYCARD_TIMEOUT_MAX * 4) + 1, 3)
     ]
-    DEFAULT_KEYCARD_TIMEOUT = 1.5
+    DEFAULT_KEYCARD_TIMEOUT = 2.25
 
     @classmethod
     def map_network_to_embit(cls, network) -> str:
@@ -485,6 +485,7 @@ class SettingsConstants:
     SETTING__WIF_KEYS = "wif_keys"
     SETTING__BIP38_KEYS = "bip38_keys"
     SETTING__GPG_KEY_TYPES = "gpg_key_types"
+    SETTING__BIP85_GPG_VERSION = "bip85_gpg_version"
 
     SETTING__SATOCHIP_SIGN_TIMEOUT = "satochip_sign_timeout"
     SETTING__SATOCHIP_MSG_SIGN_TIMEOUT = "satochip_msg_sign_timeout"
@@ -601,6 +602,14 @@ class SettingsConstants:
         (18, "18 words"),
         (21, "21 words"),
         (24, "24 words"),
+    ]
+
+    # BIP85 GPG version constants
+    BIP85_GPG_VERSION_V2 = "v2"
+    BIP85_GPG_VERSION_V3 = "v3"
+    ALL_BIP85_GPG_VERSIONS = [
+        (BIP85_GPG_VERSION_V3, "v3 (latest)"),
+        (BIP85_GPG_VERSION_V2, "v2 (B9-B10 compatibility)"),
     ]
 
     # GPG key type constants
@@ -996,12 +1005,22 @@ class SettingsDefinition:
                       display_name=_mft("GPG key types"),
                       type=SettingsConstants.TYPE__MULTISELECT,
                       visibility=SettingsConstants.VISIBILITY__ADVANCED,
-                      selection_options=SettingsConstants.ALL_GPG_KEY_TYPES,
-                      default_value=SettingsConstants.DEFAULT_GPG_KEY_TYPES),
+                       selection_options=SettingsConstants.ALL_GPG_KEY_TYPES,
+                       default_value=SettingsConstants.DEFAULT_GPG_KEY_TYPES),
 
         SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
-                      attr_name=SettingsConstants.SETTING__BIP85_CHILD_SEEDS,
-                      abbreviated_name="bip85",
+                       attr_name=SettingsConstants.SETTING__BIP85_GPG_VERSION,
+                       abbreviated_name="bip85ver",
+                       display_name=_mft("BIP85 GPG version"),
+                       help_text=_mft("v3 is the latest; use v2 to recreate B9-B10 keys"),
+                       type=SettingsConstants.TYPE__SELECT_1,
+                       visibility=SettingsConstants.VISIBILITY__ADVANCED,
+                       selection_options=SettingsConstants.ALL_BIP85_GPG_VERSIONS,
+                       default_value=SettingsConstants.BIP85_GPG_VERSION_V3),
+
+        SettingsEntry(category=SettingsConstants.CATEGORY__FEATURES,
+                       attr_name=SettingsConstants.SETTING__BIP85_CHILD_SEEDS,
+                       abbreviated_name="bip85",
                       display_name=_mft("BIP-85 child seeds"),
                       visibility=SettingsConstants.VISIBILITY__ADVANCED,
                       default_value=SettingsConstants.OPTION__ENABLED),

@@ -21,8 +21,13 @@ sys.modules['pysatochip.JCconstants'] = MagicMock()
 sys.modules['pysatochip.util'] = MagicMock()
 sys.modules['pysatochip.CardConnector'] = MagicMock()
 sys.modules['smbus2'] = MagicMock()
-sys.modules['smartcard'] = MagicMock()
-sys.modules['smartcard.System'] = MagicMock()
+# Only mock smartcard if pyscard isn't installed — hardware
+# tests (test_smartcard_hardware.py) need the real module.
+try:
+    import smartcard  # noqa: F401
+except ImportError:
+    sys.modules['smartcard'] = MagicMock()
+    sys.modules['smartcard.System'] = MagicMock()
 
 # Dummy BatteryHat to prevent hardware thread usage during tests
 class DummyBatteryHat(MagicMock):

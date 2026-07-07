@@ -8,6 +8,7 @@ import logging
 import os
 import re
 import subprocess
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -35,6 +36,11 @@ from seedsigner.views.seed_views import (
 from .view import View, Destination, BackStackView, MainMenuView
 # Imported from tools_views for use by _text_qr_done_destination (defined near end of file)
 from .tools_views import ToolsMenuView, ToolsTextQRView
+
+try:
+    from pysatochip.JCconstants import SEEDKEEPER_DIC_TYPE, SEEDKEEPER_DIC_EXPORT_RIGHTS
+except ImportError:
+    pass
 
 logger = logging.getLogger(__name__)
 
@@ -104,19 +110,66 @@ def _normalize_date_input(s: str) -> str:
         s = s.replace(ch, "-")
     return s
 
-# Single BIP85 GPG application number per updated spec.
-# Derivation path: m/83696968'/828365'/{key_type}'/{key_bits}'/{key_index}'[/{sub_key}']
+# BIP85 GPG application numbers per updated spec.
+# RSA derivation path: m/83696968'/828365'/0'/{key_bits}'/{key_index}'[/{sub_key}']
+# ECC derivation path: m/83696968'/828366'/{key_type}'/{key_bits}'/{key_index}'[/{sub_key}']
 BIP85_GPG_APP = 828365
+BIP85_GPG_ECC_APP = 828366
 
 # BIP85 GPG key_type codes
+# RSA key_type (used with BIP85_GPG_APP 828365')
 BIP85_GPG_KEY_TYPE_RSA = 0
+
+# ECC key_types (used with BIP85_GPG_ECC_APP 828366')
+BIP85_GPG_KEY_TYPE_BRAINPOOL = 0
 BIP85_GPG_KEY_TYPE_CURVE25519 = 1
 BIP85_GPG_KEY_TYPE_SECP256K1 = 2
 BIP85_GPG_KEY_TYPE_NIST = 3
-BIP85_GPG_KEY_TYPE_BRAINPOOL = 4
 
 # In-memory registry of BIP85-derived keys
 BIP85_DATA = {}
+
+
+def _resolve_bip85_app_and_keytype(
+    curve_constant, version=None,
+):
+    """Return (app_number, key_type_code) for the given version and curve.
+
+    Parameters
+    ----------
+    curve_constant : int
+        One of the ECC ``BIP85_GPG_KEY_TYPE_*`` constants (not RSA).
+    version : str or None
+        ``SettingsConstants.BIP85_GPG_VERSION_V2`` or ``_V3``.
+        If ``None``, reads the current setting from ``Settings`` singleton.
+
+    Returns
+    -------
+    tuple[int, int]
+        (BIP85 app number, numeric key_type for the derivation path).
+
+    .. note::
+      RSA is not handled here—it uses the hardcoded ``BIP85_GPG_APP``
+      and key_type 0 in ``bip85_rsa_from_root``.  Because RSA's constant
+      equals ``BIP85_GPG_KEY_TYPE_BRAINPOOL`` (both are 0), the RSA check
+      is omitted to avoid ambiguity.
+    """
+    if version is None:
+        from seedsigner.models.settings import Settings
+        from seedsigner.models.settings_definition import SettingsConstants
+        version = Settings.get_instance().get_value(SettingsConstants.SETTING__BIP85_GPG_VERSION)
+
+    from seedsigner.models.settings_definition import SettingsConstants
+
+    if version == SettingsConstants.BIP85_GPG_VERSION_V2:
+        _v2_kt = {
+            BIP85_GPG_KEY_TYPE_CURVE25519: 1,
+            BIP85_GPG_KEY_TYPE_SECP256K1: 2,
+            BIP85_GPG_KEY_TYPE_NIST: 3,
+            BIP85_GPG_KEY_TYPE_BRAINPOOL: 4,
+        }
+        return (BIP85_GPG_APP, _v2_kt[curve_constant])
+    return (BIP85_GPG_ECC_APP, curve_constant)
 
 
 def bip85_export_json():
@@ -5351,10 +5404,11 @@ def bip85_ed25519_from_root(
     from pgpy.constants import EllipticCurveOID
     from pgpy.packet import fields
 
-    path = [BIP85_GPG_KEY_TYPE_CURVE25519, 256, index]
+    app, kt = _resolve_bip85_app_and_keytype(BIP85_GPG_KEY_TYPE_CURVE25519)
+    path = [kt, 256, index]
     if sub_index is not None:
         path.append(sub_index)
-    entropy = bip85.derive_entropy(root, BIP85_GPG_APP, path)
+    entropy = bip85.derive_entropy(root, app, path)
     d_bytes = entropy[:32]
     if alg == "EdDSA":
         priv = fields.EdDSAPriv()
@@ -5888,10 +5942,11 @@ def bip85_secp256k1_from_root(
     from pgpy.constants import EllipticCurveOID
     from pgpy.packet import fields
 
-    path = [BIP85_GPG_KEY_TYPE_SECP256K1, 256, index]
+    app, kt = _resolve_bip85_app_and_keytype(BIP85_GPG_KEY_TYPE_SECP256K1)
+    path = [kt, 256, index]
     if sub_index is not None:
         path.append(sub_index)
-    entropy = bip85.derive_entropy(root, BIP85_GPG_APP, path)
+    entropy = bip85.derive_entropy(root, app, path)
     order = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
     # Bit-mask to curve bit length (no-op for byte-aligned curves) then
     # reduce into [1, order-1] only when the masked value is out of range.
@@ -5926,10 +5981,11 @@ def bip85_p256_from_root(
     from pgpy.constants import EllipticCurveOID
     from pgpy.packet import fields
 
-    path = [BIP85_GPG_KEY_TYPE_NIST, 256, index]
+    app, kt = _resolve_bip85_app_and_keytype(BIP85_GPG_KEY_TYPE_NIST)
+    path = [kt, 256, index]
     if sub_index is not None:
         path.append(sub_index)
-    entropy = bip85.derive_entropy(root, BIP85_GPG_APP, path)
+    entropy = bip85.derive_entropy(root, app, path)
     # Avoid relying on cryptography's ``group_order`` attribute since
     # some versions (such as those bundled with seedsigner-os) do not
     # expose it. Instead, use the well-known group order for P-256.
@@ -5967,10 +6023,11 @@ def bip85_brainpoolp256r1_from_root(
     from pgpy.constants import EllipticCurveOID
     from pgpy.packet import fields
 
-    path = [BIP85_GPG_KEY_TYPE_BRAINPOOL, 256, index]
+    app, kt = _resolve_bip85_app_and_keytype(BIP85_GPG_KEY_TYPE_BRAINPOOL)
+    path = [kt, 256, index]
     if sub_index is not None:
         path.append(sub_index)
-    entropy = bip85.derive_entropy(root, BIP85_GPG_APP, path)
+    entropy = bip85.derive_entropy(root, app, path)
     # Hardcode BrainpoolP256r1 group order to avoid relying on attributes
     # that may be missing in some cryptography builds.
     order = 0xA9FB57DBA1EEA9BC3E660A909D838D718C397AA3B561A6F7901E0E82974856A7
@@ -6007,10 +6064,11 @@ def bip85_p384_from_root(
     from pgpy.constants import EllipticCurveOID
     from pgpy.packet import fields
 
-    path = [BIP85_GPG_KEY_TYPE_NIST, 384, index]
+    app, kt = _resolve_bip85_app_and_keytype(BIP85_GPG_KEY_TYPE_NIST)
+    path = [kt, 384, index]
     if sub_index is not None:
         path.append(sub_index)
-    entropy = bip85.derive_entropy(root, BIP85_GPG_APP, path)
+    entropy = bip85.derive_entropy(root, app, path)
     order = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC7634D81F4372DDF581A0DB248B0A77AECEC196ACCC52973
     # Bit-mask to curve bit length (no-op for byte-aligned curves) then
     # reduce into [1, order-1] only when the masked value is out of range.
@@ -6046,10 +6104,11 @@ def bip85_p521_from_root(
     from pgpy.packet import fields
     from seedsigner.helpers.bip85_drng import BIP85DRNG
 
-    path = [BIP85_GPG_KEY_TYPE_NIST, 521, index]
+    app, kt = _resolve_bip85_app_and_keytype(BIP85_GPG_KEY_TYPE_NIST)
+    path = [kt, 521, index]
     if sub_index is not None:
         path.append(sub_index)
-    entropy = bip85.derive_entropy(root, BIP85_GPG_APP, path)
+    entropy = bip85.derive_entropy(root, app, path)
     # P-521 needs 66 bytes which exceeds the 64-byte HMAC output; use DRNG.
     drng = BIP85DRNG.new(entropy)
     d_bytes = drng.read(66)
@@ -6087,10 +6146,11 @@ def bip85_brainpoolp384r1_from_root(
     from pgpy.constants import EllipticCurveOID
     from pgpy.packet import fields
 
-    path = [BIP85_GPG_KEY_TYPE_BRAINPOOL, 384, index]
+    app, kt = _resolve_bip85_app_and_keytype(BIP85_GPG_KEY_TYPE_BRAINPOOL)
+    path = [kt, 384, index]
     if sub_index is not None:
         path.append(sub_index)
-    entropy = bip85.derive_entropy(root, BIP85_GPG_APP, path)
+    entropy = bip85.derive_entropy(root, app, path)
     order = 0x8CB91E82A3386D280F5D6F7E50E641DF152F7109ED5456B31F166E6CAC0425A7CF3AB6AF6B7FC3103B883202E9046565
     # Bit-mask to curve bit length (no-op for byte-aligned curves) then
     # reduce into [1, order-1] only when the masked value is out of range.
@@ -6125,10 +6185,11 @@ def bip85_brainpoolp512r1_from_root(
     from pgpy.constants import EllipticCurveOID
     from pgpy.packet import fields
 
-    path = [BIP85_GPG_KEY_TYPE_BRAINPOOL, 512, index]
+    app, kt = _resolve_bip85_app_and_keytype(BIP85_GPG_KEY_TYPE_BRAINPOOL)
+    path = [kt, 512, index]
     if sub_index is not None:
         path.append(sub_index)
-    entropy = bip85.derive_entropy(root, BIP85_GPG_APP, path)
+    entropy = bip85.derive_entropy(root, app, path)
     order = 0xAADD9DB8DBE9C48B3FD4E6AE33C9FC07CB308DB3B3C9D20ED6639CCA70330870553E5C414CA92619418661197FAC10471DB1D381085DDADDB58796829CA90069
     # Bit-mask to curve bit length (no-op for byte-aligned curves) then
     # reduce into [1, order-1] only when the masked value is out of range.
@@ -8294,6 +8355,9 @@ class ToolsTranscribeTextQRConfirmScanView(View):
 
 
     def run(self):
+        from seedsigner.gui.screens.scan_screens import ScanScreen
+        from seedsigner.models.decode_qr import DecodeQR
+
         decoder = DecodeQR(is_text=True)
         ScanScreen(
             instructions_text=_("Scan text QR code"),
@@ -8341,6 +8405,8 @@ class ToolsTranscribeTextQRConfirmScanView(View):
 
 class ToolsTextQRScanQRCodeView(View):
     def run(self):
+        from seedsigner.gui.screens.scan_screens import ScanScreen
+        from seedsigner.models.decode_qr import DecodeQR
 
         decoder = DecodeQR(is_text=True)
         ScanScreen(decoder=decoder, instructions_text=_("Scan text QR code")).display()

@@ -336,6 +336,9 @@ class LoadSeedView(View):
             return Destination(SeedMnemonicEntryView)
 
         elif button_data[selected_menu_num] == self.IMPORT_SEEDKEEPER:
+            # SeedKeeper is pysatochip-only (not supported by keycard backend);
+            # force pysatochip to avoid stale "keycard" preference from Keycard flows.
+            self.controller.smartcard_backend_preference = "pysatochip"
             return Destination(SeedKeeperSelectView)
 
         elif button_data[selected_menu_num] == self.IMPORT_SPECTER_DIY:
@@ -420,8 +423,6 @@ class SeedKeeperSelectView(View):
             Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["seedkeeper"])
 
             if not Satochip_Connector:
-                if isinstance(self.seed, AezeedSeed):
-                    return Destination(SeedAezeedPassphraseModeView)
                 return Destination(BackStackView)
 
             self.loading_screen = LoadingScreenThread(text="Listing Seeds\n\n\n\n\n\n")
@@ -557,7 +558,8 @@ class SeedKeeperSelectView(View):
 
         except Exception as e:
             print("General Exception Loading Seed:", str(e))
-            self.loading_screen.stop()
+            if hasattr(self, 'loading_screen'):
+                self.loading_screen.stop()
             time.sleep(0.1)
             self.run_screen(
                 WarningScreen,
