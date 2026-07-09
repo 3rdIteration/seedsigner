@@ -31,7 +31,7 @@ class SeedMnemonicEntryScreen(BaseTopNavScreen):
 
         self.possible_alphabet = "abcdefghijklmnopqrstuvwxyz"
 
-        # Measure the width required to display the longest word in the English bip39
+        # Measure the width required to display the longest word in the English BIP-39
         # wordlist.
         # TODO: If we ever support other wordlist languages, adjust accordingly.
         matches_list_highlight_font_name = GUIConstants.FIXED_WIDTH_EMPHASIS_FONT_NAME
@@ -48,7 +48,7 @@ class SeedMnemonicEntryScreen(BaseTopNavScreen):
         self.arrow_up_is_active = False
         self.arrow_down_is_active = False
 
-        # TODO: support other BIP39 languages/charsets
+        # TODO: support other BIP-39 languages/charsets
         self.keyboard = Keyboard(
             draw=self.image_draw,
             charset=self.possible_alphabet,
@@ -441,7 +441,6 @@ class SeedFinalizeScreen(ButtonListScreen):
 @dataclass
 class SeedOptionsScreen(ButtonListScreen):
     fingerprint: str = None
-    has_passphrase: bool = False
 
     def __post_init__(self):
         self.top_nav_icon_name = SeedSignerIconConstants.FINGERPRINT
@@ -451,24 +450,6 @@ class SeedOptionsScreen(ButtonListScreen):
         self.is_bottom_list = True
 
         super().__post_init__()
-
-
-
-@dataclass
-class SeedBackupScreen(ButtonListScreen):
-    has_passphrase: bool = False
-
-    def __post_init__(self):
-        self.title = _("Backup Seed")
-        self.is_bottom_list = True
-        super().__post_init__()
-
-        if self.has_passphrase:
-            self.components.append(TextArea(
-                # TRANSLATOR_NOTE: Additional explainer for the two seed backup options (mnemonic phrase and SeedQR).
-                text=_("Backups do not include your passphrase."),
-                screen_y=self.top_nav.height + GUIConstants.COMPONENT_PADDING,
-            ))
 
 
 
@@ -625,10 +606,9 @@ class SeedExportXpubDetailsScreen(WarningEdgesMixin, ButtonListScreen):
     # Customize defaults
     is_bottom_list: bool = True
     fingerprint: str = None
-    has_passphrase: bool = False
     derivation_path: str = "m/84'/0'/0'"
     xpub: str = "zpub6r..."
-    button_label: str = "Export Xpub"
+    button_label: str = "Export xpub"
 
     def __post_init__(self):
         # Programmatically set up other args
@@ -642,7 +622,7 @@ class SeedExportXpubDetailsScreen(WarningEdgesMixin, ButtonListScreen):
         self.fingerprint_line = IconTextLine(
             icon_name=SeedSignerIconConstants.FINGERPRINT,
             icon_color=GUIConstants.INFO_COLOR,
-            # TRANSLATOR_NOTE: Short for "BIP32 Master Fingerprint"
+            # TRANSLATOR_NOTE: Short for "BIP-32 Master Fingerprint"
             label_text=_("Fingerprint"),
             value_text=self.fingerprint,
             screen_x=GUIConstants.COMPONENT_PADDING,
@@ -1214,7 +1194,6 @@ class SeedReviewPassphraseScreen(ButtonListScreen):
                 font_color="orange",
                 is_text_centered=True,
                 screen_y=screen_y,
-                allow_text_overflow=True
             ))
             screen_y += char_height + 2
 
@@ -1791,7 +1770,6 @@ class SeedSignMessageConfirmMessageScreen(ButtonListScreen):
                 text=self.sign_message_data["message"],
                 width=renderer.canvas_width - 2*GUIConstants.EDGE_PADDING,
                 height=message_height,
-                allow_text_overflow=True,
             )
             self.sign_message_data["paged_message"] = paged
 
@@ -1810,7 +1788,6 @@ class SeedSignMessageConfirmMessageScreen(ButtonListScreen):
         message_display = TextArea(
             text=self.sign_message_data["paged_message"][self.page_num],
             is_text_centered=False,
-            allow_text_overflow=True,
             screen_y=start_y,
         )
         self.components.append(message_display)
@@ -1826,7 +1803,7 @@ class SeedSignMessageConfirmAddressScreen(ButtonListScreen):
         self.title = _("Confirm Address")
         self.is_bottom_list = True
         self.is_button_text_centered = True
-        self.button_data = [ButtonOption("Sign Message")]
+        self.button_data = [ButtonOption("Sign message")]
         super().__post_init__()
 
         derivation_path_display = IconTextLine(
@@ -2308,7 +2285,6 @@ class SeedEncryptedQRReviewMnemonicIDScreen(ButtonListScreen):
                 font_size=font_size,
                 is_text_centered=True,
                 screen_y=screen_y,
-                allow_text_overflow=True
             ))
             screen_y += char_height + 2
 

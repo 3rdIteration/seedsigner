@@ -3,18 +3,26 @@ from periphery import GPIO, SPI
 import time
 import array
 import errno
+from dataclasses import dataclass
+
+from seedsigner.hardware.displays.display_driver import BaseDisplayDriver
 
 from seedsigner.models.settings import Settings
 from seedsigner.hardware.io_config import get_hardware_pin_mapping
 
 logger = logging.getLogger(__name__)
 
-class ST7789(object):
-    """class for ST7789  240*240 1.3inch OLED displays."""
+@dataclass
+class ST7789(BaseDisplayDriver):
+    """
+    The original SeedSigner display driver.
 
-    def __init__(self):
-        self.width = 240
-        self.height = 240
+    Note that self._width and self._height are provided by the parent BaseDisplayDriver
+    class and are set during instantiation via the DisplayDriverFactory.
+
+    class for ST7789  240*240 1.3inch OLED displays.
+    """
+    def __post_init__(self):
         # Keep SPI transfers within conservative per-message kernel limits.
         self.CHUNK_SIZE = 4096
 
@@ -165,7 +173,7 @@ class ST7789(object):
         self._spi.transfer([val])
 
     def init(self):
-        """Initialize dispaly"""    
+        """Initialize display"""    
         self.reset()
 
         self.command(0x36)

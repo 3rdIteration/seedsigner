@@ -238,7 +238,7 @@ def test_st7789_spi_extra_flags_when_cs_disabled():
          patch.object(st7789_module, "Settings") as mock_settings, \
          patch.object(st7789_module, "get_hardware_pin_mapping", return_value=pin_mapping):
         mock_settings.get_platform_default_hardware_config.return_value = "RPI_40"
-        st7789_module.ST7789()
+        st7789_module.ST7789(_width=240, _height=240)
 
     mock_spi_cls.assert_called_once_with(
         "/dev/spidev0.0",
@@ -261,7 +261,7 @@ def test_st7789_spi_extra_flags_default_when_cs_not_disabled():
          patch.object(st7789_module, "Settings") as mock_settings, \
          patch.object(st7789_module, "get_hardware_pin_mapping", return_value=pin_mapping):
         mock_settings.get_platform_default_hardware_config.return_value = "RPI_40"
-        st7789_module.ST7789()
+        st7789_module.ST7789(_width=240, _height=240)
 
     mock_spi_cls.assert_called_once_with(
         "/dev/spidev0.0",
@@ -288,7 +288,7 @@ def test_st7789_warns_on_kernel_managed_cs(caplog):
          patch.object(st7789_module, "get_hardware_pin_mapping", return_value=pin_mapping), \
          caplog.at_level(logging.WARNING, logger="seedsigner.hardware.displays.ST7789"):
         mock_settings.get_platform_default_hardware_config.return_value = "RPI_40"
-        st7789_module.ST7789()
+        st7789_module.ST7789(_width=240, _height=240)
 
     warning_messages = [r.message for r in caplog.records if r.levelno == logging.WARNING]
     # Warning must mention the floating-CS silent failure path.
@@ -316,7 +316,7 @@ def test_st7789_no_warning_when_cs_disabled(caplog):
          patch.object(st7789_module, "get_hardware_pin_mapping", return_value=pin_mapping), \
          caplog.at_level(logging.WARNING, logger="seedsigner.hardware.displays.ST7789"):
         mock_settings.get_platform_default_hardware_config.return_value = "RPI_40"
-        st7789_module.ST7789()
+        st7789_module.ST7789(_width=240, _height=240)
 
     warning_messages = [r.message for r in caplog.records if r.levelno == logging.WARNING]
     assert not warning_messages, (
@@ -339,7 +339,7 @@ def test_st7789_init_not_called_during_construction():
          patch.object(st7789_module, "get_hardware_pin_mapping", return_value=pin_mapping), \
          patch.object(st7789_module.ST7789, "init") as mock_init:
         mock_settings.get_platform_default_hardware_config.return_value = "RPI_40"
-        display = st7789_module.ST7789()
+        display = st7789_module.ST7789(_width=240, _height=240)
 
     mock_init.assert_not_called()
     assert display._display_initialized is False
@@ -359,7 +359,7 @@ def test_st7789_init_called_on_first_show_image():
          patch.object(st7789_module, "get_hardware_pin_mapping", return_value=pin_mapping), \
          patch.object(st7789_module.ST7789, "init") as mock_init:
         mock_settings.get_platform_default_hardware_config.return_value = "RPI_40"
-        display = st7789_module.ST7789()
+        display = st7789_module.ST7789(_width=240, _height=240)
 
         assert not display._display_initialized
         mock_init.assert_not_called()
@@ -390,7 +390,7 @@ def test_st7789_invert_triggers_lazy_init():
          patch.object(st7789_module.ST7789, "init") as mock_init, \
          patch.object(st7789_module.ST7789, "command"):
         mock_settings.get_platform_default_hardware_config.return_value = "RPI_40"
-        display = st7789_module.ST7789()
+        display = st7789_module.ST7789(_width=240, _height=240)
 
         mock_init.assert_not_called()
 
@@ -417,7 +417,7 @@ def test_st7789_init_called_on_first_clear():
          patch.object(st7789_module.ST7789, "SetWindows"), \
          patch.object(st7789_module.ST7789, "_chunked_transfer"):
         mock_settings.get_platform_default_hardware_config.return_value = "RPI_40"
-        display = st7789_module.ST7789()
+        display = st7789_module.ST7789(_width=240, _height=240)
 
         mock_init.assert_not_called()
         display.clear()
@@ -478,7 +478,7 @@ def test_st7789_init_sleeps_after_slpout():
          patch.object(st7789_module.ST7789, "command", fake_command), \
          patch.object(st7789_module.ST7789, "data", fake_data):
         mock_settings.get_platform_default_hardware_config.return_value = "RPI_40"
-        display = st7789_module.ST7789()
+        display = st7789_module.ST7789(_width=240, _height=240)
         display.init()
 
     # Find the timestamps for SLPOUT and DISPON commands.
@@ -528,7 +528,7 @@ def test_st7789_falls_back_to_mode3_without_no_cs_on_einval():
          patch.object(st7789_module, "Settings") as mock_settings, \
          patch.object(st7789_module, "get_hardware_pin_mapping", return_value=pin_mapping):
         mock_settings.get_platform_default_hardware_config.return_value = "RPI_40"
-        display = st7789_module.ST7789()
+        display = st7789_module.ST7789(_width=240, _height=240)
 
     # The driver must have been called twice: first with SPI_NO_CS, then without.
     assert mock_spi_cls.call_count == 2, (
@@ -567,7 +567,7 @@ def test_st7789_does_not_swallow_non_einval_oserror():
          patch.object(st7789_module, "get_hardware_pin_mapping", return_value=pin_mapping):
         mock_settings.get_platform_default_hardware_config.return_value = "RPI_40"
         try:
-            st7789_module.ST7789()
+            st7789_module.ST7789(_width=240, _height=240)
             assert False, "Expected OSError(ENOENT) to propagate but it was swallowed"
         except OSError as e:
             assert e.errno == _errno.ENOENT
@@ -625,7 +625,7 @@ def test_st7735_dimensions():
          patch.object(st7735_module, "Settings") as mock_settings, \
          patch.object(st7735_module, "get_hardware_pin_mapping", return_value=pin_mapping):
         mock_settings.get_platform_default_hardware_config.return_value = "RPI_40"
-        display = st7735_module.ST7735()
+        display = st7735_module.ST7735(_width=128, _height=128)
 
     assert display.width == 128
     assert display.height == 128
@@ -643,7 +643,7 @@ def test_st7735_spi_speed():
          patch.object(st7735_module, "Settings") as mock_settings, \
          patch.object(st7735_module, "get_hardware_pin_mapping", return_value=pin_mapping):
         mock_settings.get_platform_default_hardware_config.return_value = "RPI_40"
-        st7735_module.ST7735()
+        st7735_module.ST7735(_width=128, _height=128)
 
     mock_spi_cls.assert_called_once_with(
         "/dev/spidev0.0",
@@ -665,7 +665,7 @@ def test_st7735_spi_cs_disabled():
          patch.object(st7735_module, "Settings") as mock_settings, \
          patch.object(st7735_module, "get_hardware_pin_mapping", return_value=pin_mapping):
         mock_settings.get_platform_default_hardware_config.return_value = "RPI_40"
-        st7735_module.ST7735()
+        st7735_module.ST7735(_width=128, _height=128)
 
     mock_spi_cls.assert_called_once_with(
         "/dev/spidev0.0",
@@ -688,7 +688,7 @@ def test_st7735_init_not_called_during_construction():
          patch.object(st7735_module, "get_hardware_pin_mapping", return_value=pin_mapping), \
          patch.object(st7735_module.ST7735, "init") as mock_init:
         mock_settings.get_platform_default_hardware_config.return_value = "RPI_40"
-        display = st7735_module.ST7735()
+        display = st7735_module.ST7735(_width=128, _height=128)
 
     mock_init.assert_not_called()
     assert display._display_initialized is False
@@ -707,7 +707,7 @@ def test_st7735_init_called_on_first_show_image():
          patch.object(st7735_module, "get_hardware_pin_mapping", return_value=pin_mapping), \
          patch.object(st7735_module.ST7735, "init") as mock_init:
         mock_settings.get_platform_default_hardware_config.return_value = "RPI_40"
-        display = st7735_module.ST7735()
+        display = st7735_module.ST7735(_width=128, _height=128)
 
         display._ensure_initialized()
         assert mock_init.call_count == 1
@@ -747,7 +747,7 @@ def test_st7735_init_sleeps_after_slpout():
          patch.object(st7735_module.ST7735, "command", fake_command), \
          patch.object(st7735_module.ST7735, "data", fake_data):
         mock_settings.get_platform_default_hardware_config.return_value = "RPI_40"
-        display = st7735_module.ST7735()
+        display = st7735_module.ST7735(_width=128, _height=128)
         display.init()
 
     slpout_t = next(
@@ -787,7 +787,7 @@ def test_st7735_falls_back_on_einval():
          patch.object(st7735_module, "Settings") as mock_settings, \
          patch.object(st7735_module, "get_hardware_pin_mapping", return_value=pin_mapping):
         mock_settings.get_platform_default_hardware_config.return_value = "RPI_40"
-        display = st7735_module.ST7735()
+        display = st7735_module.ST7735(_width=128, _height=128)
 
     assert mock_spi_cls.call_count == 2
     first_call, second_call = mock_spi_cls.call_args_list

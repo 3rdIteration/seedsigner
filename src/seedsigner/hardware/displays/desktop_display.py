@@ -1,5 +1,7 @@
 """Desktop display driver that mimics the Waveshare LCD using pygame."""
 
+from dataclasses import dataclass
+
 from PIL import Image
 
 import seedsigner.hardware.buttons as button_defs
@@ -8,20 +10,23 @@ from seedsigner.hardware.buttons import (
     DESKTOP_LEFT_WIDTH,
     DESKTOP_RIGHT_WIDTH,
 )
+from seedsigner.hardware.displays.display_driver import BaseDisplayDriver
 
 DARK_BLUE = (0, 0, 80)
 
 
-class DesktopDisplay:
-    """A pygame-backed display used when running SeedSigner on a PC."""
+@dataclass
+class DesktopDisplay(BaseDisplayDriver):
+    """A pygame-backed display used when running SeedSigner on a PC.
 
-    def __init__(self, width: int = 240, height: int = 240, scale: int = 2):
-        """Create the desktop display.
+    ``_width`` and ``_height`` (provided by BaseDisplayDriver and set via the
+    DisplayDriverFactory) describe the logical size of the emulated LCD while
+    ``scale`` enlarges the window to make it easier to view on a desktop
+    monitor.
+    """
+    scale: int = 2
 
-        ``width`` and ``height`` describe the logical size of the emulated LCD
-        while ``scale`` enlarges the window to make it easier to view on a
-        desktop monitor.
-        """
+    def __post_init__(self):
         try:
             import pygame  # type: ignore
         except ModuleNotFoundError as e:
@@ -31,13 +36,10 @@ class DesktopDisplay:
 
         # Inform the button module of the chosen dimensions so it can recalc
         # clickable regions.
-        HardwareButtons.set_desktop_dimensions(width, height)
-        HardwareButtons.set_desktop_scale(scale)
+        HardwareButtons.set_desktop_dimensions(self.width, self.height)
+        HardwareButtons.set_desktop_scale(self.scale)
 
         self.pygame = pygame
-        self.width = width
-        self.height = height
-        self.scale = scale
         self.left_width = DESKTOP_LEFT_WIDTH
         self.right_width = DESKTOP_RIGHT_WIDTH
 

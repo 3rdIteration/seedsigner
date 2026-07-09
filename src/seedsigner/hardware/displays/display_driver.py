@@ -1,4 +1,6 @@
-"""Factory for selecting the appropriate display backend."""
+"""Display driver base class and factory for selecting the appropriate display backend."""
+from dataclasses import dataclass
+
 
 DISPLAY_TYPE__ST7789 = "st7789"
 DISPLAY_TYPE__ST7735 = "st7735"
@@ -14,16 +16,68 @@ ALL_DISPLAY_TYPES = [
     DISPLAY_TYPE__DESKTOP,
 ]
 
+    
 
-class DisplayDriver:
-    """Wrapper that abstracts away specific display implementations."""
+@dataclass
+class BaseDisplayDriver:
+    _width: int
+    _height: int
 
-    def __init__(self, display_type: str = DISPLAY_TYPE__ST7789, width: int = None, height: int = None):
+    def __str__(self):
+        return f"DisplayDriver(display_type={getattr(self, 'display_type', None)}, width={self.width}, height={self.height})"
+
+
+    @property
+    def width(self):
+        return self._width
+
+
+    @property
+    def height(self):
+        return self._height
+
+
+    def invert(self, enabled: bool = True):
+        """
+        Invert how the display interprets colors.
+        Implementation in child classes is optional.
+        """
+        pass
+
+
+    def show_image(self, image, x_start: int = 0, y_start: int = 0):
+        """
+        The main rendering call to the display driver.
+        Must be implemented in child classes.
+        """
+        raise Exception("show_image() must be implemented in child classes")
+
+
+    def cleanup(self):
+        """
+        Cleanup resources used by the display driver.
+        Implementation in child classes is optional; drivers that expose a
+        close() method (releasing GPIO/SPI lines) are cleaned up by default.
+        """
+        close_fn = getattr(self, "close", None)
+        if callable(close_fn):
+            close_fn()
+
+
+
+class DisplayDriverFactory:
+    """
+    Manages all logic related to instantiating display drivers based on type and resolution.
+
+    Imports for specific display drivers are done within this class to avoid circular imports.
+    """
+
+    @classmethod
+    def instantiate_display_driver(cls, display_type: str = DISPLAY_TYPE__ST7789, width: int = None, height: int = None) -> BaseDisplayDriver:
         if display_type not in ALL_DISPLAY_TYPES:
             raise ValueError(f"Invalid display type: {display_type}")
-        self.display_type = display_type
 
-        if self.display_type == DISPLAY_TYPE__ST7789:
+        if display_type == DISPLAY_TYPE__ST7789:
             if width not in [240, 320] or height != 240:
                 raise ValueError("ST7789 display only supports 240x240 or 320x240 resolutions")
 
@@ -31,30 +85,31 @@ class DisplayDriver:
                 # TODO: For now the original ST7789 driver has to be used for 240x240.
                 # The mpy version below renders incorrectly (almost like each row of pixels
                 # is one pixel short, so the entire screen exhibits a diagonal skew).
-                from seedsigner.hardware.displays.ST7789 import ST7789
-                self.display = ST7789()
+                from seedsigner.hardware.displays.ST7789 import ST7789 as original_ST7789
+                return original_ST7789(_width=width, _height=height)
 
             elif width == 320:
-                from seedsigner.hardware.displays.st7789_mpy import ST7789
+                from seedsigner.hardware.displays.st7789_mpy import ST7789 as mpy_ST7789
                 # Have to swap width and height; screen is natively 240x320
-                self.display = ST7789(width=height, height=width)
-        
-        elif self.display_type == DISPLAY_TYPE__ST7735:
+                return mpy_ST7789(_width=height, _height=width)
+
+        elif display_type == DISPLAY_TYPE__ST7735:
             if width != 128 or height != 128:
                 raise ValueError("ST7735 display only supports 128x128 resolution")
             from seedsigner.hardware.displays.ST7735 import ST7735
-            self.display = ST7735()
+            return ST7735(_width=width, _height=height)
 
-        elif self.display_type == DISPLAY_TYPE__ILI9341:
+        elif display_type == DISPLAY_TYPE__ILI9341:
             from seedsigner.hardware.displays.ili9341 import ILI9341
-            self.display = ILI9341()
-            self.display.begin()
+            display = ILI9341(_width=width, _height=height)
+            display.begin()
+            return display
         
-        elif self.display_type == DISPLAY_TYPE__ILI9486:
+        elif display_type == DISPLAY_TYPE__ILI9486:
             # TODO: improve performance of ili9486 driver
             raise Exception("ILI9486 display not implemented yet")
 
-        elif self.display_type == DISPLAY_TYPE__DESKTOP:
+        elif display_type == DISPLAY_TYPE__DESKTOP:
             try:
                 from seedsigner.hardware.displays.desktop_display import DesktopDisplay
             except ModuleNotFoundError as e:
@@ -63,33 +118,4 @@ class DisplayDriver:
                 ) from e
 
             # Desktop display can support arbitrary sizes; defaults are handled by caller
-            self.display = DesktopDisplay(width=width, height=height)
-    
-
-    def __str__(self):
-        return f"DisplayDriver(display_type={self.display_type}, width={self.width}, height={self.height})"
-
-
-    @property
-    def width(self):
-        return self.display.width
-
-
-    @property
-    def height(self):
-        return self.display.height
-
-
-    def invert(self, enabled: bool = True):
-        """Invert how the display interprets colors"""
-        self.display.invert(enabled)
-
-
-    def show_image(self, image, x_start: int = 0, y_start: int = 0):
-        self.display.show_image(image, x_start, y_start)
-
-
-    def close(self):
-        close_fn = getattr(self.display, "close", None)
-        if callable(close_fn):
-            close_fn()
+            return DesktopDisplay(_width=width, _height=height)

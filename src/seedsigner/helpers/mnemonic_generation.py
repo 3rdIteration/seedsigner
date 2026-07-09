@@ -176,17 +176,6 @@ def get_partial_final_word(coin_flips: str, wordlist_language_code: str = Settin
     return "".join(Seed.get_wordlist(wordlist_language_code)[wordlist_index])
 
 
-
-# Note: This currently isn't being used since we're now chaining hashed bytes for the
-#   image-based entropy and aren't just ingesting a single image.
-def generate_mnemonic_from_image(image, wordlist_language_code: str = SettingsConstants.WORDLIST_LANGUAGE__ENGLISH) -> list[str]:
-    import hashlib
-    hash = hashlib.sha256(image.tobytes())
-
-    # Create independent copies so wipe_list() won't corrupt global wordlist.
-    return ["".join(w) for w in bip39.mnemonic_from_bytes(hash.digest(), wordlist=Seed.get_wordlist(wordlist_language_code)).split()]
-
-
 def _shannon_entropy(data: bytes | str) -> float:
     """Return the Shannon entropy of the provided data."""
     if isinstance(data, str):
