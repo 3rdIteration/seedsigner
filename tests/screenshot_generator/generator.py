@@ -577,14 +577,25 @@ def generate_screenshots(locale):
     # Report the translation progress
     if locale != SettingsConstants.LOCALE__ENGLISH:
         try:
-            translated_messages_path = os.path.join(pathlib.Path(__file__).parent.resolve().parent.resolve().parent.resolve(), "src", "seedsigner", "resources", "seedsigner-translations", "l10n", locale, "LC_MESSAGES", "messages.po") 
-            with open(translated_messages_path, 'r', encoding='utf-8') as translation_file:
-                locale_translations = translation_file.read()
-                num_locale_translations = locale_translations.count("msgid \"") - locale_translations.count("""msgstr ""\n\n""") - 1
+            repo_root = pathlib.Path(__file__).parent.resolve().parent.resolve().parent.resolve()
 
-                if locale != "en":
-                    locale_readme += f"## Translation progress: {num_locale_translations / num_source_messages:.1%}\n\n"
-                locale_readme += "---\n\n"
+            def count_translated(po_path) -> int:
+                with open(po_path, 'r', encoding='utf-8') as translation_file:
+                    contents = translation_file.read()
+                return contents.count("msgid \"") - contents.count("""msgstr ""\n\n""") - 1
+
+            translated_messages_path = os.path.join(repo_root, "src", "seedsigner", "resources", "seedsigner-translations", "l10n", locale, "LC_MESSAGES", "messages.po")
+            num_locale_translations = count_translated(translated_messages_path)
+
+            # Fork overlay translations (see l10n/fork_translations.py) count
+            # toward coverage too; they're merged into the .mo at compile time.
+            fork_overlay_path = os.path.join(repo_root, "l10n", "fork", locale, "messages.po")
+            if os.path.isfile(fork_overlay_path):
+                num_locale_translations += count_translated(fork_overlay_path)
+
+            if locale != "en":
+                locale_readme += f"## Translation progress: {num_locale_translations / num_source_messages:.1%}\n\n"
+            locale_readme += "---\n\n"
         except Exception as e:
             from traceback import print_exc
             print_exc()
