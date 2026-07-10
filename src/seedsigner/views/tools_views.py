@@ -777,7 +777,8 @@ class ToolsDiceEntropyMnemonicLengthView(View):
                 24: self.TWENTY_FOUR,
             }
             button_data = [options[l] for l in allowed]
-        selected_menu_num = ButtonListScreen(
+        selected_menu_num = self.run_screen(
+            ButtonListScreen,
             title=_("Mnemonic Length"),
             is_bottom_list=True,
             is_button_text_centered=True,

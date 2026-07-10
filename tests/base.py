@@ -5,7 +5,12 @@ from typing import Callable
 
 # Prevent importing modules w/Raspi hardware dependencies.
 # These must precede any SeedSigner imports.
-sys.modules['numpy'] = MagicMock()  # numpy is only in the Raspi requirements; not needed for tests. But is imported in BackgroundImportThread.
+try:
+    # Use the real numpy when it's installed (e.g. desktop CI). A MagicMock here
+    # breaks pygame's import, which probes `importlib.util.find_spec("numpy")`.
+    import numpy
+except ImportError:
+    sys.modules['numpy'] = MagicMock()  # numpy is only in the Raspi requirements; not needed for tests. But is imported in BackgroundImportThread.
 sys.modules['seedsigner.gui.renderer'] = MagicMock()
 sys.modules['seedsigner.gui.screens.screensaver'] = MagicMock()
 sys.modules['seedsigner.gui.toast'] = MagicMock()

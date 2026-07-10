@@ -23,7 +23,11 @@ sys.modules['seedsigner.views.screensaver.ScreensaverScreen'] = MagicMock()
 sys.modules['RPi'] = MagicMock()
 sys.modules['RPi.GPIO'] = MagicMock()
 sys.modules['seedsigner.hardware.buttons'] = MagicMock()
-sys.modules['seedsigner.hardware.camera'] = MagicMock()
+# NOTE: the camera module itself must stay real so CameraConnectionError is a
+# real exception class (CameraConnectionErrorView / UnhandledExceptionView need
+# it); the fork's camera module guards all of its hardware imports. VideoStream
+# is stubbed instead so no camera backend is ever opened.
+sys.modules['seedsigner.hardware.pivideostream'] = MagicMock()
 sys.modules['seedsigner.hardware.microsd'] = MagicMock()
 
 from seedsigner.controller import Controller
@@ -331,10 +335,16 @@ def generate_screenshots(locale):
             with mock_load_psbt(BASE64_PSBT_WITH_OP_RETURN_RAW_BYTES):
                 yield
 
-        def slip39_share_entry_cb_before():
+        @contextmanager
+        def mock_slip39_share_entry():
             controller.storage.init_pending_slip39_share(num_words=20)
+            try:
+                yield
+            finally:
+                controller.storage.discard_pending_slip39_shares()
 
-        def slip39_more_shares_cb_before():
+        @contextmanager
+        def mock_slip39_more_shares():
             controller.storage.discard_pending_slip39_shares()
             shares = shamir_mnemonic.generate_mnemonics(
                 1, [(2, 3)], bytes.fromhex("11" * 16), extendable=True
@@ -343,9 +353,10 @@ def generate_screenshots(locale):
             for i, w in enumerate(shares[0].split()):
                 controller.storage.update_pending_slip39_share(w, i)
             controller.storage.finalize_current_slip39_share()
-
-        def slip39_cleanup_cb():
-            controller.storage.discard_pending_slip39_shares()
+            try:
+                yield
+            finally:
+                controller.storage.discard_pending_slip39_shares()
 
 
         screenshot_sections = {
@@ -432,9 +443,9 @@ def generate_screenshots(locale):
                 ScreenshotConfig(seed_views.SeedSignMessageConfirmAddressView),
 
                 ScreenshotConfig(seed_views.SeedSlip39MnemonicStartView),
-                ScreenshotConfig(seed_views.SeedSlip39ShareEntryView, run_before=slip39_share_entry_cb_before, run_after=slip39_cleanup_cb),
-                ScreenshotConfig(seed_views.SeedSlip39MoreSharesView, run_before=slip39_more_shares_cb_before, run_after=slip39_cleanup_cb),
-                ScreenshotConfig(seed_views.SeedAddPassphraseView, screenshot_name="SeedSlip39AddPassphraseView", run_before=slip39_more_shares_cb_before, run_after=slip39_cleanup_cb),
+                ScreenshotConfig(seed_views.SeedSlip39ShareEntryView, mock_context_manager=mock_slip39_share_entry),
+                ScreenshotConfig(seed_views.SeedSlip39MoreSharesView, mock_context_manager=mock_slip39_more_shares),
+                ScreenshotConfig(seed_views.SeedAddPassphraseView, screenshot_name="SeedSlip39AddPassphraseView", mock_context_manager=mock_slip39_more_shares),
                 ScreenshotConfig(seed_views.SeedSlip39CreateFromBytesView, dict(secret=bytes.fromhex("11" * 16))),
                 ScreenshotConfig(seed_views.SeedSlip39RegenerateSharesView, dict(seed_num=3)),
 
@@ -550,7 +561,7 @@ def generate_screenshots(locale):
 
     # Parse the main `l10n/messages.pot` for overall stats
     messages_source_path = os.path.join(pathlib.Path(__file__).parent.resolve().parent.resolve().parent.resolve(), "l10n", "messages.pot")
-    with open(messages_source_path, 'r') as messages_source_file:
+    with open(messages_source_path, 'r', encoding='utf-8') as messages_source_file:
         num_source_messages = messages_source_file.read().count("msgid \"") - 1
 
     locale_tuple_list = [locale_tuple for locale_tuple in SettingsConstants.get_detected_languages() if locale_tuple[0] == locale]
@@ -567,7 +578,7 @@ def generate_screenshots(locale):
     if locale != SettingsConstants.LOCALE__ENGLISH:
         try:
             translated_messages_path = os.path.join(pathlib.Path(__file__).parent.resolve().parent.resolve().parent.resolve(), "src", "seedsigner", "resources", "seedsigner-translations", "l10n", locale, "LC_MESSAGES", "messages.po") 
-            with open(translated_messages_path, 'r') as translation_file:
+            with open(translated_messages_path, 'r', encoding='utf-8') as translation_file:
                 locale_translations = translation_file.read()
                 num_locale_translations = locale_translations.count("msgid \"") - locale_translations.count("""msgstr ""\n\n""") - 1
 
@@ -593,20 +604,20 @@ def generate_screenshots(locale):
 
         locale_readme += "</td></tr></table>"
 
-    with open(os.path.join(screenshot_root, locale, "README.md"), 'w') as readme_file:
+    with open(os.path.join(screenshot_root, locale, "README.md"), 'w', encoding='utf-8') as readme_file:
         readme_file.write(locale_readme)
 
     print(f"Done with locale: {locale}.")
 
     # Write the main README; ensure it writes all locales, not just the one that may
     # have been specified for this run.
-    with open(os.path.join("tests", "screenshot_generator", "template.md"), 'r') as readme_template:
+    with open(os.path.join("tests", "screenshot_generator", "template.md"), 'r', encoding='utf-8') as readme_template:
         main_readme = readme_template.read()
 
     for locale, display_name in SettingsConstants.get_detected_languages():
         main_readme += f"* [{display_name}]({locale}/README.md)\n"
 
-    with open(os.path.join(screenshot_root, "README.md"), 'w') as readme_file:
+    with open(os.path.join(screenshot_root, "README.md"), 'w', encoding='utf-8') as readme_file:
         readme_file.write(main_readme)
 
     print(f"Screenshots rendered: {screenshot_renderer.render_count}")
