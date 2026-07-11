@@ -1,0 +1,2578 @@
+# Fork translation overlay for SeedSigner (3rdIteration fork).
+# Contains ONLY strings that upstream's catalogs do not translate.
+# Merged with the upstream catalog at build time (upstream wins on overlap).
+# Managed by l10n/fork_translations.py — see l10n/README.md.
+msgid ""
+msgstr ""
+"Project-Id-Version: PROJECT VERSION\n"
+"Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
+"POT-Creation-Date: 2026-07-11 13:43-0400\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language: id\n"
+"Language-Team: id <LL@li.org>\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.16.0\n"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/controller.py src/seedsigner/views/view.py
+msgid "Data wiped after inactivity"
+msgstr "Data dihapus setelah tidak aktif"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/scan_screens.py
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Starting camera..."
+msgstr "Memulai kamera..."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/scan_screens.py
+msgid "Decrypt?"
+msgstr "Dekripsi?"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/scan_screens.py
+msgid "Select QR Type"
+msgstr "Pilih jenis QR"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/scan_screens.py
+msgid "Encryption Key"
+msgstr "Kunci enkripsi"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/scan_screens.py
+msgid "Review Encryption Key"
+msgstr "Tinjau kunci enkripsi"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Account Number"
+msgstr "Nomor akun"
+
+#. FORK: translated by Claude 2026-07-11
+#. Refers to the SeedQR type: Standard or Compact or encrypted
+#: src/seedsigner/gui/screens/seed_screens.py
+#: src/seedsigner/views/seed_views.py
+msgid "Encrypted"
+msgstr "Terenkripsi"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Encrypted entropy bits"
+msgstr "Bit entropi terenkripsi"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Non-standard path!"
+msgstr "Jalur tidak standar!"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Mnemonic ID"
+msgstr "ID mnemonik"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Review Mnemonic ID"
+msgstr "Tinjau ID mnemonik"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "The QR codes output in both modes may differ, but both are valid QR codes."
+msgstr "Kode QR dari kedua mode bisa berbeda, tetapi keduanya valid."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Transcribe Encrypted QR"
+msgstr "Salin QR terenkripsi"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/settings_screens.py
+#: src/seedsigner/views/settings_views.py
+msgid "No options available"
+msgstr "Tidak ada opsi tersedia"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/settings_screens.py
+#: src/seedsigner/views/settings_views.py
+msgid "Battery Info"
+msgstr "Info baterai"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "System Info"
+msgstr "Info sistem"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "Platform: {platform_name}"
+msgstr "Platform: {platform_name}"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "Variant: {platform_variant}"
+msgstr "Varian: {platform_variant}"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "Serial (CPU): {system_serial}"
+msgstr "Serial (CPU): {system_serial}"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "Serial (MicroSD): {microsd_serial}"
+msgstr "Serial (MicroSD): {microsd_serial}"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/tools_screens.py
+#: src/seedsigner/views/smartcard_views.py
+msgid "Device Filter"
+msgstr "Filter perangkat"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/tools_screens.py
+#: src/seedsigner/views/tools_views.py
+msgid "Network Info"
+msgstr "Info jaringan"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/tools_screens.py
+#: src/seedsigner/views/tools_views.py
+msgid "Battery Calibration"
+msgstr "Kalibrasi baterai"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Charge the battery fully. Select Next to start the discharge test."
+msgstr "Isi penuh baterai. Pilih Berikutnya untuk memulai uji pengosongan."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/tools_screens.py
+#: src/seedsigner/views/gpg_views.py
+msgid "Start"
+msgstr "Mulai"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Test runs until empty. Leave the device unplugged."
+msgstr "Uji berjalan sampai baterai habis. Biarkan perangkat tidak tercolok."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Charging detected"
+msgstr "Pengisian terdeteksi"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Discharging"
+msgstr "Mengosongkan"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Elapsed: "
+msgstr "Berlalu: "
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Voltage: "
+msgstr "Tegangan: "
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Current: "
+msgstr "Arus: "
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Status: "
+msgstr "Status: "
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "LOW ENTROPY"
+msgstr "ENTROPI RENDAH"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "GOOD ENTROPY"
+msgstr "ENTROPI BAIK"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/tools_screens.py
+#: src/seedsigner/views/gpg_views.py
+msgid "Text to Encode"
+msgstr "Teks untuk dikodekan"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/helpers/seedkeeper_utils.py
+msgid "Set Duress PIN"
+msgstr "Atur PIN darurat"
+
+#. FORK: translated by Claude 2026-07-11
+#. QR code format option; "default" = this is the format most wallets use
+#: src/seedsigner/models/settings_definition.py
+msgid "Animated (default)"
+msgstr "Animasi (bawaan)"
+
+#. FORK: translated by Claude 2026-07-11
+#. QR code format option (static = single frame, not animated)
+#: src/seedsigner/models/settings_definition.py
+msgid "Static"
+msgstr "Statis"
+
+#. FORK: translated by Claude 2026-07-11
+#. QR code format option: old format that Specter Desktop used to use
+#: src/seedsigner/models/settings_definition.py
+msgid "Specter legacy"
+msgstr "Specter legacy"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "Camera 0"
+msgstr "Kamera 0"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "Camera 1"
+msgstr "Kamera 1"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "Camera 2"
+msgstr "Kamera 2"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "Camera 3"
+msgstr "Kamera 3"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "5 minutes"
+msgstr "5 menit"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "10 minutes"
+msgstr "10 menit"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "15 minutes"
+msgstr "15 menit"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "30 minutes"
+msgstr "30 menit"
+
+#. FORK: translated by Claude 2026-07-11
+#. MicroSD notification duration setting - Display notification for 5 seconds
+#: src/seedsigner/models/settings_definition.py
+msgid "5 seconds"
+msgstr "5 detik"
+
+#. FORK: translated by Claude 2026-07-11
+#. MicroSD notification duration setting - Display notification until the SD
+#. card is removed
+#: src/seedsigner/models/settings_definition.py
+msgid "Until SD removed"
+msgstr "Sampai SD dilepas"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "Aezeed Passphrase"
+msgstr "Passphrase Aezeed"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "Prefer CompactSeedQR"
+msgstr "Utamakan CompactSeedQR"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "Prefer EncryptedQR"
+msgstr "Utamakan EncryptedQR"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "Ask each time"
+msgstr "Tanyakan setiap kali"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "Smartcard PIN Attempts"
+msgstr "Percobaan PIN kartu"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "Wipe Timer"
+msgstr "Pewaktu penghapusan"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "Seed word lengths"
+msgstr "Panjang seed"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "Xpub QR format"
+msgstr "Format QR xpub"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "BIP32 account prompt"
+msgstr "Tanyakan akun BIP32"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "Ambiguous QR"
+msgstr "QR ambigu"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "GPG key types"
+msgstr "Jenis kunci GPG"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "BIP85 GPG version"
+msgstr "Versi GPG BIP85"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "v3 is the latest; use v2 to recreate B9-B10 keys"
+msgstr "v3 adalah yang terbaru; gunakan v2 untuk membuat ulang kunci B9-B10"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "SLIP39 seeds"
+msgstr "Seed SLIP39"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "Aezeed seeds"
+msgstr "Seed Aezeed"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "LND-compatible, 24 words"
+msgstr "Kompatibel LND, 24 kata"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "Extendable SLIP39 shares"
+msgstr "Bagian SLIP39 yang dapat diperluas"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "MicroSD notification duration"
+msgstr "Durasi notifikasi MicroSD"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "BitBox02 backups"
+msgstr "Cadangan BitBox02"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "Passport backups"
+msgstr "Cadangan Passport"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "TAPSIGNER backups"
+msgstr "Cadangan TAPSIGNER"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "Smartcard support"
+msgstr "Dukungan kartu pintar"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "Satochip support"
+msgstr "Dukungan Satochip"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "KeyCard support"
+msgstr "Dukungan Keycard"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "Specter-DIY support"
+msgstr "Dukungan Specter-DIY"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "Camera source"
+msgstr "Sumber kamera"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/desktop_warning.py
+msgid "Desktop Mode"
+msgstr "Mode desktop"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/desktop_warning.py
+#: src/seedsigner/views/developer_os_warning.py
+msgid "Not secure!"
+msgstr "Tidak aman!"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/desktop_warning.py
+msgid ""
+"This desktop version is for testing only.\n"
+"Do NOT use with real seeds or private keys."
+msgstr ""
+"Versi desktop ini hanya untuk pengujian.\n"
+"JANGAN gunakan seed atau kunci privat asli."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/desktop_warning.py
+#: src/seedsigner/views/developer_os_warning.py
+#: src/seedsigner/views/gpg_views.py
+#: src/seedsigner/views/password_generator_views.py
+#: src/seedsigner/views/smartcard_views.py
+msgid "I Understand"
+msgstr "Saya mengerti"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/developer_os_warning.py
+msgid "Development Build"
+msgstr "Build pengembangan"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/developer_os_warning.py
+msgid ""
+"This SeedSignerOS development build is for testing only.\n"
+"Do NOT use with real seeds or private keys."
+msgstr ""
+"Build pengembangan SeedSignerOS ini hanya untuk pengujian.\n"
+"JANGAN gunakan seed atau kunci privat asli."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "File Operations"
+msgstr "Operasi berkas"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Import Keys"
+msgstr "Impor kunci"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Export Keys"
+msgstr "Ekspor kunci"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "View Keys"
+msgstr "Lihat kunci"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Secure Messaging"
+msgstr "Pesan aman"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/tools_views.py
+msgid "GPG Tools"
+msgstr "Alat GPG"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Missing packages"
+msgstr "Paket tidak ada"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Required but not installed:\n"
+msgstr "Diperlukan tetapi belum terpasang:\n"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Subkey Operations"
+msgstr "Operasi subkunci"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "User ID Operations"
+msgstr "Operasi ID pengguna"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Cross Certify Keys"
+msgstr "Sertifikasi silang kunci"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Export Public Key Bundle"
+msgstr "Ekspor bundel kunci publik"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "BIP85 Metadata"
+msgstr "Metadata BIP85"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Subkeys"
+msgstr "Subkunci"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/scan_views.py
+#: src/seedsigner/views/settings_views.py src/seedsigner/views/tools_views.py
+msgid "Back"
+msgstr "Kembali"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Export Bundle"
+msgstr "Ekspor bundel"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Animated QR"
+msgstr "QR animasi"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Save BIP85 Data"
+msgstr "Simpan data BIP85"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Load BIP85 Data"
+msgstr "Muat data BIP85"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Rebuild BIP85 Key"
+msgstr "Bangun ulang kunci BIP85"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/smartcard_views.py
+msgid "To MicroSD"
+msgstr "Ke MicroSD"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "To QR"
+msgstr "Ke QR"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/smartcard_views.py
+msgid "To Seedkeeper"
+msgstr "Ke Seedkeeper"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/smartcard_views.py
+msgid "From MicroSD"
+msgstr "Dari MicroSD"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "From QR"
+msgstr "Dari QR"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/smartcard_views.py
+msgid "From Seedkeeper"
+msgstr "Dari Seedkeeper"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Add Subkeys"
+msgstr "Tambah subkunci"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Revoke Subkeys"
+msgstr "Cabut subkunci"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Delete Subkeys"
+msgstr "Hapus subkunci"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Change Expiry"
+msgstr "Ubah masa berlaku"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Export Subkey Secrets"
+msgstr "Ekspor rahasia subkunci"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "1 year"
+msgstr "1 tahun"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "2 years"
+msgstr "2 tahun"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "5 years"
+msgstr "5 tahun"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Never"
+msgstr "Tidak pernah"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "File"
+msgstr "Berkas"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Smartcard"
+msgstr "Kartu pintar"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Add User ID"
+msgstr "Tambah ID pengguna"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Edit User IDs"
+msgstr "Sunting ID pengguna"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Set Primary User ID"
+msgstr "Atur ID pengguna utama"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Revoke User ID"
+msgstr "Cabut ID pengguna"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Delete User ID"
+msgstr "Hapus ID pengguna"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Encrypt"
+msgstr "Enkripsi"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/scan_views.py
+msgid "Decrypt"
+msgstr "Dekripsi"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Sign"
+msgstr "Tanda tangani"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Verify Signature"
+msgstr "Verifikasi tanda tangan"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Create Message"
+msgstr "Buat pesan"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Load Message"
+msgstr "Muat pesan"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Manifest"
+msgstr "Manifes"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Type Message"
+msgstr "Ketik pesan"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Load Seedkeeper"
+msgstr "Muat Seedkeeper"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/seed_views.py
+msgid "Scan QR"
+msgstr "Pindai QR"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Load File"
+msgstr "Muat berkas"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Load Key"
+msgstr "Muat kunci"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+#: src/seedsigner/views/password_generator_views.py
+msgid "Save to Seedkeeper"
+msgstr "Simpan ke Seedkeeper"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+#: src/seedsigner/views/password_generator_views.py
+#: src/seedsigner/views/smartcard_views.py
+msgid "Show as QR"
+msgstr "Tampilkan sebagai QR"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Public Key"
+msgstr "Kunci publik"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Private Key"
+msgstr "Kunci privat"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "View Card Info"
+msgstr "Lihat info kartu"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Generate On-Card Key"
+msgstr "Buat kunci di kartu"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Change Admin PIN"
+msgstr "Ubah PIN admin"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Change User PIN"
+msgstr "Ubah PIN pengguna"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Encrypting File"
+msgstr "Mengenkripsi berkas"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "(May take a while)"
+msgstr "(Mungkin butuh waktu)"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Decrypting File"
+msgstr "Mendekripsi berkas"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Check SHA256Sum"
+msgstr "Periksa SHA256Sum"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Update"
+msgstr "Perbarui"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "From File"
+msgstr "Dari berkas"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Generate New"
+msgstr "Buat baru"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Derive BIP85"
+msgstr "Turunkan BIP85"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "OpenGPG Card"
+msgstr "Kartu OpenGPG"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Edit text"
+msgstr "Sunting teks"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Discard text"
+msgstr "Buang teks"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Discard text?"
+msgstr "Buang teks?"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Generate QR code"
+msgstr "Buat kode QR"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/seed_views.py
+msgid "Transcribe mode"
+msgstr "Mode salin"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/seed_views.py
+msgid "FullScreen mode"
+msgstr "Mode layar penuh"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/seed_views.py
+msgid "Transcribe Mode ?"
+msgstr "Mode salin?"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Confirm text QR code"
+msgstr "Konfirmasi kode QR teks"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Confirm Text QR ?"
+msgstr "Konfirmasi QR teks?"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Scan text QR code"
+msgstr "Pindai kode QR teks"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Confirm Text QR Code"
+msgstr "Konfirmasi kode QR teks"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Your transcribed text QR code does not match your original text!"
+msgstr "Kode QR teks salinan Anda tidak cocok dengan teks asli!"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Review text QR code"
+msgstr "Tinjau kode QR teks"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Your transcribed text QR code successfully scanned and yielded the same text."
+msgstr "Kode QR teks salinan Anda berhasil dipindai dan menghasilkan teks yang sama."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Confirm Text QR"
+msgstr "Konfirmasi QR teks"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Your transcribed text QR code could not be read!"
+msgstr "Kode QR teks salinan Anda tidak dapat dibaca!"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Edit & Generate QR code"
+msgstr "Sunting & buat kode QR"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Decoded Text"
+msgstr "Teks hasil dekode"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/keycard_bias.py src/seedsigner/views/satochip_bias.py
+msgid "Run Test"
+msgstr "Jalankan uji"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/microsd_views.py
+msgid "Flash Image"
+msgstr "Tulis image"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/microsd_views.py
+msgid "Verify MicroSD"
+msgstr "Verifikasi MicroSD"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/microsd_views.py
+msgid "Wipe (Zero)"
+msgstr "Hapus (nol)"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/microsd_views.py
+msgid "Wipe (Random)"
+msgstr "Hapus (acak)"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/microsd_views.py
+msgid "Skip Verification"
+msgstr "Lewati verifikasi"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/microsd_views.py
+msgid "All"
+msgstr "Semua"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Custom"
+msgstr "Kustom"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Diceware-EFF Short"
+msgstr "Diceware-EFF pendek"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Diceware-EFF Long"
+msgstr "Diceware-EFF panjang"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Diceware-BIP39"
+msgstr "Diceware-BIP39"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Hex"
+msgstr "Hex"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Dice Rolls"
+msgstr "Lemparan dadu"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Password Type"
+msgstr "Jenis kata sandi"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "64 bits"
+msgstr "64 bit"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "128 bits"
+msgstr "128 bit"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "256 bits"
+msgstr "256 bit"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Password Strength"
+msgstr "Kekuatan kata sandi"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+#: src/seedsigner/views/smartcard_views.py
+msgid "Yes"
+msgstr "Ya"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+#: src/seedsigner/views/smartcard_views.py
+msgid "No"
+msgstr "Tidak"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Select Options"
+msgstr "Pilih opsi"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Choose at least one character set."
+msgstr "Pilih setidaknya satu set karakter."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "System RNG health check failed."
+msgstr "Pemeriksaan RNG sistem gagal."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "System RNG Error"
+msgstr "Kesalahan RNG sistem"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Camera"
+msgstr "Kamera"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Dice"
+msgstr "Dadu"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "System RNG"
+msgstr "RNG sistem"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Entropy Source"
+msgstr "Sumber entropi"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Not Supported"
+msgstr "Tidak didukung"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "BIP85 supports Diceware, Dice Rolls, Hex, Base64, and Base85."
+msgstr "BIP85 mendukung Diceware, lemparan dadu, Hex, Base64, dan Base85."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "None"
+msgstr "Tidak ada"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Capitalise"
+msgstr "Huruf besar awal"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Space"
+msgstr "Spasi"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Separator"
+msgstr "Pemisah"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "6 sides"
+msgstr "6 sisi"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "10 sides"
+msgstr "10 sisi"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "20 sides"
+msgstr "20 sisi"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Dice Sides"
+msgstr "Sisi dadu"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Number of Rolls"
+msgstr "Jumlah lemparan"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Invalid Input"
+msgstr "Masukan tidak valid"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Number of rolls must be at least 1."
+msgstr "Jumlah lemparan minimal 1."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+#: src/seedsigner/views/tools_views.py
+msgid "Poor Entropy"
+msgstr "Entropi buruk"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+#: src/seedsigner/views/tools_views.py
+msgid "Dice rolls didn't appear random enough. Please try again."
+msgstr "Lemparan dadu tampak kurang acak. Silakan coba lagi."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+#: src/seedsigner/views/tools_views.py
+msgid "Camera entropy didn't appear random enough. Please try again."
+msgstr "Entropi kamera tampak kurang acak. Silakan coba lagi."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "WARNING"
+msgstr "PERINGATAN"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Load a seed before using BIP85."
+msgstr "Muat seed sebelum menggunakan BIP85."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Select Seed"
+msgstr "Pilih seed"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Choose seed for BIP85"
+msgstr "Pilih seed untuk BIP85"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "BIP85 Index"
+msgstr "Indeks BIP85"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Invalid Length"
+msgstr "Panjang tidak valid"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "BIP85 Hex supports 128 or 256 bits."
+msgstr "BIP85 Hex mendukung 128 atau 256 bit."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "BIP85 Base64 needs 120+ bits."
+msgstr "BIP85 Base64 membutuhkan 120+ bit."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "BIP85 Base85 needs 64-512 bits."
+msgstr "BIP85 Base85 membutuhkan 64-512 bit."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Password Name"
+msgstr "Nama kata sandi"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Not Enough Space"
+msgstr "Ruang tidak cukup"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid ""
+"Saving Secret\n"
+"\n"
+"\n"
+"\n"
+"\n"
+"\n"
+msgstr ""
+"Menyimpan rahasia\n"
+"\n"
+"\n"
+"\n"
+"\n"
+"\n"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+#: src/seedsigner/views/psbt_views.py
+msgid "Success"
+msgstr "Sukses"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Password saved to Seedkeeper"
+msgstr "Kata sandi disimpan ke Seedkeeper"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Not enough space on Seedkeeper for password"
+msgstr "Ruang di Seedkeeper tidak cukup untuk kata sandi"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Failed"
+msgstr "Gagal"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Password save failed"
+msgstr "Gagal menyimpan kata sandi"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+#: src/seedsigner/views/scan_views.py
+msgid "Edit"
+msgstr "Sunting"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Password"
+msgstr "Kata sandi"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Save Password"
+msgstr "Simpan kata sandi"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py src/seedsigner/views/seed_views.py
+msgid "Use Satochip card"
+msgstr "Gunakan kartu Satochip"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py
+msgid "Use Keycard"
+msgstr "Gunakan Keycard"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py src/seedsigner/views/seed_views.py
+#: src/seedsigner/views/smartcard_views.py src/seedsigner/views/tools_views.py
+msgid "Enter 15-word seed"
+msgstr "Masukkan seed 15 kata"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py src/seedsigner/views/seed_views.py
+#: src/seedsigner/views/smartcard_views.py src/seedsigner/views/tools_views.py
+msgid "Enter 18-word seed"
+msgstr "Masukkan seed 18 kata"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py src/seedsigner/views/seed_views.py
+#: src/seedsigner/views/smartcard_views.py src/seedsigner/views/tools_views.py
+msgid "Enter 21-word seed"
+msgstr "Masukkan seed 21 kata"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py
+msgid "Enter WIF"
+msgstr "Masukkan WIF"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py src/seedsigner/views/scan_views.py
+msgid "Scan WIF"
+msgstr "Pindai WIF"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py
+msgid "Enter BIP38"
+msgstr "Masukkan BIP38"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py src/seedsigner/views/scan_views.py
+msgid "Scan BIP38"
+msgstr "Pindai BIP38"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py
+msgid "Fingerprint mismatch"
+msgstr "Sidik jari tidak cocok"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py
+msgid "Card cannot sign PSBT"
+msgstr "Kartu tidak dapat menandatangani PSBT"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py
+msgid "Card fingerprint ({}) not in PSBT signers."
+msgstr "Sidik jari kartu ({}) tidak ada di penandatangan PSBT."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py
+msgid "Private Key (WIF)"
+msgstr "Kunci privat (WIF)"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py
+msgid "Invalid WIF!"
+msgstr "WIF tidak valid!"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py
+msgid "Not a valid WIF-encoded private key."
+msgstr "Bukan kunci privat WIF yang valid."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py
+msgid "BIP38 Key"
+msgstr "Kunci BIP38"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py
+msgid "BIP38 Passphrase"
+msgstr "Passphrase BIP38"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py
+msgid "Invalid BIP38!"
+msgstr "BIP38 tidak valid!"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py
+msgid "Could not decrypt BIP38 key."
+msgstr "Tidak dapat mendekripsi kunci BIP38."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py
+msgid "Descriptor mismatch"
+msgstr "Deskriptor tidak cocok"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py
+msgid "Descriptor cleared"
+msgstr "Deskriptor dihapus"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py
+msgid "Loaded multisig wallet descriptor does not match this PSBT. Load the correct descriptor or skip verification to continue."
+msgstr "Deskriptor dompet multisig yang dimuat tidak cocok dengan PSBT ini. Muat deskriptor yang benar atau lewati verifikasi."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py
+msgid "Signing PSBT..."
+msgstr "Menandatangani PSBT..."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py
+msgid "Signing Timeout"
+msgstr "Waktu tanda tangan habis"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py
+msgid "Retry (higher timeout)"
+msgstr "Coba lagi (waktu lebih lama)"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py
+msgid "Saved as {}."
+msgstr "Disimpan sebagai {}."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py
+msgid "Failed to save PSBT: {}"
+msgstr "Gagal menyimpan PSBT: {}"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py
+msgid "Encoding PSBT..."
+msgstr "Mengodekan PSBT..."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/scan_views.py
+msgid "QR Scanner Unavailable"
+msgstr "Pemindai QR tidak tersedia"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/scan_views.py
+msgid "QR scanning backend missing. Install zbar (or OpenCV on desktop) and restart."
+msgstr "Backend pemindaian QR tidak ada. Pasang zbar (atau OpenCV di desktop) lalu mulai ulang."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/scan_views.py
+msgid "Select Seed Type"
+msgstr "Pilih jenis seed"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/scan_views.py
+msgid "Time set to:"
+msgstr "Waktu diatur ke:"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/scan_views.py
+msgid "Set Time Failed"
+msgstr "Gagal mengatur waktu"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/scan_views.py
+msgid "Invalid Time"
+msgstr "Waktu tidak valid"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/scan_views.py
+msgid "Could not parse time from QR"
+msgstr "Tidak dapat membaca waktu dari QR"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/scan_views.py
+msgid "Scan SLIP-39 Share"
+msgstr "Pindai bagian SLIP-39"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/scan_views.py
+msgid "Expected a SLIP-39 share QR"
+msgstr "Diharapkan QR bagian SLIP-39"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/scan_views.py
+msgid "Expected a WIF private key"
+msgstr "Diharapkan kunci privat WIF"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/scan_views.py
+msgid "Expected a BIP38 private key"
+msgstr "Diharapkan kunci privat BIP38"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/scan_views.py
+msgid "Scan {} receive address from the wallet you just exported"
+msgstr "Pindai alamat penerimaan {} dari dompet yang baru Anda ekspor"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/scan_views.py
+msgid ""
+"Data matches multiple\n"
+"QR types."
+msgstr ""
+"Data cocok dengan beberapa\n"
+"jenis QR."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/scan_views.py src/seedsigner/views/seed_views.py
+msgid "Type encryption key"
+msgstr "Ketik kunci enkripsi"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/scan_views.py src/seedsigner/views/seed_views.py
+msgid "Scan encryption key"
+msgstr "Pindai kunci enkripsi"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/scan_views.py src/seedsigner/views/seed_views.py
+msgid "Edit encryption key"
+msgstr "Sunting kunci enkripsi"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/scan_views.py src/seedsigner/views/seed_views.py
+msgid "Discard encryption key"
+msgstr "Buang kunci enkripsi"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/scan_views.py src/seedsigner/views/seed_views.py
+msgid "Proceed"
+msgstr "Lanjutkan"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/scan_views.py src/seedsigner/views/seed_views.py
+msgid "Scan & Append Another"
+msgstr "Pindai & tambahkan lagi"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/scan_views.py
+msgid "Decrypted Text"
+msgstr "Teks terdekripsi"
+
+#. FORK: translated by Claude 2026-07-11
+#. This is on the opening splash screen, displayed above the Seedsigner logo
+#: src/seedsigner/views/screensaver.py
+msgid "An unofficial fork of:"
+msgstr "Fork tidak resmi dari:"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "BitBox02 backup"
+msgstr "Cadangan BitBox02"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Passport backup"
+msgstr "Cadangan Passport"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "TAPSIGNER backup"
+msgstr "Cadangan TAPSIGNER"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Enter Aezeed seed"
+msgstr "Masukkan seed Aezeed"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py src/seedsigner/views/smartcard_views.py
+msgid "SLIP-39 Shares"
+msgstr "Bagian SLIP-39"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid " Scan a SeedQR"
+msgstr " Pindai SeedQR"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py src/seedsigner/views/smartcard_views.py
+msgid "From SeedKeeper"
+msgstr "Dari SeedKeeper"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "From Specter-DIY"
+msgstr "Dari Specter-DIY"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py src/seedsigner/views/smartcard_views.py
+msgid " Create a seed"
+msgstr " Buat seed"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "microSD card not detected."
+msgstr "Kartu microSD tidak terdeteksi."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "No Backups Found"
+msgstr "Cadangan tidak ditemukan"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "No BitBox02 backups (.bin, .bb02, .dat, .backup) were found on the microSD card."
+msgstr "Tidak ada cadangan BitBox02 (.bin, .bb02, .dat, .backup) di kartu microSD."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Select BitBox02 backup"
+msgstr "Pilih cadangan BitBox02"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Backup name: {}"
+msgstr "Nama cadangan: {}"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Created: {}"
+msgstr "Dibuat: {}"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Firmware: {}"
+msgstr "Firmware: {}"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Birthdate: {}"
+msgstr "Tanggal pembuatan: {}"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Seed length: {} words"
+msgstr "Panjang seed: {} kata"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Seed loaded"
+msgstr "Seed dimuat"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "No Passport backups (.7z) were found on the microSD card."
+msgstr "Tidak ada cadangan Passport (.7z) di kartu microSD."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Select Passport backup"
+msgstr "Pilih cadangan Passport"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Passport backup code"
+msgstr "Kode cadangan Passport"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Backup code cannot be empty."
+msgstr "Kode cadangan tidak boleh kosong."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Chain: {}"
+msgstr "Jaringan: {}"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "XFP: {}"
+msgstr "XFP: {}"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "No TAPSIGNER backups (.aes) were found on the microSD card."
+msgstr "Tidak ada cadangan TAPSIGNER (.aes) di kartu microSD."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Select TAPSIGNER backup"
+msgstr "Pilih cadangan TAPSIGNER"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Backup key (hex)"
+msgstr "Kunci cadangan (hex)"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "xprv loaded from TAPSIGNER backup."
+msgstr "xprv dimuat dari cadangan TAPSIGNER."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Path: {}"
+msgstr "Jalur: {}"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Load Passphrase"
+msgstr "Muat passphrase"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Type Passphrase"
+msgstr "Ketik passphrase"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Scan Passphrase"
+msgstr "Pindai passphrase"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Load from SeedKeeper"
+msgstr "Muat dari SeedKeeper"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Aezeed passphrase"
+msgstr "Passphrase Aezeed"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid ""
+"Passphrase required\n"
+"for this mnemonic."
+msgstr ""
+"Mnemonik ini memerlukan\n"
+"passphrase."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Invalid passphrase"
+msgstr "Passphrase tidak valid"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid ""
+"Aezeed passphrase required.\n"
+"Try again."
+msgstr ""
+"Passphrase Aezeed diperlukan.\n"
+"Coba lagi."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid ""
+"Wrong Aezeed passphrase.\n"
+"Try again."
+msgstr ""
+"Passphrase Aezeed salah.\n"
+"Coba lagi."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Invalid Text QR Code"
+msgstr "Kode QR teks tidak valid"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Non UTF-8 data detected."
+msgstr "Terdeteksi data non-UTF-8."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Aezeed support"
+msgstr "Dukungan Aezeed"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid ""
+"Aezeed entry is experimental.\n"
+"Use only with known-good backups."
+msgstr ""
+"Input Aezeed bersifat eksperimental.\n"
+"Gunakan hanya dengan cadangan teruji."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Enter 20 words"
+msgstr "Masukkan 20 kata"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Enter 33 words"
+msgstr "Masukkan 33 kata"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Load Share"
+msgstr "Muat bagian"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Share Word #{}"
+msgstr "Kata bagian #{}"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Enter share"
+msgstr "Masukkan bagian"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Scan share"
+msgstr "Pindai bagian"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Combine shares"
+msgstr "Gabungkan bagian"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "{} of {} needed"
+msgstr "Perlu {} dari {}"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py src/seedsigner/views/settings_views.py
+#: src/seedsigner/views/smartcard_views.py
+msgid "Try Again"
+msgstr "Coba lagi"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Invalid SLIP-39 Share"
+msgstr "Bagian SLIP-39 tidak valid"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Checksum failure; not a valid SLIP-39 share."
+msgstr "Checksum gagal; bukan bagian SLIP-39 yang valid."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Non-extendable Seed"
+msgstr "Seed tidak dapat diperluas"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "This SLIP-39 seed cannot regenerate new shares."
+msgstr "Seed SLIP-39 ini tidak dapat membuat bagian baru."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Export as Plaintext QR"
+msgstr "Ekspor sebagai QR tanpa enkripsi"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "To SeedKeeper"
+msgstr "Ke SeedKeeper"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "To Specter-DIY"
+msgstr "Ke Specter-DIY"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Regenerate Shares"
+msgstr "Buat ulang bagian"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py src/seedsigner/views/smartcard_views.py
+msgid "Xpub QR Format"
+msgstr "Format QR xpub"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Open {} and display a receive address from the wallet you just exported."
+msgstr "Buka {} dan tampilkan alamat penerimaan dari dompet yang baru Anda ekspor."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "your wallet software"
+msgstr "perangkat lunak dompet Anda"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid ""
+"Passphrase was used.\n"
+"You'll need words + passphrase."
+msgstr ""
+"Passphrase digunakan.\n"
+"Anda perlu kata-kata + passphrase."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "18 Words"
+msgstr "18 kata"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Review"
+msgstr "Tinjau"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Finalize child"
+msgstr "Selesaikan seed turunan"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Input Encryption Key"
+msgstr "Masukkan kunci enkripsi"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Discard encryption key?"
+msgstr "Buang kunci enkripsi?"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Your current key entry will be erased"
+msgstr "Kunci yang dimasukkan akan dihapus"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Invalid Key"
+msgstr "Kunci tidak valid"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Key length is too long."
+msgstr "Kunci terlalu panjang."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Input from Camera"
+msgstr "Masukan dari kamera"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Use fingerprint"
+msgstr "Gunakan sidik jari"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Assign custom ID"
+msgstr "Tetapkan ID kustom"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Input Mnemonic ID"
+msgstr "Masukkan ID mnemonik"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Edit mnemonic ID"
+msgstr "Sunting ID mnemonik"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Discard mnemonic ID"
+msgstr "Buang ID mnemonik"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Discard mnemonic ID?"
+msgstr "Buang ID mnemonik?"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Your current mnemonic ID entry will be erased"
+msgstr "ID mnemonik yang dimasukkan akan dihapus"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py src/seedsigner/views/tools_views.py
+msgid "Processing..."
+msgstr "Memproses..."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Encryption failure"
+msgstr "Enkripsi gagal"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Next 100"
+msgstr "100 berikutnya"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Expanded Search"
+msgstr "Pencarian diperluas"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Not Found"
+msgstr "Tidak ditemukan"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Address Not Verified"
+msgstr "Alamat tidak terverifikasi"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Checked {} addresses with no match."
+msgstr "Memeriksa {} alamat tanpa kecocokan."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Check Next 10"
+msgstr "Periksa 10 berikutnya"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Checked {} addresses per path with no match."
+msgstr "Memeriksa {} alamat per jalur tanpa kecocokan."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Wallet Export"
+msgstr "Ekspor dompet"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Wallet export successful."
+msgstr "Ekspor dompet berhasil."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Address format doesn't match exported script type. Wallet export unsuccessful."
+msgstr "Format alamat tidak cocok dengan jenis skrip yang diekspor. Ekspor dompet gagal."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Unable to match wallet to current seed. Wallet export unsuccessful."
+msgstr "Tidak dapat mencocokkan dompet dengan seed saat ini. Ekspor dompet gagal."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Export Failed"
+msgstr "Ekspor gagal"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Load SeedKeeper"
+msgstr "Muat SeedKeeper"
+
+#. FORK: translated by Claude 2026-07-11
+#. Multisig policy. For a "2 of 3" policy, "threshold" = 2; "n" = 3
+#: src/seedsigner/views/seed_views.py
+msgid "{threshold} of {n}"
+msgstr "{threshold} dari {n}"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py src/seedsigner/views/smartcard_views.py
+msgid "Exporting xpub..."
+msgstr "Mengekspor xpub..."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Signing message..."
+msgstr "Menandatangani pesan..."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Verification Failed"
+msgstr "Verifikasi gagal"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/settings_views.py
+msgid "Test Smartcard"
+msgstr "Uji kartu pintar"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/settings_views.py
+msgid "List card readers"
+msgstr "Daftar pembaca kartu"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/settings_views.py
+msgid "Test NFC Scan"
+msgstr "Uji pemindaian NFC"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/settings_views.py
+msgid "Restart PCSC"
+msgstr "Mulai ulang PCSC"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/settings_views.py
+msgid "Battery info"
+msgstr "Info baterai"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/settings_views.py
+msgid "System info"
+msgstr "Info sistem"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/settings_views.py
+msgid "Load Backup Files"
+msgstr "Muat berkas cadangan"
+
+#. FORK: translated by Claude 2026-07-11
+#. Title of a warning dialog when configuring a setting that requires at least
+#. one option to be selected.
+#: src/seedsigner/views/settings_views.py
+msgid "Selection Required"
+msgstr "Pilihan diperlukan"
+
+#. FORK: translated by Claude 2026-07-11
+#. The name of the setting being configured (e.g. "Script types") will be
+#. inserted.
+#: src/seedsigner/views/settings_views.py
+msgid "At least one option must be selected for \"{}\"."
+msgstr "Setidaknya satu opsi harus dipilih untuk \"{}\"."
+
+#. FORK: translated by Claude 2026-07-11
+#. Text for the button that returns the user to the setting configuration
+#. screen.
+#: src/seedsigner/views/settings_views.py
+msgid "Return to setting"
+msgstr "Kembali ke pengaturan"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/settings_views.py
+msgid "No compatible battery monitor detected"
+msgstr "Monitor baterai yang kompatibel tidak terdeteksi"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/settings_views.py src/seedsigner/views/tools_views.py
+msgid "Unavailable"
+msgstr "Tidak tersedia"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Common Functions"
+msgstr "Fungsi umum"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Satochip Functions"
+msgstr "Fungsi Satochip"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "KeyCard Functions"
+msgstr "Fungsi Keycard"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "SeedKeeper Functions"
+msgstr "Fungsi SeedKeeper"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Specter-DIY Functions"
+msgstr "Fungsi Specter-DIY"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "DIY Tools"
+msgstr "Alat DIY"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Card Info"
+msgstr "Info kartu"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Genuine Check"
+msgstr "Pemeriksaan keaslian"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Change PIN"
+msgstr "Ubah PIN"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Change Label"
+msgstr "Ubah label"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Change NFC Policy"
+msgstr "Ubah kebijakan NFC"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Configure NDEF"
+msgstr "Konfigurasi NDEF"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Factory Reset Card"
+msgstr "Reset pabrik kartu"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "View NDEF"
+msgstr "Lihat NDEF"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Use Seedkeeper App Link"
+msgstr "Gunakan tautan aplikasi Seedkeeper"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Clear NDEF"
+msgstr "Bersihkan NDEF"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Set Custom NDEF"
+msgstr "Atur NDEF kustom"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Save NDEF to SeedKeeper"
+msgstr "Simpan NDEF ke SeedKeeper"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Load NDEF from SeedKeeper"
+msgstr "Muat NDEF dari SeedKeeper"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Text Record"
+msgstr "Rekaman teks"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "URI Record"
+msgstr "Rekaman URI"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Android App Launch"
+msgstr "Peluncuran aplikasi Android"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Custom (HEX)"
+msgstr "Kustom (HEX)"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Decode NDEF"
+msgstr "Dekode NDEF"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "NFC Enabled"
+msgstr "NFC aktif"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "NFC Disabled"
+msgstr "NFC nonaktif"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "NFC Blocked"
+msgstr "NFC diblokir"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Card Re-Inserted"
+msgstr "Kartu dimasukkan kembali"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "View Free Space"
+msgstr "Lihat ruang kosong"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "View Secrets on Card"
+msgstr "Lihat rahasia di kartu"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Save Password to Card"
+msgstr "Simpan kata sandi ke kartu"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Delete Secret from Card"
+msgstr "Hapus rahasia dari kartu"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Load MultiSig Descriptor"
+msgstr "Muat deskriptor multisig"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Save MultiSig Descriptor"
+msgstr "Simpan deskriptor multisig"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Clone Card Secrets"
+msgstr "Klon rahasia kartu"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Exit to Home"
+msgstr "Keluar ke beranda"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Initialise with Seed"
+msgstr "Inisialisasi dengan seed"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Load as Descriptor"
+msgstr "Muat sebagai deskriptor"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Load PSBT"
+msgstr "Muat PSBT"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Set PUK"
+msgstr "Atur PUK"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Unblock PIN with PUK"
+msgstr "Buka blokir PIN dengan PUK"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Set Name"
+msgstr "Atur nama"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Remove Seed"
+msgstr "Hapus seed"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Benchmark Signing"
+msgstr "Uji kecepatan tanda tangan"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Benchmark Message Signing"
+msgstr "Uji tanda tangan pesan"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Check signing bias"
+msgstr "Periksa bias tanda tangan"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Remove"
+msgstr "Hapus"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Reset"
+msgstr "Reset"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Enable 2FA"
+msgstr "Aktifkan 2FA"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Already Seeded"
+msgstr "Sudah ada seed"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid ""
+"xprv cannot init Satochip.\n"
+"Use BIP39, SLIP39, or Electrum."
+msgstr ""
+"xprv tidak dapat menginisialisasi Satochip.\n"
+"Gunakan BIP39, SLIP39, atau Electrum."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Change Card PIN"
+msgstr "Ubah PIN kartu"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Load Mnemonic"
+msgstr "Muat mnemonik"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Save Mnemonic"
+msgstr "Simpan mnemonik"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Wipe Seed"
+msgstr "Hapus seed"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Card Keys"
+msgstr "Kunci kartu"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Build Applets"
+msgstr "Bangun applet"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Install Applet"
+msgstr "Pasang applet"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Uninstall Applet"
+msgstr "Copot applet"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Enter Different PIN"
+msgstr "Masukkan PIN lain"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Load Keys"
+msgstr "Muat kunci"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Save Keys"
+msgstr "Simpan kunci"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Unlock Card"
+msgstr "Buka kunci kartu"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Lock Card"
+msgstr "Kunci kartu"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Clear Loaded Keys"
+msgstr "Bersihkan kunci yang dimuat"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Overwrite"
+msgstr "Timpa"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Abort Save"
+msgstr "Batalkan penyimpanan"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Enter Single Key"
+msgstr "Masukkan satu kunci"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Enter Key Set"
+msgstr "Masukkan set kunci"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Generate Single Key"
+msgstr "Buat satu kunci"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Generate Key Set"
+msgstr "Buat set kunci"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "8 KB (default)"
+msgstr "8 KB (bawaan)"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "System RNG entropy too low. Try again later."
+msgstr "Entropi RNG sistem terlalu rendah. Coba lagi nanti."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "System RNG derived entropy failed health checks."
+msgstr "Entropi dari RNG sistem gagal pemeriksaan."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid " New seed"
+msgstr " Seed baru"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "SLIP39 seed"
+msgstr "Seed SLIP39"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "Text QR Code"
+msgstr "Kode QR teks"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "Password Generator"
+msgstr "Pembuat kata sandi"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "Smartcard Tools"
+msgstr "Alat kartu pintar"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "MicroSD Tools"
+msgstr "Alat MicroSD"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "Clear Multisig Descriptor"
+msgstr "Bersihkan deskriptor multisig"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "microSD card not detected"
+msgstr "Kartu microSD tidak terdeteksi"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "Insert a microSD card to save the discharge log."
+msgstr "Masukkan kartu microSD untuk menyimpan log pengosongan."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "Unable to load network information."
+msgstr "Tidak dapat memuat informasi jaringan."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "15 words"
+msgstr "15 kata"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "18 words"
+msgstr "18 kata"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "21 words"
+msgstr "21 kata"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "20 words"
+msgstr "20 kata"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "33 words"
+msgstr "33 kata"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "20 words ({} rolls)"
+msgstr "20 kata ({} lemparan)"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "33 words ({} rolls)"
+msgstr "33 kata ({} lemparan)"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "Loaded Multisig Descriptor"
+msgstr "Deskriptor multisig dimuat"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "Load from Satochip"
+msgstr "Muat dari Satochip"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "Electrum Seed"
+msgstr "Seed Electrum"
+
+#. FORK: translated by Claude 2026-07-11
+#. Multisig policy. For a "2 / 3 multisig" policy, "threshold" = 2; "n" = 3
+#: src/seedsigner/views/tools_views.py
+msgid "{threshold} / {n} multisig"
+msgstr "Multisig {threshold} / {n}"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "Encode text"
+msgstr "Kodekan teks"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "Decode QR code"
+msgstr "Dekode kode QR"
+
+#. FORK: translated by Claude 2026-07-11
+#. "network" will be mainnet/testnet/regtest.
+#: src/seedsigner/views/view.py
+msgid "Current network setting ({network}) doesn't match {derivation_path}."
+msgstr "Pengaturan jaringan saat ini ({network}) tidak cocok dengan {derivation_path}."
+
