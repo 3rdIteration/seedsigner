@@ -12,19 +12,26 @@ overlap). Managed by `l10n/fork_translations.py`. See `l10n/README.md`.
 
 ## Procedure
 
-1. **Prepare.** Run `python l10n/fork_translations.py prune` then
-   `python l10n/fork_translations.py stub --locale <locale>`. Open
-   `l10n/fork/<locale>/messages.po` — every entry with an empty `msgstr` is a gap.
+1. **Prepare.** Run `python l10n/fork_translations.py prune`, then dump the gap
+   list: the msgids in `l10n/messages.pot` that the upstream catalog for the
+   locale hasn't translated and the overlay doesn't cover yet
+   (`fork_translations.py status` shows counts).
 
-2. **Build the glossary FIRST.** Read the upstream catalog at
+2. **Read `l10n/GLOSSARY.md` and the upstream catalog FIRST.** GLOSSARY.md holds
+   settled cross-locale decisions (never-translate list, SLIP-39 "share"
+   terminology per Trezor, per-locale conventions). The upstream catalog at
    `src/seedsigner/resources/seedsigner-translations/l10n/<locale>/LC_MESSAGES/messages.po`
-   and extract how upstream renders recurring terms before translating anything:
-   seed, mnemonic, passphrase, fingerprint, derivation path, descriptor,
-   multisig/single sig, script type, wallet, address, QR code, scan, verify,
-   backup, entropy, dice, coordinator/wallet software, and the names of
-   screens/buttons the fork strings extend. **Match upstream's choices exactly** —
-   including which terms upstream deliberately leaves in English (e.g. "xpub",
-   "SeedQR", "PSBT" typically stay untranslated).
+   is the primary glossary — extract how it renders recurring terms (seed,
+   mnemonic, passphrase, fingerprint, descriptor, multisig, wallet, address,
+   scan, verify, backup, entropy, dice) and **match its choices exactly**,
+   including which terms it deliberately leaves in English. Record any new
+   cross-locale decision back into GLOSSARY.md.
+
+   **Preferred mechanism:** write the translations as a
+   `TRANSLATIONS = {msgid: msgstr}` dict in `l10n/_tr_<locale>.py` (untracked
+   session file), then run `python -X utf8 l10n/apply_translations.py <locale>`
+   to build the overlay catalog with provenance comments, a typo guard on
+   msgids, and a report of what remains untranslated.
 
 3. **Translate every empty msgstr**, respecting:
    - Placeholders `{}` / `{name}` copied verbatim, same count and names.
