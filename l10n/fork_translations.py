@@ -184,8 +184,27 @@ def cmd_prune(args) -> int:
     return 0
 
 
+def _mnemonic_wordlist() -> set:
+    """BIP39 + SLIP39 words: translating a msgid that equals one of these could
+    corrupt seed backup/entry screens if such a string ever flowed through
+    gettext. (Verified word-rendering paths bypass gettext, but guard anyway.)"""
+    words = set()
+    try:
+        from embit import bip39
+        words.update(bip39.WORDLIST)
+    except ImportError:
+        pass
+    try:
+        from shamir_mnemonic.wordlist import WORDLIST as SLIP39_WORDLIST
+        words.update(SLIP39_WORDLIST)
+    except ImportError:
+        pass
+    return words
+
+
 def cmd_check(args) -> int:
     pot_ids = all_ids(load_pot())
+    mnemonic_words = _mnemonic_wordlist()
     errors = 0
     checked = 0
     for locale in upstream_locales():
@@ -209,6 +228,9 @@ def cmd_check(args) -> int:
                 print(f"WARN  {prefix} not in messages.pot (run prune)")
             if message.id in upstream_done:
                 print(f"WARN  {prefix} already translated upstream (run prune)")
+            if message.id in mnemonic_words:
+                print(f"ERROR {prefix} msgid equals a BIP39/SLIP39 mnemonic word — never translate these (see GLOSSARY.md)")
+                errors += 1
             if message.string:
                 src_ph = sorted(FORMAT_PLACEHOLDER_REGEX.findall(message.id))
                 dst_ph = sorted(FORMAT_PLACEHOLDER_REGEX.findall(message.string))
