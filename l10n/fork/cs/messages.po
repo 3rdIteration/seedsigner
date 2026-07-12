@@ -1,0 +1,2578 @@
+# Fork translation overlay for SeedSigner (3rdIteration fork).
+# Contains ONLY strings that upstream's catalogs do not translate.
+# Merged with the upstream catalog at build time (upstream wins on overlap).
+# Managed by l10n/fork_translations.py — see l10n/README.md.
+msgid ""
+msgstr ""
+"Project-Id-Version: PROJECT VERSION\n"
+"Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
+"POT-Creation-Date: 2026-07-10 23:07-0400\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language: cs\n"
+"Language-Team: cs <LL@li.org>\n"
+"Plural-Forms: nplurals=3; plural=((n==1) ? 0 : (n>=2 && n<=4) ? 1 : 2);\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.16.0\n"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/controller.py src/seedsigner/views/view.py
+msgid "Data wiped after inactivity"
+msgstr "Data smazána po nečinnosti"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/scan_screens.py
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Starting camera..."
+msgstr "Spouštím kameru..."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/scan_screens.py
+msgid "Decrypt?"
+msgstr "Dešifrovat?"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/scan_screens.py
+msgid "Select QR Type"
+msgstr "Vyberte typ QR"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/scan_screens.py
+msgid "Encryption Key"
+msgstr "Šifrovací klíč"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/scan_screens.py
+msgid "Review Encryption Key"
+msgstr "Zkontrolovat šifrovací klíč"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Account Number"
+msgstr "Číslo účtu"
+
+#. FORK: translated by Claude 2026-07-10
+#. Refers to the SeedQR type: Standard or Compact or encrypted
+#: src/seedsigner/gui/screens/seed_screens.py
+#: src/seedsigner/views/seed_views.py
+msgid "Encrypted"
+msgstr "Šifrováno"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Encrypted entropy bits"
+msgstr "Šifrované bity entropie"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Non-standard path!"
+msgstr "Nestandardní cesta!"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Mnemonic ID"
+msgstr "ID mnemoniky"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Review Mnemonic ID"
+msgstr "Zkontrolovat ID mnemoniky"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "The QR codes output in both modes may differ, but both are valid QR codes."
+msgstr "QR kódy z obou režimů se mohou lišit, ale oba jsou platné."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Transcribe Encrypted QR"
+msgstr "Přepsat šifrovaný QR"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/settings_screens.py
+#: src/seedsigner/views/settings_views.py
+msgid "No options available"
+msgstr "Žádné možnosti k dispozici"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/settings_screens.py
+#: src/seedsigner/views/settings_views.py
+msgid "Battery Info"
+msgstr "Info o baterii"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "System Info"
+msgstr "Info o systému"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "Platform: {platform_name}"
+msgstr "Platforma: {platform_name}"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "Variant: {platform_variant}"
+msgstr "Varianta: {platform_variant}"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "Serial (CPU): {system_serial}"
+msgstr "Sériové č. (CPU): {system_serial}"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "Serial (MicroSD): {microsd_serial}"
+msgstr "Sériové č. (MicroSD): {microsd_serial}"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/tools_screens.py
+#: src/seedsigner/views/smartcard_views.py
+msgid "Device Filter"
+msgstr "Filtr zařízení"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/tools_screens.py
+#: src/seedsigner/views/tools_views.py
+msgid "Network Info"
+msgstr "Info o síti"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/tools_screens.py
+#: src/seedsigner/views/tools_views.py
+msgid "Battery Calibration"
+msgstr "Kalibrace baterie"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Charge the battery fully. Select Next to start the discharge test."
+msgstr "Plně nabijte baterii. Zvolte Další pro spuštění vybíjecího testu."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/tools_screens.py
+#: src/seedsigner/views/gpg_views.py
+msgid "Start"
+msgstr "Spustit"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Test runs until empty. Leave the device unplugged."
+msgstr "Test běží do vybití. Nechte zařízení odpojené."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Charging detected"
+msgstr "Zjištěno nabíjení"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Discharging"
+msgstr "Vybíjení"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Elapsed: "
+msgstr "Uplynulo: "
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Voltage: "
+msgstr "Napětí: "
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Current: "
+msgstr "Proud: "
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Status: "
+msgstr "Stav: "
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "LOW ENTROPY"
+msgstr "NÍZKÁ ENTROPIE"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "GOOD ENTROPY"
+msgstr "DOBRÁ ENTROPIE"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/tools_screens.py
+#: src/seedsigner/views/gpg_views.py
+msgid "Text to Encode"
+msgstr "Text ke kódování"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/helpers/seedkeeper_utils.py
+msgid "Set Duress PIN"
+msgstr "Nastavit nátlakový PIN"
+
+#. FORK: translated by Claude 2026-07-10
+#. QR code format option; "default" = this is the format most wallets use
+#: src/seedsigner/models/settings_definition.py
+msgid "Animated (default)"
+msgstr "Animovaný (výchozí)"
+
+#. FORK: translated by Claude 2026-07-10
+#. QR code format option (static = single frame, not animated)
+#: src/seedsigner/models/settings_definition.py
+msgid "Static"
+msgstr "Statický"
+
+#. FORK: translated by Claude 2026-07-10
+#. QR code format option: old format that Specter Desktop used to use
+#: src/seedsigner/models/settings_definition.py
+msgid "Specter legacy"
+msgstr "Specter legacy"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "Camera 0"
+msgstr "Kamera 0"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "Camera 1"
+msgstr "Kamera 1"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "Camera 2"
+msgstr "Kamera 2"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "Camera 3"
+msgstr "Kamera 3"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "5 minutes"
+msgstr "5 minut"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "10 minutes"
+msgstr "10 minut"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "15 minutes"
+msgstr "15 minut"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "30 minutes"
+msgstr "30 minut"
+
+#. FORK: translated by Claude 2026-07-10
+#. MicroSD notification duration setting - Display notification for 5 seconds
+#: src/seedsigner/models/settings_definition.py
+msgid "5 seconds"
+msgstr "5 sekund"
+
+#. FORK: translated by Claude 2026-07-10
+#. MicroSD notification duration setting - Display notification until the SD
+#. card is removed
+#: src/seedsigner/models/settings_definition.py
+msgid "Until SD removed"
+msgstr "Do vyjmutí SD"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "Aezeed Passphrase"
+msgstr "Aezeed bezpečnostní fráze"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "Prefer CompactSeedQR"
+msgstr "Preferovat CompactSeedQR"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "Prefer EncryptedQR"
+msgstr "Preferovat EncryptedQR"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "Ask each time"
+msgstr "Ptát se pokaždé"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "Smartcard PIN Attempts"
+msgstr "Pokusy o PIN karty"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "Wipe Timer"
+msgstr "Časovač smazání"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "Seed word lengths"
+msgstr "Délky seedu"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "Xpub QR format"
+msgstr "Formát QR pro xpub"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "BIP32 account prompt"
+msgstr "Dotaz na účet BIP32"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "Ambiguous QR"
+msgstr "Nejednoznačný QR"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "GPG key types"
+msgstr "Typy GPG klíčů"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "BIP85 GPG version"
+msgstr "Verze GPG pro BIP85"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "v3 is the latest; use v2 to recreate B9-B10 keys"
+msgstr "v3 je nejnovější; použijte v2 pro obnovu klíčů B9-B10"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "SLIP39 seeds"
+msgstr "SLIP39 seedy"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "Aezeed seeds"
+msgstr "Aezeed seedy"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "LND-compatible, 24 words"
+msgstr "Kompatibilní s LND, 24 slov"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "Extendable SLIP39 shares"
+msgstr "Rozšiřitelné podíly SLIP39"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "MicroSD notification duration"
+msgstr "Doba oznámení MicroSD"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "BitBox02 backups"
+msgstr "Zálohy BitBox02"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "Passport backups"
+msgstr "Zálohy Passport"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "TAPSIGNER backups"
+msgstr "Zálohy TAPSIGNER"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "Smartcard support"
+msgstr "Podpora chytrých karet"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "Satochip support"
+msgstr "Podpora Satochip"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "KeyCard support"
+msgstr "Podpora Keycard"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "Specter-DIY support"
+msgstr "Podpora Specter-DIY"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "Camera source"
+msgstr "Zdroj kamery"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/desktop_warning.py
+msgid "Desktop Mode"
+msgstr "Režim desktop"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/desktop_warning.py
+#: src/seedsigner/views/developer_os_warning.py
+msgid "Not secure!"
+msgstr "Není bezpečné!"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/desktop_warning.py
+msgid ""
+"This desktop version is for testing only.\n"
+"Do NOT use with real seeds or private keys."
+msgstr ""
+"Tato desktopová verze slouží jen k testování.\n"
+"NEPOUŽÍVEJTE se skutečnými seedy či klíči."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/desktop_warning.py
+#: src/seedsigner/views/developer_os_warning.py
+#: src/seedsigner/views/gpg_views.py
+#: src/seedsigner/views/password_generator_views.py
+#: src/seedsigner/views/smartcard_views.py
+msgid "I Understand"
+msgstr "Rozumím"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/developer_os_warning.py
+msgid "Development Build"
+msgstr "Vývojové sestavení"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/developer_os_warning.py
+msgid ""
+"This SeedSignerOS development build is for testing only.\n"
+"Do NOT use with real seeds or private keys."
+msgstr ""
+"Toto vývojové sestavení SeedSignerOS slouží jen k testování.\n"
+"NEPOUŽÍVEJTE se skutečnými seedy či klíči."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "File Operations"
+msgstr "Operace se soubory"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Import Keys"
+msgstr "Importovat klíče"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Export Keys"
+msgstr "Exportovat klíče"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "View Keys"
+msgstr "Zobrazit klíče"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Secure Messaging"
+msgstr "Zabezpečené zprávy"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/tools_views.py
+msgid "GPG Tools"
+msgstr "Nástroje GPG"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Missing packages"
+msgstr "Chybějící balíčky"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Required but not installed:\n"
+msgstr "Vyžadováno, ale nenainstalováno:\n"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Subkey Operations"
+msgstr "Operace s podklíči"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "User ID Operations"
+msgstr "Operace s ID uživatele"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Cross Certify Keys"
+msgstr "Křížová certifikace klíčů"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Export Public Key Bundle"
+msgstr "Exportovat balík veřejného klíče"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "BIP85 Metadata"
+msgstr "Metadata BIP85"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Subkeys"
+msgstr "Podklíče"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/scan_views.py
+#: src/seedsigner/views/settings_views.py src/seedsigner/views/tools_views.py
+msgid "Back"
+msgstr "Zpět"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Export Bundle"
+msgstr "Exportovat balík"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Animated QR"
+msgstr "Animovaný QR"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Save BIP85 Data"
+msgstr "Uložit data BIP85"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Load BIP85 Data"
+msgstr "Nahrát data BIP85"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Rebuild BIP85 Key"
+msgstr "Znovu vytvořit klíč BIP85"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/smartcard_views.py
+msgid "To MicroSD"
+msgstr "Na MicroSD"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "To QR"
+msgstr "Do QR"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/smartcard_views.py
+msgid "To Seedkeeper"
+msgstr "Na Seedkeeper"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/smartcard_views.py
+msgid "From MicroSD"
+msgstr "Z MicroSD"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "From QR"
+msgstr "Z QR"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/smartcard_views.py
+msgid "From Seedkeeper"
+msgstr "Ze Seedkeeperu"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Add Subkeys"
+msgstr "Přidat podklíče"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Revoke Subkeys"
+msgstr "Odvolat podklíče"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Delete Subkeys"
+msgstr "Smazat podklíče"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Change Expiry"
+msgstr "Změnit platnost"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Export Subkey Secrets"
+msgstr "Exportovat tajemství podklíčů"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "1 year"
+msgstr "1 rok"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "2 years"
+msgstr "2 roky"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "5 years"
+msgstr "5 let"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Never"
+msgstr "Nikdy"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "File"
+msgstr "Soubor"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Smartcard"
+msgstr "Chytrá karta"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Add User ID"
+msgstr "Přidat ID uživatele"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Edit User IDs"
+msgstr "Upravit ID uživatele"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Set Primary User ID"
+msgstr "Nastavit primární ID uživatele"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Revoke User ID"
+msgstr "Odvolat ID uživatele"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Delete User ID"
+msgstr "Smazat ID uživatele"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Encrypt"
+msgstr "Šifrovat"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/scan_views.py
+msgid "Decrypt"
+msgstr "Dešifrovat"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Sign"
+msgstr "Podepsat"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Verify Signature"
+msgstr "Ověřit podpis"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Create Message"
+msgstr "Vytvořit zprávu"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Load Message"
+msgstr "Nahrát zprávu"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Manifest"
+msgstr "Manifest"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Type Message"
+msgstr "Napsat zprávu"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Load Seedkeeper"
+msgstr "Nahrát Seedkeeper"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/seed_views.py
+msgid "Scan QR"
+msgstr "Naskenovat QR"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Load File"
+msgstr "Nahrát soubor"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Load Key"
+msgstr "Nahrát klíč"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+#: src/seedsigner/views/password_generator_views.py
+msgid "Save to Seedkeeper"
+msgstr "Uložit na Seedkeeper"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+#: src/seedsigner/views/password_generator_views.py
+#: src/seedsigner/views/smartcard_views.py
+msgid "Show as QR"
+msgstr "Zobrazit jako QR"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Public Key"
+msgstr "Veřejný klíč"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Private Key"
+msgstr "Soukromý klíč"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "View Card Info"
+msgstr "Zobrazit info o kartě"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Generate On-Card Key"
+msgstr "Vygenerovat klíč na kartě"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Change Admin PIN"
+msgstr "Změnit admin PIN"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Change User PIN"
+msgstr "Změnit uživatelský PIN"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Encrypting File"
+msgstr "Šifruji soubor"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "(May take a while)"
+msgstr "(Může chvíli trvat)"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Decrypting File"
+msgstr "Dešifruji soubor"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Check SHA256Sum"
+msgstr "Zkontrolovat SHA256Sum"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Update"
+msgstr "Aktualizovat"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "From File"
+msgstr "Ze souboru"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Generate New"
+msgstr "Vygenerovat nový"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Derive BIP85"
+msgstr "Odvodit BIP85"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "OpenGPG Card"
+msgstr "Karta OpenGPG"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Edit text"
+msgstr "Upravit text"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Discard text"
+msgstr "Zahodit text"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Discard text?"
+msgstr "Zahodit text?"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Generate QR code"
+msgstr "Vygenerovat QR kód"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/seed_views.py
+msgid "Transcribe mode"
+msgstr "Režim přepisu"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/seed_views.py
+msgid "FullScreen mode"
+msgstr "Režim celé obrazovky"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/seed_views.py
+msgid "Transcribe Mode ?"
+msgstr "Režim přepisu?"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Confirm text QR code"
+msgstr "Potvrdit textový QR kód"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Confirm Text QR ?"
+msgstr "Potvrdit textový QR?"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Scan text QR code"
+msgstr "Naskenovat textový QR kód"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Confirm Text QR Code"
+msgstr "Potvrdit textový QR kód"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Your transcribed text QR code does not match your original text!"
+msgstr "Přepsaný textový QR kód neodpovídá původnímu textu!"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Review text QR code"
+msgstr "Zkontrolovat textový QR kód"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Your transcribed text QR code successfully scanned and yielded the same text."
+msgstr "Přepsaný textový QR kód byl úspěšně naskenován a obsahuje stejný text."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Confirm Text QR"
+msgstr "Potvrdit textový QR"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Your transcribed text QR code could not be read!"
+msgstr "Přepsaný textový QR kód nelze přečíst!"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Edit & Generate QR code"
+msgstr "Upravit a vygenerovat QR kód"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Decoded Text"
+msgstr "Dekódovaný text"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/keycard_bias.py src/seedsigner/views/satochip_bias.py
+msgid "Run Test"
+msgstr "Spustit test"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/microsd_views.py
+msgid "Flash Image"
+msgstr "Zapsat image"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/microsd_views.py
+msgid "Verify MicroSD"
+msgstr "Ověřit MicroSD"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/microsd_views.py
+msgid "Wipe (Zero)"
+msgstr "Smazat (nuly)"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/microsd_views.py
+msgid "Wipe (Random)"
+msgstr "Smazat (náhodně)"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/microsd_views.py
+msgid "Skip Verification"
+msgstr "Přeskočit ověření"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/microsd_views.py
+msgid "All"
+msgstr "Vše"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "Custom"
+msgstr "Vlastní"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "Diceware-EFF Short"
+msgstr "Diceware-EFF krátký"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "Diceware-EFF Long"
+msgstr "Diceware-EFF dlouhý"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "Diceware-BIP39"
+msgstr "Diceware-BIP39"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "Hex"
+msgstr "Hex"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "Dice Rolls"
+msgstr "Hody kostkou"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "Password Type"
+msgstr "Typ hesla"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "64 bits"
+msgstr "64 bitů"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "128 bits"
+msgstr "128 bitů"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "256 bits"
+msgstr "256 bitů"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "Password Strength"
+msgstr "Síla hesla"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+#: src/seedsigner/views/smartcard_views.py
+msgid "Yes"
+msgstr "Ano"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+#: src/seedsigner/views/smartcard_views.py
+msgid "No"
+msgstr "Ne"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "Select Options"
+msgstr "Vybrat možnosti"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "Choose at least one character set."
+msgstr "Vyberte alespoň jednu sadu znaků."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "System RNG health check failed."
+msgstr "Kontrola systémového RNG selhala."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "System RNG Error"
+msgstr "Chyba systémového RNG"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "Camera"
+msgstr "Kamera"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "Dice"
+msgstr "Kostky"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "System RNG"
+msgstr "Systémový RNG"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "Entropy Source"
+msgstr "Zdroj entropie"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "Not Supported"
+msgstr "Nepodporováno"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "BIP85 supports Diceware, Dice Rolls, Hex, Base64, and Base85."
+msgstr "BIP85 podporuje Diceware, hody kostkou, Hex, Base64 a Base85."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "None"
+msgstr "Žádný"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "Capitalise"
+msgstr "Velká písmena"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "Space"
+msgstr "Mezera"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "Separator"
+msgstr "Oddělovač"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "6 sides"
+msgstr "6 stěn"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "10 sides"
+msgstr "10 stěn"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "20 sides"
+msgstr "20 stěn"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "Dice Sides"
+msgstr "Stěny kostky"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "Number of Rolls"
+msgstr "Počet hodů"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "Invalid Input"
+msgstr "Neplatný vstup"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "Number of rolls must be at least 1."
+msgstr "Počet hodů musí být alespoň 1."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+#: src/seedsigner/views/tools_views.py
+msgid "Poor Entropy"
+msgstr "Slabá entropie"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+#: src/seedsigner/views/tools_views.py
+msgid "Dice rolls didn't appear random enough. Please try again."
+msgstr "Hody nevypadaly dostatečně náhodně. Zkuste to znovu."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+#: src/seedsigner/views/tools_views.py
+msgid "Camera entropy didn't appear random enough. Please try again."
+msgstr "Entropie z kamery nevypadala dostatečně náhodně. Zkuste to znovu."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "WARNING"
+msgstr "VAROVÁNÍ"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "Load a seed before using BIP85."
+msgstr "Před použitím BIP85 nahrajte seed."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "Select Seed"
+msgstr "Vybrat seed"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "Choose seed for BIP85"
+msgstr "Vyberte seed pro BIP85"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "BIP85 Index"
+msgstr "Index BIP85"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "Invalid Length"
+msgstr "Neplatná délka"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "BIP85 Hex supports 128 or 256 bits."
+msgstr "BIP85 Hex podporuje 128 nebo 256 bitů."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "BIP85 Base64 needs 120+ bits."
+msgstr "BIP85 Base64 vyžaduje 120+ bitů."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "BIP85 Base85 needs 64-512 bits."
+msgstr "BIP85 Base85 vyžaduje 64-512 bitů."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "Password Name"
+msgstr "Název hesla"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "Not Enough Space"
+msgstr "Nedostatek místa"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid ""
+"Saving Secret\n"
+"\n"
+"\n"
+"\n"
+"\n"
+"\n"
+msgstr ""
+"Ukládám tajemství\n"
+"\n"
+"\n"
+"\n"
+"\n"
+"\n"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+#: src/seedsigner/views/psbt_views.py
+msgid "Success"
+msgstr "Povedlo se"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "Password saved to Seedkeeper"
+msgstr "Heslo uloženo na Seedkeeper"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "Not enough space on Seedkeeper for password"
+msgstr "Na Seedkeeperu není pro heslo dost místa"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "Failed"
+msgstr "Selhalo"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "Password save failed"
+msgstr "Heslo se nepodařilo uložit"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+#: src/seedsigner/views/scan_views.py
+msgid "Edit"
+msgstr "Upravit"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "Password"
+msgstr "Heslo"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "Save Password"
+msgstr "Uložit heslo"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py src/seedsigner/views/seed_views.py
+msgid "Use Satochip card"
+msgstr "Použít kartu Satochip"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py
+msgid "Use Keycard"
+msgstr "Použít Keycard"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py src/seedsigner/views/seed_views.py
+#: src/seedsigner/views/smartcard_views.py src/seedsigner/views/tools_views.py
+msgid "Enter 15-word seed"
+msgstr "Vložit seed o 15 slovech"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py src/seedsigner/views/seed_views.py
+#: src/seedsigner/views/smartcard_views.py src/seedsigner/views/tools_views.py
+msgid "Enter 18-word seed"
+msgstr "Vložit seed o 18 slovech"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py src/seedsigner/views/seed_views.py
+#: src/seedsigner/views/smartcard_views.py src/seedsigner/views/tools_views.py
+msgid "Enter 21-word seed"
+msgstr "Vložit seed o 21 slovech"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py
+msgid "Enter WIF"
+msgstr "Vložit WIF"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py src/seedsigner/views/scan_views.py
+msgid "Scan WIF"
+msgstr "Naskenovat WIF"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py
+msgid "Enter BIP38"
+msgstr "Vložit BIP38"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py src/seedsigner/views/scan_views.py
+msgid "Scan BIP38"
+msgstr "Naskenovat BIP38"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py
+msgid "Fingerprint mismatch"
+msgstr "Otisk nesouhlasí"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py
+msgid "Card cannot sign PSBT"
+msgstr "Karta nemůže podepsat PSBT"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py
+msgid "Card fingerprint ({}) not in PSBT signers."
+msgstr "Otisk karty ({}) není mezi podepisujícími PSBT."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py
+msgid "Private Key (WIF)"
+msgstr "Soukromý klíč (WIF)"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py
+msgid "Invalid WIF!"
+msgstr "Neplatný WIF!"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py
+msgid "Not a valid WIF-encoded private key."
+msgstr "Není platný soukromý klíč ve formátu WIF."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py
+msgid "BIP38 Key"
+msgstr "Klíč BIP38"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py
+msgid "BIP38 Passphrase"
+msgstr "BIP38 bezpečnostní fráze"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py
+msgid "Invalid BIP38!"
+msgstr "Neplatný BIP38!"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py
+msgid "Could not decrypt BIP38 key."
+msgstr "Klíč BIP38 se nepodařilo dešifrovat."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py
+msgid "Descriptor mismatch"
+msgstr "Deskriptor nesouhlasí"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py
+msgid "Descriptor cleared"
+msgstr "Deskriptor smazán"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py
+msgid "Loaded multisig wallet descriptor does not match this PSBT. Load the correct descriptor or skip verification to continue."
+msgstr "Nahraný multisig deskriptor neodpovídá tomuto PSBT. Nahrajte správný deskriptor, nebo přeskočte ověření."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py
+msgid "Signing PSBT..."
+msgstr "Podepisuji PSBT..."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py
+msgid "Signing Timeout"
+msgstr "Vypršel čas podpisu"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py
+msgid "Retry (higher timeout)"
+msgstr "Zkusit znovu (delší čas)"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py
+msgid "Saved as {}."
+msgstr "Uloženo jako {}."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py
+msgid "Failed to save PSBT: {}"
+msgstr "PSBT se nepodařilo uložit: {}"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py
+msgid "Encoding PSBT..."
+msgstr "Kóduji PSBT..."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/scan_views.py
+msgid "QR Scanner Unavailable"
+msgstr "QR skener není k dispozici"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/scan_views.py
+msgid "QR scanning backend missing. Install zbar (or OpenCV on desktop) and restart."
+msgstr "Chybí backend pro skenování QR. Nainstalujte zbar (nebo OpenCV na desktopu) a restartujte."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/scan_views.py
+msgid "Select Seed Type"
+msgstr "Vyberte typ seedu"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/scan_views.py
+msgid "Time set to:"
+msgstr "Čas nastaven na:"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/scan_views.py
+msgid "Set Time Failed"
+msgstr "Čas se nepodařilo nastavit"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/scan_views.py
+msgid "Invalid Time"
+msgstr "Neplatný čas"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/scan_views.py
+msgid "Could not parse time from QR"
+msgstr "Čas z QR se nepodařilo přečíst"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/scan_views.py
+msgid "Scan SLIP-39 Share"
+msgstr "Naskenovat podíl SLIP-39"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/scan_views.py
+msgid "Expected a SLIP-39 share QR"
+msgstr "Očekáván QR podílu SLIP-39"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/scan_views.py
+msgid "Expected a WIF private key"
+msgstr "Očekáván soukromý klíč WIF"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/scan_views.py
+msgid "Expected a BIP38 private key"
+msgstr "Očekáván soukromý klíč BIP38"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/scan_views.py
+msgid "Scan {} receive address from the wallet you just exported"
+msgstr "Naskenujte přijímací adresu {} z právě exportované peněženky"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/scan_views.py
+msgid ""
+"Data matches multiple\n"
+"QR types."
+msgstr ""
+"Data odpovídají více\n"
+"typům QR."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/scan_views.py src/seedsigner/views/seed_views.py
+msgid "Type encryption key"
+msgstr "Napsat šifrovací klíč"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/scan_views.py src/seedsigner/views/seed_views.py
+msgid "Scan encryption key"
+msgstr "Naskenovat šifrovací klíč"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/scan_views.py src/seedsigner/views/seed_views.py
+msgid "Edit encryption key"
+msgstr "Upravit šifrovací klíč"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/scan_views.py src/seedsigner/views/seed_views.py
+msgid "Discard encryption key"
+msgstr "Zahodit šifrovací klíč"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/scan_views.py src/seedsigner/views/seed_views.py
+msgid "Proceed"
+msgstr "Pokračovat"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/scan_views.py src/seedsigner/views/seed_views.py
+msgid "Scan & Append Another"
+msgstr "Naskenovat a přidat další"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/scan_views.py
+msgid "Decrypted Text"
+msgstr "Dešifrovaný text"
+
+#. FORK: translated by Claude 2026-07-10
+#. This is on the opening splash screen, displayed above the Seedsigner logo
+#: src/seedsigner/views/screensaver.py
+msgid "An unofficial fork of:"
+msgstr "Neoficiální fork projektu:"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "BitBox02 backup"
+msgstr "Záloha BitBox02"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Passport backup"
+msgstr "Záloha Passport"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "TAPSIGNER backup"
+msgstr "Záloha TAPSIGNER"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Enter Aezeed seed"
+msgstr "Vložit Aezeed seed"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py src/seedsigner/views/smartcard_views.py
+msgid "SLIP-39 Shares"
+msgstr "Podíly SLIP-39"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid " Scan a SeedQR"
+msgstr " Naskenovat SeedQR"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py src/seedsigner/views/smartcard_views.py
+msgid "From SeedKeeper"
+msgstr "Ze SeedKeeperu"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "From Specter-DIY"
+msgstr "Ze Specter-DIY"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py src/seedsigner/views/smartcard_views.py
+msgid " Create a seed"
+msgstr " Vytvořit seed"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "microSD card not detected."
+msgstr "Karta microSD nenalezena."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "No Backups Found"
+msgstr "Žádné zálohy nenalezeny"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "No BitBox02 backups (.bin, .bb02, .dat, .backup) were found on the microSD card."
+msgstr "Na kartě microSD nebyly nalezeny žádné zálohy BitBox02 (.bin, .bb02, .dat, .backup)."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Select BitBox02 backup"
+msgstr "Vyberte zálohu BitBox02"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Backup name: {}"
+msgstr "Název zálohy: {}"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Created: {}"
+msgstr "Vytvořeno: {}"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Firmware: {}"
+msgstr "Firmware: {}"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Birthdate: {}"
+msgstr "Datum vzniku: {}"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Seed length: {} words"
+msgstr "Délka seedu: {} slov"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Seed loaded"
+msgstr "Seed nahrán"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "No Passport backups (.7z) were found on the microSD card."
+msgstr "Na kartě microSD nebyly nalezeny žádné zálohy Passport (.7z)."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Select Passport backup"
+msgstr "Vyberte zálohu Passport"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Passport backup code"
+msgstr "Kód zálohy Passport"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Backup code cannot be empty."
+msgstr "Kód zálohy nesmí být prázdný."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Chain: {}"
+msgstr "Řetězec: {}"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "XFP: {}"
+msgstr "XFP: {}"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "No TAPSIGNER backups (.aes) were found on the microSD card."
+msgstr "Na kartě microSD nebyly nalezeny žádné zálohy TAPSIGNER (.aes)."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Select TAPSIGNER backup"
+msgstr "Vyberte zálohu TAPSIGNER"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Backup key (hex)"
+msgstr "Klíč zálohy (hex)"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "xprv loaded from TAPSIGNER backup."
+msgstr "xprv nahráno ze zálohy TAPSIGNER."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Path: {}"
+msgstr "Cesta: {}"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Load Passphrase"
+msgstr "Nahrát bezpečnostní frázi"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Type Passphrase"
+msgstr "Napsat bezpečnostní frázi"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Scan Passphrase"
+msgstr "Naskenovat bezpečnostní frázi"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Load from SeedKeeper"
+msgstr "Nahrát ze SeedKeeperu"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Aezeed passphrase"
+msgstr "Aezeed bezpečnostní fráze"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid ""
+"Passphrase required\n"
+"for this mnemonic."
+msgstr ""
+"Tato mnemonika vyžaduje\n"
+"bezpečnostní frázi."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Invalid passphrase"
+msgstr "Neplatná bezpečnostní fráze"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid ""
+"Aezeed passphrase required.\n"
+"Try again."
+msgstr ""
+"Je vyžadována Aezeed bezpečnostní fráze.\n"
+"Zkuste to znovu."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid ""
+"Wrong Aezeed passphrase.\n"
+"Try again."
+msgstr ""
+"Nesprávná Aezeed bezpečnostní fráze.\n"
+"Zkuste to znovu."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Invalid Text QR Code"
+msgstr "Neplatný textový QR kód"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Non UTF-8 data detected."
+msgstr "Zjištěna data mimo UTF-8."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Aezeed support"
+msgstr "Podpora Aezeed"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid ""
+"Aezeed entry is experimental.\n"
+"Use only with known-good backups."
+msgstr ""
+"Vkládání Aezeed je experimentální.\n"
+"Používejte jen s ověřenými zálohami."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Enter 20 words"
+msgstr "Vložit 20 slov"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Enter 33 words"
+msgstr "Vložit 33 slov"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Load Share"
+msgstr "Nahrát podíl"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Share Word #{}"
+msgstr "Slovo podílu #{}"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Enter share"
+msgstr "Vložit podíl"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Scan share"
+msgstr "Naskenovat podíl"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Combine shares"
+msgstr "Zkombinovat podíly"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "{} of {} needed"
+msgstr "Potřeba {} z {}"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py src/seedsigner/views/settings_views.py
+#: src/seedsigner/views/smartcard_views.py
+msgid "Try Again"
+msgstr "Zkusit znovu"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Invalid SLIP-39 Share"
+msgstr "Neplatný podíl SLIP-39"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Checksum failure; not a valid SLIP-39 share."
+msgstr "Kontrolní součet selhal; není platný podíl SLIP-39."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Non-extendable Seed"
+msgstr "Nerozšiřitelný seed"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "This SLIP-39 seed cannot regenerate new shares."
+msgstr "Tento SLIP-39 seed nemůže vytvářet nové podíly."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Export as Plaintext QR"
+msgstr "Exportovat jako nešifrovaný QR"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "To SeedKeeper"
+msgstr "Na SeedKeeper"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "To Specter-DIY"
+msgstr "Na Specter-DIY"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Regenerate Shares"
+msgstr "Znovu vytvořit podíly"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py src/seedsigner/views/smartcard_views.py
+msgid "Xpub QR Format"
+msgstr "Formát QR pro xpub"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Open {} and display a receive address from the wallet you just exported."
+msgstr "Otevřete {} a zobrazte přijímací adresu právě exportované peněženky."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "your wallet software"
+msgstr "váš peněženkový software"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid ""
+"Passphrase was used.\n"
+"You'll need words + passphrase."
+msgstr ""
+"Byla použita bezpečnostní fráze.\n"
+"Budete potřebovat slova + frázi."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "18 Words"
+msgstr "18 slov"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Review"
+msgstr "Zkontrolovat"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Finalize child"
+msgstr "Dokončit odvozený seed"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Input Encryption Key"
+msgstr "Zadat šifrovací klíč"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Discard encryption key?"
+msgstr "Zahodit šifrovací klíč?"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Your current key entry will be erased"
+msgstr "Zadaný klíč bude vymazán"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Invalid Key"
+msgstr "Neplatný klíč"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Key length is too long."
+msgstr "Klíč je příliš dlouhý."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Input from Camera"
+msgstr "Vstup z kamery"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Use fingerprint"
+msgstr "Použít otisk"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Assign custom ID"
+msgstr "Přiřadit vlastní ID"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Input Mnemonic ID"
+msgstr "Zadat ID mnemoniky"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Edit mnemonic ID"
+msgstr "Upravit ID mnemoniky"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Discard mnemonic ID"
+msgstr "Zahodit ID mnemoniky"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Discard mnemonic ID?"
+msgstr "Zahodit ID mnemoniky?"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Your current mnemonic ID entry will be erased"
+msgstr "Zadané ID mnemoniky bude vymazáno"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py src/seedsigner/views/tools_views.py
+msgid "Processing..."
+msgstr "Zpracovávám..."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Encryption failure"
+msgstr "Šifrování selhalo"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Next 100"
+msgstr "Dalších 100"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Expanded Search"
+msgstr "Rozšířené hledání"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Not Found"
+msgstr "Nenalezeno"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Address Not Verified"
+msgstr "Adresa neověřena"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Checked {} addresses with no match."
+msgstr "Zkontrolováno {} adres bez shody."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Check Next 10"
+msgstr "Zkontrolovat dalších 10"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Checked {} addresses per path with no match."
+msgstr "Zkontrolováno {} adres na cestu bez shody."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Wallet Export"
+msgstr "Export peněženky"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Wallet export successful."
+msgstr "Peněženka úspěšně exportována."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Address format doesn't match exported script type. Wallet export unsuccessful."
+msgstr "Formát adresy neodpovídá exportovanému typu skriptu. Export peněženky selhal."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Unable to match wallet to current seed. Wallet export unsuccessful."
+msgstr "Peněženku se nepodařilo přiřadit k aktuálnímu seedu. Export selhal."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Export Failed"
+msgstr "Export selhal"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Load SeedKeeper"
+msgstr "Nahrát SeedKeeper"
+
+#. FORK: translated by Claude 2026-07-10
+#. Multisig policy. For a "2 of 3" policy, "threshold" = 2; "n" = 3
+#: src/seedsigner/views/seed_views.py
+msgid "{threshold} of {n}"
+msgstr "{threshold} z {n}"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py src/seedsigner/views/smartcard_views.py
+msgid "Exporting xpub..."
+msgstr "Exportuji xpub..."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Signing message..."
+msgstr "Podepisuji zprávu..."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Verification Failed"
+msgstr "Ověření selhalo"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/settings_views.py
+msgid "Test Smartcard"
+msgstr "Otestovat chytrou kartu"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/settings_views.py
+msgid "List card readers"
+msgstr "Vypsat čtečky karet"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/settings_views.py
+msgid "Test NFC Scan"
+msgstr "Otestovat NFC skenování"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/settings_views.py
+msgid "Restart PCSC"
+msgstr "Restartovat PCSC"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/settings_views.py
+msgid "Battery info"
+msgstr "Info o baterii"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/settings_views.py
+msgid "System info"
+msgstr "Info o systému"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/settings_views.py
+msgid "Load Backup Files"
+msgstr "Nahrát soubory záloh"
+
+#. FORK: translated by Claude 2026-07-10
+#. Title of a warning dialog when configuring a setting that requires at least
+#. one option to be selected.
+#: src/seedsigner/views/settings_views.py
+msgid "Selection Required"
+msgstr "Je vyžadován výběr"
+
+#. FORK: translated by Claude 2026-07-10
+#. The name of the setting being configured (e.g. "Script types") will be
+#. inserted.
+#: src/seedsigner/views/settings_views.py
+msgid "At least one option must be selected for \"{}\"."
+msgstr "Pro \"{}\" musí být vybrána alespoň jedna možnost."
+
+#. FORK: translated by Claude 2026-07-10
+#. Text for the button that returns the user to the setting configuration
+#. screen.
+#: src/seedsigner/views/settings_views.py
+msgid "Return to setting"
+msgstr "Zpět na nastavení"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/settings_views.py
+msgid "No compatible battery monitor detected"
+msgstr "Nenalezen kompatibilní monitor baterie"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/settings_views.py src/seedsigner/views/tools_views.py
+msgid "Unavailable"
+msgstr "Není k dispozici"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Common Functions"
+msgstr "Společné funkce"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Satochip Functions"
+msgstr "Funkce Satochip"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "KeyCard Functions"
+msgstr "Funkce Keycard"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "SeedKeeper Functions"
+msgstr "Funkce SeedKeeper"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Specter-DIY Functions"
+msgstr "Funkce Specter-DIY"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "DIY Tools"
+msgstr "Nástroje DIY"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Card Info"
+msgstr "Info o kartě"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Genuine Check"
+msgstr "Kontrola pravosti"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Change PIN"
+msgstr "Změnit PIN"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Change Label"
+msgstr "Změnit popisek"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Change NFC Policy"
+msgstr "Změnit zásady NFC"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Configure NDEF"
+msgstr "Nastavit NDEF"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Factory Reset Card"
+msgstr "Tovární reset karty"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "View NDEF"
+msgstr "Zobrazit NDEF"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Use Seedkeeper App Link"
+msgstr "Použít odkaz aplikace Seedkeeper"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Clear NDEF"
+msgstr "Smazat NDEF"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Set Custom NDEF"
+msgstr "Nastavit vlastní NDEF"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Save NDEF to SeedKeeper"
+msgstr "Uložit NDEF na SeedKeeper"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Load NDEF from SeedKeeper"
+msgstr "Nahrát NDEF ze SeedKeeperu"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Text Record"
+msgstr "Textový záznam"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "URI Record"
+msgstr "Záznam URI"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Android App Launch"
+msgstr "Spuštění Android aplikace"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Custom (HEX)"
+msgstr "Vlastní (HEX)"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Decode NDEF"
+msgstr "Dekódovat NDEF"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "NFC Enabled"
+msgstr "NFC zapnuto"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "NFC Disabled"
+msgstr "NFC vypnuto"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "NFC Blocked"
+msgstr "NFC blokováno"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Card Re-Inserted"
+msgstr "Karta znovu vložena"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "View Free Space"
+msgstr "Zobrazit volné místo"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "View Secrets on Card"
+msgstr "Zobrazit tajemství na kartě"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Save Password to Card"
+msgstr "Uložit heslo na kartu"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Delete Secret from Card"
+msgstr "Smazat tajemství z karty"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Load MultiSig Descriptor"
+msgstr "Nahrát multisig deskriptor"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Save MultiSig Descriptor"
+msgstr "Uložit multisig deskriptor"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Clone Card Secrets"
+msgstr "Klonovat tajemství karty"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Exit to Home"
+msgstr "Zpět na úvod"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Initialise with Seed"
+msgstr "Inicializovat seedem"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Load as Descriptor"
+msgstr "Nahrát jako deskriptor"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Load PSBT"
+msgstr "Nahrát PSBT"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Set PUK"
+msgstr "Nastavit PUK"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Unblock PIN with PUK"
+msgstr "Odblokovat PIN pomocí PUK"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Set Name"
+msgstr "Nastavit název"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Remove Seed"
+msgstr "Odebrat seed"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Benchmark Signing"
+msgstr "Test rychlosti podpisu"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Benchmark Message Signing"
+msgstr "Test rychlosti podpisu zpráv"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Check signing bias"
+msgstr "Zkontrolovat vychýlení podpisů"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Remove"
+msgstr "Odebrat"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Reset"
+msgstr "Reset"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Enable 2FA"
+msgstr "Zapnout 2FA"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Already Seeded"
+msgstr "Seed už je nahrán"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid ""
+"xprv cannot init Satochip.\n"
+"Use BIP39, SLIP39, or Electrum."
+msgstr ""
+"xprv nemůže inicializovat Satochip.\n"
+"Použijte BIP39, SLIP39 nebo Electrum."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Change Card PIN"
+msgstr "Změnit PIN karty"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Load Mnemonic"
+msgstr "Nahrát mnemoniku"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Save Mnemonic"
+msgstr "Uložit mnemoniku"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Wipe Seed"
+msgstr "Smazat seed"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Card Keys"
+msgstr "Klíče karty"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Build Applets"
+msgstr "Sestavit applety"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Install Applet"
+msgstr "Nainstalovat applet"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Uninstall Applet"
+msgstr "Odinstalovat applet"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Enter Different PIN"
+msgstr "Zadat jiný PIN"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Load Keys"
+msgstr "Nahrát klíče"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Save Keys"
+msgstr "Uložit klíče"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Unlock Card"
+msgstr "Odemknout kartu"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Lock Card"
+msgstr "Zamknout kartu"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Clear Loaded Keys"
+msgstr "Smazat nahrané klíče"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Overwrite"
+msgstr "Přepsat"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Abort Save"
+msgstr "Zrušit ukládání"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Enter Single Key"
+msgstr "Zadat jeden klíč"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Enter Key Set"
+msgstr "Zadat sadu klíčů"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Generate Single Key"
+msgstr "Vygenerovat jeden klíč"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Generate Key Set"
+msgstr "Vygenerovat sadu klíčů"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "8 KB (default)"
+msgstr "8 KB (výchozí)"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/tools_views.py
+msgid "System RNG entropy too low. Try again later."
+msgstr "Entropie systémového RNG je příliš nízká. Zkuste to později."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/tools_views.py
+msgid "System RNG derived entropy failed health checks."
+msgstr "Entropie ze systémového RNG neprošla kontrolami."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/tools_views.py
+msgid " New seed"
+msgstr " Nový seed"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/tools_views.py
+msgid "SLIP39 seed"
+msgstr "SLIP39 seed"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/tools_views.py
+msgid "Text QR Code"
+msgstr "Textový QR kód"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/tools_views.py
+msgid "Password Generator"
+msgstr "Generátor hesel"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/tools_views.py
+msgid "Smartcard Tools"
+msgstr "Nástroje chytrých karet"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/tools_views.py
+msgid "MicroSD Tools"
+msgstr "Nástroje MicroSD"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/tools_views.py
+msgid "Clear Multisig Descriptor"
+msgstr "Smazat multisig deskriptor"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/tools_views.py
+msgid "microSD card not detected"
+msgstr "Karta microSD nenalezena"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/tools_views.py
+msgid "Insert a microSD card to save the discharge log."
+msgstr "Vložte kartu microSD pro uložení záznamu vybíjení."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/tools_views.py
+msgid "Unable to load network information."
+msgstr "Informace o síti se nepodařilo načíst."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/tools_views.py
+msgid "15 words"
+msgstr "15 slov"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/tools_views.py
+msgid "18 words"
+msgstr "18 slov"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/tools_views.py
+msgid "21 words"
+msgstr "21 slov"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/tools_views.py
+msgid "20 words"
+msgstr "20 slov"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/tools_views.py
+msgid "33 words"
+msgstr "33 slov"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/tools_views.py
+msgid "20 words ({} rolls)"
+msgstr "20 slov ({} hodů)"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/tools_views.py
+msgid "33 words ({} rolls)"
+msgstr "33 slov ({} hodů)"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/tools_views.py
+msgid "Loaded Multisig Descriptor"
+msgstr "Multisig deskriptor nahrán"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/tools_views.py
+msgid "Load from Satochip"
+msgstr "Nahrát ze Satochipu"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/tools_views.py
+msgid "Electrum Seed"
+msgstr "Electrum seed"
+
+#. FORK: translated by Claude 2026-07-10
+#. Multisig policy. For a "2 / 3 multisig" policy, "threshold" = 2; "n" = 3
+#: src/seedsigner/views/tools_views.py
+msgid "{threshold} / {n} multisig"
+msgstr "{threshold} / {n} multisig"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/tools_views.py
+msgid "Encode text"
+msgstr "Kódovat text"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/tools_views.py
+msgid "Decode QR code"
+msgstr "Dekódovat QR kód"
+
+#. FORK: translated by Claude 2026-07-10
+#. "network" will be mainnet/testnet/regtest.
+#: src/seedsigner/views/view.py
+msgid "Current network setting ({network}) doesn't match {derivation_path}."
+msgstr "Aktuální nastavení sítě ({network}) neodpovídá {derivation_path}."
+

@@ -6,6 +6,22 @@ The **upstream catalog for the locale is always the primary glossary** — match
 its terminology exactly, even when a textbook translation would differ. This
 file records decisions that upstream's catalogs don't settle.
 
+## BIP39 / SLIP39 mnemonic words are NEVER translated
+
+The seed words themselves (reading, backing up, entering, backup-test choices)
+must always render exactly as the English wordlist words. The code guarantees
+this — words are drawn directly (`SeedWordsScreen`), injected via `.format()`
+after template translation (calc-final-word), or use
+`ButtonOptionWithoutTranslation` (backup test) — so they never flow through
+gettext. To keep it that way:
+
+- Never add an overlay entry whose msgid exactly equals a BIP39/SLIP39 word
+  (`fork_translations.py check` errors on this). Upstream's "change"/"fee"
+  msgids are PSBT UI labels, not wordlist renderings — they're fine upstream
+  but must not be duplicated into overlays.
+- When touching seed/share word UI code, keep words out of `_()` and plain
+  `ButtonOption` labels; use `ButtonOptionWithoutTranslation`.
+
 ## Never translate (all locales)
 
 1. **Mis-extracted internal data keys** — these are GPG colon-format /

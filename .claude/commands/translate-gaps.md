@@ -34,6 +34,9 @@ overlap). Managed by `l10n/fork_translations.py`. See `l10n/README.md`.
    msgids, and a report of what remains untranslated.
 
 3. **Translate every empty msgstr**, respecting:
+   - **BIP39/SLIP39 mnemonic words are NEVER translated** — never create an
+     entry whose msgid equals a wordlist word (`fork_translations.py check`
+     enforces this; rationale in GLOSSARY.md).
    - Placeholders `{}` / `{name}` copied verbatim, same count and names.
    - `\n` line structure preserved.
    - UI limits (see AGENTS.md): body copy ≤ ~120 chars over ≤ 2 lines; button
