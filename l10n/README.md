@@ -12,6 +12,32 @@
 1. Python code retrieves a translation on demand.
 
 
+## Fork translation overlay (3rdIteration fork)
+This fork adds hundreds of UI strings (smartcard, GPG, password generator, SLIP39, …)
+that upstream's Transifex translators never see. Their translations live in
+**overlay catalogs** in this repo at `l10n/fork/<locale>/messages.po`, containing
+*only* the fork-gap entries.
+
+* **Merge rule:** at compile time the overridden `compile_catalog` command in
+  `setup.py` merges each upstream catalog (from the `seedsigner-translations`
+  submodule) with its overlay and writes a single combined `.mo`. **Upstream
+  always wins** for any msgid it has translated; the overlay only fills gaps.
+  No build system changes are needed anywhere — CI, seedsigner-os image builds,
+  and local dev all already run `python setup.py compile_catalog`.
+* **Management script:** `python l10n/fork_translations.py <status|stub|prune|check>`
+  * `status` — per-locale coverage (upstream + overlay vs `messages.pot`).
+  * `stub --locale <loc>` / `--all` — add missing msgids to the overlay with empty msgstr.
+  * `prune` — drop overlay entries that upstream has since translated, or that
+    left the pot. Run after every submodule bump and pot regeneration.
+  * `check` — validate catalogs (parse, `{}` placeholder consistency).
+* **Pulling upstream translations stays trivial:** bump the submodule pointer,
+  re-run `python setup.py extract_messages`, then `prune` + `status`.
+* **Filling gaps:** run the `/translate-gaps <locale>` Claude Code command
+  (`.claude/commands/translate-gaps.md`). The agent translates using the upstream
+  catalog as the terminology glossary, tags entries with `#. FORK:` provenance
+  comments, and asks (batched) about any string whose sense is ambiguous.
+
+
 ## "Wrapping" text for translation
 Any text that we want to be presented in multiple languages needs to "wrapped".
 
@@ -293,6 +319,10 @@ python setup.py compile_catalog
 # Or target a specific language code:
 python setup.py compile_catalog -l es
 ```
+
+Note: in this fork, `compile_catalog` also merges the fork overlay catalogs from
+`l10n/fork/<locale>/messages.po` into each `.mo` (see "Fork translation overlay"
+above). The log line per locale reports `(+N fork overlay entries)`.
 
 ### Unused babel commands
 Transifex eliminates the need for the `init_catalog` and `update_catalog` commands.
