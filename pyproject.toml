@@ -1,6 +1,10 @@
 [build-system]
 build-backend = "setuptools.build_meta"
-requires = ["setuptools", "wheel"]
+# Babel is required so the isolated PEP 517 build can import setup.py's
+# compile_catalog override (see setup.py). Kept in sync with
+# l10n/requirements-l10n.txt. setup.py also guards the import so a build without
+# babel still installs; this ensures the translation command is actually present.
+requires = ["setuptools", "wheel", "Babel==2.16.0"]
 
 [project]
 authors = [{name = "SeedSigner", email = "author@example.com"}]
