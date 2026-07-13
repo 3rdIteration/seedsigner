@@ -4049,7 +4049,6 @@ class SatochipExportXpubDetailsView(View):
         selected_menu_num = self.run_screen(
             seed_screens.SeedExportXpubDetailsScreen,
             fingerprint=fingerprint_hex,
-            has_passphrase=False,
             derivation_path=derivation_path,
             xpub=xpub_base58,
         )
@@ -4307,7 +4306,6 @@ class SatochipLoadDescriptorDetailsView(View):
         selected_menu_num = self.run_screen(
             seed_screens.SeedExportXpubDetailsScreen,
             fingerprint=fingerprint_hex,
-            has_passphrase=False,
             derivation_path=derivation_path,
             xpub=xpub_base58,
             button_label="Confirm",
