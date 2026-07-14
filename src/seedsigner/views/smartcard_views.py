@@ -2085,7 +2085,6 @@ class ToolsSeedkeeperViewSecretsView(View):
                 text = secret_dict['secret'],
                 status_icon_size=0,
                 show_back_button=True,
-                allow_text_overflow=True,
                 button_data=[ButtonOption("Show as QR")],
             )
 
@@ -3879,14 +3878,28 @@ class SatochipExportXpubCoordinatorView(View):
         self.account = account
 
     def run(self):
+        if len(self.settings.get_value(SettingsConstants.SETTING__XPUB_QR_FORMAT)) == 1:
+            # Nothing to select; skip this screen
+            return Destination(
+                SatochipExportXpubWarningView,
+                view_args=dict(
+                    sig_type=self.sig_type,
+                    script_type=self.script_type,
+                    coordinator=self.settings.get_value(SettingsConstants.SETTING__XPUB_QR_FORMAT)[0],
+                    custom_derivation=self.custom_derivation,
+                    coordinator_label="",
+                    account=self.account,
+                ),
+                skip_current_view=True,
+            )
+
         button_data = []
-        for coord, display_name in SettingsConstants.ALL_COORDINATORS:
-            if coord in self.settings.get_value(SettingsConstants.SETTING__COORDINATORS):
-                button_data.append(ButtonOption(display_name, return_data=coord))
+        for display_name, setting_option in zip(self.settings.get_multiselect_value_display_names(SettingsConstants.SETTING__XPUB_QR_FORMAT), self.settings.get_value(SettingsConstants.SETTING__XPUB_QR_FORMAT)):
+            button_data.append(ButtonOption(display_name, return_data=setting_option))
 
         selected_menu_num = self.run_screen(
             ButtonListScreen,
-            title="Coordinator",
+            title=_("Xpub QR Format"),
             is_button_text_centered=False,
             button_data=button_data,
             is_bottom_list=True,
@@ -3896,7 +3909,6 @@ class SatochipExportXpubCoordinatorView(View):
             return Destination(BackStackView)
 
         coordinator = button_data[selected_menu_num].return_data
-        coordinator_label = button_data[selected_menu_num].button_label
         return Destination(
             SatochipExportXpubWarningView,
             view_args=dict(
@@ -3904,7 +3916,7 @@ class SatochipExportXpubCoordinatorView(View):
                 script_type=self.script_type,
                 coordinator=coordinator,
                 custom_derivation=self.custom_derivation,
-                coordinator_label=coordinator_label,
+                coordinator_label="",
                 account=self.account,
             ),
         )
@@ -4037,7 +4049,6 @@ class SatochipExportXpubDetailsView(View):
         selected_menu_num = self.run_screen(
             seed_screens.SeedExportXpubDetailsScreen,
             fingerprint=fingerprint_hex,
-            has_passphrase=False,
             derivation_path=derivation_path,
             xpub=xpub_base58,
         )
@@ -4132,7 +4143,7 @@ class SatochipExportXpubQRDisplayView(View):
         from seedsigner.models.encode_qr import GenericStaticQrEncoder
         xpubstring = f"[{self.fingerprint}{self.derivation_path[1:]}]{self.xpub}"
 
-        if self.coordinator == SettingsConstants.COORDINATOR__SPECTER_DESKTOP:
+        if self.coordinator == SettingsConstants.XPUB_QR_FORMAT__SPECTER_LEGACY:
             encoder = self._SpecterEncoder(xpubstring, self.settings.get_value(SettingsConstants.SETTING__QR_DENSITY))
         else:
             encoder = GenericStaticQrEncoder(data=xpubstring)
@@ -4295,7 +4306,6 @@ class SatochipLoadDescriptorDetailsView(View):
         selected_menu_num = self.run_screen(
             seed_screens.SeedExportXpubDetailsScreen,
             fingerprint=fingerprint_hex,
-            has_passphrase=False,
             derivation_path=derivation_path,
             xpub=xpub_base58,
             button_label="Confirm",

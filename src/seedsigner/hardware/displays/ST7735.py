@@ -13,8 +13,11 @@ import errno
 import logging
 import time
 
+from dataclasses import dataclass
+
 from periphery import GPIO, SPI
 
+from seedsigner.hardware.displays.display_driver import BaseDisplayDriver
 from seedsigner.hardware.io_config import get_hardware_pin_mapping
 from seedsigner.models.settings import Settings
 
@@ -29,12 +32,16 @@ _X_OFFSET = 1
 _Y_OFFSET = 2
 
 
-class ST7735:
-    """Driver for the ST7735S 128×128 1.44-inch LCD HAT."""
+@dataclass
+class ST7735(BaseDisplayDriver):
+    """Driver for the ST7735S 128×128 1.44-inch LCD HAT.
 
-    def __init__(self):
-        self.width = 128
-        self.height = 128
+    Note that self._width and self._height are provided by the parent
+    BaseDisplayDriver class and are set during instantiation via the
+    DisplayDriverFactory.
+    """
+
+    def __post_init__(self):
         # Keep SPI transfers within conservative per-message kernel limits.
         self.CHUNK_SIZE = 4096
 

@@ -8,7 +8,7 @@ from seedsigner.hardware.displays.display_driver import (
     DISPLAY_TYPE__ST7789,
     DISPLAY_TYPE__ST7735,
     DISPLAY_TYPE__DESKTOP,
-    DisplayDriver,
+    DisplayDriverFactory,
 )
 from seedsigner.models.settings import Settings
 from seedsigner.models.settings_definition import SettingsConstants
@@ -26,6 +26,11 @@ class Renderer(ConfigurableSingleton):
     lock = Lock()
     _needs_resize = False
     _display_size = (0, 0)
+
+
+    @property
+    def is_screenshot_generator(self) -> bool:
+        return False
 
 
     @classmethod
@@ -52,9 +57,9 @@ class Renderer(ConfigurableSingleton):
             # Release GPIO/SPI resources from the previous display before opening
             # a new display driver that may use the same lines.
             if self.disp:
-                self.disp.close()
+                self.disp.cleanup()
 
-            self.disp = DisplayDriver(self.display_type, width=int(width), height=int(height))
+            self.disp = DisplayDriverFactory.instantiate_display_driver(self.display_type, width=int(width), height=int(height))
 
             if Settings.get_instance().get_value(SettingsConstants.SETTING__DISPLAY_COLOR_INVERTED, default_if_none=True) == SettingsConstants.OPTION__ENABLED:
                 self.disp.invert()

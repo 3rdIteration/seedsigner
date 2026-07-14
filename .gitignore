@@ -9,6 +9,13 @@ src/seedsigner/models/settings_definition.json
 
 *.po
 *.mo
+# Fork translation overlay catalogs ARE tracked (see l10n/README.md);
+# the blanket *.po rule above is for the seedsigner-translations submodule.
+!l10n/fork/**/*.po
+# Working files used by translation sessions
+l10n/_*.py
+l10n/_*.json
+l10n/_*.txt
 jcardsim.jar
 settings.json
 /microsd

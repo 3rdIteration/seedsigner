@@ -1,0 +1,2578 @@
+# Fork translation overlay for SeedSigner (3rdIteration fork).
+# Contains ONLY strings that upstream's catalogs do not translate.
+# Merged with the upstream catalog at build time (upstream wins on overlap).
+# Managed by l10n/fork_translations.py — see l10n/README.md.
+msgid ""
+msgstr ""
+"Project-Id-Version: PROJECT VERSION\n"
+"Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
+"POT-Creation-Date: 2026-07-11 13:48-0400\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language: vi\n"
+"Language-Team: vi <LL@li.org>\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.16.0\n"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/controller.py src/seedsigner/views/view.py
+msgid "Data wiped after inactivity"
+msgstr "Dữ liệu đã bị xóa do không hoạt động"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/scan_screens.py
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Starting camera..."
+msgstr "Đang khởi động camera..."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/scan_screens.py
+msgid "Decrypt?"
+msgstr "Giải mã?"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/scan_screens.py
+msgid "Select QR Type"
+msgstr "Chọn loại QR"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/scan_screens.py
+msgid "Encryption Key"
+msgstr "Khóa mã hóa"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/scan_screens.py
+msgid "Review Encryption Key"
+msgstr "Xem lại khóa mã hóa"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Account Number"
+msgstr "Số tài khoản"
+
+#. FORK: translated by Claude 2026-07-11
+#. Refers to the SeedQR type: Standard or Compact or encrypted
+#: src/seedsigner/gui/screens/seed_screens.py
+#: src/seedsigner/views/seed_views.py
+msgid "Encrypted"
+msgstr "Đã mã hóa"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Encrypted entropy bits"
+msgstr "Số bit entropy đã mã hóa"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Non-standard path!"
+msgstr "Đường dẫn không chuẩn!"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Mnemonic ID"
+msgstr "ID cụm từ khóa"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Review Mnemonic ID"
+msgstr "Xem lại ID cụm từ khóa"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "The QR codes output in both modes may differ, but both are valid QR codes."
+msgstr "Mã QR của hai chế độ có thể khác nhau nhưng đều hợp lệ."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Transcribe Encrypted QR"
+msgstr "Chép lại QR đã mã hóa"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/settings_screens.py
+#: src/seedsigner/views/settings_views.py
+msgid "No options available"
+msgstr "Không có tùy chọn nào"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/settings_screens.py
+#: src/seedsigner/views/settings_views.py
+msgid "Battery Info"
+msgstr "Thông tin pin"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "System Info"
+msgstr "Thông tin hệ thống"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "Platform: {platform_name}"
+msgstr "Nền tảng: {platform_name}"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "Variant: {platform_variant}"
+msgstr "Biến thể: {platform_variant}"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "Serial (CPU): {system_serial}"
+msgstr "Số sê-ri (CPU): {system_serial}"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "Serial (MicroSD): {microsd_serial}"
+msgstr "Số sê-ri (MicroSD): {microsd_serial}"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/tools_screens.py
+#: src/seedsigner/views/smartcard_views.py
+msgid "Device Filter"
+msgstr "Bộ lọc thiết bị"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/tools_screens.py
+#: src/seedsigner/views/tools_views.py
+msgid "Network Info"
+msgstr "Thông tin mạng"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/tools_screens.py
+#: src/seedsigner/views/tools_views.py
+msgid "Battery Calibration"
+msgstr "Hiệu chỉnh pin"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Charge the battery fully. Select Next to start the discharge test."
+msgstr "Sạc đầy pin. Chọn Kế tiếp để bắt đầu kiểm tra xả pin."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/tools_screens.py
+#: src/seedsigner/views/gpg_views.py
+msgid "Start"
+msgstr "Bắt đầu"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Test runs until empty. Leave the device unplugged."
+msgstr "Kiểm tra chạy đến khi hết pin. Không cắm sạc thiết bị."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Charging detected"
+msgstr "Phát hiện đang sạc"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Discharging"
+msgstr "Đang xả pin"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Elapsed: "
+msgstr "Đã trôi qua: "
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Voltage: "
+msgstr "Điện áp: "
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Current: "
+msgstr "Dòng điện: "
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Status: "
+msgstr "Trạng thái: "
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "LOW ENTROPY"
+msgstr "ENTROPY THẤP"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "GOOD ENTROPY"
+msgstr "ENTROPY TỐT"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/tools_screens.py
+#: src/seedsigner/views/gpg_views.py
+msgid "Text to Encode"
+msgstr "Văn bản cần mã hóa"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/helpers/seedkeeper_utils.py
+msgid "Set Duress PIN"
+msgstr "Đặt PIN khẩn cấp"
+
+#. FORK: translated by Claude 2026-07-11
+#. QR code format option; "default" = this is the format most wallets use
+#: src/seedsigner/models/settings_definition.py
+msgid "Animated (default)"
+msgstr "Động (mặc định)"
+
+#. FORK: translated by Claude 2026-07-11
+#. QR code format option (static = single frame, not animated)
+#: src/seedsigner/models/settings_definition.py
+msgid "Static"
+msgstr "Tĩnh"
+
+#. FORK: translated by Claude 2026-07-11
+#. QR code format option: old format that Specter Desktop used to use
+#: src/seedsigner/models/settings_definition.py
+msgid "Specter legacy"
+msgstr "Specter legacy"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "Camera 0"
+msgstr "Camera 0"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "Camera 1"
+msgstr "Camera 1"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "Camera 2"
+msgstr "Camera 2"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "Camera 3"
+msgstr "Camera 3"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "5 minutes"
+msgstr "5 phút"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "10 minutes"
+msgstr "10 phút"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "15 minutes"
+msgstr "15 phút"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "30 minutes"
+msgstr "30 phút"
+
+#. FORK: translated by Claude 2026-07-11
+#. MicroSD notification duration setting - Display notification for 5 seconds
+#: src/seedsigner/models/settings_definition.py
+msgid "5 seconds"
+msgstr "5 giây"
+
+#. FORK: translated by Claude 2026-07-11
+#. MicroSD notification duration setting - Display notification until the SD
+#. card is removed
+#: src/seedsigner/models/settings_definition.py
+msgid "Until SD removed"
+msgstr "Đến khi rút thẻ SD"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "Aezeed Passphrase"
+msgstr "Câu mật khẩu Aezeed"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "Prefer CompactSeedQR"
+msgstr "Ưu tiên CompactSeedQR"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "Prefer EncryptedQR"
+msgstr "Ưu tiên EncryptedQR"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "Ask each time"
+msgstr "Hỏi mỗi lần"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "Smartcard PIN Attempts"
+msgstr "Số lần thử PIN thẻ"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "Wipe Timer"
+msgstr "Hẹn giờ xóa"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "Seed word lengths"
+msgstr "Độ dài cụm từ khóa"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "Xpub QR format"
+msgstr "Định dạng QR của xpub"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "BIP32 account prompt"
+msgstr "Hỏi tài khoản BIP32"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "Ambiguous QR"
+msgstr "QR không rõ ràng"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "GPG key types"
+msgstr "Loại khóa GPG"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "BIP85 GPG version"
+msgstr "Phiên bản GPG của BIP85"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "v3 is the latest; use v2 to recreate B9-B10 keys"
+msgstr "v3 là mới nhất; dùng v2 để tạo lại khóa B9-B10"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "SLIP39 seeds"
+msgstr "Cụm từ khóa SLIP39"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "Aezeed seeds"
+msgstr "Cụm từ khóa Aezeed"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "LND-compatible, 24 words"
+msgstr "Tương thích LND, 24 từ"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "Extendable SLIP39 shares"
+msgstr "Phần SLIP39 mở rộng được"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "MicroSD notification duration"
+msgstr "Thời lượng thông báo MicroSD"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "BitBox02 backups"
+msgstr "Bản sao lưu BitBox02"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "Passport backups"
+msgstr "Bản sao lưu Passport"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "TAPSIGNER backups"
+msgstr "Bản sao lưu TAPSIGNER"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "Smartcard support"
+msgstr "Hỗ trợ thẻ thông minh"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "Satochip support"
+msgstr "Hỗ trợ Satochip"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "KeyCard support"
+msgstr "Hỗ trợ Keycard"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "Specter-DIY support"
+msgstr "Hỗ trợ Specter-DIY"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "Camera source"
+msgstr "Nguồn camera"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/desktop_warning.py
+msgid "Desktop Mode"
+msgstr "Chế độ máy tính"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/desktop_warning.py
+#: src/seedsigner/views/developer_os_warning.py
+msgid "Not secure!"
+msgstr "Không an toàn!"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/desktop_warning.py
+msgid ""
+"This desktop version is for testing only.\n"
+"Do NOT use with real seeds or private keys."
+msgstr ""
+"Bản máy tính này chỉ để thử nghiệm.\n"
+"KHÔNG dùng với cụm từ khóa hoặc khóa riêng thật."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/desktop_warning.py
+#: src/seedsigner/views/developer_os_warning.py
+#: src/seedsigner/views/gpg_views.py
+#: src/seedsigner/views/password_generator_views.py
+#: src/seedsigner/views/smartcard_views.py
+msgid "I Understand"
+msgstr "Tôi hiểu"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/developer_os_warning.py
+msgid "Development Build"
+msgstr "Bản dựng phát triển"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/developer_os_warning.py
+msgid ""
+"This SeedSignerOS development build is for testing only.\n"
+"Do NOT use with real seeds or private keys."
+msgstr ""
+"Bản dựng phát triển SeedSignerOS này chỉ để thử nghiệm.\n"
+"KHÔNG dùng với cụm từ khóa hoặc khóa riêng thật."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "File Operations"
+msgstr "Thao tác với tệp"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Import Keys"
+msgstr "Nhập khóa"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Export Keys"
+msgstr "Xuất khóa"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "View Keys"
+msgstr "Xem khóa"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Secure Messaging"
+msgstr "Nhắn tin bảo mật"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/tools_views.py
+msgid "GPG Tools"
+msgstr "Công cụ GPG"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Missing packages"
+msgstr "Thiếu gói phần mềm"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Required but not installed:\n"
+msgstr "Cần nhưng chưa được cài đặt:\n"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Subkey Operations"
+msgstr "Thao tác khóa phụ"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "User ID Operations"
+msgstr "Thao tác ID người dùng"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Cross Certify Keys"
+msgstr "Chứng thực chéo các khóa"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Export Public Key Bundle"
+msgstr "Xuất gói khóa công khai"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "BIP85 Metadata"
+msgstr "Siêu dữ liệu BIP85"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Subkeys"
+msgstr "Khóa phụ"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/scan_views.py
+#: src/seedsigner/views/settings_views.py src/seedsigner/views/tools_views.py
+msgid "Back"
+msgstr "Quay lại"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Export Bundle"
+msgstr "Xuất gói"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Animated QR"
+msgstr "QR động"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Save BIP85 Data"
+msgstr "Lưu dữ liệu BIP85"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Load BIP85 Data"
+msgstr "Tải dữ liệu BIP85"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Rebuild BIP85 Key"
+msgstr "Tạo lại khóa BIP85"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/smartcard_views.py
+msgid "To MicroSD"
+msgstr "Sang MicroSD"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "To QR"
+msgstr "Sang QR"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/smartcard_views.py
+msgid "To Seedkeeper"
+msgstr "Sang Seedkeeper"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/smartcard_views.py
+msgid "From MicroSD"
+msgstr "Từ MicroSD"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "From QR"
+msgstr "Từ QR"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/smartcard_views.py
+msgid "From Seedkeeper"
+msgstr "Từ Seedkeeper"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Add Subkeys"
+msgstr "Thêm khóa phụ"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Revoke Subkeys"
+msgstr "Thu hồi khóa phụ"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Delete Subkeys"
+msgstr "Xóa khóa phụ"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Change Expiry"
+msgstr "Đổi hạn dùng"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Export Subkey Secrets"
+msgstr "Xuất bí mật khóa phụ"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "1 year"
+msgstr "1 năm"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "2 years"
+msgstr "2 năm"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "5 years"
+msgstr "5 năm"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Never"
+msgstr "Không bao giờ"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "File"
+msgstr "Tệp"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Smartcard"
+msgstr "Thẻ thông minh"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Add User ID"
+msgstr "Thêm ID người dùng"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Edit User IDs"
+msgstr "Sửa ID người dùng"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Set Primary User ID"
+msgstr "Đặt ID người dùng chính"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Revoke User ID"
+msgstr "Thu hồi ID người dùng"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Delete User ID"
+msgstr "Xóa ID người dùng"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Encrypt"
+msgstr "Mã hóa"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/scan_views.py
+msgid "Decrypt"
+msgstr "Giải mã"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Sign"
+msgstr "Ký"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Verify Signature"
+msgstr "Xác nhận chữ ký"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Create Message"
+msgstr "Tạo tin nhắn"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Load Message"
+msgstr "Tải tin nhắn"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Manifest"
+msgstr "Tệp kê khai"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Type Message"
+msgstr "Gõ tin nhắn"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Load Seedkeeper"
+msgstr "Tải Seedkeeper"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/seed_views.py
+msgid "Scan QR"
+msgstr "Quét QR"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Load File"
+msgstr "Tải tệp"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Load Key"
+msgstr "Tải khóa"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+#: src/seedsigner/views/password_generator_views.py
+msgid "Save to Seedkeeper"
+msgstr "Lưu vào Seedkeeper"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+#: src/seedsigner/views/password_generator_views.py
+#: src/seedsigner/views/smartcard_views.py
+msgid "Show as QR"
+msgstr "Hiện dưới dạng QR"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Public Key"
+msgstr "Khóa công khai"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Private Key"
+msgstr "Khóa riêng"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "View Card Info"
+msgstr "Xem thông tin thẻ"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Generate On-Card Key"
+msgstr "Tạo khóa trên thẻ"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Change Admin PIN"
+msgstr "Đổi PIN quản trị"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Change User PIN"
+msgstr "Đổi PIN người dùng"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Encrypting File"
+msgstr "Đang mã hóa tệp"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "(May take a while)"
+msgstr "(Có thể mất một lúc)"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Decrypting File"
+msgstr "Đang giải mã tệp"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Check SHA256Sum"
+msgstr "Kiểm tra SHA256Sum"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Update"
+msgstr "Cập nhật"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "From File"
+msgstr "Từ tệp"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Generate New"
+msgstr "Tạo mới"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Derive BIP85"
+msgstr "Dẫn xuất BIP85"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "OpenGPG Card"
+msgstr "Thẻ OpenGPG"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Edit text"
+msgstr "Sửa văn bản"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Discard text"
+msgstr "Hủy văn bản"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Discard text?"
+msgstr "Hủy văn bản?"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Generate QR code"
+msgstr "Tạo mã QR"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/seed_views.py
+msgid "Transcribe mode"
+msgstr "Chế độ chép lại"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/seed_views.py
+msgid "FullScreen mode"
+msgstr "Chế độ toàn màn hình"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/seed_views.py
+msgid "Transcribe Mode ?"
+msgstr "Chế độ chép lại?"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Confirm text QR code"
+msgstr "Xác nhận mã QR văn bản"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Confirm Text QR ?"
+msgstr "Xác nhận QR văn bản?"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Scan text QR code"
+msgstr "Quét mã QR văn bản"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Confirm Text QR Code"
+msgstr "Xác nhận mã QR văn bản"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Your transcribed text QR code does not match your original text!"
+msgstr "Mã QR văn bản bạn chép lại không khớp với văn bản gốc!"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Review text QR code"
+msgstr "Xem lại mã QR văn bản"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Your transcribed text QR code successfully scanned and yielded the same text."
+msgstr "Mã QR văn bản bạn chép lại đã quét thành công và cho cùng nội dung."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Confirm Text QR"
+msgstr "Xác nhận QR văn bản"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Your transcribed text QR code could not be read!"
+msgstr "Không đọc được mã QR văn bản bạn chép lại!"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Edit & Generate QR code"
+msgstr "Sửa và tạo mã QR"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Decoded Text"
+msgstr "Văn bản đã giải mã"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/keycard_bias.py src/seedsigner/views/satochip_bias.py
+msgid "Run Test"
+msgstr "Chạy kiểm tra"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/microsd_views.py
+msgid "Flash Image"
+msgstr "Ghi ảnh hệ thống"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/microsd_views.py
+msgid "Verify MicroSD"
+msgstr "Xác nhận MicroSD"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/microsd_views.py
+msgid "Wipe (Zero)"
+msgstr "Xóa (số 0)"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/microsd_views.py
+msgid "Wipe (Random)"
+msgstr "Xóa (ngẫu nhiên)"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/microsd_views.py
+msgid "Skip Verification"
+msgstr "Bỏ qua xác nhận"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/microsd_views.py
+msgid "All"
+msgstr "Tất cả"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Custom"
+msgstr "Tùy chỉnh"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Diceware-EFF Short"
+msgstr "Diceware-EFF ngắn"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Diceware-EFF Long"
+msgstr "Diceware-EFF dài"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Diceware-BIP39"
+msgstr "Diceware-BIP39"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Hex"
+msgstr "Hex"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Dice Rolls"
+msgstr "Gieo xúc xắc"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Password Type"
+msgstr "Loại mật khẩu"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "64 bits"
+msgstr "64 bit"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "128 bits"
+msgstr "128 bit"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "256 bits"
+msgstr "256 bit"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Password Strength"
+msgstr "Độ mạnh mật khẩu"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+#: src/seedsigner/views/smartcard_views.py
+msgid "Yes"
+msgstr "Có"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+#: src/seedsigner/views/smartcard_views.py
+msgid "No"
+msgstr "Không"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Select Options"
+msgstr "Chọn tùy chọn"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Choose at least one character set."
+msgstr "Chọn ít nhất một bộ ký tự."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "System RNG health check failed."
+msgstr "Kiểm tra RNG hệ thống thất bại."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "System RNG Error"
+msgstr "Lỗi RNG hệ thống"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Camera"
+msgstr "Camera"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Dice"
+msgstr "Xúc xắc"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "System RNG"
+msgstr "RNG hệ thống"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Entropy Source"
+msgstr "Nguồn entropy"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Not Supported"
+msgstr "Không hỗ trợ"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "BIP85 supports Diceware, Dice Rolls, Hex, Base64, and Base85."
+msgstr "BIP85 hỗ trợ Diceware, gieo xúc xắc, Hex, Base64 và Base85."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "None"
+msgstr "Không có"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Capitalise"
+msgstr "Viết hoa chữ đầu"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Space"
+msgstr "Dấu cách"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Separator"
+msgstr "Dấu phân cách"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "6 sides"
+msgstr "6 mặt"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "10 sides"
+msgstr "10 mặt"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "20 sides"
+msgstr "20 mặt"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Dice Sides"
+msgstr "Số mặt xúc xắc"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Number of Rolls"
+msgstr "Số lần gieo"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Invalid Input"
+msgstr "Dữ liệu không hợp lệ"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Number of rolls must be at least 1."
+msgstr "Số lần gieo phải ít nhất là 1."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+#: src/seedsigner/views/tools_views.py
+msgid "Poor Entropy"
+msgstr "Entropy kém"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+#: src/seedsigner/views/tools_views.py
+msgid "Dice rolls didn't appear random enough. Please try again."
+msgstr "Các lần gieo có vẻ chưa đủ ngẫu nhiên. Vui lòng thử lại."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+#: src/seedsigner/views/tools_views.py
+msgid "Camera entropy didn't appear random enough. Please try again."
+msgstr "Entropy từ camera có vẻ chưa đủ ngẫu nhiên. Vui lòng thử lại."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "WARNING"
+msgstr "CẢNH BÁO"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Load a seed before using BIP85."
+msgstr "Tải một cụm từ khóa trước khi dùng BIP85."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Select Seed"
+msgstr "Chọn cụm từ khóa"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Choose seed for BIP85"
+msgstr "Chọn cụm từ khóa cho BIP85"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "BIP85 Index"
+msgstr "Chỉ số BIP85"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Invalid Length"
+msgstr "Độ dài không hợp lệ"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "BIP85 Hex supports 128 or 256 bits."
+msgstr "BIP85 Hex hỗ trợ 128 hoặc 256 bit."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "BIP85 Base64 needs 120+ bits."
+msgstr "BIP85 Base64 cần 120+ bit."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "BIP85 Base85 needs 64-512 bits."
+msgstr "BIP85 Base85 cần 64-512 bit."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Password Name"
+msgstr "Tên mật khẩu"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Not Enough Space"
+msgstr "Không đủ dung lượng"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid ""
+"Saving Secret\n"
+"\n"
+"\n"
+"\n"
+"\n"
+"\n"
+msgstr ""
+"Đang lưu bí mật\n"
+"\n"
+"\n"
+"\n"
+"\n"
+"\n"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+#: src/seedsigner/views/psbt_views.py
+msgid "Success"
+msgstr "Thành công"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Password saved to Seedkeeper"
+msgstr "Đã lưu mật khẩu vào Seedkeeper"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Not enough space on Seedkeeper for password"
+msgstr "Seedkeeper không đủ chỗ để lưu mật khẩu"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Failed"
+msgstr "Thất bại"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Password save failed"
+msgstr "Lưu mật khẩu thất bại"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+#: src/seedsigner/views/scan_views.py
+msgid "Edit"
+msgstr "Sửa"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Password"
+msgstr "Mật khẩu"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Save Password"
+msgstr "Lưu mật khẩu"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py src/seedsigner/views/seed_views.py
+msgid "Use Satochip card"
+msgstr "Dùng thẻ Satochip"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py
+msgid "Use Keycard"
+msgstr "Dùng Keycard"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py src/seedsigner/views/seed_views.py
+#: src/seedsigner/views/smartcard_views.py src/seedsigner/views/tools_views.py
+msgid "Enter 15-word seed"
+msgstr "Nhập 15 từ khóa"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py src/seedsigner/views/seed_views.py
+#: src/seedsigner/views/smartcard_views.py src/seedsigner/views/tools_views.py
+msgid "Enter 18-word seed"
+msgstr "Nhập 18 từ khóa"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py src/seedsigner/views/seed_views.py
+#: src/seedsigner/views/smartcard_views.py src/seedsigner/views/tools_views.py
+msgid "Enter 21-word seed"
+msgstr "Nhập 21 từ khóa"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py
+msgid "Enter WIF"
+msgstr "Nhập WIF"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py src/seedsigner/views/scan_views.py
+msgid "Scan WIF"
+msgstr "Quét WIF"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py
+msgid "Enter BIP38"
+msgstr "Nhập BIP38"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py src/seedsigner/views/scan_views.py
+msgid "Scan BIP38"
+msgstr "Quét BIP38"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py
+msgid "Fingerprint mismatch"
+msgstr "Dấu vân tay không khớp"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py
+msgid "Card cannot sign PSBT"
+msgstr "Thẻ không thể ký PSBT"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py
+msgid "Card fingerprint ({}) not in PSBT signers."
+msgstr "Dấu vân tay của thẻ ({}) không nằm trong danh sách ký PSBT."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py
+msgid "Private Key (WIF)"
+msgstr "Khóa riêng (WIF)"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py
+msgid "Invalid WIF!"
+msgstr "WIF không hợp lệ!"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py
+msgid "Not a valid WIF-encoded private key."
+msgstr "Không phải khóa riêng mã hóa WIF hợp lệ."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py
+msgid "BIP38 Key"
+msgstr "Khóa BIP38"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py
+msgid "BIP38 Passphrase"
+msgstr "Câu mật khẩu BIP38"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py
+msgid "Invalid BIP38!"
+msgstr "BIP38 không hợp lệ!"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py
+msgid "Could not decrypt BIP38 key."
+msgstr "Không thể giải mã khóa BIP38."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py
+msgid "Descriptor mismatch"
+msgstr "Thông tin ví không khớp"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py
+msgid "Descriptor cleared"
+msgstr "Đã xóa thông tin ví"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py
+msgid "Loaded multisig wallet descriptor does not match this PSBT. Load the correct descriptor or skip verification to continue."
+msgstr "Thông tin ví đa chữ ký đã tải không khớp với PSBT này. Hãy tải đúng thông tin ví hoặc bỏ qua xác nhận."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py
+msgid "Signing PSBT..."
+msgstr "Đang ký PSBT..."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py
+msgid "Signing Timeout"
+msgstr "Hết thời gian ký"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py
+msgid "Retry (higher timeout)"
+msgstr "Thử lại (thời gian dài hơn)"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py
+msgid "Saved as {}."
+msgstr "Đã lưu thành {}."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py
+msgid "Failed to save PSBT: {}"
+msgstr "Không lưu được PSBT: {}"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py
+msgid "Encoding PSBT..."
+msgstr "Đang mã hóa PSBT..."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/scan_views.py
+msgid "QR Scanner Unavailable"
+msgstr "Không có trình quét QR"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/scan_views.py
+msgid "QR scanning backend missing. Install zbar (or OpenCV on desktop) and restart."
+msgstr "Thiếu phần mềm quét QR. Cài zbar (hoặc OpenCV trên máy tính) rồi khởi động lại."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/scan_views.py
+msgid "Select Seed Type"
+msgstr "Chọn loại cụm từ khóa"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/scan_views.py
+msgid "Time set to:"
+msgstr "Đã đặt giờ thành:"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/scan_views.py
+msgid "Set Time Failed"
+msgstr "Đặt giờ thất bại"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/scan_views.py
+msgid "Invalid Time"
+msgstr "Giờ không hợp lệ"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/scan_views.py
+msgid "Could not parse time from QR"
+msgstr "Không đọc được giờ từ QR"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/scan_views.py
+msgid "Scan SLIP-39 Share"
+msgstr "Quét phần SLIP-39"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/scan_views.py
+msgid "Expected a SLIP-39 share QR"
+msgstr "Cần QR của phần SLIP-39"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/scan_views.py
+msgid "Expected a WIF private key"
+msgstr "Cần khóa riêng WIF"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/scan_views.py
+msgid "Expected a BIP38 private key"
+msgstr "Cần khóa riêng BIP38"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/scan_views.py
+msgid "Scan {} receive address from the wallet you just exported"
+msgstr "Quét địa chỉ nhận {} từ ví bạn vừa xuất"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/scan_views.py
+msgid ""
+"Data matches multiple\n"
+"QR types."
+msgstr ""
+"Dữ liệu khớp với nhiều\n"
+"loại QR."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/scan_views.py src/seedsigner/views/seed_views.py
+msgid "Type encryption key"
+msgstr "Gõ khóa mã hóa"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/scan_views.py src/seedsigner/views/seed_views.py
+msgid "Scan encryption key"
+msgstr "Quét khóa mã hóa"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/scan_views.py src/seedsigner/views/seed_views.py
+msgid "Edit encryption key"
+msgstr "Sửa khóa mã hóa"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/scan_views.py src/seedsigner/views/seed_views.py
+msgid "Discard encryption key"
+msgstr "Hủy khóa mã hóa"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/scan_views.py src/seedsigner/views/seed_views.py
+msgid "Proceed"
+msgstr "Tiếp tục"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/scan_views.py src/seedsigner/views/seed_views.py
+msgid "Scan & Append Another"
+msgstr "Quét và thêm cái khác"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/scan_views.py
+msgid "Decrypted Text"
+msgstr "Văn bản đã giải mã"
+
+#. FORK: translated by Claude 2026-07-11
+#. This is on the opening splash screen, displayed above the Seedsigner logo
+#: src/seedsigner/views/screensaver.py
+msgid "An unofficial fork of:"
+msgstr "Bản fork không chính thức của:"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "BitBox02 backup"
+msgstr "Bản sao lưu BitBox02"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Passport backup"
+msgstr "Bản sao lưu Passport"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "TAPSIGNER backup"
+msgstr "Bản sao lưu TAPSIGNER"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Enter Aezeed seed"
+msgstr "Nhập cụm từ khóa Aezeed"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py src/seedsigner/views/smartcard_views.py
+msgid "SLIP-39 Shares"
+msgstr "Các phần SLIP-39"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid " Scan a SeedQR"
+msgstr " Quét SeedQR"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py src/seedsigner/views/smartcard_views.py
+msgid "From SeedKeeper"
+msgstr "Từ SeedKeeper"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "From Specter-DIY"
+msgstr "Từ Specter-DIY"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py src/seedsigner/views/smartcard_views.py
+msgid " Create a seed"
+msgstr " Tạo cụm từ khóa"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "microSD card not detected."
+msgstr "Không tìm thấy thẻ microSD."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "No Backups Found"
+msgstr "Không tìm thấy bản sao lưu"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "No BitBox02 backups (.bin, .bb02, .dat, .backup) were found on the microSD card."
+msgstr "Không tìm thấy bản sao lưu BitBox02 (.bin, .bb02, .dat, .backup) trên thẻ microSD."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Select BitBox02 backup"
+msgstr "Chọn bản sao lưu BitBox02"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Backup name: {}"
+msgstr "Tên bản sao lưu: {}"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Created: {}"
+msgstr "Tạo lúc: {}"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Firmware: {}"
+msgstr "Firmware: {}"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Birthdate: {}"
+msgstr "Ngày tạo: {}"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Seed length: {} words"
+msgstr "Độ dài cụm từ khóa: {} từ"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Seed loaded"
+msgstr "Đã tải cụm từ khóa"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "No Passport backups (.7z) were found on the microSD card."
+msgstr "Không tìm thấy bản sao lưu Passport (.7z) trên thẻ microSD."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Select Passport backup"
+msgstr "Chọn bản sao lưu Passport"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Passport backup code"
+msgstr "Mã bản sao lưu Passport"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Backup code cannot be empty."
+msgstr "Mã bản sao lưu không được để trống."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Chain: {}"
+msgstr "Mạng: {}"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "XFP: {}"
+msgstr "XFP: {}"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "No TAPSIGNER backups (.aes) were found on the microSD card."
+msgstr "Không tìm thấy bản sao lưu TAPSIGNER (.aes) trên thẻ microSD."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Select TAPSIGNER backup"
+msgstr "Chọn bản sao lưu TAPSIGNER"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Backup key (hex)"
+msgstr "Khóa sao lưu (hex)"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "xprv loaded from TAPSIGNER backup."
+msgstr "Đã tải xprv từ bản sao lưu TAPSIGNER."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Path: {}"
+msgstr "Đường dẫn: {}"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Load Passphrase"
+msgstr "Tải câu mật khẩu"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Type Passphrase"
+msgstr "Gõ câu mật khẩu"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Scan Passphrase"
+msgstr "Quét câu mật khẩu"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Load from SeedKeeper"
+msgstr "Tải từ SeedKeeper"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Aezeed passphrase"
+msgstr "Câu mật khẩu Aezeed"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid ""
+"Passphrase required\n"
+"for this mnemonic."
+msgstr ""
+"Cụm từ khóa này cần\n"
+"câu mật khẩu."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Invalid passphrase"
+msgstr "Câu mật khẩu không hợp lệ"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid ""
+"Aezeed passphrase required.\n"
+"Try again."
+msgstr ""
+"Cần câu mật khẩu Aezeed.\n"
+"Thử lại."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid ""
+"Wrong Aezeed passphrase.\n"
+"Try again."
+msgstr ""
+"Câu mật khẩu Aezeed sai.\n"
+"Thử lại."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Invalid Text QR Code"
+msgstr "Mã QR văn bản không hợp lệ"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Non UTF-8 data detected."
+msgstr "Phát hiện dữ liệu không phải UTF-8."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Aezeed support"
+msgstr "Hỗ trợ Aezeed"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid ""
+"Aezeed entry is experimental.\n"
+"Use only with known-good backups."
+msgstr ""
+"Nhập Aezeed là tính năng thử nghiệm.\n"
+"Chỉ dùng với bản sao lưu đã kiểm chứng."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Enter 20 words"
+msgstr "Nhập 20 từ"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Enter 33 words"
+msgstr "Nhập 33 từ"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Load Share"
+msgstr "Tải phần"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Share Word #{}"
+msgstr "Từ thứ {} của phần"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Enter share"
+msgstr "Nhập phần"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Scan share"
+msgstr "Quét phần"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Combine shares"
+msgstr "Ghép các phần"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "{} of {} needed"
+msgstr "Cần {} trong {}"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py src/seedsigner/views/settings_views.py
+#: src/seedsigner/views/smartcard_views.py
+msgid "Try Again"
+msgstr "Thử lại"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Invalid SLIP-39 Share"
+msgstr "Phần SLIP-39 không hợp lệ"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Checksum failure; not a valid SLIP-39 share."
+msgstr "Lỗi checksum; không phải phần SLIP-39 hợp lệ."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Non-extendable Seed"
+msgstr "Cụm từ khóa không mở rộng được"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "This SLIP-39 seed cannot regenerate new shares."
+msgstr "Cụm từ khóa SLIP-39 này không thể tạo phần mới."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Export as Plaintext QR"
+msgstr "Xuất dưới dạng QR không mã hóa"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "To SeedKeeper"
+msgstr "Sang SeedKeeper"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "To Specter-DIY"
+msgstr "Sang Specter-DIY"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Regenerate Shares"
+msgstr "Tạo lại các phần"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py src/seedsigner/views/smartcard_views.py
+msgid "Xpub QR Format"
+msgstr "Định dạng QR của xpub"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Open {} and display a receive address from the wallet you just exported."
+msgstr "Mở {} và hiển thị một địa chỉ nhận từ ví bạn vừa xuất."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "your wallet software"
+msgstr "phần mềm ví của bạn"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid ""
+"Passphrase was used.\n"
+"You'll need words + passphrase."
+msgstr ""
+"Đã dùng câu mật khẩu.\n"
+"Bạn sẽ cần các từ + câu mật khẩu."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "18 Words"
+msgstr "18 từ"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Review"
+msgstr "Xem lại"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Finalize child"
+msgstr "Hoàn tất cụm từ khóa con"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Input Encryption Key"
+msgstr "Nhập khóa mã hóa"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Discard encryption key?"
+msgstr "Hủy khóa mã hóa?"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Your current key entry will be erased"
+msgstr "Khóa đã nhập sẽ bị xóa"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Invalid Key"
+msgstr "Khóa không hợp lệ"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Key length is too long."
+msgstr "Khóa quá dài."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Input from Camera"
+msgstr "Nhập từ camera"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Use fingerprint"
+msgstr "Dùng dấu vân tay"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Assign custom ID"
+msgstr "Gán ID tùy chỉnh"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Input Mnemonic ID"
+msgstr "Nhập ID cụm từ khóa"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Edit mnemonic ID"
+msgstr "Sửa ID cụm từ khóa"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Discard mnemonic ID"
+msgstr "Hủy ID cụm từ khóa"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Discard mnemonic ID?"
+msgstr "Hủy ID cụm từ khóa?"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Your current mnemonic ID entry will be erased"
+msgstr "ID cụm từ khóa đã nhập sẽ bị xóa"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py src/seedsigner/views/tools_views.py
+msgid "Processing..."
+msgstr "Đang xử lý..."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Encryption failure"
+msgstr "Mã hóa thất bại"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Next 100"
+msgstr "100 tiếp theo"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Expanded Search"
+msgstr "Tìm kiếm mở rộng"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Not Found"
+msgstr "Không tìm thấy"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Address Not Verified"
+msgstr "Địa chỉ chưa được xác nhận"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Checked {} addresses with no match."
+msgstr "Đã kiểm tra {} địa chỉ mà không khớp."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Check Next 10"
+msgstr "Kiểm tra 10 địa chỉ tiếp"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Checked {} addresses per path with no match."
+msgstr "Đã kiểm tra {} địa chỉ mỗi đường dẫn mà không khớp."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Wallet Export"
+msgstr "Xuất ví"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Wallet export successful."
+msgstr "Xuất ví thành công."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Address format doesn't match exported script type. Wallet export unsuccessful."
+msgstr "Định dạng địa chỉ không khớp loại script đã xuất. Xuất ví thất bại."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Unable to match wallet to current seed. Wallet export unsuccessful."
+msgstr "Không khớp được ví với cụm từ khóa hiện tại. Xuất ví thất bại."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Export Failed"
+msgstr "Xuất thất bại"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Load SeedKeeper"
+msgstr "Tải SeedKeeper"
+
+#. FORK: translated by Claude 2026-07-11
+#. Multisig policy. For a "2 of 3" policy, "threshold" = 2; "n" = 3
+#: src/seedsigner/views/seed_views.py
+msgid "{threshold} of {n}"
+msgstr "{threshold} trong {n}"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py src/seedsigner/views/smartcard_views.py
+msgid "Exporting xpub..."
+msgstr "Đang xuất xpub..."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Signing message..."
+msgstr "Đang ký tin nhắn..."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Verification Failed"
+msgstr "Xác nhận thất bại"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/settings_views.py
+msgid "Test Smartcard"
+msgstr "Kiểm tra thẻ thông minh"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/settings_views.py
+msgid "List card readers"
+msgstr "Liệt kê đầu đọc thẻ"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/settings_views.py
+msgid "Test NFC Scan"
+msgstr "Kiểm tra quét NFC"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/settings_views.py
+msgid "Restart PCSC"
+msgstr "Khởi động lại PCSC"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/settings_views.py
+msgid "Battery info"
+msgstr "Thông tin pin"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/settings_views.py
+msgid "System info"
+msgstr "Thông tin hệ thống"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/settings_views.py
+msgid "Load Backup Files"
+msgstr "Tải tệp sao lưu"
+
+#. FORK: translated by Claude 2026-07-11
+#. Title of a warning dialog when configuring a setting that requires at least
+#. one option to be selected.
+#: src/seedsigner/views/settings_views.py
+msgid "Selection Required"
+msgstr "Cần chọn ít nhất một mục"
+
+#. FORK: translated by Claude 2026-07-11
+#. The name of the setting being configured (e.g. "Script types") will be
+#. inserted.
+#: src/seedsigner/views/settings_views.py
+msgid "At least one option must be selected for \"{}\"."
+msgstr "Phải chọn ít nhất một tùy chọn cho \"{}\"."
+
+#. FORK: translated by Claude 2026-07-11
+#. Text for the button that returns the user to the setting configuration
+#. screen.
+#: src/seedsigner/views/settings_views.py
+msgid "Return to setting"
+msgstr "Quay lại cài đặt"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/settings_views.py
+msgid "No compatible battery monitor detected"
+msgstr "Không tìm thấy bộ theo dõi pin tương thích"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/settings_views.py src/seedsigner/views/tools_views.py
+msgid "Unavailable"
+msgstr "Không khả dụng"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Common Functions"
+msgstr "Chức năng chung"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Satochip Functions"
+msgstr "Chức năng Satochip"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "KeyCard Functions"
+msgstr "Chức năng Keycard"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "SeedKeeper Functions"
+msgstr "Chức năng SeedKeeper"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Specter-DIY Functions"
+msgstr "Chức năng Specter-DIY"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "DIY Tools"
+msgstr "Công cụ DIY"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Card Info"
+msgstr "Thông tin thẻ"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Genuine Check"
+msgstr "Kiểm tra hàng thật"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Change PIN"
+msgstr "Đổi PIN"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Change Label"
+msgstr "Đổi nhãn"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Change NFC Policy"
+msgstr "Đổi chính sách NFC"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Configure NDEF"
+msgstr "Cấu hình NDEF"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Factory Reset Card"
+msgstr "Khôi phục cài đặt gốc cho thẻ"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "View NDEF"
+msgstr "Xem NDEF"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Use Seedkeeper App Link"
+msgstr "Dùng liên kết ứng dụng Seedkeeper"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Clear NDEF"
+msgstr "Xóa NDEF"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Set Custom NDEF"
+msgstr "Đặt NDEF tùy chỉnh"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Save NDEF to SeedKeeper"
+msgstr "Lưu NDEF vào SeedKeeper"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Load NDEF from SeedKeeper"
+msgstr "Tải NDEF từ SeedKeeper"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Text Record"
+msgstr "Bản ghi văn bản"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "URI Record"
+msgstr "Bản ghi URI"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Android App Launch"
+msgstr "Mở ứng dụng Android"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Custom (HEX)"
+msgstr "Tùy chỉnh (HEX)"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Decode NDEF"
+msgstr "Giải mã NDEF"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "NFC Enabled"
+msgstr "NFC bật"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "NFC Disabled"
+msgstr "NFC tắt"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "NFC Blocked"
+msgstr "NFC bị chặn"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Card Re-Inserted"
+msgstr "Thẻ đã cắm lại"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "View Free Space"
+msgstr "Xem dung lượng trống"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "View Secrets on Card"
+msgstr "Xem bí mật trên thẻ"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Save Password to Card"
+msgstr "Lưu mật khẩu vào thẻ"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Delete Secret from Card"
+msgstr "Xóa bí mật khỏi thẻ"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Load MultiSig Descriptor"
+msgstr "Tải thông tin ví đa chữ ký"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Save MultiSig Descriptor"
+msgstr "Lưu thông tin ví đa chữ ký"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Clone Card Secrets"
+msgstr "Sao chép bí mật của thẻ"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Exit to Home"
+msgstr "Về màn hình chính"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Initialise with Seed"
+msgstr "Khởi tạo bằng cụm từ khóa"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Load as Descriptor"
+msgstr "Tải làm thông tin ví"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Load PSBT"
+msgstr "Tải PSBT"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Set PUK"
+msgstr "Đặt PUK"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Unblock PIN with PUK"
+msgstr "Mở khóa PIN bằng PUK"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Set Name"
+msgstr "Đặt tên"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Remove Seed"
+msgstr "Gỡ cụm từ khóa"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Benchmark Signing"
+msgstr "Đo tốc độ ký"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Benchmark Message Signing"
+msgstr "Đo tốc độ ký tin nhắn"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Check signing bias"
+msgstr "Kiểm tra độ lệch chữ ký"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Remove"
+msgstr "Gỡ bỏ"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Reset"
+msgstr "Đặt lại"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Enable 2FA"
+msgstr "Bật 2FA"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Already Seeded"
+msgstr "Đã có cụm từ khóa"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid ""
+"xprv cannot init Satochip.\n"
+"Use BIP39, SLIP39, or Electrum."
+msgstr ""
+"xprv không thể khởi tạo Satochip.\n"
+"Dùng BIP39, SLIP39 hoặc Electrum."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Change Card PIN"
+msgstr "Đổi PIN thẻ"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Load Mnemonic"
+msgstr "Tải cụm từ khóa"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Save Mnemonic"
+msgstr "Lưu cụm từ khóa"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Wipe Seed"
+msgstr "Xóa cụm từ khóa"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Card Keys"
+msgstr "Khóa của thẻ"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Build Applets"
+msgstr "Dựng applet"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Install Applet"
+msgstr "Cài applet"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Uninstall Applet"
+msgstr "Gỡ applet"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Enter Different PIN"
+msgstr "Nhập PIN khác"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Load Keys"
+msgstr "Tải khóa"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Save Keys"
+msgstr "Lưu khóa"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Unlock Card"
+msgstr "Mở khóa thẻ"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Lock Card"
+msgstr "Khóa thẻ"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Clear Loaded Keys"
+msgstr "Xóa khóa đã tải"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Overwrite"
+msgstr "Ghi đè"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Abort Save"
+msgstr "Hủy lưu"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Enter Single Key"
+msgstr "Nhập một khóa"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Enter Key Set"
+msgstr "Nhập bộ khóa"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Generate Single Key"
+msgstr "Tạo một khóa"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Generate Key Set"
+msgstr "Tạo bộ khóa"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "8 KB (default)"
+msgstr "8 KB (mặc định)"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "System RNG entropy too low. Try again later."
+msgstr "Entropy RNG hệ thống quá thấp. Thử lại sau."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "System RNG derived entropy failed health checks."
+msgstr "Entropy từ RNG hệ thống không qua được kiểm tra."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid " New seed"
+msgstr " Cụm từ khóa mới"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "SLIP39 seed"
+msgstr "Cụm từ khóa SLIP39"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "Text QR Code"
+msgstr "Mã QR văn bản"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "Password Generator"
+msgstr "Trình tạo mật khẩu"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "Smartcard Tools"
+msgstr "Công cụ thẻ thông minh"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "MicroSD Tools"
+msgstr "Công cụ MicroSD"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "Clear Multisig Descriptor"
+msgstr "Xóa thông tin ví đa chữ ký"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "microSD card not detected"
+msgstr "Không tìm thấy thẻ microSD"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "Insert a microSD card to save the discharge log."
+msgstr "Cắm thẻ microSD để lưu nhật ký xả pin."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "Unable to load network information."
+msgstr "Không tải được thông tin mạng."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "15 words"
+msgstr "15 từ"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "18 words"
+msgstr "18 từ"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "21 words"
+msgstr "21 từ"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "20 words"
+msgstr "20 từ"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "33 words"
+msgstr "33 từ"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "20 words ({} rolls)"
+msgstr "20 từ ({} lần gieo)"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "33 words ({} rolls)"
+msgstr "33 từ ({} lần gieo)"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "Loaded Multisig Descriptor"
+msgstr "Đã tải thông tin ví đa chữ ký"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "Load from Satochip"
+msgstr "Tải từ Satochip"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "Electrum Seed"
+msgstr "Cụm từ khóa Electrum"
+
+#. FORK: translated by Claude 2026-07-11
+#. Multisig policy. For a "2 / 3 multisig" policy, "threshold" = 2; "n" = 3
+#: src/seedsigner/views/tools_views.py
+msgid "{threshold} / {n} multisig"
+msgstr "Đa chữ ký {threshold} / {n}"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "Encode text"
+msgstr "Mã hóa văn bản"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "Decode QR code"
+msgstr "Giải mã mã QR"
+
+#. FORK: translated by Claude 2026-07-11
+#. "network" will be mainnet/testnet/regtest.
+#: src/seedsigner/views/view.py
+msgid "Current network setting ({network}) doesn't match {derivation_path}."
+msgstr "Cài đặt mạng hiện tại ({network}) không khớp với {derivation_path}."
+

@@ -30,11 +30,14 @@ import time
 import array
 import errno
 
+from dataclasses import dataclass
+
 from PIL import Image
 from PIL import ImageDraw
 
 from periphery import GPIO, SPI
 
+from seedsigner.hardware.displays.display_driver import BaseDisplayDriver
 from seedsigner.models.settings import Settings
 from seedsigner.hardware.io_config import get_hardware_pin_mapping
 
@@ -133,13 +136,13 @@ def image_to_data(image):
     return arr.tobytes()
 
 
-class ILI9341(object):
+@dataclass
+class ILI9341(BaseDisplayDriver):
     """Representation of an ILI9341 TFT LCD."""
 
-    def __init__(self, width=ILI9341_TFTWIDTH, height=ILI9341_TFTHEIGHT, rotation=90):
+    def __post_init__(self):
         """Create an instance of the display using SPI communication."""
-        self.width = width
-        self.height = height
+        rotation = 90
         self.rotation = rotation
         self.inverted = False
         # Keep SPI transfers within conservative per-message kernel limits.
@@ -168,7 +171,7 @@ class ILI9341(object):
         self._spi = SPI(spi_bus, spi_mode, spi_hz)
 
         # Create an image buffer.
-        self.buffer = Image.new('RGB', (width, height))
+        self.buffer = Image.new('RGB', (self.width, self.height))
 
     def _chunked_transfer(self, data):
         """Transfer data in chunks to prevent buffer overflows"""
@@ -329,15 +332,15 @@ class ILI9341(object):
         self.reset()
         self._init()
 
-    def invert(self, state: bool = True):
+    def invert(self, enabled: bool = True):
         """Sets display inversion to the specified state. If not provided, state
         is True, which inverts the display. If state is False, the display turns
         back into normal mode."""
-        if state:
+        if enabled:
             self.command(ILI9341_INVON)
         else:
             self.command(ILI9341_INVOFF)
-        self.inverted = state
+        self.inverted = enabled
         return self
 
     def set_window(self, x0=0, y0=0, x1=None, y1=None):

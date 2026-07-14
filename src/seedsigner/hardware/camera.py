@@ -14,6 +14,11 @@ from seedsigner.models.settings import Settings, SettingsConstants
 from seedsigner.models.singleton import Singleton
 
 
+class CameraConnectionError(Exception):
+    pass
+
+
+
 class Camera(Singleton):
     """Singleton wrapper around PiCamera/OpenCV camera access."""
 
@@ -129,15 +134,22 @@ class Camera(Singleton):
         if prefer_v4l2:
             stream_camera_config["resolution"] = tuple(stream_resolution)
 
-        self._video_stream = VideoStream(
-            resolution=stream_resolution,
-            framerate=stream_framerate,
-            format=format,
-            device_index=self._camera_index,
-            camera_config=stream_camera_config,
-            prefer_v4l2=prefer_v4l2,
-        )
-        self._video_stream.start()
+        try:
+            self._video_stream = VideoStream(
+                resolution=stream_resolution,
+                framerate=stream_framerate,
+                format=format,
+                device_index=self._camera_index,
+                camera_config=stream_camera_config,
+                prefer_v4l2=prefer_v4l2,
+            )
+            self._video_stream.start()
+        except Exception as e:
+            self._video_stream = None
+            if type(e).__module__.split(".")[0] in ("picamera", "picamera2"):
+                # This error most often occurs because the camera connection is loose
+                raise CameraConnectionError()
+            raise
 
     def read_video_stream(self, as_image=False, preview=False, greyscale=True):
         """Read the most recent frame from stream mode."""

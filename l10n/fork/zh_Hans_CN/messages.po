@@ -1,0 +1,2516 @@
+# Fork translation overlay for SeedSigner (3rdIteration fork).
+# Contains ONLY strings that upstream's catalogs do not translate.
+# Merged with the upstream catalog at build time (upstream wins on overlap).
+# Managed by l10n/fork_translations.py — see l10n/README.md.
+msgid ""
+msgstr ""
+"Project-Id-Version: PROJECT VERSION\n"
+"Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
+"POT-Creation-Date: 2026-07-12 08:07-0400\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language: zh_Hans_CN\n"
+"Language-Team: zh_Hans_CN <LL@li.org>\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/controller.py src/seedsigner/views/view.py
+msgid "Data wiped after inactivity"
+msgstr "闲置后数据已擦除"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/gui/screens/scan_screens.py
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Starting camera..."
+msgstr "正在启动相机..."
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/gui/screens/scan_screens.py
+msgid "Decrypt?"
+msgstr "解密？"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/gui/screens/scan_screens.py
+msgid "Select QR Type"
+msgstr "选择二维码类型"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/gui/screens/scan_screens.py
+msgid "Encryption Key"
+msgstr "加密密钥"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/gui/screens/scan_screens.py
+msgid "Review Encryption Key"
+msgstr "核对加密密钥"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Account Number"
+msgstr "账户编号"
+
+#. FORK: translated by Claude 2026-07-12
+#. Refers to the SeedQR type: Standard or Compact or encrypted
+#: src/seedsigner/gui/screens/seed_screens.py
+#: src/seedsigner/views/seed_views.py
+msgid "Encrypted"
+msgstr "已加密"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Encrypted entropy bits"
+msgstr "加密的熵位"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Non-standard path!"
+msgstr "非标准路径！"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Mnemonic ID"
+msgstr "助记 ID"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Review Mnemonic ID"
+msgstr "核对助记 ID"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "The QR codes output in both modes may differ, but both are valid QR codes."
+msgstr "两种模式输出的二维码可能不同，但都是有效的二维码。"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Transcribe Encrypted QR"
+msgstr "誊写加密二维码"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/gui/screens/settings_screens.py
+#: src/seedsigner/views/settings_views.py
+msgid "No options available"
+msgstr "无可用选项"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/gui/screens/settings_screens.py
+#: src/seedsigner/views/settings_views.py
+msgid "Battery Info"
+msgstr "电池信息"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "System Info"
+msgstr "系统信息"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/gui/screens/settings_screens.py
+#, python-brace-format
+msgid "Platform: {platform_name}"
+msgstr "平台：{platform_name}"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/gui/screens/settings_screens.py
+#, python-brace-format
+msgid "Variant: {platform_variant}"
+msgstr "变体：{platform_variant}"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/gui/screens/settings_screens.py
+#, python-brace-format
+msgid "Serial (CPU): {system_serial}"
+msgstr "序列号(CPU)：{system_serial}"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/gui/screens/settings_screens.py
+#, python-brace-format
+msgid "Serial (MicroSD): {microsd_serial}"
+msgstr "序列号(MicroSD)：{microsd_serial}"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/gui/screens/tools_screens.py
+#: src/seedsigner/views/smartcard_views.py
+msgid "Device Filter"
+msgstr "设备过滤器"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/gui/screens/tools_screens.py
+#: src/seedsigner/views/tools_views.py
+msgid "Network Info"
+msgstr "网络信息"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/gui/screens/tools_screens.py
+#: src/seedsigner/views/tools_views.py
+msgid "Battery Calibration"
+msgstr "电池校准"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Charge the battery fully. Select Next to start the discharge test."
+msgstr "将电池充满。选择“下一步”开始放电测试。"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/gui/screens/tools_screens.py
+#: src/seedsigner/views/gpg_views.py
+msgid "Start"
+msgstr "开始"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Test runs until empty. Leave the device unplugged."
+msgstr "测试将持续到电量耗尽。请勿连接电源。"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Charging detected"
+msgstr "检测到充电"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Discharging"
+msgstr "放电中"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Elapsed: "
+msgstr "已用时："
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Voltage: "
+msgstr "电压："
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Current: "
+msgstr "电流："
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Status: "
+msgstr "状态："
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "LOW ENTROPY"
+msgstr "熵不足"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "GOOD ENTROPY"
+msgstr "熵良好"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/gui/screens/tools_screens.py
+#: src/seedsigner/views/gpg_views.py
+msgid "Text to Encode"
+msgstr "要编码的文本"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/helpers/seedkeeper_utils.py
+msgid "Set Duress PIN"
+msgstr "设置胁迫 PIN"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/models/settings_definition.py
+msgid "Camera 0"
+msgstr "相机 0"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/models/settings_definition.py
+msgid "Camera 1"
+msgstr "相机 1"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/models/settings_definition.py
+msgid "Camera 2"
+msgstr "相机 2"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/models/settings_definition.py
+msgid "Camera 3"
+msgstr "相机 3"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/models/settings_definition.py
+msgid "5 minutes"
+msgstr "5 分钟"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/models/settings_definition.py
+msgid "10 minutes"
+msgstr "10 分钟"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/models/settings_definition.py
+msgid "15 minutes"
+msgstr "15 分钟"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/models/settings_definition.py
+msgid "30 minutes"
+msgstr "30 分钟"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/models/settings_definition.py
+msgid "Aezeed Passphrase"
+msgstr "Aezeed 密码短语"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/models/settings_definition.py
+msgid "Prefer CompactSeedQR"
+msgstr "优先 CompactSeedQR"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/models/settings_definition.py
+msgid "Prefer EncryptedQR"
+msgstr "优先 EncryptedQR"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/models/settings_definition.py
+msgid "Ask each time"
+msgstr "每次询问"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/models/settings_definition.py
+msgid "Smartcard PIN Attempts"
+msgstr "智能卡 PIN 尝试次数"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/models/settings_definition.py
+msgid "Wipe Timer"
+msgstr "擦除计时器"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/models/settings_definition.py
+msgid "Seed word lengths"
+msgstr "助记词单词数"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/models/settings_definition.py
+msgid "BIP32 account prompt"
+msgstr "BIP32 账户提示"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/models/settings_definition.py
+msgid "Ambiguous QR"
+msgstr "二维码含义不明"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/models/settings_definition.py
+msgid "GPG key types"
+msgstr "GPG 密钥类型"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/models/settings_definition.py
+msgid "BIP85 GPG version"
+msgstr "BIP85 GPG 版本"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/models/settings_definition.py
+msgid "v3 is the latest; use v2 to recreate B9-B10 keys"
+msgstr "v3 为最新版；重建 B9-B10 密钥请用 v2"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/models/settings_definition.py
+msgid "SLIP39 seeds"
+msgstr "SLIP39 助记词"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/models/settings_definition.py
+msgid "Aezeed seeds"
+msgstr "Aezeed 助记词"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/models/settings_definition.py
+msgid "LND-compatible, 24 words"
+msgstr "LND 兼容，24 词"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/models/settings_definition.py
+msgid "Extendable SLIP39 shares"
+msgstr "可扩展的 SLIP39 分片"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/models/settings_definition.py
+msgid "BitBox02 backups"
+msgstr "BitBox02 备份"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/models/settings_definition.py
+msgid "Passport backups"
+msgstr "Passport 备份"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/models/settings_definition.py
+msgid "TAPSIGNER backups"
+msgstr "TAPSIGNER 备份"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/models/settings_definition.py
+msgid "Smartcard support"
+msgstr "智能卡支持"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/models/settings_definition.py
+msgid "Satochip support"
+msgstr "Satochip 支持"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/models/settings_definition.py
+msgid "KeyCard support"
+msgstr "Keycard 支持"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/models/settings_definition.py
+msgid "Specter-DIY support"
+msgstr "Specter-DIY 支持"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/models/settings_definition.py
+msgid "Camera source"
+msgstr "相机来源"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/desktop_warning.py
+msgid "Desktop Mode"
+msgstr "桌面模式"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/desktop_warning.py
+#: src/seedsigner/views/developer_os_warning.py
+msgid "Not secure!"
+msgstr "不安全！"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/desktop_warning.py
+msgid ""
+"This desktop version is for testing only.\n"
+"Do NOT use with real seeds or private keys."
+msgstr ""
+"此桌面版本仅供测试。\n"
+"请勿用于真实助记词或私钥。"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/desktop_warning.py
+#: src/seedsigner/views/developer_os_warning.py
+#: src/seedsigner/views/gpg_views.py
+#: src/seedsigner/views/password_generator_views.py
+#: src/seedsigner/views/smartcard_views.py
+msgid "I Understand"
+msgstr "我明白"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/developer_os_warning.py
+msgid "Development Build"
+msgstr "开发版本"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/developer_os_warning.py
+msgid ""
+"This SeedSignerOS development build is for testing only.\n"
+"Do NOT use with real seeds or private keys."
+msgstr ""
+"此 SeedSignerOS 开发版本仅供测试。\n"
+"请勿用于真实助记词或私钥。"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "File Operations"
+msgstr "文件操作"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "Import Keys"
+msgstr "导入密钥"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "Export Keys"
+msgstr "导出密钥"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "View Keys"
+msgstr "查看密钥"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "Secure Messaging"
+msgstr "安全通信"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/tools_views.py
+msgid "GPG Tools"
+msgstr "GPG 工具"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "Missing packages"
+msgstr "缺少软件包"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "Required but not installed:\n"
+msgstr "必需但未安装：\n"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "Subkey Operations"
+msgstr "子密钥操作"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "User ID Operations"
+msgstr "用户 ID 操作"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "Cross Certify Keys"
+msgstr "交叉认证密钥"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "Export Public Key Bundle"
+msgstr "导出公钥包"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "BIP85 Metadata"
+msgstr "BIP85 元数据"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "Subkeys"
+msgstr "子密钥"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/scan_views.py
+#: src/seedsigner/views/settings_views.py src/seedsigner/views/tools_views.py
+msgid "Back"
+msgstr "返回"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "Export Bundle"
+msgstr "导出包"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "Animated QR"
+msgstr "动态二维码"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "Save BIP85 Data"
+msgstr "保存 BIP85 数据"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "Load BIP85 Data"
+msgstr "载入 BIP85 数据"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "Rebuild BIP85 Key"
+msgstr "重建 BIP85 密钥"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/smartcard_views.py
+msgid "To MicroSD"
+msgstr "到 MicroSD"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "To QR"
+msgstr "到二维码"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/smartcard_views.py
+msgid "To Seedkeeper"
+msgstr "到 Seedkeeper"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/smartcard_views.py
+msgid "From MicroSD"
+msgstr "从 MicroSD"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "From QR"
+msgstr "从二维码"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/smartcard_views.py
+msgid "From Seedkeeper"
+msgstr "从 Seedkeeper"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "Add Subkeys"
+msgstr "添加子密钥"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "Revoke Subkeys"
+msgstr "吊销子密钥"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "Delete Subkeys"
+msgstr "删除子密钥"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "Change Expiry"
+msgstr "更改有效期"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "Export Subkey Secrets"
+msgstr "导出子密钥私密"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "1 year"
+msgstr "1 年"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "2 years"
+msgstr "2 年"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "5 years"
+msgstr "5 年"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "Never"
+msgstr "永不"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "File"
+msgstr "文件"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "Smartcard"
+msgstr "智能卡"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "Add User ID"
+msgstr "添加用户 ID"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "Edit User IDs"
+msgstr "编辑用户 ID"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "Set Primary User ID"
+msgstr "设置主用户 ID"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "Revoke User ID"
+msgstr "吊销用户 ID"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "Delete User ID"
+msgstr "删除用户 ID"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "Encrypt"
+msgstr "加密"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/scan_views.py
+msgid "Decrypt"
+msgstr "解密"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "Sign"
+msgstr "签名"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "Verify Signature"
+msgstr "验证签名"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "Create Message"
+msgstr "创建消息"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "Load Message"
+msgstr "载入消息"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "Manifest"
+msgstr "清单"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "Type Message"
+msgstr "输入消息"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "Load Seedkeeper"
+msgstr "载入 Seedkeeper"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/seed_views.py
+msgid "Scan QR"
+msgstr "扫描二维码"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "Load File"
+msgstr "载入文件"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "Load Key"
+msgstr "载入密钥"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+#: src/seedsigner/views/password_generator_views.py
+msgid "Save to Seedkeeper"
+msgstr "保存到 Seedkeeper"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+#: src/seedsigner/views/password_generator_views.py
+#: src/seedsigner/views/smartcard_views.py
+msgid "Show as QR"
+msgstr "显示为二维码"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "Public Key"
+msgstr "公钥"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "Private Key"
+msgstr "私钥"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "View Card Info"
+msgstr "查看卡信息"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "Generate On-Card Key"
+msgstr "在卡上生成密钥"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "Change Admin PIN"
+msgstr "更改管理员 PIN"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "Change User PIN"
+msgstr "更改用户 PIN"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "Encrypting File"
+msgstr "正在加密文件"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "(May take a while)"
+msgstr "（可能需要一些时间）"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "Decrypting File"
+msgstr "正在解密文件"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "Check SHA256Sum"
+msgstr "校验 SHA256Sum"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "Update"
+msgstr "更新"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "From File"
+msgstr "从文件"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "Generate New"
+msgstr "新建生成"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "Derive BIP85"
+msgstr "派生 BIP85"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "OpenGPG Card"
+msgstr "OpenGPG 卡"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "Edit text"
+msgstr "编辑文本"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "Discard text"
+msgstr "放弃文本"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "Discard text?"
+msgstr "放弃文本？"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "Generate QR code"
+msgstr "生成二维码"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/seed_views.py
+msgid "Transcribe mode"
+msgstr "誊写模式"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/seed_views.py
+msgid "FullScreen mode"
+msgstr "全屏模式"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/seed_views.py
+msgid "Transcribe Mode ?"
+msgstr "誊写模式？"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "Confirm text QR code"
+msgstr "确认文本二维码"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "Confirm Text QR ?"
+msgstr "确认文本二维码？"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "Scan text QR code"
+msgstr "扫描文本二维码"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "Confirm Text QR Code"
+msgstr "确认文本二维码"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "Your transcribed text QR code does not match your original text!"
+msgstr "您誊写的文本二维码与原始文本不符！"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "Review text QR code"
+msgstr "核对文本二维码"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "Your transcribed text QR code successfully scanned and yielded the same text."
+msgstr "您誊写的文本二维码扫描成功，得到相同文本。"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "Confirm Text QR"
+msgstr "确认文本二维码"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "Your transcribed text QR code could not be read!"
+msgstr "无法读取您誊写的文本二维码！"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "Edit & Generate QR code"
+msgstr "编辑并生成二维码"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/gpg_views.py
+msgid "Decoded Text"
+msgstr "解码后的文本"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/keycard_bias.py src/seedsigner/views/satochip_bias.py
+msgid "Run Test"
+msgstr "运行测试"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/microsd_views.py
+msgid "Flash Image"
+msgstr "刷写镜像"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/microsd_views.py
+msgid "Verify MicroSD"
+msgstr "校验 MicroSD"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/microsd_views.py
+msgid "Wipe (Zero)"
+msgstr "擦除(置零)"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/microsd_views.py
+msgid "Wipe (Random)"
+msgstr "擦除(随机)"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/microsd_views.py
+msgid "Skip Verification"
+msgstr "跳过校验"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/microsd_views.py
+msgid "All"
+msgstr "全部"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/password_generator_views.py
+msgid "Custom"
+msgstr "自定义"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/password_generator_views.py
+msgid "Diceware-EFF Short"
+msgstr "Diceware-EFF 短"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/password_generator_views.py
+msgid "Diceware-EFF Long"
+msgstr "Diceware-EFF 长"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/password_generator_views.py
+msgid "Diceware-BIP39"
+msgstr "Diceware-BIP39"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/password_generator_views.py
+msgid "Hex"
+msgstr "Hex"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/password_generator_views.py
+msgid "Dice Rolls"
+msgstr "掷骰"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/password_generator_views.py
+msgid "Password Type"
+msgstr "密码类型"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/password_generator_views.py
+msgid "64 bits"
+msgstr "64 位"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/password_generator_views.py
+msgid "128 bits"
+msgstr "128 位"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/password_generator_views.py
+msgid "256 bits"
+msgstr "256 位"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/password_generator_views.py
+msgid "Password Strength"
+msgstr "密码强度"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/password_generator_views.py
+#: src/seedsigner/views/smartcard_views.py
+msgid "Yes"
+msgstr "是"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/password_generator_views.py
+#: src/seedsigner/views/smartcard_views.py
+msgid "No"
+msgstr "否"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/password_generator_views.py
+msgid "Select Options"
+msgstr "选择选项"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/password_generator_views.py
+msgid "Choose at least one character set."
+msgstr "请至少选择一种字符集。"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/password_generator_views.py
+msgid "System RNG health check failed."
+msgstr "系统 RNG 健康检查失败。"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/password_generator_views.py
+msgid "System RNG Error"
+msgstr "系统 RNG 错误"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/password_generator_views.py
+msgid "Camera"
+msgstr "相机"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/password_generator_views.py
+msgid "Dice"
+msgstr "骰子"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/password_generator_views.py
+msgid "System RNG"
+msgstr "系统 RNG"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/password_generator_views.py
+msgid "Entropy Source"
+msgstr "熵来源"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/password_generator_views.py
+msgid "Not Supported"
+msgstr "不支持"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/password_generator_views.py
+msgid "BIP85 supports Diceware, Dice Rolls, Hex, Base64, and Base85."
+msgstr "BIP85 支持 Diceware、掷骰、Hex、Base64 和 Base85。"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/password_generator_views.py
+msgid "None"
+msgstr "无"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/password_generator_views.py
+msgid "Capitalise"
+msgstr "首字母大写"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/password_generator_views.py
+msgid "Space"
+msgstr "空格"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/password_generator_views.py
+msgid "Separator"
+msgstr "分隔符"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/password_generator_views.py
+msgid "6 sides"
+msgstr "6 面"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/password_generator_views.py
+msgid "10 sides"
+msgstr "10 面"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/password_generator_views.py
+msgid "20 sides"
+msgstr "20 面"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/password_generator_views.py
+msgid "Dice Sides"
+msgstr "骰子面数"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/password_generator_views.py
+msgid "Number of Rolls"
+msgstr "掷骰次数"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/password_generator_views.py
+msgid "Invalid Input"
+msgstr "无效输入"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/password_generator_views.py
+msgid "Number of rolls must be at least 1."
+msgstr "掷骰次数至少为 1。"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/password_generator_views.py
+#: src/seedsigner/views/tools_views.py
+msgid "Poor Entropy"
+msgstr "熵不足"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/password_generator_views.py
+#: src/seedsigner/views/tools_views.py
+msgid "Dice rolls didn't appear random enough. Please try again."
+msgstr "掷骰结果随机性不足。请重试。"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/password_generator_views.py
+#: src/seedsigner/views/tools_views.py
+msgid "Camera entropy didn't appear random enough. Please try again."
+msgstr "相机熵随机性不足。请重试。"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/password_generator_views.py
+msgid "WARNING"
+msgstr "警告"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/password_generator_views.py
+msgid "Load a seed before using BIP85."
+msgstr "使用 BIP85 前请先载入助记词。"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/password_generator_views.py
+msgid "Select Seed"
+msgstr "选择助记词"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/password_generator_views.py
+msgid "Choose seed for BIP85"
+msgstr "选择用于 BIP85 的助记词"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/password_generator_views.py
+msgid "BIP85 Index"
+msgstr "BIP85 索引"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/password_generator_views.py
+msgid "Invalid Length"
+msgstr "长度无效"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/password_generator_views.py
+msgid "BIP85 Hex supports 128 or 256 bits."
+msgstr "BIP85 Hex 支持 128 或 256 位。"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/password_generator_views.py
+msgid "BIP85 Base64 needs 120+ bits."
+msgstr "BIP85 Base64 需要 120 位以上。"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/password_generator_views.py
+msgid "BIP85 Base85 needs 64-512 bits."
+msgstr "BIP85 Base85 需要 64-512 位。"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/password_generator_views.py
+msgid "Password Name"
+msgstr "密码名称"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/password_generator_views.py
+msgid "Not Enough Space"
+msgstr "空间不足"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/password_generator_views.py
+msgid ""
+"Saving Secret\n"
+"\n"
+"\n"
+"\n"
+"\n"
+"\n"
+msgstr ""
+"正在保存私密\n"
+"\n"
+"\n"
+"\n"
+"\n"
+"\n"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/password_generator_views.py
+#: src/seedsigner/views/psbt_views.py
+msgid "Success"
+msgstr "成功"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/password_generator_views.py
+msgid "Password saved to Seedkeeper"
+msgstr "密码已保存到 Seedkeeper"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/password_generator_views.py
+msgid "Not enough space on Seedkeeper for password"
+msgstr "Seedkeeper 上空间不足，无法保存密码"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/password_generator_views.py
+msgid "Failed"
+msgstr "失败"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/password_generator_views.py
+msgid "Password save failed"
+msgstr "密码保存失败"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/password_generator_views.py
+#: src/seedsigner/views/scan_views.py
+msgid "Edit"
+msgstr "编辑"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/password_generator_views.py
+msgid "Password"
+msgstr "密码"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/password_generator_views.py
+msgid "Save Password"
+msgstr "保存密码"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/psbt_views.py src/seedsigner/views/seed_views.py
+msgid "Use Satochip card"
+msgstr "使用 Satochip 卡"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/psbt_views.py
+msgid "Use Keycard"
+msgstr "使用 Keycard"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/psbt_views.py src/seedsigner/views/seed_views.py
+#: src/seedsigner/views/smartcard_views.py src/seedsigner/views/tools_views.py
+msgid "Enter 15-word seed"
+msgstr "输入 15 词助记词"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/psbt_views.py src/seedsigner/views/seed_views.py
+#: src/seedsigner/views/smartcard_views.py src/seedsigner/views/tools_views.py
+msgid "Enter 18-word seed"
+msgstr "输入 18 词助记词"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/psbt_views.py src/seedsigner/views/seed_views.py
+#: src/seedsigner/views/smartcard_views.py src/seedsigner/views/tools_views.py
+msgid "Enter 21-word seed"
+msgstr "输入 21 词助记词"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/psbt_views.py
+msgid "Enter WIF"
+msgstr "输入 WIF"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/psbt_views.py src/seedsigner/views/scan_views.py
+msgid "Scan WIF"
+msgstr "扫描 WIF"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/psbt_views.py
+msgid "Enter BIP38"
+msgstr "输入 BIP38"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/psbt_views.py src/seedsigner/views/scan_views.py
+msgid "Scan BIP38"
+msgstr "扫描 BIP38"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/psbt_views.py
+msgid "Fingerprint mismatch"
+msgstr "指纹不匹配"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/psbt_views.py
+msgid "Card cannot sign PSBT"
+msgstr "卡无法签署此 PSBT"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/psbt_views.py
+#, python-brace-format
+msgid "Card fingerprint ({}) not in PSBT signers."
+msgstr "卡指纹({})不在 PSBT 签名者中。"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/psbt_views.py
+msgid "Private Key (WIF)"
+msgstr "私钥(WIF)"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/psbt_views.py
+msgid "Invalid WIF!"
+msgstr "无效的 WIF！"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/psbt_views.py
+msgid "Not a valid WIF-encoded private key."
+msgstr "不是有效的 WIF 编码私钥。"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/psbt_views.py
+msgid "BIP38 Key"
+msgstr "BIP38 密钥"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/psbt_views.py
+msgid "BIP38 Passphrase"
+msgstr "BIP38 密码短语"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/psbt_views.py
+msgid "Invalid BIP38!"
+msgstr "无效的 BIP38！"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/psbt_views.py
+msgid "Could not decrypt BIP38 key."
+msgstr "无法解密 BIP38 密钥。"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/psbt_views.py
+msgid "Descriptor mismatch"
+msgstr "descriptor 不匹配"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/psbt_views.py
+msgid "Descriptor cleared"
+msgstr "已清除 descriptor"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/psbt_views.py
+msgid "Loaded multisig wallet descriptor does not match this PSBT. Load the correct descriptor or skip verification to continue."
+msgstr "载入的多签钱包 descriptor 与此 PSBT 不符。请载入正确的 descriptor 或跳过校验以继续。"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/psbt_views.py
+msgid "Signing PSBT..."
+msgstr "正在签署 PSBT..."
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/psbt_views.py
+msgid "Signing Timeout"
+msgstr "签名超时"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/psbt_views.py
+msgid "Retry (higher timeout)"
+msgstr "重试(延长超时)"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/psbt_views.py
+#, python-brace-format
+msgid "Saved as {}."
+msgstr "已保存为 {}。"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/psbt_views.py
+#, python-brace-format
+msgid "Failed to save PSBT: {}"
+msgstr "保存 PSBT 失败：{}"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/psbt_views.py
+msgid "Encoding PSBT..."
+msgstr "正在编码 PSBT..."
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/scan_views.py
+msgid "QR Scanner Unavailable"
+msgstr "二维码扫描器不可用"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/scan_views.py
+msgid "QR scanning backend missing. Install zbar (or OpenCV on desktop) and restart."
+msgstr "缺少二维码扫描后端。请安装 zbar（桌面版为 OpenCV）后重启。"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/scan_views.py
+msgid "Select Seed Type"
+msgstr "选择助记词类型"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/scan_views.py
+msgid "Time set to:"
+msgstr "时间已设为："
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/scan_views.py
+msgid "Set Time Failed"
+msgstr "设置时间失败"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/scan_views.py
+msgid "Invalid Time"
+msgstr "无效时间"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/scan_views.py
+msgid "Could not parse time from QR"
+msgstr "无法从二维码解析时间"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/scan_views.py
+msgid "Scan SLIP-39 Share"
+msgstr "扫描 SLIP-39 分片"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/scan_views.py
+msgid "Expected a SLIP-39 share QR"
+msgstr "需要 SLIP-39 分片二维码"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/scan_views.py
+msgid "Expected a WIF private key"
+msgstr "需要 WIF 私钥"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/scan_views.py
+msgid "Expected a BIP38 private key"
+msgstr "需要 BIP38 私钥"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/scan_views.py
+#, python-brace-format
+msgid "Scan {} receive address from the wallet you just exported"
+msgstr "扫描您刚导出钱包的接收地址 {}"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/scan_views.py
+msgid ""
+"Data matches multiple\n"
+"QR types."
+msgstr ""
+"数据匹配多种\n"
+"二维码类型。"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/scan_views.py src/seedsigner/views/seed_views.py
+msgid "Type encryption key"
+msgstr "输入加密密钥"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/scan_views.py src/seedsigner/views/seed_views.py
+msgid "Scan encryption key"
+msgstr "扫描加密密钥"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/scan_views.py src/seedsigner/views/seed_views.py
+msgid "Edit encryption key"
+msgstr "编辑加密密钥"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/scan_views.py src/seedsigner/views/seed_views.py
+msgid "Discard encryption key"
+msgstr "放弃加密密钥"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/scan_views.py src/seedsigner/views/seed_views.py
+msgid "Proceed"
+msgstr "继续"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/scan_views.py src/seedsigner/views/seed_views.py
+msgid "Scan & Append Another"
+msgstr "扫描并追加另一个"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/scan_views.py
+msgid "Decrypted Text"
+msgstr "解密后的文本"
+
+#. FORK: translated by Claude 2026-07-12
+#. This is on the opening splash screen, displayed above the Seedsigner logo
+#: src/seedsigner/views/screensaver.py
+msgid "An unofficial fork of:"
+msgstr "以下项目的非官方分支："
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "BitBox02 backup"
+msgstr "BitBox02 备份"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "Passport backup"
+msgstr "Passport 备份"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "TAPSIGNER backup"
+msgstr "TAPSIGNER 备份"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "Enter Aezeed seed"
+msgstr "输入 Aezeed 助记词"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py src/seedsigner/views/smartcard_views.py
+msgid "SLIP-39 Shares"
+msgstr "SLIP-39 分片"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid " Scan a SeedQR"
+msgstr " 扫描 SeedQR"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py src/seedsigner/views/smartcard_views.py
+msgid "From SeedKeeper"
+msgstr "从 SeedKeeper"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "From Specter-DIY"
+msgstr "从 Specter-DIY"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py src/seedsigner/views/smartcard_views.py
+msgid " Create a seed"
+msgstr " 创建助记词"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "microSD card not detected."
+msgstr "未检测到 microSD 卡。"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "No Backups Found"
+msgstr "未找到备份"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "No BitBox02 backups (.bin, .bb02, .dat, .backup) were found on the microSD card."
+msgstr "在 microSD 卡上未找到 BitBox02 备份(.bin、.bb02、.dat、.backup)。"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "Select BitBox02 backup"
+msgstr "选择 BitBox02 备份"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+#, python-brace-format
+msgid "Backup name: {}"
+msgstr "备份名称：{}"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+#, python-brace-format
+msgid "Created: {}"
+msgstr "创建时间：{}"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+#, python-brace-format
+msgid "Firmware: {}"
+msgstr "固件：{}"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+#, python-brace-format
+msgid "Birthdate: {}"
+msgstr "创建日期：{}"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+#, python-brace-format
+msgid "Seed length: {} words"
+msgstr "助记词长度：{} 词"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "Seed loaded"
+msgstr "助记词已载入"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "No Passport backups (.7z) were found on the microSD card."
+msgstr "在 microSD 卡上未找到 Passport 备份(.7z)。"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "Select Passport backup"
+msgstr "选择 Passport 备份"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "Passport backup code"
+msgstr "Passport 备份码"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "Backup code cannot be empty."
+msgstr "备份码不能为空。"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+#, python-brace-format
+msgid "Chain: {}"
+msgstr "链：{}"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+#, python-brace-format
+msgid "XFP: {}"
+msgstr "XFP：{}"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "No TAPSIGNER backups (.aes) were found on the microSD card."
+msgstr "在 microSD 卡上未找到 TAPSIGNER 备份(.aes)。"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "Select TAPSIGNER backup"
+msgstr "选择 TAPSIGNER 备份"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "Backup key (hex)"
+msgstr "备份密钥(hex)"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "xprv loaded from TAPSIGNER backup."
+msgstr "已从 TAPSIGNER 备份载入 xprv。"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+#, python-brace-format
+msgid "Path: {}"
+msgstr "路径：{}"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "Load Passphrase"
+msgstr "载入密码短语"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "Type Passphrase"
+msgstr "输入密码短语"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "Scan Passphrase"
+msgstr "扫描密码短语"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "Load from SeedKeeper"
+msgstr "从 SeedKeeper 载入"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "Aezeed passphrase"
+msgstr "Aezeed 密码短语"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid ""
+"Passphrase required\n"
+"for this mnemonic."
+msgstr ""
+"此助记词\n"
+"需要密码短语。"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "Invalid passphrase"
+msgstr "无效的密码短语"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid ""
+"Aezeed passphrase required.\n"
+"Try again."
+msgstr ""
+"需要 Aezeed 密码短语。\n"
+"请重试。"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid ""
+"Wrong Aezeed passphrase.\n"
+"Try again."
+msgstr ""
+"Aezeed 密码短语错误。\n"
+"请重试。"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "Invalid Text QR Code"
+msgstr "无效的文本二维码"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "Non UTF-8 data detected."
+msgstr "检测到非 UTF-8 数据。"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "Aezeed support"
+msgstr "Aezeed 支持"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid ""
+"Aezeed entry is experimental.\n"
+"Use only with known-good backups."
+msgstr ""
+"Aezeed 输入为实验功能。\n"
+"仅用于已知良好的备份。"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "Enter 20 words"
+msgstr "输入 20 词"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "Enter 33 words"
+msgstr "输入 33 词"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "Load Share"
+msgstr "载入分片"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+#, python-brace-format
+msgid "Share Word #{}"
+msgstr "分片单词 #{}"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "Enter share"
+msgstr "输入分片"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "Scan share"
+msgstr "扫描分片"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "Combine shares"
+msgstr "合并分片"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+#, python-brace-format
+msgid "{} of {} needed"
+msgstr "需要 {} 个（共 {} 个）"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py src/seedsigner/views/settings_views.py
+#: src/seedsigner/views/smartcard_views.py
+msgid "Try Again"
+msgstr "重试"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "Invalid SLIP-39 Share"
+msgstr "无效的 SLIP-39 分片"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "Checksum failure; not a valid SLIP-39 share."
+msgstr "校验和错误；不是有效的 SLIP-39 分片。"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "Non-extendable Seed"
+msgstr "不可扩展的助记词"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "This SLIP-39 seed cannot regenerate new shares."
+msgstr "此 SLIP-39 助记词无法重新生成新分片。"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "Export as Plaintext QR"
+msgstr "导出为明文二维码"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "To SeedKeeper"
+msgstr "到 SeedKeeper"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "To Specter-DIY"
+msgstr "到 Specter-DIY"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "Regenerate Shares"
+msgstr "重新生成分片"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+#, python-brace-format
+msgid "Open {} and display a receive address from the wallet you just exported."
+msgstr "打开 {} 并显示您刚导出钱包的接收地址。"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "your wallet software"
+msgstr "您的钱包软件"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid ""
+"Passphrase was used.\n"
+"You'll need words + passphrase."
+msgstr ""
+"已使用密码短语。\n"
+"您将需要单词 + 密码短语。"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "18 Words"
+msgstr "18 词"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "Review"
+msgstr "核对"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "Finalize child"
+msgstr "确定子助记词"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "Input Encryption Key"
+msgstr "输入加密密钥"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "Discard encryption key?"
+msgstr "放弃加密密钥？"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "Your current key entry will be erased"
+msgstr "当前输入的密钥将被清除"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "Invalid Key"
+msgstr "无效密钥"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "Key length is too long."
+msgstr "密钥过长。"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "Input from Camera"
+msgstr "从相机输入"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "Use fingerprint"
+msgstr "使用指纹"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "Assign custom ID"
+msgstr "指定自定义 ID"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "Input Mnemonic ID"
+msgstr "输入助记 ID"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "Edit mnemonic ID"
+msgstr "编辑助记 ID"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "Discard mnemonic ID"
+msgstr "放弃助记 ID"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "Discard mnemonic ID?"
+msgstr "放弃助记 ID？"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "Your current mnemonic ID entry will be erased"
+msgstr "当前输入的助记 ID 将被清除"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py src/seedsigner/views/tools_views.py
+msgid "Processing..."
+msgstr "处理中..."
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "Encryption failure"
+msgstr "加密失败"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "Next 100"
+msgstr "下一组 100"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "Expanded Search"
+msgstr "扩展搜索"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "Not Found"
+msgstr "未找到"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "Address Not Verified"
+msgstr "地址未验证"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+#, python-brace-format
+msgid "Checked {} addresses with no match."
+msgstr "已检查 {} 个地址，无匹配。"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "Check Next 10"
+msgstr "检查下 10 个"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+#, python-brace-format
+msgid "Checked {} addresses per path with no match."
+msgstr "每条路径已检查 {} 个地址，无匹配。"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "Wallet Export"
+msgstr "钱包导出"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "Wallet export successful."
+msgstr "钱包导出成功。"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "Address format doesn't match exported script type. Wallet export unsuccessful."
+msgstr "地址格式与导出的脚本类型不符。钱包导出失败。"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "Unable to match wallet to current seed. Wallet export unsuccessful."
+msgstr "无法将钱包与当前助记词匹配。钱包导出失败。"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "Export Failed"
+msgstr "导出失败"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "Load SeedKeeper"
+msgstr "载入 SeedKeeper"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py src/seedsigner/views/smartcard_views.py
+msgid "Exporting xpub..."
+msgstr "正在导出 xpub..."
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "Signing message..."
+msgstr "正在签署消息..."
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/seed_views.py
+msgid "Verification Failed"
+msgstr "验证失败"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/settings_views.py
+msgid "Test Smartcard"
+msgstr "测试智能卡"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/settings_views.py
+msgid "List card readers"
+msgstr "列出读卡器"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/settings_views.py
+msgid "Test NFC Scan"
+msgstr "测试 NFC 扫描"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/settings_views.py
+msgid "Restart PCSC"
+msgstr "重启 PCSC"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/settings_views.py
+msgid "Battery info"
+msgstr "电池信息"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/settings_views.py
+msgid "System info"
+msgstr "系统信息"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/settings_views.py
+msgid "Load Backup Files"
+msgstr "载入备份文件"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/settings_views.py
+msgid "No compatible battery monitor detected"
+msgstr "未检测到兼容的电池监控器"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/settings_views.py src/seedsigner/views/tools_views.py
+msgid "Unavailable"
+msgstr "不可用"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "Common Functions"
+msgstr "通用功能"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "Satochip Functions"
+msgstr "Satochip 功能"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "KeyCard Functions"
+msgstr "Keycard 功能"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "SeedKeeper Functions"
+msgstr "SeedKeeper 功能"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "Specter-DIY Functions"
+msgstr "Specter-DIY 功能"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "DIY Tools"
+msgstr "DIY 工具"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "Card Info"
+msgstr "卡信息"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "Genuine Check"
+msgstr "真伪检查"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "Change PIN"
+msgstr "更改 PIN"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "Change Label"
+msgstr "更改标签"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "Change NFC Policy"
+msgstr "更改 NFC 策略"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "Configure NDEF"
+msgstr "配置 NDEF"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "Factory Reset Card"
+msgstr "恢复卡出厂设置"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "View NDEF"
+msgstr "查看 NDEF"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "Use Seedkeeper App Link"
+msgstr "使用 Seedkeeper 应用链接"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "Clear NDEF"
+msgstr "清除 NDEF"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "Set Custom NDEF"
+msgstr "设置自定义 NDEF"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "Save NDEF to SeedKeeper"
+msgstr "将 NDEF 保存到 SeedKeeper"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "Load NDEF from SeedKeeper"
+msgstr "从 SeedKeeper 载入 NDEF"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "Text Record"
+msgstr "文本记录"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "URI Record"
+msgstr "URI 记录"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "Android App Launch"
+msgstr "Android 应用启动"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "Custom (HEX)"
+msgstr "自定义(HEX)"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "Decode NDEF"
+msgstr "解码 NDEF"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "NFC Enabled"
+msgstr "NFC 已启用"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "NFC Disabled"
+msgstr "NFC 已禁用"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "NFC Blocked"
+msgstr "NFC 已阻止"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "Card Re-Inserted"
+msgstr "卡已重新插入"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "View Free Space"
+msgstr "查看剩余空间"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "View Secrets on Card"
+msgstr "查看卡上的私密"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "Save Password to Card"
+msgstr "将密码保存到卡"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "Delete Secret from Card"
+msgstr "从卡删除私密"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "Load MultiSig Descriptor"
+msgstr "载入多签 descriptor"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "Save MultiSig Descriptor"
+msgstr "保存多签 descriptor"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "Clone Card Secrets"
+msgstr "克隆卡上私密"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "Exit to Home"
+msgstr "退出到主页"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "Initialise with Seed"
+msgstr "用助记词初始化"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "Load as Descriptor"
+msgstr "作为 descriptor 载入"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "Load PSBT"
+msgstr "载入 PSBT"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "Set PUK"
+msgstr "设置 PUK"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "Unblock PIN with PUK"
+msgstr "用 PUK 解锁 PIN"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "Set Name"
+msgstr "设置名称"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "Remove Seed"
+msgstr "移除助记词"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "Benchmark Signing"
+msgstr "签名基准测试"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "Benchmark Message Signing"
+msgstr "消息签名基准测试"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "Check signing bias"
+msgstr "检查签名偏差"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "Remove"
+msgstr "移除"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "Reset"
+msgstr "重置"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "Enable 2FA"
+msgstr "启用 2FA"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "Already Seeded"
+msgstr "已设置助记词"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid ""
+"xprv cannot init Satochip.\n"
+"Use BIP39, SLIP39, or Electrum."
+msgstr ""
+"xprv 无法初始化 Satochip。\n"
+"请使用 BIP39、SLIP39 或 Electrum。"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "Change Card PIN"
+msgstr "更改卡 PIN"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "Load Mnemonic"
+msgstr "载入助记词"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "Save Mnemonic"
+msgstr "保存助记词"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "Wipe Seed"
+msgstr "擦除助记词"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "Card Keys"
+msgstr "卡密钥"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "Build Applets"
+msgstr "构建小程序"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "Install Applet"
+msgstr "安装小程序"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "Uninstall Applet"
+msgstr "卸载小程序"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "Enter Different PIN"
+msgstr "输入其他 PIN"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "Load Keys"
+msgstr "载入密钥"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "Save Keys"
+msgstr "保存密钥"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "Unlock Card"
+msgstr "解锁卡"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "Lock Card"
+msgstr "锁定卡"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "Clear Loaded Keys"
+msgstr "清除已载入的密钥"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "Overwrite"
+msgstr "覆盖"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "Abort Save"
+msgstr "中止保存"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "Enter Single Key"
+msgstr "输入单个密钥"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "Enter Key Set"
+msgstr "输入密钥组"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "Generate Single Key"
+msgstr "生成单个密钥"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "Generate Key Set"
+msgstr "生成密钥组"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/smartcard_views.py
+msgid "8 KB (default)"
+msgstr "8 KB(默认)"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/tools_views.py
+msgid "System RNG entropy too low. Try again later."
+msgstr "系统 RNG 熵过低。请稍后重试。"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/tools_views.py
+msgid "System RNG derived entropy failed health checks."
+msgstr "系统 RNG 派生的熵未通过健康检查。"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/tools_views.py
+msgid " New seed"
+msgstr " 新建助记词"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/tools_views.py
+msgid "SLIP39 seed"
+msgstr "SLIP39 助记词"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/tools_views.py
+msgid "Text QR Code"
+msgstr "文本二维码"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/tools_views.py
+msgid "Password Generator"
+msgstr "密码生成器"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/tools_views.py
+msgid "Smartcard Tools"
+msgstr "智能卡工具"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/tools_views.py
+msgid "MicroSD Tools"
+msgstr "MicroSD 工具"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/tools_views.py
+msgid "Clear Multisig Descriptor"
+msgstr "清除多签 descriptor"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/tools_views.py
+msgid "microSD card not detected"
+msgstr "未检测到 microSD 卡"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/tools_views.py
+msgid "Insert a microSD card to save the discharge log."
+msgstr "插入 microSD 卡以保存放电日志。"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/tools_views.py
+msgid "Unable to load network information."
+msgstr "无法载入网络信息。"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/tools_views.py
+msgid "15 words"
+msgstr "15 词"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/tools_views.py
+msgid "18 words"
+msgstr "18 词"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/tools_views.py
+msgid "21 words"
+msgstr "21 词"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/tools_views.py
+msgid "20 words"
+msgstr "20 词"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/tools_views.py
+msgid "33 words"
+msgstr "33 词"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/tools_views.py
+#, python-brace-format
+msgid "20 words ({} rolls)"
+msgstr "20 词({} 次)"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/tools_views.py
+#, python-brace-format
+msgid "33 words ({} rolls)"
+msgstr "33 词({} 次)"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/tools_views.py
+msgid "Loaded Multisig Descriptor"
+msgstr "已载入多签 descriptor"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/tools_views.py
+msgid "Load from Satochip"
+msgstr "从 Satochip 载入"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/tools_views.py
+msgid "Electrum Seed"
+msgstr "Electrum 助记词"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/tools_views.py
+msgid "Encode text"
+msgstr "编码文本"
+
+#. FORK: translated by Claude 2026-07-12
+#: src/seedsigner/views/tools_views.py
+msgid "Decode QR code"
+msgstr "解码二维码"
+

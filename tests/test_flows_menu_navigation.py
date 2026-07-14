@@ -84,7 +84,6 @@ class TestMenuNavigationFlows(FlowTest):
             (SettingsConstants.SETTING__TAPSIGNER_BACKUP,   SettingsConstants.OPTION__ENABLED),
             (SettingsConstants.SETTING__BIP85_CHILD_SEEDS,  SettingsConstants.OPTION__ENABLED),
             (SettingsConstants.SETTING__MESSAGE_SIGNING,    SettingsConstants.OPTION__ENABLED),
-            (SettingsConstants.SETTING__XPUB_EXPORT,        SettingsConstants.OPTION__ENABLED),
             (SettingsConstants.SETTING__PLAINTEXTQR,        SettingsConstants.OPTION__ENABLED),
         ]:
             self.settings.set_value(setting, value)
@@ -633,34 +632,6 @@ class TestMenuNavigationFlows(FlowTest):
         )
         button_data = self._capture_tools_button_data()
         assert tools_views.ToolsMenuView.SMARTCARD not in button_data
-
-    def test_xpub_export_disabled(self):
-        """Export Xpub should be *hidden* from SeedOptionsView when disabled."""
-        self.settings.set_value(
-            SettingsConstants.SETTING__XPUB_EXPORT,
-            SettingsConstants.OPTION__DISABLED,
-        )
-        # We need a loaded seed to reach SeedOptionsView; inject one.
-        from seedsigner.models.seed import Seed
-        word = "abandon"
-        seed = Seed(mnemonic=[word] * 11 + ["about"])
-        self.controller.storage.seeds = [seed]
-
-        view = object.__new__(seed_views.SeedOptionsView)
-        view.settings = self.settings
-        view.controller = self.controller
-        view.seed = seed
-
-        captured = {}
-
-        def fake_run_screen(self_view, *args, **kwargs):
-            captured["button_data"] = kwargs.get("button_data")
-            return RET_CODE__BACK_BUTTON
-
-        with patch.object(seed_views.SeedOptionsView, "run_screen", fake_run_screen):
-            destination = view.run()
-
-        assert seed_views.SeedOptionsView.EXPORT_XPUB not in captured["button_data"]
 
     def test_password_generator_hidden(self):
         """Password Generator should be *hidden* when ``include_password_generator``

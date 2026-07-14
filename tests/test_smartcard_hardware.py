@@ -1662,7 +1662,7 @@ class TestSpecterDIY:
         _, secure, _ = self._connect()
         ps = secure.pin_status(ch)
 
-        if ps.get("status") == "no_pin":
+        if ps.get("status") in ("no_pin", "disabled"):
             secure.set_pin(ch, b"1234")
 
         ps = secure.pin_status(ch)

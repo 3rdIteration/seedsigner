@@ -311,6 +311,12 @@ class HardwareButtons(Singleton):
             cls._instance = cls.__new__(cls)
 
     def wait_for(self, keys: List = []) -> int:
+        """
+        Block execution until one of the target keys is pressed.
+
+        Optionally override the wait by calling `trigger_override()`.
+        """
+        # TODO: Refactor to keep control in the Controller and not here
         from seedsigner.controller import Controller
 
         controller = Controller.get_instance()
@@ -322,7 +328,8 @@ class HardwareButtons(Singleton):
                 return HardwareButtonsConstants.OVERRIDE
 
             cur_time = int(time.time() * 1000)
-            if cur_time - self.last_input_time > controller.screensaver_activation_ms and not controller.is_screensaver_running:
+            if cur_time - self.last_input_time > controller.screensaver_activation_ms and controller.is_screensaver_start_allowed:
+                # Start the screensaver. Will block execution until input detected.
                 controller.start_screensaver()
                 self.update_last_input_time()
                 time.sleep(self.next_repeat_threshold / 1000.0)

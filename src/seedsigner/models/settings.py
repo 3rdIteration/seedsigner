@@ -251,6 +251,10 @@ class Settings(Singleton):
         for entry in data.split()[split_index:]:
             abbreviated_name, value = entry.split("=")
 
+            # Empty values ("some_setting= other_setting=E") are invalid
+            if value == "":
+                raise InvalidSettingsQRData(f"{abbreviated_name} cannot be empty")
+
             # Parse multi-value settings; numeric-ize where needed.
             # Use try/except instead of .isdigit() because .isdigit() returns
             # True for non-ASCII Unicode digit characters (e.g. superscript ¹²³)
@@ -281,8 +285,14 @@ class Settings(Singleton):
                 values = [value]
             else:
                 values = value
+
+            if not settings_entry.selection_options:
+                # FREE_ENTRY settings have no enumerated options to validate against
+                updated_settings[settings_entry.attr_name] = value
+                continue
+
             for v in values:
-                if v not in [opt[0] for opt in settings_entry.selection_options]:
+                if v not in [opt[0] if type(opt) == tuple else opt for opt in settings_entry.selection_options]:
                     if settings_entry.attr_name == SettingsConstants.SETTING__PERSISTENT_SETTINGS and v == SettingsConstants.OPTION__ENABLED:
                         # Special case: trying to enable Persistent Settings when 
                         # DISABLED is the only option allowed (because the SD card is not
@@ -403,8 +413,9 @@ class Settings(Singleton):
                 # Clean the incoming data, if necessary
                 if entry.type == SettingsConstants.TYPE__MULTISELECT:
                     if type(new_settings[entry.attr_name]) == str:
-                        # Break comma-separated SettingsQR input into List
-                        new_settings[entry.attr_name] = new_settings[entry.attr_name].split(",")
+                        # Break comma-separated multiselect options into List; avoid empty
+                        # values.
+                        new_settings[entry.attr_name] = [value for value in new_settings[entry.attr_name].split(",") if value.strip()]
                     elif (
                         type(new_settings[entry.attr_name]) == list
                         and len(new_settings[entry.attr_name]) > 0
@@ -413,6 +424,10 @@ class Settings(Singleton):
                         # Handle legacy format where selection options were stored
                         # as [value, label] pairs.
                         new_settings[entry.attr_name] = [v[0] for v in new_settings[entry.attr_name]]
+
+                    if not new_settings[entry.attr_name]:
+                        # Multiselect cannot be empty; load defaults to avoid issues
+                        new_settings[entry.attr_name] = entry.default_value
 
         for key, value in new_settings.items():
             # Defer writing to disk until all values have been applied to avoid

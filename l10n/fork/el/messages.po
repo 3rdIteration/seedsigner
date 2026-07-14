@@ -1,0 +1,2870 @@
+# Fork translation overlay for SeedSigner (3rdIteration fork).
+# Contains ONLY strings that upstream's catalogs do not translate.
+# Merged with the upstream catalog at build time (upstream wins on overlap).
+# Managed by l10n/fork_translations.py — see l10n/README.md.
+msgid ""
+msgstr ""
+"Project-Id-Version: PROJECT VERSION\n"
+"Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
+"POT-Creation-Date: 2026-07-10 23:11-0400\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language: el\n"
+"Language-Team: el <LL@li.org>\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.16.0\n"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/controller.py src/seedsigner/views/view.py
+msgid "Data wiped after inactivity"
+msgstr "Τα δεδομένα διαγράφηκαν λόγω αδράνειας"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/psbt_screens.py
+msgid "Review Transaction"
+msgstr "Έλεγχος συναλλαγής"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/psbt_screens.py
+msgid "Review details"
+msgstr "Έλεγχος λεπτομερειών"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/psbt_screens.py
+msgid "Transaction Math"
+msgstr "Υπολογισμοί συναλλαγής"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/psbt_screens.py
+msgid "Review recipients"
+msgstr "Έλεγχος παραληπτών"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/psbt_screens.py
+msgid "Sign Transaction"
+msgstr "Υπογραφή συναλλαγής"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/scan_screens.py
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Starting camera..."
+msgstr "Εκκίνηση κάμερας..."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/scan_screens.py
+msgid "Decrypt?"
+msgstr "Αποκρυπτογράφηση;"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/scan_screens.py
+msgid "Select QR Type"
+msgstr "Επιλογή τύπου QR"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/scan_screens.py
+msgid "Encryption Key"
+msgstr "Κλειδί κρυπτογράφησης"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/scan_screens.py
+msgid "Review Encryption Key"
+msgstr "Έλεγχος κλειδιού κρυπτογράφησης"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/screen.py
+msgid "I understand"
+msgstr "Κατανοώ"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Account Number"
+msgstr "Αριθμός λογαριασμού"
+
+#. FORK: translated by Claude 2026-07-10
+#. Refers to the SeedQR type: Standard or Compact or encrypted
+#: src/seedsigner/gui/screens/seed_screens.py
+#: src/seedsigner/views/seed_views.py
+msgid "Encrypted"
+msgstr "Κρυπτογραφημένο"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Encrypted entropy bits"
+msgstr "Κρυπτογραφημένα bits εντροπίας"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Non-standard path!"
+msgstr "Μη τυπική διαδρομή!"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/seed_screens.py
+#: src/seedsigner/views/seed_views.py
+msgid "Sign message"
+msgstr "Υπογραφή μηνύματος"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Mnemonic ID"
+msgstr "ID μνημονικού"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Review Mnemonic ID"
+msgstr "Έλεγχος ID μνημονικού"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "The QR codes output in both modes may differ, but both are valid QR codes."
+msgstr "Οι κωδικοί QR των δύο λειτουργιών μπορεί να διαφέρουν, αλλά είναι και οι δύο έγκυροι."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Transcribe Encrypted QR"
+msgstr "Μεταγραφή κρυπτογραφημένου QR"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/settings_screens.py
+#: src/seedsigner/views/settings_views.py
+msgid "No options available"
+msgstr "Δεν υπάρχουν διαθέσιμες επιλογές"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/settings_screens.py
+#: src/seedsigner/views/settings_views.py
+msgid "Battery Info"
+msgstr "Πληροφορίες μπαταρίας"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "System Info"
+msgstr "Πληροφορίες συστήματος"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "Platform: {platform_name}"
+msgstr "Πλατφόρμα: {platform_name}"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "Variant: {platform_variant}"
+msgstr "Παραλλαγή: {platform_variant}"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "Serial (CPU): {system_serial}"
+msgstr "Σειριακός (CPU): {system_serial}"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "Serial (MicroSD): {microsd_serial}"
+msgstr "Σειριακός (MicroSD): {microsd_serial}"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/tools_screens.py
+#: src/seedsigner/views/smartcard_views.py
+msgid "Device Filter"
+msgstr "Φίλτρο συσκευών"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/tools_screens.py
+#: src/seedsigner/views/tools_views.py
+msgid "Network Info"
+msgstr "Πληροφορίες δικτύου"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/tools_screens.py
+#: src/seedsigner/views/tools_views.py
+msgid "Battery Calibration"
+msgstr "Βαθμονόμηση μπαταρίας"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Charge the battery fully. Select Next to start the discharge test."
+msgstr "Φόρτισε πλήρως τη μπαταρία. Επίλεξε Επόμενο για έναρξη του τεστ εκφόρτισης."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/tools_screens.py
+#: src/seedsigner/views/gpg_views.py
+msgid "Start"
+msgstr "Έναρξη"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Test runs until empty. Leave the device unplugged."
+msgstr "Το τεστ τρέχει μέχρι να αδειάσει. Άφησε τη συσκευή αποσυνδεδεμένη."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Charging detected"
+msgstr "Εντοπίστηκε φόρτιση"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Discharging"
+msgstr "Εκφόρτιση"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Elapsed: "
+msgstr "Διάρκεια: "
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Voltage: "
+msgstr "Τάση: "
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Current: "
+msgstr "Ρεύμα: "
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Status: "
+msgstr "Κατάσταση: "
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "LOW ENTROPY"
+msgstr "ΧΑΜΗΛΗ ΕΝΤΡΟΠΙΑ"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "GOOD ENTROPY"
+msgstr "ΚΑΛΗ ΕΝΤΡΟΠΙΑ"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/gui/screens/tools_screens.py
+#: src/seedsigner/views/gpg_views.py
+msgid "Text to Encode"
+msgstr "Κείμενο προς κωδικοποίηση"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/helpers/seedkeeper_utils.py
+msgid "Set Duress PIN"
+msgstr "Ορισμός PIN εξαναγκασμού"
+
+#. FORK: translated by Claude 2026-07-10
+#. QR code format option; "default" = this is the format most wallets use
+#: src/seedsigner/models/settings_definition.py
+msgid "Animated (default)"
+msgstr "Κινούμενο (προεπιλογή)"
+
+#. FORK: translated by Claude 2026-07-10
+#. QR code format option (static = single frame, not animated)
+#: src/seedsigner/models/settings_definition.py
+msgid "Static"
+msgstr "Στατικό"
+
+#. FORK: translated by Claude 2026-07-10
+#. QR code format option: old format that Specter Desktop used to use
+#: src/seedsigner/models/settings_definition.py
+msgid "Specter legacy"
+msgstr "Specter legacy"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "Camera 0"
+msgstr "Κάμερα 0"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "Camera 1"
+msgstr "Κάμερα 1"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "Camera 2"
+msgstr "Κάμερα 2"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "Camera 3"
+msgstr "Κάμερα 3"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "5 minutes"
+msgstr "5 λεπτά"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "10 minutes"
+msgstr "10 λεπτά"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "15 minutes"
+msgstr "15 λεπτά"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "30 minutes"
+msgstr "30 λεπτά"
+
+#. FORK: translated by Claude 2026-07-10
+#. MicroSD notification duration setting - Display notification for 5 seconds
+#: src/seedsigner/models/settings_definition.py
+msgid "5 seconds"
+msgstr "5 δευτερόλεπτα"
+
+#. FORK: translated by Claude 2026-07-10
+#. MicroSD notification duration setting - Display notification until the SD
+#. card is removed
+#: src/seedsigner/models/settings_definition.py
+msgid "Until SD removed"
+msgstr "Μέχρι την αφαίρεση της SD"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "Aezeed Passphrase"
+msgstr "Συνθηματική φράση Aezeed"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "Prefer CompactSeedQR"
+msgstr "Προτίμηση CompactSeedQR"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "Prefer EncryptedQR"
+msgstr "Προτίμηση EncryptedQR"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "Ask each time"
+msgstr "Ερώτηση κάθε φορά"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "Smartcard PIN Attempts"
+msgstr "Προσπάθειες PIN κάρτας"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "Wipe Timer"
+msgstr "Χρονοδιακόπτης διαγραφής"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "Seed word lengths"
+msgstr "Μήκη seed"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "Xpub QR format"
+msgstr "Μορφή QR για xpub"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "BIP32 account prompt"
+msgstr "Ερώτηση λογαριασμού BIP32"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "Ambiguous QR"
+msgstr "Ασαφές QR"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "GPG key types"
+msgstr "Τύποι κλειδιών GPG"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "BIP85 GPG version"
+msgstr "Έκδοση GPG του BIP85"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "v3 is the latest; use v2 to recreate B9-B10 keys"
+msgstr "Η v3 είναι η νεότερη· χρησιμοποίησε v2 για κλειδιά B9-B10"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "SLIP39 seeds"
+msgstr "Seeds SLIP39"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "Aezeed seeds"
+msgstr "Seeds Aezeed"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "LND-compatible, 24 words"
+msgstr "Συμβατό με LND, 24 λέξεις"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "Extendable SLIP39 shares"
+msgstr "Επεκτάσιμα μερίδια SLIP39"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "MicroSD notification duration"
+msgstr "Διάρκεια ειδοποίησης MicroSD"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "BitBox02 backups"
+msgstr "Αντίγραφα BitBox02"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "Passport backups"
+msgstr "Αντίγραφα Passport"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "TAPSIGNER backups"
+msgstr "Αντίγραφα TAPSIGNER"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "Smartcard support"
+msgstr "Υποστήριξη έξυπνης κάρτας"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "Satochip support"
+msgstr "Υποστήριξη Satochip"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "KeyCard support"
+msgstr "Υποστήριξη Keycard"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "Specter-DIY support"
+msgstr "Υποστήριξη Specter-DIY"
+
+#. FORK: translated by Claude 2026-07-10
+#. Hardware settings option to specify the screen driver (e.g. st7789 vs
+#. ili9341)
+#: src/seedsigner/models/settings_definition.py
+msgid "Display type"
+msgstr "Τύπος οθόνης"
+
+#. FORK: translated by Claude 2026-07-10
+#. Hardware settings option to invert how the screen driver displays colors.
+#: src/seedsigner/models/settings_definition.py
+msgid "Invert colors"
+msgstr "Αντιστροφή χρωμάτων"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/models/settings_definition.py
+msgid "Camera source"
+msgstr "Πηγή κάμερας"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/desktop_warning.py
+msgid "Desktop Mode"
+msgstr "Λειτουργία desktop"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/desktop_warning.py
+#: src/seedsigner/views/developer_os_warning.py
+msgid "Not secure!"
+msgstr "Μη ασφαλές!"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/desktop_warning.py
+msgid ""
+"This desktop version is for testing only.\n"
+"Do NOT use with real seeds or private keys."
+msgstr ""
+"Αυτή η έκδοση desktop είναι μόνο για δοκιμές.\n"
+"ΜΗΝ τη χρησιμοποιείς με αληθινά seeds ή κλειδιά."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/desktop_warning.py
+#: src/seedsigner/views/developer_os_warning.py
+#: src/seedsigner/views/gpg_views.py
+#: src/seedsigner/views/password_generator_views.py
+#: src/seedsigner/views/smartcard_views.py
+msgid "I Understand"
+msgstr "Κατανοώ"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/developer_os_warning.py
+msgid "Development Build"
+msgstr "Έκδοση ανάπτυξης"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/developer_os_warning.py
+msgid ""
+"This SeedSignerOS development build is for testing only.\n"
+"Do NOT use with real seeds or private keys."
+msgstr ""
+"Αυτή η έκδοση ανάπτυξης του SeedSignerOS είναι μόνο για δοκιμές.\n"
+"ΜΗΝ τη χρησιμοποιείς με αληθινά seeds ή κλειδιά."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "File Operations"
+msgstr "Λειτουργίες αρχείων"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Import Keys"
+msgstr "Εισαγωγή κλειδιών"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Export Keys"
+msgstr "Εξαγωγή κλειδιών"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "View Keys"
+msgstr "Προβολή κλειδιών"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Secure Messaging"
+msgstr "Ασφαλή μηνύματα"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/tools_views.py
+msgid "GPG Tools"
+msgstr "Εργαλεία GPG"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Missing packages"
+msgstr "Λείπουν πακέτα"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Required but not installed:\n"
+msgstr "Απαιτείται αλλά δεν είναι εγκατεστημένο:\n"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Subkey Operations"
+msgstr "Λειτουργίες υποκλειδιών"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "User ID Operations"
+msgstr "Λειτουργίες ID χρήστη"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Cross Certify Keys"
+msgstr "Διασταυρούμενη πιστοποίηση κλειδιών"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Export Public Key Bundle"
+msgstr "Εξαγωγή πακέτου δημόσιου κλειδιού"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "BIP85 Metadata"
+msgstr "Μεταδεδομένα BIP85"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Subkeys"
+msgstr "Υποκλειδιά"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/scan_views.py
+#: src/seedsigner/views/settings_views.py src/seedsigner/views/tools_views.py
+msgid "Back"
+msgstr "Πίσω"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Export Bundle"
+msgstr "Εξαγωγή πακέτου"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Animated QR"
+msgstr "Κινούμενο QR"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Save BIP85 Data"
+msgstr "Αποθήκευση δεδομένων BIP85"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Load BIP85 Data"
+msgstr "Φόρτωση δεδομένων BIP85"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Rebuild BIP85 Key"
+msgstr "Αναδημιουργία κλειδιού BIP85"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/smartcard_views.py
+msgid "To MicroSD"
+msgstr "Σε MicroSD"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "To QR"
+msgstr "Σε QR"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/smartcard_views.py
+msgid "To Seedkeeper"
+msgstr "Σε Seedkeeper"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/smartcard_views.py
+msgid "From MicroSD"
+msgstr "Από MicroSD"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "From QR"
+msgstr "Από QR"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/smartcard_views.py
+msgid "From Seedkeeper"
+msgstr "Από Seedkeeper"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Add Subkeys"
+msgstr "Προσθήκη υποκλειδιών"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Revoke Subkeys"
+msgstr "Ανάκληση υποκλειδιών"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Delete Subkeys"
+msgstr "Διαγραφή υποκλειδιών"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Change Expiry"
+msgstr "Αλλαγή λήξης"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Export Subkey Secrets"
+msgstr "Εξαγωγή μυστικών υποκλειδιών"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "1 year"
+msgstr "1 έτος"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "2 years"
+msgstr "2 έτη"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "5 years"
+msgstr "5 έτη"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Never"
+msgstr "Ποτέ"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "File"
+msgstr "Αρχείο"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Smartcard"
+msgstr "Έξυπνη κάρτα"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Add User ID"
+msgstr "Προσθήκη ID χρήστη"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Edit User IDs"
+msgstr "Επεξεργασία ID χρήστη"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Set Primary User ID"
+msgstr "Ορισμός κύριου ID χρήστη"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Revoke User ID"
+msgstr "Ανάκληση ID χρήστη"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Delete User ID"
+msgstr "Διαγραφή ID χρήστη"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Encrypt"
+msgstr "Κρυπτογράφηση"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/scan_views.py
+msgid "Decrypt"
+msgstr "Αποκρυπτογράφηση"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Sign"
+msgstr "Υπογραφή"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Verify Signature"
+msgstr "Επαλήθευση υπογραφής"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Create Message"
+msgstr "Δημιουργία μηνύματος"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Load Message"
+msgstr "Φόρτωση μηνύματος"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Manifest"
+msgstr "Manifest"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Type Message"
+msgstr "Πληκτρολόγηση μηνύματος"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Load Seedkeeper"
+msgstr "Φόρτωση Seedkeeper"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/seed_views.py
+msgid "Scan QR"
+msgstr "Σάρωση QR"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Load File"
+msgstr "Φόρτωση αρχείου"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Load Key"
+msgstr "Φόρτωση κλειδιού"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+#: src/seedsigner/views/password_generator_views.py
+msgid "Save to Seedkeeper"
+msgstr "Αποθήκευση σε Seedkeeper"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+#: src/seedsigner/views/password_generator_views.py
+#: src/seedsigner/views/smartcard_views.py
+msgid "Show as QR"
+msgstr "Εμφάνιση ως QR"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Public Key"
+msgstr "Δημόσιο κλειδί"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Private Key"
+msgstr "Ιδιωτικό κλειδί"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "View Card Info"
+msgstr "Πληροφορίες κάρτας"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Generate On-Card Key"
+msgstr "Δημιουργία κλειδιού στην κάρτα"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Change Admin PIN"
+msgstr "Αλλαγή PIN διαχειριστή"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Change User PIN"
+msgstr "Αλλαγή PIN χρήστη"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Encrypting File"
+msgstr "Κρυπτογράφηση αρχείου"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "(May take a while)"
+msgstr "(Μπορεί να διαρκέσει)"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Decrypting File"
+msgstr "Αποκρυπτογράφηση αρχείου"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Check SHA256Sum"
+msgstr "Έλεγχος SHA256Sum"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Update"
+msgstr "Ενημέρωση"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "From File"
+msgstr "Από αρχείο"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Generate New"
+msgstr "Δημιουργία νέου"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Derive BIP85"
+msgstr "Παραγώγιση BIP85"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "OpenGPG Card"
+msgstr "Κάρτα OpenGPG"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Edit text"
+msgstr "Επεξεργασία κειμένου"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Discard text"
+msgstr "Απόρριψη κειμένου"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Discard text?"
+msgstr "Απόρριψη κειμένου;"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Generate QR code"
+msgstr "Δημιουργία κωδικού QR"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/seed_views.py
+msgid "Transcribe mode"
+msgstr "Λειτουργία μεταγραφής"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/seed_views.py
+msgid "FullScreen mode"
+msgstr "Λειτουργία πλήρους οθόνης"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/seed_views.py
+msgid "Transcribe Mode ?"
+msgstr "Λειτουργία μεταγραφής;"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Confirm text QR code"
+msgstr "Επιβεβαίωση QR κειμένου"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Confirm Text QR ?"
+msgstr "Επιβεβαίωση QR κειμένου;"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Scan text QR code"
+msgstr "Σάρωση QR κειμένου"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Confirm Text QR Code"
+msgstr "Επιβεβαίωση QR κειμένου"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Your transcribed text QR code does not match your original text!"
+msgstr "Το μεταγεγραμμένο QR κειμένου δεν ταιριάζει με το αρχικό σου κείμενο!"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Review text QR code"
+msgstr "Έλεγχος QR κειμένου"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Your transcribed text QR code successfully scanned and yielded the same text."
+msgstr "Το μεταγεγραμμένο QR κειμένου σαρώθηκε επιτυχώς και έδωσε το ίδιο κείμενο."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Confirm Text QR"
+msgstr "Επιβεβαίωση QR κειμένου"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Your transcribed text QR code could not be read!"
+msgstr "Το μεταγεγραμμένο QR κειμένου δεν μπόρεσε να διαβαστεί!"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Edit & Generate QR code"
+msgstr "Επεξεργασία & δημιουργία QR"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/gpg_views.py
+msgid "Decoded Text"
+msgstr "Αποκωδικοποιημένο κείμενο"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/keycard_bias.py src/seedsigner/views/satochip_bias.py
+msgid "Run Test"
+msgstr "Εκτέλεση τεστ"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/microsd_views.py
+msgid "Flash Image"
+msgstr "Εγγραφή image"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/microsd_views.py
+msgid "Verify MicroSD"
+msgstr "Επαλήθευση MicroSD"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/microsd_views.py
+msgid "Wipe (Zero)"
+msgstr "Διαγραφή (μηδενικά)"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/microsd_views.py
+msgid "Wipe (Random)"
+msgstr "Διαγραφή (τυχαία)"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/microsd_views.py
+msgid "Skip Verification"
+msgstr "Παράλειψη επαλήθευσης"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/microsd_views.py
+msgid "All"
+msgstr "Όλα"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "Custom"
+msgstr "Προσαρμοσμένο"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "Diceware-EFF Short"
+msgstr "Diceware-EFF σύντομη"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "Diceware-EFF Long"
+msgstr "Diceware-EFF μεγάλη"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "Diceware-BIP39"
+msgstr "Diceware-BIP39"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "Hex"
+msgstr "Hex"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "Dice Rolls"
+msgstr "Ρίψεις ζαριών"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "Password Type"
+msgstr "Τύπος κωδικού"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "64 bits"
+msgstr "64 bits"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "128 bits"
+msgstr "128 bits"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "256 bits"
+msgstr "256 bits"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "Password Strength"
+msgstr "Ισχύς κωδικού"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+#: src/seedsigner/views/smartcard_views.py
+msgid "Yes"
+msgstr "Ναι"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+#: src/seedsigner/views/smartcard_views.py
+msgid "No"
+msgstr "Όχι"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "Select Options"
+msgstr "Επιλογές"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "Choose at least one character set."
+msgstr "Επίλεξε τουλάχιστον ένα σύνολο χαρακτήρων."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "System RNG health check failed."
+msgstr "Ο έλεγχος του RNG συστήματος απέτυχε."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "System RNG Error"
+msgstr "Σφάλμα RNG συστήματος"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "Camera"
+msgstr "Κάμερα"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "Dice"
+msgstr "Ζάρια"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "System RNG"
+msgstr "RNG συστήματος"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "Entropy Source"
+msgstr "Πηγή εντροπίας"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "Not Supported"
+msgstr "Δεν υποστηρίζεται"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "BIP85 supports Diceware, Dice Rolls, Hex, Base64, and Base85."
+msgstr "Το BIP85 υποστηρίζει Diceware, ρίψεις ζαριών, Hex, Base64 και Base85."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "None"
+msgstr "Κανένα"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "Capitalise"
+msgstr "Κεφαλαίο αρχικό"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "Space"
+msgstr "Κενό"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "Separator"
+msgstr "Διαχωριστικό"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "6 sides"
+msgstr "6 πλευρές"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "10 sides"
+msgstr "10 πλευρές"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "20 sides"
+msgstr "20 πλευρές"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "Dice Sides"
+msgstr "Πλευρές ζαριού"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "Number of Rolls"
+msgstr "Αριθμός ρίψεων"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "Invalid Input"
+msgstr "Μη έγκυρη είσοδος"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "Number of rolls must be at least 1."
+msgstr "Ο αριθμός ρίψεων πρέπει να είναι τουλάχιστον 1."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+#: src/seedsigner/views/tools_views.py
+msgid "Poor Entropy"
+msgstr "Φτωχή εντροπία"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+#: src/seedsigner/views/tools_views.py
+msgid "Dice rolls didn't appear random enough. Please try again."
+msgstr "Οι ρίψεις δεν φάνηκαν αρκετά τυχαίες. Δοκίμασε ξανά."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+#: src/seedsigner/views/tools_views.py
+msgid "Camera entropy didn't appear random enough. Please try again."
+msgstr "Η εντροπία της κάμερας δεν φάνηκε αρκετά τυχαία. Δοκίμασε ξανά."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "WARNING"
+msgstr "ΠΡΟΕΙΔΟΠΟΙΗΣΗ"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "Load a seed before using BIP85."
+msgstr "Φόρτωσε ένα seed πριν χρησιμοποιήσεις το BIP85."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "Select Seed"
+msgstr "Επιλογή seed"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "Choose seed for BIP85"
+msgstr "Επίλεξε seed για BIP85"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "BIP85 Index"
+msgstr "Δείκτης BIP85"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "Invalid Length"
+msgstr "Μη έγκυρο μήκος"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "BIP85 Hex supports 128 or 256 bits."
+msgstr "Το BIP85 Hex υποστηρίζει 128 ή 256 bits."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "BIP85 Base64 needs 120+ bits."
+msgstr "Το BIP85 Base64 χρειάζεται 120+ bits."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "BIP85 Base85 needs 64-512 bits."
+msgstr "Το BIP85 Base85 χρειάζεται 64-512 bits."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "Password Name"
+msgstr "Όνομα κωδικού"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "Not Enough Space"
+msgstr "Ανεπαρκής χώρος"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid ""
+"Saving Secret\n"
+"\n"
+"\n"
+"\n"
+"\n"
+"\n"
+msgstr ""
+"Αποθήκευση μυστικού\n"
+"\n"
+"\n"
+"\n"
+"\n"
+"\n"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+#: src/seedsigner/views/psbt_views.py
+msgid "Success"
+msgstr "Επιτυχία"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "Password saved to Seedkeeper"
+msgstr "Ο κωδικός αποθηκεύτηκε στο Seedkeeper"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "Not enough space on Seedkeeper for password"
+msgstr "Δεν υπάρχει αρκετός χώρος στο Seedkeeper για τον κωδικό"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "Failed"
+msgstr "Απέτυχε"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "Password save failed"
+msgstr "Η αποθήκευση του κωδικού απέτυχε"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+#: src/seedsigner/views/scan_views.py
+msgid "Edit"
+msgstr "Επεξεργασία"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "Password"
+msgstr "Κωδικός"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/password_generator_views.py
+msgid "Save Password"
+msgstr "Αποθήκευση κωδικού"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py src/seedsigner/views/seed_views.py
+msgid "Use Satochip card"
+msgstr "Χρήση κάρτας Satochip"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py
+msgid "Use Keycard"
+msgstr "Χρήση Keycard"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py src/seedsigner/views/seed_views.py
+#: src/seedsigner/views/smartcard_views.py src/seedsigner/views/tools_views.py
+msgid "Enter 15-word seed"
+msgstr "Εισαγωγή seed 15 λέξεων"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py src/seedsigner/views/seed_views.py
+#: src/seedsigner/views/smartcard_views.py src/seedsigner/views/tools_views.py
+msgid "Enter 18-word seed"
+msgstr "Εισαγωγή seed 18 λέξεων"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py src/seedsigner/views/seed_views.py
+#: src/seedsigner/views/smartcard_views.py src/seedsigner/views/tools_views.py
+msgid "Enter 21-word seed"
+msgstr "Εισαγωγή seed 21 λέξεων"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py
+msgid "Enter WIF"
+msgstr "Εισαγωγή WIF"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py src/seedsigner/views/scan_views.py
+msgid "Scan WIF"
+msgstr "Σάρωση WIF"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py
+msgid "Enter BIP38"
+msgstr "Εισαγωγή BIP38"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py src/seedsigner/views/scan_views.py
+msgid "Scan BIP38"
+msgstr "Σάρωση BIP38"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py
+msgid "Fingerprint mismatch"
+msgstr "Ασυμφωνία αποτυπώματος"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py
+msgid "Card cannot sign PSBT"
+msgstr "Η κάρτα δεν μπορεί να υπογράψει το PSBT"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py
+msgid "Card fingerprint ({}) not in PSBT signers."
+msgstr "Το αποτύπωμα της κάρτας ({}) δεν είναι στους υπογράφοντες του PSBT."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py
+msgid "Private Key (WIF)"
+msgstr "Ιδιωτικό κλειδί (WIF)"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py
+msgid "Invalid WIF!"
+msgstr "Μη έγκυρο WIF!"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py
+msgid "Not a valid WIF-encoded private key."
+msgstr "Δεν είναι έγκυρο ιδιωτικό κλειδί WIF."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py
+msgid "BIP38 Key"
+msgstr "Κλειδί BIP38"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py
+msgid "BIP38 Passphrase"
+msgstr "Συνθηματική φράση BIP38"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py
+msgid "Invalid BIP38!"
+msgstr "Μη έγκυρο BIP38!"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py
+msgid "Could not decrypt BIP38 key."
+msgstr "Αδύνατη η αποκρυπτογράφηση του κλειδιού BIP38."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py
+msgid "Transaction has unsupported input script type, please verify your change addresses."
+msgstr "Η συναλλαγή έχει μη υποστηριζόμενο τύπο script εισόδου· επαλήθευσε τις διευθύνσεις ρέστων."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py
+msgid "This transaction spends its entire input value. No change is coming back to your wallet."
+msgstr "Η συναλλαγή ξοδεύει όλο το ποσό εισόδου. Δεν επιστρέφουν ρέστα στο πορτοφόλι σου."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py
+msgid "Next recipient"
+msgstr "Επόμενος παραλήπτης"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py
+msgid "Skip verification"
+msgstr "Παράλειψη επαλήθευσης"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py
+msgid "Verify multisig change"
+msgstr "Επαλήθευση ρέστων πολυυπογραφής"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py
+msgid "Verify multisig addr"
+msgstr "Επαλήθευση διεύθ. πολυυπογραφής"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py
+msgid "Descriptor mismatch"
+msgstr "Ασυμφωνία περιγραφέα"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py
+msgid "Descriptor cleared"
+msgstr "Ο περιγραφέας διαγράφηκε"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py
+msgid "Loaded multisig wallet descriptor does not match this PSBT. Load the correct descriptor or skip verification to continue."
+msgstr "Ο φορτωμένος περιγραφέας πολυυπογραφής δεν ταιριάζει με αυτό το PSBT. Φόρτωσε τον σωστό ή παράλειψε την επαλήθευση."
+
+#. FORK: translated by Claude 2026-07-10
+#. Variable is either "change" or "self-transfer".
+#: src/seedsigner/views/psbt_views.py
+msgid "Transaction's {} address could not be verified from wallet descriptor."
+msgstr "Η διεύθυνση {} της συναλλαγής δεν επαληθεύτηκε από τον περιγραφέα πορτοφολιού."
+
+#. FORK: translated by Claude 2026-07-10
+#. Variable is either "change" or "self-transfer".
+#: src/seedsigner/views/psbt_views.py
+msgid "Transaction's {} address could not be generated from your seed."
+msgstr "Η διεύθυνση {} της συναλλαγής δεν μπόρεσε να παραχθεί από το seed σου."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py
+msgid "Suspicious Transaction"
+msgstr "Ύποπτη συναλλαγή"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py
+msgid "Discard transaction"
+msgstr "Απόρριψη συναλλαγής"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py
+msgid "Approve transaction"
+msgstr "Έγκριση συναλλαγής"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py
+msgid "Signing PSBT..."
+msgstr "Υπογραφή PSBT..."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py
+msgid "Signing Timeout"
+msgstr "Λήξη χρόνου υπογραφής"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py
+msgid "Retry (higher timeout)"
+msgstr "Επανάληψη (περισσότερος χρόνος)"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py
+msgid "Saved as {}."
+msgstr "Αποθηκεύτηκε ως {}."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py
+msgid "Failed to save PSBT: {}"
+msgstr "Αποτυχία αποθήκευσης PSBT: {}"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py
+msgid "Encoding PSBT..."
+msgstr "Κωδικοποίηση PSBT..."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py
+msgid "Select different seed"
+msgstr "Επιλογή άλλου seed"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/psbt_views.py
+msgid "Transaction Error"
+msgstr "Σφάλμα συναλλαγής"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/scan_views.py
+msgid "QR Scanner Unavailable"
+msgstr "Ο σαρωτής QR δεν είναι διαθέσιμος"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/scan_views.py
+msgid "QR scanning backend missing. Install zbar (or OpenCV on desktop) and restart."
+msgstr "Λείπει το backend σάρωσης QR. Εγκατέστησε zbar (ή OpenCV σε desktop) και επανεκκίνησε."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/scan_views.py
+msgid "Select Seed Type"
+msgstr "Επιλογή τύπου seed"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/scan_views.py
+msgid "Time set to:"
+msgstr "Η ώρα ορίστηκε σε:"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/scan_views.py
+msgid "Set Time Failed"
+msgstr "Αποτυχία ορισμού ώρας"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/scan_views.py
+msgid "Invalid Time"
+msgstr "Μη έγκυρη ώρα"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/scan_views.py
+msgid "Could not parse time from QR"
+msgstr "Αδύνατη η ανάγνωση ώρας από το QR"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/scan_views.py
+msgid "Scan Transaction"
+msgstr "Σάρωση συναλλαγής"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/scan_views.py
+msgid "Expected a transaction"
+msgstr "Αναμενόταν συναλλαγή"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/scan_views.py
+msgid "Scan SLIP-39 Share"
+msgstr "Σάρωση μεριδίου SLIP-39"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/scan_views.py
+msgid "Expected a SLIP-39 share QR"
+msgstr "Αναμενόταν QR μεριδίου SLIP-39"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/scan_views.py
+msgid "Expected a WIF private key"
+msgstr "Αναμενόταν ιδιωτικό κλειδί WIF"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/scan_views.py
+msgid "Expected a BIP38 private key"
+msgstr "Αναμενόταν ιδιωτικό κλειδί BIP38"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/scan_views.py
+msgid "Scan {} receive address from the wallet you just exported"
+msgstr "Σάρωσε τη διεύθυνση λήψης {} από το πορτοφόλι που μόλις εξήγαγες"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/scan_views.py
+msgid ""
+"Data matches multiple\n"
+"QR types."
+msgstr ""
+"Τα δεδομένα ταιριάζουν με\n"
+"πολλούς τύπους QR."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/scan_views.py src/seedsigner/views/seed_views.py
+msgid "Type encryption key"
+msgstr "Πληκτρολόγηση κλειδιού"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/scan_views.py src/seedsigner/views/seed_views.py
+msgid "Scan encryption key"
+msgstr "Σάρωση κλειδιού"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/scan_views.py src/seedsigner/views/seed_views.py
+msgid "Edit encryption key"
+msgstr "Επεξεργασία κλειδιού"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/scan_views.py src/seedsigner/views/seed_views.py
+msgid "Discard encryption key"
+msgstr "Απόρριψη κλειδιού"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/scan_views.py src/seedsigner/views/seed_views.py
+msgid "Proceed"
+msgstr "Συνέχεια"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/scan_views.py src/seedsigner/views/seed_views.py
+msgid "Scan & Append Another"
+msgstr "Σάρωση & προσθήκη άλλου"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/scan_views.py src/seedsigner/views/view.py
+msgid "Back to Main Menu"
+msgstr "Πίσω στο κύριο μενού"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/scan_views.py
+msgid "Decrypted Text"
+msgstr "Αποκρυπτογραφημένο κείμενο"
+
+#. FORK: translated by Claude 2026-07-10
+#. This is on the opening splash screen, displayed above the Seedsigner logo
+#: src/seedsigner/views/screensaver.py
+msgid "An unofficial fork of:"
+msgstr "Ανεπίσημο fork του:"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "BitBox02 backup"
+msgstr "Αντίγραφο BitBox02"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Passport backup"
+msgstr "Αντίγραφο Passport"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "TAPSIGNER backup"
+msgstr "Αντίγραφο TAPSIGNER"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Enter Aezeed seed"
+msgstr "Εισαγωγή seed Aezeed"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py src/seedsigner/views/smartcard_views.py
+msgid "SLIP-39 Shares"
+msgstr "Μερίδια SLIP-39"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid " Scan a SeedQR"
+msgstr " Σάρωση SeedQR"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py src/seedsigner/views/smartcard_views.py
+msgid "From SeedKeeper"
+msgstr "Από SeedKeeper"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "From Specter-DIY"
+msgstr "Από Specter-DIY"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py src/seedsigner/views/smartcard_views.py
+msgid " Create a seed"
+msgstr " Δημιουργία seed"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Load a Seed"
+msgstr "Φόρτωση seed"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "microSD card not detected."
+msgstr "Δεν εντοπίστηκε κάρτα microSD."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "No Backups Found"
+msgstr "Δεν βρέθηκαν αντίγραφα"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "No BitBox02 backups (.bin, .bb02, .dat, .backup) were found on the microSD card."
+msgstr "Δεν βρέθηκαν αντίγραφα BitBox02 (.bin, .bb02, .dat, .backup) στην κάρτα microSD."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Select BitBox02 backup"
+msgstr "Επιλογή αντιγράφου BitBox02"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Backup name: {}"
+msgstr "Όνομα αντιγράφου: {}"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Created: {}"
+msgstr "Δημιουργήθηκε: {}"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Firmware: {}"
+msgstr "Firmware: {}"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Birthdate: {}"
+msgstr "Ημερομηνία δημιουργίας: {}"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Seed length: {} words"
+msgstr "Μήκος seed: {} λέξεις"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Seed loaded"
+msgstr "Το seed φορτώθηκε"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "No Passport backups (.7z) were found on the microSD card."
+msgstr "Δεν βρέθηκαν αντίγραφα Passport (.7z) στην κάρτα microSD."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Select Passport backup"
+msgstr "Επιλογή αντιγράφου Passport"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Passport backup code"
+msgstr "Κωδικός αντιγράφου Passport"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Backup code cannot be empty."
+msgstr "Ο κωδικός αντιγράφου δεν μπορεί να είναι κενός."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Chain: {}"
+msgstr "Αλυσίδα: {}"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "XFP: {}"
+msgstr "XFP: {}"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "No TAPSIGNER backups (.aes) were found on the microSD card."
+msgstr "Δεν βρέθηκαν αντίγραφα TAPSIGNER (.aes) στην κάρτα microSD."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Select TAPSIGNER backup"
+msgstr "Επιλογή αντιγράφου TAPSIGNER"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Backup key (hex)"
+msgstr "Κλειδί αντιγράφου (hex)"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "xprv loaded from TAPSIGNER backup."
+msgstr "Το xprv φορτώθηκε από αντίγραφο TAPSIGNER."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Path: {}"
+msgstr "Διαδρομή: {}"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Review & edit"
+msgstr "Έλεγχος & επεξεργασία"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Load Passphrase"
+msgstr "Φόρτωση συνθηματικής φράσης"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Type Passphrase"
+msgstr "Πληκτρολόγηση συνθηματικής φράσης"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Scan Passphrase"
+msgstr "Σάρωση συνθηματικής φράσης"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Load from SeedKeeper"
+msgstr "Φόρτωση από SeedKeeper"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Aezeed passphrase"
+msgstr "Συνθηματική φράση Aezeed"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid ""
+"Passphrase required\n"
+"for this mnemonic."
+msgstr ""
+"Απαιτείται συνθηματική φράση\n"
+"για αυτό το μνημονικό."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Invalid passphrase"
+msgstr "Μη έγκυρη συνθηματική φράση"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid ""
+"Aezeed passphrase required.\n"
+"Try again."
+msgstr ""
+"Απαιτείται συνθηματική φράση Aezeed.\n"
+"Δοκίμασε ξανά."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid ""
+"Wrong Aezeed passphrase.\n"
+"Try again."
+msgstr ""
+"Λάθος συνθηματική φράση Aezeed.\n"
+"Δοκίμασε ξανά."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Skip passphrase"
+msgstr "Παράλειψη συνθηματικής φράσης"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Your current passphrase entry will be erased."
+msgstr "Η τρέχουσα συνθηματική φράση θα διαγραφεί."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Skip passphrase?"
+msgstr "Παράλειψη συνθηματικής φράσης;"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "You have not entered a passphrase yet."
+msgstr "Δεν έχεις εισαγάγει ακόμη συνθηματική φράση."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Invalid Text QR Code"
+msgstr "Μη έγκυρο QR κειμένου"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Non UTF-8 data detected."
+msgstr "Εντοπίστηκαν δεδομένα εκτός UTF-8."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Keep seed"
+msgstr "Διατήρηση seed"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Aezeed support"
+msgstr "Υποστήριξη Aezeed"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid ""
+"Aezeed entry is experimental.\n"
+"Use only with known-good backups."
+msgstr ""
+"Η εισαγωγή Aezeed είναι πειραματική.\n"
+"Μόνο με επαληθευμένα αντίγραφα."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Electrum Warning"
+msgstr "Προειδοποίηση Electrum"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Enter 20 words"
+msgstr "Εισαγωγή 20 λέξεων"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Enter 33 words"
+msgstr "Εισαγωγή 33 λέξεων"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Load Share"
+msgstr "Φόρτωση μεριδίου"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Share Word #{}"
+msgstr "Λέξη μεριδίου #{}"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Enter share"
+msgstr "Εισαγωγή μεριδίου"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Scan share"
+msgstr "Σάρωση μεριδίου"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Combine shares"
+msgstr "Συνδυασμός μεριδίων"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "{} of {} needed"
+msgstr "Χρειάζονται {} από {}"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py src/seedsigner/views/settings_views.py
+#: src/seedsigner/views/smartcard_views.py
+msgid "Try Again"
+msgstr "Δοκίμασε ξανά"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Invalid SLIP-39 Share"
+msgstr "Μη έγκυρο μερίδιο SLIP-39"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Checksum failure; not a valid SLIP-39 share."
+msgstr "Σφάλμα checksum· μη έγκυρο μερίδιο SLIP-39."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Non-extendable Seed"
+msgstr "Μη επεκτάσιμο seed"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "This SLIP-39 seed cannot regenerate new shares."
+msgstr "Αυτό το seed SLIP-39 δεν μπορεί να δημιουργήσει νέα μερίδια."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Scan transaction"
+msgstr "Σάρωση συναλλαγής"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Export xpub"
+msgstr "Εξαγωγή xpub"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py src/seedsigner/views/tools_views.py
+msgid "Address explorer"
+msgstr "Εξερεύνηση διευθύνσεων"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Backup seed"
+msgstr "Αντίγραφο seed"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "BIP-85 child seed"
+msgstr "Παράγωγο seed BIP-85"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Discard seed"
+msgstr "Απόρριψη seed"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "View seed words"
+msgstr "Προβολή λέξεων seed"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Export as Plaintext QR"
+msgstr "Εξαγωγή ως μη κρυπτογραφημένο QR"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "To SeedKeeper"
+msgstr "Σε SeedKeeper"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "To Specter-DIY"
+msgstr "Σε Specter-DIY"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Regenerate Shares"
+msgstr "Αναδημιουργία μεριδίων"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py src/seedsigner/views/smartcard_views.py
+msgid "Xpub QR Format"
+msgstr "Μορφή QR για xpub"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Open {} and display a receive address from the wallet you just exported."
+msgstr "Άνοιξε το {} και εμφάνισε μια διεύθυνση λήψης από το πορτοφόλι που μόλις εξήγαγες."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "your wallet software"
+msgstr "το λογισμικό πορτοφολιού σου"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid ""
+"Passphrase was used.\n"
+"You'll need words + passphrase."
+msgstr ""
+"Χρησιμοποιήθηκε συνθηματική φράση.\n"
+"Θα χρειαστείς λέξεις + φράση."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "18 Words"
+msgstr "18 λέξεις"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Try again"
+msgstr "Δοκίμασε ξανά"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Review"
+msgstr "Έλεγχος"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Finalize child"
+msgstr "Ολοκλήρωση παράγωγου seed"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Review seed words"
+msgstr "Έλεγχος λέξεων seed"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Input Encryption Key"
+msgstr "Εισαγωγή κλειδιού κρυπτογράφησης"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Discard encryption key?"
+msgstr "Απόρριψη κλειδιού κρυπτογράφησης;"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Your current key entry will be erased"
+msgstr "Το κλειδί που εισήγαγες θα διαγραφεί"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Invalid Key"
+msgstr "Μη έγκυρο κλειδί"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Key length is too long."
+msgstr "Το κλειδί είναι υπερβολικά μεγάλο."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Input from Camera"
+msgstr "Είσοδος από κάμερα"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Use fingerprint"
+msgstr "Χρήση αποτυπώματος"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Assign custom ID"
+msgstr "Ορισμός προσαρμοσμένου ID"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Input Mnemonic ID"
+msgstr "Εισαγωγή ID μνημονικού"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Edit mnemonic ID"
+msgstr "Επεξεργασία ID μνημονικού"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Discard mnemonic ID"
+msgstr "Απόρριψη ID μνημονικού"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Discard mnemonic ID?"
+msgstr "Απόρριψη ID μνημονικού;"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Your current mnemonic ID entry will be erased"
+msgstr "Το ID μνημονικού που εισήγαγες θα διαγραφεί"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py src/seedsigner/views/tools_views.py
+msgid "Processing..."
+msgstr "Επεξεργασία..."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Encryption failure"
+msgstr "Αποτυχία κρυπτογράφησης"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Next 100"
+msgstr "Επόμενες 100"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Expanded Search"
+msgstr "Εκτεταμένη αναζήτηση"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Not Found"
+msgstr "Δεν βρέθηκε"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Address Not Verified"
+msgstr "Η διεύθυνση δεν επαληθεύτηκε"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Checked {} addresses with no match."
+msgstr "Ελέγχθηκαν {} διευθύνσεις χωρίς αντιστοιχία."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Check Next 10"
+msgstr "Έλεγχος επόμενων 10"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Checked {} addresses per path with no match."
+msgstr "Ελέγχθηκαν {} διευθύνσεις ανά διαδρομή χωρίς αντιστοιχία."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Wallet Export"
+msgstr "Εξαγωγή πορτοφολιού"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Wallet export successful."
+msgstr "Επιτυχής εξαγωγή πορτοφολιού."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Address format doesn't match exported script type. Wallet export unsuccessful."
+msgstr "Η μορφή διεύθυνσης δεν ταιριάζει με τον εξαγόμενο τύπο script. Η εξαγωγή απέτυχε."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Unable to match wallet to current seed. Wallet export unsuccessful."
+msgstr "Αδύνατη η αντιστοίχιση πορτοφολιού με το τρέχον seed. Η εξαγωγή απέτυχε."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Export Failed"
+msgstr "Η εξαγωγή απέτυχε"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Load SeedKeeper"
+msgstr "Φόρτωση SeedKeeper"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Return to transaction"
+msgstr "Επιστροφή στη συναλλαγή"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Verify addr"
+msgstr "Επαλήθευση διεύθ."
+
+#. FORK: translated by Claude 2026-07-10
+#. Multisig policy. For a "2 of 3" policy, "threshold" = 2; "n" = 3
+#: src/seedsigner/views/seed_views.py
+msgid "{threshold} of {n}"
+msgstr "{threshold} από {n}"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py src/seedsigner/views/smartcard_views.py
+msgid "Exporting xpub..."
+msgstr "Εξαγωγή xpub..."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Signing message..."
+msgstr "Υπογραφή μηνύματος..."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/seed_views.py
+msgid "Verification Failed"
+msgstr "Η επαλήθευση απέτυχε"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/settings_views.py
+msgid "Hardware"
+msgstr "Υλικό"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/settings_views.py
+msgid "Test Smartcard"
+msgstr "Δοκιμή έξυπνης κάρτας"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/settings_views.py
+msgid "List card readers"
+msgstr "Λίστα αναγνωστών καρτών"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/settings_views.py
+msgid "Test NFC Scan"
+msgstr "Δοκιμή σάρωσης NFC"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/settings_views.py
+msgid "Restart PCSC"
+msgstr "Επανεκκίνηση PCSC"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/settings_views.py
+msgid "Battery info"
+msgstr "Πληροφορίες μπαταρίας"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/settings_views.py
+msgid "System info"
+msgstr "Πληροφορίες συστήματος"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/settings_views.py
+msgid "Load Backup Files"
+msgstr "Φόρτωση αρχείων αντιγράφων"
+
+#. FORK: translated by Claude 2026-07-10
+#. Title of a warning dialog when configuring a setting that requires at least
+#. one option to be selected.
+#: src/seedsigner/views/settings_views.py
+msgid "Selection Required"
+msgstr "Απαιτείται επιλογή"
+
+#. FORK: translated by Claude 2026-07-10
+#. The name of the setting being configured (e.g. "Script types") will be
+#. inserted.
+#: src/seedsigner/views/settings_views.py
+msgid "At least one option must be selected for \"{}\"."
+msgstr "Πρέπει να επιλεγεί τουλάχιστον μία επιλογή για \"{}\"."
+
+#. FORK: translated by Claude 2026-07-10
+#. Text for the button that returns the user to the setting configuration
+#. screen.
+#: src/seedsigner/views/settings_views.py
+msgid "Return to setting"
+msgstr "Επιστροφή στη ρύθμιση"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/settings_views.py
+msgid "No compatible battery monitor detected"
+msgstr "Δεν εντοπίστηκε συμβατός μετρητής μπαταρίας"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/settings_views.py src/seedsigner/views/tools_views.py
+msgid "Unavailable"
+msgstr "Μη διαθέσιμο"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Common Functions"
+msgstr "Κοινές λειτουργίες"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Satochip Functions"
+msgstr "Λειτουργίες Satochip"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "KeyCard Functions"
+msgstr "Λειτουργίες Keycard"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "SeedKeeper Functions"
+msgstr "Λειτουργίες SeedKeeper"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Specter-DIY Functions"
+msgstr "Λειτουργίες Specter-DIY"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "DIY Tools"
+msgstr "Εργαλεία DIY"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Card Info"
+msgstr "Πληροφορίες κάρτας"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Genuine Check"
+msgstr "Έλεγχος γνησιότητας"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Change PIN"
+msgstr "Αλλαγή PIN"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Change Label"
+msgstr "Αλλαγή ετικέτας"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Change NFC Policy"
+msgstr "Αλλαγή πολιτικής NFC"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Configure NDEF"
+msgstr "Ρύθμιση NDEF"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Factory Reset Card"
+msgstr "Επαναφορά κάρτας στα εργοστασιακά"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "View NDEF"
+msgstr "Προβολή NDEF"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Use Seedkeeper App Link"
+msgstr "Χρήση συνδέσμου εφαρμογής Seedkeeper"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Clear NDEF"
+msgstr "Διαγραφή NDEF"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Set Custom NDEF"
+msgstr "Ορισμός προσαρμοσμένου NDEF"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Save NDEF to SeedKeeper"
+msgstr "Αποθήκευση NDEF σε SeedKeeper"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Load NDEF from SeedKeeper"
+msgstr "Φόρτωση NDEF από SeedKeeper"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Text Record"
+msgstr "Εγγραφή κειμένου"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "URI Record"
+msgstr "Εγγραφή URI"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Android App Launch"
+msgstr "Εκκίνηση εφαρμογής Android"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Custom (HEX)"
+msgstr "Προσαρμοσμένο (HEX)"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Decode NDEF"
+msgstr "Αποκωδικοποίηση NDEF"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "NFC Enabled"
+msgstr "NFC ενεργό"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "NFC Disabled"
+msgstr "NFC ανενεργό"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "NFC Blocked"
+msgstr "NFC αποκλεισμένο"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Card Re-Inserted"
+msgstr "Η κάρτα επανατοποθετήθηκε"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "View Free Space"
+msgstr "Προβολή ελεύθερου χώρου"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "View Secrets on Card"
+msgstr "Προβολή μυστικών της κάρτας"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Save Password to Card"
+msgstr "Αποθήκευση κωδικού στην κάρτα"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Delete Secret from Card"
+msgstr "Διαγραφή μυστικού από την κάρτα"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Load MultiSig Descriptor"
+msgstr "Φόρτωση περιγραφέα πολυυπογραφής"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Save MultiSig Descriptor"
+msgstr "Αποθήκευση περιγραφέα πολυυπογραφής"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Clone Card Secrets"
+msgstr "Κλωνοποίηση μυστικών κάρτας"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Exit to Home"
+msgstr "Έξοδος στην αρχική"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Initialise with Seed"
+msgstr "Αρχικοποίηση με seed"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Load as Descriptor"
+msgstr "Φόρτωση ως περιγραφέα"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Load PSBT"
+msgstr "Φόρτωση PSBT"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Set PUK"
+msgstr "Ορισμός PUK"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Unblock PIN with PUK"
+msgstr "Ξεκλείδωμα PIN με PUK"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Set Name"
+msgstr "Ορισμός ονόματος"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Remove Seed"
+msgstr "Αφαίρεση seed"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Benchmark Signing"
+msgstr "Μέτρηση ταχύτητας υπογραφής"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Benchmark Message Signing"
+msgstr "Μέτρηση υπογραφής μηνυμάτων"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Check signing bias"
+msgstr "Έλεγχος μεροληψίας υπογραφών"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Remove"
+msgstr "Αφαίρεση"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Reset"
+msgstr "Επαναφορά"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Enable 2FA"
+msgstr "Ενεργοποίηση 2FA"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Already Seeded"
+msgstr "Έχει ήδη seed"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid ""
+"xprv cannot init Satochip.\n"
+"Use BIP39, SLIP39, or Electrum."
+msgstr ""
+"Το xprv δεν μπορεί να αρχικοποιήσει Satochip.\n"
+"Χρησιμοποίησε BIP39, SLIP39 ή Electrum."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Change Card PIN"
+msgstr "Αλλαγή PIN κάρτας"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Load Mnemonic"
+msgstr "Φόρτωση μνημονικού"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Save Mnemonic"
+msgstr "Αποθήκευση μνημονικού"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Wipe Seed"
+msgstr "Διαγραφή seed"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Card Keys"
+msgstr "Κλειδιά κάρτας"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Build Applets"
+msgstr "Δημιουργία applets"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Install Applet"
+msgstr "Εγκατάσταση applet"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Uninstall Applet"
+msgstr "Απεγκατάσταση applet"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Enter Different PIN"
+msgstr "Εισαγωγή άλλου PIN"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Load Keys"
+msgstr "Φόρτωση κλειδιών"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Save Keys"
+msgstr "Αποθήκευση κλειδιών"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Unlock Card"
+msgstr "Ξεκλείδωμα κάρτας"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Lock Card"
+msgstr "Κλείδωμα κάρτας"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Clear Loaded Keys"
+msgstr "Διαγραφή φορτωμένων κλειδιών"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Overwrite"
+msgstr "Αντικατάσταση"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Abort Save"
+msgstr "Ακύρωση αποθήκευσης"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Enter Single Key"
+msgstr "Εισαγωγή ενός κλειδιού"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Enter Key Set"
+msgstr "Εισαγωγή σετ κλειδιών"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Generate Single Key"
+msgstr "Δημιουργία ενός κλειδιού"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "Generate Key Set"
+msgstr "Δημιουργία σετ κλειδιών"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/smartcard_views.py
+msgid "8 KB (default)"
+msgstr "8 KB (προεπιλογή)"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/tools_views.py
+msgid "System RNG entropy too low. Try again later."
+msgstr "Πολύ χαμηλή εντροπία RNG συστήματος. Δοκίμασε αργότερα."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/tools_views.py
+msgid "System RNG derived entropy failed health checks."
+msgstr "Η εντροπία από το RNG συστήματος απέτυχε στους ελέγχους."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/tools_views.py
+msgid " New seed"
+msgstr " Νέο seed"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/tools_views.py
+msgid "SLIP39 seed"
+msgstr "Seed SLIP39"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/tools_views.py
+msgid "Verify address"
+msgstr "Επαλήθευση διεύθυνσης"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/tools_views.py
+msgid "Text QR Code"
+msgstr "QR κειμένου"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/tools_views.py
+msgid "Password Generator"
+msgstr "Γεννήτρια κωδικών"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/tools_views.py
+msgid "Smartcard Tools"
+msgstr "Εργαλεία έξυπνης κάρτας"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/tools_views.py
+msgid "MicroSD Tools"
+msgstr "Εργαλεία MicroSD"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/tools_views.py
+msgid "Clear Multisig Descriptor"
+msgstr "Διαγραφή περιγραφέα πολυυπογραφής"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/tools_views.py
+msgid "microSD card not detected"
+msgstr "Δεν εντοπίστηκε κάρτα microSD"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/tools_views.py
+msgid "Insert a microSD card to save the discharge log."
+msgstr "Τοποθέτησε κάρτα microSD για αποθήκευση του αρχείου εκφόρτισης."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/tools_views.py
+msgid "Unable to load network information."
+msgstr "Αδύνατη η φόρτωση πληροφοριών δικτύου."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/tools_views.py
+msgid "15 words"
+msgstr "15 λέξεις"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/tools_views.py
+msgid "18 words"
+msgstr "18 λέξεις"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/tools_views.py
+msgid "21 words"
+msgstr "21 λέξεις"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/tools_views.py
+msgid "20 words"
+msgstr "20 λέξεις"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/tools_views.py
+msgid "33 words"
+msgstr "33 λέξεις"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/tools_views.py
+msgid "20 words ({} rolls)"
+msgstr "20 λέξεις ({} ρίψεις)"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/tools_views.py
+msgid "33 words ({} rolls)"
+msgstr "33 λέξεις ({} ρίψεις)"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/tools_views.py
+msgid "Loaded Multisig Descriptor"
+msgstr "Ο περιγραφέας πολυυπογραφής φορτώθηκε"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/tools_views.py
+msgid "Load from Satochip"
+msgstr "Φόρτωση από Satochip"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/tools_views.py
+msgid "Electrum Seed"
+msgstr "Seed Electrum"
+
+#. FORK: translated by Claude 2026-07-10
+#. label for addresses where others send us incoming payments
+#: src/seedsigner/views/tools_views.py
+msgid "Receive addresses"
+msgstr "Διευθύνσεις λήψης"
+
+#. FORK: translated by Claude 2026-07-10
+#. label for addresses that collect the change from our own outgoing payments
+#: src/seedsigner/views/tools_views.py
+msgid "Change addresses"
+msgstr "Διευθύνσεις ρέστων"
+
+#. FORK: translated by Claude 2026-07-10
+#. Multisig policy. For a "2 / 3 multisig" policy, "threshold" = 2; "n" = 3
+#: src/seedsigner/views/tools_views.py
+msgid "{threshold} / {n} multisig"
+msgstr "{threshold} / {n} πολυυπογραφή"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/tools_views.py
+msgid "Encode text"
+msgstr "Κωδικοποίηση κειμένου"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/tools_views.py
+msgid "Decode QR code"
+msgstr "Αποκωδικοποίηση QR"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/view.py
+msgid "Power off"
+msgstr "Απενεργοποίηση"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/view.py
+msgid "Back to main menu"
+msgstr "Πίσω στο κύριο μενού"
+
+#. FORK: translated by Claude 2026-07-10
+#. "network" will be mainnet/testnet/regtest.
+#: src/seedsigner/views/view.py
+msgid "Current network setting ({network}) doesn't match {derivation_path}."
+msgstr "Η τρέχουσα ρύθμιση δικτύου ({network}) δεν ταιριάζει με {derivation_path}."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/view.py
+msgid "Hardware Error"
+msgstr "Σφάλμα υλικού"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/view.py
+msgid "Cannot access camera"
+msgstr "Αδύνατη η πρόσβαση στην κάμερα"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/view.py
+msgid "Disconnect power and check for a loose camera connection."
+msgstr "Αποσύνδεσε το ρεύμα και έλεγξε για χαλαρή σύνδεση κάμερας."
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/view.py
+msgid "Update setting"
+msgstr "Ενημέρωση ρύθμισης"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/view.py
+msgid "Action Required"
+msgstr "Απαιτείται ενέργεια"
+
+#. FORK: translated by Claude 2026-07-10
+#: src/seedsigner/views/view.py
+msgid ""
+"You must remove the\n"
+"MicroSD card to continue."
+msgstr ""
+"Πρέπει να αφαιρέσεις την\n"
+"κάρτα MicroSD για να συνεχίσεις."
+

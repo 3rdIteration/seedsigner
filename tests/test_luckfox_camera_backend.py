@@ -5,7 +5,31 @@ import pytest
 from PIL import Image
 from unittest.mock import MagicMock
 
-from seedsigner.hardware.pivideostream import VideoStream
+# tests/base.py stubs out `seedsigner.hardware.pivideostream` for the rest of the
+# suite (its VideoStream must be inert for scan-flow tests on machines without
+# camera backends). This file tests the real implementation, so import the real
+# module here and swap it into sys.modules for the duration of each test below.
+_stub_module = sys.modules.get("seedsigner.hardware.pivideostream")
+if isinstance(_stub_module, MagicMock):
+    del sys.modules["seedsigner.hardware.pivideostream"]
+else:
+    _stub_module = None
+_real_pivideostream = import_module("seedsigner.hardware.pivideostream")
+if _stub_module is not None:
+    sys.modules["seedsigner.hardware.pivideostream"] = _stub_module
+
+VideoStream = _real_pivideostream.VideoStream
+
+
+@pytest.fixture(autouse=True)
+def _use_real_pivideostream():
+    """Make the real pivideostream module visible (sys.modules + monkeypatch
+    string targets) while each test in this file runs."""
+    prior = sys.modules.get("seedsigner.hardware.pivideostream")
+    sys.modules["seedsigner.hardware.pivideostream"] = _real_pivideostream
+    yield
+    if prior is not None:
+        sys.modules["seedsigner.hardware.pivideostream"] = prior
 
 
 def _get_camera_class():

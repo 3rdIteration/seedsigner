@@ -1,0 +1,2493 @@
+# Fork translation overlay for SeedSigner (3rdIteration fork).
+# Contains ONLY strings that upstream's catalogs do not translate.
+# Merged with the upstream catalog at build time (upstream wins on overlap).
+# Managed by l10n/fork_translations.py — see l10n/README.md.
+msgid ""
+msgstr ""
+"Project-Id-Version: PROJECT VERSION\n"
+"Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
+"POT-Creation-Date: 2026-07-11 08:46-0400\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language: nl\n"
+"Language-Team: nl <LL@li.org>\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.16.0\n"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/controller.py src/seedsigner/views/view.py
+msgid "Data wiped after inactivity"
+msgstr "Gegevens gewist na inactiviteit"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/scan_screens.py
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Starting camera..."
+msgstr "Camera wordt gestart..."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/scan_screens.py
+msgid "Decrypt?"
+msgstr "Ontsleutelen?"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/scan_screens.py
+msgid "Select QR Type"
+msgstr "Kies het QR-type"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/scan_screens.py
+msgid "Encryption Key"
+msgstr "Versleutelingssleutel"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/scan_screens.py
+msgid "Review Encryption Key"
+msgstr "Controleer de versleutelingssleutel"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Account Number"
+msgstr "Accountnummer"
+
+#. FORK: translated by Claude 2026-07-11
+#. Refers to the SeedQR type: Standard or Compact or encrypted
+#: src/seedsigner/gui/screens/seed_screens.py
+#: src/seedsigner/views/seed_views.py
+msgid "Encrypted"
+msgstr "Versleuteld"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Encrypted entropy bits"
+msgstr "Versleutelde entropie-bits"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Non-standard path!"
+msgstr "Geen standaardpad!"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Mnemonic ID"
+msgstr "Mnemonic-ID"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Review Mnemonic ID"
+msgstr "Controleer de mnemonic-ID"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "The QR codes output in both modes may differ, but both are valid QR codes."
+msgstr "De QR-codes van beide modi kunnen verschillen, maar beide zijn geldig."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/seed_screens.py
+msgid "Transcribe Encrypted QR"
+msgstr "Versleutelde QR overschrijven"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/settings_screens.py
+#: src/seedsigner/views/settings_views.py
+msgid "No options available"
+msgstr "Geen opties beschikbaar"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/settings_screens.py
+#: src/seedsigner/views/settings_views.py
+msgid "Battery Info"
+msgstr "Batterij-info"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "System Info"
+msgstr "Systeeminfo"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "Platform: {platform_name}"
+msgstr "Platform: {platform_name}"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "Variant: {platform_variant}"
+msgstr "Variant: {platform_variant}"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "Serial (CPU): {system_serial}"
+msgstr "Serienr. (CPU): {system_serial}"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/settings_screens.py
+msgid "Serial (MicroSD): {microsd_serial}"
+msgstr "Serienr. (MicroSD): {microsd_serial}"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/tools_screens.py
+#: src/seedsigner/views/smartcard_views.py
+msgid "Device Filter"
+msgstr "Apparaatfilter"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/tools_screens.py
+#: src/seedsigner/views/tools_views.py
+msgid "Network Info"
+msgstr "Netwerkinfo"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/tools_screens.py
+#: src/seedsigner/views/tools_views.py
+msgid "Battery Calibration"
+msgstr "Batterijkalibratie"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Charge the battery fully. Select Next to start the discharge test."
+msgstr "Laad de batterij volledig op. Kies Volgende om de ontlaadtest te starten."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/tools_screens.py
+#: src/seedsigner/views/gpg_views.py
+msgid "Start"
+msgstr "Start"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Test runs until empty. Leave the device unplugged."
+msgstr "De test loopt tot de batterij leeg is. Laat het apparaat losgekoppeld."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Charging detected"
+msgstr "Opladen gedetecteerd"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Discharging"
+msgstr "Ontladen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Elapsed: "
+msgstr "Verstreken: "
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Voltage: "
+msgstr "Spanning: "
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Current: "
+msgstr "Stroom: "
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "Status: "
+msgstr "Status: "
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "LOW ENTROPY"
+msgstr "LAGE ENTROPIE"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/tools_screens.py
+msgid "GOOD ENTROPY"
+msgstr "GOEDE ENTROPIE"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/gui/screens/tools_screens.py
+#: src/seedsigner/views/gpg_views.py
+msgid "Text to Encode"
+msgstr "Te coderen tekst"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/helpers/seedkeeper_utils.py
+msgid "Set Duress PIN"
+msgstr "Dwang-PIN instellen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "Camera 0"
+msgstr "Camera 0"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "Camera 1"
+msgstr "Camera 1"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "Camera 2"
+msgstr "Camera 2"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "Camera 3"
+msgstr "Camera 3"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "5 minutes"
+msgstr "5 minuten"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "10 minutes"
+msgstr "10 minuten"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "15 minutes"
+msgstr "15 minuten"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "30 minutes"
+msgstr "30 minuten"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "Aezeed Passphrase"
+msgstr "Aezeed-wachtwoordzin"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "Prefer CompactSeedQR"
+msgstr "Voorkeur voor CompactSeedQR"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "Prefer EncryptedQR"
+msgstr "Voorkeur voor EncryptedQR"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "Ask each time"
+msgstr "Elke keer vragen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "Smartcard PIN Attempts"
+msgstr "PIN-pogingen smartcard"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "Wipe Timer"
+msgstr "Wis-timer"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "Seed word lengths"
+msgstr "Seed-woordlengtes"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "BIP32 account prompt"
+msgstr "BIP32-account vragen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "Ambiguous QR"
+msgstr "Dubbelzinnige QR"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "GPG key types"
+msgstr "GPG-sleuteltypen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "BIP85 GPG version"
+msgstr "BIP85-GPG-versie"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "v3 is the latest; use v2 to recreate B9-B10 keys"
+msgstr "v3 is de nieuwste; gebruik v2 om B9-B10-sleutels na te maken"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "SLIP39 seeds"
+msgstr "SLIP39-seeds"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "Aezeed seeds"
+msgstr "Aezeed-seeds"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "LND-compatible, 24 words"
+msgstr "LND-compatibel, 24 woorden"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "Extendable SLIP39 shares"
+msgstr "Uitbreidbare SLIP39-shares"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "BitBox02 backups"
+msgstr "BitBox02-back-ups"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "Passport backups"
+msgstr "Passport-back-ups"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "TAPSIGNER backups"
+msgstr "TAPSIGNER-back-ups"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "Smartcard support"
+msgstr "Smartcard-ondersteuning"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "Satochip support"
+msgstr "Satochip-ondersteuning"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "KeyCard support"
+msgstr "Keycard-ondersteuning"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "Specter-DIY support"
+msgstr "Specter-DIY-ondersteuning"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/models/settings_definition.py
+msgid "Camera source"
+msgstr "Camerabron"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/desktop_warning.py
+msgid "Desktop Mode"
+msgstr "Desktopmodus"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/desktop_warning.py
+#: src/seedsigner/views/developer_os_warning.py
+msgid "Not secure!"
+msgstr "Niet veilig!"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/desktop_warning.py
+msgid ""
+"This desktop version is for testing only.\n"
+"Do NOT use with real seeds or private keys."
+msgstr ""
+"Deze desktopversie is alleen voor tests.\n"
+"Gebruik GEEN echte seeds of privésleutels."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/desktop_warning.py
+#: src/seedsigner/views/developer_os_warning.py
+#: src/seedsigner/views/gpg_views.py
+#: src/seedsigner/views/password_generator_views.py
+#: src/seedsigner/views/smartcard_views.py
+msgid "I Understand"
+msgstr "Ik begrijp het"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/developer_os_warning.py
+msgid "Development Build"
+msgstr "Ontwikkelbuild"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/developer_os_warning.py
+msgid ""
+"This SeedSignerOS development build is for testing only.\n"
+"Do NOT use with real seeds or private keys."
+msgstr ""
+"Deze SeedSignerOS-ontwikkelbuild is alleen voor tests.\n"
+"Gebruik GEEN echte seeds of privésleutels."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "File Operations"
+msgstr "Bestandsbewerkingen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Import Keys"
+msgstr "Sleutels importeren"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Export Keys"
+msgstr "Sleutels exporteren"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "View Keys"
+msgstr "Sleutels bekijken"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Secure Messaging"
+msgstr "Beveiligde berichten"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/tools_views.py
+msgid "GPG Tools"
+msgstr "GPG-gereedschap"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Missing packages"
+msgstr "Ontbrekende pakketten"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Required but not installed:\n"
+msgstr "Vereist maar niet geïnstalleerd:\n"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Subkey Operations"
+msgstr "Subsleutel-bewerkingen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "User ID Operations"
+msgstr "Gebruikers-ID-bewerkingen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Cross Certify Keys"
+msgstr "Sleutels kruiscertificeren"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Export Public Key Bundle"
+msgstr "Publieke-sleutelbundel exporteren"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "BIP85 Metadata"
+msgstr "BIP85-metadata"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Subkeys"
+msgstr "Subsleutels"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/scan_views.py
+#: src/seedsigner/views/settings_views.py src/seedsigner/views/tools_views.py
+msgid "Back"
+msgstr "Terug"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Export Bundle"
+msgstr "Bundel exporteren"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Animated QR"
+msgstr "Geanimeerde QR"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Save BIP85 Data"
+msgstr "BIP85-gegevens opslaan"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Load BIP85 Data"
+msgstr "BIP85-gegevens laden"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Rebuild BIP85 Key"
+msgstr "BIP85-sleutel opnieuw opbouwen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/smartcard_views.py
+msgid "To MicroSD"
+msgstr "Naar MicroSD"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "To QR"
+msgstr "Naar QR"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/smartcard_views.py
+msgid "To Seedkeeper"
+msgstr "Naar Seedkeeper"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/smartcard_views.py
+msgid "From MicroSD"
+msgstr "Van MicroSD"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "From QR"
+msgstr "Van QR"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/smartcard_views.py
+msgid "From Seedkeeper"
+msgstr "Van Seedkeeper"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Add Subkeys"
+msgstr "Subsleutels toevoegen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Revoke Subkeys"
+msgstr "Subsleutels intrekken"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Delete Subkeys"
+msgstr "Subsleutels verwijderen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Change Expiry"
+msgstr "Vervaldatum wijzigen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Export Subkey Secrets"
+msgstr "Subsleutelgeheimen exporteren"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "1 year"
+msgstr "1 jaar"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "2 years"
+msgstr "2 jaar"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "5 years"
+msgstr "5 jaar"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Never"
+msgstr "Nooit"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "File"
+msgstr "Bestand"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Smartcard"
+msgstr "Smartcard"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Add User ID"
+msgstr "Gebruikers-ID toevoegen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Edit User IDs"
+msgstr "Gebruikers-ID's bewerken"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Set Primary User ID"
+msgstr "Primaire gebruikers-ID instellen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Revoke User ID"
+msgstr "Gebruikers-ID intrekken"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Delete User ID"
+msgstr "Gebruikers-ID verwijderen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Encrypt"
+msgstr "Versleutelen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/scan_views.py
+msgid "Decrypt"
+msgstr "Ontsleutelen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Sign"
+msgstr "Ondertekenen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Verify Signature"
+msgstr "Handtekening verifiëren"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Create Message"
+msgstr "Bericht maken"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Load Message"
+msgstr "Bericht laden"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Manifest"
+msgstr "Manifest"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Type Message"
+msgstr "Bericht typen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Load Seedkeeper"
+msgstr "Seedkeeper laden"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/seed_views.py
+msgid "Scan QR"
+msgstr "QR scannen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Load File"
+msgstr "Bestand laden"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Load Key"
+msgstr "Sleutel laden"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+#: src/seedsigner/views/password_generator_views.py
+msgid "Save to Seedkeeper"
+msgstr "Opslaan op Seedkeeper"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+#: src/seedsigner/views/password_generator_views.py
+#: src/seedsigner/views/smartcard_views.py
+msgid "Show as QR"
+msgstr "Tonen als QR"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Public Key"
+msgstr "Publieke sleutel"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Private Key"
+msgstr "Privésleutel"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "View Card Info"
+msgstr "Kaartinfo bekijken"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Generate On-Card Key"
+msgstr "Sleutel op de kaart genereren"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Change Admin PIN"
+msgstr "Admin-PIN wijzigen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Change User PIN"
+msgstr "Gebruikers-PIN wijzigen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Encrypting File"
+msgstr "Bestand wordt versleuteld"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "(May take a while)"
+msgstr "(Kan even duren)"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Decrypting File"
+msgstr "Bestand wordt ontsleuteld"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Check SHA256Sum"
+msgstr "SHA256Sum controleren"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Update"
+msgstr "Bijwerken"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "From File"
+msgstr "Uit bestand"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Generate New"
+msgstr "Nieuwe genereren"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Derive BIP85"
+msgstr "BIP85 afleiden"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "OpenGPG Card"
+msgstr "OpenGPG-kaart"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Edit text"
+msgstr "Tekst bewerken"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Discard text"
+msgstr "Tekst weggooien"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Discard text?"
+msgstr "Tekst weggooien?"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Generate QR code"
+msgstr "QR-code genereren"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/seed_views.py
+msgid "Transcribe mode"
+msgstr "Overschrijfmodus"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/seed_views.py
+msgid "FullScreen mode"
+msgstr "Volledig-schermmodus"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py src/seedsigner/views/seed_views.py
+msgid "Transcribe Mode ?"
+msgstr "Overschrijfmodus?"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Confirm text QR code"
+msgstr "Tekst-QR-code bevestigen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Confirm Text QR ?"
+msgstr "Tekst-QR bevestigen?"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Scan text QR code"
+msgstr "Tekst-QR-code scannen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Confirm Text QR Code"
+msgstr "Tekst-QR-code bevestigen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Your transcribed text QR code does not match your original text!"
+msgstr "Je overgeschreven tekst-QR komt niet overeen met je originele tekst!"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Review text QR code"
+msgstr "Tekst-QR-code controleren"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Your transcribed text QR code successfully scanned and yielded the same text."
+msgstr "Je overgeschreven tekst-QR is gescand en leverde dezelfde tekst op."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Confirm Text QR"
+msgstr "Tekst-QR bevestigen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Your transcribed text QR code could not be read!"
+msgstr "Je overgeschreven tekst-QR kon niet worden gelezen!"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Edit & Generate QR code"
+msgstr "Bewerken en QR-code genereren"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/gpg_views.py
+msgid "Decoded Text"
+msgstr "Gedecodeerde tekst"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/keycard_bias.py src/seedsigner/views/satochip_bias.py
+msgid "Run Test"
+msgstr "Test uitvoeren"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/microsd_views.py
+msgid "Flash Image"
+msgstr "Image flashen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/microsd_views.py
+msgid "Verify MicroSD"
+msgstr "MicroSD verifiëren"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/microsd_views.py
+msgid "Wipe (Zero)"
+msgstr "Wissen (nullen)"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/microsd_views.py
+msgid "Wipe (Random)"
+msgstr "Wissen (willekeurig)"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/microsd_views.py
+msgid "Skip Verification"
+msgstr "Verificatie overslaan"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/microsd_views.py
+msgid "All"
+msgstr "Alles"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Custom"
+msgstr "Aangepast"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Diceware-EFF Short"
+msgstr "Diceware-EFF kort"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Diceware-EFF Long"
+msgstr "Diceware-EFF lang"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Diceware-BIP39"
+msgstr "Diceware-BIP39"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Hex"
+msgstr "Hex"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Dice Rolls"
+msgstr "Dobbelworpen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Password Type"
+msgstr "Wachtwoordtype"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "64 bits"
+msgstr "64 bits"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "128 bits"
+msgstr "128 bits"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "256 bits"
+msgstr "256 bits"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Password Strength"
+msgstr "Wachtwoordsterkte"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+#: src/seedsigner/views/smartcard_views.py
+msgid "Yes"
+msgstr "Ja"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+#: src/seedsigner/views/smartcard_views.py
+msgid "No"
+msgstr "Nee"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Select Options"
+msgstr "Opties kiezen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Choose at least one character set."
+msgstr "Kies minstens één tekenset."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "System RNG health check failed."
+msgstr "Controle van de systeem-RNG mislukt."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "System RNG Error"
+msgstr "Systeem-RNG-fout"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Camera"
+msgstr "Camera"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Dice"
+msgstr "Dobbelstenen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "System RNG"
+msgstr "Systeem-RNG"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Entropy Source"
+msgstr "Entropiebron"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Not Supported"
+msgstr "Niet ondersteund"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "BIP85 supports Diceware, Dice Rolls, Hex, Base64, and Base85."
+msgstr "BIP85 ondersteunt Diceware, dobbelworpen, Hex, Base64 en Base85."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "None"
+msgstr "Geen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Capitalise"
+msgstr "Beginhoofdletter"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Space"
+msgstr "Spatie"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Separator"
+msgstr "Scheidingsteken"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "6 sides"
+msgstr "6 zijden"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "10 sides"
+msgstr "10 zijden"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "20 sides"
+msgstr "20 zijden"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Dice Sides"
+msgstr "Dobbelsteenzijden"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Number of Rolls"
+msgstr "Aantal worpen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Invalid Input"
+msgstr "Ongeldige invoer"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Number of rolls must be at least 1."
+msgstr "Het aantal worpen moet minstens 1 zijn."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+#: src/seedsigner/views/tools_views.py
+msgid "Poor Entropy"
+msgstr "Zwakke entropie"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+#: src/seedsigner/views/tools_views.py
+msgid "Dice rolls didn't appear random enough. Please try again."
+msgstr "De worpen leken niet willekeurig genoeg. Probeer opnieuw."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+#: src/seedsigner/views/tools_views.py
+msgid "Camera entropy didn't appear random enough. Please try again."
+msgstr "De camera-entropie leek niet willekeurig genoeg. Probeer opnieuw."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "WARNING"
+msgstr "WAARSCHUWING"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Load a seed before using BIP85."
+msgstr "Laad een seed voordat je BIP85 gebruikt."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Select Seed"
+msgstr "Seed kiezen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Choose seed for BIP85"
+msgstr "Kies de seed voor BIP85"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "BIP85 Index"
+msgstr "BIP85-index"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Invalid Length"
+msgstr "Ongeldige lengte"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "BIP85 Hex supports 128 or 256 bits."
+msgstr "BIP85 Hex ondersteunt 128 of 256 bits."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "BIP85 Base64 needs 120+ bits."
+msgstr "BIP85 Base64 vereist 120+ bits."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "BIP85 Base85 needs 64-512 bits."
+msgstr "BIP85 Base85 vereist 64-512 bits."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Password Name"
+msgstr "Wachtwoordnaam"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Not Enough Space"
+msgstr "Onvoldoende ruimte"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid ""
+"Saving Secret\n"
+"\n"
+"\n"
+"\n"
+"\n"
+"\n"
+msgstr ""
+"Geheim wordt opgeslagen\n"
+"\n"
+"\n"
+"\n"
+"\n"
+"\n"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+#: src/seedsigner/views/psbt_views.py
+msgid "Success"
+msgstr "Gelukt"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Password saved to Seedkeeper"
+msgstr "Wachtwoord opgeslagen op Seedkeeper"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Not enough space on Seedkeeper for password"
+msgstr "Onvoldoende ruimte op de Seedkeeper voor het wachtwoord"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Failed"
+msgstr "Mislukt"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Password save failed"
+msgstr "Wachtwoord opslaan mislukt"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+#: src/seedsigner/views/scan_views.py
+msgid "Edit"
+msgstr "Bewerken"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Password"
+msgstr "Wachtwoord"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/password_generator_views.py
+msgid "Save Password"
+msgstr "Wachtwoord opslaan"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py src/seedsigner/views/seed_views.py
+msgid "Use Satochip card"
+msgstr "Satochip-kaart gebruiken"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py
+msgid "Use Keycard"
+msgstr "Keycard gebruiken"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py src/seedsigner/views/seed_views.py
+#: src/seedsigner/views/smartcard_views.py src/seedsigner/views/tools_views.py
+msgid "Enter 15-word seed"
+msgstr "15-woorden-seed invoeren"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py src/seedsigner/views/seed_views.py
+#: src/seedsigner/views/smartcard_views.py src/seedsigner/views/tools_views.py
+msgid "Enter 18-word seed"
+msgstr "18-woorden-seed invoeren"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py src/seedsigner/views/seed_views.py
+#: src/seedsigner/views/smartcard_views.py src/seedsigner/views/tools_views.py
+msgid "Enter 21-word seed"
+msgstr "21-woorden-seed invoeren"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py
+msgid "Enter WIF"
+msgstr "WIF invoeren"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py src/seedsigner/views/scan_views.py
+msgid "Scan WIF"
+msgstr "WIF scannen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py
+msgid "Enter BIP38"
+msgstr "BIP38 invoeren"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py src/seedsigner/views/scan_views.py
+msgid "Scan BIP38"
+msgstr "BIP38 scannen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py
+msgid "Fingerprint mismatch"
+msgstr "Vingerafdruk komt niet overeen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py
+msgid "Card cannot sign PSBT"
+msgstr "Kaart kan de PSBT niet ondertekenen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py
+msgid "Card fingerprint ({}) not in PSBT signers."
+msgstr "Kaartvingerafdruk ({}) zit niet bij de PSBT-ondertekenaars."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py
+msgid "Private Key (WIF)"
+msgstr "Privésleutel (WIF)"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py
+msgid "Invalid WIF!"
+msgstr "Ongeldige WIF!"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py
+msgid "Not a valid WIF-encoded private key."
+msgstr "Geen geldige WIF-gecodeerde privésleutel."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py
+msgid "BIP38 Key"
+msgstr "BIP38-sleutel"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py
+msgid "BIP38 Passphrase"
+msgstr "BIP38-wachtwoordzin"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py
+msgid "Invalid BIP38!"
+msgstr "Ongeldige BIP38!"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py
+msgid "Could not decrypt BIP38 key."
+msgstr "Kon de BIP38-sleutel niet ontsleutelen."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py
+msgid "Descriptor mismatch"
+msgstr "Descriptor komt niet overeen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py
+msgid "Descriptor cleared"
+msgstr "Descriptor gewist"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py
+msgid "Loaded multisig wallet descriptor does not match this PSBT. Load the correct descriptor or skip verification to continue."
+msgstr "De geladen multisig-wallet-descriptor past niet bij deze PSBT. Laad de juiste descriptor of sla verificatie over."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py
+msgid "Signing PSBT..."
+msgstr "PSBT wordt ondertekend..."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py
+msgid "Signing Timeout"
+msgstr "Time-out bij ondertekenen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py
+msgid "Retry (higher timeout)"
+msgstr "Opnieuw (langere time-out)"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py
+msgid "Saved as {}."
+msgstr "Opgeslagen als {}."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py
+msgid "Failed to save PSBT: {}"
+msgstr "PSBT opslaan mislukt: {}"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/psbt_views.py
+msgid "Encoding PSBT..."
+msgstr "PSBT wordt gecodeerd..."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/scan_views.py
+msgid "QR Scanner Unavailable"
+msgstr "QR-scanner niet beschikbaar"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/scan_views.py
+msgid "QR scanning backend missing. Install zbar (or OpenCV on desktop) and restart."
+msgstr "QR-scanbackend ontbreekt. Installeer zbar (of OpenCV op desktop) en herstart."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/scan_views.py
+msgid "Select Seed Type"
+msgstr "Kies het seed-type"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/scan_views.py
+msgid "Time set to:"
+msgstr "Tijd ingesteld op:"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/scan_views.py
+msgid "Set Time Failed"
+msgstr "Tijd instellen mislukt"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/scan_views.py
+msgid "Invalid Time"
+msgstr "Ongeldige tijd"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/scan_views.py
+msgid "Could not parse time from QR"
+msgstr "Kon de tijd niet uit de QR lezen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/scan_views.py
+msgid "Scan SLIP-39 Share"
+msgstr "SLIP-39-share scannen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/scan_views.py
+msgid "Expected a SLIP-39 share QR"
+msgstr "SLIP-39-share-QR verwacht"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/scan_views.py
+msgid "Expected a WIF private key"
+msgstr "WIF-privésleutel verwacht"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/scan_views.py
+msgid "Expected a BIP38 private key"
+msgstr "BIP38-privésleutel verwacht"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/scan_views.py
+msgid "Scan {} receive address from the wallet you just exported"
+msgstr "Scan ontvangstadres {} van de zojuist geëxporteerde wallet"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/scan_views.py
+msgid ""
+"Data matches multiple\n"
+"QR types."
+msgstr ""
+"Gegevens passen bij meerdere\n"
+"QR-typen."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/scan_views.py src/seedsigner/views/seed_views.py
+msgid "Type encryption key"
+msgstr "Sleutel typen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/scan_views.py src/seedsigner/views/seed_views.py
+msgid "Scan encryption key"
+msgstr "Sleutel scannen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/scan_views.py src/seedsigner/views/seed_views.py
+msgid "Edit encryption key"
+msgstr "Sleutel bewerken"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/scan_views.py src/seedsigner/views/seed_views.py
+msgid "Discard encryption key"
+msgstr "Sleutel weggooien"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/scan_views.py src/seedsigner/views/seed_views.py
+msgid "Proceed"
+msgstr "Doorgaan"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/scan_views.py src/seedsigner/views/seed_views.py
+msgid "Scan & Append Another"
+msgstr "Scan en voeg nog een toe"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/scan_views.py
+msgid "Decrypted Text"
+msgstr "Ontsleutelde tekst"
+
+#. FORK: translated by Claude 2026-07-11
+#. This is on the opening splash screen, displayed above the Seedsigner logo
+#: src/seedsigner/views/screensaver.py
+msgid "An unofficial fork of:"
+msgstr "Een onofficiële fork van:"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "BitBox02 backup"
+msgstr "BitBox02-back-up"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Passport backup"
+msgstr "Passport-back-up"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "TAPSIGNER backup"
+msgstr "TAPSIGNER-back-up"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Enter Aezeed seed"
+msgstr "Aezeed-seed invoeren"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py src/seedsigner/views/smartcard_views.py
+msgid "SLIP-39 Shares"
+msgstr "SLIP-39-shares"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid " Scan a SeedQR"
+msgstr " SeedQR scannen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py src/seedsigner/views/smartcard_views.py
+msgid "From SeedKeeper"
+msgstr "Van SeedKeeper"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "From Specter-DIY"
+msgstr "Van Specter-DIY"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py src/seedsigner/views/smartcard_views.py
+msgid " Create a seed"
+msgstr " Maak een seed"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "microSD card not detected."
+msgstr "Geen microSD-kaart gedetecteerd."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "No Backups Found"
+msgstr "Geen back-ups gevonden"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "No BitBox02 backups (.bin, .bb02, .dat, .backup) were found on the microSD card."
+msgstr "Geen BitBox02-back-ups (.bin, .bb02, .dat, .backup) gevonden op de microSD-kaart."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Select BitBox02 backup"
+msgstr "Kies de BitBox02-back-up"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Backup name: {}"
+msgstr "Back-upnaam: {}"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Created: {}"
+msgstr "Gemaakt: {}"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Firmware: {}"
+msgstr "Firmware: {}"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Birthdate: {}"
+msgstr "Aanmaakdatum: {}"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Seed length: {} words"
+msgstr "Seed-lengte: {} woorden"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Seed loaded"
+msgstr "Seed geladen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "No Passport backups (.7z) were found on the microSD card."
+msgstr "Geen Passport-back-ups (.7z) gevonden op de microSD-kaart."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Select Passport backup"
+msgstr "Kies de Passport-back-up"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Passport backup code"
+msgstr "Passport-back-upcode"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Backup code cannot be empty."
+msgstr "De back-upcode mag niet leeg zijn."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Chain: {}"
+msgstr "Chain: {}"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "XFP: {}"
+msgstr "XFP: {}"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "No TAPSIGNER backups (.aes) were found on the microSD card."
+msgstr "Geen TAPSIGNER-back-ups (.aes) gevonden op de microSD-kaart."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Select TAPSIGNER backup"
+msgstr "Kies de TAPSIGNER-back-up"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Backup key (hex)"
+msgstr "Back-upsleutel (hex)"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "xprv loaded from TAPSIGNER backup."
+msgstr "xprv geladen uit TAPSIGNER-back-up."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Path: {}"
+msgstr "Pad: {}"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Load Passphrase"
+msgstr "Wachtwoordzin laden"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Type Passphrase"
+msgstr "Wachtwoordzin typen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Scan Passphrase"
+msgstr "Wachtwoordzin scannen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Load from SeedKeeper"
+msgstr "Laden van SeedKeeper"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Aezeed passphrase"
+msgstr "Aezeed-wachtwoordzin"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid ""
+"Passphrase required\n"
+"for this mnemonic."
+msgstr ""
+"Wachtwoordzin vereist\n"
+"voor deze mnemonic."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Invalid passphrase"
+msgstr "Ongeldige wachtwoordzin"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid ""
+"Aezeed passphrase required.\n"
+"Try again."
+msgstr ""
+"Aezeed-wachtwoordzin vereist.\n"
+"Probeer opnieuw."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid ""
+"Wrong Aezeed passphrase.\n"
+"Try again."
+msgstr ""
+"Onjuiste Aezeed-wachtwoordzin.\n"
+"Probeer opnieuw."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Invalid Text QR Code"
+msgstr "Ongeldige tekst-QR-code"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Non UTF-8 data detected."
+msgstr "Niet-UTF-8-gegevens gedetecteerd."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Aezeed support"
+msgstr "Aezeed-ondersteuning"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid ""
+"Aezeed entry is experimental.\n"
+"Use only with known-good backups."
+msgstr ""
+"Aezeed-invoer is experimenteel.\n"
+"Alleen met gecontroleerde back-ups."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Enter 20 words"
+msgstr "20 woorden invoeren"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Enter 33 words"
+msgstr "33 woorden invoeren"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Load Share"
+msgstr "Share laden"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Share Word #{}"
+msgstr "Share-woord #{}"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Enter share"
+msgstr "Share invoeren"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Scan share"
+msgstr "Share scannen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Combine shares"
+msgstr "Shares combineren"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "{} of {} needed"
+msgstr "{} van {} nodig"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py src/seedsigner/views/settings_views.py
+#: src/seedsigner/views/smartcard_views.py
+msgid "Try Again"
+msgstr "Opnieuw proberen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Invalid SLIP-39 Share"
+msgstr "Ongeldige SLIP-39-share"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Checksum failure; not a valid SLIP-39 share."
+msgstr "Controlesom onjuist; geen geldige SLIP-39-share."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Non-extendable Seed"
+msgstr "Niet-uitbreidbare seed"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "This SLIP-39 seed cannot regenerate new shares."
+msgstr "Deze SLIP-39-seed kan geen nieuwe shares genereren."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Export as Plaintext QR"
+msgstr "Exporteren als onversleutelde QR"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "To SeedKeeper"
+msgstr "Naar SeedKeeper"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "To Specter-DIY"
+msgstr "Naar Specter-DIY"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Regenerate Shares"
+msgstr "Shares opnieuw genereren"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Open {} and display a receive address from the wallet you just exported."
+msgstr "Open {} en toon een ontvangstadres van de zojuist geëxporteerde wallet."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "your wallet software"
+msgstr "je walletsoftware"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid ""
+"Passphrase was used.\n"
+"You'll need words + passphrase."
+msgstr ""
+"Er is een wachtwoordzin gebruikt.\n"
+"Je hebt woorden + wachtwoordzin nodig."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "18 Words"
+msgstr "18 woorden"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Review"
+msgstr "Controleren"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Finalize child"
+msgstr "Child-seed afronden"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Input Encryption Key"
+msgstr "Versleutelingssleutel invoeren"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Discard encryption key?"
+msgstr "Sleutel weggooien?"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Your current key entry will be erased"
+msgstr "De ingevoerde sleutel wordt gewist"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Invalid Key"
+msgstr "Ongeldige sleutel"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Key length is too long."
+msgstr "De sleutel is te lang."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Input from Camera"
+msgstr "Invoer via camera"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Use fingerprint"
+msgstr "Vingerafdruk gebruiken"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Assign custom ID"
+msgstr "Eigen ID toewijzen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Input Mnemonic ID"
+msgstr "Mnemonic-ID invoeren"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Edit mnemonic ID"
+msgstr "Mnemonic-ID bewerken"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Discard mnemonic ID"
+msgstr "Mnemonic-ID weggooien"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Discard mnemonic ID?"
+msgstr "Mnemonic-ID weggooien?"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Your current mnemonic ID entry will be erased"
+msgstr "De ingevoerde mnemonic-ID wordt gewist"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py src/seedsigner/views/tools_views.py
+msgid "Processing..."
+msgstr "Verwerken..."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Encryption failure"
+msgstr "Versleuteling mislukt"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Next 100"
+msgstr "Volgende 100"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Expanded Search"
+msgstr "Uitgebreide zoekopdracht"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Not Found"
+msgstr "Niet gevonden"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Address Not Verified"
+msgstr "Adres niet geverifieerd"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Checked {} addresses with no match."
+msgstr "{} adressen gecontroleerd zonder match."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Check Next 10"
+msgstr "Volgende 10 controleren"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Checked {} addresses per path with no match."
+msgstr "{} adressen per pad gecontroleerd zonder match."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Wallet Export"
+msgstr "Wallet-export"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Wallet export successful."
+msgstr "Wallet succesvol geëxporteerd."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Address format doesn't match exported script type. Wallet export unsuccessful."
+msgstr "Adresformaat past niet bij het geëxporteerde scripttype. Wallet-export mislukt."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Unable to match wallet to current seed. Wallet export unsuccessful."
+msgstr "Kan de wallet niet koppelen aan de huidige seed. Wallet-export mislukt."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Export Failed"
+msgstr "Export mislukt"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Load SeedKeeper"
+msgstr "SeedKeeper laden"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py src/seedsigner/views/smartcard_views.py
+msgid "Exporting xpub..."
+msgstr "Xpub wordt geëxporteerd..."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Signing message..."
+msgstr "Bericht wordt ondertekend..."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/seed_views.py
+msgid "Verification Failed"
+msgstr "Verificatie mislukt"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/settings_views.py
+msgid "Test Smartcard"
+msgstr "Smartcard testen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/settings_views.py
+msgid "List card readers"
+msgstr "Kaartlezers weergeven"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/settings_views.py
+msgid "Test NFC Scan"
+msgstr "NFC-scan testen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/settings_views.py
+msgid "Restart PCSC"
+msgstr "PCSC herstarten"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/settings_views.py
+msgid "Battery info"
+msgstr "Batterij-info"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/settings_views.py
+msgid "System info"
+msgstr "Systeeminfo"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/settings_views.py
+msgid "Load Backup Files"
+msgstr "Back-upbestanden laden"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/settings_views.py
+msgid "No compatible battery monitor detected"
+msgstr "Geen compatibele batterijmonitor gedetecteerd"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/settings_views.py src/seedsigner/views/tools_views.py
+msgid "Unavailable"
+msgstr "Niet beschikbaar"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Common Functions"
+msgstr "Algemene functies"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Satochip Functions"
+msgstr "Satochip-functies"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "KeyCard Functions"
+msgstr "Keycard-functies"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "SeedKeeper Functions"
+msgstr "SeedKeeper-functies"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Specter-DIY Functions"
+msgstr "Specter-DIY-functies"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "DIY Tools"
+msgstr "DIY-gereedschap"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Card Info"
+msgstr "Kaartinfo"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Genuine Check"
+msgstr "Echtheidscontrole"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Change PIN"
+msgstr "PIN wijzigen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Change Label"
+msgstr "Label wijzigen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Change NFC Policy"
+msgstr "NFC-beleid wijzigen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Configure NDEF"
+msgstr "NDEF configureren"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Factory Reset Card"
+msgstr "Kaart terugzetten naar fabrieksinstellingen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "View NDEF"
+msgstr "NDEF bekijken"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Use Seedkeeper App Link"
+msgstr "Seedkeeper-app-link gebruiken"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Clear NDEF"
+msgstr "NDEF wissen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Set Custom NDEF"
+msgstr "Eigen NDEF instellen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Save NDEF to SeedKeeper"
+msgstr "NDEF opslaan op SeedKeeper"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Load NDEF from SeedKeeper"
+msgstr "NDEF laden van SeedKeeper"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Text Record"
+msgstr "Tekstrecord"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "URI Record"
+msgstr "URI-record"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Android App Launch"
+msgstr "Android-app starten"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Custom (HEX)"
+msgstr "Aangepast (HEX)"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Decode NDEF"
+msgstr "NDEF decoderen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "NFC Enabled"
+msgstr "NFC ingeschakeld"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "NFC Disabled"
+msgstr "NFC uitgeschakeld"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "NFC Blocked"
+msgstr "NFC geblokkeerd"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Card Re-Inserted"
+msgstr "Kaart opnieuw geplaatst"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "View Free Space"
+msgstr "Vrije ruimte bekijken"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "View Secrets on Card"
+msgstr "Geheimen op de kaart bekijken"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Save Password to Card"
+msgstr "Wachtwoord opslaan op de kaart"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Delete Secret from Card"
+msgstr "Geheim verwijderen van de kaart"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Load MultiSig Descriptor"
+msgstr "Multisig-descriptor laden"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Save MultiSig Descriptor"
+msgstr "Multisig-descriptor opslaan"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Clone Card Secrets"
+msgstr "Kaartgeheimen klonen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Exit to Home"
+msgstr "Terug naar start"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Initialise with Seed"
+msgstr "Initialiseren met seed"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Load as Descriptor"
+msgstr "Laden als descriptor"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Load PSBT"
+msgstr "PSBT laden"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Set PUK"
+msgstr "PUK instellen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Unblock PIN with PUK"
+msgstr "PIN deblokkeren met PUK"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Set Name"
+msgstr "Naam instellen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Remove Seed"
+msgstr "Seed verwijderen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Benchmark Signing"
+msgstr "Ondertekenings-benchmark"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Benchmark Message Signing"
+msgstr "Berichtondertekenings-benchmark"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Check signing bias"
+msgstr "Ondertekeningsbias controleren"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Remove"
+msgstr "Verwijderen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Reset"
+msgstr "Resetten"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Enable 2FA"
+msgstr "2FA inschakelen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Already Seeded"
+msgstr "Al voorzien van een seed"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid ""
+"xprv cannot init Satochip.\n"
+"Use BIP39, SLIP39, or Electrum."
+msgstr ""
+"Een xprv kan Satochip niet initialiseren.\n"
+"Gebruik BIP39, SLIP39 of Electrum."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Change Card PIN"
+msgstr "Kaart-PIN wijzigen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Load Mnemonic"
+msgstr "Mnemonic laden"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Save Mnemonic"
+msgstr "Mnemonic opslaan"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Wipe Seed"
+msgstr "Seed wissen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Card Keys"
+msgstr "Kaartsleutels"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Build Applets"
+msgstr "Applets bouwen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Install Applet"
+msgstr "Applet installeren"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Uninstall Applet"
+msgstr "Applet de-installeren"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Enter Different PIN"
+msgstr "Andere PIN invoeren"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Load Keys"
+msgstr "Sleutels laden"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Save Keys"
+msgstr "Sleutels opslaan"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Unlock Card"
+msgstr "Kaart ontgrendelen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Lock Card"
+msgstr "Kaart vergrendelen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Clear Loaded Keys"
+msgstr "Geladen sleutels wissen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Overwrite"
+msgstr "Overschrijven"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Abort Save"
+msgstr "Opslaan afbreken"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Enter Single Key"
+msgstr "Eén sleutel invoeren"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Enter Key Set"
+msgstr "Sleutelset invoeren"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Generate Single Key"
+msgstr "Eén sleutel genereren"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "Generate Key Set"
+msgstr "Sleutelset genereren"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/smartcard_views.py
+msgid "8 KB (default)"
+msgstr "8 KB (standaard)"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "System RNG entropy too low. Try again later."
+msgstr "Entropie van de systeem-RNG te laag. Probeer later opnieuw."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "System RNG derived entropy failed health checks."
+msgstr "De van de systeem-RNG afgeleide entropie doorstond de controles niet."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid " New seed"
+msgstr " Nieuwe seed"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "SLIP39 seed"
+msgstr "SLIP39-seed"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "Text QR Code"
+msgstr "Tekst-QR-code"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "Password Generator"
+msgstr "Wachtwoordgenerator"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "Smartcard Tools"
+msgstr "Smartcard-gereedschap"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "MicroSD Tools"
+msgstr "MicroSD-gereedschap"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "Clear Multisig Descriptor"
+msgstr "Multisig-descriptor wissen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "microSD card not detected"
+msgstr "Geen microSD-kaart gedetecteerd"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "Insert a microSD card to save the discharge log."
+msgstr "Plaats een microSD-kaart om het ontlaadlog op te slaan."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "Unable to load network information."
+msgstr "Kan netwerkinformatie niet laden."
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "15 words"
+msgstr "15 woorden"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "18 words"
+msgstr "18 woorden"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "21 words"
+msgstr "21 woorden"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "20 words"
+msgstr "20 woorden"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "33 words"
+msgstr "33 woorden"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "20 words ({} rolls)"
+msgstr "20 woorden ({} worpen)"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "33 words ({} rolls)"
+msgstr "33 woorden ({} worpen)"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "Loaded Multisig Descriptor"
+msgstr "Multisig-descriptor geladen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "Load from Satochip"
+msgstr "Laden van Satochip"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "Electrum Seed"
+msgstr "Electrum-seed"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "Encode text"
+msgstr "Tekst coderen"
+
+#. FORK: translated by Claude 2026-07-11
+#: src/seedsigner/views/tools_views.py
+msgid "Decode QR code"
+msgstr "QR-code decoderen"
+
