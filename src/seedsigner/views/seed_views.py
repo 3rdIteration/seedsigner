@@ -307,8 +307,9 @@ class SeedFinalizeView(View):
         super().__init__()
         self.seed = self.controller.storage.get_pending_seed()
 
-        if self.seed.get_fingerprint == "":
-            # Expected normal user flow
+        if not self.seed.has_passphrase:
+            # Expected normal user flow. A freshly-loaded seed has no passphrase yet, so
+            # we can just get the fingerprint directly.
             self.fingerprint = self.seed.get_fingerprint(network=self.settings.get_value(SettingsConstants.SETTING__NETWORK))
 
         else:
