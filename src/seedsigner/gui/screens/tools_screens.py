@@ -11,6 +11,7 @@ from seedsigner.gui.components import FontAwesomeIconConstants, Fonts, GUIConsta
 from seedsigner.gui.screens.screen import RET_CODE__BACK_BUTTON, BaseScreen, ButtonListScreen, ButtonOption, KeyboardScreen
 from seedsigner.hardware.buttons import HardwareButtonsConstants
 from seedsigner.models.settings_definition import SettingsConstants, SettingsDefinition
+from seedsigner.gui.keyboard import Keyboard
 
 
 
@@ -163,6 +164,7 @@ class ToolsDiceEntropyEntryScreen(KeyboardScreen):
     def __post_init__(self):
         # TRANSLATOR_NOTE: current roll number vs total rolls (e.g. roll 7 of 50)
         self.title = _("Dice Roll {}/{}").format(1, self.return_after_n_chars)
+        self.custom_additional_keys = [Keyboard.KEY_BACKSPACE]
 
         # Specify the keys in the keyboard
         self.rows = 3
@@ -226,6 +228,7 @@ class ToolsCoinFlipEntryScreen(KeyboardScreen):
         # Override values set by the parent class
         # TRANSLATOR_NOTE: current coin-flip number vs total flips (e.g. flip 3 of 4)
         self.title = _("Coin Flip {}/{}").format(1, self.return_after_n_chars)
+        self.custom_additional_keys = [Keyboard.KEY_BACKSPACE_2]
 
         # Specify the keys in the keyboard
         self.rows = 1
