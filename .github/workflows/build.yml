@@ -16,6 +16,18 @@ on:
         default: main
         required: true
 
+# Explicitly restrict the auto-provisioned GITHUB_TOKEN to the least privilege required
+# for this workflow.
+permissions:
+  contents: read
+
+# Cancel superseded runs on the same branch/PR. Intermediate builds on dev/main
+# have no downstream consumers (official releases are built offline), so only
+# the latest commit per ref needs to be built.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 # Increment this number as part of a PR to trigger an image build for the PR
 # trigger = 0
 
@@ -23,6 +35,7 @@ jobs:
   build:
     name: build
     runs-on: ubuntu-latest
+    timeout-minutes: 120
     # Prevent resource consuming cron triggered runs in forks
     if: (!github.event.repository.fork || github.event_name == 'workflow_dispatch')
     strategy:
@@ -71,6 +84,9 @@ jobs:
           fi
 
       - name: delete unnecessary files
+        # The seedsigner-os buildroot overlay only needs src/; drop everything
+        # else from the seedsigner checkout (tests, docs, tooling, .git, etc.)
+        # to keep the overlay minimal.
         run: |
           cd seedsigner-os/opt/rootfs-overlay/opt
           find . -mindepth 1 -maxdepth 1 ! -name src -exec rm -rf {} +
@@ -151,10 +167,7 @@ jobs:
           ls -lRa images
 
       - name: get seedsigner latest commit hash
-        id: get-seedsigner-hash
-        run: |
-          git init
-          echo "source_hash=$(git rev-parse --short ${{ github.sha }})" >> $GITHUB_ENV
+        run: echo "source_hash=${GITHUB_SHA::7}" >> $GITHUB_ENV
 
       - name: write sha256sum
         run: |
