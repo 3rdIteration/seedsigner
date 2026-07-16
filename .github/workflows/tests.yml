@@ -43,9 +43,12 @@ jobs:
             tests/requirements.txt
       - name: Install dependencies
         run: |
-          sudo apt-get install -y --no-install-recommends libzbar0
-          pip install -r requirements.txt -r tests/requirements.txt
-          pip install .
+          sudo apt-get install libzbar0
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r tests/requirements.txt -r l10n/requirements-l10n.txt
+          pip install -e .
+      - name: Compile translations
+        run: python setup.py compile_catalog
       - name: Test with pytest
         run: |
           mkdir -p artifacts

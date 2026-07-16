@@ -495,6 +495,79 @@ class TestSeedFlows(FlowTest):
 
 
 
+class TestSeedEntryBackFlows(FlowTest):
+    """
+    Tests for every BACK exit scenario from SeedMnemonicEntryView and related views.
+    
+    A naive BackStackView swap can leave resume_main_flow dangling, causing
+    auto-redirects on stale flow state. These tests verify that BACK navigation
+    returns to the correct parent view AND that no flow state leaks.
+    """
+
+    def test_back_from_seed_entry_first_word(self):
+        """
+        Pressing BACK on the first word of mnemonic entry should return to
+        the View that initiated the mnemonic entry process.
+        """
+        for seed_type in [seed_views.LoadSeedView.TYPE_12WORD, seed_views.LoadSeedView.TYPE_24WORD]:
+            self.run_sequence([
+                FlowStep(MainMenuView, button_data_selection=MainMenuView.SEEDS),
+                FlowStep(seed_views.SeedsMenuView, is_redirect=True),  # No seeds loaded; auto-redirects to LoadSeedView
+                FlowStep(seed_views.LoadSeedView, button_data_selection=seed_type),
+                FlowStep(seed_views.SeedMnemonicEntryView, screen_return_value=RET_CODE__BACK_BUTTON),
+                FlowStep(seed_views.LoadSeedView),  # Should land here, NOT MainMenuView
+            ])
+            BaseTest.reset_controller()
+
+
+    def test_back_from_seed_entry_mid_word(self):
+        """
+        Pressing BACK from a middle word (eg. word #2) should return to the
+        previous SeedMnemonicEntryView (eg. word #1) via the back stack.
+        """
+        self.run_sequence([
+            FlowStep(MainMenuView, button_data_selection=MainMenuView.SEEDS),
+            FlowStep(seed_views.SeedsMenuView, is_redirect=True),
+            FlowStep(seed_views.LoadSeedView, button_data_selection=seed_views.LoadSeedView.TYPE_12WORD),
+            FlowStep(seed_views.SeedMnemonicEntryView, screen_return_value="abandon"),  # word #1
+            FlowStep(seed_views.SeedMnemonicEntryView, screen_return_value=RET_CODE__BACK_BUTTON),  # BACK from word #2
+            FlowStep(seed_views.SeedMnemonicEntryView),  # Returns to word #1
+        ])
+
+        # Verify we're back on word #1: word at index 0 should still be set
+        # from the previous entry, while word at index 1 should be unset.
+        assert self.controller.storage.get_pending_mnemonic_word(0) == "abandon"
+        assert self.controller.storage.get_pending_mnemonic_word(1) is None
+
+
+    def test_back_from_seed_entry_via_seed_select(self):
+        """
+        Backing out of mnemonic entry during an active flow must preserve
+        `resume_main_flow` so the user remains within that flow.
+        """
+        from seedsigner.controller import Controller
+        from seedsigner.models.settings import SettingsConstants
+
+        self.settings.set_value(SettingsConstants.SETTING__MESSAGE_SIGNING, SettingsConstants.OPTION__ENABLED)
+
+        def load_signmessage_into_decoder(view):
+            view.decoder.add_data("signmessage m/84h/0h/0h/0/0 ascii:test message")
+
+        self.run_sequence([
+            FlowStep(MainMenuView, button_data_selection=MainMenuView.SCAN),
+            FlowStep(scan_views.ScanView, before_run=load_signmessage_into_decoder),
+            FlowStep(seed_views.SeedSignMessageStartView, is_redirect=True),
+            FlowStep(seed_views.SeedSelectSeedView, button_data_selection=seed_views.SeedSelectSeedView.TYPE_12WORD),
+            FlowStep(seed_views.SeedMnemonicEntryView, screen_return_value=RET_CODE__BACK_BUTTON),  # BACK on first word
+            FlowStep(seed_views.SeedSelectSeedView),  # Should return here, in the sign message flow
+        ])
+
+        # Verify resume_main_flow is still set — user is still in the sign message flow
+        assert self.controller.resume_main_flow == Controller.FLOW__SIGN_MESSAGE
+
+
+
+
 class TestMessageSigningFlows(FlowTest):
     MAINNET_DERIVATION_PATH = "m/84h/0h/0h/0/0"
     TESTNET_DERIVATION_PATH = "m/84h/1h/0h/0/0"
