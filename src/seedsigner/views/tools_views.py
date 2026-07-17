@@ -1,6 +1,5 @@
 import hashlib
 import logging
-import os
 import time
 
 from gettext import gettext as _
@@ -148,9 +147,12 @@ class ToolsImageEntropyMnemonicLengthView(View):
 
             # Build in some hardware-level uniqueness via CPU unique Serial num
             try:
-                stream = os.popen("cat /proc/cpuinfo | grep Serial")
-                output = stream.read()
-                serial_num = output.split(":")[-1].strip().encode('utf-8')
+                serial_num = b''
+                with open("/proc/cpuinfo", "r") as f:
+                    for line in f:
+                        if "Serial" in line:
+                            serial_num = line.split(":")[-1].strip().encode('utf-8')
+                            break
                 serial_hash = hashlib.sha256(serial_num)
                 hash_bytes = serial_hash.digest()
             except Exception as e:
@@ -599,8 +601,12 @@ class ToolsAddressExplorerAddressTypeView(View):
 
         wallet_descriptor_display_name = None
         if "wallet_descriptor" in data:
-            wallet_descriptor_display_name = data["wallet_descriptor"].brief_policy.replace(" (sorted)", "")
-            wallet_descriptor_display_name = " / ".join(wallet_descriptor_display_name.split(" of ")) # i18n w/o l10n since coming from non-l10n embit
+            from seedsigner.helpers.embit_utils import get_multisig_policy
+            threshold, n = get_multisig_policy(data["wallet_descriptor"])
+            # TRANSLATOR_NOTE: Multisig policy. For a "2 / 3 multisig" policy, "threshold" = 2; "n" = 3
+            wallet_descriptor_display_name = _("{threshold} / {n} multisig").format(
+                threshold=threshold, n=n
+            )
 
         script_type = data["script_type"] if "script_type" in data else None
 

@@ -247,8 +247,8 @@ def generate_screenshots(locale):
         )
         add_settings_entries(SettingsConstants.VISIBILITY__HARDWARE)
 
-        settingsqr_data_persistent = f"settings::v1 name=English_noob_mode persistent=E coords=spa,spd denom=thr network=M qr_density=M xpub_export=E sigs=ss scripts=nat xpub_details=E passphrase=E camera=0 compact_seedqr=E bip85=D priv_warn=E dire_warn=E partners=E locale={locale}"
-        settingsqr_data_not_persistent = f"settings::v1 name=Mode_Ephemeral persistent=D coords=spa,spd denom=thr network=M qr_density=M xpub_export=E sigs=ss scripts=nat xpub_details=E passphrase=E camera=0 compact_seedqr=E bip85=D priv_warn=E dire_warn=E partners=E locale={locale}"
+        settingsqr_data_persistent = f"settings::v1 name=English_noob_mode persistent=E xpub_qr=urca,sta denom=thr network=M qr_density=M sigs=ss scripts=nat xpub_details=E passphrase=E camera=0 compact_seedqr=E bip85=D priv_warn=E dire_warn=E partners=E locale={locale}"
+        settingsqr_data_not_persistent = f"settings::v1 name=Mode_Ephemeral persistent=D xpub_qr=urca,sta denom=thr network=M qr_density=M sigs=ss scripts=nat xpub_details=E passphrase=E camera=0 compact_seedqr=E bip85=D priv_warn=E dire_warn=E partners=E locale={locale}"
 
         # Set up mocks to provide whatever temporary data/state a particular screenshot
         # might need.
@@ -376,13 +376,13 @@ def generate_screenshots(locale):
                 
                 ScreenshotConfig(seed_views.SeedOptionsView, dict(seed_num=0)),
                 ScreenshotConfig(seed_views.SeedBackupView,  dict(seed_num=0)),
-                ScreenshotConfig(seed_views.SeedExportXpubSigTypeView,    dict(seed_num=0)),
-                ScreenshotConfig(seed_views.SeedExportXpubScriptTypeView, dict(seed_num=0, sig_type="msig")),
+                ScreenshotConfig(seed_views.SeedExportXpubSigTypeView,          dict(seed_num=0)),
+                ScreenshotConfig(seed_views.SeedExportXpubScriptTypeView,       dict(seed_num=0, sig_type="msig")),
                 ScreenshotConfig(seed_views.SeedExportXpubCustomDerivationView, dict(seed_num=0, sig_type="ss",   script_type="")),
-                ScreenshotConfig(seed_views.SeedExportXpubCoordinatorView,      dict(seed_num=0, sig_type="ss",   script_type="nat")),
-                ScreenshotConfig(seed_views.SeedExportXpubWarningView,          dict(seed_num=0, sig_type="msig", script_type="nes", coordinator="spd", custom_derivation="")),
-                ScreenshotConfig(seed_views.SeedExportXpubDetailsView,          dict(seed_num=0, sig_type="ss",   script_type="nat", coordinator="bw",  custom_derivation="")),
-                ScreenshotConfig(SeedExportXpubQR_ScreenBrightnessView,         dict(seed_num=0, coordinator="bw", derivation_path="m/84'/0'/0'")),
+                ScreenshotConfig(seed_views.SeedExportXpubQRFormatView,         dict(seed_num=0, sig_type="ss",   script_type="nat")),
+                ScreenshotConfig(seed_views.SeedExportXpubWarningView,          dict(seed_num=0, sig_type="msig", script_type="nes", xpub_qr_format="urca", custom_derivation="")),
+                ScreenshotConfig(seed_views.SeedExportXpubDetailsView,          dict(seed_num=0, sig_type="ss",   script_type="nat", xpub_qr_format="urca", custom_derivation="")),
+                ScreenshotConfig(SeedExportXpubQR_ScreenBrightnessView,         dict(seed_num=0, xpub_qr_format="urca", derivation_path="m/84'/0'/0'")),
 
                 ScreenshotConfig(seed_views.SeedWordsWarningView, dict(seed_num=0)),
                 ScreenshotConfig(seed_views.SeedWordsView, dict(seed_num=0)),
@@ -474,6 +474,7 @@ def generate_screenshots(locale):
                 ScreenshotConfig(settings_views.VersionView, screenshot_name="VersionView_current_git_state"),
                 ScreenshotConfig(settings_views.SettingsIngestSettingsQRView, dict(data=settingsqr_data_persistent),     screenshot_name="SettingsIngestSettingsQRView_persistent"),
                 ScreenshotConfig(settings_views.SettingsIngestSettingsQRView, dict(data=settingsqr_data_not_persistent), screenshot_name="SettingsIngestSettingsQRView_not_persistent"),
+                ScreenshotConfig(settings_views.SettingsSelectionRequiredWarningView, dict(attr_name=SettingsConstants.SETTING__SCRIPT_TYPES)),
             ],
             "Misc Error Views": [
                 ScreenshotConfig(NotYetImplementedView),

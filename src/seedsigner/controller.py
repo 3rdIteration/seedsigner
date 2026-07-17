@@ -17,7 +17,7 @@ from seedsigner.models.settings import SettingsConstants
 from seedsigner.models.singleton import Singleton
 from seedsigner.models.threads import BaseThread
 from seedsigner.views.screensaver import ScreensaverScreen
-from seedsigner.views.view import Destination
+from seedsigner.views.view import Destination, View
 
 
 logger = logging.getLogger(__name__)
@@ -475,3 +475,18 @@ class Controller(Singleton):
             exception_msg,
         ]
         return Destination(UnhandledExceptionView, view_args={"error": error}, clear_history=True)
+
+
+    @property
+    def is_screensaver_start_allowed(self) -> bool:
+        """
+            Determines whether the screensaver is allowed to start.
+
+            The screensaver can start only if:
+            - It is not currently running.
+            - The current active view allows screensaver activity.
+        """
+        from seedsigner.views import MainMenuView
+        # Confusingly, the top item in the `BackStack` is actually the *current* View
+        active_view = self.back_stack[-1].view if self.back_stack else MainMenuView()
+        return not self.is_screensaver_running and active_view.is_screensaver_allowed

@@ -52,7 +52,7 @@ class GUIConstants:
         "default": "OpenSans-Regular",
         SettingsConstants.LOCALE__ARABIC: "NotoSansAR-Regular",
         SettingsConstants.LOCALE__CHINESE_SIMPLIFIED: "NotoSansSC-Regular",
-        # SettingsConstants.LOCALE__CHINESE_TRADITIONAL: "NotoSansTC-Regular",
+        SettingsConstants.LOCALE__HINDI: "NotoSansDevanagari-Regular",
         SettingsConstants.LOCALE__JAPANESE: "NotoSansJP-Regular",
         SettingsConstants.LOCALE__KOREAN: "NotoSansKR-Regular",
         SettingsConstants.LOCALE__PERSIAN: "NotoSansAR-Regular",  # Uses the Arabic font
@@ -63,9 +63,10 @@ class GUIConstants:
     TOP_NAV_TITLE_FONT_NAME["default"] = "OpenSans-SemiBold"
     TOP_NAV_TITLE_FONT_SIZE = {
         "default": 20,
+        SettingsConstants.LOCALE__CHINESE_SIMPLIFIED: 23,  # Some chars won't render below 23px
+        SettingsConstants.LOCALE__HINDI: 22,
         SettingsConstants.LOCALE__JAPANESE: 22,  # Titles won't render below 22px
         SettingsConstants.LOCALE__KOREAN: 23,    # Titles won't render below 23px
-        SettingsConstants.LOCALE__CHINESE_SIMPLIFIED: 23,  # Some chars won't render below 23px
     }
     TOP_NAV_HEIGHT = 48
     TOP_NAV_BUTTON_SIZE = 32
@@ -73,9 +74,10 @@ class GUIConstants:
     BODY_FONT_NAME = BASE_LOCALE_FONTS.copy()
     BODY_FONT_SIZE = {
         "default": 17,
+        SettingsConstants.LOCALE__CHINESE_SIMPLIFIED: 18,
+        SettingsConstants.LOCALE__HINDI: 18,
         SettingsConstants.LOCALE__JAPANESE: 18,
         SettingsConstants.LOCALE__KOREAN: 18,
-        SettingsConstants.LOCALE__CHINESE_SIMPLIFIED: 18,
     }
     BODY_FONT_MAX_SIZE = TOP_NAV_TITLE_FONT_SIZE["default"]
     BODY_FONT_MIN_SIZE = 15
@@ -95,6 +97,7 @@ class GUIConstants:
         "default": 18,
         "ar": 18,
         "fa": 18,
+        SettingsConstants.LOCALE__HINDI: 20,
         SettingsConstants.LOCALE__JAPANESE: 20,
         SettingsConstants.LOCALE__KOREAN: 20,
         SettingsConstants.LOCALE__CHINESE_SIMPLIFIED: 20,
@@ -247,11 +250,19 @@ def load_image(image_name: str) -> Image.Image:
 
 
 class Fonts(Singleton):
-    font_path = os.path.join(
-        pathlib.Path(__file__).parent.resolve().parent.resolve(),
-        "resources",
-        "fonts"
-    )
+    font_paths = [
+        os.path.join(
+            pathlib.Path(__file__).parent.resolve().parent.resolve(),
+            "resources",
+            "fonts"
+        ),
+        os.path.join(
+            pathlib.Path(__file__).parent.resolve().parent.resolve(),
+            "resources",
+            "seedsigner-translations",
+            "fonts"
+        )
+    ]
     fonts = {}
 
     @classmethod
@@ -264,13 +275,24 @@ class Fonts(Singleton):
             file_extension = "otf"
 
         if size not in cls.fonts[font_name]:
-            try:
-                cls.fonts[font_name][size] = ImageFont.truetype(os.path.join(cls.font_path, f"{font_name}.{file_extension}"), size)
-            except OSError as e:
-                if "cannot open resource" in str(e):
-                    raise Exception(f"Font {font_name}.{file_extension} not found: {repr(e)}")
+
+            # loop over possible font locations and attempt to load font object
+            # TODO: single location for all font files
+            captured_exception = None
+            for font_path in cls.font_paths:
+                try:
+                    cls.fonts[font_name][size] = ImageFont.truetype(os.path.join(font_path, f"{font_name}.{file_extension}"), size)
+                    break
+                except OSError as e:
+                    captured_exception = e
+                    continue
+
+            # throw error at this point if font object was unable to be loaded
+            if size not in cls.fonts[font_name]:
+                if "cannot open resource" in str(captured_exception):
+                    raise Exception(f"Font {font_name}.{file_extension} not found: {repr(captured_exception)}")
                 else:
-                    raise e
+                    raise captured_exception
 
         return cls.fonts[font_name][size]
 
@@ -389,7 +411,13 @@ class TextArea(BaseComponent):
             # Guaranteed to be a single line of text, possibly wider than self.width
             self.text_lines = [{"text": self.text, "text_width": full_text_width}]
             self.text_width = full_text_width
-            if self.text_width > self.visible_width:
+
+            # Technically, the math says that we should enable scrolling for as little as
+            # 1px beyond the available width, but it's not worth having the text twitch
+            # back and forth by such a small amount.
+            min_scrollable_diff = 1
+
+            if self.text_width > self.visible_width + min_scrollable_diff:
                 # We'll have to left justify the text and scroll it (if scrolling is enabled,
                 # otherwise it'll just run off the right edge).
                 self.is_text_centered = False
@@ -566,7 +594,7 @@ class TextArea(BaseComponent):
             self.horizontal_scroll_position = 0
             self.scroll_increment_sign = 1  # flip to negative to scroll text to the right
 
-            self.renderer = Renderer.get_instance()        
+            self.renderer = Renderer.get_instance()
 
 
         def stop_scrolling(self):
@@ -587,45 +615,57 @@ class TextArea(BaseComponent):
             readability. 45px/sec is better but still perceptually a bit stuttery.
             """
             max_scroll = self.rendered_text_img.width - self.visible_width
+            last_render_time = None
+
+            # The scrolling pauses at the start and end of the text line. These vars track
+            # when we started holding and how long we should hold for.
+            hold_started_at = None
+            cur_hold_duration = None
 
             while self.keep_running:
                 if not self.scrolling_active:
                     time.sleep(0.1)
                     continue
 
-                with self.renderer.lock:
-                    if not self.scrolling_active:
-                        # We were stopped while waiting for the lock
+                if cur_hold_duration is not None:
+                    # We're currently holding; see if we've held long enough
+                    hold_time_elapsed = time.time() - hold_started_at
+                    if hold_time_elapsed < cur_hold_duration:
+                        # Still have to hold longer; skip scrolling logic
+                        time.sleep(0.1)
+                        continue
+                    else:
+                        # We've held long enough; reset the vars and resume scrolling
+                        hold_started_at = None
+                        cur_hold_duration = None
+
+                else:
+                    # We're not holding, but if we've reached either end, we need to start
+                    # holding.
+                    if self.horizontal_scroll_position == 0:
+                        # Pause on initial (left-justified) position...
+                        hold_started_at = time.time()
+                        cur_hold_duration = self.begin_hold_secs
+
+                        # Next scroll direction will be left
+                        self.scroll_increment_sign = 1
+
+                        # Don't count those pause seconds
+                        last_render_time = None
                         continue
 
-                    img = self.rendered_text_img.crop((self.horizontal_scroll_position, 0, self.horizontal_scroll_position + self.visible_width, self.rendered_text_img.height))
-                    self.renderer.canvas.paste(img, (self.screen_x, self.screen_y - self.scroll_y))
-                    self.renderer.show_image()
+                    elif self.horizontal_scroll_position == max_scroll:
+                        # ...and slight pause at end of scroll
+                        hold_started_at = time.time()
+                        cur_hold_duration = self.end_hold_secs
 
-                if self.horizontal_scroll_position == 0:
-                    # Pause on initial (left-justified) position...                
-                    time.sleep(self.begin_hold_secs)
+                        # Don't count those pause seconds
+                        last_render_time = None
 
-                    # Don't count those pause seconds
-                    last_render_time = None
+                        # Scroll will be to the right
+                        self.scroll_increment_sign = -1
+                        continue
 
-                    # Scroll the text left
-                    self.scroll_increment_sign = 1
-
-                elif self.horizontal_scroll_position == max_scroll:
-                    # ...and slight pause at end of scroll
-                    time.sleep(self.end_hold_secs)
-
-                    # Don't count those pause seconds
-                    last_render_time = None
-
-                    # Scroll the text right
-                    self.scroll_increment_sign = -1
-                
-                else:
-                    # No need to CPU limit when running in its own thread?
-                    time.sleep(0.02)
-                
                 next_render_time = time.time()
 
                 if not last_render_time:
@@ -633,18 +673,39 @@ class TextArea(BaseComponent):
                     # "get off zero" for the real increment calc logic to kick in.
                     scroll_position_increment = 1 * self.scroll_increment_sign
                 else:
+                    # Calculate how far to scroll based on time elapsed since last render
                     scroll_position_increment = int(self.horizontal_scroll_speed * (next_render_time - last_render_time) * self.scroll_increment_sign)
 
+                # Only render an update if we're going to move at least 1px
                 if abs(scroll_position_increment) > 0:
-                    self.horizontal_scroll_position += scroll_position_increment
-                    self.horizontal_scroll_position = max(0, min(self.horizontal_scroll_position, max_scroll))
+                    # max: Don't over-scroll when returning to the left edge (0)
+                    # min: Don't over-scroll when revealing the right edge (max_scroll)
+                    self.horizontal_scroll_position = max(
+                        0,
+                        min(self.horizontal_scroll_position + scroll_position_increment, max_scroll)
+                    )
+
+                    # Render the scroll update
+                    with self.renderer.lock:
+                        if not self.scrolling_active:
+                            # We were stopped while waiting for the lock
+                            continue
+
+                        # The pre-rendered text img slides within a cropping window
+                        img = self.rendered_text_img.crop((self.horizontal_scroll_position, 0, self.horizontal_scroll_position + self.visible_width, self.rendered_text_img.height))
+                        self.renderer.canvas.paste(img, (self.screen_x, self.screen_y - self.scroll_y))
+                        self.renderer.show_image()
 
                     last_render_time = next_render_time
+
                 else:
-                    # Wait to accumulate more time before scrolling
+                    # Wait to accumulate more time so we can scroll at least 1px
                     pass
 
+                # Free up the processor for a bit each loop
+                time.sleep(0.02)
 
+ 
     def render(self):
         """
             Even if we need to animate for scrolling, all instances should explicitly render
