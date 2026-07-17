@@ -17,11 +17,13 @@ class SettingsMenuView(View):
     HARDWARE = ButtonOption("Hardware", right_icon_name=SeedSignerIconConstants.CHEVRON_RIGHT)
     IO_TEST = ButtonOption("I/O test")
     DONATE = ButtonOption("Donate")
+    VERSION = ButtonOption("Version")
 
-    def __init__(self, visibility: str = SettingsConstants.VISIBILITY__GENERAL, selected_attr: str = None, initial_scroll: int = 0):
+    def __init__(self, visibility: str = SettingsConstants.VISIBILITY__GENERAL, selected_attr: str = None, selected_button_option: ButtonOption = None, initial_scroll: int = 0):
         super().__init__()
         self.visibility = visibility
         self.selected_attr = selected_attr
+        self.selected_button_option = selected_button_option
 
         # Used to preserve the rendering position in the list
         self.initial_scroll = initial_scroll
@@ -33,13 +35,6 @@ class SettingsMenuView(View):
         )
         button_data: list[ButtonOption] = [ButtonOption(e.display_name) for e in settings_entries]
 
-        selected_button = 0
-        if self.selected_attr:
-            for i, entry in enumerate(settings_entries):
-                if entry.attr_name == self.selected_attr:
-                    selected_button = i
-                    break
-
         if self.visibility == SettingsConstants.VISIBILITY__GENERAL:
             title = _("Settings")
 
@@ -49,6 +44,7 @@ class SettingsMenuView(View):
 
             button_data.append(self.IO_TEST)
             button_data.append(self.DONATE)
+            button_data.append(self.VERSION)
 
         elif self.visibility == SettingsConstants.VISIBILITY__ADVANCED:
             title = _("Advanced")
@@ -64,6 +60,15 @@ class SettingsMenuView(View):
         elif self.visibility == SettingsConstants.VISIBILITY__DEVELOPER:
             title = _("Dev Options")
             next_destination = None
+
+        selected_button = 0
+        if self.selected_button_option:
+            selected_button = button_data.index(self.selected_button_option)
+        elif self.selected_attr:
+            for i, entry in enumerate(settings_entries):
+                if entry.attr_name == self.selected_attr:
+                    selected_button = i
+                    break
 
         selected_menu_num = self.run_screen(
             ButtonListScreen,
@@ -96,6 +101,9 @@ class SettingsMenuView(View):
 
         elif button_data[selected_menu_num] == self.DONATE:
             return Destination(DonateView)
+        
+        elif button_data[selected_menu_num] == self.VERSION:
+            return Destination(VersionView)
 
         elif settings_entries[selected_menu_num].attr_name == SettingsConstants.SETTING__LOCALE:
             return Destination(LocaleSelectionView)
@@ -351,5 +359,29 @@ class IOTestView(View):
 class DonateView(View):
     def run(self):
         self.run_screen(settings_screens.DonateScreen)
+
+        return Destination(SettingsMenuView)
+
+
+
+class VersionView(View):
+    def run(self):
+        from seedsigner.helpers.version import Version
+
+        version_fork = Version.get_version_fork()
+        short_commit_hash = Version.get_short_commit_hash()
+
+        if Version.is_release_image():
+            # Don't display fork name or commit hash for release images
+            version_fork = None
+            short_commit_hash = None
+
+        self.run_screen(
+            settings_screens.VersionScreen,
+            version_name=Version.get_version_name(),
+            version_fork=version_fork,
+            version_timestamp=Version.get_version_timestamp(),
+            short_commit_hash=short_commit_hash,
+        )
 
         return Destination(SettingsMenuView)

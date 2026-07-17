@@ -1,4 +1,6 @@
+from datetime import datetime
 import logging
+import os
 import time
 import traceback
 
@@ -99,8 +101,6 @@ class Controller(Singleton):
         Note: In many/most cases you'll need to do the Controller import within a method
         rather than at the top in order avoid circular imports.
     """
-
-    VERSION = "0.8.7"
 
     # Declare class member vars with type hints to enable richer IDE support throughout
     # the code.
@@ -468,7 +468,7 @@ class Controller(Singleton):
             if ", line " in traceback_line:
                 line_info = traceback_line.split("/")[-1].replace("\"", "").replace("line ", "")
                 break
-        
+
         error = [
             exception_type,
             line_info,
