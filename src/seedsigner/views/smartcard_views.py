@@ -10,14 +10,17 @@ import json
 import logging
 import os
 import platform
+import re
 import struct
 import subprocess
+import sys
 import tempfile
 import time
 from pathlib import Path
 
 from embit.bip32 import HDKey
 from embit.descriptor import Descriptor
+from embit.psbt import PSBT
 from gettext import gettext as _
 
 from seedsigner.gui.components import (
@@ -34,10 +37,14 @@ from seedsigner.gui.screens import (
     ErrorScreen,
     seed_screens,
 )
-from seedsigner.gui.screens.tools_screens import ToolsCommonFilterScreen
+from seedsigner.gui.screens.tools_screens import (
+    ToolsCommonFilterScreen,
+    ToolsTextQRTextEntryScreen,
+    ToolsTextQRReviewTextScreen,
+)
 from seedsigner.gui.screens.screen import ButtonOption
 from seedsigner.hardware.microsd import MicroSD
-from seedsigner.helpers import embit_utils, seedkeeper_utils
+from seedsigner.helpers import embit_utils, ndef_helper, seedkeeper_utils
 from seedsigner.helpers.satochip_signer import (
     _call_with_timeout,
     _get_extended_key,
@@ -49,6 +56,7 @@ from seedsigner.models.settings_definition import SettingsConstants
 
 try:
     from pysatochip import satochip
+    from pysatochip.CardConnector import CardConnector
     from pysatochip.exception import UnexpectedSW12Error
     from pysatochip.JCconstants import (
         SEEDKEEPER_DIC_TYPE,
@@ -2747,6 +2755,7 @@ class ToolsKeycardAdvancedView(View):
             return Destination(ToolsKeycardBenchmarkMessageSignView)
 
         elif button_data[selected_menu_num] == self.BIAS_TEST:
+            from seedsigner.views.keycard_bias import ToolsKeycardBiasCheckView
             return Destination(ToolsKeycardBiasCheckView)
 
 
@@ -3407,6 +3416,7 @@ class ToolsSatochipAdvancedView(View):
             return Destination(ToolsSatochipBenchmarkMessageSignView)
 
         elif button_data[selected_menu_num] == self.BIAS_TEST:
+            from seedsigner.views.satochip_bias import ToolsSatochipBiasCheckView
             return Destination(ToolsSatochipBiasCheckView)
 
 class ToolsSatochipBenchmarkSignView(View):
@@ -3696,6 +3706,7 @@ class ToolsSatochipImportSeedView(View):
         elif button_data[selected_menu_num] == self.TYPE_SLIP39:
             return Destination(SeedSlip39MnemonicStartView)
         elif button_data[selected_menu_num] == self.CREATE:
+            from seedsigner.views.tools_views import ToolsMenuView
             return Destination(ToolsMenuView, view_args={"include_password_generator": False})
         elif button_data[selected_menu_num] == self.TYPE_ELECTRUM:
             return Destination(SeedElectrumMnemonicStartView)

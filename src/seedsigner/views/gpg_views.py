@@ -37,8 +37,28 @@ from .view import View, Destination, BackStackView, MainMenuView
 # Imported from tools_views for use by _text_qr_done_destination (defined near end of file)
 from .tools_views import ToolsMenuView, ToolsTextQRView
 
+# Shared helpers/screens used across GPG views (previously resolved via the
+# monolithic tools_views.py; made explicit after the module split).
+from seedsigner.gui.screens.tools_screens import (
+    ToolsTextQRTextEntryScreen,
+    ToolsTextQRReviewTextScreen,
+    ToolsTextQRTranscribeModePromptScreen,
+    ToolsTranscribeTextQRWholeQRScreen,
+    ToolsTranscribeTextQRZoomedInScreen,
+    ToolsTranscribeTextQRConfirmQRPromptScreen,
+)
+from seedsigner.helpers import seedkeeper_utils
+from seedsigner.helpers.iso7816 import format_sw_error
+from seedsigner.hardware.microsd import MicroSD
+from seedsigner.models.encode_qr import GenericStaticQrEncoder
+
 try:
     from pysatochip.JCconstants import SEEDKEEPER_DIC_TYPE, SEEDKEEPER_DIC_EXPORT_RIGHTS
+except ImportError:
+    pass
+
+try:
+    from pysatochip.CardConnector import UnexpectedSW12Error
 except ImportError:
     pass
 

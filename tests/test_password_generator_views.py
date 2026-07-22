@@ -1,6 +1,7 @@
 import embit.bip32 as embit_bip32
 import embit.bip85 as embit_bip85
 from seedsigner.views import tools_views
+import seedsigner.views.password_generator_views as pgv
 
 
 def _make_roll_count_view(password_type: str, entropy_source: str):
@@ -619,3 +620,211 @@ def test_network_info_back_returns_back_stack(monkeypatch):
     dest = tools_views.ToolsNetworkInfoView.run(view)
 
     assert dest.View_cls is tools_views.BackStackView
+
+
+# ---------------------------------------------------------------------------
+# Deep-execution coverage for the terminal generation views.
+#
+# These drive the camera / hardware-RNG / random-charset / BIP85-hex code paths
+# that reference helpers pulled into password_generator_views.py during the
+# tools_views.py module split (_derive_camera_entropy_bytes,
+# _derive_hardware_rng_entropy_bytes, _random_charset, BIP85_APP_HEX, ...).
+# Before the missing imports were restored these raised NameError only when the
+# line actually ran — which the menu-navigation walk never reaches because it
+# stops at intermediate screens. tests/test_no_undefined_names.py is the static
+# catch-all; these give runtime coverage of the exact reported crash paths.
+# ---------------------------------------------------------------------------
+_HEXDIGITS = "0123456789abcdefABCDEF"
+
+
+def _make_generate_view(password_type, entropy_source, **overrides):
+    view = object.__new__(tools_views.ToolsPasswordGenerateView)
+    view.password_type = password_type
+    view.entropy_source = entropy_source
+    view.strength_bits = overrides.get("strength_bits", 128)
+    view.random_options = overrides.get("random_options", {})
+    view.roll_data = overrides.get("roll_data", None)
+    view.roll_count = overrides.get("roll_count", None)
+    view.word_count = overrides.get("word_count", None)
+    view.word_separator = tools_views.PASSWORD_WORD_SEPARATOR_NONE
+    view.entropy_bytes_override = None
+    view.dice_sides = overrides.get("dice_sides", 6)
+
+    class _Controller:
+        pass
+
+    view.controller = _Controller()
+    return view
+
+
+def test_generate_view_camera_source_derives_entropy_and_clears_frames(monkeypatch):
+    """CAMERA source path (the exact line from the reported crash)."""
+    view = _make_generate_view(
+        tools_views.PASSWORD_TYPE_HEX, tools_views.PASSWORD_ENTROPY_CAMERA
+    )
+    view.controller.image_entropy_preview_frames = object()
+    view.controller.image_entropy_final_image = object()
+
+    monkeypatch.setattr(
+        pgv, "_derive_camera_entropy_bytes", lambda _frames, _final: b"\x02" * 32
+    )
+
+    dest = tools_views.ToolsPasswordGenerateView.run(view)
+
+    assert dest.View_cls is tools_views.ToolsPasswordReviewView
+    password = dest.view_args["password"]
+    assert len(password) == 32 and all(c in _HEXDIGITS for c in password)
+    # Collected frames must be cleared so the same entropy can never be reused.
+    assert view.controller.image_entropy_preview_frames is None
+    assert view.controller.image_entropy_final_image is None
+
+
+def test_generate_view_camera_poor_entropy_returns_back(monkeypatch):
+    """CAMERA source that fails the randomness check routes back with an error."""
+    view = _make_generate_view(
+        tools_views.PASSWORD_TYPE_HEX, tools_views.PASSWORD_ENTROPY_CAMERA
+    )
+    view.controller.image_entropy_preview_frames = object()
+    view.controller.image_entropy_final_image = object()
+
+    monkeypatch.setattr(
+        pgv, "_derive_camera_entropy_bytes", lambda _frames, _final: None
+    )
+    monkeypatch.setattr(
+        tools_views.ToolsPasswordGenerateView, "run_screen",
+        lambda self, *_a, **_k: 0,
+    )
+
+    dest = tools_views.ToolsPasswordGenerateView.run(view)
+
+    assert dest.View_cls is tools_views.BackStackView
+
+
+def test_generate_view_hardware_rng_source_builds_random_password(monkeypatch):
+    """HARDWARE_RNG source + RANDOM type exercises _derive_hardware_rng_entropy_bytes
+    and _random_charset."""
+    view = _make_generate_view(
+        tools_views.PASSWORD_TYPE_RANDOM,
+        tools_views.PASSWORD_ENTROPY_HARDWARE_RNG,
+        random_options={"lower": True, "digits": True},
+    )
+    view.controller.hardware_rng_is_healthy = True
+    view.controller.hardware_rng_failure_reason = None
+
+    monkeypatch.setattr(
+        pgv, "_derive_hardware_rng_entropy_bytes", lambda: b"\x03" * 64
+    )
+
+    dest = tools_views.ToolsPasswordGenerateView.run(view)
+
+    assert dest.View_cls is tools_views.ToolsPasswordReviewView
+    password = dest.view_args["password"]
+    charset = "abcdefghijklmnopqrstuvwxyz0123456789"
+    assert password and all(c in charset for c in password)
+
+
+def test_generate_view_hardware_rng_unhealthy_returns_back(monkeypatch):
+    """Unhealthy System RNG warns and routes back without deriving entropy."""
+    view = _make_generate_view(
+        tools_views.PASSWORD_TYPE_HEX, tools_views.PASSWORD_ENTROPY_HARDWARE_RNG
+    )
+    view.controller.hardware_rng_is_healthy = False
+    view.controller.hardware_rng_failure_reason = "health check failed"
+
+    monkeypatch.setattr(
+        tools_views.ToolsPasswordGenerateView, "run_screen",
+        lambda self, *_a, **_k: 0,
+    )
+
+    dest = tools_views.ToolsPasswordGenerateView.run(view)
+
+    assert dest.View_cls is tools_views.BackStackView
+
+
+def test_hardware_rng_entropy_view_caches_and_routes(monkeypatch):
+    """ToolsPasswordHardwareRngEntropyView.run() caches derived entropy and routes
+    to the word-separator step."""
+    view = object.__new__(tools_views.ToolsPasswordHardwareRngEntropyView)
+    view.password_type = tools_views.PASSWORD_TYPE_DICEWARE_EFF_SHORT
+    view.strength_bits = 64
+    view.random_options = {}
+
+    class _Controller:
+        hardware_rng_is_healthy = True
+        hardware_rng_failure_reason = None
+
+    view.controller = _Controller()
+
+    monkeypatch.setattr(
+        pgv, "_derive_hardware_rng_entropy_bytes", lambda: b"\x04" * 64
+    )
+
+    dest = tools_views.ToolsPasswordHardwareRngEntropyView.run(view)
+
+    assert dest.View_cls is tools_views.ToolsPasswordWordSeparatorView
+    assert dest.view_args["entropy_source"] == tools_views.PASSWORD_ENTROPY_HARDWARE_RNG
+    assert view.controller.password_generator_entropy_cache["entropy_bytes"] == b"\x04" * 64
+
+
+def test_bip85_generate_hex_uses_bip85_app_hex(monkeypatch):
+    """BIP85 Hex path derives with the BIP85_APP_HEX application number."""
+    master_xprv = "xprv9s21ZrQH143K2LBWUUQRFXhucrQqBpKdRRxNVq2zBqsx8HVqFk2uYo8kmbaLLHRdqtQpUm98uKfu3vca1LqdGhUtyoFnCNkfmXRyPXLjbKb"
+
+    view = object.__new__(tools_views.ToolsPasswordBIP85GenerateView)
+    view.password_type = tools_views.PASSWORD_TYPE_HEX
+    view.strength_bits = 256
+    view.random_options = {}
+    view.dice_sides = None
+    view.roll_count = None
+
+    class SeedObj:
+        @staticmethod
+        def get_root(_network=None):
+            return embit_bip32.HDKey.from_string(master_xprv)
+
+    class Storage:
+        seeds = [SeedObj()]
+
+    class Controller:
+        storage = Storage()
+
+        @staticmethod
+        def get_seed(_idx):
+            return SeedObj()
+
+    view.controller = Controller()
+
+    class S:
+        @staticmethod
+        def get_value(_key):
+            return "M"
+
+    view.settings = S()
+
+    class FakeIndexScreen:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def display(self):
+            return "0"
+
+    monkeypatch.setattr(
+        tools_views.seed_screens, "SeedBIP85SelectChildIndexScreen", FakeIndexScreen
+    )
+
+    captured = {}
+
+    def fake_derive_entropy(_root, app_no, params):
+        captured["app_no"] = app_no
+        captured["params"] = params
+        return bytes(range(32))
+
+    monkeypatch.setattr(embit_bip85, "derive_entropy", fake_derive_entropy)
+
+    dest = tools_views.ToolsPasswordBIP85GenerateView.run(view)
+
+    assert captured["app_no"] == tools_views.BIP85_APP_HEX
+    assert captured["params"] == [32, 0]
+    assert dest.View_cls is tools_views.ToolsPasswordGenerateView
+    assert dest.view_args["entropy_source"] == tools_views.PASSWORD_ENTROPY_BIP85
+    assert dest.view_args["roll_data"] == bytes(range(32))

@@ -38,14 +38,25 @@ from seedsigner.helpers import password_generation, diceware, mnemonic_generatio
 # Re-exported from tools_views.py (shared helpers used by password generation views)
 from .tools_views import (
     BIP85_APP_DICE,
+    BIP85_APP_HEX,
+    BIP85_APP_BASE64,
+    BIP85_APP_BASE85,
     ToolsImageEntropyLivePreviewView,
+    _bip85_supported_password_type,
     _cache_password_entropy,
     _clear_password_entropy_cache,
+    _derive_camera_entropy_bytes,
+    _derive_hardware_rng_entropy_bytes,
+    _dice_rolls_for_strength,
     _diceware_word_count,
+    _format_word_password,
     _get_password_entropy_cache,
     _is_diceware_password_type,
+    _random_charset,
     _strength_to_length,
 )
+
+from seedsigner.helpers import seedkeeper_utils
 
 # Re-exported from gpg_views.py (TextQR display views shared across modules)
 from .gpg_views import (
@@ -1208,6 +1219,7 @@ class ToolsPasswordBIP85GenerateView(View):
 
 def _save_password_to_seedkeeper(view: View, password: str) -> bool:
     from seedsigner.gui.screens.screen import LoadingScreenThread
+    from pysatochip.CardConnector import UnexpectedSW12Error
 
     label = seed_screens.SeedAddPassphraseScreen(title=_("Password Name")).display()
     if "is_back_button" in label:
