@@ -163,14 +163,6 @@ def normalize_descriptor_str(descriptor_str: str) -> str:
     return descriptor_str
 
 
-
-    root = bip32.HDKey.from_seed(seed_bytes, version=NETWORKS[embit_network]["xprv"])
-    xprv = root.derive(derivation_path)
-    xpub = xprv.to_public()
-    return xpub
-
-
-
 def get_single_sig_address(xpub: HDKey, script_type: str = SettingsConstants.NATIVE_SEGWIT, index: int = 0, is_change: bool = False, embit_network: str = "main") -> str:
     if is_change:
         pubkey = xpub.derive([1,index]).key
