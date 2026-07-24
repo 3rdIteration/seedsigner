@@ -74,9 +74,9 @@ class TestViewFlows(FlowTest):
         """
         Verify DoResetThread uses os.getpid() and sys.executable on seedsigner-os.
         """
-        original_hostname = Settings.HOSTNAME
+        original_env = Settings.OS_ENVIRONMENT
         try:
-            Settings.HOSTNAME = Settings.SEEDSIGNER_OS
+            Settings.OS_ENVIRONMENT = "seedsigner_os"
             thread = RestartView.DoResetThread()
             thread.keep_running = True
             with patch('subprocess.call') as mock_subprocess_call, \
@@ -89,16 +89,16 @@ class TestViewFlows(FlowTest):
                 assert cmd == f"kill {pid}; exec {python} /opt/src/main.py"
                 assert mock_subprocess_call.call_args[1] == {"shell": True}
         finally:
-            Settings.HOSTNAME = original_hostname
+            Settings.OS_ENVIRONMENT = original_env
 
 
     def test_restart_thread_command_desktop(self):
         """
         Verify DoResetThread uses os.getpid() on non-seedsigner-os (desktop).
         """
-        original_hostname = Settings.HOSTNAME
+        original_env = Settings.OS_ENVIRONMENT
         try:
-            Settings.HOSTNAME = "desktop-host"
+            Settings.OS_ENVIRONMENT = "desktop"
             thread = RestartView.DoResetThread()
             thread.keep_running = True
             with patch('subprocess.call') as mock_subprocess_call, \
@@ -110,7 +110,7 @@ class TestViewFlows(FlowTest):
                 assert cmd == f"kill {pid}"
                 assert mock_subprocess_call.call_args[1] == {"shell": True}
         finally:
-            Settings.HOSTNAME = original_hostname
+            Settings.OS_ENVIRONMENT = original_env
 
 
     def test_restart_thread_skips_kill_when_stopped(self):
