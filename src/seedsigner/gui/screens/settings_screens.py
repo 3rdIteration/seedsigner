@@ -528,6 +528,10 @@ class SystemInfoScreen(BaseTopNavScreen):
     microsd_serial: str = ""
     platform_name: str = ""
     platform_variant: str = ""
+    firmware_version: str = ""
+    source_location: str = ""
+    os_build: str = ""
+    app_build: str = ""
 
     def __post_init__(self):
         self.title = _("System Info")
@@ -536,6 +540,17 @@ class SystemInfoScreen(BaseTopNavScreen):
         info_lines = [
             _("Platform: {platform_name}").format(platform_name=self.platform_name),
             _("Variant: {platform_variant}").format(platform_variant=self.platform_variant),
+        ]
+        if self.firmware_version:
+            info_lines.append(_("Firmware: {firmware_version}").format(firmware_version=self.firmware_version))
+        if self.source_location:
+            info_lines.append(_("Source: {source_location}").format(source_location=self.source_location))
+        # OS/app build provenance is only present on SeedSigner OS images.
+        if self.os_build:
+            info_lines.append(_("OS: {os_build}").format(os_build=self.os_build))
+        if self.app_build:
+            info_lines.append(_("App: {app_build}").format(app_build=self.app_build))
+        info_lines += [
             _("Serial (CPU): {system_serial}").format(system_serial=self.system_serial),
             _("Serial (MicroSD): {microsd_serial}").format(microsd_serial=self.microsd_serial),
         ]

@@ -23,12 +23,17 @@ def load_boot_logo_image() -> Image.Image:
     from seedsigner.hardware.microsd import MicroSD
 
     default_logo = load_image(DEFAULT_LOGO_IMAGE)
-    custom_logo_path = MicroSD.get_microsd_dir() / CUSTOM_LOGO_FILENAME
 
-    if not custom_logo_path.is_file():
-        return default_logo
-
+    # The entire custom-logo lookup (microSD path resolution, existence check and
+    # image load) is best-effort: a storage error here happens at boot, before the
+    # main loop's exception handling, so it must never propagate. Fall back to the
+    # bundled default logo on any failure.
     try:
+        custom_logo_path = MicroSD.get_microsd_dir() / CUSTOM_LOGO_FILENAME
+
+        if not custom_logo_path.is_file():
+            return default_logo
+
         with Image.open(custom_logo_path) as custom_logo:
             custom_logo = custom_logo.convert("RGB")
 
@@ -43,7 +48,7 @@ def load_boot_logo_image() -> Image.Image:
 
         return custom_logo
     except Exception:
-        logger.warning("Failed to load custom logo at %s", custom_logo_path, exc_info=True)
+        logger.warning("Failed to load custom boot logo; using default", exc_info=True)
         return default_logo
 
 

@@ -27,9 +27,9 @@ class MicroSD(Singleton, BaseThread):
         """
         from seedsigner.models.settings import Settings  # avoid circular import
 
-        if Settings.HOSTNAME == Settings.SEEDSIGNER_OS:
-            return Path("/mnt/microsd")
-        elif os.path.exists("/home/pi"):
+        if Settings.is_seedsigner_os():
+            return Path(MicroSD.MOUNT_POINT)
+        elif Settings.is_dev_board():
             # Development boards typically have a pi user and use /boot for the
             # accessible microSD directory.
             return Path("/boot")
@@ -37,7 +37,12 @@ class MicroSD(Singleton, BaseThread):
             # Default to a local directory in the repository for desktop usage.
             repo_root = Path(__file__).resolve().parents[3]
             microsd_path = repo_root / "microsd"
-            microsd_path.mkdir(exist_ok=True)
+            # A path getter must never crash the app: swallow storage failures
+            # (e.g. ENOSPC / read-only fs) and just return the intended path.
+            try:
+                microsd_path.mkdir(exist_ok=True)
+            except OSError as e:
+                logger.warning(f"Could not create microSD dir {microsd_path}: {e}")
             return microsd_path
 
     @staticmethod
@@ -49,9 +54,7 @@ class MicroSD(Singleton, BaseThread):
         """
         from seedsigner.models.settings import Settings  # avoid circular import
 
-        return not (
-            Settings.HOSTNAME == Settings.SEEDSIGNER_OS or os.path.exists("/home/pi")
-        )
+        return Settings.is_desktop()
 
 
     @classmethod
@@ -72,10 +75,10 @@ class MicroSD(Singleton, BaseThread):
     def is_inserted(self):
         from seedsigner.models.settings import Settings  # Import here to avoid circular import issues
 
-        if Settings.HOSTNAME == Settings.SEEDSIGNER_OS:
+        if Settings.is_seedsigner_os():
             return os.path.exists(MicroSD.MOUNT_POINT)
         else:
-            # Always True for Raspi OS
+            # Always True for dev boards / desktop
             return True
 
 
@@ -90,17 +93,23 @@ class MicroSD(Singleton, BaseThread):
         action = ""
         
         # explicitly only microsd add/remove detection in seedsigner-os
-        if Settings.HOSTNAME == Settings.SEEDSIGNER_OS:
+        if Settings.is_seedsigner_os():
 
             # at start-up, get current status and inform Settings
             Settings.handle_microsd_state_change(
                 action=MicroSD.ACTION__INSERTED if self.is_inserted else MicroSD.ACTION__REMOVED
             )
 
-            if os.path.exists(self.FIFO_PATH):
-                os.remove(self.FIFO_PATH)
-            
-            os.mkfifo(self.FIFO_PATH, self.FIFO_MODE)
+            # Set up the mdev FIFO. A storage/permission failure here must not
+            # crash the detection thread; log and stop detection instead.
+            try:
+                if os.path.exists(self.FIFO_PATH):
+                    os.remove(self.FIFO_PATH)
+
+                os.mkfifo(self.FIFO_PATH, self.FIFO_MODE)
+            except OSError as e:
+                logger.error(f"Could not create microSD detection FIFO {self.FIFO_PATH}: {e}")
+                return
 
             while self.keep_running:
                 with open(self.FIFO_PATH) as fifo:

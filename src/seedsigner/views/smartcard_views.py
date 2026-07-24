@@ -4592,9 +4592,9 @@ class ToolsSatochipDIYView(View):
             from pathlib import Path
             from seedsigner.models.settings import Settings
 
-            if Settings.HOSTNAME == Settings.SEEDSIGNER_OS:
+            if Settings.is_seedsigner_os():
                 ant_path = "/mnt/diy/ant/bin/ant"
-            elif os.path.exists("/home/pi"):
+            elif Settings.is_dev_board():
                 ant_path = "/home/pi/Satochip-DIY/ant/bin/ant"
             else:
                 ant_path = str(Path.home() / "Satochip-DIY/ant/bin/ant")
@@ -5840,7 +5840,7 @@ class ToolsDIYBuildAppletsView(View):
         microsd_dir = MicroSD.get_microsd_dir()
         repo_root = Path(__file__).resolve().parents[3]
 
-        if Settings.HOSTNAME == Settings.SEEDSIGNER_OS:
+        if Settings.is_seedsigner_os():
             if not os.path.exists(microsd_dir / "javacard-build.xml"):
                 os.system(f"cp /opt/tools/javacard-build.xml.seedsigneros {microsd_dir}/javacard-build.xml")
 
@@ -5849,7 +5849,7 @@ class ToolsDIYBuildAppletsView(View):
 
             os.environ["JAVA_HOME"] = "/mnt/diy/jdk"
             commandString = ["/mnt/diy/ant/bin/ant", "-f", str(microsd_dir / "javacard-build.xml")]
-        elif os.path.exists("/home/pi"):
+        elif Settings.is_dev_board():
             if not os.path.exists(microsd_dir / "javacard-build.xml"):
                 run(["sudo", "cp", str(repo_root / "tools" / "javacard-build.xml.manual"), str(microsd_dir / "javacard-build.xml")], check=False)
 

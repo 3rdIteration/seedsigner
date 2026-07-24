@@ -4366,7 +4366,7 @@ class ToolsGPGVerifyFileView(View):
                 if shutil.which("sha256sum"):
                     from seedsigner.models.settings import Settings
 
-                    if Settings.HOSTNAME == Settings.SEEDSIGNER_OS:
+                    if Settings.is_seedsigner_os():
                         sha256_cmd = ["sha256sum", "-c", filechecked]
                     else:
                         sha256_cmd = ["sha256sum", "--check", filechecked, "--ignore-missing"]

@@ -739,8 +739,7 @@ class RestartPCSCView(View):
         # Restart PCSC (Just do this all the time if anything has changed)
         self.loading_screen = LoadingScreenThread(text="Restarting PCSC")
         self.loading_screen.start()
-        print(self.settings.HOSTNAME)
-        if self.settings.HOSTNAME == "seedsigner-os":
+        if self.settings.is_seedsigner_os():
             os.system("/etc/init.d/S01pcscd stop")
             time.sleep(1)
             os.system("/etc/init.d/S01pcscd start")
@@ -875,6 +874,7 @@ class SystemInfoView(View):
             "luckfox_22": "Luckfox Pico",
             "luckfox_40": "Luckfox Pico",
             "luckfox_pi": "Luckfox Pico",
+            "lc_lafrite": "Libre Computer",
         }
         platform_name = platform_map.get(profile, "Unknown")
 
@@ -899,14 +899,32 @@ class SystemInfoView(View):
 
         return platform_name, variant
 
+    def _format_build(self, os_release: dict, prefix: str) -> str:
+        branch = os_release.get(prefix + "BRANCH")
+        commit = os_release.get(prefix + "COMMIT")
+        date = os_release.get(prefix + "DATE")
+        if not any([branch, commit, date]):
+            return ""
+        short_commit = commit[:7] if commit and commit != "unknown" else (commit or "?")
+        return f"{branch or '?'} {short_commit} {date or ''}".strip()
+
     def run(self):
+        from seedsigner.controller import Controller
+        from seedsigner.helpers.seedsigner_os import get_os_release, is_running_from_microsd
+
         platform_name, platform_variant = self._get_platform_info()
+        os_release = get_os_release()
+
         self.run_screen(
             settings_screens.SystemInfoScreen,
             system_serial=self._get_system_serial(),
             microsd_serial=self._get_microsd_serial(),
             platform_name=platform_name,
             platform_variant=platform_variant,
+            firmware_version=Controller.VERSION,
+            source_location=_("MicroSD") if is_running_from_microsd() else _("Internal"),
+            os_build=self._format_build(os_release, "SEEDSIGNER_OS_"),
+            app_build=self._format_build(os_release, "SEEDSIGNER_APP_"),
         )
 
         return Destination(SettingsMenuView, view_args={"visibility": SettingsConstants.VISIBILITY__HARDWARE})

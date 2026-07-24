@@ -347,7 +347,7 @@ class RestartView(View):
             # Python binary names).  The shell subprocess survives the
             # parent being killed and can then start the new process.
             pid = os.getpid()
-            if Settings.HOSTNAME == Settings.SEEDSIGNER_OS:
+            if Settings.is_seedsigner_os():
                 python = shlex.quote(sys.executable)
                 call(f"kill {pid}; exec {python} /opt/src/main.py", shell=True)
             else:

@@ -46,6 +46,36 @@ def _detect_runtime_profile(_hostname: str) -> str:
     return "desktop"
 
 
+# OS environment (which operating-system image is running) — deliberately kept
+# distinct from RUNTIME_PROFILE (which board/hardware). The same board (e.g. a
+# Raspberry Pi) can run either SeedSigner OS or a development OS, so the board
+# must never imply the OS.
+OS_ENV_SEEDSIGNER = "seedsigner_os"
+OS_ENV_DEV_BOARD = "dev_board"
+OS_ENV_DESKTOP = "desktop"
+
+# Every SeedSigner OS (Buildroot) image ships this marker file, generated at
+# build time by seedsigner-os. Its presence is the primary, board- and
+# hostname-independent signal that we are running on real SeedSigner OS firmware.
+SEEDSIGNER_OS_MARKER = "/etc/seedsigner-os-release"
+
+
+def _detect_os_environment(runtime_profile: str, hostname: str, seedsigner_os_hostname: str) -> str:
+    # 1. Positive marker baked into every SeedSigner OS image (robust: independent
+    #    of board and hostname).
+    if os.path.exists(SEEDSIGNER_OS_MARKER):
+        return OS_ENV_SEEDSIGNER
+    # 2. Back-compat: images predating the marker set the hostname to "seedsigner-os".
+    if hostname == seedsigner_os_hostname:
+        return OS_ENV_SEEDSIGNER
+    # 3. A development board running a general-purpose OS (Raspberry Pi OS has a
+    #    "pi" user home).
+    if os.path.exists("/home/pi"):
+        return OS_ENV_DEV_BOARD
+    # 4. Anything else is a desktop / non-SeedSigner environment.
+    return OS_ENV_DESKTOP
+
+
 def _get_rpi_type() -> str:
     model = _read_device_model()
     if not model:
@@ -85,8 +115,12 @@ class Settings(Singleton):
     HOSTNAME = platform.uname()[1]
     SEEDSIGNER_OS = "seedsigner-os"
     RUNTIME_PROFILE = _detect_runtime_profile(HOSTNAME)
-    SETTINGS_FILENAME = "/mnt/microsd/settings.json" if HOSTNAME == SEEDSIGNER_OS else "settings.json"
-    SU_COMMAND_PREFIX = "" if HOSTNAME == SEEDSIGNER_OS else "sudo "
+
+    # Which OS image are we running (distinct from RUNTIME_PROFILE, the board)?
+    OS_ENVIRONMENT = _detect_os_environment(RUNTIME_PROFILE, HOSTNAME, SEEDSIGNER_OS)
+
+    SETTINGS_FILENAME = "/mnt/microsd/settings.json" if OS_ENVIRONMENT == OS_ENV_SEEDSIGNER else "settings.json"
+    SU_COMMAND_PREFIX = "" if OS_ENVIRONMENT == OS_ENV_SEEDSIGNER else "sudo "
 
     # Background save delay in seconds.  After `save()` is called the actual
     # disk write is deferred by this amount so that rapid-fire settings
@@ -103,6 +137,21 @@ class Settings(Singleton):
         if os.path.exists(src_filename):
             return src_filename
         return filename
+
+    @classmethod
+    def is_seedsigner_os(cls) -> bool:
+        """True when running on a SeedSigner OS (Buildroot) firmware image."""
+        return cls.OS_ENVIRONMENT == OS_ENV_SEEDSIGNER
+
+    @classmethod
+    def is_dev_board(cls) -> bool:
+        """True on a development board running a general-purpose OS (e.g. Raspberry Pi OS)."""
+        return cls.OS_ENVIRONMENT == OS_ENV_DEV_BOARD
+
+    @classmethod
+    def is_desktop(cls) -> bool:
+        """True in a desktop / non-SeedSigner environment."""
+        return cls.OS_ENVIRONMENT == OS_ENV_DESKTOP
 
     @classmethod
     def get_platform_default_hardware_config(cls) -> str | None:
@@ -504,7 +553,7 @@ class Settings(Singleton):
             logger.debug("Updating PCSC Ignore List to: %s", ':'.join(pcscd_ignore_devices))
 
             # Only do this on SeedSignerOS, not on dev environment
-            if self.HOSTNAME == self.SEEDSIGNER_OS:
+            if self.is_seedsigner_os():
                 self.patch_pcsc_initd_script(':'.join(pcscd_ignore_devices))
 
             #PCSC is restarted at the end
@@ -655,7 +704,7 @@ class Settings(Singleton):
                 self.loading_screen.start()
             except:
                 pass
-            if self.HOSTNAME == self.SEEDSIGNER_OS:
+            if self.is_seedsigner_os():
                 os.system("/etc/init.d/S01pcscd stop")
                 time.sleep(1)
                 os.system("/etc/init.d/S01pcscd start")
@@ -806,7 +855,7 @@ class Settings(Singleton):
         """
         from seedsigner.hardware.microsd import MicroSD
 
-        if Settings.HOSTNAME == Settings.SEEDSIGNER_OS:
+        if Settings.is_seedsigner_os():
             if action == MicroSD.ACTION__INSERTED:
                 # SD card was just inserted.
                 # Restore persistent settings back to defaults
