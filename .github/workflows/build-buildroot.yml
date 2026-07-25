@@ -1,6 +1,6 @@
-name: Build
+name: Build Buildroot
 run-name: >-
-  Build${{ github.event_name == 'workflow_dispatch'
+  Build Buildroot${{ github.event_name == 'workflow_dispatch'
     && format(
       ' target {0} from {1}@{2} (os {3}@{4}, smartcard {5})',
       github.event.inputs.target || 'pi0',

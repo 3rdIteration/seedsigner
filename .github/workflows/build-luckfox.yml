@@ -1,0 +1,75 @@
+name: Build Luckfox
+run-name: >-
+  Build Luckfox${{ github.event_name == 'workflow_dispatch'
+    && format(
+      ' {0}/{1} from {2}@{3} (os {4}@{5})',
+      github.event.inputs.hardware_type,
+      github.event.inputs.boot_medium,
+      github.repository,
+      github.event.inputs['source-ref'],
+      github.event.inputs['os-repo'],
+      github.event.inputs['os-ref']
+    )
+    || github.event_name == 'push' && format(' push {0}', github.ref_name)
+    || ''
+  }}
+
+# The Luckfox build is expensive (~1-2h), so it does not run on every PR. Use
+# "Run workflow" (workflow_dispatch) to test a branch, or push to main.
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      hardware_type:
+        description: Luckfox hardware model
+        required: true
+        type: choice
+        options:
+          - RV1103_Luckfox_Pico_Mini
+          - RV1106_Luckfox_Pico_Pro_Max
+          - RV1106_Luckfox_Pico_Pi
+        default: RV1103_Luckfox_Pico_Mini
+      boot_medium:
+        description: Boot medium
+        required: true
+        type: choice
+        options:
+          - SD_CARD
+          - SPI_NAND
+          - EMMC
+        default: SD_CARD
+      source-ref:
+        description: seedsigner app branch to build
+        required: true
+        default: dev
+      os-repo:
+        description: seedsigner-os repository (owner/name)
+        required: false
+        default: 3rdIteration/seedsigner-os
+      os-ref:
+        description: seedsigner-os ref (branch/tag/sha)
+        required: false
+        default: merge-luckfox-pico-build
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  build-luckfox:
+    permissions:
+      contents: read
+    # Reuses the authoritative Luckfox build from seedsigner-os, targeting this
+    # app repo at the current branch. Pin @<ref> to where the reusable workflow
+    # lives (update to @main once merged).
+    uses: 3rdIteration/seedsigner-os/.github/workflows/build-luckfox.yml@merge-luckfox-pico-build
+    secrets: inherit
+    with:
+      hardware_type: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.hardware_type || 'RV1103_Luckfox_Pico_Mini' }}
+      boot_medium: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.boot_medium || 'SD_CARD' }}
+      seedsigner_repo_url: https://github.com/${{ github.repository }}
+      seedsigner_branch: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs['source-ref'] || github.ref_name }}
+      seedsigner_os_repo: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs['os-repo'] || '3rdIteration/seedsigner-os' }}
+      seedsigner_os_ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs['os-ref'] || 'merge-luckfox-pico-build' }}
