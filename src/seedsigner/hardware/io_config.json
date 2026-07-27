@@ -178,7 +178,6 @@
           19
         ],
         "bl": "disabled",
-        "cs": "disabled",
         "spi_bus": 0,
         "spi_device": 0
       },
