@@ -1122,6 +1122,20 @@ class ResetScreen(BaseTopNavScreen):
         ))
 
 
+@dataclass
+class RebootToLoaderScreen(BaseTopNavScreen):
+    def __post_init__(self):
+        self.title = _("Flash Mode")
+        self.show_back_button = False
+        super().__post_init__()
+
+        self.components.append(TextArea(
+            text=_("Rebooting into USB flash (Loader) mode.\n\nConnect USB and use the Rockchip flash tool."),
+            screen_y=self.top_nav.height,
+            height=self.canvas_height - self.top_nav.height,
+        ))
+
+
 
 @dataclass
 class PowerOffNotRequiredScreen(BaseTopNavScreen):

@@ -277,9 +277,15 @@ class MainMenuView(View):
 class PowerOptionsView(View):
     RESET = ButtonOption("Restart", SeedSignerIconConstants.RESTART)
     POWER_OFF = ButtonOption("Power off", SeedSignerIconConstants.POWER)
+    REBOOT_LOADER = ButtonOption("Reboot to flash mode", SeedSignerIconConstants.MICROSD)
+
+    # Luckfox Pico (Rockchip) boards can reboot into rockusb Loader mode for flashing.
+    LUCKFOX_PROFILES = ("luckfox_22", "luckfox_40", "luckfox_pi")
 
     def run(self):
         button_data = [self.RESET, self.POWER_OFF]
+        if Settings.RUNTIME_PROFILE in self.LUCKFOX_PROFILES:
+            button_data.append(self.REBOOT_LOADER)
         selected_menu_num = self.run_screen(
             LargeButtonScreen,
             title=_("Reset / Power"),
@@ -289,12 +295,15 @@ class PowerOptionsView(View):
 
         if selected_menu_num == RET_CODE__BACK_BUTTON:
             return Destination(BackStackView)
-        
+
         elif button_data[selected_menu_num] == self.RESET:
             return Destination(RestartView)
-        
+
         elif button_data[selected_menu_num] == self.POWER_OFF:
             return Destination(PowerOffView)
+
+        elif button_data[selected_menu_num] == self.REBOOT_LOADER:
+            return Destination(RebootToLoaderView)
 
 
 @dataclass
@@ -352,6 +361,55 @@ class RestartView(View):
                 call(f"kill {pid}; exec {python} /opt/src/main.py", shell=True)
             else:
                 call(f"kill {pid}", shell=True)
+
+
+@dataclass
+class RebootToLoaderView(View):
+    """Reboot a Rockchip Luckfox Pico into rockusb Loader mode so it can be
+    re-flashed over USB (Rockchip SocToolKit / rkdeveloptool) without the BOOT
+    button."""
+
+    def run(self):
+        from seedsigner.gui.screens.screen import RebootToLoaderScreen
+        # Ensure any pending background settings save completes before rebooting.
+        Settings.get_instance().flush_save()
+
+        if self.renderer.is_screenshot_generator:
+            self.run_screen(RebootToLoaderScreen)
+            return
+
+        thread = RebootToLoaderView.DoRebootToLoaderThread()
+        thread.start()
+        try:
+            self.run_screen(RebootToLoaderScreen)
+        except Exception:
+            thread.stop()
+            raise
+
+    class DoRebootToLoaderThread(BaseThread):
+        def run(self):
+            import ctypes
+            import time
+
+            logger.info("Rebooting Luckfox into Loader (rockusb) mode")
+            # Give the screen a moment to render before the reboot.
+            time.sleep(0.25)
+            if not self.keep_running:
+                return
+
+            # busybox `reboot loader` ignores its mode argument, so issue the
+            # reboot(2) RESTART2 syscall directly. "loader" maps to the Rockchip
+            # device-tree reboot-mode entry; U-Boot then enters rockusb Loader mode.
+            #   ARM 32-bit __NR_reboot = 88
+            #   magic1 0xfee1dead, magic2 0x28121969 (LINUX_REBOOT_MAGIC2),
+            #   cmd 0xa1b2c3d4 (LINUX_REBOOT_CMD_RESTART2), arg "loader"
+            libc = ctypes.CDLL(None, use_errno=True)
+            rc = libc.syscall(88, 0xfee1dead, 0x28121969, 0xa1b2c3d4, b"loader")
+            # On success the syscall does not return; reaching here means it failed.
+            logger.error(
+                "reboot-to-loader syscall returned %s (errno %s)",
+                rc, ctypes.get_errno(),
+            )
 
 
 
