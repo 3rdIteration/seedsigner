@@ -6,7 +6,7 @@ from typing import Type
 from seedsigner.helpers.l10n import mark_for_translation as _mft
 from seedsigner.gui.components import SeedSignerIconConstants
 from seedsigner.gui.screens import RET_CODE__POWER_BUTTON, RET_CODE__BACK_BUTTON, RET_CODE__DISPLAY_TOGGLE
-from seedsigner.gui.screens.screen import BaseScreen, ButtonOption, LargeButtonScreen, WarningScreen, ErrorScreen
+from seedsigner.gui.screens.screen import BaseScreen, ButtonListScreen, ButtonOption, LargeButtonScreen, WarningScreen, ErrorScreen
 from seedsigner.models.settings import Settings, SettingsConstants
 from seedsigner.models.settings_definition import SettingsDefinition
 from seedsigner.models.threads import BaseThread
@@ -286,8 +286,13 @@ class PowerOptionsView(View):
         button_data = [self.RESET, self.POWER_OFF]
         if Settings.RUNTIME_PROFILE in self.LUCKFOX_PROFILES:
             button_data.append(self.REBOOT_LOADER)
+
+        # LargeButtonScreen only lays out 2 or 4 buttons; fall back to the
+        # scrollable list when the Luckfox "Reboot to flash mode" option makes it 3.
+        screen_cls = LargeButtonScreen if len(button_data) <= 2 else ButtonListScreen
+
         selected_menu_num = self.run_screen(
-            LargeButtonScreen,
+            screen_cls,
             title=_("Reset / Power"),
             show_back_button=True,
             button_data=button_data
