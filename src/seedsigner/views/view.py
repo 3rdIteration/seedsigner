@@ -5,7 +5,7 @@ from typing import Type
 
 from seedsigner.helpers.l10n import mark_for_translation as _mft
 from seedsigner.gui.components import SeedSignerIconConstants
-from seedsigner.gui.screens import RET_CODE__POWER_BUTTON, RET_CODE__BACK_BUTTON, RET_CODE__DISPLAY_TOGGLE
+from seedsigner.gui.screens import RET_CODE__POWER_BUTTON, RET_CODE__BACK_BUTTON, RET_CODE__DISPLAY_TOGGLE, RET_CODE__REBOOT_TO_LOADER
 from seedsigner.gui.screens.screen import BaseScreen, ButtonListScreen, ButtonOption, LargeButtonScreen, WarningScreen, ErrorScreen
 from seedsigner.models.settings import Settings, SettingsConstants
 from seedsigner.models.settings_definition import SettingsDefinition
@@ -233,6 +233,24 @@ class MainMenuView(View):
         from seedsigner.gui.toast import InfoToast
 
         controller = Controller.get_instance()
+
+        # Signal successful startup for the OS-side boot watchdog + U-Boot bootcount
+        # failover: reaching the Home view means the app is up. A cheap /tmp marker is
+        # (re)written each visit; the flash-backed bootcount reset runs once per boot.
+        if Settings.is_seedsigner_os():
+            try:
+                with open("/tmp/seedsigner-ready", "w") as _ready_file:
+                    _ready_file.write("1")
+            except OSError:
+                pass
+            if not getattr(controller, "boot_failover_cleared", False):
+                controller.boot_failover_cleared = True
+                try:
+                    from subprocess import run as _run, DEVNULL as _DEVNULL
+                    _run(["fw_setenv", "bootcount", "0"], stdout=_DEVNULL, stderr=_DEVNULL, check=False)
+                except Exception:
+                    logger.debug("bootcount reset skipped", exc_info=True)
+
         controller.storage.discard_pending_slip39_shares()
         controller.tools_common_card_filter = None
         controller.psbt_from_microsd = False
@@ -255,6 +273,11 @@ class MainMenuView(View):
             # Display driver was switched via very-long-press; re-render the
             # home screen with the new display dimensions.
             return Destination(MainMenuView)
+
+        if selected_menu_num == RET_CODE__REBOOT_TO_LOADER:
+            # KEY3 very-long-press on Home (Luckfox): reboot into rockusb Loader
+            # mode for flashing — a button-free recovery gesture.
+            return Destination(RebootToLoaderView)
 
         if button_data[selected_menu_num] == self.SCAN:
             from seedsigner.views.scan_views import ScanView

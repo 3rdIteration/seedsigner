@@ -447,6 +447,19 @@ class HardwareButtons(Singleton):
                 return True
         return False
 
+    def is_pressed(self, key) -> bool:
+        """Return True while `key` is physically held down (raw level, no debounce).
+
+        For hold / long-press polling loops: unlike check_for_low(), this does not
+        consume press/release edges — it just reports the current pin state.
+        """
+        if USING_GPIO:
+            pin = self._gpio_pins.get(key)
+            return pin is not None and not pin.read()
+        pygame.event.pump()
+        pg_key = self.reverse_map.get(key)
+        return bool(pg_key) and bool(pygame.key.get_pressed()[pg_key])
+
     def has_any_input(self) -> bool:
         if USING_GPIO:
             for key in HardwareButtonsConstants.ALL_KEYS:

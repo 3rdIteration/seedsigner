@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 RET_CODE__BACK_BUTTON = 1000
 RET_CODE__POWER_BUTTON = 1001
 RET_CODE__DISPLAY_TOGGLE = 1002
+RET_CODE__REBOOT_TO_LOADER = 1003
 
 
 
@@ -611,6 +612,13 @@ class LargeButtonScreen(BaseTopNavScreen):
     button_selected_color: str = GUIConstants.ACCENT_COLOR
     selected_button: int = 0
 
+    # Optional very-long-press: while `long_press_key` is held for `long_press_ms`,
+    # the screen returns `long_press_ret_code` instead of selecting; a short tap of
+    # that key still selects. Disabled by default (long_press_key is None).
+    long_press_key: str = None
+    long_press_ret_code: int = None
+    long_press_ms: int = 5000
+
     def __post_init__(self):
         if not self.button_font_name:
             self.button_font_name = GUIConstants.get_button_font_name()
@@ -683,6 +691,19 @@ class LargeButtonScreen(BaseTopNavScreen):
         self.buttons[self.selected_button].is_selected = True
 
 
+    def _is_long_press(self, key) -> bool:
+        """Block until `key` is released or held for `long_press_ms` ms.
+
+        Returns True if the key was held past the threshold (a very-long-press),
+        False if it was released first (a normal tap).
+        """
+        start_ms = int(time.time() * 1000)
+        while self.hw_inputs.is_pressed(key):
+            if int(time.time() * 1000) - start_ms >= self.long_press_ms:
+                return True
+            time.sleep(0.02)
+        return False
+
     def _run(self):
         def swap_selected_button(new_selected_button: int):
             self.buttons[self.selected_button].is_selected = False
@@ -704,6 +725,14 @@ class LargeButtonScreen(BaseTopNavScreen):
                     HardwareButtonsConstants.KEY_RIGHT
                 ] + HardwareButtonsConstants.KEYS__ANYCLICK
             )
+
+            # Tap-vs-hold on a configured long-press key (e.g. KEY3 -> reboot-to-loader
+            # on Home). Checked outside the render lock so screen threads aren't blocked
+            # during the hold; a short tap falls through to normal selection below.
+            if (self.long_press_key is not None
+                    and user_input == self.long_press_key
+                    and self._is_long_press(self.long_press_key)):
+                return self.long_press_ret_code
 
             with self.renderer.lock:
                 if user_input == HardwareButtonsConstants.KEY_UP:
@@ -1396,6 +1425,17 @@ class MainMenuScreen(LargeButtonScreen):
         # State for tracking the very-long-press
         self._hold_key = None
         self._hold_start_ms = None
+
+        # On Luckfox Pico boards, a very-long-press of KEY3 on Home reboots into
+        # rockusb Loader mode (same action as the Power menu's "Reboot to flash
+        # mode") — a button-free recovery gesture. Enabled only on Luckfox; a short
+        # KEY3 tap still selects. Non-Luckfox leaves long_press_key None (unchanged).
+        from seedsigner.models.settings import Settings
+        from seedsigner.views.view import PowerOptionsView
+        if Settings.RUNTIME_PROFILE in PowerOptionsView.LUCKFOX_PROFILES:
+            self.long_press_key = HardwareButtonsConstants.KEY3
+            self.long_press_ret_code = RET_CODE__REBOOT_TO_LOADER
+            self.long_press_ms = self.VERY_LONG_PRESS_MS
 
     def _run_callback(self):
         from seedsigner.models.settings import Settings
