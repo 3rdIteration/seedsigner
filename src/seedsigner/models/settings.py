@@ -15,6 +15,7 @@ from seedsigner.hardware.io_config import (
     get_hardware_profile_label,
     runtime_profile_to_hardware_profile,
 )
+from seedsigner.hardware.microsd import resolve_seedsigner_os_data_dir
 from seedsigner.models.settings_definition import SettingsConstants, SettingsDefinition
 from seedsigner.models.singleton import Singleton
 
@@ -119,7 +120,13 @@ class Settings(Singleton):
     # Which OS image are we running (distinct from RUNTIME_PROFILE, the board)?
     OS_ENVIRONMENT = _detect_os_environment(RUNTIME_PROFILE, HOSTNAME, SEEDSIGNER_OS)
 
-    SETTINGS_FILENAME = "/mnt/microsd/settings.json" if OS_ENVIRONMENT == OS_ENV_SEEDSIGNER else "settings.json"
+    # On SeedSigner OS settings persist on the removable card / writable data dir, which is
+    # /mnt/microsd on Pi-style builds and /mnt/sdcard on Luckfox (see resolver). Resolved at
+    # process start (after boot mounts are in place); tests reassign this attribute directly.
+    SETTINGS_FILENAME = (
+        os.path.join(resolve_seedsigner_os_data_dir(), "settings.json")
+        if OS_ENVIRONMENT == OS_ENV_SEEDSIGNER else "settings.json"
+    )
     SU_COMMAND_PREFIX = "" if OS_ENVIRONMENT == OS_ENV_SEEDSIGNER else "sudo "
 
     # Background save delay in seconds.  After `save()` is called the actual
@@ -392,6 +399,12 @@ class Settings(Singleton):
             from seedsigner.hardware.microsd import MicroSD
             if self._data[SettingsConstants.SETTING__PERSISTENT_SETTINGS] == SettingsConstants.OPTION__ENABLED and MicroSD.get_instance().is_inserted:
                 data_snapshot = dict(self._data)
+                # Ensure the target dir exists (e.g. a card-less NAND image where the
+                # /mnt/sdcard mountpoint dir may not be present yet). Best-effort; the
+                # outer try/except keeps a full/read-only fs from crashing the save.
+                settings_dir = os.path.dirname(Settings.SETTINGS_FILENAME)
+                if settings_dir:
+                    os.makedirs(settings_dir, exist_ok=True)
                 with open(Settings.SETTINGS_FILENAME, 'w') as settings_file:
                     json.dump(data_snapshot, settings_file, indent=4)
                     settings_file.flush()

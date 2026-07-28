@@ -9,6 +9,38 @@ from seedsigner.models.threads import BaseThread
 logger = logging.getLogger(__name__)
 
 
+# SeedSigner-OS removable/persistent data dirs, in priority order. "/mnt/microsd" is the
+# Raspberry-Pi / Buildroot convention; "/mnt/sdcard" is where the Luckfox Pico SDK auto-mounts
+# the physical card (and, with no card, an empty mountpoint on the writable NAND/eMMC rootfs, so
+# writing there gives persistent settings without a dedicated partition).
+MICROSD_DIR_CANDIDATES = ("/mnt/microsd", "/mnt/sdcard")
+
+
+def resolve_seedsigner_os_data_dir() -> str:
+    """Return the SeedSigner-OS microSD / persistent-data directory.
+
+    Prefers a candidate that is an active mountpoint (a real card mounted at either
+    location wins); otherwise the first candidate that exists as a directory (the
+    writable-rootfs fallback used on card-less NAND/eMMC images); otherwise the
+    canonical default ``/mnt/microsd``.
+
+    Platform note: ``/mnt/sdcard`` only exists on Luckfox (the SDK creates it). On
+    Raspberry Pi / La Frite the root filesystem is stateless (wipes on reboot), so
+    persistence there *requires* a physical card; this resolver returns
+    ``/mnt/microsd`` unchanged on those platforms (no ``/mnt/sdcard`` to match), so
+    real-card detection and the persistent-settings enable/disable gating are
+    preserved exactly. Only on Luckfox, whose root is writable, does the card-less
+    ``/mnt/sdcard`` mountpoint provide a persistent store.
+    """
+    for path in MICROSD_DIR_CANDIDATES:
+        if os.path.ismount(path):
+            return path
+    for path in MICROSD_DIR_CANDIDATES:
+        if os.path.isdir(path):
+            return path
+    return MICROSD_DIR_CANDIDATES[0]
+
+
 class MicroSD(Singleton, BaseThread):
     MOUNT_POINT = "/mnt/microsd"
     FIFO_PATH = "/tmp/mdev_fifo"
@@ -28,7 +60,7 @@ class MicroSD(Singleton, BaseThread):
         from seedsigner.models.settings import Settings  # avoid circular import
 
         if Settings.is_seedsigner_os():
-            return Path(MicroSD.MOUNT_POINT)
+            return Path(resolve_seedsigner_os_data_dir())
         elif Settings.is_dev_board():
             # Development boards typically have a pi user and use /boot for the
             # accessible microSD directory.
@@ -76,7 +108,7 @@ class MicroSD(Singleton, BaseThread):
         from seedsigner.models.settings import Settings  # Import here to avoid circular import issues
 
         if Settings.is_seedsigner_os():
-            return os.path.exists(MicroSD.MOUNT_POINT)
+            return os.path.exists(resolve_seedsigner_os_data_dir())
         else:
             # Always True for dev boards / desktop
             return True
