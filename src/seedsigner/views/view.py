@@ -236,7 +236,9 @@ class MainMenuView(View):
 
         # Signal successful startup for the OS-side boot watchdog + U-Boot bootcount
         # failover: reaching the Home view means the app is up. A cheap /tmp marker is
-        # (re)written each visit; the flash-backed bootcount reset runs once per boot.
+        # (re)written each visit; the boot-counter clear runs once per boot. U-Boot's
+        # boot counter is memory-backed (CONFIG_SYS_BOOTCOUNT_ADDR = GRF OS_REG scratch
+        # register 0xFF020218), so clearing it via devmem writes no flash.
         if Settings.is_seedsigner_os():
             try:
                 with open("/tmp/seedsigner-ready", "w") as _ready_file:
@@ -247,9 +249,9 @@ class MainMenuView(View):
                 controller.boot_failover_cleared = True
                 try:
                     from subprocess import run as _run, DEVNULL as _DEVNULL
-                    _run(["fw_setenv", "bootcount", "0"], stdout=_DEVNULL, stderr=_DEVNULL, check=False)
+                    _run(["devmem", "0xFF020218", "32", "0"], stdout=_DEVNULL, stderr=_DEVNULL, check=False)
                 except Exception:
-                    logger.debug("bootcount reset skipped", exc_info=True)
+                    logger.debug("boot-counter clear skipped", exc_info=True)
 
         controller.storage.discard_pending_slip39_shares()
         controller.tools_common_card_filter = None
