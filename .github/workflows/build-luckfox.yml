@@ -1,11 +1,12 @@
-name: Build Luckfox
+name: Build Luckfox Pico
 run-name: >-
-  Build Luckfox${{ github.event_name == 'workflow_dispatch'
+  Build Luckfox Pico${{ github.event_name == 'workflow_dispatch'
     && format(
-      ' {0}/{1} from {2}@{3} (os {4}@{5})',
+      ' {0}/{1} {2} from {3}@{4} (os {5}@{6})',
       github.event.inputs.hardware_type,
       github.event.inputs.boot_medium,
-      github.repository,
+      github.event.inputs.build_variant,
+      github.event.inputs['app-repo'] || github.repository,
       github.event.inputs['source-ref'],
       github.event.inputs['os-repo'],
       github.event.inputs['os-ref']
@@ -23,35 +24,81 @@ on:
   workflow_dispatch:
     inputs:
       hardware_type:
-        description: Luckfox hardware model
+        description: Luckfox hardware model (ALL builds every valid hardware/boot combination)
         required: true
         type: choice
         options:
+          - ALL
           - RV1103_Luckfox_Pico_Mini
           - RV1106_Luckfox_Pico_Pro_Max
           - RV1106_Luckfox_Pico_Pi
         default: RV1103_Luckfox_Pico_Mini
       boot_medium:
-        description: Boot medium
+        description: Boot medium (ALL builds every valid boot medium for the selected hardware)
         required: true
         type: choice
         options:
+          - ALL
           - SD_CARD
           - SPI_NAND
           - EMMC
         default: SD_CARD
+      build_variant:
+        description: 'non-dev = hardened/air-gapped (no serial login, no USB adb/RNDIS, no dev tools); dev = serial console + adb shell'
+        required: true
+        type: choice
+        options:
+          - non-dev
+          - dev
+        default: non-dev
+      usb_mode:
+        description: 'USB role: host = drive USB peripherals (camera/smartcard), no adb; gadget = USB device mode with adb; otg = dual-role. auto follows build_variant (non-dev=host, dev=gadget)'
+        required: false
+        type: choice
+        options:
+          - auto
+          - host
+          - gadget
+          - otg
+        default: auto
+      debug_network:
+        description: 'Ethernet debug channel (telnet/ssh root shell over the network). auto follows build_variant (non-dev=off, dev=on)'
+        required: false
+        type: choice
+        options:
+          - auto
+          - 'on'
+          - 'off'
+        default: auto
+      disable_uart2_console_debug:
+        description: 'Serial console (ttyFIQ0) override: auto follows build_variant (non-dev=off, dev=on)'
+        required: false
+        type: choice
+        options:
+          - auto
+          - 'true'
+          - 'false'
+        default: auto
       source-ref:
-        description: seedsigner app branch to build
+        description: The seedsigner ref (tag/branch/sha1) to use
         required: true
         default: dev
+      app-repo:
+        description: The repository containing the SeedSigner application sources
+        required: false
+        default: 3rdIteration/seedsigner
       os-repo:
-        description: seedsigner-os repository (owner/name)
+        description: The repository containing the SeedSigner OS sources
         required: false
         default: 3rdIteration/seedsigner-os
       os-ref:
-        description: seedsigner-os ref (branch/tag/sha)
+        description: The seedsigner-os ref (tag/branch/sha1) to use
         required: false
         default: merge-luckfox-pico-build
+      release_tag:
+        description: Upload artifacts to a GitHub Release with this tag (leave empty to skip release upload)
+        required: false
+        default: ''
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
@@ -60,7 +107,8 @@ concurrency:
 jobs:
   build-luckfox:
     permissions:
-      contents: read
+      # write so the reusable workflow can upload to a release when release_tag is set
+      contents: write
     # Reuses the authoritative Luckfox build from seedsigner-os, targeting this
     # app repo at the current branch. Pin @<ref> to where the reusable workflow
     # lives (update to @main once merged).
@@ -69,7 +117,12 @@ jobs:
     with:
       hardware_type: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.hardware_type || 'RV1103_Luckfox_Pico_Mini' }}
       boot_medium: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.boot_medium || 'SD_CARD' }}
-      seedsigner_repo_url: https://github.com/${{ github.repository }}
+      build_variant: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.build_variant || 'non-dev' }}
+      usb_mode: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.usb_mode || 'auto' }}
+      debug_network: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.debug_network || 'auto' }}
+      disable_uart2_console_debug: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.disable_uart2_console_debug || 'auto' }}
+      seedsigner_repo_url: https://github.com/${{ github.event_name == 'workflow_dispatch' && github.event.inputs['app-repo'] || github.repository }}
       seedsigner_branch: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs['source-ref'] || github.ref_name }}
       seedsigner_os_repo: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs['os-repo'] || '3rdIteration/seedsigner-os' }}
       seedsigner_os_ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs['os-ref'] || 'merge-luckfox-pico-build' }}
+      release_tag: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag || '' }}
