@@ -652,3 +652,102 @@ def test_keycard_import_seed_returns_sw_when_extended_fallback_fails(monkeypatch
     _resp, sw1, sw2 = connector.card_bip32_import_seed(b"\x01" * 64)
 
     assert (sw1, sw2) == (0x69, 0x85)
+
+
+def _make_ndef_mock_connector(monkeypatch, *, get_exc=None, store_exc=None):
+    """Keycard adapter wired to a fake card exposing the NDEF data slot."""
+    from seedsigner.helpers.keycard_connector import KeycardSatochipConnector
+
+    class MockTransport:
+        def connect(self):
+            return None
+
+        def disconnect(self):
+            return None
+
+    class MockInner:
+        is_initialized = True
+        is_pin_verified = True
+
+        def __init__(self):
+            self.transport = MockTransport()
+            self.stored = {}
+
+        def select(self):
+            return type("Info", (), {"instance_uid": b""})
+
+        def pair(self, _pairing_password):
+            return (0, b"k" * 32)
+
+        def open_secure_channel(self, _pairing_index, _pairing_key):
+            return None
+
+        def get_data(self, slot=None):
+            if get_exc is not None:
+                raise get_exc
+            return self.stored.get(slot, b"")
+
+        def store_data(self, data, slot=None):
+            if store_exc is not None:
+                raise store_exc
+            self.stored[slot] = bytes(data)
+
+    class MockConstants:
+        class StorageSlot:
+            PUBLIC = 0x00
+            NDEF = 0x01
+
+    monkeypatch.setattr(
+        "seedsigner.helpers.keycard_connector.get_keycard_class",
+        lambda: (MockInner, MockConstants),
+    )
+
+    connector = KeycardSatochipConnector.create(card_filter=["satochip"])
+    connector.set_pin(0, list(b"123456"))
+    return connector
+
+
+def test_keycard_ndef_set_get_roundtrip(monkeypatch):
+    """card_set_ndef stores into the Keycard NDEF slot; card_get_ndef reads it
+    back; return shapes mirror pysatochip so the NDEF views work unchanged."""
+    connector = _make_ndef_mock_connector(monkeypatch)
+
+    ndef_bytes = bytes.fromhex("0003D00000")  # empty NDEF record, 2-byte length prefix
+    _resp, sw1, sw2 = connector.card_set_ndef(ndef_bytes)
+    assert (sw1, sw2) == (0x90, 0x00)
+    # Stored in the NDEF slot (0x01), not the PUBLIC slot
+    assert connector._card.stored == {0x01: ndef_bytes}
+
+    _resp, sw1, sw2, readback = connector.card_get_ndef()
+    assert (sw1, sw2) == (0x90, 0x00)
+    assert readback == ndef_bytes
+
+    _resp, sw1, sw2, policy, readback_v2 = connector.card_get_ndef_v2()
+    assert (sw1, sw2) == (0x90, 0x00)
+    assert policy == 0x01
+    assert readback_v2 == ndef_bytes
+
+
+def test_keycard_ndef_get_surfaces_real_sw(monkeypatch):
+    """A card error must come back as its real status word, not an exception."""
+
+    class SWError(Exception):
+        def __init__(self):
+            super().__init__("APDU failed")
+            self.status_word = 0x6A82
+
+    connector = _make_ndef_mock_connector(monkeypatch, get_exc=SWError())
+    _resp, sw1, sw2, readback = connector.card_get_ndef()
+    assert (sw1, sw2) == (0x6A, 0x82)
+    assert readback == b""
+
+
+def test_keycard_ndef_set_surfaces_real_sw(monkeypatch):
+    class SWError(Exception):
+        def __init__(self):
+            super().__init__("APDU failed")
+            self.status_word = 0x6985
+
+    connector = _make_ndef_mock_connector(monkeypatch, store_exc=SWError())
+    _resp, sw1, sw2 = connector.card_set_ndef(bytes.fromhex("0003D00000"))
+    assert (sw1, sw2) == (0x69, 0x85)

@@ -51,22 +51,25 @@ from seedsigner.helpers.satochip_signer import (
     format_path_string,
     normalize_signature_der,
 )
+from seedsigner.helpers.iso7816 import format_sw_error
 from seedsigner.models.seed import InvalidSeedException, Seed, XprvSeed
 from seedsigner.models.settings_definition import SettingsConstants
 
+logger = logging.getLogger(__name__)
+
 try:
-    from pysatochip import satochip
-    from pysatochip.CardConnector import CardConnector
-    from pysatochip.exception import UnexpectedSW12Error
+    from pysatochip.CardConnector import CardConnector, UnexpectedSW12Error
     from pysatochip.JCconstants import (
         SEEDKEEPER_DIC_TYPE,
         SEEDKEEPER_DIC_ORIGIN,
         SEEDKEEPER_DIC_EXPORT_RIGHTS,
         BIP39_WORDLIST_DIC,
     )
-    from pysatochip.satochip_protocol_helper import format_sw_error
-except ImportError:
-    pass
+except ImportError as e:
+    # Never swallow this silently: with pysatochip absent (or an import
+    # inside this block wrong) every name above stays unbound and views
+    # would die later with a NameError instead of a clear log line.
+    logger.warning("pysatochip import failed; smartcard views degraded: %s", e)
 
 from .view import View, Destination, BackStackView, MainMenuView
 from .seed_views import (
@@ -78,8 +81,6 @@ from .seed_views import (
     SeedKeeperSelectView,
     SeedSlip39MnemonicStartView,
 )
-
-logger = logging.getLogger(__name__)
 
 
 class ToolsSmartcardMenuView(View):

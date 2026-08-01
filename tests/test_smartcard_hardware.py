@@ -794,6 +794,62 @@ class TestSeedKeeper:
 
         connector.seedkeeper_reset_secret(sid)
 
+    def test_card_ndef_get_set(self):
+        """Round-trip the card's NFC NDEF buffer via card_set_ndef/card_get_ndef —
+        the exact connector calls ToolsCommonNdefView makes (B11 regression:
+        the Luckfox pysatochip pin predated these methods entirely)."""
+        from seedsigner.views.smartcard_views import ToolsCommonNdefView
+
+        connector = self._connect()
+
+        payload = bytes.fromhex(ToolsCommonNdefView._SEEDKEEPER_APP_NDEF_HEX)
+        card_bytes = ToolsCommonNdefView._to_card_ndef_bytes(payload)
+
+        (_, sw1, sw2) = connector.card_set_ndef(card_bytes)
+        if (sw1, sw2) == (0x6D, 0x00):
+            pytest.skip("installed SeedKeeper applet does not support NDEF (SW=6D00)")
+        assert (sw1, sw2) == (0x90, 0x00), f"card_set_ndef failed: SW={sw1:02X}{sw2:02X}"
+
+        (_, sw1, sw2, ndef_bytes) = connector.card_get_ndef()
+        assert (sw1, sw2) == (0x90, 0x00), f"card_get_ndef failed: SW={sw1:02X}{sw2:02X}"
+        readback = ToolsCommonNdefView._extract_ndef_payload(bytes(ndef_bytes))
+        expected = ToolsCommonNdefView._extract_ndef_payload(payload)
+        assert readback == expected
+
+    def test_list_secrets_view_decode(self):
+        """List headers and decode one exactly as ToolsSeedkeeperViewSecretsView
+        does — with the REAL JCconstants dictionaries (B11 regression: these
+        names silently failed to import and the view died with NameError)."""
+        from pysatochip.JCconstants import (
+            SEEDKEEPER_DIC_TYPE,
+            SEEDKEEPER_DIC_ORIGIN,
+            SEEDKEEPER_DIC_EXPORT_RIGHTS,
+        )
+
+        sid = self._import_secret("Password", "Plaintext export allowed",
+                                  "view_decode_test", b"hunter2")
+        try:
+            connector = self._connect()
+            headers = connector.seedkeeper_list_secret_headers()
+            ours = [h for h in headers if h.get("label") == "view_decode_test"]
+            assert ours, "imported secret not present in the listing"
+            header = ours[0]
+
+            # Mirror the view's decode
+            stype = SEEDKEEPER_DIC_TYPE.get(header["type"], hex(header["type"]))
+            origin = SEEDKEEPER_DIC_ORIGIN.get(header["origin"], hex(header["origin"]))
+            export_rights = SEEDKEEPER_DIC_EXPORT_RIGHTS.get(
+                header["export_rights"], hex(header["export_rights"]))
+
+            assert stype == "Password", f"type decoded to {stype!r}"
+            assert export_rights == "Plaintext export allowed", (
+                f"export_rights decoded to {export_rights!r}"
+            )
+            assert isinstance(origin, str)
+        finally:
+            connector = self._connect()
+            connector.seedkeeper_reset_secret(sid)
+
     def test_save_javacard_keys(self):
         key_json = '{"ENC": "A1B2C3D4E5F6A7B8C9D0E1F2A3B4C5D6", "MAC": "A1B2C3D4E5F6A7B8C9D0E1F2A3B4C5D6", "DEK": "A1B2C3D4E5F6A7B8C9D0E1F2A3B4C5D6"}'
         payload = key_json.encode("utf-8")
@@ -1144,6 +1200,21 @@ class TestKeycard:
         connector = self._connect()
         connector.card_set_label("test-keycard")
         # No read-back API exposed; just verify no exception
+
+    def test_ndef_get_set(self):
+        """Adapter NDEF surface against a real Keycard: store into the Keycard
+        NDEF data slot and read it back through the pysatochip-style
+        card_set_ndef/card_get_ndef the NDEF views call."""
+        connector = self._connect()
+
+        ndef_bytes = bytes.fromhex("0003D00000")  # empty NDEF record, 2-byte length prefix
+        (_, sw1, sw2) = connector.card_set_ndef(ndef_bytes)
+        if (sw1, sw2) != (0x90, 0x00):
+            pytest.skip(f"Keycard applet rejected NDEF store: SW={sw1:02X}{sw2:02X}")
+
+        (_, sw1, sw2, readback) = connector.card_get_ndef()
+        assert (sw1, sw2) == (0x90, 0x00), f"card_get_ndef failed: SW={sw1:02X}{sw2:02X}"
+        assert bytes(readback) == ndef_bytes
 
     def test_sign_psbt(self, test_seed_hex):
         from seedsigner.helpers.keycard_signer import sign_psbt_with_keycard

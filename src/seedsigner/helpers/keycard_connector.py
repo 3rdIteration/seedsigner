@@ -789,6 +789,44 @@ class KeycardSatochipConnector:
         self._card.remove_key()
         return ([], 0x90, 0x00)
 
+    # Keycard stores NDEF content in its dedicated NDEF data slot
+    # (STORE DATA / GET DATA); expose it through the pysatochip-style
+    # card_*_ndef surface the NDEF views call. Return shapes mirror
+    # pysatochip.CardConnector so the views can't tell the backends apart.
+
+    def card_get_ndef(self):
+        self._ensure_secure_channel()
+        try:
+            data = self._card.get_data(slot=self._constants.StorageSlot.NDEF)
+        except Exception as exc:
+            status_word = self._extract_status_word(exc)
+            if status_word is None:
+                raise
+            sw1, sw2 = self._sw_to_tuple(status_word)
+            return ([], sw1, sw2, b"")
+        ndef_bytes = bytes(data or b"")
+        return (list(ndef_bytes), 0x90, 0x00, ndef_bytes)
+
+    def card_get_ndef_v2(self):
+        # v2 parity (Satodime adds an NDEF policy byte); the Keycard slot is
+        # always readable once stored, so report the "enabled" policy 0x01.
+        response, sw1, sw2, ndef_bytes = self.card_get_ndef()
+        return (response, sw1, sw2, 0x01, ndef_bytes)
+
+    def card_set_ndef(self, ndef_bytes):
+        self._ensure_secure_channel()
+        sw1, sw2 = self._verify_pin_sw()
+        if (sw1, sw2) != (0x90, 0x00):
+            return ([], sw1, sw2)
+        try:
+            self._card.store_data(bytes(ndef_bytes), slot=self._constants.StorageSlot.NDEF)
+        except Exception as exc:
+            status_word = self._extract_status_word(exc)
+            if status_word is None:
+                raise
+            return ([], *self._sw_to_tuple(status_word))
+        return ([], 0x90, 0x00)
+
     def card_bip32_get_authentikey(self):
         key = self._card.ident()
         wrapped = ECPubkeyCompat(key)
