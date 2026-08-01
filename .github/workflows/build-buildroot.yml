@@ -40,7 +40,7 @@ on:
         default: dev
         required: true
       target:
-        description: Build target profile (pi0, pi2, pi02w, pi4, or "all" for every target)
+        description: 'Build target profile: pi0, pi02w, pi2, pi4, lafrite, or "all" for every target (lafrite has smartcard-only configs, so it requires smartcard enabled)'
         required: false
         default: pi0
       smartcard:
@@ -97,14 +97,15 @@ jobs:
       fail-fast: false
       matrix:
         # PRs build both pi0 and pi02w; push defaults to pi0;
-        # workflow_dispatch uses user input ("all" expands to every target)
+        # workflow_dispatch uses user input ("all" expands to every target,
+        # including lafrite — which only has smartcard configs upstream)
         target: >-
           ${{
             github.event_name == 'pull_request'
               && fromJSON('["pi0", "pi02w"]')
             || github.event_name == 'workflow_dispatch'
               && (github.event.inputs.target == 'all'
-                && fromJSON('["pi0", "pi02w", "pi2", "pi4"]')
+                && fromJSON('["pi0", "pi02w", "pi2", "pi4", "lafrite"]')
                 || fromJSON(format('["{0}"]', github.event.inputs.target || 'pi0')))
             || fromJSON('["pi0"]')
           }}
