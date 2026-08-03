@@ -3650,17 +3650,23 @@ class ToolsSatochipImportSeedView(View):
                 self.loading_screen = LoadingScreenThread(text="Importing Secret\n\n\n\n\n\n")
                 self.loading_screen.start()
 
-                _resp, sw1, sw2 = Satochip_Connector.card_bip32_import_seed(seeds[selected_menu_num].seed_bytes)
-                if (sw1, sw2) != (0x90, 0x00):
-                    if (
-                        getattr(Satochip_Connector, "is_keycard_backend", False)
-                        and (sw1, sw2) == (0x69, 0x85)
-                    ):
-                        raise ValueError(
-                            "Keycard blocked seed import (SW=6985).\n"
-                            "Try Factory Reset Card, then retry import."
-                        )
-                    raise ValueError(f"Import failed with SW={sw1:02X}{sw2:02X}")
+                result = Satochip_Connector.card_bip32_import_seed(seeds[selected_menu_num].seed_bytes)
+                if getattr(Satochip_Connector, "is_keycard_backend", False):
+                    # KeycardSatochipConnector.card_bip32_import_seed returns
+                    # ([], sw1, sw2).
+                    _resp, sw1, sw2 = result
+                    if (sw1, sw2) != (0x90, 0x00):
+                        if (sw1, sw2) == (0x69, 0x85):
+                            raise ValueError(
+                                "Keycard blocked seed import (SW=6985).\n"
+                                "Try Factory Reset Card, then retry import."
+                            )
+                        raise ValueError(f"Import failed with SW={sw1:02X}{sw2:02X}")
+                elif result is None:
+                    # pysatochip's CardConnector returns the authentikey on
+                    # success and None otherwise; it raises CardError itself for
+                    # 9C17 (already seeded) and 9C0F (invalid parameter).
+                    raise ValueError("Import failed")
 
                 _status_resp, status_sw1, status_sw2, post_status = Satochip_Connector.card_get_status()
                 if (status_sw1, status_sw2) != (0x90, 0x00):
