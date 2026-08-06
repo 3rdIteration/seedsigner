@@ -493,6 +493,41 @@ class TestAezeedPassphraseMode(BaseTest):
         assert destination.View_cls == seed_views.MainMenuView
         assert destination.clear_history is True
 
+    def test_invalid_passphrase_qr_shows_warning_and_returns_to_mode(self, monkeypatch):
+        mnemonic = (
+            "absent beef crazy include regret city blanket plug thought spatial boy receive "
+            "bag jazz fade emerge quit beach crucial giant mutual reward captain excite"
+        ).split()
+        self.controller.storage.set_pending_seed(AezeedSeed(mnemonic=mnemonic))
+
+        class DummyDecodeQR:
+            def __init__(self, is_passphrase=False):
+                self.is_complete = False
+                self.is_invalid = True
+                self.is_nonUTF8 = False
+
+        monkeypatch.setattr("seedsigner.models.decode_qr.DecodeQR", DummyDecodeQR)
+
+        view = seed_views.SeedScanPassphraseView()
+        screen_calls = []
+
+        def capture_screen(screen_cls, *args, **kwargs):
+            screen_calls.append((screen_cls, kwargs))
+            return None
+
+        monkeypatch.setattr(view, "run_screen", capture_screen)
+
+        destination = view.run()
+
+        assert len(screen_calls) == 2
+        assert screen_calls[1][0] == seed_views.WarningScreen
+        assert screen_calls[1][1]["title"] == "Invalid QR"
+        assert (
+            screen_calls[1][1]["text"]
+            == "The scanned QR code is not a valid passphrase QR."
+        )
+        assert destination.View_cls == seed_views.SeedAezeedPassphraseModeView
+
     def test_scan_wrong_aezeed_passphrase_returns_mode(self, monkeypatch):
         mnemonic = (
             "absent beef crazy include regret city blanket plug thought spatial boy receive "
