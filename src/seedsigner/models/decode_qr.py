@@ -123,11 +123,49 @@ class DecodeQR:
         return self.add_data(data)
 
 
+    def _try_seedqr_as_passphrase(self, data):
+        """Decode explicit SeedQR formats into a canonical mnemonic passphrase.
+
+        SeedQR does not preserve formatting. Its canonical passphrase
+        representation is therefore lowercase BIP39 words separated by one
+        ordinary ASCII space.
+        """
+        detected_type = DecodeQR.detect_segment_type(
+            data,
+            wordlist_language_code=self.wordlist_language_code,
+        )
+        if detected_type not in {
+            QRType.SEED__SEEDQR,
+            QRType.SEED__COMPACTSEEDQR,
+        }:
+            return None
+
+        seed_decoder = SeedQrDecoder(
+            wordlist_language_code=self.wordlist_language_code
+        )
+        status = seed_decoder.add(data, detected_type)
+        if status != DecodeQRStatus.COMPLETE:
+            return status
+
+        passphrase = " ".join(seed_decoder.get_seed_phrase())
+        self.qr_type = QRType.PASSPHRASE
+        self.decoder = PassphraseQrDecoder()
+
+        status = self.decoder.add(passphrase, QRType.PASSPHRASE)
+        if status == DecodeQRStatus.COMPLETE:
+            self.complete = True
+        return status
+
+
     def add_data(self, data):
         if data == None:
             return DecodeQRStatus.FALSE
 
         if self.is_passphrase:
+            seedqr_status = self._try_seedqr_as_passphrase(data)
+            if seedqr_status is not None:
+                return seedqr_status
+
             qr_type = QRType.PASSPHRASE
         elif self.is_encryptionkey:
             qr_type = QRType.ENCRYPTION_KEY
