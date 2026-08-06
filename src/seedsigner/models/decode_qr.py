@@ -124,11 +124,13 @@ class DecodeQR:
 
 
     def _try_seedqr_as_passphrase(self, data):
-        """Decode explicit SeedQR formats into a canonical mnemonic passphrase.
+        """Decode SeedQR as a canonical mnemonic-style BIP39 passphrase.
 
-        SeedQR does not preserve formatting. Its canonical passphrase
-        representation is therefore lowercase BIP39 words separated by one
-        ordinary ASCII space.
+        SeedQR intentionally does not preserve formatting such as capitalization
+        or custom separators. When used as a passphrase, reconstruct it as
+        lowercase BIP39 words separated by single ASCII spaces.
+
+        Plain UTF-8 passphrase QRs continue to preserve their exact text.
         """
         detected_type = DecodeQR.detect_segment_type(
             data,

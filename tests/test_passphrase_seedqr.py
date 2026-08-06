@@ -30,7 +30,9 @@ def test_standard_seedqr_decodes_as_canonical_passphrase():
     status = decoder.add_data(payload)
 
     assert status == DecodeQRStatus.COMPLETE
-    assert decoder.get_passphrase() == CANONICAL_PASSPHRASE
+    passphrase = decoder.get_passphrase()
+    assert passphrase == CANONICAL_PASSPHRASE
+    assert passphrase.split() == MNEMONIC_WORDS
 
 
 def test_compact_seedqr_decodes_as_canonical_passphrase():
@@ -46,7 +48,9 @@ def test_compact_seedqr_decodes_as_canonical_passphrase():
     status = decoder.add_data(payload)
 
     assert status == DecodeQRStatus.COMPLETE
-    assert decoder.get_passphrase() == CANONICAL_PASSPHRASE
+    passphrase = decoder.get_passphrase()
+    assert passphrase == CANONICAL_PASSPHRASE
+    assert passphrase.split() == MNEMONIC_WORDS
 
 
 def test_standard_and_compact_seedqr_produce_identical_passphrases():
@@ -66,9 +70,14 @@ def test_standard_and_compact_seedqr_produce_identical_passphrases():
     assert standard_decoder.add_data(standard_payload) == DecodeQRStatus.COMPLETE
     assert compact_decoder.add_data(compact_payload) == DecodeQRStatus.COMPLETE
 
-    assert standard_decoder.get_passphrase() == CANONICAL_PASSPHRASE
-    assert compact_decoder.get_passphrase() == CANONICAL_PASSPHRASE
-    assert standard_decoder.get_passphrase() == compact_decoder.get_passphrase()
+    standard_passphrase = standard_decoder.get_passphrase()
+    compact_passphrase = compact_decoder.get_passphrase()
+
+    assert standard_passphrase == CANONICAL_PASSPHRASE
+    assert compact_passphrase == CANONICAL_PASSPHRASE
+    assert standard_passphrase.split() == MNEMONIC_WORDS
+    assert compact_passphrase.split() == MNEMONIC_WORDS
+    assert standard_passphrase == compact_passphrase
 
 
 def test_invalid_binary_payload_is_not_accepted_as_passphrase():
