@@ -87,3 +87,16 @@ def test_invalid_binary_payload_is_not_accepted_as_passphrase():
 
     assert status == DecodeQRStatus.INVALID
     assert decoder.is_complete is False
+
+
+def test_malformed_standard_seedqr_is_rejected_as_invalid():
+    """SeedQR-shaped data with an invalid word index must not become a passphrase."""
+    payload = b"000000000000000000000000000000000000000000009999"
+
+    decoder = DecodeQR(is_passphrase=True)
+    status = decoder.add_data(payload)
+
+    assert status == DecodeQRStatus.INVALID
+    assert decoder.is_invalid is True
+    assert decoder.is_complete is False
+    assert decoder.get_passphrase() is None

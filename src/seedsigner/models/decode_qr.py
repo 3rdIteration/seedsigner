@@ -147,7 +147,13 @@ class DecodeQR:
         )
         status = seed_decoder.add(data, detected_type)
         if status != DecodeQRStatus.COMPLETE:
-            return status
+            # The payload was identified as SeedQR, so a decoding failure must
+            # remain invalid rather than falling through as plaintext or an
+            # empty passphrase.
+            self.qr_type = QRType.INVALID
+            self.decoder = None
+            self.complete = False
+            return DecodeQRStatus.INVALID
 
         passphrase = " ".join(seed_decoder.get_seed_phrase())
         self.qr_type = QRType.PASSPHRASE
@@ -369,8 +375,9 @@ class DecodeQR:
 
 
     def get_passphrase(self):
-        if self.is_passphrase:
+        if self.is_passphrase and self.decoder is not None and self.complete:
             return self.decoder.get_passphrase()
+        return None
 
 
     def get_encryption_key(self):
