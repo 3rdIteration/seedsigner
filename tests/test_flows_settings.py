@@ -131,6 +131,21 @@ class TestSettingsFlows(FlowTest):
         ])
 
 
+    def test_test_hardening_screen(self):
+        """Settings > Advanced > Test hardening renders and returns to Advanced.
+
+        Must work on desktop CI, where most probes can't read /proc or /sys and
+        report n/a — the screen has to handle that without erroring.
+        """
+        self.run_sequence([
+            FlowStep(MainMenuView, button_data_selection=MainMenuView.SETTINGS),
+            FlowStep(settings_views.SettingsMenuView, button_data_selection=settings_views.SettingsMenuView.ADVANCED),
+            FlowStep(settings_views.SettingsMenuView, button_data_selection=settings_views.SettingsMenuView.TEST_HARDENING),
+            FlowStep(settings_views.HardeningTestView),
+            FlowStep(settings_views.SettingsMenuView),
+        ])
+
+
     def test_load_backup_files_submenu(self):
         tapsigner_entry = SettingsDefinition.get_settings_entry(SettingsConstants.SETTING__TAPSIGNER_BACKUP)
 

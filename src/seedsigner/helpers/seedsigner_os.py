@@ -6,14 +6,33 @@ OS_RELEASE_PATH = "/etc/seedsigner-os-release"
 
 
 def is_seedsigner_os_dev_build() -> bool:
-    """Return True if running on a developer SeedSignerOS image.
+    """Return True if the running image is NOT hardened for production use.
 
-    Developer OS images include additional utilities such as
-    ``/usr/bin/microsd_notice.py`` used during boot to load sources
-    from an external microSD card. The presence of this file marks a
-    development build that is not intended for production use.
+    Decided from the **live system** (see ``helpers.hardening``) rather than
+    from a build flag or a marker file: a build flag can be set wrong and a
+    marker file can be missing. This function previously keyed solely off
+    ``/usr/bin/microsd_notice.py``, which only the Raspberry Pi dev overlay
+    installs — so on Luckfox it was always False and a dev image (serial
+    console, USB-ADB, telnet, no hardening) warned about nothing at all.
+
+    The marker file is retained as an *additional* signal: a Pi dev image is
+    still a dev image even if it happens to pass the exposure checks.
+
+    Only meaningful on a SeedSigner OS image. Desktop and dev-board runs return
+    False — they are not hardened and never claim to be, and ``DesktopWarningView``
+    already covers that case; warning there too would just be noise.
     """
-    return os.path.exists("/usr/bin/microsd_notice.py")
+    from seedsigner.models.settings import Settings
+
+    if not Settings.is_seedsigner_os():
+        return False
+
+    if os.path.exists("/usr/bin/microsd_notice.py"):
+        return True
+
+    from seedsigner.helpers import hardening
+
+    return not hardening.is_hardened()
 
 
 def get_os_release(path: str = OS_RELEASE_PATH) -> dict:

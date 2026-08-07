@@ -572,6 +572,40 @@ class SystemInfoScreen(BaseTopNavScreen):
 
 
 @dataclass
+class HardeningTestScreen(BaseTopNavScreen):
+    """Per-check results from the runtime hardening self-test.
+
+    Follows SystemInfoScreen's TextArea list. Each line is prefixed with a
+    plain-text glyph rather than a coloured icon so the state survives a photo
+    of the screen and a monochrome display.
+    """
+    verdict: str = ""
+    result_lines: List[str] = None
+
+    def __post_init__(self):
+        self.title = _("Test Hardening")
+        super().__post_init__()
+
+        start_y = self.top_nav.height + 2 * GUIConstants.COMPONENT_PADDING
+        line_spacing = GUIConstants.COMPONENT_PADDING
+
+        lines = [self.verdict] if self.verdict else []
+        lines += self.result_lines or []
+
+        for line in lines:
+            text_area = TextArea(
+                text=line,
+                screen_x=GUIConstants.EDGE_PADDING,
+                width=self.canvas_width - 2 * GUIConstants.EDGE_PADDING,
+                is_text_centered=False,
+                auto_line_break=True,
+                screen_y=start_y,
+            )
+            self.components.append(text_area)
+            start_y += text_area.height + line_spacing
+
+
+@dataclass
 class SettingsQRConfirmationScreen(ButtonListScreen):
     config_name: str = None
     title: str = _mft("Settings QR")
