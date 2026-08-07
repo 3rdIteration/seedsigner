@@ -46,9 +46,17 @@ def test_unhardened_image_is_a_dev_build_even_without_the_marker(monkeypatch, on
     assert is_seedsigner_os_dev_build() is True
 
 
-def test_off_device_never_warns(monkeypatch, off_device):
-    """Desktop / dev-board runs are not hardened and never claim to be;
-    DesktopWarningView already covers them, so warning here would be noise."""
-    _marker_present(monkeypatch, True)
+def test_off_device_still_warns_when_unhardened(monkeypatch, off_device):
+    """Desktop / dev-board runs genuinely fail exposure checks, so warning there
+    is a true statement, not a false alarm — the verdict must not be gated on
+    running from a SeedSigner OS image."""
+    _marker_present(monkeypatch, False)
     monkeypatch.setattr(hardening, "is_hardened", lambda results=None: False)
+    assert is_seedsigner_os_dev_build() is True
+
+
+def test_off_device_hardened_does_not_warn(monkeypatch, off_device):
+    """Still evidence-based off-device: nothing exposed, nothing to warn about."""
+    _marker_present(monkeypatch, False)
+    monkeypatch.setattr(hardening, "is_hardened", lambda results=None: True)
     assert is_seedsigner_os_dev_build() is False

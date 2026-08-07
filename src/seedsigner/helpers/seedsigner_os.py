@@ -18,15 +18,12 @@ def is_seedsigner_os_dev_build() -> bool:
     The marker file is retained as an *additional* signal: a Pi dev image is
     still a dev image even if it happens to pass the exposure checks.
 
-    Only meaningful on a SeedSigner OS image. Desktop and dev-board runs return
-    False — they are not hardened and never claim to be, and ``DesktopWarningView``
-    already covers that case; warning there too would just be noise.
+    Deliberately NOT restricted to SeedSigner OS images. A desktop or dev-board
+    run genuinely fails several exposure checks, so warning there is a true
+    statement rather than a false alarm, and "do not use real seeds" applies
+    just as much. (``DesktopWarningView`` may also fire; the two say different
+    things — one is about the environment, this one about what is exposed.)
     """
-    from seedsigner.models.settings import Settings
-
-    if not Settings.is_seedsigner_os():
-        return False
-
     if os.path.exists("/usr/bin/microsd_notice.py"):
         return True
 
