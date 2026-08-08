@@ -9,35 +9,55 @@ from seedsigner.models.threads import BaseThread
 logger = logging.getLogger(__name__)
 
 
-# SeedSigner-OS removable/persistent data dirs, in priority order. "/mnt/microsd" is the
-# Raspberry-Pi / Buildroot convention; "/mnt/sdcard" is where the Luckfox Pico SDK auto-mounts
-# the physical card (and, with no card, an empty mountpoint on the writable NAND/eMMC rootfs, so
-# writing there gives persistent settings without a dedicated partition).
+# Removable-card mountpoints, in priority order. "/mnt/microsd" is the Raspberry-Pi /
+# Buildroot convention; "/mnt/sdcard" is where the Luckfox Pico SDK auto-mounts a card.
 MICROSD_DIR_CANDIDATES = ("/mnt/microsd", "/mnt/sdcard")
 
+# Dedicated writable partition for persistent data when no card is present. Every
+# Luckfox board (Mini / Pro Max / Pi) gets a small one; Raspberry Pi / La Frite have no
+# such partition, so this simply never matches there.
+USERDATA_DIR = "/userdata"
 
-def resolve_seedsigner_os_data_dir() -> str:
-    """Return the SeedSigner-OS microSD / persistent-data directory.
 
-    Prefers a candidate that is an active mountpoint (a real card mounted at either
-    location wins); otherwise the first candidate that exists as a directory (the
-    writable-rootfs fallback used on card-less NAND/eMMC images); otherwise the
-    canonical default ``/mnt/microsd``.
+def resolve_microsd_mount():
+    """Return the mountpoint of a genuinely mounted removable card, else None.
 
-    Platform note: ``/mnt/sdcard`` only exists on Luckfox (the SDK creates it). On
-    Raspberry Pi / La Frite the root filesystem is stateless (wipes on reboot), so
-    persistence there *requires* a physical card; this resolver returns
-    ``/mnt/microsd`` unchanged on those platforms (no ``/mnt/sdcard`` to match), so
-    real-card detection and the persistent-settings enable/disable gating are
-    preserved exactly. Only on Luckfox, whose root is writable, does the card-less
-    ``/mnt/sdcard`` mountpoint provide a persistent store.
+    Strictly a *mountpoint* test: a bare directory is never a card.
     """
     for path in MICROSD_DIR_CANDIDATES:
         if os.path.ismount(path):
             return path
-    for path in MICROSD_DIR_CANDIDATES:
-        if os.path.isdir(path):
-            return path
+    return None
+
+
+def resolve_seedsigner_os_data_dir() -> str:
+    """Return the SeedSigner-OS persistent-data directory.
+
+    Priority: a mounted removable card, then the dedicated ``/userdata`` partition,
+    then the canonical ``/mnt/microsd`` -- which, when it is not a mountpoint, means
+    "no persistent store available" (see ``MicroSD.has_persistent_storage``).
+
+    NEVER RETURNS A DIRECTORY ON THE ROOT FILESYSTEM. Every candidate is tested with
+    ``os.path.ismount``, never ``os.path.isdir``, so a bare mountpoint directory left
+    behind on the rootfs can never be selected.
+
+    That is a hard invariant, not a preference. The previous implementation fell back
+    to the first candidate that merely *existed as a directory*, which on a card-less
+    Luckfox NAND image resolved to ``/mnt/sdcard`` on the writable UBIFS root. Putting
+    mutable state on the root filesystem means an unclean shutdown can lose or truncate
+    it during UBIFS journal replay -- the same failure class that silently emptied
+    ``/etc/luckfox.cfg`` and left boards with no display and no way to report why. The
+    rootfs is to be treated as immutable after flashing; persistent state belongs on
+    the card or on ``/userdata``.
+
+    Platform note: ``/userdata`` does not exist on Raspberry Pi / La Frite, whose root
+    is stateless, so persistence there still requires a physical card.
+    """
+    card = resolve_microsd_mount()
+    if card is not None:
+        return card
+    if os.path.ismount(USERDATA_DIR):
+        return USERDATA_DIR
     return MICROSD_DIR_CANDIDATES[0]
 
 
@@ -105,10 +125,36 @@ class MicroSD(Singleton, BaseThread):
 
     @property
     def is_inserted(self):
+        """Is a physical removable card present?
+
+        Drives the insert/remove toast and the microSD detection thread, so it must
+        mean a real card and nothing else. Deliberately NOT "is there somewhere to
+        persist settings" -- see ``has_persistent_storage``. Conflating the two is
+        what previously let a bare ``/mnt/sdcard`` directory on the rootfs report a
+        card that was not there.
+        """
         from seedsigner.models.settings import Settings  # Import here to avoid circular import issues
 
         if Settings.is_seedsigner_os():
-            return os.path.exists(resolve_seedsigner_os_data_dir())
+            return resolve_microsd_mount() is not None
+        else:
+            # Always True for dev boards / desktop
+            return True
+
+
+    @property
+    def has_persistent_storage(self) -> bool:
+        """Is there a writable, non-rootfs store for persistent settings?
+
+        True for a mounted card OR the dedicated ``/userdata`` partition. This is the
+        correct gate for saving settings: on a card-less Luckfox with ``/userdata``,
+        settings must persist even though no card is inserted, while on a board with
+        neither, saving must be skipped rather than silently writing to the rootfs.
+        """
+        from seedsigner.models.settings import Settings  # Import here to avoid circular import issues
+
+        if Settings.is_seedsigner_os():
+            return os.path.ismount(resolve_seedsigner_os_data_dir())
         else:
             # Always True for dev boards / desktop
             return True

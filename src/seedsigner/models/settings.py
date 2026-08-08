@@ -397,14 +397,15 @@ class Settings(Singleton):
         """
         try:
             from seedsigner.hardware.microsd import MicroSD
-            if self._data[SettingsConstants.SETTING__PERSISTENT_SETTINGS] == SettingsConstants.OPTION__ENABLED and MicroSD.get_instance().is_inserted:
+            # Gate on has_persistent_storage, not is_inserted: a card-less Luckfox
+            # with a /userdata partition must still persist, and a board with neither
+            # must skip the save rather than fall back to writing on the rootfs.
+            if self._data[SettingsConstants.SETTING__PERSISTENT_SETTINGS] == SettingsConstants.OPTION__ENABLED and MicroSD.get_instance().has_persistent_storage:
                 data_snapshot = dict(self._data)
-                # Ensure the target dir exists (e.g. a card-less NAND image where the
-                # /mnt/sdcard mountpoint dir may not be present yet). Best-effort; the
-                # outer try/except keeps a full/read-only fs from crashing the save.
-                settings_dir = os.path.dirname(Settings.SETTINGS_FILENAME)
-                if settings_dir:
-                    os.makedirs(settings_dir, exist_ok=True)
+                # No makedirs here on purpose: the target is guaranteed to be a real
+                # mountpoint by has_persistent_storage. Creating a missing directory
+                # would mean creating it on the root filesystem, which is exactly the
+                # write this change exists to prevent.
                 with open(Settings.SETTINGS_FILENAME, 'w') as settings_file:
                     json.dump(data_snapshot, settings_file, indent=4)
                     settings_file.flush()
