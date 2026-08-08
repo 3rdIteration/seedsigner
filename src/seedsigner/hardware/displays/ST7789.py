@@ -293,7 +293,21 @@ class ST7789(BaseDisplayDriver):
         self._rst.write(False)
         time.sleep(0.01)
         self._rst.write(True)
-        time.sleep(0.01)
+        # The ST7789 datasheet specifies TWO waits after RESX is released: 5 ms
+        # before any command may be sent, and 120 ms before SLPOUT specifically.
+        # Only the first was honoured here (10 ms), and init() reaches SLPOUT
+        # after ~60 register writes — roughly 20-30 ms — so SLPOUT landed well
+        # inside the forbidden window and the panel intermittently never woke:
+        # every SPI transfer still succeeded and the screen simply stayed black.
+        #
+        # It is a *race*, not a hard break, so it presents as a display that
+        # works on some boots and not others, and whose failure rate shifts with
+        # anything that changes boot load or CPU contention (which is why it
+        # appeared to correlate with unrelated OS hardening changes).
+        #
+        # Waiting the full 120 ms here satisfies the requirement independently of
+        # how many commands init() sends or how fast the board executes them.
+        time.sleep(0.120)
         
     def SetWindows(self, Xstart, Ystart, Xend, Yend):
         #set the X coordinates

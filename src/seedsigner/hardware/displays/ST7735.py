@@ -149,7 +149,12 @@ class ST7735(BaseDisplayDriver):
         self._rst.write(False)
         time.sleep(0.01)
         self._rst.write(True)
-        time.sleep(0.01)
+        # 120 ms before SLPOUT may be sent after RESX is released (datasheet).
+        # init() reaches SLPOUT after ~60 register writes, far short of that on
+        # its own, which leaves the panel intermittently asleep while every SPI
+        # transfer still succeeds. Same defect as ST7789.reset(); see the longer
+        # explanation there.
+        time.sleep(0.120)
 
     def init(self):
         """Send the ST7735S register initialisation sequence."""
