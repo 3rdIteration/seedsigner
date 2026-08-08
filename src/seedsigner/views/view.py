@@ -234,17 +234,20 @@ class MainMenuView(View):
 
         controller = Controller.get_instance()
 
-        # Signal successful startup for the OS-side boot watchdog + U-Boot bootcount
-        # failover: reaching the Home view means the app is up. A cheap /tmp marker is
-        # (re)written each visit; the boot-counter clear runs once per boot. U-Boot's
-        # boot counter is memory-backed (CONFIG_SYS_BOOTCOUNT_ADDR = GRF OS_REG scratch
-        # register 0xFF020218), so clearing it via devmem writes no flash.
+        # Reaching Home is the "healthy enough" signal for the U-Boot boot-counter
+        # failover, which runs once per boot. The counter is memory-backed
+        # (CONFIG_SYS_BOOTCOUNT_ADDR = GRF OS_REG scratch register 0xFF020218), so
+        # clearing it via devmem writes no flash.
+        #
+        # The OS watchdog's liveness marker is signalled much earlier, in
+        # Controller.start() — a blocking startup interstitial (the
+        # unhardened-build warning) would otherwise stop a perfectly working
+        # device from ever reaching this point, and the watchdog would reboot it
+        # into Loader. Re-asserted here only to keep the marker present.
         if Settings.is_seedsigner_os():
-            try:
-                with open("/tmp/seedsigner-ready", "w") as _ready_file:
-                    _ready_file.write("1")
-            except OSError:
-                pass
+            from seedsigner.helpers.seedsigner_os import signal_app_alive
+
+            signal_app_alive()
             if not getattr(controller, "boot_failover_cleared", False):
                 controller.boot_failover_cleared = True
                 try:

@@ -32,6 +32,37 @@ def is_seedsigner_os_dev_build() -> bool:
     return not hardening.is_hardened()
 
 
+READY_MARKER_PATH = "/tmp/seedsigner-ready"
+
+
+def signal_app_alive() -> None:
+    """Tell the OS boot watchdog that the app is up.
+
+    Liveness, NOT "the user reached Home". The Luckfox watchdog in
+    start-seedsigner.sh reboots into Loader mode if this marker never appears
+    within ~120s, and it only ever exists to catch an app that failed to start.
+
+    It must therefore be written as soon as the app is running and rendering —
+    before the startup interstitials. Those include the unhardened-build
+    warning, which blocks for a button press: on an unattended boot nobody
+    presses it, so writing the marker only at Home made any unhardened image
+    reboot itself into Loader after 120s. The device was working and waiting
+    for input, which is not what the watchdog is for.
+
+    The separate U-Boot boot-counter clear stays at Home — that one genuinely
+    means "healthy enough", and is the deeper failover.
+    """
+    from seedsigner.models.settings import Settings
+
+    if not Settings.is_seedsigner_os():
+        return
+    try:
+        with open(READY_MARKER_PATH, "w") as ready_file:
+            ready_file.write("1")
+    except OSError:
+        pass
+
+
 def get_os_release(path: str = OS_RELEASE_PATH) -> dict:
     """Parse the SeedSigner OS build-info marker (``KEY=VALUE``, os-release style).
 

@@ -401,8 +401,16 @@ class Controller(Singleton):
         from seedsigner.models.settings_definition import SettingsConstants
         from seedsigner.views.desktop_warning import DesktopWarningView
         from seedsigner.views.developer_os_warning import DeveloperOSWarningView
-        from seedsigner.helpers.seedsigner_os import is_seedsigner_os_dev_build
+        from seedsigner.helpers.seedsigner_os import is_seedsigner_os_dev_build, signal_app_alive
         from seedsigner.gui.toast import RemoveSDCardToastManagerThread
+
+        # Tell the OS boot watchdog we are alive BEFORE the interstitials run.
+        # One of them (the unhardened-build warning) blocks for a button press,
+        # and on an unattended boot nobody presses it — so signalling only once
+        # Home was reached made the watchdog reboot a working device into Loader
+        # after 120s. Liveness and "user reached Home" are different things; the
+        # U-Boot boot-counter clear stays at Home, where it belongs.
+        signal_app_alive()
 
         startup_error_destination = None
         if not skip_startup_interstitials:
