@@ -41,7 +41,14 @@ class ST7789(BaseDisplayDriver):
 
         # Initialize SPI
         spi_bus = f"/dev/spidev{pin_mapping['spi_bus']}.{pin_mapping['spi_device']}"
-        spi_hz = 40_000_000
+        # 40 MHz is the panel's rated maximum and the right default. It is
+        # overridable per board because clock rate is a plausible failure mode
+        # that cannot be observed: a marginal adapter or long jumper leads can
+        # corrupt the command stream at 40 MHz while working at 10 MHz, and with
+        # MISO disabled there is no readback to detect it. Lowering the clock is
+        # the only way to test that hypothesis (see probe-display.py in the OS
+        # repo, which sweeps this alongside the chip-select mode).
+        spi_hz = pin_mapping.get("spi_hz", 40_000_000)
 
         # SPI_NO_CS (0x40): tell the kernel not to assert/deassert any chip-select
         # GPIO.  Use this when LCD CS is tied permanently to GND and the SBC's

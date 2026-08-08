@@ -59,8 +59,10 @@ class ST7735(BaseDisplayDriver):
 
         spi_bus = f"/dev/spidev{pin_mapping['spi_bus']}.{pin_mapping['spi_device']}"
         # ST7735S maximum SPI clock is ~16 MHz (datasheet typ. 15.15 MHz
-        # write cycle).  Use 16 MHz for reliability.
-        spi_hz = 16_000_000
+        # write cycle).  Use 16 MHz for reliability, overridable per board so a
+        # marginal adapter can be tested at a lower clock (see ST7789 for the
+        # rationale).
+        spi_hz = pin_mapping.get("spi_hz", 16_000_000)
 
         spi_extra_flags = 0
         if pin_mapping.get("cs") == "disabled":
