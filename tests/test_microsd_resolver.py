@@ -103,3 +103,87 @@ def test_pi_without_card_defaults_to_microsd(fake_fs):
     # Stateless root, no card, no /userdata: persistence requires a physical card.
     assert resolve_seedsigner_os_data_dir() == "/mnt/microsd"
     assert resolve_microsd_mount() is None
+
+
+# --- Persistent Settings availability ------------------------------------------
+#
+# Regression tests for the gate in Settings.handle_microsd_state_change. It used to
+# key off "is a card inserted", which pinned Persistent Settings to Disabled on a
+# card-less Luckfox even though /userdata was mounted and saving worked. The option
+# must follow where settings can actually be stored, not whether a card is present.
+
+@pytest.fixture
+def seedsigner_os(monkeypatch):
+    """Run the handler down its SeedSigner-OS path, with a fresh settings entry."""
+    from seedsigner.hardware.microsd import MicroSD
+    from seedsigner.models.settings import Settings
+    from seedsigner.models.settings_definition import (
+        SettingsConstants,
+        SettingsDefinition,
+    )
+
+    monkeypatch.setattr(Settings, "is_seedsigner_os", staticmethod(lambda: True))
+
+    # BaseTest.setup_class swaps MicroSD.get_instance for a Mock and its
+    # teardown_class does not put it back, so once any BaseTest subclass has run,
+    # every later test in the session sees that mock. These tests are about the
+    # REAL is_inserted / has_persistent_storage logic reading the faked mounts, so
+    # install a genuine instance for the duration. (Found the hard way: these
+    # passed alone and failed in the full suite.)
+    #
+    # __new__ rather than the usual constructor: MicroSD inherits BaseThread, and
+    # the two properties under test touch only Settings and os.path, so there is no
+    # reason to start a thread.
+    real_microsd = MicroSD.__new__(MicroSD)
+    monkeypatch.setattr(MicroSD, "get_instance", classmethod(lambda cls: real_microsd))
+
+    entry = SettingsDefinition.get_settings_entry(
+        SettingsConstants.SETTING__PERSISTENT_SETTINGS
+    )
+    # These are module-level singletons mutated in place; restore them so test
+    # order cannot matter.
+    original = (entry.selection_options, entry.help_text)
+    yield entry
+    entry.selection_options, entry.help_text = original
+
+
+def _handle(action):
+    from seedsigner.hardware.microsd import MicroSD
+    from seedsigner.models.settings import Settings
+
+    Settings.handle_microsd_state_change(
+        action=MicroSD.ACTION__INSERTED if action == "in" else MicroSD.ACTION__REMOVED
+    )
+
+
+def test_userdata_alone_keeps_persistent_settings_selectable(fake_fs, seedsigner_os):
+    """The bug: card-less Luckfox with /userdata could not enable Persistent Settings."""
+    from seedsigner.models.settings_definition import SettingsConstants
+
+    fake_fs["mounted"] = {"/userdata"}
+    _handle("out")
+
+    assert seedsigner_os.selection_options == SettingsConstants.OPTIONS__ENABLED_DISABLED
+    # And it must not claim an SD card is where the data goes.
+    assert seedsigner_os.help_text == SettingsConstants.PERSISTENT_SETTINGS__ONBOARD__HELP_TEXT
+
+
+def test_no_storage_at_all_disables_persistent_settings(fake_fs, seedsigner_os):
+    """Pi / La Frite with no card: nothing to save to, so don't offer the option."""
+    from seedsigner.models.settings_definition import SettingsConstants
+
+    fake_fs["mounted"] = set()
+    _handle("out")
+
+    assert seedsigner_os.selection_options == SettingsConstants.OPTIONS__ONLY_DISABLED
+    assert seedsigner_os.help_text == SettingsConstants.PERSISTENT_SETTINGS__SD_REMOVED__HELP_TEXT
+
+
+def test_inserted_card_still_says_sd_card(fake_fs, seedsigner_os):
+    from seedsigner.models.settings_definition import SettingsConstants
+
+    fake_fs["mounted"] = {"/mnt/sdcard"}
+    _handle("in")
+
+    assert seedsigner_os.selection_options == SettingsConstants.OPTIONS__ENABLED_DISABLED
+    assert seedsigner_os.help_text == SettingsConstants.PERSISTENT_SETTINGS__SD_INSERTED__HELP_TEXT

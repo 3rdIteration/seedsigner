@@ -865,36 +865,61 @@ class Settings(Singleton):
 
     def handle_microsd_state_change(action: str):
         """
-        Enables/Disables the Persistent Settings option based on the MicroSD card state.
+        Enables/Disables the Persistent Settings option based on where settings can
+        actually be stored.
+
+        The deciding question is "is there a writable, non-rootfs place to save?",
+        NOT "is a card inserted". Those were the same thing back when every board
+        kept settings on a removable card, and conflating them is what made
+        Persistent Settings permanently unselectable on a card-less Luckfox: the
+        board has a dedicated /userdata partition and saving worked, but the option
+        was pinned to Disabled behind the help text "Insert SD card to enable".
+
+        The insert/remove action still matters -- it is what tells us to reload a
+        settings file from a card that just appeared -- but it no longer decides
+        whether the option is offered at all.
         """
         from seedsigner.hardware.microsd import MicroSD
 
-        if Settings.is_seedsigner_os():
-            if action == MicroSD.ACTION__INSERTED:
-                # SD card was just inserted.
-                # Restore persistent settings back to defaults
-                entry = SettingsDefinition.get_settings_entry(SettingsConstants.SETTING__PERSISTENT_SETTINGS)
-                entry.selection_options = SettingsConstants.OPTIONS__ENABLED_DISABLED
+        if not Settings.is_seedsigner_os():
+            return
+
+        if action not in (MicroSD.ACTION__INSERTED, MicroSD.ACTION__REMOVED):
+            raise Exception(f"Invalid MicroSD action: {action}")
+
+        microsd = MicroSD.get_instance()
+        entry = SettingsDefinition.get_settings_entry(SettingsConstants.SETTING__PERSISTENT_SETTINGS)
+
+        # NB: SETTINGS_FILENAME is resolved once at class-definition time and is not
+        # re-resolved here. Repointing it when a card appears mid-session is a real
+        # gap, but it is a separate change: tests assign that attribute directly, and
+        # rewriting it from here silently moves where they read and write.
+
+        if microsd.has_persistent_storage:
+            entry.selection_options = SettingsConstants.OPTIONS__ENABLED_DISABLED
+
+            # Name the real destination. "Store Settings on SD card" on a board that
+            # writes to /userdata tells the user something untrue about where their
+            # data lives.
+            if microsd.is_inserted:
                 entry.help_text = SettingsConstants.PERSISTENT_SETTINGS__SD_INSERTED__HELP_TEXT
-
-                # If a settings file exists, load it without persisting again. This
-                # avoids unnecessary disk writes during boot and when cards are
-                # re-inserted.
-                if os.path.exists(Settings.SETTINGS_FILENAME):
-                    settings = Settings.get_instance()
-                    if settings.get_value(SettingsConstants.SETTING__PERSISTENT_SETTINGS) != SettingsConstants.OPTION__ENABLED:
-                        with open(Settings.SETTINGS_FILENAME) as settings_file:
-                            settings.update(json.load(settings_file), persist=False)
-
-            elif action == MicroSD.ACTION__REMOVED:
-                # SD card was just removed.
-                # Set persistent settings to disabled value directly
-                Settings.get_instance()._data[SettingsConstants.SETTING__PERSISTENT_SETTINGS] = SettingsConstants.OPTION__DISABLED
-
-                # set persistent settings to only have disabled as an option, adding additional help text that microSD is removed
-                entry = SettingsDefinition.get_settings_entry(SettingsConstants.SETTING__PERSISTENT_SETTINGS)
-                entry.selection_options = SettingsConstants.OPTIONS__ONLY_DISABLED
-                entry.help_text = SettingsConstants.PERSISTENT_SETTINGS__SD_REMOVED__HELP_TEXT
-            
             else:
-                raise Exception(f"Invalid MicroSD action: {action}")
+                entry.help_text = SettingsConstants.PERSISTENT_SETTINGS__ONBOARD__HELP_TEXT
+
+            # If a settings file exists, load it without persisting again. This
+            # avoids unnecessary disk writes during boot and when cards are
+            # re-inserted.
+            if action == MicroSD.ACTION__INSERTED and os.path.exists(Settings.SETTINGS_FILENAME):
+                settings = Settings.get_instance()
+                if settings.get_value(SettingsConstants.SETTING__PERSISTENT_SETTINGS) != SettingsConstants.OPTION__ENABLED:
+                    with open(Settings.SETTINGS_FILENAME) as settings_file:
+                        settings.update(json.load(settings_file), persist=False)
+
+        else:
+            # Nowhere to persist to, so force Disabled rather than offer a setting
+            # that would silently fail. Reached on a card-less board with no
+            # userdata partition (Raspberry Pi / La Frite), and on a Luckfox whose
+            # userdata partition did not mount.
+            Settings.get_instance()._data[SettingsConstants.SETTING__PERSISTENT_SETTINGS] = SettingsConstants.OPTION__DISABLED
+            entry.selection_options = SettingsConstants.OPTIONS__ONLY_DISABLED
+            entry.help_text = SettingsConstants.PERSISTENT_SETTINGS__SD_REMOVED__HELP_TEXT

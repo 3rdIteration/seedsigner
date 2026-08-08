@@ -93,6 +93,33 @@ class BaseTest:
         # True before each test in `BaseTest.setup_method()`).
         is_inserted: bool = True
 
+        # Set by tests that need the two to differ; None means "follow is_inserted".
+        _has_persistent_storage_override = None
+
+        @property
+        def has_persistent_storage(self) -> bool:
+            """Is there anywhere to save settings?
+
+            Defaults to tracking `is_inserted`, which is what every test written
+            before the Luckfox boards assumed: a card was the only place settings
+            could go, so "no card" meant "cannot persist".
+
+            This has to be modelled explicitly rather than left to Mock, because an
+            unconfigured Mock attribute is TRUTHY -- a test setting
+            `is_inserted = False` would otherwise report that persistent storage
+            WAS available and silently assert against the wrong branch.
+
+            Boards with a userdata partition can persist with no card at all, and
+            set this independently.
+            """
+            if self._has_persistent_storage_override is not None:
+                return self._has_persistent_storage_override
+            return self.is_inserted
+
+        @has_persistent_storage.setter
+        def has_persistent_storage(self, value):
+            self._has_persistent_storage_override = value
+
 
     @classmethod
     def setup_class(cls):
@@ -162,6 +189,8 @@ class BaseTest:
         self.controller = Controller.get_instance()
         self.settings = Settings.get_instance()
         self.mock_microsd.is_inserted = True
+        # Back to "follow is_inserted" so an override cannot leak between tests.
+        self.mock_microsd.has_persistent_storage = None
     
 
     def teardown_method(self):
