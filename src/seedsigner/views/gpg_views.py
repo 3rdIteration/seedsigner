@@ -49,7 +49,7 @@ from seedsigner.gui.screens.tools_screens import (
 )
 from seedsigner.helpers import seedkeeper_utils
 from seedsigner.helpers.iso7816 import format_sw_error
-from seedsigner.hardware.microsd import MicroSD
+from seedsigner.hardware.microsd import MicroSD, resolve_microsd_images_dir
 from seedsigner.models.encode_qr import GenericStaticQrEncoder
 
 try:
@@ -891,8 +891,7 @@ class ToolsGPGExportBundleView(View):
                 if ret == RET_CODE__BACK_BUTTON:
                     return Destination(BackStackView)
 
-            file_list_path = MicroSD.get_microsd_dir() / "microsd-images"
-            os.makedirs(file_list_path, exist_ok=True)
+            file_list_path = resolve_microsd_images_dir()
 
             timestamp = time.strftime("%Y%m%d_%H%M%S")
             filename = f"gpg_bundle_{timestamp}.asc"
@@ -1006,8 +1005,7 @@ class ToolsGPGSaveBip85DataView(View):
                 if ret == RET_CODE__BACK_BUTTON:
                     return Destination(BackStackView)
 
-            file_list_path = MicroSD.get_microsd_dir() / "microsd-images"
-            os.makedirs(file_list_path, exist_ok=True)
+            file_list_path = resolve_microsd_images_dir()
             try:
                 bip85_save_data(file_list_path)
                 logger.info("BIP85 data saved to %s", os.path.abspath(file_list_path))
@@ -1173,7 +1171,9 @@ class ToolsGPGLoadBip85DataView(View):
             from seedsigner.hardware.microsd import MicroSD
             import os
 
-            file_list_path = MicroSD.get_microsd_dir() / "microsd-images"
+            # Same resolver as the write paths: if an export fell back to tmpfs,
+            # the loader has to look where the file actually landed.
+            file_list_path = resolve_microsd_images_dir()
             try:
                 bip85_load_data(file_list_path)
                 logger.info("BIP85 data loaded from %s", os.path.abspath(file_list_path))
@@ -2180,8 +2180,7 @@ class ToolsGPGExportSubkeySecretsView(View):
         armored = protected.stdout
 
         if dest_buttons[dest_sel].button_label == "File":
-            file_list_path = MicroSD.get_microsd_dir() / "microsd-images"
-            os.makedirs(file_list_path, exist_ok=True)
+            file_list_path = resolve_microsd_images_dir()
             filename = fingerprint + "_subkey_secrets.asc"
             filepath = os.path.join(file_list_path, filename)
             with open(filepath, "w") as f:
@@ -3038,8 +3037,7 @@ class ToolsGPGEncryptMessageView(View):
                 if ret == RET_CODE__BACK_BUTTON:
                     return Destination(BackStackView)
 
-            file_list_path = MicroSD.get_microsd_dir() / "microsd-images"
-            os.makedirs(file_list_path, exist_ok=True)
+            file_list_path = resolve_microsd_images_dir()
             filename = f"gpgmsg_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
             filepath = os.path.join(file_list_path, filename)
             try:
@@ -3160,8 +3158,7 @@ class ToolsGPGDecryptMessageView(View):
                     if ret == RET_CODE__BACK_BUTTON:
                         return Destination(BackStackView)
 
-                file_list_path = MicroSD.get_microsd_dir() / "microsd-images"
-                os.makedirs(file_list_path, exist_ok=True)
+                file_list_path = resolve_microsd_images_dir()
                 file_list = [
                     f
                     for f in os.listdir(file_list_path)
@@ -3798,8 +3795,7 @@ class ToolsGPGEncryptFileView(View):
             if ret == RET_CODE__BACK_BUTTON:
                 return Destination(BackStackView)
 
-        file_list_path = MicroSD.get_microsd_dir() / "microsd-images"
-        os.makedirs(file_list_path, exist_ok=True)
+        file_list_path = resolve_microsd_images_dir()
         file_list = [
             f
             for f in os.listdir(file_list_path)
@@ -3999,8 +3995,7 @@ class ToolsGPGDecryptFileView(View):
             if ret == RET_CODE__BACK_BUTTON:
                 return Destination(BackStackView)
 
-        file_list_path = MicroSD.get_microsd_dir() / "microsd-images"
-        os.makedirs(file_list_path, exist_ok=True)
+        file_list_path = resolve_microsd_images_dir()
         file_list = [
             f
             for f in os.listdir(file_list_path)
@@ -4232,8 +4227,7 @@ class ToolsGPGVerifyFileView(View):
             self.loading_screen.stop()
             self.controller.gpg_keys_imported = True
 
-        file_list_path = MicroSD.get_microsd_dir() / "microsd-images"
-        os.makedirs(file_list_path, exist_ok=True)
+        file_list_path = resolve_microsd_images_dir()
 
         # Get only the visible, valid files
         visible_file_list = [
@@ -4489,8 +4483,7 @@ class ToolsGPGSignFileView(View):
             if ret == RET_CODE__BACK_BUTTON:
                 return Destination(BackStackView)
 
-        file_list_path = MicroSD.get_microsd_dir() / "microsd-images"
-        os.makedirs(file_list_path, exist_ok=True)
+        file_list_path = resolve_microsd_images_dir()
 
         file_list = [
             f
@@ -4625,8 +4618,7 @@ class ToolsGPGSignManifestView(View):
             if ret == RET_CODE__BACK_BUTTON:
                 return Destination(BackStackView)
 
-        file_list_path = MicroSD.get_microsd_dir() / "microsd-images"
-        os.makedirs(file_list_path, exist_ok=True)
+        file_list_path = resolve_microsd_images_dir()
 
         manifest_name = "sha256.txt"
 
@@ -4901,8 +4893,7 @@ class ToolsGPGImportPubkeyFileView(View):
             if ret == RET_CODE__BACK_BUTTON:
                 return Destination(BackStackView)
 
-        file_list_path = MicroSD.get_microsd_dir() / "microsd-images"
-        os.makedirs(file_list_path, exist_ok=True)
+        file_list_path = resolve_microsd_images_dir()
 
         verify_file_list = [
             f
@@ -5184,8 +5175,7 @@ class ToolsGPGLoadPrivkeyFileView(View):
             if ret == RET_CODE__BACK_BUTTON:
                 return Destination(BackStackView)
 
-        file_list_path = MicroSD.get_microsd_dir() / "microsd-images"
-        os.makedirs(file_list_path, exist_ok=True)
+        file_list_path = resolve_microsd_images_dir()
 
         file_list = [
             f
@@ -7202,8 +7192,7 @@ class ToolsGPGExportPubkeyView(View):
                 if ret == RET_CODE__BACK_BUTTON:
                     return Destination(BackStackView)
 
-            file_list_path = MicroSD.get_microsd_dir() / "microsd-images"
-            os.makedirs(file_list_path, exist_ok=True)
+            file_list_path = resolve_microsd_images_dir()
 
             filename = key["fpr"] + ".asc"
             filepath = os.path.join(file_list_path, filename)
@@ -7475,8 +7464,7 @@ class ToolsGPGExportPrivkeyView(View):
                 if ret == RET_CODE__BACK_BUTTON:
                     return Destination(BackStackView)
 
-            file_list_path = MicroSD.get_microsd_dir() / "microsd-images"
-            os.makedirs(file_list_path, exist_ok=True)
+            file_list_path = resolve_microsd_images_dir()
 
             ret_dict = tools_screens.ToolsTextQRTextEntryScreen(
                 textToEncode="", title="Passphrase"

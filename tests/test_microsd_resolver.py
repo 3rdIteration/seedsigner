@@ -12,6 +12,7 @@ to destroy on-device state during UBIFS journal replay.
 ``os.path.ismount``/``isdir`` are faked so these run anywhere.
 """
 import os
+from pathlib import Path
 
 import pytest
 
@@ -187,3 +188,64 @@ def test_inserted_card_still_says_sd_card(fake_fs, seedsigner_os):
 
     assert seedsigner_os.selection_options == SettingsConstants.OPTIONS__ENABLED_DISABLED
     assert seedsigner_os.help_text == SettingsConstants.PERSISTENT_SETTINGS__SD_INSERTED__HELP_TEXT
+
+
+# --- writable staging dir --------------------------------------------------------
+#
+# resolve_microsd_images_dir must never raise. The GPG views call it before every
+# file operation, and on a squashfs-root image with no card and no /userdata the
+# resolver's fallback (/mnt/microsd) is genuinely unwritable -- /mnt is not one of
+# the tmpfs overlays -- so a bare os.makedirs raised an uncaught OSError and took
+# the whole view down.
+
+def test_images_dir_uses_the_resolved_data_dir(fake_fs, monkeypatch, tmp_path):
+    from seedsigner.hardware import microsd
+
+    card = tmp_path / "card"
+    card.mkdir()
+    monkeypatch.setattr(microsd, "resolve_seedsigner_os_data_dir", lambda: str(card))
+
+    got = microsd.resolve_microsd_images_dir()
+    assert got == card / "microsd-images"
+    assert got.is_dir()
+
+
+def test_images_dir_falls_back_when_read_only(fake_fs, monkeypatch, tmp_path):
+    """The reported bug: EROFS must degrade to tmpfs, not raise."""
+    from seedsigner.hardware import microsd
+
+    monkeypatch.setattr(microsd, "resolve_seedsigner_os_data_dir", lambda: "/mnt/microsd")
+
+    fallback = tmp_path / "tmpfs-images"
+    monkeypatch.setattr(microsd, "FALLBACK_IMAGES_DIR", str(fallback))
+
+    real_makedirs = os.makedirs
+
+    def readonly_makedirs(path, *args, **kwargs):
+        # as_posix(): on Windows str(Path("/mnt/microsd")/"x") uses backslashes,
+        # so a posix-prefix startswith would never match and the fake would
+        # silently let the "read-only" path succeed.
+        if Path(path).as_posix().startswith("/mnt/microsd"):
+            raise OSError(30, "Read-only file system")
+        return real_makedirs(path, *args, **kwargs)
+
+    monkeypatch.setattr(os, "makedirs", readonly_makedirs)
+
+    got = microsd.resolve_microsd_images_dir()
+    assert got == fallback
+    assert got.is_dir()
+
+
+def test_images_dir_never_raises_even_with_no_writable_location(fake_fs, monkeypatch):
+    """Both targets unwritable: return a path, let the caller fail on its own open()."""
+    from seedsigner.hardware import microsd
+
+    monkeypatch.setattr(microsd, "resolve_seedsigner_os_data_dir", lambda: "/mnt/microsd")
+
+    def always_fails(path, *args, **kwargs):
+        raise OSError(30, "Read-only file system")
+
+    monkeypatch.setattr(os, "makedirs", always_fails)
+
+    got = microsd.resolve_microsd_images_dir()
+    assert got == Path(microsd.FALLBACK_IMAGES_DIR)

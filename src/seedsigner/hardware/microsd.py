@@ -61,6 +61,57 @@ def resolve_seedsigner_os_data_dir() -> str:
     return MICROSD_DIR_CANDIDATES[0]
 
 
+# Working directory for file-based operations (GPG signing/verification,
+# encrypted output, image staging), relative to the resolved data dir.
+MICROSD_IMAGES_SUBDIR = "microsd-images"
+
+# Last-resort staging area when there is nowhere else writable. tmpfs, so it is
+# always writable and always empty after a reboot.
+FALLBACK_IMAGES_DIR = "/tmp/seedsigner-images"
+
+
+def resolve_microsd_images_dir() -> Path:
+    """Return a writable working directory for file-based operations.
+
+    NEVER RAISES. Callers use this to stage files before an operation, and on a
+    read-only root the naive ``os.makedirs(get_microsd_dir() / "microsd-images")``
+    raises an uncaught ``OSError: [Errno 30] Read-only file system`` that takes
+    the whole view down.
+
+    That is reachable in normal use: ``resolve_seedsigner_os_data_dir`` falls
+    back to the literal ``/mnt/microsd`` when there is no card AND no
+    ``/userdata``, and ``/mnt`` is not one of the tmpfs overlays on a
+    squashfs-root image, so the path is genuinely unwritable rather than merely
+    absent.
+
+    Falling back to tmpfs keeps the feature usable instead of crashing. The
+    trade-off is deliberate and worth stating: files written there do not
+    survive a reboot, which is the right failure mode for a device whose whole
+    point is not to persist secrets, but it does mean an export can appear to
+    succeed with nowhere durable to land. Callers that need the user to end up
+    with a file on their card should check ``MicroSD.get_instance().is_inserted``
+    and say so.
+    """
+    preferred = Path(resolve_seedsigner_os_data_dir()) / MICROSD_IMAGES_SUBDIR
+    try:
+        os.makedirs(preferred, exist_ok=True)
+        return preferred
+    except OSError as e:
+        logger.warning(
+            f"Could not create {preferred} ({e}); falling back to {FALLBACK_IMAGES_DIR}"
+        )
+
+    fallback = Path(FALLBACK_IMAGES_DIR)
+    try:
+        os.makedirs(fallback, exist_ok=True)
+    except OSError as e:
+        # Nothing left to try. Return the path anyway so the caller fails on its
+        # own open() with a message naming the file, rather than here with a
+        # message about a directory.
+        logger.error(f"Could not create fallback staging dir {fallback}: {e}")
+    return fallback
+
+
 class MicroSD(Singleton, BaseThread):
     MOUNT_POINT = "/mnt/microsd"
     FIFO_PATH = "/tmp/mdev_fifo"
