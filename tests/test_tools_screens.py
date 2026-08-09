@@ -1,3 +1,4 @@
+import hashlib
 import os
 
 from unittest.mock import MagicMock, patch
@@ -28,6 +29,24 @@ def make_noise_frame(width: int = 240, height: int = 240) -> Image.Image:
     # Random bytes are fine here: tests only need frames that are non-blank and
     # distinct from one another; nothing here feeds real entropy.
     return Image.frombytes("RGBA", (width, height), os.urandom(width * height * 4))
+
+
+def make_blank_frame(color: tuple = (0, 0, 0, 255), width: int = 240, height: int = 240) -> Image.Image:
+    """ A frame of a single flat color: every pixel identical, as from a covered camera. """
+    return Image.new("RGBA", (width, height), color)
+
+
+# A blank frame is any frame of one uniform color: a covered lens reads full black, an
+# overexposed one reads full white, and a color cast reads as some other single color.
+BLANK_FRAME_COLORS = [
+    (0, 0, 0, 255),        # full black
+    (255, 255, 255, 255),  # full white
+    (128, 128, 128, 255),  # a flat mid grey
+    (255, 0, 0, 255),      # one saturated channel is still a single flat color
+    (0, 255, 0, 255),
+    (0, 0, 255, 255),
+    # ...and so is any color whose three channels each hold their own unchanging value
+] + [(value, (value * 7) % 256, (value * 13) % 256, 255) for value in range(1, 55)]
 
 
 def make_mock_camera(frames: list) -> MagicMock:
@@ -70,6 +89,14 @@ def make_mock_hw_inputs(left_script: list = None, anyclick_script: list = None) 
     return hw_inputs
 
 
+def count_anyclick_checks(mock_hw_inputs: MagicMock) -> int:
+    """
+    How many times the screen polled the ANYCLICK group.
+    """
+    from seedsigner.hardware.buttons import HardwareButtonsConstants
+    return sum(1 for c in mock_hw_inputs.check_for_low.call_args_list if c.kwargs.get("keys") == HardwareButtonsConstants.KEYS__ANYCLICK)
+
+
 
 class ImageEntropyScreenTestBase(BaseTest):
 
@@ -102,40 +129,100 @@ class TestToolsImageEntropyLivePreviewScreen(ImageEntropyScreenTestBase):
         return screen
 
 
-    def test_button_held_from_start_never_captures_until_released(self):
+    def test_screen_returns_exactly_50_unique_frames(self):
         """
-        A button already held down when the screen starts must not trigger the final
-        image capture; only a fresh press after all buttons have been seen released
-        may capture.
+        The screen should return 50 unique frames from its preview pool.
         """
-        frames = [make_noise_frame() for i in range(5)]
-        mock_camera = make_mock_camera(frames)
+        from seedsigner.gui.screens.tools_screens import ToolsImageEntropyLivePreviewScreen
+        num_required = ToolsImageEntropyLivePreviewScreen.PREVIEW_POOL_SIZE
 
-        # Button is held for the first two loop passes, released on the third, then
-        # pressed again on the fourth.
-        mock_hw_inputs = make_mock_hw_inputs(anyclick_script=[True, True, False, True])
-        screen = self.build_screen(mock_camera, mock_hw_inputs)
+        frames = [make_noise_frame() for i in range(num_required)]
 
-        # The screen returns the live preview frames
-        result = screen._run()
-
-        # The held presses were ignored; the fresh press on the fourth pass captured.
-        # Three frames were collected before the capture pass.
-        assert result == frames[:3]
-        mock_camera.stop_video_stream_mode.assert_called_once()
-
-
-    def test_click_after_release_captures(self):
-        """ Normal use: no buttons pressed at first, then a click captures. """
-        frames = [make_noise_frame() for i in range(2)]
-        mock_camera = make_mock_camera(frames)
+        # One extra read happens on the capture pass; feed it a duplicate of the last
+        # frame, which the dedupe check rejects (so the returned pool is untouched).
+        duplicate = frames[-1].copy()
+        mock_camera = make_mock_camera(frames + [duplicate])
         mock_hw_inputs = make_mock_hw_inputs(anyclick_script=[False, True])
         screen = self.build_screen(mock_camera, mock_hw_inputs)
 
         result = screen._run()
 
-        assert result == frames[:1]
+        assert result == frames
         mock_camera.stop_video_stream_mode.assert_called_once()
+
+
+    def test_button_held_from_start_never_captures_until_released(self):
+        """
+        A button already held down when the screen starts must not trigger the final
+        image capture -- not even after the entropy pool has filled. Only a fresh
+        press after all buttons have been seen released may capture.
+        """
+        from seedsigner.gui.screens.tools_screens import ToolsImageEntropyLivePreviewScreen
+        num_required = ToolsImageEntropyLivePreviewScreen.PREVIEW_POOL_SIZE
+
+        # The pool fills at frame 50; the held button registers as still held for the next
+        # two loop iterations, released on the third (that's the go-ahead to arm the watch
+        # for the final click), then finally pressed on the fourth.
+        frames = [make_noise_frame() for i in range(num_required + 3)]
+        mock_camera = make_mock_camera(frames)
+        mock_hw_inputs = make_mock_hw_inputs(anyclick_script=[True, True, False, True])
+        screen = self.build_screen(mock_camera, mock_hw_inputs)
+
+        result = screen._run()
+
+        # The pool is a moving window of the LAST 50 admitted frames.
+        assert result == frames[3:]
+        assert len(result) == num_required
+
+        # The ANYCLICK checks should only start after the preview pool is filled so we
+        # should only see the four checks scripted above.
+        assert count_anyclick_checks(mock_hw_inputs) == 4
+        mock_camera.stop_video_stream_mode.assert_called_once()
+
+
+    def test_blank_frames_are_never_admitted(self):
+        """
+        Flat single-color frames (e.g. covered camera, all white, all turquoise, etc) are
+        never counted, the final capture click is never armed, and the back button still
+        exits.
+        """
+        # One frame per flat color, more of them than the pool needs, and all distinct.
+        blanks = [make_blank_frame(color) for color in BLANK_FRAME_COLORS]
+        mock_camera = make_mock_camera(blanks)
+        mock_hw_inputs = make_mock_hw_inputs(left_script=[False] * (len(blanks) - 1) + [True])
+        screen = self.build_screen(mock_camera, mock_hw_inputs)
+
+        result = screen._run()
+
+        assert result == RET_CODE__BACK_BUTTON
+
+        # The pool never filled, so the final capture click (ANYCLICK) was never checked.
+        assert count_anyclick_checks(mock_hw_inputs) == 0
+        mock_camera.stop_video_stream_mode.assert_called_once()
+
+
+    def test_duplicate_frames_are_only_counted_once(self):
+        """
+        A frame whose bytes exactly match an already-admitted frame cannot be included in
+        the preview pool again.
+        """
+        from seedsigner.gui.screens.tools_screens import ToolsImageEntropyLivePreviewScreen
+        num_required = ToolsImageEntropyLivePreviewScreen.PREVIEW_POOL_SIZE
+
+        test_frame = make_noise_frame()
+        fillers = [make_noise_frame() for i in range(num_required)]
+
+        feed = fillers[:10] + [test_frame] + fillers[10:20] + [test_frame] + fillers[20:]
+        mock_camera = make_mock_camera(feed)
+        mock_hw_inputs = make_mock_hw_inputs(anyclick_script=[False, True])
+        screen = self.build_screen(mock_camera, mock_hw_inputs)
+
+        result = screen._run()
+
+        assert test_frame in result
+        # PIL Images are unhashable, so uniqueness is checked on their bytes
+        assert len(set(frame.tobytes() for frame in result)) == num_required  # all unique
+
 
 
     def test_back_button_exits_immediately(self):
