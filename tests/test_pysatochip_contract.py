@@ -104,6 +104,53 @@ def test_real_connector_has_seedkeeper_ndef_methods():
     assert result.returncode == 0, f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
 
 
+def test_keycard_adapter_import_seed_returns_status_word_tuple():
+    """The two backends have OPPOSITE return contracts for this method, and the
+    view has to branch on ``is_keycard_backend`` to tell them apart. Pin the
+    Keycard side here and the pysatochip side below, so a future change to
+    either cannot silently break the caller (see
+    ToolsSatochipImportSeedView)."""
+    import ast
+    import inspect
+    import textwrap
+
+    from seedsigner.helpers.keycard_connector import KeycardSatochipConnector
+
+    src = textwrap.dedent(inspect.getsource(
+        KeycardSatochipConnector.card_bip32_import_seed))
+    returns = [n for n in ast.walk(ast.parse(src)) if isinstance(n, ast.Return)]
+
+    assert returns, "no return statement found"
+    for node in returns:
+        assert isinstance(node.value, ast.Tuple) and len(node.value.elts) == 3, (
+            f"KeycardSatochipConnector.card_bip32_import_seed returned a "
+            f"non-3-tuple at line {node.lineno} of the method; the view unpacks "
+            f"(resp, sw1, sw2) from it"
+        )
+
+
+@requires_real_pysatochip
+def test_real_connector_import_seed_returns_single_value():
+    """pysatochip returns ONE value (the authentikey ECPubkey, or None), never a
+    status-word tuple. The view used to unpack three values unconditionally, so
+    a *successful* import raised TypeError and the user was shown Failed for a
+    card that had just been seeded."""
+    result = _run_py(
+        "import ast, inspect, textwrap\n"
+        "from pysatochip.CardConnector import CardConnector\n"
+        "src = textwrap.dedent(inspect.getsource(\n"
+        "    CardConnector.card_bip32_import_seed))\n"
+        "returns = [n for n in ast.walk(ast.parse(src))\n"
+        "           if isinstance(n, ast.Return)]\n"
+        "assert returns, 'no return statement found'\n"
+        "bad = [n.lineno for n in returns if isinstance(n.value, ast.Tuple)]\n"
+        "assert not bad, (\n"
+        "    f'pysatochip card_bip32_import_seed now returns a tuple at {bad}; '\n"
+        "    'ToolsSatochipImportSeedView expects a single value on this backend')\n"
+    )
+    assert result.returncode == 0, f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+
+
 @requires_real_pysatochip
 @pytest.mark.xfail(
     reason="card_get_ndef_v2 (Satodime NDEF) needs 3rdIteration/pysatochip 0.6a+; "
