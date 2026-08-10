@@ -1334,6 +1334,10 @@ class TestSatochipImportSeedView(BaseTest):
                 return "deadbeef"
 
         class MockConnector:
+            # Only the Keycard adapter returns (resp, sw1, sw2); the SW-formatted
+            # message under test is the Keycard branch.
+            is_keycard_backend = True
+
             def card_get_status(self):
                 return (None, 0x90, 0x00, {"is_seeded": False})
 
@@ -1373,6 +1377,8 @@ class TestSatochipImportSeedView(BaseTest):
                 return "deadbeef"
 
         class MockConnector:
+            is_keycard_backend = True
+
             def __init__(self):
                 self.status_calls = 0
 
@@ -1404,4 +1410,96 @@ class TestSatochipImportSeedView(BaseTest):
 
         warning_text = captured["warning_text"].lower()
         assert "seeded key" in warning_text
+        assert destination.View_cls == tools_views.MainMenuView
+
+    def test_import_seed_pysatochip_backend_shows_success(self, monkeypatch):
+        """pysatochip's card_bip32_import_seed returns a single authentikey, not
+        the (resp, sw1, sw2) tuple the Keycard adapter returns. Unpacking three
+        values raised TypeError on a card the APDU had just successfully seeded,
+        the view's except-block swallowed it, and the user was shown Failed for a
+        card that now held the seed."""
+        from seedsigner.views import tools_views
+        from seedsigner.helpers import seedkeeper_utils
+
+        class MockSeed:
+            seed_bytes = b"\x01" * 64
+
+            def get_fingerprint(self, _network):
+                return "deadbeef"
+
+        class MockAuthentikey:
+            """Stands in for the ECPubkey pysatochip returns on success."""
+
+        class MockConnector:
+            # No is_keycard_backend attribute -- this is the pysatochip backend.
+            def __init__(self):
+                self.is_seeded = False
+
+            def card_get_status(self):
+                return (None, 0x90, 0x00, {"is_seeded": self.is_seeded})
+
+            def card_bip32_import_seed(self, _seed_bytes):
+                self.is_seeded = True
+                return MockAuthentikey()
+
+        monkeypatch.setattr(
+            seedkeeper_utils, "init_satochip", lambda *a, **k: MockConnector()
+        )
+
+        self.controller.storage.seeds = [MockSeed()]
+
+        view = tools_views.ToolsSatochipImportSeedView()
+        responses = iter([0, 0])
+        captured = {"screens": []}
+
+        def fake_run_screen(screen_cls, **kwargs):
+            captured["screens"].append(screen_cls)
+            captured["title"] = kwargs.get("title")
+            return next(responses)
+
+        monkeypatch.setattr(view, "run_screen", fake_run_screen)
+        view.run()
+
+        assert tools_views.LargeIconStatusScreen in captured["screens"]
+        assert tools_views.WarningScreen not in captured["screens"]
+        assert captured["title"] == "Success"
+
+    def test_import_seed_pysatochip_backend_none_shows_failed_warning(self, monkeypatch):
+        """pysatochip returns None (not a status-word tuple) when the card
+        rejects the import, so the failure path has to test for None."""
+        from seedsigner.views import tools_views
+        from seedsigner.helpers import seedkeeper_utils
+
+        class MockSeed:
+            seed_bytes = b"\x01" * 64
+
+            def get_fingerprint(self, _network):
+                return "deadbeef"
+
+        class MockConnector:
+            def card_get_status(self):
+                return (None, 0x90, 0x00, {"is_seeded": False})
+
+            def card_bip32_import_seed(self, _seed_bytes):
+                return None
+
+        monkeypatch.setattr(
+            seedkeeper_utils, "init_satochip", lambda *a, **k: MockConnector()
+        )
+
+        self.controller.storage.seeds = [MockSeed()]
+
+        view = tools_views.ToolsSatochipImportSeedView()
+        responses = iter([0, 0])
+        captured = {}
+
+        def fake_run_screen(screen_cls, **kwargs):
+            if screen_cls is tools_views.WarningScreen:
+                captured["warning_text"] = kwargs.get("text")
+            return next(responses)
+
+        monkeypatch.setattr(view, "run_screen", fake_run_screen)
+        destination = view.run()
+
+        assert "import failed" in captured["warning_text"].lower()
         assert destination.View_cls == tools_views.MainMenuView
