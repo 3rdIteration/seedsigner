@@ -1915,6 +1915,10 @@ class ToolsSeedkeeperViewSecretsView(View):
 
     def run(self):
         from seedsigner.gui.screens.screen import LoadingScreenThread
+        # Safe defaults so the except handler never references unbound names
+        # when an exception fires before these variables are assigned.
+        selected_menu_num = RET_CODE__BACK_BUTTON
+        secret_dict = {}
         try:
             Satochip_Connector = seedkeeper_utils.init_satochip(self, init_card_filter=["seedkeeper"])
             
@@ -2113,7 +2117,10 @@ class ToolsSeedkeeperViewSecretsView(View):
             
         except Exception as e:
             logger.info(e)
-            self.loading_screen.stop()
+            try:
+                self.loading_screen.stop()
+            except Exception:
+                pass
             self.run_screen(
                 WarningScreen,
                 title="Error",
@@ -2129,7 +2136,7 @@ class ToolsSeedkeeperViewSecretsView(View):
                 from seedsigner.gui.screens.screen import QRDisplayScreen
                 from seedsigner.models.encode_qr import GenericStaticQrEncoder
 
-                qr_encoder = GenericStaticQrEncoder(data=secret_dict['secret'])
+                qr_encoder = GenericStaticQrEncoder(data=secret_dict.get('secret', str(e)))
                 self.run_screen(
                     QRDisplayScreen,
                     qr_encoder=qr_encoder,
