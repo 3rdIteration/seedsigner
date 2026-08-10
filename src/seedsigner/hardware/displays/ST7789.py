@@ -314,7 +314,12 @@ class ST7789(BaseDisplayDriver):
         #
         # Waiting the full 120 ms here satisfies the requirement independently of
         # how many commands init() sends or how fast the board executes them.
-        time.sleep(0.120)
+        # 150 ms (not the 120 ms minimum) gives OS-timer headroom: on a loaded
+        # Windows host time.sleep can return ~10 ms early relative to
+        # time.monotonic, and a zero-tolerance 120 ms test flakes on CI.  This
+        # mirrors the SLPOUT→DISPON sleep below (also 150 ms "for OS timer
+        # headroom").  150 >= 120, so it is strictly datasheet-compliant.
+        time.sleep(0.150)
         
     def SetWindows(self, Xstart, Ystart, Xend, Yend):
         #set the X coordinates

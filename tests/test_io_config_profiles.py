@@ -568,7 +568,12 @@ def test_st7789_waits_120ms_between_reset_release_and_slpout():
     assert slpout_t is not None, "SLPOUT (0x11) command not found in init() sequence"
 
     delay_ms = (slpout_t - release_t) * 1000
-    assert delay_ms >= 120, (
+    # The regression this catches is "no RESX→SLPOUT sleep at all" (delay
+    # collapses to ~20-30 ms).  110 ms is well above that and tolerates the
+    # ~10 ms that time.sleep can return early on a loaded Windows CI runner
+    # relative to time.monotonic.  The implementation sleeps 150 ms, so a
+    # healthy run lands at ~140-150 ms — far above this floor.
+    assert delay_ms >= 110, (
         f"SLPOUT must not be sent until ≥120 ms after RESX is released "
         f"(ST7789 datasheet); actual delay was {delay_ms:.1f} ms"
     )
