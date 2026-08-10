@@ -198,7 +198,7 @@ def test_inserted_card_still_says_sd_card(fake_fs, seedsigner_os):
 # the tmpfs overlays -- so a bare os.makedirs raised an uncaught OSError and took
 # the whole view down.
 
-def test_images_dir_uses_the_resolved_data_dir(fake_fs, monkeypatch, tmp_path):
+def test_images_dir_uses_the_resolved_data_dir(monkeypatch, tmp_path):
     from seedsigner.hardware import microsd
 
     card = tmp_path / "card"
@@ -210,7 +210,7 @@ def test_images_dir_uses_the_resolved_data_dir(fake_fs, monkeypatch, tmp_path):
     assert got.is_dir()
 
 
-def test_images_dir_falls_back_when_read_only(fake_fs, monkeypatch, tmp_path):
+def test_images_dir_falls_back_when_read_only(monkeypatch, tmp_path):
     """The reported bug: EROFS must degrade to tmpfs, not raise."""
     from seedsigner.hardware import microsd
 
