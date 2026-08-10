@@ -125,7 +125,15 @@ jobs:
         run: |
           echo "builder_hash=$(git -C seedsigner-os rev-parse --short HEAD)" | tee -a "$GITHUB_ENV"
 
-          APP_REPO_INPUT="${{ github.event_name == 'workflow_dispatch' && github.event.inputs['app-repo'] || github.repository }}"
+          # For a PR from a fork, head.sha only exists in the fork: a plain clone
+          # of the base repo cannot resolve it (refs/pull/* is not fetched by
+          # default). Take the repo from the same event that supplies APP_REF
+          # below. Falls back to github.repository if the fork is gone.
+          APP_REPO_INPUT="${{
+            github.event_name == 'workflow_dispatch' && github.event.inputs['app-repo']
+            || github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name
+            || github.repository
+          }}"
           if [[ "${APP_REPO_INPUT}" =~ ^https?:// ]]; then
             APP_REPO_URL="${APP_REPO_INPUT}"
           else
