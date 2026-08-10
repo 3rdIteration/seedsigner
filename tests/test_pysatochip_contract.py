@@ -25,6 +25,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from unittest.mock import Mock
+
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -163,6 +165,37 @@ def test_real_connector_has_satodime_ndef_v2():
         "assert callable(getattr(CardConnector, 'card_get_ndef_v2', None))\n"
     )
     assert result.returncode == 0, f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+
+
+def test_view_secrets_except_handler_no_unboundlocal_on_early_failure(monkeypatch):
+    """B11 / #385 regression: ToolsSeedkeeperViewSecretsView.run() wraps its body
+    in try/except, but the except handler referenced selected_menu_num and
+    secret_dict — names that were never assigned when an exception fired before
+    the selection-screen step. That produced an UnboundLocalError, masking the
+    original error. After the fix, the view returns Destination(BackStackView)
+    cleanly."""
+    from seedsigner.views.smartcard_views import ToolsSeedkeeperViewSecretsView
+    from seedsigner.views.view import Destination, BackStackView
+    from seedsigner.helpers import seedkeeper_utils
+
+    from seedsigner.gui.screens.screen import RET_CODE__BACK_BUTTON
+
+    view = object.__new__(ToolsSeedkeeperViewSecretsView)
+    view.settings = Mock()
+    view.controller = Mock()
+    view.run_screen = Mock(return_value=RET_CODE__BACK_BUTTON)
+
+    # Simulate a card that connects but blows up during secret listing
+    # — the except handler MUST NOT explode with UnboundLocalError.
+    monkeypatch.setattr(
+        seedkeeper_utils,
+        "init_satochip",
+        Mock(side_effect=Exception("Connection refused during listing")),
+    )
+
+    result = view.run()
+    assert isinstance(result, Destination)
+    assert result.View_cls == BackStackView
 
 
 @requires_real_pysatochip
