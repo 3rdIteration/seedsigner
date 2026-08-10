@@ -191,7 +191,11 @@ jobs:
         run: |
           cd seedsigner-os
           mkdir -p .buildroot-ccache .ccache images
-          docker compose up --force-recreate --build
+          # --abort-on-container-exit + --exit-code-from make `up` return the
+          # build container's exit code, so an in-container build failure fails
+          # this step instead of silently passing and only tripping the later
+          # upload step's if-no-files-found guard.
+          docker compose up --force-recreate --build --abort-on-container-exit --exit-code-from build-images
           docker compose down
 
       - name: Fix permissions
