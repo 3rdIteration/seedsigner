@@ -11,20 +11,26 @@ run-name: >-
       github.event.inputs['os-repo'],
       github.event.inputs['os-ref']
     )
-    || github.event_name == 'push' && format(' push {0}', github.ref_name)
+    || github.event_name == 'pull_request' && format(' Pico Pi hardened, PR #{0}', github.event.pull_request.number)
+    || github.event_name == 'push' && format(' Pico Pi hardened, push {0}', github.ref_name)
     || ''
   }}
 
-# The Luckfox build is expensive (~1-2h), so it does not run on every PR. Use
-# "Run workflow" (workflow_dispatch) to test a branch, or push to main.
+# Automatic CI builds the hardened Luckfox Pico Pi image (EMMC) on every PR and
+# every push to main/dev, matching the Pi & Lafrite CI's trigger coverage. Each
+# run costs ~1-2h of runner time. Every other hardware/boot/variant combination
+# (Pico Mini, Pico Pro/Max, dev images, release uploads) is available on demand
+# via "Run workflow" (workflow_dispatch).
 on:
+  pull_request:
   push:
     branches:
       - main
+      - dev
   workflow_dispatch:
     inputs:
       hardware_type:
-        description: Luckfox hardware model (ALL builds every valid hardware/boot combination)
+        description: 'Luckfox hardware model. Valid boot media: Pico Mini = SD_CARD or SPI_NAND; Pico Pro/Max = SD_CARD or SPI_NAND; Pico Pi = EMMC only. ALL builds every valid hardware/boot combination'
         required: true
         type: choice
         options:
@@ -34,7 +40,7 @@ on:
           - RV1106_Luckfox_Pico_Pi
         default: RV1103_Luckfox_Pico_Mini
       boot_medium:
-        description: Boot medium (ALL builds every valid boot medium for the selected hardware)
+        description: 'Boot medium — must be valid for the selected hardware (Pico Pi only boots EMMC). ALL builds every valid boot medium for the selected hardware'
         required: true
         type: choice
         options:
@@ -79,6 +85,31 @@ on:
           - 'true'
           - 'false'
         default: auto
+      harden_adb:
+        description: 'Strip the adb userspace on non-dev (stubs adbd/usbdevice, blanks gadget config). on = strip (default); off = leave it. Bisect lever: dr_mode=host already blocks adb, so off is still adb-free but skips the rootfs surgery'
+        required: false
+        type: choice
+        options:
+          - 'on'
+          - 'off'
+        default: 'on'
+      readonly_rootfs:
+        description: 'Read-only root filesystem: squashfs + tmpfs overlays on /etc /var /root /home, so a dirty unmount cannot corrupt / and no change to / survives a reboot. /userdata stays writable. auto follows build_variant (non-dev=on, dev=off)'
+        required: false
+        type: choice
+        options:
+          - auto
+          - 'on'
+          - 'off'
+        default: auto
+      boot_log:
+        description: 'Persistent boot log (/userdata/seedsigner-boot.log): on = every boot is recorded (rotated, 128 KiB cap, deleted on a successful boot); off = the device writes nothing to flash (default). Enable only for an instrumented/debug build'
+        required: false
+        type: choice
+        options:
+          - 'on'
+          - 'off'
+        default: 'off'
       source-ref:
         description: The seedsigner ref (tag/branch/sha1) to use
         required: true
@@ -94,7 +125,7 @@ on:
       os-ref:
         description: The seedsigner-os ref (tag/branch/sha1) to use
         required: false
-        default: merge-luckfox-pico-build
+        default: main
       release_tag:
         description: Upload artifacts to a GitHub Release with this tag (leave empty to skip release upload)
         required: false
@@ -105,24 +136,66 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-luckfox:
+  # Automatic CI build: Luckfox Pico Pi with every release hardening feature
+  # explicitly enabled. The hardening levers are pinned rather than left on
+  # "auto" so the image cannot silently soften if an upstream default changes.
+  ci-pico-pi:
+    if: github.event_name != 'workflow_dispatch'
+    permissions:
+      # The reusable workflow's build job declares contents: write; a caller
+      # granting less fails the permissions check. Nothing here writes — its
+      # release-upload step is gated on workflow_dispatch.
+      contents: write
+    uses: 3rdIteration/seedsigner-os/.github/workflows/build-luckfox.yml@main
+    secrets: inherit
+    with:
+      hardware_type: RV1106_Luckfox_Pico_Pi
+      # Pico Pi boots eMMC only; upstream rejects any other pairing.
+      boot_medium: EMMC
+      build_variant: non-dev
+      usb_mode: host
+      # 'on'/'off'/'true' stay quoted: unquoted they become YAML booleans and
+      # fail the reusable workflow's string-typed workflow_call inputs.
+      debug_network: 'off'
+      disable_uart2_console_debug: 'true'
+      harden_adb: 'on'
+      readonly_rootfs: 'on'
+      boot_log: 'off'
+      # Unlike build-buildroot.yml, the app cannot be pinned to a commit sha
+      # here: the reusable workflow clones it with `git clone -b <ref>`, which
+      # takes a branch or tag only. On a pull_request, github.ref_name is
+      # "<PR#>/merge" and is not clonable, so pass the head repo + head branch
+      # instead — using the head *repo* is also what makes fork PRs work.
+      seedsigner_repo_url: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.clone_url || format('https://github.com/{0}', github.repository) }}
+      seedsigner_branch: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref || github.ref_name }}
+      seedsigner_os_repo: 3rdIteration/seedsigner-os
+      seedsigner_os_ref: main
+      release_tag: ''
+
+  # Manual build: any hardware/boot/variant combination, and the only path that
+  # can upload to a GitHub release (the reusable workflow gates that step on
+  # workflow_dispatch, which under workflow_call reflects this caller's event).
+  dispatch:
+    if: github.event_name == 'workflow_dispatch'
     permissions:
       # write so the reusable workflow can upload to a release when release_tag is set
       contents: write
     # Reuses the authoritative Luckfox build from seedsigner-os, targeting this
-    # app repo at the current branch. Pin @<ref> to where the reusable workflow
-    # lives (update to @main once merged).
-    uses: 3rdIteration/seedsigner-os/.github/workflows/build-luckfox.yml@merge-luckfox-pico-build
+    # app repo at the requested ref.
+    uses: 3rdIteration/seedsigner-os/.github/workflows/build-luckfox.yml@main
     secrets: inherit
     with:
-      hardware_type: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.hardware_type || 'RV1103_Luckfox_Pico_Mini' }}
-      boot_medium: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.boot_medium || 'SD_CARD' }}
-      build_variant: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.build_variant || 'non-dev' }}
-      usb_mode: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.usb_mode || 'auto' }}
-      debug_network: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.debug_network || 'auto' }}
-      disable_uart2_console_debug: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.disable_uart2_console_debug || 'auto' }}
-      seedsigner_repo_url: https://github.com/${{ github.event_name == 'workflow_dispatch' && github.event.inputs['app-repo'] || github.repository }}
-      seedsigner_branch: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs['source-ref'] || github.ref_name }}
-      seedsigner_os_repo: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs['os-repo'] || '3rdIteration/seedsigner-os' }}
-      seedsigner_os_ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs['os-ref'] || 'merge-luckfox-pico-build' }}
-      release_tag: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag || '' }}
+      hardware_type: ${{ github.event.inputs.hardware_type }}
+      boot_medium: ${{ github.event.inputs.boot_medium }}
+      build_variant: ${{ github.event.inputs.build_variant }}
+      usb_mode: ${{ github.event.inputs.usb_mode }}
+      debug_network: ${{ github.event.inputs.debug_network }}
+      disable_uart2_console_debug: ${{ github.event.inputs.disable_uart2_console_debug }}
+      harden_adb: ${{ github.event.inputs.harden_adb }}
+      readonly_rootfs: ${{ github.event.inputs.readonly_rootfs }}
+      boot_log: ${{ github.event.inputs.boot_log }}
+      seedsigner_repo_url: https://github.com/${{ github.event.inputs['app-repo'] }}
+      seedsigner_branch: ${{ github.event.inputs['source-ref'] }}
+      seedsigner_os_repo: ${{ github.event.inputs['os-repo'] }}
+      seedsigner_os_ref: ${{ github.event.inputs['os-ref'] }}
+      release_tag: ${{ github.event.inputs.release_tag }}
